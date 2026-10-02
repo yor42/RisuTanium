@@ -1266,6 +1266,11 @@ app.get('/api/read', authenticatedRouteLimiter, async (req, res, next) => {
             }
         });
         res.setHeader('x-risu-revision', String(currentRevision));
+        // A stored empty file and an absent file answer with the same empty
+        // body, so whether the key holds a value travels in a header. It is set
+        // here, beside the revision and before the send, so a 304 revalidation
+        // of this URL carries it too.
+        res.setHeader('x-risu-exists', content === null ? '0' : '1');
         if(content === null){
             res.send();
         } else {
@@ -1481,9 +1486,17 @@ app.get('/api/list', authenticatedRouteLimiter, async (req, res, next) => {
         return;
     }
     try {
-        const data = (await fs.readdir(path.join(savePath))).map((v) => {
-            return Buffer.from(v, 'hex').toString('utf-8')
-        })
+        // Only whole, even-length hex names are keys. Everything else in the
+        // directory (write temps `<hex>.tmp-<random>`, `__revisions.json`,
+        // `__password` and the other `__` files) is not a key. Decoding a `__`
+        // file gives an empty name; decoding a write temp gives the key it was
+        // written for, a second copy of an existing key or a phantom one when
+        // no real file exists.
+        const data = (await fs.readdir(path.join(savePath)))
+            .filter((v) => /^(?:[0-9a-fA-F]{2})+$/.test(v))
+            .map((v) => {
+                return Buffer.from(v, 'hex').toString('utf-8')
+            })
         res.send({
             success: true,
             content: data
