@@ -2546,6 +2546,76 @@ filing and investigation record and is unchanged. What the commit message says i
 
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
+**Status (2026-10-03, latest): stage 0 done by `d0decfb6` (local, not pushed). Stages 1 to 4, and stage 5 or later, are open, not yet gated.** The
+older status blocks below are kept as they were; where this block differs, this block governs. Ledger rows 658 to 663 are
+the stage 0 work (the facts investigation, both gates, the implementation and the commit message); `MC-171` records the
+maintainer's commit decision.
+
+- **What stage 0 changed (from the commit message):**
+  - One helper, `writeFileAtomic` in `src/ts/storage/tauriAtomicWrite.ts`, writes the new bytes to a new file in the
+    target's own directory (`risu-write-<16 hex>.tmp`, created with createNew) and renames it over the target. The target
+    is never opened for writing. A failed write or rename removes its own temp file as best it can and rethrows the
+    original error. The helper takes and releases no lock.
+  - It is used at the six sites of the table below: the `saveDb` main write (under `dbWriteLock`), the `saveDb`
+    numbered-backup write (after the lock is released), `LoadLocalBackup`, `loadInternalBackup`, the Tauri `writeMainFile` of
+    the boot archive pass (`createProductionBootArchiveDeps`; the boot's write-back of the pre-pass bytes goes through it
+    too) and first launch in `loadData`.
+  - A boot sweep, `sweepAtomicWriteTemps('database')`, runs in `loadData`'s "Checking Files" block, after the database
+    folder is checked and made, before the first-launch write and before the boot archive session opens. It removes only
+    files whose name matches the temp pattern exactly. A failing listing or removal is logged and does not stop the boot.
+  - A bounded retry: the rename is retried up to four times, after 50, 100, 200 and 400 ms, when the error text ends in
+    "(os error 5)" or "(os error 32)". Any other error fails at once.
+  - No fsync (the plugin has none). This protects against a failed or interrupted write, not against power loss.
+  - Temp names never start with "." and never contain "dbbackup-", so the backup list, the prune, the internal-backup
+    picker and the manual clean-up's snapshot listing never see a temp file as a backup.
+  - Tests and checks, as the commit message states them: one reproducer per site; against a stand-in for the unchanged
+    behaviour (the helper module swapped for a plain `writeFile` of the target and a sweep that does nothing, over the site
+    and existing test files; the helper's own unit tests were not part of that run) all six reproducers failed for the
+    intended reason, and 17 tests failed in all; 12 mutants of the helper were all killed. RUN by the
+    Orchestrator on the final tree (the content of `d0decfb6`): `pnpm test` 298 files, 6268 passed, 4 skipped; `pnpm check`
+    0 errors and 0 warnings; `pnpm build` ok (`VITE_RISU_LEGAL_CONFIGURED=TRUE`).
+- **The filing's `TODO(evidence)` items 2 and 3, answered as far as they go:**
+  - **Item 2, a rename over an existing file:** RUN in a standalone Rust probe only (rustc 1.98.1, NTFS, Windows 11), not
+    in the app. With the target held open by another handle, the rename replaced the target when the holder shared delete
+    and failed with "os error 5" when it did not. The success relies on std's rename retrying through `FileRenameInfoEx`
+    after `MoveFileExW` returns ACCESS_DENIED (the std source; TRACED). CI builds with an unpinned stable toolchain, so the
+    std behind a build is not fixed. On macOS and Linux the rename replacing the target is INFERRED, not run.
+  - **Item 3, other Tauri writes:** for `database/`, no other Tauri write exists (a Grep). The other truncating Tauri
+    writes (assets, cold units, remote blocks, the meta file and exports) are unchanged by stage 0 and are still assigned to
+    no stage's atomic-write work.
+- **Open check (`MC-171` 2): not run.** The stage 0 live check on Windows in the real desktop app: save a few times, then
+  restore a backup (the option text the maintainer chose). The Orchestrator's addition, not in `MC-171`: also try a
+  program that holds the file without delete-share. It can be done whenever the maintainer next runs the desktop app on
+  Windows. It is not a gate on stage 1.
+- **New loud failure mode (from the commit message; the maintainer was told before the commit approval).** A program that
+  holds `database/database.bin` open without delete-share can block the rename. After the retries the write rejects, the old
+  file stays intact, and `saveDb` shows "Failed to save data, retrying…" and retries; from the fifth consecutive failed
+  attempt on it shows an error alert on each attempt. The save lands once the holder closes. Before stage 0 a holder that
+  shared read and write did not block the truncating write. A permanent ACCESS_DENIED (a read-only target, for instance)
+  is retried the same bounded number of times before it fails. This is a workflow change, not data loss.
+- **Corrections to the earlier text** (checked at HEAD `d0decfb6` by the writer unless noted):
+  - `restoreWriteFailed` is `src/lang/en.ts:1692` and `internalBackupWriteFailed` is `en.ts:1695` (the filing said 1672
+    and 1675).
+  - `src-tauri/Cargo.lock` locks `tauri` at 2.11.5 (`Cargo.toml`'s "2.9.5" is a caret requirement); `tauri-plugin-fs` is
+    2.5.2 as filed. The JS `@tauri-apps/plugin-fs` is 2.4.5 (`package.json`).
+  - The numbered-backup write runs outside `dbWriteLock` (the packet).
+  - The boot write-back in `installMainFileAsItIs` goes through the same `writeMainFile` dependency, so stage 0 covers it
+    (the packet).
+- **Notes for later stages** (the Orchestrator's, from Gate 1 and Gate 2; non-blocking):
+  - The temp naming rule and the boot sweep were derived for `database/` only. When the helper serves `assets/`,
+    `coldstorage/` or `remotes/` (the later stages of `MC-167`), both must be re-derived for the readers of those
+    directories.
+  - `encodeRemoteBlock` (`src/ts/storage/risuSave.ts`), when `skipRemoteSaving` is set, accepts an existing
+    content-addressed remote file on an `exists` check, so a remote file left partial by a crash would be accepted as present. This belongs to the remote-blocks stage
+    (stage 2).
+  - SUSPECTED, not run: temp-then-rename replaces a symlinked `database.bin` with a regular file and, on Unix, gives the
+    new file default permissions rather than the old mode. No known user setup does this.
+  - The test fake `tauriFsFake.ts` never emits "os error 17", so the Unix branch of the "temp already exists" carve-out is
+    untested.
+- **Next for CHORE-55:** stage 1: the contract, three adapters and one conformance suite, with no callers moved
+  (`fake-indexeddb` is approved by `MC-167` 6). The advisor's named investigation before stage 2, the Tauri boot read
+  through the asset protocol against `readFile` on a large file, is still open.
+
 **Status (2026-10-01):** filed from memory stage 1 step 5b's Gate 2 round 1 (`opus-reviewer`,
 non-blocking N2; Gate 2 is ledger row 530). Open. Scheduled with CHORE-51
 and CHORE-52, after CHORE-53 and CHORE-43/CHORE-54, before steps 6 and 7 (`MC-151` 3). It predates step 5b,
@@ -2588,7 +2658,7 @@ and 5b adds a third write site with the same shape (the internal-backup load); t
   - `TODO(evidence)`: other Tauri writes through the same plugin call (assets, cold-storage units,
     numbered backups) were not surveyed.
 
-**Status (2026-10-02, latest): open; the scope is rewritten by `MC-167`. Placed after CHORE-51 and CHORE-52, with stage 0
+**Status (2026-10-02, later): open; the scope is rewritten by `MC-167`. Placed after CHORE-51 and CHORE-52, with stage 0
 first.** The text above is the 2026-10-01 filing and is kept; where this block differs, this block governs. The three
 `TODO(evidence)` items above are only partly answered below: item 1 (a truncated file) is answered by the decode RUN for
 the cuts it tried; item 2: the capability is confirmed (`src-tauri/capabilities/migrated.json`, `fs:allow-rename` with an
@@ -2722,8 +2792,9 @@ then the prune.
   conflict check on IndexedDB and OPFS (INFERRED).
 - **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
 
-**Related:** `MC-167`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays), CHORE-51 and
-CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; ledger rows 633, 635 and 636.
+**Related:** `MC-167`, `MC-171`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays), CHORE-51
+and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commit `d0decfb6` (stage
+0); ledger rows 633, 635, 636 and 658 to 665.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 

@@ -11,7 +11,7 @@ treat it as a log or history.
 
 ## Session date
 
-2026-10-02.
+2026-10-03 (the session began on 2026-10-02).
 
 ## Branch and commit state
 
@@ -123,11 +123,15 @@ The commits below were local when they were listed, and were pushed with it:
 - `59881788`: CHORE-51 with CHORE-52, the cold-storage clean-up keeps archives that archived chats link, and a key that
   cannot be a file name is never read as missing (`MC-170`; ledger rows 642 to 657). Local, not pushed;
 - the records commit that follows `59881788` and carries this file (`MC-170`, CHORE-51 and CHORE-52 closed, CHORE-71 to
-  CHORE-73, ledger rows 642 to 657). Local, not pushed.
+  CHORE-73, ledger rows 642 to 657; `cc3ef365`, by its commit subject). Local, not pushed;
+- `d0decfb6`: CHORE-55 stage 0, the desktop app replaces the main file and the numbered backups through a temp file and a
+  rename, so a failed write keeps the old file (`MC-171`; ledger rows 658 to 663). Local, not pushed;
+- the records commit that follows `d0decfb6` and carries this file (`MC-171`, CHORE-55 stage 0 done, ledger rows 658 to
+  665). Local, not pushed.
 
-The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31` and `59881788`) are local
-and not pushed (`git status -sb` showed the branch 7 commits ahead of `origin` on 2026-10-02, before the records commit
-above); the records commit above will be local too.
+The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`
+and `d0decfb6`) are local and not pushed (`git status -sb` showed the branch 9 commits ahead of `origin` on 2026-10-03,
+before the records commit above); the records commit above will be local too.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -148,6 +152,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - The records commit after `71e75d9d` at "commit docs when ready, then pause so I can compact to clear up the context."
 - `59881788` and the records commit after it at "Commit both (Recommended)", the maintainer's answer to the commit question
   (Q6, `MC-170` 7): one code commit with the fact-checked message, then a records commit. Nothing is pushed.
+- `d0decfb6` and the records commit after it at "Commit both (Recommended)", the maintainer's answer to the commit question
+  (Q1, `MC-171` 1): the code first, then the records as a second commit. Nothing is pushed.
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
@@ -169,7 +175,7 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-171` (`MC-170` is used), Report 57 (Report 56 is used), ledger row 658 and CHORE-74
+**Next free numbers:** `MC-172` (`MC-171` is used), Report 57 (Report 56 is used), ledger row 666 and CHORE-74
 (`CHORE-73` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
@@ -180,7 +186,7 @@ should fill them.
 
 ## Current work
 
-### Resume here (hand-off, 2026-10-02, memory stage 1: steps 1, 2, 3a, 3b, 4, 5a, 5b, 5c, 5d-1, 5d-2a, 5d-2b, 5d-3 and 5d-4 done)
+### Resume here (hand-off, 2026-10-03, memory stage 1: steps 1, 2, 3a, 3b, 4, 5a, 5b, 5c, 5d-1, 5d-2a, 5d-2b, 5d-3 and 5d-4 done)
 
 1. **Memory-footprint stage 1 is planned and passed Gate 1** (Report 49, `MC-130` to `MC-145`,
    ledger rows 455-486). **Step 1 is done:** the exclusive manual clean-up (D11) and no startup asset
@@ -244,8 +250,13 @@ should fill them.
    corrupt archived chat is kept and the run carries on, a cold-storage key must be a safe file name, and a plugin save
    over an archive that something else links is refused (the guard reads live memory only). CHORE-71 to CHORE-73 are filed,
    not scheduled. Checks on the final tree, from the commit message: the suite 295 files, 6230 passed, 4 skipped; `pnpm
-   check` 0 errors and 0 warnings; `pnpm build` ok. No live check is recorded. Next: CHORE-55 with stage 0 first, then
-   CHORE-59, then memory steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   check` 0 errors and 0 warnings; `pnpm build` ok. No live check is recorded. **CHORE-55 stage 0 is done (2026-10-03;
+   `d0decfb6`, local; `MC-171`; ledger rows 658 to 663; Roadmap CHORE-55):** on the desktop app the main file and the
+   numbered backups are replaced through a temp file and a rename, so a failed write keeps the old file; a boot sweep
+   removes leftover temp files. Checks on the final tree, from the commit message: the suite 298 files, 6268 passed, 4
+   skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok. Its live check on Windows in the real desktop app was
+   not run and stays open (`MC-171` 2); it is not a gate on stage 1. Next: CHORE-55 stage 1, then the remaining CHORE-55
+   stages, then CHORE-59, then memory steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -546,9 +557,12 @@ should fill them.
    5. **CHORE-51** (DATA LOSS) and **CHORE-52** (the unvalidated cold-storage key): **done 2026-10-02**, as `59881788` (local;
       `MC-170`; ledger rows 642 to 657). Then **CHORE-55**
       (rewritten by `MC-167`: one storage interface with three adapters and no bypasses; **stage 0, the atomic Tauri
-      write, first**; the later stages are a planning basis and not yet gated) and then **CHORE-59** (Load Internal Backup
+      write, is done** as `d0decfb6` (2026-10-03, local; `MC-171`; ledger rows 658 to 663), and its live check on Windows
+      is open (`MC-171` 2), not a gate on stage 1; the later stages are a planning basis and not yet gated) and then
+      **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
-      its own change with its own gates. **Next: CHORE-55 with stage 0 first.** The maintainer
+      its own change with its own gates. **Next: CHORE-55 stage 1** (the contract, three adapters and one conformance
+      suite, no callers moved), then the remaining CHORE-55 stages, then CHORE-59. The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it
       should not wait behind the idle reload and the measurements. CHORE-55 goes in this stretch by

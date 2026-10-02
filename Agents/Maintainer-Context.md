@@ -5987,3 +5987,41 @@ ledger rows 644 to 657):
 before the database commit and keeps them if the user cancels (designed); Tauri case folding of keys on NTFS and APFS is not
 canonicalised; Windows reserved device names (`NUL`, `CON`) pass the key rule (reachable by crafted data only); a plugin's
 `getItem` cross-read is not guarded.
+
+---
+
+### MC-171 — CHORE-55 stage 0 is committed as a code commit and then a records commit (nothing pushed); its Windows live check is recorded as not run and stays open; a toolchain-pinning ticket was offered and not chosen
+
+- **Tag:** decision (items 1 to 3, the maintainer's answers to `AskUserQuestion`), and one item of information the
+  Orchestrator gave in chat, listed at the end (not a decision)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers Q1 and Q2 to the two questions the Orchestrator asked with `AskUserQuestion` after
+  CHORE-55 stage 0's Gate 2 had closed. The question and option texts are quoted below. The reasons in the option texts
+  are the Orchestrator's.
+- **Reasoning:** the reasons given in the option texts: for Q1, the records (Roadmap, ledger, Live-State) are written and
+  fact-checked after the code is committed, as a second commit; for Q2, the Orchestrator cannot drive a native app window
+  from its own environment, so the check waits for the next time the maintainer runs the desktop app on Windows.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 1: "Code only" and "Hold";
+  - item 2: "I'll run it now" and "Pin the Rust toolchain".
+- **Related:** MC-167, MC-011, MC-089 2; CHORE-55; commit `d0decfb6` (CHORE-55 stage 0, local); the records commit that
+  carries this file; ledger rows 658 to 665.
+
+**What was decided** (each question as put to the maintainer, then the answer and its option text):
+1. **Stage 0's code is committed first, and its records follow as a second commit. Nothing is pushed.** Q1: "CHORE-55
+   stage 0 has passed both reviews and every check, and its commit message is fact-checked. How should I commit it?" The
+   answer: "Commit both (Recommended)": "Commit the code now, then write and fact-check the records (Roadmap, ledger rows
+   658 onward, Live-State) and commit them as a second commit. Nothing is pushed." The options not chosen were "Code
+   only" and "Hold".
+2. **Stage 0's live check on Windows is recorded as not run, and it stays open.** It is not a gate on stage 1. Q2: "So far
+   the Windows rename has only been tried in a small Rust test program, never in the real desktop app. Should the desktop
+   app be checked before stage 1 starts?" The answer: "Record as not run (Recommended)": "Note it as an open check in the
+   Roadmap. It can be done whenever you next run the desktop app on Windows: save a few times, then restore a backup. I
+   can't drive a native app window from here." The options not chosen were "I'll run it now" and "Pin the Rust toolchain".
+3. **The option to file a ticket to pin the Rust toolchain in CI was offered and not chosen; no ticket is filed with this
+   record.** Its text: "Also file a
+   ticket to pin the Rust toolchain in CI, so the std rename behaviour the fix relies on can't change between builds."
+
+**Information given to the maintainer in chat before Q1** (not a decision): a new loud failure mode was described to the
+maintainer; the commit message of `d0decfb6` states it.
