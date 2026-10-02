@@ -126,11 +126,15 @@ The commits below were local when they were listed, and were pushed with it:
   CHORE-73, ledger rows 642 to 657; `cc3ef365`, by its commit subject). Local, not pushed;
 - `d0decfb6`: CHORE-55 stage 0, the desktop app replaces the main file and the numbered backups through a temp file and a
   rename, so a failed write keeps the old file (`MC-171`; ledger rows 658 to 663). Local, not pushed;
-- the records commit that follows `d0decfb6` and carries this file (`MC-171`, CHORE-55 stage 0 done, ledger rows 658 to
-  665). Local, not pushed.
+- the records commit that follows `d0decfb6` (`79658498`, by its commit subject: `MC-171`, CHORE-55 stage 0 done, ledger
+  rows 658 to 665). Local, not pushed;
+- `d95b07da`: CHORE-55 stage 1, one byte-store contract with Tauri, Node and IndexedDB adapters, used by no caller yet
+  (`MC-172`; ledger rows 666 to 676). Local, not pushed;
+- the records commit that follows `d95b07da` and carries this file (`MC-172`, CHORE-55 stage 1 done, ledger rows 666 to
+  678). Local, not pushed.
 
-The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`
-and `d0decfb6`) are local and not pushed (`git status -sb` showed the branch 9 commits ahead of `origin` on 2026-10-03,
+The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
+`d0decfb6`, `79658498` and `d95b07da`) are local and not pushed (`git rev-list --count 1ce8abff..HEAD` gave 11 on 2026-10-03,
 before the records commit above); the records commit above will be local too.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
@@ -154,6 +158,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
   (Q6, `MC-170` 7): one code commit with the fact-checked message, then a records commit. Nothing is pushed.
 - `d0decfb6` and the records commit after it at "Commit both (Recommended)", the maintainer's answer to the commit question
   (Q1, `MC-171` 1): the code first, then the records as a second commit. Nothing is pushed.
+- `d95b07da` and the records commit after it at "Commit both (Recommended)", the maintainer's answer to the commit question
+  (`MC-172` 1): the code first, then the records as a second commit. Nothing is pushed.
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
@@ -175,7 +181,7 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-172` (`MC-171` is used), Report 57 (Report 56 is used), ledger row 666 and CHORE-74
+**Next free numbers:** `MC-173` (`MC-172` is used), Report 57 (Report 56 is used), ledger row 679 and CHORE-74
 (`CHORE-73` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
@@ -255,8 +261,15 @@ should fill them.
    numbered backups are replaced through a temp file and a rename, so a failed write keeps the old file; a boot sweep
    removes leftover temp files. Checks on the final tree, from the commit message: the suite 298 files, 6268 passed, 4
    skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok. Its live check on Windows in the real desktop app was
-   not run and stays open (`MC-171` 2); it is not a gate on stage 1. Next: CHORE-55 stage 1, then the remaining CHORE-55
-   stages, then CHORE-59, then memory steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   not run and stays open (`MC-171` 2). **CHORE-55 stage 1 is done (2026-10-03; `d95b07da`, local; `MC-172`; ledger rows
+   666 to 676; Roadmap CHORE-55):** one byte-store contract in `src/ts/storage/store/` with Tauri, Node and IndexedDB
+   adapters and one conformance suite; no production module imports it yet. The one change a user can see is on the
+   self-hosted Node server: `/api/list` no longer returns `''` or keys decoded from `.tmp-` write temps (`/api/read` also
+   sends an `x-risu-exists` header that current clients ignore; both are the `MC-091` scope amendment). Checks on the final tree, from the commit message: the suite 302
+   files, 6482 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok. The Tauri adapter is tested only
+   against the test fake. **Next: the asset-protocol against `readFile` investigation, then CHORE-55 stage 2 (not yet
+   planned), then the remaining CHORE-55 stages, then CHORE-59, then memory steps 6 and 7, then CHORE-62, then CHORE-58
+   last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -558,11 +571,15 @@ should fill them.
       `MC-170`; ledger rows 642 to 657). Then **CHORE-55**
       (rewritten by `MC-167`: one storage interface with three adapters and no bypasses; **stage 0, the atomic Tauri
       write, is done** as `d0decfb6` (2026-10-03, local; `MC-171`; ledger rows 658 to 663), and its live check on Windows
-      is open (`MC-171` 2), not a gate on stage 1; the later stages are a planning basis and not yet gated) and then
+      is open (`MC-171` 2); **stage 1, the contract, three adapters and one conformance suite with no callers moved, is
+      done** as `d95b07da` (2026-10-03, local; `MC-172`; ledger rows 666 to 676); the later stages are a planning basis and
+      not yet gated) and then
       **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
-      its own change with its own gates. **Next: CHORE-55 stage 1** (the contract, three adapters and one conformance
-      suite, no callers moved), then the remaining CHORE-55 stages, then CHORE-59. The maintainer
+      its own change with its own gates. **Next: the investigation of the Tauri boot read through the asset protocol
+      against `readFile` (the advisor's, before stage 2), then CHORE-55 stage 2** (the main file, numbered backups,
+      snapshots, remote blocks, the boot read, the boot archive commit, restore and the internal-backup load; not yet
+      planned), then stages 3 and 4, then CHORE-59. The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it
       should not wait behind the idle reload and the measurements. CHORE-55 goes in this stretch by

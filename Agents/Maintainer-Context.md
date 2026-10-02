@@ -6025,3 +6025,26 @@ canonicalised; Windows reserved device names (`NUL`, `CON`) pass the key rule (r
 
 **Information given to the maintainer in chat before Q1** (not a decision): a new loud failure mode was described to the
 maintainer; the commit message of `d0decfb6` states it.
+
+---
+
+### MC-172 — CHORE-55 stage 1 is committed as a code commit and then a records commit (nothing pushed)
+
+- **Tag:** decision (the maintainer's answer to `AskUserQuestion`)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the one question the Orchestrator asked with `AskUserQuestion` after CHORE-55
+  stage 1's Gate 2 had closed and its commit message had been fact-checked. The question and option text are quoted
+  below. The reason in the option text is the Orchestrator's.
+- **Reasoning:** the reason given in the option text: the records (Roadmap, ledger, Live-State) are written and
+  fact-checked after the code is committed, as a second commit.
+- **Alternatives rejected** (the other options the Orchestrator offered): "Code only" and "Hold".
+- **Related:** MC-167, MC-171, MC-011, MC-091; CHORE-55; commit `d95b07da` (CHORE-55 stage 1, local; its message states
+  what it changed); the records commit that carries this file; ledger rows 666 to 678.
+
+**What was decided:**
+1. **Stage 1's code is committed first, and its records follow as a second commit. Nothing is pushed.** The question: "CHORE-55
+   stage 1 has passed both reviews and every check, and its commit message is fact-checked. How should I commit it?" The
+   answer: "Commit both (Recommended)": "Commit the code now, then write and fact-check the records (Roadmap, ledger rows
+   666 onward, Live-State) and commit them as a second commit. Nothing is pushed." The options not chosen were "Code
+   only" and "Hold".

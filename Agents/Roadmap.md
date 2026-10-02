@@ -2546,7 +2546,73 @@ filing and investigation record and is unchanged. What the commit message says i
 
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
-**Status (2026-10-03, latest): stage 0 done by `d0decfb6` (local, not pushed). Stages 1 to 4, and stage 5 or later, are open, not yet gated.** The
+**Status (2026-10-03, latest): stage 1 done by `d95b07da` (local, not pushed). Stages 2 to 4, and stage 5 or later, are open, not yet gated.** The
+older status blocks below are kept as they were; where this block differs, this block governs. Ledger rows 666 to 676 are
+the stage 1 work (the facts investigation, the three Gate 1 rounds, the implementation, Gate 2 round 1,
+the escalation, the remediation, Gate 2 round 2, and the commit message with its check); rows 677 and 678 are these records
+and their fact-check. `MC-172` records the maintainer's commit decision.
+
+- **What stage 1 added (from the commit message):**
+  - The contract, in `src/ts/storage/store/`: `read`, `write`, `delete`, `deleteMany`, `list(prefix)` and `has`, over whole
+    binary values. A zero-length value is a value and is distinct from an absent key. Every write and delete takes an
+    explicit condition, `{ ifVersion }` or `'unconditional'`; only the Node adapter enforces `ifVersion`. Creatable keys and
+    addressable keys are two rule sets, so a key upstream already stored under an unusual name stays readable, listed and
+    deletable but cannot be created again. `deleteMany` is not atomic and rejects with a per-key report. `urlFor` is not in
+    this stage.
+  - Three adapters: Tauri files (one file per key under AppData, every path passed as `./` + key, writes through
+    `writeFileAtomic`); Node HTTP (the server's hex key encoding, with the revisions held by the caller); IndexedDB on
+    LocalForage `risuai`/`keyvaluepairs`, with the driver pinned and no object store added and no database version forced.
+    OPFS gets no adapter.
+  - One conformance module run against all three adapters, and `fake-indexeddb` ^6.2.5 as a devDependency (`MC-167`). **No
+    production module imports the new code.**
+  - Checks, as the commit message states them, and RUN by the Orchestrator on the final tree: `pnpm test` 302 files, 6482
+    passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok (`VITE_RISU_LEGAL_CONFIGURED=TRUE`). A later
+    test-title-only rename in `nodeHttpStore.test.ts` was re-run in its file (70 passed), and the Gate 2 reviewer's own full
+    `pnpm test` on the tree with the rename gave the same 302 files, 6482 passed, 4 skipped. The tests are conformance and
+    compatibility guards for new code, not regression reproducers; no red-before-green run is claimed. The Tauri adapter is
+    tested only against the test fake, not on a real Tauri runtime.
+- **Scope amendment (`MC-091`, technical prerequisite), in `server/node/server.cjs`:**
+  - A1: `/api/read` sends `x-risu-exists: 1|0` beside `x-risu-revision` (`server.cjs:1273`). Without it a stored empty file and
+    a missing file give the same empty response.
+  - A2: `/api/list` returns only whole, even-length hex names (the filter at `server.cjs:1496`). A2 is the one change a user can
+    see: on Node, `/api/list` no longer returns `''` (decoded from the `__` files) or keys decoded from `.tmp-` write temps.
+  - A2 also removes a phantom that could make `encodeRemoteBlock`'s `keys().includes` skip a remote block whose write never
+    finished. The mechanism is TRACED. The frequency is INFERRED: only a crash in the middle of a write leaves an orphan temp.
+- **Facts that refuted planning assumptions (the stage 1 facts packet, ledger row 666):**
+  - Node `/api/list` returned `''` and `.tmp-` duplicates (RUN against the real server).
+  - A 0-byte value read as missing on Node (RUN; the Orchestrator re-read `readItem` in `nodeStorage.ts`).
+  - The Tauri capability has no `stat`, so there is no mtime version (the Orchestrator re-grepped `migrated.json`).
+  - The `risuai` store holds non-binary entries: `migrated` (a boolean written by `AutoStorage`) and `denied_opfs` (read by
+    upstream code and never written by any source, so only a hand-set value can exist).
+  - `risuSaveCache` is a separate LocalForage database of objects, not bytes. It stays a side store (the stage 1 plan's
+    scope); the advisor's contract sketch below records it as a load-bearing write-ahead copy that is never cleaned up.
+- **Prerequisites and notes for stages 2 to 4** (the Orchestrator's, from the gates):
+  - Every stage 2 to 4 caller chooses a condition explicitly. Today `NodeStorage` makes every key it wrote, or read through
+    `getItem`, conditional implicitly (`peekItem` does not adopt the revision). A conflict's reported version is diagnostic only and is never the next `ifVersion` for the same bytes.
+  - Version 0 on Node means "the server never bumped this key's revision", not "absent". Upstream's server kept no revisions,
+    and a corrupt `__revisions.json` resets the counters. A create-if-absent reads first.
+  - The IndexedDB driver is pinned: where IndexedDB is missing, every operation rejects (AutoStorage falls back today).
+  - Through the IndexedDB adapter, a stored non-binary entry under an app key rejects loudly on read; stage 2 callers will
+    meet that.
+  - Stage 3: sanitize the asset extension when a new asset is created. The asset key is `assets/<id>.<fileName.split('.').pop()>`
+    (`src/ts/globalApi.svelte.ts:490` and `:493`, checked by the writer). Whether existing oddly named assets are renamed is a
+    maintainer question for stage 3.
+  - Stage 0 temp files will appear in `assets/`, `remotes/` and `coldstorage/` once the Tauri adapter writes there. Their
+    readers and the `database/`-only boot sweep must be re-derived then (the stage 0 note below, restated as a stage 2 to 4
+    prerequisite).
+  - A Node startup sweep of orphan `.tmp-` files. They cost disk only, now that they are unlisted.
+  - On Tauri a key cannot also be a directory prefix of another key. Node and IndexedDB allow it. No app key collides.
+  - Single auth state in stage 2: the Node adapter takes an injected auth provider, and two `checkAuth` flows must not both
+    prompt.
+  - Still open from stage 0: the Windows live check (`MC-171` 2), and the advisor's asset-protocol against `readFile`
+    investigation before stage 2 (the Tauri adapter reads with `readFile` for now).
+  - Not handled (edge cases with no caller): a Windows `list` prefix containing `\`; Windows reserved device names in the
+    creatable rule; the duplicated 8000-byte request budget in `nodeHttpStore.ts` and `manualCleanup.ts`.
+- **Next for CHORE-55:** stage 2 (the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive
+  commit, restore and the internal-backup load). It is not yet planned. The asset-protocol against `readFile` investigation
+  comes first.
+
+**Status (2026-10-03, stage 0): stage 0 done by `d0decfb6` (local, not pushed). Stages 1 to 4, and stage 5 or later, are open, not yet gated.** The
 older status blocks below are kept as they were; where this block differs, this block governs. Ledger rows 658 to 663 are
 the stage 0 work (the facts investigation, both gates, the implementation and the commit message); `MC-171` records the
 maintainer's commit decision.
@@ -2612,9 +2678,10 @@ maintainer's commit decision.
     new file default permissions rather than the old mode. No known user setup does this.
   - The test fake `tauriFsFake.ts` never emits "os error 17", so the Unix branch of the "temp already exists" carve-out is
     untested.
-- **Next for CHORE-55:** stage 1: the contract, three adapters and one conformance suite, with no callers moved
-  (`fake-indexeddb` is approved by `MC-167` 6). The advisor's named investigation before stage 2, the Tauri boot read
-  through the asset protocol against `readFile` on a large file, is still open.
+- **Next for CHORE-55 (as of stage 0; the stage 1 block above has the current line):** stage 1: the contract, three adapters
+  and one conformance suite, with no callers moved (`fake-indexeddb` is approved by `MC-167` 6). The advisor's named
+  investigation before stage 2, the Tauri boot read through the asset protocol against `readFile` on a large file, is still
+  open.
 
 **Status (2026-10-01):** filed from memory stage 1 step 5b's Gate 2 round 1 (`opus-reviewer`,
 non-blocking N2; Gate 2 is ledger row 530). Open. Scheduled with CHORE-51
@@ -2792,9 +2859,9 @@ then the prune.
   conflict check on IndexedDB and OPFS (INFERRED).
 - **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
 
-**Related:** `MC-167`, `MC-171`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays), CHORE-51
-and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commit `d0decfb6` (stage
-0); ledger rows 633, 635, 636 and 658 to 665.
+**Related:** `MC-167`, `MC-171`, `MC-172`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays),
+CHORE-51 and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commits `d0decfb6`
+(stage 0) and `d95b07da` (stage 1); ledger rows 633, 635, 636, 658 to 665 and 666 to 678.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 
