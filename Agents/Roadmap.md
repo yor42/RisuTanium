@@ -2034,6 +2034,59 @@ Open. Scheduled after memory stage 1 step 5 and before step 6 (`Agents/Live-Stat
   blobs, so it changes the clean-up's read cost and step 1's gated design (Report 50). It is its own
   change, with its own gates.
 
+**Status (2026-10-02, latest): closed by `59881788`, together with CHORE-52. Local, not pushed.** The text above is the
+filing record and is kept; one sentence in it is wrong (see the correction below). What the commit message says it fixed:
+- **Before:** the manual clean-up kept the archives that live memory, the saved main file and the snapshots reach, and the
+  blob of each archived character. It never opened an archived chat. An archived chat can name another archive in its
+  first message, by pointer or by the legacy "could not be loaded" text, so an archive reached only that way was listed as
+  unreferenced and deleted.
+- **Now:** the clean-up keeps every archive that any chain of archived chats reaches, by first-message pointer or legacy
+  error text, from live memory, the saved main file and every retained snapshot, at any depth. Cycles end. Each archive is
+  read at most once, one at a time, and every read finishes before the start listing and the first deletion. Only the keys
+  a chat names are retained. A plugin's storage content is not searched, unless a chat links that unit too, and then it is
+  read like any archived chat.
+- **A missing or corrupt archived chat does not stop the run** (`MC-170` 1 and 3). A missing one is skipped: kept by name,
+  nothing followed from it. A corrupt one (kind "damaged": the bytes are there but do not decode) is kept the same way. How
+  often corrupt archives occur is unknown. Only a read error with no explanation, or a page with no OPFS directory API at
+  all (which the load-time listing already rules out in practice), stops the run, before anything is deleted, with a new
+  message (`coldStorageCleanupChatUnreadable`, in all seven languages) that names the character the chain was reached from
+  and the source. A stub's blob that is missing, unreadable or belongs to another character still stops it, as before.
+- **On the desktop app,** a read that fails without a kind counts as missing only when the load-time listing held no unit
+  and the folder check reports the units folder absent. Windows reports a read inside a folder that does not exist as "os
+  error 3", which was not classified as missing. The skip is safe because no unit was listed at load, not because the
+  folder check proves the folder is absent. CHORE-73 records the part this does not cover.
+- **Correction to the filing text.** The filing says `makeColdDataForChat` "refuses a chat whose `message[0]` is already a
+  pointer (and one that already holds the error text)". Gate 1 found that upstream's `makeColdDataForChat` refuses only a
+  chat whose first message is a pointer. It does not refuse one that holds the error text (TRACED in `upstream/main`). So
+  upstream could archive a chat whose first message is the error text, and a chat unit holding it could come from upstream
+  data. How many real profiles hold one is still unmeasured.
+- **Not changed:** the save format and the backup and restore formats.
+- **Evidence (the commit message, unless noted):**
+  - Tests: `manualCleanup.svelte.test.ts` has 91 new archived-chat tests. With the key rule in place but without the
+    clean-up change, 50 of the first 83 failed: 48 deleted a unit the run had to keep, the read-once test read
+    `[1,1,0,0,0]`, and the no-storage test showed no notice naming the character (a message, not data loss). Of the 8 added
+    after them, 4 are data-loss reproducers that fail the same way without the clean-up change (unit `V` deleted): a chain
+    that starts at a main-file chat whose first message is error text, on each platform, and a units folder reported
+    absent by `exists()` while units were listed at load. The Tauri missing-folder test passes without the clean-up
+    change; it guards that reading archived chats does not block the asset clean-up when the units folder does not exist.
+    The rest guard the folder rule.
+  - Checks on the final tree (EXECUTED by the Orchestrator): `pnpm test` 295 files, 6230 passed, 4 skipped; `pnpm check` 0
+    errors and 0 warnings; `pnpm build` ok with `VITE_RISU_LEGAL_CONFIGURED=TRUE`.
+  - Gates (`opus-reviewer`): the plan, Gate 1 round 1 `[REJECT]` on stage B only (stopping on a corrupt chat is permanent
+    and protects nothing; it became `MC-170` 3), round 2 `[EDITORIAL]`; stage B code, Gate 2 round 1 `[EDITORIAL]` (its finding 2, that Windows "os error 3" stops every
+    run against `MC-170` 1, was marked non-blocking; the Orchestrator chose to fix it, and that fix was rejected in round
+    2), round 2 `[REJECT]`, round 3 `[APPROVE]`, with 21 mutants in round 1. Round 2 reproduced that `exists()` is false on any metadata
+    error (tauri-plugin-fs 2.5.2, `Path::exists`), so a folder rule built on `exists()` alone could delete silently; the
+    fix also requires an empty load-time listing. The brief had specified `exists()` alone. The commit message's check was
+    `[EDITORIAL]` with four corrections, applied before the commit. Ledger rows 642, 644, 645, 649 to 654, 655 (the translation of
+    `coldStorageCleanupChatUnreadable`), 656 and 657.
+  - Live check: none is recorded.
+- **Note (not a ticket):** the existing string `coldStorageCleanupSaveUnreadable` still says "do not run cleanup". The gate
+  judged that pointless advice for the new string, and it was not changed here. It could be folded into CHORE-73.
+- **Maintainer decisions:** `MC-170`; the commit was made at "Commit both (Recommended)".
+- **Related:** CHORE-52 (closed by the same commit), CHORE-73; `MC-011`, `MC-016`, `MC-134`, `MC-139`, `MC-141`, `MC-147`,
+  `MC-170`; ledger rows 642 to 657.
+
 ### CHORE-52 — Cold-storage keys are not shape-checked before they reach a storage path (integrity hardening)
 
 **Status (2026-10-01):** filed from memory stage 1 step 4's Gate 1 (round 1, N4; Report 55 section 7;
@@ -2105,6 +2158,76 @@ hardening is integrity.
   lenient rule it loads as today (the investigator's inference).
 - **Uncertain:** whether any real profile holds a non-UUID unit key (no data); OPFS and Windows
   device-name behaviour (a key such as `NUL` or `a:b` on Windows; not traced, integrity-only).
+
+**Status (2026-10-02, latest): closed by `59881788`, together with CHORE-51. Local, not pushed.** The text above is the
+filing record and is kept; where the corrections below differ from it, the corrections govern. What the commit message says
+it fixed:
+- **The key rule** (`src/ts/process/coldStorageKey.ts`). A key may become a storage name only if it is a non-empty string
+  of at most 100 UTF-8 bytes, well-formed UTF-16, with none of `/ \ : < > " | ? *` and no character from U+0000 to U+001F
+  (`MC-170` 4). A rejected key reads as unreadable ("damaged"), never missing; its write fails; no backend is called. The
+  chat notice then hides a Retry that cannot succeed, and a restore shows its damaged-copy text. The listings leave out
+  stored names the rule rejects, so they are never deletion candidates, and `removeUnitBatch` counts a rejected key as
+  failed. Every key upstream or this fork has written passes: UUIDs and upstream's `<uuid>_accessMeta`.
+- **The plugin overwrite guard** (`MC-170` 5). A plugin's `setItem` for a slot whose existing unit is also linked from a
+  character's `coldstorage`, a `coldStoragedChats` entry, a chat's first-message pointer or error text, or another plugin
+  slot is refused. It throws "Failed to write plugin storage for key: <key>" and leaves the unit and the mapping as they
+  were. A slot nothing else links is still updated in place.
+  - **The guard reads live memory only.** It does not see a link held only inside an unopened archive (a character's or a
+    chat's), or only in the saved main file or a snapshot. This is wider than the option text the maintainer chose, which
+    named only "a link that sits only inside an unopened character archive"; the wider gap was reported to the maintainer
+    in chat before the commit.
+  - **Cost** (measured with `--expose-gc` on best-case hardware, an i9-class machine): about 7 ms per in-place plugin write
+    once the proxies exist, at 1000 characters with 4 chats each. The first pass builds Svelte proxies for every chat, which
+    stay for the life of the page: about 16 MB at 1000 x 4 chats, about 70 MB at 1000 x 20. With archiving on (the
+    default) there is about one chat per stub. Filed as CHORE-71 (`MC-170` 6).
+- **Corrections to the filing text** (each from the investigation in ledger row 643 and the gates; the Orchestrator
+  re-checked the `_accessMeta` history and the Tauri classifier):
+  - **A rejected key did not always read `error`.** On a POSIX desktop, a Tauri read of `a/b` gives os error 2 and `exists()`
+    false, so it read `missing` (TRACED; the POSIX errno is INFERRED). On the Node server, a key over about 115 bytes gets an
+    empty 200 response and read `missing` (TRACED). The filing's premise that the backends turn a bad key into `error` does
+    not hold, so the key check runs before any backend call.
+  - **"The three I/O functions" was incomplete.** The key is spliced into a path or file name in three functions in
+    `coldstorage.svelte.ts` (`getColdStorageItem`, `readLocalColdStorageBytes`, `setColdStorageItem`) and also in
+    `removeUnitBatch` (a splice); the listings turn stored names back into keys, so the rule filters them there.
+  - **Where the unit keys come from.** The filing says fork writers make every unit key with `crypto.randomUUID()`. That is
+    wrong. The fork writes unit keys with the `uuid` package's v4 (the boot archive pass and V3 plugin storage);
+    `crypto.randomUUID()` is upstream's. Source: Gate 2 stage A, which the Orchestrator verified against the code before
+    the commit. Every one of these keys passes the rule.
+  - **Test fixtures (a correction to the filing's file list).** The filing named `coldStorageBackupCollect` and
+    `backuplocalUnitClosure` among its four files with non-UUID keys. Those two use UUID-shaped ids. The non-UUID fixture
+    keys are in `coldStorageDeletionGuards` (68), `manualCleanup` (127), `coldReadKinds` (14) and
+    `coldReadKindsDecodeStub` (7). The counts are the CHORE-52 investigator's heuristic per-file counts of kebab-case key
+    literals, from its packet (not reproduced, and not in ledger row 643).
+  - **Upstream's orphan units.** Upstream also wrote unreferenced `<uuid>_accessMeta` units between upstream commits
+    `488ca25d` and `2b3b0f2d`; they are absent from tag v2026.4.120 on (the Orchestrator re-ran
+    `git log upstream/main -S'_accessMeta'`). The rule accepts them, so the clean-up can still delete them.
+- **The aliasing question the filing left open is answered only in part.** The plugin overwrite (a crafted `_coldplugin`
+  value equal to another unit's uuid) is guarded as above, within the guard's live-memory limit. The pointer case (aliasing
+  case B: a chat pointer equal to another unit's key) is **still open and out of scope**; it is not ticketed. As traced by
+  the CHORE-52 investigator, it causes a cross-read only: `preLoadChat` restores the other unit's messages into the
+  pointing chat. It cannot overwrite, because the fork has no chat-unit writer. A plugin's `getItem` cross-read is
+  likewise unguarded and not ticketed.
+- **Also in the commit:** the `setItem` note in `src/ts/plugins/apiV3/risuai.d.ts` now says the call also rejects when the
+  slot's archive is linked from elsewhere (`git show --stat 59881788` lists the file, 5 lines changed; the wording was
+  not re-read here).
+- **Not changed:** the save format and the backup and restore formats.
+- **Evidence (the commit message, unless noted):**
+  - Tests: `coldReadKinds.test.ts`: the Tauri read of `a/b` (os error 2, `exists()` false) and the Node 116-byte key (empty
+    200) failed with "expected 'missing' to be 'error'", and the `preLoadChat` contract failed with "expected 'missing' to
+    be 'damaged'". Seen with the key-rule tests in place, before the key-rule production change. The rest of the key-rule
+    tests are contract tests and guards, not reproducers. `pluginColdStorage.test.ts`: with the guard removed, 7 tests
+    fail with "promise resolved "undefined" instead of rejecting" (the write goes through). `coldStorageKeyRule.test.ts`
+    and `bootArchivePass.keyRule.test.ts` cover the rule and the boot archive pass with a rejected key.
+  - Checks on the final tree and the gates are in CHORE-51's closure above (the two tickets share one commit). Stage A
+    (this ticket) went through Gate 2 `[EDITORIAL]`: two false comments (a `randomUUID` claim, and one that read "missing"
+    as "nothing was lost", which the reviewer found inverted); mutants (accept-all, guard off, guard judged on the database) were killed. Ledger rows 643, 646 to 648.
+- **Out of scope, accepted and recorded** (not put to the maintainer): a restore writes units before the database commit
+  and keeps them if the user cancels (designed); Tauri case folding of keys (NTFS, APFS) is not canonicalised; Windows
+  reserved device names (`NUL`, `CON`) pass the rule (reachable by crafted data only); a plugin's `getItem` cross-read is
+  not guarded. CHORE-72 records one more path that takes a name from an archive.
+- **Maintainer decisions:** `MC-170` 4 to 6.
+- **Related:** CHORE-51 (closed by the same commit), CHORE-71, CHORE-72, CHORE-73; `MC-011`, `MC-170`; ledger rows 643 and
+  646 to 648.
 
 ### CHORE-53 — Delete actions act on a stale target, and Enter clicks the control behind a confirm (DATA LOSS)
 
@@ -2600,7 +2723,7 @@ then the prune.
 - **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
 
 **Related:** `MC-167`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays), CHORE-51 and
-CHORE-52 (before this), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; ledger rows 633, 635 and 636.
+CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; ledger rows 633, 635 and 636.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 
@@ -3616,6 +3739,54 @@ silent. Nothing changes now.
   the question gave: offer the newest complete backup, or load the partial save and say what is missing. Not decided.
 - **Not in scope:** the advisor recommended leaving the non-strict install policy alone inside CHORE-55; it belongs here.
 - **Related:** CHORE-55 (stage 0); CHORE-59 (the same family); `MC-167` 9; ledger rows 633 and 636.
+
+### CHORE-71 — The plugin overwrite guard walks every chat in live memory on each in-place plugin `setItem`, and keeps a proxy for each (performance and memory; measured on best-case hardware)
+
+**Status (2026-10-02):** open, **not scheduled**, **LOW priority**. Filed at the maintainer's decision (`MC-170` 6: "Keep it,
+file an index ticket (Recommended)"). Type: performance and memory.
+
+- **What happens (measured with `--expose-gc` on best-case hardware, an i9-class machine; the guard added by `59881788`,
+  CHORE-52):** a plugin `setItem` that reuses an existing slot walks every chat in live memory to find other
+  links to the slot's archive. The first pass creates Svelte proxies for every chat, and they are retained for the life of
+  the page. The figures:
+  - about 16 MB at 1000 characters with 4 chats each, and about 70 MB at 1000 characters with 20 chats each;
+  - about 7 ms per write once warm at 1000 x 4, and about 23 to 58 ms for the first pass.
+- **With archiving on (the default),** a stub holds about one chat, and the cost is about 1 to 2 ms. **This is an
+  estimate, not a measurement:** the Gate 2 stage A reviewer's figure from the one-chat-per-stub shape.
+- **What the ticket asks:** a cheaper way to find links to an archive. Direction (non-normative): a link index that keeps
+  the plan's A2.3 behaviour, that the decision reads the database as it is when the write is decided.
+- **Best-case hardware only:** every figure above is from one best-case machine; they are not a result for slower devices.
+- **Related:** CHORE-52 (the guard); `MC-170` 6; ledger row 647.
+
+### CHORE-72 — A local backup restore writes an entry whose name does not match the cold-storage key pattern to `assets/<name>` (integrity; not traced)
+
+**Status (2026-10-02):** open, **not scheduled**, **LOW priority**. Found while CHORE-52 was investigated and planned. Needs
+an investigation before anything is decided.
+
+- **What the CHORE-52 investigator found (not opened by the Orchestrator):** in the restore in `backuplocal.ts`, an entry
+  whose name does not match the cold-storage backup key pattern (`getColdStorageBackupKey`, UUID-gated) falls to the
+  non-cold-storage branch and is written as `assets/<name>`. It is the only other place an archive-supplied name reaches a
+  storage path besides the cold-storage key functions CHORE-52 now guards.
+- **Not traced, and the ticket's first question:** what a crafted entry name could write there. The `assets/<name>`
+  fallback was left out of CHORE-52. No line number is cited, because the file was not opened for this record.
+- **Related:** CHORE-52; `MC-170`.
+
+### CHORE-73 — On a Windows desktop, a chat whose pointer names a unit in a `coldstorage` folder that does not exist reads "unreadable" instead of "missing"
+
+**Status (2026-10-02):** open, **not scheduled**, **LOW priority**. Type: wrong message. Found at CHORE-51's Gate 2 round 1.
+
+- **What happens:** on a Windows desktop, a read of a file inside a folder that does not exist fails with "os error 3",
+  while a missing file in an existing folder fails with "os error 2". `classifyTauriColdRead` classifies anything other than
+  os error 2 as `error`, so the first reads `error`, not `missing`. So `preLoadChat`, the legacy retry and the backup show
+  the "unreadable, try again" text for such a chat instead of "missing".
+  - **Confidence:** the two error codes are TRACED (the Gate 2 stage B reviewer compiled and ran Rust's `std::fs::read` on
+    Windows). That tauri-plugin-fs passes that text through is INFERRED. That `classifyTauriColdRead` treats anything other
+    than os error 2 as `error` is TRACED (its code and doc).
+- **What CHORE-51 did and did not do:** the manual clean-up has its own narrow rule (the load-time listing held no unit and
+  the folder check reports the units folder absent), so the clean-up is not blocked. It did not change
+  `classifyTauriColdRead` or the other consumers.
+- **What the ticket asks:** decide whether those consumers should read the missing folder as "missing". Not decided.
+- **Related:** CHORE-51; the note under CHORE-51 about `coldStorageCleanupSaveUnreadable` could be folded in; `MC-170` 1.
 
 ## Sequencing Summary
 

@@ -5885,3 +5885,105 @@ ledger row 637):
    chats".
 2. Continue ends its chat's history (plan invariant I14). `MC-168`'s option text does not name Continue; the
    Orchestrator kept the reset Continue has at the parent commit.
+
+---
+
+### MC-170 — The manual clean-up follows references inside archived chats (a missing or corrupt one is kept and the run carries on), cold-storage keys must be a safe file name, a plugin save over an archive that something else links is refused, and the guard's memory cost is kept with an index ticket (CHORE-71)
+
+- **Tag:** decision (items 1 to 6, the maintainer's answers to `AskUserQuestion`), and the Orchestrator's own calls listed
+  at the end (not maintainer decisions)
+- **Date:** 2026-10-02
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers Q1 to Q5 and Q7 to the questions the Orchestrator asked with `AskUserQuestion`
+  while CHORE-51 and CHORE-52 were investigated, planned and gated; Q6 is the commit approval. The question text and the
+  chosen option labels are in the session scratchpad (`chore51\questions-1002b.txt`, not a repo file) and are quoted
+  below. The reasons given in the questions and option texts are the Orchestrator's.
+- **Reasoning:** for item 3, the reason put to the maintainer was that the app can never read anything out of a corrupt
+  archived chat either, so a stop on one would repeat on every run and last until the snapshots that hold it rotate out.
+  The decision stands on "stopping protects nothing reachable", not on how often corrupt archives occur. **That frequency
+  is unknown:** Q5's wording to the maintainer overstated what the Gate 1 reviewer had found, and the reviewer had
+  reported the size of that group as unknown. That wording is not repeated here and is not a finding.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 1: "Stop the clean-up";
+  - item 2: "Skip it and say so";
+  - item 3: "Stop, and name the chat";
+  - item 4: "UUID only";
+  - item 5: "Own ticket, later" and "Leave it";
+  - item 6: "Keep it, no ticket" and "Remove the guard".
+- **Related:** MC-011, MC-016, MC-134, MC-139, MC-141, MC-147; CHORE-51, CHORE-52, CHORE-71, CHORE-72, CHORE-73; commit
+  `59881788`, made at the maintainer's answer "Commit both (Recommended)" (Q6); ledger rows 642 to 657.
+
+**What was decided** (each question as put to the maintainer, then the answer and, where the option had one, its text):
+1. **A reachable archived chat that is not on disk is skipped by the manual clean-up.** It is kept by name, nothing is
+   followed from it, and the run continues. Q1 (header "Missing chat"): "CHORE-51: the clean-up will now open archived
+   chats to find other archives they point to. What should happen when one of those archived chats isn't on disk at all?
+   (This can happen. The 'could not be loaded' text exists because a load once failed.)" The answer: "Skip it
+   (Recommended)". The option not chosen was "Stop the clean-up".
+2. **A reachable archived chat whose read fails with no known reason stops the clean-up before any deletion.** Q2 (header
+   "Unreadable"): "CHORE-51: what if an archived chat exists but can't be read (a read error, or a corrupt file)?" The
+   answer: "Stop before deleting (Recommended)". The option not chosen was "Skip it and say so". **Item 3 narrows this
+   answer:** the corrupt file is no longer a stop.
+3. **A corrupt archived chat (its bytes are present and do not decode) is kept, followed nowhere, and the clean-up carries
+   on.** Only a read error with no explanation stops the run. Q5 (header "Corrupt chat", asked after Gate 1 round 1
+   rejected the stop on a corrupt chat): "You chose \"stop before deleting\" when an archived chat can't be read. [One
+   sentence omitted here: it stated a frequency for corrupt archives that the reviewer had reported as unknown; see
+   Reasoning.]
+   Upstream wrote the 'could not be loaded' text for exactly these. The app can never read anything out of them either:
+   opening one shows 'damaged' and follows nothing. So stopping on one blocks every future clean-up and protects nothing.
+   It also lasts until any of the last 20 snapshots that point to it rotate out, even after you delete the chat. How
+   should a corrupt archived chat be handled?" The answer: "Keep it, carry on (Recommended)": "Keep the file, follow
+   nothing from it, and continue the clean-up. Only an unexplained read error (one that might work next time) stops the
+   run. That still covers your 'stop' answer for the case where data could really be hidden." The option not chosen was
+   "Stop, and name the chat".
+   - **Wider than the option text:** a read that fails with the kind "unavailable" (the page has no OPFS directory API at
+     all) stops the run too. The listing taken at load throws first on such a page, so this is not expected to be reached
+     in practice (stated in the plan, Revision 2, E5).
+   - **Unchanged by this item:** a stub's blob that is missing, unreadable (any kind) or belongs to another character still
+     stops the run, because blobs also decide which assets are kept.
+4. **An archive key must be a safe file name.** Q3 (header "Key rule"): "CHORE-52: what rule should an archive key follow
+   before it becomes a file name? Upstream has only ever pointed at UUID keys. It also left behind unreferenced
+   '<uuid>_accessMeta' files (Mar 2025 to Apr 2026) that the clean-up should still be able to delete." The answer: "Safe
+   file name (Recommended)": "A string, not empty, at most about 100 characters, with no / \ : or NUL. A key that fails
+   reads as an error (never 'missing') and its write fails. Valid data behaves as it does now, and the _accessMeta
+   orphans stay deletable." The option not chosen was "UUID only".
+   - **How the rule was made exact** (the Orchestrator's calls inside this decision, see below): "about 100 characters"
+     became 100 UTF-8 bytes, and the rejected set grew. A rejected key reads as an error of kind "damaged", not as a bare
+     error, which is still an error and never "missing".
+5. **The plugin overwrite is fixed in this change, with no format change.** A plugin save is refused when its target
+   archive is linked from anything else in the database. Q4 (header "Overwrite"): "CHORE-52: a plugin (through
+   setDatabase, with no prompt) or a crafted .bin can point a plugin's storage slot at another character's or chat's
+   archive. The plugin's next save then overwrites that archive. A plugin can already overwrite any character in the
+   database, so this isn't a new power, but the archive damage gets past the database checks. Fix it here?" The answer:
+   "Fix it here, no format change (Recommended)": "A plugin save is refused when its target archive is linked from
+   anything else in the database (a character, a chat link or error text, another plugin slot). No format change. It is
+   not covered when the link sits only inside an unopened character archive." The options not chosen were "Own ticket,
+   later" and "Leave it".
+   - **The option text understated the gap.** The guard reads the live database only. It does not see a link held only
+     inside any unopened archive (a character's or a chat's), or only in the saved main file or a snapshot. The
+     Orchestrator reported this wider gap to the maintainer in chat before the commit approval (Q6).
+6. **The guard's memory cost is accepted, and a low-priority ticket is filed for a cheaper way to find links.** Q7 (header
+   "Guard cost"): "The plugin overwrite guard's memory cost: with archiving off, a profile keeps about 16 to 70 MB of
+   extra wrappers after the first plugin save over an existing slot. What should happen?" The answer: "Keep it, file an
+   index ticket (Recommended)". The options not chosen were "Keep it, no ticket" and "Remove the guard". The ticket is
+   CHORE-71. The figures are measured on best-case hardware (an i9-class machine).
+7. **The commit.** Q6 (header "Commit"): "Commit CHORE-51/52 now? This is one commit with the fact-checked message,
+   followed by a records commit (MC-170, ledger rows from 642, Roadmap and Live-State). Nothing is pushed." The answer:
+   "Commit both (Recommended)".
+
+**The Orchestrator's own calls** (not maintainer decisions; recorded in the Roadmap's CHORE-51 and CHORE-52 entries and in
+ledger rows 644 to 657):
+1. The key rule's exact form: at most 100 UTF-8 bytes (the Node server's file-name limit is in bytes), well-formed UTF-16
+   only, and none of `/ \ : < > " | ? *` or the characters U+0000 to U+001F. Every UUID key and every
+   `<uuid>_accessMeta` key still passes. The maintainer's option text named only `/ \ :` and NUL. This was set after the
+   plan review and is not case-folded (a Tauri case-folding alias is recorded, not closed).
+2. A rejected key reads as an error of kind "damaged", so a chat's notice hides a Retry that cannot succeed and a restore
+   shows its damaged-copy text. A rejected key that a chat names is kept by name and followed nowhere, and does not stop
+   the clean-up; a rejected key on a stub's blob still stops it (the blob rule; plan R3).
+3. On the desktop app, a read that fails without a kind counts as "missing" for the clean-up only when the listing taken at
+   load held no unit and the folder check reports the units folder absent (Windows reports a read inside a missing
+   folder as "os error 3"). This came out of Gate 2 and was made narrower in a second round.
+
+**Not decided and recorded as out of scope** (the packet's list; none was put to the maintainer): a restore writes units
+before the database commit and keeps them if the user cancels (designed); Tauri case folding of keys on NTFS and APFS is not
+canonicalised; Windows reserved device names (`NUL`, `CON`) pass the key rule (reachable by crafted data only); a plugin's
+`getItem` cross-read is not guarded.

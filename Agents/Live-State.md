@@ -119,10 +119,15 @@ The commits below were local when they were listed, and were pushed with it:
 - `71e75d9d`: CHORE-43 with CHORE-54, each chat keeps its own reroll history and edits are kept (`MC-168`, `MC-169`;
   ledger rows 634 and 637 to 641). Local, not pushed;
 - the records commit that follows `71e75d9d` and carries this file (`MC-167` to `MC-169`, CHORE-43 and CHORE-54 closed,
-  CHORE-55's scope rewritten, CHORE-70, ledger rows 633 to 641). Local, not pushed.
+  CHORE-55's scope rewritten, CHORE-70, ledger rows 633 to 641; `67e0aa31`, by its commit subject). Local, not pushed;
+- `59881788`: CHORE-51 with CHORE-52, the cold-storage clean-up keeps archives that archived chats link, and a key that
+  cannot be a file name is never read as missing (`MC-170`; ledger rows 642 to 657). Local, not pushed;
+- the records commit that follows `59881788` and carries this file (`MC-170`, CHORE-51 and CHORE-52 closed, CHORE-71 to
+  CHORE-73, ledger rows 642 to 657). Local, not pushed.
 
-The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5` and `71e75d9d`) are local and not pushed;
-the records commit above will be local too.
+The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31` and `59881788`) are local
+and not pushed (`git status -sb` showed the branch 7 commits ahead of `origin` on 2026-10-02, before the records commit
+above); the records commit above will be local too.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -141,6 +146,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - The records commit after `7ca8f2a9` under the same standing instruction (`MC-161` 9).
 - `71e75d9d` at "looks good to me. go ahead and commit." (quoted in `MC-169`).
 - The records commit after `71e75d9d` at "commit docs when ready, then pause so I can compact to clear up the context."
+- `59881788` and the records commit after it at "Commit both (Recommended)", the maintainer's answer to the commit question
+  (Q6, `MC-170` 7): one code commit with the fact-checked message, then a records commit. Nothing is pushed.
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
@@ -162,8 +169,8 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-170` (`MC-169` is used), Report 57 (Report 56 is used), ledger row 642 and CHORE-71
-(`CHORE-70` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
+**Next free numbers:** `MC-171` (`MC-170` is used), Report 57 (Report 56 is used), ledger row 658 and CHORE-74
+(`CHORE-73` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
 **Rules for every session:**
@@ -232,8 +239,13 @@ should fill them.
    direction is recorded (`MC-167`; ledger rows 633, 635 and 636): CHORE-55 becomes one storage interface with three
    adapters and no bypasses, OPFS is no longer written and is read through, and the stages in the Roadmap's CHORE-55 entry
    are a planning basis, not a gated plan. CHORE-70 (startup installs a partly decoded save without trying a backup) is
-   filed, not scheduled. Next: CHORE-51 with CHORE-52, on the maintainer's word, then CHORE-55 with stage 0 first**
-   (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   filed, not scheduled. CHORE-51 with CHORE-52 is closed (2026-10-02; `59881788`, local; `MC-170`; ledger rows 642 to
+   657; Roadmap CHORE-51 and CHORE-52): the manual clean-up now follows references inside archived chats, a missing or
+   corrupt archived chat is kept and the run carries on, a cold-storage key must be a safe file name, and a plugin save
+   over an archive that something else links is refused (the guard reads live memory only). CHORE-71 to CHORE-73 are filed,
+   not scheduled. Checks on the final tree, from the commit message: the suite 295 files, 6230 passed, 4 skipped; `pnpm
+   check` 0 errors and 0 warnings; `pnpm build` ok. No live check is recorded. Next: CHORE-55 with stage 0 first, then
+   CHORE-59, then memory steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -260,12 +272,13 @@ should fill them.
      blocker is not fully cleared. CHORE-35's missing upstream-service prompts are a CHORE-60 release condition
      (`MC-157` 4). The `origin/main` mirror that ran upstream's old workflows is
      deleted, with a stale unrelated branch; `origin` holds only this branch (CHORE-60, 2026-10-01).
-   - **CHORE-51 is filed** (DATA LOSS, open): the manual clean-up's keep set never reads chat units, so
+   - **CHORE-51 is filed** (DATA LOSS; **closed 2026-10-02 by `59881788`**, see the start of this item; this bullet is the
+     filing record): the manual clean-up's keep set never reads chat units, so
      a unit named only by error text inside a chat unit is deleted and that chat's Retry then fails. It
      predates step 4. The new pure `listInnerColdStorageKeys` in `coldstorageData.ts` is written so the
      clean-up can reuse it. It is now scheduled after step 5 and before step 6 (work order, 2026-10-01).
      A fix changes the clean-up's read cost and step 1's gated design.
-   - **CHORE-52 is filed** (LOW, integrity hardening; ledger row 521): cold-storage keys are not
+   - **CHORE-52 is filed** (LOW, integrity hardening; **closed 2026-10-02 by `59881788`**; ledger row 521): cold-storage keys are not
      shape-checked before they reach a storage path, on all three backends. No traversal was found; the
      open question is key aliasing, which a shape check does not fix. Scheduled with CHORE-51, after
      step 5.
@@ -530,11 +543,12 @@ should fill them.
       or going back through rerolls overwrites an edited reply with its generation-time copy). **Done 2026-10-02**,
       as `71e75d9d` (local; `MC-168` and `MC-169`; ledger rows 634 and 637 to 641; fixed in one change, as the
       Orchestrator recommended);
-   5. then **CHORE-51** (DATA LOSS) and **CHORE-52** (the unvalidated cold-storage key), then **CHORE-55**
+   5. **CHORE-51** (DATA LOSS) and **CHORE-52** (the unvalidated cold-storage key): **done 2026-10-02**, as `59881788` (local;
+      `MC-170`; ledger rows 642 to 657). Then **CHORE-55**
       (rewritten by `MC-167`: one storage interface with three adapters and no bypasses; **stage 0, the atomic Tauri
-      write, first**; the later stages are a planning basis and not yet gated) and **CHORE-59** (Load Internal Backup
+      write, first**; the later stages are a planning basis and not yet gated) and then **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
-      its own change with its own gates. The maintainer
+      its own change with its own gates. **Next: CHORE-55 with stage 0 first.** The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it
       should not wait behind the idle reload and the measurements. CHORE-55 goes in this stretch by
@@ -591,6 +605,11 @@ Not placed in the sequence:
   filed 2026-10-02 from CHORE-63 stage B, open, not scheduled (`MC-166` 6, 4 and 5).
 - **CHORE-70** (startup installs a save that only partly decodes, without checking whether a backup is complete; the
   CHORE-59 family; decode RUN in ledger row 636): filed 2026-10-02, open, not scheduled (`MC-167` 9).
+- **CHORE-71** (the plugin overwrite guard walks every chat in live memory on each in-place plugin `setItem` and keeps a
+  proxy for each; about 16 to 70 MB on best-case hardware; LOW; `MC-170` 6), **CHORE-72** (a local backup restore writes an
+  entry whose name does not match the cold-storage key pattern to `assets/<name>`; LOW; not traced) and **CHORE-73** (on a
+  Windows desktop, a chat whose pointer names a unit in a missing `coldstorage` folder reads "unreadable" instead of
+  "missing"; LOW): filed 2026-10-02 from CHORE-51 and CHORE-52, open, not scheduled.
 - **CHORE-56** (under the beta mobile layout, a touch that ends on a button, input, select or textarea
   throws a TypeError in the swipe handler): suspected; TRACED, not run. The maintainer has not yet
   confirmed or placed it.
@@ -675,6 +694,11 @@ Not placed in the sequence:
 8. **Optional: a check of the Korean and Vietnamese strings from CHORE-63.** The Orchestrator offered the maintainer an
    optional review of them; it is the Orchestrator's offer, not a maintainer request. The strings are `copyFailed` (stage A) and `copyAsCard`,
    `copiedAsText` and `copiedSimpleCard` (stage B).
+9. **Optional: a check of the Korean and German strings of `coldStorageCleanupChatUnreadable`** (added by `59881788`,
+   CHORE-51). Optional, and not a maintainer request. The translator's low-confidence notes: ko, the
+   particle chain, where "${source}에 있는 X의 채팅에서 연결된 보관된 채팅" may read better as "…의 채팅이 연결하는 보관된
+   채팅"; de, a restructure, where "mit den Chats für X verknüpft" is the phrase to check. The other languages (cn,
+   zh-Hant, vi, es) carry no low-confidence note from the translator.
 Answered on 2026-10-01 and removed from this list:
 - the internal backup load refuses a snapshot with a damaged or missing block as a whole (it was item 7). The
   maintainer wants an option to load the intact data (`MC-152`); filed as CHORE-59 and placed in the work
