@@ -5,7 +5,6 @@
     import { selectedCharID, PlaygroundStore, createSimpleCharacter, hypaV3ModalOpen, ScrollToMessageStore, additionalChatMenu, additionalFloatingActionButtons, easyPanelStore, chatPanelStore } from "../../ts/stores.svelte";
     import { tick, onDestroy, untrack } from 'svelte';
     import Chat from "./Chat.svelte";
-    import { type Message } from "../../ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { getCharImage } from "../../ts/characters";
     import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
@@ -64,9 +63,6 @@
         initial: () => getInitialChatLoadPages(DBState.db),
         editorsOpen: hasMessageEditorDrafts,
     })
-    let rerolls:Message[][] = []
-    let rerollid = -1
-    let lastCharId = -1
     let doingChatInputTranslate = false
     let toggleStickers:boolean = $state(false)
     let showNewMessageButton = $state(false)
@@ -342,23 +338,12 @@
 
     // The live view of this component's own composer state that
     // src/ts/process/composerActions.svelte.ts reads and writes through: the
-    // per-instance reroll history and the menu-close hook. The three
-    // text/file values are reached by key through composerDrafts.svelte.ts, and
-    // auto mode's running state and the current generation's abort
-    // controller are that module's own state, so none of them live here.
+    // menu-close hook. The three text/file values are reached by key through
+    // composerDrafts.svelte.ts, the reroll histories are per chat in
+    // rerollHistory.ts, and auto mode's running state and the current
+    // generation's abort controller are composerActions' own state, so none
+    // of them live here.
     const composerSource: ComposerActionsSource = {
-        rerolls: {
-            get: () => rerolls,
-            set: (value) => { rerolls = value }
-        },
-        rerollId: {
-            get: () => rerollid,
-            set: (value) => { rerollid = value }
-        },
-        lastCharId: {
-            get: () => lastCharId,
-            set: (value) => { lastCharId = value }
-        },
         closeMenu: () => { openMenu = false },
     }
 

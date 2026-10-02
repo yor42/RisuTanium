@@ -93,12 +93,7 @@ function installGroupChat(): void {
 }
 
 function makeSource(): ComposerActionsSource {
-    return {
-        rerolls: { get: () => [], set: () => {} },
-        rerollId: { get: () => -1, set: () => {} },
-        lastCharId: { get: () => -1, set: () => {} },
-        closeMenu: () => {},
-    }
+    return { closeMenu: () => {} }
 }
 
 /** A message posted to a fresh channel now; `delivered()` is true once the event loop has handed it over. */

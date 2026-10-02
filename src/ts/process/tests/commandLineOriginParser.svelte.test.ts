@@ -358,7 +358,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { doingChat } from 'src/ts/process/index.svelte'
-import { send, runAutoMode, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
+import { send, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { runTrigger } from 'src/ts/process/triggers'
 import { beginWork } from 'src/ts/process/chatOrigin'
@@ -529,39 +529,8 @@ function setTriggers(charIndex: number, ...triggers: TriggerFixture[]): void {
     ;(DBState.db.characters[charIndex] as unknown as { triggerscript: TriggerFixture[] }).triggerscript = triggers
 }
 
-/** More auto-mode ticks than any test here needs; past it the loop is stopped. */
-const AUTO_MODE_TICK_LIMIT = 300
-
-interface SourceHooks {
-    onTickEnd?: () => void
-}
-
-/**
- * A composer source whose `lastCharId` write, which the composer makes after
- * every tick, stops auto mode once `AUTO_MODE_TICK_LIMIT` ticks have ended.
- */
-function makeSource(hooks: SourceHooks = {}): ComposerActionsSource {
-    let rerolls: Message[][] = []
-    let rerollId = -1
-    let lastCharId = -1
-    let endedTicks = 0
-    const source: ComposerActionsSource = {
-        rerolls: { get: () => rerolls, set: (v) => { rerolls = v } },
-        rerollId: { get: () => rerollId, set: (v) => { rerollId = v } },
-        lastCharId: {
-            get: () => lastCharId,
-            set: (v) => {
-                lastCharId = v
-                endedTicks++
-                hooks.onTickEnd?.()
-                if (endedTicks === AUTO_MODE_TICK_LIMIT && isAutoModeActive()) {
-                    void runAutoMode(source)
-                }
-            },
-        },
-        closeMenu: () => {},
-    }
-    return source
+function makeSource(): ComposerActionsSource {
+    return { closeMenu: () => {} }
 }
 
 function makeLatch() {

@@ -670,36 +670,8 @@ function draftText(): string {
     return composerDrafts.peek(draftKey()).messageInput
 }
 
-/** More auto-mode ticks than any test here needs; past it the loop is stopped. */
-const AUTO_MODE_TICK_LIMIT = 300
-
-/**
- * A composer source whose `lastCharId` write, which the composer makes after
- * every tick, stops auto mode once `AUTO_MODE_TICK_LIMIT` ticks have ended.
- * A loop whose ticks are refused without awaiting anything would otherwise
- * never hand control back to the test.
- */
 function makeSource(): ComposerActionsSource {
-    let rerolls: Message[][] = []
-    let rerollId = -1
-    let lastCharId = -1
-    let endedTicks = 0
-    const source: ComposerActionsSource = {
-        rerolls: { get: () => rerolls, set: (v) => { rerolls = v } },
-        rerollId: { get: () => rerollId, set: (v) => { rerollId = v } },
-        lastCharId: {
-            get: () => lastCharId,
-            set: (v) => {
-                lastCharId = v
-                endedTicks++
-                if (endedTicks === AUTO_MODE_TICK_LIMIT && isAutoModeActive()) {
-                    void runAutoMode(source)
-                }
-            },
-        },
-        closeMenu: () => {},
-    }
-    return source
+    return { closeMenu: () => {} }
 }
 
 let pluginCounter = 0

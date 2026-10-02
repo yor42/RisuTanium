@@ -397,26 +397,14 @@ function installDb(characters: (character | groupChat)[] = [], overrides: Record
     selectedCharID.set(0)
 }
 
-interface SourceInit {
-    rerolls?: Message[][]
-    rerollId?: number
-    lastCharId?: number
-}
-
 interface SourceHandle {
     source: ComposerActionsSource
     closeMenuCalls: () => number
 }
 
-function makeSource(init: SourceInit = {}): SourceHandle {
-    let rerolls = init.rerolls ?? []
-    let rerollId = init.rerollId ?? -1
-    let lastCharId = init.lastCharId ?? -1
+function makeSource(): SourceHandle {
     let closeMenuCalls = 0
     const source: ComposerActionsSource = {
-        rerolls: { get: () => rerolls, set: (v) => { rerolls = v } },
-        rerollId: { get: () => rerollId, set: (v) => { rerollId = v } },
-        lastCharId: { get: () => lastCharId, set: (v) => { lastCharId = v } },
         closeMenu: () => { closeMenuCalls++ },
     }
     return { source, closeMenuCalls: () => closeMenuCalls }
@@ -653,18 +641,24 @@ describe('a second composer action while a send is still taking its input', () =
         const chat = char.chats[0]
         chat.message = [
             { role: 'user', data: 'u0' } as unknown as Message,
-            { role: 'char', data: 'current-reply' } as unknown as Message,
+            { role: 'char', data: 'old-reply' } as unknown as Message,
         ]
         installDb([char])
+        // A completed reroll leaves a reply that a step back would restore.
+        sendChatMock.mockImplementationOnce(async () => {
+            doingChatMock.set(true)
+            char.chats[0].message.push({ role: 'char', data: 'current-reply' } as unknown as Message)
+            doingChatMock.set(false)
+            return true
+        })
+        const { source } = makeSource()
+        await reroll(source)
+        expect(char.chats[0].message.map((m) => m.data)).toEqual(['u0', 'current-reply'])
+
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
         const editinput = installEditinputQueue()
         const first = editinput.nextGate()
 
-        const { source } = makeSource({
-            rerolls: [[{ role: 'char', data: 'reply-v0' } as unknown as Message], [{ role: 'char', data: 'reply-v1' } as unknown as Message]],
-            rerollId: 1,
-            lastCharId: 0,
-        })
         const p = send(source)
         await first.reached
 
@@ -1652,16 +1646,16 @@ describe('composerActions: refused actions change nothing', () => {
     })
 })
 
-describe('composerActions: the reroll snapshot sendChatMain stores', () => {
-    test('guard: a completed send\'s reroll snapshot holds only the messages generation appended, not the user\'s own', async () => {
+describe('composerActions: what a Send records for the reroll and step-back buttons', () => {
+    test('a completed send records only the messages generation appended, not the user\'s own', async () => {
         const char = makeCharacter('c-reroll-snapshot')
         installDb([char])
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
         sendChatMock.mockImplementationOnce(async () => {
             doingChatMock.set(true)
             char.chats[char.chatPage].message.push(
-                { role: 'char', data: 'reply-1', time: Date.now() } as unknown as Message,
-                { role: 'char', data: 'reply-2', time: Date.now() } as unknown as Message,
+                { role: 'char', data: 'reply-1', saying: 'speaker-a', time: Date.now() } as unknown as Message,
+                { role: 'char', data: 'reply-2', saying: 'speaker-b', time: Date.now() } as unknown as Message,
             )
             doingChatMock.set(false)
             return true
@@ -1671,36 +1665,56 @@ describe('composerActions: the reroll snapshot sendChatMain stores', () => {
         await send(source)
 
         expect(char.chats[0].message.map((m) => m.data)).toEqual(['hello', 'reply-1', 'reply-2'])
-        expect(source.rerolls.get().length).toBe(1)
-        expect(source.rerollId.get()).toBe(0)
-        expect(source.rerolls.get()[0].map((m) => m.data)).toEqual(['reply-1', 'reply-2'])
-    })
 
-    test('guard: the stored reroll snapshot is detached from the live chat\'s messages in both directions', async () => {
-        const char = makeCharacter('c-reroll-detached')
-        installDb([char])
-        seedDraft(char, char.chats[0], { messageInput: 'hello' })
+        // The reroll regenerates both replies; a step back restores exactly
+        // those two and leaves the user's own message alone.
         sendChatMock.mockImplementationOnce(async () => {
             doingChatMock.set(true)
-            char.chats[char.chatPage].message.push({ role: 'char', data: 'original', time: Date.now() } as unknown as Message)
+            char.chats[char.chatPage].message.push({ role: 'char', data: 'again', saying: 'speaker-a', time: Date.now() } as unknown as Message)
             doingChatMock.set(false)
             return true
         })
+        await reroll(source)
+        expect(char.chats[0].message.map((m) => m.data)).toEqual(['hello', 'again'])
 
-        const { source } = makeSource()
-        await send(source)
-
-        const snapshot = source.rerolls.get()[source.rerollId.get()]
-        const liveMessage = char.chats[0].message[char.chats[0].message.length - 1]
-
-        liveMessage.data = 'mutated-live'
-        expect(snapshot[0].data).toBe('original')
-
-        snapshot[0].data = 'mutated-snapshot'
-        expect(liveMessage.data).toBe('mutated-live')
+        await unReroll(source)
+        expect(char.chats[0].message.map((m) => m.data)).toEqual(['hello', 'reply-1', 'reply-2'])
+        expect(char.chats[0].message.map((m) => m.role)).toEqual(['user', 'char', 'char'])
     })
 
-    test('guard: a send whose generation appends nothing pushes no reroll snapshot', async () => {
+    test('the stored replies are copies, so an edit to the reply on screen never changes another stored reply', async () => {
+        const char = makeCharacter('c-reroll-detached')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'hello' })
+        const appendsReply = (text: string) => async () => {
+            doingChatMock.set(true)
+            char.chats[char.chatPage].message.push({ role: 'char', data: text, saying: 'speaker-a', time: Date.now() } as unknown as Message)
+            doingChatMock.set(false)
+            return true
+        }
+        sendChatMock.mockImplementationOnce(appendsReply('original'))
+        const { source } = makeSource()
+        await send(source)
+        sendChatMock.mockImplementationOnce(appendsReply('second'))
+        await reroll(source)
+        const data = () => char.chats[0].message.map((m) => m.data)
+        expect(data()).toEqual(['hello', 'second'])
+
+        await unReroll(source)
+        expect(data()).toEqual(['hello', 'original'])
+        char.chats[0].message[1].data = 'original-edited'
+
+        await reroll(source)
+        expect(data()).toEqual(['hello', 'second'])
+        char.chats[0].message[1].data = 'second-edited'
+
+        await unReroll(source)
+        expect(data()).toEqual(['hello', 'original-edited'])
+        await reroll(source)
+        expect(data()).toEqual(['hello', 'second-edited'])
+    })
+
+    test('guard: a send whose generation appends nothing leaves no stored reply to step back to', async () => {
         const char = makeCharacter('c-reroll-no-append')
         installDb([char])
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
@@ -1709,7 +1723,9 @@ describe('composerActions: the reroll snapshot sendChatMain stores', () => {
         await send(source)
 
         expect(char.chats[0].message.map((m) => m.data)).toEqual(['hello'])
-        expect(source.rerolls.get().length).toBe(0)
+
+        await unReroll(source)
+        expect(char.chats[0].message.map((m) => m.data)).toEqual(['hello'])
     })
 })
 
@@ -1763,12 +1779,15 @@ const switchTimings: SwitchTiming[] = ['between the take and the hand-off', 'dur
  * itself. The stand-in generation appends two replies to the sending chat.
  */
 async function sendWithSwitch(timing: SwitchTiming, doSwitch: () => void) {
-    const { origin } = installSwitchWorld()
+    const { origin, other } = installSwitchWorld()
     vi.mocked(alertError).mockClear()
     seedDraft(origin, origin.chats[0], { messageInput: 'hello' })
     sendChatMock.mockImplementationOnce(async () => {
         doingChatMock.set(true)
-        origin.chats[0].message.push(textMessage('char', 'reply-1'), textMessage('char', 'reply-2'))
+        origin.chats[0].message.push(
+            { ...textMessage('char', 'reply-1'), saying: 'speaker-a' },
+            { ...textMessage('char', 'reply-2'), saying: 'speaker-b' },
+        )
         if (timing === 'during generation') {
             doSwitch()
         }
@@ -1788,7 +1807,20 @@ async function sendWithSwitch(timing: SwitchTiming, doSwitch: () => void) {
     } else {
         await send(source).catch(capture)
     }
-    return { origin, source, error }
+    return { origin, other, source, error }
+}
+
+/** Puts the sending chat back on screen, as a user returning to it does. */
+function showOriginChat() {
+    DBState.db.characters[0].chatPage = 0
+    selectedCharID.set(0)
+}
+
+/** The chats a switch lands on still hold exactly the four messages they started with. */
+function expectSwitchTargetsUntouched(origin: character, other: character) {
+    const four = [1, 2, 3, 4].map((i) => `other-${i}`)
+    expect(origin.chats[1].message.map((m) => m.data)).toEqual(four)
+    expect(other.chats[0].message.map((m) => m.data)).toEqual(four)
 }
 
 describe('composerActions: the origin handed to generation', () => {
@@ -1945,16 +1977,29 @@ describe('composerActions: a switch around a Send', () => {
             expect(arg.originHint?.owner).toBe(origin)
         })
 
-        test.each(screenSwitches)('no error is raised and the reroll snapshot is the origin chat\'s new messages (a switch %s)', async (_label, doSwitch) => {
-            const { origin, source, error } = await sendWithSwitch(timing, doSwitch)
+        test.each(screenSwitches)('no error is raised and a step back in the origin chat restores the origin chat\'s new messages, leaving the other chats alone (a switch %s)', async (_label, doSwitch) => {
+            const { origin, other, source, error } = await sendWithSwitch(timing, doSwitch)
 
             expect(error).toBeUndefined()
             expect(alertError).not.toHaveBeenCalled()
             expect(origin.chats[0].message.map((m) => m.data)).toEqual(['hello', 'reply-1', 'reply-2'])
-            expect(source.rerolls.get().length).toBe(1)
-            expect(source.rerollId.get()).toBe(0)
-            expect(source.rerolls.get()[0].map((m) => m.data)).toEqual(['reply-1', 'reply-2'])
-            expect(source.lastCharId.get()).toBe(0)
+            expectSwitchTargetsUntouched(origin, other)
+
+            // Back in the origin chat, a reroll replaces both replies and a
+            // step back restores the ones the Send generated.
+            showOriginChat()
+            sendChatMock.mockImplementationOnce(async () => {
+                doingChatMock.set(true)
+                origin.chats[0].message.push({ ...textMessage('char', 'regenerated'), saying: 'speaker-a' })
+                doingChatMock.set(false)
+                return true
+            })
+            await reroll(source)
+            expect(origin.chats[0].message.map((m) => m.data)).toEqual(['hello', 'regenerated'])
+
+            await unReroll(source)
+            expect(origin.chats[0].message.map((m) => m.data)).toEqual(['hello', 'reply-1', 'reply-2'])
+            expectSwitchTargetsUntouched(origin, other)
         })
     })
 })
@@ -1963,8 +2008,8 @@ describe('composerActions: a switch around a reroll and around auto mode', () =>
     // A stand-in generation queued by one test must not reach the next.
     beforeEach(() => { sendChatMock.mockReset() })
 
-    test.each(screenSwitches)('a reroll followed by a switch %s stores the new reply from the reroll\'s chat and raises no error', async (_label, doSwitch) => {
-        const { origin } = installSwitchWorld()
+    test.each(screenSwitches)('a reroll followed by a switch %s keeps the new reply in the reroll\'s chat, where a step back restores the old reply, and raises no error', async (_label, doSwitch) => {
+        const { origin, other } = installSwitchWorld()
         origin.chats[0].message = [textMessage('user', 'q'), textMessage('char', 'old reply')]
         vi.mocked(alertError).mockClear()
         sendChatMock.mockImplementationOnce(async () => {
@@ -1982,9 +2027,12 @@ describe('composerActions: a switch around a reroll and around auto mode', () =>
         expect(error).toBeUndefined()
         expect(alertError).not.toHaveBeenCalled()
         expect(origin.chats[0].message.map((m) => m.data)).toEqual(['q', 'new reply'])
-        expect(source.rerolls.get().at(-1)?.map((m) => m.data)).toEqual(['new reply'])
-        expect(source.rerollId.get()).toBe(source.rerolls.get().length - 1)
-        expect(source.lastCharId.get()).toBe(0)
+        expectSwitchTargetsUntouched(origin, other)
+
+        showOriginChat()
+        await unReroll(source)
+        expect(origin.chats[0].message.map((m) => m.data)).toEqual(['q', 'old reply'])
+        expectSwitchTargetsUntouched(origin, other)
     })
 
     test('auto mode stops after a switch to another chat of the same character', async () => {

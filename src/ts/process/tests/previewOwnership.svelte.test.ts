@@ -20,7 +20,7 @@
  */
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type { Database, character, Message } from 'src/ts/storage/database.svelte'
+import type { Database, character } from 'src/ts/storage/database.svelte'
 import 'src/ts/polyfill'
 
 //#region module mocks
@@ -260,12 +260,7 @@ async function pressPreviewHotkey(): Promise<void> {
 }
 
 function makeSource(): ComposerActionsSource {
-    return {
-        rerolls: { get: () => [] as Message[][], set: () => {} },
-        rerollId: { get: () => -1, set: () => {} },
-        lastCharId: { get: () => -1, set: () => {} },
-        closeMenu: () => {},
-    }
+    return { closeMenu: () => {} }
 }
 
 async function settle(): Promise<void> {

@@ -375,7 +375,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
-import { send, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
+import { send, runAutoMode, abortChat, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { postChatFile } from 'src/ts/process/files/multisend'
 import { runTrigger } from 'src/ts/process/triggers'
@@ -569,39 +569,30 @@ function setTriggers(charIndex: number, ...triggers: TriggerFixture[]): void {
     ;(DBState.db.characters[charIndex] as unknown as { triggerscript: TriggerFixture[] }).triggerscript = triggers
 }
 
-/** More auto-mode ticks than any test here needs; past it the loop is stopped. */
-const AUTO_MODE_TICK_LIMIT = 300
-
-interface SourceHooks {
-    onTickEnd?: () => void
+function makeSource(): ComposerActionsSource {
+    return { closeMenu: () => {} }
 }
 
 /**
- * A composer source whose `lastCharId` write, which the composer makes after
- * every tick, stops auto mode once `AUTO_MODE_TICK_LIMIT` ticks have ended.
+ * Runs `onTickEnd` at the end of every generation the composer hands over,
+ * after the generation has settled and before the next auto-mode tick starts:
+ * the composer plays its send sound there when `playMessage` is on. Returns
+ * the restore for the stubbed `Audio` and the original `playMessage`.
  */
-function makeSource(hooks: SourceHooks = {}): ComposerActionsSource {
-    let rerolls: Message[][] = []
-    let rerollId = -1
-    let lastCharId = -1
-    let endedTicks = 0
-    const source: ComposerActionsSource = {
-        rerolls: { get: () => rerolls, set: (v) => { rerolls = v } },
-        rerollId: { get: () => rerollId, set: (v) => { rerollId = v } },
-        lastCharId: {
-            get: () => lastCharId,
-            set: (v) => {
-                lastCharId = v
-                endedTicks++
-                hooks.onTickEnd?.()
-                if (endedTicks === AUTO_MODE_TICK_LIMIT && isAutoModeActive()) {
-                    void runAutoMode(source)
-                }
-            },
-        },
-        closeMenu: () => {},
+function onEveryTickEnd(onTickEnd: () => void): () => void {
+    const playMessage = DBState.db.playMessage
+    const originalAudio = globalThis.Audio
+    DBState.db.playMessage = true
+    vi.stubGlobal('Audio', class {
+        play(): Promise<void> {
+            onTickEnd()
+            return Promise.resolve()
+        }
+    })
+    return () => {
+        vi.stubGlobal('Audio', originalAudio)
+        DBState.db.playMessage = playMessage
     }
-    return source
 }
 
 async function settle(): Promise<void> {
@@ -1273,19 +1264,22 @@ describe('a trigger button\'s /multisend and the composer\'s window', () => {
         let clicked: Promise<unknown> | null = null
         // The click starts inside the tick-end callback: the composer's window is open
         // for the whole auto-mode run and no send holds the flag at that point.
-        const source = makeSource({
-            onTickEnd: () => {
-                clicked ??= clickTriggerButton('btn')
-            },
+        const restore = onEveryTickEnd(() => {
+            clicked ??= clickTriggerButton('btn')
         })
-        const auto = runAutoMode(source)
-        await until(() => held.length >= 1, 'the first tick\'s request')
-        held[0].source.close()
-        await until(() => held.length >= 2, 'a second request')
-        const seen = contents().slice(0, 4)
-        abortChat()
-        await drain(auto)
-        await clicked
+        let seen: string[]
+        try {
+            const auto = runAutoMode(makeSource())
+            await until(() => held.length >= 1, 'the first tick\'s request')
+            held[0].source.close()
+            await until(() => held.length >= 2, 'a second request')
+            seen = contents().slice(0, 4)
+            abortChat()
+            await drain(auto)
+            await clicked
+        } finally {
+            restore()
+        }
 
         expect(seen).toEqual(['Hi', 'reply 1', 'a', 'b'])
     })

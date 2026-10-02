@@ -12,7 +12,8 @@ import { PreUnreroll, Prereroll } from './prereroll'
 import { processMultiCommand } from './command'
 import { isColdChat } from './coldstorageData'
 import { isExpTranslator, translate } from '../translator/translator'
-import { beginWork, originStatus, resolveOriginWithHint, writeAt, type Origin, type WorkHandle } from './chatOrigin'
+import { beginWork, originOf, originStatus, writeAt, type Origin, type WorkHandle } from './chatOrigin'
+import { anchorAtHandOff, beginRegeneration, recordGeneration, resetRerollHistory, resetRerollHistoriesForTests, stepRerollHistory, type RerollTicket } from './rerollHistory'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { abortUnitInProgress, isComposerWindowOpen, setComposerWindow, turnsReachedCount } from './generationOwnership.svelte'
 import { registerDraft, unregisterDraft, COMPOSER_DRAFT_KIND } from '../localDrafts'
@@ -51,13 +52,15 @@ let currentGenerationController: AbortController | null = null
 
 /**
  * The chat a generation writes into, and the objects it was read through.
- * `sendChatMain` hands both to `sendChat` and reads the chat back through them
- * afterwards, so a switch of chat, character or Home while the reply is
- * generated changes neither where the reply goes nor what is stored for reroll.
+ * `sendChatMain` hands both to `sendChat` and records the result against the
+ * origin afterwards, so a switch of chat, character or Home while the reply is
+ * generated changes neither where the reply goes nor which chat's reroll
+ * history receives it. `reroll` is set only for a reroll that regenerates.
  */
 interface GenerationTarget {
     origin: Origin
     originHint: SendChatOriginHint
+    reroll?: RerollTicket
 }
 
 /**
@@ -124,9 +127,9 @@ function clearInflightIfCurrent(record: InflightRecord): void {
 /**
  * Test-only reset: clears whatever in-flight record a stuck test left
  * behind, closes the window and the lock, stops auto mode and drops the
- * current generation controller, and clears every stored composer draft --
- * so a timed-out test cannot cascade into every test that runs after it.
- * Never called from production code.
+ * current generation controller, and clears every stored composer draft and
+ * every reroll history -- so a timed-out test cannot cascade into every test
+ * that runs after it. Never called from production code.
  */
 export function resetComposerActionsForTests(): void {
     inflight = null
@@ -136,6 +139,7 @@ export function resetComposerActionsForTests(): void {
     autoModeRunning = false
     currentGenerationController = null
     composerDrafts.resetComposerDraftsForTests()
+    resetRerollHistoriesForTests()
 }
 
 /** True while the one-action window is open; the Send button's busy state. */
@@ -154,26 +158,28 @@ export function isAutoModeActive(): boolean {
 }
 
 /**
- * The composer's live state, reached through get/set pairs. Only the
- * per-instance reroll history and the menu-close hook remain here: the
- * three text/file values are reached by key through `composerDrafts.svelte.ts`,
- * and auto mode's running state and the current generation's abort
- * controller are this module's own state, not per instance.
+ * The composer's live state, reached through its hooks. Only the menu-close
+ * hook remains here: the three text/file values are reached by key through
+ * `composerDrafts.svelte.ts`, the reroll histories are per chat in
+ * `rerollHistory.ts`, and auto mode's running state and the current
+ * generation's abort controller are this module's own state, not per instance.
  */
 export interface ComposerActionsSource {
-    rerolls: {
-        get(): Message[][]
-        set(value: Message[][]): void
-    }
-    rerollId: {
-        get(): number
-        set(value: number): void
-    }
-    lastCharId: {
-        get(): number
-        set(value: number): void
-    }
     closeMenu(): void
+}
+
+/**
+ * Refuses, with Send's own message, to act on the selected chat while its
+ * first message is still a live cold-storage pointer. True when refused.
+ */
+function refuseColdSelectedChat(): boolean {
+    const char = DBState.db.characters[get(selectedCharID)]
+    const chat = char?.chats?.[char.chatPage]
+    if(isColdChat(chat)){
+        alertError(language.errors.coldStorageChatStillLoading)
+        return true
+    }
+    return false
 }
 
 export async function send(source: ComposerActionsSource): Promise<void> {
@@ -190,13 +196,8 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     // processMultiCommand so /cut, /del, /multisend etc. can't mutate a
     // chat that hasn't finished loading. This runs before the take, so the
     // composer is never touched at all.
-    {
-        const guardChar = DBState.db.characters[get(selectedCharID)]
-        const guardChat = guardChar?.chats?.[guardChar.chatPage]
-        if(isColdChat(guardChat)){
-            alertError(language.errors.coldStorageChatStillLoading)
-            return
-        }
+    if(refuseColdSelectedChat()){
+        return
     }
 
     if(get(doingChat)){
@@ -214,11 +215,6 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     const startChat = char.chats?.[char.chatPage]
     if(!startChat){
         return
-    }
-
-    if(source.lastCharId.get() !== selectedChar){
-        source.rerolls.set([])
-        source.rerollId.set(-1)
     }
 
     // beginWork captures the origin (and refuses to take anything when the
@@ -382,12 +378,12 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         // put back once the message has landed.
         clearInflightIfCurrent(record)
         unregisterDraft(inflightDraftKey)
-        source.rerolls.set([])
+        resetRerollHistory(workHandle.origin)
         await sleep(10)
         // The hand-off: the lock ends the moment before the generation
         // callback is called.
         locked = false
-        await sendChatMain(source, { origin: workHandle.origin, originHint: { owner: char, chat: startChat } }, continueResponse, controller)
+        await sendChatMain({ origin: workHandle.origin, originHint: { owner: char, chat: startChat } }, continueResponse, controller)
     }
     finally {
         // A finally acts only on its own action: once the busy button has
@@ -419,7 +415,31 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     }
 }
 
+/**
+ * Shows the next or the previous candidate of the chat's last reply, when the
+ * generation that produced that reply stored several for this very chat.
+ * True when a candidate was shown.
+ */
+function stepCandidates(origin: Origin, chat: Chat, direction: 'back' | 'forward'): boolean {
+    const last = chat.message.at(-1)
+    const genId = last?.generationInfo?.generationId
+    if(!last || !genId){
+        return false
+    }
+    const candidate = direction === 'forward' ? Prereroll(genId, origin, last.data) : PreUnreroll(genId, origin, last.data)
+    if(typeof candidate !== 'string'){
+        return false
+    }
+    writeAt(origin, (ctx) => {
+        ctx.chat.message[ctx.chat.message.length - 1].data = candidate
+    })
+    return true
+}
+
 export async function reroll(source: ComposerActionsSource): Promise<void> {
+    if(refuseColdSelectedChat()){
+        return
+    }
     if(get(doingChat)){
         return
     }
@@ -437,60 +457,32 @@ export async function reroll(source: ComposerActionsSource): Promise<void> {
             return
         }
         // The chat the regenerated reply goes to is fixed here, before the
-        // reroll history is read or trimmed.
+        // chat is read or trimmed.
         workHandle = beginWork(char, chat)
         if(!workHandle){
             return
         }
-        if(source.lastCharId.get() !== get(selectedCharID)){
-            source.rerolls.set([])
-            source.rerollId.set(-1)
-        }
-        const genId = DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message.at(-1)?.generationInfo?.generationId
-        if(genId){
-            const r = Prereroll(genId)
-            if(r){
-                DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message[DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message.length - 1].data = r
-                return
-            }
-        }
-        if(source.rerollId.get() < source.rerolls.get().length - 1){
-            if(Array.isArray(source.rerolls.get()[source.rerollId.get() + 1])){
-                source.rerollId.set(source.rerollId.get() + 1)
-                let rerollData = safeStructuredClone(source.rerolls.get()[source.rerollId.get()])
-                let msgs = DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message
-                for(let i = 0; i < rerollData.length; i++){
-                    msgs[msgs.length - rerollData.length + i] = rerollData[i]
-                }
-                DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message = msgs
-            }
+        const origin = workHandle.origin
+        if(originStatus(origin) !== 'ok'){
             return
         }
-        if(source.rerolls.get().length === 0){
-            source.rerolls.get().push(safeStructuredClone([DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message.at(-1)]))
-            source.rerollId.set(source.rerolls.get().length - 1)
-        }
-        let cha = safeStructuredClone(DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message)
-        if(cha.length === 0 ){
+        if(stepCandidates(origin, chat, 'forward')){
             return
         }
+        if(stepRerollHistory(origin, 'forward')){
+            return
+        }
+        if(chat.message.length === 0){
+            return
+        }
+        // Closed before the chat is cut back: nothing between the cut and the
+        // hand-off to generation may throw, or the cut chat goes unrecorded.
         source.closeMenu()
-        const saying = cha[cha.length - 1].saying
-        let sayingQu = 2
-        while(cha[cha.length - 1].role !== 'user'){
-            if(cha[cha.length - 1].saying === saying){
-                sayingQu -= 1
-                if(sayingQu === 0){
-                    break
-                }
-            }
-            let msg = cha.pop()
-            if(!msg){
-                return
-            }
+        const ticket = beginRegeneration(origin)
+        if(!ticket){
+            return
         }
-        DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message = cha
-        await sendChatMain(source, { origin: workHandle.origin, originHint: { owner: char, chat } })
+        await sendChatMain({ origin, originHint: { owner: char, chat }, reroll: ticket })
     }
     finally {
         workHandle?.end()
@@ -499,6 +491,9 @@ export async function reroll(source: ComposerActionsSource): Promise<void> {
 }
 
 export async function unReroll(source: ComposerActionsSource): Promise<void> {
+    if(refuseColdSelectedChat()){
+        return
+    }
     if(get(doingChat)){
         return
     }
@@ -507,30 +502,19 @@ export async function unReroll(source: ComposerActionsSource): Promise<void> {
     }
     setComposerWindow(true)
     try {
-        if(source.lastCharId.get() !== get(selectedCharID)){
-            source.rerolls.set([])
-            source.rerollId.set(-1)
-        }
-        const genId = DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message.at(-1)?.generationInfo?.generationId
-        if(genId){
-            const r = PreUnreroll(genId)
-            if(r){
-                DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message[DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message.length - 1].data = r
-                return
-            }
-        }
-        if(source.rerollId.get() <= 0){
+        const char = DBState.db.characters[get(selectedCharID)]
+        const chat = char?.chats?.[char.chatPage]
+        if(!char || !chat){
             return
         }
-        if(Array.isArray(source.rerolls.get()[source.rerollId.get() - 1])){
-            source.rerollId.set(source.rerollId.get() - 1)
-            let rerollData = safeStructuredClone(source.rerolls.get()[source.rerollId.get()])
-            let msgs = DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message
-            for(let i = 0; i < rerollData.length; i++){
-                msgs[msgs.length - rerollData.length + i] = rerollData[i]
-            }
-            DBState.db.characters[get(selectedCharID)].chats[DBState.db.characters[get(selectedCharID)].chatPage].message = msgs
+        const origin = originOf(char, chat)
+        if(!origin || originStatus(origin) !== 'ok'){
+            return
         }
+        if(stepCandidates(origin, chat, 'back')){
+            return
+        }
+        stepRerollHistory(origin, 'back')
     }
     finally {
         setComposerWindow(false)
@@ -542,12 +526,14 @@ export async function unReroll(source: ComposerActionsSource): Promise<void> {
  * completed: false when it was refused, cancelled, or failed (the failure is
  * alerted here).
  */
-export async function sendChatMain(source: ComposerActionsSource, target: GenerationTarget, continued: boolean = false, existingController?: AbortController): Promise<boolean> {
+export async function sendChatMain(target: GenerationTarget, continued: boolean = false, existingController?: AbortController): Promise<boolean> {
 
     // Every read around the send goes through the target's own chat, never
     // the selection, which may be another chat, another character or Home by
-    // the time the send is handed over or has finished.
-    const previousLength = resolveOriginWithHint(target.origin, target.originHint)?.chat.message.length ?? 0
+    // the time the send is handed over or has finished. What the generation
+    // leaves after the chat's last message at the hand-off (the regenerated
+    // base, for a reroll) is recorded against that message.
+    const handOff = target.reroll ? { anchor: target.reroll.anchor } : anchorAtHandOff(target.origin)
     // Only a take empties a record -- generation itself never writes one.
     const controller = existingController ?? new AbortController()
     // Module state, not per instance, so the busy button in any composer
@@ -562,18 +548,19 @@ export async function sendChatMain(source: ComposerActionsSource, target: Genera
             origin: target.origin,
             originHint: target.originHint
         })
-        const finished = resolveOriginWithHint(target.origin, target.originHint)
-        if(finished && previousLength < finished.chat.message.length){
-            source.rerolls.get().push(safeStructuredClone(finished.chat.message.slice(previousLength)))
-            source.rerollId.set(source.rerolls.get().length - 1)
-        }
     } catch (error) {
         console.error(error)
         alertError(error)
     }
-    const settledTarget = resolveOriginWithHint(target.origin, target.originHint)
-    if(settledTarget){
-        source.lastCharId.set(settledTarget.ownerIndex)
+    // Recorded however the generation settled: a stopped or failed reroll
+    // still leaves the reply it replaced reachable.
+    if(handOff){
+        try {
+            recordGeneration(target.origin, handOff.anchor, target.reroll)
+        } catch (error) {
+            console.error(error)
+            alertError(error)
+        }
     }
     if(DBState.db.playMessage){
         const audio = new Audio(sendSound);
@@ -704,7 +691,7 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
                 break
             }
             const turnsBefore = turnsReachedCount()
-            const completed = await sendChatMain(source, target)
+            const completed = await sendChatMain(target)
             if(!completed || !isShowingChat(target.origin)){
                 break
             }

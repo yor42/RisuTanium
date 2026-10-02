@@ -542,7 +542,21 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             const last = messages[messages.length - 1]
             const suffix = `\n\`\`\`risuerror\n${error}\n\`\`\``
 
-            if(last?.role === 'char'){
+            // The error joins only the reply this call is producing or
+            // continuing, so it never lands in a message before the call's own
+            // output. A continue that fails before it tracks its reply names
+            // that reply by id, or by being the chat's last message.
+            let lastIsOwnReply = false
+            if(last !== undefined){
+                if(replyId !== undefined){
+                    lastIsOwnReply = locateReply(ctx.chat) === messages.length - 1
+                }
+                else if(arg.continue){
+                    lastIsOwnReply = !arg.continueMessageId || last.chatId === arg.continueMessageId
+                }
+            }
+
+            if(last?.role === 'char' && lastIsOwnReply){
                 last.data += suffix
                 return
             }
@@ -2266,7 +2280,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         // that goes missing later (a trigger rebuilding the chat without ids) does
         // not stop the steps that follow, which write nothing to it.
         if(!replyGone && resolveReply()){
-            addRerolls(generationId, Object.values(lastResponseChunk))
+            addRerolls(generationId, Object.values(lastResponseChunk), { chaId: origin.chaId, chatId: origin.chatId })
 
             const parsedChat = runCurrentChatFunction()
             if(!parsedChat){
@@ -2396,7 +2410,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
 
         if(mrerolls.length >1){
-            addRerolls(generationId, mrerolls)
+            addRerolls(generationId, mrerolls, { chaId: origin.chaId, chatId: origin.chatId })
         }
 
         const parsedChat = runCurrentChatFunction()
