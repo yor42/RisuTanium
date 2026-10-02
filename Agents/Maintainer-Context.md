@@ -2362,6 +2362,8 @@ request that leaves the app with no user action cannot be gated at the point of 
 
 ### MC-089 — Keep the OPFS switch visible after the merge; the fork does not ship until every current ticket is cleared
 
+*Point 1 superseded by `MC-167` 2.*
+
 - **Tag:** decision
 - **Date:** 2026-09-25
 - **Sweep ref:** none (stated directly this session)
@@ -2374,7 +2376,7 @@ request that leaves the app with no user action cannot be gated at the point of 
 
 **What was decided:**
 - **The switch stays visible.** The merged Backup & Files tab shows the OPFS switch in the CHORE-33
-  stage, as Report 28 plans.
+  stage, as Report 28 plans. *Superseded by `MC-167` 2 (2026-10-02): the OPFS switch in Backup & Files goes away.*
 - **Nothing ships until every current ticket is cleared.** The first release of this fork waits
   for every currently open ticket, the OPFS quota-lockout ticket included. A ticket's existence
   is therefore not a reason to hide a feature for the release. This adds to MC-011's "the
@@ -2919,7 +2921,7 @@ from that rejection — not a call the maintainer made or was asked to make.
    - Typing is possible again as soon as generation starts, or after a cancel.
 2. **The reroll history** stays per composer instance, as it is today. Its cross-chat bug is filed
    separately as `CHORE-43`: an unreroll in one chat can write another chat's reply. It exists
-   upstream, and on desktop.
+   upstream, and on desktop. *Superseded by `MC-168` and `MC-169` (2026-10-02) for the history's ownership and lifetime: each recent chat keeps its own.*
 
 ---
 
@@ -5707,3 +5709,179 @@ only). The list is not exhaustive; the plan is the full record.
 6. CHORE-63 is closed with stage B and the live check (not a maintainer decision); the checks not run (an avatar live,
    a plain copy during a pending card live, a failure display, WebView2, WebKit, Android, pasting into a real app) are
    recorded in the Roadmap and not ticketed.
+
+---
+
+### MC-167 — CHORE-55 becomes one storage interface with three adapters and no bypasses; OPFS is no longer written (read-through, no migration); the work stays before memory steps 6 and 7, stage 0 first; the partial-load question is CHORE-70
+
+- **Tag:** decision (items 1 to 9; the maintainer's own proposal in item 1, and their answers to the Orchestrator's
+  questions in items 2 to 7 and 9), stated in chat (items 1 and 8, and the question in item 10)
+- **Date:** 2026-10-02
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's chat messages S1 and S2 (quoted below as typed), and their answers to the
+  `AskUserQuestion` sets the Orchestrator asked during the sizing of that proposal. The times are those stamped in the
+  question log: the 08:57 set (items 2 and 4, and the "155 MB" answer in item 3), the 09:27 set (items 2, 5, 6 and 7)
+  and the 09:31 set (items 4 and 9). The rule in each item is the option text the Orchestrator wrote and the maintainer
+  selected. The Orchestrator's own calls are listed apart at the end and are **not** maintainer decisions.
+- **Reasoning:** the maintainer's reasons are in the quoted messages: one interface means a save-path fix is made once,
+  and "the Tauri copy is where gaps like CHORE-55 (no write-then-rename) survive". The reasons in the option texts are
+  the Orchestrator's.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 2: "Copy OPFS into IndexedDB once" and "Keep OPFS for archived data";
+  - item 4: "Next, right now", "After steps 6 and 7", "Right after CHORE-43/54" and "Now, before CHORE-43/54";
+  - item 5: "Mostly static web" and "Both, or not sure";
+  - item 6: "No, use mocks";
+  - item 7: "Leave them out" and "Include early";
+  - item 9: "Fold into CHORE-55" and "Leave it".
+- **Supersedes:** `MC-089` 1 ("The switch stays visible"). `MC-089` 2 (nothing ships until every current ticket is
+  cleared) stands.
+- **Related:** MC-011, MC-089, MC-151, MC-152, CHORE-55, CHORE-48, CHORE-59, CHORE-70; ledger rows 633 to 636.
+
+**What the maintainer said** (S1 and S2, as typed):
+
+S1, the proposal:
+
+> during chore-55, I think better approach would be a one storage interface that every save and load goes through, with three adapters (Tauri files, Node HTTP and one browser store), and no code that bypasses the interface.
+>
+> and instead of maintaining both indexedDB and OPFS, I think we can consider only keep IndexedDB as chat larger than 155 MB is rare. (currently node straight up refuses to accept db larger than 100mb)
+> Also, currently Tauri bypasses the interface. saveDb() calls writeFile directly for database.bin and its backups instead of going through forageStorage. Every save-path fix therefore has to be made twice, and the Tauri copy is where gaps like CHORE-55 (no write-then-rename) survive.
+> plus, through that interface we can later add cross-chat search without changing the storage engine. A JavaScript full-text index library (such as MiniSearch or FlexSearch) can be kept up to date at save time and stored in the browser store which can be used for cross chat search.
+
+S2, after the investigation was started (after the context compaction):
+
+> you may start designing when chore 43 investigation lands. about storage interface: weren't we planning to implement DB Atomicity too? should we fold that into this investigation too?
+
+**What was decided:**
+1. **CHORE-55 is one storage interface that every save and load goes through, with three adapters (Tauri files, Node
+   HTTP and one browser store), and no code that bypasses the interface for the persisted kinds.** The browser store is
+   IndexedDB. The rule is the maintainer's proposal in S1 (its first paragraph, and "Also, currently Tauri bypasses the
+   interface"). The maintainer's words say "every save and load"; "the persisted kinds" is the scope the
+   `senior-advisor` recommended ("the six persisted kinds, plus inlays later"), which the Orchestrator accepted as the
+   planning basis. The advisor's hand-back summary does not list the six kinds; the CHORE-55 plan will.
+2. **OPFS is not written again; data missing from IndexedDB is read from OPFS; there is no migration step.** The
+   question (09:27 set): "On the web build, the main save, backups and images already live in IndexedDB. Only archived
+   chats and v3 plugin save data are in the browser's file storage (OPFS), which upstream also writes. How should the
+   fork handle them?" The answer: "IndexedDB, read old OPFS (Recommended)": "Everything new goes to IndexedDB only. When
+   something isn't there yet, it is read from OPFS, so upstream's archived chats keep working with no migration step.
+   OPFS is never written again, and the OPFS switch in Backup & Files goes away." The options not chosen were "Copy OPFS
+   into IndexedDB once": "A one-time migration at startup. It needs about twice the free space while it runs, and has
+   crash and two-tab cases to handle. It reaches the same end state with more risk."; and "Keep OPFS for archived data":
+   "Only the main save goes through the new storage interface's browser store. Archived chats stay in OPFS, so two
+   browser stores remain."
+   - **Before this, the maintainer chose to have it sized first.** The question (08:57 set): "Cold storage (chats moved
+     out of memory) and the recent memory work (boot archive pass, load-time listing, manual cleanup) store data in OPFS
+     directly. Should "only keep IndexedDB" cover them too?" The answer: "Investigate first": "Have the investigator
+     size both options (files touched, data migration, IndexedDB size limits on phones) before deciding." The options
+     not chosen were "Yes, everything to IndexedDB (Recommended)" and "Main database only". The 09:27 answer above is the
+     decision that followed the sizing (ledger rows 633 and 635).
+3. **"155 MB" was a rough figure, not a limit.** The question (08:57 set): "You mentioned chats larger than 155 MB are
+   rare. What does the 155 MB figure refer to (so the design rests on the right limit)?" The answer: "Typo or rough
+   guess": "Not a specific limit; the point is that very large chats are rare." The options not chosen were "A browser
+   size limit" and "Largest real chat seen". No size limit is therefore recorded from this answer.
+4. **Placement, and the order inside it.** The question (08:57 set): "This is much bigger than CHORE-55's
+   write-then-rename fix. Where should the storage interface go in the work order?" The answer: "Before steps 6 and 7
+   (Recommended)": "Keep it in CHORE-55's slot (after CHORE-43/54, with CHORE-51/52/59), before memory steps 6 and 7,
+   so the remaining memory work is built on the interface instead of on the old paths." The 09:31 set then asked when
+   the write-then-rename fix (stage 0) should land: "Keep the order (Recommended)": "Finish CHORE-43/54 (its plan is in
+   review now), then CHORE-51/52, then CHORE-55 with stage 0 first. It needs a crash mid-save plus an empty cache, so
+   it's rare, and the fork isn't released." The options not chosen were "Right after CHORE-43/54": "Do stage 0 next,
+   ahead of CHORE-51/52; the rest of the storage work stays in CHORE-55's slot." and "Now, before CHORE-43/54": "Pause
+   CHORE-43/54 after its plan review and land stage 0 first." The question's own text said the fix is "about 60 lines"
+   and that the next startup loads "the save with characters silently missing and never tries the backups"; those are
+   the Orchestrator's statements of the evidence in the Roadmap's CHORE-55 entry, not the maintainer's.
+5. **Hosted web users mostly run the Node server.** The question (09:27 set): "When users run 'hosted web', is that
+   mostly the static web build (data in the browser) or the Docker/Node server (data on the server)? It decides how many
+   people the archived-data change touches." The answer: "Mostly the Node server": "Docker or node server.cjs; the data
+   lives on the server, so the browser-store change barely matters to them." The options not chosen were "Mostly static
+   web" and "Both, or not sure".
+6. **`fake-indexeddb` may be added as a dev-only dependency.** The question (09:27 set): "May I add fake-indexeddb as a
+   dev-only dependency? It lets the tests run the real browser storage code against an in-memory IndexedDB instead of
+   hand-written mocks. It isn't shipped in any build." The answer: "Yes, add it (Recommended)": "One devDependency in
+   package.json and the lockfile; the browser store gets the same contract tests as the Tauri and Node stores." The
+   option not chosen was "No, use mocks". It is not added by this entry.
+7. **Inlays move under the interface in a later stage, together with CHORE-48.** The question (09:27 set): "Images
+   pasted into chats (inlays) are kept in a separate browser store on every platform, Tauri included, and are never in a
+   local backup (CHORE-48). Should they move under the new storage interface too?" The answer: "Later stage
+   (Recommended)": "Plan it as a stage after the main save, assets and archived data, together with CHORE-48 (inlays in
+   backups)." The options not chosen were "Leave them out" and "Include early".
+8. **Cross-chat search through the interface is a later feature.** The maintainer's words in S1 (the sentence beginning
+   "plus,"): "through that interface we can later add cross-chat search without changing the storage engine." It is not part of the first
+   stages and is not scheduled; the library names in S1 are the maintainer's suggestion, not a decision.
+9. **The question about a save that only partly decodes at startup is filed as CHORE-70, not scheduled.** The question
+   (09:31 set; the clause is "startup accepts a save that only partly decodes"):
+   "Separately from the cut-off write: on every platform, startup accepts a save that only partly decodes and uses it
+   as-is, without checking whether a backup is complete. After stage 0 only disk damage would cause this, but it would
+   still be silent. File a ticket to decide what startup should do then? For example, offer the newest complete backup,
+   or load the partial save and say what is missing." The answer: "File a ticket (Recommended)": "New CHORE ticket, not
+   scheduled; it goes with the CHORE-59 family (recovering from partly damaged saves). Nothing changes now." The options
+   not chosen were "Fold into CHORE-55" and "Leave it". What startup should do is not decided.
+10. **S2 is a question, not a decision.** The maintainer asked whether DB atomicity should be folded into the
+    investigation. The Orchestrator folded it into the running sizing investigation as its question 9 (cross-file
+    atomicity); what that found is in the Roadmap's CHORE-55 entry and ledger row 633. Whether a cross-file atomicity
+    mechanism (such as a collector for orphaned blocks) is built is not decided.
+
+**The Orchestrator's own calls** (not maintainer decisions):
+1. The staging (stage 0 to stage 4, and later) is the `senior-advisor`'s recommended strategy (ledger row 635),
+   accepted by the Orchestrator as the planning basis. **It is not a gated plan.** Each stage still needs its own plan,
+   gates and tests, and the contract has not been written. The Roadmap's CHORE-55 entry lists it.
+
+---
+
+### MC-168 — The reroll history survives Settings, the character list and a theme change
+
+- **Tag:** decision
+- **Date:** 2026-10-02
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the question the Orchestrator asked with `AskUserQuestion` while the CHORE-43
+  plan was being written (the 09:15 answer in the question log).
+- **Reasoning:** the maintainer gave no reason beyond the answer. The reasons in the option text are the Orchestrator's.
+- **Alternatives rejected:** "Forget them, as today".
+- **Partly superseded by `MC-169`:** the chosen option's first sentence ends "until you send a new message there or
+  reroll in another chat" (the option text goes on). Under `MC-169` a send or reroll in another chat no longer ends a
+  chat's history, although the limit of 5 chats can still drop a history.
+- **Related:** MC-100, MC-151, MC-169, CHORE-43, CHORE-54; commit `71e75d9d`; ledger rows 637 to 641.
+
+**What was decided** (the question verbatim, then the answer and the option text):
+1. **The left and right arrows keep stepping through the earlier replies after Settings, the character list or a theme
+   change.** The question: "After you reroll a reply, then open Settings or the character list and come back to the
+   chat, should the ← / → buttons still step through the earlier replies? Today they quietly forget them in that case
+   (and on a theme change). They do remember them when you go Home or switch chats, which is where the wrong-chat bug
+   comes from. The fix ties the remembered replies to the one chat they came from, so keeping them is safe either way."
+   The answer: "Keep them (Recommended)": "← / → keep working for the chat you rerolled in, even after Settings, the
+   character list or a theme change, until you send a new message there or reroll in another chat. Stored the same way
+   unsent drafts already are. Never saved to disk." The option not chosen was "Forget them, as today": "Opening
+   Settings, the character list or changing the theme still clears them. Slightly smaller change; same safety fix
+   otherwise."
+
+---
+
+### MC-169 — Each recent chat keeps its own reroll history (the last 5 chats)
+
+- **Tag:** decision (the maintainer's choice) and an Orchestrator call (the number 5 and the drop order)
+- **Date:** 2026-10-02
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the question the Orchestrator asked with `AskUserQuestion` (the 09:21 answer in
+  the question log). **The maintainer chose the option that was not the recommended one.**
+- **Reasoning:** the maintainer gave no reason beyond the answer. The Orchestrator recommended "One chat is fine
+  (Recommended)" as the smallest change; the maintainer chose the other.
+- **Alternatives rejected:** "One chat is fine (Recommended)".
+- **Supersedes:** `MC-100` 2 ("The reroll history stays per composer instance") for the history's ownership and
+  lifetime. `MC-100` 1 (the composer lock) is unchanged.
+- **Related:** MC-100, MC-168, CHORE-43, CHORE-54; commit `71e75d9d`, made at the maintainer's word "looks good to me. go
+  ahead and commit."; ledger rows 637 to 641.
+
+**What was decided** (the question verbatim, then the answer and the option text):
+1. **Each recent chat keeps its own left and right history.** The question: "The ← / → history remembers one chat at a
+   time, as today. That means sending a message in a different chat also replaces it, not only rerolling there. Example:
+   reroll in chat A, go to chat B and send something, come back to A — ← no longer has A's earlier replies. Is that OK,
+   or should it remember a few chats at once?" The answer: "Remember a few chats": "Each recent chat keeps its own ← /
+   → history (for example the last 5 chats), so going back to A still works after sending in B. Slightly more memory
+   (copies of the rerolled replies) and a bit more code." The option not chosen was "One chat is fine (Recommended)":
+   "Smallest change and the same as today: any send or reroll elsewhere starts over. Memory use stays as it is."
+
+**The Orchestrator's own calls** (not maintainer decisions; recorded in the Roadmap's CHORE-43 and CHORE-54 entries and in
+ledger row 637):
+1. The limit is 5 chats, and the least recently used is dropped first. The option text said "for example the last 5
+   chats".
+2. Continue ends its chat's history (plan invariant I14). `MC-168`'s option text does not name Continue; the
+   Orchestrator kept the reset Continue has at the parent commit.

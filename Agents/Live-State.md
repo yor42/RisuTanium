@@ -115,9 +115,14 @@ The commits below were local when they were listed, and were pushed with it:
 - `7ca8f2a9`: CHORE-63 stage B, "Copy as card" in the message menu, built without fetching outside hosts (`MC-166`;
   ledger rows 627 to 632). Local, not pushed;
 - the records commit that follows `7ca8f2a9` and carries this file (MC-166, CHORE-63 closed, CHORE-67, CHORE-68 and
-  CHORE-69, ledger rows 627 to 632). Local, not pushed.
+  CHORE-69, ledger rows 627 to 632; `94fbdfd5`, by its commit subject). Local, not pushed;
+- `71e75d9d`: CHORE-43 with CHORE-54, each chat keeps its own reroll history and edits are kept (`MC-168`, `MC-169`;
+  ledger rows 634 and 637 to 641). Local, not pushed;
+- the records commit that follows `71e75d9d` and carries this file (`MC-167` to `MC-169`, CHORE-43 and CHORE-54 closed,
+  CHORE-55's scope rewritten, CHORE-70, ledger rows 633 to 641). Local, not pushed.
 
-The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9` and the records commit above) are local and not pushed.
+The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5` and `71e75d9d`) are local and not pushed;
+the records commit above will be local too.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -134,6 +139,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - The records commit after `d013e7cf` under the standing instruction "add the maintainer decisions to the records when you commit" (`MC-161` 9).
 - `7ca8f2a9` at "let's commit now and do live check after that." (`MC-166` 3).
 - The records commit after `7ca8f2a9` under the same standing instruction (`MC-161` 9).
+- `71e75d9d` at "looks good to me. go ahead and commit." (quoted in `MC-169`).
+- The records commit after `71e75d9d` at "commit docs when ready, then pause so I can compact to clear up the context."
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
@@ -155,8 +162,8 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-167` (`MC-166` is used), Report 57 (Report 56 is used), ledger row 633 and CHORE-70
-(`CHORE-69` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
+**Next free numbers:** `MC-170` (`MC-169` is used), Report 57 (Report 56 is used), ledger row 642 and CHORE-71
+(`CHORE-70` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
 **Rules for every session:**
@@ -219,8 +226,14 @@ should fill them.
    rebranding identity is merged (`cfa4dfa0`; `MC-162`). CHORE-63 stage A is done and CHORE-40 is closed (2026-10-02;
    `d013e7cf`, local; `MC-165`; ledger rows 623 to 626). CHORE-63 is closed by stage B, `7ca8f2a9` (2026-10-02, local;
    `MC-166`; ledger rows 627 to 632), and its live check was run in a browser (Roadmap CHORE-63; Android not run).
-   Stage C is now CHORE-68, not scheduled. Next: CHORE-43 with CHORE-54**
-   (work order, otherwise unchanged). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   Stage C is now CHORE-68, not scheduled. CHORE-43 with CHORE-54 is closed (2026-10-02; `71e75d9d`, local; `MC-168` and
+   `MC-169`; ledger rows 634 and 637 to 641; Roadmap CHORE-43 and CHORE-54), and its live check passed in a browser (not
+   run: group chats, multi-candidate replies, inline errors, cold chats, auto mode, WebView2, WebKit, Android). The storage
+   direction is recorded (`MC-167`; ledger rows 633, 635 and 636): CHORE-55 becomes one storage interface with three
+   adapters and no bypasses, OPFS is no longer written and is read through, and the stages in the Roadmap's CHORE-55 entry
+   are a planning basis, not a gated plan. CHORE-70 (startup installs a partly decoded save without trying a backup) is
+   filed, not scheduled. Next: CHORE-51 with CHORE-52, on the maintainer's word, then CHORE-55 with stage 0 first**
+   (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -513,20 +526,21 @@ should fill them.
       - **the live check was run** after stage B (2026-10-02, the maintainer's built-in pane; Roadmap CHORE-63). Not
         covered: an avatar, a plain copy during a pending card, a failure display, Android (Android cannot be run from
         here). **CHORE-63 is closed;**
-   4. then **CHORE-43** (unreroll can write one chat's reply into another) **with CHORE-54** (rerolling
-      or going back through rerolls overwrites an edited reply with its generation-time copy; data
-      loss, save path inferred). The maintainer placed both right after CHORE-53 (ledger row 528;
-      `MC-151` 3, "Right after CHORE-53"). The Orchestrator's recommendation (CHORE-54) is to fix them in
-      one change, because both live in the reroll history's ownership;
-   5. then **CHORE-51** (DATA LOSS), **CHORE-52** (the unvalidated cold-storage key), **CHORE-55**
-      (Tauri main-file writes are not atomic) and **CHORE-59** (Load Internal Backup offers to load the
-      intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
+   4. **CHORE-43** (unreroll can write one chat's reply into another) **with CHORE-54** (rerolling
+      or going back through rerolls overwrites an edited reply with its generation-time copy). **Done 2026-10-02**,
+      as `71e75d9d` (local; `MC-168` and `MC-169`; ledger rows 634 and 637 to 641; fixed in one change, as the
+      Orchestrator recommended);
+   5. then **CHORE-51** (DATA LOSS) and **CHORE-52** (the unvalidated cold-storage key), then **CHORE-55**
+      (rewritten by `MC-167`: one storage interface with three adapters and no bypasses; **stage 0, the atomic Tauri
+      write, first**; the later stages are a planning basis and not yet gated) and **CHORE-59** (Load Internal Backup
+      offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
       its own change with its own gates. The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it
       should not wait behind the idle reload and the measurements. CHORE-55 goes in this stretch by
-      the maintainer's choice (`MC-151` 3, "With CHORE-51/52");
-   6. then steps 6 and 7;
+      the maintainer's choice (`MC-151` 3, "With CHORE-51/52"), and the maintainer confirmed its place before steps 6 and 7
+      and the order CHORE-43/54, then CHORE-51/52, then CHORE-55 with stage 0 first (a summary of `MC-167` 4);
+   6. then steps 6 and 7 (they are built on the storage interface once it exists, `MC-167` 4);
    7. then **CHORE-62** (on a Node server, another device's save makes this device stop saving until it reloads, and
       its edits since its last save are lost; `MC-159` 1 and 3). The option text the maintainer selected says only
       "placed later in the work order"; the position after steps 6 and 7 and before CHORE-58 was the Orchestrator's,
@@ -551,7 +565,8 @@ Not placed in the sequence:
 - **CHORE-45** (the script cache misses on a repeat send in a long chat): filed, not scheduled. It
   waits for the memory work.
 - **CHORE-46** (the Node server's 100 MB body limit): re-measure after stage 1 (Report 49).
-- **CHORE-48** (inlays are never backed up): waits for the maintainer's answer.
+- **CHORE-48** (inlays are never backed up): waits for the maintainer's answer. The maintainer chose to plan inlays
+  under the storage interface, in a later stage, together with it (`MC-167` 7).
 - **CHORE-49** (the Node server does not boot over plain HTTP; `MC-144`): filed, not scheduled.
 - **CHORE-60** (release identity: the desktop build still carries upstream's identity; the updater part is
   done and committed as `38583d3b`; the rest has no decision): open, not scheduled. It must close before the
@@ -574,6 +589,8 @@ Not placed in the sequence:
   stops DOMPurify after its first removal), **CHORE-68** (CHORE-63 stage C: embed the app's own images in the "Copy as
   card" card) and **CHORE-69** (the plain Copy button copies the thinking section and hidden blocks as raw markup):
   filed 2026-10-02 from CHORE-63 stage B, open, not scheduled (`MC-166` 6, 4 and 5).
+- **CHORE-70** (startup installs a save that only partly decodes, without checking whether a backup is complete; the
+  CHORE-59 family; decode RUN in ledger row 636): filed 2026-10-02, open, not scheduled (`MC-167` 9).
 - **CHORE-56** (under the beta mobile layout, a touch that ends on a button, input, select or textarea
   throws a TypeError in the swipe handler): suspected; TRACED, not run. The maintainer has not yet
   confirmed or placed it.
@@ -655,6 +672,9 @@ Not placed in the sequence:
    `coldStorageLegacyChatUnavailable`, `coldStorageLegacyChatDamaged`). The translator's low-confidence notes: ko 저장소
    and 보관된 사본; cn 纯 HTTP; zh-Hant 純 HTTP; vi "bộ nhớ"; es "sin cifrar"; de "einfachen". Gate 2 read all six
    translations as keeping "may be damaged" hedged, "nothing was changed", and no retry promise.
+8. **Optional: a check of the Korean and Vietnamese strings from CHORE-63.** The Orchestrator offered the maintainer an
+   optional review of them; it is the Orchestrator's offer, not a maintainer request. The strings are `copyFailed` (stage A) and `copyAsCard`,
+   `copiedAsText` and `copiedSimpleCard` (stage B).
 Answered on 2026-10-01 and removed from this list:
 - the internal backup load refuses a snapshot with a damaged or missing block as a whole (it was item 7). The
   maintainer wants an option to load the intact data (`MC-152`); filed as CHORE-59 and placed in the work
@@ -767,6 +787,18 @@ Escape on alerts stage 2 and W2c-a were merged as `1d6fa16b`.
   normalises on commit, but normalise it back to LF when you edit. After any edit run
   `git ls-files --eol <file>`: it must say `w/lf`. Judge counts by `git diff --numstat` and git's
   "LF will be replaced" warnings, not by Git Bash `grep`/`od` counts, which misreported twice.
+- **Source files that are CRLF in the working tree** (the index holds them as LF; `git ls-files --eol` shows `i/lf
+  w/crlf`). No Agents file kept a list of these; this is the list, and it is not complete for the whole tree. Edit
+  them with the Edit tool, never a PowerShell split (`MC-165` 7):
+  - added by CHORE-43 with CHORE-54 (`71e75d9d`): `src/ts/process/composerActions.svelte.ts`,
+    `src/ts/process/prereroll.ts`, `src/ts/process/index.svelte.ts` and `src/lib/ChatScreens/DefaultChatScreen.svelte`
+    (checked with `git ls-files --eol` on 2026-10-02);
+  - the same session's `src/ts/process/rerollHistory.ts` and its two new test files,
+    `src/ts/process/tests/rerollHistory.svelte.test.ts` and `src/ts/process/tests/sendChatInlineError.svelte.test.ts`,
+    are LF (`i/lf w/lf`);
+  - also CRLF, from the same `git ls-files --eol` check: `src/lib/ChatScreens/Chat.svelte` (`MC-165` 7),
+    `src/ts/process/coldstorage.svelte.ts` and `src/ts/drive/backuplocal.ts` (named in Report 55). The rest of the tree was
+    not checked.
 
 ## Open items
 

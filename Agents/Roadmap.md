@@ -1777,6 +1777,55 @@ chat and tapping 'previous message' on another chat loads previous message from 
 - **Uncertain:** no browser run. A live check of D4 on the default phone layout (a window of 1024 px
   or less, beta mobile GUI off) would settle P1.
 
+**Status (2026-10-02, latest): closed by `71e75d9d`, together with CHORE-54. Local, not pushed.** The text above is the
+filing and investigation record and is unchanged. The empty-chat case, which the text above marks "Not run (INFERRED)",
+was RUN later: the design-facts investigation (ledger row 634, finding F3) found a stray `-1` property on the message
+array. What the `71e75d9d` commit message says it fixed:
+- **The cross-chat write.** The reroll history belonged to a character index, and one history was shared by the composer.
+  Rerolling in chat A and then pressing the left arrow in another chat of the same character, or in a chat switched to
+  while the reply was still generating, could write a reply from A into that chat. A deleted lower-index character
+  handed its history to the character that moved into its index. In an empty chat the arrow left a stray `-1`
+  property on the message array.
+- **Now:** one left/right history per chat, kept for the 5 most recent chats (the least recently used is dropped first),
+  found by the chat itself and never by an index (`MC-169`). Histories survive Settings, the character list and a theme
+  change (`MC-168`). They end when you send or continue in that chat, when auto mode generates there, when a new reroll
+  starts from a different place, or on reload. They are kept in memory only.
+- **Folded in** (each is stated in the commit message): a reroll that is stopped, fails, throws after appending or
+  appends nothing still leaves the replaced reply reachable with the left arrow; group chats, where
+  the stored pieces have unequal lengths and the left arrow overwrote an earlier speaker's message; a reply with several
+  candidates steps through them only in the chat that produced it, and the candidate cursor cannot run past the last
+  candidate; a reroll or arrow on a chat still loading from cold storage refuses with the message Send uses (it used to
+  throw a `TypeError`); a reroll on a chat with no stopping point does nothing instead of throwing; an inline error
+  joins only the reply this call is producing or continuing, and otherwise becomes a message of its own.
+- **Nothing new is saved** (commit message). The histories and the candidate map are never written to the database or a
+  save file. The only field the change adds to stored data is `Message.chatId`, which upstream already uses; it is
+  filled on messages that lack one.
+- **Orchestrator calls** (not maintainer decisions; plan invariants I14 and I15, and the limit): Continue ends its chat's
+  history (I14; the Orchestrator's call, not asked of the maintainer); an inline error appends only to the reply this
+  call is producing or continuing, and otherwise is a message of its own (I15, folded in from Gate 1 round 3's optional
+  item 4 instead of a ticket); the limit is 5 chats, least recently used dropped first (`MC-169`). One more
+  Orchestrator amendment, A1, came out of the reproducers: an empty shown piece is replaced by the next generation.
+- **Evidence (the commit message, unless noted):**
+  - Tests: `rerollHistory.svelte.test.ts` and `sendChatInlineError.svelte.test.ts` are new and hold 67 tests. Against the
+    unchanged sources 39 fail (36 from the first writing, 3 reproducers added after the code review) and 28 pass (guards).
+    Existing test fixtures that set `lastCharId` were moved to the new API.
+  - Checks on the final tree: `pnpm test` 293 files, 5805 passed, 4 skipped; `pnpm check` 0 errors, 0 warnings; `pnpm
+    build` ok.
+  - Gates (`opus-reviewer`): plan Gate 1 round 1 `[REJECT]`, round 2 `[REJECT]`, round 3 `[APPROVE]`, then an amendment
+    check for I15 and I16 `[APPROVE]`; code Gate 2 `[APPROVE]` with mutation testing in a scratch Vitest config, its
+    survivors folded in as tests D2, D3 and D4 (reproducers) and D7 (a guard), and a remediation re-check `[APPROVE]`; the
+    commit message's fact-check was `[EDITORIAL]` with seven corrections, applied before the commit. Ledger rows 637 to 641.
+  - Live check (RUN, 2026-10-02; a production build of the final tree, the Echo model, the built-in pane at 486x914, a
+    scratch Node server on port 6011 stopped afterwards): an edit survived step back and forward and a Settings open and
+    close; a second chat's left arrow changed nothing there while the first chat's history kept working; switching chats
+    during a 6-second generation left the second chat unchanged and the first chat stepped back correctly. One console
+    error, Chrome's `beforeunload` notice from the preview navigation; no app errors.
+  - **Not checked live:** group chats, multi-candidate replies, inline errors, cold chats and auto mode (tests only);
+    WebView2, WebKit and Android.
+- **Maintainer decisions:** `MC-168`, `MC-169`; the commit was made at "looks good to me. go ahead and commit."
+- **Related:** CHORE-54 (closed by the same commit); `MC-100` 2 (superseded for the history's ownership and lifetime);
+  `MC-151` 3; ledger rows 634 and 637 to 641.
+
 ### CHORE-44 — Auto mode cannot be stopped from a remounted composer
 
 **Status (2026-09-28):** filed from Gate 2 round 1 of the composer stage's S1 (Report 22; ledger
@@ -2349,6 +2398,29 @@ fork. The Orchestrator verified the core of the mechanism, F1 and F2 below, in
      previous/next arrow pressed afterwards?
   4. Which build and which layout (the default phone layout, the beta mobile layout, or desktop)?
 
+**Status (2026-10-02, latest): closed by `71e75d9d`, together with CHORE-43. Local, not pushed.** The text above is the
+filing and investigation record and is unchanged. What the commit message says it fixed for this ticket:
+- **An edit to the shown reply is stored before the cursor moves**, so it is still there after a step back or forward.
+  Rerolling or stepping back no longer overwrites an edit, including an edit of a reply with several candidates (F1, F8
+  above).
+- **The history is checked before it is written.** A step back or forward writes nothing unless the messages on screen
+  after the reroll point are the ones the history stored; if they are not, the history ends and the chat is left as it is.
+  Before, the history was laid over "the last n messages" without checking, so after the shown reply was deleted, or an
+  error message was removed and a message added, the left arrow overwrote the user's own message; in a group chat it
+  overwrote an earlier speaker's message; and a message deleted while a reroll was generating left the reply out of the
+  history or stored it in part. Messages added or removed further up the chat do not end the history; removing or
+  duplicating the message the reroll answers does.
+- **Evidence, gates, the live check and what was not checked** are in CHORE-43's closure above; the two tickets share one
+  change. The edit-survival path was in the live check (an edit survived step back and forward and a Settings open and
+  close).
+- **Not addressed by the commit message:** F4, F5 and F7 above (the open-but-uncommitted editor, upstream's long-press
+  discard, and the translation edit). They are described above as display-only or upstream-only; nothing in the commit
+  message or the live check claims to change them. The save path from the reroll write to the file (F6): the
+  design-facts packet lists it as not traced. The follow-up recorded in ledger row 634 says the save path marks the
+  whole character block; that follow-up exists only as the investigator's report back to the Orchestrator, not as a file,
+  and was not re-verified.
+- **Related:** CHORE-43; `MC-168`, `MC-169`; ledger rows 634 and 637 to 641.
+
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
 **Status (2026-10-01):** filed from memory stage 1 step 5b's Gate 2 round 1 (`opus-reviewer`,
@@ -2392,6 +2464,143 @@ and 5b adds a third write site with the same shape (the internal-backup load); t
     existing file is atomic on each desktop platform.
   - `TODO(evidence)`: other Tauri writes through the same plugin call (assets, cold-storage units,
     numbered backups) were not surveyed.
+
+**Status (2026-10-02, latest): open; the scope is rewritten by `MC-167`. Placed after CHORE-51 and CHORE-52, with stage 0
+first.** The text above is the 2026-10-01 filing and is kept; where this block differs, this block governs. The three
+`TODO(evidence)` items above are only partly answered below: item 1 (a truncated file) is answered by the decode RUN for
+the cuts it tried; item 2: the capability is confirmed (`src-tauri/capabilities/migrated.json`, `fs:allow-rename` with an
+`$APPDATA` scope), but whether a rename over an existing file is atomic is only INFERRED; item 3 (other Tauri writes) is
+answered only for the numbered backup, see the sites not covered below. CHORE-43 and CHORE-54 are closed (`71e75d9d`).
+
+**New scope (the maintainer's direction, `MC-167` 1, 2, 4, 6 and 7).** One storage interface that every save and load goes
+through, with three adapters (Tauri files, Node HTTP and one browser store, which is IndexedDB), and no code that bypasses
+it for the persisted kinds. OPFS is not written again: new writes go to IndexedDB only, data missing there is read from
+OPFS so upstream's archived chats keep working, there is no migration step, and the OPFS switch in Backup & Files goes
+away. `fake-indexeddb` may be added as a devDependency (not yet added). Inlays move under the interface in a later stage,
+with CHORE-48. Cross-chat search through the interface is a later feature (`MC-167` 8), not scheduled. **The original
+defect, no write-then-rename on the Tauri main file, stays as stage 0.**
+
+**Stages (planning basis, not yet gated).** These are the `senior-advisor`'s recommended strategy (ledger row 635),
+accepted by the Orchestrator as the planning basis (`MC-167`, the Orchestrator's calls). They are not a gated plan: no
+stage has a plan, a contract or tests yet.
+- **Stage 0:** an atomic path write (temp file, rename, remove the temp file on failure, a bounded retry for Windows
+  sharing violations) at the six Tauri sites below. About 60 lines plus tests (sizing packet, question 8). Crash
+  atomicity only; there is no fsync (see below). This is the Tauri adapter's write primitive later, so it is not
+  duplicated.
+- **Stage 1:** the contract, the three adapters and one conformance suite, with no callers moved (about 400 to 600 new
+  lines, sizing packet question 8). `fake-indexeddb` is approved for this stage.
+- **Stage 2:** the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive commit, restore
+  and the internal-backup load.
+- **Stage 3:** assets, through a `urlFor` operation (a bytes `get` cannot replace it: sizing packet question 2).
+- **Stage 4:** cold units with the read-through to OPFS, the removal of the OPFS main-database switch, and the copy-back
+  of a hand-set `opfs_flag!` at boot (`disableOpfs` already does that copy-back, per the advisor).
+- **Stage 5 or later:** inlays (CHORE-48), the search index, CHORE-46's streaming.
+- **Gating (the advisor's):** never gate stage 2 together with stage 3, or stage 2 with stage 4; `opus-reviewer` gates every
+  stage.
+- **The advisor's contract sketch:** `read`, `write`, `delete`, `list(prefix)`, `has` and `urlFor`; binary only, whole
+  values; no multi-key transaction, no GC, no chunking; a conditional write must never degrade silently, with a capability
+  flag. The version is a value: `read` returns the bytes and a version, and `write` and `delete` take `ifVersion`, so
+  `peek` disappears. LocalForage `risuai`/`keyvaluepairs` is kept with its driver pinned to IndexedDB, as
+  `avatarThumb.ts` does. `risuSaveCache` is registered as a load-bearing write-ahead copy and never cleaned up. The
+  non-strict install policy at startup is left alone (CHORE-70).
+- **Next investigations the advisor named:** the Tauri boot read through the asset protocol against `readFile` on a
+  155 MB file (the advisor's test size, not a limit: `MC-167` 3), before stage 2; a stage 0 live check on Windows, rename against an open handle; before stage 4, the largest
+  unit from the synthetic profile and a put/get on a phone.
+
+**The six Tauri write sites (the sizing packet's P2; the writer opened each line at HEAD `71e75d9d`).** The sizing
+packet found five `writeFile` calls to `database/database.bin` and a numbered-backup write of the same shape:
+
+| Site | What it writes |
+|---|---|
+| `src/ts/globalApi.svelte.ts:1359` (`saveDb`) | the main file |
+| `src/ts/globalApi.svelte.ts:1384` | the numbered backup `database/dbbackup-<ts>.bin` |
+| `src/ts/drive/backuplocal.ts:714` | the main file, in `LoadLocalBackup` |
+| `src/ts/drive/internalBackup.ts:156` | the main file, in the internal-backup load (`448962f4`) |
+| `src/ts/storage/bootArchiveHost.ts:78` | the main file, in the boot archive commit (`9b312962`); **not in the 2026-10-01 filing** |
+| `src/ts/bootstrap.ts:106` | the main file, on first launch (the filing said `:94`) |
+
+The sizing packet counted no `rename`, `copyFile`, `stat` or `truncate` call to the fs plugin in non-test `src` (a RUN
+count); the writer did not re-run it. The writer confirmed that `src-tauri/capabilities/migrated.json` lists
+`fs:allow-rename` and `fs:allow-remove` with an `$APPDATA` scope. The packet adds that `rename` is `std::fs::rename` in the
+plugin (not re-read by the writer). `upstream/main` has the same non-atomic write (filing text above). Boot reads the main
+file and the backups through the asset protocol (`fetch(convertFileSrc(...))`), not through fs IPC (sizing packet, P3).
+
+**Tauri `writeFile` sites that stage 0 does not cover, and that no stage yet assigns atomic-write work to** (the writer
+opened each line at HEAD `71e75d9d`): `src/ts/globalApi.svelte.ts:492` (assets), `src/ts/drive/backuplocal.ts:647`
+(assets), `src/ts/process/coldstorage.svelte.ts:346` (cold units), `src/ts/storage/risuSave.ts:804` (remote blocks) and
+`src/ts/bootstrap.ts:845` (a meta file). The stages above move assets (stage 3), remote blocks (stage 2) and cold units
+(stage 4) onto the interface, but none of them is stated to make these writes atomic; the stage plans have to say so.
+
+**Why stage 0 matters: the decode cut RUN (ledger row 636).** A synthetic save (four characters, 686 bytes) was cut at
+many points and decoded with `decodeRisuSave`, strictly and not strictly, with an empty and a populated `risuSaveCache`.
+- **Throws in both modes, so the backup fallback runs:** a 0-byte file, a cut inside the header, a cut in the middle of
+  a block, and a cut before the root block ends. This answers the filing's `TODO(evidence)` about a truncated file, for
+  these cuts. The sizing packet's "0-byte file: NOT TRACED" is answered the same way.
+- **Does not throw:** with an empty `risuSaveCache`, a non-strict decode of a cut at any of the 10 block boundaries from
+  the one right after the root block to the one before the last block, and of the file minus one byte, returns a tree with
+  characters missing (for example 0 of 4 characters at the boundary right after the root, 3 of 4 at length minus 1). With a populated `risuSaveCache` the same cuts decode to
+  a full tree: the cache silently completes the file (only a cache from the same generation was tested). A strict decode
+  throws at every cut except the full length.
+- **Boot (TRACED by the writer's read of `src/ts/bootstrap.ts:425-455` at HEAD `71e75d9d`, not run):** `decodeMainFile`
+  falls back to a non-strict decode when the strict decode throws, and `resolveArchiveOutcome` installs a non-strict tree
+  without the archive pass and without trying a backup. The result is a startup with characters silently missing; that
+  the next save keeps the loss is INFERRED, not traced. That startup decision is CHORE-70. The question put to the
+  maintainer (the Orchestrator's text) began "Confirmed by test", but only the decode was RUN; the boot path was TRACED.
+  It said that after about 100 minutes of saving all 20 backups could be newer than the damage; the basis is the sizing packet's note that a
+  backup is written at most every 5 minutes and 20 are kept (20 times 5 is 100; arithmetic, not run).
+- **What stage 0 gives:** protection against a write cut off by a crash or a failed write. It does not fsync, so it is not
+  power-loss durability (INFERRED, sizing packet question 2). A rename over an existing file on Windows is INFERRED to
+  replace it; the stage 0 live check on Windows is named above.
+- **The decode is RUN; the boot is TRACED.** The results file records decode outcomes only; the Tauri boot was not run.
+  The Orchestrator traced the Tauri boot branch at `71e75d9d`: `src/ts/bootstrap.ts:124-125` passes the main file to
+  `decodeMainFile` and then `resolveArchiveOutcome`, and reads the backups (`:145-172`) only when that outcome is not an
+  install.
+
+**What the sizing found (ledger row 633; sizing packet `chore55\sizing-packet.md` in the session scratchpad, not a repo
+file; the Orchestrator re-verified P1 and P4).**
+- **Upstream writes cold-storage units to OPFS on web** (P1; `git show upstream/main:src/ts/process/coldstorage.svelte.ts`,
+  the non-Node, non-Tauri branch, `coldstorage_<key>.json`). A same-origin upstream-to-fork user has data there, and a
+  pointer whose unit is gone reads as `missing`. That is why OPFS stays readable (`MC-167` 2). Upstream's `opfs_flag!`
+  main store is set by hand only, with no UI upstream, and the LocalForage copy is never removed, so a boot that ignored
+  the flag would load a stale `database.bin` (`autoStorage.ts:147-152` refuses this today, per the packet).
+- **Tauri is not the only bypass** (P3). Cold storage bypasses `AutoStorage` on every backend (a cast to `NodeStorage` on
+  Node, direct fs on Tauri, direct OPFS on web). The packet also lists ten other localforage database names, raw
+  IndexedDB, the Cache API and 56 `localStorage` lines, which the scope above does not cover. "No bypass" over the persisted
+  kinds is about 36 `forageStorage` lines, about 70 Tauri fs lines and 7 OPFS lines in about 17 files (the sizing packet's
+  counts; the grep patterns were not recorded).
+- **Remote saving is off by default** (P4; only a checkbox sets it), so `database.bin` is one body per save. On Node a body
+  is capped at 100 MiB (`bodyLimit.cjs`), and `bootArchivePass.ts:807` refuses a commit over the limit. Nothing chunks.
+- **The sized options** were costed before the maintainer chose read-through. Option A (everything to IndexedDB, with a
+  migration) was about 700 to 1000 changed lines in about 17 files with a mandatory migration under an exclusive lock;
+  option B (main database only) cannot drop OPFS. The read-through the maintainer chose (`MC-167` 2) was not sized
+  separately; the advisor proposed it after the sizing, and the CHORE-55 plan has to size it.
+- **Load-bearing risks (the packet):** `risuSaveCache` silently completes torn main files in non-strict decode, a hidden
+  recovery path outside `AutoStorage` that must be kept; boot installs a non-strict decode without trying a backup
+  (CHORE-70); `OpfsStorage.keys()` filters non-hex names, so the key spaces must stay separate; Node `/api/list` returns
+  stray keys (`__revisions.json`, `.tmp-` leftovers) that only prefix filters tolerate; cold-unit file naming differs per
+  backend, so the key mapping must live in the adapters; the Node revision is adopted only by `getItem` and `setItem`, and a
+  generic adopting `get` would bring back the overwrite the 409 prevents.
+- **Not measured:** IndexedDB against OPFS latency for 1, 10 and 50 MB units; IndexedDB per-value ceilings on iOS and
+  low-end Android (INFERRED, undocumented locally); whether real users have OPFS data (treated as present).
+
+**Cross-file atomicity (the maintainer's question S2; the sizing packet's Q9).** The `saveDb` order is: the encoder's remote
+blocks and `risuSaveCache`, then the root block under the write lock, then the BroadcastChannel, then an optional backup,
+then the prune.
+- The root is atomic on Node and IndexedDB; on OPFS it is INFERRED atomic on close (sizing packet Q2); on Tauri it can
+  be torn or empty (this ticket).
+- Remote blocks are hash-named since `86f59105` (the Stage 3a naming), so a crash between the blocks and the root leaves
+  harmless orphans that are never reclaimed; a stale client's root is rejected by the Node revision check (409). This
+  applies with remote saving on, on Tauri and Node only.
+- On Tauri a torn newest backup is possible; boot tries the newest first and moves on when decoding throws.
+- Orphan collection (GC) is absent (0 hits); Report 08 recommends not building it; no open ticket. The interface needs a
+  revision token on `get`, `put` and `delete`, an atomic replace and `has`. Only a GC would need a multi-key
+  precondition, and deferring it forces no change to the interface if the revision token and a batch delete are in the base
+  contract. If wanted, a GC is about 200 to 300 lines plus tests (not independently sized). Web multi-tab has no write-time
+  conflict check on IndexedDB and OPFS (INFERRED).
+- **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
+
+**Related:** `MC-167`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays), CHORE-51 and
+CHORE-52 (before this), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; ledger rows 633, 635 and 636.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 
@@ -3381,6 +3590,32 @@ RUN = executed in the investigation; TRACED = read in source.
 - **Not decided:** which parts the plain copy leaves out.
 - **Related:** CHORE-63 (stage A, `d013e7cf`, wrote the plain copy; `MC-160` 3: a tap copies plain text); `MC-166` 5;
   ledger row 627.
+
+### CHORE-70 — Startup installs a save that only partly decodes, without checking whether a backup is complete (silent missing characters; decode RUN, boot path TRACED)
+
+**Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-167` 9: "File a ticket
+(Recommended)"). It belongs to the CHORE-59 family (recovering from partly damaged saves). Type: data loss candidate,
+silent. Nothing changes now.
+
+- **What happens (the decode RUN, ledger row 636; `chore55\decode\results.md` in the session scratchpad, not a repo
+  file):** with an empty `risuSaveCache`, a non-strict decode of a main file cut at a block boundary after the root block,
+  or at length minus 1, returns a tree with characters missing and does not throw. With a populated `risuSaveCache`
+  (a same-generation cache only was tested) the same cuts decode to a full tree. A strict decode throws for every cut
+  except the full file. The cuts that always throw are listed in CHORE-55's block.
+- **The boot path (TRACED; the writer read `src/ts/bootstrap.ts:419-455` at HEAD `71e75d9d`):** `decodeMainFile` tries a
+  strict decode and falls back to a non-strict decode when it throws; its comment (`:419-424`) says the fallback tree
+  "may be missing blocks" and never goes through the archive pass. `resolveArchiveOutcome` returns `install` for a
+  non-strict tree (`:452-455`). So the startup uses the partial tree as-is. That the next save then keeps the loss is
+  INFERRED, not traced. The question put to the maintainer (the Orchestrator's text) said that this happens "on every
+  platform"; the maintainer only answered "File a ticket (Recommended)". The Orchestrator traced both boot branches at `71e75d9d`: the Tauri branch (`src/ts/bootstrap.ts:124-125`) and the
+  other branch, which web and Node share through `forageStorage` (`:198-204`), both call `decodeMainFile` and then
+  `resolveArchiveOutcome`, and fall back to backups only when the outcome is not an install.
+- **After CHORE-55 stage 0:** a write cut off by a crash no longer leaves a partial file, so only disk damage would cause
+  this. It would still be silent.
+- **What the ticket asks, and does not decide:** what startup should do when a save decodes only in part. The two examples
+  the question gave: offer the newest complete backup, or load the partial save and say what is missing. Not decided.
+- **Not in scope:** the advisor recommended leaving the non-strict install policy alone inside CHORE-55; it belongs here.
+- **Related:** CHORE-55 (stage 0); CHORE-59 (the same family); `MC-167` 9; ledger rows 633 and 636.
 
 ## Sequencing Summary
 
