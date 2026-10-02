@@ -27,9 +27,11 @@ const dbState = vi.hoisted(() => ({
     baseline: () => ({}) as Record<string, unknown>,
 }))
 
+const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs())
+
 const world = vi.hoisted(() => ({
     events: [] as string[],
-    files: new Map<string, Uint8Array>(),
+    files: fakeFs.files,
     fetched: [] as string[],
 }))
 
@@ -169,18 +171,15 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0 },
-    exists: vi.fn(async (path: string) => world.files.has(path)),
-    mkdir: vi.fn(async () => { }),
-    readFile: vi.fn(async (path: string) => {
-        if (!world.files.has(path)) {
-            throw new Error(`ENOENT (mock): ${path}`)
-        }
-        return world.files.get(path)
+    ...fakeFs.module,
+    writeFile: vi.fn(async (path: string, data: Uint8Array, options?: { createNew?: boolean, baseDir?: number }) => {
+        world.events.push(`write:${path}`)
+        await fakeFs.module.writeFile(path, data, options)
     }),
-    writeFile: vi.fn(async (path: string, data: Uint8Array) => { world.files.set(path, data) }),
-    readDir: vi.fn(async () => []),
-    remove: vi.fn(async (path: string) => { world.files.delete(path) }),
+    remove: vi.fn(async (path: string) => {
+        world.events.push(`remove:${path}`)
+        await fakeFs.module.remove(path)
+    }),
 }))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
@@ -306,7 +305,7 @@ function characterIds(tree: Record<string, unknown>): string[] {
 beforeEach(() => {
     localStorage.clear()
     world.events.length = 0
-    world.files.clear()
+    fakeFs.reset()
     world.fetched.length = 0
     pass.opened.length = 0
     pass.runInputs.length = 0
@@ -662,5 +661,121 @@ describe('loadData() Tauri: the pass\'s device memo (new behaviour of the skip a
         expect(pass.runInputs.length).toBe(1)
         expect(localStorage.getItem('archivePassStrikes')).toBe('2')
         expect(localStorage.getItem('archivePassPausedTold')).toBe('1')
+    })
+})
+
+describe('loadData() Tauri: the first-launch main file is written atomically', () => {
+    const MAIN = 'database/database.bin'
+
+    /** The directories the boot checks, and no main file. */
+    function armFirstLaunch(): void {
+        world.files.set('', new Uint8Array())
+        world.files.set('database', new Uint8Array())
+        world.files.set('assets', new Uint8Array())
+    }
+
+    test('a first-launch write that fails part-way leaves no main file, stops the boot and shows the error', async () => {
+        armFirstLaunch()
+        const fault = fakeFs.failWritesOf(() => true)
+        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        const alerts = recordAlerts(alertStore)
+
+        await loadData()
+        alerts.stop()
+
+        expect(fault.fired).toBe(1)
+        expect(world.files.has(MAIN)).toBe(false)
+        expect(fakeFs.listing('database')).toEqual([])
+        expect(alerts.seen.map((a) => a.type)).toEqual(['error'])
+        expect(pass.opened).toEqual([])
+        expect(get(loadedStore)).toBe(false)
+    })
+
+    test('a successful first-launch write leaves the empty save at the main path, no temp file, and never opens the main path for writing', async () => {
+        armFirstLaunch()
+        const { loadData } = await freshLoadData()
+
+        await loadData()
+
+        expect(Array.from(world.files.get(MAIN) ?? [])).toEqual(Array.from(encodeRisuSaveLegacy({})))
+        expect(fakeFs.listing('database')).toEqual(['database.bin'])
+        expect(fakeFs.writesTo(MAIN)).toHaveLength(0)
+    })
+})
+
+describe('loadData() Tauri: the boot removes the leftover temp files of interrupted atomic writes', () => {
+    const MAIN = 'database/database.bin'
+    const LEFTOVER = 'database/risu-write-0123456789abcdef.tmp'
+    const OTHER_LEFTOVER = 'database/risu-write-fedcba9876543210.tmp'
+
+    function armWithLeftovers(): { main: Uint8Array } {
+        const main = armLegacy()
+        world.files.set(LEFTOVER, new Uint8Array([1, 2, 3]))
+        world.files.set(OTHER_LEFTOVER, new Uint8Array([4, 5, 6]))
+        world.files.set('database/dbbackup-1.bin', new Uint8Array([7]))
+        world.files.set('database/notes.txt', new Uint8Array([8]))
+        world.files.set('database/risu-write-not-a-temp.tmp', new Uint8Array([9]))
+        world.files.set('database/.risu-write-0123456789abcdef.tmp', new Uint8Array([10]))
+        return { main }
+    }
+
+    test('removes only the files whose name is a temp name, before the pass session opens', async () => {
+        const { main } = armWithLeftovers()
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(fakeFs.listing('database')).toEqual([
+            '.risu-write-0123456789abcdef.tmp',
+            'database.bin',
+            'dbbackup-1.bin',
+            'notes.txt',
+            'risu-write-not-a-temp.tmp',
+        ])
+        expect(Array.from(world.files.get(MAIN) ?? [])).toEqual(Array.from(main))
+        const removes = world.events.filter((e) => e.startsWith('remove:'))
+        expect(removes).toEqual([`remove:${LEFTOVER}`, `remove:${OTHER_LEFTOVER}`])
+        expect(world.events.indexOf(removes[1])).toBeLessThan(world.events.indexOf('open:tauri'))
+    })
+
+    test('removes a leftover before the first-launch write when the main file is absent', async () => {
+        world.files.set('', new Uint8Array())
+        world.files.set('database', new Uint8Array())
+        world.files.set('assets', new Uint8Array())
+        world.files.set(LEFTOVER, new Uint8Array([1, 2, 3]))
+        const { loadData } = await freshLoadData()
+
+        await loadData()
+
+        const firstWrite = world.events.findIndex((e) => e.startsWith('write:'))
+        expect(firstWrite).toBeGreaterThan(-1)
+        expect(world.events.indexOf(`remove:${LEFTOVER}`)).toBeGreaterThan(-1)
+        expect(world.events.indexOf(`remove:${LEFTOVER}`)).toBeLessThan(firstWrite)
+        expect(fakeFs.listing('database')).toEqual(['database.bin'])
+    })
+
+    test('a directory listing that fails does not stop the boot', async () => {
+        armWithLeftovers()
+        const fault = fakeFs.failReadDirs('Access is denied. (os error 5)')
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(fault.fired).toBeGreaterThan(0)
+        expect(get(loadedStore)).toBe(true)
+        expect(world.files.has(LEFTOVER)).toBe(true)
+    })
+
+    test('a removal that fails does not stop the boot', async () => {
+        armWithLeftovers()
+        const fault = fakeFs.failRemoves('Access is denied. (os error 5)')
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(fault.fired).toBeGreaterThan(0)
+        expect(get(loadedStore)).toBe(true)
+        expect(world.files.has(LEFTOVER)).toBe(true)
     })
 })

@@ -62,6 +62,8 @@ vi.mock(import('../../storage/dbChangeEffects.svelte'), () => ({
 
 /** Stable across every `vi.resetModules()` re-import in this file (`vi.hoisted()`'s whole point) -- J6 inspects this directly to tell "installed" from "not yet installed", instead of a real `DBState.db` this mock never touches. */
 const setDatabaseMock = vi.hoisted(() => vi.fn())
+/** The Tauri file system stand-in: written, renamed and removed files, keyed by AppData-relative path. */
+const tauriFiles = vi.hoisted(() => new Map<string, Uint8Array>())
 
 vi.mock(import('../../storage/database.svelte'), () => ({
     getDatabase: vi.fn(() => {
@@ -143,12 +145,20 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0, Download: 1 },
-    writeFile: vi.fn(async () => { }),
+    writeFile: vi.fn(async (path: string, data: Uint8Array) => { tauriFiles.set(path, data.slice()) }),
     readFile: vi.fn(async () => new Uint8Array()),
     exists: vi.fn(async () => false),
     mkdir: vi.fn(async () => { }),
     readDir: vi.fn(async () => []),
-    remove: vi.fn(async () => { }),
+    remove: vi.fn(async (path: string) => { tauriFiles.delete(path) }),
+    rename: vi.fn(async (from: string, to: string) => {
+        const found = tauriFiles.get(from)
+        if (!found) {
+            throw `no such file ${from} (os error 2)`
+        }
+        tauriFiles.set(to, found)
+        tauriFiles.delete(from)
+    }),
 }))
 
 vi.mock('@tauri-apps/plugin-process', () => ({

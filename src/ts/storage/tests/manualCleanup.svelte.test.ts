@@ -1297,6 +1297,25 @@ describe('Tauri: a failed read or removal counts as missing only when the file i
     })
 })
 
+describe('Tauri: a leftover temp file of an interrupted atomic write is not a snapshot', () => {
+    test('guard: the clean-up neither reads nor removes a temp file in database/ and still completes', async () => {
+        await setup({ platform: 'tauri' })
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime()
+        storeSnapshot(17000000001, await encodeTree(makeDb([])))
+        const leftover = 'database/risu-write-0123456789abcdef.tmp'
+        h.fs.set(leftover, new Uint8Array([1, 2, 3]))
+
+        await run()
+
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(errorMessages()).toEqual([])
+        expect(h.fsReads).not.toContain(leftover)
+        expect(h.fs.has(leftover)).toBe(true)
+    })
+})
+
 describe('unreadable blobs stop the run with a notice that names the character and the source', () => {
     const BLOB_FAILURES = [
         ['is missing', async (_blobKey: string) => {}],

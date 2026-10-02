@@ -70,7 +70,11 @@ const tauriFs = vi.hoisted(() => ({
     files: new Map<string, Uint8Array>(),
     writeLog: [] as Array<{ path: string, data: Uint8Array }>,
     readLog: [] as string[],
-    failWrite: undefined as undefined | ((path: string) => Error | undefined),
+    renameLog: [] as Array<{ from: string, to: string }>,
+    /** Writes whose body satisfies this reject after storing a partial body at the path they were given. */
+    failPayload: undefined as undefined | ((data: Uint8Array) => boolean),
+    /** How many writes `failPayload` made reject. */
+    faultsFired: 0,
     readDirError: undefined as Error | undefined,
 }))
 
@@ -245,12 +249,25 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0, Download: 1 },
     writeFile: async (path: string, data: Uint8Array) => {
-        const failure = tauriFs.failWrite?.(path)
-        if (failure) {
-            throw failure
+        if (tauriFs.failPayload?.(data)) {
+            tauriFs.faultsFired++
+            tauriFs.files.set(path, data.slice(0, Math.max(1, Math.floor(data.length / 2))))
+            throw `scratch: write failed (os error 112)`
         }
         tauriFs.writeLog.push({ path, data })
         tauriFs.files.set(path, data)
+    },
+    rename: async (from: string, to: string, options?: { oldPathBaseDir?: number, newPathBaseDir?: number }) => {
+        if (options?.oldPathBaseDir === undefined || options?.newPathBaseDir === undefined) {
+            throw `forbidden path: ${from}`
+        }
+        const found = tauriFs.files.get(from)
+        if (!found) {
+            throw `scratch: no such file ${from} (os error 2)`
+        }
+        tauriFs.renameLog.push({ from, to })
+        tauriFs.files.set(to, found)
+        tauriFs.files.delete(from)
     },
     readFile: async (path: string) => {
         tauriFs.readLog.push(path)
@@ -524,11 +541,23 @@ function mainBytes(world: World): Uint8Array | undefined {
     return world.platform === 'tauri' ? tauriFs.files.get(MAIN) : storage.items.get(MAIN)
 }
 
-/** Every value written to the main file key, in write order. */
+/**
+ * Every value written to the main file key, in write order. On Tauri a value
+ * counts when it was written to the main path directly or to a file that was
+ * then renamed over it.
+ */
 function mainWrites(world: World): Uint8Array[] {
-    return world.platform === 'tauri'
-        ? tauriFs.writeLog.filter((entry) => entry.path === MAIN).map((entry) => entry.data)
-        : storage.setLog.filter((entry) => entry.key === MAIN).map((entry) => entry.value as Uint8Array)
+    if (world.platform === 'tauri') {
+        const renamedSources = new Set(tauriFs.renameLog.filter((entry) => entry.to === MAIN).map((entry) => entry.from))
+        return tauriFs.writeLog.filter((entry) => entry.path === MAIN || renamedSources.has(entry.path)).map((entry) => entry.data)
+    }
+    return storage.setLog.filter((entry) => entry.key === MAIN).map((entry) => entry.value as Uint8Array)
+}
+
+/** The names in `database/` that are neither the main file nor a numbered snapshot. */
+function strayDatabaseFiles(): string[] {
+    return Array.from(tauriFs.files.keys())
+        .filter((key) => key.startsWith('database/') && key !== MAIN && !key.startsWith('database/dbbackup-'))
 }
 
 function snapshotWasRead(world: World, key: string): boolean {
@@ -560,6 +589,7 @@ function clearObservations(): void {
     storage.keysCalls = 0
     tauriFs.writeLog.length = 0
     tauriFs.readLog.length = 0
+    tauriFs.renameLog.length = 0
     relaunchBox.calls = 0
     setDatabaseMock.mockClear()
     reloadSpy.mockClear()
@@ -749,7 +779,9 @@ beforeEach(() => {
     tauriFs.files.clear()
     tauriFs.writeLog.length = 0
     tauriFs.readLog.length = 0
-    tauriFs.failWrite = undefined
+    tauriFs.renameLog.length = 0
+    tauriFs.failPayload = undefined
+    tauriFs.faultsFired = 0
     tauriFs.readDirError = undefined
     guardBox.appInitiatedReload = false
     workBox.busy = false
@@ -1128,15 +1160,17 @@ describe('loadInternalBackup reports a failed write or reload', () => {
         await expectLocksReleased(world)
     })
 
-    test('the Tauri main-file write rejects: shows the write-failed message and releases the write lock', async () => {
+    test('the Tauri main-file write rejects part-way: shows the write-failed message, leaves the main file as it was, and releases the write lock', async () => {
         const { world } = await worldWithSnapshot({ platform: 'tauri' })
-        tauriFs.failWrite = (path) => (path === MAIN ? new Error('scratch: write failed') : undefined)
+        tauriFs.failPayload = () => true
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
+        expect.soft(tauriFs.faultsFired, 'writes the injected fault rejected').toBe(1)
         expectOneError(msg('internalBackupWriteFailed'))
         expectNothingChanged(world)
+        expect.soft(strayDatabaseFiles(), 'files left in database/').toEqual([])
         await expectLocksReleased(world)
     })
 
@@ -1168,19 +1202,34 @@ describe('loadInternalBackup reports a failed write or reload', () => {
 })
 
 describe('loadInternalBackup on Tauri', () => {
-    test('writes the snapshot with writeFile, relaunches, takes no exclusive hold, and keeps the write lock it acquired closed', async () => {
+    test('writes the snapshot to a temp file and renames it over the main file, relaunches, takes no exclusive hold, and keeps the write lock it acquired closed', async () => {
         const { world, bytes } = await worldWithSnapshot({ platform: 'tauri' })
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(tauriFs.writeLog.map((entry) => entry.path), 'paths written').toEqual([MAIN])
+        expect.soft(tauriFs.writeLog.filter((entry) => entry.path === MAIN), 'writes that name the main path').toEqual([])
+        expect.soft(tauriFs.renameLog.map((entry) => entry.to), 'rename targets').toEqual([MAIN])
         expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expect.soft(strayDatabaseFiles(), 'files left in database/').toEqual([])
         expect.soft(relaunchBox.calls, 'relaunch calls').toBe(1)
         expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
         expect.soft(exclusiveRequests(), 'exclusive Web Lock requests').toBe(0)
         expect.soft(await writeLockIsFree(world), 'a dbWriteLock acquirer queued after the load resolves').toBe(false)
         expectNoError()
+    })
+
+    test('guard: a leftover temp file in database/ is not offered by the picker', async () => {
+        const { world } = await worldWithSnapshot({ platform: 'tauri' })
+        tauriFs.files.set('database/risu-write-0123456789abcdef.tmp', new Uint8Array([1, 2, 3]))
+        alertBox.selectAnswer = '0'
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.selectCalls.length, 'the picker was shown').toBe(1)
+        expect.soft(alertBox.selectCalls[0].length, 'picker entries: Cancel and the one snapshot').toBe(2)
     })
 })
 

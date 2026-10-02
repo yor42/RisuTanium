@@ -52,9 +52,13 @@ vi.mock(import('../../platform'), () => ({
 }) as unknown as typeof import('../../platform'))
 
 const tauriWriteFileMock = vi.hoisted(() => vi.fn(async () => {}))
+const tauriRenameMock = vi.hoisted(() => vi.fn(async () => {}))
+const tauriRemoveMock = vi.hoisted(() => vi.fn(async () => {}))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: tauriWriteFileMock,
+    rename: tauriRenameMock,
+    remove: tauriRemoveMock,
     exists: vi.fn(async () => false),
     mkdir: vi.fn(async () => {}),
     readFile: vi.fn(async () => new Uint8Array()),
@@ -425,6 +429,8 @@ beforeEach(() => {
     setDatabaseMock.mockClear()
     forageSetItemMock.mockClear()
     tauriWriteFileMock.mockClear()
+    tauriRenameMock.mockClear()
+    tauriRemoveMock.mockClear()
     setColdStorageItemMock.mockClear()
     acquireExclusiveStorageMigrationLockMock.mockClear()
     requiresFullEncoderReloadMock.state = false
@@ -505,6 +511,7 @@ function collectAlertMessages(): string[] {
 function expectNoWritesNoInstallNoNetwork(): void {
     expect(forageSetItemMock).not.toHaveBeenCalled()
     expect(tauriWriteFileMock).not.toHaveBeenCalled()
+    expect(tauriRenameMock).not.toHaveBeenCalled()
     expect(setColdStorageItemMock).not.toHaveBeenCalled()
     expect(setDatabaseMock).not.toHaveBeenCalled()
     expect(localStorageSetItemSpy).not.toHaveBeenCalled()

@@ -41,10 +41,24 @@ interface DirEntryFixture {
 const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
 const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<DirEntryFixture[]> => []))
 const readFileMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Uint8Array | undefined> => new Uint8Array()))
+const tauriFiles = vi.hoisted(() => new Map<string, Uint8Array>())
 const writeFileMock = vi.hoisted(() => vi.fn(async (path: string, data: Uint8Array, _options?: unknown): Promise<void> => {
     if (path === BACKUP_PATH) {
         backupSink.writes.push(data.slice())
+        return
     }
+    tauriFiles.set(path, data.slice())
+}))
+const renameMock = vi.hoisted(() => vi.fn(async (from: string, to: string, _options?: unknown): Promise<void> => {
+    const found = tauriFiles.get(from)
+    if (!found) {
+        throw `no such file ${from} (os error 2)`
+    }
+    tauriFiles.set(to, found)
+    tauriFiles.delete(from)
+}))
+const removeMock = vi.hoisted(() => vi.fn(async (path: string, _options?: unknown): Promise<void> => {
+    tauriFiles.delete(path)
 }))
 const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
 const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
@@ -78,7 +92,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     readDir: readDirMock,
     exists: vi.fn(async () => false),
     mkdir: vi.fn(async () => { }),
-    remove: vi.fn(async () => { }),
+    remove: removeMock,
+    rename: renameMock,
 }))
 
 vi.mock('@tauri-apps/plugin-process', () => ({
@@ -452,6 +467,9 @@ beforeEach(() => {
     readDirMock.mockClear()
     readFileMock.mockClear()
     writeFileMock.mockClear()
+    renameMock.mockClear()
+    removeMock.mockClear()
+    tauriFiles.clear()
     forageKeysMock.mockClear()
     forageGetItemMock.mockClear()
     forageSetItemMock.mockClear()
@@ -757,8 +775,11 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        const databaseWrites = writeFileMock.mock.calls.filter((c) => c[0] === 'database/database.bin')
-        expect(databaseWrites).toHaveLength(1)
+        // The database entry reaches the main path by a rename over it, once, and no write opens the main path.
+        const databaseRenames = renameMock.mock.calls.filter((c) => c[1] === 'database/database.bin')
+        expect(databaseRenames).toHaveLength(1)
+        expect(writeFileMock.mock.calls.filter((c) => c[0] === 'database/database.bin')).toHaveLength(0)
+        expect(tauriFiles.has('database/database.bin')).toBe(true)
     })
 })
 

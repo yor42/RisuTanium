@@ -5,6 +5,7 @@ import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy } from "../storage/risuSave";
 import { noteMainFileBytes } from "../storage/mainFileRecord";
+import { writeFileAtomic } from "../storage/tauriAtomicWrite";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -711,7 +712,7 @@ export function LoadLocalBackup(){
 
                 writeAttempted = true;
                 if (isTauri) {
-                    await writeFile('database/database.bin', db, { baseDir: BaseDirectory.AppData });
+                    await writeFileAtomic('database/database.bin', db);
                 } else {
                     await forageStorage.setItem('database/database.bin', db);
                 }

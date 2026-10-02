@@ -35,6 +35,7 @@ import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/
 import { sweepTauriAssets, sweepForageAssetKey } from "./storage/assetSweep";
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
+import { sweepAtomicWriteTemps, writeFileAtomic } from "./storage/tauriAtomicWrite";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
 import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
 import { hasEnabledV21Plugin } from "./plugins/v21Plugins";
@@ -99,11 +100,17 @@ export async function loadData() {
                 if (!await exists('database', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('database', { baseDir: BaseDirectory.AppData })
                 }
+                // Must stay before the first write to `database/` in this
+                // page load: a temp file found here is not from a write of
+                // this page load. It is a leftover, or at worst the orphaned
+                // write of an earlier page load or an exiting process, whose
+                // loss never affects the target.
+                await sweepAtomicWriteTemps('database')
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
                 }
                 if (!await exists('database/database.bin', { baseDir: BaseDirectory.AppData })) {
-                    await writeFile('database/database.bin', encodeRisuSaveLegacy({}), { baseDir: BaseDirectory.AppData });
+                    await writeFileAtomic('database/database.bin', encodeRisuSaveLegacy({}));
                 }
                 const appDataDirPath = await appDataDir();
                 archiveSession = await openBootArchiveSession('tauri')

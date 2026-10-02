@@ -217,6 +217,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         return fsStore.get(path)!
     }),
     writeFile: vi.fn(async (path: string, data: Uint8Array) => { fsStore.set(path, data) }),
+    rename: vi.fn(async (from: string, to: string) => {
+        const found = fsStore.get(from)
+        if (!found) {
+            throw `no such file ${from} (os error 2)`
+        }
+        fsStore.set(to, found)
+        fsStore.delete(from)
+    }),
     readDir: readDirMock,
     remove: vi.fn(async (path: string) => { fsStore.delete(path) }),
 }))

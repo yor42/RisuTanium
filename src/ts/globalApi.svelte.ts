@@ -32,6 +32,7 @@ import { installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
+import { writeFileAtomic } from "./storage/tauriAtomicWrite";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -1128,8 +1129,8 @@ export async function saveDb() {
     // otherwise repeat every ~1s forever. Reset back to false on a
     // successful write, so a LATER, separate conflict episode still alerts.
     let conflictAlertShown = false
-    // Consecutive post-commit ancillary failures (backup write -- writeFile on
-    // Tauri, forageStorage.setItem elsewhere -- and getDbBackups's pruning
+    // Consecutive post-commit ancillary failures (backup write -- writeFileAtomic
+    // on Tauri, forageStorage.setItem elsewhere -- and getDbBackups's pruning
     // removeItem) across separate save attempts. Deliberately NOT `savetrys`:
     // that counter also gates the pre-commit retry/re-commit path (see the
     // catch block below), and folding post-commit failures into it would let a
@@ -1356,7 +1357,7 @@ export async function saveDb() {
             const releaseWriteLock = await dbWriteLock.acquire()
             try {
                 if (isTauri) {
-                    await writeFile('database/database.bin', dbData, { baseDir: BaseDirectory.AppData });
+                    await writeFileAtomic('database/database.bin', dbData);
                 }
                 else {
                     await forageStorage.setItem('database/database.bin', dbData)
@@ -1381,7 +1382,7 @@ export async function saveDb() {
             }
             if (isTauri) {
                 if (shouldWriteBackup) {
-                    await writeFile(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, dbData, { baseDir: BaseDirectory.AppData });
+                    await writeFileAtomic(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, dbData);
                     lastBackupWriteTime = Date.now()
                 }
             }

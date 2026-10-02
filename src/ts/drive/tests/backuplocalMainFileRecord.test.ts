@@ -33,12 +33,15 @@ interface DirEntryFixture {
 }
 
 const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
+const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs())
 const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<DirEntryFixture[]> => []))
 const readFileMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Uint8Array | undefined> => new Uint8Array()))
-const writeFileMock = vi.hoisted(() => vi.fn(async (path: string, data: Uint8Array, _options?: unknown): Promise<void> => {
+const writeFileMock = vi.hoisted(() => vi.fn(async (path: string, data: Uint8Array, options?: { createNew?: boolean, baseDir?: number }): Promise<void> => {
     if (path === BACKUP_PATH) {
         backupSink.writes.push(data.slice())
+        return
     }
+    await fakeFs.module.writeFile(path, data, options)
 }))
 const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
 const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
@@ -73,7 +76,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     readDir: readDirMock,
     exists: vi.fn(async () => false),
     mkdir: vi.fn(async () => { }),
-    remove: vi.fn(async () => { }),
+    remove: fakeFs.module.remove,
+    rename: fakeFs.module.rename,
 }))
 
 vi.mock('@tauri-apps/plugin-process', () => ({
@@ -257,10 +261,12 @@ vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
+import { language } from 'src/lang'
 
 //#region helpers
 
 const encoder = new TextEncoder()
+const MAIN_FILE = 'database/database.bin'
 
 function u32le(n: number): Uint8Array {
     const buf = new Uint8Array(4)
@@ -310,33 +316,40 @@ async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
     await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
 }
 
-/** Every write of `database/database.bin` the restore attempted on the current platform. */
+/**
+ * Every body the restore put into `database/database.bin` on the current
+ * platform. On Tauri a body counts when its file was the source of a rename to
+ * the main path (or it was written to that path directly).
+ */
 function mainFileWrites(): Uint8Array[] {
-    const calls: [string, Uint8Array][] = platformBox.isTauri
-        ? writeFileMock.mock.calls.map((c) => [c[0], c[1]])
-        : forageSetItemMock.mock.calls.map((c) => [c[0], c[1]])
-    return calls.filter(([path]) => path === 'database/database.bin').map(([, data]) => data)
+    if (platformBox.isTauri) {
+        const renamedSources = new Set(fakeFs.renameLog.filter((entry) => entry.to === MAIN_FILE).map((entry) => entry.from))
+        return fakeFs.writeLog
+            .filter((entry) => entry.path === MAIN_FILE || renamedSources.has(entry.path))
+            .map((entry) => entry.data)
+    }
+    return forageSetItemMock.mock.calls.filter((c) => c[0] === MAIN_FILE).map((c) => c[1])
 }
 
 function hex(bytes: Uint8Array): string {
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** Makes every write of `database/database.bin` reject on the current platform. */
+/**
+ * Makes the write of the restored main file reject on the current platform.
+ * On Tauri the fault fires on any write, whatever path it is given, and the
+ * returned handle counts its firings; on web it returns `undefined`.
+ */
 function failMainFileWrite() {
     if (platformBox.isTauri) {
-        writeFileMock.mockImplementation(async (path: string) => {
-            if (path === 'database/database.bin') {
-                throw new Error('write failed')
-            }
-        })
-    } else {
-        forageSetItemMock.mockImplementation(async (key: string) => {
-            if (key === 'database/database.bin') {
-                throw new Error('write failed')
-            }
-        })
+        return fakeFs.failWritesOf(() => true)
     }
+    forageSetItemMock.mockImplementation(async (key: string) => {
+        if (key === MAIN_FILE) {
+            throw new Error('write failed')
+        }
+    })
+    return undefined
 }
 
 //#endregion
@@ -346,6 +359,7 @@ beforeEach(() => {
     backupSink.writes.length = 0
     readDirMock.mockReset().mockImplementation(async () => [])
     readFileMock.mockReset().mockImplementation(async () => new Uint8Array())
+    fakeFs.reset()
     writeFileMock.mockClear()
     forageKeysMock.mockReset().mockImplementation(async () => [])
     forageGetItemMock.mockReset().mockImplementation(async () => null)
@@ -393,12 +407,47 @@ for (const platform of ['web', 'tauri'] as const) {
         })
 
         test('guard: a failed write of database.bin does not reach the main-file record', async () => {
-            failMainFileWrite()
+            const fault = failMainFileWrite()
 
             await loadBackupBytes(backupWithDatabase(`failed-${platform}`)).catch(() => { })
 
-            expect(mainFileWrites().length).toBeGreaterThan(0)
+            if (fault) {
+                expect(fault.fired).toBe(1)
+            } else {
+                expect(mainFileWrites().length).toBeGreaterThan(0)
+            }
             expect(noteMainFileBytesMock).not.toHaveBeenCalled()
         })
     })
 }
+
+describe('restoring a local backup on tauri replaces the main file atomically', () => {
+    const OLD_MAIN = encoder.encode('old-main-file-bytes')
+
+    beforeEach(() => {
+        platformBox.isTauri = true
+        fakeFs.files.set(MAIN_FILE, OLD_MAIN.slice())
+    })
+
+    test('a write that fails part-way leaves the old main file byte-identical and reports the restore as failed', async () => {
+        const fault = fakeFs.failWritesOf(() => true)
+
+        await loadBackupBytes(backupWithDatabase('restore-fails'))
+
+        expect(fault.fired).toBe(1)
+        expect(hex(fakeFs.files.get(MAIN_FILE)!)).toBe(hex(OLD_MAIN))
+        expect(alertErrorMock).toHaveBeenCalledWith(language.restoreWriteFailed)
+        expect(noteMainFileBytesMock).not.toHaveBeenCalled()
+        expect(fakeFs.listing('database')).toEqual(['database.bin'])
+    })
+
+    test('a successful write leaves the new bytes at the main path, no temp file, and never opens the main path for writing', async () => {
+        await loadBackupBytes(backupWithDatabase('restore-succeeds'))
+
+        const noted = noteMainFileBytesMock.mock.calls[0][0]
+        expect(hex(fakeFs.files.get(MAIN_FILE)!)).toBe(hex(noted))
+        expect(hex(noted)).not.toBe(hex(OLD_MAIN))
+        expect(fakeFs.listing('database')).toEqual(['database.bin'])
+        expect(fakeFs.writesTo(MAIN_FILE)).toHaveLength(0)
+    })
+})

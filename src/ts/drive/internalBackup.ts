@@ -1,10 +1,11 @@
-import { BaseDirectory, readDir, readFile, writeFile } from "@tauri-apps/plugin-fs";
+import { BaseDirectory, readDir, readFile } from "@tauri-apps/plugin-fs";
 import { alertClear, alertConfirm, alertError, alertSelect, alertWait } from "../alert";
 import { forageStorage, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
 import { decodeRisuSave } from "../storage/risuSave";
 import { noteMainFileBytes } from "../storage/mainFileRecord";
+import { writeFileAtomic } from "../storage/tauriAtomicWrite";
 import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
@@ -153,7 +154,7 @@ export async function loadInternalBackup() {
 
         writeAttempted = true
         if (isTauri) {
-            await writeFile(MAIN_DATABASE_KEY, bytes, { baseDir: BaseDirectory.AppData })
+            await writeFileAtomic(MAIN_DATABASE_KEY, bytes)
         } else {
             await forageStorage.setItem(MAIN_DATABASE_KEY, bytes)
         }

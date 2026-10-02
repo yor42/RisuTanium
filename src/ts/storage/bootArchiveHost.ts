@@ -1,5 +1,5 @@
 import * as tauriOs from '@tauri-apps/plugin-os'
-import { BaseDirectory, readFile, writeFile } from '@tauri-apps/plugin-fs'
+import { BaseDirectory, readFile } from '@tauri-apps/plugin-fs'
 import { acquireExclusiveStorageMigrationLock, forageStorage, locksSupported } from '../globalApi.svelte'
 import { readColdStorageItem, setColdStorageItem } from '../process/coldstorage.svelte'
 import { isAppInitiatedReload } from '../reloadGuard'
@@ -15,6 +15,7 @@ import {
     resetArchiveStrikes,
 } from './bootArchiveMemo'
 import type { BootArchiveDeps, BootArchiveEnvironment, BootArchiveHost } from './bootArchivePass'
+import { writeFileAtomic } from './tauriAtomicWrite'
 
 /**
  * The production binding of the boot archive pass's effects: the lock binding,
@@ -75,7 +76,7 @@ export async function createProductionBootArchiveDeps(host: BootArchiveHost): Pr
         },
         writeMainFile: async (bytes) => {
             if (host === 'tauri') {
-                await writeFile(MAIN_FILE, bytes, { baseDir: BaseDirectory.AppData })
+                await writeFileAtomic(MAIN_FILE, bytes)
                 return
             }
             await forageStorage.setItem(MAIN_FILE, bytes)
