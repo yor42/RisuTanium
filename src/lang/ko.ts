@@ -73,6 +73,8 @@ export const languageKorean = {
             `${source}을(를) 완전히 읽을 수 없어 콜드 스토리지 정리가 중단되었으며, 삭제된 항목은 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요. 계속 발생하면 정리를 실행하지 마세요.`,
         "coldStorageCleanupBlobUnreadable": (characterName: string, source: string) =>
             `콜드 스토리지 정리가 중단되었습니다: ${source}에서 사용하는 ${characterName || "알 수 없는 캐릭터"}의 콜드 스토리지 데이터가 없거나 읽을 수 없어 삭제된 항목은 없습니다.`,
+        "coldStorageCleanupChatUnreadable": (characterName: string, source: string) =>
+            `콜드 스토리지 정리가 중단되었습니다: ${source}에 있는 ${characterName || "알 수 없는 캐릭터"}의 채팅에서 연결된 보관된 채팅을 읽을 수 없어 삭제된 항목은 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요. 해당 채팅을 읽을 수 있게 될 때까지 정리는 여기서 계속 중단되며 아무것도 삭제하지 않습니다.`,
         "coldStorageCleanupStopped": (reason: string, deleted: number, failed: number) =>
             `${reason}\n\n정리가 도중에 중단되었습니다: ${deleted}개 항목이 삭제되었습니다${failed > 0 ? `, ${failed}개 항목은 삭제하지 못했습니다` : ""}.`,
         "coldStorageCleanupPartial": (deleted: number, failed: number) =>

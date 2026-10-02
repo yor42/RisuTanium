@@ -29,7 +29,8 @@ type Slot = character | groupChat
  * Why a unit could not be used: there is no usable character in it
  * (`missing`), the storage failed to read it in a way that may work later
  * (`unreadable`), this page offers no storage for archived data
- * (`unavailable`), the stored copy does not decode (`damaged`), it holds a
+ * (`unavailable`), the stored copy does not decode or its key cannot be a
+ * storage name (`damaged`), it holds a
  * character with another `chaId` than the placeholder (`mismatch`), or the
  * `chaId` is held by several characters (`ambiguous`). Only `missing`,
  * `mismatch` and `ambiguous` are worded as possible data loss
@@ -41,8 +42,8 @@ export type ColdRestoreFailure = 'missing' | 'unreadable' | 'unavailable' | 'dam
  * The outcome of reading a stub's character without installing it. An
  * `unreadable` outcome is any failed read; its optional `kind` says the read
  * was one that cannot succeed here (`unavailable`) or whose bytes do not
- * decode (`damaged`), and only changes the reason, and so the wording, of a
- * refusal (`restoreFailureReason`).
+ * decode or whose key cannot be a storage name (`damaged`), and only changes
+ * the reason, and so the wording, of a refusal (`restoreFailureReason`).
  */
 export type ColdCopyOutcome =
     | { status: 'ok', character: Slot }
@@ -252,8 +253,9 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
  * archived placeholder, by the full character in its unit.
  *
  * The unit is read through `readColdStorageItem`, so a missing unit, one that
- * cannot be read now, a page with no storage for archived data and a copy
- * that does not decode are told apart to the user; only a missing, mismatched
+ * cannot be read now, a page with no storage for archived data, and a copy
+ * that does not decode or whose key cannot be a storage name are told apart
+ * to the user; only a missing, mismatched
  * or shared unit claims the data may be lost. The install lands only in the
  * slot found after the read (see `ColdRestoreOptions.byChaId`), and only when
  * the unit's character carries that slot's `chaId` (the placeholder never

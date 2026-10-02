@@ -1,6 +1,7 @@
 import { BaseDirectory, exists, readDir } from "@tauri-apps/plugin-fs"
 import { forageStorage } from "../globalApi.svelte"
 import { isNodeServer, isTauri } from "../platform"
+import { isSafeColdStorageKey } from "../process/coldStorageKey"
 
 /**
  * What is stored on the current backend, as two sets.
@@ -51,17 +52,29 @@ async function listOpfsUnits(): Promise<string[]> {
     return keys
 }
 
+/** The unit names that may be unit keys: a stored name the key rule rejects is never listed, so it is never a candidate for deletion. */
+function safeUnitKeys(names: Iterable<string>): Set<string> {
+    const keys = new Set<string>()
+    for (const name of names) {
+        if (isSafeColdStorageKey(name)) {
+            keys.add(name)
+        }
+    }
+    return keys
+}
+
 /**
  * Lists the units and the assets on the current backend right now. Rejects
  * when either listing cannot be taken. A Node server answers one directory
- * listing that serves both.
+ * listing that serves both. Only stored names that can be unit keys
+ * (`isSafeColdStorageKey`) are listed as units.
  */
 export async function takeStorageListing(): Promise<StorageListing> {
     if (isTauri) {
         const unitNames = await listTauriDirectory('coldstorage')
         const assetNames = await listTauriDirectory('assets')
         return {
-            units: new Set(unitNames.filter((name) => name.endsWith(UNIT_JSON_SUFFIX)).map((name) => name.slice(0, -UNIT_JSON_SUFFIX.length))),
+            units: safeUnitKeys(unitNames.filter((name) => name.endsWith(UNIT_JSON_SUFFIX)).map((name) => name.slice(0, -UNIT_JSON_SUFFIX.length))),
             assets: new Set(assetNames.map((name) => ASSET_PREFIX + name)),
         }
     }
@@ -69,11 +82,11 @@ export async function takeStorageListing(): Promise<StorageListing> {
     const assets = new Set(keys.filter((key) => key.startsWith(ASSET_PREFIX)))
     if (isNodeServer) {
         return {
-            units: new Set(keys.filter((key) => key.startsWith(UNIT_PREFIX)).map((key) => key.slice(UNIT_PREFIX.length))),
+            units: safeUnitKeys(keys.filter((key) => key.startsWith(UNIT_PREFIX)).map((key) => key.slice(UNIT_PREFIX.length))),
             assets,
         }
     }
-    return { units: new Set(await listOpfsUnits()), assets }
+    return { units: safeUnitKeys(await listOpfsUnits()), assets }
 }
 
 /**

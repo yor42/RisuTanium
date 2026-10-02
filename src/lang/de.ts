@@ -73,6 +73,8 @@ export const languageGerman = {
             `Die Kaltlager-Bereinigung wurde gestoppt, weil der Lesevorgang für ${source} nicht vollständig abgeschlossen werden konnte, daher wurde nichts gelöscht. Laden Sie die Seite neu und versuchen Sie es erneut; wenn das weiterhin auftritt, führen Sie die Bereinigung nicht aus.`,
         "coldStorageCleanupBlobUnreadable": (characterName: string, source: string) =>
             `Die Kaltlager-Bereinigung wurde gestoppt: Die Kaltlagerdaten für ${characterName || "einen unbekannten Charakter"} (benötigt für ${source}) fehlen oder sind nicht lesbar, daher wurde nichts gelöscht.`,
+        "coldStorageCleanupChatUnreadable": (characterName: string, source: string) =>
+            `Die Kaltlager-Bereinigung wurde gestoppt: Ein archivierter Chat, der in ${source} mit den Chats für ${characterName || "einen unbekannten Charakter"} verknüpft ist, konnte nicht gelesen werden, daher wurde nichts gelöscht. Laden Sie die Seite neu und versuchen Sie es erneut. Solange dieser Chat nicht gelesen werden kann, wird die Bereinigung hier immer wieder stoppen, ohne etwas zu löschen.`,
         "coldStorageCleanupStopped": (reason: string, deleted: number, failed: number) =>
             `${reason}\n\nDie Bereinigung wurde auf halbem Weg gestoppt: ${deleted} Element(e) wurden gelöscht${failed > 0 ? ` und ${failed} Element(e) konnten nicht gelöscht werden` : ""}.`,
         "coldStorageCleanupPartial": (deleted: number, failed: number) =>

@@ -1036,7 +1036,10 @@ interface PluginStorage {
      * @returns Promise that resolves when item is stored
      *
      * **Fork-specific note (not upstream RisuAI):** on this fork, this can
-     * also *reject* if the underlying storage write fails. Upstream RisuAI
+     * also *reject* if the underlying storage write fails, or if the item's
+     * existing archive is also linked from elsewhere in the database (a
+     * character, a chat, or another plugin storage key): such a write is
+     * refused rather than overwriting that archive. Upstream RisuAI
      * does not document this happening, so plugins that must run on both
      * should wrap calls in `try/catch` -- doing so is harmless on upstream
      * even if it never rejects there. Do not rely on the rejection actually

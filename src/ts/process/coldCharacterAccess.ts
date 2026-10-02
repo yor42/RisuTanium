@@ -66,7 +66,8 @@ export function alertNamedRestoreFailure(stub: Slot, reason: ColdRestoreFailure)
 /**
  * The full character in `stub`'s unit as an independent copy. `stub` stays in
  * its slot and nothing is marked for save. On a missing, unreadable (including
- * a page with no storage for archived data and a copy that does not decode) or
+ * a page with no storage for archived data, a copy that does not decode and a
+ * key that cannot be a storage name) or
  * mismatched unit the user gets one alert naming the character, worded for
  * that reason, and `message` is what the caller reports.
  */

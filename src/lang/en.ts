@@ -74,6 +74,8 @@ export const languageEnglish = {
             `Cold storage cleanup was stopped because ${source} could not be read completely, so nothing was deleted. Reload the page and try again; if it keeps happening, do not run cleanup.`,
         coldStorageCleanupBlobUnreadable: (characterName: string, source: string) =>
             `Cold storage cleanup was stopped: the cold storage data of ${characterName || "an unknown character"} that is used by ${source} is missing or unreadable, so nothing was deleted.`,
+        coldStorageCleanupChatUnreadable: (characterName: string, source: string) =>
+            `Cold storage cleanup was stopped: an archived chat linked from the chats of ${characterName || "an unknown character"} in ${source} could not be read, so nothing was deleted. Reload the page and try again. Until that chat can be read, cleanup will keep stopping here without deleting anything.`,
         coldStorageCleanupStopped: (reason: string, deleted: number, failed: number) =>
             `${reason}\n\nThe cleanup stopped partway: ${deleted} item(s) were deleted${failed > 0 ? ` and ${failed} item(s) could not be deleted` : ""}.`,
         coldStorageCleanupPartial: (deleted: number, failed: number) =>

@@ -23,6 +23,11 @@
  *   failure stays `'error'`: the merge can fail from the live chat as well.
  * - `collectColdStorageBackupPayloads` takes the same branch for a no-storage,
  *   a damaged and a plain-error read of the same unit.
+ * - A key that cannot become a storage name (`isSafeColdStorageKey`) reads as
+ *   an error of kind `damaged` on every backend, even where the backend would
+ *   report the spliced name as absent (a `/` on Tauri, an over-long name on
+ *   the Node server). The key rule itself is pinned in
+ *   `coldStorageKeyRule.test.ts`.
  *
  * Tests whose title starts with "guard:" protect behaviour that holds whatever
  * the kind of the read (status, untouched chat, left-out unit); the others pin
@@ -54,6 +59,13 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
             getItem: async (key: string) => {
                 if (h.nodeFailure) {
                     throw h.nodeFailure
+                }
+                // The real server answers a file name longer than the file
+                // system allows (the key travels hex-encoded, 255 bytes at
+                // most) with an empty 200, exactly as it does for a name that
+                // is absent.
+                if (new TextEncoder().encode(key).length * 2 > 255) {
+                    return null
                 }
                 const bytes = h.node.get(key)
                 return bytes && bytes.length > 0 ? bytes : null
@@ -562,5 +574,64 @@ describe('the backup collector takes one branch for every unreadable unit', () =
 
         expect(result.missingKeys).toEqual([])
         expect(result.payloads).toEqual([])
+    })
+})
+
+describe('a key that cannot become a storage name is never read as missing', () => {
+    // 116 bytes: its hex-encoded Node file name is 2 * (12 + 116) = 256 bytes.
+    const OVERLONG_KEY = 'k'.repeat(116)
+
+    test('regression: on tauri a key holding a slash, whose read fails with os error 2 while exists() says false, is an error of kind damaged', async () => {
+        selectBackend('tauri')
+
+        const result = await readColdStorageItem('a/b')
+
+        expect(result.status).toBe('error')
+        expect(kindOf(result)).toBe('damaged')
+    })
+
+    test('regression: on node a key whose hex-encoded name is over 255 bytes, which the server answers with an empty 200, is an error of kind damaged', async () => {
+        selectBackend('node')
+
+        const result = await readColdStorageItem(OVERLONG_KEY)
+
+        expect(result.status).toBe('error')
+        expect(kindOf(result)).toBe('damaged')
+    })
+
+    test('guard: the same read of a key the rule accepts is still missing when the unit is absent', async () => {
+        selectBackend('tauri')
+        expect(await readColdStorageItem('absent-key')).toEqual({ status: 'missing' })
+        selectBackend('node')
+        expect(await readColdStorageItem('absent-key')).toEqual({ status: 'missing' })
+        selectBackend('opfs')
+        expect(await readColdStorageItem('absent-key')).toEqual({ status: 'missing' })
+    })
+
+    test('contract: preLoadChat on a pointer whose key is rejected resolves damaged and leaves the chat untouched', async () => {
+        const chat = installChat(pointerChat('a/b'))
+        const before = snapshot(chat)
+
+        expect(await preLoadChat(0, 0)).toBe('damaged')
+        expect(snapshot(chat)).toBe(before)
+    })
+
+    test('guard: a backup of a stub whose unit key is rejected reports that key as unavailable and names the character', async () => {
+        const stub = {
+            chaId: 'cha-stub',
+            name: 'Alice',
+            type: 'character',
+            chatPage: 0,
+            coldstorage: 'a/b',
+            coldStoragedChats: [],
+            chats: [{ id: 'chat-0', message: [{ time: 1, data: '', role: 'char' }], note: '', name: '', localLore: [] }],
+        }
+        const db = { characters: [stub], pluginCustomStorage: {} } as unknown as Pick<Database, 'characters' | 'pluginCustomStorage'>
+
+        const result = await collectColdStorageBackupPayloads(db)
+
+        expect(result.payloads).toEqual([])
+        expect(result.missingKeys).toEqual(['a/b'])
+        expect(result.owners?.get('a/b')).toEqual(['Alice'])
     })
 })

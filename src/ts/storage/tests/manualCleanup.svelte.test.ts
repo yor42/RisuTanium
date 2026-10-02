@@ -7,7 +7,9 @@
  * A unit is deleted only when it was present in this page's load-time listing
  * AND in the listing taken when the run starts AND nothing reads it: not live
  * memory, not the committed main file freshly read from storage, not any
- * retained snapshot, and not a blob reached from any of them. An asset is
+ * retained snapshot, not a blob reached from any of them, and not an archived
+ * chat reached from any of them, directly or through a chain of archived chats
+ * that name each other by pointer or legacy error text. An asset is
  * deleted only when it was present at load and at the start and nothing reads
  * it: live memory (read again just before each batch), the characters inside
  * the blobs the trees point at, and the characters stored in full in the
@@ -15,7 +17,9 @@
  * asset.
  * The run holds the storage exclusively, refuses while anything else is
  * writing or the main file moved, aborts on anything it cannot read, deletes in
- * bounded batches and reports every failure.
+ * bounded batches and reports every failure. An archived chat that is not
+ * stored, or is stored but damaged, is the one thing it can read around: the
+ * chat is kept by name and followed no further.
  *
  * The real `cleanColdStorage`, `globalApi.svelte.ts`, `RisuSaveEncoder`,
  * `NodeStorage`, `storageTabLocks` and `chatOrigin` are driven; only platform
@@ -31,6 +35,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
+import { language } from 'src/lang'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from './fakeWebLocks'
 import { BLOCK, FakeNodeServer, composeSave, corruptBlockPayload, type SavePart } from './manualCleanupHarness'
@@ -84,15 +89,21 @@ const h = vi.hoisted(() => {
             afterRemove: undefined as undefined | ((name: string) => void),
         },
         opfsFail: new Set<string>(),
+        /** File names whose read fails with an error that is not "not found". */
+        opfsReadFail: new Set<string>(),
         opfsLog: { reads: [] as string[], removed: [] as string[], inFlight: 0, peakInFlight: 0 },
         /** The Tauri app-data directory. */
         fs: new Map<string, Uint8Array>(),
+        /** Every path `readFile` was asked for, in order. */
+        fsReads: [] as string[],
         fsFail: new Set<string>(),
         /** Reads or removals of a path that reject with `message`; `removeFile` also takes the file out first. */
         fsReadError: new Map<string, { message: string, removeFile: boolean }>(),
         fsRemoveError: new Map<string, { message: string, removeFile: boolean }>(),
         /** Paths `exists()` reports as absent whatever the store holds. */
         fsHidden: new Set<string>(),
+        /** Paths whose `exists()` rejects. */
+        fsExistsError: new Set<string>(),
         /** The persistent block cache behind `risuSaveCache`. */
         risuCache: new Map<string, unknown>(),
         keyPair: undefined as undefined | CryptoKeyPair,
@@ -351,6 +362,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     }),
     readFile: vi.fn(async (path: string) => {
         const p = normalizeFsPath(path)
+        h.fsReads.push(p)
         const injected = h.fsReadError.get(p)
         if (injected) {
             if (injected.removeFile) {
@@ -384,7 +396,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         }
         h.fs.delete(p)
     }),
-    exists: vi.fn(async (path: string) => !h.fsHidden.has(normalizeFsPath(path)) && h.fs.has(normalizeFsPath(path))),
+    // A directory exists while any file lies under it, as on a real file system where it is only created by its first file.
+    exists: vi.fn(async (path: string) => {
+        const p = normalizeFsPath(path)
+        if (h.fsExistsError.has(p)) {
+            throw new Error(`simulated exists failure for ${p}`)
+        }
+        return !h.fsHidden.has(p) && (h.fs.has(p) || Array.from(h.fs.keys()).some((key) => key.startsWith(p + '/')))
+    }),
     mkdir: vi.fn(async () => {}),
 }))
 
@@ -417,6 +436,10 @@ const opfsDirectory = {
         h.opfsLog.reads.push(name)
         h.opfsLog.inFlight++
         h.opfsLog.peakInFlight = Math.max(h.opfsLog.peakInFlight, h.opfsLog.inFlight)
+        if (h.opfsReadFail.has(name)) {
+            h.opfsLog.inFlight--
+            throw new Error(`simulated OPFS read failure for ${name}`)
+        }
         if (!h.opfs.has(name)) {
             h.opfsLog.inFlight--
             throw new FakeNotFoundError(`not found: ${name}`)
@@ -510,15 +533,18 @@ function resetWorld(): void {
     h.opfsHooks.onRemove = undefined
     h.opfsHooks.afterRemove = undefined
     h.opfsFail.clear()
+    h.opfsReadFail.clear()
     h.opfsLog.reads = []
     h.opfsLog.removed = []
     h.opfsLog.inFlight = 0
     h.opfsLog.peakInFlight = 0
     h.fs.clear()
+    h.fsReads = []
     h.fsFail.clear()
     h.fsReadError.clear()
     h.fsRemoveError.clear()
     h.fsHidden.clear()
+    h.fsExistsError.clear()
     h.risuCache.clear()
 }
 
@@ -1857,5 +1883,609 @@ describe('assets', () => {
         await run()
 
         expect(assetKeys()).toContain('assets/present-at-load.png')
+    })
+})
+
+describe('unit names the key rule rejects', () => {
+    const PLATFORMS: Platform[] = ['web', 'tauri', 'node']
+    const UUID = '3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10'
+    /** Stored names that cannot be unit keys, none containing a path separator so every fake directory can list them. */
+    const REJECTED_NAMES = ['a:b', 'a<b', 'k'.repeat(101)]
+
+    describe.each(PLATFORMS)('on %s', (which) => {
+        test('guard: deletes a listed, unreferenced <uuid>_accessMeta unit', async () => {
+            await setup({ platform: which })
+            seedUnit(UUID + '_accessMeta')
+            seedUnit('unreferenced-unit')
+            setLive(makeDb([]))
+            await prime()
+
+            await run()
+
+            const after = await units()
+            expect(after).not.toContain(UUID + '_accessMeta')
+            expect(after).not.toContain('unreferenced-unit')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('the load-time listing and the start listing leave out a stored name the rule rejects', async () => {
+            await setup({ platform: which })
+            for (const name of REJECTED_NAMES) {
+                seedUnit(name)
+            }
+            seedUnit('plain-unit')
+            setLive(makeDb([]))
+            await prime()
+
+            expect([...ctx.listing.getLoadTimeListing()!.units]).toEqual(['plain-unit'])
+            expect([...(await ctx.listing.takeStorageListing()).units]).toEqual(['plain-unit'])
+        })
+
+        test('a run neither deletes nor reports a stored name the rule rejects, and still deletes the unreferenced unit beside it', async () => {
+            await setup({ platform: which })
+            for (const name of REJECTED_NAMES) {
+                seedUnit(name)
+            }
+            seedUnit('unreferenced-unit')
+            setLive(makeDb([]))
+            await prime()
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(REJECTED_NAMES))
+            expect(after).not.toContain('unreferenced-unit')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('removeUnitBatch counts a rejected key as failed and removes nothing at the path it would splice to', async () => {
+            await setup({ platform: which })
+            // A file exists at the path the rejected key `a:b` would splice to; the key must not reach it.
+            seedUnit('a:b')
+            seedUnit('plain-unit')
+            const { removeUnitBatch } = await import('src/ts/storage/manualCleanup')
+
+            const failed = await removeUnitBatch(['a:b', 'plain-unit', 'a<b', ''], 0, 4)
+
+            expect(failed).toBe(3)
+            const after = await units()
+            expect(after).toContain('a:b')
+            expect(after).not.toContain('plain-unit')
+        })
+
+        test('removeUnitBatch makes no backend call when every key is rejected', async () => {
+            await setup({ platform: which })
+            seedUnit('a:b')
+            const { removeUnitBatch } = await import('src/ts/storage/manualCleanup')
+            h.opfsLog.removed = []
+            server.requests = []
+
+            expect(await removeUnitBatch(['a:b', 'c:d'], 0, 2)).toBe(2)
+
+            expect(h.opfsLog.removed).toEqual([])
+            expect(server.requestsTo('/api/remove')).toEqual([])
+            expect(await units()).toContain('a:b')
+        })
+    })
+})
+
+describe('archived chats: the clean-up follows what they refer to', () => {
+    const ALL_PLATFORMS: Platform[] = ['web', 'tauri', 'node']
+
+    const pointerMessage = (key: string) => coldChat('inner', key).message[0]
+    const errorTextMessage = (key: string) => errorTextChat('inner', key).message[0]
+    const REFERENCES = [
+        ['a pointer', pointerMessage],
+        ['legacy error text', errorTextMessage],
+    ] as const
+
+    /** A chat unit whose first message is `firstMessage`. */
+    function chatUnitWith(firstMessage: unknown) {
+        return { ...CHAT_VALUE, message: [firstMessage, ...CHAT_VALUE.message] }
+    }
+
+    /** Bytes that are stored but do not decode, so a read of the unit is `damaged`. */
+    function seedUndecodableUnit(key: string): void {
+        const bytes = new Uint8Array([1, 2, 3, 4])
+        if (platform === 'node') {
+            server.seed('coldstorage/' + key, bytes)
+        } else if (platform === 'tauri') {
+            h.fs.set('coldstorage/' + key + '.json', bytes)
+        } else {
+            h.opfs.set(opfsName(key), bytes)
+        }
+    }
+
+    /** Makes every read of the unit fail with an error that is neither "missing" nor "damaged". */
+    function breakRead(key: string): void {
+        if (platform === 'node') {
+            server.readFailures.add('coldstorage/' + key)
+        } else if (platform === 'tauri') {
+            h.fsReadError.set('coldstorage/' + key + '.json', { message: 'Access is denied. (os error 5)', removeFile: false })
+        } else {
+            h.opfsReadFail.add(opfsName(key))
+        }
+    }
+
+    function readsOf(key: string): number {
+        if (platform === 'node') {
+            const hex = Buffer.from('coldstorage/' + key, 'utf-8').toString('hex')
+            return server.requestsTo('/api/read').filter((r) => r.headers['file-path'] === hex).length
+        }
+        if (platform === 'tauri') {
+            return h.fsReads.filter((path) => path === 'coldstorage/' + key + '.json').length
+        }
+        return h.opfsLog.reads.filter((name) => name === opfsName(key)).length
+    }
+
+    const aliceHolding = (key: string) => makeDb([fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', key)] })])
+
+    describe.each(ALL_PLATFORMS)('on %s', (which) => {
+        test.each(REFERENCES)('keeps the unit that an archived chat in the committed main file names by %s', async (_label, reference) => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(reference('unit-v')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            const after = await units()
+            expect(after).toContain('unit-u')
+            expect(after).toContain('unit-v')
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('follows a chain that starts at a chat of the committed main file whose first message is legacy error text', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(makeDb([fullCharacter('char-a', 'Alice', { chats: [errorTextChat('chat-1', 'unit-u')] })]))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('keeps the unit that an archived chat names when the chat is reached through a stub blob', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            await putBlob('blob-b', fullCharacter('stub-cha', 'Stubby', { chats: [coldChat('inner-chat', 'unit-u')] }))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(makeDb([stubCharacter('stub-cha', 'Stubby', 'blob-b')]))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['blob-b', 'unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('keeps the unit that an archived chat names when only a retained snapshot reaches the chat', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(makeDb([]))
+            storeSnapshot(17000000001, await encodeTree(aliceHolding('unit-u')))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('keeps the unit that an archived chat names when only live memory reaches the chat', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            seedUnit('orphan-o')
+            setLive(aliceHolding('unit-u'))
+            await prime(makeDb([]))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('keeps the unit that an archived chat names when the chat unit is a legacy bare message array', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', [errorTextMessage('unit-v')])
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+        })
+
+        test.each(REFERENCES)('keeps every unit of a chain of archived chats linked by %s', async (_label, reference) => {
+            await setup({ platform: which })
+            await putUnit('unit-w')
+            await putUnit('unit-v', chatUnitWith(reference('unit-w')))
+            await putUnit('unit-u', chatUnitWith(reference('unit-v')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v', 'unit-w']))
+            expect(after).not.toContain('orphan-o')
+        })
+
+        test('terminates on archived chats that name each other, keeps both and reads each once', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            await putUnit('unit-v', chatUnitWith(pointerMessage('unit-u')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+            expect([readsOf('unit-u'), readsOf('unit-v')]).toEqual([1, 1])
+        })
+
+        test.each([
+            ['the plugin slot is in an earlier tree than the chat link', 'plugin first'],
+            ['the plugin slot is in a later tree than the chat link', 'link first'],
+        ] as const)('reads and follows a unit that is both a plugin slot and a chat link when %s', async (_label, order) => {
+            await setup({ platform: which })
+            await putUnit('unit-w')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-w')))
+            seedUnit('orphan-o')
+            const pluginTree = makeDb([], { pluginCustomStorage: { _coldplugin: { slot: 'unit-u' } } })
+            const linkTree = aliceHolding('unit-u')
+            if (order === 'plugin first') {
+                setLive(linkTree)
+                await prime(pluginTree)
+            } else {
+                setLive(pluginTree)
+                await prime(linkTree)
+            }
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-w']))
+            expect(after).not.toContain('orphan-o')
+        })
+
+        test('guard: does not read the content of a plugin unit for references', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-w')
+            await putUnit('plugin-unit', { message: [pointerMessage('unit-w')] })
+            seedUnit('orphan-o')
+            setLive(makeDb([], { pluginCustomStorage: { _coldplugin: { slot: 'plugin-unit' } } }))
+            await prime()
+
+            await run()
+
+            const after = await units()
+            expect(after).toContain('plugin-unit')
+            expect(after).not.toContain('unit-w')
+            expect(after).not.toContain('orphan-o')
+            expect(readsOf('plugin-unit')).toBe(0)
+        })
+
+        test('guard: a plugin unit that cannot be read does not stop the run', async () => {
+            await setup({ platform: which })
+            await putUnit('plugin-unit', { some: 'plugin value' })
+            seedUnit('orphan-o')
+            breakRead('plugin-unit')
+            setLive(makeDb([], { pluginCustomStorage: { _coldplugin: { slot: 'plugin-unit' } } }))
+            await prime()
+
+            await run()
+
+            const after = await units()
+            expect(after).toContain('plugin-unit')
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('guard: an archived chat that is not on disk is kept by name and the run carries on', async () => {
+            await setup({ platform: which })
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            expect(await units()).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('guard: a damaged archived chat is kept, nothing is followed from it and the run carries on', async () => {
+            await setup({ platform: which })
+            seedUndecodableUnit('unit-u')
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+            expect(await ctx.cold.readColdStorageItem('unit-u')).toMatchObject({ status: 'error', kind: 'damaged' })
+
+            await run()
+
+            const after = await units()
+            expect(after).toContain('unit-u')
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('keeps a damaged archived chat that a chain reaches, follows nothing from it and carries on', async () => {
+            await setup({ platform: which })
+            seedUndecodableUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            const after = await units()
+            expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test.each([
+            ['a plain string', 'just a string'],
+            ['a number', 42],
+            ['null', null],
+            ['an object of another shape', { unrelated: true }],
+        ])('guard: a reachable unit holding %s is kept and the run carries on', async (_label, value) => {
+            await setup({ platform: which })
+            await putUnit('unit-u', value)
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            const after = await units()
+            expect(after).toContain('unit-u')
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test.each([
+            ['a chat in the committed main file', 'main'],
+            ['a chat unit', 'unit'],
+        ] as const)('guard: error text in %s naming a key that cannot be a storage name does not stop the run', async (_label, where) => {
+            await setup({ platform: which })
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            if (where === 'main') {
+                await prime(makeDb([fullCharacter('char-a', 'Alice', { chats: [errorTextChat('chat-1', 'a/b')] })]))
+            } else {
+                await putUnit('unit-u', chatUnitWith(errorTextMessage('a/b')))
+                await prime(aliceHolding('unit-u'))
+            }
+
+            await run()
+
+            const after = await units()
+            expect(after).not.toContain('orphan-o')
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('guard: a stub whose blob key cannot be a storage name stops the run before any deletion', async () => {
+            await setup({ platform: which })
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(makeDb([stubCharacter('stub-cha', 'Stubby', 'a/b')]))
+
+            await run()
+
+            expect(await units()).toContain('orphan-o')
+            expect(errorMessages().some((m) => m.includes('Stubby'))).toBe(true)
+        })
+
+        const SOURCES = [
+            ['the committed main file', 'main', () => language.errors.coldStorageCleanupSourceMain],
+            ['live memory', 'live', () => language.errors.coldStorageCleanupSourceLive],
+            ['a retained snapshot', 'snapshot', () => 'dbbackup-17654321.bin'],
+        ] as const
+
+        test.each(SOURCES)('stops before any deletion, naming the character and the source, when an archived chat reached from %s cannot be read', async (_label, where, sourceText) => {
+            await setup({ platform: which })
+            await putUnit('unit-u')
+            await putUnit('unit-v')
+            seedUnit('orphan-o')
+            breakRead('unit-u')
+            if (where === 'main') {
+                setLive(makeDb([]))
+                await prime(aliceHolding('unit-u'))
+            } else if (where === 'live') {
+                setLive(aliceHolding('unit-u'))
+                await prime(makeDb([]))
+            } else {
+                setLive(makeDb([]))
+                await prime(makeDb([]))
+                storeSnapshot(17654321, await encodeTree(aliceHolding('unit-u')))
+            }
+
+            await run()
+
+            expect(await units()).toEqual(expect.arrayContaining(['orphan-o', 'unit-u', 'unit-v']))
+            expect(errorMessages().some((m) => m.includes('Alice') && m.includes(sourceText()))).toBe(true)
+            expect(vi.mocked(ctx.alert.alertNormal)).not.toHaveBeenCalled()
+        })
+
+        test('stops before any deletion, naming the character the chain started from, when an archived chat deeper in a chain cannot be read', async () => {
+            await setup({ platform: which })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            seedUnit('orphan-o')
+            breakRead('unit-v')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+
+            await run()
+
+            expect(await units()).toEqual(expect.arrayContaining(['orphan-o', 'unit-u', 'unit-v']))
+            expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
+        })
+    })
+
+    // The stop comes from the read of the archived chat, so the assertion is on the stop notice. Nothing could be removed
+    // without a storage directory in any case, so the empty removal log is not what this test proves.
+    test('stops with a notice naming the character when the page has no storage for archived data', async () => {
+        await setup()
+        await putUnit('unit-u')
+        seedUnit('orphan-o')
+        setLive(makeDb([]))
+        await prime(aliceHolding('unit-u'))
+        const original = Object.getOwnPropertyDescriptor(navigator, 'storage')
+        Object.defineProperty(navigator, 'storage', { configurable: true, value: {} })
+
+        try {
+            await run()
+        } finally {
+            if (original) {
+                Object.defineProperty(navigator, 'storage', original)
+            }
+        }
+
+        expect(await units()).toEqual(expect.arrayContaining(['orphan-o', 'unit-u']))
+        expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
+        expect(h.opfsLog.removed).toEqual([])
+    })
+
+    describe('Tauri: a read that fails inside a units folder that does not exist', () => {
+        const UNIT_PATH = 'coldstorage/unit-u.json'
+        const ORPHAN_ASSET = 'assets/orphan.png'
+
+        async function arrange(): Promise<void> {
+            await setup({ platform: 'tauri' })
+            h.fs.set(ORPHAN_ASSET, new Uint8Array([9, 9]))
+            h.fsReadError.set(UNIT_PATH, { message: 'The system cannot find the path specified. (os error 3)', removeFile: false })
+            setLive(makeDb([]))
+            await prime(makeDb([fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', 'unit-u')] })]))
+        }
+
+        test('treats an archived chat as missing and carries on while the units folder does not exist', async () => {
+            await arrange()
+            expect(Array.from(h.fs.keys()).some((key) => key.startsWith('coldstorage/'))).toBe(false)
+
+            await run()
+
+            expect(h.fs.has(ORPHAN_ASSET)).toBe(false)
+            expect(errorMessages()).toEqual([])
+        })
+
+        test('guard: stops, naming the character, when the same read fails while the units folder exists', async () => {
+            await arrange()
+            seedUnit('other-unit')
+
+            await run()
+
+            expect(h.fs.has(ORPHAN_ASSET)).toBe(true)
+            expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
+        })
+
+        test('stops, naming the character, when the units folder is reported absent but units were listed at load', async () => {
+            await setup({ platform: 'tauri' })
+            await putUnit('unit-v')
+            await putUnit('unit-u', chatUnitWith(errorTextMessage('unit-v')))
+            seedUnit('orphan-o')
+            setLive(makeDb([]))
+            await prime(aliceHolding('unit-u'))
+            // `exists()` is also false when a present folder's metadata cannot be read; `readDir` still lists it.
+            h.fsHidden.add('coldstorage')
+            h.fsReadError.set(UNIT_PATH, { message: 'The network path was not found. (os error 64)', removeFile: false })
+
+            await run()
+
+            h.fsHidden.delete('coldstorage')
+            expect(await units()).toEqual(expect.arrayContaining(['unit-u', 'unit-v', 'orphan-o']))
+            expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
+        })
+
+        test('guard: stops when it cannot be told whether the units folder exists', async () => {
+            await arrange()
+            h.fsExistsError.add('coldstorage')
+
+            await run()
+
+            expect(h.fs.has(ORPHAN_ASSET)).toBe(true)
+            expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
+        })
+
+        test('guard: a blob read that fails while the units folder does not exist still stops the run', async () => {
+            await setup({ platform: 'tauri' })
+            h.fs.set(ORPHAN_ASSET, new Uint8Array([9, 9]))
+            h.fsReadError.set('coldstorage/blob-b.json', { message: 'The system cannot find the path specified. (os error 3)', removeFile: false })
+            setLive(makeDb([]))
+            await prime(makeDb([stubCharacter('stub-cha', 'Stubby', 'blob-b')]))
+
+            await run()
+
+            expect(h.fs.has(ORPHAN_ASSET)).toBe(true)
+            expect(errorMessages().some((m) => m.includes('Stubby'))).toBe(true)
+        })
+    })
+
+    test('reads every archived chat and blob exactly once, one at a time, and finishes reading before the listing and the first deletion', async () => {
+        await setup()
+        const cha = (n: number) => `blob-cha-${n}`
+        const blob = (n: number) => `shared-blob-${n}`
+        await putUnit('unit-v', chatUnitWith(pointerMessage('unit-u1')))
+        await putUnit('unit-u1', chatUnitWith(errorTextMessage('unit-v')))
+        await putUnit('unit-u2')
+        await putBlob(blob(1), fullCharacter(cha(1), 'Blobby 1', { chats: [coldChat('inner-1', 'unit-u1')] }))
+        await putBlob(blob(2), fullCharacter(cha(2), 'Blobby 2', { chats: [coldChat('inner-2', 'unit-u1'), coldChat('inner-3', 'unit-u2')] }))
+        seedUnit('orphan-o')
+        // Blob 1 and unit-u1 are reached from the live tree, the committed main file and two snapshots;
+        // blob 2 and unit-u2 only from the live tree.
+        setLive(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1)), stubCharacter(cha(2), 'Blobby 2', blob(2)), fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', 'unit-u1')] })]))
+        await prime(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1)), fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', 'unit-u1')] })]))
+        storeSnapshot(17000000001, await encodeTree(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1))])))
+        storeSnapshot(17000000002, await encodeTree(aliceHolding('unit-u1')))
+        h.opfsLog.reads = []
+        h.opfsLog.peakInFlight = 0
+        let readsAtListing: number | undefined
+        let readsAtFirstRemoval: number | undefined
+        h.opfsHooks.afterEntries = () => {
+            readsAtListing ??= h.opfsLog.reads.length
+        }
+        h.opfsHooks.onRemove = () => {
+            readsAtFirstRemoval ??= h.opfsLog.reads.length
+        }
+
+        await run()
+
+        expect([blob(1), blob(2), 'unit-u1', 'unit-u2', 'unit-v'].map(readsOf)).toEqual([1, 1, 1, 1, 1])
+        expect(h.opfsLog.peakInFlight).toBeLessThanOrEqual(1)
+        expect(readsAtListing).toBe(5)
+        expect(readsAtFirstRemoval).toBe(5)
+        const after = await units()
+        expect(after).toEqual(expect.arrayContaining(['unit-u1', 'unit-u2', 'unit-v']))
+        expect(after).not.toContain('orphan-o')
     })
 })

@@ -13,11 +13,12 @@ import {
 import { isNodeServer, isTauri } from "../platform"
 import { DBState, frozenSaveKeysStore, savingStoppedReason } from "../stores.svelte"
 import { isWorkInProgress } from "../process/chatOrigin"
-import { readColdStorageItem } from "../process/coldstorage.svelte"
-import { listColdDataKeysFromDb, listRecoverableErrorKeysFromDb } from "../process/coldstorageData"
+import { readColdStorageItem, type ColdStorageReadResult } from "../process/coldstorage.svelte"
+import { isSafeColdStorageKey } from "../process/coldStorageKey"
+import { listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, listRecoverableErrorKeysFromDb } from "../process/coldstorageData"
 import { isAppInitiatedReload } from "../reloadGuard"
 import type { Database } from "./database.svelte"
-import { getLoadTimeListing, takeStorageListing } from "./loadTimeListing"
+import { getLoadTimeListing, takeStorageListing, type StorageListing } from "./loadTimeListing"
 import { compareWithMainFileRecord } from "./mainFileRecord"
 import type { NodeStorage } from "./nodeStorage"
 import { decodeRisuSave } from "./risuSave"
@@ -30,15 +31,24 @@ import { decodeRisuSave } from "./risuSave"
  * listing taken when the run starts, so anything written after this page
  * loaded is never deleted. What then keeps them differs:
  * - A unit is kept when live memory, the committed main file (freshly read
- *   from storage) or any retained snapshot reaches it, directly or through the
- *   cold-storage blob of a stub in that tree.
+ *   from storage) or any retained snapshot reaches it: directly, through the
+ *   cold-storage blob of a stub in that tree, or through any chain of archived
+ *   chats, each naming the next by the pointer in, or the legacy load-error
+ *   text as, its first message. Every archived chat so reached is read once,
+ *   one at a time, before the start listing is taken and before the first
+ *   deletion, and only the keys it names are retained. A plugin storage unit
+ *   is a leaf whose content is never searched for references; a unit that a
+ *   chat also names is read like any other archived chat.
  * - An asset is kept when live memory references it (read again before every
  *   batch), when the committed main file's tree references it, or when a
  *   character inside any blob read for any tree (live, committed main or
  *   snapshot) references it. A retained snapshot's own characters, modules and
  *   personas do not keep an asset.
  * Anything that cannot be read completely stops the run before a single
- * deletion.
+ * deletion. The one exception is an archived chat (never a blob): one that is
+ * not stored, whose stored bytes do not decode, or whose key cannot be a
+ * storage name is kept by name and followed no further, and the run carries
+ * on. A chat whose read fails for any other reason stops the run.
  */
 
 /** Keys per delete decision. */
@@ -66,16 +76,38 @@ function characterDisplayName(cha: { name?: unknown, chaId?: unknown }): string 
     return name || (typeof cha.chaId === 'string' ? cha.chaId : '')
 }
 
+/** Where the chain that reached an archived chat began: the character it was reached from and the tree that holds that character. */
+interface ChatOrigin {
+    owner: string
+    source: string
+}
+
 /**
- * The units and assets recorded as not to be deleted, built tree by tree. Each
- * distinct blob is read once; a blob's summary is what a stub needs from it,
- * not the blob itself.
+ * The units and assets recorded as not to be deleted, built tree by tree and
+ * then extended through the archived chats those trees reach. Each distinct
+ * blob is read once; a blob's summary is what a stub needs from it, not the
+ * blob itself. Each distinct archived chat is read at most once, and only the
+ * keys it names are retained from it. The set only grows.
  */
 class KeepSet {
     units = new Set<string>()
     /** Asset basenames, as `getUncleanablesSync` reports them. */
     assets = new Set<string>()
     private blobs = new Map<string, BlobSummary>()
+    /**
+     * Archived chats still to be read, in the order they were reached. Only
+     * links that are not plugin slots are queued, so a plugin unit is read
+     * only when a chat links it too.
+     */
+    private chatQueue: { key: string, origin: ChatOrigin }[] = []
+    private chatQueued = new Set<string>()
+
+    private queueChat(key: string, origin: ChatOrigin): void {
+        if (!this.chatQueued.has(key)) {
+            this.chatQueued.add(key)
+            this.chatQueue.push({ key, origin })
+        }
+    }
 
     private async summarizeBlob(blobKey: string): Promise<BlobSummary> {
         const cached = this.blobs.get(blobKey)
@@ -102,7 +134,8 @@ class KeepSet {
 
     /**
      * Keeps the units `tree` reaches, directly and through the blob of each of
-     * its stubs, and the assets of the characters in those blobs. The assets
+     * its stubs, and the assets of the characters in those blobs, and queues the
+     * archived chats it reaches for `followArchivedChats`. The assets
      * `tree` references itself are kept only when `keepOwnAssets` is set. A stub
      * whose blob is missing, unreadable or belongs to another character stops
      * the run: what it holds cannot be known, so nothing can be deleted safely.
@@ -120,7 +153,16 @@ class KeepSet {
             this.units.add(key)
         }
         for (const cha of tree.characters ?? []) {
-            if (!cha?.coldstorage) {
+            if (!cha) {
+                continue
+            }
+            const origin: ChatOrigin = { owner: characterDisplayName(cha), source }
+            for (const root of listColdBackupRoots({ characters: [cha], pluginCustomStorage: {} })) {
+                if (root.kind !== 'plugin') {
+                    this.queueChat(root.key, origin)
+                }
+            }
+            if (!cha.coldstorage) {
                 continue
             }
             const blob = await this.summarizeBlob(cha.coldstorage)
@@ -130,11 +172,57 @@ class KeepSet {
             }
             for (const key of blob.units) {
                 this.units.add(key)
+                this.queueChat(key, origin)
             }
             for (const asset of blob.assets) {
                 this.assets.add(asset)
             }
         }
+    }
+
+    /**
+     * Reads every queued archived chat, one at a time, and keeps the units each
+     * names, by the pointer in or the legacy error text as the first message of
+     * a chat it holds, queueing those in turn until none is new (a chain of any
+     * depth, and a cycle, end here). A chat that is not stored (on Tauri that
+     * includes a failed read when `loadListing` held no unit and the units
+     * folder is reported absent), whose bytes do not decode or whose key cannot
+     * be a storage name is kept by name and followed no further, as is one that
+     * reads but holds nothing a chat unit holds. Any other read failure stops
+     * the run: what the chat names cannot be known. A key that is the blob of a
+     * stub was read as a blob and is not read again. Call it after every tree
+     * has been added, so that every blob is known.
+     */
+    async followArchivedChats(loadListing: StorageListing): Promise<void> {
+        for (let i = 0; i < this.chatQueue.length; i++) {
+            const { key, origin } = this.chatQueue[i]
+            if (this.blobs.has(key)) {
+                continue
+            }
+            let read: ColdStorageReadResult
+            try {
+                read = await readColdStorageItem(key)
+            } catch (error) {
+                read = { status: 'error', error }
+            }
+            if (read.status === 'missing' || (read.status === 'error' && read.kind === 'damaged')) {
+                continue
+            }
+            // With no unit listed at load, no unit is a deletion candidate, and archived chats add no assets to the keep set,
+            // so skipping a chat here cannot lead to a deletion.
+            if (read.status === 'error' && read.kind === undefined && loadListing.units.size === 0 && await isTauriUnitFolderAbsent()) {
+                continue
+            }
+            if (read.status === 'error') {
+                console.error(`Cold storage cleanup stopped: the archived chat ${key} reached from ${origin.owner} (${origin.source}) could not be read:`, read.error)
+                throw new CleanupStop(language.errors.coldStorageCleanupChatUnreadable(origin.owner, origin.source))
+            }
+            for (const inner of listInnerColdStorageKeys(read.value)) {
+                this.units.add(inner.key)
+                this.queueChat(inner.key, origin)
+            }
+        }
+        this.chatQueue = []
     }
 }
 
@@ -185,6 +273,28 @@ async function listSnapshotNames(): Promise<string[]> {
     return (await forageStorage.keys())
         .filter((key) => key.startsWith(keyPrefix) && key.endsWith('.bin'))
         .map((key) => key.slice(SNAPSHOT_DIR.length + 1))
+}
+
+/**
+ * What `exists()` reports for the Tauri `coldstorage` folder: true only when it
+ * resolves false, false when it resolves true or rejects. `exists()` is also
+ * false when the folder's metadata cannot be read, so a false here does not
+ * prove the folder is absent; the caller therefore also requires a load-time
+ * listing with no unit in it. The first unit write creates the folder, so on a
+ * profile that never archived a unit it is absent, and Windows then fails a
+ * read of a file inside it with "(os error 3)", a path that was not found,
+ * instead of the "(os error 2)" that classifies as missing. POSIX reports
+ * "(os error 2)" there, which is already classified as missing.
+ */
+async function isTauriUnitFolderAbsent(): Promise<boolean> {
+    if (!isTauri) {
+        return false
+    }
+    try {
+        return !await exists('coldstorage', { baseDir: BaseDirectory.AppData })
+    } catch {
+        return false
+    }
 }
 
 /** Decodes a stored save strictly: anything the file promises but does not deliver stops the run. */
@@ -344,7 +454,22 @@ async function removeNodeBatch(keys: string[], done: number, total: number): Pro
     return failed
 }
 
-async function removeUnitBatch(keys: string[], done: number, total: number): Promise<number> {
+/**
+ * Deletes the units named by `keys` and returns how many it could not delete. A
+ * key that cannot be a storage name (`isSafeColdStorageKey`) is counted as not
+ * deleted and never reaches a backend: no unit can be stored under it, so a
+ * delete could only name some other path.
+ */
+export async function removeUnitBatch(keys: string[], done: number, total: number): Promise<number> {
+    const removable = keys.filter((key) => isSafeColdStorageKey(key))
+    const rejected = keys.length - removable.length
+    if (removable.length === 0) {
+        return rejected
+    }
+    return rejected + await removeSafeUnitBatch(removable, done, total)
+}
+
+async function removeSafeUnitBatch(keys: string[], done: number, total: number): Promise<number> {
     if (isNodeServer) {
         return await removeNodeBatch(keys.map((key) => UNIT_KEY_PREFIX + key), done, total)
     }
@@ -434,6 +559,9 @@ async function cleanExclusively(): Promise<void> {
     for (const name of await listSnapshotNames()) {
         await keepFromSnapshot(keep, name)
     }
+    // After every tree, so each blob is known, and before the start listing, so
+    // that no read of an archived chat happens once a deletion is possible.
+    await keep.followArchivedChats(loadListing)
 
     // Taken after the keep-set is built, so it names what exists now. The
     // load-time listing still bounds what may go: anything written since

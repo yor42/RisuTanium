@@ -73,6 +73,8 @@ export const languageVietnamese = {
             `Việc dọn dẹp bộ nhớ lạnh đã bị dừng vì không thể đọc hoàn chỉnh ${source}, nên không có gì bị xóa. Hãy tải lại trang và thử lại; nếu vẫn tiếp diễn, đừng chạy dọn dẹp.`,
         "coldStorageCleanupBlobUnreadable": (characterName: string, source: string) =>
             `Việc dọn dẹp bộ nhớ lạnh đã bị dừng: dữ liệu bộ nhớ lạnh của ${characterName || "nhân vật không xác định"} mà ${source} sử dụng bị thiếu hoặc không đọc được, nên không có gì bị xóa.`,
+        "coldStorageCleanupChatUnreadable": (characterName: string, source: string) =>
+            `Việc dọn dẹp bộ nhớ lạnh đã bị dừng: một cuộc trò chuyện đã lưu trữ được liên kết từ các cuộc trò chuyện của ${characterName || "nhân vật không xác định"} trong ${source} không thể đọc được, nên không có gì bị xóa. Hãy tải lại trang và thử lại. Cho đến khi đọc được cuộc trò chuyện đó, việc dọn dẹp sẽ tiếp tục dừng lại ở đây mà không xóa bất cứ thứ gì.`,
         "coldStorageCleanupStopped": (reason: string, deleted: number, failed: number) =>
             `${reason}\n\nViệc dọn dẹp đã dừng giữa chừng: đã xóa ${deleted} mục${failed > 0 ? ` và ${failed} mục không thể xóa` : ""}.`,
         "coldStorageCleanupPartial": (deleted: number, failed: number) =>

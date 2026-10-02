@@ -73,6 +73,8 @@ export const languageChineseTraditional = {
             `由於無法完整讀取${source}，冷儲存清理已停止，未刪除任何內容。請重新載入頁面後再試；若問題持續發生，請勿執行清理。`,
         "coldStorageCleanupBlobUnreadable": (characterName: string, source: string) =>
             `冷儲存清理已停止：${source}所使用的 ${characterName || "未知角色"} 的冷儲存資料遺失或無法讀取，因此未刪除任何內容。`,
+        "coldStorageCleanupChatUnreadable": (characterName: string, source: string) =>
+            `冷儲存清理已停止：${source}中 ${characterName || "未知角色"} 的對話所連結的一個已封存對話無法讀取，因此未刪除任何內容。請重新載入頁面後再試。在該對話可以讀取之前，清理會一直在此停止，不會刪除任何內容。`,
         "coldStorageCleanupStopped": (reason: string, deleted: number, failed: number) =>
             `${reason}\n\n清理在中途停止：已刪除 ${deleted} 個項目${failed > 0 ? `，另有 ${failed} 個項目無法刪除` : ""}。`,
         "coldStorageCleanupPartial": (deleted: number, failed: number) =>

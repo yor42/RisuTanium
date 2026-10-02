@@ -73,6 +73,8 @@ export const languageSpanish = {
             `La limpieza del almacenamiento frío se detuvo porque ${source} no se pudo leer por completo, por lo que no se eliminó nada. Recarga la página e inténtalo de nuevo; si sigue ocurriendo, no ejecutes la limpieza.`,
         "coldStorageCleanupBlobUnreadable": (characterName: string, source: string) =>
             `La limpieza del almacenamiento frío se detuvo: faltan o no se pueden leer los datos de almacenamiento frío de ${characterName || "un personaje desconocido"} que necesita ${source}, por lo que no se eliminó nada.`,
+        "coldStorageCleanupChatUnreadable": (characterName: string, source: string) =>
+            `La limpieza del almacenamiento frío se detuvo: no se pudo leer un chat archivado enlazado desde los chats de ${characterName || "un personaje desconocido"} en ${source}, por lo que no se eliminó nada. Recarga la página e inténtalo de nuevo. Mientras ese chat no se pueda leer, la limpieza seguirá deteniéndose aquí sin eliminar nada.`,
         "coldStorageCleanupStopped": (reason: string, deleted: number, failed: number) =>
             `${reason}\n\nLa limpieza se detuvo a medio proceso: se eliminaron ${deleted} elemento(s)${failed > 0 ? ` y ${failed} elemento(s) no se pudieron eliminar` : ""}.`,
         "coldStorageCleanupPartial": (deleted: number, failed: number) =>

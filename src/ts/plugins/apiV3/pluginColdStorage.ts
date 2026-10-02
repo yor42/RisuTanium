@@ -1,15 +1,68 @@
 import type { ColdStorageReadResult } from "src/ts/process/coldstorage.svelte"
+import { coldStorageHeader, matchColdStorageLoadErrorKey } from "src/ts/process/coldstorageData"
 
 /**
  * The slice of the database `_getPluginStorage`/`_setPluginStorage` touch.
  * Deliberately loose (not `Database` itself) so these functions can be unit
- * tested with a bare object instead of a full database fixture.
+ * tested with a bare object instead of a full database fixture. `characters`
+ * is only what `isPluginUnitLinkedElsewhere` reads: the links a character and
+ * its chats hold to archived units.
  */
 export type PluginColdStorageDb = {
+    characters?: Array<{
+        coldstorage?: string
+        coldStoragedChats?: string[]
+        chats?: Array<{ message?: Array<{ data?: string }> }>
+    } | null | undefined>
     pluginCustomStorage?: {
         _coldplugin?: Record<string, string>
         [key: string]: unknown
     }
+}
+
+/**
+ * True when the unit `coldId`, which the plugin slot `slotKey` maps to, is
+ * linked from anything else in `db`: a character's `coldstorage`, an entry of
+ * its `coldStoragedChats`, a chat's first-message pointer or legacy
+ * load-error text, or another plugin slot mapped to the same unit. Writing a
+ * plugin's value into such a unit would replace what that other link reads.
+ *
+ * One synchronous pass over `db` as it is when this is called, with no
+ * storage read, so it must be called at the moment the write is decided.
+ * Links held only inside an archived unit that has not been opened, or only
+ * by a saved copy of the database, are not visible here.
+ */
+export function isPluginUnitLinkedElsewhere(db: PluginColdStorageDb, slotKey: string, coldId: string): boolean {
+    const mapping = db.pluginCustomStorage?._coldplugin
+    if (mapping && typeof mapping === 'object') {
+        for (const otherKey of Object.keys(mapping)) {
+            if (otherKey !== slotKey && mapping[otherKey] === coldId) {
+                return true
+            }
+        }
+    }
+    const pointerText = coldStorageHeader + coldId
+    const characters = Array.isArray(db.characters) ? db.characters : []
+    for (const character of characters) {
+        if (!character) {
+            continue
+        }
+        if (character.coldstorage === coldId) {
+            return true
+        }
+        if (Array.isArray(character.coldStoragedChats) && character.coldStoragedChats.includes(coldId)) {
+            return true
+        }
+        const chats = Array.isArray(character.chats) ? character.chats : []
+        for (const chat of chats) {
+            const message = Array.isArray(chat?.message) ? chat.message[0] : undefined
+            const data = message?.data
+            if (typeof data === 'string' && (data === pointerText || matchColdStorageLoadErrorKey(data) === coldId)) {
+                return true
+            }
+        }
+    }
+    return false
 }
 
 /**
@@ -64,6 +117,11 @@ export async function readPluginStorageValue(
  * - a failed write (`setColdStorageItemFn` resolving `false`) throws, and
  *   leaves `db`'s mapping untouched -- an existing mapping is left alone,
  *   and a brand-new key never gets one.
+ * - a slot whose existing unit is linked from anything else in the database
+ *   (`isPluginUnitLinkedElsewhere`, judged on `getLiveDb()` when the write is
+ *   decided) is not written at all: it throws exactly as a failed write does
+ *   and leaves the mapping and that unit as they are. A slot whose unit
+ *   nothing else links is updated in place.
  * - a brand-new key's mapping is written only after the write succeeds, and
  *   into whatever `pluginCustomStorage._coldplugin` object `getLiveDb()`
  *   returns AT THAT POINT, not the one read from `db` at the top of this
@@ -85,6 +143,9 @@ export async function writePluginStorageValue(
     // as no mapping (a fresh id is generated) rather than being reused as a
     // cold-storage key.
     const existingColdId = db.pluginCustomStorage._coldplugin[key]
+    if (existingColdId && isPluginUnitLinkedElsewhere(getLiveDb(), key, existingColdId)) {
+        throw new Error(`Failed to write plugin storage for key: ${key}`)
+    }
     const coldId = existingColdId || newColdId()
 
     const writeSuccess = await setColdStorageItemFn(coldId, value === undefined ? null : value)

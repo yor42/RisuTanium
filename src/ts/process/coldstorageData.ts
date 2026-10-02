@@ -70,7 +70,8 @@ export function matchColdStorageLoadErrorKey(text: unknown): string | null {
  * `status: 'error'`:
  *   - `'unavailable'` -- this page offers no storage for archived data at all
  *                        (the browser has no `navigator.storage.getDirectory`).
- *   - `'damaged'`     -- the bytes were read but do not decode.
+ *   - `'damaged'`     -- the key cannot be a storage name, so nothing was
+ *                        read, or the bytes were read but do not decode.
  * A read error with neither cause has no kind and stays a read that may work
  * later.
  */
@@ -143,8 +144,8 @@ export function classifyColdDecodeFailure(error: unknown): 'damaged' | null {
  *                        place so the read can simply be retried by reopening
  *                        the chat.
  *   - `'unavailable'` -- this page offers no storage for archived data.
- *   - `'damaged'`     -- the bytes did not decode, or the decoded value is not
- *                        a chat.
+ *   - `'damaged'`     -- the pointer's key cannot be a storage name, the bytes
+ *                        did not decode, or the decoded value is not a chat.
  * No value mutates `chat.message` and the returned promise never rejects.
  */
 export type PreLoadChatResult = 'none' | 'ok' | 'missing' | 'error' | 'unavailable' | 'damaged'
@@ -173,8 +174,9 @@ export type PreLoadChatResult = 'none' | 'ok' | 'missing' | 'error' | 'unavailab
  *                        chat as well as from the stored data, so it is not
  *                        called damaged).
  *   - `'unavailable'` -- this page offers no storage for archived data.
- *   - `'damaged'`     -- the bytes did not decode, or the decoded value is not
- *                        a chat.
+ *   - `'damaged'`     -- the error text's key cannot be a storage name, the
+ *                        bytes did not decode, or the decoded value is not a
+ *                        chat.
  * Every value except `'ok'` leaves the chat unmutated, so nothing is lost.
  */
 export type RetryLegacyColdChatLoadResult = 'none' | 'busy' | 'ok' | 'missing' | 'error' | 'unavailable' | 'damaged'

@@ -17,6 +17,7 @@ import { language } from "src/lang"
 import type { Database } from "../storage/database.svelte"
 import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHeader, getColdStorageAffectedCharacters, getColdStorageBackupName, isColdStorageBackupData, isRestorableColdStorageKey, listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, mergeRetriedColdChatSideFields, type ColdBackupRoot, type ColdReadErrorKind, type PreLoadChatResult, type RetryLegacyColdChatLoadResult } from "./coldstorageData"
 import { doingChat } from "./index.svelte"
+import { isSafeColdStorageKey } from "./coldStorageKey"
 
 export {
     coldStorageHeader,
@@ -39,6 +40,12 @@ async function decompress(data:Uint8Array) {
 }
 
 export async function getColdStorageItem(key:string) {
+
+    // A key that cannot be a storage name reads as `null` before any backend
+    // is asked, like every other failure of this reader.
+    if(!isSafeColdStorageKey(key)){
+        return null
+    }
 
     if(isNodeServer){
         try {
@@ -106,11 +113,16 @@ export async function getColdStorageItem(key:string) {
  * result `preLoadChat` and `retryLegacyColdChatLoad` return (the legacy Retry
  * panel hides Retry for it). Every consumer that keeps, skips, deletes, counts
  * or retries data decides by `status` alone, so every `'error'` is treated
- * the same:
+ * the same, except one: the manual clean-up (`storage/manualCleanup.ts`) also
+ * reads `kind`, for the archived chats it follows and never for a blob. It
+ * keeps a `'damaged'` chat and follows nothing from it; any other error stops
+ * the run. The kinds:
  *   - `'unavailable'` -- OPFS branch only: the browser has no
  *                        `navigator.storage.getDirectory` at all. A
  *                        `getDirectory` that exists and rejects has no kind.
- *   - `'damaged'`     -- the bytes were obtained but do not decode: fflate
+ *   - `'damaged'`     -- the key cannot be a storage name
+ *                        (`isSafeColdStorageKey`), so no backend was asked,
+ *                        or the bytes were obtained but do not decode: fflate
  *                        reported malformed or truncated input, or the
  *                        decompressed text is not JSON
  *                        (`classifyColdDecompressFailure`,
@@ -232,6 +244,18 @@ export async function classifyNodeColdRead(
 }
 
 async function readLocalColdStorageBytes(key: string): Promise<ColdStorageBytesResult> {
+    // Decided before any backend is asked: a key the backends cannot hold may
+    // read as an absent unit on one of them (a `/` on a POSIX desktop, an
+    // over-long name on the Node server), and an absent unit is the one answer
+    // callers treat as final: the data is gone, so acting on it (offering to
+    // delete the chat, leaving the unit out of a backup) can lose nothing more.
+    if (!isSafeColdStorageKey(key)) {
+        return {
+            status: 'error',
+            kind: 'damaged',
+            error: new Error('The archive key cannot be used as a storage name.'),
+        }
+    }
     if (isNodeServer) {
         const storage = forageStorage.realStorage as NodeStorage
         return await classifyNodeColdRead((k) => storage.getItem(k), 'coldstorage/' + key)
@@ -290,9 +314,9 @@ async function readLocalColdStorageValue(key: string): Promise<ColdStorageReadRe
  * why there is no shape check here.
  *
  * `getColdStorageItem` above keeps the `null`-on-any-failure shape its
- * callers (the asset keep-set scan, `resolveUncleanableChars` in
- * `globalApi.svelte.ts`, and the write-then-verify steps in this file) rely
- * on. `preLoadChat`, the
+ * callers rely on; both are in `resolveUncleanableChars` in
+ * `globalApi.svelte.ts`, which reads a stub's blob for the asset keep-set
+ * scan and treats `null` as "no usable blob". `preLoadChat`, the
  * plugin-storage bridge (`v3.svelte.ts`), the manual clean-up
  * (`storage/manualCleanup.ts`), the backup collector
  * (`collectColdStorageBackupPayloads`) and the restore's final check in
@@ -320,6 +344,14 @@ async function compressColdStorageValue(value:any):Promise<Uint8Array | null> {
 }
 
 export async function setColdStorageItem(key:string, value:any):Promise<boolean> {
+    // A key that cannot be a storage name is a failed write, decided before
+    // anything is compressed or any backend is asked. The key itself is not
+    // logged: it may be arbitrarily long.
+    if(!isSafeColdStorageKey(key)){
+        console.error('Cold storage write refused: the archive key cannot be used as a storage name.')
+        return false
+    }
+
     // The key only: a unit holds a whole character, and a console keeps every
     // logged object reachable for as long as it is open.
     console.log("setting cold storage item", key)

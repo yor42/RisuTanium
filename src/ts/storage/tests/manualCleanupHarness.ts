@@ -127,6 +127,8 @@ export class FakeNodeServer {
     afterRequest?: (path: string) => void
     /** When it returns a response for `/api/remove`, that response is sent instead and nothing is deleted. */
     removeOverride?: (keys: string[]) => Response | undefined
+    /** Keys whose `/api/read` is answered with a 500 instead of the file. */
+    readFailures = new Set<string>()
     /**
      * The largest request body `/api/write` accepts, in bytes; a larger body is
      * refused with a 413 and nothing is stored, as the real server's raw body
@@ -200,6 +202,9 @@ export class FakeNodeServer {
         }
         if (path === '/api/read') {
             const key = hexToKey(headers['file-path'] ?? '')
+            if (this.readFailures.has(key)) {
+                return new Response('Internal Server Error', { status: 500 })
+            }
             const file = this.files.get(key)
             const responseHeaders = { 'x-risu-revision': String(this.revisionOf(key)) }
             if (!file) {
