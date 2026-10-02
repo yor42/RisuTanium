@@ -3084,6 +3084,87 @@ message says stage A does:
 - **The live check**, deferred by the maintainer to after stage B (`MC-165` 8). Not run: a live check in a browser and
   anything on Android (Android cannot be run from here).
 
+**Status (2026-10-02, latest): closed by `7ca8f2a9` (stage B) together with `d013e7cf` (stage A); the live check was run
+in a browser.** Both commits are local, not pushed. The "Open" list above is superseded: stage B is committed, stage C is
+now its own ticket, CHORE-68 (`MC-166` 4), and the live check is below. Android was not run. The ticket text above is
+otherwise unchanged. What the `7ca8f2a9` commit message says stage B does:
+- A message's "..." menu has a "Copy as card" item when message copy is on, the message is not blank and the browser
+  offers `ClipboardItem` and `clipboard.write` (so not on a plain-http page). Its click calls `clipboard.write`
+  synchronously with the plain text and a promise for the card html, so the slow part runs inside the write. "Loading"
+  shows beside the buttons while the card builds; a second tap on the same message's item meanwhile starts nothing.
+- The card has the avatar, the name and a model badge (none for a user message), the message and a "From RisuTanium"
+  footer, in the app's theme colours. The body is rebuilt from the rendered message into a new tree in an inert
+  document: only listed elements and attributes are copied, so the message's own styles, classes and stylesheets do
+  not carry over. It is not sanitised with DOMPurify (`MC-166`, the Orchestrator's calls 1). Hidden content (the
+  `hidden` attribute, inline `display:none` or `visibility:hidden`, a closed `details` or `dialog`, including the
+  collapsed thinking section) is left out. A formula appears as its TeX source (`MC-166` 1). Script, style, media,
+  select options and similar are dropped with their text.
+- Images: an outside web image keeps its address and is never fetched (`MC-165` 2). Every other image in the message
+  (the app's own, `data:`, `blob:` and any other same-site address) is left out for now (CHORE-68). No node of the card
+  is created by the live document, so the message's images are never loaded. Only the avatar is fetched, decoded and
+  drawn, from a local address (`src/ts/chatCardImage.ts`): the persona icon for a user message, the character's image
+  otherwise, shrunk to at most 160 px on its longest side and embedded.
+- Bounds: the card is built within 3 s (the avatar within 2 s). A slow or failed avatar gives the card without it; a
+  slow or failed body gives a simple card of the plain text; a card over 900 KiB together with the plain text gives the
+  simple card; a message too large even for that, or a card write that cannot be started, is copied as text. The status
+  says "Copied" for a full card, "Copied (simple card)" for the simple card or a card whose avatar could not be made,
+  "Copied as text", or "<error name>: Copy failed" (`MC-166` 2).
+- A newer copy wins: a plain copy, or a card from another message, made while a card is still being built cancels it,
+  so the older card never lands on top. A newer card waits, up to its own 3 s limit, for an older card's write to
+  settle. A plain copy made after an older card's html was ready is written again once that card's write settles (model
+  tests only; in headless Chrome without a clipboard permission such a re-write works only within the click's
+  activation, which ended between 3 s and 6 s, ledger row 629). For
+  this the plain Copy button now also tells the card module about each plain copy.
+- New lang keys `copyAsCard`, `copiedAsText` and `copiedSimpleCard` in all seven languages. The card logic is in the
+  new `src/ts/chatCard.ts`.
+- **Stated limits (from the commit message):** content hidden only by a stylesheet rule shows in the card; the item
+  needs a selected character (the "..." menu does); a write still pending well after its time limit could land late.
+
+**Evidence for stage B (from the commit message unless noted):**
+- Tests: `Chat.copyCard.svelte.test.ts` was written against the unchanged code first, where its tests for the item
+  failed because the item did not exist (its absence guards passed); the tests of the menu's wiring to the copy button
+  were added after the code review. `chatCard.test.ts` covers the rebuild, the image rules, the bounds, the status kinds
+  and the ordering with a stubbed clipboard (model tests), including a guard that the live document creates no card
+  node. The avatar encoder is stubbed in all tests. From the Gate 2B packet (ledger row 631): 14 of the 19 Chat-level
+  tests were red on HEAD.
+- Real-browser evidence (RUN; headless Chrome 154 on Windows, the real `chatCard.ts` bundled, no clipboard permission
+  during the writes, read permission granted only for reading back): an outside image in the message made zero requests
+  to its host; the escaped hidden forms "DISPLAY : NONE /*c*/" and "display: n\6fne" and a closed `details` were left
+  out; a card read back with its footer and escaped name; in twelve runs, ten of them overlapping, the later copy (card
+  or plain) was the one on the clipboard. The path where a plain copy is written again after a ready card settles was
+  not reached in Chrome; it is covered by the model tests. Chrome returns copied plain text with CRLF line breaks on
+  Windows (raw clipboard calls do the same).
+- Mutants on the wiring, the cancellation and the status lines: all killed except one judged equivalent (a second
+  superseded check that the cancellation already covers). Per the Gate 2B packet (ledger row 632): round 1 ran 27
+  mutants; M01, M02, M03, M06, M07 and M24 survived and M08 was judged equivalent; round 2 killed the six and added a
+  new one, M29.
+- Checks on the final tree (commit message): `pnpm test` 291 files, 5738 passed, 4 skipped; `pnpm check` 0 errors, 0
+  warnings; `pnpm build` ok.
+- **Gates:** plan Gate 1B round 1 `[REJECT]` (12 findings), round 2 `[EDITORIAL]` (ledger row 630); code Gate 2B round 1
+  `[REJECT]` for test defects, round 2 `[APPROVE]` (ledger row 632). The `doc-verifier` checked the commit message: 38
+  claims, 4 overstated and 5 incomplete, all corrected before the commit.
+- **Not run (commit message):** WebView2, WebKit, Android and pasting into a real target.
+
+**The live check (RUN, 2026-10-02, the maintainer's built-in pane, visible).** A production build of the final tree
+(`pnpm build` after the last source change), a Node server from a scratch folder (port 6011, its own PID, stopped
+afterwards), the page at phone width (486 px, the narrow layout, where Copy is inside the "..." menu). A test character
+with the first message "Live check line one, *emphasis* here.\nSecond line: 복사 테스트." and no name. "Use Chat Message
+Copy" was switched on in Settings.
+- The "..." menu shows Copy (복사) first and "Copy as card" (카드로 복사) last.
+- Copy: the status read "복사됨"; the Windows clipboard (read with `Get-Clipboard`) held exactly the message text with the
+  raw `*emphasis*` markers; there was no HTML format on the clipboard.
+- The "..." menu opened again on one tap after an item was used (stage A's fix).
+- Copy as card: the status read "복사됨" (a full card; the character has no image, so no avatar was expected). The
+  clipboard's HTML format held the card: theme colours, "emphasis" in the italic colour, the "AI" badge, the line break,
+  the "From RisuTanium" footer and an empty name heading (the test character has no name). The plain text format held the
+  exact message text.
+- Console: no errors from the app (one `beforeunload` notice, caused by the Orchestrator's page reload).
+- The check wrote to the maintainer's real Windows clipboard, which testing copy cannot avoid.
+- **Not covered live:** an avatar; a plain copy during a pending card; a failure display; Android.
+
+**Follow-ups filed from stage B:** CHORE-67 (existing tests that run DOMPurify under happy-dom), CHORE-68 (stage C) and
+CHORE-69 (what the plain copy should leave out). Ledger rows 627 to 632; `MC-166`.
+
 ### CHORE-64 — A plugin's write of the `plugins` list through `setDatabase` deleted every plugin that was not new, confirmed and API 3.0, with its saved arguments and API keys, and gave no prompt about the deletion (DATA LOSS; upstream too; closed by `48f00223`)
 
 **Status (2026-10-02): closed by `48f00223`, pushed.** Found by the Gate 1 round 2 review of CHORE-53 stage 53b (the
@@ -3249,6 +3330,57 @@ The line numbers are those the Gate 2 reviewer found on 2026-10-02 (ledger row 6
 - **What the pages need to say:** the rule is `MC-163` 1 to 10 and the `48f00223` commit message. `plugins.md` and
   `risuai.d.ts` already describe the merge as a difference from upstream.
 - **Related:** CHORE-64; `MC-163`; the Wiki session's lane (`docs/wiki/**`).
+
+### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason (test reliability; RUN under happy-dom 20.1.0; the cause TRACED)
+
+**Status (2026-10-02):** open, **not scheduled**. Filed from the CHORE-63 stage B investigation at the maintainer's
+decision (`MC-166` 6: "File CHORE-67 (Recommended)"). Type: test reliability; no product code is involved. Labels:
+RUN = executed in the investigation; TRACED = read in source.
+
+- **What was found (RUN; ledger row 627; `chore63\stageB-inv\q2b.out.txt` in the session scratchpad, not a repo file):**
+  under happy-dom 20.1.0, DOMPurify stops sanitising after the first node it removes. The input
+  `<p>a</p><script>1</script><img src=x onerror=e()>` came back with `onerror` still on the `img`.
+- **The cause (TRACED):** happy-dom's `NodeIterator` has no handling for a node removed during iteration. Real Chrome
+  sanitises the same input correctly.
+- **Why it matters:** a test of the app's own HTML cleaning that runs under happy-dom and expects a removal may pass
+  for the wrong reason.
+- **Blast radius:** not enumerated. Most test files that import `parser.svelte` mock it (`vi.mock`) and so never run its
+  DOMPurify; the exposed set is the tests that run the real parser or DOMPurify under happy-dom. TODO(evidence): which existing tests depend
+  on a DOMPurify removal under happy-dom has not been counted.
+- **What the ticket asks (the option text the maintainer selected):** find which existing tests rely on DOMPurify
+  removals under happy-dom and make them trustworthy.
+- **Related:** CHORE-63 stage B (the card body does not use DOMPurify because of this evidence, `MC-166` call 1); ledger
+  rows 627 and 628; `MC-166` 6.
+
+### CHORE-68 — CHORE-63 stage C: embed the app's own images from inside a message into the "Copy as card" card
+
+**Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-166` 4: "Ticket it for later
+(Recommended)"). Type: feature; no persisted data is involved.
+
+- **What it would do:** the card from CHORE-63 stage B leaves out every image in a message except an outside web image,
+  which stays a link (`MC-165` 2). Stage C would embed the app's own images (stickers, inlay images, assets) into the
+  card, shrunk and size-capped. The stage B investigation's list of the forms: a local `/sw/img/` address, a Tauri asset
+  address, `data:` and `blob:` inlays. They would be downscaled with a byte budget and timeouts; outside images would
+  still stay links.
+- **Not decided:** the budget figure, the downscale size and the timeouts. TODO(evidence): none is recorded.
+- **Constraint from stage B:** the card must never load an image through the live document, and the app fetches no outside
+  host (`MC-165` 2). Stage B's tests carry a guard that the live document creates no card node.
+- **The card works without it** (the option text the maintainer selected).
+- **Related:** CHORE-63 (stage B, `7ca8f2a9`); `MC-165` 2 and 6; `MC-166` 4.
+
+### CHORE-69 — The plain Copy button copies the message's raw text, including the thinking section and hidden blocks as raw markup
+
+**Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-166` 5: "File a ticket
+(Recommended)"). Type: surprising output; no change now, and no persisted data is involved.
+
+- **What happens (RUN; stage B investigation, question 1; ledger row 627):** the plain copy writes the parsed original
+  message. `risuChatParser` called with `visualize: true` returns the thinking section as `<Thoughts>…</Thoughts>` and
+  hidden blocks as raw markup, verbatim. So a plain copy of such a message includes them as text.
+- **What the ticket asks:** decide what the plain copy should leave out. The card already leaves out hidden and
+  collapsed content (`MC-165` 5); the plain copy does not, and the option "It's fine as is" was not chosen.
+- **Not decided:** which parts the plain copy leaves out.
+- **Related:** CHORE-63 (stage A, `d013e7cf`, wrote the plain copy; `MC-160` 3: a tap copies plain text); `MC-166` 5;
+  ledger row 627.
 
 ## Sequencing Summary
 

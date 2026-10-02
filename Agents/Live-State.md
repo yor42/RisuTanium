@@ -111,7 +111,13 @@ The commits below were local when they were listed, and were pushed with it:
 - `d013e7cf`: CHORE-63 stage A and CHORE-40, the copy button writes the message text inside the tap and fetches
   nothing (`MC-165`; ledger rows 623 to 626). Local, not pushed;
 - the records commit that follows `d013e7cf` and carries this file (MC-165, CHORE-40 closed, CHORE-63 stage A, CHORE-65
-  low priority, ledger rows 623 to 626).
+  low priority, ledger rows 623 to 626; `5a1fbf52`, by its commit subject);
+- `7ca8f2a9`: CHORE-63 stage B, "Copy as card" in the message menu, built without fetching outside hosts (`MC-166`;
+  ledger rows 627 to 632). Local, not pushed;
+- the records commit that follows `7ca8f2a9` and carries this file (MC-166, CHORE-63 closed, CHORE-67, CHORE-68 and
+  CHORE-69, ledger rows 627 to 632). Local, not pushed.
+
+The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9` and the records commit above) are local and not pushed.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -126,6 +132,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - `b745fc29` and `48f00223` were committed by the Orchestrator after their review gates, without a separate commit instruction. The maintainer then asked for each to be pushed: "push the link change for now, we can push chore 64 and other tasks separately." and "1. yes, push."
 - `d013e7cf` at "commit stage A. and defer live check until we finish stage B." (`MC-165` 8).
 - The records commit after `d013e7cf` under the standing instruction "add the maintainer decisions to the records when you commit" (`MC-161` 9).
+- `7ca8f2a9` at "let's commit now and do live check after that." (`MC-166` 3).
+- The records commit after `7ca8f2a9` under the same standing instruction (`MC-161` 9).
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
@@ -147,8 +155,8 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-166` (`MC-165` is used), Report 57 (Report 56 is used), ledger row 627 and CHORE-67
-(`CHORE-66` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
+**Next free numbers:** `MC-167` (`MC-166` is used), Report 57 (Report 56 is used), ledger row 633 and CHORE-70
+(`CHORE-69` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
 **Rules for every session:**
@@ -209,8 +217,9 @@ should fill them.
      Report 49 is the durable version.
 2. **CHORE-53 is closed (2026-10-02; `07ea1882`, `1ba98d45`, `5747a7e1`; `MC-161`; Roadmap CHORE-53) and the
    rebranding identity is merged (`cfa4dfa0`; `MC-162`). CHORE-63 stage A is done and CHORE-40 is closed (2026-10-02;
-   `d013e7cf`, local; `MC-165`; ledger rows 623 to 626). Next: CHORE-63 stage B (the "Copy as card" menu item), then the
-   optional stage C, then the deferred live check**, then CHORE-43 with CHORE-54
+   `d013e7cf`, local; `MC-165`; ledger rows 623 to 626). CHORE-63 is closed by stage B, `7ca8f2a9` (2026-10-02, local;
+   `MC-166`; ledger rows 627 to 632), and its live check was run in a browser (Roadmap CHORE-63; Android not run).
+   Stage C is now CHORE-68, not scheduled. Next: CHORE-43 with CHORE-54**
    (work order, otherwise unchanged). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
@@ -495,12 +504,15 @@ should fill them.
       persistence code is touched. **The maintainer split the work (`MC-165` 6):**
       - **stage A is done** (2026-10-02, `d013e7cf`, local): plain copy written inside the tap, the `execCommand`
         fallback, a visible failure, the status text clears, the "..." menu reopens on one tap; it closes CHORE-40;
-      - **next: stage B**, the "Copy as card" item in the message's "..." menu, with the contract the maintainer closed
-        (`MC-165` 1, 2, 4 and 5: a menu item, outside images stay links with no fetch, app colours only, hidden text
-        dropped);
-      - then **stage C (optional)**, embedding the message's own local images with a byte budget;
-      - then **the live check**, deferred by the maintainer to after stage B (`MC-165` 8; the maintainer is looking at
-        whether the live pane can be fixed meanwhile). Android cannot be run from here;
+      - **stage B is done** (2026-10-02, `7ca8f2a9`, local): the "Copy as card" item in the message's "..." menu, with
+        the contract the maintainer closed (`MC-165` 1, 2, 4 and 5: a menu item, outside images stay links with no
+        fetch, app colours only, hidden text dropped; `MC-166` 1 and 2: a formula as its TeX source, a status that says
+        when the card was simplified);
+      - **stage C** (embedding the message's own local images with a byte budget) is now **CHORE-68**, open and not
+        scheduled (`MC-166` 4);
+      - **the live check was run** after stage B (2026-10-02, the maintainer's built-in pane; Roadmap CHORE-63). Not
+        covered: an avatar, a plain copy during a pending card, a failure display, Android (Android cannot be run from
+        here). **CHORE-63 is closed;**
    4. then **CHORE-43** (unreroll can write one chat's reply into another) **with CHORE-54** (rerolling
       or going back through rerolls overwrites an edited reply with its generation-time copy; data
       loss, save path inferred). The maintainer placed both right after CHORE-53 (ledger row 528;
@@ -558,6 +570,10 @@ Not placed in the sequence:
   through the live `getDatabase` proxy; `MC-163` 4 and 7) and **CHORE-66** (the wiki's plugin pages describe the
   behaviour from before CHORE-64; the Wiki session's lane): filed 2026-10-02, not scheduled. **CHORE-65 is low
   priority** by the maintainer's decision (`MC-165` 3).
+- **CHORE-67** (existing tests that run DOMPurify under happy-dom may pass for the wrong reason; happy-dom 20.1.0
+  stops DOMPurify after its first removal), **CHORE-68** (CHORE-63 stage C: embed the app's own images in the "Copy as
+  card" card) and **CHORE-69** (the plain Copy button copies the thinking section and hidden blocks as raw markup):
+  filed 2026-10-02 from CHORE-63 stage B, open, not scheduled (`MC-166` 6, 4 and 5).
 - **CHORE-56** (under the beta mobile layout, a touch that ends on a button, input, select or textarea
   throws a TypeError in the swipe handler): suspected; TRACED, not run. The maintainer has not yet
   confirmed or placed it.

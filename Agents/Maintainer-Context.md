@@ -5628,3 +5628,82 @@ only). The list is not exhaustive; the plan is the full record.
    marker by `role="status"`.
 5. The popup reopen fix (the "…" menu opens on one tap after an item was used or the menu was closed by a click
    elsewhere) is folded into stage A: an adjacent defect on the same path.
+
+---
+
+### MC-166 — CHORE-63 stage B: a formula is copied as its TeX source; a simplified card says so; stage C, the plain-copy question and the DOMPurify test question become tickets (CHORE-68, CHORE-69, CHORE-67); the live check follows the commit
+
+- **Tag:** decision (items 1, 2, 4, 5 and 6) and stated in chat (item 3)
+- **Date:** 2026-10-02
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the questions the Orchestrator asked with AskUserQuestion during CHORE-63
+  stage B (items 1, 2, 4, 5 and 6, each with the question's text, the option chosen and its text, and the options not
+  chosen; the answers are not dated within the day), and the maintainer's own words in chat (item 3, quoted as typed).
+  The rule in each item is the option text the Orchestrator wrote and the maintainer selected. The Orchestrator's own
+  calls are listed apart at the end and are **not** maintainer decisions.
+- **Reasoning:** the maintainer gave no reason beyond the answers. The reasons in the option texts are the
+  Orchestrator's.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 1: "Keep it as a formula" and "Leave it out";
+  - item 2: "Just "Copied"";
+  - item 4: "Do it now" and "Drop it";
+  - item 5: "It's fine as is";
+  - item 6: "Don't file";
+  - item 3 was the maintainer's own words in chat, so no options were offered (an earlier AskUserQuestion on the same
+    point was dismissed, and the chat message answered it).
+- **Extends:** `MC-165` (it settles two points of the card contract that `MC-165` left open, the formula and the fallback
+  status, and decides what happens to stage C; it changes no rule of `MC-165`). The option text chosen in `MC-165` 2
+  said images stored in the app "are still embedded"; stage B embeds only the avatar, and the rest is CHORE-68 (item 4).
+- **Related:** MC-011, MC-160, MC-162, MC-165, CHORE-63, CHORE-67, CHORE-68, CHORE-69; commit `7ca8f2a9` (stage B);
+  ledger rows 627 to 632.
+
+**What was decided** (the question verbatim, then the answer and the option text):
+1. **A formula appears in the copied card as its TeX source.** The question: "Messages can contain math formulas
+   (written as $$...$$ and shown rendered in the chat). How should a formula appear in a copied card?" The answer: "As
+   its TeX source (Recommended)": "The formula appears as the text you wrote, e.g. \frac{a}{b}, so it is never lost and
+   pastes the same everywhere. Simple and predictable." The options not chosen were "Keep it as a formula": "Keep the
+   formula markup in the card. Apps that understand it (some browsers and editors) show it rendered; apps that don't
+   show a jumble of symbols or nothing. One more set of elements to review."; and "Leave it out": "Drop formulas from the
+   card, like the other non-text parts."
+2. **The status says when the card was simplified.** The question: "Sometimes a card can't be made in full: the message
+   is too big, the 3-second time limit runs out, or something fails, and you get a simpler card or plain text instead.
+   What should the status beside the buttons say?" The answer: "Say it was simplified (Recommended)": "Show a short note
+   such as "Copied as text" or "Copied (simple card)", so you know before pasting. Needs one or two more translated
+   strings." The option not chosen was "Just "Copied"": "Show the normal "Copied" either way. Fewer strings; you'd only
+   notice when you paste."
+3. **Commit stage B, then run the live check.** The maintainer's words in chat: "let's commit now and do live check
+   after that." and "I brought up the claude app and live pane up front. so it should work now." (An earlier
+   AskUserQuestion on the same point was dismissed; the chat message answered it.) Stage B is committed as `7ca8f2a9`.
+   The live check was then run in the maintainer's built-in pane (Roadmap CHORE-63, third status paragraph).
+4. **Stage C is ticketed for later, and the work order moves on.** The question: "Stage C would embed the app's own
+   pictures from inside a message (stickers, inlay images, assets) into the card, shrunk and size-capped. Right now the
+   card leaves them out. What should happen with it?" The answer: "Ticket it for later (Recommended)": "Record stage C
+   as its own open ticket, not scheduled, and move on to the next work-order item (CHORE-43 with CHORE-54). The card
+   works without it." The options not chosen were "Do it now": "Plan, review and build stage C next, before moving
+   on."; and "Drop it": "The card never embeds the message's own pictures; record that as the final design." Stage C is
+   CHORE-68.
+5. **The plain Copy button's raw text is ticketed, with no change now.** The question: "The plain Copy button copies the
+   message's raw text, which includes the model's thinking section and any hidden blocks as raw markup (e.g.
+   <Thoughts>…</Thoughts>). Is that a problem worth a ticket?" The answer: "File a ticket (Recommended)": "Record it as
+   a new ticket to decide later what plain copy should leave out; no change now." The option not chosen was "It's fine
+   as is": "Plain copy keeps copying the raw text, thinking and markup included. Recorded as intended." The ticket is
+   CHORE-69.
+6. **The DOMPurify-under-happy-dom test question is filed as CHORE-67.** The question: "Our test environment
+   (happy-dom) makes DOMPurify stop cleaning after its first removal, so some existing tests of the app's own HTML
+   cleaning may pass for the wrong reason. Should I file that as CHORE-67?" The answer: "File CHORE-67 (Recommended)":
+   "Open ticket: find which existing tests rely on DOMPurify removals under happy-dom and make them trustworthy. Not
+   scheduled yet." The option not chosen was "Don't file": "Leave it unrecorded."
+
+**The Orchestrator's own calls** (not maintainer decisions; in the `7ca8f2a9` commit message or the source unless noted):
+1. The card body is rebuilt into an inert document from an allowlist, not sanitised with DOMPurify. This followed the
+   `senior-advisor`'s follow-up on the stage B investigation's evidence (ledger rows 627 and 628).
+2. The plain fallback ("Copied as text") registers its text so it is written again over an older, already-resolved card
+   write. The plan's item B7 said fallbacks "do not register as newer copies"; the implementation and the code review
+   found the registration necessary, so the plan text was wrong.
+3. Status durations: "Copied" 3 s, "Copied (simple card)" and "Copied as text" 5 s, a failure 10 s, "Loading" up to 5 s.
+4. The fallback theme colours are fixed neutral values; outside images kept in the body get `max-width: 100%`.
+5. A card whose avatar is absent because there is none (an empty path) says "Copied". A card whose avatar was expected
+   but could not be made says "Copied (simple card)".
+6. CHORE-63 is closed with stage B and the live check (not a maintainer decision); the checks not run (an avatar live,
+   a plain copy during a pending card live, a failure display, WebView2, WebKit, Android, pasting into a real app) are
+   recorded in the Roadmap and not ticketed.
