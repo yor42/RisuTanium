@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
-    import { aiLawApplies, changeChatTo, foldChatToMessage, createChatCopyName } from "src/ts/globalApi.svelte"
+    import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
+    import { aiLawApplies, changeChatTo, foldChatToMessage, createChatCopyName, getFileSrc } from "src/ts/globalApi.svelte"
     import { copyPlainText, type CopyOutcome } from "src/ts/chatCopy"
+    import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
     import { getModelInfo } from "src/ts/model/modellist"
@@ -16,7 +17,7 @@
     import { type MessageIdentity, type TranslationIdentity, type DraftRecord, isDraftRestore } from "src/ts/draftContents"
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
-    import { capitalize, getUserName, sleep } from "src/ts/util"
+    import { capitalize, getUserIcon, getUserName, sleep } from "src/ts/util"
     import { onDestroy, onMount } from "svelte"
     import { fade } from "svelte/transition"
     import { type Unsubscriber } from "svelte/store"
@@ -558,6 +559,71 @@
         }
     }
 
+    // The text a copy puts on the clipboard: what the message shows, or the
+    // parsed raw text while a strong-optimised stream is rendered raw.
+    const currentCopyText = ():string => renderRawStreaming
+        ? risuChatParser(rawStreamingText, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
+        : msgDisplay
+
+    // Identifies this message component to the card copy: the same message is
+    // this instance, never its index, which repeats across chat pages.
+    const cardOwner = {}
+
+    const reportCard = (report:CardReport)=>{
+        if(destroyed) return
+        switch(report.kind){
+            case 'loading':
+                setStatusMessage(language.loading, CARD_DEADLINE_MS + CARD_PENDING_MARGIN_MS)
+                break
+            case 'copied':
+                setStatusMessage(language.copied, 3000)
+                break
+            case 'simple':
+                setStatusMessage(language.copiedSimpleCard, 5000)
+                break
+            case 'text':
+                setStatusMessage(language.copiedAsText, 5000)
+                break
+            case 'failed':
+                setStatusMessage(`${report.errorName}: ${language.copyFailed}`, 10000)
+                break
+            case 'superseded':
+                // A newer copy owns the status; only this card's own loading text is cleared.
+                if(statusMessage === language.loading){
+                    clearTimeout(statusTimer)
+                    statusTimer = undefined
+                    statusMessage = ''
+                }
+                break
+        }
+    }
+
+    // Every input of the card is read here, at the click, so a later change of
+    // the selected character, theme or message cannot alter a card in flight.
+    const copyAsCard = ()=>{
+        startCardCopy({
+            owner: cardOwner,
+            captureText: currentCopyText,
+            captureCard: (copyText:string) => {
+                const isUser = role === 'user'
+                const character = getCurrentCharacter()
+                const cbsConditions = getCbsCondition()
+                const messageIdx = idx
+                const root = document.documentElement
+                return {
+                    copyText,
+                    displayName: isUser ? getUserName() : name,
+                    badge: isUser ? null : (messageGenerationInfo ? capitalize(getModelInfo(messageGenerationInfo.model).shortName) : 'AI'),
+                    avatarPath: (isUser ? getUserIcon() : DBState.db.characters[selIdState.selId]?.image) ?? '',
+                    theme: captureCardTheme((property) => root.style.getPropertyValue(property)),
+                    parseBody: () => ParseMarkdown(copyText, character, 'normal', messageIdx, cbsConditions),
+                    resolveAvatarSrc: getFileSrc,
+                }
+            },
+            report: reportCard,
+        })
+    }
+
 
     let blankMessage = $derived((message === '{{none}}' || message === '{{blank}}' || message === '') && idx === -1 || isComment)
     let displayMessage = $derived(isOptimizedStreamingMessage ? rawStreamingText : message)
@@ -968,10 +1034,9 @@
 {#snippet majorIconButtonsBody(showNames:boolean)}
     {#if DBState.db.useChatCopy && !blankMessage}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
-        const copyText = renderRawStreaming
-            ? risuChatParser(rawStreamingText, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
-            : msgDisplay
+        const copyText = currentCopyText()
         copyPlainText(copyText, reportCopy)
+        noteNewerPlainCopy(copyText, reportCopy)
     }}>
         <CopyIcon size={20}/>
         {#if showNames}
@@ -1121,6 +1186,15 @@
             <span class="ml-1">{language.disableAbove}</span>
         {/if}
     </button>
+
+    {#if DBState.db.useChatCopy && !blankMessage && typeof ClipboardItem === 'function' && typeof navigator.clipboard?.write === 'function'}
+        <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy-card" onclick={copyAsCard}>
+            <IdCardIcon size={20}/>
+            {#if showNames}
+                <span class="ml-1">{language.copyAsCard}</span>
+            {/if}
+        </button>
+    {/if}
 {/snippet}
 
 {#snippet senderIcon(options:{rounded?:boolean,styleFix?:string} = {})}
