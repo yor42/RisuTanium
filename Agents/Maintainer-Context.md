@@ -5530,3 +5530,101 @@ only). The list is not exhaustive; the plan is the full record.
 6. **`Title.svelte` still links risuai.net.** The maintainer has not decided on it (relayed).
 7. **The Rebranding session's leftovers merge** (`82776b3b` and `94d7be86`, merged as `e768ef75`) was first deferred by
    the maintainer, then approved.
+
+---
+
+### MC-165 — CHORE-63: "Copy as card" is a menu item; web images stay links; the card keeps app colours only and drops hidden text; the work is split, stage A first (and closes CHORE-40); CHORE-65 is low priority
+
+- **Tag:** decision (items 1, 2, 4, 5 and 6), stated or decided in chat (items 3 and 8), and an incident record (item 7)
+- **Date:** 2026-10-02
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the questions the Orchestrator asked with AskUserQuestion while the CHORE-63
+  plan was gated (items 1, 2, 4, 5, 6 and 7, each with the question's text, the option chosen and its text, and the
+  options not chosen; the packet records that the questions on style and hidden content and the split followed the
+  `senior-advisor` escalation after three Gate 1 `[REJECT]` rounds, and does not date the others), and the maintainer's own
+  words in chat (items 3 and 8, quoted as typed). The rule in each item is the option text the Orchestrator wrote and
+  the maintainer selected. The Orchestrator's own calls are listed apart at the end and are **not** maintainer
+  decisions.
+- **Reasoning:** the maintainer gave no reason beyond the answers. The reasons in the option texts are the
+  Orchestrator's. The only reason the maintainer gave is in item 3.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 1: "Long-press on copy" and "Both";
+  - item 2: "Leave them out";
+  - item 4: "Some inline styles" and "Exactly as on screen";
+  - item 5: "Include everything";
+  - item 6: "One change";
+  - item 7: "I'll run git myself";
+  - items 3 and 8 were the maintainer's own words in chat, so no options were offered.
+- **Extends:** `MC-160` 3 (it decides the "copy as card" gesture that `MC-160` 3 left open). It
+  does not change `MC-160` 3's rule that a tap on copy writes plain text.
+- **Related:** MC-011, MC-160, MC-161, MC-162, CHORE-40, CHORE-63, CHORE-65; commit `d013e7cf` (stage A); ledger rows
+  623 to 626.
+
+**What was decided** (the question verbatim, then the answer and the option text):
+1. **The gesture for "copy as card" is a menu item.** The question: "Where should the new "copy as card" action live?
+   (A tap on the copy button will copy plain text, as already decided.)" The answer: "Menu item (Recommended)": "A
+   "Copy as card" entry in the message's existing "…" popup menu. On phones the copy button is already in that menu,
+   so the two sit side by side. The app's long-press helper only listens for mouse events, which a held finger on
+   Android Chrome likely never sends (inferred from how browsers handle touch, not tested), so a long-press probably
+   wouldn't work on your Galaxy phones." The options not chosen were "Long-press on copy": "Hold the copy button to
+   copy the card, like holding the remove button. The helper would need touch support added, and holding a finger down
+   on Android can also bring up text selection."; and "Both": "The menu item, plus a long-press on desktop." The
+   touch-event claim in the chosen option's text is the Orchestrator's inference, labelled there as not tested.
+   - **Not decided by this entry:** the label's translations and the card's caps and timeouts. "Copy as card" is the
+     wording of the option text.
+2. **An image from an outside website stays a link in the card; the app fetches no outside host.** The question: "When
+   the card contains an image from an outside website, what should it do? (CHORE-40: the app will stop fetching
+   outside websites itself.)" The answer: "Keep as a link (Recommended)": "The card keeps the image's original web
+   address. The app downloads nothing; the app you paste into decides whether to load the image. Images stored in the
+   app (avatars, assets) are still embedded, shrunk to a capped size." The option not chosen was "Leave them out":
+   "Outside images are removed from the card entirely, so it only ever shows the app's own images."
+3. **CHORE-65 is low priority, and the work order stands.** The maintainer's words in chat: "old V2.1 plugins are
+   getting rare, so I think it can be marked as low priority." The same message: "let's stick with work order and
+   start working on CHORE-63 with CHORE-40." The work order is `MC-160` 3's: CHORE-53, then CHORE-63 with CHORE-40,
+   then CHORE-43 with CHORE-54.
+4. **The card keeps app colours only.** The question: ""Copy as card" turns the message into a formatted card. How
+   much of the message's own styling should the card keep? (Plain-text copy is unaffected either way.)" The answer:
+   "App colours only (Recommended)": "The card styles paragraphs, italics, bold and quotes in your theme colours, as
+   today. Colours, boxes and layouts that a character card writes into its own HTML don't carry over, so heavily
+   styled status panels paste as clean text. This is the version that can be reviewed with confidence." The options
+   not chosen were "Some inline styles": "Also keep a short list of styles written directly on the message's
+   elements: text colour, background colour, bold, italic, underline, alignment. Styles from a card's stylesheets and
+   class names still don't carry over. More faithful, but another list to review."; and "Exactly as on screen":
+   "Read the styling from the message as it's actually shown. Most faithful, but a much bigger change: the card would
+   then copy whatever is on screen at that moment, which could be a translation or a reply that's still streaming."
+5. **Hidden text is left out of the card.** The question: "Messages can contain content the chat doesn't show: hidden
+   blocks, and collapsed sections such as the model's thinking. What should the card do with it?" The answer: "Leave
+   it out (Recommended)": "The card shows what the message shows: hidden blocks and collapsed sections, including
+   the thinking section, are dropped. One caveat: content hidden by a card's stylesheet rule, rather than directly on
+   the element, can't be detected and would appear." The option not chosen was "Include everything": "The card
+   carries all of the message's text, with hidden and collapsed parts shown."
+6. **The work is split: stage A (plain text) now, the card next.** The question: "The plain-text half of the fix (tap
+   copies text instantly, errors are shown, no outside fetches, the "…" menu reopens on one tap) is already agreed
+   with the reviewer. Should it go ahead now, with the card following as a separate gated change?" The answer:
+   "Split: text now, card next (Recommended)": "Commit the plain-text fix first, which also closes CHORE-40, then the
+   card as its own change, and optionally embedding the message's own images as a third. Until the card change lands,
+   "Copy as card" isn't there yet. The fork hasn't shipped, so nobody is affected." The option not chosen was "One
+   change": "Keep everything in a single change and commit only when the card is done too."
+   - **This supersedes "fixed in the same change as CHORE-40"** in `MC-160` 3's placement question, the Roadmap and the
+     Live-State work order. Stage A is committed as `d013e7cf` and closes CHORE-40. Stage B is the "Copy as card" menu
+     item with the card contract of items 1, 2, 4 and 5; stage C is optional (embedding the message's own local images).
+     Stage B must keep the app from fetching outside hosts (item 2).
+7. **Chat.svelte was restored by the Orchestrator.** An incident record, not a product rule. The question: "How should
+   src/lib/ChatScreens/Chat.svelte be put back to the committed version? It had no changes of yours before the
+   coder's broken edit, so nothing is lost either way." The answer: "You restore it (Recommended)". The option not
+   chosen was "I'll run git myself". The coder's PowerShell edit had split the file's CRLF line endings and corrupted
+   it; the Orchestrator restored it from the HEAD blob with this approval, and the work was finished with the Edit tool
+   (ledger row 626).
+8. **Commit stage A, and defer the live check until stage B is done.** The maintainer's words in chat: "commit stage
+   A. and defer live check until we finish stage B." and "I will take a look if I can fix the live pane while you are
+   working on stage B." Stage A is committed as `d013e7cf`. The live check of the copy button in a browser has not
+   been run.
+
+**The Orchestrator's own calls** (not maintainer decisions; calls 2 to 5 are in the `d013e7cf` commit message or the source; call 1 is a stage B intention recorded here only):
+1. The brand strings in the card become "RisuTanium" (`MC-162` 1), in stage B.
+2. The status text beside the message buttons replaces the blocking "Loading" and "Copied" dialogs.
+3. The plain copy falls back to `document.execCommand('copy')` when the clipboard API is absent or rejects.
+4. The status span uses `aria-live="polite"`, not `role="status"`, because the draft-restore marker tests find that
+   marker by `role="status"`.
+5. The popup reopen fix (the "…" menu opens on one tap after an item was used or the menu was closed by a click
+   elsewhere) is folded into stage A: an adjacent defect on the same path.

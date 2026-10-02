@@ -1639,6 +1639,13 @@ Traced to source, not fixed. The maintainer did not bring this into 28C.
 **Status (2026-10-02):** still open. **Fixed in the same change as CHORE-63**, placed right after CHORE-53
 (`MC-160` 3). A second investigation traced the same handler for the maintainer's copy-button report (ledger row 600).
 
+**Status (2026-10-02, later): closed by `d013e7cf` (CHORE-63 stage A).** The maintainer split the work (`MC-165` 6: "Split:
+text now, card next (Recommended)"), so CHORE-40 is no longer "fixed in the same change" as the whole of CHORE-63: it is
+closed by the plain-text stage, which is committed. The copy button requests no host at all: the card code, with its
+fetches, is gone from the tap (from the commit message). **Stage B must keep the app from fetching outside hosts**: the
+maintainer chose to keep an outside image as a link in the card, so the app downloads nothing (`MC-165` 2). The text
+above is the ticket as filed and is unchanged.
+
 - `Chat.svelte`'s copy button fetches every http(s) URL in a rendered message, character icon or
   user icon, including `sv.risuai.xyz`, from a click. It is not a Realm or Drive feature (Report
   28 section 11.6's closing paragraph), so CHORE-33's agreement gate does not cover it.
@@ -2919,7 +2926,8 @@ step 5d-4's investigation (ledger row 588). The README documents the consequence
 **Status (2026-10-02):** open, not fixed. **Placed right after CHORE-53 and before CHORE-43 with CHORE-54, and fixed in
 the same change as CHORE-40** (`MC-160` 3). Type: reliability and surprising output; no persisted data is involved.
 Filed from the maintainer's report on upstream (`MC-160` 2) and the CHORE-40 second investigation (ledger row 600).
-Labels below: TRACED = the code path was read; RUN = executed in the investigation; INFERRED = reasoned, not verified in
+**Later the same day the work was split and stage A was committed as `d013e7cf`; see the second status paragraph at
+the end of this entry.** Labels below: TRACED = the code path was read; RUN = executed in the investigation; INFERRED = reasoned, not verified in
 source or by execution.
 
 - **The report (`MC-160` 2, an observation of an upstream build, `MC-011`):** Chrome on Android, Galaxy S22 Ultra and Z
@@ -3042,6 +3050,39 @@ source or by execution.
   Chrome resolves `clipboard.write` before the OS commits the clip; whether Android Chrome grants writes outside a
   gesture; a focus or visibility rejection on a foldable's multi-window (INFERRED, low prior, not run).
 - **Related:** CHORE-40 (the same function; fixed together), `MC-011`, `MC-160`; Report 28 section 11.6; ledger row 600.
+
+**Status (2026-10-02, later): stage A committed as `d013e7cf`; stages B and C and the live check are open.** The
+maintainer split the work (`MC-165` 6), so the sentence above that CHORE-63 is "fixed in the same change as CHORE-40" no
+longer holds: CHORE-40 is closed by stage A. `MC-165` 1 decides the gesture that the "Not decided" bullet above leaves
+open (a "Copy as card" item in the message's "..." menu). The ticket text above is otherwise unchanged. What the commit
+message says stage A does:
+- A tap on the copy button (and the copy hotkey, which clicks it) calls `navigator.clipboard.writeText` with the
+  message text synchronously in the click, before any await. It writes plain text only, and the text is still the parsed
+  original message, not a shown translation. The copy logic is in the new `src/ts/chatCopy.ts`.
+- The rich card, with its markdown parse, image and icon fetches and canvas re-encodes, is removed from the tap, so the
+  button requests no host at all (CHORE-40).
+- When `writeText` is missing, throws or rejects, the text is copied with `document.execCommand('copy')` on a temporary
+  off-screen readonly textarea. A failure is shown beside the message buttons as the name of the first failure followed
+  by the translated "Copy failed" (the new key `copyFailed`, in all seven languages).
+- The blocking "Loading" and "Copied" dialogs are gone. The status text clears itself after 3 s (10 s for a failure).
+- The message "..." menu opens on one tap after an item in it was used or it was closed by a click elsewhere; a tap on "..." while it is open still closes it.
+- Checks on the final tree, from the commit message: `pnpm test` 289 files, 5626 passed, 4 skipped; `pnpm check` 0 errors,
+  0 warnings; `pnpm build` ok. The acceptance tests were written against the unchanged code first: all 12 copy tests and
+  the two reopen tests failed there; one reopen test passed there and is kept as a guard.
+- **Gate history:** plan Gate 1 rounds 1 to 3 were `[REJECT]`, every finding in the card part and none in the plain-copy
+  half (ledger row 624); the loop was escalated to `senior-advisor` (ledger row 625), and the maintainer split the work;
+  stage A Gate 2 was `[APPROVE]` with four optional notes, one comment corrected (ledger row 626).
+
+**Open:**
+- **Stage B:** the "Copy as card" item in the message's "..." menu, with the card contract the maintainer closed
+  (`MC-165` 1, 2, 4 and 5): a menu item, not a long-press; an outside image stays a link and the app fetches nothing;
+  app colours only; hidden blocks and collapsed sections, including the thinking section, are dropped, except that
+  content hidden by a card's stylesheet rule cannot be detected and would appear. The brand strings in the card become
+  "RisuTanium" (`MC-162` 1; the Orchestrator's call, `MC-165`). "Copy as card" is not in the app until this lands.
+- **Stage C (optional):** embedding the message's own local images, with a byte budget (`MC-165` 6 mentions it as an
+  optional third change). TODO(evidence): the budget figure and the decision to do it are not recorded.
+- **The live check**, deferred by the maintainer to after stage B (`MC-165` 8). Not run: a live check in a browser and
+  anything on Android (Android cannot be run from here).
 
 ### CHORE-64 — A plugin's write of the `plugins` list through `setDatabase` deleted every plugin that was not new, confirmed and API 3.0, with its saved arguments and API keys, and gave no prompt about the deletion (DATA LOSS; upstream too; closed by `48f00223`)
 
@@ -3172,6 +3213,9 @@ is not amended; these records state the scope.
   622.
 
 ### CHORE-65 — Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin list directly through the `getDatabase` proxy (DATA LOSS (V2.1 proxy route); no prompt; the unprompted write EXECUTED in a scratch test, the removal TRACED)
+
+**Status (2026-10-02, later): low priority**, at the maintainer's word (`MC-165` 3: "old V2.1 plugins are getting
+rare, so I think it can be marked as low priority."). It stays open and not scheduled.
 
 **Status (2026-10-02):** open, **not scheduled**. Filed from CHORE-64 at the maintainer's decision (`MC-163` 4 and 7:
 "Separate ticket (Recommended)" for each). Type: unprompted reads and writes of saved plugin settings, API keys included, and **DATA LOSS through the V2.1

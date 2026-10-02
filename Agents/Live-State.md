@@ -107,7 +107,11 @@ The commits below were local when they were listed, and were pushed with it:
   and updates keep saved settings (`MC-163`; ledger rows 618 to 622). The commit title says "a plugin's write to the
   plugin list never deletes plugins", which is broader than its scope; the commit is pushed and not amended. The V2.1
   proxy route is CHORE-65;
-- the records commit that follows `48f00223` and carries this file (MC-163, MC-164, CHORE-64 closed, CHORE-65 and CHORE-66, ledger rows 618 to 622).
+- the records commit that follows `48f00223` and carries this file (MC-163, MC-164, CHORE-64 closed, CHORE-65 and CHORE-66, ledger rows 618 to 622);
+- `d013e7cf`: CHORE-63 stage A and CHORE-40, the copy button writes the message text inside the tap and fetches
+  nothing (`MC-165`; ledger rows 623 to 626). Local, not pushed;
+- the records commit that follows `d013e7cf` and carries this file (MC-165, CHORE-40 closed, CHORE-63 stage A, CHORE-65
+  low priority, ledger rows 623 to 626).
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -120,7 +124,9 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - The merge `e768ef75` and the README `e9b70b8d` at "yes, let's merge the rebranding." That answered a question proposing the merge and the README commit.
 - `33cafe18` at "commit the branding folder too, and push too if its safe to do so, as readme is public facing."
 - `b745fc29` and `48f00223` were committed by the Orchestrator after their review gates, without a separate commit instruction. The maintainer then asked for each to be pushed: "push the link change for now, we can push chore 64 and other tasks separately." and "1. yes, push."
-- The records commit at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
+- `d013e7cf` at "commit stage A. and defer live check until we finish stage B." (`MC-165` 8).
+- The records commit after `d013e7cf` under the standing instruction "add the maintainer decisions to the records when you commit" (`MC-161` 9).
+- The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
 The working tree holds only this records batch's edits to the `Agents/` documents (until they are committed). Report 56
@@ -141,7 +147,7 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-165` (`MC-164` is used), Report 57 (Report 56 is used), ledger row 623 and CHORE-67
+**Next free numbers:** `MC-166` (`MC-165` is used), Report 57 (Report 56 is used), ledger row 627 and CHORE-67
 (`CHORE-66` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
@@ -202,8 +208,10 @@ should fill them.
    - The working copy of the plan is in the session scratchpad (`memfoot/stage1c/plan.md`).
      Report 49 is the durable version.
 2. **CHORE-53 is closed (2026-10-02; `07ea1882`, `1ba98d45`, `5747a7e1`; `MC-161`; Roadmap CHORE-53) and the
-   rebranding identity is merged (`cfa4dfa0`; `MC-162`). Next: CHORE-63 with CHORE-40**, then CHORE-43 with CHORE-54
-   (work order, unchanged). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   rebranding identity is merged (`cfa4dfa0`; `MC-162`). CHORE-63 stage A is done and CHORE-40 is closed (2026-10-02;
+   `d013e7cf`, local; `MC-165`; ledger rows 623 to 626). Next: CHORE-63 stage B (the "Copy as card" menu item), then the
+   optional stage C, then the deferred live check**, then CHORE-43 with CHORE-54
+   (work order, otherwise unchanged). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -480,11 +488,19 @@ should fill them.
    2. then **CHORE-53** (DATA LOSS: delete actions act on a stale target, and Enter clicks the control
       behind a confirm; ledger row 523; `MC-150` 4, the maintainer agreed to this position). **Done 2026-10-02**,
       as `1ba98d45`, `5747a7e1` and `07ea1882` (`MC-161`; ledger rows 606 to 616). Pushed;
-   3. **next: CHORE-63** (copy button reliability: the message copy button can fail silently or paste its own card)
-      **with CHORE-40** (the copy button fetches any http(s) URL), fixed in one change. The maintainer chose "Right
+   3. **CHORE-63** (copy button reliability: the message copy button can fail silently or paste its own card)
+      **with CHORE-40** (the copy button fetches any http(s) URL). The maintainer chose "Right
       after CHORE-53", and the option text says it goes before CHORE-43 and CHORE-54 (`MC-160` 3). The default copy
-      becomes plain text, with the card as a separate "copy as card" action (`MC-160` 3). Ledger row 600; no
-      persistence code is touched;
+      is plain text, with the card as a separate "copy as card" action (`MC-160` 3). Ledger row 600; no
+      persistence code is touched. **The maintainer split the work (`MC-165` 6):**
+      - **stage A is done** (2026-10-02, `d013e7cf`, local): plain copy written inside the tap, the `execCommand`
+        fallback, a visible failure, the status text clears, the "..." menu reopens on one tap; it closes CHORE-40;
+      - **next: stage B**, the "Copy as card" item in the message's "..." menu, with the contract the maintainer closed
+        (`MC-165` 1, 2, 4 and 5: a menu item, outside images stay links with no fetch, app colours only, hidden text
+        dropped);
+      - then **stage C (optional)**, embedding the message's own local images with a byte budget;
+      - then **the live check**, deferred by the maintainer to after stage B (`MC-165` 8; the maintainer is looking at
+        whether the live pane can be fixed meanwhile). Android cannot be run from here;
    4. then **CHORE-43** (unreroll can write one chat's reply into another) **with CHORE-54** (rerolling
       or going back through rerolls overwrites an edited reply with its generation-time copy; data
       loss, save path inferred). The maintainer placed both right after CHORE-53 (ledger row 528;
@@ -540,7 +556,8 @@ Not placed in the sequence:
   (`MC-162`).
 - **CHORE-65** (plugins read and change each other's saved arguments; V2.1 plugins edit the plugin list directly
   through the live `getDatabase` proxy; `MC-163` 4 and 7) and **CHORE-66** (the wiki's plugin pages describe the
-  behaviour from before CHORE-64; the Wiki session's lane): filed 2026-10-02, not scheduled.
+  behaviour from before CHORE-64; the Wiki session's lane): filed 2026-10-02, not scheduled. **CHORE-65 is low
+  priority** by the maintainer's decision (`MC-165` 3).
 - **CHORE-56** (under the beta mobile layout, a touch that ends on a button, input, select or textarea
   throws a TypeError in the swipe handler): suspected; TRACED, not run. The maintainer has not yet
   confirmed or placed it.
