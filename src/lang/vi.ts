@@ -870,6 +870,7 @@ export const languageVietnamese = {
     "homeSourceEmailUpstreamLabel": "Liên hệ hỗ trợ chính thức",
     "backgroundHTML": "Nhúng nền",
     "copied": "Đã sao chép",
+    "copyFailed": "Sao chép thất bại",
     "useChatCopy": "Sử dụng Sao chép tin nhắn trò chuyện",
     "useChatSticker": "Sử dụng nhãn dán trò chuyện",
     "useAdditionalAssetsPreview": "Sử dụng bản xem trước nội dung bổ sung",

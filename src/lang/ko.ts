@@ -870,6 +870,7 @@ export const languageKorean = {
     "homeSourceEmailUpstreamLabel": "공식 지원팀에 문의",
     "backgroundHTML": "백그라운드 임베딩",
     "copied": "복사됨",
+    "copyFailed": "복사 실패",
     "useChatCopy": "채팅 메시지 복사 사용",
     "useChatSticker": "채팅 스티커 사용",
     "useAdditionalAssetsPreview": "추가 에셋 미리보기 사용",

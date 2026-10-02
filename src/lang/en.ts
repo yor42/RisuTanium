@@ -1005,6 +1005,7 @@ export const languageEnglish = {
     homeSourceEmailUpstreamLabel: "Contact official support",
     backgroundHTML: "Background Embedding",
     copied: "Copied",
+    copyFailed: "Copy failed",
     useChatCopy: "Use Chat Message Copy",
     useChatSticker: "Use Chat Sticker",
     useAdditionalAssetsPreview: "Use Additional Assets Preview",

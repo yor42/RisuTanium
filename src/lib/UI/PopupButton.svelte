@@ -13,14 +13,19 @@
 </script>
 
 <button onclick={async (e:MouseEvent) => {
+    // The open state is read before the yield: PopupList's document click listener
+    // closes the popup during this same click, and the toggle must act on what the user saw.
+    const wasOpen = popupStore.children !== null && popupStore.openId === buttonId
+    const mouseX = e.clientX
+    const mouseY = e.clientY
     await sleep(0)
-    if(popupStore.openId === buttonId){
+    if(wasOpen){
         popupStore.children = null
         popupStore.openId = 0
         return
     }
-    popupStore.mouseX = e.clientX
-    popupStore.mouseY = e.clientY
+    popupStore.mouseX = mouseX
+    popupStore.mouseY = mouseY
     popupStore.children = children
     popupStore.openId = buttonId
 }} class="hover:text-blue-500 transition-colors button-icon-menu">

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
-    import { aiLawApplies, changeChatTo, foldChatToMessage, getFileSrc, createChatCopyName } from "src/ts/globalApi.svelte"
+    import { aiLawApplies, changeChatTo, foldChatToMessage, createChatCopyName } from "src/ts/globalApi.svelte"
+    import { copyPlainText, type CopyOutcome } from "src/ts/chatCopy"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
     import { getModelInfo } from "src/ts/model/modellist"
@@ -15,13 +16,13 @@
     import { type MessageIdentity, type TranslationIdentity, type DraftRecord, isDraftRestore } from "src/ts/draftContents"
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
-    import { capitalize, getUserIcon, getUserName, sleep } from "src/ts/util"
+    import { capitalize, getUserName, sleep } from "src/ts/util"
     import { onDestroy, onMount } from "svelte"
     import { fade } from "svelte/transition"
     import { type Unsubscriber } from "svelte/store"
     import { v4 as uuidv4, v4 } from 'uuid'
     import { language } from "../../lang"
-    import { alertClear, alertConfirm, alertInput, alertNormal, alertRequestData, alertSelect, alertWait } from "../../ts/alert"
+    import { alertConfirm, alertInput, alertRequestData, alertSelect } from "../../ts/alert"
     import { markCharacterForSave } from "../../ts/storage/characterSaveMarks"
     import { ParseMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
     import { getCurrentCharacter, getCurrentChat, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
@@ -531,12 +532,30 @@
         msgDisplay = risuChatParser(message, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
     }
 
-    const setStatusMessage = (message:string, timeout:number = 0)=>{
+    // At most one status timer is pending, and it only clears the status text it was
+    // started for, so an older status never wipes a newer one.
+    let statusTimer: ReturnType<typeof setTimeout> | undefined
+    let destroyed = false
+
+    const setStatusMessage = (message:string, timeout:number)=>{
+        clearTimeout(statusTimer)
         statusMessage = message
-        if(timeout === 0) return
-        setTimeout(() => {
-            statusMessage = ''
+        statusTimer = setTimeout(() => {
+            statusTimer = undefined
+            if(statusMessage === message){
+                statusMessage = ''
+            }
         }, timeout)
+    }
+
+    const reportCopy = (outcome:CopyOutcome)=>{
+        if(destroyed) return
+        if('errorName' in outcome){
+            setStatusMessage(`${outcome.errorName}: ${language.copyFailed}`, 10000)
+        }
+        else{
+            setStatusMessage(language.copied, 3000)
+        }
     }
 
 
@@ -571,6 +590,8 @@
     })
 
     onDestroy(()=>{
+        destroyed = true
+        clearTimeout(statusTimer)
         unsubscribers.forEach(u => u())
         // Backstop alongside the `$effect` cleanups above -- `unregisterDraft` is a
         // safe no-op if the key was already removed.
@@ -916,7 +937,7 @@
 
             </button>
         {:else}
-            <span class="text-xs">{statusMessage}</span>
+            <span class="text-xs" aria-live="polite">{statusMessage}</span>
             <div class="flex items-center ml-2 gap-2">
                 {@render translationButton()}
                 {#if window.innerWidth >= 640}
@@ -946,231 +967,11 @@
 
 {#snippet majorIconButtonsBody(showNames:boolean)}
     {#if DBState.db.useChatCopy && !blankMessage}
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={async ()=>{
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
         const copyText = renderRawStreaming
             ? risuChatParser(rawStreamingText, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
             : msgDisplay
-        if(window.navigator.clipboard.write){
-            try {
-                alertWait(language.loading)
-                const root = document.querySelector(':root') as HTMLElement;
-
-                const parser = new DOMParser()
-                const doc = parser.parseFromString(
-                    await ParseMarkdown(copyText, getCurrentCharacter(), 'normal', idx, getCbsCondition())
-                , 'text/html')
-                
-                doc.querySelectorAll('mark').forEach((el) => {
-                    const d = el.getAttribute('risu-mark')
-                    if(d === 'quote1' || d === 'quote2'){
-                        const newEle = document.createElement('div')
-                        newEle.textContent = el.textContent
-                        newEle.setAttribute('style', `background: transparent; color: ${
-                            root.style.getPropertyValue('--FontColorQuote' + d.slice(-1))
-                        };`)
-                        el.replaceWith(newEle)
-                        return
-                    }
-                })
-                doc.querySelectorAll('p').forEach((el) => {
-                    el.setAttribute('style', `color: ${root.style.getPropertyValue('--FontColorStandard')};`)
-                })
-                doc.querySelectorAll('em').forEach((el) => {
-                    el.setAttribute('style', `font-style: italic; color: ${root.style.getPropertyValue('--FontColorItalic')};`)
-                })
-                doc.querySelectorAll('strong').forEach((el) => {
-                    el.setAttribute('style', `font-weight: bold; color: ${root.style.getPropertyValue('--FontColorBold')};`)
-                })
-                doc.querySelectorAll('em strong').forEach((el) => {
-                    el.setAttribute('style', `font-weight: bold; font-style: italic; color: ${root.style.getPropertyValue('--FontColorItalicBold')};`)
-                })
-                doc.querySelectorAll('strong em').forEach((el) => {
-                    el.setAttribute('style', `font-weight: bold; font-style: italic; color: ${root.style.getPropertyValue('--FontColorItalicBold')};`)
-                })
-                
-                const imgs = doc.querySelectorAll('img')
-                for(const img of imgs){
-                    img.setAttribute('alt', 'from Risuai')
-                    const url = img.getAttribute('src')
-                    
-                    img.setAttribute('style', `
-                        max-width: 100%;
-                        margin: 10px 0;
-                        border-radius: 8px;
-                        box-shadow: rgba(0,0,0,0.1) 0px 2px 8px;
-                        display: block;
-                        margin-left: auto;
-                        margin-right: auto;
-                    `)
-                    
-                    if(url && (url.startsWith('http://asset.localhost') || url.startsWith('https://asset.localhost') || url.startsWith('https://sv.risuai') || url.startsWith('data:') || url.startsWith('http') || url.startsWith('/'))){
-                        try {
-                            let fetchUrl = url
-                            if(url.startsWith('/')) {
-                                fetchUrl = window.location.origin + url
-                            }
-                            
-                            const data = await fetch(fetchUrl)
-                            if (data.ok) {
-                                const canvas = document.createElement('canvas')
-                                const ctx = canvas.getContext('2d')
-                                const imgElement = new Image()
-                                imgElement.crossOrigin = 'anonymous'
-                                imgElement.src = await data.blob().then((b) => new Promise((resolve, reject) => {
-                                    const reader = new FileReader()
-                                    reader.onload = () => resolve(reader.result as string)
-                                    reader.onerror = reject
-                                    reader.readAsDataURL(b)
-                                }))
-                                await new Promise((resolve) => {
-                                    imgElement.onload = resolve
-                                })
-                                canvas.width = imgElement.width
-                                canvas.height = imgElement.height
-                                ctx.drawImage(imgElement, 0, 0)
-                                const dataURL = canvas.toDataURL('image/jpeg', 0.6)
-                                img.setAttribute('src', dataURL)
-                            }
-                        } catch (error) {
-                            console.error('Image error:', error)
-                        }
-                    }
-                }
-
-                let iconDataUrl = ''
-                let hasValidImage = false
-                
-                try {
-                    const iconImage = (await getFileSrc(DBState.db.characters[selIdState.selId].image ?? '')) ?? ''
-                    
-                    if(iconImage && (iconImage.startsWith('http://asset.localhost') || iconImage.startsWith('https://asset.localhost') || iconImage.startsWith('https://sv.risuai') || iconImage.startsWith('data:') || iconImage.startsWith('http') || iconImage.startsWith('/'))){
-                        if(iconImage.startsWith('data:')){
-                            iconDataUrl = iconImage
-                            hasValidImage = true
-                        } else {
-                            const data = await fetch(iconImage)
-                            if (data.ok) {
-                                const canvas = document.createElement('canvas')
-                                const ctx = canvas.getContext('2d')
-                                const img = new Image()
-                                img.crossOrigin = 'anonymous'
-                                img.src = await data.blob().then((b) => new Promise((resolve, reject) => {
-                                    const reader = new FileReader()
-                                    reader.onload = () => resolve(reader.result as string)
-                                    reader.onerror = reject
-                                    reader.readAsDataURL(b)
-                                }))
-                                await new Promise((resolve, reject) => {
-                                    img.onload = () => {
-                                        canvas.width = img.width
-                                        canvas.height = img.height
-                                        ctx.drawImage(img, 0, 0)
-                                        iconDataUrl = canvas.toDataURL('image/jpeg', 0.9)
-                                        hasValidImage = true
-                                        resolve(true)
-                                    }
-                                    img.onerror = () => {
-                                        hasValidImage = false
-                                        resolve(false)
-                                    }
-                                })
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Icon error:', error)
-                    hasValidImage = false
-                }
-
-                const isUserMessage = role === 'user'
-                const displayName = isUserMessage ? getUserName() : name
-                const modelInfo = messageGenerationInfo ? capitalize(getModelInfo(messageGenerationInfo.model).shortName) : (isUserMessage ? 'User' : 'AI')
-                
-                let finalIconDataUrl = iconDataUrl
-                let finalHasValidImage = hasValidImage
-                
-                if (isUserMessage) {
-                    finalHasValidImage = false
-                    const userIcon = getUserIcon()
-                    if (userIcon) {
-                        try {
-                            const userIconSrc = await getFileSrc(userIcon)
-                            if (userIconSrc && (userIconSrc.startsWith('http://asset.localhost') || userIconSrc.startsWith('https://asset.localhost') || userIconSrc.startsWith('https://sv.risuai') || userIconSrc.startsWith('data:') || userIconSrc.startsWith('http') || userIconSrc.startsWith('/'))) {
-                                if (userIconSrc.startsWith('data:')) {
-                                    finalIconDataUrl = userIconSrc
-                                    finalHasValidImage = true
-                                } else {
-                                    const data = await fetch(userIconSrc)
-                                    if (data.ok) {
-                                        const canvas = document.createElement('canvas')
-                                        const ctx = canvas.getContext('2d')
-                                        const img = new Image()
-                                        img.crossOrigin = 'anonymous'
-                                        img.src = await data.blob().then((b) => new Promise((resolve, reject) => {
-                                            const reader = new FileReader()
-                                            reader.onload = () => resolve(reader.result as string)
-                                            reader.onerror = reject
-                                            reader.readAsDataURL(b)
-                                        }))
-                                        await new Promise((resolve, reject) => {
-                                            img.onload = () => {
-                                                canvas.width = img.width
-                                                canvas.height = img.height
-                                                ctx.drawImage(img, 0, 0)
-                                                finalIconDataUrl = canvas.toDataURL('image/jpeg', 0.9)
-                                                finalHasValidImage = true
-                                                resolve(true)
-                                            }
-                                            img.onerror = () => {
-                                                finalHasValidImage = false
-                                                resolve(false)
-                                            }
-                                        })
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            console.error('User icon error:', error)
-                            finalHasValidImage = false
-                        }
-                    }
-                }
-                
-                const html = `<div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: ${root.style.getPropertyValue('--risu-theme-textcolor')}; line-height: 1.6; max-width: 600px; margin: 1rem auto; background: ${root.style.getPropertyValue('--risu-theme-bgcolor')}; border-radius: 12px; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); overflow: hidden;">
-<div style="padding: 20px;">
-<div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 1rem; text-align: center;">
-    ${finalHasValidImage ? `<img style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid ${root.style.getPropertyValue('--risu-theme-darkborderc')}; margin-bottom: 0.75rem; object-fit: cover;" src="${finalIconDataUrl}" alt="profile">` : ''}
-    <h3 style="color: ${root.style.getPropertyValue('--risu-theme-textcolor')}; font-weight: 600; font-size: 1.5rem; margin: 0 0 0.5rem 0;">${displayName}</h3>
-    ${!isUserMessage ? `<span style="display: inline-block; border-radius: 16px; font-size: 0.8rem; padding: 0.25rem 0.75rem; background: ${root.style.getPropertyValue('--risu-theme-darkbg')}; color: ${root.style.getPropertyValue('--risu-theme-textcolor')}; border: 1px solid ${root.style.getPropertyValue('--risu-theme-darkborderc')};">${modelInfo}</span>` : ''}
-</div>
-<div style="border-top: 1px solid ${root.style.getPropertyValue('--risu-theme-darkborderc')}; padding-top: 1rem;">
-    ${doc.body.innerHTML}
-</div>
-<div style="text-align: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid ${root.style.getPropertyValue('--risu-theme-darkborderc')};">
-    <span style="font-size: 0.75rem; color: ${root.style.getPropertyValue('--risu-theme-textcolor2')}; opacity: 0.7;">From Risuai</span>
-</div>
-</div>
-</div>`
-
-                await window.navigator.clipboard.write([
-                    new ClipboardItem({
-                        'text/plain': new Blob([copyText], {type: 'text/plain'}),
-                        'text/html': new Blob([html], {type: 'text/html'})
-                    })
-                ])
-                alertNormal(language.copied)
-                return
-            }
-            catch (e) {
-                alertClear()
-                window.navigator.clipboard.writeText(copyText).then(() => {
-                    setStatusMessage(language.copied)
-                })
-            }
-        }
-        window.navigator.clipboard.writeText(copyText).then(() => {
-            setStatusMessage(language.copied)
-        })
+        copyPlainText(copyText, reportCopy)
     }}>
         <CopyIcon size={20}/>
         {#if showNames}

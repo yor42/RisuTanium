@@ -870,6 +870,7 @@ export const languageGerman = {
     "homeSourceEmailUpstreamLabel": "Offiziellen Support kontaktieren",
     "backgroundHTML": "Hintergrund-Einbettung",
     "copied": "Kopiert",
+    "copyFailed": "Kopieren fehlgeschlagen",
     "useChatCopy": "Kopiervorlage für Chatnachrichten verwenden",
     "useChatSticker": "Chatsticker verwenden",
     "useAdditionalAssetsPreview": "Vorschau für zusätzliche Medien verwenden",

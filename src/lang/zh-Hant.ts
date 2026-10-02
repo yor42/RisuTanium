@@ -916,6 +916,7 @@ export const languageChineseTraditional = {
     "homeSourceEmailUpstreamLabel": "聯絡官方支援",
     "backgroundHTML": "對話背景 HTML",
     "copied": "已複製",
+    "copyFailed": "複製失敗",
     "useChatCopy": "啟用對話訊息複製",
     "useChatSticker": "使用對話貼圖",
     "useAdditionalAssetsPreview": "使用額外資源預覽",

@@ -870,6 +870,7 @@ export const languageChinese = {
     "homeSourceEmailUpstreamLabel": "联系官方支持",
     "backgroundHTML": "背景嵌入",
     "copied": "已复制",
+    "copyFailed": "复制失败",
     "useChatCopy": "激活聊天消息复制",
     "useChatSticker": "激活聊天贴图",
     "useAdditionalAssetsPreview": "使用额外资源预览",
