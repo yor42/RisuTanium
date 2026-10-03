@@ -806,8 +806,8 @@ not just prompt quality.
 ### CHORE-11 — Character display (emotion images, image generation): 5 suspected bugs
 
 **Status (2026-10-03, UI session):** CD-4 was already fixed on 2026-09-24 as `910b07de` (ledger row 163; `MC-076`,
-`MC-077`); this entry had not been updated. CD-3 is fixed in the working tree (new label key `emotionInstructions`;
-Gate 2 [APPROVE], ledger row 801), awaiting the maintainer's commit word. CD-1, CD-2 and CD-5 remain open, deferred to
+`MC-077`); this entry had not been updated. CD-3 is fixed and committed in `e9a80ec5` on 2026-10-03 (new label key `emotionInstructions`;
+Gate 2 [APPROVE], ledger row 801). CD-1, CD-2 and CD-5 remain open, deferred to
 the small-items batch (ledger row 800; CD-5's field is declared in `src/ts/storage/database.svelte.ts`, outside the UI
 lane under `MC-179`).
 
@@ -1214,8 +1214,9 @@ how far the cause was traced, since several were seen in passing and not investi
 
 ### CHORE-19 — Theme text is unreadable on the always-light `mobilechat` and `cardboard` surfaces
 
-**Status (2026-10-03, UI session):** in the mobile batch (`MC-200` 1); product choices in `MC-201`; mechanism in ledger
-row 803. The cardboard editor is already dark text; the cardboard problem is the rendered reply body.
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e9a80ec5`** (ledger rows 806 to 813). Mobile batch (`MC-200` 1);
+product choices in `MC-201`; mechanism in ledger row 803. The cardboard editor is already dark text; the cardboard
+problem was the rendered reply body. Not covered by the live check: a light colour scheme and a physical device.
 
 **Status (2026-09-24):** observed during the durable-drafts live check in Chrome, with the
 `고대비` (high-contrast) text colour scheme. Cause **suspected, not traced**. Not fixed.
@@ -1236,8 +1237,10 @@ scheme. Trace which elements are affected under each colour scheme before choosi
 
 ### CHORE-20 — `mobilechat` on a touchscreen has no way to save or leave the message editor
 
-**Status (2026-10-03, UI session):** in the mobile batch (`MC-200` 1); product choices in `MC-201`; mechanism in ledger
-row 803. Wider than filed: mobilechat renders no message buttons at all, and the editor's only exit discards.
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e9a80ec5`** (ledger rows 806 to 813). Mobile batch (`MC-200` 1);
+product choices in `MC-201`; mechanism in ledger row 803. Wider than filed: mobilechat renders no message buttons at all,
+and the editor's only exit discarded. Save and Discard now appear inside the bubble while editing. Not covered by the
+live check: a physical device.
 
 **Status (2026-09-24):** found by reasoning from source during durable-drafts Gate 2; **not
 reproduced on a device**. Not fixed.
@@ -3070,9 +3073,9 @@ then the prune.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 
-**Status (2026-10-03, UI session):** confirmed and placed by the maintainer (`MC-200` 2) in the mobile batch; the fix
-keeps controls excluded from swipes and only stops the error (`MC-201` 3). Mechanism re-traced at HEAD, with current
-line numbers, in ledger row 803.
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e9a80ec5`** (ledger rows 806 to 813). Confirmed and placed by the
+maintainer (`MC-200` 2) in the mobile batch; the fix keeps controls excluded from swipes and only stops the error
+(`MC-201` 3). Mechanism re-traced at HEAD, with current line numbers, in ledger row 803.
 
 **Status (2026-10-01):** suspected; TRACED, not run. **Not placed** (the maintainer has not yet confirmed or
 placed it). Filed by the Orchestrator: the maintainer was told it would be filed unless they had never

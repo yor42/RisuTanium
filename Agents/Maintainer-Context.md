@@ -6363,3 +6363,26 @@ skipped name that a character actually uses would show as a missing image."
 4. **CHORE-19.** "Fixed dark text there (Recommended)": on the always-light `mobilechat` bubble and the `cardboard` card
    only, text uses fixed dark colours, as the draft restore marker already does (`MC-068`). Other themes are unchanged.
    Not chosen: make those surfaces follow the colour scheme.
+
+### MC-202 — CD-3, the first records and the mobile batch are committed as one commit; `.claude/launch.json` stays out
+
+- **Tag:** decision (the maintainer's answer to the UI session Orchestrator's multiple-choice question, and the
+  maintainer's instruction to commit)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer. The question put was "The 7 language files contain both CD-3's key and the mobile batch's
+  keys on adjacent lines. How should I commit?" The selected option label is quoted below, as is the maintainer's
+  instruction.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Two commits via staged blobs" (build CD-3-only copies of the seven language files in the
+  scratchpad and stage them through index plumbing, so CD-3 and the mobile batch commit separately); "I'll split it
+  myself" (the Orchestrator stops and the maintainer stages and commits the two parts).
+- **Related:** `MC-179`, `MC-200`, `MC-201`
+
+**What was decided:**
+1. **One commit.** "One combined commit (Recommended)": CD-3, the mobile batch with its tests, and the first batch of
+   records are committed together. The Orchestrator had planned two commits, but the in-place split of the shared
+   language files was blocked by the tool-permission classifier; the Orchestrator did not work around the block and asked.
+   The commit is `e9a80ec5` on `feat/ui-batch` (local, not pushed).
+2. **`.claude/launch.json` stays uncommitted.** The maintainer's word was "commit both, leave launch.json out".
+   `launch.json` carries a new `risuai-ui-scratch` entry.

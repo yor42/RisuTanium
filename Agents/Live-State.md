@@ -250,20 +250,33 @@ Several sessions work **in this same checkout**:
 
 ### UI session (feat/ui-batch)
 
-- **Branch:** `feat/ui-batch`, from `57e7be63`; no commits yet. Work order: `MC-200` 1.
-- **Done, uncommitted, awaiting the maintainer's commit word:** CHORE-11 CD-3 (8 files: `src/lang/{en,ko,cn,zh-Hant,vi,de,es}.ts`
-  and `src/lib/SideBars/CharConfig.svelte`; Gate 2 [APPROVE], ledger row 801).
-- **Closed without code:** CHORE-44 (ledger row 802). Already fixed earlier: CD-4 (`910b07de`).
-- **Next:** the mobile batch (CHORE-56, CHORE-20, CHORE-19) to Gate 1; choices in `MC-201`.
-- **Next free numbers in the UI ranges:** `MC-202`, ledger row 806, CHORE-90, Report 65.
+- **Branch:** `feat/ui-batch`, from `57e7be63`; one commit, `e9a80ec5` (local, not pushed; `MC-202`). Work order:
+  `MC-200` 1.
+- **Done (in `e9a80ec5`):** CHORE-11 CD-3, CHORE-19, CHORE-20 and CHORE-56 (the mobile batch; ledger rows 803 to 813). Closed
+  without code: CHORE-44 (ledger row 802). Already fixed earlier: CD-4 (`910b07de`).
+- **Uncommitted, awaiting the maintainer's commit word:** the records for the mobile batch (`MC-202`, ledger rows 806 to
+  815, the Roadmap status lines, this block). `.claude/launch.json` (a new `risuai-ui-scratch` entry) is also
+  uncommitted, by the maintainer's word (`MC-202` 2).
+- **Next:** the chat UI batch: CHORE-21, the rejected-avatar-icon follow-up, and CHORE-69, which needs a maintainer
+  decision on what the plain copy leaves out.
+- **Next free numbers in the UI ranges:** `MC-203`, ledger row 816, CHORE-90, Report 65.
+- **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
+  the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
+  "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".
+- **Not covered by the mobile batch's live check:** a physical device (callout, the phone's own follow-up click) and a
+  light colour scheme (ledger row 813). The optional guard so that a Discard confirm answered after the component
+  unmounts does nothing was not done (ledger row 812).
 - **Operational notes:** this worktree needed `pnpm install --frozen-lockfile`. `pnpm test` rewrites
   `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` with LF endings; never stage it, and restore
   its CRLF bytes after a full run.
-- **Wiki hand-off (UI session, for the Wiki session):** `docs/wiki/Additional-Character-Screen.md` (around line 46)
+- **Wiki hand-offs (UI session, for the Wiki session):** `docs/wiki/Additional-Character-Screen.md` (around line 46)
   says the emotion and image-generation Inlay boxes share the "Image Generation Instructions" label; after CD-3 the
-  emotion box is labelled "Emotion Instructions". CD-4's keep-edited-text behaviour is `MC-077`.
+  emotion box is labelled "Emotion Instructions". CD-4's keep-edited-text behaviour is `MC-077`. New: the `mobilechat`
+  Save and Discard behaviour while a message is edited, and the Delete button's touch long-press force delete (`MC-201`
+  1 and 2).
 - **Files outside the UI lane touched so far:** none. Step-6 flows touched (memory step 6 hooks): `CharConfig.svelte`'s
-  emotion settings label only (a one-line label change).
+  emotion settings label (a one-line label change); `Chat.svelte`'s editor exits (Save and Discard share the discard
+  function with the editor's mouse long-press; they are deliberate exits).
 
 **Next free numbers (reserved ranges, `MC-179` 3):**
 
