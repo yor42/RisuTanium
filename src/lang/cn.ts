@@ -1733,4 +1733,5 @@ export const languageChinese = {
     "assetIntegrityWarnOnStartup": "启动时若快速抽样检查发现损坏则发出警告",
     "assetIntegrityVerifyButton": "立即验证资源缓存",
     "cardFileIncomplete": "此角色卡文件不完整或已损坏，因此未导入。",
+    "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `此角色卡内的文件“${fileName}”超过了 ${limitMiB} MB 的限制，因此该角色卡未导入。`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

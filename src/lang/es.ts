@@ -1733,4 +1733,5 @@ export const languageSpanish = {
     assetIntegrityWarnOnStartup: "Advertir al iniciar si una comprobación rápida de muestra encuentra corrupción",
     assetIntegrityVerifyButton: "Verificar Caché de Activos Ahora",
     cardFileIncomplete: "Este archivo de tarjeta está incompleto o dañado, por lo que no se importó.",
+    cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `El archivo "${fileName}" dentro de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

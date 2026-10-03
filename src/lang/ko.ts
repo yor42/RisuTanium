@@ -1733,4 +1733,5 @@ export const languageKorean = {
     assetIntegrityWarnOnStartup: "시작 시 빠른 샘플 검사에서 손상이 발견되면 경고 표시",
     assetIntegrityVerifyButton: "지금 에셋 캐시 검증",
     cardFileIncomplete: "이 카드 파일이 불완전하거나 손상되어 임포트하지 않았습니다.",
+    cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `이 카드 안의 "${fileName}" 파일이 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

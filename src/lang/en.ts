@@ -1876,6 +1876,8 @@ export const languageEnglish = {
     assetIntegrityWarnOnStartup: "Warn on startup if a quick sample check finds corruption",
     assetIntegrityVerifyButton: "Verify Asset Cache Now",
     cardFileIncomplete: "This card file is incomplete or damaged, so it was not imported.",
+    cardFileEntryTooLarge: (fileName: string, limitMiB: number) =>
+        `The file "${fileName}" inside this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

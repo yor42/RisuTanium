@@ -1733,4 +1733,5 @@ export const languageVietnamese = {
     assetIntegrityWarnOnStartup: "Cảnh báo khi khởi động nếu kiểm tra mẫu nhanh phát hiện hỏng dữ liệu",
     assetIntegrityVerifyButton: "Xác minh Bộ nhớ đệm Tài sản Ngay",
     cardFileIncomplete: "Tệp thẻ này không đầy đủ hoặc bị hỏng nên không được nhập.",
+    cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `Tệp "${fileName}" bên trong thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

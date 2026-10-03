@@ -105,6 +105,16 @@ describe('importModule with a .charx file', () => {
         expect(h.modules).toEqual([])
     })
 
+    test('a size refusal that importCharacterProcess already reported is not followed by noData or a success message (compatibility guard)', async () => {
+        h.importer = async () => {
+            h.log.push('error:' + language.cardFileEntryTooLarge('assets/big.bin', 200))
+            return undefined
+        }
+        await importModule()
+        expect(h.log).toEqual(['error:' + language.cardFileEntryTooLarge('assets/big.bin', 200)])
+        expect(h.modules).toEqual([])
+    })
+
     test('a declined low-level-access prompt, which shows no message of its own, still shows noData (compatibility guard)', async () => {
         h.importer = async () => false
         await importModule()

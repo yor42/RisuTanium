@@ -30,9 +30,9 @@ const h = vi.hoisted(() => {
         uuid: 0,
         module: { lorebook: [] as unknown[], trigger: [] as unknown[], regex: [] as unknown[] },
         moduleReads: [] as number[],
-        /** makes an AppendableBuffer.append fail for chunks this returns true for */
+        /** makes EntryBuffer.append (the importer's per-entry buffer) fail for chunks this returns true for */
         appendFailWhen: null as ((data: Uint8Array) => boolean) | null,
-        /** the tag (first four characters) of every chunk that begins an asset, as appended to an AppendableBuffer */
+        /** the tag (first four characters) of every chunk that begins an asset, as appended to an EntryBuffer */
         appendTags: [] as string[],
         /** makes the ZIP parser report an error on its final push */
         finalPushError: false,
@@ -40,6 +40,8 @@ const h = vi.hoisted(() => {
         lateOndataError: false,
         /** makes the ZIP parser throw from every push after it has processed the data */
         latePushThrow: false,
+        /** the most bytes any one importer buffer received since the last reset of the append statistics */
+        maxEntryBytes: 0,
     }
 })
 
@@ -120,18 +122,7 @@ vi.mock(import('src/ts/characters'), () => ({
 }) as unknown as typeof import('src/ts/characters'))
 
 vi.mock(import('src/ts/globalApi.svelte'), async () => {
-    const { AppendableBuffer: Base } = await import('src/ts/byteBuffer')
-    class AppendableBuffer extends Base {
-        append(data: Uint8Array) {
-            if (data.length >= 4 && data[0] === 0x41 && data[1] === 0x53 && data[2] === 0x53) {
-                h.appendTags.push(String.fromCharCode(...data.subarray(0, 4)))
-            }
-            if (h.appendFailWhen?.(data)) {
-                throw new RangeError('Array buffer allocation failed (simulated)')
-            }
-            super.append(data)
-        }
-    }
+    const { AppendableBuffer } = await import('src/ts/byteBuffer')
     return {
         AppendableBuffer,
         BlankWriter: class {},
@@ -232,7 +223,7 @@ vi.mock('fflate', async (importOriginal) => {
 //#endregion
 
 import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
-import { CharXImporter, CharXWriter, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
+import { CharXImporter, CharXWriter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
 import type { VirtualWriter } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 
@@ -402,6 +393,8 @@ type Outcome = {
     thrown: string | null
 }
 
+const defaultLimits = { ...charxLimits }
+
 function reset() {
     h.saved = []
     h.saveCalls = 0
@@ -419,6 +412,8 @@ function reset() {
     h.finalPushError = false
     h.lateOndataError = false
     h.latePushThrow = false
+    h.maxEntryBytes = 0
+    Object.assign(charxLimits, defaultLimits)
 }
 
 function dataFor(bytes: Uint8Array, name: string, input: Input): File | Uint8Array | ReadableStream<Uint8Array> {
@@ -456,8 +451,30 @@ function describeOutcome(returned: number | null | undefined, thrown: string | n
     }
 }
 
+// The importer's per-entry buffer is observed (and made to fail) through its append method.
+const realAppend = EntryBuffer.prototype.append
+let appendTotals = new WeakMap<object, number>()
+/** Forgets what the buffers built so far received, so a test can measure the import alone. */
+function resetAppendStats() {
+    appendTotals = new WeakMap()
+    h.maxEntryBytes = 0
+    h.appendTags = []
+}
+
 beforeEach(() => {
     reset()
+    vi.spyOn(EntryBuffer.prototype, 'append').mockImplementation(function (this: EntryBuffer, data: Uint8Array) {
+        if (data.length >= 4 && data[0] === 0x41 && data[1] === 0x53 && data[2] === 0x53) {
+            h.appendTags.push(String.fromCharCode(...data.subarray(0, 4)))
+        }
+        if (h.appendFailWhen?.(data)) {
+            throw new RangeError('Array buffer allocation failed (simulated)')
+        }
+        const total = (appendTotals.get(this) ?? 0) + data.length
+        appendTotals.set(this, total)
+        h.maxEntryBytes = Math.max(h.maxEntryBytes, total)
+        return realAppend.call(this, data)
+    })
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -989,5 +1006,343 @@ describe('hasZipEndRecord', () => {
         f.slice = () => { throw new DOMException('tail unreadable', 'NotReadableError') }
         const error = await hasZipEndRecord(f).catch((e: unknown) => e)
         expect(originOf(error)).toBe('input')
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Size limits: card.json and module.risum 50 MiB, every other entry 200 MiB, refused before anything is saved
+// ---------------------------------------------------------------------------------------------
+
+const MIB = 1024 * 1024
+const sizeMessage = (name: string, limitMiB: number) => language.cardFileEntryTooLarge(name, limitMiB)
+
+/** Zero-filled (so it compresses to almost nothing) bytes that start with a 4-character tag. */
+function zeros(n: number, tag = 'ZERO'): Uint8Array {
+    const a = new U8(n)
+    a.set(enc.encode(tag), 0)
+    return a
+}
+
+/** `cardEntries()` with one asset's data replaced. */
+function replaceAsset(entries: Entry[], name: string, data: Uint8Array): Entry[] {
+    return entries.map(([key, value]) => key === name ? [key, data] as Entry : [key, value] as Entry)
+}
+
+/** card.json padded with spaces (still valid JSON) up to `size` bytes. */
+function paddedCard(size: number): Uint8Array {
+    const card = enc.encode(v3Card)
+    const out = new U8(size).fill(0x20)
+    out.set(card, 0)
+    return out
+}
+
+type CdRecord = { name: string, at: number }
+
+/** The central directory records of an archive, located from the end record (never from the offset field). */
+function cdRecords(z: Uint8Array): CdRecord[] {
+    const dv = new DataView(z.buffer, z.byteOffset, z.byteLength)
+    let eocd = -1
+    for (let i = z.length - 22; i >= 0; i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break }
+    const out: CdRecord[] = []
+    let at = eocd - dv.getUint32(eocd + 12, true)
+    while (at < eocd) {
+        const nameLen = dv.getUint16(at + 28, true)
+        out.push({ name: new TextDecoder().decode(z.subarray(at + 46, at + 46 + nameLen)), at })
+        at += 46 + nameLen + dv.getUint16(at + 30, true) + dv.getUint16(at + 32, true)
+    }
+    return out
+}
+
+/** A copy whose central directory declares `size` for the entry `name`. */
+function declareSize(z: Uint8Array, name: string, size: number): Uint8Array {
+    const c = z.slice()
+    new DataView(c.buffer).setUint32(cdRecords(c).find((r) => r.name === name)!.at + 24, size, true)
+    return c
+}
+
+const eocdOf = (z: Uint8Array) => geometry(z).eocd
+
+describe('charx size limits: refusal before anything is saved', () => {
+    test('a data-descriptor asset over 200 MiB is refused with a message naming it and nothing saved (regression reproducer)', async () => {
+        const z = await writerArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(201 * MIB)), 6)
+        const out = await runImport(z, 'card.charx', 'file')
+        expectRefusedBeforeSaving(out, '201 MiB descriptor entry', sizeMessage('assets/b.bin', 200))
+        expect(out.returned).toBeUndefined()
+    }, 240000)
+
+    test('a known-size asset over 200 MiB is refused with a message naming it and nothing saved (regression reproducer)', async () => {
+        const z = otherToolArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(201 * MIB)))
+        const out = await runImport(z, 'card.charx', 'file')
+        expectRefusedBeforeSaving(out, '201 MiB known-size entry', sizeMessage('assets/b.bin', 200))
+    }, 240000)
+
+    test('a card.json over 50 MiB written after the assets is refused before the assets are saved (regression reproducer)', async () => {
+        const z = await writerArchive([...cardEntries().filter(([k]) => k !== 'card.json'), ['card.json', paddedCard(51 * MIB)]], 6)
+        expectRefusedBeforeSaving(await runImport(z, 'card.charx', 'file'), 'card.json 51 MiB', sizeMessage('card.json', 50))
+    }, 240000)
+
+    test('a module.risum over 50 MiB is refused instead of importing the card without its module (regression reproducer)', async () => {
+        const entries: Entry[] = [...cardEntries().filter(([k]) => k !== 'card.json'), ['module.risum', zeros(51 * MIB)], ['card.json', v3Card]]
+        expectRefusedBeforeSaving(await runImport(await writerArchive(entries, 6), 'card.charx', 'file'), 'module.risum 51 MiB', sizeMessage('module.risum', 50))
+        expect(h.moduleReads).toEqual([])
+    }, 240000)
+
+    test('an asset between 50 and 200 MiB imports (regression reproducer)', async () => {
+        const big = zeros(51 * MIB, 'BIG1')
+        const z = await writerArchive(replaceAsset(cardEntries(), 'assets/b.bin', big), 6)
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.characters).toHaveLength(1)
+        expect(out.savedIds).toContain(sha1(big))
+        expect(out.savedIds).toHaveLength(3)
+    }, 240000)
+
+    test('a known-size module.risum of exactly 50 MiB is read (regression reproducer for the boundary)', async () => {
+        const z = otherToolArchive([['card.json', v3Card], ['module.risum', zeros(50 * MIB)], ...ASSETS.map((a) => [a.name, a.data] as Entry)])
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.errors).toEqual([])
+        expect(out.characters).toHaveLength(1)
+        expect(h.moduleReads).toEqual([50 * MIB])
+    }, 240000)
+
+    test('a data-descriptor module.risum of exactly 50 MiB is read (compatibility guard)', async () => {
+        const z = await writerArchive([['card.json', v3Card], ['module.risum', zeros(50 * MIB)], ...ASSETS.map((a) => [a.name, a.data] as Entry)], 6)
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.errors).toEqual([])
+        expect(h.moduleReads).toEqual([50 * MIB])
+    }, 240000)
+
+    test.each([
+        ['known-size', (entries: Entry[]) => Promise.resolve(otherToolArchive(entries))],
+        ['data-descriptor', (entries: Entry[]) => writerArchive(entries, 6)],
+    ] as Array<[string, (entries: Entry[]) => Promise<Uint8Array>]>)('an asset of exactly the limit imports and one byte more is refused (%s) (regression reproducer)', async (_label, build) => {
+        charxLimits.assetBytes = 2 * MIB
+        const exact = zeros(2 * MIB, 'EXAC')
+        const exactOut = await runImport(await build(replaceAsset(cardEntries(), 'assets/b.bin', exact)), 'card.charx', 'file')
+        expect(exactOut.errors).toEqual([])
+        expect(exactOut.savedIds).toContain(sha1(exact))
+        reset()
+        charxLimits.assetBytes = 2 * MIB
+        const over = await runImport(await build(replaceAsset(cardEntries(), 'assets/b.bin', zeros(2 * MIB + 1, 'OVER'))), 'card.charx', 'file')
+        expectRefusedBeforeSaving(over, 'one byte over', sizeMessage('assets/b.bin', 2))
+    })
+
+    test('a central directory that declares an over-limit size for a small entry refuses the card before saving (new behaviour)', async () => {
+        const z = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 201 * MIB)
+        expectRefusedBeforeSaving(await runImport(z, 'card.charx', 'file'), 'declared 201 MiB', sizeMessage('assets/a.bin', 200))
+    })
+
+    test('the size refusal comes from the Uint8Array and stream inputs as well, never as an incomplete file', async () => {
+        charxLimits.assetBytes = 2 * MIB
+        const z = await writerArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(3 * MIB)), 6)
+        for (const input of ['uint8array', 'buffer', 'stream', 'chunked-file'] as const) {
+            reset()
+            charxLimits.assetBytes = 2 * MIB
+            const out = await runImport(z, 'card.charx', input)
+            expect(out.thrown, input).toBeNull()
+            expect(out.errors, input).toEqual([sizeMessage('assets/b.bin', 2)])
+            expect(out.characters, input).toEqual([])
+        }
+    })
+})
+
+describe('charx size limits: the streaming check when the central directory does not say', () => {
+    test('a central directory that understates an entry still refuses at the limit with the size message (regression reproducer)', async () => {
+        charxLimits.assetBytes = 2 * MIB
+        const z = declareSize(await writerArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(3 * MIB)), 6), 'assets/b.bin', 1000)
+        resetAppendStats()
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([sizeMessage('assets/b.bin', 2)])
+        expect(out.characters).toEqual([])
+        expect(h.maxEntryBytes).toBeLessThanOrEqual(2 * MIB)
+    })
+
+    test('an unreadable central directory still refuses a data-descriptor asset over the limit (regression reproducer)', async () => {
+        charxLimits.assetBytes = 2 * MIB
+        const z = await writerArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(3 * MIB)), 6)
+        z[cdRecords(z)[0].at] = 0
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.errors).toEqual([sizeMessage('assets/b.bin', 2)])
+        expect(out.characters).toEqual([])
+    })
+
+    test('an unreadable central directory still refuses a known-size asset over the limit without starting it (regression reproducer)', async () => {
+        charxLimits.assetBytes = 2 * MIB
+        const z = otherToolArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(3 * MIB)))
+        z[cdRecords(z)[0].at] = 0
+        resetAppendStats()
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.errors).toEqual([sizeMessage('assets/b.bin', 2)])
+        // the oversize entry is refused when it is announced, so nothing near its size is ever buffered
+        expect(h.maxEntryBytes).toBeLessThan(MIB)
+    })
+
+    test('a JSON file that is not the card is counted against the limit and refused with an unreadable central directory (regression reproducer)', async () => {
+        charxLimits.assetBytes = 2 * MIB
+        const entries: Entry[] = [...cardEntries(), ['x_meta/info.json', zeros(3 * MIB)]]
+        const z = await writerArchive(entries, 6)
+        z[cdRecords(z)[0].at] = 0
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.errors).toEqual([sizeMessage('x_meta/info.json', 2)])
+    })
+
+    test('a JSON file that is not the card is discarded without being retained (new behaviour)', async () => {
+        const importer = new CharXImporter()
+        const z = await writerArchive([...cardEntries(), ['x_meta/info.json', zeros(3 * MIB)]], 6)
+        let retained = -1
+        const push = importer.unzip.push.bind(importer.unzip)
+        importer.unzip.push = (chunk: Uint8Array, final?: boolean) => {
+            push(chunk, final)
+            const buffer = importer.assetBuffers['x_meta/info.json']
+            if (buffer) retained = Math.max(retained, buffer.retainedBytes)
+        }
+        await importer.parse(chunkedStream(z, 512))
+        await importer.done()
+        expect(retained).toBe(0)
+        expect(Object.keys(importer.assets).sort()).toHaveLength(3)
+    })
+
+    test('a damaged JSON file that is not the card is refused as an incomplete file (compatibility guard)', async () => {
+        const z = badBlockType(await writerArchive([...cardEntries(), ['x_meta/info.json', body(5000, 9, 'JSON')]], 6), 'x_meta/info.json')
+        expectRefused(await runImport(z, 'card.charx', 'file'), 'damaged json')
+    })
+})
+
+describe('charx size limits: backlog of decoded assets', () => {
+    test.each([16, 64])('assets waiting to be saved stay bounded whatever the asset count: %i assets of 4 MiB (regression reproducer)', async (count) => {
+        const blob = zeros(4 * MIB, 'BLOB')
+        const entries: Entry[] = [['card.json', v3Card]]
+        for (let i = 0; i < count; i++) entries.push([`assets/blob${i}.bin`, blob])
+        const z = await writerArchive(entries, 6)
+        const importer = new CharXImporter()
+        const counters = importer as unknown as { totalEnqueued: number, totalCompleted: number }
+        h.saveDelay = 20
+        let maxUnsaved = 0
+        const push = importer.unzip.push.bind(importer.unzip)
+        importer.unzip.push = (chunk: Uint8Array, final?: boolean) => {
+            maxUnsaved = Math.max(maxUnsaved, counters.totalEnqueued - counters.totalCompleted)
+            push(chunk, final)
+        }
+        await importer.parse(chunkedStream(z, 512))
+        await importer.done()
+        expect(h.saved).toHaveLength(count)
+        // 32 MiB of backlog is eight assets of 4 MiB, plus the entry that completes while reading resumes
+        expect(maxUnsaved).toBeLessThanOrEqual(10)
+    }, 240000)
+
+    test('a save that fails while the reader waits for the backlog ends the import with that failure, not a hang', async () => {
+        const blob = zeros(4 * MIB, 'BLOB')
+        const entries: Entry[] = [['card.json', v3Card]]
+        for (let i = 0; i < 12; i++) entries.push([`assets/blob${i}.bin`, blob])
+        const z = await writerArchive(entries, 6)
+        h.saveDelay = 5
+        h.saveFail = 'storage full'
+        const importer = new CharXImporter()
+        await importer.parse(chunkedStream(z, 512))
+        await expect(importer.done()).rejects.toBeDefined()
+    }, 240000)
+})
+
+describe('charx size limits: archives the central directory pre-check must not break', () => {
+    const expectImports = async (z: Uint8Array, name = 'card.charx') => {
+        const out = await runImport(z, name, 'file')
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.characters).toHaveLength(1)
+        expect(out.savedIds).toEqual(assetIds)
+        return out
+    }
+
+    test('a central directory that overstates a data-descriptor size within the limit imports the same bytes as the original (compatibility guard)', async () => {
+        const z = await writerArchive(cardEntries(), 6)
+        await expectImports(declareSize(z, 'assets/b.bin', 150 * MIB))
+    })
+
+    test('a central directory that understates a data-descriptor size within the limit imports the same bytes (compatibility guard)', async () => {
+        const z = await writerArchive(cardEntries(), 6)
+        await expectImports(declareSize(z, 'assets/b.bin', 10))
+    })
+
+    test('a central directory whose names are in another order than the entries imports the same bytes (compatibility guard)', async () => {
+        const z = (await writerArchive(cardEntries(), 6)).slice()
+        const [first, second] = cdRecords(z).filter((r) => r.name.startsWith('assets/'))
+        const nameA = z.slice(first.at + 46, first.at + 46 + first.name.length)
+        z.set(z.slice(second.at + 46, second.at + 46 + second.name.length), first.at + 46)
+        z.set(nameA, second.at + 46)
+        await expectImports(z)
+    })
+
+    test('a central directory whose entry count does not match falls back to streaming (compatibility guard)', async () => {
+        const z = (await writerArchive(cardEntries(), 6)).slice()
+        const dv = new DataView(z.buffer)
+        const eocd = eocdOf(z)
+        dv.setUint16(eocd + 8, 9, true)
+        dv.setUint16(eocd + 10, 9, true)
+        await expectImports(declareSize(z, 'assets/a.bin', 300 * MIB))
+    })
+
+    test('a central directory whose records do not end at the end record falls back to streaming (compatibility guard)', async () => {
+        // seven bytes sit between the last record and the end record, and the end record counts them in the directory length;
+        // every record parses, so only the exact-end check can reject the directory
+        const declared = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 300 * MIB)
+        const eocd = eocdOf(declared)
+        const z = concat([declared.subarray(0, eocd), new U8(7), declared.subarray(eocd)])
+        const dv = new DataView(z.buffer)
+        dv.setUint32(eocd + 7 + 12, dv.getUint32(eocd + 7 + 12, true) + 7, true)
+        await expectImports(z)
+    })
+
+    test('an unparseable central directory falls back to streaming (compatibility guard)', async () => {
+        const z = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 300 * MIB)
+        z[cdRecords(z)[2].at] = 0
+        await expectImports(z)
+    })
+
+    test('an archive with zip64 end records is not pre-checked and imports (compatibility guard)', async () => {
+        const z = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 300 * MIB)
+        const eocd = eocdOf(z)
+        const record = new U8(56)
+        new DataView(record.buffer).setUint32(0, 0x06064b50, true)
+        const locator = new U8(20)
+        new DataView(locator.buffer).setUint32(0, 0x07064b50, true)
+        await expectImports(concat([z.subarray(0, eocd), record, locator, z.subarray(eocd)]))
+    })
+
+    test('a jpg-charx whose end record offset field is wrong imports (compatibility guard)', async () => {
+        const z = await writerArchive(cardEntries(), 6, { prefix: JPEG_HEAD })
+        new DataView(z.buffer, z.byteOffset, z.byteLength).setUint32(z.length - 22 + 16, 1, true)
+        await expectImports(z, 'card.jpg')
+    })
+
+    test('a jpg-charx with an archive comment and a wrong end record offset field still has its central directory checked (new behaviour)', async () => {
+        const archive = await writerArchive(cardEntries(), 6, { prefix: JPEG_HEAD, comment: enc.encode('synthetic archive comment') })
+        const z = declareSize(archive, 'assets/a.bin', 201 * MIB)
+        // the end record starts 22 bytes plus the comment length before the end
+        new DataView(z.buffer, z.byteOffset, z.byteLength).setUint32(z.length - 22 - 'synthetic archive comment'.length + 16, 1, true)
+        expectRefusedBeforeSaving(await runImport(z, 'card.jpg', 'file'), 'jpg prefix and comment', sizeMessage('assets/a.bin', 200))
+    })
+
+    test('a zero-length assets/ entry is saved as an empty asset (compatibility guard)', async () => {
+        const files: fflate.Zippable = { 'card.json': [enc.encode(v3Card), { level: 6 }], 'assets/': [new U8(0), { level: 0 }] }
+        for (const a of ASSETS) files[a.name] = [a.data, { level: 6 }]
+        const out = await runImport(fflate.zipSync(files), 'card.charx', 'file')
+        expect(out.errors).toEqual([])
+        expect(out.savedIds).toEqual([...assetIds, sha1(new U8(0))].sort())
+    })
+
+    test('a File whose central directory cannot be read is refused with that read error (new behaviour)', async () => {
+        const z = await writerArchive(cardEntries(), 6)
+        const f = fileOf(z, 'card.charx')
+        const slice = f.slice.bind(f)
+        // the tail read passes only a start; the central directory read passes an end as well
+        f.slice = ((start?: number, end?: number, type?: string) => {
+            if (end !== undefined) throw new DOMException('directory unreadable', 'NotReadableError')
+            return slice(start, end, type)
+        }) as File['slice']
+        await importCharacterProcess({ name: 'card.charx', data: f })
+        expect(h.errors).toEqual(['directory unreadable'])
+        expect(h.saveCalls).toBe(0)
     })
 })

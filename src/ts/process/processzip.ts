@@ -3,9 +3,33 @@ import * as fflate from "fflate";
 import { asBuffer, Semaphore, sleep } from "../util";
 import { alertStore } from "../alert";
 
-// File size and chunk size constants
-const MAX_ASSET_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
-const CHUNK_SIZE_BYTES = 1024 * 1024; // 1MB
+const MIB = 1024 * 1024;
+const CHUNK_SIZE_BYTES = MIB; // 1MB
+
+/**
+ * Size bounds of a CharX import, in bytes. An entry larger than its bound refuses the whole card.
+ * Mutable only so that tests can use small fixtures.
+ */
+export const charxLimits = {
+    // card.json and module.risum
+    metadataBytes: 50 * MIB,
+    // every other entry
+    assetBytes: 200 * MIB,
+    // decoded assets queued or being saved beyond which reading the archive pauses
+    backlogBytes: 32 * MIB,
+};
+
+function entryLimit(name: string): number {
+    return name === 'card.json' || name === 'module.risum' ? charxLimits.metadataBytes : charxLimits.assetBytes;
+}
+
+// JSON other than card.json is not used by the import.
+function isIgnoredJson(name: string): boolean {
+    return name.endsWith('.json') && name !== 'card.json';
+}
+
+// The upper bound of a central directory that is read ahead of the import.
+const MAX_DIRECTORY_BYTES = 16 * MIB;
 
 // Queue management constants
 const MAX_CONCURRENT_ASSET_SAVES = 10;
@@ -143,22 +167,31 @@ export class CharXWriter{
  * - 'input': reading the File, Blob or stream failed.
  * - 'importer': the importer's own handlers threw (for example an allocation failure while buffering an entry).
  * - 'zip': the ZIP library reported the archive as unreadable.
+ * - 'size': an entry is larger than its limit in `charxLimits`; `entryName` and `limitBytes` say which and how large.
  */
-export type CharXFailureOrigin = 'input' | 'importer' | 'zip'
+export type CharXFailureOrigin = 'input' | 'importer' | 'zip' | 'size'
+
+/** What a 'size' failure names: the entry (its path inside the archive) and the limit it passed. */
+export type CharXSizeDetail = { entryName: string, limitBytes: number }
 
 /**
  * The single error `CharXImporter.parse()` and `hasZipEndRecord()` reject with. Callers decide the message from
- * `origin` alone and never from the underlying error's code, name, message or class.
+ * `origin` alone (and, for 'size', from `entryName` and `limitBytes`) and never from the underlying error's code,
+ * name, message or class.
  */
 export class CharXParseError extends Error {
     readonly origin: CharXFailureOrigin
     readonly cause: unknown
+    readonly entryName?: string
+    readonly limitBytes?: number
 
-    constructor(origin: CharXFailureOrigin, cause: unknown) {
+    constructor(origin: CharXFailureOrigin, cause: unknown, size?: CharXSizeDetail) {
         super(cause instanceof Error ? cause.message : String(cause))
         this.name = 'CharXParseError'
         this.origin = origin
         this.cause = cause
+        this.entryName = size?.entryName
+        this.limitBytes = size?.limitBytes
         if (cause instanceof Error && cause.stack) {
             this.stack = cause.stack
         }
@@ -176,25 +209,146 @@ const ZIP_MAX_COMMENT_SIZE = 0xFFFF
  * Rejects with a `CharXParseError` of origin 'input' when the tail cannot be read.
  */
 export async function hasZipEndRecord(data: Uint8Array | File): Promise<boolean> {
-    let tail: Uint8Array
+    const { tail } = await readZipTail(data)
+    return findEndRecord(tail) >= 0
+}
+
+/** The last bytes of the input that can hold an end record, and where they start in the input. */
+async function readZipTail(data: Uint8Array | File): Promise<{ tail: Uint8Array, start: number }> {
     try {
         const size = data instanceof File ? data.size : data.byteLength
         const start = Math.max(0, size - (ZIP_END_RECORD_SIZE + ZIP_MAX_COMMENT_SIZE))
-        tail = data instanceof File
+        const tail = data instanceof File
             ? new Uint8Array(await data.slice(start).arrayBuffer())
             : data.subarray(start)
+        return { tail, start }
     } catch (error) {
         throw new CharXParseError('input', error)
     }
+}
+
+/** The index of the last end record whose declared comment fits inside `tail`, or -1. */
+function findEndRecord(tail: Uint8Array): number {
     for (let i = tail.byteLength - ZIP_END_RECORD_SIZE; i >= 0; i--) {
         if (tail[i] === 0x50 && tail[i + 1] === 0x4B && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) {
             const commentLength = tail[i + 20] | (tail[i + 21] << 8)
             if (i + ZIP_END_RECORD_SIZE + commentLength <= tail.byteLength) {
-                return true
+                return i
             }
         }
     }
-    return false
+    return -1
+}
+
+const ZIP_CENTRAL_RECORD_SIZE = 46
+
+/**
+ * The entries a ZIP central directory lists, with the uncompressed size each declares.
+ *
+ * The directory is located as the bytes just before the end record, with the length the end record gives; the offset
+ * field never locates it (it is only read as a zip64 sentinel), because it is relative to the archive and an
+ * archive written after a JPEG has a prefix.
+ * Returns null, and the caller falls back to checking sizes while streaming, whenever the directory cannot be trusted:
+ * zip64 fields or a zip64 locator, a multi-disk archive, a directory larger than MAX_DIRECTORY_BYTES, or one that does
+ * not parse into exactly the entry count of the end record and end exactly at the end record.
+ *
+ * Rejects with a `CharXParseError` of origin 'input' when bytes cannot be read.
+ */
+async function readZipDirectory(data: Uint8Array | File): Promise<Array<{ name: string, size: number }> | null> {
+    const { tail, start } = await readZipTail(data)
+    const end = findEndRecord(tail)
+    if (end < 0) {
+        return null
+    }
+    const record = new DataView(tail.buffer, tail.byteOffset + end, ZIP_END_RECORD_SIZE)
+    const disk = record.getUint16(4, true)
+    const directoryDisk = record.getUint16(6, true)
+    const count = record.getUint16(10, true)
+    const directorySize = record.getUint32(12, true)
+    const hasLocator = end >= 20 && tail[end - 20] === 0x50 && tail[end - 19] === 0x4B && tail[end - 18] === 0x06 && tail[end - 17] === 0x07
+    if (hasLocator || disk !== 0 || directoryDisk !== 0 || count === 0xFFFF || directorySize === 0xFFFFFFFF
+        || record.getUint32(16, true) === 0xFFFFFFFF || directorySize > MAX_DIRECTORY_BYTES) {
+        return null
+    }
+    const directoryEnd = start + end
+    const directoryStart = directoryEnd - directorySize
+    if (directoryStart < 0) {
+        return null
+    }
+    let directory: Uint8Array
+    try {
+        directory = data instanceof File
+            ? new Uint8Array(await data.slice(directoryStart, directoryEnd).arrayBuffer())
+            : data.subarray(directoryStart, directoryEnd)
+    } catch (error) {
+        throw new CharXParseError('input', error)
+    }
+    const view = new DataView(directory.buffer, directory.byteOffset, directory.byteLength)
+    const entries: Array<{ name: string, size: number }> = []
+    let at = 0
+    for (let i = 0; i < count; i++) {
+        if (at + ZIP_CENTRAL_RECORD_SIZE > directory.byteLength || view.getUint32(at, true) !== 0x02014b50) {
+            return null
+        }
+        const flags = view.getUint16(at + 8, true)
+        const size = view.getUint32(at + 24, true)
+        const nameLength = view.getUint16(at + 28, true)
+        const extraLength = view.getUint16(at + 30, true)
+        const commentLength = view.getUint16(at + 32, true)
+        const next = at + ZIP_CENTRAL_RECORD_SIZE + nameLength + extraLength + commentLength
+        if (size === 0xFFFFFFFF || next > directory.byteLength) {
+            return null
+        }
+        // fflate reads an entry name as UTF-8 only when the flag is set, and as Latin-1 otherwise
+        entries.push({ name: fflate.strFromU8(directory.subarray(at + ZIP_CENTRAL_RECORD_SIZE, at + ZIP_CENTRAL_RECORD_SIZE + nameLength), !(flags & 2048)), size })
+        at = next
+    }
+    return at === directory.byteLength ? entries : null
+}
+
+/**
+ * Per-entry byte store of the importer. Chunks are copied as they arrive and joined once, into an array of exactly the
+ * decoded length, when the entry is complete, so an entry costs about twice its size at the join and the chunks are
+ * released right after it. An entry that is not kept (`retain` false) is only counted.
+ */
+export class EntryBuffer {
+    #chunks: Uint8Array[] = []
+    #received = 0
+
+    constructor(private readonly retain: boolean) {}
+
+    /** Bytes received, whether or not they are kept. */
+    get byteLength(): number {
+        return this.#received
+    }
+
+    /** Bytes held in memory. */
+    get retainedBytes(): number {
+        return this.retain ? this.#received : 0
+    }
+
+    append(data: Uint8Array) {
+        this.#received += data.byteLength
+        if (this.retain && data.byteLength > 0) {
+            this.#chunks.push(data.slice())
+        }
+    }
+
+    /** The kept bytes as one array. The buffer is empty afterwards. */
+    take(): Uint8Array {
+        const chunks = this.#chunks
+        this.#chunks = []
+        if (chunks.length === 1) {
+            return chunks[0]
+        }
+        const out = new Uint8Array(chunks.reduce((n, chunk) => n + chunk.byteLength, 0))
+        let at = 0
+        for (const chunk of chunks) {
+            out.set(chunk, at)
+            at += chunk.byteLength
+        }
+        return out
+    }
 }
 
 /**
@@ -235,11 +389,13 @@ export class CharXImporter{
     // Results: filename -> saved asset ID mapping
     assets:{[key:string]:string} = {}
 
-    // Temporary buffers for accumulating file chunks during streaming
-    assetBuffers:{[key:string]:AppendableBuffer} = {}
+    // Bytes of decoded assets that are queued or being saved. Reading the archive pauses while this is above
+    // charxLimits.backlogBytes, so the backlog does not grow with the number of assets.
+    #pendingBytes: number = 0
+    #wakeReader: (() => void)|undefined
 
-    // Files excluded due to size limits (> MAX_ASSET_SIZE_BYTES)
-    excludedFiles:string[] = []
+    // Temporary buffers for accumulating file chunks during streaming
+    assetBuffers:{[key:string]:EntryBuffer} = {}
 
     // Extracted character card JSON content
     cardData:string|undefined
@@ -277,6 +433,11 @@ export class CharXImporter{
      * parse() rejects with a CharXParseError whose origin says where the first failure came from. Nothing is
      * started, queued or shown after that failure, and the completion promise is never settled.
      *
+     * An entry larger than its limit in `charxLimits` fails the parse with origin 'size'. When the central directory
+     * of a Uint8Array or File can be read, that is decided before any entry is read, so nothing has been saved.
+     * Otherwise (a stream, or a directory that cannot be trusted) it is decided while the entry streams in, so assets
+     * of earlier entries may already have been saved.
+     *
      * After parse() completes:
      * - cardData and moduleData are immediately available
      * - Asset saving continues in the background
@@ -296,6 +457,21 @@ export class CharXImporter{
 
         this.#failure = undefined
 
+        // An entry the central directory lists above its limit refuses the card before any entry is read
+        if(!(data instanceof ReadableStream)){
+            try {
+                const oversize = (await readZipDirectory(data))?.find(entry => entry.size > entryLimit(entry.name))
+                if(oversize){
+                    this.#recordSize(oversize.name)
+                }
+            } catch (error) {
+                this.#failure = error instanceof CharXParseError ? error : new CharXParseError('input', error)
+            }
+            if(this.#failure){
+                throw this.#failure
+            }
+        }
+
         // Convert all input types to ReadableStream for uniform processing
         let reader:ReadableStreamDefaultReader<Uint8Array>
         try {
@@ -306,6 +482,10 @@ export class CharXImporter{
         }
 
         while(!this.#failure){
+            await this.#waitForBacklog()
+            if(this.#failure){
+                break
+            }
             let chunk:ReadableStreamReadResult<Uint8Array>
             try {
                 chunk = await reader.read()
@@ -337,12 +517,25 @@ export class CharXImporter{
      * Records a failure unless one is already recorded: the first failure wins, whatever its origin.
      * Entries still buffered are released.
      */
-    #record(origin:CharXFailureOrigin, cause:unknown) {
+    #record(origin:CharXFailureOrigin, cause:unknown, size?:CharXSizeDetail) {
         if(this.#failure){
             return
         }
-        this.#failure = new CharXParseError(origin, cause)
+        this.#failure = new CharXParseError(origin, cause, size)
         this.assetBuffers = {}
+    }
+
+    /** Records that the entry `entryName` is larger than its limit. */
+    #recordSize(entryName:string) {
+        const limitBytes = entryLimit(entryName)
+        this.#record('size', new Error(`${entryName} is larger than ${limitBytes} bytes`), { entryName, limitBytes })
+    }
+
+    /** Resolves once the decoded assets waiting to be saved are at most charxLimits.backlogBytes, or a failure is recorded. */
+    async #waitForBacklog() {
+        while(!this.#failure && this.#pendingBytes > charxLimits.backlogBytes){
+            await new Promise<void>(resolve => { this.#wakeReader = resolve })
+        }
     }
 
     /**
@@ -430,8 +623,15 @@ export class CharXImporter{
             return
         }
         const assetIndex = file.name
+        // An entry the local header declares above its limit is refused here. An entry is always started or the parse
+        // ends, because the ZIP library keeps the compressed bytes of an entry that was never started.
+        if((file.originalSize ?? 0) > entryLimit(assetIndex)){
+            this.#recordSize(assetIndex)
+            return
+        }
         try {
-            this.assetBuffers[assetIndex] = new AppendableBuffer()
+            // JSON other than card.json is not used, so its bytes are counted against the limit and not kept
+            this.assetBuffers[assetIndex] = new EntryBuffer(!isIgnoredJson(assetIndex))
 
             file.ondata = (err, dat, final) => this.#handleFileData(assetIndex, err, dat, final)
         } catch (error) {
@@ -439,15 +639,13 @@ export class CharXImporter{
             return
         }
 
-        // Only process files smaller than MAX_ASSET_SIZE_BYTES (50MB)
-        if((file.originalSize ?? 0) < MAX_ASSET_SIZE_BYTES){
-            file.start()
-        }
+        file.start()
     }
 
     /**
      * Called for each chunk of file data as it streams in.
-     * Accumulates chunks into buffer until file is complete.
+     * Accumulates chunks into buffer until file is complete. An entry never holds more than its limit: the chunk
+     * that would pass it fails the parse before it is appended.
      * An error argument is the ZIP library's; an exception raised here is the importer's own and is caught here,
      * so it never travels back through the library as if it were a ZIP failure.
      */
@@ -460,7 +658,12 @@ export class CharXImporter{
             return
         }
         try {
-            this.assetBuffers[fileName].append(data)
+            const buffer = this.assetBuffers[fileName]
+            if(buffer.byteLength + data.byteLength > entryLimit(fileName)){
+                this.#recordSize(fileName)
+                return
+            }
+            buffer.append(data)
             if(final){
                 this.#handleFileComplete(fileName)
             }
@@ -477,29 +680,25 @@ export class CharXImporter{
         if(this.#failure){
             return
         }
-        const assetData = this.assetBuffers[fileName].buffer
+        const buffer = this.assetBuffers[fileName]
+        delete this.assetBuffers[fileName]
 
-        if(assetData.byteLength > MAX_ASSET_SIZE_BYTES){
-            this.excludedFiles.push(fileName)
+        if(isIgnoredJson(fileName)){
+            // Other JSON files are not used
         }
         else if(fileName === 'card.json'){
-            this.cardData = new TextDecoder().decode(assetData)
+            this.cardData = new TextDecoder().decode(buffer.take())
         }
         else if(fileName === 'module.risum'){
-            this.moduleData = assetData
-        }
-        else if(fileName.endsWith('.json')){
-            // Ignore other JSON files
+            this.moduleData = buffer.take()
         }
         else{
             // All other files are treated as assets (images, etc.)
             this.#processAssetQueue({
                 id: fileName,
-                data: assetData
+                data: buffer.take()
             })
         }
-
-        delete this.assetBuffers[fileName]
     }
 
     /**
@@ -507,6 +706,8 @@ export class CharXImporter{
      */
     async #processAssetQueue(asset:{id:string, data:Uint8Array}){
         this.totalEnqueued += 1
+        const byteLength = asset.data.byteLength
+        this.#pendingBytes += byteLength
         let acquired = false
         try {
             await this.semaphore.acquire()
@@ -521,6 +722,10 @@ export class CharXImporter{
             if (acquired) {
                 this.semaphore.release()
             }
+            this.#pendingBytes -= byteLength
+            const wake = this.#wakeReader
+            this.#wakeReader = undefined
+            wake?.()
             this.totalCompleted += 1
             this.onProgress?.(this.totalCompleted, this.totalEnqueued)
             this.#checkCompletion()

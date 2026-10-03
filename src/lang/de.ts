@@ -1733,4 +1733,5 @@ export const languageGerman = {
     "assetIntegrityWarnOnStartup": "Beim Start warnen, wenn eine schnelle Stichprobenprüfung Beschädigungen findet",
     "assetIntegrityVerifyButton": "Asset-Cache jetzt überprüfen",
     "cardFileIncomplete": "Diese Kartendatei ist unvollständig oder beschädigt und wurde daher nicht importiert.",
+    "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `Die Datei "${fileName}" in dieser Karte ist größer als das Limit von ${limitMiB} MB, daher wurde die Karte nicht importiert.`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

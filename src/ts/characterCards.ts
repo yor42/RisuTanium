@@ -86,7 +86,7 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
 
         const importer = new CharXImporter()
         importer.alertInfo = true
-        //A zip failure means the archive is unreadable; a failure of the read or of the importer itself shows its own message.
+        //A zip failure means the archive is unreadable; an entry over its size limit refuses the card with a message naming the file; a failure of the read or of the importer itself shows its own message.
         //The importer shows no progress after its first failure, so nothing replaces the message.
         try {
             //The end-of-archive check needs the tail of the whole input, so a stream is buffered into a Blob-backed File first.
@@ -100,7 +100,12 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
             }
             await importer.parse(charxData)
         } catch (error) {
-            alertError(error instanceof CharXParseError && error.origin === 'zip' ? language.cardFileIncomplete : error)
+            if(error instanceof CharXParseError && error.origin === 'size'){
+                alertError(language.cardFileEntryTooLarge(error.entryName ?? '', Math.round((error.limitBytes ?? 0) / (1024 * 1024))))
+            }
+            else{
+                alertError(error instanceof CharXParseError && error.origin === 'zip' ? language.cardFileIncomplete : error)
+            }
             return
         }
         const cardData = importer.cardData
