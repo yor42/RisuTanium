@@ -1599,6 +1599,7 @@ export const languageKorean = {
     "enableRisuaiProTools": "RisuTanium Pro Tools 활성화",
     "sidebarWelcome": "RisuTanium에 오신 것을 환영해요!",
     "sidebarWelcomeHint": "캐릭터를 선택해서 채팅을 시작하세요",
+    "closeSidebar": "사이드바 닫기",
     "easyPanel": "이지 패널",
     "mainModel": "메인 모델",
     "epEnabled": "이지 패널 오버라이드",

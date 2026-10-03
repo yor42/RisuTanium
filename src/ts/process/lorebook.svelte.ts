@@ -729,9 +729,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
 
 }
 
-export async function importLoreBook(mode:'global'|'local'|'sglobal'){
+export async function importLoreBook(mode:'global'|'local'){
     const selectedID = get(selectedCharID)
-    const page = mode === 'sglobal' ? -1 : DBState.db.characters[selectedID].chatPage
+    const page = DBState.db.characters[selectedID].chatPage
     let lore = 
         mode === 'global' ? DBState.db.characters[selectedID].globalLore : 
         DBState.db.characters[selectedID].chats[page].localLore
@@ -808,10 +808,10 @@ export function convertExternalLorebook(entries:{[key:string]:CCLorebook}){
     return lore
 }
 
-export async function exportLoreBook(mode:'global'|'local'|'sglobal'){
+export async function exportLoreBook(mode:'global'|'local'){
     try {
         const selectedID = get(selectedCharID)
-        const page = mode === 'sglobal' ? -1 : DBState.db.characters[selectedID].chatPage
+        const page = DBState.db.characters[selectedID].chatPage
         const lore = 
             mode === 'global' ? DBState.db.characters[selectedID].globalLore : 
             DBState.db.characters[selectedID].chats[page].localLore        

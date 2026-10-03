@@ -1739,6 +1739,7 @@ export const languageEnglish = {
     enableRisuaiProTools: "Enable RisuTanium Pro Tools",
     sidebarWelcome: "Welcome to RisuTanium!",
     sidebarWelcomeHint: "Select a bot to start chatting",
+    closeSidebar: "Close sidebar",
     easyPanel: "Easy Panel",
     mainModel: "Main Model",
     epEnabled: "Easy Panel Override",

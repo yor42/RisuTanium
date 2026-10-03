@@ -1645,6 +1645,7 @@ export const languageChineseTraditional = {
     "enableRisuaiProTools": "啟用 RisuTanium Pro Tools",
     "sidebarWelcome": "歡迎使用 RisuTanium！",
     "sidebarWelcomeHint": "選擇一個角色開始聊天",
+    "closeSidebar": "關閉側邊欄",
     "easyPanel": "Easy Panel",
     "mainModel": "主要模型",
     "epEnabled": "Easy Panel 覆寫",

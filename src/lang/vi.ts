@@ -1599,6 +1599,7 @@ export const languageVietnamese = {
     "enableRisuaiProTools": "Bật Công cụ RisuTanium Pro",
     "sidebarWelcome": "Chào mừng đến với RisuTanium!",
     "sidebarWelcomeHint": "Chọn một nhân vật để bắt đầu trò chuyện",
+    "closeSidebar": "Đóng thanh bên",
     "easyPanel": "Bảng Dễ dùng",
     "mainModel": "Mô hình Chính",
     "epEnabled": "Ghi đè Bảng Dễ dùng",

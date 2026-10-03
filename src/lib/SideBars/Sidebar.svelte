@@ -30,6 +30,7 @@
     HomeIcon,
     WrenchIcon,
     User2Icon,
+    XIcon,
   } from "@lucide/svelte";
     import {
   addCharacter,
@@ -948,7 +949,9 @@
   }}
 >
   <button
-    class="flex w-full justify-end text-textcolor"
+    class="flex w-full justify-end text-textcolor hover:text-textcolor2"
+    aria-label={language.closeSidebar}
+    title={language.closeSidebar}
     onclick={async () => {
       if($sideBarClosing){
         return
@@ -956,7 +959,7 @@
       $sideBarClosing = true;
     }}
   >
-    <!-- <button class="border-none bg-transparent p-0 text-textcolor"><X /></button> -->
+    <XIcon size={18} />
   </button>
   {#if sideBarMode === 0}
     {#if $selectedCharID < 0 || $settingsOpen}

@@ -164,7 +164,7 @@ let mounted: Mounted[] = []
 function mountList(props: { submenu?: number, externalLoreBooks?: loreBook[] }): HTMLElement {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(LoreBookList, { target, props: { globalMode: false, ...props } }) as unknown as Record<string, unknown>
+    const app = mount(LoreBookList, { target, props: { ...props } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
     return target

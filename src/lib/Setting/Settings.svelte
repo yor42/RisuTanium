@@ -9,9 +9,6 @@
     import AdvancedSettings from "./Pages/AdvancedSettings.svelte";
     import { additionalSettingsMenu, easyPanelStore, MobileGUI, SettingsMenuIndex, settingsOpen } from "src/ts/stores.svelte";
     import { DBState } from "src/ts/stores.svelte";
-    import GlobalLoreBookSettings from "./Pages/GlobalLoreBookSettings.svelte";
-    import Lorepreset from "./lorepreset.svelte";
-    import GlobalRegex from "./Pages/GlobalRegex.svelte";
     import LanguageSettings from "./Pages/LanguageSettings.svelte";
     import AccessibilitySettings from "./Pages/AccessibilitySettings.svelte";
     import PersonaSettings from "./Pages/PersonaSettings.svelte";
@@ -22,7 +19,6 @@
     import PluginDefinedIcon from "../Others/PluginDefinedIcon.svelte";
     import SettingsLegalLinks from "./SettingsLegalLinks.svelte";
 
-    let openLoreList = $state(false)
     if(window.innerWidth >= 900 && $SettingsMenuIndex === -1 && !$MobileGUI){
         $SettingsMenuIndex = 1
     }
@@ -197,10 +193,6 @@
                         <PluginSettings />
                     {:else if $SettingsMenuIndex === 6}
                         <AdvancedSettings />
-                    {:else if $SettingsMenuIndex === 8}
-                        <GlobalLoreBookSettings bind:openLoreList />
-                    {:else if $SettingsMenuIndex === 9}
-                        <GlobalRegex/>
                     {:else if $SettingsMenuIndex === 10}
                         <LanguageSettings/>
                     {:else if $SettingsMenuIndex === 11}
@@ -233,9 +225,6 @@
         {/if}
     </div>
 </div>
-{#if openLoreList}
-    <Lorepreset close={() => {openLoreList = false}} />
-{/if}
 <style>
     .setting-bg{
         background: linear-gradient(to right, var(--risu-theme-darkbg) 50%, var(--risu-theme-bgcolor) 50%);

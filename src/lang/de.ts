@@ -1599,6 +1599,7 @@ export const languageGerman = {
     "enableRisuaiProTools": "RisuTanium Pro-Tools aktivieren",
     "sidebarWelcome": "Willkommen bei RisuTanium!",
     "sidebarWelcomeHint": "Wählen Sie einen Charakter, um den Chat zu starten",
+    "closeSidebar": "Seitenleiste schließen",
     "easyPanel": "Easy Panel",
     "mainModel": "Hauptmodell",
     "epEnabled": "Easy Panel-Überschreibung",

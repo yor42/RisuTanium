@@ -1599,6 +1599,7 @@ export const languageChinese = {
     "enableRisuaiProTools": "启用 RisuTanium Pro Tools",
     "sidebarWelcome": "欢迎使用 RisuTanium！",
     "sidebarWelcomeHint": "选择一个角色开始聊天",
+    "closeSidebar": "关闭侧边栏",
     "easyPanel": "Easy Panel",
     "mainModel": "主模型",
     "epEnabled": "Easy Panel 覆盖",

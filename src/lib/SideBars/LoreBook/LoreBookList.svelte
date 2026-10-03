@@ -12,14 +12,13 @@
     let reinitializeSortable = false;
 
     interface Props {
-        globalMode?: boolean;
         submenu?: number;
         lorePlus?: boolean;
         externalLoreBooks?: loreBook[];
         showFolder?: string
     }
 
-    let { globalMode = false, submenu = 0, lorePlus = false, externalLoreBooks = null, showFolder = '' }: Props = $props();
+    let { submenu = 0, lorePlus = false, externalLoreBooks = null, showFolder = '' }: Props = $props();
     let stb: Sortable = null
     let ele: HTMLDivElement = $state()
     let sorted = $state(0)
@@ -49,10 +48,6 @@
             ).length;
         } else if (submenu === 1) {
             expectedElements = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore.filter(item => 
-                (!showFolder && !item.folder) || (showFolder === item.folder)
-            ).length;
-        } else if (globalMode) {
-            expectedElements = DBState.db.loreBook[DBState.db.loreBookPage].data.filter(item => 
                 (!showFolder && !item.folder) || (showFolder === item.folder)
             ).length;
         } else {
@@ -177,9 +172,6 @@
                 } else if (submenu === 1) {
                     // Use local chat lorebook
                     currentArray = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore;
-                } else if (globalMode) {
-                    // Use global lorebook
-                    currentArray = DBState.db.loreBook[DBState.db.loreBookPage].data;
                 } else {
                     // Use character global lorebook (default)
                     currentArray = DBState.db.characters[$selectedCharID].globalLore;
@@ -282,8 +274,6 @@
                     externalLoreBooks.splice(0, externalLoreBooks.length, ...newArray);
                 } else if (submenu === 1) {
                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore = newArray;
-                } else if (globalMode) {
-                    DBState.db.loreBook[DBState.db.loreBookPage].data = newArray;
                 } else {
                     DBState.db.characters[$selectedCharID].globalLore = newArray;
                 }
@@ -355,9 +345,7 @@
     <div class="border-solid border-selected p-2 flex flex-col border-1 rounded-md" 
          bind:this={ele} 
          data-show-folder={showFolder || ''}>
-        {#if globalMode}
-            <!-- Intentionally empty: globalMode has no content here. -->
-        {:else if externalLoreBooks}
+        {#if externalLoreBooks}
             {@const visibleItems = externalLoreBooks.filter(book => (!showFolder && !book.folder) || (showFolder === book.folder))}
             {@const lastVisibleItem = visibleItems[visibleItems.length - 1]}
             {#if externalLoreBooks.length === 0}
