@@ -144,16 +144,17 @@ The commits below were local when they were listed, and were pushed with it:
   `.bin` round trip, with the `AGENTS.md` update the maintainer asked for). Local, not pushed;
 - `2d83a492`, by its commit subject: the upstream <-> fork `.bin` round-trip check (ledger rows 697 to 699), `MC-176` and
   CHORE-74 (the maintainer's "Commit now", `MC-176` 3). Local, not pushed;
-- the next records commit, uncommitted and awaiting the maintainer's word: `MC-177` (CHORE-74 is not a release item;
-  documentation is enough to clear its G1-type blocker; CHORE-55 stage 3 starts), `MC-178` (the restore answer, "Skip and
-  report"), `MC-179` (the UI-session delegation, the reserved ranges and the merge rules), ledger rows 700 to 703, and the
-  Roadmap and Live-State updates. It will be the 18th; its hash is recorded after the commit. It is committed by explicit
-  path only (the four `Agents/` files named in `MC-179` 2), with `git diff --cached --name-only` checked first; nothing
-  under `src/` is staged. The stage 3 changes (3a and 3b) stay out of it.
+- `57e7be63`, by its commit subject: `MC-177` to `MC-179` (CHORE-74 is not a release item, restore skips and reports
+  refused asset names, UI work moves to `feat/ui-batch`) and ledger rows 700 to 703. It is the 18th commit since
+  `1ce8abff`, committed by explicit path (the four `Agents/` files named in `MC-179` 2) at the maintainer's "commit the
+  records once the verifier passes". Local, not pushed. The UI worktree is to be made from it;
+- `bf7f2cbf`: CHORE-55 stage 3, assets go through the one byte store (the 19th), and the stage 3 records commit that
+  carries this line (the 20th), both at the maintainer's "Code, then records". Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
-`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2` and `2d83a492`) are local and not pushed
-(`git rev-list --count 1ce8abff..HEAD` gave 17 on 2026-10-03, at `2d83a492`).
+`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63` and
+`bf7f2cbf`) are local and not pushed (`git rev-list --count 1ce8abff..HEAD` gave 19 on 2026-10-03, at `bf7f2cbf`); the stage 3
+records commit is the 20th.
 The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
@@ -188,7 +189,7 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
 The working tree holds this records batch's edits to the `Agents/` documents (until they are committed), and the
-uncommitted CHORE-55 stage 3 changes (3a and 3b), which are before Gate 2. Report 56
+uncommitted CHORE-55 stage 3 changes (3a and 3b), which Gate 2 has approved. Report 56
 (`Agents/Reports/56-memory-stage-1-step-5-boot-archive-pass.md`) is fact-checked and committed as `a7956237`.
 `docs/` is tracked and holds the maintainer's own Terms of Service and Privacy Policy, which they write and commit
 themselves, so a commit touching those two files is theirs (`MC-156`); agents do not edit them (`MC-155` 4). The
@@ -206,7 +207,7 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 - **"UI session"** (`MC-179` 1) works on branch `feat/ui-batch`, in its own worktree (`C:\Projects\RisuAI-ui`), made from
-  the next records commit (the 18th, above), not in this checkout. The maintainer creates the worktree; no agent runs a
+  the records commit `57e7be63` (the 18th, above), not in this checkout. The maintainer creates the worktree; no agent runs a
   `git worktree` command.
 
 ### The UI lane and the Main Campaign's lane (`MC-179` 1, 2026-10-03)
@@ -230,8 +231,9 @@ Several sessions work **in this same checkout**:
 
 ### The merge rule (`MC-179` 4)
 
-- **When stage 3 is committed,** tell the maintainer. Its commits are then merged into `feat/ui-batch`, so the UI session
-  can take CHORE-68 and CHORE-74.
+- **When stage 3 is committed,** the Orchestrator tells the maintainer, who has its commits merged into `feat/ui-batch`.
+  CHORE-68 and CHORE-74 then move to the UI session. Stage 3 is committed (`bf7f2cbf` and the records commit after it,
+  2026-10-03); the maintainer is told, and the merge into `feat/ui-batch` is theirs.
 - **`feat/ui-batch` MUST be merged into `fix/persistence-conflict-platform-hardening` BEFORE memory step 6 begins.** Step
   6 adds the busy registry to `AssetInput`, the emotion and image pickers, imports and exports, image generation, TTS and
   the composer draft guards (Report 49, D17).
@@ -261,10 +263,10 @@ Empty. Only the UI session edits this block.
 | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
-Next free within the Main Campaign's ranges, once the records commit above is made: `MC-180` (`MC-179` is used), ledger
-row 704 (rows 700 to 703 are the `MC-177` records, their fact-check, the `MC-178` and `MC-179` records, and their
-fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
-is used). Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
+Next free within the Main Campaign's ranges: `MC-180` (`MC-179` is used), ledger row 718 (rows 700 to 703 are the `MC-177`
+to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
+message draft and its check, these records and their fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
+is used). All are within the reserved ranges. Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
 last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody should fill
 them.
 
@@ -373,9 +375,11 @@ them.
    upstream's own limits and do not count against the invariant (`MC-176` 1); **CHORE-74** (the fork's export warns about
    such plugin data; `MC-176` 2) is filed, and is **not a release item**: the maintainer said documentation (the wiki,
    later) is enough to clear that blocker, and the warning is a later quality-of-life item (`MC-177` 1 and 2).
-   **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3). **Stage 3 status (2026-10-03): 3a is implemented
-   and 3b is still being implemented, both uncommitted, before Gate 2.** Gate 1 accepted the plan after round 1 `[REJECT]` and
-   round 2 `[EDITORIAL]`. The restore rule for a refused asset name is `MC-178`. **Next after stage 3: stage 4, then
+   **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3). **Stage 3 status (2026-10-03): stage 3 is done and
+   committed (`bf7f2cbf`, then the records commit); Gate 2 approved after round 1 `[REJECT]` and round 2 `[APPROVE]`.** Gate 1 accepted the plan after round 1 `[REJECT]` and round 2 `[EDITORIAL]`. The restore rule for a refused
+   asset name is `MC-178`. Checks on the final tree: `pnpm test` 6772 passed, 4 skipped; `pnpm check` 0 errors and 0
+   warnings; `pnpm build` ok (fake-backed; no native Tauri, real `server.cjs`, WebKit or Android run). The Roadmap's
+   CHORE-55 stage 3 block has the detail. **Next after stage 3: stage 4, then
    CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch` is merged, `MC-179` 4), then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
@@ -685,7 +689,7 @@ them.
       ledger rows 691 to 694); the later stages are a planning basis and not yet gated) and then
       **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
-      its own change with its own gates. **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3; 3a implemented, 3b being implemented, uncommitted, before Gate 2), then stage 4 (cold-storage units, the OPFS
+      its own change with its own gates. **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3; done, Gate 2 approved, committed as `bf7f2cbf`), then stage 4 (cold-storage units, the OPFS
       switch removal and the copy-back, `MC-173` 1), then CHORE-59. The stage 0 Windows live check is open (`MC-171` 2). The investigation of
       the Tauri boot read through the asset protocol against `readFile` is done (row 679). The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is

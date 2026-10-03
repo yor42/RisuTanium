@@ -2552,7 +2552,106 @@ filing and investigation record and is unchanged. What the commit message says i
 
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
-**Status (2026-10-03, stage 2b, latest): stage 2 is done: 2a by `a29335f7` and 2b by `cbaeddd6` (local, not pushed). Stages 3
+**Status (2026-10-03, stage 3, latest): stage 3 (assets) is done: Gate 2 approved; code commit
+`bf7f2cbf`, then a records commit (local, not pushed).** Stages 4 and 5 or later are open. The older status blocks
+below are kept as they were; where this block differs, this block governs. Ledger rows 704 to 713 are the stage 3 work
+(the facts investigation, Gate 1 in two rounds, the implementation in two parts, the translations, the I8 measurement,
+Gate 2 in two rounds with the remediation between them); rows 714 to 717 are the commit message draft and its check, and
+these records and their fact-check. `MC-177` 3 started the stage; `MC-178` records the maintainer's restore answer. The
+Orchestrator's change summary (`s3-commit-constraints.md`) was spot-checked against `git diff -- src` and the untracked
+files (the optional `urlFor`, the extension rule, the sweep batch size, the group size, the notice bounds and the
+`assets/` temp sweep were each found in the diff); the rest is the summary's.
+
+- **What stage 3 changed (production):**
+  - Store layer: the contract gets an optional `urlFor(key)`, implemented only by the Tauri files store
+    (`convertFileSrc(join(appDataDir, key))`, memoised per key; it never reads the file and the string is unchanged). The
+    Tauri store lists a symbolic link when `exists()` resolves it and never descends into one; a link whose target is gone
+    is not listed. The IndexedDB store's `read` decides that a key is absent with a raw single-key `count(key)` on a
+    version-less connection (never creates anything, closes on `versionchange`, reopens once on `InvalidStateError`, any
+    other failure falls back to the key list), instead of listing every key.
+  - `getFileSrc`: on Tauri, asset keys go through `urlFor`, and a key the store refuses resolves `''`; other locations keep
+    the old fallback. On web and Node the bytes come from `store.read`; the service-worker and data-URL paths and the URL
+    strings are unchanged.
+  - `readImage` and `loadAsset` read through the store. A missing asset still rejects on Tauri, now with an `Error` naming
+    the key (before, the plugin's message); on web and Node it still resolves `null`. Off Tauri the result is a
+    `Buffer` view over the bytes the store returned (the wrap itself makes no copy), and a key the store refuses reads as
+    `null`. A stored entry that is not binary rejects (`StoreNotBinaryError`); before, `getItem` returned whatever
+    IndexedDB held.
+  - `saveAsset` writes through the store, unconditionally: on Tauri a temp file plus a rename, so a failed write leaves no
+    partial file; on Node a save is no longer refused with `NodeStorageConflictError` because another device deleted or
+    rewrote the same content-addressed asset after this page read it. The extension is kept when it is 1 to 16 ASCII
+    letters or digits, and is `png` otherwise. On Tauri an existing file (the names are content hashes) is not rewritten.
+    It accepts an `ArrayBuffer` or a typed-array view and rejects anything else with a `TypeError`, and records each key
+    in a page-level "written this page load" set before any I/O.
+  - Restore (`LoadLocalBackup`, `MC-178`): asset entries are written through the store, before the database as before. An
+    entry whose name the store refuses (`StoreInvalidKeyError`) is skipped. After the database is written, and before the
+    success message and the reload, one notice lists the count and the first 20 names, each cut at 100 characters (the
+    string `restoreAssetsSkipped`, with ko, cn, zh-Hant, vi, de and es). Any other write error still aborts the restore.
+  - Exports: the full export lists and reads `assets/` through the store, never exports a temp file, and on Tauri exports a
+    file in a subfolder under its bare name (as the web export already did). A symlink that resolves is exported, as
+    before; a link to a directory is listed and reported missing when it cannot be read; a dangling link is dropped (before, it was reported
+    missing). The partial export keeps only keys starting `assets/`; on Tauri a referenced asset that is absent, or a
+    referenced name that is a directory, is now reported missing (before, skipped silently); on the web a failed read is reported missing (before, it threw).
+  - Startup asset sweep (`cleanChunks`, `assetSweep.ts`): lists and deletes through the store on every platform and never
+    sees a temp file. A key is deleted only when it is in none of the boot keep set, the set of keys written in this page
+    load, and a live reference set re-read from the database once per batch of up to 100 candidates (a candidate is a key
+    the keep set does not protect). This closes a race in which an asset saved during the sweep, but not yet referenced,
+    was deleted. On Tauri only top-level `assets/<name>` keys are candidates and every comparison ignores case. The MC-139
+    rule and the "keep set incomplete, delete nothing" rule are unchanged.
+  - Manual clean-up: asset deletes go through the store in groups of 20 with per-key counts, and a failed group never stops
+    the next; on Tauri the candidates and the live re-check are top-level only and ignore case. Units still use the old
+    Node batch path until stage 4.
+  - Load-time listing: the asset part lists through the store (no temps; top-level keys only on Tauri). On Node this is a
+    second `/api/list` request at load.
+  - Tauri boot: leftover `risu-write-*.tmp` files in `assets/` are removed before anything writes there.
+- **What the restore change is, corrected (F4):** a plan note said the store closes a Tauri `..` traversal. That is
+  false: the plugin's `SafePathBuf` already refused `..` before stage 3. What changed is that a `..` name is now skipped
+  and listed, where the plugin's refusal used to abort the whole restore. On web and Node such a name used to be stored as it was; it is now skipped and listed
+  too, on every platform. The same creatable rule refuses any segment that starts with `.`. On every Tauri platform a
+  name with `< > : " | ? *` or a segment ending in a dot or space is refused for writing (and on Windows `:` is also
+  refused for reading); that the plugin allowed such a name before is INFERRED, not run.
+- **I8 measurement (RUN, Orchestrator, `scratchpad\chore55\i8bench\result.md`):** Chrome 152 in the built-in pane on the
+  maintainer's i9-13900K, which is best-case hardware; synthetic `assets/<64 hex>.png` keys in a separate database. The
+  check for an absent key, median of 9 repetitions: 27.9 ms at 5,000 keys and 446 ms at 50,000 keys with the listing
+  (HEAD); 0.3 ms and 0.4 ms with the single-key count (new). It measures the mechanism with the same calls, not the
+  adapter module (`indexedDbStore.absence.test.ts` pins the adapter's use of `count`). Phones and a Pi will be slower in
+  absolute terms; that is not measured.
+- **Tests:** new `src/ts/storage/tests/assetFacade.test.ts`, `indexedDbStore.absence.test.ts`, `assetSweep.test.ts`,
+  `src/ts/bootstrap.assetSweep.test.ts` and the helper `tauriPathFake.ts` (models the Windows separator rewrite in
+  `join`); the Tauri store, conformance, backuplocal, load-time listing, manual clean-up and bootstrap suites are extended.
+  Run against a git-archive extract of HEAD with the final tests copied in, 79 tests in 9 files fail, each on its intended
+  assertion: 42 reproducers, 27 new-behaviour tests and 10 tests of the new `urlFor` operation; no guard fails there (the
+  Gate 2 reviewer's RUN, ledger row 715). At Gate 2 round 1 the figure was 76, before the remediation tests. Of the four
+  remediation tests, all four fail against a copy taken before that change, and three fail at HEAD; the fourth (no walk
+  when every key is kept) passes at HEAD, which never walked. No assertion was removed or loosened except those two (the
+  dangling-link export guard and the partial-export directory guard), which were changed to the new behaviour (the
+  Orchestrator's reading; the verifier did not audit every migrated assertion). Gate 2 round 1 killed 29 of 32 mutants; in round 2 the mutants `bootLiveOnce`
+  and `manualCountsPerGroup` and 11 more were killed, and `webIncompleteIgnoredInLoop` is equivalent.
+- **Gate 2 (`opus-reviewer`):** round 1 `[REJECT]`, round 2 `[APPROVE]`. F1 (MAJOR, performance, RUN): the web and Node
+  sweep rebuilt the live reference set once per 100 listed keys, about 0.37 s at 5,100 references and about 35 s at 50,500
+  on the i9 (the Gate 2 reviewer's RUN figure, in its hand-back); fixed by batching over candidates only. F2 (MINOR): the Tauri page-set check was case-sensitive; fixed. F3:
+  three false comments; fixed. F4: the plan note above. The Orchestrator verified F1 and F2 at source.
+- **Checks on the final tree (RUN by the Orchestrator):** `pnpm test` 6772 passed, 4 skipped; `pnpm check` 0 errors and 0
+  warnings; `pnpm build` ok. Fake-backed only: an in-memory Tauri file system, `FakeNodeServer` behind the real Node store,
+  and `fake-indexeddb`. The only real-browser run is the I8 measurement. **Not run:** native Tauri, a real `server.cjs`,
+  WebKit, Android.
+- **Open, residual and non-blocking:**
+  - macOS: the fork's own export includes `.DS_Store` from `assets/`, so a fork-to-fork restore shows the notice for it.
+  - Windows reserved names such as `CON.png` are not skipped; the restore still aborts, as at HEAD.
+  - Empty subfolders in `assets/` are left behind on Tauri.
+  - Two nested Tauri keys with the same basename collide as one `.bin` entry, as on the web.
+  - A missing asset on Tauri now rejects with an `Error`, not the plugin's string; on Node a failed save rejects with an
+    `Error` object, not a string; a 0-byte asset reads as a value, not `null` (D9).
+  - `sweepAtomicWriteTemps('assets')` does not recurse into subfolders.
+  - The optional per-batch lowercased page-set `Set` is not done.
+  - Off Tauri a stored entry that is not binary now rejects instead of returning whatever IndexedDB held.
+  - On Tauri `getFileSrc` returns `''` for any failure, not only a refused key; before, a URL was built from a refused
+    key, including one whose path led outside `assets/`.
+- **Next for CHORE-55:** stage 4 (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1). Per
+  `MC-179` 4, when stage 3 is committed the maintainer is told, and its commits are merged into `feat/ui-batch` so the UI
+  session can take CHORE-68 and CHORE-74.
+
+**Status (2026-10-03, stage 2b, superseded by the stage 3 block above where they differ): stage 2 is done: 2a by `a29335f7` and 2b by `cbaeddd6` (local, not pushed). Stages 3
 and 4, and stage 5 or later, are open.** The older status blocks below are kept as they were; where this block differs,
 this block governs. Ledger rows 691 to 694 are the stage 2b work (the implementation, Gate 2, the commit message draft and
 its check); rows 695 and 696 are these records and their fact-check. `MC-174` records the maintainer's commit decision;
@@ -2618,11 +2717,8 @@ its check); rows 695 and 696 are these records and their fact-check. `MC-174` re
     plan). Settled by 2b: the
     `saveDb` post-commit conflict branch (kept, now tested via an injected conflict; `NodeStorageConflictError` is no
     longer recognised there).
-- **Stage 3 status (2026-10-03):** stage 3 is split into two parts (3a and 3b), both uncommitted: 3a is implemented, 3b
-  is still being implemented. Gate 1 accepted the plan after round 1 `[REJECT]` and round 2 `[EDITORIAL]`. Gate 2 has not
-  run. The restore rule for a refused asset name is `MC-178`. The full stage 3 block comes with the stage 3 records.
-- **Next for CHORE-55:** stage 3 (assets) started on the maintainer's word (`MC-177` 3); see the stage 3 status above.
-  Then stage 4 (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1).
+- **Next for CHORE-55 (as of stage 2b; the stage 3 block at the top has the current line):** stage 3 (assets), then stage 4
+  (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1).
 
 **Note (2026-10-03, after stage 2b): the upstream <-> fork `.bin` round trip (`MC-175`) was checked (ledger row 697);
 this note supersedes the "under investigation" sentence in the stage 2b block above.** RUN with the real export and import
@@ -2979,6 +3075,13 @@ opened each line at HEAD `71e75d9d`): `src/ts/globalApi.svelte.ts:492` (assets),
 (assets), `src/ts/process/coldstorage.svelte.ts:346` (cold units), `src/ts/storage/risuSave.ts:804` (remote blocks) and
 `src/ts/bootstrap.ts:845` (a meta file). The stages above move assets (stage 3), remote blocks (stage 2) and cold units
 (stage 4) onto the interface, but none of them is stated to make these writes atomic; the stage plans have to say so.
+
+*Dated note (2026-10-03, after stage 3; the list above is kept as written):* of these five sites, only the cold-unit site
+in `coldstorage.svelte.ts` (stage 4) is still outside the store. The remote-block and meta sites were moved by stage 2b
+and the two asset sites by stage 3. The extension prerequisite in the stage list is met: new assets get a sanitized
+extension (1 to 16 ASCII letters or digits, else `png`), and existing asset names are kept as they are. The remote-block
+and meta sites were already store calls before stage 3 (moved by 2b). The other `writeFile(` hits in `src` are not the
+Tauri plugin: `process/mcp/filesystemclient.ts` (a class method) and `process/pyworker.ts` (`py.FS.writeFile`).
 
 **Why stage 0 matters: the decode cut RUN (ledger row 636).** A synthetic save (four characters, 686 bytes) was cut at
 many points and decoded with `decodeRisuSave`, strictly and not strictly, with an empty and a populated `risuSaveCache`.
