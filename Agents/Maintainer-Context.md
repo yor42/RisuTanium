@@ -2365,6 +2365,7 @@ request that leaves the app with no user action cannot be gated at the point of 
 *Point 1 superseded by `MC-167` 2.*
 
 *Point 2 amended by `MC-177` 1 for CHORE-74.*
+*Point 2 amended by `MC-181` for CHORE-55.*
 
 - **Tag:** decision
 - **Date:** 2026-09-25
@@ -6387,3 +6388,29 @@ skipped name that a character actually uses would show as a missing image."
 - E-3: a failed IndexedDB open or deciding read is a loud boot failure; the fallback to OPFS applies only when IndexedDB
   is unsupported.
 - F3: the restart cost of an interrupted copy-back is accepted (no resume).
+
+---
+
+### MC-181 — CHORE-55 is no longer a release blocker
+
+- **Tag:** decision (stated in chat)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's chat message, in answer to the Orchestrator's report that CHORE-55 stages 0 to 4 are done and
+  that no record stated whether CHORE-55's release blocker was closed.
+- **Reasoning:** none given.
+- **Alternatives rejected:** none (not chosen from options).
+- **Related:** `MC-089` (2: nothing ships until every current ticket is cleared), `MC-167`, `MC-180`; CHORE-55; commits
+  `d0decfb6` (stage 0) and `980791fa` (stage 4); ledger rows 734 and 735.
+
+**What was decided:**
+1. **CHORE-55 no longer blocks the first release.** The maintainer, as typed: "CHORE-55 is no longer a release blocker".
+   This clears CHORE-55 from the set of tickets that must be cleared before release. `MC-089` 2 says the fork does not ship
+   until every current ticket is cleared; this decision removes CHORE-55 from that set and does not change `MC-089` for any
+   other ticket.
+2. **What this does not say.** The maintainer did not say CHORE-55 is closed, and did not cancel its later stages (stage 5
+   or later: inlays with CHORE-48, the search index, CHORE-46's streaming). The Roadmap's CHORE-55 entry lists them as not
+   scheduled, and they stay as later work. The stage 0 Windows live check recorded as not run (`MC-171` 2) stays open;
+   this decision does not change it.
+
+---

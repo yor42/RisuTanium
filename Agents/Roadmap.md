@@ -2557,7 +2557,7 @@ by `980791fa` (local, not pushed); Gate 2 closed `[EDITORIAL]`.** Stages 0 to 4 
 are kept as they were; where this block differs, this block governs. Ledger rows 718 to 731 are the stage 4 work (the
 facts investigation, the phone check, Gate 1 in three rounds, the implementation in two parts, the translations, Gate 2
 in two rounds with the remediation, the commit message draft and its check); rows 732 and 733 are these records and their
-fact-check. `MC-180` records the maintainer's answers. The text of this block comes from the commit message (`git log -1
+fact-check; rows 734 and 735 are the `MC-181` records and their fact-check. `MC-180` records the maintainer's answers. The text of this block comes from the commit message (`git log -1
 980791fa`, fact-checked by the Gate 2 reviewer before the commit, ledger row 731) and the session's gate and plan files;
 the AVD figures are from `avd\result.md` in the session scratch.
 
@@ -2675,8 +2675,9 @@ the AVD figures are from `avd\result.md` in the session scratch.
   - The restart cost of an interrupted copy-back is accepted: it restarts, with no resume (the Orchestrator's call F3,
     `MC-180`).
 - **Release blocker status:** stage 0 (the original defect, the non-atomic Tauri main-file write) is done by `d0decfb6`,
-  per its block below, and stages 1 to 4 are done. `TODO(evidence)`: no Roadmap line states whether the maintainer counts
-  CHORE-55's release blocker as closed now; this block does not say so.
+  per its block below, and stages 1 to 4 are done. **Decided (`MC-181`, 2026-10-03):** the maintainer said "CHORE-55 is no
+  longer a release blocker". That clears CHORE-55 as a release blocker. It does not say the ticket is closed or that its
+  later stages are cancelled; they stay as later work (next line).
 - **Next for CHORE-55:** stages 0 to 4 are done. Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's
   streaming) is not scheduled. Per `MC-179` 4, `feat/ui-batch` must be merged here before memory step 6.
 

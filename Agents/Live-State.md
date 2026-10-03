@@ -267,7 +267,8 @@ Empty. Only the UI session edits this block.
 | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
-Next free within the Main Campaign's ranges: `MC-181` (`MC-180` is used), ledger row 734 (rows 700 to 703 are the `MC-177`
+Next free within the Main Campaign's ranges: `MC-182` (`MC-181` is used), ledger row 736 (rows 734 and 735 are the `MC-181`
+records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
 message draft and its check, those records and their fact-check; rows 718 to 731 are the stage 4 work, its commit message
 draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
@@ -393,7 +394,8 @@ them.
    message: `pnpm test` 324 files, 6874 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes
    (fake-backed; not run: native Tauri, a real `server.cjs`, a real browser's OPFS, WebKit, Android Tauri). A phone check
    on the Pixel_6a_LowRam emulator passed for the mechanism (Roadmap CHORE-55 stage 4 block). **Stages 0 to 4 are done;
-   stage 5 or later is not scheduled.** **Next after stage 4: CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch`
+   stage 5 or later is not scheduled.** **CHORE-55 is no longer a release blocker (2026-10-03; `MC-181`):** the maintainer
+   said so in chat; this does not say the ticket is closed, and the later stages stay as later work. **Next after stage 4: CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch`
    is merged, `MC-179` 4: memory step 6 waits for that merge), then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
