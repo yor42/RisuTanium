@@ -6716,3 +6716,67 @@ upstream cards do).
 - **Translation choices, low-confidence by the translator's own report (row 890):** `optViaSound`, `optAxModel` ("auxiliary
   model"), `nameThinking`, `hotBadge`, `starter`, `bias`, and the German and Vietnamese wording of `visionQuality`.
   Vietnamese uses "nhân vật" for character. A native-speaker review is optional and listed in CHORE-05.
+
+### MC-211 — Translation batch 3: SideBars, Others and the common UI in one batch (CHORE-05); the dev panels, Easter eggs, Iris dialog and split are the maintainer's, the rest are the Orchestrator's dispositions
+
+- **Tag:** decision (four choices put to the maintainer); the dispositions and disclosures below are the Orchestrator's, not the
+  maintainer's
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "commit and start batch 3" (also the commit word for batch 2, `694a4c89` code and
+  `258e2701` records), then four answers to `AskUserQuestion`. Dev panels: "Translate labels only (Recommended)". Easter eggs:
+  "Keep English (Recommended)". Iris dialog: "Move into language files". Split: "One batch (Recommended)".
+- **Reasoning:** none stated.
+- **Alternatives rejected:** dev panels: "Translate everything" and "Leave in English"; Easter eggs: "Translate them"; Iris
+  dialog: "Leave the dictionaries" (the recommended option, not chosen); split: "Two batches" (Others first, then the rest).
+- **Related:** `MC-091`, `MC-179`, `MC-200` 4, `MC-209`, `MC-210`; CHORE-05; ledger rows 895 to 899.
+
+**What was decided (the maintainer's):**
+1. **Dev panels.** The Dev Tool sidebar and the alert dialog's request-log and generation-info panels: translate the labels
+   only. The option chosen read "translate ordinary words ...; keep technical terms like GenID, Request Body, Chunks
+   English". The full list of terms kept English is the Orchestrator's disposition below.
+2. **Easter eggs stay English:** the `App.svelte` "RisyGTP" parody, the `UI/Title.svelte` anniversary text and the
+   `UI/Googli.svelte` "TEST".
+3. **Iris dialog.** The intro and unsupported-model text move into the language files, so all seven languages get them; the
+   existing ko and zh-Hant text is carried over.
+4. **One batch** for SideBars, Others and the common UI.
+
+**Rules that follow:**
+- `MC-209`'s rule (provider, model, API, URL, JSON and parameter names stay English) and `MC-210`'s (stored defaults are not
+  translated; English typos kept byte-identical; NovelAI feature names stay English) apply unchanged. This entry adds no new
+  maintainer rule beyond the four answers above.
+
+**Disclosures (consequences the maintainer should know).** *Answered:* the maintainer approved the batch's changes and
+dispositions together, before the commit: "changes made by you seems reasonable; approved. go ahead and commit batch 3."
+- **(a) Folder colour select, non-index answers.** In `Sidebar.svelte` and `SideChatList.svelte`, an answer to the folder
+  colour select that is not a list index now writes nothing. At HEAD, Sidebar threw an unhandled TypeError
+  (`colors[sel].toLocaleLowerCase()` on undefined) and `SideChatList` stored undefined as the folder colour. The stored colour
+  values are unchanged (the English lower-case names).
+- **(b) The Iris intro line is sent to the model.** It is the first assistant turn in the history. Users of cn, vi, de and es
+  now send it in their language (they sent English before); ko and zh-Hant are unchanged.
+- **(c) zh-Hant Iris unsupported-model line.** It was in Simplified characters at HEAD and is rewritten in Traditional
+  characters.
+- **(d) `GridCatalog` description.** An entry without creator notes now has `desc` `''` instead of 'No description'. The
+  display is the same in English.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Kept English:** the `CharConfig` TTS engine parameter labels (the Orchestrator's reading of `MC-209`; the maintainer may
+  revisit); Realm NSFW/SFW tags; WelcomeRisu "Choose your language"; stored defaults ("New Folder", "New Lore", "New Persona");
+  the "Performace" typo; the Iris speaker names "Iris" and "You"; the technical labels of the alert dialog panels (ID, GenID,
+  Bytes, URL, Request Body, Request Header, Response, Chunks, the OK/ERR badge, export format names, the bug-report block);
+  "XHigh".
+- **Translated:** the folder colour names, through one list of value and label pairs (the stored value is the English name as
+  before); the "Unnamed X" display fallbacks; PluginAlertModal "Dev Info"; EasyPanel "Beta"; `OptionalInput` "Using default",
+  "True" and "False"; `ModelGrid` "SUB"; alt texts; Realm strings; `DefaultChatScreen` fallbacks; six `HypaV3Modal` conversion
+  errors (shown through `alertNormalWait`).
+- **Reuse rule:** an existing key is reused only when its English value is byte-identical to the literal and the key is
+  generic: a top-level key, or one of the generic `settingsPage` keys `back`, `unnamed` and `customOpenAiCompatible`. Other
+  domain-group keys (`setup.*`, `triggerCategories.*`, `triggerInputLabels.*` and the like) are not reused.
+- **Deferred:** `MobileCharacters.svelte` "Unnamed"; the `HypaV3Modal` conversion errors have no component test; the registry
+  `options.placeholder` strings (they need a `placeholderKey`); thrown errors; `globalApi` toasts (out of bounds, `MC-200` 4);
+  the `/?` help; the `LoreBookList` drag debug dump; UI text produced in `src/ts/**` (for example `devToolActions` output);
+  `Legal.svelte` (never edited).
+- **Translation choices, low-confidence by the translator's own report (row 897):** the regex flag names; the prompt-diff view
+  names (Unified, Split, Intraline, Legacy); Autopilot; Instruct; Join; Forked; the vi CHAR/CHAT badge length; the de and es
+  Iris text uses informal du and tú against the file's formal register; the zh-Hant intro and tip read as mainland wording
+  (kept). A native-speaker review is optional and listed in CHORE-05.

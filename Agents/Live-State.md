@@ -335,11 +335,23 @@ Several sessions work **in this same checkout**:
   (`src/ts/setting/settingLabelKeys.test.ts`) fail any lane that adds an `en.ts` key without all six translations, or a
   `labelKey` that names no `en.ts` key. No file on the UI session's out-of-bounds list is in the diff (the plan excluded
   `StorageMaintenanceSettings.svelte`). `.claude/launch.json` is also modified in the working tree and is not part of this batch.
-- **Next in the lane:** CHORE-05 batch 3, SideBars, Others and the common UI chrome (the maintainer's earlier ordering;
-  includes the rest of `CustomSidebarConfig.svelte`'s strings, `LoreBookSetting.svelte` and the Playground Embedding
-  "Custom (OpenAI-compatible)" option). Then the dead-key removal as its
-  own batch, then the optional native-speaker review.
-- **Next free numbers in the UI ranges:** `MC-211`, ledger row 895, CHORE-100, Report 65.
+- **Translation batch 3 (CHORE-05: SideBars, Others and the common UI): DONE, committed in
+  `40a64aaf`**. `MC-211` (the dev panels, Easter eggs, Iris dialog and
+  one-batch choices are the maintainer's; the dispositions and disclosures are the Orchestrator's); ledger rows 895 to 899. Gate 1
+  took two rounds (`[REJECT]`, then `[EDITORIAL]`) and Gate 2 approved ([APPROVE], no MUST). Checks on the working tree:
+  `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok. 205 new `en.ts` leaf keys in all six locales, 39
+  Svelte files, the new `src/lib/SideBars/folderColors.ts`, 9 new test files (HEAD red run: 22 of 78 i18n tests fail, all
+  labelled reproducers). Four disclosures, approved by the maintainer before the commit (`MC-211`): a non-index folder colour answer
+  now writes nothing (HEAD: Sidebar threw a TypeError, `SideChatList` stored undefined); the Iris intro line is sent to the
+  model in the user's language for cn, vi, de and es; the zh-Hant Iris unsupported-model line is now Traditional; a
+  `GridCatalog` entry without creator notes has `desc` `''`. Not run in a browser or on a device. No new tickets. Detail is
+  in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-17.txt` (code) and `commit-msg-18.txt` (records) in the
+  scratchpad.
+- **Next in the lane:** the dead-key removal as its own batch, then the optional native-speaker review (batches 1 to 3,
+  including batch 3's low-confidence items in row 897).
+- **Next free numbers in the UI ranges:** `MC-212`; ledger row 900 (the 800 to 899 range is used up; the maintainer
+  allocated rows 900 to 1000 to the UI session on 2026-10-03, after the Main Campaign confirmed they were unused and
+  unreserved); CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

@@ -646,13 +646,68 @@ reused unchanged: flat string keys, `{name}` placeholders filled by `fillLang`, 
 - **Remaining batches, in the lane (the maintainer chooses the order):**
   1. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the row 878 heuristic), including the rest of
      `CustomSidebarConfig.svelte`'s strings and `LoreBookSetting.svelte`. The registry `options.placeholder` strings wait
-     for a `placeholderKey` mechanism.
+     for a `placeholderKey` mechanism. Batch 3 is done (see the batch 3 block below).
   2. **Dead-key removal**, in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
   3. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
      batch 1 (row 882) and batch 2 (row 890: `optViaSound`, `optAxModel`, `nameThinking`, `hotBadge`, `starter`, `bias`, and the
      de and vi wording of `visionQuality`). Also a review note from Gate 2 (row 893): five pairs of keys hold the same English
      (`settingsPage.iconAlt` and `icon`, `helpTab` and `helpBlock`, `deleteButton` and `playground.delete`, `searchModels` and
      `openRouterSearchModel`, `imagenImageSize` and `imageSize`) and can drift apart; and ko 유저 against 사용자.
+
+**Status (2026-10-03, UI session, translation batch 3: SideBars, Others and the common UI): DONE in `40a64aaf`; the ticket stays open for the later batches** (ledger rows 895 to 899). Product choices in `MC-211` (dev panels,
+Easter eggs, the Iris dialog, one batch; the maintainer's four answers) and `MC-209` (names stay English); the dispositions and
+disclosures in `MC-211` are the Orchestrator's, not the maintainer's. The mechanism of batches 1 and 2 is reused: flat string
+keys, `{name}` placeholders filled by `fillLang`.
+- **Done in batch 3:** 205 new leaf keys in `en.ts` (8 new objects: `devTool` 24, `sidebarUi` 61, `alertComp` 15, `loadoutModal` 13,
+  `promptDiff` 38, `iris` 11, `othersUi` 9, `uiCommon` 24 = 195; plus 10 in `hypaV3Modal`), translated into all six locales
+  (row 897). 39 Svelte files (ChatScreens 3, Others 14, Playground 1, SideBars 13, UI 8) and the new
+  `src/lib/SideBars/folderColors.ts` route visible text through `language`. An existing key is reused only when its English
+  value is byte-identical to the old literal and the key is generic (top-level, or the generic `settingsPage.back`,
+  `settingsPage.unnamed` and `settingsPage.customOpenAiCompatible`); other domain-group keys are not reused. English
+  rendering is checked by a 307-row manifest: the 296 rows with a key all give `fillLang(en[key])` equal to the old literal
+  (0 bad); the 11 rows without a key (the `GridCatalog` data field, the Iris dictionary text and scaffolding, the colour-array
+  plumbing) are covered by the ko and zh-Hant byte-identity checks and the tests (row 897).
+  - **Iris dialog:** the intro and unsupported-model text moved into the language files, so all seven languages have them; the
+    ko text and the zh-Hant intro and tip are byte-identical to the old component text. A saved dialogue loads unchanged; the
+    'Iris' and 'You' speaker values are unchanged.
+  - **Folder colours:** the Sidebar and `SideChatList` folder colour select shows translated names from one list of value and
+    label pairs in `folderColors.ts`; the stored value is the English lower-case name as before.
+- **Behaviour changes, disclosed (`MC-211`; the maintainer approved them before the commit):** (a) a non-index answer to the folder colour
+  select now writes nothing; at HEAD Sidebar threw an unhandled TypeError (`colors[sel].toLocaleLowerCase()` on undefined) and
+  `SideChatList` stored undefined as the colour. (b) The Iris intro line is sent to the model as the first assistant turn, so
+  cn, vi, de and es users now send it in their language (English before); ko and zh-Hant are unchanged. (c) The zh-Hant Iris
+  unsupported-model line was in Simplified characters at HEAD and is now Traditional. (d) A `GridCatalog` entry without creator
+  notes has `desc` `''` instead of 'No description'; the display is the same in English.
+- **Left English on purpose (the Orchestrator's dispositions, `MC-211`):** the `CharConfig` TTS engine parameter labels (the
+  `MC-209` reading; the maintainer may revisit); the `AlertComp` technical labels (ID, GenID, Bytes, URL, Request Body,
+  Request Header, Response, Chunks, the OK/ERR badge, export format names, the bug-report block); stored defaults; the Easter
+  eggs (the maintainer's answer); Realm NSFW/SFW; "Choose your language"; "XHigh"; the "Performace" typo; typos in general.
+- **Deferred:** `MobileCharacters.svelte` "Unnamed"; the `HypaV3Modal` conversion errors have no component test; the registry
+  `options.placeholder` strings (need a `placeholderKey`); thrown errors; `globalApi` toasts (out of bounds, `MC-200` 4); the
+  `/?` help; the `LoreBookList` drag debug dump; UI text produced in `src/ts/**` (for example `devToolActions` output);
+  `Legal.svelte` (never edited). `src/lib/Setting/**` and `App.svelte` have no edit; `src/lib/Setting/**` was not
+  independently audited (its roughly 325 literals are nearly all KEEP-ENGLISH by the inventory).
+- **New tests (9 new files):** `AlertComp.i18n`, `GridCatalog.i18n`, `IrisModal.i18n`, `LoadoutModal.i18n`,
+  `PromptDiffModal.i18n`, `RegexData.i18n`, `Sidebar.folderColor.i18n` and `SideChatList.folderColor.i18n`
+  (`*.svelte.test.ts`) and `folderColors.i18n.test.ts`; `CustomSidebarConfig.i18n.svelte.test.ts` gains one reproducer. Against
+  HEAD's 9 mounted Svelte files (the scratch config `head.vitest.config.mts` in the Orchestrator's scratchpad, with those
+  files in `HEAD_FILES` and the language files at the working tree), 22 of 78 i18n tests fail, all 22
+  labelled "regression reproducer:"; the others are guards and batch 1 and 2 tests (row 898). The `HypaV3Modal` conversion
+  errors have no test. Merge note (`MC-179`): the parity guard fails any lane that adds an `en.ts` key without all six
+  translations, which is intended.
+- **Checks:** `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok (row 898). Gate 1 took two rounds
+  (`[REJECT]`, then `[EDITORIAL]`; row 896) and Gate 2 approved (row 898). Not run in a browser or on a device.
+- **Merge note (`MC-179`):** ChatScreens (3), Others (14), Playground (1), SideBars (13) and UI (8) Svelte files, the new
+  `folderColors.ts`, and the seven `src/lang` files. Three are on the Main Campaign's return list: `CharConfig.svelte`
+  (strings only, 21 lines changed), `PlaygroundEmbedding.svelte` (one line) and `Chat.svelte` (one line, the User/Assistant
+  label; not the copy code). `.claude/launch.json` is modified in the working tree and stays out of the commits. No file on the UI session's out-of-bounds list, `src/App.svelte` or
+  `docs/` is in the diff (the Orchestrator's path check over the modified and untracked files; Gate 2 confirmed the same).
+- **Remaining batches, in the lane (the maintainer chooses the order):**
+  1. **Dead-key removal**, in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
+  2. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
+     batch 1 (row 882), batch 2 (row 890) and batch 3 (row 897: the regex flag names, the prompt-diff view names Unified, Split,
+     Intraline and Legacy, Autopilot, Instruct, Join, Forked, the vi CHAR/CHAT badge length, the informal du and tú in the de and
+     es Iris text, and the mainland wording of the zh-Hant intro and tip).
 
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
