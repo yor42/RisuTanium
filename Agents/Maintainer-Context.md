@@ -6847,3 +6847,18 @@ dispositions together, before the commit: "changes made by you seems reasonable;
 - **The reroll Apply defect is folded into batch 5a** (found by Gate 1, row 907).
 - **`OtherAx` is translated.** Its siblings in the same accordion are translated (Gate 1 N1 asked the Orchestrator to confirm).
 - **Scope of batch 5a:** 29 dead computed-group names deleted, 5 new keys, ledger rows 905 to 910.
+
+### MC-214 — HypaV3 re-roll: an edit after a failed re-roll re-enables Apply (CHORE-05 batch 5a follow-up)
+
+- **Tag:** decision
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat, after the Orchestrator reported batch 5a and listed Gate 2's optional item (after a
+  failed re-roll, hand-typed text in the re-roll box cannot be applied): "let's commit and apply the optional idea." The same
+  message was the commit word for batch 5a (`fb454bc0` code, `e6c45b3d` records).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-213`; CHORE-05; ledger rows 911 to 913.
+
+**What was decided (the maintainer's):** after a failed re-roll, once the user edits the re-roll text, Apply is enabled and
+applies the edited text.

@@ -352,7 +352,8 @@ Several sessions work **in this same checkout**:
   keys deleted from all seven language files; `globalLoreBook` and `globalRegexScript` kept until after the merge. No new test.
   Checks: `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok. Not run in a browser. Commit drafts:
   `commit-msg-19.txt` (code) and `commit-msg-20.txt` (records) in the scratchpad.
-- **Translation batch 5a (CHORE-05: small deferrals and 29 dead computed-group names): DONE, committed in `fb454bc0`**.
+- **Translation batch 5a (CHORE-05: small deferrals and 29 dead computed-group names): DONE, committed in `fb454bc0`**. Follow-up (`MC-214`, rows 911 to 913, committed in `e61a0f72`): an edit after a failed
+  HypaV3 re-roll re-enables Apply.
   `MC-213` (the request, the split into 5a, 5b and 5c, and the TTS label rule are the maintainer's; the dispositions are the
   Orchestrator's); ledger rows 905 to 910. 29 dead names deleted from all seven language files, 5 new keys, `placeholderKey`
   for the two registry placeholders, the `/?` help, `OtherAx`, `MobileCharacters` and `botpreset` Unnamed. One behaviour fix,
@@ -364,7 +365,7 @@ Several sessions work **in this same checkout**:
 - **CHORE-05 status:** translation batches 1 to 4 and 5a done. The native-speaker review is deferred by the maintainer (`MC-212`);
   the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: batches 5b and 5c; delete `globalLoreBook` and `globalRegexScript`
   after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; the deferred items listed in the batch 3 block.
-- **Next free numbers in the UI ranges:** `MC-214`; ledger row 911; CHORE-100; Report 65.
+- **Next free numbers in the UI ranges:** `MC-215`; ledger row 914; CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

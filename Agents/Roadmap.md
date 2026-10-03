@@ -758,8 +758,10 @@ keys, `{name}` placeholders filled by `fillLang`.
   `summary.text`. Apply is now disabled unless a result exists, the re-roll is not pending and it has not failed
   (`canApplyRerolled`; `rerollFailed` is set in the catch and cleared when a re-roll starts), and `applyRerolled` returns early. Pre-fix
   failure: two reproducers, where the summary text became `'Loading...'` (Apply while pending) and `'Reroll failed'` (Apply
-  after a failure). Not done, optional (Gate 2): clear `rerollFailed` when the textarea is edited after a failure; after a
-  failed re-roll, hand-typed text in the re-roll box cannot be applied, which Gate 2 judged acceptable.
+  after a failure). Gate 2's optional item was then done at the maintainer's request (`MC-214`, rows 911 to 913, committed in
+  `e61a0f72`): editing the re-roll text after a failure clears `rerollFailed`, so Apply applies the edited text; typing while
+  a re-roll is pending changes nothing. 4 tests added to `HypaV3Modal.rerollConvert.svelte.test.ts`, 2 of them regression
+  reproducers that fail at `e6c45b3d`.
 - **Kept, or not touched:** the five live `triggerDesc` names (`v2GetCharacterDesc`, `v2SetCharacterDesc`, `v2GetPersonaDesc`,
   `v2SetPersonaDesc`, `v2UnsupportedTriggerDesc`) and `v2UnsupportedTrigger`, which is reachable through `triggerDesc[type]`
   from saved effect data (row 905). The `LoreBookList` debug dumps are commented out, so there is nothing to translate and no
