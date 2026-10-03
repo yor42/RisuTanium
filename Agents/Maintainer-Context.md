@@ -6780,3 +6780,35 @@ dispositions together, before the commit: "changes made by you seems reasonable;
   names (Unified, Split, Intraline, Legacy); Autopilot; Instruct; Join; Forked; the vi CHAR/CHAT badge length; the de and es
   Iris text uses informal du and tú against the file's formal register; the zh-Hant intro and tip read as mainland wording
   (kept). A native-speaker review is optional and listed in CHORE-05.
+
+### MC-212 — Translation batch 4: dead-key removal (CHORE-05); the request and the review deferral are the maintainer's, the dispositions are the Orchestrator's
+
+- **Tag:** decision (the request and the deferral); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "let's remove the unused key next." Then, on the native-speaker review: "full native
+  speaker check has to be deferred as while I am capable of english and korean, as a single maintainer I can't check all 6
+  languages." Then: "korean and english translations looks good to me. will report if I find any issue." (The quote does
+  not name its scope; the Orchestrator reads it as the translations so far, batches 1 to 3.)
+- **Reasoning:** the maintainer's, on the deferral: they read English and Korean, and as the only maintainer cannot check all
+  six non-English languages. No reasoning was stated for the request.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-179`, `MC-207`, `MC-209`, `MC-210`, `MC-211`; CHORE-05; ledger rows 900 to 904.
+
+**What was decided (the maintainer's):**
+1. **Remove the unused translation keys** as the next batch (batch 4).
+2. **The full native-speaker review is deferred.** The reason is the maintainer's own, quoted above.
+3. **The Korean and English translations look good to the maintainer**, who will report any issue they find (scope as read
+   above). The other five locales (cn, zh-Hant, vi, de, es) remain unreviewed by a native speaker.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **The seven planned-feature keys stay.** The maintainer's rule is `MC-209` decision 3 (three categories: persistent
+  storage, license, Claude caching); the seven key names are the investigator's.
+- **Keep `globalLoreBook` and `globalRegexScript` until after the merge.** The Main Campaign branch
+  `fix/persistence-conflict-platform-hardening` still reads them in `GlobalLoreBookSettings.svelte` and `GlobalRegex.svelte`;
+  they were retired on this branch in `408c32dd`. Delete them after the merge if those pages go.
+- **Leave the 35 possibly-dead names inside computed groups for later** (`help` 11, `setup` 18, `triggerDesc` 6). The scan
+  treats those groups as wholly live because they are read by computed access.
+- **No new test.** There is no defect to reproduce. A guard that every key is referenced was rejected: computed groups make it
+  unsound, or it needs a hand-kept allowlist.
+- **Scope of the removal:** 131 keys, deleted from all seven language files together (ledger rows 900 to 903).

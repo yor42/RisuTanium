@@ -347,11 +347,15 @@ Several sessions work **in this same checkout**:
   `GridCatalog` entry without creator notes has `desc` `''`. Not run in a browser or on a device. No new tickets. Detail is
   in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-17.txt` (code) and `commit-msg-18.txt` (records) in the
   scratchpad.
-- **Next in the lane:** the dead-key removal as its own batch, then the optional native-speaker review (batches 1 to 3,
-  including batch 3's low-confidence items in row 897).
-- **Next free numbers in the UI ranges:** `MC-212`; ledger row 900 (the 800 to 899 range is used up; the maintainer
-  allocated rows 900 to 1000 to the UI session on 2026-10-03, after the Main Campaign confirmed they were unused and
-  unreserved); CHORE-100; Report 65.
+- **Translation batch 4 (CHORE-05: dead-key removal): DONE, committed in `e2602d4d`**. `MC-212` (the request and the
+  review deferral are the maintainer's; the dispositions are the Orchestrator's); ledger rows 900 to 904. 131 unused `en.ts`
+  keys deleted from all seven language files; `globalLoreBook` and `globalRegexScript` kept until after the merge. No new test.
+  Checks: `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok. Not run in a browser. Commit drafts:
+  `commit-msg-19.txt` (code) and `commit-msg-20.txt` (records) in the scratchpad.
+- **CHORE-05 status:** translation batches 1 to 4 done. The native-speaker review is deferred by the maintainer (`MC-212`);
+  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: delete `globalLoreBook` and `globalRegexScript`
+  after the merge if the pages go; the 35 computed-group names; the deferred items listed in the batch 3 block.
+- **Next free numbers in the UI ranges:** `MC-213`; ledger row 905; CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

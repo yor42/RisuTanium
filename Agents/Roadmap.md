@@ -584,7 +584,7 @@ ticket's key-drift premise, and the stale sections below are marked as supersede
   1. **Settings pages**, about 480 hard-coded rows (row 878). `MC-209`'s rule: provider and model names, API, URL, JSON and
      parameter names such as Top P stay English; the rest is translated.
   2. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the same heuristic).
-  3. **Dead-key removal**, in its own batch after a second check. The investigator found 118 likely-dead keys, with
+  3. **Dead-key removal** (done in batch 4; see the batch 4 block), in its own batch after a second check. The investigator found 118 likely-dead keys, with
      dynamically accessed groups (`help`, `setup`, `triggerDesc`, `hotkeyDesc` and others) excluded. Skip the keys that may
      belong to a planned feature: persistent storage (`persistentStorage`, `persistentStorageRecommended`,
      `persistentStorageDesc`), license (`license`, `licenseDesc`) and Claude caching (`claudeCachingExperimental`,
@@ -647,7 +647,7 @@ reused unchanged: flat string keys, `{name}` placeholders filled by `fillLang`, 
   1. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the row 878 heuristic), including the rest of
      `CustomSidebarConfig.svelte`'s strings and `LoreBookSetting.svelte`. The registry `options.placeholder` strings wait
      for a `placeholderKey` mechanism. Batch 3 is done (see the batch 3 block below).
-  2. **Dead-key removal**, in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
+  2. **Dead-key removal** (done in batch 4; see the batch 4 block), in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
   3. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
      batch 1 (row 882) and batch 2 (row 890: `optViaSound`, `optAxModel`, `nameThinking`, `hotBadge`, `starter`, `bias`, and the
      de and vi wording of `visionQuality`). Also a review note from Gate 2 (row 893): five pairs of keys hold the same English
@@ -703,11 +703,37 @@ keys, `{name}` placeholders filled by `fillLang`.
   label; not the copy code). `.claude/launch.json` is modified in the working tree and stays out of the commits. No file on the UI session's out-of-bounds list, `src/App.svelte` or
   `docs/` is in the diff (the Orchestrator's path check over the modified and untracked files; Gate 2 confirmed the same).
 - **Remaining batches, in the lane (the maintainer chooses the order):**
-  1. **Dead-key removal**, in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
+  1. **Dead-key removal** is done (see the batch 4 block below).
   2. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
      batch 1 (row 882), batch 2 (row 890) and batch 3 (row 897: the regex flag names, the prompt-diff view names Unified, Split,
      Intraline and Legacy, Autopilot, Instruct, Join, Forked, the vi CHAR/CHAT badge length, the informal du and tú in the de and
-     es Iris text, and the mainland wording of the zh-Hant intro and tip).
+     es Iris text, and the mainland wording of the zh-Hant intro and tip). Deferred by the maintainer in batch 4 (`MC-212`).
+
+**Status (2026-10-04, UI session, translation batch 4: dead-key removal): DONE in `e2602d4d`; the ticket stays open for the follow-ups below** (ledger rows 900 to 904). The request is the maintainer's (`MC-212`); the dispositions in `MC-212` are the Orchestrator's, not the maintainer's.
+- **Done in batch 4:** 131 unused `en.ts` keys deleted from all seven language files (107 top-level, 20 `triggerInputLabels`, 4
+  `errors`). `en.ts` leaves go from 2162 to 2031. Each file lost 132 lines (`coldStorageCleanupAborted` spans two lines) and gained
+  none; the survivors are equal in value and order, and no deleted line is a comment (row 902). `moduleContent` and
+  `confirmRemoveModuleFeature` (`MC-207`) are among the deleted keys. The second check found the old 118-key list wrong: it held
+  three live keys (`nanoGPTSelectFromList`, `nanoGPTManualInput`, `nanoGPTManualModelSelect`, read as `(language as any)` in
+  `BotSettings.svelte`) and missed 25 dead ones (row 900).
+- **Kept on purpose:** the seven planned-feature keys the maintainer excluded earlier (the batch 1 block above), and
+  `globalLoreBook` and `globalRegexScript` until after the merge (the Orchestrator's disposition, `MC-212`): the Main Campaign
+  branch still reads them in `GlobalLoreBookSettings.svelte` and `GlobalRegex.svelte`; they were retired on this branch in
+  `408c32dd`.
+- **Not touched:** 35 possibly-dead names inside computed groups (`help` 11, `setup` 18, `triggerDesc` 6). Ten groups were
+  treated as wholly live because they are read by computed access (row 900).
+- **No new test (the Orchestrator's disposition, `MC-212`):** there is no defect to reproduce; a guard that every key is
+  referenced was rejected because computed groups make it unsound, or it needs a hand-kept allowlist.
+- **Checks:** `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok (row 902). Gate 1 and Gate 2 both
+  approved (rows 901 and 903). Not run in a browser.
+- **Merge note (`MC-179`):** the parity guard and the `satisfies DeepPartial<...>` on each locale mean a key deleted from
+  `en.ts` has to go from all seven files together. All 131 keys are also unused on the Main Campaign branch tip `0df2e266`
+  (row 900). After the merge, a Main Campaign use of a deleted key through a static chain fails `pnpm check`, but a computed
+  access would not. Expect textual conflicts in the seven locale files (row 903).
+- **Native-speaker review: deferred by the maintainer (`MC-212`).** The maintainer said the Korean and English translations look good
+  (the Orchestrator reads that as batches 1 to 3) and will report issues; cn, zh-Hant, vi, de and es remain unreviewed by a native speaker.
+- **Remaining follow-ups:** delete `globalLoreBook` and `globalRegexScript` after the merge if those pages go; decide the 35
+  computed-group names; the deferred items in the batch 3 block above.
 
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
