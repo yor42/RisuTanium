@@ -250,7 +250,20 @@ Several sessions work **in this same checkout**:
 
 ### UI session (feat/ui-batch)
 
-Empty. Only the UI session edits this block.
+- **Branch:** `feat/ui-batch`, from `57e7be63`; no commits yet. Work order: `MC-200` 1.
+- **Done, uncommitted, awaiting the maintainer's commit word:** CHORE-11 CD-3 (8 files: `src/lang/{en,ko,cn,zh-Hant,vi,de,es}.ts`
+  and `src/lib/SideBars/CharConfig.svelte`; Gate 2 [APPROVE], ledger row 801).
+- **Closed without code:** CHORE-44 (ledger row 802). Already fixed earlier: CD-4 (`910b07de`).
+- **Next:** the mobile batch (CHORE-56, CHORE-20, CHORE-19) to Gate 1; choices in `MC-201`.
+- **Next free numbers in the UI ranges:** `MC-202`, ledger row 806, CHORE-90, Report 65.
+- **Operational notes:** this worktree needed `pnpm install --frozen-lockfile`. `pnpm test` rewrites
+  `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` with LF endings; never stage it, and restore
+  its CRLF bytes after a full run.
+- **Wiki hand-off (UI session, for the Wiki session):** `docs/wiki/Additional-Character-Screen.md` (around line 46)
+  says the emotion and image-generation Inlay boxes share the "Image Generation Instructions" label; after CD-3 the
+  emotion box is labelled "Emotion Instructions". CD-4's keep-edited-text behaviour is `MC-077`.
+- **Files outside the UI lane touched so far:** none. Step-6 flows touched (memory step 6 hooks): `CharConfig.svelte`'s
+  emotion settings label only (a one-line label change).
 
 **Next free numbers (reserved ranges, `MC-179` 3):**
 

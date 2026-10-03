@@ -5,6 +5,7 @@
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
+    import { LIGHT_SURFACE_STYLE } from "src/ts/gui/lightSurface"
     import { getModelInfo } from "src/ts/model/modellist"
     import { runLuaButtonTrigger } from 'src/ts/process/scriptings'
     import { risuChatParser } from "src/ts/process/scripts"
@@ -249,7 +250,7 @@
         rawStreamingText = state.rawStreamingText
     }
 
-    async function rm(e:MouseEvent, rec?:boolean){
+    async function rm(e:MouseEvent | TouchEvent, rec?:boolean){
         if(e.shiftKey){
             let msg = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message
             msg = msg.slice(0, idx)
@@ -369,6 +370,37 @@
         } else {
             startOriginalEdit()
         }
+    }
+
+    // Deliberate exit without saving: the draft of `identity` is cleared rather
+    // than left to resurface later.
+    function discardOriginalEdit(identity: MessageIdentity | null) {
+        editMode = false
+        if (identity) {
+            draftContentOrphanGate.delete(identity)
+        }
+        frozenMessageIdentity = null
+        restoredMessageRecord = null
+    }
+
+    let discardConfirmOpen = $state(false)
+
+    // Asks only when leaving would drop a change. The answer acts only if the
+    // same edit session is still open, so it can never discard a newer one.
+    async function requestDiscardOriginalEdit() {
+        if (!editMode || discardConfirmOpen) return
+        const identity = frozenMessageIdentity
+        if (editBuffer !== frozenBaseData) {
+            discardConfirmOpen = true
+            let confirmed = false
+            try {
+                confirmed = await alertConfirm(language.messageEditDiscardConfirm)
+            } finally {
+                discardConfirmOpen = false
+            }
+            if (!confirmed || !editMode || frozenMessageIdentity !== identity) return
+        }
+        discardOriginalEdit(identity)
     }
 
     function toggleTranslation() {
@@ -900,16 +932,9 @@
         {#if restoredMessageRecord}
             {@render draftRestoreMarker(restoredMessageRecord, revertOriginalEdit, markerOnLightSurface)}
         {/if}
-        <AutoresizeArea bind:value={editBuffer} onUserEdit={captureMessageEdit} handleLongPress={() => {
-            // Long-press on the original-text editor discards -- deliberate
-            // exit, so the draft is cleared rather than left to resurface
-            // later.
-            editMode = false
-            if (frozenMessageIdentity) {
-                draftContentOrphanGate.delete(frozenMessageIdentity)
-            }
-            frozenMessageIdentity = null
-            restoredMessageRecord = null
+        <AutoresizeArea bind:value={editBuffer} onUserEdit={captureMessageEdit} lightSurface={DBState.db.theme === 'mobilechat'} handleLongPress={() => {
+            // Mouse long-press on the original-text editor discards without asking.
+            discardOriginalEdit(frozenMessageIdentity)
         }} />
     {:else if isComment}
         <div class="w-full flex justify-center text-textcolor2 italic mb-12">
@@ -945,7 +970,7 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <span class="text chat-width chattext prose minw-0"
             class:hidden={editTranslationMode}
-            class:prose-invert={$ColorSchemeTypeStore}
+            class:prose-invert={$ColorSchemeTypeStore && !markerOnLightSurface}
             bind:this={bodyRoot}
             onclick={() => {
             if(DBState.db.clickToEdit && idx > -1 && !isOptimizedStreamingMessage){
@@ -1055,7 +1080,7 @@
             {/if}
         </button>
     {/if}
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove" onclick={(e) => rm(e, false)} use:longpress={(e) => rm(e, true)}>
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove select-none [-webkit-touch-callout:none]" onclick={(e) => rm(e, false)} use:longpress={{callback: (e) => rm(e, true), touch: true}}>
         <TrashIcon size={20}/>
 
         {#if showNames}
@@ -1389,10 +1414,26 @@
                     class="bg-gray-100 rounded-lg p-3 max-w-[70%] mx-2"
                     class:rounded-tl-none={role !== 'user'}
                     class:rounded-tr-none={role === 'user'}
+                    style={LIGHT_SURFACE_STYLE}
                 >
                     <p class="text-gray-800">{@render textBox()}</p>
+                    {#if editMode}
+                        <div class="flex justify-end gap-2 mt-2">
+                            <button
+                                type="button"
+                                class="rounded-md border border-gray-400 px-3 py-1 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-300/60 disabled:opacity-50 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                                disabled={discardConfirmOpen}
+                                onclick={requestDiscardOriginalEdit}
+                            >{language.messageEditDiscard}</button>
+                            <button
+                                type="button"
+                                class="rounded-md bg-gray-800 px-3 py-1 text-sm font-medium text-gray-100 transition-colors hover:bg-gray-700 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                                onclick={toggleOriginalEdit}
+                            >{language.messageEditSave}</button>
+                        </div>
+                    {/if}
                     {#if DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.time}
-                        <span class="text-xs text-textcolor2 mt-1 block">
+                        <span class="text-xs text-gray-600 mt-1 block">
                             {new Intl.DateTimeFormat(undefined, {
                                 hour: '2-digit',
                                 minute: '2-digit',
@@ -1435,7 +1476,7 @@
                                 <textarea class="grow min-h-0 overflow-y-auto bg-transparent text-black p-2 mb-2 resize-none message-edit-area" bind:value={editBuffer} oninput={(e) => captureMessageEdit((e.currentTarget as HTMLTextAreaElement).value)}></textarea>
                             </div>
                         {:else}
-                            <div class="grow h-138 sm:h-96 overflow-y-auto p-2 mb-2 sm:mb-0">
+                            <div class="grow h-138 sm:h-96 overflow-y-auto p-2 mb-2 sm:mb-0" style={LIGHT_SURFACE_STYLE}>
                                 {@render textBox()}
                             </div>
                         {/if}

@@ -543,7 +543,7 @@
             </div>
 
             {#if (DBState.db.characters[$selectedCharID] as character).inlayViewScreen}
-                <span class="text-textcolor mt-2">{language.imgGenInstructions}</span>
+                <span class="text-textcolor mt-2">{language.emotionInstructions}</span>
                 <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.emotionInstructions} />
             {/if}
 

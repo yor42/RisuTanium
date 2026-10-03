@@ -6310,3 +6310,56 @@ skipped name that a character actually uses would show as a missing image."
 5. **Shared resources.** `src/lang/*.ts`: both sessions add keys; add yours as one contiguous block (stage 3b's restore
    notice is one example). Live checks: the Main Campaign keeps port 6011 and `risuai-prod-scratch`; the UI session uses
    6012. "Never stop a process you did not start."
+
+### MC-200 — The UI session's work order; CHORE-56 confirmed; CHORE-44 re-verified and closed; CHORE-23 may edit `openURL` minimally
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** item 1: "Approve with changes". Item 2 (CHORE-56): "Not seen, drop it". Item 3 (CHORE-44):
+  "There's a remaining part". Item 4: "hand to the Main Campaign" and "defer".
+- **Related:** `MC-179`
+
+**What was decided:**
+1. **Work order.** "Approve as proposed (Recommended)": CHORE-11 (CD-4 first, CD-3 folded in), then the mobile batch
+   (CHORE-56, CHORE-20, CHORE-19), then the chat UI batch (CHORE-21, the rejected-avatar-icon follow-up, CHORE-69,
+   CHORE-44), then TTS (CHORE-15: TTS-1 and TTS-2 first), then settings (CHORE-14), then Playground and modules
+   (CHORE-16 PG-2 to PG-4, CHORE-12), then small items (CHORE-13, CHORE-57, CHORE-23, optional CHORE-09), then
+   translations (CHORE-05).
+2. **CHORE-56.** "Yes, fix it (Recommended)": fix it in the mobile batch.
+3. **CHORE-44.** "Re-verify and close (Recommended)": no code change unless it has regressed.
+4. **CHORE-23.** "Allow a minimal edit": the UI session may edit only `openURL` in `src/ts/globalApi.svelte.ts`
+   (otherwise out of bounds under `MC-179`). The edit is kept minimal and listed in the session's report, so the merge
+   is expected.
+
+### MC-201 — The mobile batch's product choices
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** listed per item below.
+- **Related:** `MC-068`, `MC-179`, `MC-200`
+
+**What was decided:**
+1. **CHORE-20.** "Save/discard pair in edit mode (Recommended)": while a `mobilechat` message is being edited, a Save and
+   a Discard button are shown inside the bubble. The editor still opens by "click to edit". Not chosen: the full
+   standard button row under each `mobilechat` bubble; both.
+2. **Long-press (amended within the same session).** The maintainer first chose "Yes, add touch (Recommended)" for the
+   long-press helper. The Orchestrator then raised that on a touchscreen a long-press inside a textarea is the normal way
+   to select text or open the paste menu, so touch long-press in the message editor would discard the typed edit, and in
+   the translation editor would save and close it mid-edit. The maintainer then chose "Delete button only
+   (Recommended)": touch long-press is added for the delete button only (force delete on touch); both editors keep a
+   mouse-only long-press, and on `mobilechat` the new Save and Discard pair is the exit. Not chosen: everywhere, as first
+   answered; nowhere.
+3. **CHORE-56.** "No, just stop the error (Recommended)": a touch that starts on a button, input, select or textarea
+   still does not count as a swipe. Only the error, and the skipped tracking of the other touches in the same event, is
+   fixed. Not chosen: allow swipes from controls.
+4. **CHORE-19.** "Fixed dark text there (Recommended)": on the always-light `mobilechat` bubble and the `cardboard` card
+   only, text uses fixed dark colours, as the draft restore marker already does (`MC-068`). Other themes are unchanged.
+   Not chosen: make those surfaces follow the colour scheme.

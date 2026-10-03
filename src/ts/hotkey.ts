@@ -514,20 +514,27 @@ function focusQuery(query:string){
 export function initMobileGesture(){
     let pressingPointers = new Map<number, {x:number, y:number}>()
 
-    document.addEventListener('touchstart', (ev) => {
+    const onTouchStart = (ev: TouchEvent) => {
         for(const touch of ev.changedTouches){
             const ele = touch.target as HTMLElement
+            // A control's own touch is never a swipe; the other touches of the event still are.
             if(ele.tagName === 'BUTTON' || ele.tagName === 'INPUT' || ele.tagName === 'SELECT' || ele.tagName === 'TEXTAREA'){
-                return
+                continue
             }
             pressingPointers.set(touch.identifier, {x: touch.clientX, y: touch.clientY})
         }
-    }, {
-        passive: true
-    })
-    document.addEventListener('touchend', (ev) => {
+    }
+    const onTouchCancel = (ev: TouchEvent) => {
+        for(const touch of ev.changedTouches){
+            pressingPointers.delete(touch.identifier)
+        }
+    }
+    const onTouchEnd = (ev: TouchEvent) => {
         for(const touch of ev.changedTouches){
             const d = pressingPointers.get(touch.identifier)
+            if(!d){
+                continue
+            }
             const moveX = touch.clientX - d.x
             const moveY = touch.clientY - d.y
             pressingPointers.delete(touch.identifier)
@@ -557,9 +564,18 @@ export function initMobileGesture(){
                 }
             }
         }
-    }, {
-        passive: true
-    })
+    }
+
+    document.addEventListener('touchstart', onTouchStart, {passive: true})
+    document.addEventListener('touchend', onTouchEnd, {passive: true})
+    document.addEventListener('touchcancel', onTouchCancel, {passive: true})
+
+    return () => {
+        document.removeEventListener('touchstart', onTouchStart)
+        document.removeEventListener('touchend', onTouchEnd)
+        document.removeEventListener('touchcancel', onTouchCancel)
+        pressingPointers.clear()
+    }
 }
 
 function changeToPreset(num:number){
