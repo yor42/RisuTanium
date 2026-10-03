@@ -254,12 +254,14 @@ Several sessions work **in this same checkout**:
   `MC-200` 1.
 - **Done (in `e9a80ec5`):** CHORE-11 CD-3, CHORE-19, CHORE-20 and CHORE-56 (the mobile batch; ledger rows 803 to 813). Closed
   without code: CHORE-44 (ledger row 802). Already fixed earlier: CD-4 (`910b07de`).
-- **Uncommitted, awaiting the maintainer's commit word:** the records for the mobile batch (`MC-202`, ledger rows 806 to
-  815, the Roadmap status lines, this block). `.claude/launch.json` (a new `risuai-ui-scratch` entry) is also
+- **Mobile batch records:** committed in `1c187d3f`. `.claude/launch.json` (a new `risuai-ui-scratch` entry) stays
   uncommitted, by the maintainer's word (`MC-202` 2).
-- **Next:** the chat UI batch: CHORE-21, the rejected-avatar-icon follow-up, and CHORE-69, which needs a maintainer
-  decision on what the plain copy leaves out.
-- **Next free numbers in the UI ranges:** `MC-203`, ledger row 816, CHORE-90, Report 65.
+- **Chat UI batch: committed in `0651493b`** (10 files, local, not pushed; `.claude/launch.json` left uncommitted):
+  CHORE-21, the rejected-avatar-icon follow-up and CHORE-69 (Gate 2 approved after three rounds; `MC-203`; ledger rows
+  816 to 832). **The records for it (`MC-203`, ledger rows 816 to 833, the Roadmap status lines and CHORE-90 to CHORE-92,
+  this block) are uncommitted, commit pending.** The chat batch touched no file on the Main Campaign's out-of-bounds list.
+- **Next in the lane:** TTS, settings, Playground, modules, small items, translations (the order in `MC-200` 1).
+- **Next free numbers in the UI ranges:** `MC-204`, ledger row 834, CHORE-93, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

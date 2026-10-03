@@ -1261,6 +1261,12 @@ reproduced on a device**. Not fixed.
 
 ### CHORE-21 — Typing during a translation-edit save is lost
 
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `0651493b`** (ledger rows 816 to 832). Chat UI batch (`MC-200` 1);
+product choice in `MC-203` 2: if the user typed during a save, the editor stays open and the text is kept as a draft;
+only the save that leaves no save from that view pending treats its text as final. Translation cache writes from one
+message view now run in click order. Gate 2 approved after three rounds (rows 826 to 830). The `onclick` and long-press
+calls to `saveTranslationEdit()` still leave a rejection unhandled (CHORE-91).
+
 **Status (2026-09-24):** found by reasoning during durable-drafts Gate 2 (Report 20 section 11).
 Upstream behaviour. Not fixed.
 
@@ -4052,6 +4058,13 @@ RUN = executed in the investigation; TRACED = read in source.
 
 ### CHORE-69 — The plain Copy button copies the message's raw text, including the thinking section and hidden blocks as raw markup
 
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `0651493b`** (ledger rows 816 to 832). Decided in `MC-203` 1: the
+plain Copy button leaves out closed `<Thoughts>` sections only; markdown, hidden HTML and inlay tags stay. If only thinking
+remains, the message is copied unchanged. Copy as card and its `text/plain` companion are unchanged, so the companion
+still includes the thinking text (CHORE-92). The rejected-avatar-icon follow-up (the sender icon shows the loading
+placeholder when its image rejects) is also done in `0651493b` (ledger rows 817 and 823 to 830); its sibling blocks are
+CHORE-90.
+
 **Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-166` 5: "File a ticket
 (Recommended)"). Type: surprising output; no change now, and no persisted data is involved.
 
@@ -4162,6 +4175,50 @@ maintainer's decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC
 - **Not in scope:** upstream's own export losses (B1, non-`.png` assets; B2), device-local stores, and an encrypted `.bin`
   (`MC-081`).
 - **Related:** `MC-175`, `MC-176`, `MC-081`; CHORE-55 (the round-trip note under its stage 2b block); ledger row 697.
+
+### CHORE-90 — 13 sibling image `{#await}` blocks have no `{:catch}`, so a rejected image raises an unhandled rejection
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the chat UI batch's rejected-avatar-icon fix
+(ledger row 817). Type: error handling.
+
+- **What happens:** the sender icon's `{#await img}` had no `{:catch}`, and a rejected image gave no icon and an unhandled
+  rejection (RUN, ledger row 817). The batch fixed that one block only. Sibling image blocks without `{:catch}` remain
+  in `SidebarAvatar`, `BarIcon`, `CharConfig`, `PersonaSettings` and `OtherBotSettings` (count below). Not all are
+  avatars: `CharConfig` has an emotion image, `OtherBotSettings` has NAI and WaveSpeed reference images, and `BarIcon`'s
+  `additionalStyle` is a style promise rather than an image element.
+- **Count at `0651493b` (Orchestrator grep of `{#await` and `{:catch}`):** 18 `{#await` blocks in those five files, 13 of
+  them image blocks with no `{:catch}`: `SidebarAvatar.svelte` 2 (`backgroundimg`, `src`), `BarIcon.svelte` 1
+  (`additionalStyle`), `CharConfig.svelte` 5 (`getCharImage`), `PersonaSettings.svelte` 2 (`getCharImage`),
+  `OtherBotSettings.svelte` 3 (`getCharImage`). The other 5 are voice/model lists and the memory ratio; two of them
+  (`getFishSpeechModels`, `getMaxMemoryRatio`) have a `{:catch}`. Whether each image block can actually reject was
+  not traced.
+- **Related:** the rejected-avatar-icon follow-up (CHORE-69's block); ledger row 817.
+
+### CHORE-91 — The `onclick` and long-press calls to `saveTranslationEdit()` leave a rejection unhandled (same at HEAD)
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Found at the chat UI batch's Gate 2 and left out of the
+batch. Type: error handling.
+
+- **What happens:** `Chat.svelte` calls `saveTranslationEdit()` without handling its result from the translation editor's
+  save button `onclick` and from the `AutoresizeArea` `handleLongPress`. A rejected save is therefore an unhandled
+  rejection. `saveTranslationEdit` rethrows a rejected cache write by design (the editor stays open for a retry), and
+  the Gate 2 reviewer reported that its probe of a rejected first save surfaced as a Vitest unhandled error (no log
+  retained); in the app the `unhandledrejection` handler in `bootstrap.ts` would show it as an error alert (ledger
+  row 817 traced that handler for the avatar case). The same at HEAD.
+- **Related:** CHORE-21; ledger rows 826 to 830.
+
+### CHORE-92 — The copy-as-card `text/plain` companion still includes the thinking text
+
+**Status (2026-10-03, UI session):** open, **not scheduled**, and **locked behind CHORE-68** (`MC-179` 4: CHORE-68 and
+CHORE-74 move only after CHORE-55 stage 3 is merged into `feat/ui-batch`). CHORE-68 as written covers only embedding the
+app's own images into the card, not the companion text, so this is its own ticket rather than a note under CHORE-68.
+
+- **What happens:** copy as card is unchanged by the chat UI batch (`MC-203` 1), so its `text/plain` companion is still
+  the text that carries the `<Thoughts>` section. `currentCopyText` is shared with the card's `captureText` (ledger row
+  818).
+- **What the ticket asks:** decide whether the companion should leave out thinking like the plain Copy button now does.
+  Not decided.
+- **Related:** CHORE-69; CHORE-68; `MC-203` 1.
 
 ## Sequencing Summary
 

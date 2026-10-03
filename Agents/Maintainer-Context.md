@@ -6386,3 +6386,32 @@ skipped name that a character actually uses would show as a missing image."
    The commit is `e9a80ec5` on `feat/ui-batch` (local, not pushed).
 2. **`.claude/launch.json` stays uncommitted.** The maintainer's word was "commit both, leave launch.json out".
    `launch.json` carries a new `risuai-ui-scratch` entry.
+
+### MC-203 — The chat UI batch: what the plain Copy leaves out (CHORE-69), and the translation editor stays open (CHORE-21)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below. Item 1's second and third points record what the maintainer accepted when the Orchestrator
+  put them, on 2026-10-03.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for CHORE-69, "Thinking + hidden blocks" (also drop hidden or collapsed HTML, as the card
+  does), "Exactly what is shown" (copy the rendered message as plain text) and "Keep as is" (record the raw copy as
+  intended); for CHORE-21, "Lock while saving" (disable the textarea and Save during the write).
+- **Related:** `MC-166` 5, `MC-179`, `MC-200` 1
+
+**What was decided:**
+1. **CHORE-69, what the plain Copy button leaves out.** "Thinking only (Recommended)":
+   - The plain Copy button leaves out closed `<Thoughts>` sections only. Markdown, hidden HTML and inlay tags stay in the
+     copied text.
+   - **Fallback (accepted):** if only thinking remains, the message is copied unchanged.
+   - **Line breaks at a removal point (accepted):** a block at the very start of the message drops the line breaks after
+     it. Line breaks only, never spaces or tabs. Anywhere else, the two runs of line breaks that the removal joins become
+     the longer of the two, with no cap; on a tie the run before the block wins. Spaces before a block mean it is not "at
+     the start".
+   - **Copy as card, and its `text/plain` companion, are unchanged.** CHORE-68 is locked until the maintainer says
+     CHORE-55 stage 3 is merged (`MC-179` 4), so the card's code is not touched in this batch.
+2. **CHORE-21, the translation editor after a save.** "Keep editor open (Recommended)": if the user typed during a
+   translation save, the editor stays open and that text is kept as a draft. The rule: only the save that leaves no save
+   from that view pending treats its text as final.
