@@ -751,6 +751,55 @@ visible error) with the maintainer before implementing. Translations of the prom
 
 ### CHORE-09 — Scripting, regex and lorebook bugs found during the wiki rewrite (none lose data)
 
+**Status (2026-10-03, UI session): items 1, 3, 5 and 6 DONE 2026-10-03 in `e10cbbbd`** (ledger
+rows 869 to 877). Product choices in `MC-208`. The investigator (row 870) refuted the premise below: `scriptings.ts` and
+`triggers.ts` are no longer identical to upstream. The Orchestrator verified items 2, 5 and 6 in source.
+- **Item 1 (`runAxLLM`), done and fork-only.** `triggers.ts` handles `runAxLLM` in the same `case` as `runLLM`, and it calls
+  the model with the mode `'otherAx'` (the Lua `axLLM`'s default mode; "Other auxiliary", `MC-208`). Upstream has the effect's type and
+  editor entry only (commit `fb941148`) and no runtime (row 871). It still does nothing without `lowLevelAccess`.
+- **Item 3 (nesting cap), done.** The new `src/ts/process/triggerLimits.ts` holds `NORMAL_NESTED_TRIGGER_LIMIT` = 10 and
+  `LOW_LEVEL_NESTED_TRIGGER_LIMIT` = 50. `runtrigger` and `v2RunTrigger` in `triggers.ts` and `/trigger` in `command.ts` use
+  them; `/trigger` was a third uncapped site (row 871), and `command.ts`'s own `NESTED_TRIGGER_LIMIT` is removed. A nested run
+  beyond the limit is skipped and the run that asked for it continues. Measurement (Node and Vitest, cap removed, synchronous
+  self-call; row 874): `RangeError` at about 367 levels for `runtrigger` and `v2RunTrigger` and about 289 for `/trigger`.
+  The value follows the Orchestrator's rule (1000 if at most a quarter of the smallest measured depth, else the largest round
+  number at most a quarter, here a quarter of 289 is about 72, so 50). A `RangeError` inside `runTrigger` is not caught.
+  **Consequences, disclosed in `MC-208` and not answered separately by the maintainer:** (a) the counter is per run and cumulative
+  over sequential calls, so a low-level run that starts more than 50 nested runs in sequence has the later ones skipped (at
+  HEAD low-level runs were unlimited; normal runs already had the cumulative cap of 10); (c) two self-calls per level are
+  bounded in depth, not in total work; (d) 50 was measured on Node and Vitest stacks, and browser and mobile stacks may be smaller.
+- **Items 5 and 6 (move scripts), done.** `scripts.ts` and `translator.ts` no longer strip `g` for `@@move_top`,
+  `@@move_bottom` and the `<move_top>` and `<move_bottom>` flags. Every match moves; `move_top` ends with the last match on
+  top and `move_bottom` keeps source order. `scripts.ts` resets `reg.lastIndex` before collecting the matches, because the
+  earlier `reg.test` advances it on a global regex (keeping `g` alone would have lost the first match; row 871). The outputs
+  are collected and joined once. `$<name>` in the move output now resolves: a participating group (an empty one too) gives its
+  text, a regex with named groups where this one did not participate gives `''`, and a regex with no named groups leaves it
+  literal, as `String.replace` does. The script with the flag box off defaults to `g` and now moves every match; this was put to
+  the maintainer before the choice ("Yes, honour g", `MC-208`). **(b)** In the translator (edittrans) engine, a flag text made
+  only of tags (`<cbs>`, `<order 1>`, `<move_top>`) with the flag box on is now `g` instead of `'u'`, as in `scripts.ts`; this
+  affects plain replace scripts too (one existing test's flag changed from `<cbs>` to `z<cbs>` to keep testing the `'u'` fallback).
+- **Item 2, already fixed on the fork:** `setDescription` checks `desc` (row 870). **Item 7:** what remains is the no-subject
+  fallback (the selected character), which belongs to the Main Campaign's origin plumbing; the subject path already resolves
+  the owner. **Item 8:** moot after CHORE-14 (the Global Regex page is retired). **Items 4, 9, 10 and 11:** left; fixing them would
+  change what upstream cards do (Orchestrator's disposition, not the maintainer's).
+- **Tests:** `src/ts/process/tests/scriptsMove.test.ts` (new: 10 "regression reproducer:" and 3 "guard:" tests),
+  `src/ts/process/tests/triggerNestingLimit.test.ts` (new: 3 reproducers, 3 guards, one pair per flavour: `runtrigger`,
+  `v2RunTrigger`, `/trigger`), `src/ts/translator/edittransRegex.test.ts` (extended; 24 tests after the change), and
+  `src/ts/process/tests/requestOrigin.svelte.test.ts` (extended: three `runAxLLM` reproducers and one guard). Against HEAD's
+  sources, through scratch `load()` configs: `scriptsMove` 10 of 13 fail; `triggerNestingLimit` 3 of 6 ("expected 150 to be
+  51"); `edittransRegex` 7 of 24; `requestOrigin` 3 of 108; removing only `reg.lastIndex = 0` makes 9 of 13 `scriptsMove`
+  tests fail with the first match lost (row 874). Gate 2 re-ran them (row 876). Checks are those in CHORE-13's entry (row 875).
+- **Merge note (`MC-179`):** `triggers.ts`, `command.ts`, `scripts.ts` and `translator.ts` were heavily changed by the Main
+  Campaign, so **merge conflicts are likely in all four.**
+- **Wiki hand-offs (for the Wiki session; `docs/wiki` was not edited):** `docs/wiki/Trigger-Script.md` line 87 says `runAxLLM`
+  "does nothing" (it now calls the other auxiliary model with low-level access) and line 95 contrasts the V2 effects with "V1's
+  `runAxLLM`"; line 46 says there is "no depth cap" with low-level access (now 50, counted per run and cumulative, and `/trigger`
+  is capped the same way), and lines 76 and 123 refer back to that note. `docs/wiki/Regex-Script.md` line 107 and line 112 say
+  only the first match moves (every match moves now); line 95 says `$<name>` does not work in move output; line 106 says
+  `@@inject` "always targets the currently selected character" (stale where a subject is passed; item 7); line 20 is the stale
+  Global Regex note (CHORE-14). `docs/wiki/@-Syntaxes.md` line 46 says `g` is dropped for the move directives, and line 61 that
+  `$<name>` does not work. Line numbers were read from the wiki files on 2026-10-03.
+
 Found by the documentation agents on 2026-09-22. All are upstream behaviour (`scriptings.ts` and
 `triggers.ts` are identical to upstream). Items marked **verified** were checked by the
 Orchestrator in source; the rest are the agents' traces, to be confirmed before fixing. The wiki
@@ -815,6 +864,21 @@ not just prompt quality.
 Gate 2 [APPROVE], ledger row 801). CD-1, CD-2 and CD-5 remain open, deferred to
 the small-items batch (ledger row 800; CD-5's field is declared in `src/ts/storage/database.svelte.ts`, outside the UI
 lane under `MC-179`).
+
+**Status (2026-10-03, UI session, small-items batch): CD-1 and CD-2 DONE 2026-10-03 in `e10cbbbd`;
+CD-5 closed without code** (ledger rows 869 to 877). The paragraph above is kept as written; this one supersedes its "remain open".
+- **CD-1, done.** No code produces `special.emotion` (row 869). The block that read it in `index.svelte.ts` and the three
+  `special?: { emotion?: string }` fields of `requestDataResponse` in `request/request.ts` are removed.
+- **CD-2, done.** The `waifuMobile` branch and the `.per33` CSS in `ChatScreen.svelte` are removed. The theme cannot be selected
+  from the UI, but an old upstream save can still hold `'waifuMobile'` (row 869); with the branch gone, such a save falls to
+  the final `{:else}` layout of `ChatScreen.svelte` (read from the diff; not run).
+- **CD-5, closed without code.** The field is not dead: boot and backup code write and read `groupChat.emotionImages`
+  (`characterDefaults.ts`, `bootstrap.ts`, `globalApi.svelte.ts`, `drive/backuplocal.ts`; the Orchestrator's disposition,
+  with `characterDefaults`' line spot-checked, row 869). The field is declared at `database.svelte.ts:1533`, outside the UI lane.
+  It is part of the saved data, so it stays for the round trip (`MC-175`).
+- **Merge note (`MC-179`):** `ChatScreen.svelte`, `index.svelte.ts` and `request/request.ts` are on neither lane list, as for
+  the TTS batch; `index.svelte.ts` was also edited by the TTS batch. Stale citation from the original entry: CD-1's block in
+  `index.svelte.ts` was at lines 2550-2574 at HEAD, not where the report put it (row 869).
 
 Found by the wiki session while rewriting the [[Additional Character Screen]] wiki page
 (2026-09-22). Full hand-off, with per-bug evidence, status and suggested investigation:
@@ -919,6 +983,21 @@ mismatch, a missing editor control, or a GUI-refresh lag; none touch what's save
   Report 99); a fix to either must update the page.
 
 ### CHORE-13 — Prompt template: 2 suspected bugs (none lose data)
+
+**Status (2026-10-03, UI session): PT-1 DONE 2026-10-03 in `e10cbbbd`; PT-2 closed without code**
+(ledger rows 869 to 877). The Orchestrator's dispositions, not maintainer decisions (`MC-208`).
+- **PT-1, done.** `tokenizePreset()` in `prompt.ts` no longer counts `innerFormat` for `lorebook` and `postEverything` items.
+  The investigator (row 869) confirmed that the prompt-build side never applies it for those two types and that the editor
+  (`PromptDataItem`) shows `innerFormat` only for persona, description, authornote and memory items; PT-1 is upstream
+  behaviour. **Not changed, a pre-existing undercount noted at Gate 1:** `postEverything`'s `promptSettings.postEndInnerFormat`
+  is not counted either. Test: `src/ts/process/prompt.tokenizePreset.test.ts` (new; one test each for the lorebook and postEverything counts
+  and one for the four kept types). It is covered by the small-fixes red check, in which 9 of 14 tests fail at HEAD (row 874; the 14 are `prompt.tokenizePreset.test.ts` 3, `globalApi.openURL.svelte.test.ts` 3 and `characters.importChat.test.ts` 8). Stale citations: the
+  build-side lines in `index.svelte.ts` are now 1155-1168 and 1789-1802, not `782-795` (row 869).
+- **PT-2, closed without code.** `promptSettings.assistantPrefill` is inert and identical to upstream; it round-trips with
+  upstream presets, and removing it needs edits in the storage lane (out of bounds, `MC-179`).
+- **Checks on the working tree for the whole batch (row 875):** `pnpm check` 0 errors 0 warnings; `pnpm test` 345 files, 7059
+  passed, 4 skipped; `pnpm build` ok. Gate 2 ended `[EDITORIAL]` and its title corrections are done (row 876).
+- **Wiki hand-off:** none needed. `docs/wiki/Prompt-Template.md:51-53` already lists only persona, description, author's note and memory for Custom Inner Format, and the wiki never mentions `assistantPrefill` (row 869); this answers the coupling `TODO(evidence)` below.
 
 Found by the wiki session while rewriting the [[Prompt Template]] wiki page (2026-09-22). Full
 hand-off: **`Agents/Reports/99-prompt-template.md`**. Every entry is a code-reading claim; none has
@@ -1490,6 +1569,17 @@ row 142). Traced to source. **Decided 2026-09-24 (`MC-070`): self-hosted builds 
 - The maintainer decided self-hosted builds should get the same guard (`MC-070`).
 
 ### CHORE-23 — `mcplib.ts`'s `oauthLogin` does not await or catch `openURL`
+
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e10cbbbd`** (ledger rows 869 to 877; the
+`MC-200` item 4 boundary). The fix is inside `openURL` in `globalApi.svelte.ts`, the only edit to that file: the Tauri branch
+catches a rejected `open()` and a synchronous throw from it, and `console.warn`s a fixed string that does not include the
+URL (OAuth URLs carry state and PKCE values). The investigator found 11 call sites in 9 files and none uses a return value
+(row 869), so `openURL` stays synchronous and `oauthLogin` is unchanged. The fixed warning is the Orchestrator's disposition.
+**Limitation:** the user sees no alert, so an MCP OAuth login that cannot open the browser then waits at the code prompt.
+Test: `src/ts/globalApi.openURL.svelte.test.ts` (new; a rejected `open()`, a synchronous throw and a resolved call).
+**Unverified, left as written below:** the investigator's check of the installed JS package (`tauri-plugin-shell` 2.3.3)
+showed no deprecation, against the "2.3.6 ... deprecated" line below; that line was not re-checked. **Flag for the merge
+(`MC-179` 1):** `globalApi.svelte.ts` is on the Main Campaign's lane, and `openURL` is the only function touched.
 
 **Status (2026-09-24):** found while investigating the openURL fix (`Agents/Investigation-Ledger.md`
 row 142). Traced to source, not reproduced. Minor. Not fixed.
@@ -3320,6 +3410,23 @@ seen such a popup, and has not answered. Present on the fork at HEAD `448962f4`,
 - **Related:** Maybe-Later QOL-07 (it reads this same handler for the sideways gestures).
 
 ### CHORE-57 — Chat import offers `.txt` but has no `.txt` branch, so a picked `.txt` does nothing and says nothing (suspected; upstream and fork)
+
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e10cbbbd`** (ledger rows 869 to 877).
+The maintainer chose "Drop .txt, alert (Recommended)" over "Parse Risu's TXT export" and "Leave as is" (`MC-208`); the
+earlier low-priority note (`MC-151` 7) is below. `importChat` in `characters.ts`:
+- The picker offers `json`, `jsonl` and `html`.
+- A file that matches no branch shows `alertError(language.errors.noData)`; this covers `.txt` and, with
+  `allowAllExtentionFiles` on, any other extension.
+- **New finding (row 869):** the extension tests were case-sensitive while the picker lowercases, so `CHAT.JSONL` was silently
+  ignored. The tests now compare the lowercased name.
+- JSONL blank lines are skipped before the header-line logic, so a file with a trailing newline imports (the Orchestrator's
+  disposition). Whether SillyTavern's JSONL exports end in a newline is still unchecked: `TODO(evidence)`.
+- The comma-operator condition `presedLine.name && presedLine.is_user, presedLine.mes` is unchanged.
+- **Tests:** five new tests in `src/ts/characters.importChat.test.ts` (the picker list, a `.txt` showing the error and adding no
+  chat, an upper-case extension, a trailing newline or blank lines, and blank lines before the header). They are in the
+  small-fixes red check, in which 9 of 14 tests fail at HEAD on assertions (row 874; the 14 are `prompt.tokenizePreset.test.ts` 3, `globalApi.openURL.svelte.test.ts` 3 and `characters.importChat.test.ts` 8). Checks are those in CHORE-13's entry.
+- **Stale line citations below:** the line numbers in the original entry (`characters.ts:424` and onward) are those of
+  `448962f4`; this change shifts them.
 
 **Status (2026-10-01):** suspected, from reading; not run. **Low priority**, by the maintainer's decision
 (`MC-151` 7: "mark txt import bug as low priority for now. most people uses json anyway."). **Not placed**:

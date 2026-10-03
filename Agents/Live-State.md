@@ -289,8 +289,31 @@ Several sessions work **in this same checkout**:
   is listed and untouched), and neither are the seven `src/lang` files (one key, two `en.ts` values). MOD-6 adds one
   `ReloadGUIPointer` bump per module-editor close, which is CHORE-04's mechanism (the Main Campaign's): flag for the merge.
   Nothing on the UI session's out-of-bounds list is touched.
-- **Next in the lane:** small items (CHORE-13, CHORE-57, CHORE-23, optionally CHORE-09), then translations (CHORE-05).
-- **Next free numbers in the UI ranges:** `MC-208`, ledger row 869, CHORE-100, Report 65.
+- **Small-items batch (CHORE-13 PT-1; CHORE-57; CHORE-23; CHORE-11 CD-1 and CD-2; CHORE-09 items 1, 3, 5 and 6):
+  DONE, committed in `e10cbbbd`**. `MC-208`;
+  ledger rows 869 to 877. Gate 1 approved in round 1; Gate 2 ended `[EDITORIAL]` and its corrections are done. Checks on the
+  working tree: `pnpm check` 0/0; `pnpm test` 345 files, 7059 passed, 4 skipped; build ok. Closed without code: CHORE-13 PT-2,
+  CHORE-11 CD-5, CHORE-09 items 2, 4, 7, 8, 9, 10 and 11. `runAxLLM` is implemented and is **fork-only** (upstream has no
+  runtime). Four consequences are disclosed in `MC-208` and not answered separately by the maintainer: the low-level nesting
+  cap (50) counts a run's sequential calls too; the translator's tag-only flag text is now global; fan-out is bounded in depth,
+  not total work; 50 was measured on Node stacks only. No new tickets. Detail is in the CHORE-09, CHORE-11, CHORE-13,
+  CHORE-23 and CHORE-57 entries of the Roadmap.
+- **Wiki hand-offs (small-items batch, for the Wiki session; line numbers read from `docs/wiki` on 2026-10-03):**
+  `docs/wiki/Trigger-Script.md` (line 87: `runAxLLM` "does nothing", now it calls the other auxiliary model; line 95: "unlike V1's
+  `runAxLLM`"; line 46: "no depth cap" for low-level access, now a limit of 50 counted per run, also for `/trigger`; lines 76
+  and 123 refer back to that note), `docs/wiki/Regex-Script.md` (lines 107 and 112: the first-match-only callout; line 95:
+  `$<name>` in move output now works; line 106: "@@inject always targets the currently selected character", stale where a
+  subject is passed; line 20: the stale Global Regex note), `docs/wiki/@-Syntaxes.md` (line 46: `g` is no longer dropped; line
+  61: `$<name>`), `docs/wiki/Settings.md` (lines 79 and 80) and `docs/wiki/Settings-Chat-Bot.md` (line 257), which describe the
+  Global Lorebook and Global Regex pages retired by CHORE-14, and `docs/wiki/Additional-Character-Screen.md` (line 46), which
+  still says the emotion box shares the "Image Generation Instructions" label (separate since CD-3); lines 65 and 70 of that page use the label for the image-generation mode and stay.
+- **Lane notes (small-items batch, against `MC-179` 1):** `globalApi.svelte.ts` is on the out-of-bounds list; only `openURL`
+  is edited (`MC-200` 4): flag for the merge. `triggers.ts`, `command.ts`, `scripts.ts` and `translator.ts` were heavily
+  changed by the Main Campaign, so merge conflicts are likely in those four. Also touched, on neither list: `characters.ts`,
+  `prompt.ts`, `index.svelte.ts` (the CD-1 block; the TTS batch edited it too), `request/request.ts`, `ChatScreen.svelte`, and
+  the new `triggerLimits.ts`. Nothing else on the out-of-bounds list is touched.
+- **Next in the lane:** translations (CHORE-05).
+- **Next free numbers in the UI ranges:** `MC-209`, ledger row 878, CHORE-100, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

@@ -6538,3 +6538,57 @@ skipped name that a character actually uses would show as a missing image."
 read) is left as it is. MOD-4's two unused language keys go to CHORE-05. MOD-5 (no editing UI for a module's icon) is a new
 feature and stays open. PG-4's two blank-field error messages and the Playground pages' other labels are hard-coded
 English, left for CHORE-05. The Vietnamese and German wording of the new note is low-confidence, by the translator's own report (ledger row 865).
+
+### MC-208 — The small-items batch: the chat import drops `.txt`, `runAxLLM` is implemented, nested trigger runs are capped, and move scripts honour `g` (CHORE-57, CHORE-09 items 1, 3, 5 and 6)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option labels
+  are quoted below; the option text each one carried is not reproduced here. The `g` question was asked after the
+  Orchestrator disclosed that a script with the flag box off defaults to `g`, which a move now honours.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for CHORE-57's `.txt`, "Parse Risu's TXT export" and "Leave as is"; for CHORE-09's multi-select,
+  "Hide runAxLLM in V1" was not selected; for the `runAxLLM` model, "Auxiliary model" (mode `'submodel'`); for the cap
+  value, "100" and "1000"; for the `g` flag, "Only explicit g" and "Drop this change".
+- **Related:** `MC-011`, `MC-175`, `MC-179`, `MC-200` 4; CHORE-57; CHORE-09; CHORE-13; CHORE-11; CHORE-23; ledger rows 869 to
+  877.
+
+**What was decided:**
+1. **CHORE-57, the chat import's `.txt`.** "Drop .txt, alert (Recommended)".
+2. **CHORE-09, what to fix (multi-select).** "Honour g in move_top", "Cap low-level recursion" and "Implement runAxLLM". "Hide
+   runAxLLM in V1" was not selected.
+3. **The `runAxLLM` model.** "Other auxiliary (Recommended)": the mode `'otherAx'`, the Lua `axLLM`'s default mode.
+4. **The nesting cap's value.** "Measure, then pick (Recommended)".
+5. **The `g` flag, after the disclosure that box-off scripts default to `g`.** "Yes, honour g (Recommended)".
+
+**Rules that follow:**
+- The chat import picker offers `json`, `jsonl` and `html`. A picked file that matches none of them (possible when `allowAllExtentionFiles` turns the picker's filter off) shows the no-data error.
+- `runAxLLM` in a V1 trigger with low-level access calls the other auxiliary model, as `runLLM` calls the main model. This
+  is **fork-only**: upstream has the effect's type and editor entry but no runtime for it.
+- A nested trigger run started through `runtrigger`, `v2RunTrigger` or `/trigger` is capped at 10 without low-level access and
+  at a fixed lower limit with it, instead of unlimited. The limit was set by the measurement the maintainer asked for.
+- `@@move_top` and `@@move_bottom` (and the `<move_top>` and `<move_bottom>` flags) honour `g`, including the default `g` of a
+  script with the flag box off, so every match moves.
+
+**Disclosures (consequences the maintainer should know; the maintainer has not answered them separately):**
+- **(a) The cap counter is per run and cumulative, not only depth.** A low-level run that starts more than 50 nested runs in
+  sequence (a loop, for example) has the later ones skipped. At HEAD, low-level runs were unlimited. Normal runs already had
+  this cumulative cap of 10.
+- **(b) The translator (edittrans) engine now matches the main regex engine for a flag text made only of tags.** With the flag
+  box on, a flag text such as `<cbs>`, `<order 1>` or `<move_top>` is now global (`g`) instead of `'u'`. This affects plain
+  replace scripts too, not only moves.
+- **(c) Fan-out is bounded in depth, not in total work.** A trigger that calls itself twice per level is stopped at the depth
+  limit, but the total number of runs it starts is not bounded by it.
+- **(d) The cap was measured on Node and Vitest stacks.** Browser and mobile stacks may be smaller.
+
+**Orchestrator dispositions (not maintainer decisions):** PT-1: lorebook and postEverything items no longer count their
+`innerFormat` in the token estimate. CHORE-23: `openURL` logs a fixed warning when the system cannot open a link. CHORE-57: JSONL
+blank lines are skipped and the extension tests ignore case. CD-1 and CD-2: dead code removed. CHORE-09 item 5 (`$<name>` in a
+move's output) fixed with the move change. The cap rule, the Orchestrator's reading of "well under": 1000 if that is at most a
+quarter of the smallest measured depth, else the largest round number at most a quarter of it. Closed without code: PT-2 (an
+inert field that round-trips with upstream presets; removing it needs storage-lane edits), CD-5 (boot and backup code write and
+read `groupChat.emotionImages`: `characterDefaults.ts`, `bootstrap.ts`, `globalApi.svelte.ts`, `drive/backuplocal.ts`),
+CHORE-09 item 2 (already fixed on the fork), item 7 (what remains is the no-subject fallback, which belongs to the Main
+Campaign's origin plumbing), item 8 (moot after CHORE-14), and items 4, 9, 10 and 11 (left: fixing them would change what
+upstream cards do).
