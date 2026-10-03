@@ -312,8 +312,20 @@ Several sessions work **in this same checkout**:
   changed by the Main Campaign, so merge conflicts are likely in those four. Also touched, on neither list: `characters.ts`,
   `prompt.ts`, `index.svelte.ts` (the CD-1 block; the TTS batch edited it too), `request/request.ts`, `ChatScreen.svelte`, and
   the new `triggerLimits.ts`. Nothing else on the out-of-bounds list is touched.
-- **Next in the lane:** translations (CHORE-05).
-- **Next free numbers in the UI ranges:** `MC-209`, ledger row 878, CHORE-100, Report 65.
+- **Translation batch 1 (CHORE-05: errors and the Playground): DONE, committed in `39f00517`**. `MC-209`; ledger rows 878 to 886. Gate 1 took two rounds (`[REJECT]`, then
+  `[APPROVE]`) and Gate 2 approved. Checks on the working tree: `pnpm check` 0/0; `pnpm test` 352 files, 7092 passed, 4
+  skipped; build ok. 133 new `en.ts` keys in all six locales, 50 call-site files, 7 new test files. Six `Failed to fetch ...`
+  strings stay English on purpose (`MC-209`). Key drift was already zero (row 878). Not run in a browser or on a device. No new
+  tickets. Detail is in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-13.txt` (code) and `commit-msg-14.txt`
+  (records) in the scratchpad.
+- **Lane notes (translation batch 1, against `MC-179` 1):** the Main Campaign changed `request/*`, `local.ts`, `stableDiff.ts`,
+  `index.svelte.ts` and `characterCards.ts` heavily; the edits there are string expressions and imports only. The new locale parity guard
+  (`src/lang/localeParity.test.ts`) fails any lane, the Main Campaign's included, that adds an `en.ts` key without all six
+  translations. No file on the UI session's out-of-bounds list is in the diff.
+- **Next in the lane:** CHORE-05 batch 2, the Settings pages (the maintainer's choice, 2026-10-03: "do settings page next";
+  about 480 hard-coded rows; names stay English, `MC-209`). Then the common UI chrome (SideBars and Others), then the
+  dead-key removal as its own batch.
+- **Next free numbers in the UI ranges:** `MC-210`, ledger row 887, CHORE-100, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

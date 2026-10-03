@@ -6592,3 +6592,64 @@ read `groupChat.emotionImages`: `characterDefaults.ts`, `bootstrap.ts`, `globalA
 CHORE-09 item 2 (already fixed on the fork), item 7 (what remains is the no-subject fallback, which belongs to the Main
 Campaign's origin plumbing), item 8 (moot after CHORE-14), and items 4, 9, 10 and 11 (left: fixing them would change what
 upstream cards do).
+
+### MC-209 — Translation batch 1: errors and the Playground first; names stay English in Settings; dead keys go in their own later batch (CHORE-05)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option labels
+  are quoted below; the option text each one carried is not reproduced here. The questions were asked after the investigator
+  (ledger row 878) refuted CHORE-05's key-drift premise.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** first batch "Errors only" and "Common UI first"; Settings "Decide later"; dead keys "Keep them"
+  and "Fold into batch 1".
+- **Related:** `MC-011`, `MC-015`, `MC-018`, `MC-058`, `MC-175`, `MC-179`, `MC-200` 4, `MC-207`; CHORE-05; CHORE-12 MOD-4;
+  CHORE-16 PG-2 and PG-4; ledger rows 878 to 886.
+
+**What was decided:**
+1. **Which batch goes first.** "Errors + Playground (Recommended)": the hard-coded alert and error strings in the in-bounds
+   files, and the Playground's labels.
+2. **How Settings is translated, in the later Settings batch.** "Names stay English (Recommended)": provider and model
+   names, API, URL, JSON and parameter names such as Top P stay English; everything else is translated.
+3. **Dead language keys.** "Separate batch (Recommended)": they are removed in their own batch, after a second check, and
+   keys that may belong to a planned feature are skipped (persistent storage, license, Claude caching).
+
+**Rules that follow:**
+- Batch 1 translates the in-bounds alert and error strings and the Playground's labels. Names that rule 2 keeps in English
+  stay English there too.
+- The Settings batch keeps provider and model names, API, URL, JSON and parameter names in English and translates the rest.
+- No key is removed in a translation batch. The dead-key batch re-checks each key first and skips the planned-feature keys.
+
+**Disclosures (consequences the maintainer should know; the maintainer has not answered them):**
+- **(a) The network hint for `Failed to fetch models: {error}` depends on the locale.** `alertError` in `src/ts/alert.ts`
+  adds a network and CORS hint when the message text includes `Failed to fetch` or Firefox's `NetworkError when attempting
+  to fetch resource.`; it is a text match, not a network test. In English the message's own prefix matches, so the hint
+  appears on every error of that message. In the other six locales the translated prefix does not match, so the hint
+  appears only when the raw error text appended to the message contains one of those two strings. A guard test covers the
+  `Failed to fetch` case (`src/lang/fetchModelsFailed.test.ts`).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Six messages stay English:** `Failed to fetch model response after tool execution` at five request sites
+  (`request/google.ts`, `request/openAI/requests.ts`, `request/openAI/responses.ts`; the Orchestrator's count of sites
+  is five) and `Failed to fetch WaveSpeed models` in `OtherBotSettings.svelte`. `alertError` adds its network hint when the
+  message includes `Failed to fetch`, and `globalFetch` returns `ok: false` on real network failures as well as on other
+  failures, so translating them would lose a hint that is correct for the network case. The Orchestrator checked both in
+  source (ledger row 880). Showing the hint only for real network failures needs its own change.
+- **Deferred:** messages passed to `throw new Error` (a catch block or a plugin may read them); the five `alertToast`
+  strings in `globalApi.svelte.ts` (out of bounds, `MC-200` 4); the `/?` slash-command help in `command.ts`; the
+  drag-and-drop debugging dump in `LoreBookList.svelte`.
+- **Typo fixes made while routing the strings** (the English text changed on purpose): "screenShot" to "screenshot";
+  "There must be least one preset." to "There must be at least one preset." (now one key, shared with
+  `TranslatorPresetSettings.svelte`); "File invaid or corrupted" to "invalid"; "copywrite" to "copyright"; "additional
+  Assets" to "additional assets"; "Converting  video" (two spaces) to one space.
+- **New keys are flat strings with `{name}` placeholders**, filled by `fillLang` in the new `src/lang/fill.ts`, not
+  function-valued keys, because the translation export in `languageSettingsData.svelte.ts` serialises `language` with
+  `JSON.stringify` and drops function keys (the Orchestrator verified this, row 879).
+- **The locale parity guard** (`src/lang/localeParity.test.ts`) fails when a locale's key set, a value's kind, or a
+  string's `{placeholder}` set differs from `en.ts`. It will fail any branch, the Main Campaign's included, that adds an
+  English key without all six translations. That is intended.
+- **Translation choices, low-confidence by the translator's own report (row 882):** Korean `{type}과(와)` and
+  `{version}(으)로`, 네거티브 프롬프트 and 바이브; Vietnamese does not copy three odd existing terms (Tính cách for
+  character, Cắm vào for plugin, Sách truyền thuyết for lorebook); German uses the formal "Sie", Spanish the informal "tú".
+  A native-speaker review is optional and listed in CHORE-05.

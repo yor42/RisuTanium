@@ -548,6 +548,54 @@ changing anything on `ReloadGUIPointer`.
 
 ### CHORE-05 — Translation coverage: much of the UI is English-only
 
+**Status (2026-10-03, UI session, translation batch 1): DONE in `39f00517`; the ticket stays
+open for the later batches** (ledger rows 878 to 886). Product choices in `MC-209`. The investigator (row 878) refuted the
+ticket's key-drift premise, and the stale sections below are marked as superseded; they are kept as written.
+- **Key drift is zero.** Before batch 1 all six locales had the same 1668 keys as `en.ts` (1801 after it) (`131fdcd5`, 2026-09-23, filled 510 keys), and the
+  seven plugin consent keys are translated. The Orchestrator re-ran the drift script. This supersedes the "Next priority"
+  consent table and the "Measured key drift (2026-09-21)" table below (1529 keys, 53 to 99 missing per locale). The
+  TTS-4 citation `CharConfig.svelte:792` is stale too: the hint is now `language.ttsElevenLabsKeyHint`.
+- **Done in batch 1 (Errors + Playground):** 133 new `en.ts` keys (43 `errors`, 40 in a new top-level `alerts` object, 47
+  `playground`, 2 `hypaV3Modal`, `loadingEllipsis`), translated into all six locales (row 882). 50 call-site files route
+  hard-coded alert, error and Playground strings through `language`: `ts/process/**` (`local.ts`, `stableDiff.ts`, `mcp/*`,
+  `request/*`, `prompt.ts`, `scripts.ts`, `index.svelte.ts`, `modules.ts`, `previewRunner.ts`), `characterCards.ts`,
+  `characters.ts`, `persona.ts`, `gui/colorscheme.ts`, `hotkey.ts`, the Realm UI, the Playground pages and others. New keys
+  are flat strings with `{name}` placeholders, filled by `fillLang` in the new `src/lang/fill.ts`.
+- **MC-207's items:** the Playground Embedding and Prompt Conversion literals (CHORE-16 PG-2 and PG-4) are done in this batch.
+  `moduleContent` and `confirmRemoveModuleFeature` (CHORE-12 MOD-4) are still unused; they go to the dead-key batch.
+- **Typo fixes in the English text:** "screenShot", "least one preset" (now shared with `TranslatorPresetSettings.svelte` as
+  `errors.atLeastOnePreset`), "invaid", "copywrite", "additional Assets", and a double space in "Converting  video".
+- **Left English on purpose (the Orchestrator's disposition, `MC-209`):** `Failed to fetch model response after tool execution`
+  at five request sites and `Failed to fetch WaveSpeed models`, because `alertError` adds a network hint to messages that
+  include `Failed to fetch` and `globalFetch` returns `ok: false` on real network failures too.
+- **Deferred:** thrown error messages; the five `alertToast` strings in `globalApi.svelte.ts` (out of bounds, `MC-200` 4);
+  the `/?` slash-command help in `command.ts`; the drag-and-drop debugging dump in `LoreBookList.svelte`.
+- **New guard:** `src/lang/localeParity.test.ts` fails when a locale's key set, a value's kind or a string's `{placeholder}`
+  set differs from `en.ts`. Merge note: it fails any lane, the Main Campaign's included, that adds an English key without
+  all six translations. Other new tests: `fill.test.ts`, `fetchModelsFailed.test.ts`, `persona.i18n.test.ts`,
+  `colorscheme.i18n.test.ts`, `PlaygroundEmbedding.i18n.svelte.test.ts`, `RealmFrame.i18n.svelte.test.ts` (at HEAD, 6 of the
+  11 i18n tests fail and the 5 English guards pass; row 883).
+- **Checks:** `pnpm check` 0/0; `pnpm test` 352 files, 7092 passed, 4 skipped; build ok (row 884). Gate 2 approved (row 885).
+  Not run in a browser or on a device.
+- **Merge note (`MC-179`):** the Main Campaign changed `request/*`, `local.ts`, `stableDiff.ts`, `index.svelte.ts` and
+  `characterCards.ts` heavily; the edits here are string expressions and imports only.
+- **Remaining batches, in the lane (the maintainer chooses the order):**
+  1. **Settings pages**, about 480 hard-coded rows (row 878). `MC-209`'s rule: provider and model names, API, URL, JSON and
+     parameter names such as Top P stay English; the rest is translated.
+  2. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the same heuristic).
+  3. **Dead-key removal**, in its own batch after a second check. The investigator found 118 likely-dead keys, with
+     dynamically accessed groups (`help`, `setup`, `triggerDesc`, `hotkeyDesc` and others) excluded. Skip the keys that may
+     belong to a planned feature: persistent storage (`persistentStorage`, `persistentStorageRecommended`,
+     `persistentStorageDesc`), license (`license`, `licenseDesc`) and Claude caching (`claudeCachingExperimental`,
+     `claudeCachingRetrivalDesc`), by the names in the investigator's list. Include `moduleContent` and
+     `confirmRemoveModuleFeature`.
+  4. **Optional native-speaker review** of the 203 strings identical to English (`de` 65) and of the translator's
+     low-confidence items (row 882). The Playground Embedding label "Custom (OpenAI-compatible)" is for the Settings batch.
+- **Disclosure (`MC-209`, not answered by the maintainer):** in the six non-English locales the `Failed to fetch models:
+  {error}` network hint appears only when the raw error text contains `Failed to fetch` or Firefox's `NetworkError when
+  attempting to fetch resource.` (a text match in `alertError`, not a network test); in English it appears on every error of
+  that message.
+
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
 below is the pre-fix measurement and is otherwise still current.
@@ -557,6 +605,7 @@ below is the pre-fix measurement and is otherwise still current.
 Embedding pages have hard-coded English labels and two hard-coded English error messages (CHORE-16 PG-2 and PG-4). These are
 added to this ticket's scope.
 
+**(Superseded 2026-10-03: the consent keys are translated in all six locales; see the status block above.)**
 **Next priority — the plugin permission consent prompts (verified 2026-09-22).** The seven V3
 consent strings shown by `getPluginPermission` (`src/ts/plugins/apiV3/v3.svelte.ts:614-622`;
 keys at `src/lang/en.ts:1622-1628`) are the dialogs where a user decides whether a plugin may read
@@ -583,6 +632,7 @@ others) — each locale is **deep-merged over English**. A key missing from `ko.
 throw or render blank; it **silently renders the English string**. That is exactly the "shows
 English regardless of language" symptom, and it is why drift accumulates unnoticed: nothing fails.
 
+**(Superseded 2026-10-03: key drift is zero, 1668 keys in every locale before batch 1 and 1801 after; see the status block above. The table is history.)**
 **Measured key drift (2026-09-21).** Read-only diff of the flattened exported key sets of
 `src/lang/*.ts` against `en.ts`, loaded with Node 24's native type stripping (no build, no source
 change). This replaces an earlier line-count estimate.
