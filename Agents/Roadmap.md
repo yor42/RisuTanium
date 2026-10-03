@@ -3664,14 +3664,49 @@ The message is false. Found in CHORE-59's Gate 2 round 1 review (`opus-reviewer`
 
 ### CHORE-76 — A PNG card cut short inside a tEXt chunk imports with a partial or missing asset, and the import does not say so (TRACED; upstream and fork)
 
-**Status (2026-10-03): open, in progress.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Found by the CHORE-58 plan
+**Status (2026-10-03): open, in progress; the PNG half (Stage A) is done in `6173f58a` (local, not pushed); the `.charx` half
+(Stage B) is open.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Found by the CHORE-58 plan
 review (Gate 1 round 1, `opus-reviewer`, probe `gate1\probe.out.jsonl` line 7, run against the real reader at `5bbc591a`) and
 named as a residual of `282b2da5`. Data-integrity, small. The fork and upstream share `pngChunk.ts` text
 (`git diff upstream/main HEAD -- src/ts/pngChunk.ts` printed nothing at `5bbc591a`; not re-run since CHORE-58 changed the
 stream branch).
 
-- **What happens (TRACED; the stream-branch result is also pinned by CHORE-58's tests, the `Uint8Array` result by the Gate 1
-  probe at `5bbc591a`):**
+**Stage A is done (2026-10-03; `6173f58a`, local, not pushed; `MC-186`; ledger rows 759 to 770; the PNG half of CHORE-76 and
+CHORE-77).** The decisions are `MC-186` 3 ("Refuse if data missing") and 4 ("Check the end", for Stage B); the "Not decided"
+bullet below is superseded for PNG by `MC-186` 3 and is kept as the record of the question. From the commit message:
+- `importCharacterProcess` walks the PNG's chunk headers once before any asset is saved (`PngChunk.scanCard`, a pre-pass that
+  reads only each chunk header and the first bytes of each tEXt key; a `File` is read through 256 KB windows). The pass gives the
+  asset count for the progress percentage and decides whether the file is whole.
+- The per-kind rule: a tEXt chunk is whole when its body is complete (its CRC may be cut); any other chunk before `IEND` also needs
+  its CRC; a file that ends inside `IEND`'s header, or right before `IEND`, is whole; a file with neither a `chara` nor a `ccv3` key
+  is refused before any save, with the new message when it was cut or never reached `IEND`, and with `noData` when it is a complete
+  PNG that is not a card.
+- A cut card is refused with "This card file is incomplete or damaged, so it was not imported." (`cardFileIncomplete`, in all seven
+  languages). `readGenerator` no longer yields a partial tEXt value on any input: a body that runs past the end yields an empty key
+  and value, as the stream branch already did. The count equals the one the previous counting pass produced, so the percentages are
+  the same (`MC-184`).
+- Tests: `src/ts/pngChunk.scanCard.test.ts` and `src/ts/characterCards.pngImport.test.ts` (new) and a cut-tEXt block in
+  `src/ts/pngChunk.readGenerator.test.ts`; 112 tests in the three files, with the reproducers shown failing against the pre-change
+  `pngChunk.ts` and `characterCards.ts`. Checks on the final tree, from the commit message: `pnpm test` 328 files, 7087 passed, 4
+  skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes. Gate 1 took three `[REJECT]` rounds on the combined plan and
+  then the split (below); Gate 2 was `[EDITORIAL]` twice and then `[APPROVE]` (ledger rows 761 to 763, 769, 770).
+- **Residuals:** a card cut exactly at a chunk boundary reads as whole. So does a cut that leaves 1 to 7 bytes at a chunk boundary
+  when they are a prefix of `00 00 00 00 49 45 4E 44` (`IEND_HEADER` in `PngChunk.scanCard`, `src/ts/pngChunk.ts`): 1 to 4 bytes,
+  all zero, of a header; or 5 to 7 bytes that are `00 00 00 00` followed by `49`, `49 45` or `49 45 4E` (an empty chunk whose type
+  begins with "I", "IE" or "IEN"). The commit message's "1 to 3 bytes" understates this bound (checked against `scanCard` in the
+  working tree at `6173f58a`). If the cut drops a later asset, the import fails with "asset N not found" after saving the
+  earlier assets (left to the startup asset sweep). If the cut drops a later image chunk of a card that stores its character data
+  before the image data (not RisuAI's own export order), the character is imported with a truncated image, with no error. A non-PNG
+  file named `.png`, or one under 8 bytes, now gets the incomplete message instead of `noData`.
+- **The split (`MC-091` scope amendment, recorded at the `senior-advisor` escalation after three Gate 1 `[REJECT]` rounds):** Stage
+  A is the PNG half. **Stage B (the `.charx` half) is next and needs its own plan and Gate 1:** the Realm `.charx` read as a `File`
+  from `res.blob()`; the end-of-central-directory check (`MC-186` 4); `CharXImporter` parse failures tagged by origin, input or zip,
+  with no inspection of an error's code, message or name; the progress alerts stopped before the final message; and the `.charx`
+  branch of `importCharacterProcess` owning the message. Step 0, the charx save backlog, is a Stage B measurement; any backpressure
+  fix is a separate Stage C. **CHORE-76's open part is the `.charx` side** (`MC-186` 4).
+
+- **What happens, as found before `6173f58a` (TRACED; line numbers at `5bbc591a`; the stream-branch result is also pinned by
+  CHORE-58's tests, the `Uint8Array` result by the Gate 1 probe at `5bbc591a`):**
   - `PngChunk.readGenerator` (`src/ts/pngChunk.ts:184`) reads a tEXt body with `slice(pos+8, pos+8+len)` (`:236`) and takes the
     key from the first NUL within the first 70 bytes (`:239-245`), then yields `{key, value}` (`:246`).
   - **`Uint8Array` branch** (`slice` is `data.slice(start,end)`, `:203-206`): `Uint8Array.prototype.slice` does not fail when
@@ -3687,22 +3722,40 @@ stream branch).
     found (`characterCards.ts:212`), or when there is no trimmed image (`:221`). A card cut inside an asset therefore imports without that asset, or with a partial one, and no message says so.
     A cut after the last tEXt chunk's body but inside its CRC still yields that asset in full on the stream branch (tEXt CRCs are
     never read), and the trimmed image then has no IEND (Gate 1 round 2).
-- **Not decided (for the maintainer; put it to them with this evidence):** what a truncated card should do. Options to put:
+- **Not decided at the time (decided since: `MC-186` 3, refuse; `MC-186` 4 for `.charx`):** what a truncated card should do. Options to put:
   refuse the import with a message, or import what is intact and say what is missing. Whether the two branches should agree is
   part of the same question. `TODO(evidence)`: how many real cards in the wild are truncated; none is known.
-- **Next step:** investigation of the caller and of every `readGenerator` input source for the cut cases (a cut inside a length
+- **Next step (done for the PNG half; superseded):** the investigation is done (ledger rows 759 and 760), the maintainer decided
+  (`MC-186`), and the plan was split (`MC-091`; Stage A done as `6173f58a`, Stage B open). The original text was: investigation of
+  the caller and of every `readGenerator` input source for the cut cases (a cut inside a length
   field, a type, a body, a CRC, missing IEND), then a plan, then the maintainer's decision above, then the usual gates. The change
   is in `pngChunk.ts` and the import caller; the guards of `pngChunk.readGenerator.test.ts` (nine truncation cases written down
   from the pre-CHORE-58 reader) would change with the decision and must be updated deliberately, not to make a test pass.
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
 - **Related:** CHORE-58 (`282b2da5`), CHORE-77, `MC-175` (an upstream-exported card must still import), `MC-185`.
 
-### CHORE-77 — A PNG card downloaded from Realm is held in memory in full during import (call structure TRACED; the hold MEASURED in Node streams (+208 MB for a 200 MB card), not measured in a browser; upstream and fork)
+### CHORE-77 — A card downloaded from Realm is held in memory in full during import (the PNG hold is fixed by `6173f58a`, measured in headless Chrome only; the Realm `.charx` part is open; upstream and fork)
 
-**Status (2026-10-03): open, in progress.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Named as a residual of
+**Status (2026-10-03): open, in progress; the Realm PNG half (Stage A) is done in `6173f58a` (local, not pushed); the Realm
+`.charx` is open.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Named as a residual of
 `282b2da5`: CHORE-58 made the reading linear and left this unchanged.
 
-- **What happens:**
+**Stage A is done (2026-10-03; `6173f58a`; `MC-186` 1 and 2; ledger rows 768 and 770).** The maintainer chose "Browser blob, all"
+(`MC-186` 1). The Orchestrator reads "all" as web and Tauri alike: the download is held as a browser `Blob` and read twice, the
+first read counting the assets by skipping their bodies, so the exact percentage stays (`MC-184`); no Tauri temporary file. This supersedes the temporary-file
+direction below (`MC-185` 3), which is kept as the record. From the commit message: a Realm PNG download is passed on as
+`new File([await res.blob()])` and read twice as a `File`, without `tee()`; a failed download still lands in `downloadRisuHub`'s
+error; a `ReadableStream` PNG input, which no caller passes any more, is buffered into a `File` first. Measured in headless Chrome
+on an i9-13900K (best case; the `MC-003` floor not measured), production builds of the tree before and after, each with one added
+line exposing `downloadRisuHub` to the driver, importing a synthetic 300 MB Realm-shaped card through a redirected fetch (no
+request reached Realm): renderer private bytes at the end of the counting pass were 453-519 MB before and 93-115 MB after (3 runs
+each); the browser process rose by at most 12 MB in either build. Where the Blob's bytes are kept was not established. The counting
+pass on a 3,000-asset card took a median of 96 ms before (6 runs) and 78 ms after (5 runs). The browser measurement closes the
+"not measured in a browser" `TODO(evidence)` below for Chrome only; Firefox and Safari were not measured. **Open part: the Realm
+`.charx`** (`MC-186` 2), which `downloadRisuHub` still reads with `arrayBuffer()`; it is in Stage B (see CHORE-76 for the split).
+
+- **What happens, as found before `6173f58a` (line numbers at `5bbc591a`; the Realm PNG part no longer applies, the Realm
+  `.charx` part still does):**
   - **TRACED:** the Realm PNG download is passed to `importCharacterProcess` as the response body stream
     (`src/ts/characterCards.ts:1797-1800`, `data: res.body`; a Realm `.charx` or zip is read into a `Uint8Array` instead,
     `:1791-1794`). `importCharacterProcess` splits a stream with `tee()` (`:142-146`): one branch is kept for the main pass, the
@@ -3720,15 +3773,17 @@ stream branch).
     `characterCards.ts:1254`, `:1271`, `:1288` and `:1331`; the `ccv3` write is at `:1477`, then `writer.end()` at `:1480`), so the
     asset count cannot be read from the start of the file.
   - The `File` inputs (picker, drop) do not tee: the `File` is read twice, as two independent `stream()` calls.
-- **Direction proposed by the maintainer (`MC-185` 3), not a decided mechanism:** download the PNG to a temporary file rather
+- **Direction proposed by the maintainer (`MC-185` 3), superseded by `MC-186` 1 (a browser Blob, no temporary file):** download the PNG to a temporary file rather
   than holding it in memory. To be investigated per platform before a plan: web (browser), Tauri, and the Node server. What each
   platform allows, and where a temporary file would live and be cleaned up, is not established. `TODO(evidence)`: the
   per-platform investigation.
 - **Constraint from `MC-184`:** the exact asset-count percentage stays, so the counting pass stays unless a different way of
   getting the same count is found.
-- **Next step:** investigation per platform, then a plan, then the usual gates.
+- **Next step (done for the PNG half; superseded):** the investigation is done (ledger rows 759 and 760) and the maintainer
+  decided (`MC-186` 1 and 2). The Realm `.charx` is the open part: Stage B needs its own plan and Gate 1 (CHORE-76 has the split).
+  The original text was: investigation per platform, then a plan, then the usual gates.
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
-- **Related:** CHORE-58 (`282b2da5`), CHORE-76, `MC-184`, `MC-185`.
+- **Related:** CHORE-58 (`282b2da5`), CHORE-76, `MC-184`, `MC-185`, `MC-186`.
 
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 

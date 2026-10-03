@@ -6537,3 +6537,60 @@ instead of holding it in memory?"
    the platforms allow is not yet established.
 
 ---
+
+### MC-186 — CHORE-76 and CHORE-77: the Realm download is a browser Blob, a cut card is refused, and the work is split
+
+- **Tag:** decision (chosen from options put by the Orchestrator)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to four questions the Orchestrator put on CHORE-76 and CHORE-77, as chosen options. The
+  question texts, as the Orchestrator supplied them for this entry:
+  - Q1: "CHORE-77 (a Realm PNG kept in memory during import): how should the download be held?"
+  - Q2: "Realm .charx downloads are also loaded whole into memory, through a different path (zip). Include them in CHORE-77?"
+  - Q3: "CHORE-76 (truncated cards): what should an import do with a card that ends early?"
+  - Q4 (asked after Gate 1 round 1): "A .charx (zip) cut short at certain points, such as between two files inside it, currently
+    imports without error and just lacks a file. Before anything is saved, the import could check the zip's closing directory,
+    which sits at the very end. That catches every cut, but it also refuses a zip cut only in that closing directory, where every
+    file is in fact intact. Which do you want?" The question itself said that it refuses such a zip.
+
+  Item 5 is the maintainer's own words in chat, as relayed by the Orchestrator.
+- **Reasoning:** none recorded beyond the option labels and item 5.
+- **Alternatives rejected:** Q1: "Blob + desktop temp file" and "Download it twice" (the chosen option was "Browser blob, all
+  (Recommended)"). Q2: "Separate ticket (Recommended)" was the recommended option; the maintainer chose "Include in CHORE-77".
+  Q3: "Refuse any early end" and "Import with a warning" (the chosen option was "Refuse if data missing (Recommended)"). Q4:
+  "Known gap" (the chosen option was "Check the end (Recommended)").
+- **Related:** `MC-175`, `MC-184`, `MC-185`, `MC-179`, `MC-091` (the scope amendment of item 6); CHORE-76; CHORE-77; commit
+  `6173f58a`; ledger rows 759 to 772.
+
+**What was decided:**
+1. **CHORE-77, how the Realm download is held. Chosen option: "Browser blob, all".** The download is held as a browser Blob.
+2. **Realm `.charx`. Chosen option: "Include in CHORE-77".** The Realm `.charx` download is in CHORE-77's scope.
+3. **A truncated PNG. Chosen option: "Refuse if data missing".** Refuse a card that ends early, with a clear message, when its
+   character data or a referenced asset is missing.
+4. **A truncated `.charx`. Chosen option: "Check the end".** Check the zip's closing directory before anything is saved. For Stage
+   B.
+5. **The translations of `cardFileIncomplete` are approved.** The maintainer said Korean users widely use "임포트" (import);
+   "불러오기" would also work but would mean rephrasing other strings, which they want to avoid.
+6. **The work is split (Orchestrator's record, `MC-091` scope amendment; not a maintainer statement).** It was recorded at the
+   `senior-advisor` escalation after three Gate 1 `[REJECT]` rounds on the combined plan (ledger rows 761 to 764). Stage A, the PNG
+   half, was committed as `6173f58a`. Stage B, the `.charx` half, is next and needs its own plan and Gate 1.
+
+**Orchestrator's implementation notes (not maintainer statements):**
+- Item 1 is read as "all" meaning web and Tauri alike: the download is held as a browser Blob on both and read twice, the first
+  read counting the assets by skipping their bodies, so the exact percentage stays (`MC-184`). No Tauri temporary file.
+- Item 3 is implemented as: refuse with the new message; the in-memory path no longer saves a half-written asset. What counts as
+  "cut" is the per-kind rule below, as `PngChunk.scanCard` implements it.
+- Item 4 is stricter than the PNG rule: it refuses any `.charx` whose end-of-central-directory record is missing or cut, including
+  a zip cut only in that record, where every file is intact (the question said so).
+- The accepted rule for Stage A is per chunk kind. A `tEXt` chunk is whole when its body is complete, and its CRC may be cut. Any
+  other chunk before `IEND` also needs its CRC, since it is copied into the stored image. A file that ends inside `IEND`'s header,
+  or right before `IEND`, is whole. A file with neither a `chara` nor a `ccv3` key is refused before any save.
+- The residual: a card cut exactly at a chunk boundary reads as whole. So does a cut that leaves 1 to 7 bytes at a chunk boundary
+  when they are a prefix of `00 00 00 00 49 45 4E 44` (`IEND_HEADER` in `PngChunk.scanCard`, `src/ts/pngChunk.ts`): 1 to 4
+  bytes, all zero, of a header; or 5 to 7 bytes that are `00 00 00 00` followed by `49`, `49 45` or `49 45 4E` (an empty chunk
+  whose type begins with "I", "IE" or "IEN"). The commit message's "1 to 3 bytes" understates this bound (checked against
+  `scanCard` in the working tree at `6173f58a`). A later missing asset then fails with "asset N not found" after the earlier
+  assets were saved. A card that stores its character data before the image data (not RisuAI's own export order) and is cut inside a later
+  image chunk imports with a truncated image and no error.
+
+---
