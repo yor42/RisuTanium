@@ -304,7 +304,7 @@
             <button class="w-full hover:bg-selected p-4" onclick={(async (e) => {
                 e.stopPropagation()
                 menuOpen = false
-                const input = await alertInput('Input URL or ID')
+                const input = await alertInput(language.alerts.realmInputUrlOrId)
                 if(input.startsWith("http")){
                     const url = new URL(input)
                     const id = url.searchParams.get("realm") ?? url.searchParams.get("code") ?? input.split("/").at(-1)

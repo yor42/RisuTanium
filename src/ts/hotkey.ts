@@ -6,6 +6,7 @@ import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlock
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
 import { alertStore, DBState, loadoutModalStore, MobileGUIStack, MobileSideBar, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import { updateTextThemeAndCSS } from "./gui/colorscheme"
 import { defaultHotkeys } from "./defaulthotkeys"
 import { previewMayStart, renderPromptResult, runPreview } from "./process/previewRunner"
@@ -583,7 +584,7 @@ function changeToPreset(num:number){
         let db = getDatabase()
         let pres = db.botPresets
         if(pres.length > num){
-            alertToast(`Changed to Preset: ${pres[num].name}`)
+            alertToast(fillLang(language.alerts.changedToPreset, { name: pres[num].name }))
             changeToPreset2(num)
         }
     }

@@ -8,6 +8,7 @@
   import { alertNormalWait } from "src/ts/alert";
   import { DBState, selectedCharID, hypaV3ModalOpen } from "src/ts/stores.svelte";
   import { language } from "src/lang";
+  import { fillLang } from "src/lang/fill";
   import { translateHTML } from "src/ts/translator/translator";
   import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
   import { alertConfirmTwice } from "./HypaV3Modal/utils";
@@ -228,7 +229,7 @@
       .filter(summary => summary !== undefined);
 
     if (selectedSummaries.length < 2) {
-      await alertNormalWait(`Re-summarize Failed: ${language.hypaV3Modal.reSummarizeSelectionGoneMessage}`);
+      await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeFailed, { reason: language.hypaV3Modal.reSummarizeSelectionGoneMessage }));
       return;
     }
 
@@ -275,7 +276,7 @@
       if (run !== bulkRunToken) return;
       console.error('Re-summarize Failed:', error);
       bulkResummaryState = null;
-      await alertNormalWait(`Re-summarize Failed: ${error.message || error}`);
+      await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeFailed, { reason: `${error.message || error}` }));
     }
   }
 
@@ -351,7 +352,7 @@
       if (run !== bulkRunToken) return;
       console.error('Re-summarize Retry Failed:', error);
       bulkResummaryState = null;
-      await alertNormalWait(`Re-summarize Retry Failed: ${error.message || error}`);
+      await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeRetryFailed, { reason: `${error.message || error}` }));
     }
   }
 

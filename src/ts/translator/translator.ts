@@ -9,6 +9,7 @@ import {
 import { globalFetch } from "../globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { alertError } from "../alert"
+import { language } from "../../lang"
 import { requestChatData } from "../process/request/request"
 import { doingChat, type OpenAIChat } from "../process/index.svelte"
 import { applyMarkdownToNode, risuChatParser, type simpleCharacterArgument } from "../parser/parser.svelte"
@@ -574,7 +575,7 @@ async function translateLLM(text:string, arg:{to:string, from:string, regenerate
         return text
     }
     if(rq.type === 'streaming' || rq.type === 'multiline'){
-        alertError('Unexpected response type')
+        alertError(language.errors.unexpectedResponseType)
         return text
     }
     const result = rq.result.replace(/<style-data style-index="(\d+)" ?\/?>/g, (match, p1) => {

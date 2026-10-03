@@ -48,9 +48,9 @@
             </div>
             <Button onclick={() => {
                 files.splice(i, 1)
-            }}>Delete</Button>
+            }}>{language.playground.delete}</Button>
         </div>
     {/each}
-    <Button onclick={addFile}>Add</Button>
+    <Button onclick={addFile}>{language.add}</Button>
 </div>
-<Button className="mt-6" disabled={!hasSupportedFile} onclick={run}>Run</Button>
+<Button className="mt-6" disabled={!hasSupportedFile} onclick={run}>{language.run}</Button>

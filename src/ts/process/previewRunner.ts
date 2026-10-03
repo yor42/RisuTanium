@@ -113,7 +113,7 @@ export async function runPreview(
         }
     }
 
-    notice = alertWait("Loading...", () => {
+    notice = alertWait(language.loadingEllipsis, () => {
         if (cancelled) {
             return
         }

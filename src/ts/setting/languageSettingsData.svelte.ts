@@ -46,8 +46,8 @@ export const languageSettingsItems: SettingItem[] = [
         onChange: async (val, ctx) => {
             if (val === 'translang') {
                 const j = await alertSelect([
-                    'Continue Translating Existing Language',
-                    'Make a new language',
+                    language.alerts.translangContinue,
+                    language.alerts.translangNew,
                 ]);
 
                 if (parseInt(j) === 0) {
@@ -58,17 +58,13 @@ export const languageSettingsItems: SettingItem[] = [
                         'lang.json',
                         new TextEncoder().encode(JSON.stringify(language, null, 4)),
                     );
-                    alertNormal(
-                        'Downloaded JSON, translate it, and send it to the dev by discord DM and email. I will add it to the next version.',
-                    );
+                    alertNormal(language.alerts.translationJsonDownloaded);
                 } else {
                     downloadFile(
                         'lang.json',
                         new TextEncoder().encode(JSON.stringify(languageEnglish, null, 4)),
                     );
-                    alertNormal(
-                        'Downloaded JSON, translate it, and send it to the dev by discord DM and email. I will add it to the next version.',
-                    );
+                    alertNormal(language.alerts.translationJsonDownloaded);
                 }
 
                 ctx.db.language = 'en';
@@ -306,18 +302,18 @@ export const languageSettingsItems: SettingItem[] = [
                     const files = await selectFileByDom(['.json']);
                     if (!files || files.length === 0) return;
                     if (!files[0].name.endsWith('.json')) {
-                        alertError('Invalid file type. Please select a .json file.');
+                        alertError(language.errors.invalidJsonFileType);
                         return;
                     }
                     const text = await files[0].text();
                     const data = JSON.parse(text);
                     if (typeof data !== 'object' || Array.isArray(data)) {
-                        alertError('Invalid JSON format');
+                        alertError(language.errors.invalidJsonFormat);
                         return;
                     }
                     for (const [key, value] of Object.entries(data)) {
                         if (typeof key !== 'string' || typeof value !== 'string') {
-                            alertError('Invalid JSON format');
+                            alertError(language.errors.invalidJsonFormat);
                             return;
                         }
                     }

@@ -8,13 +8,14 @@ import type { OpenAIChat } from "./index.svelte"
 import { processZip } from "./processzip"
 import type { RunSubject } from "./chatOrigin"
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import random from "lodash/random"
 
 export async function stableDiff(currentChar:character,prompt:string,subject?:RunSubject){
     let db = getDatabase()
 
     if(db.sdProvider === ''){
-        alertError("Stable diffusion is not set in settings.")
+        alertError(language.errors.stableDiffusionNotSet)
         return false
     }
 
@@ -55,7 +56,7 @@ export async function stableDiff(currentChar:character,prompt:string,subject?:Ru
         return false
     }
     if(rq.type === 'streaming' || rq.type === 'multiline'){
-        alertError('Unexpected response type')
+        alertError(language.errors.unexpectedResponseType)
         return false
     }
 
@@ -555,7 +556,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             })).json())[id])) {
                 console.log("Checking /history...")
                 if (Date.now() - startTime >= timeout) {
-                    alertError("Error: Image generation took longer than expected.");
+                    alertError(language.errors.imageGenerationTimeout);
                     return false
                 }
                 await new Promise(r => setTimeout(r, 1000))
@@ -705,7 +706,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
     if(db.sdProvider === 'openai-compat'){
         const config = db.openaiCompatImage
         if(!config.url){
-            alertError("OpenAI Compatible API URL is not set")
+            alertError(language.errors.openaiCompatUrlNotSet)
             return false
         }
 
@@ -763,7 +764,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
     if(db.sdProvider === 'wavespeed'){
         const config = db.wavespeedImage
         if (!config.key) {
-            alertError('Please enter wavespeed API key')
+            alertError(language.errors.wavespeedEnterKey)
             return false
         }
         const body: {[key:string]: any} = {}
@@ -828,7 +829,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
                 requestId = requestResponse.data.data.id
             }
             else {
-                alertError(`Submit task failed ${requestResponse.status}: ${requestResponse.data}`)
+                alertError(fillLang(language.errors.wavespeedSubmitFailed, { status: `${requestResponse.status}`, response: `${requestResponse.data}` }))
                 return false
             }
 
@@ -841,7 +842,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             while (true) {
                 const elapsedTime = Date.now() - startTime;
                 if (elapsedTime > MAX_WAIT_TIME) {
-                    alertError(`Task timeout after ${MAX_WAIT_TIME / 1000}s`);
+                    alertError(fillLang(language.errors.wavespeedTaskTimeout, { seconds: MAX_WAIT_TIME / 1000 }));
                     break;
                 }
                 const taskResponse = await globalFetch(taskEndpoint, {
@@ -879,7 +880,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
                 }
             }
             if (!resultEndpoint) {
-                alertError('Task finished but no result URL')
+                alertError(language.errors.wavespeedNoResultUrl)
                 return false
             }
 

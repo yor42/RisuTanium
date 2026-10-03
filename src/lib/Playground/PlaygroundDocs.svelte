@@ -2,6 +2,7 @@
     import { defaultCBSRegisterArg, registerCBS } from "src/ts/cbs";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { parseMarkdownSafe } from "src/ts/parser/parser.svelte";
+    import { language } from "src/lang";
 
 
     let doc: {
@@ -31,11 +32,11 @@
     }))
 </script>
 
-<h2 class="text-4xl text-textcolor my-6 font-black relative">CBS Docs Beta</h2>
+<h2 class="text-4xl text-textcolor my-6 font-black relative">{language.playground.cbsDocsTitle}</h2>
 <div class="max-w-4xl w-full p-6">
     <div class="mb-8 w-full">
         <TextInput
-            placeholder="Search documentation..."
+            placeholder={language.playground.docsSearchPlaceholder}
             className="w-full"
             fullwidth
             bind:value={searchTerm}
@@ -55,7 +56,7 @@
                 
                 {#if item.alias.length > 0}
                     <div class="flex flex-wrap gap-2">
-                        <span class="text-sm text-textcolor2 mr-2">Aliases:</span>
+                        <span class="text-sm text-textcolor2 mr-2">{language.playground.docsAliases}</span>
                         {#each item.alias as alias}
                             <span class="bg-darkbg text-textcolor2 text-xs px-2 py-1 rounded-full">{alias}</span>
                         {/each}
@@ -68,8 +69,8 @@
     {#if !doc || doc.length === 0}
         <div class="text-center py-12">
             <div class="text-gray-400 text-6xl mb-4">📚</div>
-            <h3 class="text-xl text-gray-600 mb-2">No documentation found</h3>
-            <p class="text-gray-500">Documentation will appear here when available.</p>
+            <h3 class="text-xl text-gray-600 mb-2">{language.playground.docsEmpty}</h3>
+            <p class="text-gray-500">{language.playground.docsEmptyDesc}</p>
         </div>
     {/if}
 </div>

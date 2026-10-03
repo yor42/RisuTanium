@@ -61,17 +61,17 @@
                 <div class="border-l-selected border-l ml-1 mr-1"></div>
                 {#if openedData.hasEmotion}
                     <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
-                        alertNormal("This character includes emotion images")
+                        alertNormal(language.alerts.characterHasEmotion)
                     })}><SmileIcon /></button>
                 {/if}
                 {#if openedData.hasAsset}
                     <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
-                        alertNormal("This character includes additional Assets")
+                        alertNormal(language.alerts.characterHasAssets)
                     })}><ImageIcon /></button>
                 {/if}
                 {#if openedData.hasLore}
                     <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
-                        alertNormal("This character includes lorebook")
+                        alertNormal(language.alerts.characterHasLore)
                     })}><BookIcon /></button>
                 {/if}
             </div>
@@ -81,9 +81,9 @@
         <div class="flex flex-row-reverse gap-2">
             <button class="text-textcolor2 hover:text-red-500" onclick={(async (e) => {
                 e.stopPropagation()
-                const conf = await alertConfirm('Report this character?')
+                const conf = await alertConfirm(language.alerts.realmReportConfirm)
                 if(conf){
-                    const report = await alertInput('Write a report text that would be sent to the admin (for copywrite issues, use email)')
+                    const report = await alertInput(language.alerts.realmReportPrompt)
                     if(!(await askUpstreamAgreement())){
                         return
                     }

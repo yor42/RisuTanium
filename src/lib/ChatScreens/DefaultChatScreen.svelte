@@ -440,18 +440,18 @@
             await runWithFullWindow(chatWindowPolicyInstance, () => loadPages, (v) => { loadPages = v }, async () => {
                 const html2canvas = await import('html-to-image');
                 const chats = document.querySelectorAll('.default-chat-screen .risu-chat')
-                alertWait("Taking screenShot...")
+                alertWait(language.alerts.screenshotTaking)
                 let canvases:HTMLCanvasElement[] = []
 
                 for(const chat of chats){
                     const cnv = await html2canvas.toCanvas(chat as HTMLElement)
-                    alertWait("Taking screenShot... "+canvases.length+"/"+chats.length)
+                    alertWait(language.alerts.screenshotTaking+" "+canvases.length+"/"+chats.length)
                     canvases.push(cnv)
                 }
 
                 canvases.reverse()
 
-                alertWait("Merging images...")
+                alertWait(language.alerts.screenshotMerging)
 
                 let mergedCanvas = document.createElement('canvas');
                 mergedCanvas.width = 0;
@@ -487,7 +487,7 @@
             })
         } catch (error) {
             console.error(error)
-            alertError("Error while taking screenshot")
+            alertError(language.errors.screenshotFailed)
         }
     }
 

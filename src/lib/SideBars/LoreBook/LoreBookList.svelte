@@ -8,6 +8,7 @@
     import { sleep, sortableOptions } from "src/ts/util";
     import { v4 } from "uuid";
     import { alertError } from "src/ts/alert";
+    import { language } from "src/lang";
 
     let reinitializeSortable = false;
 
@@ -120,13 +121,13 @@
                 
                 // Basic condition check
                 if (!evt.from || !evt.to) {
-                    alertError('Error: \'evt.from\' or \'evt.to\' is null');
+                    alertError(language.errors.dragEndpointNull);
                     await recreateStb();
                     return;
                 }
                 
                 if (evt.oldIndex === undefined || evt.newIndex === undefined) {
-                    alertError('Error: oldIndex or newIndex is undefined');
+                    alertError(language.errors.dragIndexUndefined);
                     await recreateStb();
                     return;
                 }

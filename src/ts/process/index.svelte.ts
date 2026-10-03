@@ -4,6 +4,7 @@ import { DBState } from '../stores.svelte';
 import { CharEmotion, selectedCharID } from "../stores.svelte";
 import { ChatTokenizer, tokenize, tokenizeNum } from "../tokenizer";
 import { language } from "../../lang";
+import { fillLang } from "../../lang/fill";
 import { alertError, alertToast } from "../alert";
 import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
@@ -594,7 +595,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         })
 
         if(findId === -1){
-            alertToast(`Cannot find preset: ${ele}`)
+            alertToast(fillLang(language.alerts.presetNotFound, { name: ele }))
         }
         else{
             changeToPreset(findId, true)

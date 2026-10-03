@@ -1,5 +1,6 @@
 import { alertConfirm, alertSelect, alertWait } from "./alert";
 import { language } from "../lang";
+import { fillLang } from "../lang/fill";
 import {
     check,
 } from '@tauri-apps/plugin-updater'
@@ -68,7 +69,7 @@ export async function checkRisuUpdate(){
             const conf = await alertConfirm(language.newVersion)
             if(conf){
                 clearUpdateReminder()
-                alertWait(`Updating to ${checked.version}...`)
+                alertWait(fillLang(language.alerts.updatingTo, { version: checked.version }))
                 await checked.downloadAndInstall()
                 await relaunch()
             } else {

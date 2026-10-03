@@ -1,5 +1,7 @@
 <script lang="ts">
     import { alertMd } from "src/ts/alert";
+    import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import { shareRealmCardData } from "src/ts/realm";
     import { downloadPreset } from "src/ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
@@ -32,7 +34,7 @@
             close()
         }
         if(e.data.type === 'success'){
-            alertMd(`## Upload Success\n\nYour character has been uploaded to Realm successfully.\n\n${"```\nhttps://realm.risuai.net/character/" +  e.data.id + "\n```"}`)
+            alertMd(fillLang(language.alerts.realmUploadSuccess, { link: "```\nhttps://realm.risuai.net/character/" +  e.data.id + "\n```" }))
             if($ShowRealmFrameStore.startsWith('preset') || $ShowRealmFrameStore.startsWith('module')){
                 //TODO, add preset edit
             }

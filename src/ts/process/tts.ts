@@ -3,6 +3,7 @@ import { getCurrentCharacter, getDatabase, type character } from "../storage/dat
 import { runTranslator, translateVox } from "../translator/translator";
 import { globalFetch, loadAsset } from "../globalApi.svelte";
 import { language } from "src/lang";
+import { fillLang } from "src/lang/fill";
 import { runVITS } from "./transformers";
 import { cancelTTSPlayback, currentTTSSignal, playEncodedAudio } from "./ttsPlayback";
 import {
@@ -322,7 +323,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 if (response.ok) {
                     await playAudio(response.data.buffer, 'audio/wav', hookCtx, signal)
                 } else {
-                    alertError("Error fetching or decoding audio data");
+                    alertError(language.errors.audioFetchFailed);
                 }
                 break;
             }
@@ -395,7 +396,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                         const mimeType = response.headers.get('content-type') || 'audio/wav'
                         await playAudio(buffer, mimeType, hookCtx, signal)
                     } else {
-                        alertError("Error fetching or decoding audio data");
+                        alertError(language.errors.audioFetchFailed);
                     }
                     return
                 }
@@ -535,7 +536,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
         if(signal.aborted){
             return
         }
-        alertError(`TTS Error: ${error}`)
+        alertError(fillLang(language.errors.ttsError, { error: `${error}` }))
     }
 }
 

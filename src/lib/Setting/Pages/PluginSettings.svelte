@@ -258,8 +258,8 @@
     <button
         onclick={async () => {
             const v = parseInt(await alertSelect([
-                "Import plugin with hot reload",
-                "Download plugin template",
+                language.alerts.importPluginHotReload,
+                language.alerts.downloadPluginTemplate,
                 language.cancel
             ]))
             switch(v){

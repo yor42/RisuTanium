@@ -67,14 +67,14 @@
             }
             else{
                 if(!inputImage){
-                    return alertError('Please select an image first');
+                    return alertError(language.playground.imageSelectFirst);
                 }
                 const slicedCanvas = document.createElement('canvas');
                 slicedCanvas.width = canvas.width;
                 slicedCanvas.height = canvas.height;
                 const slicedCtx = slicedCanvas.getContext('2d');
                 if(!slicedCtx){
-                    return alertError('Failed to create canvas context');
+                    return alertError(language.playground.canvasContextFailed);
                 }
                 const selectionRect = selection.getBoundingClientRect();
                 const canvasRect = canvas.getBoundingClientRect();
@@ -174,7 +174,7 @@
 
             if(d.type === 'streaming' || d.type === 'multiline'){
                 loading = false;
-                return alertError('This model is not supported in the playground')
+                return alertError(language.playground.modelNotSupported)
             }
 
             if(d.type !== 'success'){
@@ -330,8 +330,8 @@
     let mouseDown = false;
 </script>
 <SelectInput bind:value={mode} className="w-1/2">
-    <option value="auto">{"auto"}</option>
-    <option value="manual">{"manual"}</option>
+    <option value="auto">{language.playground.modeAuto}</option>
+    <option value="manual">{language.playground.modeManual}</option>
 </SelectInput>
 
 <span class="text-textcolor text-lg mt-4">{language.destinationLanguage}</span>
@@ -354,7 +354,7 @@
 {/if}
 
 <Button className="mt-4" onclick={() => imageTranslate(0)}>
-    {loading ? 'loading' : language.imageTranslation}
+    {loading ? language.playground.loadingLower : language.imageTranslation}
 </Button>
 
 

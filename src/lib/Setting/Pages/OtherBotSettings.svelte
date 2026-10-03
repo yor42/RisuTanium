@@ -1,6 +1,7 @@
 <script lang="ts">
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import Help from "src/lib/Others/Help.svelte";
     import { selectSingleFile } from "src/ts/util";
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
@@ -105,7 +106,7 @@
      */
     async function fetchWavespeedModels() {
         if (!DBState.db.wavespeedImage.key || DBState.db.wavespeedImage.key.trim() === '') {
-            alertError('WaveSpeed API Key not set');
+            alertError(language.errors.wavespeedKeyMissing);
             return [];
         }
 
@@ -127,12 +128,12 @@
             try {
                 responseData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
             } catch (e) {
-                alertError('Failed to parse WaveSpeed response');
+                alertError(language.errors.wavespeedParseFailed);
                 return;
             }
 
             if (responseData.code !== 200 || !Array.isArray(responseData.data)) {
-                alertError('Invalid WaveSpeed API response');
+                alertError(language.errors.wavespeedInvalidResponse);
                 return;
             }
 
@@ -159,9 +160,9 @@
               .sort((a, b) => a.name.localeCompare(b.model_id));
 
             wavespeedModels = filteredModels;
-            alertNormal(`Successfully loaded ${filteredModels.length} models`);
+            alertNormal(fillLang(language.alerts.wavespeedModelsLoaded, { count: filteredModels.length }));
         } catch (error) {
-            alertError(`Failed to fetch models: ${error}`);
+            alertError(fillLang(language.errors.fetchModelsFailed, { error: `${error}` }));
         } finally {
             isWavespeedLoading = false;
         }
@@ -389,7 +390,7 @@
                     try {
                         const vibeData = JSON.parse(new TextDecoder().decode(file.data))
                         if (vibeData.version !== 1 || vibeData.identifier !== "novelai-vibe-transfer") {
-                            alertError("Invalid vibe file. Version must be 1.")
+                            alertError(language.errors.invalidVibeFile)
                             return
                         }
 
@@ -428,7 +429,7 @@
                             DBState.db.NAIImgConfig.reference_strength_multiple = [0.7];
                         }
                     } catch (error) {
-                        alertError("Error parsing vibe file: " + error)
+                        alertError(fillLang(language.errors.vibeParseFailed, { error: `${error}` }))
                     }
                 }}>
                     {#if !DBState.db.NAIImgConfig.vibe_data || !DBState.db.NAIImgConfig.vibe_data.thumbnail}
@@ -1080,13 +1081,13 @@
                     const presets = DBState.db.hypaV3Presets
 
                     if(presets.length === 0){
-                        alertError("There must be least one preset.")
+                        alertError(language.errors.atLeastOnePreset)
                         return
                     }
 
                     const id = DBState.db.hypaV3PresetId
                     const preset = presets[id]
-                    const newName = await alertInput(`Enter new name for ${preset.name}`, [], preset.name)
+                    const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name)
 
                     if (!newName || newName.trim().length === 0) return
 
@@ -1100,7 +1101,7 @@
                     const presets = DBState.db.hypaV3Presets
 
                     if(presets.length <= 1){
-                        alertError("There must be least one preset.")
+                        alertError(language.errors.atLeastOnePreset)
                         return
                     }
 
@@ -1128,7 +1129,7 @@
                         const presets = DBState.db.hypaV3Presets
                         
                         if(presets.length === 0){
-                            alertError("There must be least one preset.")
+                            alertError(language.errors.atLeastOnePreset)
                             return
                         }
 

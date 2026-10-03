@@ -3,6 +3,8 @@
     import { DBState } from 'src/ts/stores.svelte'
     import { sleep } from "src/ts/util"
     import { alertError } from "../../ts/alert"
+    import { language } from "src/lang"
+    import { fillLang } from "src/lang/fill"
     import { addMetadataToElement, getDistance, ParseMarkdown, postTranslationParse, trimMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
     import { getLLMCache, translateHTML } from "../../ts/translator/translator"
     import { getModuleAssets } from "src/ts/process/modules";
@@ -162,7 +164,7 @@
             //retry
             if(tries > 2){
 
-                alertError(`Error while parsing chat message: ${translated}, ${error.message}, ${error.stack}`)
+                alertError(fillLang(language.errors.chatParseFailed, { translated: `${translated}`, message: error.message, stack: error.stack }))
                 return data
             }
             const retried = await markParsing(data, charArg, chatID, requestedRevision, (tries ?? 0) + 1)

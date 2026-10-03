@@ -5,6 +5,8 @@
     import { DBState, irisStore } from "src/ts/stores.svelte";
     import { requestChatData } from "src/ts/process/request/request";
     import { alertError } from "src/ts/alert";
+    import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import { getIrisSystemPrompt } from "src/ts/iris";
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
     import { RisuAccessClient } from "src/ts/process/mcp/risuaccess";
@@ -234,7 +236,7 @@
         if(res.type === 'success') {
             pushDialogue({speaker: 'Iris', text: res.result});
         } else {
-            alertError("Failed to get response from LLM: " + res.result);
+            alertError(fillLang(language.errors.irisLlmFailed, { error: `${res.result}` }));
             dialogue.pop();
         }
     }

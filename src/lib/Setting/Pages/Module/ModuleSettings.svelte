@@ -101,7 +101,7 @@
                             {#if !rmodule.mcp}
                                 <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.download} onclick={async (e) => {
                                     e.stopPropagation()
-                                    const sel = parseInt(await alertSelect([`CharX (${language.recommended})`, `RisuM (Legacy)`]))
+                                    const sel = parseInt(await alertSelect([`CharX (${language.recommended})`, language.alerts.risumLegacy]))
                                     if(sel === 0){
                                         exportModule(rmodule)
                                     }

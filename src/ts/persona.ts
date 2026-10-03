@@ -54,7 +54,7 @@ interface PersonaCard {
 export async function exportUserPersona() {
     let db = getDatabase({ snapshot: true })
     if ((!db.username) || (!db.personaPrompt)) {
-        alertError("username or persona prompt is empty")
+        alertError(language.errors.personaIncomplete)
         return
     }
 

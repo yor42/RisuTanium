@@ -19,10 +19,10 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.syntax}</h2>
 
-<span class="text-textcolor text-lg">Input</span>
+<span class="text-textcolor text-lg">{language.input}</span>
 
 <TextAreaInput highlight onInput={onInput} bind:value={input} optimaizedInput={false} />
 
-<span class="text-textcolor text-lg">Result</span>
+<span class="text-textcolor text-lg">{language.playground.result}</span>
 
 <TextAreaInput value={output} />

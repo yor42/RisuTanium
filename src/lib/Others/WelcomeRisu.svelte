@@ -51,7 +51,7 @@
                     break
                 }
                 if(!input.startsWith('sk-')){
-                    alertError('Invalid API key')
+                    alertError(language.errors.invalidApiKey)
                     break
                 }
                 if(provider === 'openai'){

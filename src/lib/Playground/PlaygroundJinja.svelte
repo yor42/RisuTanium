@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Template } from '@huggingface/jinja';
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
+    import { language } from "src/lang";
     let input = $state("");
     let json = $state(JSON.stringify({
         "messages": [{
@@ -33,10 +34,10 @@
 
 <TextAreaInput onInput={onInput} bind:value={input} />
 
-<span class="text-textcolor text-lg">Data (JSON)</span>
+<span class="text-textcolor text-lg">{language.playground.jinjaData}</span>
 
 <TextAreaInput onInput={onInput} bind:value={json} />
 
-<span class="text-textcolor text-lg">Result</span>
+<span class="text-textcolor text-lg">{language.playground.result}</span>
 
 <TextAreaInput value={output} />

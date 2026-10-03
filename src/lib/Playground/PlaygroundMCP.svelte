@@ -3,6 +3,8 @@
     import Button from "../UI/GUI/Button.svelte";
     import { type MCPToolWithURL, callMCPTool, getMCPMeta, getMCPTools, initializeMCPs } from "src/ts/process/mcp/mcp";
     import { alertMd } from "src/ts/alert";
+    import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
 
     let metadatas = $state('')
     let tools:MCPToolWithURL[] = $state([]);
@@ -18,10 +20,10 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">MCP</h2>
 
-<span class="text-textcolor text-lg">Metadatas</span>
+<span class="text-textcolor text-lg">{language.playground.metadatas}</span>
 <TextAreaInput value={metadatas} />
 
-<span class="text-textcolor text-lg">Tools</span>
+<span class="text-textcolor text-lg">{language.tools}</span>
 <div class="flex flex-col gap-2">
   {#each tools as tool}
     <div class="border border-gray-300 p-2 rounded-md">
@@ -30,14 +32,14 @@
       <div class="prose prose-gray w-full">
         <pre class="overflow-x-auto w-full">{JSON.stringify(tool.inputSchema, null, 2)}</pre>
       </div>
-      <TextAreaInput bind:value={toolInputs[tool.name]} placeholder="Input for this tool" />
+      <TextAreaInput bind:value={toolInputs[tool.name]} placeholder={language.playground.toolInputPlaceholder} />
       <Button onclick={async () => {
         const x = await callMCPTool(tool.name, JSON.parse(toolInputs[tool.name]));
-        alertMd(`Tool ${tool.name} executed\n\nResponse:\n\`\`\`json\n${JSON.stringify(x, null, 2)}\n\`\`\``);
-      }}>Execute {tool.name}</Button>
+        alertMd(fillLang(language.playground.toolExecuted, { name: tool.name, response: JSON.stringify(x, null, 2) }));
+      }}>{fillLang(language.playground.executeTool, { name: tool.name })}</Button>
     </div>
   {/each}
 </div>
 
 
-<Button onclick={refresh}>Refresh</Button>
+<Button onclick={refresh}>{language.playground.refresh}</Button>

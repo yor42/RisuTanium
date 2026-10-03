@@ -22,10 +22,10 @@
     // local field must stop the run rather than silently use the saved value.
     const missingFieldMessage = (): string | null => {
         if(model === 'custom' && !customEmbeddingUrl.trim()) {
-            return "Enter a URL for the custom embedding server.";
+            return language.playground.embeddingUrlMissing;
         }
         if((model === 'openai3small' || model === 'openai3large' || model === 'ada') && !openAIKey.trim()) {
-            return "Enter an OpenAI API key.";
+            return language.playground.embeddingOpenAIKeyMissing;
         }
         return null;
     }
@@ -54,7 +54,7 @@
   
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.embedding}</h2>
 
-<span class="text-textcolor text-lg">Model</span>
+<span class="text-textcolor text-lg">{language.model}</span>
 <SelectInput bind:value={model} className="mb-4">
     {#if 'gpu' in navigator}
         <OptionInput value="MiniLMGPU">MiniLM L6 v2 (GPU)</OptionInput>
@@ -84,19 +84,19 @@
 {#if model === "custom"}
     <span class="text-textcolor text-lg">URL</span>
     <TextInput size="sm" marginBottom bind:value={customEmbeddingUrl}/>
-    <span class="text-textcolor text-lg">Key/Password</span>
+    <span class="text-textcolor text-lg">{language.proxyAPIKey}</span>
     <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.key}/>
-    <span class="text-textcolor text-lg">Request Model</span>
+    <span class="text-textcolor text-lg">{language.playground.requestModel}</span>
     <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
     <span class="text-textcolor2 text-sm mb-4">{language.playground.embeddingSharedSettingsNote}</span>
 {/if}
 
 <div class="mb-4"></div>
 
-<span class="text-textcolor text-lg">Query</span>
+<span class="text-textcolor text-lg">{language.playground.query}</span>
 <TextInput bind:value={query} size="lg" fullwidth />
 
-<span class="text-textcolor text-lg mt-6">Data</span>
+<span class="text-textcolor text-lg mt-6">{language.playground.data}</span>
 {#each data as item, i}
     <TextInput bind:value={data[i]} size="lg" fullwidth marginBottom />
 {/each}
@@ -105,9 +105,9 @@
     data = data
 }}>+</Button>
 
-<span class="text-textcolor text-lg mt-6">Result</span>
+<span class="text-textcolor text-lg mt-6">{language.playground.result}</span>
 {#if dataresult.length === 0}
-    <span class="text-textcolor2 text-lg">No result</span>
+    <span class="text-textcolor2 text-lg">{language.playground.noResult}</span>
 {/if}
 {#each dataresult as [item, score]}
     <div class="flex justify-between">
