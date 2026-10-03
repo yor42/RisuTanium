@@ -3785,6 +3785,77 @@ pass on a 3,000-asset card took a median of 96 ms before (6 runs) and 78 ms afte
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
 - **Related:** CHORE-58 (`282b2da5`), CHORE-76, `MC-184`, `MC-185`, `MC-186`.
 
+### CHORE-78 — Importing several cards at once can hide an earlier card's failure (TRACED at `ece53227`; UX, no data loss)
+
+**Status (2026-10-03): open, unplaced.** The maintainer approved filing it on 2026-10-03 ("yes, file CHORE-78 and
+CHORE-79"). It is not placed in the work order; the maintainer places it (`MC-089`: nothing ships until every open ticket
+clears). Found by the Stage B Gate 1 reviewer of CHORE-76/77, not yet investigated. UX only: nothing is lost or written
+wrongly; the user can miss that one file was not imported.
+
+- **What happens (TRACED by the Orchestrator's brief at HEAD `ece53227`, from `git show HEAD:src/ts/characterCards.ts`; the
+  working tree of that file is being edited by another agent, so these are HEAD lines):**
+  - `importCharacter` (`characterCards.ts:32-50`) takes the picked files (`selectFileByDom(["*"], 'multiple')`, line 34) and
+    loops (`for(const f of files)`, line 39), awaiting `importCharacterProcess` for each (lines 40-43). Its only `catch` is
+    around the whole loop (lines 46-49): `alertError(error)` and return.
+  - A refusal in `importCharacterProcess` that shows its alert and then plain `return`s does not throw, so the loop goes on to
+    the next file. Examples at `ece53227`: `alertError(language.errors.noData)` then `return` (lines 73-74, 92-93, 150-151,
+    202-203 and others), and `alertError(language.cardFileIncomplete)` then `return` (lines 146-147, the PNG cut-short refusal
+    from `6173f58a`).
+  - The next file then sets its own wait alert (`'Loading... (Reading)'`, lines 82-85 for charx and jpg, 126-129 for png) and
+    its own success alert, which replace the earlier file's error. The user can miss that the earlier file was not imported.
+  - A charx or jpg whose parse throws is different: `importer.parse(f.data)` (line 89) is not inside a `try` in
+    `importCharacterProcess`, so a throw propagates to the `catch` in `importCharacter` (line 46), which shows the error and
+    ends the whole loop. Behaviour therefore differs by failure type: a returned refusal continues, a throw stops.
+  - There is a second throw source in the charx path: `await importer.done()` (line 111) is also outside any `try` there. A
+    rejection from it ends the loop through the same `catch` at line 46, like a parse throw.
+  - `CharXImporter.parse` (`src/ts/process/processzip.ts:227-245` at `ece53227`) has no `try`/`catch`. It rejects only from the
+    stream read or from `#feedChunk` (the `unzip.push` call; whether fflate throws there was not opened, INFERRED). Asset save
+    errors never reject `parse()`: `#processAssetQueue` (`processzip.ts:383-391`) collects them, and only `done()` rejects
+    with them (see CHORE-79).
+  - The charx Stage B refusal (CHORE-76 Stage B) is not in `ece53227`; if it follows the `alertError` then `return` shape it
+    would join the first group. `TODO(evidence)`: not yet written.
+- **Alerts (TRACED at store level, `ece53227`):** `alertStore.set` (`src/ts/alert.ts:28-36`) calls the writable
+  `alertStoreImported.set` (`stores.svelte.ts:62`), ignoring type `'none'` while a prompt is showing. `alertError`
+  (`alert.ts:75`) and `alertNormal` (`alert.ts:118`) set the same store. Each set replaces the single current alert. Not
+  established: whether every UI mode shows only the current alert.
+- **Next step:** investigation, then a plan. One possible shape, not decided: collect each file's outcome and show a summary
+  at the end. Nothing is decided.
+- **Placement:** unplaced; the maintainer places it.
+- **Related:** CHORE-76, CHORE-77, `6173f58a`, `MC-185`, `MC-186`.
+
+### CHORE-79 — Importing a module from a .charx can report success after asset saving failed (TRACED at `ece53227`; a false success message, no module added)
+
+**Status (2026-10-03): open, unplaced.** The maintainer approved filing it on 2026-10-03 ("yes, file CHORE-78 and
+CHORE-79"). It is not placed in the work order; the maintainer places it (`MC-089`). Found by the Stage B Gate 1 reviewer of
+CHORE-76/77, not yet investigated.
+
+- **What happens (TRACED by the Orchestrator's brief at HEAD `ece53227`, from `git show HEAD:src/ts/process/modules.ts`):**
+  - In `importModule` (`modules.ts:257`), the `.charx` branch (line 263) runs `importCharacterProcess(..., returnCharacter: true)`
+    and pushes the converted module inside a `try` (lines 264-276). The `catch` (lines 277-280) logs the error and calls
+    `alertError(language.errors.noData)`, with no `return`.
+  - Control then reaches `alertNormal(language.successImport)` (line 281) and returns (line 282). So any error thrown in the
+    `try` ends with the error alert followed by the success alert.
+  - `importCharacterProcess` awaits `importer.done()` (`characterCards.ts:111`) in its charx branch before
+    `importCharacterCardSpec` (`:112`). A rejection from `done()`, or any other throw, therefore reaches that `catch`.
+  - **TRACED:** an asset that fails to save rejects `done()`. `#processAssetQueue` (`processzip.ts:383-391`) collects each
+    save error, and `#checkCompletion` (`processzip.ts:280-292`) rejects with the single error, or with an `AggregateError`
+    "Failed to save n assets" when there are several.
+  - Contrast: the `!char || typeof char === 'number'` refusal (lines 271-274) does return, but `importCharacterProcess` has
+    already shown a `noData` alert on most of its refusals, so on that path the user gets two `noData` alerts (minor). The
+    `.risum` branch (lines 284-293) has no success alert after its `catch`.
+- **Consequence on the `done()` rejection path (TRACED):** the rejection happens at `characterCards.ts:111`, before
+  `importCharacterCardSpec` (`:112`), so no character is returned and the module is never pushed (the push at
+  `modules.ts:276` is the last statement of the `try`). The user sees the `noData` error alert and then the success alert.
+  No module is added. Assets already saved stay unreferenced, left to the startup asset sweep, which does not run when
+  `db.coldstorage` is set, when any character is cold-stored, or when the keep-set is incomplete (`bootstrap.ts:850`,
+  `:859`, `:956` at ece53227); whether the sweep removes these exact assets was not opened.
+- **UNVERIFIED (not read):** whether `importCharacterCardSpec` with `returnCharacter` true can leave a character behind on
+  other failure paths.
+- **Next step:** investigation. Likely shape (non-normative): return from the `catch`, as the `.risum` branch effectively does.
+  Nothing is decided.
+- **Placement:** unplaced; the maintainer places it.
+- **Related:** CHORE-76, CHORE-78, `MC-185`.
+
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 
 **Status (2026-10-01):** open, **not scheduled**; a release blocker under `MC-089` and `MC-011` (nothing ships
