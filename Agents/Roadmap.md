@@ -906,6 +906,51 @@ reader.
 
 ### CHORE-14 — Settings and main UI: 2 suspected bugs (none lose data)
 
+**Status (2026-10-03, UI session): UI-1 and UI-2 DONE 2026-10-03 in `408c32dd`** (ledger rows
+854 to 859). Product choices in `MC-206`. The investigator found that the Global Lorebook and Global Regex pages are a
+deliberate upstream deprecation (`8ed4555b`, with the migration into modules later disabled), and that the chat runtime reads
+neither field. The pages were already unreachable: upstream removed their menu entries in `8ed4555b`, and nothing sets index
+8 or 9. The Global Lorebook page's code was also broken: it listed no entries, add went to the chat's local lore, and the
+`'sglobal'` import and export indexed `chats[-1]`. The investigator also found that the Communities and Files parts of UI-1 were
+already resolved (`MC-093`, `MC-088`), and that the sidebar's X was commented out in upstream `5e9683a5` (2023-07-26),
+which left an empty full-width close button (row 854). Gate 2 ended `[EDITORIAL]`; the two Sidebar guard test titles were
+corrected (row 858). Resolutions:
+- **UI-1:** the Global Lorebook and Global Regex settings pages are retired. Deleted: `GlobalLoreBookSettings.svelte`,
+  `GlobalRegex.svelte`, `lorepreset.svelte` and its `deleteTarget` test. `Settings.svelte` loses the three imports (the two
+  pages and `Lorepreset`), the `openLoreList` state, the render cases for indices 8 and 9, and the `Lorepreset` overlay block. The `globalMode` prop is gone from `LoreBookList.svelte` and
+  `LoreBookSetting.svelte`, and `importLoreBook` and `exportLoreBook` in `lorebook.svelte.ts` take only `'global'|'local'`
+  (the `'sglobal'` mode is gone).
+- **The data stays:** `db.loreBook`, `db.loreBookPage` and `db.globalscript` are untouched, so a backup moves to and from
+  upstream with nothing lost (`MC-175`, `MC-206`). Old entries stay invisible, as before. The `exportRegex` default of
+  `db.globalscript` in `scripts.ts` (`const script = s ?? db.globalscript`) is left as it is.
+- **UI-2:** the character sidebar's close strip shows an X (`XIcon`, size 18) again, with the accessible name and tooltip from
+  a new language key, `closeSidebar` ("Close sidebar"; six other locales translated). The click handler is unchanged.
+- **Language keys left without callers:** `globalLoreBook` and `globalRegexScript` have no caller in `src` after this change
+  (a search of non-test files finds only the seven `src/lang` definitions). They are left for CHORE-05.
+
+**Tests:** two new test files, five tests: one regression reproducer (`Sidebar.closeButton.svelte.test.ts`: the close button is
+found by its accessible name and contains an `svg`) and four guards. The reproducer fails at HEAD at `expect(btn).toBeDefined()`;
+the two Sidebar guards also fail at HEAD, because they find the button by its new name. The Gate 2 reviewer's scratch mutant
+that removes the `if($sideBarClosing) return` guard survived: the second-click guard cannot fail, since a svelte writable does
+not notify on an equal value; its title now says only that `sideBarClosing` stays true. Not done (non-blocking): tests for the
+narrowed `importLoreBook` and `exportLoreBook` modes. Checks: `pnpm check` 0 errors 0 warnings; `pnpm test` 336 files, 6982
+passed, 4 skipped; `pnpm build` ok (ledger row 857).
+
+**Merge note (`MC-179`):** `Settings.svelte` is on the UI lane's list (the files the Main Campaign keeps out of); this batch
+removes its three imports, the `openLoreList` state, the two render cases and the `Lorepreset` overlay block. `LoreBookList.svelte`,
+`LoreBookSetting.svelte`, `Sidebar.svelte`, `lorebook.svelte.ts` (two signatures narrowed) and the seven `src/lang` files (one
+key) are on neither lane's list in `MC-179` 1. No file on the UI session's out-of-bounds list is touched.
+
+**Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):**
+- `docs/wiki/Lorebook.md` (line 18) says the Global Lorebook settings page can't be opened. It should say the page is retired,
+  and that its data is kept in the save file but unused.
+- `docs/wiki/Settings.md` (lines 79 and 80) describes the "Global Lorebook" and "Global Regex" editors as existing.
+- `docs/wiki/Regex-Script.md` (line 20) has a note about the separate "Global Regex" page.
+- `docs/wiki/Settings-Chat-Bot.md` (line 257) refers to "the separate, unreachable Global Regex page described on [[Settings]]".
+- These pages should say the two pages are retired and their data is kept but unused (`MC-206`).
+- The character sidebar has a visible X in its close strip; any page that describes closing the sidebar by clicking an empty
+  area or the backdrop should mention it.
+
 Found by the wiki session while rewriting the [[RisuAI Basics]] and [[Creating a Basic Bot]] wiki
 pages (2026-09-22). Full hand-off: **`Agents/Reports/99-settings-ui.md`**. Every entry is a
 code-reading claim; none has been reproduced.

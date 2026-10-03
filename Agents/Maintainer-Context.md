@@ -2719,6 +2719,8 @@ it as decided by proximity alone.
 > import/export staging list. The effective global list is the preset's (`db.presetRegex`).
 > Possibly intended; confirm with the maintainer before calling it a bug.
 
+*Answered by `MC-206`: upstream deprecated Global Regex and Global Lorebook on purpose in `8ed4555b` (2024-02-07, "remove global regex and lorebook and add convertion to modules"). The conversion into modules was later disabled: `bootstrap.ts` still carries "//migration removed due to issues", introduced in `b3fddb81`. The maintainer retired the two pages and kept the data (`MC-206`).*
+
 ---
 
 ### MC-050 — Whether a leftover draft should be allowed to defer the multi-tab auto-reload
@@ -6469,3 +6471,27 @@ skipped name that a character actually uses would show as a missing image."
 - **Left unchanged:** `MC-081`'s body, which still carries the old wording (it has a one-line forward reference to this
   entry), and the Live-State "Network" bullet in the browser-check section ("do not probe upstream services (`MC-081`)"),
   which sits outside the UI session's block.
+
+### MC-206 — The Global Lorebook and Global Regex settings pages are retired with their data kept; the sidebar's close strip shows an X (CHORE-14)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below, with the option text each one carried.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for UI-1, "Retire + export leftovers" (also add a Settings button, shown only when leftover global lorebook or regex data exists, that exports it as a module file) and "Leave as is" (close UI-1 as upstream's intended behaviour); for UI-2, "Remove the empty strip" and "Leave as is".
+- **Related:** `MC-049`, `MC-088`, `MC-093`, `MC-175`; CHORE-14; ledger rows 854 to 858.
+
+**What was decided:**
+1. **UI-1, the Global Lorebook and Global Regex pages.** "Retire, keep data (Recommended)". The option text read: "Delete
+   the two pages and their dead code (about 5-7 UI files: the two pages, lorepreset, the global-mode code). The saved
+   fields stay in the save file untouched, so moving a backup to and from upstream keeps working. Old leftover entries
+   stay invisible, as they are today."
+2. **UI-2, the character sidebar's close strip.** "Restore the X (Recommended)". The option text read: "Put the X icon
+   back inside the existing close strip, so the close action is visible, especially on touch. One file (Sidebar.svelte)."
+
+**Rules that follow:**
+- The Global Lorebook and Global Regex settings pages are retired.
+- `db.loreBook`, `db.loreBookPage` and `db.globalscript` are kept untouched, for the round trip (`MC-175`).
+- The character sidebar's close strip shows an X.

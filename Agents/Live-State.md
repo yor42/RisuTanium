@@ -262,17 +262,21 @@ Several sessions work **in this same checkout**:
   committed in `2d5c25cd`.** The chat batch touched no file on the Main Campaign's out-of-bounds list.
 - **TTS batch (CHORE-15, TTS-1 to TTS-7): committed in `2c4b7fae`** (31 files, local, not pushed; `MC-204`; ledger rows
   834 to 853). Gate 1 took five rounds with a `senior-advisor` escalation; Gate 2 approved, with one remediation. Final
-  checks: `pnpm check` 0/0; `pnpm test` 6986 passed, 4 skipped; build ok. **Its records are committed in the records
-  commit that follows `2c4b7fae`;** `.claude/launch.json` stays out. New tickets CHORE-93 to CHORE-99. The batch changed `index.svelte.ts`
+  checks: `pnpm check` 0/0; `pnpm test` 6986 passed, 4 skipped; build ok. **Its records are committed in `13d3e0cd`;** `.claude/launch.json` stays out. New tickets CHORE-93 to CHORE-99. The batch changed `index.svelte.ts`
   (the two auto-TTS calls inside the streaming and non-streaming branches are replaced by one call after them, plus a
   `ttsBefore` capture at two sites) and `command.ts` (one import and the `/speak` call), which are on neither lane's list, and
   also `transformers.ts`, `risuai.d.ts`, `DefaultChatScreen.svelte` and the seven `src/lang` files (one key), which `MC-179` 1
   names on neither list either. `tts.ts` and `CharConfig.svelte` are on the UI lane list; `Chat.svelte` is listed only for its
   copy code, which this batch touches (the display-parse options for the copy text and the speaker button) along with the
   speaker button's visibility.
-- **Next in the lane:** settings (CHORE-14 UI-1 and UI-2), then Playground, modules, small items, translations (the order in
-  `MC-200` 1).
-- **Next free numbers in the UI ranges:** `MC-206`, ledger row 854, CHORE-100, Report 65.
+- **Settings batch (CHORE-14 UI-1 and UI-2): committed in `408c32dd`** (19 files, local, not pushed). The Global
+  Lorebook and Global Regex settings pages are retired and the sidebar's close strip shows an X again (`MC-206`; ledger rows
+  854 to 859). Gate 2 ended `[EDITORIAL]`, and the title corrections are done. Checks: `pnpm check` 0/0; `pnpm test` 336
+  files, 6982 passed, 4 skipped; build ok. `db.loreBook`, `db.loreBookPage` and `db.globalscript` are untouched. No new
+  tickets. `.claude/launch.json` stays out of the commit. Detail is in the CHORE-14 entry of the Roadmap.
+- **Next in the lane:** Playground and modules (CHORE-16 PG-2 to PG-4, CHORE-12), then small items and translations (the order
+  in `MC-200` 1).
+- **Next free numbers in the UI ranges:** `MC-207`, ledger row 860, CHORE-100, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".
@@ -292,6 +296,15 @@ Several sessions work **in this same checkout**:
   `docs/wiki/RisuAI-Basics.md` (the Stop visibility line). New behaviour: a continuation speaks only its addition; Stop for
   all modes and in group chats with a voiced member; the Hugging Face router endpoint (`MC-204`). Detail is in the CHORE-15
   entry of the Roadmap.
+- **Wiki hand-offs (settings batch, for the Wiki session):** `docs/wiki/Lorebook.md` says the Global Lorebook settings page
+  can't be opened; it should say the page is retired and its data is kept but unused (`MC-206`). `docs/wiki/Settings.md`
+  (the "Global Lorebook" and "Global Regex" editors), `docs/wiki/Regex-Script.md` (the note about the Global Regex page) and
+  `docs/wiki/Settings-Chat-Bot.md` (the reference to "the separate, unreachable Global Regex page") also describe the retired
+  pages. The character sidebar's close strip now shows a visible X.
+- **Lane notes (settings batch, against `MC-179` 1):** `Settings.svelte` is on the UI lane's list (the Main Campaign keeps
+  out of it). `LoreBookList.svelte`, `LoreBookSetting.svelte`, `Sidebar.svelte`, `src/ts/process/lorebook.svelte.ts` (the
+  `importLoreBook` and `exportLoreBook` signatures narrowed to `'global'|'local'`) and the seven `src/lang` files (one key,
+  `closeSidebar`) are on neither lane's list, so the merge is expected. None is on the UI session's out-of-bounds list.
 - **Files outside the UI lane touched so far:** the TTS batch edits `index.svelte.ts` (the two auto-TTS calls are replaced by one call
   after the streaming and non-streaming branches, plus a `ttsBefore` capture at two sites) and `command.ts` (one import and
   the `/speak` call), neither on a lane list (above); the mobile and chat batches touched none. Step-6 flows touched (memory step 6 hooks): `CharConfig.svelte`'s
