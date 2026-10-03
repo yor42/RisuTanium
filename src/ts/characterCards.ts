@@ -133,37 +133,26 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     let readedChara = ''
     let readedCCv3 = ''
     let img:Uint8Array
-    let pngChunks = 0
     let readedPngChunks = 0
 
-    {
+    //The counting pass and the main pass both need the whole input, so a stream is buffered into a Blob-backed File first.
+    const pngData:File|Uint8Array = f.data instanceof ReadableStream
+        ? new File([await new Response(f.data).blob()], f.name, {type: 'image/png'})
+        : f.data
 
-        let readData:File | Uint8Array | ReadableStream<Uint8Array>
-        if(f.data instanceof ReadableStream){
-            const tee = f.data.tee()
-            f.data = tee[0]
-            readData = tee[1]
-        }
-        else{
-            readData = f.data
-        }
-
-        const prereader = PngChunk.readGenerator(readData, {
-
-        })
-
-        for await(const chunk of prereader){
-            if(chunk instanceof AppendableBuffer){
-                break
-            }
-            if(chunk.key.startsWith('chara-ext-asset_')){
-                pngChunks++
-            }
-        }
+    //Counts the assets and checks that no chunk body (nor the CRC of a chunk other than tEXt) is cut short before anything is saved, so such a card saves nothing.
+    const scan = await PngChunk.scanCard(pngData)
+    if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
+        alertError(language.cardFileIncomplete)
+        return
     }
+    if(!scan.hasCardData){
+        alertError(language.errors.noData)
+        return
+    }
+    const pngChunks = scan.assetCount
 
-
-    const readGenerator = PngChunk.readGenerator(f.data, {
+    const readGenerator = PngChunk.readGenerator(pngData, {
         returnTrimed: true
     })
     const assets:{[key:string]:string} = {}
@@ -1794,9 +1783,10 @@ export async function downloadRisuHub(id:string, arg:{
                 })
             }
             else{
+                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                 await importCharacterProcess({
                     name: 'realm.png',
-                    data: res.body,
+                    data: new File([await res.blob()], 'realm.png', {type: res.headers.get('content-type')}),
                 })
             }
             checkCharOrder()

@@ -143,7 +143,120 @@ export class StreamWindow{
     }
 }
 
+const TEXT_KEY_SCAN_LIMIT = 70
+const IEND_HEADER = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44]
+const DEFAULT_SCAN_WINDOW = 256 * 1024
+
+const readUint32 = (b:Uint8Array, at:number) => b[at] * 0x1000000 + b[at+1] * 0x10000 + b[at+2] * 0x100 + b[at+3]
+
+/**
+ * Splits a tEXt body into its key and the offset where the value starts. The key ends at the first NUL found at an
+ * index below min(body length, 70) and is decoded with the default TextDecoder (a leading BOM is dropped), so a key
+ * that decodes differently from its raw bytes is read the same way by every caller. Returns null when no NUL is found.
+ * Only the first min(length, 70) bytes of the body are looked at, so a caller may pass just that prefix.
+ */
+export function readTextChunkKey(body:Uint8Array):{key:string,valueStart:number}|null{
+    const limit = Math.min(body.length, TEXT_KEY_SCAN_LIMIT)
+    for(let i=0;i<limit;i++){
+        if(body[i] === 0){
+            return {key: new TextDecoder().decode(body.subarray(0, i)), valueStart: i + 1}
+        }
+    }
+    return null
+}
+
+export type PngCardScan = {
+    /** tEXt chunks whose key starts with `chara-ext-asset_` and whose whole body is present */
+    assetCount: number
+    /** a chunk before IEND is cut short, by the per-kind rule of scanCard */
+    cut: boolean
+    iendReached: boolean
+    /** a tEXt chunk keyed `chara` or `ccv3` was seen */
+    hasCardData: boolean
+}
+
+type ByteSource = {
+    size: number
+    read: (start:number, end:number) => Promise<Uint8Array>
+}
+
+/** `read` must stay inside [0, size]. The returned view is only valid until the next `read`. */
+function byteSourceOf(data:File|Uint8Array, windowSize:number):ByteSource{
+    if(data instanceof Uint8Array){
+        return {size: data.length, read: async (start, end) => data.subarray(start, end)}
+    }
+    let windowStart = 0
+    let windowBytes = new Uint8Array(0)
+    return {
+        size: data.size,
+        read: async (start, end) => {
+            if(start < windowStart || end > windowStart + windowBytes.length){
+                const to = Math.min(data.size, start + Math.max(windowSize, end - start))
+                windowBytes = new Uint8Array(await data.slice(start, to).arrayBuffer())
+                windowStart = start
+            }
+            return windowBytes.subarray(start - windowStart, end - windowStart)
+        }
+    }
+}
+
 export const PngChunk = {
+    /**
+     * Walks the chunk headers of a PNG of known size without reading chunk bodies, except the first min(length, 70)
+     * bytes of each tEXt chunk, and reports how many asset chunks the card has and whether it is complete.
+     * A tEXt chunk is complete when its whole body is present (its CRC may be cut); any other chunk before IEND needs
+     * its CRC too. With 1 to 7 bytes left at a chunk boundary the file is complete only if they begin an IEND header.
+     * IEND ends the walk and bytes after it are ignored. The asset count is the number of asset chunks that
+     * readGenerator yields for the same input, whether or not the file is cut.
+     * A File is read through windows of `windowSize` bytes; a read that leaves the window loads a new one.
+     */
+    scanCard: async (data:File|Uint8Array, arg:{windowSize?:number} = {}):Promise<PngCardScan> => {
+        const source = byteSourceOf(data, Math.max(1, arg.windowSize ?? DEFAULT_SCAN_WINDOW))
+        const size = source.size
+        const result:PngCardScan = {assetCount: 0, cut: false, iendReached: false, hasCardData: false}
+        let pos = 8
+        while(size - pos > 0){
+            const left = size - pos
+            if(left < 8){
+                const rest = await source.read(pos, size)
+                for(let i=0;i<rest.length;i++){
+                    if(rest[i] !== IEND_HEADER[i]){
+                        result.cut = true
+                        break
+                    }
+                }
+                break
+            }
+            const header = await source.read(pos, pos + 8)
+            const len = readUint32(header, 0)
+            if(new TextDecoder().decode(header.subarray(4, 8)) === 'IEND'){
+                result.iendReached = true
+                break
+            }
+            if(header[4] === 0x74 && header[5] === 0x45 && header[6] === 0x58 && header[7] === 0x74){ //tEXt
+                if(len > left - 8){
+                    result.cut = true
+                    break
+                }
+                const found = readTextChunkKey(await source.read(pos + 8, pos + 8 + Math.min(len, TEXT_KEY_SCAN_LIMIT)))
+                if(found){
+                    if(found.key === 'chara' || found.key === 'ccv3'){
+                        result.hasCardData = true
+                    }
+                    else if(found.key.startsWith('chara-ext-asset_')){
+                        result.assetCount++
+                    }
+                }
+            }
+            else if(len > left - 12){
+                result.cut = true
+                break
+            }
+            pos += 12 + len
+        }
+        return result
+    },
+
     read: (data:Uint8Array, chunkName:string[], arg:{checkCrc?:boolean} = {}) => {
         let pos = 8
         let chunks:{[key:string]:string} = {}
@@ -236,12 +349,11 @@ export const PngChunk = {
                 const chunkData = await slice(pos+8,pos+8+len)
                 let key=''
                 let value=''
-                for(let i=0;i<70;i++){
-                    if(chunkData[i] === 0){
-                        key = new TextDecoder().decode(chunkData.slice(0,i))
-                        value = new TextDecoder().decode(chunkData.slice(i+1))
-                        break
-                    }
+                //a body that runs past the end of the input never yields a partial value
+                const found = chunkData.length < len ? null : readTextChunkKey(chunkData)
+                if(found){
+                    key = found.key
+                    value = new TextDecoder().decode(chunkData.subarray(found.valueStart))
                 }
                 yield {key,value}
             }

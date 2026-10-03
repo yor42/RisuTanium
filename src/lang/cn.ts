@@ -1732,4 +1732,5 @@ export const languageChinese = {
     "assetIntegrityDescription": "将缓存的图片/资源与其自身的内容哈希进行比对以检测损坏，无需从存储中重新下载任何内容。除非您选择移除已损坏的条目，否则此操作为只读。",
     "assetIntegrityWarnOnStartup": "启动时若快速抽样检查发现损坏则发出警告",
     "assetIntegrityVerifyButton": "立即验证资源缓存",
+    "cardFileIncomplete": "此角色卡文件不完整或已损坏，因此未导入。",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

@@ -1875,6 +1875,7 @@ export const languageEnglish = {
     assetIntegrityDescription: "Checks cached images/assets against their own content hash to detect corruption, without re-downloading anything from storage. Read-only unless you choose to remove a corrupted entry.",
     assetIntegrityWarnOnStartup: "Warn on startup if a quick sample check finds corruption",
     assetIntegrityVerifyButton: "Verify Asset Cache Now",
+    cardFileIncomplete: "This card file is incomplete or damaged, so it was not imported.",
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

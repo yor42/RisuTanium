@@ -1778,4 +1778,5 @@ export const languageChineseTraditional = {
     "assetIntegrityDescription": "將快取的圖片/資源與其自身的內容雜湊值進行比對以偵測損毀，無需從儲存空間重新下載任何內容。除非您選擇移除已損毀的項目，否則此操作為唯讀。",
     "assetIntegrityWarnOnStartup": "啟動時若快速取樣檢查發現損毀則發出警告",
     "assetIntegrityVerifyButton": "立即驗證資源快取",
+    "cardFileIncomplete": "此角色卡檔案不完整或已損毀，因此未匯入。",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

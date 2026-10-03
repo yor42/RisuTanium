@@ -527,6 +527,49 @@ describe('StreamWindow retention', () => {
     })
 })
 
+// ---------------------------------------------------------------------------------------------
+// A tEXt body that runs past the end of the input never yields a partial value, on any input kind
+// ---------------------------------------------------------------------------------------------
+
+describe('PngChunk.readGenerator cut tEXt bodies', () => {
+    const card = () => buildCard([text('chara', 'AB'), text('chara-ext-asset_:0', 'CDEFGH'), iend()])
+    const CHARA: Item = { key: 'chara', value: 'AB' }
+    const EMPTY: Item = { key: '', value: '' }
+
+    // The second tEXt body is "chara-ext-asset_:0", a NUL, then "CDEFGH": 25 bytes after an 8-byte header.
+    async function expectEmptyItemOnEveryInput(bodyOffset: number) {
+        const full = card()
+        const truncated = full.bytes.subarray(0, full.starts[1] + 8 + bodyOffset)
+        const expected: Outcome = { items: [CHARA, EMPTY], error: null }
+        expect(await run(new RealU8(truncated), {}), 'Uint8Array').toEqual(expected)
+        expect(await run(fileOf(truncated), {}), 'File').toEqual(expected)
+        expect(await run(streamOf(truncated, { kind: 'fixed', size: 5 }), {}), 'stream').toEqual(expected)
+    }
+
+    it.each([
+        ['right after the key terminator', 19],
+        ['inside the value', 22],
+        ['one byte before the end of the value', 24],
+    ])('never yields a partial value on any input kind: cut %s (regression reproducer)', async (_label, bodyOffset) => {
+        await expectEmptyItemOnEveryInput(bodyOffset)
+    })
+
+    it.each([
+        ['right after the length and type', 0],
+        ['inside the key', 5],
+    ])('yields an empty key and value on every input kind: cut %s (compatibility guard)', async (_label, bodyOffset) => {
+        await expectEmptyItemOnEveryInput(bodyOffset)
+    })
+
+    it('yields the whole value when only the CRC of the tEXt chunk is cut (compatibility guard)', async () => {
+        const full = card()
+        const truncated = full.bytes.subarray(0, full.starts[2] - 2)
+        const expected: Outcome = { items: [CHARA, { key: 'chara-ext-asset_:0', value: 'CDEFGH' }], error: null }
+        expect(await run(new RealU8(truncated), {})).toEqual(expected)
+        expect(await run(fileOf(truncated), {})).toEqual(expected)
+    })
+})
+
 describe('PngChunk.readGenerator memory', () => {
     it('keeps the bytes held by the stream window near one asset, not the file size', async () => {
         const assets = 8

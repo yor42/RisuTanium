@@ -1732,4 +1732,5 @@ export const languageGerman = {
     "assetIntegrityDescription": "Vergleicht zwischengespeicherte Bilder/Assets mit ihrem eigenen Inhalts-Hash, um Beschädigungen zu erkennen, ohne etwas erneut aus dem Speicher herunterzuladen. Der Vorgang ist schreibgeschützt, es sei denn, Sie entscheiden sich, einen beschädigten Eintrag zu entfernen.",
     "assetIntegrityWarnOnStartup": "Beim Start warnen, wenn eine schnelle Stichprobenprüfung Beschädigungen findet",
     "assetIntegrityVerifyButton": "Asset-Cache jetzt überprüfen",
+    "cardFileIncomplete": "Diese Kartendatei ist unvollständig oder beschädigt und wurde daher nicht importiert.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

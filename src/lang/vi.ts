@@ -1732,4 +1732,5 @@ export const languageVietnamese = {
     assetIntegrityDescription: "Đối chiếu hình ảnh/tài sản đã lưu trong bộ nhớ đệm với mã băm nội dung của chính chúng để phát hiện hỏng dữ liệu, mà không cần tải lại bất kỳ thứ gì từ bộ nhớ lưu trữ. Đây là thao tác chỉ đọc, trừ khi bạn chọn xóa một mục bị hỏng.",
     assetIntegrityWarnOnStartup: "Cảnh báo khi khởi động nếu kiểm tra mẫu nhanh phát hiện hỏng dữ liệu",
     assetIntegrityVerifyButton: "Xác minh Bộ nhớ đệm Tài sản Ngay",
+    cardFileIncomplete: "Tệp thẻ này không đầy đủ hoặc bị hỏng nên không được nhập.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

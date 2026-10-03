@@ -1732,4 +1732,5 @@ export const languageKorean = {
     assetIntegrityDescription: "캐시된 이미지/에셋을 자체 콘텐츠 해시와 대조해 손상 여부를 확인하며, 저장소에서 다시 다운로드하지는 않습니다. 손상된 항목을 제거하도록 선택하지 않는 한 읽기 전용입니다.",
     assetIntegrityWarnOnStartup: "시작 시 빠른 샘플 검사에서 손상이 발견되면 경고 표시",
     assetIntegrityVerifyButton: "지금 에셋 캐시 검증",
+    cardFileIncomplete: "이 카드 파일이 불완전하거나 손상되어 임포트하지 않았습니다.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

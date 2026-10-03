@@ -1732,4 +1732,5 @@ export const languageSpanish = {
     assetIntegrityDescription: "Comprueba las imágenes/activos en caché contra su propio hash de contenido para detectar corrupción, sin volver a descargar nada del almacenamiento. Es de solo lectura, salvo que elijas eliminar una entrada dañada.",
     assetIntegrityWarnOnStartup: "Advertir al iniciar si una comprobación rápida de muestra encuentra corrupción",
     assetIntegrityVerifyButton: "Verificar Caché de Activos Ahora",
+    cardFileIncomplete: "Este archivo de tarjeta está incompleto o dañado, por lo que no se importó.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;
