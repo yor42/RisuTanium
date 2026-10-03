@@ -310,6 +310,9 @@ export class RisuSaveEncoder {
     // (which holds nothing before the boot has installed a database). Undefined
     // when `init()` was given none.
     private enableRemoteSaving: boolean | undefined = undefined;
+    // Whether `encodeRawBlock` records each block it writes in the block cache.
+    // Set by `init()`; true unless that call asked for none.
+    private writeBlockCache = true;
 
     private remoteSavingDisabled(): boolean {
         return this.enableRemoteSaving === undefined
@@ -343,7 +346,17 @@ export class RisuSaveEncoder {
          * each block is encoded, as it always has. Remote blocks are still
          * only ever written on Tauri and on the Node server.
          */
-        enableRemoteSaving?: boolean
+        enableRemoteSaving?: boolean,
+        /**
+         * Whether this encoder records the blocks it writes in the block cache
+         * (`risuSaveCache`), for its whole life: used by this `init()` and by
+         * every later `set()`. Defaults to true. With false no block cache
+         * entry is written or changed. Such an encoder's `blocks` were never
+         * cached, so it must never be passed as `previous` to another
+         * encoder: a duplicated key carried from it would be skipped by the
+         * cache-write check as already cached when it is not.
+         */
+        writeBlockCache?: boolean
     } = {}){
         const {
             compression = false,
@@ -352,6 +365,7 @@ export class RisuSaveEncoder {
         } = arg;
         this.compression = compression;
         this.enableRemoteSaving = arg.enableRemoteSaving;
+        this.writeBlockCache = arg.writeBlockCache ?? true;
         this.encodedCharacterProxies = new Set();
         let obj:Record<any,any> = {}
         let keys = Object.keys(data)
@@ -800,6 +814,13 @@ export class RisuSaveEncoder {
             return buf;
         }
 
+        if (!this.writeBlockCache) {
+            // Same reasoning as the skip above: no `setItem` means no
+            // macrotask boundary, so yield instead.
+            await this.yieldBudget.maybeYield();
+            return buf;
+        }
+
         await risuSaveCacheForage.setItem(`risuSaveBlock_${arg.name}`, {
             type: arg.type,
             data: arg.data,
@@ -975,6 +996,65 @@ export function listEncodedBlocks(data: Uint8Array): EncodedBlockView[] {
     return blocks;
 }
 
+/**
+ * What a block that `salvageRisuSave` could not use held:
+ * - `character`: one character (an inline block, a remote pointer, or a block
+ *   named by the directory that is not one of the fixed block names);
+ * - `presets`, `modules`, `loadouts`, `plugins`, `pluginStorage`: the whole
+ *   kind, each of which is one block;
+ * - `ignored`: the config block, whose content the decoder discards in every
+ *   mode;
+ * - `other`: a block of a type this reader does not know, or any block no
+ *   other kind names.
+ */
+export type SalvageOmittedKind = 'character' | 'presets' | 'modules' | 'loadouts' | 'plugins' | 'pluginStorage' | 'ignored' | 'other'
+
+export interface SalvageOmittedBlock {
+    kind: SalvageOmittedKind
+    /** The failure's message, for diagnostics only. */
+    reason: string
+}
+
+function salvageKindOfType(type: RisuSaveType): SalvageOmittedKind {
+    switch (type) {
+        case RisuSaveType.CHARACTER_WITH_CHAT:
+        case RisuSaveType.CHARACTER_WITHOUT_CHAT:
+        case RisuSaveType.REMOTE:
+            return 'character'
+        case RisuSaveType.BOTPRESET:
+            return 'presets'
+        case RisuSaveType.MODULES:
+            return 'modules'
+        case RisuSaveType.LOADOUTS:
+            return 'loadouts'
+        case RisuSaveType.PLUGINS:
+            return 'plugins'
+        case RisuSaveType.PLUGIN_STORAGE:
+            return 'pluginStorage'
+        case RisuSaveType.CONFIG:
+            return 'ignored'
+        default:
+            return 'other'
+    }
+}
+
+/** The kind of a block known only by its directory name. */
+function salvageKindOfName(name: string): SalvageOmittedKind {
+    switch (name) {
+        case 'preset':
+            return 'presets'
+        case 'modules':
+        case 'loadouts':
+        case 'plugins':
+        case 'pluginStorage':
+            return name
+        case 'config':
+            return 'ignored'
+        default:
+            return 'character'
+    }
+}
+
 export class RisuSaveDecoder {
     private blocks: {
         name: string;
@@ -992,7 +1072,19 @@ export class RisuSaveDecoder {
     // of an unknown type, or that names a remote file or a directory entry
     // which cannot be read from the file itself, rejects the whole decode. No
     // block is ever answered from the block cache in this mode.
-    constructor(private hasChecksums: boolean = false, private strict: boolean = false) {}
+    // `salvage` reads like the default mode except that it never consults the
+    // block cache and records every block it cannot use in `omitted`, keyed by
+    // block name. Framing, root and version failures still throw. Set only by
+    // `salvageRisuSave`; it is exclusive with `strict`.
+    readonly omitted = new Map<string, SalvageOmittedBlock>();
+    constructor(private hasChecksums: boolean = false, private strict: boolean = false, private salvage: boolean = false) {}
+
+    private recordOmitted(name: string, kind: SalvageOmittedKind, error: unknown) {
+        if (!this.omitted.has(name)) {
+            this.omitted.set(name, { kind, reason: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
     async decode(data: Uint8Array): Promise<Database> {
         console.log('Decoding RisuSave data');
         let offset = magicRisuSaveHeaderV2.length;
@@ -1001,9 +1093,11 @@ export class RisuSaveDecoder {
         const loadedBlocks = new Set<string>();
         while (offset < data.length) {
             const blockStart = offset;
+            let framed: { name: string, type: RisuSaveType } | null = null;
             try {
                 const header = parseBlockHeader(data, blockStart, this.hasChecksums);
                 const { type, compression, name, length } = header;
+                framed = { name, type };
                 offset = header.dataStart;
 
                 if (offset + length > data.length) {
@@ -1052,6 +1146,9 @@ export class RisuSaveDecoder {
                 if (error instanceof CriticalBlockError || this.strict) {
                     throw error
                 }
+                if (this.salvage && framed) {
+                    this.recordOmitted(framed.name, salvageKindOfType(framed.type), error);
+                }
                 continue
             }
         }
@@ -1085,6 +1182,10 @@ export class RisuSaveDecoder {
                                     if(!loadedBlocks.has(dirKey)){
                                         if(this.strict){
                                             throw new Error(`Directory block "${dirKey}" is not present in the file.`);
+                                        }
+                                        if(this.salvage){
+                                            this.recordOmitted(dirKey, salvageKindOfName(dirKey), new Error(`Directory block "${dirKey}" is not present in the file.`));
+                                            continue;
                                         }
                                         try {
                                             console.log(`Loading directory block ${dirKey} from cache`);
@@ -1173,6 +1274,10 @@ export class RisuSaveDecoder {
                             if(this.strict){
                                 throw new Error(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash.`);
                             }
+                            if(this.salvage){
+                                this.recordOmitted(this.blocks[key].name, 'character', new Error(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash.`));
+                                break;
+                            }
                             console.warn(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash; skipping.`);
                             break;
                         }
@@ -1187,12 +1292,20 @@ export class RisuSaveDecoder {
                             if(this.strict){
                                 throw error;
                             }
+                            if(this.salvage){
+                                this.recordOmitted(this.blocks[key].name, 'character', error);
+                                break;
+                            }
                             console.error(`Error reading remote file ${fileName}:`, error);
                         }
 
                         if(!remoteData){
                             if(this.strict){
                                 throw new Error(`Remote file ${fileName} not found.`);
+                            }
+                            if(this.salvage){
+                                this.recordOmitted(this.blocks[key].name, 'character', new Error(`Remote file ${fileName} not found.`));
+                                break;
                             }
                             console.warn(`Remote file ${fileName} not found.`);
                             break;
@@ -1220,6 +1333,9 @@ export class RisuSaveDecoder {
                         if(this.strict){
                             throw new Error(`Not Implemented RisuSaveType: ${this.blocks[key].type} for ${this.blocks[key].name}`);
                         }
+                        if(this.salvage){
+                            this.recordOmitted(this.blocks[key].name, 'other', new Error(`Not Implemented RisuSaveType: ${this.blocks[key].type} for ${this.blocks[key].name}`));
+                        }
                         console.warn(`Not Implemented RisuSaveType: ${this.blocks[key].type} for ${this.blocks[key].name}`);
                     }
                 }
@@ -1231,6 +1347,9 @@ export class RisuSaveDecoder {
                 }
                 if(this.blocks[key].type === RisuSaveType.ROOT){
                     throw new Error('Failed to decode root block, cannot proceed with decoding RisuSave data');
+                }
+                if(this.salvage){
+                    this.recordOmitted(this.blocks[key].name, salvageKindOfType(this.blocks[key].type), error);
                 }
             }
         }
@@ -1256,6 +1375,31 @@ export class RisuSaveDecoder {
         console.log('Decoded RisuSave data', db);
         return db;
     }
+}
+
+/**
+ * Reads the intact part of a block-format save. Only the block format is
+ * salvaged: any other header (the legacy compressed, raw and stream formats
+ * included) throws, and no legacy decoder is tried. Framing damage, an unknown
+ * version byte and a root block that cannot be read also throw. Every other block that cannot
+ * be used (damaged, unparseable, of an unknown type, a remote pointer whose
+ * file is gone, a directory entry with no block) is left out of `db` and listed
+ * in `omitted` under its block name, once. The block cache is never read, so
+ * the result holds only what the file and the remote files its pointers name
+ * hold. A missing or empty preset list is replaced by the template preset, as
+ * in every mode.
+ */
+export async function salvageRisuSave(data: Uint8Array): Promise<{ db: Database, omitted: Map<string, SalvageOmittedBlock> }> {
+    if (checkHeader(data) !== 'risusave') {
+        throw new Error('Unrecognized save data format');
+    }
+    const versionByte = data[magicRisuSavePrefix.length];
+    if (versionByte !== 0 && versionByte !== 1) {
+        throw new Error(`Unrecognized RisuSave format version byte: ${versionByte}`);
+    }
+    const decoder = new RisuSaveDecoder(versionByte === 1, false, true);
+    const db = await decoder.decode(data);
+    return { db, omitted: decoder.omitted };
 }
 
 export async function decodeRisuSave(data:Uint8Array, options?: { strict?: boolean }){

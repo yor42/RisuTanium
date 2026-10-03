@@ -24,10 +24,15 @@
  *
  * Tests titled `guard:` pin behaviour that must be preserved and pass before
  * and after the change; every other test is a regression test for the
- * behaviour it names.
+ * behaviour it names. The partial-load and pre-load-copy tests at the end
+ * exercise behaviour that did not exist before. The reproducers fail on an
+ * assertion in the old build, where it refused or wrote no copy. The tests of
+ * the tamper seam are new-behaviour tests: they fail in the old build because
+ * the seam does not exist.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../storage/database.svelte'
+import type { toSaveType } from '../../storage/risuSave'
 import { NodeStorageConflictError } from '../../storage/nodeStorage'
 import { StoreVersionConflictError } from '../../storage/store/errors'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from '../../storage/tests/fakeWebLocks'
@@ -35,6 +40,7 @@ import { createForageBackedStore, type ForageLike } from '../../storage/tests/fo
 import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
 import { createNodeHttpStore } from '../../storage/store/nodeHttpStore'
 import { FakeNodeServer } from '../../storage/tests/manualCleanupHarness'
+import { breakDataChecksum, directoryOf, removeBlockAndDirectoryEntry, replacePayload, retypeBlock } from '../../storage/tests/risuSaveBlockFile'
 
 //#region shared observation state (hoisted so every mock factory and test sees the same objects)
 
@@ -59,6 +65,14 @@ const alertBox = vi.hoisted(() => ({
     onSelect: undefined as undefined | (() => Promise<void> | void),
     confirmAnswer: true,
     confirmCalls: [] as string[],
+    /** Runs while a confirm is on screen, before it is answered. */
+    onConfirm: undefined as undefined | (() => void),
+}))
+
+/** The localforage instances, by name: the block cache (risuSaveCache) is one of them. */
+const forageBox = vi.hoisted(() => ({
+    stores: new Map<string, Map<string, unknown>>(),
+    setLog: [] as Array<{ store: string, key: string }>,
 }))
 
 const storage = vi.hoisted(() => ({
@@ -81,6 +95,8 @@ const tauriFs = vi.hoisted(() => ({
     /** How many writes `failPayload` made reject. */
     faultsFired: 0,
     readDirError: undefined as Error | undefined,
+    /** Reads of a path for which this returns an error reject with it. */
+    failRead: undefined as undefined | ((path: string) => Error | undefined),
 }))
 
 const platformBox = vi.hoisted(() => ({ isTauri: false, isNodeServer: false }))
@@ -99,11 +115,25 @@ const order = vi.hoisted(() => [] as string[])
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => { }),
-            removeItem: vi.fn(async () => { }),
-        }),
+        createInstance: (options?: { name?: string }) => {
+            const name = options?.name ?? ''
+            const items = (): Map<string, unknown> => {
+                let found = forageBox.stores.get(name)
+                if (!found) {
+                    found = new Map<string, unknown>()
+                    forageBox.stores.set(name, found)
+                }
+                return found
+            }
+            return {
+                getItem: vi.fn(async (key: string) => items().get(key) ?? null),
+                setItem: vi.fn(async (key: string, value: unknown) => {
+                    forageBox.setLog.push({ store: name, key })
+                    items().set(key, value)
+                }),
+                removeItem: vi.fn(async (key: string) => { items().delete(key) }),
+            }
+        },
     },
 }))
 
@@ -184,6 +214,7 @@ vi.mock(import('../../alert'), async () => {
         },
         alertConfirm: async (msg: string) => {
             alertBox.confirmCalls.push(msg)
+            alertBox.onConfirm?.()
             return alertBox.confirmAnswer
         },
         alertToast: vi.fn(),
@@ -281,6 +312,10 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     readFile: async (givenPath: string) => {
         const path = givenPath.replace(/^\.\//, '')
         tauriFs.readLog.push(path)
+        const failure = tauriFs.failRead?.(path)
+        if (failure) {
+            throw failure
+        }
         const found = tauriFs.files.get(path)
         if (!found) {
             throw new Error(`scratch: no such file ${path} (os error 2)`)
@@ -445,6 +480,7 @@ interface BootOptions {
 interface World {
     platform: Platform
     api: typeof import('../../globalApi.svelte')
+    internal: typeof import('../internalBackup')
     load: () => Promise<void>
     risuSave: typeof import('../../storage/risuSave')
     mainFileRecord: typeof import('../../storage/mainFileRecord')
@@ -489,7 +525,7 @@ async function boot(options: BootOptions = {}): Promise<World> {
     } as unknown as Database
     stores.DBState.db = liveDb
     const liveBefore = stores.DBState.db
-    return { platform, api, load: internal.loadInternalBackup, risuSave, mainFileRecord, startupCleanup, stores, core, liveDb, liveBefore }
+    return { platform, api, internal, load: internal.loadInternalBackup, risuSave, mainFileRecord, startupCleanup, stores, core, liveDb, liveBefore }
 }
 
 //#endregion
@@ -611,6 +647,7 @@ function clearObservations(): void {
     tauriFs.readLog.length = 0
     tauriFs.renameLog.length = 0
     relaunchBox.calls = 0
+    forageBox.setLog.length = 0
     setDatabaseMock.mockClear()
     reloadSpy.mockClear()
     replaceStateSpy.mockClear()
@@ -789,6 +826,9 @@ beforeEach(() => {
     alertBox.onSelect = undefined
     alertBox.confirmAnswer = true
     alertBox.confirmCalls.length = 0
+    alertBox.onConfirm = undefined
+    forageBox.stores.clear()
+    forageBox.setLog.length = 0
     storage.items.clear()
     storage.setLog.length = 0
     storage.getLog.length = 0
@@ -803,6 +843,7 @@ beforeEach(() => {
     tauriFs.failPayload = undefined
     tauriFs.faultsFired = 0
     tauriFs.readDirError = undefined
+    tauriFs.failRead = undefined
     guardBox.appInitiatedReload = false
     workBox.busy = false
     lockHooks.onExclusiveRequest = undefined
@@ -1072,30 +1113,30 @@ describe('the snapshot fixtures decode under the strict decoder as the tests ass
     })
 })
 
-describe('loadInternalBackup refuses a snapshot that cannot be read completely', () => {
-    test('a remote block that is not stored (Node server): shows the unreadable message, writes nothing, and releases every lock', async () => {
+describe('loadInternalBackup handles a snapshot that cannot be read completely', () => {
+    test('a remote block that is not stored (Node server): asks to confirm the left-out character, then writes a rebuilt main file', async () => {
         const { world } = await worldWithMissingRemoteBlock('node')
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expectOneError(msg('internalBackupUnreadable'))
-        expectNothingChanged(world)
-        await expectLocksReleased(world)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expectNoError()
     })
 
-    test('a remote block file that is absent (Tauri): shows the unreadable message, writes nothing, and releases the write lock', async () => {
+    test('a remote block file that is absent (Tauri): asks to confirm the left-out character, then writes a rebuilt main file', async () => {
         const { world } = await worldWithMissingRemoteBlock('tauri')
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expectOneError(msg('internalBackupUnreadable'))
-        expectNothingChanged(world)
-        await expectLocksReleased(world)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expectNoError()
     })
 
-    test('a block with a damaged checksum: shows the unreadable message and writes nothing', async () => {
+    test('a damaged config block, whose content is never read: rebuilds the main file without a confirm', async () => {
         const world = await boot()
         putMain(world)
         const good = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
@@ -1107,9 +1148,9 @@ describe('loadInternalBackup refuses a snapshot that cannot be read completely',
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expectOneError(msg('internalBackupUnreadable'))
-        expectNothingChanged(world)
-        await expectLocksReleased(world)
+        expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([])
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expectNoError()
     })
 
     test.each([
@@ -1237,8 +1278,8 @@ describe('loadInternalBackup reports a failed write or reload', () => {
     })
 
     test('the Tauri main-file write rejects part-way: shows the write-failed message, leaves the main file as it was, and releases the write lock', async () => {
-        const { world } = await worldWithSnapshot({ platform: 'tauri' })
-        tauriFs.failPayload = () => true
+        const { world, bytes } = await worldWithSnapshot({ platform: 'tauri' })
+        tauriFs.failPayload = (data) => data.length === bytes.length && data.every((value, index) => value === bytes[index])
 
         const outcome = await runLoad(world)
 
@@ -1285,7 +1326,7 @@ describe('loadInternalBackup on Tauri', () => {
 
         expectNoRejection(outcome)
         expect.soft(tauriFs.writeLog.filter((entry) => entry.path === MAIN), 'writes that name the main path').toEqual([])
-        expect.soft(tauriFs.renameLog.map((entry) => entry.to), 'rename targets').toEqual([MAIN])
+        expect.soft(tauriFs.renameLog.map((entry) => entry.to).filter((to) => to === MAIN), 'rename targets of the main path').toEqual([MAIN])
         expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
         expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
         expect.soft(strayDatabaseFiles(), 'files left in database/').toEqual([])
@@ -1538,7 +1579,7 @@ describe('loadInternalBackup is refused while work is in progress', () => {
         await expectLocksReleased(world)
     })
 
-    test('guard: work starting while the snapshot is read is refused with nothing written and every lock released', async () => {
+    test('guard: work starting while the snapshot is read is refused with the main file unchanged and every lock released', async () => {
         const { world, key } = await worldWithSnapshot()
         storage.onGet = (read) => { if (read === key) { workBox.busy = true } }
 
@@ -1550,7 +1591,7 @@ describe('loadInternalBackup is refused while work is in progress', () => {
         await expectLocksReleased(world)
     })
 
-    test('guard: work starting while the snapshot is decoded is refused with nothing written and every lock released', async () => {
+    test('guard: work starting while the snapshot is decoded is refused with the main file unchanged and every lock released', async () => {
         const world = await boot({ platform: 'node' })
         putMain(world)
         const bytes = await encodeSnapshot(world, [fixtureCharacter('char-R', 'Remote character')])
@@ -1570,7 +1611,7 @@ describe('loadInternalBackup is refused while work is in progress', () => {
         await expectLocksReleased(world)
     })
 
-    test('work starting while the exclusive hold is being taken is refused with nothing written and every lock released', async () => {
+    test('work starting while the exclusive hold is being taken is refused with the main file unchanged and every lock released', async () => {
         const { world } = await worldWithSnapshot()
         lockHooks.onExclusiveRequest = () => { workBox.busy = true }
 
@@ -1580,5 +1621,777 @@ describe('loadInternalBackup is refused while work is in progress', () => {
         expectOneError(msg('backupLoadWorkInProgress'))
         expectNothingChanged(world)
         await expectLocksReleased(world)
+    })
+})
+
+//#region partial load fixtures
+
+interface BuiltSnapshot {
+    bytes: Uint8Array
+    ids: string[]
+    characters: Database['characters']
+}
+
+/** Root setting and kind content that every snapshot built below holds, so a rebuilt file can be compared with it. */
+const SNAPSHOT_CONTENT = {
+    someSetting: 'a root setting that must survive',
+    botPresets: [{ name: 'Snapshot preset' }],
+    modules: [{ id: 'module-1', name: 'Snapshot module' }],
+    loadouts: [{ id: 'loadout-1' }],
+    plugins: [{ name: 'Snapshot plugin' }],
+    pluginCustomStorage: { stored: 1 },
+}
+
+const CURRENT_NAME_OF_A = 'Current name of A'
+
+function emptyToSave(): toSaveType {
+    return { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
+}
+
+/**
+ * A snapshot written the way a save writes it: the first pass and then the pass
+ * that writes the root block's directory. On Node and Tauri the characters are
+ * remote blocks.
+ */
+async function buildSnapshot(world: World, options: { count?: number, extra?: Record<string, unknown> } = {}): Promise<BuiltSnapshot> {
+    const ids = ['char-A', 'char-B', 'char-C', 'char-D'].slice(0, options.count ?? 3)
+    const characters = ids.map((id) => fixtureCharacter(id, `${id} from snapshot`))
+    const remote = world.platform !== 'web'
+    const db = snapshotDb(characters, { ...SNAPSHOT_CONTENT, enableRemoteSaving: remote, ...options.extra })
+    const encoder = new world.risuSave.RisuSaveEncoder()
+    await encoder.init(db, { compression: false, skipRemoteSavingOnCharacters: false, enableRemoteSaving: remote })
+    await encoder.set(db, emptyToSave())
+    return { bytes: new Uint8Array(encoder.encode()!), ids, characters }
+}
+
+interface DamagedWorld {
+    world: World
+    built: BuiltSnapshot
+    key: string
+    /** The bytes stored as the snapshot. */
+    stored: Uint8Array
+}
+
+/**
+ * A world holding the live main file and one snapshot that `damage` has
+ * damaged: it returns replacement snapshot bytes, or nothing when it changed
+ * stored remote files instead. The page's current data knows `char-A` under
+ * another name than the snapshot does.
+ */
+async function worldWithDamagedSnapshot(options: {
+    platform?: Platform
+    count?: number
+    extra?: Record<string, unknown>
+    damage: (context: { world: World, built: BuiltSnapshot }) => Uint8Array | void
+}): Promise<DamagedWorld> {
+    const world = await boot({ platform: options.platform })
+    putMain(world)
+    const built = await buildSnapshot(world, { count: options.count, extra: options.extra })
+    const damaged = options.damage({ world, built })
+    const stored = damaged instanceof Uint8Array ? damaged : built.bytes
+    const key = putSnapshot(world, stored)
+    world.stores.DBState.db.characters.push(fixtureCharacter('char-A', CURRENT_NAME_OF_A))
+    clearObservations()
+    return { world, built, key, stored }
+}
+
+function storedBytes(world: World, key: string): Uint8Array | undefined {
+    return world.platform === 'tauri' ? tauriFs.files.get(key) : storage.items.get(key)
+}
+
+function putStored(world: World, key: string, bytes: Uint8Array): void {
+    if (world.platform === 'tauri') {
+        tauriFs.files.set(key, bytes)
+    } else {
+        storage.items.set(key, bytes)
+    }
+}
+
+function deleteStored(world: World, key: string): void {
+    removeSnapshot(world, key)
+}
+
+function remoteKeyOf(world: World, id: string): string {
+    const found = remoteKeys(world).find((key) => key.startsWith(`remotes/${id}.`))
+    if (found === undefined) {
+        throw new Error(`no remote file is stored for ${id}`)
+    }
+    return found
+}
+
+/** Every stored file, as sorted key and content pairs, for a before-and-after comparison. */
+function storeContents(world: World): Array<[string, string]> {
+    const source = world.platform === 'tauri' ? tauriFs.files : storage.items
+    return Array.from(source.entries())
+        .map(([key, bytes]): [string, string] => [key, Buffer.from(bytes).toString('base64')])
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+}
+
+function blockCache(): Map<string, unknown> {
+    return forageBox.stores.get('risuSaveCache') ?? new Map<string, unknown>()
+}
+
+function blockCacheContents(): Array<[string, unknown]> {
+    return Array.from(blockCache().entries()).map(([key, value]): [string, unknown] => [key, structuredClone(value)])
+}
+
+function blockCacheWrites(): number {
+    return forageBox.setLog.filter((entry) => entry.store === 'risuSaveCache').length
+}
+
+/** The numbered backups other than the snapshot the test chose. */
+function copyKeys(world: World, snapshot: string): string[] {
+    const source = world.platform === 'tauri' ? tauriFs.files : storage.items
+    return Array.from(source.keys()).filter((key) => key.startsWith('database/dbbackup-') && key !== snapshot).sort()
+}
+
+/** The keys written to the byte store, in write order. */
+function writtenKeysInOrder(world: World): string[] {
+    return world.platform === 'tauri' ? tauriFs.renameLog.map((entry) => entry.to) : storage.setLog.map((entry) => entry.key)
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+async function decodeMainStrictly(world: World): Promise<Database> {
+    const bytes = mainBytes(world)
+    expect(bytes, 'the main file is stored').toBeDefined()
+    const decoded = await world.risuSave.decodeRisuSave(bytes!, { strict: true })
+    return decoded as Database
+}
+
+function characterIdsOf(db: Database): string[] {
+    return (db.characters ?? []).map((character) => String(character.chaId))
+}
+
+function confirmText(): string {
+    return alertBox.confirmCalls[0] ?? ''
+}
+
+function occurrences(text: string, part: string): number {
+    return text.split(part).length - 1
+}
+
+/** The page was told to reload or relaunch once, no error was shown, and no database was installed into the page. */
+function expectLoaded(world: World): void {
+    if (world.platform === 'tauri') {
+        expect.soft(relaunchBox.calls, 'relaunch calls').toBe(1)
+    } else {
+        expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
+    }
+    expectNoError()
+    expect.soft(setDatabaseMock, 'setDatabase calls').not.toHaveBeenCalled()
+    expect.soft(world.stores.DBState.db === world.liveBefore, 'DBState.db is the same object').toBe(true)
+}
+
+/** Nothing the load touched changed: every stored file, the block cache and the page. */
+function expectStorageUntouched(world: World, before: Array<[string, string]>, cacheBefore: Array<[string, unknown]>): void {
+    expect.soft(storeContents(world), 'every stored file').toEqual(before)
+    expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
+    expect.soft(blockCacheWrites(), 'block cache writes').toBe(0)
+    expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
+    expect.soft(relaunchBox.calls, 'relaunch calls').toBe(0)
+    expect.soft(setDatabaseMock, 'setDatabase calls').not.toHaveBeenCalled()
+}
+
+//#endregion
+
+describe('loadInternalBackup loads the intact part of a snapshot with one damaged character', () => {
+    const damagedCharacterPlans: Array<[string, Platform, (context: { world: World, built: BuiltSnapshot }) => Uint8Array | void]> = [
+        ['web, a character block fails its data checksum', 'web', ({ built }) => breakDataChecksum(built.bytes, built.ids[0])],
+        ['Node, a character\'s remote file does not parse as JSON', 'node', ({ world, built }) => { putStored(world, remoteKeyOf(world, built.ids[0]), new TextEncoder().encode('{"chaId": not json')) }],
+        ['Tauri, a character\'s remote file does not parse as JSON', 'tauri', ({ world, built }) => { putStored(world, remoteKeyOf(world, built.ids[0]), new TextEncoder().encode('{"chaId": not json')) }],
+    ]
+
+    test.each(damagedCharacterPlans)('%s: the confirm names the character from the current data, and Load writes a main file that decodes strictly to everything else', async (_title, platform, damage) => {
+        const { world, built, stored } = await worldWithDamagedSnapshot({ platform, damage })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(confirmText(), 'the confirm names the left-out character by its current name').toContain(CURRENT_NAME_OF_A)
+        expect.soft(occurrences(confirmText(), CURRENT_NAME_OF_A), 'times the character is named').toBe(1)
+        for (const id of built.ids.slice(1)) {
+            expect.soft(confirmText(), `the confirm leaves out the intact ${id}`).not.toContain(id)
+        }
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(mainBytes(world), 'the main file is a rebuilt file, not the damaged snapshot').not.toEqual(stored)
+        const decoded = await decodeMainStrictly(world)
+        expect.soft(characterIdsOf(decoded), 'characters in the rebuilt file, in snapshot order').toEqual(built.ids.slice(1))
+        expect.soft(decoded.characters, 'the intact characters, unchanged').toEqual(built.characters.slice(1))
+        expect.soft((decoded as unknown as { someSetting: string }).someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
+        expect.soft(decoded.botPresets, 'presets').toEqual(SNAPSHOT_CONTENT.botPresets)
+        expect.soft(decoded.modules, 'modules').toEqual(SNAPSHOT_CONTENT.modules)
+        expect.soft(decoded.loadouts, 'loadouts').toEqual(SNAPSHOT_CONTENT.loadouts)
+        expect.soft(decoded.plugins, 'plugins').toEqual(SNAPSHOT_CONTENT.plugins)
+        expect.soft(decoded.pluginCustomStorage, 'plugin storage').toEqual(SNAPSHOT_CONTENT.pluginCustomStorage)
+        expectLoaded(world)
+    })
+
+    test('a character block of an unknown type is counted as an unreadable part, not named, and the rest loads', async () => {
+        const { world, built } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => retypeBlock(snapshot.bytes, snapshot.ids[0], 99) })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(confirmText(), 'the confirm counts the unreadable part').toContain(msg('internalBackupLeftOutUnreadable'))
+        expect.soft(characterIdsOf(await decodeMainStrictly(world)), 'characters in the rebuilt file').toEqual(built.ids.slice(1))
+        expectLoaded(world)
+    })
+
+    // New-behaviour test: a snapshot written by init alone has no block directory, so only the scan of the file's own blocks can list the damaged one.
+    test('a snapshot with no block directory and a character block that fails its data checksum lists that character and loads the rest', async () => {
+        const world = await boot({})
+        putMain(world)
+        const ids = ['char-A', 'char-B', 'char-C']
+        const characters = ids.map((id) => fixtureCharacter(id, `${id} from snapshot`))
+        const encoder = new world.risuSave.RisuSaveEncoder()
+        await encoder.init(snapshotDb(characters, { ...SNAPSHOT_CONTENT }), { compression: false, skipRemoteSavingOnCharacters: false })
+        const bytes = new Uint8Array(encoder.encode()!)
+        expect(directoryOf(bytes), 'the snapshot has no block directory').toEqual([])
+        putSnapshot(world, breakDataChecksum(bytes, ids[0]))
+        world.stores.DBState.db.characters.push(fixtureCharacter('char-A', CURRENT_NAME_OF_A))
+        clearObservations()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(confirmText(), 'the confirm names the left-out character').toContain(CURRENT_NAME_OF_A)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(characterIdsOf(await decodeMainStrictly(world)), 'characters in the rebuilt file').toEqual(ids.slice(1))
+        expectLoaded(world)
+    })
+})
+
+describe('loadInternalBackup loads a snapshot whose remote character files are missing', () => {
+    test.each(['node', 'tauri'] as const)('%s: a missing remote file is listed by its id when the current data lacks it, and the remote characters stay remote', async (platform) => {
+        const { world, built } = await worldWithDamagedSnapshot({
+            platform,
+            damage: ({ world: seeded, built: snapshot }) => { deleteStored(seeded, remoteKeyOf(seeded, snapshot.ids[1])) },
+        })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(confirmText(), 'the confirm lists the character by id').toContain('char-B')
+        expect.soft(confirmText(), 'the confirm leaves out the intact character A').not.toContain(CURRENT_NAME_OF_A)
+        expect.soft(confirmText(), 'the confirm leaves out the intact character C').not.toContain('char-C')
+        const decoded = await decodeMainStrictly(world)
+        expect.soft(characterIdsOf(decoded), 'characters in the rebuilt file').toEqual(['char-A', 'char-C'])
+        expect.soft(decoded.characters, 'the intact characters, unchanged').toEqual([built.characters[0], built.characters[2]])
+        const blocks = world.risuSave.listEncodedBlocks(mainBytes(world)!)
+        const remotePointers = blocks.filter((block) => block.type === world.risuSave.RisuSaveType.REMOTE).map((block) => block.name)
+        expect.soft(remotePointers.sort(), 'characters kept as remote blocks').toEqual(['char-A', 'char-C'])
+        expectLoaded(world)
+    })
+
+    test.each(['node', 'tauri'] as const)('%s: every remote file missing lists every character and loads a file with the settings and kinds and no characters', async (platform) => {
+        const { world, built } = await worldWithDamagedSnapshot({
+            platform,
+            damage: ({ world: seeded }) => { for (const key of remoteKeys(seeded)) { deleteStored(seeded, key) } },
+        })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(confirmText(), 'the confirm names character A by its current name').toContain(CURRENT_NAME_OF_A)
+        for (const id of built.ids.slice(1)) {
+            expect.soft(confirmText(), `the confirm lists ${id}`).toContain(id)
+        }
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        const decoded = await decodeMainStrictly(world)
+        expect.soft(decoded.characters ?? [], 'characters in the rebuilt file').toEqual([])
+        expect.soft((decoded as unknown as { someSetting: string }).someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
+        expect.soft(decoded.botPresets, 'presets').toEqual(SNAPSHOT_CONTENT.botPresets)
+        expect.soft(decoded.modules, 'modules').toEqual(SNAPSHOT_CONTENT.modules)
+        expect.soft(decoded.pluginCustomStorage, 'plugin storage').toEqual(SNAPSHOT_CONTENT.pluginCustomStorage)
+        expectLoaded(world)
+    })
+})
+
+describe('loadInternalBackup loads a snapshot with a damaged kind of data', () => {
+    /** The damaged block, the line the confirm shows for it, the database field it fills, and what the rebuilt file holds for that field. */
+    const kindPlans: Array<[string, string, string, string, unknown]> = [
+        ['modules', 'modules', 'internalBackupLeftOutModules', 'modules', []],
+        ['loadouts', 'loadouts', 'internalBackupLeftOutLoadouts', 'loadouts', []],
+        ['plugins', 'plugins', 'internalBackupLeftOutPlugins', 'plugins', []],
+        ['plugin storage', 'pluginStorage', 'internalBackupLeftOutPluginData', 'pluginCustomStorage', undefined],
+        ['presets', 'preset', 'internalBackupLeftOutPresets', 'botPresets', [{ name: 'test-preset' }]],
+    ]
+
+    test.each(kindPlans)('damaged %s: the whole kind is listed and left out, and every character and every other kind loads', async (_title, blockName, languageKey, field, rebuiltValue) => {
+        const { world, built } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, blockName) })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(confirmText(), 'the confirm lists the kind').toContain(msg(languageKey))
+        const decoded = await decodeMainStrictly(world) as unknown as Record<string, unknown>
+        expect.soft(decoded.characters, 'every character').toEqual(built.characters)
+        for (const [name, value] of Object.entries({ ...SNAPSHOT_CONTENT, someSetting: undefined })) {
+            if (name !== field && value !== undefined) {
+                expect.soft(decoded[name], `the intact ${name}`).toEqual(value)
+            }
+        }
+        if (rebuiltValue === undefined) {
+            expect.soft(field in decoded, `the left-out ${field} is absent`).toBe(false)
+        } else {
+            expect.soft(decoded[field], `the left-out ${field}`).toEqual(rebuiltValue)
+        }
+        expect.soft(decoded.someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
+        expectLoaded(world)
+    })
+
+    test('a damaged presets block is replaced by the default preset in the rebuilt file', async () => {
+        const { world } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, 'preset') })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(confirmText(), 'the confirm says the default preset is used').toContain(msg('internalBackupLeftOutPresets'))
+        expect.soft((await decodeMainStrictly(world)).botPresets, 'presets in the rebuilt file').toEqual([{ name: 'test-preset' }])
+    })
+
+    test('a damaged character and a damaged kind are each listed once', async () => {
+        const { world } = await worldWithDamagedSnapshot({
+            damage: ({ built }) => breakDataChecksum(breakDataChecksum(built.bytes, built.ids[0]), 'modules'),
+        })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(occurrences(confirmText(), CURRENT_NAME_OF_A), 'times the character is listed').toBe(1)
+        expect.soft(occurrences(confirmText(), msg('internalBackupLeftOutModules')), 'times modules are listed').toBe(1)
+        expect.soft(confirmText(), 'plugins are not listed').not.toContain(msg('internalBackupLeftOutPlugins'))
+    })
+
+    test('a snapshot that holds no characters and whose only damage is the config block is rebuilt without a confirm', async () => {
+        const { world, stored } = await worldWithDamagedSnapshot({
+            count: 0,
+            damage: ({ built }) => breakDataChecksum(built.bytes, 'config'),
+        })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([])
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(mainBytes(world), 'the main file is a rebuilt file, not the damaged snapshot').not.toEqual(stored)
+        const decoded = await decodeMainStrictly(world)
+        expect.soft(decoded.characters ?? [], 'characters').toEqual([])
+        expect.soft((decoded as unknown as { someSetting: string }).someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
+        expect.soft(decoded.modules, 'modules').toEqual(SNAPSHOT_CONTENT.modules)
+        expectLoaded(world)
+    })
+})
+
+describe('loadInternalBackup takes nothing from the block cache for a partial load', () => {
+    test('a newer cached copy of the damaged character is neither loaded nor written to the cache', async () => {
+        const { world, built } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, snapshot.ids[0]) })
+        const newer = {
+            type: world.risuSave.RisuSaveType.CHARACTER_WITH_CHAT,
+            name: built.ids[0],
+            data: JSON.stringify({ ...built.characters[0], name: 'Newer copy from the block cache' }),
+        }
+        forageBox.stores.get('risuSaveCache')?.set(`risuSaveBlock_${built.ids[0]}`, newer)
+        const cacheBefore = blockCacheContents()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(characterIdsOf(await decodeMainStrictly(world)), 'characters in the rebuilt file').toEqual(built.ids.slice(1))
+        expect.soft(Buffer.from(mainBytes(world)!).toString('utf-8'), 'the rebuilt file holds nothing of the cached copy').not.toContain('Newer copy from the block cache')
+        expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
+    })
+
+    test('writes no block cache entry and changes none after a partial load', async () => {
+        const { world, built } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, snapshot.ids[0]) })
+        const cache = forageBox.stores.get('risuSaveCache')!
+        cache.set(`risuSaveBlock_${built.ids[1]}`, { type: 2, name: built.ids[1], data: 'STALE' })
+        cache.set('risuSaveBlock_modules', { type: 5, name: 'modules', data: 'STALE' })
+        const cacheBefore = blockCacheContents()
+        expect(cacheBefore.length, 'seeding populated the block cache').toBeGreaterThan(2)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(blockCacheWrites(), 'block cache writes').toBe(0)
+        expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
+    })
+
+    test('writes no block cache entry and changes none when the load stops after the encode', async () => {
+        const { world, built, key } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, snapshot.ids[0]) })
+        const cache = forageBox.stores.get('risuSaveCache')!
+        cache.set(`risuSaveBlock_${built.ids[1]}`, { type: 2, name: built.ids[1], data: 'STALE' })
+        const cacheBefore = blockCacheContents()
+        // The copy is written after the encode; work starting while it is written ends the load there.
+        storage.failSet = (written) => {
+            if (written.startsWith('database/dbbackup-') && written !== key) {
+                workBox.busy = true
+            }
+            return undefined
+        }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('backupLoadWorkInProgress'))
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(0)
+        expect.soft(blockCacheWrites(), 'block cache writes').toBe(0)
+        expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
+    })
+})
+
+describe('loadInternalBackup keeps the current main file before every load', () => {
+    test.each(['web', 'node', 'tauri'] as const)('%s: a full load writes the old main bytes under a new deciseconds backup key before it writes the snapshot, and the snapshot is written verbatim', async (platform) => {
+        const { world, bytes, key } = await worldWithSnapshot({ platform })
+        const startedAt = Date.now()
+
+        const outcome = await runLoad(world)
+
+        const finishedAt = Date.now()
+        expectNoRejection(outcome)
+        const copies = copyKeys(world, key)
+        expect.soft(copies.length, 'backups other than the chosen snapshot').toBe(1)
+        const match = /^database\/dbbackup-(\d+)\.bin$/.exec(copies[0] ?? '')
+        expect.soft(match, 'the copy is a numbered backup key').not.toBeNull()
+        const deciseconds = Number(match?.[1])
+        expect.soft(deciseconds, 'the key counts deciseconds').toBeGreaterThanOrEqual(Math.floor(startedAt / 100) - 1)
+        expect.soft(deciseconds, 'the key counts deciseconds').toBeLessThanOrEqual(Math.ceil(finishedAt / 100) + 1)
+        expect.soft(storedBytes(world, copies[0]), 'the copy holds the old main file').toEqual(LIVE_MAIN_BYTES)
+        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        const written = writtenKeysInOrder(world)
+        expect.soft(written.indexOf(copies[0]), 'the copy is written').toBeGreaterThanOrEqual(0)
+        expect.soft(written.indexOf(copies[0]), 'the copy is written before the main file').toBeLessThan(written.indexOf(MAIN))
+        expect.soft(storedBytes(world, key), 'the chosen snapshot').toEqual(bytes)
+        expect.soft(finalAlert(), 'the alert state when the call settled').toMatchObject({ type: 'wait', msg: msg('internalBackupLoaded') })
+        expectLoaded(world)
+    })
+
+    test('a partial load keeps the current main file as a backup before it writes the rebuilt file', async () => {
+        const { world, key } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, built.ids[0]) })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        const copies = copyKeys(world, key)
+        expect.soft(copies.length, 'backups other than the chosen snapshot').toBe(1)
+        expect.soft(storedBytes(world, copies[0]), 'the copy holds the old main file').toEqual(LIVE_MAIN_BYTES)
+        const written = writtenKeysInOrder(world)
+        expect.soft(written.indexOf(copies[0]), 'the copy is written before the main file').toBeLessThan(written.indexOf(MAIN))
+        expectLoaded(world)
+    })
+
+    test('the copy takes a key that no existing backup uses', async () => {
+        const { world, bytes, key } = await worldWithSnapshot()
+        // The snapshot sits at the key the clock below would give the copy.
+        vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+        expect(key, 'the snapshot holds the key the clock gives').toBe('database/dbbackup-17000000000.bin')
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(storedBytes(world, key), 'the chosen snapshot is untouched').toEqual(bytes)
+        expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual(['database/dbbackup-17000000001.bin'])
+        expect.soft(storedBytes(world, 'database/dbbackup-17000000001.bin'), 'the copy holds the old main file').toEqual(LIVE_MAIN_BYTES)
+    })
+
+    test.each(['web', 'tauri'] as const)('guard: %s: a fresh profile with no main file loads the snapshot, writes no copy and shows no error', async (platform) => {
+        const world = await boot({ platform })
+        const bytes = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
+        const key = putSnapshot(world, bytes)
+        clearObservations()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual([])
+        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expectLoaded(world)
+    })
+})
+
+describe('loadInternalBackup asks before it loads a partial snapshot', () => {
+    test('Cancel at the confirm leaves every stored file, the block cache and the page as they were', async () => {
+        const { world } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, built.ids[0]) })
+        alertBox.confirmAnswer = false
+        const filesBefore = storeContents(world)
+        const cacheBefore = blockCacheContents()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expect.soft(confirmText(), 'the confirm lists the left-out character').toContain(CURRENT_NAME_OF_A)
+        expect.soft(mainBytes(world), 'the main file').toEqual(LIVE_MAIN_BYTES)
+        expectStorageUntouched(world, filesBefore, cacheBefore)
+        expectNoError()
+        expect.soft(world.stores.DBState.db === world.liveBefore, 'DBState.db is the same object').toBe(true)
+        await expectLocksReleased(world)
+    })
+
+    test.each(['node', 'tauri'] as const)('%s: Cancel at the confirm leaves the remote files and the main file as they were', async (platform) => {
+        const { world } = await worldWithDamagedSnapshot({
+            platform,
+            damage: ({ world: seeded, built }) => { deleteStored(seeded, remoteKeyOf(seeded, built.ids[0])) },
+        })
+        alertBox.confirmAnswer = false
+        const filesBefore = storeContents(world)
+        const cacheBefore = blockCacheContents()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expectStorageUntouched(world, filesBefore, cacheBefore)
+        expectNoError()
+        await expectLocksReleased(world)
+    })
+
+    test('guard: a snapshot that decodes strictly is loaded without a confirm', async () => {
+        const { world } = await worldWithSnapshot()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([])
+    })
+})
+
+describe('loadInternalBackup refuses damage it cannot rebuild around', () => {
+    const unreadablePlans: Array<[string, (built: BuiltSnapshot) => Uint8Array]> = [
+        ['a root block whose content does not parse as JSON', (built) => replacePayload(built.bytes, 'root', new TextEncoder().encode('{"formatversion": not json'))],
+        ['a root block that fails its data checksum', (built) => breakDataChecksum(built.bytes, 'root')],
+        ['a block header that fails its checksum', (built) => {
+            const damaged = new Uint8Array(built.bytes)
+            damaged[9 + 3] ^= 0xff
+            return damaged
+        }],
+        ['a file cut short inside a block', (built) => built.bytes.slice(0, built.bytes.length - 8)],
+        ['a format version byte this version does not know', (built) => {
+            const damaged = new Uint8Array(built.bytes)
+            damaged[8] = 7
+            return damaged
+        }],
+    ]
+
+    test.each(unreadablePlans)('guard: %s: shows the unreadable message, asks nothing, and writes nothing, not even a backup copy', async (_title, damage) => {
+        const { world } = await worldWithDamagedSnapshot({ damage: ({ built }) => damage(built) })
+        const filesBefore = storeContents(world)
+        const cacheBefore = blockCacheContents()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('internalBackupUnreadable'))
+        expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([])
+        expectStorageUntouched(world, filesBefore, cacheBefore)
+        await expectLocksReleased(world)
+    })
+})
+
+describe('loadInternalBackup does not load when the current main file cannot be kept', () => {
+    test('the main file cannot be read for the copy (web): shows the copy message and leaves the main file as it was', async () => {
+        const { world, key } = await worldWithSnapshot()
+        storage.onGet = (read) => { if (read === MAIN) { throw new Error('scratch: read failed') } }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('internalBackupCopyFailed'))
+        expectNothingChanged(world)
+        expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual([])
+        await expectLocksReleased(world)
+    })
+
+    test('the main file cannot be read for the copy (Tauri): shows the copy message and leaves the main file as it was', async () => {
+        const { world, key } = await worldWithSnapshot({ platform: 'tauri' })
+        tauriFs.failRead = (path) => (path === MAIN ? new Error('scratch: read failed (os error 5)') : undefined)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('internalBackupCopyFailed'))
+        expectNothingChanged(world)
+        expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual([])
+        await expectLocksReleased(world)
+    })
+
+    test('the copy cannot be written (web): shows the copy message and leaves the main file as it was', async () => {
+        const { world, key } = await worldWithSnapshot()
+        storage.failSet = (written) => (written.startsWith('database/dbbackup-') && written !== key ? new Error('scratch: write failed') : undefined)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('internalBackupCopyFailed'))
+        expectNothingChanged(world)
+        expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual([])
+        await expectLocksReleased(world)
+    })
+
+    test('the copy cannot be written (Tauri): shows the copy message and leaves the main file as it was', async () => {
+        const { world, key } = await worldWithSnapshot({ platform: 'tauri' })
+        tauriFs.failPayload = (data) => sameBytes(data, LIVE_MAIN_BYTES)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(tauriFs.faultsFired, 'writes the injected fault rejected').toBe(1)
+        expectOneError(msg('internalBackupCopyFailed'))
+        expectNothingChanged(world)
+        expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual([])
+        await expectLocksReleased(world)
+    })
+
+    test('the copy cannot be written during a partial load: shows the copy message and leaves the main file as it was', async () => {
+        const { world, key } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, built.ids[0]) })
+        storage.failSet = (written) => (written.startsWith('database/dbbackup-') && written !== key ? new Error('scratch: write failed') : undefined)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expectOneError(msg('internalBackupCopyFailed'))
+        expectNothingChanged(world)
+        await expectLocksReleased(world)
+    })
+})
+
+describe('loadInternalBackup is refused when work starts during a partial load', () => {
+    test('work starting while the confirm is on screen is refused and the main file is unchanged', async () => {
+        const { world, key } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, built.ids[0]) })
+        alertBox.onConfirm = () => { workBox.busy = true }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expectOneError(msg('backupLoadWorkInProgress'))
+        expect.soft(copyKeys(world, key), 'pre-load copies written').toEqual([])
+        expectNothingChanged(world)
+        await expectLocksReleased(world)
+    })
+
+    test('work starting while the backup copy is written is refused and the main file is unchanged', async () => {
+        const { world, key } = await worldWithSnapshot()
+        storage.failSet = (written) => {
+            if (written.startsWith('database/dbbackup-') && written !== key) {
+                workBox.busy = true
+            }
+            return undefined
+        }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('backupLoadWorkInProgress'))
+        expectNothingChanged(world)
+        await expectLocksReleased(world)
+    })
+})
+
+describe('loadInternalBackup checks the rebuilt file before it keeps a copy or writes', () => {
+    test('a rebuilt file that has lost a character is refused with the not-rebuilt message and nothing is written', async () => {
+        const { world, built } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, snapshot.ids[0]) })
+        world.internal.setRebuiltBytesTamperForTests((bytes) => removeBlockAndDirectoryEntry(bytes, built.ids[1]))
+        const filesBefore = storeContents(world)
+        const cacheBefore = blockCacheContents()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
+        expectOneError(msg('internalBackupNotRebuilt'))
+        expectStorageUntouched(world, filesBefore, cacheBefore)
+        await expectLocksReleased(world)
+    })
+
+    test('a rebuilt file that cannot be decoded strictly is refused with the not-rebuilt message and nothing is written', async () => {
+        const { world } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, built.ids[0]) })
+        world.internal.setRebuiltBytesTamperForTests((bytes) => bytes.slice(0, bytes.length - 8))
+        const filesBefore = storeContents(world)
+        const cacheBefore = blockCacheContents()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('internalBackupNotRebuilt'))
+        expectStorageUntouched(world, filesBefore, cacheBefore)
+        await expectLocksReleased(world)
+    })
+
+    test('a snapshot whose only damage is the config block passes the check and loads', async () => {
+        const { world } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, 'config') })
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectLoaded(world)
+    })
+})
+
+describe('loadInternalBackup on the Node server leaves the page\'s main-file version alone until it writes', () => {
+    async function nodeWorld() {
+        const world = await boot({ platform: 'node' })
+        const server = new FakeNodeServer()
+        const app = await import('../../storage/store/appStore')
+        app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }))
+        server.seed(MAIN, LIVE_MAIN_BYTES)
+        // The page's boot read: it takes the version the next main-file write presents.
+        await app.readMainFile()
+        const snapshot = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
+        server.seed(snapshotKey(), snapshot)
+        clearObservations()
+        return { world, server, app }
+    }
+
+    function writtenKey(headers: Record<string, string>): string {
+        return Buffer.from(headers['file-path'] ?? '', 'hex').toString('utf-8')
+    }
+
+    const stops: Array<[string, (server: FakeNodeServer) => void]> = [
+        ['work starting while the backup copy is written', (server) => {
+            server.beforeRequest = (path, headers) => {
+                if (path === '/api/write' && writtenKey(headers).startsWith('database/dbbackup-') && writtenKey(headers) !== snapshotKey()) {
+                    workBox.busy = true
+                }
+            }
+        }],
+        ['a main-file write refused because another device saved first', () => { }],
+    ]
+
+    test.each(stops)('guard: after another device saved, a load stopped by %s leaves the next main-file write refused with a version conflict', async (_title, arrange) => {
+        const { world, server, app } = await nodeWorld()
+        server.peerWrite(MAIN, new TextEncoder().encode('saved by another device'))
+        arrange(server)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
+        await expect(app.writeMainFile(new TextEncoder().encode('the page saves'))).rejects.toBeInstanceOf(StoreVersionConflictError)
+    })
+
+    test('the copy of the main file holds the bytes the server holds, including another device\'s save', async () => {
+        const { world, server } = await nodeWorld()
+        const peerFile = new TextEncoder().encode('saved by another device')
+        server.peerWrite(MAIN, peerFile)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        const copies = server.keysWithPrefix('database/dbbackup-').filter((key) => key !== snapshotKey())
+        expect(copies.length, 'backups other than the chosen snapshot').toBe(1)
+        expect(Array.from(server.files.get(copies[0])?.bytes ?? [])).toEqual(Array.from(peerFile))
     })
 })
