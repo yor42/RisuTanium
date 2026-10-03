@@ -223,6 +223,73 @@ describe('applying a single summary re-roll', () => {
         expect(applyButton(target).disabled).toBe(true)
     })
 
+    async function typeInto(area: HTMLTextAreaElement, value: string): Promise<void> {
+        area.value = value
+        area.dispatchEvent(new Event('input', { bubbles: true }))
+        await settle()
+    }
+
+    test('regression reproducer: after a failed re-roll, Apply writes the user\'s edited text', async () => {
+        installRerollDb()
+        const target = mountModal()
+        await startReroll(target)
+        await failReroll()
+        expect(applyButton(target).disabled).toBe(true)
+
+        await typeInto(rerolledArea(target), 'written by the user')
+        expect(applyButton(target).disabled).toBe(false)
+        await clickApply(target)
+
+        expect(summaryText()).toBe('written by the user')
+    })
+
+    test('guard: typing into the re-roll textarea while the re-roll is running keeps Apply disabled', async () => {
+        installRerollDb()
+        const target = mountModal()
+        await startReroll(target)
+        expect(summarizer.pending.length).toBe(1)
+
+        await typeInto(rerolledArea(target), 'typed while running')
+        expect(applyButton(target).disabled).toBe(true)
+        await clickApply(target)
+
+        expect(summaryText()).toBe('original')
+    })
+
+    test('guard: emptying the re-roll textarea after a failed re-roll leaves nothing to apply', async () => {
+        installRerollDb()
+        const target = mountModal()
+        await startReroll(target)
+        await failReroll()
+
+        await typeInto(rerolledArea(target), '')
+
+        expect(() => applyButton(target)).toThrow('the re-roll result is not shown')
+        expect(summaryText()).toBe('original')
+    })
+
+    test('regression reproducer: a re-roll that fails again after an edit disables Apply until the text is edited again', async () => {
+        installRerollDb()
+        const target = mountModal()
+        await startReroll(target)
+        await failReroll()
+        await typeInto(rerolledArea(target), 'first edit')
+        expect(applyButton(target).disabled).toBe(false)
+
+        await startReroll(target)
+        await failReroll()
+        expect(rerolledArea(target).value).toBe(language.hypaV3Modal.rerollFailed)
+        expect(applyButton(target).disabled).toBe(true)
+        await clickApply(target)
+        expect(summaryText()).toBe('original')
+
+        await typeInto(rerolledArea(target), 'second edit')
+        expect(applyButton(target).disabled).toBe(false)
+        await clickApply(target)
+
+        expect(summaryText()).toBe('second edit')
+    })
+
     test('guard: Apply after a successful re-roll writes the re-roll result to the summary', async () => {
         installRerollDb()
         const target = mountModal()

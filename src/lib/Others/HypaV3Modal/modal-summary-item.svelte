@@ -606,6 +606,9 @@
         class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden focus:ring-2 focus:ring-zinc-500 text-zinc-200 bg-zinc-900"
         tabindex="-1"
         bind:value={rerolled}
+        oninput={() => {
+          if (!isRerolling) rerollFailed = false;
+        }}
       >
       </textarea>
     </div>
