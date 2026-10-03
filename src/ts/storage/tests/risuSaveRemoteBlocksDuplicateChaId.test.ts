@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
+import type { ForageLike } from './forageBackedStore'
 
 // Mock set copied from risuSaveRemoteBlocks.test.ts (see that file's header
 // for the full rationale). Kept in its own file, not folded into that one,
@@ -38,6 +39,12 @@ vi.mock(
             isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
+
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(
     import('src/ts/storage/database.svelte'),

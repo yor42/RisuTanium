@@ -25,6 +25,7 @@ import { describe, test, expect, vi, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database, Chat } from '../../storage/database.svelte'
 import type { toSaveType } from '../../storage/risuSave'
+import type { ForageLike } from '../../storage/tests/forageBackedStore'
 
 let markingEnabled = true
 
@@ -70,6 +71,12 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     },
     isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../globalApi.svelte'))
+
+vi.mock(import('../../storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('../../storage/tests/appStoreMock')
+    const { forageStorage } = await import('../../globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('../../storage/store/appStore')
+})
 
 vi.mock(import('../../storage/database.svelte'), () => ({
     getCurrentCharacter: vi.fn(),

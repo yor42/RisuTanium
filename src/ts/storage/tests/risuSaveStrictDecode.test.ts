@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import * as fflate from 'fflate'
+import type { ForageLike } from './forageBackedStore'
 
 // Strict decoding is for callers that must not act on a partial reading of a
 // save file: every block the file promises has to be present and intact, and
@@ -47,6 +48,12 @@ vi.mock(
             isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
+
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(
     import('src/ts/storage/database.svelte'),

@@ -59,6 +59,7 @@ import {
     type WorldOptions,
 } from './bootArchivePassHarness'
 import type { FakeNodeServer } from './manualCleanupHarness'
+import type { ForageLike } from './forageBackedStore'
 import type { BootArchiveEnvironment } from '../bootArchivePass'
 
 const h = vi.hoisted(() => ({
@@ -98,6 +99,15 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     },
     isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+// Remote character files go through the page's byte store: the Tauri model's
+// files on a desktop boot, the mocked storage object otherwise.
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver, forageOverMap } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    const tauriFiles = forageOverMap(h.tauriFiles)
+    return appStoreModuleOver(() => h.platform.isTauri ? tauriFiles : forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: vi.fn(async (name: string, data: Uint8Array) => { h.tauriFiles.set(name, data.slice()) }),

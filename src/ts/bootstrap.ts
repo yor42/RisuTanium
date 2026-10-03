@@ -1,7 +1,5 @@
 import {
-    writeFile,
     BaseDirectory,
-    readFile,
     exists,
     mkdir,
     readDir,
@@ -106,6 +104,14 @@ export async function loadData() {
                 // write of an earlier page load or an exiting process, whose
                 // loss never affects the target.
                 await sweepAtomicWriteTemps('database')
+                // The same holds for `remotes/`: the encoder, the boot archive
+                // pass and the clean-up all write there later in this page
+                // load. The directory is created by the first remote write, so
+                // it may not exist yet, and listing a missing directory is an
+                // error the sweep would only log.
+                if (await exists('remotes', { baseDir: BaseDirectory.AppData })) {
+                    await sweepAtomicWriteTemps('remotes')
+                }
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
                 }
@@ -843,18 +849,17 @@ async function cleanChunks(options:{
         }
 
 
-        if(!await exists('remotes', { baseDir: BaseDirectory.AppData })) {
-            await mkdir('remotes', { baseDir: BaseDirectory.AppData })
-        }
-
-        const remotes = await readDir('remotes', { baseDir: BaseDirectory.AppData })
+        // The store's listing leaves out the temp file of an atomic write in
+        // flight, and lists a `remotes/` that does not exist yet as empty.
+        const store = await getAppStore()
+        const remoteKeys = await store.list('remotes/')
 
         const remoteUncleanables = new Set<string>(
             db.characters.map((v) => v.chaId)
         )
-        for (const remote of remotes) {
+        for (const remoteKey of remoteKeys) {
             try {
-                const remoteFileName = getBasename(remote.name)
+                const remoteFileName = getBasename(remoteKey)
                 const remotePayloadName = getRemoteSavePayloadName(remoteFileName)
                 if(!remotePayloadName){
                     continue
@@ -862,42 +867,57 @@ async function cleanChunks(options:{
                 const fexists = remoteUncleanables.has(remotePayloadName)
                 if(!fexists){
 
-                    const metaPath = 'remotes/' + remote.name + '.meta'
-                    let metaExists = false
-                    let metaLastUsed:unknown
+                    const metaPath = remoteKey + '.meta'
+                    // A `.meta` that cannot be read leaves the block for a later
+                    // boot; one that does not parse is a `.meta` with no
+                    // timestamp, which keeps the block. Absence is asked of the
+                    // store's own existence check, which does not depend on how
+                    // the plugin words a missing file.
+                    let meta: Uint8Array | null = null
                     try {
-                        metaExists = await exists(metaPath, { baseDir: BaseDirectory.AppData })
-                        if (metaExists) {
-                            const meta = await readFile(metaPath, { baseDir: BaseDirectory.AppData })
-                            const metaJson = JSON.parse(new TextDecoder().decode(meta))
-                            metaLastUsed = metaJson.lastUsed
+                        if (await store.has(metaPath)) {
+                            meta = (await store.read(metaPath)).bytes
                         }
-                    } catch (error) {}
+                    } catch (error) {
+                        continue
+                    }
+                    let metaLastUsed:unknown
+                    if (meta !== null) {
+                        try {
+                            metaLastUsed = JSON.parse(new TextDecoder().decode(meta)).lastUsed
+                        } catch (error) {}
+                    }
 
                     const cleanupAction = getRemoteSaveCleanupAction({
                         fileName: remoteFileName,
                         activeCharacterIds: remoteUncleanables,
-                        hasMeta: metaExists,
+                        hasMeta: meta !== null,
                         metaLastUsed
                     })
                     if(cleanupAction === 'create-meta'){
                         const metaJson = {
                             lastUsed: Date.now()
                         }
-                        await writeFile(metaPath, new TextEncoder().encode(JSON.stringify(metaJson)), { baseDir: BaseDirectory.AppData })
+                        await store.write(metaPath, new TextEncoder().encode(JSON.stringify(metaJson)), 'unconditional')
                     }
                     else if(cleanupAction === 'delete'){
-                        await remove('remotes/' + remote.name, { baseDir: BaseDirectory.AppData })
-                        await remove(metaPath, { baseDir: BaseDirectory.AppData })
+                        await store.delete(remoteKey, 'unconditional')
+                        await store.delete(metaPath, 'unconditional')
                     }
                 }
             } catch (error) {
-                console.log('error', remote.name)
+                console.log('error', remoteKey)
             }
         }
     }
     else {
+        // Both listings are taken before anything is removed, so a listing that
+        // fails rejects the clean-up with nothing deleted. The remote blocks
+        // are listed through the store; `forageStorage.keys()` is only the
+        // asset sweep's enumeration.
         const indexes = await forageStorage.keys()
+        const store = await getAppStore()
+        const remoteKeys = await store.list('remotes/')
         const characterIds = new Set<string>(
             db.characters.map((v) => v.chaId)
         )
@@ -914,48 +934,47 @@ async function cleanChunks(options:{
                     })
                 }
             }
-            else if (asset.endsWith('.meta')){
+        }
+        for (const asset of remoteKeys) {
+            if (asset.endsWith('.meta')){
                 continue
             }
-            else if (asset.startsWith('remotes/')) {
-                // getRemoteSavePayloadName() only recognizes the legacy
-                // `.local.bin` suffix — a content-addressed (`v:2`,
-                // `<chaId>.<hash>.bin`) file returns null here and is
-                // correctly left untouched, matching the Tauri branch above.
-                // A hash-named file must never be reduced to a bogus
-                // "character id" via a fixed-length suffix strip: that id
-                // would never match anything real, making a live block look
-                // orphaned and deletable after the grace period. See
-                // Agents/Reports/08-remote-block-gc-transactional-safety.md.
-                const name = getRemoteSavePayloadName(getBasename(asset))
-                if(!name){
-                    continue
-                }
-                const exists = characterIds.has(name)
-                if(!exists){
-                    let okayToDelete = false
-                    try {
-                        const metaPath = asset + '.meta'
-                        const metaExists = (await forageStorage.keys()).includes(metaPath)
-                        if (metaExists) {
-                            const metaData: Uint8Array = await forageStorage.getItem(metaPath) as unknown as Uint8Array
-                            const metaJson = JSON.parse(new TextDecoder().decode(metaData))
-                            const lastUsed = metaJson.lastUsed as number
-                            if(Date.now() - lastUsed > 1000 * 60 * 60 * 24 * 7) { //not used for 7 days
-                                okayToDelete = true
-                            }
+            // getRemoteSavePayloadName() only recognizes the legacy
+            // `.local.bin` suffix — a content-addressed (`v:2`,
+            // `<chaId>.<hash>.bin`) file returns null here and is
+            // correctly left untouched, matching the Tauri branch above.
+            // A hash-named file must never be reduced to a bogus
+            // "character id" via a fixed-length suffix strip: that id
+            // would never match anything real, making a live block look
+            // orphaned and deletable after the grace period. See
+            // Agents/Reports/08-remote-block-gc-transactional-safety.md.
+            const name = getRemoteSavePayloadName(getBasename(asset))
+            if(!name){
+                continue
+            }
+            const exists = characterIds.has(name)
+            if(!exists){
+                let okayToDelete = false
+                try {
+                    const metaPath = asset + '.meta'
+                    const metaData = (await store.read(metaPath)).bytes
+                    if (metaData !== null) {
+                        const metaJson = JSON.parse(new TextDecoder().decode(metaData))
+                        const lastUsed = metaJson.lastUsed as number
+                        if(Date.now() - lastUsed > 1000 * 60 * 60 * 24 * 7) { //not used for 7 days
+                            okayToDelete = true
                         }
-                        else{
-                            //write meta for next time
-                            const metaJson = {
-                                lastUsed: Date.now()
-                            }
-                            await forageStorage.setItem(metaPath, new TextEncoder().encode(JSON.stringify(metaJson)))
-                        }
-                    } catch (error) {}
-                    if (okayToDelete) {
-                        await forageStorage.removeItem(asset)
                     }
+                    else{
+                        //write meta for next time
+                        const metaJson = {
+                            lastUsed: Date.now()
+                        }
+                        await store.write(metaPath, new TextEncoder().encode(JSON.stringify(metaJson)), 'unconditional')
+                    }
+                } catch (error) {}
+                if (okayToDelete) {
+                    await store.delete(asset, 'unconditional')
                 }
             }
         }

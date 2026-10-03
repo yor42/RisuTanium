@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
+import type { ForageLike } from './forageBackedStore'
 
 //#region module mocks — keep the unit under test isolated from the rest of
 // the app's (heavy, side-effecting) dependency graph, matching the pattern
@@ -52,6 +53,12 @@ vi.mock(
             isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
+
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(
     import('src/ts/storage/database.svelte'),

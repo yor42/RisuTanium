@@ -127,6 +127,8 @@ export class FakeNodeServer {
     afterRequest?: (path: string) => void
     /** When it returns a response for `/api/remove`, that response is sent instead and nothing is deleted. */
     removeOverride?: (keys: string[]) => Response | undefined
+    /** When it returns a response for the key of an `/api/write`, that response is sent instead and nothing is stored. */
+    writeOverride?: (key: string) => Response | undefined
     /** Keys whose `/api/read` is answered with a 500 instead of the file. */
     readFailures = new Set<string>()
     /**
@@ -237,6 +239,10 @@ export class FakeNodeServer {
         }
         if (path === '/api/write') {
             const key = hexToKey(headers['file-path'] ?? '')
+            const override = this.writeOverride?.(key)
+            if (override) {
+                return override
+            }
             if (this.bodyLimit !== undefined && ((init?.body as Uint8Array | undefined)?.length ?? 0) > this.bodyLimit) {
                 return new Response('Payload Too Large', { status: 413 })
             }

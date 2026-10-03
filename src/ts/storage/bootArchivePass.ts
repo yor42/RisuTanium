@@ -43,10 +43,13 @@ import type { ArchiveMemo, ArchiveStrikeState } from './bootArchiveMemo'
  * read and write, the hold, progress) arrives through `BootArchiveDeps`; the
  * production binding of those effects lives in `bootArchiveHost.ts`, which is
  * loaded only when no deps are given. The pass imports no `coldstorage.svelte`
- * and no lock binding. It does import `risuSave`, which itself reaches
- * `globalApi.svelte` (and through it `stores.svelte`) for remote character
- * files and `database.svelte` for the live remote-saving flag; a test of this
- * module therefore mocks those two. Keep the static imports to `risuSave`,
+ * and no lock binding. It does import `risuSave`, which itself reaches the
+ * page's byte store (`appStore`, and through it `globalApi.svelte` and
+ * `stores.svelte`) for remote character files and `database.svelte` for the
+ * live remote-saving flag; a test of this module therefore mocks
+ * `globalApi.svelte` and `database.svelte`, and a test whose pass reads or
+ * writes remote character files also mocks `appStore`. Keep the static
+ * imports to `risuSave`,
  * `coldCharacter`, `coldstorageData`, `chatIds`, `v21Plugins`,
  * `characterDefaults`, `uuid` and type-only imports.
  */

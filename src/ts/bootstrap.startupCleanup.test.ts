@@ -408,7 +408,8 @@ afterEach(() => {
 describe('loadData records the startup clean-up it starts', () => {
     test('guard: a clean-up that is still running is the recorded one: pending while its storage listing is outstanding, settled once that returns', async () => {
         let releaseKeys: () => void = () => { }
-        keysMock.mockImplementation(() => new Promise<string[]>((resolve) => { releaseKeys = () => resolve([]) }))
+        // Only the first listing is held; the clean-up lists storage again for the remote blocks.
+        keysMock.mockImplementationOnce(() => new Promise<string[]>((resolve) => { releaseKeys = () => resolve([]) }))
         arm(baseDb())
         const { loadData, startupCleanup } = await freshBoot()
 

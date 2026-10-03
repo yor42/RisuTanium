@@ -48,7 +48,7 @@ import { getColdStorageItem } from "./process/coldstorage.svelte";
 import { isTauri, isNodeServer } from "./platform";
 import { isLocalNetworkUrl } from "./network/localNetwork";
 import { decodeProxyJobWsChunk, formatProxyStreamErrorMessage, parseProxyJobWsEvent } from "./network/proxyJobWs";
-import { getNodeServerProxyAuth, NodeStorageConflictError } from "./storage/nodeStorage";
+import { getNodeServerProxyAuth } from "./storage/nodeStorage";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
@@ -1439,11 +1439,11 @@ export async function saveDb() {
                 // reasoning above.
                 savetrys = 0
             }
-            // Two classes mean the same thing: the store's conflict, which only the
-            // main-file write can raise (it alone is conditional; the numbered
-            // backup writes and the prune are unconditional), and the Node client's,
-            // which a remote character block written while encoding can still raise.
-            if (error instanceof NodeStorageConflictError || error instanceof StoreVersionConflictError) {
+            // Only the main-file write can raise the store's conflict: it is the one
+            // conditional write here. Remote character blocks, the numbered backup
+            // and the prune are unconditional, and nothing else in this try goes
+            // through the Node client.
+            if (error instanceof StoreVersionConflictError) {
                 // This device's local data is out of date with the self-hosted
                 // Node server — another writer has saved this key since this
                 // device last read it. Deliberately not treated as a transient

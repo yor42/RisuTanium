@@ -361,6 +361,35 @@ describe('saveDb on the Node server', () => {
         await vi.waitFor(() => { expect(notedCount()).toBe(notedAfterBackupSave + 1) }, { timeout: 8000, interval: 10 })
     })
 
+    test('guard: an injected conflict on the numbered backup after the main file was saved shows the saved-anyway notice, does not stop saving, and the next save goes through', async () => {
+        server.requests.length = 0
+        server.writeOverride = (key) => key.startsWith(BACKUP_PREFIX)
+            ? new Response(JSON.stringify({ error: 'Revision conflict', currentRevision: 7 }), { status: 409, headers: { 'content-type': 'application/json' } })
+            : undefined
+        vi.mocked(alertToast).mockClear()
+        // A backup is due: the clock is a month past whenever the last backup
+        // was written, whichever test that was.
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        const notedBefore = notedCount()
+        try {
+            requestSave('conflicting backup')
+            await vi.waitFor(() => { expect(notedCount()).toBe(notedBefore + 1) }, { timeout: 8000, interval: 10 })
+            await vi.waitFor(() => { expect(vi.mocked(alertToast)).toHaveBeenCalledTimes(1) }, { timeout: 8000, interval: 10 })
+        } finally {
+            vi.useRealTimers()
+            server.writeOverride = undefined
+        }
+
+        expect(String(vi.mocked(alertToast).mock.calls[0][0])).toContain('Your latest changes were saved')
+        expect(get(savingStoppedReason)).toBeNull()
+        const notedAfterBackupSave = notedCount()
+        requestSave('after the refused backup')
+        await vi.waitFor(() => { expect(notedCount()).toBe(notedAfterBackupSave + 1) }, { timeout: 8000, interval: 10 })
+        expect(get(savingStoppedReason)).toBeNull()
+        vi.mocked(alertToast).mockClear()
+    })
+
     test('a save after another device saved is refused, saving stops with the node-conflict message, and the other device\'s file is untouched', async () => {
         server.requests.length = 0
         const peerFile = Uint8Array.from([9, 9, 9, 9])

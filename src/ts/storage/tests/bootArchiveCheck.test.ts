@@ -25,6 +25,7 @@ import {
     type RemoteLike,
 } from './bootArchivePassHarness'
 import { composeSave } from './manualCleanupHarness'
+import type { ForageLike } from './forageBackedStore'
 
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
@@ -65,6 +66,12 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     },
     isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: vi.fn(),

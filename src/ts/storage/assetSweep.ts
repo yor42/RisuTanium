@@ -103,9 +103,10 @@ export interface ForageAssetKeySweepDeps {
  * once per run.
  *
  * Called per-key from the still-inline web/Node loop in bootstrap.ts, which
- * continues to own the single `forageStorage.keys()` call, the if/else
- * order (`assets/` first, then the `.meta` skip, then `remotes/`), and the
- * `remotes/` branch itself -- none of that is touched by this file.
+ * continues to own the single `forageStorage.keys()` call and the `assets/`
+ * key filter -- none of that is touched by this file. The remote-block
+ * clean-up is a separate pass in bootstrap.ts that lists through the byte
+ * store.
  */
 export async function sweepForageAssetKey(key: string, deps: ForageAssetKeySweepDeps): Promise<void> {
     if (deps.complete === false) {

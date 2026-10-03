@@ -34,7 +34,7 @@ const loadPluginsMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const sweepTauriAssetsMock = vi.hoisted(() => vi.fn(async (_deps: unknown) => { }))
 const getRemoteSavePayloadNameMock = vi.hoisted(() => vi.fn((_fileName: string): string | null => null))
-const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Array<{ name: string }>> => []))
+const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Array<{ name: string, isFile?: boolean, isDirectory?: boolean }>> => []))
 
 /** Every instance `localforage.createInstance()` has ever handed back, by the name it was created with -- so a test can inspect which instances were cleared or dropped, and by what name. */
 const localforageInstances = vi.hoisted(() => [] as Array<{ name: string, dropInstance: () => Promise<void> }>)
@@ -456,8 +456,8 @@ describe('cleanChunks(): the startup asset sweep does not run once a cold-storag
         db.characters = [profile.stub ? stubCharacter() : plainCharacter()]
         armTauriBoot(db)
         readDirMock.mockImplementation(async (path: string) => {
-            if (path === 'remotes') {
-                return [{ name: 'orphan-char.local.bin' }]
+            if (bare(path) === 'remotes') {
+                return [{ name: 'orphan-char.local.bin', isFile: true, isDirectory: false }]
             }
             return [{ name: 'orphan.png' }]
         })

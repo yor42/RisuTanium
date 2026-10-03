@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
+import type { ForageLike } from './forageBackedStore'
 
 // Separate from risuSave.test.ts because remote-block encoding requires
 // isNodeServer/isTauri to be true (eligibility gate in encodeBlock()) and a
@@ -55,6 +56,16 @@ vi.mock(
             isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
+
+// The encoder and decoder reach the remote blocks through the page's byte
+// store; this suite's in-memory model of them is the mocked `forageStorage`
+// above, so the store is a thin view over it and every call is still counted
+// on its spies.
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(
     import('src/ts/storage/database.svelte'),

@@ -2,16 +2,9 @@ import { Packr, Unpackr, decode } from "msgpackr/index-no-eval";
 import * as fflate from "fflate";
 import { getDatabase, presetTemplate, type Database } from "./database.svelte";
 import localforage from "localforage";
-import { forageStorage } from "../globalApi.svelte";
 import { isNodeServer, isTauri } from "src/ts/platform"
 import { createYieldBudget } from "./saveYield"
-import {
-    writeFile,
-    BaseDirectory,
-    exists,
-    mkdir,
-    readFile,
-} from "@tauri-apps/plugin-fs"
+import { getAppStore } from "./store/appStore"
 
 const packr = new Packr({
     useRecords:false
@@ -233,6 +226,9 @@ export enum RisuSaveType {
     PLUGIN_STORAGE = 11,
 }
 
+/** The keys of the remote blocks the store holds, as one listing. */
+type StoredRemoteNames = () => Promise<ReadonlySet<string>>
+
 type EncodeBlockArg = {
     compression:boolean
     data:string
@@ -240,6 +236,33 @@ type EncodeBlockArg = {
     name:string
     cache?:boolean
     skipRemoteSaving?:boolean
+    /**
+     * Where an existence check for a remote block gets its answer. One `init`
+     * pass hands every character the same function, so the store is listed
+     * once for the pass and not once per character. Absent: the check lists
+     * the store itself.
+     */
+    storedRemoteNames?:StoredRemoteNames
+}
+
+/** The prefix every remote block's key starts with. */
+const REMOTE_BLOCK_PREFIX = 'remotes/'
+
+/**
+ * A function that lists the remote blocks in the store the first time it is
+ * called and answers every later call from that listing. A listing that fails
+ * is not kept: the failure reaches the caller, and the next call lists again.
+ * The listing is a snapshot, so a name written after it was taken is known to
+ * the caller through `checkedRemoteExistence`, not through here.
+ */
+function createStoredRemoteNames():StoredRemoteNames {
+    let listing: ReadonlySet<string> | null = null;
+    return async () => {
+        if(listing === null){
+            listing = new Set(await (await getAppStore()).list(REMOTE_BLOCK_PREFIX));
+        }
+        return listing;
+    };
 }
 
 type EncodeBlockOption = {
@@ -398,6 +421,9 @@ export class RisuSaveEncoder {
 
         const encodedThisPass = new Set<string>();
         const newFrozenKeys = new Set<string>();
+        // One listing of the stored remote blocks for this whole pass, taken
+        // when the first character needs an existence check.
+        const storedRemoteNames = createStoredRemoteNames();
         for (let i = 0; i < snapshot.length; i++) {
             const character = snapshot[i];
             const key = holderKeys[i];
@@ -428,7 +454,8 @@ export class RisuSaveEncoder {
                     data: JSON.stringify(character),
                     type: RisuSaveType.CHARACTER_WITH_CHAT,
                     name: rawKey,
-                    skipRemoteSaving: skipRemoteSavingOnCharacters
+                    skipRemoteSaving: skipRemoteSavingOnCharacters,
+                    storedRemoteNames
                 }, {
                     remote: 'prefer'
                 });
@@ -441,7 +468,8 @@ export class RisuSaveEncoder {
                 data: JSON.stringify(character),
                 type: RisuSaveType.CHARACTER_WITH_CHAT,
                 name: rawKey,
-                skipRemoteSaving: skipRemoteSavingOnCharacters
+                skipRemoteSaving: skipRemoteSavingOnCharacters,
+                storedRemoteNames
             }, {
                 remote: 'prefer'
             });
@@ -796,16 +824,13 @@ export class RisuSaveEncoder {
         const hash = await hashRemoteBlockContent(encoded);
         const fileName = `remotes/${arg.name}.${hash}.bin`
 
+        // The store creates `remotes/` on the first write. The write needs no
+        // condition: the name is a function of the content, so two writers of
+        // one name write the same bytes and neither can lose anything, while a
+        // write made conditional on a version read earlier would refuse a
+        // peer's identical write.
         const writeRemoteFile = async () => {
-            if(isTauri){
-                if(!(await exists('remotes', { baseDir: BaseDirectory.AppData }))){
-                    await mkdir('remotes', { recursive: true, baseDir: BaseDirectory.AppData });
-                }
-                await writeFile(fileName, encoded!, { baseDir: BaseDirectory.AppData });
-            }
-            else{
-                await forageStorage.setItem(fileName, encoded);
-            }
+            await (await getAppStore()).write(fileName, encoded, 'unconditional');
         };
 
         // CHORE-17: `checkedRemoteExistence` holds
@@ -821,17 +846,11 @@ export class RisuSaveEncoder {
             shouldWrite = false;
         }
         else if(arg.skipRemoteSaving){
-            let fileExists = false;
-            if(isTauri){
-                fileExists = await exists(fileName, { baseDir: BaseDirectory.AppData });
-            }
-            else{
-                const stored = await forageStorage.keys();
-                if(stored.includes(fileName)){
-                    fileExists = true;
-                }
-            }
-            if(fileExists){
+            // A listing that fails fails the encode: nothing is recorded as
+            // present, and the block is neither skipped nor written on a
+            // guess.
+            const stored = await (arg.storedRemoteNames ?? createStoredRemoteNames())();
+            if(stored.has(fileName)){
                 // Recorded only once the existence check has confirmed
                 // the file; a name is never recorded before a write
                 // whose outcome is unknown.
@@ -1157,24 +1176,18 @@ export class RisuSaveDecoder {
                             console.warn(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash; skipping.`);
                             break;
                         }
+                        // A key the store does not hold is a missing block,
+                        // handled below; a read that fails for any other
+                        // reason throws in strict mode and is skipped,
+                        // with the failure logged, otherwise.
                         let remoteData:Uint8Array|null = null
-                        if(isTauri){
-                            try {
-                                if(await exists(fileName, { baseDir: BaseDirectory.AppData })){
-                                    remoteData = await readFile(fileName, { baseDir: BaseDirectory.AppData });
-                                }
-                            } catch (error) {
-                                if(this.strict){
-                                    throw error;
-                                }
-                                console.error(`Error reading remote file ${fileName} in Tauri:`, error);
+                        try {
+                            remoteData = (await (await getAppStore()).read(fileName)).bytes;
+                        } catch (error) {
+                            if(this.strict){
+                                throw error;
                             }
-                        }
-                        else{
-                            const stored = await forageStorage.getItem(fileName);
-                            if(stored){
-                                remoteData = stored as Uint8Array;
-                            }
+                            console.error(`Error reading remote file ${fileName}:`, error);
                         }
 
                         if(!remoteData){
