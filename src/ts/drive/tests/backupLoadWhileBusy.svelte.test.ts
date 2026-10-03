@@ -557,7 +557,9 @@ import { runAutopilot } from 'src/ts/process/devToolActions'
 import { makeRisuaiAPIV3 } from 'src/ts/plugins/apiV3/v3.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
-import { requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
+import { requiresFullEncoderReload, forageStorage } from 'src/ts/globalApi.svelte'
+import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { loadInternalBackup } from 'src/ts/drive/internalBackup'
 import { setDatabase } from 'src/ts/storage/database.svelte'
 import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
@@ -877,6 +879,8 @@ beforeEach(() => {
     alertErrorMock.mockReset()
     downloadFileMock.mockClear()
     platformBox.isTauri = false
+    // The restore and the internal-backup load go through the page's byte store; here it is the storage-object model.
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     for (const key of Object.keys(triggerHandlers)) {
         delete triggerHandlers[key]
     }
@@ -924,6 +928,8 @@ async function importIsolatedLoad() {
     try {
         const internal = await import('src/ts/drive/internalBackup')
         const api = await import('src/ts/globalApi.svelte')
+        const isolatedAppStore = await import('src/ts/storage/store/appStore')
+        isolatedAppStore.injectAppStore(createForageBackedStore(api.forageStorage as unknown as ForageLike))
         const stores = await import('src/ts/stores.svelte')
         const database = await import('src/ts/storage/database.svelte')
         await api.tabPresenceLockAcquired
@@ -973,7 +979,7 @@ async function seedInternalBackup(): Promise<Uint8Array> {
     const encoder = new RisuSaveEncoder()
     await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false, skipRemoteSavingOnCharacters: false })
     const bytes = new Uint8Array(encoder.encode()!)
-    forageMemStore.set('dbbackup-1700000000', bytes)
+    forageMemStore.set('database/dbbackup-1700000000.bin', bytes)
     return bytes
 }
 

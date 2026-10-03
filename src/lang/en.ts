@@ -1859,6 +1859,7 @@ export const languageEnglish = {
     opfsSwitchNoticeUnsupported: "The storage backend was not switched: this browser does not support a feature the switch needs. Your data is unchanged, and you can switch again from Backup & Files in Settings.",
     opfsSwitchNoticeInterrupted: "The storage backend was not switched: another tab was open, or a switch was interrupted. Your data is unchanged, and you can switch again from Backup & Files in Settings.",
     opfsSwitchNoticeError: (detail: string) => `The storage backend was not switched: ${detail}. Your data is unchanged, and you can switch again from Backup & Files in Settings.`,
+    browserStorageUnavailable: "This browser could not open the storage RisuAI keeps your data in, so nothing was loaded and nothing was changed. Reload the page. If this message keeps appearing, this browser cannot store RisuAI's data (private browsing and very old browsers can cause this): open RisuAI in another browser, or outside private browsing.",
     storageMigrationLockError: "Another tab of this app appears to be open (or your browser does not support the check needed here). Close all other tabs first, then try again.",
     backupAndFiles: "Backup & Files",
     assetIntegrityHeading: "Asset Cache Integrity",

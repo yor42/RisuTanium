@@ -17,9 +17,29 @@ export class NodeStorageConflictError extends Error {
     }
 }
 
+/**
+ * Whether this page has been authenticated against the Node server, and the
+ * check in flight. One state serves every entry point of a page (the storage
+ * class, the store built over it, the proxy-auth path), so a page shows at most
+ * one password prompt per outcome however many calls start before the first
+ * check settles. A failed check is dropped when it settles: the next call asks
+ * again.
+ */
+export interface NodeAuthState {
+    checked: boolean
+    pending: Promise<void> | null
+}
+
+export function createNodeAuthState(): NodeAuthState {
+    return { checked: false, pending: null }
+}
+
+const pageAuthState = createNodeAuthState()
+
 export class NodeStorage{
 
-    authChecked = false
+    constructor(private readonly auth: NodeAuthState = pageAuthState) {}
+
     // Last revision this instance observed for each key, from either a
     // getItem() read or a setItem() write's own response. Sent back as
     // if-match-revision on the NEXT setItem() for that key, so the server can
@@ -65,6 +85,12 @@ export class NodeStorage{
             localStorage.setItem('risuauth', auth)
         }
         return auth
+    }
+
+    /** The `risu-auth` header value for one request, after the page's auth check has settled. Writes no `localStorage` key. */
+    async authHeader() {
+        await this.checkAuth()
+        return await this.createAuth()
     }
 
     async getKeyPair():Promise<CryptoKeyPair>{
@@ -260,62 +286,79 @@ export class NodeStorage{
         applyKnownRevisions(data.revisions)
     }
 
-    private async checkAuth(){
+    private checkAuth(): Promise<void> {
+        const auth = this.auth
+        if(auth.checked){
+            return Promise.resolve()
+        }
+        auth.pending ??= this.runAuthCheck().then(
+            () => {
+                auth.checked = true
+                auth.pending = null
+            },
+            (error) => {
+                auth.pending = null
+                throw error
+            }
+        )
+        return auth.pending
+    }
 
-        if(!this.authChecked){
-            const data = await (await fetch('/api/test_auth',{
+    /** Registers this browser's key pair with the server under the password digest; a refusal is shown to the user and thrown. */
+    private async login(digest: string){
+        const keypair = await this.getKeyPair()
+        const publicKey = await crypto.subtle.exportKey('jwk', keypair.publicKey)
+        const s = await fetch('/api/login',{
+            method: "POST",
+            body: JSON.stringify({
+                password: digest,
+                publicKey: publicKey
+            }),
+            headers: {
+                'content-type': 'application/json'
+            }
+        })
+        if(s.status < 200 || s.status >= 300){
+            let message = `Login failed (${s.status})`
+            try {
+                const body = await s.json()
+                if(body?.error){
+                    message = body.error
+                }
+            } catch {}
+            alertError(message)
+            await waitAlert()
+            throw message
+        }
+    }
+
+    private async runAuthCheck(){
+        const data = await (await fetch('/api/test_auth',{
+            headers: {
+                'risu-auth': await this.createAuth()
+            }
+        })).json()
+
+        if(data.status === 'unset'){
+            const digest = await digestPassword(await alertInput(language.setNodePassword))
+            const set = await fetch('/api/set_password',{
+                method: "POST",
+                body:JSON.stringify({
+                    password: digest
+                }),
                 headers: {
-                    'risu-auth': await this.createAuth()
+                    'content-type': 'application/json'
                 }
-            })).json()
-
-            if(data.status === 'unset'){
-                const input = await digestPassword(await alertInput(language.setNodePassword))
-                await fetch('/api/set_password',{
-                    method: "POST",
-                    body:JSON.stringify({
-                        password: input 
-                    }),
-                    headers: {
-                        'content-type': 'application/json'
-                    }
-                })
-                return await this.createAuth()
+            })
+            if(set.status < 200 || set.status >= 300){
+                throw `Setting the password failed (${set.status})`
             }
-            else if(data.status === 'incorrect'){
-                const keypair = await this.getKeyPair()
-                const publicKey = await crypto.subtle.exportKey('jwk', keypair.publicKey)
-                const input = await digestPassword(await alertInput(language.inputNodePassword))
-
-                const s = await fetch('/api/login',{
-                    method: "POST",
-                    body: JSON.stringify({
-                        password: input,
-                        publicKey: publicKey
-                    }),
-                    headers: {
-                        'content-type': 'application/json'
-                    }
-                })
-                if(s.status < 200 || s.status >= 300){
-                    let message = `Login failed (${s.status})`
-                    try {
-                        const body = await s.json()
-                        if(body?.error){
-                            message = body.error
-                        }
-                    } catch {}
-                    alertError(message)
-                    await waitAlert()
-                    throw message
-                }
-                this.authChecked = true
-                return await this.createAuth()
-            
-            }
-            else{
-                this.authChecked = true
-            }
+            // The server knows a key pair only after a login, so the password
+            // just set is used once more to register this browser's pair.
+            await this.login(digest)
+        }
+        else if(data.status === 'incorrect'){
+            await this.login(await digestPassword(await alertInput(language.inputNodePassword)))
         }
     }
 

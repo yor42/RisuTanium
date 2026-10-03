@@ -39,6 +39,7 @@ import { language } from 'src/lang'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from './fakeWebLocks'
 import { BLOCK, FakeNodeServer, composeSave, corruptBlockPayload, type SavePart } from './manualCleanupHarness'
+import { createForageBackedStore, type ForageLike } from './forageBackedStore'
 
 //#region shared platform state
 
@@ -264,6 +265,8 @@ vi.mock(import('src/ts/storage/autoStorage'), () => ({
             removeItem(key: string | string[]): Promise<void>
         } | undefined = undefined
 
+        async Init() { }
+
         async getItem(key: string) {
             if (this.realStorage) {
                 return await this.realStorage.getItem(key)
@@ -358,7 +361,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
                 }
             }
         }
-        return Array.from(names).map((name) => ({ name, isDirectory: false }))
+        return Array.from(names).map((name) => ({ name, isFile: true, isDirectory: false }))
     }),
     readFile: vi.fn(async (path: string) => {
         const p = normalizeFsPath(path)
@@ -372,7 +375,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         }
         const bytes = h.fs.get(p)
         if (!bytes) {
-            throw new Error(`No such file (os error 2): ${p}`)
+            throw new Error(`No such file: ${p} (os error 2)`)
         }
         return bytes
     }),
@@ -585,11 +588,10 @@ async function setup(options: { platform?: Platform, locks?: 'single' | 'none' }
     if (platform === 'node') {
         vi.stubGlobal('fetch', server.fetch)
         ctx.globalApi.forageStorage.realStorage = new ctx.nodeMod.NodeStorage()
-    } else if (platform === 'tauri') {
-        vi.stubGlobal('fetch', async (input: string | URL | Request) => {
-            const bytes = h.fs.get(String(input).replace(/^\/?appdata\//, '').replace(/^\.\//, ''))
-            return bytes ? new Response(bytes.slice(), { status: 200 }) : new Response(null, { status: 404 })
-        })
+    } else if (platform === 'web') {
+        // The web build's byte store is the key/value model behind `forageStorage` here.
+        const { injectAppStore } = await import('src/ts/storage/store/appStore')
+        injectAppStore(createForageBackedStore(ctx.globalApi.forageStorage as unknown as ForageLike))
     }
     return ctx
 }
@@ -735,7 +737,7 @@ async function prime(main?: Database | Uint8Array, options: { listing?: boolean,
     const bytes = main instanceof Uint8Array ? main : await encodeTree(main ?? ctx.stores.DBState.db)
     storeMain(bytes)
     if (platform === 'node') {
-        await ctx.globalApi.forageStorage.getItem('database/database.bin')
+        await (await import('src/ts/storage/store/appStore')).readMainFile()
     }
     if (options.record !== false) {
         ctx.mainRec.noteMainFileBytes(bytes.slice())
@@ -1676,7 +1678,9 @@ describe('Node server: bounded batches, reported failures, revisions', () => {
 
         expect(await units()).not.toContain('unreferenced-unit')
         const next = await encodeTree(makeDb([], { mainPrompt: 'edited after the clean-up' }))
-        await expect(ctx.globalApi.forageStorage.setItem('database/database.bin', next)).rejects.toBeInstanceOf(ctx.nodeMod.NodeStorageConflictError)
+        const app = await import('src/ts/storage/store/appStore')
+        const errors = await import('src/ts/storage/store/errors')
+        await expect(app.writeMainFile(next)).rejects.toBeInstanceOf(errors.StoreVersionConflictError)
         const lastWrite = server.requestsTo('/api/write').at(-1)
         expect(lastWrite?.headers['if-match-revision']).toBe('1')
     })
@@ -1691,7 +1695,9 @@ describe('Node server: bounded batches, reported failures, revisions', () => {
         await run()
 
         const next = await encodeTree(makeDb([], { mainPrompt: 'edited after the clean-up' }))
-        await expect(ctx.globalApi.forageStorage.setItem('database/database.bin', next)).rejects.toBeInstanceOf(ctx.nodeMod.NodeStorageConflictError)
+        const app = await import('src/ts/storage/store/appStore')
+        const errors = await import('src/ts/storage/store/errors')
+        await expect(app.writeMainFile(next)).rejects.toBeInstanceOf(errors.StoreVersionConflictError)
         expect(server.requestsTo('/api/write').at(-1)?.headers['if-match-revision']).toBe('1')
     })
 })

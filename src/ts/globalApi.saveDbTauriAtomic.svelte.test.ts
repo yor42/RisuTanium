@@ -16,7 +16,7 @@
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 
-const fakeFsPromise = vi.hoisted(() => import('src/ts/storage/tests/tauriFsFake').then((module) => module.createFakeTauriFs()))
+const fakeFsPromise = vi.hoisted(() => import('src/ts/storage/tests/tauriFsFake').then((module) => module.createFakeTauriFs({ strict: true })))
 
 const h = vi.hoisted(() => ({
     parked: false,
@@ -233,6 +233,11 @@ function makeDb(prompt: string): Record<string, unknown> {
     }
 }
 
+/** A path as the file system holds it: the store addresses AppData with a leading `./`, the plugin calls elsewhere do not. */
+function bare(path: string): string {
+    return path.replace(/^\.\//, '')
+}
+
 function hex(bytes: Uint8Array | undefined): string | undefined {
     return bytes ? Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('') : undefined
 }
@@ -303,38 +308,72 @@ describe('saveDb on Tauri: the numbered backup is written atomically', () => {
         expect(fakeFs.listing('database').filter((name) => ATOMIC_TEMP_NAME_PATTERN.test(name))).toEqual([])
         expect(fakeFs.writeLog.length).toBeGreaterThanOrEqual(2)
         for (const write of fakeFs.writeLog) {
-            const slash = write.path.lastIndexOf('/')
-            expect(write.path.slice(0, slash)).toBe('database')
-            expect(write.path.slice(slash + 1)).toMatch(ATOMIC_TEMP_NAME_PATTERN)
+            const path = bare(write.path)
+            const slash = path.lastIndexOf('/')
+            expect(path.slice(0, slash)).toBe('database')
+            expect(path.slice(slash + 1)).toMatch(ATOMIC_TEMP_NAME_PATTERN)
         }
     })
 })
 
-describe('saveDb on Tauri: a leftover temp file is neither listed as a backup nor removed by a save', () => {
+describe('saveDb on Tauri: the numbered backups are pruned after a backup write, not after every save', () => {
     const LEFTOVER = 'database/risu-write-0123456789abcdef.tmp'
 
-    test('guard: with more than 20 backups and a leftover temp file, the save removes only the oldest backups and keeps the temp file', async () => {
-        for (let n = 1; n <= 22; n++) {
+    function plantBackups(count: number): void {
+        for (let n = 1; n <= count; n++) {
             fakeFs.files.set(`database/dbbackup-${n}.bin`, new Uint8Array([n]))
         }
-        fakeFs.files.set(LEFTOVER, new Uint8Array([9, 9]))
+    }
+
+    test('a save that writes no backup neither lists nor removes any backup', async () => {
+        plantBackups(22)
+        const backupsBefore = backupNames()
         fakeFs.removeLog.length = 0
+        fakeFs.readDirLog.length = 0
         const notedBefore = noted().length
 
         requestSave('fourth')
         await vi.waitFor(() => { expect(noted().length).toBeGreaterThan(notedBefore) }, { timeout: 8000, interval: 10 })
-        await vi.waitFor(() => { expect(backupNames().length).toBe(20) }, { timeout: 8000, interval: 10 })
         await settle()
 
+        expect(fakeFs.readDirLog).toEqual([])
+        expect(fakeFs.removeLog).toEqual([])
+        expect(backupNames()).toEqual(backupsBefore)
+    })
+
+    test('guard: with more than 20 backups and a leftover temp file, listing the backups removes only the oldest numbered backups and keeps the temp file', async () => {
+        plantBackups(22)
+        fakeFs.files.set(LEFTOVER, new Uint8Array([9, 9]))
+        fakeFs.removeLog.length = 0
+
+        const listed = await getDbBackups()
+
+        expect(listed).toHaveLength(20)
+        expect(backupNames()).toHaveLength(20)
         expect(fakeFs.files.has(LEFTOVER)).toBe(true)
         expect(fakeFs.removeLog.length).toBeGreaterThan(0)
         for (const removed of fakeFs.removeLog) {
-            expect(removed).toMatch(/^database\/dbbackup-\d+\.bin$/)
+            expect(bare(removed)).toMatch(/^database\/dbbackup-\d+\.bin$/)
         }
-        const listed = await getDbBackups()
-        expect(listed).toHaveLength(20)
-        expect(fakeFs.files.has(LEFTOVER)).toBe(true)
         fakeFs.files.delete(LEFTOVER)
+    })
+
+    test('guard: a save that writes a backup prunes the backups beyond 20', async () => {
+        plantBackups(22)
+        // The minimum interval between backups has passed.
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(Date.now() + 6 * 60 * 1000)
+        const notedBefore = noted().length
+        try {
+            requestSave('with a backup')
+            await vi.waitFor(() => { expect(noted().length).toBeGreaterThan(notedBefore) }, { timeout: 8000, interval: 10 })
+            await vi.waitFor(() => { expect(backupNames().length).toBe(20) }, { timeout: 8000, interval: 10 })
+        } finally {
+            vi.useRealTimers()
+        }
+        await settle()
+
+        expect(backupNames()).toHaveLength(20)
     })
 })
 

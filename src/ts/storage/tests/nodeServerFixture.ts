@@ -49,7 +49,17 @@ function base64url(value: unknown): string {
     return Buffer.from(JSON.stringify(value), 'utf-8').toString('base64url')
 }
 
-export async function startNodeServer(): Promise<NodeServerFixture> {
+export interface NodeServerOptions {
+    /**
+     * Set a password and register the fixture's key pair (the default). `false`
+     * leaves a fresh server with no password, as a first run finds it; the
+     * fixture's own `authHeader` then belongs to a key pair the server does not
+     * know.
+     */
+    provisioned?: boolean
+}
+
+export async function startNodeServer(options: NodeServerOptions = {}): Promise<NodeServerFixture> {
     const workDir = await mkdtemp(join(tmpdir(), 'risu-node-store-'))
     const port = await freePort()
     const baseUrl = `http://127.0.0.1:${port}`
@@ -126,11 +136,13 @@ export async function startNodeServer(): Promise<NodeServerFixture> {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(body),
         })
-        const digest = await (await jsonPost('/api/crypto', { data: 'fixture-password' })).text()
-        const setResponse = await jsonPost('/api/set_password', { password: digest })
-        const loginResponse = await jsonPost('/api/login', { password: digest, publicKey: publicJwk })
-        if (!setResponse.ok || !loginResponse.ok) {
-            throw new Error(`The Node server refused the fixture login (${setResponse.status}, ${loginResponse.status}).`)
+        if (options.provisioned !== false) {
+            const digest = await (await jsonPost('/api/crypto', { data: 'fixture-password' })).text()
+            const setResponse = await jsonPost('/api/set_password', { password: digest })
+            const loginResponse = await jsonPost('/api/login', { password: digest, publicKey: publicJwk })
+            if (!setResponse.ok || !loginResponse.ok) {
+                throw new Error(`The Node server refused the fixture login (${setResponse.status}, ${loginResponse.status}).`)
+            }
         }
 
         const saveDir = join(workDir, 'save')

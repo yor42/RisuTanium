@@ -13,11 +13,10 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@tauri-apps/plugin-os', () => ({ type: vi.fn(() => 'windows') }))
 
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0 },
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-}))
+vi.mock(import('src/ts/storage/store/appStore'), () => ({
+    readMainFile: vi.fn(),
+    writeMainFile: vi.fn(),
+}) as unknown as typeof import('src/ts/storage/store/appStore'))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     acquireExclusiveStorageMigrationLock: vi.fn(),

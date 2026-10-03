@@ -547,7 +547,9 @@ import { runAutopilot } from 'src/ts/process/devToolActions'
 import { makeRisuaiAPIV3 } from 'src/ts/plugins/apiV3/v3.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
-import { requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
+import { requiresFullEncoderReload, forageStorage } from 'src/ts/globalApi.svelte'
+import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { loadInternalBackup } from 'src/ts/drive/internalBackup'
 import { setDatabase } from 'src/ts/storage/database.svelte'
 import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
@@ -867,6 +869,8 @@ beforeEach(() => {
     alertErrorMock.mockReset()
     downloadFileMock.mockClear()
     platformBox.isTauri = false
+    // The restore and the internal-backup load go through the page's byte store; here it is the storage-object model.
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     for (const key of Object.keys(triggerHandlers)) {
         delete triggerHandlers[key]
     }
@@ -933,7 +937,7 @@ function backupDb(characters: CharacterFixtureBk[], extra: Record<string, unknow
 async function seedInternalBackup(): Promise<void> {
     const encoder = new RisuSaveEncoder()
     await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false, skipRemoteSavingOnCharacters: false })
-    forageMemStore.set('dbbackup-1700000000', new Uint8Array(encoder.encode()!))
+    forageMemStore.set('database/dbbackup-1700000000.bin', new Uint8Array(encoder.encode()!))
 }
 
 function u32le(n: number): Uint8Array {

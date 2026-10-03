@@ -1716,6 +1716,7 @@ export const languageSpanish = {
     opfsSwitchNoticeUnsupported: "El backend de almacenamiento no se cambió: este navegador no admite una función que el cambio necesita. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.",
     opfsSwitchNoticeInterrupted: "El backend de almacenamiento no se cambió: otra pestaña estaba abierta, o un cambio fue interrumpido. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.",
     opfsSwitchNoticeError: (detail: string) => `El backend de almacenamiento no se cambió: ${detail}. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.`,
+    browserStorageUnavailable: "Este navegador no pudo abrir el almacenamiento donde RisuAI guarda tus datos, así que no se cargó nada y no se cambió nada. Recarga la página. Si este mensaje sigue apareciendo, este navegador no puede almacenar los datos de RisuAI (la navegación privada y los navegadores muy antiguos pueden causar esto): abre RisuAI en otro navegador o fuera de la navegación privada.",
     storageMigrationLockError: "Parece que hay otra pestaña de esta aplicación abierta (o tu navegador no admite la comprobación necesaria aquí). Cierra primero todas las demás pestañas y vuelve a intentarlo.",
     backupAndFiles: "Respaldo y Archivos",
     assetIntegrityHeading: "Integridad de la Caché de Activos",

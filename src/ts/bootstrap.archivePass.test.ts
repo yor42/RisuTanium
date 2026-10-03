@@ -24,6 +24,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { OpfsSwitchNotice } from 'src/ts/storage/autoStorage'
 import { BLOCK, composeSave, corruptBlockPayload } from 'src/ts/storage/tests/manualCleanupHarness'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 const MAIN_KEY = 'database/database.bin'
 
@@ -303,6 +304,10 @@ async function composeBlockFile(options: { b?: 'remote' | 'inline', plugins?: Re
 }
 
 async function freshLoadData() {
+    // The boot reads through the page's byte store; here it is the storage-object model above.
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>

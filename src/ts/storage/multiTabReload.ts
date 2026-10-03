@@ -113,8 +113,8 @@ export function resolvePromptChoice(raw: string): MultiTabPromptChoice {
 }
 
 // On a revision-aware backend (the self-hosted Node server), a peer tab's save
-// is exactly what makes THIS tab's known revision stale — the backend
-// deliberately never refreshes that revision from a 409 (see nodeStorage.ts), so a
+// is exactly what makes THIS tab's known revision stale — the main file's version
+// is held by the cell in appStore.ts and is never refreshed from a refused write, so a
 // "save mine" choice here is guaranteed to 409 again on write, pre-commit, every
 // single time. Offering it would promise something the optimistic-concurrency guard
 // exists to prevent. So this predicate exists to gate which prompt shape the caller

@@ -1716,6 +1716,7 @@ export const languageGerman = {
     "opfsSwitchNoticeUnsupported": "Das Speicher-Backend wurde nicht umgestellt: Dieser Browser unterstützt eine für die Umstellung benötigte Funktion nicht. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.",
     "opfsSwitchNoticeInterrupted": "Das Speicher-Backend wurde nicht umgestellt: Ein anderer Tab war geöffnet, oder eine Umstellung wurde unterbrochen. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.",
     "opfsSwitchNoticeError": (detail: string) => `Das Speicher-Backend wurde nicht umgestellt: ${detail}. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.`,
+    "browserStorageUnavailable": "Dieser Browser konnte den Speicher, in dem RisuAI Ihre Daten ablegt, nicht öffnen. Deshalb wurde nichts geladen und nichts verändert. Laden Sie die Seite neu. Wenn diese Meldung weiterhin erscheint, kann dieser Browser die Daten von RisuAI nicht speichern (der private Modus und sehr alte Browser können die Ursache sein): Öffnen Sie RisuAI in einem anderen Browser oder außerhalb des privaten Modus.",
     "storageMigrationLockError": "Ein weiterer Tab dieser App scheint bereits geöffnet zu sein (oder Ihr Browser unterstützt die hier benötigte Prüfung nicht). Schließen Sie zuerst alle anderen Tabs und versuchen Sie es dann erneut.",
     "backupAndFiles": "Backup & Dateien",
     "assetIntegrityHeading": "Asset-Cache-Integrität",

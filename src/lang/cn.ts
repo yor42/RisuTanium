@@ -1716,6 +1716,7 @@ export const languageChinese = {
     "opfsSwitchNoticeUnsupported": "存储后端未被切换：此浏览器不支持此次切换所需的功能。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。",
     "opfsSwitchNoticeInterrupted": "存储后端未被切换：另一个标签页处于打开状态，或切换过程被中断。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。",
     "opfsSwitchNoticeError": (detail: string) => `存储后端未被切换：${detail}。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。`,
+    "browserStorageUnavailable": "此浏览器无法打开 RisuAI 用于保存您数据的存储，因此没有加载任何内容，也没有更改任何内容。请重新加载页面。如果此提示持续出现，说明此浏览器无法存储 RisuAI 的数据（无痕浏览模式和过旧的浏览器都可能导致这种情况）：请在其他浏览器中打开 RisuAI，或在非无痕浏览模式下打开。",
     "storageMigrationLockError": "此应用似乎在另一个标签页中打开（或您的浏览器不支持此处所需的检查）。请先关闭所有其他标签页，然后重试。",
     "backupAndFiles": "备份 & 文件",
     "assetIntegrityHeading": "资源缓存完整性",

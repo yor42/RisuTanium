@@ -22,10 +22,9 @@
  * `process/chatIds.ts` are real; everything else `bootstrap.ts` imports is
  * mocked, including the Tauri-specific `@tauri-apps/plugin-fs` calls this
  * branch makes that the sibling file's mock never exercises
- * (`exists`/`mkdir`/`writeFile`/`readFile`) and `@tauri-apps/api/path`'s
- * `appDataDir`/`join` plus a `fetch` stub for the one URL this branch reads
- * the database through (`convertFileSrc` is a pass-through mock here, so the
- * "asset URL" IS the joined file path).
+ * (`exists`/`mkdir`/`writeFile`/`readFile`/`rename`) and `@tauri-apps/api/path`'s
+ * `appDataDir`/`join`. The boot reads the database through the plugin's
+ * `readFile`, so a flat map of files is all the model it needs.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable, get } from 'svelte/store'
@@ -206,27 +205,30 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 
 const fsStore = new Map<string, Uint8Array>()
 
+/** A path relative to AppData: the byte store addresses every key with a leading `./`. */
+const bare = (path: string): string => path.replace(/^\.\//, '')
+
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
-    exists: vi.fn(async (path: string) => fsStore.has(path)),
+    exists: vi.fn(async (path: string) => fsStore.has(bare(path))),
     mkdir: vi.fn(async () => { }),
     readFile: vi.fn(async (path: string) => {
-        if (!fsStore.has(path)) {
+        if (!fsStore.has(bare(path))) {
             throw new Error(`ENOENT (mock): ${path}`)
         }
-        return fsStore.get(path)!
+        return fsStore.get(bare(path))!
     }),
-    writeFile: vi.fn(async (path: string, data: Uint8Array) => { fsStore.set(path, data) }),
+    writeFile: vi.fn(async (path: string, data: Uint8Array) => { fsStore.set(bare(path), data) }),
     rename: vi.fn(async (from: string, to: string) => {
-        const found = fsStore.get(from)
+        const found = fsStore.get(bare(from))
         if (!found) {
             throw `no such file ${from} (os error 2)`
         }
-        fsStore.set(to, found)
-        fsStore.delete(from)
+        fsStore.set(bare(to), found)
+        fsStore.delete(bare(from))
     }),
     readDir: readDirMock,
-    remove: vi.fn(async (path: string) => { fsStore.delete(path) }),
+    remove: vi.fn(async (path: string) => { fsStore.delete(bare(path)) }),
 }))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
@@ -305,14 +307,6 @@ describe('loadData(): Tauri boot pins (I6, I5)', () => {
         fsStore.set('assets', new Uint8Array())
         const dbBytes = baseDbBytes('tauri-fixture')
         fsStore.set('database/database.bin', dbBytes)
-        // loadData()'s Tauri branch fetches the db through convertFileSrc's
-        // (pass-through, mocked) URL rather than through readFile.
-        vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-            if (url === '/appdata/database/database.bin') {
-                return new Response(dbBytes)
-            }
-            return new Response(null, { status: 404 })
-        }))
 
         const { loadData, loadedStore } = await freshLoadData()
 
@@ -355,12 +349,6 @@ describe('loadData(): Tauri boot pins (I6, I5)', () => {
         fsStore.set('assets', new Uint8Array())
         const dbBytes = baseDbBytes('tauri-ordinary-boot')
         fsStore.set('database/database.bin', dbBytes)
-        vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-            if (url === '/appdata/database/database.bin') {
-                return new Response(dbBytes)
-            }
-            return new Response(null, { status: 404 })
-        }))
 
         const { loadData, loadedStore } = await freshLoadData()
 
@@ -385,12 +373,6 @@ describe('loadData(): Tauri boot pins (I6, I5)', () => {
         fsStore.set('assets', new Uint8Array())
         const dbBytes = baseDbBytes('tauri-dropinstance-args')
         fsStore.set('database/database.bin', dbBytes)
-        vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-            if (url === '/appdata/database/database.bin') {
-                return new Response(dbBytes)
-            }
-            return new Response(null, { status: 404 })
-        }))
 
         const { loadData, loadedStore } = await freshLoadData()
 
@@ -418,12 +400,6 @@ function armTauriBoot(db: Record<string, unknown>) {
     fsStore.set('assets', new Uint8Array())
     const dbBytes = encodeRisuSaveLegacy(db)
     fsStore.set('database/database.bin', dbBytes)
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-        if (url === '/appdata/database/database.bin') {
-            return new Response(dbBytes)
-        }
-        return new Response(null, { status: 404 })
-    }))
 }
 
 function tauriBaseDb(): Record<string, unknown> {

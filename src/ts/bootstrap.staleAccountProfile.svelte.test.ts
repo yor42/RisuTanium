@@ -56,6 +56,7 @@ import { describe, test, expect, vi, beforeEach, afterEach, onTestFinished } fro
 import { writable, get } from 'svelte/store'
 import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
 import type { AssetVerifyResult } from './storage/assetIntegrity'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -420,6 +421,10 @@ async function corruptDbBytes(): Promise<Uint8Array> {
 
 /** Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. */
 async function freshLoadData() {
+    // The boot reads through the page's byte store; here it is the storage-object model above.
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>

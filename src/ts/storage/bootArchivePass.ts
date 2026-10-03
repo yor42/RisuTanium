@@ -83,13 +83,13 @@ export interface BootArchiveDeps {
     /** `isAppInitiatedReload()`: true when a refused hold meant this page is reloading. */
     isReloading(): boolean
     /**
-     * The read the boot's main-file read would make: on web and Node the
-     * adopting `forageStorage.getItem('database/database.bin')`, on Tauri the
-     * file read. It never writes and never takes a first-launch branch. Used
-     * for the re-read after a failed pass; rejects when the read fails.
+     * The read the boot's main-file read would make. It never writes and never
+     * takes a first-launch branch. Used for the re-read after a failed pass;
+     * rejects when the read fails. On Node it takes the main file's current
+     * version, which a write after it presents.
      */
     readMainFile(): Promise<Uint8Array | null | undefined>
-    /** Writes the main file. On Node the write carries the revision the last adopting read took; a conflict rejects. */
+    /** Writes the main file. On Node the write carries the version the last main-file read or write took; a conflict rejects. */
     writeMainFile(bytes: Uint8Array): Promise<void>
     /** The `setColdStorageItem` contract: `true` when the unit was written, `false` on any failure. */
     writeUnit(key: string, value: { character: Database['characters'][number] }): Promise<boolean>
@@ -854,8 +854,9 @@ async function decodeLikeBoot(bytes: Uint8Array): Promise<Database | null> {
 
 /**
  * The outcome after a failed pass: the main file is read again under the same
- * hold and installed as it is. The read goes through the adopting read, so the
- * Node revision the failed commit may have moved is taken again.
+ * hold and installed as it is. The read takes the main file's version again, so
+ * the Node revision the failed commit may have moved is the one a later write
+ * presents.
  *
  * On web (LocalForage, OPFS and the Node server alike) a re-read that throws
  * or returns nothing stops the boot: the file was readable when the boot read

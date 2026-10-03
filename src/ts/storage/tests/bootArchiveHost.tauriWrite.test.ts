@@ -9,7 +9,7 @@
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 
-const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs())
+const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
 
 vi.mock('@tauri-apps/plugin-os', () => ({ type: vi.fn(() => 'windows') }))
 
@@ -20,6 +20,16 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: { staleAccountProfile: false, getItem: vi.fn(), setItem: vi.fn() },
     locksSupported: true,
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+// The page's byte store selects among clients this test never uses; their
+// modules reach into the application, so they are stood in for.
+vi.mock(import('src/ts/storage/nodeStorage'), () => ({
+    NodeStorage: class { },
+}) as unknown as typeof import('src/ts/storage/nodeStorage'))
+
+vi.mock(import('src/ts/storage/opfsStorage'), () => ({
+    OpfsStorage: class { },
+}) as unknown as typeof import('src/ts/storage/opfsStorage'))
 
 vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: vi.fn(),

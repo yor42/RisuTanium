@@ -1,4 +1,4 @@
-import { BaseDirectory, exists, readDir, readFile, remove } from "@tauri-apps/plugin-fs"
+import { BaseDirectory, exists, remove } from "@tauri-apps/plugin-fs"
 import { get } from "svelte/store"
 import { language } from "src/lang"
 import { alertClear, alertConfirm, alertError, alertNormal, alertWait } from "../alert"
@@ -22,6 +22,7 @@ import { getLoadTimeListing, takeStorageListing, type StorageListing } from "./l
 import { compareWithMainFileRecord } from "./mainFileRecord"
 import type { NodeStorage } from "./nodeStorage"
 import { decodeRisuSave } from "./risuSave"
+import { getAppStore } from "./store/appStore"
 
 /**
  * The manual cold-storage clean-up: one exclusive, strictly-read pass that
@@ -241,37 +242,20 @@ async function isMissingTauriFile(path: string, error: unknown): Promise<boolean
 }
 
 /**
- * Reads a stored file, or null when it is not there. Reading the main file or
- * a snapshot on a Node server must not adopt the revision the server reports,
- * or this tab's next save of the main file would send that newer revision and
- * overwrite a save another device made in between instead of conflicting.
+ * Reads a stored file, or null when it is not there. The read is the store's
+ * plain `read`, never the main file's version-taking read: this tab's next save
+ * of the main file must still present the version it last read or wrote, or it
+ * would overwrite a save another device made in between instead of conflicting.
  */
 async function readStoredFile(path: string): Promise<Uint8Array | null> {
-    if (isTauri) {
-        try {
-            return await readFile(path, { baseDir: BaseDirectory.AppData })
-        } catch (error) {
-            if (await isMissingTauriFile(path, error)) {
-                return null
-            }
-            throw error
-        }
-    }
-    if (isNodeServer) {
-        return await (forageStorage.realStorage as NodeStorage).peekItem(path)
-    }
-    return await forageStorage.getItem(path) as unknown as Uint8Array | null
+    return (await (await getAppStore()).read(path)).bytes
 }
 
 /** File names of the retained snapshots, listed without touching them (listing them through `getDbBackups` would prune). */
 async function listSnapshotNames(): Promise<string[]> {
-    if (isTauri) {
-        const entries = await readDir(SNAPSHOT_DIR, { baseDir: BaseDirectory.AppData })
-        return entries.map((entry) => entry.name).filter((name) => name.startsWith(SNAPSHOT_PREFIX) && name.endsWith('.bin'))
-    }
     const keyPrefix = SNAPSHOT_DIR + '/' + SNAPSHOT_PREFIX
-    return (await forageStorage.keys())
-        .filter((key) => key.startsWith(keyPrefix) && key.endsWith('.bin'))
+    return (await (await getAppStore()).list(keyPrefix))
+        .filter((key) => key.endsWith('.bin'))
         .map((key) => key.slice(SNAPSHOT_DIR.length + 1))
 }
 

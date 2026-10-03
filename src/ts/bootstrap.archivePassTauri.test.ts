@@ -5,9 +5,9 @@
  * `bootstrap.archivePass.test.ts` because `bootstrap.ts` reads `isTauri` once
  * at module load, so this file keeps `isTauri: true` throughout.
  *
- * The Tauri file system and `fetch(convertFileSrc(...))` are in-memory models
- * (a `Map` of files and a `fetch` stub); nothing here says anything about the
- * native Tauri file API. `risuSave.ts` is real. `alert.ts` is real;
+ * The Tauri file system is an in-memory model (a `Map` of files behind the
+ * plugin's functions); nothing here says anything about the native Tauri file
+ * API. `risuSave.ts` is real. `alert.ts` is real;
  * acknowledgement is simulated by writing `{ type: 'none', msg: '' }` to the
  * shared alert store. Everything else `bootstrap.ts` imports is mocked, as in
  * the sibling bootstrap test files.
@@ -20,7 +20,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { BLOCK, composeSave } from 'src/ts/storage/tests/manualCleanupHarness'
 
-const MAIN_URL = '/appdata/database/database.bin'
+const MAIN_PATH = 'database/database.bin'
 
 const dbState = vi.hoisted(() => ({
     current: {} as Record<string, unknown>,
@@ -32,7 +32,8 @@ const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/
 const world = vi.hoisted(() => ({
     events: [] as string[],
     files: fakeFs.files,
-    fetched: [] as string[],
+    /** The path of every file read through the file system plugin, as given. */
+    reads: [] as string[],
 }))
 
 interface RunInput { tree: Record<string, unknown>, prePassBytes?: Uint8Array }
@@ -172,6 +173,13 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     ...fakeFs.module,
+    readFile: vi.fn(async (path: string, _options?: { baseDir?: number }) => {
+        world.reads.push(path)
+        if (path.replace(/^\.\//, '') === MAIN_PATH) {
+            world.events.push('read-main')
+        }
+        return await fakeFs.module.readFile(path)
+    }),
     writeFile: vi.fn(async (path: string, data: Uint8Array, options?: { createNew?: boolean, baseDir?: number }) => {
         world.events.push(`write:${path}`)
         await fakeFs.module.writeFile(path, data, options)
@@ -306,7 +314,7 @@ beforeEach(() => {
     localStorage.clear()
     world.events.length = 0
     fakeFs.reset()
-    world.fetched.length = 0
+    world.reads.length = 0
     pass.opened.length = 0
     pass.runInputs.length = 0
     pass.releaseCalls = 0
@@ -319,15 +327,6 @@ beforeEach(() => {
         world.events.push('setDatabase')
         dbState.current = { ...dbState.baseline(), ...data }
     })
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-        world.fetched.push(url)
-        if (url === MAIN_URL) {
-            world.events.push('read-main')
-        }
-        const path = url.replace(/^\/appdata\//, '')
-        const bytes = world.files.get(path)
-        return bytes ? new Response(bytes.slice()) : new Response(null, { status: 404 })
-    }))
     vi.stubGlobal('open', vi.fn())
     vi.resetModules()
 })
@@ -364,7 +363,7 @@ describe('loadData() Tauri: the pass runs on a strictly decoded main file', () =
         expect(pass.runInputs.length).toBe(1)
         expect(get(loadedStore)).toBe(true)
         expect(characterIds(installedTrees()[0])).toEqual(['a'])
-        expect(world.fetched.some((u) => u.includes('dbbackup-'))).toBe(false)
+        expect(world.reads.some((u) => u.includes('dbbackup-'))).toBe(false)
     })
 
     test('installs the tree the pass returns and notes the bytes it names', async () => {
@@ -450,7 +449,7 @@ describe('loadData() Tauri: a main file that does not decode, or does not decode
         expect(pass.runInputs.length).toBe(0)
         expect(characterIds(installedTrees()[0])).toEqual(['a'])
         expect(alerts.seen).toEqual([])
-        expect(world.fetched.some((u) => u.includes('dbbackup-'))).toBe(false)
+        expect(world.reads.some((u) => u.includes('dbbackup-'))).toBe(false)
     })
 
     test('releases the session when the decode is incomplete', async () => {
@@ -687,7 +686,7 @@ describe('loadData() Tauri: the first-launch main file is written atomically', (
         expect(world.files.has(MAIN)).toBe(false)
         expect(fakeFs.listing('database')).toEqual([])
         expect(alerts.seen.map((a) => a.type)).toEqual(['error'])
-        expect(pass.opened).toEqual([])
+        expect(pass.releaseCalls).toBe(pass.opened.length)
         expect(get(loadedStore)).toBe(false)
     })
 

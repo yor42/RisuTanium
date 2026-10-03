@@ -1,18 +1,17 @@
-import { BaseDirectory, readDir, readFile } from "@tauri-apps/plugin-fs";
 import { alertClear, alertConfirm, alertError, alertSelect, alertWait } from "../alert";
-import { forageStorage, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported } from "../globalApi.svelte";
+import { dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
 import { decodeRisuSave } from "../storage/risuSave";
 import { noteMainFileBytes } from "../storage/mainFileRecord";
-import { writeFileAtomic } from "../storage/tauriAtomicWrite";
+import { getAppStore, writeMainFile } from "../storage/store/appStore";
 import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
 
-const MAIN_DATABASE_KEY = 'database/database.bin'
+const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
 
 /**
  * Reads the snapshot and decodes it strictly, so a snapshot that the default
@@ -22,13 +21,11 @@ const MAIN_DATABASE_KEY = 'database/database.bin'
  * check and is not kept.
  */
 async function readValidatedSnapshot(snapshotKey: string): Promise<Uint8Array> {
-    const stored = isTauri
-        ? await readFile('database/' + snapshotKey, { baseDir: BaseDirectory.AppData })
-        : await forageStorage.getItem(snapshotKey)
+    const { bytes: stored } = await (await getAppStore()).read(snapshotKey)
     if (!stored) {
         throw new Error(`The backup ${snapshotKey} is not in storage`)
     }
-    // Storage may hand back a Buffer (a Uint8Array subclass); the copy keeps
+    // A store may hand back a Buffer (a Uint8Array subclass); the copy keeps
     // the same bytes and makes the value written a plain Uint8Array.
     const bytes: Uint8Array = Object.getPrototypeOf(stored) === Uint8Array.prototype ? stored : new Uint8Array(stored)
 
@@ -50,20 +47,12 @@ export async function loadInternalBackup() {
 
     let selectedBackup: string | undefined
     try {
-        const keys = isTauri ? (await readDir('database', { baseDir: BaseDirectory.AppData })).map((v) => {
-            return v.name
-        }) : (await forageStorage.keys())
-        let internalBackups: string[] = []
-        for (const key of keys) {
-            if (key.includes('dbbackup-')) {
-                internalBackups.push(key)
-            }
-        }
+        const internalBackups = await (await getAppStore()).list(SNAPSHOT_KEY_PREFIX)
 
         const selectOptions = [
             'Cancel',
             ...(internalBackups.map((a) => {
-                return (new Date(parseInt(a.replace('database/dbbackup-', '').replace('dbbackup-', '')) * 100)).toLocaleString()
+                return (new Date(parseInt(a.slice(SNAPSHOT_KEY_PREFIX.length)) * 100)).toLocaleString()
             }))
         ]
 
@@ -153,11 +142,7 @@ export async function loadInternalBackup() {
         }
 
         writeAttempted = true
-        if (isTauri) {
-            await writeFileAtomic(MAIN_DATABASE_KEY, bytes)
-        } else {
-            await forageStorage.setItem(MAIN_DATABASE_KEY, bytes)
-        }
+        await writeMainFile(bytes)
         writeLanded = true
         noteMainFileBytes(bytes)
 

@@ -1,5 +1,4 @@
 import * as tauriOs from '@tauri-apps/plugin-os'
-import { BaseDirectory, readFile } from '@tauri-apps/plugin-fs'
 import { acquireExclusiveStorageMigrationLock, forageStorage, locksSupported } from '../globalApi.svelte'
 import { readColdStorageItem, setColdStorageItem } from '../process/coldstorage.svelte'
 import { isAppInitiatedReload } from '../reloadGuard'
@@ -15,18 +14,16 @@ import {
     resetArchiveStrikes,
 } from './bootArchiveMemo'
 import type { BootArchiveDeps, BootArchiveEnvironment, BootArchiveHost } from './bootArchivePass'
-import { writeFileAtomic } from './tauriAtomicWrite'
+import { readMainFile as readMainFileFromStore, writeMainFile as writeMainFileToStore } from './store/appStore'
 
 /**
  * The production binding of the boot archive pass's effects: the lock binding,
- * the cold-storage unit reader and writer, the storage object, the progress
- * text. Kept apart from `bootArchivePass.ts`, which `bootstrap.ts` imports, so
+ * the cold-storage unit reader and writer, the main file's reader and writer,
+ * the progress text. Kept apart from `bootArchivePass.ts`, which `bootstrap.ts` imports, so
  * that module takes every effect through `BootArchiveDeps` and does not itself
  * import them; it is loaded on demand when a session is opened without
  * injected deps.
  */
-
-const MAIN_FILE = 'database/database.bin'
 
 /**
  * The largest request body the self-hosted Node server accepts, in bytes. It
@@ -66,21 +63,10 @@ export async function createProductionBootArchiveDeps(host: BootArchiveHost): Pr
         }),
         acquireHold: (timeoutMs) => acquireExclusiveStorageMigrationLock(timeoutMs),
         isReloading: () => isAppInitiatedReload(),
-        // Web and Node read through the storage object the boot read through,
-        // so the Node revision the commit carries is the one just adopted.
-        readMainFile: async () => {
-            if (host === 'tauri') {
-                return await readFile(MAIN_FILE, { baseDir: BaseDirectory.AppData })
-            }
-            return await forageStorage.getItem(MAIN_FILE) as unknown as Uint8Array | null
-        },
-        writeMainFile: async (bytes) => {
-            if (host === 'tauri') {
-                await writeFileAtomic(MAIN_FILE, bytes)
-                return
-            }
-            await forageStorage.setItem(MAIN_FILE, bytes)
-        },
+        // Both go through the page's main-file reader and writer, so a read here
+        // takes the version a write after it presents.
+        readMainFile: async () => (await readMainFileFromStore()).bytes,
+        writeMainFile: (bytes) => writeMainFileToStore(bytes),
         writeUnit: (key, value) => setColdStorageItem(key, value),
         readUnit: (key) => readColdStorageItem(key),
         readArchiveMemo,

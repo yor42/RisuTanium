@@ -42,23 +42,25 @@ const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
 const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<DirEntryFixture[]> => []))
 const readFileMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Uint8Array | undefined> => new Uint8Array()))
 const tauriFiles = vi.hoisted(() => new Map<string, Uint8Array>())
+/** A path relative to AppData: the byte store addresses every key with a leading `./`. */
+const bare = vi.hoisted(() => (path: string): string => path.replace(/^\.\//, ''))
 const writeFileMock = vi.hoisted(() => vi.fn(async (path: string, data: Uint8Array, _options?: unknown): Promise<void> => {
     if (path === BACKUP_PATH) {
         backupSink.writes.push(data.slice())
         return
     }
-    tauriFiles.set(path, data.slice())
+    tauriFiles.set(bare(path), data.slice())
 }))
 const renameMock = vi.hoisted(() => vi.fn(async (from: string, to: string, _options?: unknown): Promise<void> => {
-    const found = tauriFiles.get(from)
+    const found = tauriFiles.get(bare(from))
     if (!found) {
         throw `no such file ${from} (os error 2)`
     }
-    tauriFiles.set(to, found)
-    tauriFiles.delete(from)
+    tauriFiles.set(bare(to), found)
+    tauriFiles.delete(bare(from))
 }))
 const removeMock = vi.hoisted(() => vi.fn(async (path: string, _options?: unknown): Promise<void> => {
-    tauriFiles.delete(path)
+    tauriFiles.delete(bare(path))
 }))
 const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
 const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
@@ -272,6 +274,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { LocalWriter, dbWriteLock } from 'src/ts/globalApi.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
+import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
+import { createForageBackedStore, createSwitchedStore } from 'src/ts/storage/tests/forageBackedStore'
 
 //#region helpers
 
@@ -481,6 +486,16 @@ beforeEach(() => {
     readFileMock.mockImplementation(async () => new Uint8Array())
     forageKeysMock.mockImplementation(async () => [])
     forageGetItemMock.mockImplementation(async () => null)
+    // The main file's byte store follows the platform model of each test: the
+    // storage-object model on the web, the desktop store over the file model on Tauri.
+    const webStore = createForageBackedStore({
+        getItem: forageGetItemMock,
+        setItem: forageSetItemMock,
+        keys: forageKeysMock,
+        removeItem: async () => { },
+    })
+    const tauriStore = createTauriFilesStore({ platform: 'posix' })
+    injectAppStore(createSwitchedStore(() => platformBox.isTauri ? tauriStore : webStore))
     getDatabaseMock.mockImplementation(() => databaseWith({}))
 
     // A successful restore keeps the database write lock closed for the rest
@@ -776,7 +791,7 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
         // The database entry reaches the main path by a rename over it, once, and no write opens the main path.
-        const databaseRenames = renameMock.mock.calls.filter((c) => c[1] === 'database/database.bin')
+        const databaseRenames = renameMock.mock.calls.filter((c) => bare(c[1]) === 'database/database.bin')
         expect(databaseRenames).toHaveLength(1)
         expect(writeFileMock.mock.calls.filter((c) => c[0] === 'database/database.bin')).toHaveLength(0)
         expect(tauriFiles.has('database/database.bin')).toBe(true)

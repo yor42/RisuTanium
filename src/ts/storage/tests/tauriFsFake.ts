@@ -11,13 +11,14 @@
  * - `rename` needs a base directory for both paths and replaces an existing
  *   target; a missing source rejects.
  * - Rejections are plain strings that end in `(os error N)`, as the plugin's.
+ * - Paths are taken relative to AppData with a leading `./` removed (the byte
+ *   store addresses every key that way); every path a call was given is
+ *   recorded in `calls`.
  *
  * Strict mode (`createFakeTauriFs({ strict: true })`) adds the directory
  * behaviour of the real file system. A suite that does not ask for it keeps
  * the lenient behaviour above, where directories are implied by file paths:
  *
- * - Paths are taken relative to AppData with a leading `./` removed; every path
- *   a call was given is recorded in `calls`.
  * - `writeFile` and `rename` into a directory that does not exist reject,
  *   `mkdir` rejects on an existing path and on a missing parent unless it is
  *   `recursive`, and a recursive `mkdir` creates every ancestor.
@@ -102,12 +103,12 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
     let readFileFault: { error: string, matches: ((path: string) => boolean) | undefined, handle: FakeFsFault } | undefined
     let existsOverride: boolean | undefined
 
-    /** The path a call was given, relative to AppData: strict mode drops a leading `./`. */
+    /** The path a call was given, relative to AppData: a leading `./` is dropped, and in strict mode `.` is the root. */
     function resolved(path: string): string {
-        if (!strict) {
-            return path
-        }
         const bare = path.startsWith('./') ? path.slice(2) : path
+        if (!strict) {
+            return bare
+        }
         return bare === '.' ? '' : bare
     }
 
@@ -305,7 +306,7 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
             }
             return Array.from(entries.values())
         }
-        const prefix = `${directory}/`
+        const prefix = `${target}/`
         return Array.from(files.keys())
             .filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
             .map((key): FakeFsDirEntry => ({ name: key.slice(prefix.length), isFile: true, isDirectory: false, isSymlink: false }))

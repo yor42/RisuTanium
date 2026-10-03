@@ -1716,6 +1716,7 @@ export const languageKorean = {
     opfsSwitchNoticeUnsupported: "저장소 백엔드가 전환되지 않았습니다: 이 브라우저는 전환에 필요한 기능을 지원하지 않습니다. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.",
     opfsSwitchNoticeInterrupted: "저장소 백엔드가 전환되지 않았습니다: 다른 탭이 열려 있었거나 전환이 중단되었습니다. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.",
     opfsSwitchNoticeError: (detail: string) => `저장소 백엔드가 전환되지 않았습니다: ${detail}. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.`,
+    browserStorageUnavailable: "이 브라우저가 RisuAI가 데이터를 보관하는 저장소를 열지 못해 아무것도 불러오지 못했고, 아무것도 변경되지 않았습니다. 페이지를 새로고침하세요. 이 메시지가 계속 나타난다면 이 브라우저는 RisuAI의 데이터를 저장할 수 없는 환경입니다 (시크릿 모드나 매우 오래된 브라우저가 원인일 수 있습니다). 다른 브라우저에서 RisuAI를 열거나, 시크릿 모드가 아닌 창에서 여세요.",
     storageMigrationLockError: "이 앱의 다른 탭이 열려 있는 것 같습니다 (또는 브라우저가 여기 필요한 검사를 지원하지 않습니다). 먼저 다른 모든 탭을 닫은 후 다시 시도하세요.",
     backupAndFiles: "백업 & 파일",
     assetIntegrityHeading: "에셋 캐시 무결성",

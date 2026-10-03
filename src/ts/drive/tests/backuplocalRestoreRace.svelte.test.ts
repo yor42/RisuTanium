@@ -48,6 +48,7 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
+import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 
 //#region module mocks -- copied verbatim from globalApi.storageTabLocksIdentity.svelte.test.ts,
 //#region extended where backuplocal.ts itself needs more
@@ -393,6 +394,9 @@ beforeEach(async () => {
         configurable: true,
     })
     globalApi = await import('../../globalApi.svelte')
+    // The restore writes the main file through the page's byte store; here it is the storage-object model.
+    const { injectAppStore } = await import('../../storage/store/appStore')
+    injectAppStore(createForageBackedStore(globalApi.forageStorage as unknown as ForageLike))
     const backuplocal = await import('../backuplocal')
     loadLocalBackup = backuplocal.LoadLocalBackup
     const risuSave = await import('../../storage/risuSave')

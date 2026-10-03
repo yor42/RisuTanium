@@ -262,6 +262,11 @@ import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { language } from 'src/lang'
+import { injectAppStore, readMainFile } from 'src/ts/storage/store/appStore'
+import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
+import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
+import { StoreVersionConflictError } from 'src/ts/storage/store/errors'
+import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 
 //#region helpers
 
@@ -323,7 +328,7 @@ async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
  */
 function mainFileWrites(): Uint8Array[] {
     if (platformBox.isTauri) {
-        const renamedSources = new Set(fakeFs.renameLog.filter((entry) => entry.to === MAIN_FILE).map((entry) => entry.from))
+        const renamedSources = new Set(fakeFs.renameLog.filter((entry) => entry.to.replace(/^\.\//, '') === MAIN_FILE).map((entry) => entry.from))
         return fakeFs.writeLog
             .filter((entry) => entry.path === MAIN_FILE || renamedSources.has(entry.path))
             .map((entry) => entry.data)
@@ -364,6 +369,14 @@ beforeEach(() => {
     forageKeysMock.mockReset().mockImplementation(async () => [])
     forageGetItemMock.mockReset().mockImplementation(async () => null)
     forageSetItemMock.mockReset().mockImplementation(async () => { })
+    // The web build's byte store is the storage-object model above; a Tauri
+    // test switches to the real desktop store over the file system model.
+    injectAppStore(createForageBackedStore({
+        getItem: forageGetItemMock,
+        setItem: forageSetItemMock,
+        keys: forageKeysMock,
+        removeItem: async () => { },
+    }))
     setColdStorageItemMock.mockClear()
     alertErrorMock.mockClear()
     alertMdMock.mockClear()
@@ -395,6 +408,9 @@ for (const platform of ['web', 'tauri'] as const) {
     describe(`restoring a local backup on ${platform}`, () => {
         beforeEach(() => {
             platformBox.isTauri = platform === 'tauri'
+            if (platform === 'tauri') {
+                injectAppStore(null)
+            }
         })
 
         test('the main-file record receives exactly the bytes written to database.bin', async () => {
@@ -421,11 +437,65 @@ for (const platform of ['web', 'tauri'] as const) {
     })
 }
 
+describe('restoring a local backup when the store refuses the main-file write with a version conflict', () => {
+    test('reports the restore as failed and tells the main-file record nothing', async () => {
+        forageSetItemMock.mockImplementation(async (key: string) => {
+            if (key === MAIN_FILE) {
+                throw new StoreVersionConflictError(MAIN_FILE, 7)
+            }
+        })
+
+        await loadBackupBytes(backupWithDatabase('refused-by-conflict'))
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.restoreWriteFailed)
+        expect(noteMainFileBytesMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('restoring a local backup on the real Node store over the server stand-in', () => {
+    async function nodeWorld() {
+        const server = new FakeNodeServer()
+        injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }))
+        server.seed(MAIN_FILE, encoder.encode('live-main-file-bytes'))
+        // The page's boot read: it takes the version the restore's write presents.
+        const read = await readMainFile()
+        return { server, readVersion: read.version }
+    }
+
+    function mainRequests(server: FakeNodeServer) {
+        return server.requestsTo('/api/write').filter((request) => Buffer.from(request.headers['file-path'], 'hex').toString('utf-8') === MAIN_FILE)
+    }
+
+    test('the main-file write presents the version the page read and lands the restored bytes', async () => {
+        const { server, readVersion } = await nodeWorld()
+
+        await loadBackupBytes(backupWithDatabase('restored-on-node'))
+
+        expect(mainRequests(server)).toHaveLength(1)
+        expect(mainRequests(server)[0].headers['if-match-revision']).toBe(String(readVersion))
+        expect(noteMainFileBytesMock).toHaveBeenCalledTimes(1)
+        expect(hex(server.files.get(MAIN_FILE)!.bytes)).toBe(hex(noteMainFileBytesMock.mock.calls[0][0]))
+    })
+
+    test('after another device saved the main file the write is refused with the restore-failed message and nothing is written', async () => {
+        const { server } = await nodeWorld()
+        const peerFile = encoder.encode('saved by another device')
+        server.peerWrite(MAIN_FILE, peerFile)
+
+        await loadBackupBytes(backupWithDatabase('refused-on-node'))
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.restoreWriteFailed)
+        expect(hex(server.files.get(MAIN_FILE)!.bytes)).toBe(hex(peerFile))
+        expect(noteMainFileBytesMock).not.toHaveBeenCalled()
+    })
+})
+
 describe('restoring a local backup on tauri replaces the main file atomically', () => {
     const OLD_MAIN = encoder.encode('old-main-file-bytes')
 
     beforeEach(() => {
         platformBox.isTauri = true
+        injectAppStore(null)
         fakeFs.files.set(MAIN_FILE, OLD_MAIN.slice())
     })
 

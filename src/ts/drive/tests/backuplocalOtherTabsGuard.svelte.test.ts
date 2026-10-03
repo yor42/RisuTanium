@@ -37,6 +37,8 @@ import { writable } from 'svelte/store'
 import { language } from 'src/lang'
 import type { Database } from '../../storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from '../../storage/tests/fakeWebLocks'
+import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
+import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
 
 //#region module mocks -- copied verbatim from backuplocalRestoreRace.svelte.test.ts
 
@@ -386,6 +388,13 @@ async function bootTabA(locksValue: LockManager | undefined): Promise<BootedTabA
         configurable: true,
     })
     const globalApi = await import('../../globalApi.svelte')
+    // The restore writes the main file through the page's byte store: the
+    // storage-object model on the web, the desktop store on Tauri.
+    const platform = await import('../../platform')
+    const { injectAppStore } = await import('../../storage/store/appStore')
+    const webStore = createForageBackedStore(globalApi.forageStorage as unknown as ForageLike)
+    const tauriStore = createTauriFilesStore({ platform: 'posix' })
+    injectAppStore(createSwitchedStore(() => platform.isTauri ? tauriStore : webStore))
     const backuplocal = await import('../backuplocal')
     const risuSave = await import('../../storage/risuSave')
     const alertModule = await import('../../alert')

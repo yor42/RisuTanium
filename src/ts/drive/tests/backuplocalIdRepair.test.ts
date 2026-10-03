@@ -125,7 +125,10 @@ vi.mock(import('../../stores.svelte'), () => ({
 //#endregion
 
 import { LoadLocalBackup } from '../backuplocal'
+import { forageStorage } from '../../globalApi.svelte'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
+import { injectAppStore } from '../../storage/store/appStore'
+import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -175,6 +178,8 @@ const fetchMock = vi.hoisted(() => vi.fn())
 beforeEach(() => {
     setDatabaseMock.mockReset()
     forageSetItemMock.mockClear()
+    // The restore writes the main file through the page's byte store; here it is the storage-object model above.
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     requiresFullEncoderReloadMock.state = false
     duplicateFreeAtCall.calls.length = 0
     setDatabaseMock.mockImplementation((db: unknown) => {

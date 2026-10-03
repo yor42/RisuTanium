@@ -24,6 +24,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -341,6 +342,10 @@ function track(promise: Promise<unknown>): { state: 'pending' | 'fulfilled' | 'r
 
 /** A fresh `loadData` and the real state module of the same module graph, after `vi.resetModules()`. */
 async function freshBoot() {
+    // The boot reads through the page's byte store; here it is the storage-object model above.
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     const { loadData } = await import('src/ts/bootstrap')
     const startupCleanup = await import('src/ts/storage/startupCleanupState')
     const { loadedStore } = await import('src/ts/stores.svelte') as unknown as {

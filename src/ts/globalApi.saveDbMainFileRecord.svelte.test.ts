@@ -220,9 +220,11 @@ vi.mock(import('src/ts/storage/mainFileRecord'), () => {
     } as unknown as typeof import('src/ts/storage/mainFileRecord')
 })
 
-import { saveDb } from 'src/ts/globalApi.svelte'
+import { forageStorage, saveDb } from 'src/ts/globalApi.svelte'
 import { noteMainFileBytes } from 'src/ts/storage/mainFileRecord'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
+import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 const CHA_ID = 'saved-cha'
 
@@ -260,6 +262,8 @@ function mainWrites(): Uint8Array[] {
 
 beforeAll(async () => {
     h.db = makeDb('first')
+    // The save loop writes through the page's byte store; here it is the key/value stand-in above.
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     // The save loop never returns; it is only awaited far enough to be running.
     void saveDb()
     // Let the boot encode and the loop's first idle pass happen.

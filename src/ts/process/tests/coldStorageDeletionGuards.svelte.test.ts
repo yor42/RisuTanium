@@ -270,7 +270,7 @@ vi.mock(import('src/ts/process/modules'), () => ({
 //#region Tauri fs backend mock (asset files under assets/, cold blobs under
 // coldstorage/<key>.json) -- copied from asset-gc-cold-read-repro.
 
-type FsEntry = { name: string; isDirectory: boolean }
+type FsEntry = { name: string; isFile: boolean; isDirectory: boolean }
 
 const fsStore = new Map<string, Uint8Array>()
 const throwOnceReadPaths = new Set<string>()
@@ -296,7 +296,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
                 }
             }
         }
-        const entries: FsEntry[] = Array.from(names).map((name) => ({ name, isDirectory: false }))
+        const entries: FsEntry[] = Array.from(names).map((name) => ({ name, isFile: true, isDirectory: false }))
         return entries
     }),
     readFile: vi.fn(async (path: string) => {
@@ -438,7 +438,10 @@ function resetOpfs(): void {
 
 //#endregion
 
-import { buildAssetKeepSet, getBasename } from '../../globalApi.svelte'
+import { buildAssetKeepSet, forageStorage, getBasename } from '../../globalApi.svelte'
+import { injectAppStore } from '../../storage/store/appStore'
+import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
+import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 import {
     getColdStorageItem,
     setColdStorageItem,
@@ -463,6 +466,15 @@ import { noteMainFileBytes } from '../../storage/mainFileRecord'
 import { readDir, remove, BaseDirectory, readFile as tauriReadFile, exists as tauriExists } from '@tauri-apps/plugin-fs'
 import { DBState, selectedCharID, frozenSaveKeysStore } from '../../stores.svelte'
 import { alertError, alertClear } from 'src/ts/alert'
+
+// The clean-up reads the committed main file through the page's byte store: the
+// key/value model behind `forageStorage` on the web build, the desktop store over
+// the file model on Tauri. Which one applies is the platform of each test.
+const webByteStore = createForageBackedStore(forageStorage as unknown as ForageLike)
+const tauriByteStore = createTauriFilesStore({ platform: 'posix' })
+beforeEach(() => {
+    injectAppStore(createSwitchedStore(() => platformState.isTauri ? tauriByteStore : webByteStore))
+})
 
 //#region shared fixture helpers
 

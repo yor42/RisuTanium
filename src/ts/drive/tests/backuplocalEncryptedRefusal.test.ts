@@ -157,6 +157,9 @@ vi.mock(import('../../stores.svelte'), () => ({
 import { LoadLocalBackup } from '../backuplocal'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { isAppInitiatedReload } from '../../reloadGuard'
+import { forageStorage } from '../../globalApi.svelte'
+import { injectAppStore } from '../../storage/store/appStore'
+import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 
 /** Narrows a `Uint8Array<ArrayBufferLike>` to the `Uint8Array<ArrayBuffer>` shape `BlobPart` requires; mirrors `asBuffer` in `src/ts/util.ts`. */
 function asBlobPart(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
@@ -428,6 +431,8 @@ const fetchMock = vi.hoisted(() => vi.fn())
 beforeEach(() => {
     setDatabaseMock.mockClear()
     forageSetItemMock.mockClear()
+    // The restore writes the main file through the page's byte store; here it is the storage-object model above.
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     tauriWriteFileMock.mockClear()
     tauriRenameMock.mockClear()
     tauriRemoveMock.mockClear()

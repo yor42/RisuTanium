@@ -3,9 +3,7 @@ import {
     BaseDirectory,
     readFile,
     exists,
-    mkdir,
-    readDir,
-    remove
+    mkdir
 } from "@tauri-apps/plugin-fs"
 import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
@@ -32,7 +30,8 @@ import { installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
-import { writeFileAtomic } from "./storage/tauriAtomicWrite";
+import { getAppStore, writeMainFile } from "./storage/store/appStore";
+import { StoreVersionConflictError } from "./storage/store/errors";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -525,6 +524,7 @@ let lastBackupWriteTime = 0
 // value over a much lower write rate. This only throttles how often a NEW
 // backup snapshot is taken — the primary database.bin write is unaffected.
 const DB_BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000
+const DB_BACKUP_KEY_PREFIX = 'database/dbbackup-'
 export let saving = $state({
     state: false
 })
@@ -1124,14 +1124,13 @@ export async function saveDb() {
     let lastDbData = new Uint8Array(0)
     let quotaWarningShown = false
     // Shown once per ongoing conflict episode, not once per retry — a
-    // NodeStorageConflictError keeps recurring every attempt until the user
+    // version conflict keeps recurring every attempt until the user
     // reloads (see the catch block below), so without this the toast would
     // otherwise repeat every ~1s forever. Reset back to false on a
     // successful write, so a LATER, separate conflict episode still alerts.
     let conflictAlertShown = false
-    // Consecutive post-commit ancillary failures (backup write -- writeFileAtomic
-    // on Tauri, forageStorage.setItem elsewhere -- and getDbBackups's pruning
-    // removeItem) across separate save attempts. Deliberately NOT `savetrys`:
+    // Consecutive post-commit ancillary failures (the numbered backup write and
+    // getDbBackups's pruning) across separate save attempts. Deliberately NOT `savetrys`:
     // that counter also gates the pre-commit retry/re-commit path (see the
     // catch block below), and folding post-commit failures into it would let a
     // run of post-commit failures masquerade as an active pre-commit retry
@@ -1207,7 +1206,7 @@ export async function saveDb() {
                     // On the self-hosted Node server, this tab's
                     // known revision is now stale precisely because the other tab's
                     // save just landed -- and that revision is deliberately never
-                    // refreshed from a 409 (see nodeStorage.ts). So a "save mine"
+                    // refreshed by a refused write (see appStore.ts). So a "save mine"
                     // option here is not a real choice: it would 409 pre-commit on
                     // every single retry. Only offer what can actually happen --
                     // reload to pick up the current server data, or stay and park this
@@ -1226,7 +1225,7 @@ export async function saveDb() {
                     // falling through to the normal save loop would immediately retry with
                     // the now-stale `if-match-revision`, 409 pre-commit, and surface a
                     // second, differently-worded conflict alert before parking anyway (see
-                    // the pre-commit NodeStorageConflictError handling below). Instead, park
+                    // the pre-commit version-conflict handling below). Instead, park
                     // this tab right here, quietly: stop attempting to save and never
                     // re-prompt on this page load. The user's edits stay on screen, untouched
                     // and unsaved, until they reload -- exactly what "stay" told them.
@@ -1356,12 +1355,7 @@ export async function saveDb() {
             // restore write, the internal-backup load's write) can never interleave with this write — see AsyncMutex/dbWriteLock above.
             const releaseWriteLock = await dbWriteLock.acquire()
             try {
-                if (isTauri) {
-                    await writeFileAtomic('database/database.bin', dbData);
-                }
-                else {
-                    await forageStorage.setItem('database/database.bin', dbData)
-                }
+                await writeMainFile(dbData)
             } finally {
                 releaseWriteLock()
             }
@@ -1380,19 +1374,15 @@ export async function saveDb() {
                     console.error(error)
                 }
             }
-            if (isTauri) {
-                if (shouldWriteBackup) {
-                    await writeFileAtomic(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, dbData);
-                    lastBackupWriteTime = Date.now()
-                }
+            if (shouldWriteBackup) {
+                // A new name per write, so nothing can be overwritten and the
+                // write needs no condition.
+                await (await getAppStore()).write(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, dbData, 'unconditional')
+                lastBackupWriteTime = Date.now()
+                // The backups only grow with a backup write, so only then are
+                // they pruned.
+                await getDbBackups()
             }
-            else {
-                if (shouldWriteBackup) {
-                    await forageStorage.setItem(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, dbData)
-                    lastBackupWriteTime = Date.now()
-                }
-            }
-            await getDbBackups()
 
             savetrys = 0
             conflictAlertShown = false
@@ -1411,8 +1401,8 @@ export async function saveDb() {
             // would re-commit an already-committed payload and could overwrite a peer
             // tab that has since flushed its own state in response to our broadcast —
             // the race this flag exists to prevent. But the error itself is exactly as
-            // real either way — a quota or conflict failure in a backup write or in
-            // getDbBackups() (its pruning removeItem) is just as actionable to the
+            // real either way — a quota or other failure in a backup write or in
+            // getDbBackups() (its pruning delete) is just as actionable to the
             // user as one in the primary write — so classification always runs below,
             // regardless of `primaryCommitted`. This can't turn into a toast-spam loop: the
             // conflict branches already gate on `conflictAlertShown` (a one-shot until
@@ -1449,13 +1439,17 @@ export async function saveDb() {
                 // reasoning above.
                 savetrys = 0
             }
-            if (error instanceof NodeStorageConflictError) {
+            // Two classes mean the same thing: the store's conflict, which only the
+            // main-file write can raise (it alone is conditional; the numbered
+            // backup writes and the prune are unconditional), and the Node client's,
+            // which a remote character block written while encoding can still raise.
+            if (error instanceof NodeStorageConflictError || error instanceof StoreVersionConflictError) {
                 // This device's local data is out of date with the self-hosted
                 // Node server — another writer has saved this key since this
                 // device last read it. Deliberately not treated as a transient
                 // failure worth blindly retrying: encoding and writing the same
                 // (still-stale) local state again would just resend the same
-                // if-match-revision the server already rejected once, and it will
+                // version the server already rejected once, and it will
                 // keep rejecting it every subsequent attempt too — that's the
                 // correct, expected behavior (protecting the other writer's
                 // newer data), not a bug to route around. The only real
@@ -1466,10 +1460,10 @@ export async function saveDb() {
                 //
                 // That reasoning only holds pre-commit. If `primaryCommitted` is
                 // true, this device's write already landed and was already
-                // broadcast to other tabs — the conflict happened on ancillary
-                // best-effort work instead (e.g. two tabs pruning the same oldest
-                // backup once getDbBackups() finds more than the cap, which calls
-                // through to NodeStorage.removeItem() and can 409). There is no
+                // broadcast to other tabs, so a conflict raised afterwards came from
+                // ancillary best-effort work; the backup steps cannot raise one in
+                // this build, and the branch stays for any conditional ancillary
+                // write that is added. There is no
                 // stale local write to protect here, so claiming the save failed
                 // and parking the tab would be wrong — it would reintroduce "one
                 // bad ancillary event permanently disables saving" for a save that
@@ -1554,37 +1548,24 @@ export async function saveDb() {
  * @returns {Promise<number[]>} - A promise that resolves to an array of backup timestamps.
  */
 export async function getDbBackups() {
-    if (isTauri) {
-        const keys = await readDir('database', { baseDir: BaseDirectory.AppData })
-        let backups: number[] = []
-        for (const key of keys) {
-            if (key.name.startsWith("dbbackup-")) {
-                let da = key.name.substring(9)
-                da = da.substring(0, da.length - 4)
-                backups.push(parseInt(da))
-            }
+    const store = await getAppStore()
+    const backups: { key: string, time: number }[] = []
+    for (const key of await store.list(DB_BACKUP_KEY_PREFIX)) {
+        // Only `dbbackup-<digits>.bin` is a numbered backup; any other name
+        // that shares the prefix is not this app's and is left alone.
+        const match = /^(\d+)\.bin$/.exec(key.slice(DB_BACKUP_KEY_PREFIX.length))
+        if (match) {
+            backups.push({ key, time: Number(match[1]) })
         }
-        backups.sort((a, b) => b - a)
-        while (backups.length > 20) {
-            const last = backups.pop()
-            await remove(`database/dbbackup-${last}.bin`, { baseDir: BaseDirectory.AppData })
-        }
-        return backups
     }
-    else {
-        const keys = await forageStorage.keys()
-
-        const backups = keys
-            .filter(key => key.startsWith('database/dbbackup-'))
-            .map(key => parseInt(key.slice(18, -4)))
-            .sort((a, b) => b - a);
-
-        while (backups.length > 20) {
-            const last = backups.pop()
-            await forageStorage.removeItem(`database/dbbackup-${last}.bin`)
-        }
-        return backups
+    backups.sort((a, b) => b.time - a.time)
+    while (backups.length > 20) {
+        // Unconditional: another tab removing the same oldest backup first is
+        // not an error, and a backup is never overwritten, so there is no newer
+        // value of it to protect.
+        await store.delete(backups.pop().key, 'unconditional')
     }
+    return backups.map((backup) => backup.time)
 }
 
 let usingSw = false

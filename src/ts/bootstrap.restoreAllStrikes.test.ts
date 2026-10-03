@@ -20,6 +20,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 const MAIN_KEY = 'database/database.bin'
 const STRIKES_KEY = 'v21RestoreAllStrikes'
@@ -245,6 +246,10 @@ function armLegacy(db: Record<string, unknown> = baseDb()): void {
 
 async function bootOnce(): Promise<void> {
     vi.resetModules()
+    // The boot reads through the page's byte store; here it is the storage-object model above.
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>

@@ -1716,6 +1716,7 @@ export const languageVietnamese = {
     opfsSwitchNoticeUnsupported: "Backend lưu trữ chưa được chuyển đổi: trình duyệt này không hỗ trợ một tính năng cần thiết cho việc chuyển đổi. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.",
     opfsSwitchNoticeInterrupted: "Backend lưu trữ chưa được chuyển đổi: một tab khác đang mở, hoặc quá trình chuyển đổi đã bị gián đoạn. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.",
     opfsSwitchNoticeError: (detail: string) => `Backend lưu trữ chưa được chuyển đổi: ${detail}. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.`,
+    browserStorageUnavailable: "Trình duyệt này không thể mở nơi lưu trữ mà RisuAI dùng để giữ dữ liệu của bạn, nên chưa có gì được tải và không có gì bị thay đổi. Hãy tải lại trang. Nếu thông báo này tiếp tục xuất hiện, trình duyệt này không thể lưu trữ dữ liệu của RisuAI (chế độ duyệt web riêng tư và các trình duyệt quá cũ có thể gây ra điều này): hãy mở RisuAI trong trình duyệt khác, hoặc bên ngoài chế độ duyệt web riêng tư.",
     storageMigrationLockError: "Có vẻ như một tab khác của ứng dụng này đang mở (hoặc trình duyệt của bạn không hỗ trợ kiểm tra cần thiết ở đây). Hãy đóng tất cả các tab khác trước, sau đó thử lại.",
     backupAndFiles: "Sao lưu & Tệp",
     assetIntegrityHeading: "Tính toàn vẹn Bộ nhớ đệm Tài sản",

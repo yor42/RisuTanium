@@ -29,7 +29,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../storage/database.svelte'
 import { NodeStorageConflictError } from '../../storage/nodeStorage'
+import { StoreVersionConflictError } from '../../storage/store/errors'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from '../../storage/tests/fakeWebLocks'
+import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
+import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
+import { createNodeHttpStore } from '../../storage/store/nodeHttpStore'
+import { FakeNodeServer } from '../../storage/tests/manualCleanupHarness'
 
 //#region shared observation state (hoisted so every mock factory and test sees the same objects)
 
@@ -246,9 +251,11 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
     })),
 }))
 
+// Paths are kept relative to AppData: the byte store addresses every key with a leading `./`.
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0, Download: 1 },
-    writeFile: async (path: string, data: Uint8Array) => {
+    writeFile: async (givenPath: string, data: Uint8Array) => {
+        const path = givenPath.replace(/^\.\//, '')
         if (tauriFs.failPayload?.(data)) {
             tauriFs.faultsFired++
             tauriFs.files.set(path, data.slice(0, Math.max(1, Math.floor(data.length / 2))))
@@ -257,7 +264,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         tauriFs.writeLog.push({ path, data })
         tauriFs.files.set(path, data)
     },
-    rename: async (from: string, to: string, options?: { oldPathBaseDir?: number, newPathBaseDir?: number }) => {
+    rename: async (givenFrom: string, givenTo: string, options?: { oldPathBaseDir?: number, newPathBaseDir?: number }) => {
+        const from = givenFrom.replace(/^\.\//, '')
+        const to = givenTo.replace(/^\.\//, '')
         if (options?.oldPathBaseDir === undefined || options?.newPathBaseDir === undefined) {
             throw `forbidden path: ${from}`
         }
@@ -269,27 +278,31 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         tauriFs.files.set(to, found)
         tauriFs.files.delete(from)
     },
-    readFile: async (path: string) => {
+    readFile: async (givenPath: string) => {
+        const path = givenPath.replace(/^\.\//, '')
         tauriFs.readLog.push(path)
         const found = tauriFs.files.get(path)
         if (!found) {
-            throw new Error(`scratch: no such file ${path}`)
+            throw new Error(`scratch: no such file ${path} (os error 2)`)
         }
         return found
     },
-    exists: async (path: string) => tauriFs.files.has(path)
-        || (path === 'remotes' && Array.from(tauriFs.files.keys()).some((key) => key.startsWith('remotes/'))),
+    exists: async (givenPath: string) => {
+        const path = givenPath.replace(/^\.\//, '')
+        return tauriFs.files.has(path)
+            || (path === 'remotes' && Array.from(tauriFs.files.keys()).some((key) => key.startsWith('remotes/')))
+    },
     mkdir: async () => { },
-    readDir: async (dir: string) => {
+    readDir: async (givenDir: string) => {
         if (tauriFs.readDirError) {
             throw tauriFs.readDirError
         }
-        const prefix = `${dir}/`
+        const prefix = `${givenDir.replace(/^\.\//, '')}/`
         return Array.from(tauriFs.files.keys())
             .filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
             .map((key): FsEntry => ({ name: key.slice(prefix.length), isFile: true, isDirectory: false, isSymlink: false }))
     },
-    remove: async (path: string) => { tauriFs.files.delete(path) },
+    remove: async (path: string) => { tauriFs.files.delete(path.replace(/^\.\//, '')) },
 }))
 
 vi.mock('@tauri-apps/plugin-process', () => ({
@@ -454,6 +467,13 @@ async function boot(options: BootOptions = {}): Promise<World> {
         configurable: true,
     })
     const api = await import('../../globalApi.svelte')
+    // The load reads and writes through the page's byte store: the storage-object
+    // model on the web build and the Node server (whose conflict the model can
+    // raise), the desktop store over the file model on Tauri.
+    const { injectAppStore } = await import('../../storage/store/appStore')
+    const webStore = createForageBackedStore(api.forageStorage as unknown as ForageLike)
+    const tauriStore = createTauriFilesStore({ platform: 'posix' })
+    injectAppStore(platform === 'tauri' ? tauriStore : webStore)
     const internal = await import('../internalBackup')
     const risuSave = await import('../../storage/risuSave')
     const mainFileRecord = await import('../../storage/mainFileRecord')
@@ -1148,7 +1168,7 @@ describe('loadInternalBackup reports a failed write or reload', () => {
         await expectLocksReleased(world)
     })
 
-    test('the Node server rejects the write with a revision conflict: shows the write-failed message and releases every lock', async () => {
+    test('a main-file write refused with the Node storage conflict error: shows the write-failed message and releases every lock', async () => {
         const { world } = await worldWithSnapshot({ platform: 'node' })
         storage.failSet = (key) => (key === MAIN ? new NodeStorageConflictError(7) : undefined)
 
@@ -1158,6 +1178,62 @@ describe('loadInternalBackup reports a failed write or reload', () => {
         expectOneError(msg('internalBackupWriteFailed'))
         expectNothingChanged(world)
         await expectLocksReleased(world)
+    })
+
+    test('a main-file write the store refuses with a version conflict: shows the write-failed message and releases every lock', async () => {
+        const { world } = await worldWithSnapshot({ platform: 'node' })
+        storage.failSet = (key) => (key === MAIN ? new StoreVersionConflictError(MAIN, 7) : undefined)
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('internalBackupWriteFailed'))
+        expectNothingChanged(world)
+        await expectLocksReleased(world)
+    })
+
+    describe('on the real Node store over the server stand-in', () => {
+        async function nodeWorld() {
+            const world = await boot({ platform: 'node' })
+            const server = new FakeNodeServer()
+            const app = await import('../../storage/store/appStore')
+            app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }))
+            server.seed(MAIN, LIVE_MAIN_BYTES)
+            // The page's boot read: it takes the version the load's write presents.
+            const read = await app.readMainFile()
+            server.seed(snapshotKey(), await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')]))
+            clearObservations()
+            return { world, server, readVersion: read.version }
+        }
+
+        test('the main-file write presents the version the page read and lands the snapshot', async () => {
+            const { world, server, readVersion } = await nodeWorld()
+
+            const outcome = await runLoad(world)
+
+            expectNoRejection(outcome)
+            expectNoError()
+            const mainRequests = server.requestsTo('/api/write').filter((request) => Buffer.from(request.headers['file-path'], 'hex').toString('utf-8') === MAIN)
+            expect(mainRequests).toHaveLength(1)
+            expect(mainRequests[0].headers['if-match-revision']).toBe(String(readVersion))
+            expect(server.files.get(MAIN)?.bytes).not.toEqual(LIVE_MAIN_BYTES)
+            expect(reloadSpy).toHaveBeenCalledTimes(1)
+        })
+
+        test('after another device saved the main file the write is refused with the write-failed message, nothing is written or reloaded, and every lock is released', async () => {
+            const { world, server } = await nodeWorld()
+            const peerFile = new TextEncoder().encode('saved by another device')
+            server.peerWrite(MAIN, peerFile)
+
+            const outcome = await runLoad(world)
+
+            expectNoRejection(outcome)
+            expectOneError(msg('internalBackupWriteFailed'))
+            expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual(Array.from(peerFile))
+            expect(reloadSpy).not.toHaveBeenCalled()
+            expect(setDatabaseMock).not.toHaveBeenCalled()
+            await expectLocksReleased(world)
+        })
     })
 
     test('the Tauri main-file write rejects part-way: shows the write-failed message, leaves the main file as it was, and releases the write lock', async () => {

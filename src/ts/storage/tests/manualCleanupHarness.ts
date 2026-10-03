@@ -135,6 +135,12 @@ export class FakeNodeServer {
      * parser does (a body of exactly this length is accepted). Unset: no limit.
      */
     bodyLimit?: number
+    /**
+     * Names that sit in the save directory without being keys (write temps, the
+     * server's own `__` files). `/api/list` hides them as the real server does:
+     * only whole, even-length hex names are keys.
+     */
+    strayNames: string[] = []
 
     /** Places a file on the server, bumping its revision as a write would. */
     seed(key: string, bytes: Uint8Array): number {
@@ -144,6 +150,14 @@ export class FakeNodeServer {
     /** Another device saving `key`: identical to a write with no precondition. */
     peerWrite(key: string, bytes: Uint8Array): number {
         return this.commit(key, bytes)
+    }
+
+    /** Another device removing `key`: the file goes and its revision advances, as an unconditional remove does. */
+    peerRemove(key: string): number {
+        const next = this.revisionOf(key) + 1
+        this.revisions.set(key, next)
+        this.files.delete(key)
+        return next
     }
 
     revisionOf(key: string): number {
@@ -198,7 +212,11 @@ export class FakeNodeServer {
             return json(200, { status: 'good' })
         }
         if (path === '/api/list') {
-            return json(200, { success: true, content: Array.from(this.files.keys()) })
+            const names = [...Array.from(this.files.keys()).map(keyToHex), ...this.strayNames]
+            const content = names
+                .filter((name) => /^(?:[0-9a-fA-F]{2})+$/.test(name))
+                .map(hexToKey)
+            return json(200, { success: true, content })
         }
         if (path === '/api/read') {
             const key = hexToKey(headers['file-path'] ?? '')
@@ -206,7 +224,12 @@ export class FakeNodeServer {
                 return new Response('Internal Server Error', { status: 500 })
             }
             const file = this.files.get(key)
-            const responseHeaders = { 'x-risu-revision': String(this.revisionOf(key)) }
+            // A stored empty file and an absent file answer with the same empty
+            // body; `x-risu-exists` is what tells them apart.
+            const responseHeaders = {
+                'x-risu-revision': String(this.revisionOf(key)),
+                'x-risu-exists': file ? '1' : '0',
+            }
             if (!file) {
                 return new Response(new Uint8Array(0), { status: 200, headers: responseHeaders })
             }

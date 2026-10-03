@@ -35,7 +35,9 @@ import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/
 import { sweepTauriAssets, sweepForageAssetKey } from "./storage/assetSweep";
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
-import { sweepAtomicWriteTemps, writeFileAtomic } from "./storage/tauriAtomicWrite";
+import { sweepAtomicWriteTemps } from "./storage/tauriAtomicWrite";
+import { AppStoreUnavailableError, getAppStore, readMainFile, writeMainFile } from "./storage/store/appStore";
+import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
 import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
 import { hasEnabledV21Plugin } from "./plugins/v21Plugins";
@@ -54,8 +56,6 @@ import {
 } from "./globalApi.svelte";
 import { isTauri } from "./platform";
 import { registerModelDynamic } from "./model/modellist";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { appDataDir, join } from "@tauri-apps/api/path";
 
 const appWindow = isTauri ? getCurrentWebviewWindow() : null
 
@@ -109,29 +109,37 @@ export async function loadData() {
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
                 }
-                if (!await exists('database/database.bin', { baseDir: BaseDirectory.AppData })) {
-                    await writeFileAtomic('database/database.bin', encodeRisuSaveLegacy({}));
-                }
-                const appDataDirPath = await appDataDir();
                 archiveSession = await openBootArchiveSession('tauri')
                 let outcome: BootArchiveOutcome | null = null
+                // Only an absent main file starts a first launch. A read that
+                // fails for any other reason leaves the file as it is and takes
+                // the backup route below.
+                LoadingStatusState.text = "Reading Save File..."
+                let readed: Uint8Array | null = null
+                let mainReadable = true
                 try {
-                    LoadingStatusState.text = "Reading Save File..."
-                    const dbPath = await join(appDataDirPath, 'database/database.bin');
-                    const assetUrl = convertFileSrc(dbPath);
-                    const response = await fetch(assetUrl);
-                    if (!response.ok) {
-                        throw new Error(`Failed to load database: ${response.status}`);
-                    }
-                    const readed = new Uint8Array(await response.arrayBuffer());
-                    noteMainFileBytes(readed)
-                    LoadingStatusState.text = "Cleaning Unnecessary Files..."
-                    getDbBackups() //this also cleans the backups
-                    LoadingStatusState.text = "Decoding Save File..."
-                    const decoded = await decodeMainFile(readed)
-                    outcome = await resolveArchiveOutcome(archiveSession, decoded, readed)
+                    readed = (await readMainFile()).bytes
                 } catch (error) {
-                    outcome = null
+                    console.error(error)
+                    mainReadable = false
+                }
+                if (mainReadable && readed === null) {
+                    readed = encodeRisuSaveLegacy({})
+                    await writeMainFile(readed)
+                }
+                if (readed !== null) {
+                    try {
+                        noteMainFileBytes(readed)
+                        LoadingStatusState.text = "Cleaning Unnecessary Files..."
+                        // The listing prunes the backups; a failure here must neither
+                        // stop the boot nor go unreported.
+                        Promise.resolve(getDbBackups()).catch((error) => console.error(error))
+                        LoadingStatusState.text = "Decoding Save File..."
+                        const decoded = await decodeMainFile(readed)
+                        outcome = await resolveArchiveOutcome(archiveSession, decoded, readed)
+                    } catch (error) {
+                        outcome = null
+                    }
                 }
                 if (outcome?.kind === 'stop') {
                     throw outcome.error
@@ -157,13 +165,7 @@ export async function loadData() {
                         if (!backupLoaded) {
                             try {
                                 LoadingStatusState.text = `Reading Backup File ${backup}...`
-                                const backupPath = await join(appDataDirPath, `database/dbbackup-${backup}.bin`);
-                                const backupAssetUrl = convertFileSrc(backupPath);
-                                const backupResponse = await fetch(backupAssetUrl);
-                                if (!backupResponse.ok) {
-                                    throw new Error(`Failed to load backup ${backup}: ${backupResponse.status}`);
-                                }
-                                const backupData = new Uint8Array(await backupResponse.arrayBuffer());
+                                const backupData = await readBackupBytes(backup)
                                 setDatabase(
                                     await decodeRisuSave(backupData)
                                 )
@@ -185,6 +187,14 @@ export async function loadData() {
             }
             else {
                 await forageStorage.Init()
+                try {
+                    await getAppStore()
+                } catch (error) {
+                    if (error instanceof AppStoreUnavailableError) {
+                        throw language.browserStorageUnavailable
+                    }
+                    throw error
+                }
                 archiveSession = await openBootArchiveSession('web')
                 if (archiveSession.reloading) {
                     // The hold was refused because this page is reloading; the
@@ -193,25 +203,40 @@ export async function loadData() {
                 }
 
                 LoadingStatusState.text = "Loading Local Save File..."
-                let gotStorage: Uint8Array | null = await forageStorage.getItem('database/database.bin') as unknown as Uint8Array | null
-                LoadingStatusState.text = "Decoding Local Save File..."
-                if (checkNullish(gotStorage)) {
-                    gotStorage = encodeRisuSaveLegacy({})
-                    await forageStorage.setItem('database/database.bin', gotStorage)
-                }
-                noteMainFileBytes(gotStorage as Uint8Array)
-                let outcome: BootArchiveOutcome | null = null
+                // Only an absent main file is seeded. A zero-length file, or a
+                // stored value that is not bytes, is an undecodable main file and
+                // takes the backup route; it is never written over.
+                let gotStorage: Uint8Array | null = null
+                let mainReadable = true
                 try {
-                    const decoded = await decodeMainFile(gotStorage as Uint8Array)
-                    // The file's bytes are not kept past the decode: the pass
-                    // exists to bring memory down, and the main-file record
-                    // keeps its own reference only until it has hashed them.
-                    gotStorage = null
-                    console.log(decoded.tree)
-                    outcome = await resolveArchiveOutcome(archiveSession, decoded)
+                    gotStorage = (await readMainFile()).bytes
+                    if (gotStorage === null) {
+                        gotStorage = encodeRisuSaveLegacy({})
+                        await writeMainFile(gotStorage)
+                    }
                 } catch (error) {
+                    if (!(error instanceof StoreNotBinaryError)) {
+                        throw error
+                    }
                     console.error(error)
-                    outcome = null
+                    mainReadable = false
+                }
+                LoadingStatusState.text = "Decoding Local Save File..."
+                let outcome: BootArchiveOutcome | null = null
+                if (mainReadable) {
+                    noteMainFileBytes(gotStorage as Uint8Array)
+                    try {
+                        const decoded = await decodeMainFile(gotStorage as Uint8Array)
+                        // The file's bytes are not kept past the decode: the pass
+                        // exists to bring memory down, and the main-file record
+                        // keeps its own reference only until it has hashed them.
+                        gotStorage = null
+                        console.log(decoded.tree)
+                        outcome = await resolveArchiveOutcome(archiveSession, decoded)
+                    } catch (error) {
+                        console.error(error)
+                        outcome = null
+                    }
                 }
                 if (outcome?.kind === 'stop') {
                     throw outcome.error
@@ -238,7 +263,7 @@ export async function loadData() {
                         }
                         try {
                             LoadingStatusState.text = `Reading Backup File ${backup}...`
-                            const backupData: Uint8Array = await forageStorage.getItem(`database/dbbackup-${backup}.bin`) as unknown as Uint8Array
+                            const backupData = await readBackupBytes(backup)
                             setDatabase(
                                 await decodeRisuSave(backupData)
                             )
@@ -421,6 +446,16 @@ export async function loadData() {
             alertError(error)
         }
     }
+}
+
+/** The bytes of numbered backup `backup`; a backup that is not stored is an error, as an undecodable one is. */
+async function readBackupBytes(backup: number): Promise<Uint8Array> {
+    const key = `database/dbbackup-${backup}.bin`
+    const { bytes } = await (await getAppStore()).read(key)
+    if (bytes === null) {
+        throw new Error(`The backup ${key} is not in storage`)
+    }
+    return bytes
 }
 
 /**

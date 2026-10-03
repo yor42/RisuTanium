@@ -34,6 +34,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { OpfsSwitchNotice } from 'src/ts/storage/autoStorage'
+import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 type OpfsSwitchNoticeReason = OpfsSwitchNotice['reason']
 
@@ -296,6 +297,10 @@ function armDecode(db: Record<string, unknown>) {
 
 /** Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. */
 async function freshLoadData() {
+    // The boot reads through the page's byte store; here it is the storage-object model above.
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
