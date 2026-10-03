@@ -142,12 +142,18 @@ The commits below were local when they were listed, and were pushed with it:
 - the records commit that follows `cbaeddd6` and carries this file (`f2a490b2`, by its commit subject: `MC-174`, CHORE-55
   stage 2b done, ledger rows 691 to 696; `MC-175`, the maintainer's correction of the compatibility invariant to a two-way
   `.bin` round trip, with the `AGENTS.md` update the maintainer asked for). Local, not pushed;
-- the records commit that carries this file's later edits (`MC-176`, CHORE-74, the round-trip note under CHORE-55's
-  stage 2b block, ledger rows 697 to 699; the maintainer's "Commit now", `MC-176` 3). Local, not pushed.
+- `2d83a492`, by its commit subject: the upstream <-> fork `.bin` round-trip check (ledger rows 697 to 699), `MC-176` and
+  CHORE-74 (the maintainer's "Commit now", `MC-176` 3). Local, not pushed;
+- the next records commit, uncommitted and awaiting the maintainer's word: `MC-177` (CHORE-74 is not a release item;
+  documentation is enough to clear its G1-type blocker; CHORE-55 stage 3 starts), `MC-178` (the restore answer, "Skip and
+  report"), `MC-179` (the UI-session delegation, the reserved ranges and the merge rules), ledger rows 700 to 703, and the
+  Roadmap and Live-State updates. It will be the 18th; its hash is recorded after the commit. It is committed by explicit
+  path only (the four `Agents/` files named in `MC-179` 2), with `git diff --cached --name-only` checked first; nothing
+  under `src/` is staged. The stage 3 changes (3a and 3b) stay out of it.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
-`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6` and `f2a490b2`) are local and not pushed
-(`git rev-list --count 1ce8abff..HEAD` gave 16 on 2026-10-03, at `f2a490b2`); the `MC-176` records commit will be a 17th.
+`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2` and `2d83a492`) are local and not pushed
+(`git rev-list --count 1ce8abff..HEAD` gave 17 on 2026-10-03, at `2d83a492`).
 The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
@@ -181,7 +187,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
-The working tree holds only this records batch's edits to the `Agents/` documents (until they are committed). Report 56
+The working tree holds this records batch's edits to the `Agents/` documents (until they are committed), and the
+uncommitted CHORE-55 stage 3 changes (3a and 3b), which are before Gate 2. Report 56
 (`Agents/Reports/56-memory-stage-1-step-5-boot-archive-pass.md`) is fact-checked and committed as `a7956237`.
 `docs/` is tracked and holds the maintainer's own Terms of Service and Privacy Policy, which they write and commit
 themselves, so a commit touching those two files is theirs (`MC-156`); agents do not edit them (`MC-155` 4). The
@@ -198,11 +205,68 @@ Several sessions work **in this same checkout**:
 - **"Fix Escape leaving a blocking alert unanswered"**, **"Fix Fullscreen setting error on web
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
+- **"UI session"** (`MC-179` 1) works on branch `feat/ui-batch`, in its own worktree (`C:\Projects\RisuAI-ui`), made from
+  the next records commit (the 18th, above), not in this checkout. The maintainer creates the worktree; no agent runs a
+  `git worktree` command.
 
-**Next free numbers:** `MC-177` (`MC-176` is used), Report 57 (Report 56 is used), ledger row 700 (rows 697 to 699 are the
-fork/upstream `.bin` round-trip investigation and its records; the tokens of rows 698 and 699 are `TODO(evidence)`) and
-CHORE-75 (`CHORE-74` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
-should fill them.
+### The UI lane and the Main Campaign's lane (`MC-179` 1, 2026-10-03)
+
+- **Tickets delegated to the UI session:** CHORE-11 (CD-1 to CD-5), CHORE-19, CHORE-20, CHORE-56, CHORE-69, CHORE-21,
+  CHORE-44, CHORE-14 (UI-1 and UI-2), CHORE-15, CHORE-16 (PG-2 to PG-4), CHORE-12, CHORE-13, CHORE-23, CHORE-57, CHORE-05,
+  CHORE-09, and the follow-up "a rejected avatar image shows no icon". **CHORE-68 and CHORE-74 also go to the UI session,
+  but only after CHORE-55 stage 3 is committed and merged into its branch.**
+- **Tickets staying with the Main Campaign:** CHORE-55 stages 3 and 4, CHORE-59, memory steps 6 and 7, CHORE-62,
+  CHORE-58, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-04, CHORE-10, CHORE-60
+  (with the Rebranding session), and the existing Wiki hand-offs.
+- **The Main Campaign does not edit the delegated tickets' Roadmap entries.** The UI session owns their status lines.
+- **Out of bounds for the UI session (the Main Campaign's lane):** `src/ts/storage/**`, `globalApi.svelte.ts`,
+  `bootstrap.ts`, `src/ts/drive/**`, `risuSave.ts`, `coldstorage*.ts`, `process/memory/**`, `manualCleanup.ts`,
+  `loadTimeListing.ts`, `assetSweep.ts`, `bootArchive*.ts`, `autoStorage.ts`, `opfsStorage.ts`, `nodeStorage.ts`,
+  `StorageMaintenanceSettings.svelte`, `server/**`.
+- **Out of bounds for the Main Campaign (the UI lane):** keep stage 3, stage 4 and CHORE-59 out of `CharConfig.svelte`,
+  `AssetInput.svelte`, `ModuleMenu.svelte`, `inlayScreen.ts`, `tts.ts`, the Playground, `Chat.svelte`'s copy code, the
+  mobile layout and `Settings.svelte`, except where the Main Campaign's own work needs them. If one must be touched, keep
+  the change minimal and list it in the report, so the merge is expected.
+
+### The merge rule (`MC-179` 4)
+
+- **When stage 3 is committed,** tell the maintainer. Its commits are then merged into `feat/ui-batch`, so the UI session
+  can take CHORE-68 and CHORE-74.
+- **`feat/ui-batch` MUST be merged into `fix/persistence-conflict-platform-hardening` BEFORE memory step 6 begins.** Step
+  6 adds the busy registry to `AssetInput`, the emotion and image pickers, imports and exports, image generation, TTS and
+  the composer draft guards (Report 49, D17).
+- **Before step 6 planning, check that this merge has happened. If it has not, stop and ask the maintainer.**
+- The merge is done on the maintainer's word, by an explicit merge, not a rebase. Afterwards run `pnpm check`, the full
+  suite and `pnpm build` on the merged tree, and record the result in the post-merge checks, as for `cfa4dfa0`.
+- **Expected conflicts:** appends in `Agents/Investigation-Ledger.md` and `src/lang/*.ts` (keep both sides); the two
+  Live-State blocks (keep both).
+
+### Shared resources (`MC-179` 5)
+
+- `src/lang/*.ts`: both sessions add keys. Add this session's as one contiguous block (stage 3b's restore notice is one
+  example).
+- Live checks: this session keeps port 6011 and `risuai-prod-scratch`; the UI session uses 6012. Never stop a process you
+  did not start.
+
+### UI session (feat/ui-batch)
+
+Empty. Only the UI session edits this block.
+
+**Next free numbers (reserved ranges, `MC-179` 3):**
+
+| | Main Campaign (this session) | UI session |
+|---|---|---|
+| MC ids | MC-178 to MC-199 | MC-200 to MC-229 |
+| Ledger rows | 700 to 799 | 800 to 899 |
+| CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
+| Reports | 57 to 64 | 65 to 74 |
+
+Next free within the Main Campaign's ranges, once the records commit above is made: `MC-180` (`MC-179` is used), ledger
+row 704 (rows 700 to 703 are the `MC-177` records, their fact-check, the `MC-178` and `MC-179` records, and their
+fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
+is used). Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
+last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody should fill
+them.
 
 **Rules for every session:**
 - stage by explicit path only;
@@ -307,8 +371,12 @@ should fill them.
    directions, with one fork -> upstream gap (G1: v3 plugin storage units that are not an array or an object with a
    `character` or `message` key are not restored by upstream's import). G1 and upstream's non-`.png` asset drop (B1) are
    upstream's own limits and do not count against the invariant (`MC-176` 1); **CHORE-74** (the fork's export warns about
-   such plugin data; `MC-176` 2) is filed. **Next: CHORE-55 stage 3 (assets), then stage 4, then CHORE-59, then memory
-   steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   such plugin data; `MC-176` 2) is filed, and is **not a release item**: the maintainer said documentation (the wiki,
+   later) is enough to clear that blocker, and the warning is a later quality-of-life item (`MC-177` 1 and 2).
+   **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3). **Stage 3 status (2026-10-03): 3a is implemented
+   and 3b is still being implemented, both uncommitted, before Gate 2.** Gate 1 accepted the plan after round 1 `[REJECT]` and
+   round 2 `[EDITORIAL]`. The restore rule for a refused asset name is `MC-178`. **Next after stage 3: stage 4, then
+   CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch` is merged, `MC-179` 4), then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -617,7 +685,7 @@ should fill them.
       ledger rows 691 to 694); the later stages are a planning basis and not yet gated) and then
       **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
-      its own change with its own gates. **Next: CHORE-55 stage 3** (assets), then stage 4 (cold-storage units, the OPFS
+      its own change with its own gates. **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3; 3a implemented, 3b being implemented, uncommitted, before Gate 2), then stage 4 (cold-storage units, the OPFS
       switch removal and the copy-back, `MC-173` 1), then CHORE-59. The stage 0 Windows live check is open (`MC-171` 2). The investigation of
       the Tauri boot read through the asset protocol against `readFile` is done (row 679). The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
@@ -682,8 +750,15 @@ Not placed in the sequence:
   Windows desktop, a chat whose pointer names a unit in a missing `coldstorage` folder reads "unreadable" instead of
   "missing"; LOW): filed 2026-10-02 from CHORE-51 and CHORE-52, open, not scheduled.
 - **CHORE-74** (the `.bin` export warns when the backup holds plugin data that upstream will not restore; a small UI change;
-  `MC-176` 2; LOW, `MC-176` 3): filed 2026-10-03, open, **unscheduled, before release** (on the Orchestrator's reading of `MC-089`, which
-  names the tickets open on 2026-09-25). That position is the Orchestrator's default, not a maintainer placement.
+  `MC-176` 2; LOW, `MC-176` 3): filed 2026-10-03, open, **unscheduled, and not a release item** (the maintainer, `MC-177`
+  1: it is upstream behaviour; the warning is a later quality-of-life item). This replaces the Orchestrator's earlier
+  reading of `MC-089` that had placed it before release. It goes to the UI session after CHORE-55 stage 3 is committed
+  and merged into `feat/ui-batch` (`MC-179` 1). **Owed to the Wiki session:** document the upstream limits G1
+  (v3 plugin storage values that are not an array or an object with a `character` or `message` key are not restored by
+  upstream's import) and B1 (upstream's exporter drops assets that are not `.png`); ledger row 697; `MC-176` 1 and
+  `MC-177` 2. The maintainer said documentation (later wiki) is enough to clear CHORE-74's blocker (the G1-type plugin
+  data); applying that to B1 is the Orchestrator's reading, not stated. Whether the release waits for the wiki page to
+  exist was not stated.
 - **CHORE-56** (under the beta mobile layout, a touch that ends on a button, input, select or textarea
   throws a TypeError in the swipe handler): suspected; TRACED, not run. The maintainer has not yet
   confirmed or placed it.
@@ -695,7 +770,7 @@ Not placed in the sequence:
     messages;
   - a rejected avatar image shows no icon.
 
-`MC-089`: nothing ships until every open ticket clears.
+`MC-089`: nothing ships until every open ticket clears. `MC-177` 1 takes CHORE-74 out of the release set.
 
 ## Open follow-ups, waiting on the maintainer
 
@@ -820,6 +895,16 @@ Answered on 2026-10-01 and removed from this list:
 
   The README's "Saving across tabs and devices" item (`README.md`, the bullet beginning "**Saving across tabs and
   devices.**") already says this; point at it for the wording. The README change is committed in `e7d7f093`. The Main Campaign never edits `docs/wiki/**`.
+- **A new fifth item (2026-10-03, `MC-176` 1 and `MC-177` 2): the upstream limits of a `.bin` moved between upstream and
+  this fork.** The maintainer said documentation (later wiki) is enough to clear the release blocker for G1 (and, by
+  `MC-176` 1's grouping, B1, on the Orchestrator's reading); whether the release waits for the page to exist was not
+  stated. The facts are in ledger row 697 (RUN with the real code of both
+  trees on a mocked web store; Tauri and Node TRACED only):
+  - G1: v3 plugin storage values that are not an array or an object with a `character` or `message` key are not
+    restored when a `.bin` exported by this fork is imported into upstream. Upstream's own exporter leaves them out too,
+    after an "incomplete backup" confirm;
+  - B1: upstream's exporter silently drops assets that are not `.png`, so such assets are missing from a `.bin` that
+    upstream exports and this fork then imports.
 
 ## Finished stages
 

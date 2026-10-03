@@ -2364,6 +2364,8 @@ request that leaves the app with no user action cannot be gated at the point of 
 
 *Point 1 superseded by `MC-167` 2.*
 
+*Point 2 amended by `MC-177` 1 for CHORE-74.*
+
 - **Tag:** decision
 - **Date:** 2026-09-25
 - **Sweep ref:** none (stated directly this session)
@@ -6189,3 +6191,122 @@ same and stage 2 does not change the cost (ledger row 679).
    ("A small notice; no data is lost in the fork itself, only when moving a backup to upstream."; not chosen: "MEDIUM",
    "Leave unset"); for "The round-trip records (MC-176, ticket CHORE-74, ledger rows 697-699) are written and
    fact-checked. Commit them now?", "Commit now (Recommended)" (not chosen: "Hold them"). Nothing is pushed.
+
+### MC-177 — CHORE-74 is not a release blocker; documentation (the wiki, later) is enough to clear its blocker, the G1-type plugin data loss; CHORE-55 stage 3 starts
+
+- **Tag:** stated in chat (two items in one message)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** one chat message, quoted below. It followed the records commit for `MC-176`, in which the Roadmap and
+  Live-State had placed CHORE-74 before release.
+- **Reasoning:** the maintainer's own words in item 2: it is upstream behaviour.
+- **Alternatives rejected:** none; this was stated directly, not chosen from options.
+- **Supersedes:** the Orchestrator's reading of `MC-089` for CHORE-74, written in the Roadmap's CHORE-74 entry and in
+  Live-State ("a release item", "before release"). That reading was the Orchestrator's, not a maintainer decision.
+- **Amends:** `MC-089` 2, for CHORE-74 only: CHORE-74 no longer has to clear before release.
+- **Related:** `MC-175`, `MC-176`, `MC-089`; CHORE-74; CHORE-55. `MC-177` is consistent with `MC-176` 1, which had
+  already rejected "Treat as a blocker" for G1.
+
+**What was decided:** the maintainer, as typed: "1. start stage 3" and "2. about chore-74, I think this shouldn't be a
+release blocker at all. it's upstream behavior, so documentation(later wiki) would be enough to consider this blocker
+cleared. instead, warning on chore-74 would be later QOL."
+1. **CHORE-74 is not a release blocker.** It stays filed, open and unscheduled at LOW (`MC-176` 2 and 3). The export
+   warning is a later quality-of-life item.
+2. **Documentation is enough to clear CHORE-74's blocker.** The maintainer's words are about CHORE-74's blocker, which is
+   the G1-type plugin data loss (v3 plugin storage values that upstream's import does not restore). They name the
+   documentation as the wiki, later. They never name G1 or B1. Applying the same clearance to B1 (upstream's exporter
+   drops assets that are not `.png`), which `MC-176` 1 groups with G1 as an upstream limit, is the Orchestrator's
+   reading, not stated. The wiki is the Wiki session's lane (`docs/wiki/**`); the notes are owed to it and this session
+   does not write them. The maintainer did not say whether the release must wait for the wiki page to exist; that is not
+   stated.
+3. **CHORE-55 stage 3 (assets) starts** on the maintainer's word, "start stage 3".
+
+### MC-178 — CHORE-55 stage 3: restoring a `.bin` skips an asset entry the store refuses, restores everything else, and reports the skipped names
+
+- **Tag:** decision (the maintainer's answer to an `AskUserQuestion`)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to one question the Orchestrator asked with `AskUserQuestion` during CHORE-55 stage
+  3. The question and the option text are quoted below. The reasons in the option text are the Orchestrator's.
+- **Reasoning:** the reasons in the option text, which are the Orchestrator's, not the maintainer's.
+- **Alternatives rejected:** "Rename and restore" ("Store it under a safe name and rewrite the database's reference to
+  it. Keeps every asset, but adds a rename map to the restore path, which is more code in a data-loss-sensitive area.")
+  and "Refuse the whole restore" ("Check every name before writing anything; if any is refused, stop with an error and
+  write nothing. Safe, but one stray .DS_Store blocks a restore.").
+- **Related:** CHORE-55 stage 3; `MC-175` (the two-way `.bin` round trip); `MC-167`.
+
+**What was decided:** the question: "Stage 3 puts every asset write through the new store, which refuses unsafe file
+names (empty or odd extensions, names starting with a dot like macOS's .DS_Store, characters Windows forbids). Restoring
+a .bin writes each asset under the name stored in the file, so one such name would now stop the whole restore partway,
+with some assets already written. Upstream .bin files only hold normal .png names, so in practice this is junk files the
+fork's own export picked up from the assets folder. What should restore do with an entry the store refuses?" The answer:
+"Skip and report (Recommended)": "Restore everything else, then show the user the list of entries that were skipped. A
+skipped name that a character actually uses would show as a missing image."
+
+### MC-179 — UI work moves to a separate session on `feat/ui-batch`; a records commit now; the branch is merged before memory step 6
+
+- **Tag:** decision (the maintainer's notice, headed "NOTICE FROM THE MAINTAINER: UI work moves to a separate session;
+  records commit; merge before memory step 6")
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's notice, five numbered items. The decisive sentences are quoted below; the rest is
+  summarised.
+- **Reasoning:** the notice gives a reason only for the merge rule (step 6 adds the busy registry to UI-lane files,
+  Report 49 D17); none for the rest.
+- **Alternatives rejected:** none; stated directly, not chosen from options.
+- **Related:** `MC-177`, `MC-178`; CHORE-55 stages 3 and 4; memory step 6 (Report 49, D17); CHORE-68; CHORE-74.
+
+**What was decided:**
+1. **Delegation.** A separate UI session works on branch `feat/ui-batch`, in its own worktree (`C:\Projects\RisuAI-ui`),
+   made from the records commit in item 2. The maintainer: "I will create the worktree myself. Do not run any `git
+   worktree` command."
+   - **Tickets moving to the UI session:** CHORE-11 (CD-1 to CD-5), CHORE-19, CHORE-20, CHORE-56, CHORE-69, CHORE-21,
+     CHORE-44, CHORE-14 (UI-1 and UI-2), CHORE-15, CHORE-16 (PG-2 to PG-4), CHORE-12, CHORE-13, CHORE-23, CHORE-57,
+     CHORE-05, CHORE-09, and the follow-up "a rejected avatar image shows no icon".
+   - **Moving later:** "CHORE-68 and CHORE-74 also go to the UI session, but only after CHORE-55 stage 3 is committed and
+     merged into its branch."
+   - **Tickets staying with the Main Campaign:** CHORE-55 stages 3 and 4, CHORE-59, memory steps 6 and 7, CHORE-62,
+     CHORE-58, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-04, CHORE-10, CHORE-60
+     (with the Rebranding session), and the existing Wiki hand-offs.
+   - **Roadmap entries:** "From now on, do not edit the delegated tickets' Roadmap entries. The UI session owns their
+     status lines."
+   - **The UI session's out-of-bounds list (the Main Campaign's lane):** `src/ts/storage/**`, `globalApi.svelte.ts`,
+     `bootstrap.ts`, `src/ts/drive/**`, `risuSave.ts`, `coldstorage*.ts`, `process/memory/**`, `manualCleanup.ts`,
+     `loadTimeListing.ts`, `assetSweep.ts`, `bootArchive*.ts`, `autoStorage.ts`, `opfsStorage.ts`, `nodeStorage.ts`,
+     `StorageMaintenanceSettings.svelte`, `server/**`.
+   - **The Main Campaign's out-of-bounds list (the UI lane), in return:** "keep stage 3, stage 4 and CHORE-59 out of the
+     UI-lane files, except where your own work needs them": `CharConfig.svelte`, `AssetInput.svelte`,
+     `ModuleMenu.svelte`, `inlayScreen.ts`, `tts.ts`, the Playground, `Chat.svelte`'s copy code, the mobile layout and
+     `Settings.svelte`. "If you must touch one of them, keep the change minimal and list it in your report, so the merge
+     is expected."
+2. **A records commit, now.** Write MC-178 (the maintainer's restore answer, "Skip and report") so the number is used in
+   order, and record this delegation as MC-179. Add the owed ledger rows (the MC-177 records and their fact-check, from
+   row 700 on). Update Live-State: the commit list and count, the delegation and the UI lane, the reserved ranges, an
+   empty block titled "UI session (feat/ui-batch)" that only that session edits, and the merge rule. Run `doc-verifier`
+   on these records as usual. When the maintainer gives the word, commit only by explicit path:
+   `Agents/Maintainer-Context.md`, `Agents/Roadmap.md`, `Agents/Live-State.md` and `Agents/Investigation-Ledger.md`.
+   "Do NOT stage anything under src/. The 3a/3b changes are uncommitted and pre-Gate 2, and stay out of this commit."
+   Check `git diff --cached --name-only` before committing, and tell the maintainer the commit hash, because the UI
+   worktree is created from it.
+3. **Reserved number ranges.** "Tell me before your range runs out; never take a number from the other range."
+
+   | | Main Campaign | UI session |
+   |---|---|---|
+   | MC ids | MC-178 to MC-199 | MC-200 to MC-229 |
+   | Ledger rows | 700 to 799 | 800 to 899 |
+   | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
+   | Reports | 57 to 64 | 65 to 74 |
+4. **Merges.**
+   - When stage 3 is committed, tell the maintainer. The maintainer will have its commits merged into `feat/ui-batch`,
+     so the UI session can take CHORE-68 and CHORE-74.
+   - "feat/ui-batch MUST be merged into fix/persistence-conflict-platform-hardening BEFORE memory step 6 begins." Step 6
+     adds the busy registry to `AssetInput`, the emotion and image pickers, imports and exports, image generation, TTS
+     and the composer draft guards (Report 49, D17).
+   - "Before you start step 6 planning, check that this merge has happened. If it has not, stop and ask me."
+   - The merge is done on the maintainer's word, by explicit merge, not rebase. Afterwards run `pnpm check`, the full
+     suite and `pnpm build` on the merged tree, and record the result in the post-merge checks, as for `cfa4dfa0`.
+   - Expected conflicts: appends in `Agents/Investigation-Ledger.md` and `src/lang/*.ts` (keep both sides); the two
+     Live-State blocks (keep both).
+5. **Shared resources.** `src/lang/*.ts`: both sessions add keys; add yours as one contiguous block (stage 3b's restore
+   notice is one example). Live checks: the Main Campaign keeps port 6011 and `risuai-prod-scratch`; the UI session uses
+   6012. "Never stop a process you did not start."

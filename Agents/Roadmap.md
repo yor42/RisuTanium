@@ -377,6 +377,12 @@ Found while scoping the module-editor partition (2026-09-21). All three were **v
 source**, none is fixed, and none was absorbed into Stage B. Recorded here so they are not lost.
 Evidence and full reasoning: `Agents/Reports/11-stage-b-module-effect-partition-plan.md` section 8.1.
 
+**Ownership note (2026-10-03, `MC-179` 1):** the tickets listed in `MC-179` 1 are delegated to the UI session on
+`feat/ui-batch`. CHORE-68 and CHORE-74 move only after CHORE-55 stage 3 is committed and merged into that branch. The
+rule applies from `MC-179` on: the UI session owns the status lines of the delegated tickets, and this file's entries for
+them are not edited by the Main Campaign. CHORE-74's entry carries the `MC-177` status edit, made in the same uncommitted
+batch before the delegation; CHORE-74 moves only after stage 3 is merged.
+
 ### CHORE-01 — Mutations to a NON-selected character are never marked for save
 
 **Status (2026-09-22):** Stage 1 implemented and gated; live check passed; committed as `152cc563`.
@@ -2612,8 +2618,11 @@ its check); rows 695 and 696 are these records and their fact-check. `MC-174` re
     plan). Settled by 2b: the
     `saveDb` post-commit conflict branch (kept, now tested via an injected conflict; `NodeStorageConflictError` is no
     longer recognised there).
-- **Next for CHORE-55:** stage 3 (assets), then stage 4 (cold-storage units, the OPFS switch removal and the copy-back per
-  `MC-173` 1).
+- **Stage 3 status (2026-10-03):** stage 3 is split into two parts (3a and 3b), both uncommitted: 3a is implemented, 3b
+  is still being implemented. Gate 1 accepted the plan after round 1 `[REJECT]` and round 2 `[EDITORIAL]`. Gate 2 has not
+  run. The restore rule for a refused asset name is `MC-178`. The full stage 3 block comes with the stage 3 records.
+- **Next for CHORE-55:** stage 3 (assets) started on the maintainer's word (`MC-177` 3); see the stage 3 status above.
+  Then stage 4 (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1).
 
 **Note (2026-10-03, after stage 2b): the upstream <-> fork `.bin` round trip (`MC-175`) was checked (ledger row 697);
 this note supersedes the "under investigation" sentence in the stage 2b block above.** RUN with the real export and import
@@ -2632,6 +2641,11 @@ paths are TRACED only. None of the findings below was caused by CHORE-55.
   (inlay media, HypaMemory caches, plugin permissions) are in neither exporter (TRACED from source, not run).
 - **Decided (`MC-176`):** G1 and B1 are upstream's own limits and do not count against the invariant; they are documented
   in the records now and in the wiki later. The fork's export will warn about G1-type plugin data: CHORE-74.
+- **Decided (`MC-177`, 2026-10-03):** documentation (the wiki, later) is enough to clear CHORE-74's blocker, the G1-type
+  plugin data loss. The maintainer's words do not name G1 or B1. Applying the same clearance to B1, which `MC-176` 1
+  groups with G1 as an upstream limit, is the Orchestrator's reading, not stated. The wiki notes are owed to the Wiki
+  session. Whether the release must wait for the wiki page to exist was not stated. CHORE-74 is a later quality-of-life
+  item and not a release item (`MC-177` 1 and 2).
 - **Untested:** a real Tauri or Node run, upstream's UI for a fork group stub, and entries over 4 GiB.
 
 **Status (2026-10-03, stage 2a): stage 2a done by `a29335f7` (local, not pushed). Stage 2b (remote blocks), stages 3
@@ -4104,9 +4118,10 @@ an investigation before anything is decided.
 
 ### CHORE-74 — The `.bin` export warns when the backup holds plugin data that upstream will not restore
 
-**Status (2026-10-03):** open, **not scheduled**; a release item on the Orchestrator's reading of `MC-089` (which names the tickets open on
-2026-09-25; the maintainer has not stated it for CHORE-74). Type: a small UI change. Filed at the maintainer's
-decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC-176` 3).
+**Status (2026-10-03):** open, **not scheduled**; **not a release item**: the maintainer said it should not be a release
+blocker, because it is upstream behaviour, and that the warning is a later quality-of-life item (`MC-177` 1). This
+replaces the Orchestrator's earlier reading of `MC-089` for this ticket. Type: a small UI change. Filed at the
+maintainer's decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC-176` 3).
 
 - **What happens today:** upstream's `.bin` import restores a cold-storage unit only when it is an array or an object with
   a `character` or `message` key (upstream `isColdStorageBackupData`, the Orchestrator verified it in
