@@ -178,6 +178,61 @@ export const languageChinese = {
         "presetNotFound": "找不到预设：{name}"
     },
     "loadingEllipsis": "加载中...",
+    "slashCommandHelp":
+            "\n            # /input [text]" +
+            "\n            - 显示输入对话框" +
+            "\n            - 返回输入的文本" +
+            "\n            - 示例：/input Hello World" +
+            "\n            # /echo [text]" +
+            "\n            - 显示提示对话框" +
+            "\n            - 返回输入的文本" +
+            "\n            - 示例：/echo Hello World" +
+            "\n            # /popup [text]" +
+            "\n            - 显示提示对话框" +
+            "\n            - 返回输入的文本" +
+            "\n            - 示例：/popup Hello World" +
+            "\n            # /pass [text]" +
+            "\n            - 返回输入的文本" +
+            "\n            - 示例：/pass Hello World" +
+            "\n            # /buttons [labels]" +
+            "\n            - 显示选择对话框" +
+            "\n            - 返回所选标签" +
+            "\n            - 示例：/buttons Yes§No" +
+            "\n            # /speak [text]" +
+            "\n            - 朗读文本" +
+            "\n            - 示例：/speak Hello World" +
+            "\n            # /send [text]" +
+            "\n            - 向聊天发送文本" +
+            "\n            - 示例：/send Hello World" +
+            "\n            # /sendas [text]" +
+            "\n            - 以角色身份向聊天发送文本" +
+            "\n            - 示例：/sendas Hello World" +
+            "\n            # /comment [text]" +
+            "\n            - 向聊天添加评论" +
+            "\n            - 示例：/comment Hello World" +
+            "\n            # /cut [index]" +
+            "\n            - 剪切聊天消息" +
+            "\n            - 示例：/cut 1" +
+            "\n            # /del [size]" +
+            "\n            - 删除聊天消息" +
+            "\n            - 示例：/del 1" +
+            "\n            # /len [array]" +
+            "\n            - 返回数组长度" +
+            "\n            - 示例：/len Hello§World" +
+            "\n            # /setvar key=[key] [value]" +
+            "\n            - 设置变量" +
+            "\n            - 示例：/setvar key=hello world" +
+            "\n            # /addvar key=[key] [value]" +
+            "\n            - 向变量添加数值" +
+            "\n            - 示例：/addvar key=damage 10" +
+            "\n            # /getvar key=[key]" +
+            "\n            - 获取变量" +
+            "\n            - 示例：/getvar key=damage" +
+            "\n            # /trigger [name]" +
+            "\n            - 运行触发器" +
+            "\n            # /?" +
+            "\n            - 显示帮助" +
+            "\n            ",
     "optLow": "低",
     "optMedium": "中",
     "optHigh": "高",
@@ -314,6 +369,7 @@ export const languageChinese = {
         "warning": "警告",
         "noFormat": "无格式",
         "memory": "记忆",
+        "otherAx": "其他辅助",
         "translations": "翻译",
         "emotion": "情绪",
         "component": "组件",
@@ -364,8 +420,6 @@ export const languageChinese = {
         "msgSound": "当角色回应时，播放 *叮* 的提示音",
         "charDesc": "角色的简要描述。这会影响角色的回应方式。",
         "charFirstMessage": "角色的初始消息，这会极大地影响角色的回应方式。",
-        "charNote": "对模型行为有强烈影响的备注，嵌入到当前角色中，也称为 UJB。",
-        "toggleNsfw": "切换越狱提示词的开关。",
         "lorebook": "世界书（Lorebook）是由用户创建的 AI 辞典，只有当上下文中包含关键词时 AI 才能看到它。",
         "loreName": "世界书的名称，不影响 AI。",
         "loreActivationKey": "当上下文中包含任一关键词时，该条目将被激活，并激活相应的提示词。使用逗号分隔。",
@@ -375,7 +429,6 @@ export const languageChinese = {
         "imggen": "分析聊天内容后，将提示套用至 {{slot}}。",
         "regexScript": "正则表达式（Regex Script）是一个自定义工具，用于将符合条件的字符串由“IN”替换为“OUT”。\n\n有四种类型选项：\n\n- **修改输入（Modify Input）**：修改用户的输入内容\n\n- **修改输出（Modify Output）**：修改角色的输出内容\n\n- **修改请求数据（Modify Request Data）**：在当前聊天数据发送时进行修改\n\n- **修改显示（Modify Display）**：仅修改显示的文字，不更改聊天数据\n\n“IN”必须是一个不带标志（flags）的正则表达式，且开头和结尾不包含斜线。\n\n“OUT”是一个可以包含替换模式的字符串。这些替换模式如下：\n\n- $$\n\n  - 插入符号“$”\n\n- $&\n\n  - 插入匹配到的子字符串\n\n- $`\n\n  - 插入匹配子字符串前的部分\n\n- $1\n\n  - 插入第一个匹配群组，可以替换为其他数字（例如 2、3...）\n\n- $(name)\n\n  - 插入命名群组\n\n针对标志（flags），除了原生支持的标志之外，还可以使用下列专为高级用户设计的标志：\n\n- `<inject>`：将结果注入当前字符串中\n- `<move_top>`：将结果移到字符串的顶部\n- `<move_bottom>`：将结果移到字符串的底部\n- `<repeat_back>`：如果找不到匹配，则使用上一个匹配的结果\n- `<order n>`：设置结果的顺序，数值越高显示越靠前。“n”代表一个数字（例如 `<order 1>`）。如果未设置，默认为 0。\n- `<cbs>`：解析“IN”中的大括号语法\n\n若要与原生标志结合使用，可以像这样使用：`gi<cbs><move_top>`。",
         "experimental": "此为实验性功能，可能不稳定。",
-        "oogaboogaURL": "如果你的 WebUI 支持旧版 API，你的 URL 应类似于 *https://.../run/textgen*。\n\n如果你的 WebUI 支持新版 API，你的 URL 应类似于 *https://.../api/v1/generate*，且将使用 API 服务器作为主机，并在参数中添加 —api。",
         "exampleMessage": "示范对话会影响角色的回应，但不会永久占用 Token。\n\n对话格式示例：\n\n```\n<START>\n{{user}}: hi\n{{char}}: hello\n<START>\n{{user}}: hi\nHaruhi: hello\n```\n\n```<START>``` 标记了一段新对话的开始。",
         "creatorQuotes": "说明将显示在初始消息之上，用于向用户提供角色说明。此内容不会进入提示词中。",
         "systemPrompt": "此字段不为空时，将替换设置中的主提示词为此内容。",
@@ -384,19 +437,13 @@ export const languageChinese = {
         "scenario": "对角色情境的简要描述。\n\n**不建议使用此字段，请填写在角色描述中。**",
         "utilityBot": "激活后，将忽略主提示词、越狱提示词和其他提示词。适用于工具型机器人，而非用于角色扮演。",
         "loreSelective": "激活选择性模式后，需同时匹配关键词与次要关键詞，方可激活该条目。",
-        "loreRandomActivation": "激活“使用概率条件”后，若同时符合激活条目的其他条件，则在每次发送聊天时，该条目将依照设置的概率被使用。",
         "additionalAssets": "在聊天中显示的额外资源。\n\n - 使用 `{{raw::<资源名称>}}` 作为路径。\n - 使用 `{{image::<资源名称>}}` 作为图片。\n - 使用 `{{video::<资源名称>}}` 作为影片。\n - 使用 `{{audio::<资源名称>}}` 作为音频。\n    - 建议放置在背景 HTML 中。",
-        "superMemory": "SupaMemory 通过向 AI 提供摘要数据来增强角色的记忆能力。\n\nSupaMemory 是一个文本摘要功能，推荐使用 davinci 模型。不建议使用辅助模型，除非它是未经过滤、最大上下文长度超过 2000 Tokens，且具有良好摘要能力的模型。\n\nSupaMemory 提示词决定了模型如何撰写摘要。留空将使用默认提示词，建议保持留空。\n\n完成所有设置后，你可以在角色的设置中激活此功能。",
         "replaceGlobalNote": "此字段不为空时，将替换当前的全局备注为此内容。",
         "backgroundHTML": "将 Markdown/HTML 注入到聊天画面的背景中。\n\n你也可以使用额外资源。例如，你可以使用 {{audio::<资源名称}} 作为背景音乐。\n\n此外，你还可以与额外资源搭配使用以下格式：\n - {{bg::<资源名称>}}：将资源设为背景。",
         "additionalText": "只有当 AI 认为有必要时，才会将该段文本添加到角色描述中。你可以在此处放置较长的文本。使用双换行进内联容分隔。",
         "charjs": "这是一段会与角色一同运行的 JavaScript。详情请查看：https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js\n**出于安全原因，目前不建议使用。这些代码不会被包含在导出中。**",
-        "romanizer": "Romanizer 是一个将非罗马字母转换为罗马字母的插件，用于减少请求数据时的 Token。这可能会导致输出结果与原始模型不同。如果已在聊天中使用罗马字母，不建议激活。",
-        "inlayImages": "激活后，图片可嵌入聊天中，并且支持此功能的 AI 将能够看到它们。",
-        "metrica": "Metric Systemizer 是一个插件，会在请求阶段将公制单位转换为英制单位，而在输出时转回公制，让用户在接口上显示公制单位，但性能上使用英制单位。如果在聊天中已经使用英制单位，不建议激活。",
         "lorePlus": "LoreBook+ 是一项实验性功能。使用向量数据库（VectorDB），而不仅是字符串匹配。目的在于提供更好的机器人创建体验和更好的匹配性能。",
         "topP": "Top P 是内核采样（Nucleus Sampling）的概率阈值，模型只会考虑总概率质量达到 top_p 的 Token 结果。",
-        "openAIFixer": "OpenAI Fixer 是一个用于修复 OpenAI 部分问题的插件。",
         "sayNothing": "激活后，如果用户没有输入聊天内容，系统会自动填入 ’say nothing‘。",
         "showUnrecommended": "激活后，将显示不建议使用的过时设置。不建议使用这些设置。",
         "streamingDisplayOptimizationMode": "在使用正则脚本等大量后处理时，减少长回复流式生成造成的界面卡顿。对移动设备或低端设备可能有帮助。\n\n关闭会保留普通行为，但每个 Token 都会触发后处理，可能带来明显开销。\n\n均衡会只按较短间隔（约 0.125 秒）尝试后处理来降低负载。\n\n强与均衡类似，但流式生成期间会跳过后处理，只在流式完成后尝试一次后处理，从而大幅降低负载。\n\n这是一项实验性功能，可能会导致部分功能出现非预期行为。",
@@ -429,7 +476,6 @@ export const languageChinese = {
         "lowLevelAccess": "激活后，将开放需要高计算能力的功能，并允许通过角色中的触发式执行 AI 模型。除非确实需要这些功能，否则不要激活此选项。",
         "triggerLLMPrompt": "这是将发送到模型的提示词。你可以使用 `@@role user`、`@@role system`、`@@role assistant` 来设置多轮对话及角色。例如：\n```\n@@role system\nrespond as hello\n@@role assistant\nhello\n@@role user\nhi\n```",
         "legacyTranslation": "激活后，将使用旧版翻译方法，在翻译前对 Markdown 和引号进行预处理，而非在翻译后处理。",
-        "luaHelp": "可使用 Lua 作为触发式，并可定义 onInput、onOutput 和 onStart 函数。当用户发送消息时，调用 onInput；当角色发送消息时，调用 onOutput；当对话开始时，调用 onStart。详情请参阅说明文档。",
         "openAIFlexProcessing": "OpenAI Flex 响应可能比普通响应更慢，但可以用更低的价格（Batch API 价格）获得响应。此开关仅适用于官方 OpenAI Chat Completions 请求。",
         "claudeCachingExperimental": "Claude 缓存是实验性功能，可减少模型成本。但若在不使用重滚（reroll）回应的情况下激活，则可能增加成本。实验性功能可能不稳定，且未来可能会有所变动。",
         "urllora": "可使用模型文档的直接下载链接。通过类似 https://sites.google.com/site/gdocs2direct/ 的网站，从 Google Drive 等平台产生直接连接。或者使用 Civitai URL，复制 AIR（格式如 `urn:air:flux1:lora:civitai:180891@776656` 或 `civitai:180891@776656`），并粘贴。",
@@ -458,7 +504,6 @@ export const languageChinese = {
         "legacyMediaFindings": "启用后，将使用旧方法查找媒体资源，而不使用额外的搜索算法。",
         "comfyWorkflow": "输入 Comfy UI 的 API 工作流。您可以通过点击“工作流 > 导出 (API)”按钮在 Comfy UI 中获取您的 API 工作流。您还必须在工作流文本中放入 {{risu_prompt}}。{{risu_prompt}} 将被替换为 Risu 提供的提示词。",
         "automaticCachePoint": "如果缓存点不存在，则在聊天结束后自动创建缓存点。",
-        "experimentalChatCompressionDesc": "压缩未使用的聊天数据并保存到单独的文件中。这大大减少了聊天数据的大小，并大大提高了性能，但它是实验性的，可能不稳定，导致备份功能等出现问题。",
         "promptInfoInsideChatDesc": "启用后，这会将提示预设信息存储在聊天元数据中。存储的数据包括预设名称、活动切换和提示文本。这可能会略微增加处理时间和存储使用量。",
         "autoAdjustSchema": "启用后，将自动调整动态输出的 JSON 模式。",
         "dynamicMessages": "启用后，将允许助手连续发送多条消息，而不是一次发送一条。",
@@ -499,26 +544,12 @@ export const languageChinese = {
         "coldstorage": "开启后，应用会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。这样在角色很多时可以保持较低的内存占用。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。"
     },
     "setup": {
-        "chooseProvider": "选择 AI 提供者",
-        "openaikey": "使用 OpenAI API 密钥（推荐）",
-        "openaiProxy": "OpenAI 反向代理",
-        "setupmodelself": "其他／自行设置",
-        "inputApiKey": "请在此输入 API 密钥",
-        "apiKeyhelp": "可在以下获取 API 密钥：",
-        "setupSelfHelp": "欢迎画面结束后，可前往设置中自行配置。",
         "theme": "选择介面主题",
-        "themeDescWifulike": "不适合在行动设备上使用",
-        "themeDescWifuCut": "适合在行动设备上使用",
-        "themeDescClassic": "适用于所有设备",
-        "texttheme": "设置文字颜色",
-        "inputName": "最后，请输入你的昵称。",
         "welcome": "欢迎使用 Risu（叡苏）！我将引导你进行设置。请问我该如何称呼你？",
         "welcome2": "你好，{username}！在开始之前，我会问你一些问题，稍后可在设置中进行修改。\n\n首先，请选择 AI 提供者。",
         "openRouterProvider": "OpenRouter 提供许多模型，部分免费且未经内容过滤，但质量不如 OpenAI。",
         "hordeProvider": "Horde 提供免费服务，但回应时间较长且质量较低。",
-        "setProviderLater": "还有其他提供者，你可以稍后在设置中配置。如想稍后设置，请选择此选项。",
         "setupOpenAI": "使用 OpenAI 需要获取 API 密钥（Key）。\n1. 前往 https://beta.openai.com/ \n2. 使用账号登录 \n3. 前往 https://beta.openai.com/account/api-keys \n4. 点击“Create New API Key”，并命名密钥。 \n5. 复制该密钥。 \n6. 返回 RisuTanium\n7. 粘贴密钥并点击“发送”。",
-        "setupClaude": "使用 Claude，你需要获取一个 API 密钥。",
         "setupClaudeSteps": [
             "访问此链接并使用 Google 帐户登录",
             "输入您的信息并点击“继续”（Continue）",
@@ -558,10 +589,6 @@ export const languageChinese = {
         "chooseCheapOrMemoryOption4": "无限制",
         "chooseCheapOrMemoryOption4Desc": "AI 会记住几乎所有内容，但费用极高。",
         "finally": "最后，你是否希望使用进阶工具？",
-        "finallyOption1": "是",
-        "finallyOption1Desc": "使用进阶工具会使界面变得更複杂。推荐高级用户使用。",
-        "finallyOption2": "否",
-        "finallyOption2Desc": "不使用高级工具将使界面更简洁。推荐新使用者使用。",
         "igpPrompt": "若 IGP 提示词不为空，它将在主模型请求之后，作为情感模型执行，并将结果添加到主模型回应之后。"
     },
     "triggerCategories": {
@@ -1004,6 +1031,7 @@ export const languageChinese = {
     "autoMode": "自动模式",
     "submodel": "辅助模型",
     "emotionPrompt": "情绪提示词",
+    "emotionPromptPlaceholder": "留空则使用默认值",
     "singleView": "单角色模式",
     "SpacedView": "多角色模式",
     "emphasizedView": "双角色模式",
@@ -1015,6 +1043,7 @@ export const languageChinese = {
     "backupLoadConfirm2": "你**真的、真的**确定要加载备份吗？这将会清除所有数据！",
     "others": "其他",
     "presets": "默认设置",
+    "unnamedPreset": "未命名预设",
     "imageGeneration": "图像生成",
     "provider": "提供者",
     "key": "密钥（Key）",
@@ -1476,6 +1505,7 @@ export const languageChinese = {
     "enableCustomFlags": "启用自定义标志",
     "googleCloudTokenization": "Google Cloud Tokenization",
     "presetChain": "预设链",
+    "presetChainPlaceholder": "留空则不使用",
     "legacyMediaFindings": "旧版媒体查找",
     "staticsDisclaimer": "统计数据基于 2024 年 7 月以后的数据。数据可能不准确。",
     "subtitles": "字幕",

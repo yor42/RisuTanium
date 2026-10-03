@@ -178,6 +178,61 @@ export const languageVietnamese = {
         "presetNotFound": "Không tìm thấy cài đặt trước: {name}"
     },
     "loadingEllipsis": "Đang tải...",
+    "slashCommandHelp":
+            "\n            # /input [text]" +
+            "\n            - Hiển thị hộp thoại nhập liệu" +
+            "\n            - Trả về văn bản đã nhập" +
+            "\n            - Ví dụ: /input Hello World" +
+            "\n            # /echo [text]" +
+            "\n            - Hiển thị hộp thoại thông báo" +
+            "\n            - Trả về văn bản đã nhập" +
+            "\n            - Ví dụ: /echo Hello World" +
+            "\n            # /popup [text]" +
+            "\n            - Hiển thị hộp thoại thông báo" +
+            "\n            - Trả về văn bản đã nhập" +
+            "\n            - Ví dụ: /popup Hello World" +
+            "\n            # /pass [text]" +
+            "\n            - Trả về văn bản đã nhập" +
+            "\n            - Ví dụ: /pass Hello World" +
+            "\n            # /buttons [labels]" +
+            "\n            - Hiển thị hộp thoại lựa chọn" +
+            "\n            - Trả về nhãn đã chọn" +
+            "\n            - Ví dụ: /buttons Yes§No" +
+            "\n            # /speak [text]" +
+            "\n            - Đọc văn bản thành tiếng" +
+            "\n            - Ví dụ: /speak Hello World" +
+            "\n            # /send [text]" +
+            "\n            - Gửi văn bản vào cuộc trò chuyện" +
+            "\n            - Ví dụ: /send Hello World" +
+            "\n            # /sendas [text]" +
+            "\n            - Gửi văn bản vào cuộc trò chuyện với tư cách nhân vật" +
+            "\n            - Ví dụ: /sendas Hello World" +
+            "\n            # /comment [text]" +
+            "\n            - Thêm bình luận vào cuộc trò chuyện" +
+            "\n            - Ví dụ: /comment Hello World" +
+            "\n            # /cut [index]" +
+            "\n            - Cắt tin nhắn trong cuộc trò chuyện" +
+            "\n            - Ví dụ: /cut 1" +
+            "\n            # /del [size]" +
+            "\n            - Xóa tin nhắn trong cuộc trò chuyện" +
+            "\n            - Ví dụ: /del 1" +
+            "\n            # /len [array]" +
+            "\n            - Trả về độ dài của mảng" +
+            "\n            - Ví dụ: /len Hello§World" +
+            "\n            # /setvar key=[key] [value]" +
+            "\n            - Đặt biến" +
+            "\n            - Ví dụ: /setvar key=hello world" +
+            "\n            # /addvar key=[key] [value]" +
+            "\n            - Cộng giá trị vào biến" +
+            "\n            - Ví dụ: /addvar key=damage 10" +
+            "\n            # /getvar key=[key]" +
+            "\n            - Lấy giá trị biến" +
+            "\n            - Ví dụ: /getvar key=damage" +
+            "\n            # /trigger [name]" +
+            "\n            - Chạy trình kích hoạt" +
+            "\n            # /?" +
+            "\n            - Hiển thị trợ giúp" +
+            "\n            ",
     "optLow": "Thấp",
     "optMedium": "Trung bình",
     "optHigh": "Cao",
@@ -314,6 +369,7 @@ export const languageVietnamese = {
         "warning": "Cảnh báo",
         "noFormat": "Không định dạng",
         "memory": "Bộ nhớ",
+        "otherAx": "Phụ trợ khác",
         "translations": "Bản dịch",
         "emotion": "Cảm xúc",
         "component": "Thành phần",
@@ -364,8 +420,6 @@ export const languageVietnamese = {
         "msgSound": "Phát âm thanh *ding* khi nhân vật phản hồi",
         "charDesc": "Mô tả ngắn gọn về nhân vật. điều này ảnh hưởng đến phản ứng của nhân vật.",
         "charFirstMessage": "Tin nhắn đầu tiên của nhân vật. điều này ảnh hưởng lớn đến phản ứng của nhân vật.",
-        "charNote": "một lưu ý có ảnh hưởng mạnh mẽ đến hành vi của mô hình. được nhúng vào ký tự hiện tại. còn được gọi là UJB.",
-        "toggleNsfw": "bật và tắt lời nhắc jailbreak.",
         "lorebook": "Lorebook là một từ điển do người dùng tạo ra cho AI. AI chỉ nhìn thấy nó khi khóa kích hoạt ở đâu trong ngữ cảnh.",
         "loreName": "tên của truyền thuyết. nó không ảnh hưởng đến Ai.",
         "loreActivationKey": "Nếu một trong các khóa kích hoạt tồn tại trong ngữ cảnh, truyền thuyết sẽ được kích hoạt và lời nhắc sẽ xuất hiện, được phân tách bằng dấu phẩy.",
@@ -375,7 +429,6 @@ export const languageVietnamese = {
         "imggen": "Sau khi phân tích cuộc trò chuyện, áp dụng lời nhắc vào {{slot}}.",
         "regexScript": "Regex Script là tập lệnh tùy chỉnh thay thế chuỗi khớp IN với OUT.\n\nCó bốn lựa chọn loại.\n\n- **Sửa đổi đầu vào** sửa đổi đầu vào của người dùng\n\n- **Sửa đổi đầu ra** sửa đổi đầu ra của ký tự\n\n- **Sửa đổi dữ liệu yêu cầu** sửa đổi dữ liệu trò chuyện hiện tại khi được gửi.\n\n- **Sửa đổi hiển thị** chỉ sửa đổi văn bản khi được hiển thị mà không sửa đổi dữ liệu trò chuyện.\n\nIN phải là biểu thức chính quy không có cờ và không có dấu gạch chéo ở đầu và cuối.\n\nOUT là một chuỗi có thể bao gồm các mẫu thay thế. đây là những mẫu:\n\n- $$\n\n    - chèn $\n\n- $&\n\n    - chèn chuỗi con phù hợp.\n\n- $`\n\n    - chèn phần chuỗi đứng trước chuỗi con phù hợp.\n\n- 1$\n\n    - chèn nhóm phù hợp đầu tiên. làm việc với số khác như 2, 3...\n\n- $(tên)\n\n    - chèn nhóm được đặt tên\n\nĐối với cờ, bạn không chỉ có thể dùng các cờ được hỗ trợ sẵn, mà còn có thể dùng các cờ sau đây, được thiết kế cho người dùng nâng cao:\n\n- `<inject>` - chèn kết quả vào chuỗi hiện tại.\n- `<move_top>` - di chuyển kết quả lên đầu chuỗi.\n- `<move_bottom>` - di chuyển kết quả xuống cuối chuỗi.\n- `<repeat_back>` - nếu không tìm thấy kết quả khớp, nó sẽ giữ lại kết quả từ lần khớp trước đó.\n- `<order n>` - đặt thứ tự của kết quả. Thứ tự cao hơn sẽ được hiển thị trước. `n` là một số (ví dụ `<order 1>`). nếu cờ này không được đặt, nó sẽ được đặt thành 0.\n- `<cbs>` - phân tích cú pháp dấu ngoặc nhọn (curly braced syntax) trong IN.\n\nĐể dùng cùng với các cờ gốc, bạn có thể dùng như `gi<cbs><move_top>`.",
         "experimental": "Đây là một tính năng thử nghiệm. nó có thể không ổn định.",
-        "oogaboogaURL": "Nếu WebUI của bạn hỗ trợ phiên bản api cũ hơn thì url của bạn sẽ trông *như https:.../run/textgen*\n\nNếu WebUI của bạn hỗ trợ Phiên bản mới của api thì url của bạn sẽ trông giống như *https://.../api/v1/generate* và sử dụng máy chủ api làm máy chủ lưu trữ, đồng thời thêm --api vào đối số.",
         "exampleMessage": "Các cuộc hội thoại ví dụ ảnh hưởng đến đầu ra của nhân vật. nó không sử dụng mã thông báo vĩnh viễn.\n\nĐịnh dạng ví dụ của cuộc hội thoại:\n\n```\n<START>\n{{user}}: xin chào\n{{char}}: xin chào\n<START>\n{{user}}: xin chào\nHaruhi: xin chào\n```\n\n```<START>``` Đánh dấu sự bắt đầu của một cuộc trò chuyện mới.",
         "creatorQuotes": "Lưu ý rằng xuất hiện trên đầu tin nhắn đầu tiên. Được sử dụng để thông báo cho người dùng về nhân vật này. Nó không đi vào dấu nhắc.",
         "systemPrompt": "Lời nhắc thay thế lời nhắc chính trong cài đặt nếu nó không trống.",
@@ -384,19 +437,13 @@ export const languageVietnamese = {
         "scenario": "Một mô tả ngắn gọn về kịch bản của nhân vật.\n\n**Không nên sử dụng tùy chọn này. Thay vào đó hãy mô tả nó bằng phần mô tả nhân vật.**",
         "utilityBot": "Khi được kích hoạt, nó sẽ bỏ qua lời nhắc chính, bẻ khóa và các lời nhắc khác. Được sử dụng cho bot tiện ích, không phải nhập vai.",
         "loreSelective": "Nếu chế độ Chọn lọc được bật, cả Khóa kích hoạt và Khóa phụ phải khớp nhau để kích hoạt truyền thuyết.",
-        "loreRandomActivation": "Nếu Điều kiện Xác suất Sử dụng được kích hoạt, nếu tất cả các điều kiện khác của truyền thuyết đều được đáp ứng, truyền thuyết sẽ được kích hoạt với một xác suất đã đặt được đặt bởi 'Xác suất' mỗi lần trò chuyện được gửi.",
         "additionalAssets": "Nội dung bổ sung để hiển thị trong cuộc trò chuyện của bạn.\n\n - sử dụng `{{raw::<asset name>}}` để dùng làm đường dẫn.\n - sử dụng `{{image::<asset name>}}` để sử dụng làm hình ảnh\n - sử dụng `{{video::<asset name>}}` để sử dụng làm video\n - sử dụng `{{audio::<asset name>}}` để sử dụng làm âm thanh\n    - nên đặt HTML nền",
-        "superMemory": "SupaMemory giúp nhân vật của bạn ghi nhớ nhiều hơn bằng cách cung cấp dữ liệu tóm tắt cho AI.\n\nMô hình SupaMemory là mô hình tóm tắt văn bản đó. davinci được khuyến nghị và các mô hình phụ trợ không được khuyến nghị trừ khi đó là mô hình chưa được lọc với hơn 2000 mã thông báo có kỹ năng tóm tắt tuyệt vời.\n\nLời nhắc SupaMemory quyết định lời nhắc nào sẽ được gửi để tóm tắt. nếu bạn để trống, nó sẽ sử dụng lời nhắc mặc định. nên để trống.\n\nSau khi thiết lập xong, bạn có thể sử dụng nó trong cài đặt của một nhân vật.",
         "replaceGlobalNote": "Nếu nó không trống, nó sẽ thay thế ghi chú chung hiện tại bằng ghi chú này.",
         "backgroundHTML": "Dữ liệu Markdown/HTML sẽ được đưa vào nền màn hình trò chuyện.\n\n bạn cũng có thể sử dụng tài sản bổ sung. ví dụ: bạn có thể sử dụng `{{audio::<asset name}}` cho nhạc nền.\n\n Ngoài ra, bạn có thể sử dụng những thứ này với các nội dung bổ sung:\n - `{{bg::<asset name>}}`: thêm nền làm nội dung",
         "additionalText": "Văn bản sẽ được thêm vào Mô tả nhân vật chỉ khi AI cho rằng cần thiết, vì vậy bạn có thể đặt văn bản dài ở đây. Phân tách bằng hai dòng mới.",
         "charjs": "Mã javascript sẽ chạy cùng với nhân vật. Ví dụ, bạn có thể kiểm tra `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js`. HIỆN TẠI KHÔNG ĐƯỢC KHUYẾN NGHỊ SỬ DỤNG VÌ LÝ DO BẢO MẬT. VIỆC XUẤT SẼ KHÔNG BAO GỒM MÃ NÀY.",
-        "romanizer": "Romanizer là một plugin chuyển đổi các ký tự không phải la tinh sang ký tự la tinh để giảm token khi sử dụng các ký tự không phải la tinh trong khi yêu cầu dữ liệu. Điều này có thể dẫn đến kết quả khác với mô hình gốc. Không nên sử dụng plugin này khi sử dụng các ký tự la tinh trong cuộc trò chuyện.",
-        "inlayImages": "Nếu được bật, hình ảnh có thể được chèn vào cuộc trò chuyện và AI có thể nhìn thấy nó nếu chúng hỗ trợ.",
-        "metrica": "Metric Systemizer là plugin chuyển đổi hệ mét sang hệ đo lường Anh khi yêu cầu và ngược lại khi xuất ra để hiển thị hệ mét cho người dùng trong khi sử dụng hệ đo lường Anh để tăng hiệu suất. Không nên sử dụng plugin này khi sử dụng hệ đo lường Anh trong cuộc trò chuyện.",
         "lorePlus": "LoreBook+ là tính năng thử nghiệm sử dụng vectordb thay vì chỉ khớp chuỗi để có trải nghiệm tạo bot tốt hơn và hiệu suất khớp tốt hơn.",
         "topP": "Top P là ngưỡng xác suất cho việc lấy mẫu hạt nhân. Mô hình xem xét kết quả của các token với khối lượng xác suất top_p.",
-        "openAIFixer": "OpenAI Fixer là một plugin khắc phục một số vấn đề của OpenAI.",
         "sayNothing": "Nếu được bật, nó sẽ nhập 'say nothing' khi không có chuỗi nào được nhập.",
         "showUnrecommended": "Nếu được bật, nó sẽ hiển thị các cài đặt không được khuyến nghị, không còn được dùng nữa. KHÔNG KHUYẾN NGHỊ sử dụng các cài đặt này.",
         "streamingDisplayOptimizationMode": "Giảm giật lag khi stream phản hồi dài trong các trường hợp có nhiều hậu xử lý, chẳng hạn script dùng regex. Tùy chọn này có thể hữu ích trên thiết bị di động hoặc máy cấu hình thấp.\n\nTắt giữ hành vi bình thường, nhưng hậu xử lý chạy sau mỗi token và có thể tạo chi phí đáng kể.\n\nCân bằng giảm tải bằng cách chỉ thử hậu xử lý theo khoảng ngắn, khoảng 0,125 giây một lần.\n\nMạnh tương tự Cân bằng, nhưng bỏ qua hậu xử lý trong lúc stream và chỉ thử hậu xử lý một lần sau khi stream hoàn tất.\n\nĐây là tính năng thử nghiệm, nên một số tính năng có thể hoạt động ngoài ý muốn.",
@@ -429,7 +476,6 @@ export const languageVietnamese = {
         "lowLevelAccess": "Nếu được bật, nó sẽ cho phép truy cập vào các tính năng yêu cầu sức mạnh tính toán cao và thực thi mô hình AI thông qua các trình kích hoạt trong nhân vật. Đừng bật tính năng này trừ khi bạn thực sự cần các tính năng này.",
         "triggerLLMPrompt": "Lời nhắc sẽ được gửi đến mô hình. Bạn có thể sử dụng nhiều lượt và vai trò bằng cách sử dụng `@@role user`, `@@role system`, `@@role assistant`. Ví dụ, \n```\n@@role system\nrespond as hello\n@@role assistant\nhello\n@@role user\nhi\n```",
         "legacyTranslation": "Nếu được bật, nó sẽ sử dụng phương pháp dịch cũ, xử lý trước markdown và dấu ngoặc kép trước khi dịch thay vì xử lý sau khi dịch.",
-        "luaHelp": "Bạn có thể sử dụng tập lệnh Lua làm tập lệnh kích hoạt. Bạn có thể xác định các hàm onInput, onOutput, onStart. onInput được gọi khi người dùng gửi tin nhắn, onOutput được gọi khi nhân vật gửi tin nhắn, onStart được gọi khi cuộc trò chuyện bắt đầu. Để biết thêm thông tin, xem tài liệu.",
         "openAIFlexProcessing": "Phản hồi OpenAI Flex có thể chậm hơn phản hồi thông thường, nhưng có giá rẻ hơn (giá Batch API). Công tắc này chỉ áp dụng cho yêu cầu OpenAI Chat Completions chính thức.",
         "claudeCachingExperimental": "Lưu trữ đệm trong Claude là tính năng thử nghiệm có thể giảm chi phí mô hình, nhưng cũng có thể tăng chi phí nếu bạn sử dụng nó mà không có reroll. Vì đây là tính năng thử nghiệm, nó có thể không ổn định và hành vi có thể thay đổi trong tương lai.",
         "urllora": "Bạn có thể sử dụng liên kết tải xuống trực tiếp của tệp mô hình. Bạn có thể tạo url trực tiếp từ google drive như trang web https://sites.google.com/site/gdocs2direct/, hoặc sử dụng URL civitai, sao chép AIR (trông giống như `urn:air:flux1:lora:civitai:180891@776656` hoặc chỉ `civitai:180891@776656`) và dán vào.",
@@ -458,7 +504,6 @@ export const languageVietnamese = {
         "legacyMediaFindings": "Nếu được bật, nó sẽ sử dụng phương pháp cũ để tìm tài sản phương tiện, mà không sử dụng thuật toán tìm kiếm bổ sung.",
         "comfyWorkflow": "Đặt luồng công việc API của Comfy UI. Bạn có thể lấy luồng công việc API trong Comfy UI bằng cách nhấn nút 'Workflow > Export (API)'. Bạn cũng phải đặt {{risu_prompt}} trong văn bản luồng công việc của mình. {{risu_prompt}} sẽ được thay thế bằng lời nhắc do Risu cung cấp.",
         "automaticCachePoint": "Tự động tạo điểm lưu trữ sau khi cuộc trò chuyện kết thúc, nếu điểm lưu trữ chưa tồn tại.",
-        "experimentalChatCompressionDesc": "Nén dữ liệu trò chuyện không sử dụng và lưu vào tệp riêng biệt. Điều này làm giảm đáng kể kích thước dữ liệu trò chuyện và cải thiện đáng kể hiệu suất, tuy nhiên đây là tính năng thử nghiệm và có thể không ổn định, gây ra sự cố trong tính năng sao lưu và hơn thế nữa.",
         "promptInfoInsideChatDesc": "Khi được bật, tính năng này lưu trữ thông tin cài đặt trước lời nhắc trong siêu dữ liệu trò chuyện. Dữ liệu được lưu trữ bao gồm tên cài đặt trước, các chuyển đổi đang hoạt động và văn bản lời nhắc. Điều này có thể làm tăng nhẹ thời gian xử lý và dung lượng lưu trữ.",
         "autoAdjustSchema": "Khi được bật, nó sẽ tự động điều chỉnh JSON schema cho Đầu ra Động.",
         "dynamicMessages": "Khi được bật, nó sẽ cho phép trợ lý gửi nhiều tin nhắn liên tiếp, thay vì từng tin nhắn một.",
@@ -499,26 +544,12 @@ export const languageVietnamese = {
         "enableScrollToActiveChar": "Nếu được bật, nhấn phím tắt hoặc giữ phím Ctrl khi kéo một nhân vật sẽ cuộn đến nhân vật hiện đang hoạt động. Các thư mục sẽ tự động được mở nếu đang đóng."
     },
     "setup": {
-        "chooseProvider": "Chọn nhà cung cấp AI",
-        "openaikey": "OpenAI với Khóa API (Được khuyến nghị)",
-        "openaiProxy": "Proxy ngược OpenAI",
-        "setupmodelself": "Người khác/Tôi sẽ tự thiết lập",
-        "inputApiKey": "Nhập khóa API tại đây",
-        "apiKeyhelp": "Bạn có thể lấy khóa api từ:",
-        "setupSelfHelp": "Tự thiết lập trong cài đặt, sau khi màn hình Chào mừng kết thúc.",
         "theme": "Chọn chủ đề của bạn",
-        "themeDescWifulike": "Không phù hợp với di động",
-        "themeDescWifuCut": "Thích hợp cho di động",
-        "themeDescClassic": "Thích hợp cho mọi thiết bị",
-        "texttheme": "Chọn màu văn bản của bạn",
-        "inputName": "Cuối cùng, nhập Biệt hiệu của bạn.",
         "welcome": "Chào mừng đến với RisuTanium! Tôi là Airisu, tôi ở đây để hướng dẫn bạn cài đặt RisuTanium. Trước tiên, tôi có thể gọi bạn là gì?",
         "welcome2": "Xin chào {username}! Trước khi bắt đầu, tôi sẽ hỏi bạn một số câu hỏi. Bạn có thể thay đổi các cài đặt này sau trong phần cài đặt.\n\nĐầu tiên hãy chọn nhà cung cấp AI.",
         "openRouterProvider": "OpenRouter có rất nhiều mô hình, một số không được lọc và một số miễn phí, nhưng nó không tốt bằng OpenAI.",
         "hordeProvider": "Horde là nhà cung cấp miễn phí, nhưng thời gian phản hồi lâu và chất lượng thấp.",
-        "setProviderLater": "Có các nhà cung cấp khác, nhưng bạn có thể cài đặt sau trong phần cài đặt. Chọn mục này nếu bạn muốn cài đặt sau.",
         "setupOpenAI": "Để sử dụng OpenAI, bạn cần lấy khóa API. \n1. đi tới https://beta.openai.com/ \n2. đăng nhập bằng tài khoản của bạn \n3. đi tới https://beta.openai.com/account/api-keys \n4. nhấp vào 'Create New API Key' và đặt tên cho khóa của bạn bất cứ điều gì bạn muốn. \n5. sao chép khóa trên trang web.\n6. quay lại RisuTanium\n7. dán nó và nhấp vào nút gửi.",
-        "setupClaude": "Để sử dụng Claude, bạn cần lấy khóa API.",
         "setupClaudeSteps": [
             "Truy cập URL này và Đăng nhập bằng Google",
             "Nhập thông tin của bạn và nhấp vào 'Continue'",
@@ -558,10 +589,6 @@ export const languageVietnamese = {
         "chooseCheapOrMemoryOption4": "Không giới hạn",
         "chooseCheapOrMemoryOption4Desc": "Điều này sẽ khiến AI ghi nhớ hầu hết mọi thứ, nhưng sẽ rất đắt.",
         "finally": "Cuối cùng, bạn có muốn bật các công cụ nâng cao không?",
-        "finallyOption1": "Có",
-        "finallyOption1Desc": "Điều này sẽ bật các công cụ nâng cao, nhưng sẽ làm cho giao diện người dùng phức tạp hơn. Khuyên dùng cho người dùng nâng cao.",
-        "finallyOption2": "Không",
-        "finallyOption2Desc": "Điều này sẽ tắt các công cụ nâng cao và làm cho giao diện người dùng đơn giản hơn. Khuyên dùng cho người dùng mới.",
         "igpPrompt": "Nếu IGP Prompt không trống, nó sẽ được thực thi sau yêu cầu mô hình chính, sau khi thực thi mô hình chính, dưới dạng mô hình cảm xúc, thêm kết quả sau phản hồi mô hình chính."
     },
     "triggerCategories": {
@@ -1004,6 +1031,7 @@ export const languageVietnamese = {
     "autoMode": "Chế độ tự động",
     "submodel": "Mô hình phụ trợ",
     "emotionPrompt": "Nhắc nhở cảm xúc",
+    "emotionPromptPlaceholder": "Để trống để dùng giá trị mặc định",
     "singleView": "Chế độ xem đơn",
     "SpacedView": "Xem nhiều ký tự",
     "emphasizedView": "Chế độ xem nhân vật đôi",
@@ -1015,6 +1043,7 @@ export const languageVietnamese = {
     "backupLoadConfirm2": "Bạn có thực sự muốn tải bản sao lưu không? Tất cả dữ liệu sẽ bị mất!",
     "others": "Người khác",
     "presets": "cài đặt trước",
+    "unnamedPreset": "Cài đặt trước chưa đặt tên",
     "imageGeneration": "Tạo hình ảnh",
     "provider": "Các nhà cung cấp",
     "key": "Chìa khóa",
@@ -1476,6 +1505,7 @@ export const languageVietnamese = {
     "enableCustomFlags": "Bật cờ tùy chỉnh",
     "googleCloudTokenization": "Tokenization Google Cloud",
     "presetChain": "Chuỗi cài đặt trước",
+    "presetChainPlaceholder": "Để trống để không sử dụng",
     "legacyMediaFindings": "Tìm kiếm phương tiện cũ",
     "staticsDisclaimer": "Thống kê dựa trên dữ liệu sau tháng 7 năm 2024. Dữ liệu có thể không chính xác.",
     "subtitles": "Phụ đề",

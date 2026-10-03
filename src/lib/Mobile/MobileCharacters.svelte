@@ -9,6 +9,7 @@
     import { SvelteMap } from "svelte/reactivity";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { isHiddenSystemCharacter } from "src/ts/hiddenCharacters";
+    import { language } from "src/lang";
 
     interface Props {
         endGrid?: () => void;
@@ -64,7 +65,7 @@
             return !isHiddenSystemCharacter(c) && (!hideTrash || !c.trashTime);
         }).map(({ c, i }) => {
             return {
-                name: c.name || "Unnamed",
+                name: c.name || language.settingsPage.unnamed,
                 image: c.image,
                 chats: coldStubChatCount(c),
                 i: i,

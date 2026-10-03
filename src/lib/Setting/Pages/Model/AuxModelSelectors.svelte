@@ -22,7 +22,7 @@
 
     <ModelList bind:value={DBState.db.seperateModels.emotion} blankable />
 
-    <span class="text-textcolor mt-4"> OtherAx </span>
+    <span class="text-textcolor mt-4"> {language.settingsPage.otherAx} </span>
 
     <ModelList bind:value={DBState.db.seperateModels.otherAx} blankable />
   </Accordion>

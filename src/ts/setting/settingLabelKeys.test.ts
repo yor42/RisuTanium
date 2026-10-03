@@ -59,16 +59,17 @@ function isItem(value: unknown): value is SettingItem {
     return typeof value === 'object' && value !== null && 'id' in value && 'type' in value
 }
 
-interface Found { where: string, labelKey: string }
+interface Found { where: string, key: string }
 
 function collect(item: SettingItem, file: string, found: Found[]): void {
     const at = `${file} ${item.id}`
-    if (item.labelKey !== undefined) found.push({ where: at, labelKey: item.labelKey })
+    if (item.labelKey !== undefined) found.push({ where: `${at} labelKey`, key: item.labelKey })
+    if (item.options?.placeholderKey !== undefined) found.push({ where: `${at} placeholderKey`, key: item.options.placeholderKey })
     for (const opt of item.options?.selectOptions ?? []) {
-        if (opt.labelKey !== undefined) found.push({ where: `${at} select ${opt.value}`, labelKey: opt.labelKey })
+        if (opt.labelKey !== undefined) found.push({ where: `${at} select ${opt.value} labelKey`, key: opt.labelKey })
     }
     for (const opt of item.options?.segmentOptions ?? []) {
-        if (opt.labelKey !== undefined) found.push({ where: `${at} segment ${String(opt.value)}`, labelKey: opt.labelKey })
+        if (opt.labelKey !== undefined) found.push({ where: `${at} segment ${String(opt.value)} labelKey`, key: opt.labelKey })
     }
     for (const child of item.options?.children ?? []) collect(child, file, found)
 }
@@ -103,15 +104,15 @@ describe('settings registry labelKeys', () => {
         expect(allKeys().length).toBeGreaterThan(100)
     })
 
-    test('guard: every labelKey names an existing top-level English language key', () => {
+    test('guard: every labelKey and placeholderKey names an existing top-level English language key', () => {
         const english = languageEnglish as unknown as Record<string, unknown>
-        const missing = allKeys().filter((k) => !(k.labelKey in english))
+        const missing = allKeys().filter((k) => !(k.key in english))
         expect(missing).toEqual([])
     })
 
-    test('guard: every labelKey resolves to a non-empty English string', () => {
+    test('guard: every labelKey and placeholderKey resolves to a non-empty English string', () => {
         const english = languageEnglish as unknown as Record<string, unknown>
-        const notStrings = allKeys().filter((k) => typeof english[k.labelKey] !== 'string' || english[k.labelKey] === '')
+        const notStrings = allKeys().filter((k) => typeof english[k.key] !== 'string' || english[k.key] === '')
         expect(notStrings).toEqual([])
     })
 })

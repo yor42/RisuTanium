@@ -350,7 +350,7 @@
         <Accordion name={language.settingsPage.emotion} styled>
             {@render fallbackModelList('emotion')}
         </Accordion>
-        <Accordion name={"OtherAx"} styled>
+        <Accordion name={language.settingsPage.otherAx} styled>
             {@render fallbackModelList('otherAx')}
         </Accordion>
     </Accordion>

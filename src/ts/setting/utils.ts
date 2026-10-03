@@ -21,6 +21,18 @@ export function getLabel(item: SettingItem): string {
     return item.fallbackLabel ?? '';
 }
 
+export function getPlaceholder(item: SettingItem): string | undefined {
+    const key = item.options?.placeholderKey;
+    if (key) {
+        const table: Readonly<Record<string, unknown>> = language;
+        const translated = table[key];
+        if (typeof translated === 'string' && translated) {
+            return translated;
+        }
+    }
+    return item.options?.placeholder;
+}
+
 export function getSettingValue(item: SettingItem, ctx: SettingContext): any {
     if (item.getValue) {
         return item.getValue(DBState.db, ctx);

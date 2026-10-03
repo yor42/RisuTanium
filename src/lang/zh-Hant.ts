@@ -178,6 +178,61 @@ export const languageChineseTraditional = {
         "presetNotFound": "找不到預設集：{name}"
     },
     "loadingEllipsis": "載入中...",
+    "slashCommandHelp":
+            "\n            # /input [text]" +
+            "\n            - 顯示輸入對話框" +
+            "\n            - 回傳輸入的文字" +
+            "\n            - 示例：/input Hello World" +
+            "\n            # /echo [text]" +
+            "\n            - 顯示提示對話框" +
+            "\n            - 回傳輸入的文字" +
+            "\n            - 示例：/echo Hello World" +
+            "\n            # /popup [text]" +
+            "\n            - 顯示提示對話框" +
+            "\n            - 回傳輸入的文字" +
+            "\n            - 示例：/popup Hello World" +
+            "\n            # /pass [text]" +
+            "\n            - 回傳輸入的文字" +
+            "\n            - 示例：/pass Hello World" +
+            "\n            # /buttons [labels]" +
+            "\n            - 顯示選擇對話框" +
+            "\n            - 回傳所選標籤" +
+            "\n            - 示例：/buttons Yes§No" +
+            "\n            # /speak [text]" +
+            "\n            - 朗讀文字" +
+            "\n            - 示例：/speak Hello World" +
+            "\n            # /send [text]" +
+            "\n            - 傳送文字到聊天" +
+            "\n            - 示例：/send Hello World" +
+            "\n            # /sendas [text]" +
+            "\n            - 以角色身分傳送文字到聊天" +
+            "\n            - 示例：/sendas Hello World" +
+            "\n            # /comment [text]" +
+            "\n            - 在聊天中新增註解" +
+            "\n            - 示例：/comment Hello World" +
+            "\n            # /cut [index]" +
+            "\n            - 剪下聊天訊息" +
+            "\n            - 示例：/cut 1" +
+            "\n            # /del [size]" +
+            "\n            - 刪除聊天訊息" +
+            "\n            - 示例：/del 1" +
+            "\n            # /len [array]" +
+            "\n            - 回傳陣列長度" +
+            "\n            - 示例：/len Hello§World" +
+            "\n            # /setvar key=[key] [value]" +
+            "\n            - 設定變數" +
+            "\n            - 示例：/setvar key=hello world" +
+            "\n            # /addvar key=[key] [value]" +
+            "\n            - 對變數加上數值" +
+            "\n            - 示例：/addvar key=damage 10" +
+            "\n            # /getvar key=[key]" +
+            "\n            - 取得變數" +
+            "\n            - 示例：/getvar key=damage" +
+            "\n            # /trigger [name]" +
+            "\n            - 執行觸發器" +
+            "\n            # /?" +
+            "\n            - 顯示說明" +
+            "\n            ",
     "optLow": "低",
     "optMedium": "中",
     "optHigh": "高",
@@ -314,6 +369,7 @@ export const languageChineseTraditional = {
         "warning": "警告",
         "noFormat": "無格式",
         "memory": "記憶",
+        "otherAx": "其他輔助",
         "translations": "翻譯",
         "emotion": "情緒",
         "component": "元件",
@@ -364,8 +420,6 @@ export const languageChineseTraditional = {
         "msgSound": "角色回應時播放「叮」聲",
         "charDesc": "角色的簡要描述。這會影響角色的回應方式",
         "charFirstMessage": "角色的開局訊息，會大幅影響角色的回應方式",
-        "charNote": "會強烈影響模型行為的備註，只套用於目前角色，也稱為 UJB",
-        "toggleNsfw": "啟用或停用越獄提示詞",
         "lorebook": "Lorebook 是由使用者建立的條目資料庫。當上下文符合條目的啟用條件時，該條目的內容才會加入送給模型的提示詞",
         "loreName": "Lorebook 條目的名稱本身不會影響 AI 回應",
         "loreActivationKey": "當上下文中包含任一啟用關鍵字時，該條目會被啟用並送入提示詞。請以逗號分隔多個關鍵字",
@@ -393,8 +447,6 @@ export const languageChineseTraditional = {
             "\n- `<cbs>`：解析 IN 中的大括號語法。" +
             "\n\n可與原生旗標組合，例如：`gi<cbs><move_top>`",
         "experimental": "此為實驗性功能，可能不穩定",
-        "oogaboogaURL": "若您的 WebUI 支援舊版 API，URL 應類似 *https:.../run/textgen*。\n\n" +
-            "若 WebUI 支援新版 API，URL 應類似 *https://.../api/v1/generate*；請使用 API 伺服器作為主機，並在參數中加入 --api",
         "exampleMessage": "示範對話會影響角色輸出，但不會永久佔用 Token。" +
             "\n\n對話格式範例：" +
             "\n\n```\n<START>\n{{user}}: hi\n{{char}}: hello\n<START>\n{{user}}: hi\nHaruhi: hello\n```" +
@@ -406,21 +458,15 @@ export const languageChineseTraditional = {
         "scenario": "角色情境的簡要描述。\n\n**不建議使用此欄位，請改寫在角色描述中**",
         "utilityBot": "啟用後會忽略主要提示詞、越獄提示詞與其他提示詞。適用於工具型 Bot，而非角色扮演",
         "loreSelective": "啟用選擇性模式後，必須同時符合啟用關鍵字與次要關鍵字，才會啟用該 Lorebook 條目",
-        "loreRandomActivation": "啟用機率條件後，只要 Lorebook 條目的其他條件皆成立，每次送出對話時就會依「機率」設定值決定是否啟用",
         "additionalAssets": "在對話中顯示的額外資源。\n\n - 使用 `{{raw::<asset name>}}` 取得資源路徑。\n - 使用 `{{image::<asset name>}}` 顯示圖片。\n - 使用 `{{video::<asset name>}}` 顯示影片。\n - 使用 `{{audio::<asset name>}}` 播放音訊。\n    - 建議放在背景 HTML 中",
-        "superMemory": "SupaMemory 通過向 AI 提供總結資料來增強角色的記憶能力。\n\nSupaMemory 是一項文字總結功能。不建議使用輔助模型，除非該模型無審查、最大上下文超過 2000 Token，且具有良好的總結能力。\n\nSupaMemory 提示詞決定了模型如何撰寫總結。留空將使用預設提示詞，建議保持留空。\n\n完成所有設定後，您可以在角色的設定中啟用此功能。",
         "replaceGlobalNote": "此欄位不為空時，會以此內容取代目前的全域備註",
         "backgroundHTML": "會插入對話畫面背景的 Markdown／HTML 內容。\n\n也可搭配額外資源，例如使用 `{{audio::<asset name}}` 播放背景音樂。" +
             "\n\n另外還可使用：" +
             "\n - `{{bg::<asset name>}}`：將指定資源顯示為背景圖片",
         "additionalText": "系統會將內容依兩個換行分段，並根據目前對話進行相似度搜尋，選出最多 3 個最相關的段落加入角色描述。可在此放置較長內容",
         "charjs": "會隨角色一起執行的 JavaScript 程式碼。可參考 `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js`。基於安全性，目前不建議使用；匯出時也不會包含此內容",
-        "romanizer": "Romanizer 會在送出資料時，將非拉丁文字轉寫為拉丁字母，以減少 Token 使用量。這可能使模型輸出與原始文字不同。若對話本身使用拉丁字元，不建議啟用",
-        "inlayImages": "啟用後，可將圖片內嵌至對話；若 AI 支援圖片輸入，也能讀取這些圖片",
-        "metrica": "Metric Systemizer 會在送出請求時將公制轉成英制，並在顯示輸出時再轉回公制，讓模型以英制處理，而使用者仍看到公制。若對話原本使用英制，不建議啟用",
         "lorePlus": "Lorebook+ 是使用向量資料庫取代單純字串比對的實驗性功能，可改善角色卡製作流程與 Lorebook 條目的比對效果",
         "topP": "Top P 是核取樣（nucleus sampling）的機率門檻。模型會依 Token 機率由高到低累加，取涵蓋至少 top_p 累積機率的最小 Token 集合，再從該集合中取樣",
-        "openAIFixer": "OpenAI Fixer 是用來修正部分 OpenAI 問題的外掛",
         "sayNothing": "啟用後，若沒有輸入任何文字，會自動輸入「say nothing」",
         "showUnrecommended": "啟用後會顯示不建議使用或已棄用的設定。**不建議使用這些設定**",
         "streamingDisplayOptimizationMode": "在長篇串流回應搭配大量後處理（例如 Regex 腳本）時，降低畫面顯示延遲。對行動裝置或低階裝置尤其有幫助。\n\n" +
@@ -456,7 +502,6 @@ export const languageChineseTraditional = {
         "lowLevelAccess": "啟用後，可使用需要較高運算資源的功能，並允許透過 Trigger V2 或 Lua 呼叫 AI 模型等底層存取功能。除非確實需要，否則請勿啟用",
         "triggerLLMPrompt": "要送給模型的提示詞。可使用 `@@role user`、`@@role system`、`@@role assistant` 建立多輪、不同身分的訊息，例如：\n```\n@@role system\nrespond as hello\n@@role assistant\nhello\n@@role user\nhi\n```",
         "legacyTranslation": "啟用後使用舊版翻譯方式：在翻譯前先預處理 Markdown 與引號，而非在翻譯後進行後處理",
-        "luaHelp": "Trigger 腳本可使用 Lua。您可以定義 onInput、onOutput、onStart 函式；onInput 在使用者送出訊息時呼叫，onOutput 在角色送出訊息時呼叫，onStart 在對話開始時呼叫。詳細資訊請參閱說明文件",
         "openAIFlexProcessing": "OpenAI Flex 回應可能比一般回應更慢，但價格較低（Batch API 定價）。此開關只套用於官方 OpenAI Chat Completions 請求",
         "claudeCachingExperimental": "Claude Caching 是實驗性功能，可降低模型成本，但若沒有使用重新產生也可能增加成本。由於仍屬實驗性功能，可能不穩定，未來行為也可能變更",
         "urllora": "可使用模型檔案的直接下載連結。Google Drive 可透過 https://sites.google.com/site/gdocs2direct/ 等網站建立直接連結；也可使用 CivitAI：複製 AIR（例如 `urn:air:flux1:lora:civitai:180891@776656`，或直接使用 `civitai:180891@776656`）後貼上",
@@ -497,7 +542,6 @@ export const languageChineseTraditional = {
         "legacyMediaFindings": "啟用後，使用舊版方式搜尋媒體資源，不使用額外搜尋演算法",
         "comfyWorkflow": "填入 ComfyUI 的 API Workflow。可在 ComfyUI 按下「Workflow > Export (API)」匯出。Workflow 內容也必須包含 {{risu_prompt}}，Risu 會將它替換為實際提示詞",
         "automaticCachePoint": "若對話結束時不存在快取點，會自動建立快取點",
-        "experimentalChatCompressionDesc": "將未使用的對話資料壓縮並存到獨立檔案，可大幅減少對話資料大小並改善效能。但此功能仍屬實驗性，可能不穩定，也可能造成備份等功能出現問題",
         "promptInfoInsideChatDesc": "啟用後會將提示詞預設集資訊存入對話中繼資料，包括預設集名稱、啟用中的開關與提示詞文字。可能略微增加處理時間與儲存空間用量",
         "autoAdjustSchema": "啟用後，會自動調整 Dynamic Output 使用的 JSON Schema",
         "dynamicMessages": "啟用後，AI 可以連續送出多則訊息，而非一次只送一則",
@@ -545,26 +589,12 @@ export const languageChineseTraditional = {
         "localNetworkModeDesc": "透過本機執行環境路徑路由私有/區域網路模型 URL，而非透過瀏覽器直接抓取。\n\n**用途**\n- 避免瀏覽器對 `192.168.x.x`、`10.x.x.x`、`localhost`、`.local` 等本機主機的私有網路/CORS 限制\n- 降低 Node 自架模式下本機推斷首個 Token 生成緩慢時的逾時風險\n\n**運作方式**\n- 僅在啟用區域網路模式且偵測到目標 URL 為本機/私有位址時套用\n- Node 自架模式：串流回應優先使用實驗性的 Job+WebSocket 中繼（失敗時回退至 `/proxy2`）；非串流回應使用 `/proxy2`\n- Tauri：使用原生/直接路徑\n- 公開網頁模式：依設計會封鎖本機/私有位址的直接呼叫\n\n**限制**\n- 適用範圍僅限 OpenAI 相容的請求路徑\n- 無法繞過兩個公開網域之間的 Cloudflare 來源限制\n- 需使用您的自架 URL（`globalThis.__NODE__ === true` 的位址）此功能才會生效"
     },
     "setup": {
-        "chooseProvider": "選擇 AI 供應商",
-        "openaikey": "使用 OpenAI API 金鑰（推薦）",
-        "openaiProxy": "OpenAI 反向代理",
-        "setupmodelself": "其他／自行設定",
-        "inputApiKey": "在此輸入 API 金鑰",
-        "apiKeyhelp": "可從此處取得 API 金鑰：",
-        "setupSelfHelp": "歡迎畫面結束後，可前往「設定」自行完成其餘設定",
         "theme": "選擇主題",
-        "themeDescWifulike": "不適合行動裝置",
-        "themeDescWifuCut": "適合行動裝置",
-        "themeDescClassic": "適合所有裝置",
-        "texttheme": "選擇文字顏色",
-        "inputName": "最後，請輸入您的暱稱",
         "welcome": "歡迎使用 RisuTanium！我是 Airisu，會帶您完成 RisuTanium 的初始設定。首先，我該怎麼稱呼您？",
         "welcome2": "您好，{username}！開始之前，我會先問幾個問題。之後仍可在設定中修改這些選項。\n\n首先請選擇 AI 供應商",
         "openRouterProvider": "OpenRouter 提供許多模型，部分免費且未經內容過濾，但品質不如 OpenAI。",
         "hordeProvider": "Horde 是免費供應商，但回應時間較長、品質也較低",
-        "setProviderLater": "還有其他供應商，您可以稍後再到設定中設定。若想之後再處理，請選擇此項",
         "setupOpenAI": "若要使用 OpenAI，您需要取得 API 金鑰。\n1. 前往 https://beta.openai.com/ \n2. 登入帳號\n3. 前往 https://beta.openai.com/account/api-keys \n4. 按下「Create New API Key」並自行命名\n5. 複製網站上的金鑰\n6. 回到 RisuTanium\n7. 貼上金鑰並按下送出按鈕",
-        "setupClaude": "若要使用 Claude，您需要先取得 API 金鑰",
         "setupClaudeSteps": [
             "前往此 URL，並使用 Google 帳號登入",
             "填寫您的資訊後按下「Continue」",
@@ -604,10 +634,6 @@ export const languageChineseTraditional = {
         "chooseCheapOrMemoryOption4": "無限制",
         "chooseCheapOrMemoryOption4Desc": "讓 AI 幾乎記住所有內容，但成本會非常高",
         "finally": "最後，您要啟用進階工具嗎？",
-        "finallyOption1": "是",
-        "finallyOption1Desc": "會啟用進階工具，但 UI 也會更複雜。推薦給進階使用者",
-        "finallyOption2": "否",
-        "finallyOption2Desc": "會停用進階工具，使 UI 更簡潔。推薦給新使用者",
         "igpPrompt": "若 IGP Prompt 有內容，會在主要模型產生回應後，再以情緒模型執行一次 IGP Prompt，並將結果附加在主要模型回應後方",
     },
     "triggerCategories": {
@@ -1050,6 +1076,7 @@ export const languageChineseTraditional = {
     "autoMode": "自動模式",
     "submodel": "輔助模型",
     "emotionPrompt": "情緒提示詞",
+    "emotionPromptPlaceholder": "留空則使用預設值",
     "singleView": "單角色檢視",
     "SpacedView": "多角色檢視",
     "emphasizedView": "雙角色檢視",
@@ -1061,6 +1088,7 @@ export const languageChineseTraditional = {
     "backupLoadConfirm2": "再次確認：真的要載入備份嗎？目前資料將由備份內容覆寫！",
     "others": "其他",
     "presets": "預設集",
+    "unnamedPreset": "未命名預設集",
     "imageGeneration": "圖片生成",
     "provider": "供應商",
     "key": "金鑰",
@@ -1523,6 +1551,7 @@ export const languageChineseTraditional = {
     "enableCustomFlags": "啟用自訂旗標",
     "googleCloudTokenization": "Google Cloud Tokenization",
     "presetChain": "預設集隨機切換",
+    "presetChainPlaceholder": "留空則不使用",
     "legacyMediaFindings": "舊版媒體搜尋",
     "staticsDisclaimer": "統計資料僅基於 2024 年 7 月之後的資料，可能不完全準確",
     "subtitles": "字幕",

@@ -264,8 +264,8 @@
         <SegmentedControl
             bind:value={DBState.db.ollamaInputMode}
             options={[
-                { value: 'list', label: (language as any).nanoGPTSelectFromList || 'Select from List' },
-                { value: 'manual', label: (language as any).nanoGPTManualInput || 'Manual Input' }
+                { value: 'list', label: language.nanoGPTSelectFromList },
+                { value: 'manual', label: language.nanoGPTManualInput }
             ]}
             size="md"
         />
@@ -359,14 +359,14 @@
         <SegmentedControl
             bind:value={nanogptInputMode}
             options={[
-                { value: 'list', label: (language as any).nanoGPTSelectFromList || 'Select from List' },
-                { value: 'manual', label: (language as any).nanoGPTManualInput || 'Manual Input' }
+                { value: 'list', label: language.nanoGPTSelectFromList },
+                { value: 'manual', label: language.nanoGPTManualInput }
             ]}
             size="md"
         />
 
         {#if nanogptInputMode === 'manual'}
-            <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptRequestModel} placeholder={(language as any).nanoGPTManualModelSelect || "Manual Model Select"} oninput={() => DBState.db.nanogptRequestModelName = ''}/>
+            <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptRequestModel} placeholder={language.nanoGPTManualModelSelect} oninput={() => DBState.db.nanogptRequestModelName = ''}/>
         {:else}
             {#await Promise.all([getNanoGPTModels(), getNanoGPTSubscriptionModels(DBState.db.nanogptKey)])}
                 <ModelGrid bind:value={DBState.db.nanogptRequestModel} loading={true} />

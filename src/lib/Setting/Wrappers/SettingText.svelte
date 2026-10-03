@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { SettingItem, SettingContext } from 'src/ts/setting/types';
-    import { UNINITIALIZED, getLabel, getSettingValue, setSettingValue } from 'src/ts/setting/utils';
+    import { UNINITIALIZED, getLabel, getPlaceholder, getSettingValue, setSettingValue } from 'src/ts/setting/utils';
     import { untrack } from 'svelte';
     import TextInput from 'src/lib/UI/GUI/TextInput.svelte';
     import Help from 'src/lib/Others/Help.svelte';
@@ -39,6 +39,6 @@
     marginBottom={true}
     size="sm"
     bind:value={localValue}
-    placeholder={item.options?.placeholder}
+    placeholder={getPlaceholder(item)}
     hideText={item.options?.hideText}
 />

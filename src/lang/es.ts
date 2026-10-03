@@ -178,6 +178,61 @@ export const languageSpanish = {
         "presetNotFound": "No se encontró el preset: {name}"
     },
     "loadingEllipsis": "Cargando...",
+    "slashCommandHelp":
+            "\n            # /input [text]" +
+            "\n            - Mostrar cuadro de diálogo de entrada" +
+            "\n            - Devolver el texto ingresado" +
+            "\n            - Ejemplo: /input Hello World" +
+            "\n            # /echo [text]" +
+            "\n            - Mostrar cuadro de diálogo de alerta" +
+            "\n            - Devolver el texto ingresado" +
+            "\n            - Ejemplo: /echo Hello World" +
+            "\n            # /popup [text]" +
+            "\n            - Mostrar cuadro de diálogo de alerta" +
+            "\n            - Devolver el texto ingresado" +
+            "\n            - Ejemplo: /popup Hello World" +
+            "\n            # /pass [text]" +
+            "\n            - Devolver el texto ingresado" +
+            "\n            - Ejemplo: /pass Hello World" +
+            "\n            # /buttons [labels]" +
+            "\n            - Mostrar cuadro de diálogo de selección" +
+            "\n            - Devolver la etiqueta seleccionada" +
+            "\n            - Ejemplo: /buttons Yes§No" +
+            "\n            # /speak [text]" +
+            "\n            - Leer el texto en voz alta" +
+            "\n            - Ejemplo: /speak Hello World" +
+            "\n            # /send [text]" +
+            "\n            - Enviar texto al chat" +
+            "\n            - Ejemplo: /send Hello World" +
+            "\n            # /sendas [text]" +
+            "\n            - Enviar texto al chat como el personaje" +
+            "\n            - Ejemplo: /sendas Hello World" +
+            "\n            # /comment [text]" +
+            "\n            - Agregar un comentario al chat" +
+            "\n            - Ejemplo: /comment Hello World" +
+            "\n            # /cut [index]" +
+            "\n            - Cortar un mensaje del chat" +
+            "\n            - Ejemplo: /cut 1" +
+            "\n            # /del [size]" +
+            "\n            - Eliminar un mensaje del chat" +
+            "\n            - Ejemplo: /del 1" +
+            "\n            # /len [array]" +
+            "\n            - Devolver la longitud del array" +
+            "\n            - Ejemplo: /len Hello§World" +
+            "\n            # /setvar key=[key] [value]" +
+            "\n            - Establecer una variable" +
+            "\n            - Ejemplo: /setvar key=hello world" +
+            "\n            # /addvar key=[key] [value]" +
+            "\n            - Sumar un valor a la variable" +
+            "\n            - Ejemplo: /addvar key=damage 10" +
+            "\n            # /getvar key=[key]" +
+            "\n            - Obtener una variable" +
+            "\n            - Ejemplo: /getvar key=damage" +
+            "\n            # /trigger [name]" +
+            "\n            - Ejecutar un activador" +
+            "\n            # /?" +
+            "\n            - Mostrar ayuda" +
+            "\n            ",
     "optLow": "Bajo",
     "optMedium": "Medio",
     "optHigh": "Alto",
@@ -314,6 +369,7 @@ export const languageSpanish = {
         "warning": "Advertencia",
         "noFormat": "Sin formato",
         "memory": "Memoria",
+        "otherAx": "Otros auxiliares",
         "translations": "Traducciones",
         "emotion": "Emoción",
         "component": "Componente",
@@ -364,8 +420,6 @@ export const languageSpanish = {
         "msgSound": "Reproduce un sonido *ding* cuando el personaje responde.",
         "charDesc": "Breve descripción del personaje. Esto afecta las respuestas del personaje.",
         "charFirstMessage": "Primer mensaje del personaje. Esto afecta altamente las respuestas del personaje.",
-        "charNote": "Una nota que afecta fuertemente el comportamiento del modelo. Embebida en el personaje actual. También conocida como UJB.",
-        "toggleNsfw": "Activa o desactiva el prompt jailbreak.",
         "lorebook": "El Libro de Lore es un diccionario creado por el usuario para la IA. La IA solo lo ve cuando hay una clave de activación en el contexto.",
         "loreName": "Nombre del lore. No afecta a la IA.",
         "loreActivationKey": "Si una de las claves de activación existe en el contexto, el lore se activará y el prompt se insertará. Separado por comas.",
@@ -375,7 +429,6 @@ export const languageSpanish = {
         "imggen": "Después de analizar el chat, aplica el prompt a {{slot}}.",
         "regexScript": "El Script Regex es un script personalizado que reemplaza la cadena que coincide de IN a OUT.\n\nHay cuatro opciones de tipo.\n\n- **Modificar Entrada (Input)** modifica la entrada del usuario\n\n- **Modificar Salida (Output)** modifica la respuesta del personaje\n\n- **Modificar Datos de Solicitud** modifica los datos actuales del chat cuando se envía.\n\n- **Modificar Visualización** solo modifica el texto cuando se muestra sin modificar los datos del chat.\n\nIN debe ser un regex sin Flags y sin barras en el inicio y el final.\n\nOUT es una cadena que puede incluir patrones de reemplazo. Estos son los patrones:\n\n- $$\n\n    - inserta $\n\n- $&\n\n    - inserta la subcadena coincidente.\n\n- $`\n\n    - inserta la porción de la cadena que precede a la subcadena coincidente.\n\n- $1\n\n    - inserta el primer grupo coincidente. Funciona con otros números como 2, 3...\n\n- $(nombre)\n\n    - inserta el grupo nombrado\n\nEn cuanto a los Flags, no solo puedes usar los Flags admitidos de forma nativa, sino también estos Flags, diseñados para usuarios avanzados:\n\n- `<inject>`: inserta el resultado en la cadena actual.\n- `<move_top>`: mueve el resultado al principio de la cadena.\n- `<move_bottom>`: mueve el resultado al final de la cadena.\n- `<repeat_back>`: si no se encuentra la coincidencia, mantiene el resultado de la coincidencia anterior.\n- `<order n>`: establece el orden del resultado. Un orden más alto se mostrará primero. `n` es un número (como `<order 1>`); si no se establece este Flag, se fijará en 0.\n- `<cbs>`: analiza la sintaxis de llaves (curly braced syntax) en IN.\n\nPara usarlo junto con los Flags nativos, puedes usarlo así: `gi<cbs><move_top>`.",
         "experimental": "Esta es una característica experimental. Podría ser inestable.",
-        "oogaboogaURL": "Si tu WebUI admite una versión anterior de la API, tu URL debería parecerse a *https:.../run/textgen*\n\nSi tu WebUI admite la nueva versión de la API, tu URL debería parecerse a *https://.../api/v1/generate* y usar el servidor API como host, y agregar --api a los argumentos.",
         "exampleMessage": "Conversaciones de ejemplo que afectan la respuesta del personaje. No usa tokens permanentemente.\n\nFormato de ejemplo de conversaciones:\n\n```\n<START>\n{{user}}: hola\n{{char}}: hola\n<START>\n{{user}}: hola\nHaruhi: hola\n```\n\n```<START>``` Marca el comienzo de una nueva conversación.",
         "creatorQuotes": "Nota que aparece en la parte superior del primer mensaje. Se utiliza para informar a los usuarios sobre este personaje. No va en el prompt.",
         "systemPrompt": "Un prompt que reemplaza el prompt principal en la configuración si no está en blanco.",
@@ -384,19 +437,13 @@ export const languageSpanish = {
         "scenario": "Una breve descripción sobre el escenario del personaje. \n\n**No se recomienda usar esta opción. Descríbelo en la descripción del personaje en su lugar.**",
         "utilityBot": "Cuando está activado, ignora el prompt principal, jailbreak y otros prompts. Se utiliza para bots diseñados para utilidades, no para juegos de rol.",
         "loreSelective": "Si el modo Selectivo está activado, tanto la Clave de Activación como la Clave Secundaria deben coincidir para activar el lore.",
-        "loreRandomActivation": "Si la Condición de Probabilidad está habilitada, si se cumplen todas las demás condiciones del lore, el lore se activará con una probabilidad establecida por 'Probabilidad' cada vez que se envíe un chat.",
         "additionalAssets": "Activos adicionales para mostrar en tu chat. \n\n - usa `{{raw::<nombre del activo>}}` para usar como ruta.\n - usa `{{image::<nombre del activo>}}` para usar como imagen\n - usa `{{video::<nombre del activo>}}` para usar como video\n - usa `{{audio::<nombre del activo>}}` para usar como audio\n    - se recomienda poner en HTML de Fondo",
-        "superMemory": "SuperMemoria hace que tu personaje memorice más dando datos resumidos a la IA.\n\nEl modelo de SuperMemoria es un modelo que resume ese texto. Se recomienda Davinci, y no se recomienda usar modelos auxiliares a menos que sea un modelo no filtrado con más de 2000 tokens y con una gran habilidad de resumen.\n\nEl Prompt de SuperMemoria decide qué prompt se debe enviar para resumir. Si lo dejas en blanco, usará el prompt predeterminado. Se recomienda dejarlo en blanco.\n\nDespués de configurarlo todo, puedes habilitarlo en la configuración de un personaje.",
         "replaceGlobalNote": "Si no está en blanco, reemplaza la nota global actual con esta.",
         "backgroundHTML": "Datos de Markdown/HTML que se inyectarán en el fondo de la pantalla de chat.\n\n También puedes usar activos adicionales. por ejemplo, puedes usar `{{audio::<nombre del activo}}` para música de fondo.\n\n Además, puedes usar estos con activos adicionales:\n - `{{bg::<nombre del activo>}}`: inyecta el fondo como activo",
         "additionalText": "El texto que se agregará a la Descripción del Personaje solo cuando la IA crea que es necesario, por lo que puedes poner textos largos aquí. Sepáralo con doble salto de línea.",
         "charjs": "Un código JavaScript que se ejecutará con el personaje. Por ejemplo, puedes consultar `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js` ACTUALMENTE NO SE RECOMIENDA USAR DEBIDO A PROBLEMAS DE SEGURIDAD. EXPORTAR NO INCLUIRÁ ESTO.",
-        "romanizer": "Romanizador es un complemento que convierte caracteres no romanos a caracteres romanos para reducir tokens al usar caracteres no romanos al solicitar datos. Esto puede resultar en una respuesta diferente del modelo original. No se recomienda usar este complemento al usar caracteres romanos en el chat.",
-        "inlayImages": "Si está habilitado, las imágenes podrían incrustarse en el chat y las IA pueden verlas si lo admiten.",
-        "metrica": "Metric Systemizer es un complemento que convierte métricas a unidades imperiales al solicitar datos, y viceversa en la respuesta para mostrar al usuario el sistema métrico mientras usa el imperial para el rendimiento. No se recomienda usar este complemento al usar unidades imperiales en el chat.",
         "lorePlus": "LoreBook+ es una característica experimental que utiliza vectordb en lugar de solo coincidencia de cadenas para una mejor experiencia de creación de bots y un mejor rendimiento de coincidencia.",
         "topP": "Top P es un umbral de probabilidad para el muestreo de núcleo. El modelo considera los resultados de los tokens con la masa de probabilidad top_p.",
-        "openAIFixer": "OpenAI Fixer es un complemento que soluciona algunos de los problemas de OpenAI.",
         "sayNothing": "Si está habilitado, ingresará 'no decir nada' cuando no se haya ingresado ninguna cadena.",
         "showUnrecommended": "Si está habilitado, mostrará configuraciones no recomendadas y obsoletas. NO SE RECOMIENDA usar estas configuraciones.",
         "streamingDisplayOptimizationMode": "Reduce el lag de visualización al recibir respuestas largas por streaming con mucho posprocesamiento, como scripts basados en regex. Puede ser útil en dispositivos móviles o equipos de gama baja.\n\nDesactivado mantiene el comportamiento normal, pero ejecuta el posprocesamiento en cada token y puede generar una sobrecarga importante.\n\nEquilibrado reduce la carga intentando el posprocesamiento solo en intervalos cortos, aproximadamente cada 0,125 segundos.\n\nFuerte es similar a Equilibrado, pero omite el posprocesamiento durante el streaming y lo intenta solo una vez cuando el stream termina.\n\nEsta es una función experimental, por lo que algunas funciones pueden comportarse de forma inesperada.",
@@ -428,7 +475,6 @@ export const languageSpanish = {
         "lowLevelAccess": "Si está habilitado, permitirá el acceso a funciones que requieren altas potencias de computación y ejecutar el modelo de IA a través de activadores en el personaje. No habilites esto a menos que realmente necesites estas características.",
         "triggerLLMPrompt": "Un prompt que se enviará al modelo. Puedes usar múltiples turnos y roles usando `@@role usuario`, `@@role sistema`, `@@role asistente`. Por ejemplo, \n```\n@@role sistema\nresponde como hola\n@@role asistente\nhola\n@@role usuario\nhola\n```",
         "legacyTranslation": "Si está habilitado, usará el método de traducción antiguo, que preprocesa Markdown y citas antes de las traducciones en lugar de postprocesar después de las traducciones.",
-        "luaHelp": "Puedes usar scripts Lua como script de activación. Puedes definir funciones onInput, onOutput, onStart. onInput se llama cuando el usuario envía un mensaje, onOutput se llama cuando el personaje envía un mensaje, onStart se llama cuando comienza el chat. Para más información, consulta la documentación.",
         "openAIFlexProcessing": "Las respuestas OpenAI Flex pueden ser más lentas que las respuestas normales, pero se obtienen a un precio más bajo (precio de Batch API). Este interruptor solo se aplica a solicitudes oficiales de OpenAI Chat Completions.",
         "claudeCachingExperimental": "El almacenamiento en caché en Claude es una característica experimental que puede reducir el costo del modelo, pero también puede aumentarlo si lo usas sin reroll. Dado que es una característica experimental, puede ser inestable y el comportamiento puede cambiar en el futuro.",
         "urllora": "Puedes usar el enlace de descarga directa del archivo del modelo. Puedes crear una URL directa desde Google Drive o usar una URL de Civitai, copiar el AIR (se ve como `urn:air:flux1:lora:civitai:180891@776656` o simplemente `civitai:180891@776656`) y pegarlo.",
@@ -457,7 +503,6 @@ export const languageSpanish = {
         "legacyMediaFindings": "Si está habilitado, usará el método antiguo para encontrar activos multimedia, sin usar el algoritmo de búsqueda adicional.",
         "comfyWorkflow": "Pon el flujo de trabajo API de ComfyUI. Puedes obtener tu flujo de trabajo API en ComfyUI presionando el botón 'Workflow > Export (API)'. También debes poner {{risu_prompt}} en tu texto de flujo de trabajo. El {{risu_prompt}} será reemplazado por el prompt proporcionado por Risu.",
         "automaticCachePoint": "Crea automáticamente un punto de caché después de que termina el chat, si el punto de caché no existe.",
-        "experimentalChatCompressionDesc": "Comprime los datos de chat no utilizados y los guarda en un archivo separado. Esto reduce en gran medida el tamaño de los datos del chat y mejora en gran medida el rendimiento, sin embargo, es experimental y puede ser inestable, causando problemas en la función de respaldo y más.",
         "promptInfoInsideChatDesc": "Cuando está habilitado, almacena información del preset de prompt en los metadatos del chat. Los datos almacenados incluyen el nombre del preset, los interruptores activos y el texto del prompt. Esto puede aumentar ligeramente el tiempo de procesamiento y el uso de almacenamiento.",
         "autoAdjustSchema": "Cuando está habilitado, ajustará automáticamente el esquema JSON para la Salida Dinámica.",
         "dynamicMessages": "Cuando está habilitado, permitirá al asistente enviar múltiples mensajes seguidos, en lugar de uno a la vez.",
@@ -499,26 +544,12 @@ export const languageSpanish = {
         "enableScrollToActiveChar": "Si está habilitado, pulsar la tecla de acceso rápido o mantener presionada la tecla Ctrl mientras se arrastra un personaje desplazará la vista hasta el personaje activo. Las carpetas se abrirán automáticamente si están cerradas."
     },
     "setup": {
-        "chooseProvider": "Elige Proveedor de IA",
-        "openaikey": "OpenAI con Clave API (Recomendado)",
-        "openaiProxy": "Proxy Inverso de OpenAI",
-        "setupmodelself": "Otros / Lo configuraré yo mismo",
-        "inputApiKey": "Ingresa la Clave API Aquí",
-        "apiKeyhelp": "Puedes obtener la clave API en: ",
-        "setupSelfHelp": "Configúralo tú mismo en la configuración, después de que termine la pantalla de bienvenida.",
         "theme": "Selecciona tu tema",
-        "themeDescWifulike": "No apto para móviles",
-        "themeDescWifuCut": "Apto para móviles",
-        "themeDescClassic": "Apto para todos los dispositivos",
-        "texttheme": "Selecciona el color del texto",
-        "inputName": "Por último, ingresa tu apodo.",
         "welcome": "¡Bienvenido a RisuTanium! Aquí te guiaré para configurarlo. Primero, ¿cómo puedo llamarte?",
         "welcome2": "Hola {username}! Antes de empezar, te haré algunas preguntas. Puedes cambiar estas configuraciones más tarde en la configuración.\n\nPrimero selecciona el proveedor de IA.",
         "openRouterProvider": "OpenRouter tiene muchos modelos, algunos de ellos sin filtro y algunos gratuitos, pero no es tan bueno como OpenAI.",
         "hordeProvider": "Horde es un proveedor gratuito, pero el tiempo de respuesta es largo y la calidad es baja.",
-        "setProviderLater": "Hay otros proveedores, pero puedes configurarlo más tarde en la configuración. selecciona esto si deseas configurarlo más tarde.",
         "setupOpenAI": "Para usar OpenAI, necesitas obtener una clave API. \n1. ve a https://beta.openai.com/ \n2. inicia sesión con tu cuenta \n3. ve a https://beta.openai.com/account/api-keys \n4. haz clic en 'Crear Nueva Clave API' y nombra tu clave como quieras. \n5. copia la clave en el sitio web.\n6. regresa a RisuTanium\n7. pégala y haz clic en el botón enviar.",
-        "setupClaude": "Para usar Claude, necesitas obtener una clave API.",
         "setupClaudeSteps": [
             "Ve a esta URL e inicia sesión como Google",
             "Ingresa tu información y haz clic en 'Continuar'",
@@ -558,10 +589,6 @@ export const languageSpanish = {
         "chooseCheapOrMemoryOption4": "Ilimitado",
         "chooseCheapOrMemoryOption4Desc": "Esto hará que la IA recuerde casi todo, pero será muy costoso.",
         "finally": "Finalmente, ¿quieres habilitar herramientas avanzadas?",
-        "finallyOption1": "Sí",
-        "finallyOption1Desc": "Esto habilitará herramientas avanzadas, pero hará que la interfaz de usuario sea más compleja. Recomendado para usuarios avanzados.",
-        "finallyOption2": "No",
-        "finallyOption2Desc": "Esto deshabilitará las herramientas avanzadas y hará que la interfaz de usuario sea más simple. Recomendado para nuevos usuarios.",
         "igpPrompt": "Si el Prompt IGP no está en blanco, se ejecutará después de la solicitud del modelo principal, después de la ejecución del modelo principal, como un modelo de emoción, agregando el resultado después de la respuesta del modelo principal."
     },
     "triggerCategories": {
@@ -1004,6 +1031,7 @@ export const languageSpanish = {
     "autoMode": "Modo Automático",
     "submodel": "Modelo Auxiliar",
     "emotionPrompt": "Prompt de Emoción",
+    "emotionPromptPlaceholder": "Déjalo en blanco para usar el valor predeterminado",
     "singleView": "Vista Única",
     "SpacedView": "Vista de Múltiples Personajes",
     "emphasizedView": "Vista de Personajes Doble",
@@ -1015,6 +1043,7 @@ export const languageSpanish = {
     "backupLoadConfirm2": "¿Realmente, realmente deseas cargar el respaldo? ¡Todos los datos se perderán!",
     "others": "Otros",
     "presets": "Presets",
+    "unnamedPreset": "Preset sin nombre",
     "imageGeneration": "Generación de Imágenes",
     "provider": "Proveedor",
     "key": "Clave",
@@ -1476,6 +1505,7 @@ export const languageSpanish = {
     "enableCustomFlags": "Habilitar Flags Personalizados",
     "googleCloudTokenization": "Tokenización de Google Cloud",
     "presetChain": "Cadena de Presets",
+    "presetChainPlaceholder": "Déjalo en blanco para no usarlo",
     "legacyMediaFindings": "Hallazgos de Medios Legacy",
     "staticsDisclaimer": "Las estadísticas se basan en los datos de después de julio de 2024. Los datos pueden no ser precisos.",
     "subtitles": "Subtítulos",

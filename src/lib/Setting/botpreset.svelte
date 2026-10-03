@@ -154,7 +154,7 @@
                 markPresetDrag(e, i)
 
                 const dragElement = document.createElement('div')
-                dragElement.textContent = preset?.name || 'Unnamed Preset'
+                dragElement.textContent = preset?.name || language.unnamedPreset
                 dragElement.className = 'absolute -top-96 -left-96 px-4 py-2 bg-darkbg text-textcolor2 rounded-sm text-sm whitespace-nowrap shadow-lg pointer-events-none z-50'
                 document.body.appendChild(dragElement)
                 e.dataTransfer?.setDragImage(dragElement, 10, 10)

@@ -32,11 +32,11 @@ export const advancedSettingsItems: SettingItem[] = [
     },
     {
         id: 'adv.emoPrompt', type: 'text', labelKey: 'emotionPrompt', bindKey: 'emotionPrompt2',
-        helpKey: 'emotionPrompt', options: { placeholder: 'Leave it blank to use default' }
+        helpKey: 'emotionPrompt', options: { placeholderKey: 'emotionPromptPlaceholder', placeholder: 'Leave it blank to use default' }
     },
     {
         id: 'adv.presetChain', type: 'text', labelKey: 'presetChain', bindKey: 'presetChain',
-        helpKey: 'presetChain', options: { placeholder: 'Leave it blank to not use' }
+        helpKey: 'presetChain', options: { placeholderKey: 'presetChainPlaceholder', placeholder: 'Leave it blank to not use' }
     },
 
     // Request Settings

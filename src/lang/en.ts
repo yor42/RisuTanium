@@ -179,6 +179,61 @@ export const languageEnglish = {
         presetNotFound: "Cannot find preset: {name}",
     },
     loadingEllipsis: "Loading...",
+    slashCommandHelp:
+            "\n            # /input [text]" +
+            "\n            - Show input dialog" +
+            "\n            - Return input text" +
+            "\n            - Example: /input Hello World" +
+            "\n            # /echo [text]" +
+            "\n            - Show alert dialog" +
+            "\n            - Return input text" +
+            "\n            - Example: /echo Hello World" +
+            "\n            # /popup [text]" +
+            "\n            - Show alert dialog" +
+            "\n            - Return input text" +
+            "\n            - Example: /popup Hello World" +
+            "\n            # /pass [text]" +
+            "\n            - Return input text" +
+            "\n            - Example: /pass Hello World" +
+            "\n            # /buttons [labels]" +
+            "\n            - Show select dialog" +
+            "\n            - Return selected label" +
+            "\n            - Example: /buttons Yes§No" +
+            "\n            # /speak [text]" +
+            "\n            - Speak text" +
+            "\n            - Example: /speak Hello World" +
+            "\n            # /send [text]" +
+            "\n            - Send text to chat" +
+            "\n            - Example: /send Hello World" +
+            "\n            # /sendas [text]" +
+            "\n            - Send text to chat as character" +
+            "\n            - Example: /sendas Hello World" +
+            "\n            # /comment [text]" +
+            "\n            - Add comment to chat" +
+            "\n            - Example: /comment Hello World" +
+            "\n            # /cut [index]" +
+            "\n            - Cut chat message" +
+            "\n            - Example: /cut 1" +
+            "\n            # /del [size]" +
+            "\n            - Delete chat message" +
+            "\n            - Example: /del 1" +
+            "\n            # /len [array]" +
+            "\n            - Return length of array" +
+            "\n            - Example: /len Hello§World" +
+            "\n            # /setvar key=[key] [value]" +
+            "\n            - Set variable" +
+            "\n            - Example: /setvar key=hello world" +
+            "\n            # /addvar key=[key] [value]" +
+            "\n            - Add value to variable" +
+            "\n            - Example: /addvar key=damage 10" +
+            "\n            # /getvar key=[key]" +
+            "\n            - Get variable" +
+            "\n            - Example: /getvar key=damage" +
+            "\n            # /trigger [name]" +
+            "\n            - Run trigger" +
+            "\n            # /?" +
+            "\n            - Show help" +
+            "\n            ",
     optLow: "Low",
     optMedium: "Medium",
     optHigh: "High",
@@ -315,6 +370,7 @@ export const languageEnglish = {
         warning: "Warning",
         noFormat: "No Format",
         memory: "Memory",
+        otherAx: "OtherAx",
         translations: "Translations",
         emotion: "Emotion",
         component: "Component",
@@ -366,8 +422,6 @@ export const languageEnglish = {
         msgSound: "Plays *ding* sound when character responses",
         charDesc: "Brief description of the character. This affects characters response.",
         charFirstMessage: "First message of the character. This highly affects characters response.",
-        charNote: "A note that strongly affects model behavior. Embbedded to current character, also known as UJB.",
-        toggleNsfw: "Toggles jailbreak prompt on and off.",
         lorebook: "Lorebook is a user-made dictionary for AI. AI only sees it when where is an activation keys in the context.",
         loreName: "Name of the lore. It doesn't affect the Ai.",
         loreActivationKey: "If one of the activation key exists in context, the lore will be activated and prompt will go in. Separated by commas.",
@@ -397,9 +451,6 @@ export const languageEnglish = {
             "\n- `<cbs>` - parses curly braced synatxes in IN." +
             "\n\nTo use with native flags, you can use like `gi<cbs><move_top>`.",
         experimental: "This is a experimental feature. It might be unstable.",
-        oogaboogaURL:
-            "If your WebUI supports older version of api, your url should look *like https:.../run/textgen*\n\n" +
-            "If your WebUI supports newVersion of api, your url should look like *https://.../api/v1/generate* and use the api server as host, and add --api to arguments.",
         exampleMessage:
             "Example conversations that affects output of the character. It doesn't uses tokens permanently." +
             "\n\nExample format of conversations:" +
@@ -412,15 +463,8 @@ export const languageEnglish = {
         scenario: "A brief description about character's scenario. \n\n**It is not recommended to use this option. Describe it in character description instead.**",
         utilityBot: "When activated, it ignores main prompt, jailbreak and other prompts. Used for bot made for utility, not for roleplay.",
         loreSelective: "If Selective mode is toggled, both Activation Key and Secondary key should have a match to activate the lore.",
-        loreRandomActivation:
-            "If Use Probability Condition is enabled, if the lore's other conditions are all met, the lore will be activated with a set probability which is set by 'Probability' each time a chat is sent.",
         additionalAssets:
             "Additional assets to display in your chat. \n\n - use `{{raw::<asset name>}}` to use as path.\n - use `{{image::<asset name>}}` to use as image\n - use `{{video::<asset name>}}` to use as video\n - use `{{audio::<asset name>}}` to use as audio\n    - recommended to put in Background HTML",
-        superMemory:
-            "SupaMemory makes your character memorize more by giving summarized data to AI.\n\n" +
-            "SupaMemory model is a model that summarizes that text. davinci is recommended, and Auxiliary models are not recommended unless it is an unfiltered model with over 2000 tokens with great summarizing skill.\n\n" +
-            "SupaMemory Prompt decides what prompt should be sent to summarize. If you leave it blank, it will use the default prompt. leaving blank is recommended.\n\n" +
-            "After it is all setup, you can able it in the setting of a character.",
         replaceGlobalNote: "If it's not blank, it replaces current global note to this.",
         backgroundHTML:
             "A Markdown/HTML Data that would be injected to the background of chat screen.\n\n You can also use additional assets. for example, you can use `{{audio::<asset name}}` for background music." +
@@ -428,14 +472,8 @@ export const languageEnglish = {
             "\n - `{{bg::<asset name>}}`: inject the background as asset",
         additionalText: "The text that would be added to Character Description only when AI thinks it's needed, so you can put long texts here. Separate with double newlines.",
         charjs: "A javascript code that would run with character. for example, you can check `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js` CURRENTLY NOT RECOMMENDED FOR USE DUE TO SECURITY REASONS. EXPORTING WOULD NOT INCLUDE THIS.",
-        romanizer:
-            "Romanizer is a plugin that converts non-roman characters to roman characters to reduce tokens when using non-roman characters while requesting data. This can result different output from the original model. It is not recommended to use this plugin when using roman characters on chat.",
-        inlayImages: "If enabled, images could be inlayed to the chat and AIs can see it if they support it.",
-        metrica:
-            "Metric Systemizer is a plugin that converts metrics to imperial units when request, and vice versa on output to show user metric system while using imperial for performace. It is not recommended to use this plugin when using imperial units on chat.",
         lorePlus: "LoreBook+ is a experimental feature that uses vectordb instead of just string matching for better bot making experience and better matching performace.",
         topP: "Top P is a probability threshold for nucleus sampling. Model considers the results of the tokens with top_p probability mass.",
-        openAIFixer: "OpenAI Fixer is a plugin that fixes some of the problems of OpenAI.",
         sayNothing: "If enabled, it will input 'say nothing' when no string inputed.",
         showUnrecommended: "If enabled, it will show unrecommended, deprecated settings. It is NOT RECOMMENDED to use these settings.",
         streamingDisplayOptimizationMode:
@@ -497,8 +535,6 @@ export const languageEnglish = {
             "A prompt that would be sent to the model. You can use multi turns and roles by using `@@role user`, `@@role system`, `@@role assistant`. for example, \n```\n@@role system\nrespond as hello\n@@role assistant\nhello\n@@role user\nhi\n```",
         legacyTranslation:
             "If enabled, it will use the old translation method, which preprocess markdown and quotes before translations instead of postprocessing after translations.",
-        luaHelp:
-            "You can use Lua scripts as a trigger script. You can define onInput, onOutput, onStart functions. onInput is called when user sends a message, onOutput is called when character sends a message, onStart is called when the chat starts. For more information, see the documentation.",
         openAIFlexProcessing:
             "OpenAI Flex responses can be slower than regular responses, but you can get them at a lower price (Batch API pricing). This toggle only applies to official OpenAI Chat Completions requests.",
         claudeCachingExperimental:
@@ -555,8 +591,6 @@ export const languageEnglish = {
         comfyWorkflow:
             "Put the API workflow of comfy UI. you can get your API workflow in comfy UI by pressing the 'Workflow > Export (API)' button. you must also put {{risu_prompt}} in you workflow text. The {{risu_prompt}} will be replaced with the prompt provided by the Risu.",
         automaticCachePoint: "Automatically creates cache point after the chat ends, if the caching point doesn't exist.",
-        experimentalChatCompressionDesc:
-            "Compresses the unused chat data and saves in seperate file. This greatly reduces the size of the chat data, and greatly improves the performance, however its experimental and can be unstable, causing issues in backup feature and more.",
         promptInfoInsideChatDesc:
             "When enabled, this stores prompt preset information in the chat metadata. The stored data includes the preset name, active toggles, and the prompt text. This may slightly increase processing time and storage usage.",
         autoAdjustSchema: "When enabled, it will automatically adjust the JSON schema for Dynamic Output.",
@@ -630,27 +664,13 @@ export const languageEnglish = {
         coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. This keeps memory use low when you have many characters. Turning it off archives nothing new, and characters that are already archived still open normally."
     },
     setup: {
-        chooseProvider: "Choose AI Provider",
-        openaikey: "OpenAI with API Key (Recommended)",
-        openaiProxy: "OpenAI Reverse proxy",
-        setupmodelself: "Others / I will setup myself",
-        inputApiKey: "Input API Key Here",
-        apiKeyhelp: "You can get API key from: ",
-        setupSelfHelp: "Setup yourself in settings, after Welcome screen ends.",
         theme: "Select your theme",
-        themeDescWifulike: "Not suitable for mobile",
-        themeDescWifuCut: "Suitable for mobile",
-        themeDescClassic: "Suitable for All devices",
-        texttheme: "Select your text color",
-        inputName: "Lastly, input your Nickname.",
         welcome: "Welcome to RisuTanium! I am Airisu, I am here to guide you through the RisuTanium setup. First, what may I call you?",
         welcome2: "Hello {username}! Before we start, I will ask you some questions. You can change these settings later in settings.\n\nFirst select the AI provider.",
         openRouterProvider: "OpenRouter has a lot of models, some of them unfiltered and some of them free, but it is not as good as OpenAI.",
         hordeProvider: "Horde is a free provider, but the response time is long and the quality is low.",
-        setProviderLater: "There are other providers, but you can set it later in settings. Select this if you want to set it later.",
         setupOpenAI:
             "To use OpenAI, you need to get an API key. \n1. Go to https://beta.openai.com/ \n2. Login with your account \n3. Go to https://beta.openai.com/account/api-keys \n4. Click 'Create New API Key' and name your key whatever you want. \n5. Copy the key in the website.\n6. Go back to RisuTanium\n7. Paste it, and click send button.",
-        setupClaude: "To use Claude, you need to get an API key.",
         setupClaudeSteps: [
             "Go to this URL and Login as Google",
             "Input your information and click 'Continue'",
@@ -691,10 +711,6 @@ export const languageEnglish = {
         chooseCheapOrMemoryOption4: "Unlimited",
         chooseCheapOrMemoryOption4Desc: "This will make AI to remember almost everything, but it will be very expensive.",
         finally: "Finally, do you want to enable advanced tools?",
-        finallyOption1: "Yes",
-        finallyOption1Desc: "This will enable advanced tools, but it will make the UI more complex. Recommended for advanced users.",
-        finallyOption2: "No",
-        finallyOption2Desc: "This will disable advanced tools, and make the UI more simple. Recommended for new users.",
         igpPrompt:
             "if IGP Prompt is not a blank, it will be executed after the main model request, after main model execution, as a emotion model, adding the result after the main model response.",
     },
@@ -1139,6 +1155,7 @@ export const languageEnglish = {
     autoMode: "Auto Mode",
     submodel: "Auxiliary Model",
     emotionPrompt: "Emotion Prompt",
+    emotionPromptPlaceholder: "Leave it blank to use default",
     singleView: "Single View",
     SpacedView: "Multiple Character View",
     emphasizedView: "Double Character View",
@@ -1150,6 +1167,7 @@ export const languageEnglish = {
     backupLoadConfirm2: "Do you really, really want to load backup? All datas will be lost!",
     others: "Others",
     presets: "Presets",
+    unnamedPreset: "Unnamed Preset",
     imageGeneration: "Image Generation",
     provider: "Provider",
     key: "Key",
@@ -1613,6 +1631,7 @@ export const languageEnglish = {
     enableCustomFlags: "Enable Custom Flags",
     googleCloudTokenization: "Google Cloud Tokenization",
     presetChain: "Preset Chain",
+    presetChainPlaceholder: "Leave it blank to not use",
     legacyMediaFindings: "Legacy Media Findings",
     staticsDisclaimer: "The statistics are based on the data from after July 2024. The data may not be accurate.",
     subtitles: "Subtitles",

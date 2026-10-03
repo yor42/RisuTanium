@@ -87,6 +87,8 @@
   let translation = $state<string | null>(null);
   let isRerolling = $state(false);
   let rerolled = $state<string | null>(null);
+  let rerollFailed = $state(false);
+  const canApplyRerolled = $derived(!!rerolled && !isRerolling && !rerollFailed);
   let isTranslatingRerolled = $state(false);
   let rerolledTranslation = $state<string | null>(null);
 
@@ -131,7 +133,7 @@
     }
 
     isTranslating = true;
-    translation = "Loading...";
+    translation = language.loadingEllipsis;
 
     // Focus on translation element after it's rendered
     await tick();
@@ -185,7 +187,8 @@
     if (isOrphan()) return;
 
     isRerolling = true;
-    rerolled = "Loading...";
+    rerollFailed = false;
+    rerolled = language.loadingEllipsis;
 
     try {
       const toSummarize: OpenAIChat[] = await Promise.all(
@@ -205,6 +208,7 @@
 
       rerolled = summarizeResult;
     } catch (error) {
+      rerollFailed = true;
       rerolled = language.hypaV3Modal.rerollFailed;
     } finally {
       isRerolling = false;
@@ -275,7 +279,7 @@
     if (!rerolled) return;
 
     isTranslatingRerolled = true;
-    rerolledTranslation = "Loading...";
+    rerolledTranslation = language.loadingEllipsis;
 
     // Focus on rerolled translation element after it's rendered
     await tick();
@@ -301,6 +305,8 @@
   }
 
   function applyRerolled(): void {
+    if (!canApplyRerolled || rerolled === null) return;
+
     summary.text = rerolled;
     translation = null;
     rerolled = null;
@@ -324,7 +330,7 @@
     if (!message) return;
 
     expandedMessageState.isTranslating = true;
-    expandedMessageState.translation = "Loading...";
+    expandedMessageState.translation = language.loadingEllipsis;
 
     // Focus on translation element after it's rendered
     await tick();
@@ -583,8 +589,9 @@
 
           <!-- Apply Button -->
           <button
-            class="p-2 transition-colors text-zinc-400 hover:text-rose-300"
+            class="p-2 transition-colors text-zinc-400 hover:text-rose-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-zinc-400"
             tabindex="-1"
+            disabled={!canApplyRerolled}
             onclick={applyRerolled}
           >
             <CheckIcon class="w-4 h-4" />

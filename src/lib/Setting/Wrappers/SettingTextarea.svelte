@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { SettingItem, SettingContext } from 'src/ts/setting/types';
-    import { UNINITIALIZED, getLabel, getSettingValue, setSettingValue } from 'src/ts/setting/utils';
+    import { UNINITIALIZED, getLabel, getPlaceholder, getSettingValue, setSettingValue } from 'src/ts/setting/utils';
     import { untrack } from 'svelte';
     import TextAreaInput from 'src/lib/UI/GUI/TextAreaInput.svelte';
     import Help from 'src/lib/Others/Help.svelte';
@@ -37,5 +37,5 @@
 </span>
 <TextAreaInput
     bind:value={localValue}
-    placeholder={item.options?.placeholder}
+    placeholder={getPlaceholder(item)}
 />

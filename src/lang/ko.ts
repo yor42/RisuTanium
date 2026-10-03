@@ -178,6 +178,61 @@ export const languageKorean = {
         "presetNotFound": "프리셋을 찾을 수 없습니다: {name}"
     },
     "loadingEllipsis": "불러오는 중...",
+    "slashCommandHelp":
+            "\n            # /input [text]" +
+            "\n            - 입력 대화상자를 표시합니다" +
+            "\n            - 입력한 텍스트를 반환합니다" +
+            "\n            - 예시: /input Hello World" +
+            "\n            # /echo [text]" +
+            "\n            - 알림 대화상자를 표시합니다" +
+            "\n            - 입력한 텍스트를 반환합니다" +
+            "\n            - 예시: /echo Hello World" +
+            "\n            # /popup [text]" +
+            "\n            - 알림 대화상자를 표시합니다" +
+            "\n            - 입력한 텍스트를 반환합니다" +
+            "\n            - 예시: /popup Hello World" +
+            "\n            # /pass [text]" +
+            "\n            - 입력한 텍스트를 반환합니다" +
+            "\n            - 예시: /pass Hello World" +
+            "\n            # /buttons [labels]" +
+            "\n            - 선택 대화상자를 표시합니다" +
+            "\n            - 선택한 라벨을 반환합니다" +
+            "\n            - 예시: /buttons Yes§No" +
+            "\n            # /speak [text]" +
+            "\n            - 텍스트를 음성으로 읽습니다" +
+            "\n            - 예시: /speak Hello World" +
+            "\n            # /send [text]" +
+            "\n            - 채팅에 텍스트를 보냅니다" +
+            "\n            - 예시: /send Hello World" +
+            "\n            # /sendas [text]" +
+            "\n            - 캐릭터로서 채팅에 텍스트를 보냅니다" +
+            "\n            - 예시: /sendas Hello World" +
+            "\n            # /comment [text]" +
+            "\n            - 채팅에 코멘트를 추가합니다" +
+            "\n            - 예시: /comment Hello World" +
+            "\n            # /cut [index]" +
+            "\n            - 채팅 메시지를 잘라냅니다" +
+            "\n            - 예시: /cut 1" +
+            "\n            # /del [size]" +
+            "\n            - 채팅 메시지를 삭제합니다" +
+            "\n            - 예시: /del 1" +
+            "\n            # /len [array]" +
+            "\n            - 배열의 길이를 반환합니다" +
+            "\n            - 예시: /len Hello§World" +
+            "\n            # /setvar key=[key] [value]" +
+            "\n            - 변수를 설정합니다" +
+            "\n            - 예시: /setvar key=hello world" +
+            "\n            # /addvar key=[key] [value]" +
+            "\n            - 변수에 값을 더합니다" +
+            "\n            - 예시: /addvar key=damage 10" +
+            "\n            # /getvar key=[key]" +
+            "\n            - 변수를 가져옵니다" +
+            "\n            - 예시: /getvar key=damage" +
+            "\n            # /trigger [name]" +
+            "\n            - 트리거를 실행합니다" +
+            "\n            # /?" +
+            "\n            - 도움말을 표시합니다" +
+            "\n            ",
     "optLow": "낮음",
     "optMedium": "보통",
     "optHigh": "높음",
@@ -314,6 +369,7 @@ export const languageKorean = {
         "warning": "경고",
         "noFormat": "형식 없음",
         "memory": "장기 기억",
+        "otherAx": "기타 보조",
         "translations": "번역",
         "emotion": "감정",
         "component": "컴포넌트",
@@ -364,8 +420,6 @@ export const languageKorean = {
         "msgSound": "메세지를 받았을때 *띵* 소리가 납니다.",
         "charDesc": "캐릭터의 설명입니다.",
         "charFirstMessage": "캐릭터의 첫 대사입니다.",
-        "charNote": "모델에 강력한 영향을 주는 프롬프트입니다. 이 채팅에서만 적용되며, 메모리라고도 알려져 있습니다.",
-        "toggleNsfw": "jailbreak 프롬프트를 끄거나 켭니다.",
         "lorebook": " AI를 위해 사용자가 만든 사전입니다. AI는 컨텍스트에서 활성화 키가 어디에 있을 때만 이를 인식합니다.",
         "loreName": "로어의 이름입니다. AI에 영향을 주지 않습니다.",
         "loreActivationKey": "활성화 키 중 하나가 컨텍스트에 존재하면 해당 로어가 활성화됩니다. 쉼표로 구분된 활성화를 구분하세요.",
@@ -375,7 +429,6 @@ export const languageKorean = {
         "imggen": "채팅을 분석한 후 프롬프트를 {{slot}}에 적용합니다.",
         "regexScript": "정규식 스크립트는 IN에 매칭되는 텍스트를 OUT으로 변경하는 스크립트입니다.\n\n네가지 옵션이 있습니다.\n\n- **입력문 수정** 유저의 입력을 수정합니다\n\n- **출력문 수정** 캐릭터의 출력을 수정합니다\n\n- **리퀘스트 데이터 수정** 리퀘스트 시 데이터를 수정합니다\n\n- **디스플레이 수정** 실제 데이터를 건들지 않고, 표시되는 것만 수정합니다.\n\nIN은 슬래시와 플레그가 없는 정규식이여야 합니다.\n\nOUT은 특수한 패턴이 포함될수 있는 문자열입니다. 패턴은 다음과 같습니다:\n\n- $$\n\n    - inserts $\n\n- $&\n\n    - inserts the matched substring.\n\n- $`\n\n    - inserts the portion of the string that precedes the matched substring.\n\n- $1\n\n    - inserts the first matching group. works with other number like 2, 3...\n\n- $(name)\n\n    - inserts the named group\n\n플래그의 경우, 기본적으로 지원되는 플래그 외에도, 고급 사용자를 위해 설계된 다음 플래그들을 사용할 수 있습니다:\n\n- `<inject>` - 결과를 현재 문자열에 삽입합니다.\n- `<move_top>` - 결과를 문자열의 맨 위로 이동합니다.\n- `<move_bottom>` - 결과를 문자열의 맨 아래로 이동합니다.\n- `<repeat_back>` - 일치하는 항목이 없으면, 이전 일치 결과를 그대로 가져옵니다.\n- `<order n>` - 결과의 순서를 설정합니다. 값이 높을수록 먼저 표시됩니다. `n`은 숫자입니다. (예: `<order 1>`) 이 플래그를 설정하지 않으면 기본값은 0입니다.\n- `<cbs>` - IN 안의 중괄호 구문(curly braced syntax)을 파싱합니다.\n\n기본 플래그와 함께 사용하려면 `gi<cbs><move_top>`처럼 사용할 수 있습니다.",
         "experimental": "실험적 기능입니다. 불안정할 수 있습니다.",
-        "oogaboogaURL": "웹 UI가 이전 버전의 API를 지원하는 경우, URL은 *https:.../run/textgen*과 같아야 합니다.\n\n웹 UI가 새 버전의 API를 지원하는 경우, URL은 *https://.../api/v1/generate*와 같아야 하며, API 서버를 호스트로 사용하고 인수에 --api를 추가해야 합니다.",
         "exampleMessage": "캐릭터의 출력에 영향을 주는 예시 대화입니다. 토큰을 영구적으로 사용하지 않습니다.\n\n대화의 예시 형식:\n\n```\n<START>\n{{user}}: 안녕\n{{char}}: 안녕하세요\n<START>\n{{user}}: 안녕\n하루이: 안녕하세요\n```\n\n```<START>```는 새로운 대화의 시작을 나타냅니다.",
         "creatorQuotes": "캐릭터에 대한 정보를 사용자에게 알리기 위해 첫 번째 메시지 위에 나타납니다. 프롬프트에 포함되지 않습니다.",
         "systemPrompt": "메인 프롬프트가 비어있지 않은 경우 설정에서 메인 프롬프트를 대체하는 프롬프트입니다.",
@@ -384,19 +437,13 @@ export const languageKorean = {
         "scenario": "캐릭터의 시나리오에 대한 간단한 설명입니다. **이 옵션을 사용하는 것은 권장되지 않습니다. 대신 캐릭터 설명에 설명하십시오.**",
         "utilityBot": "활성화되면 메인 프롬프트, jailbreak 및 기타 프롬프트를 무시합니다. 역할극이 아닌 유틸리티용 봇에 사용됩니다.",
         "loreSelective": "선택 모드가 토글되면 활성화 키와 보조 키 모두 일치해야 로어가 활성화됩니다.",
-        "loreRandomActivation": "확률 조건 사용이 활성화된 경우, 로어의 다른 조건이 모두 충족되면 로어가 활성화되며, 각 채팅을 보낼 때마다 설정된 확률에 따라 활성화됩니다.",
         "additionalAssets": "채팅에 표시할 추가 에셋입니다.\n\n- 경로로 사용하려면 `{{raw::<에셋 이름>}}`을\n- 이미지로 사용하려면 `{{image::<에셋 이름>}}`을\n- 비디오로 사용하려면 `{{video::<에셋 이름>}}`을\n- 오디오로 사용하려면 `{{audio::<에셋 이름>}}`을 사용하세요.\n",
-        "superMemory": "수파메모리는 AI에게 요약된 데이터를 제공하여 캐릭터가 더 많이 기억하도록합니다.\n\n수파메모리 모델은 해당 텍스트를 요약하는 모델입니다. 보조 모델은 2000개 이상의 토큰을 가진 필터되지 않은 모델이 아닌 경우 권장되지 않습니다.\n\n수파메모리 프롬프트는 요약을 보내기 위해 어떤 프롬프트를 보내야 하는지 결정합니다. 비워두면 기본 프롬프트를 사용합니다. 비워두는 것이 권장됩니다.\n\n모두 설정한 후 캐릭터의 설정에서 활성화할 수 있습니다.",
         "replaceGlobalNote": "비어 있지 않으면 현재 글로벌 노트를 이로 대체합니다.",
         "backgroundHTML": "채팅 화면의 배경에 삽입 될 마크다운/HTML 데이터입니다.\n\n추가 에셋을 사용할 수도 있습니다. 예를 들어, 배경 음악에 `{{audio::<에셋 이름>}}`을 사용할 수 있습니다.\n\n또한 다음과 같은 추가 에셋을 사용할 수 있습니다:\n - `{{bg::<에셋 이름>}}`: 에셋으로 배경을 삽입합니다.",
         "additionalText": "AI가 필요한 경우에만 캐릭터 설명에 추가 될 텍스트입니다. 두 개의 새 줄로 구분합니다.",
         "charjs": "캐릭터와 함께 실행될 자바스크립트 코드입니다. 예를 들어, `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js`를 확인할 수 있습니다. 현재 보안 문제로 인해 사용을 권장하지 않습니다. 엑스포트에는 포함되지 않습니다.",
-        "romanizer": "로마자 변환기는 비로마자 문자를 로마자 문자로 변환하여 데이터 요청 시 비로마자 문자를 사용할 때 토큰을 줄이는 데 사용되는 플러그인입니다. 이로 인해 원래 모델과 다른 출력이 나올 수 있습니다. 채팅에서 로마자 문자를 사용할 때 이 플러그인을 사용하는 것은 권장되지 않습니다.",
-        "inlayImages": "활성화하면 이미지를 채팅에 삽입할 수 있으며, 지원하는 경우 AI가 볼 수 있습니다.",
-        "metrica": "Metric Systemizer는 요청 시 미터법을 제외한 단위를 미터법으로 변환하고, 출력 시 미터법을 사용하여 성능을 향상시키기 위해 사용되는 플러그인입니다. 채팅에서 야드파운드법을 사용할 때 이 플러그인을 사용하는 것은 권장되지 않습니다.",
         "lorePlus": "LoreBook+는 더 나은 매칭 성능을 위해 벡터DB를 사용하는 실험적인 기능입니다.",
         "topP": "Top P는 뉴클레우스 샘플링을 위한 확률 임계값입니다. 모델은 top_p 확률 질량을 가진 토큰의 결과를 고려합니다.",
-        "openAIFixer": "OpenAI Fixer는 OpenAI의 일부 문제를 수정하는 플러그인입니다.",
         "sayNothing": "활성화되면 문자열이 입력되지 않을 때 '아무 말도 하지 않음'을 입력합니다.",
         "showUnrecommended": "활성화되면 권장되지 않는, 사용되지 않는 설정을 표시합니다. 이러한 설정을 사용하는 것을 권장하지 않습니다.",
         "streamingDisplayOptimizationMode": "정규식 스크립트처럼 후처리가 많은 상태에서 긴 응답을 스트리밍으로 받을 때 화면 버벅임을 줄입니다. 모바일 기기나 로우엔드 장비에서 유용할 수 있습니다.\n\n끄기는 일반 동작을 유지하지만, 매 토큰마다 후처리가 발생해 상당한 오버헤드를 유발할 수 있습니다.\n\n균형은 짧은 간격(약 0.125초) 단위로만 후처리를 시도하여 부하를 낮춥니다.\n\n강함은 균형과 비슷하지만 스트리밍 중에는 후처리를 건너뛰고, 스트리밍 완료 후 한 번만 후처리를 시도하여 부하를 크게 낮춥니다.\n\n이는 실험적 기능이며, 이로 인해 일부 기능이 의도하지 않은대로 동작할 수 있습니다.",
@@ -429,7 +476,6 @@ export const languageKorean = {
         "lowLevelAccess": "활성화되면 높은 컴퓨팅 파워가 필요한 기능과 캐릭터 트리거를 통한 AI 모델 실행에 대한 접근이 허용됩니다. 꼭 필요한 경우가 아니면 활성화하지 마세요.",
         "triggerLLMPrompt": "모델에 전송될 프롬프트입니다. `@@role user`, `@@role system`, `@@role assistant`를 사용하여 멀티 턴과 역할을 사용할 수 있습니다. 예:\n```\n@@role system\nrespond as hello\n@@role assistant\nhello\n@@role user\nhi\n```",
         "legacyTranslation": "활성화되면 번역 후 후처리 대신 번역 전 마크다운과 따옴표를 전처리하는 이전 번역 방식을 사용합니다.",
-        "luaHelp": "Lua 스크립트를 트리거 스크립트로 사용할 수 있습니다. onInput, onOutput, onStart 함수를 정의할 수 있습니다. onInput은 사용자가 메시지를 보낼 때, onOutput은 캐릭터가 메시지를 보낼 때, onStart는 채팅이 시작될 때 호출됩니다. 자세한 내용은 문서를 참조하세요.",
         "openAIFlexProcessing": "OpenAI Flex 응답은 일반 응답에 비해 느리지만, 더 저렴한 가격(배치 API 가격)에 응답을 받을 수 있습니다. 이 토글은 공식 OpenAI Chat Completions 요청에만 적용됩니다.",
         "claudeCachingExperimental": "Claude 캐싱은 모델 비용을 줄일 수 있는 실험적 기능이지만, 리롤 없이 사용하면 비용이 증가할 수도 있습니다. 실험적 기능이므로 불안정할 수 있으며 향후 동작이 변경될 수 있습니다.",
         "urllora": "모델 파일의 직접 다운로드 링크를 사용할 수 있습니다. https://sites.google.com/site/gdocs2direct/ 와 같은 웹사이트에서 구글 드라이브 직접 링크를 만들거나, civitai URL을 사용하거나, AIR (`urn:air:flux1:lora:civitai:180891@776656` 또는 `civitai:180891@776656`)를 복사하여 붙여넣으세요.",
@@ -459,7 +505,6 @@ export const languageKorean = {
         "legacyMediaFindings": "활성화하면 추가 검색 알고리즘을 사용하지 않고 기존 방식으로 미디어 에셋을 찾습니다.",
         "comfyWorkflow": "Comfy UI의 API 워크플로우를 입력하세요. Comfy UI에서 'Workflow > Export (API)' 버튼을 눌러 API 워크플로우를 가져올 수 있습니다. 워크플로우 텍스트에 {{risu_prompt}}를 넣어야 하며, {{risu_prompt}}는 Risu에서 제공하는 프롬프트로 대체됩니다.",
         "automaticCachePoint": "채팅이 끝난 후 캐싱 포인트가 존재하지 않으면 자동으로 생성합니다.",
-        "experimentalChatCompressionDesc": "사용하지 않는 채팅 데이터를 압축하여 별도 파일에 저장합니다. 채팅 데이터 크기를 크게 줄이고 성능을 크게 향상시키지만, 실험적 기능이며 불안정할 수 있어 백업 기능 등에서 문제를 일으킬 수 있습니다.",
         "promptInfoInsideChatDesc": "활성화되면 채팅 메타데이터에 프롬프트 프리셋 정보를 저장합니다. 저장되는 정보는 프롬프트 프리셋 이름과 활성화된 토글, 그리고 프롬프트 텍스트입니다. 약간의 처리 시간과 용량을 차지할 수 있습니다.",
         "autoAdjustSchema": "활성화하면 Dynamic Output을 위한 JSON 스키마가 자동으로 조정됩니다.",
         "dynamicMessages": "활성화하면 어시스턴트가 한 번에 하나씩이 아닌 여러 메시지를 연속으로 보낼 수 있습니다.",
@@ -499,26 +544,12 @@ export const languageKorean = {
         "coldstorage": "이 옵션을 켜면 앱이 시작될 때 각 캐릭터의 전체 데이터를 별도로 저장하고, 해당 캐릭터를 열 때만 불러옵니다. 캐릭터가 많을 때 메모리 사용량을 낮게 유지할 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다."
     },
     "setup": {
-        "chooseProvider": "AI 제공자를 선택해 주세요",
-        "openaikey": "OpenAI & API Key (권장)",
-        "openaiProxy": "OpenAI 리버스 프록시",
-        "setupmodelself": "그외 / 직접 설정",
-        "inputApiKey": "여기에 API 키를 입력해주세요",
-        "apiKeyhelp": "이곳에서 API키를 얻을 수 있습니다: ",
-        "setupSelfHelp": "첫 셋업 화면이 끝난 뒤, 설정에서 직접 수정해 주세요",
         "theme": "테마를 입력해 주세요",
-        "themeDescWifulike": "모바일에 적합하지 않습니다",
-        "themeDescWifuCut": "모바일 환경에 적합합니다",
-        "themeDescClassic": "모든 기기에 적합합니다",
-        "texttheme": "텍스트 색상을 선택해주세요",
-        "inputName": "마지막으로, 닉네임을 입력해 주세요",
         "welcome": "RisuTanium에 오신 것을 환영해요! 저는 RisuTanium 셋업을 도와줄 아이리스라고 해요. 먼저 닉네임을 입력해 주세요!",
         "welcome2": "{username}님 안녕하세요! RisuTanium을 시작하려면 몇 가지 설정만 하시면 되요. Ai 제공자를 선택해 주세요!",
         "openRouterProvider": "OpenRouter는 여러 무료/유료 모델이 있습니다. 기본적으로 무료로 설정됩니다.",
         "hordeProvider": "Horde는 특별한 설정이 필요없는 무료 모델입니다. 하지만, 성능이 좋지 않습니다.",
-        "setProviderLater": "다른 설정을 먼저 하고, 나중에 설정해도 됩니다.",
         "setupOpenAI": "OpenAI를 사용하려면, API키가 필요해요. \n1. https://beta.openai.com/ 에 접속해주세요. \n2. 로그인 또는 회원가입 해주세요. \n3. https://beta.openai.com/account/api-keys 에 접속해주세요. \n4. 'Create New API Key'를 눌러주세요. \n5. 키 이름은 아무거나 하셔도 괜찮습니다. \n6.생성된 키를 복사해주세요.\n7. RisuTanium으로 돌아와 주세요.\n8. 입력칸에 붙여넣고, 전송 버튼을 눌러주세요.",
-        "setupClaude": "Claude를 사용하려면 API키가 필요해요.",
         "setupClaudeSteps": [
             "이 URL로 이동하고 구글로 로그인하세요",
             "정보를 입력하고 'Continue'을 눌러주세요",
@@ -558,10 +589,6 @@ export const languageKorean = {
         "chooseCheapOrMemoryOption4": "무제한",
         "chooseCheapOrMemoryOption4Desc": "AI가 거의 모든 것을 기억하지만, 매우 비싸게 들 수 있습니다.",
         "finally": "아, 그리고 고급 도구를 활성화할까요? 처음이시라면 켜지 않는 것이 좋아요.",
-        "finallyOption1": "예",
-        "finallyOption1Desc": "이것은 고급 도구를 활성화하며, UI를 더 복잡하게 만듭니다. 고급 사용자에게 추천합니다.",
-        "finallyOption2": "아니요",
-        "finallyOption2Desc": "이것은 고급 도구를 비활성화하며, UI를 더 간단하게 만듭니다. 신규 사용자에게 추천합니다.",
         "igpPrompt": "IGP 프롬프트가 비어있지 않으면, 메인 모델 요청 후, 메인 모델 실행 후에 감정 모델로 실행되어 결과를 메인 모델 응답 뒤에 추가합니다."
     },
     "triggerCategories": {
@@ -1004,6 +1031,7 @@ export const languageKorean = {
     "autoMode": "오토 모드",
     "submodel": "보조 모델",
     "emotionPrompt": "감정 프롬프트",
+    "emotionPromptPlaceholder": "비워 두면 기본값을 사용합니다",
     "singleView": "싱글",
     "SpacedView": "멀티플",
     "emphasizedView": "더블",
@@ -1015,6 +1043,7 @@ export const languageKorean = {
     "backupLoadConfirm2": "정말로, 정말로 백업을 불러오시겠습니까? 현재 데이터가 모두 사라집니다!",
     "others": "기타",
     "presets": "프리셋",
+    "unnamedPreset": "이름 없는 프리셋",
     "imageGeneration": "이미지 생성",
     "provider": "공급자",
     "key": "키",
@@ -1477,6 +1506,7 @@ export const languageKorean = {
     "enableCustomFlags": "커스텀 플래그 활성화",
     "googleCloudTokenization": "Google Cloud 토큰화",
     "presetChain": "프리셋 체인",
+    "presetChainPlaceholder": "비워 두면 사용하지 않습니다",
     "legacyMediaFindings": "레거시 미디어 검색",
     "staticsDisclaimer": "통계는 2024년 7월 이후의 데이터를 기반으로 하며, 정확하지 않을 수 있습니다.",
     "subtitles": "자막",
