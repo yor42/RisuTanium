@@ -153,12 +153,19 @@ The commits below were local when they were listed, and were pushed with it:
 - `980791fa`: CHORE-55 stage 4, archived chats and plugin data go through the one byte store, the OPFS switch is gone, and
   an OPFS profile is copied back into IndexedDB at startup (the 21st; `MC-180`; ledger rows 718 to 731), and the stage 4
   records commit that carries this line (the 22nd), both at the maintainer's "Code, then records (Recommended)"
-  (`MC-180` 8). Local, not pushed.
+  (`MC-180` 8). Local, not pushed;
+- `87eedc3c`, `f4c2538c` and `0c457bee`, by their commit subjects: the stage 4 records (the 22nd), the `MC-181` records and
+  ledger rows 734 and 735 (the 23rd), and the Live-State note that CHORE-55 stages 3 and 4 are done (the 24th). Local, not
+  pushed;
+- `4801a2f9`: CHORE-59, Load Internal Backup offers to load the intact part of a partly damaged snapshot, and keeps the
+  current data as a numbered backup before any load (the 25th; `MC-183`; ledger rows 736 to 745). Local, not pushed. The
+  CHORE-59 records commit that carries this line (`MC-182`, `MC-183`, ledger rows 736 to 747) follows it and is the 26th.
+  `4801a2f9` was committed at the maintainer's "commit chore-59 and start chore 58 with measurement" (2026-10-03, chat).
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
 `d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63`,
-`bf7f2cbf`, `7c5b27da` and `980791fa`) are local and not pushed (`git rev-list --count 1ce8abff..HEAD` gave 21 on 2026-10-03, at
-`980791fa`); the stage 4 records commit is the 22nd.
+`bf7f2cbf`, `7c5b27da`, `980791fa`, `87eedc3c`, `f4c2538c`, `0c457bee` and `4801a2f9`) are local and not pushed (`git
+rev-list --count 1ce8abff..HEAD` gave 25 on 2026-10-03, at `4801a2f9`); the CHORE-59 records commit is the 26th.
 The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
@@ -193,7 +200,7 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
 The working tree holds this records batch's edits to the `Agents/` documents and `AGENTS.md` (until they are committed);
-the CHORE-55 stage 3 and stage 4 code is committed. Report 56
+the CHORE-55 stage 3 and stage 4 code and the CHORE-59 code (`4801a2f9`) are committed. Report 56
 (`Agents/Reports/56-memory-stage-1-step-5-boot-archive-pass.md`) is fact-checked and committed as `a7956237`.
 `docs/` is tracked and holds the maintainer's own Terms of Service and Privacy Policy, which they write and commit
 themselves, so a commit touching those two files is theirs (`MC-156`); agents do not edit them (`MC-155` 4). The
@@ -221,8 +228,8 @@ Several sessions work **in this same checkout**:
   CHORE-09, and the follow-up "a rejected avatar image shows no icon". **CHORE-68 and CHORE-74 also go to the UI session,
   but only after CHORE-55 stage 3 is committed and merged into its branch.**
 - **Tickets staying with the Main Campaign:** CHORE-55 (stages 3 and 4 are done, `bf7f2cbf` and `980791fa`; stage 5 or
-  later stays as later work, `MC-181`), CHORE-59, memory steps 6 and 7, CHORE-62,
-  CHORE-58, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-04, CHORE-10, CHORE-60
+  later stays as later work, `MC-181`), CHORE-59 (done, `4801a2f9`), CHORE-58 (next, `MC-182`), memory steps 6 and 7,
+  CHORE-62, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-04, CHORE-10, CHORE-60
   (with the Rebranding session), and the existing Wiki hand-offs.
 - **The Main Campaign does not edit the delegated tickets' Roadmap entries.** The UI session owns their status lines.
 - **Out of bounds for the UI session (the Main Campaign's lane):** `src/ts/storage/**`, `globalApi.svelte.ts`,
@@ -268,7 +275,8 @@ Empty. Only the UI session edits this block.
 | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
-Next free within the Main Campaign's ranges: `MC-182` (`MC-181` is used), ledger row 736 (rows 734 and 735 are the `MC-181`
+Next free within the Main Campaign's ranges: `MC-184` (`MC-183` is used), ledger row 748 (rows 736 to 745 are the CHORE-59
+work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
 message draft and its check, those records and their fact-check; rows 718 to 731 are the stage 4 work, its commit message
@@ -396,8 +404,15 @@ them.
    (fake-backed; not run: native Tauri, a real `server.cjs`, a real browser's OPFS, WebKit, Android Tauri). A phone check
    on the Pixel_6a_LowRam emulator passed for the mechanism (Roadmap CHORE-55 stage 4 block). **Stages 0 to 4 are done;
    stage 5 or later is not scheduled.** **CHORE-55 is no longer a release blocker (2026-10-03; `MC-181`):** the maintainer
-   said so in chat; this does not say the ticket is closed, and the later stages stay as later work. **Next after stage 4: CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch`
-   is merged, `MC-179` 4: memory step 6 waits for that merge), then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   said so in chat; this does not say the ticket is closed, and the later stages stay as later work. **CHORE-59 is done (2026-10-03; `4801a2f9`, local, not pushed; `MC-183`; ledger rows 736 to 745; Roadmap CHORE-59):**
+   Load Internal Backup now offers to load the intact part of a snapshot whose damage is not the root, framing or the
+   format version, after a confirm that lists what is left out; every load first keeps the current main file as a new
+   numbered internal backup. Gate 1 took three rounds (`[REJECT]`, `[REJECT]`, `[EDITORIAL]`); Gate 2 two (`[EDITORIAL]`,
+   `[EDITORIAL]`); 17 of 19 mutants were killed in round 1 and the two survivors in round 2. Checks on the final tree, from the
+   commit message: `pnpm test` 325 files, 6975 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes
+   (not run: native Tauri, a real `server.cjs`, a real browser; no live check). **Next after CHORE-59 (`MC-182`): CHORE-58
+   (measure first), then memory steps 6 and 7 (step 6 after `feat/ui-batch` is merged, `MC-179` 4), then CHORE-62**
+   (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -705,24 +720,29 @@ them.
       rows 679 to 688); **stage 2b, the remote blocks onto the store, is done** as `cbaeddd6` (2026-10-03, local; `MC-174`;
       ledger rows 691 to 694); the later stages are a planning basis and not yet gated) and then
       **CHORE-59** (Load Internal Backup
-      offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
+      offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice; **done
+      2026-10-03 as `4801a2f9`, local; `MC-183`; ledger rows 736 to 745**), each
       its own change with its own gates. **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3; done, Gate 2 approved, committed as `bf7f2cbf`), then stage 4 (cold-storage units, the OPFS
-      switch removal and the copy-back, `MC-173` 1; done, committed as `980791fa`, `MC-180`), then CHORE-59. The stage 0 Windows live check is open (`MC-171` 2). The investigation of
+      switch removal and the copy-back, `MC-173` 1; done, committed as `980791fa`, `MC-180`), then CHORE-59 (done). The stage 0 Windows live check is open (`MC-171` 2). The investigation of
       the Tauri boot read through the asset protocol against `readFile` is done (row 679). The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it
       should not wait behind the idle reload and the measurements. CHORE-55 goes in this stretch by
       the maintainer's choice (`MC-151` 3, "With CHORE-51/52"), and the maintainer confirmed its place before steps 6 and 7
       and the order CHORE-43/54, then CHORE-51/52, then CHORE-55 with stage 0 first (a summary of `MC-167` 4);
-   6. then steps 6 and 7 (they are built on the storage interface once it exists, `MC-167` 4);
-   7. then **CHORE-62** (on a Node server, another device's save makes this device stop saving until it reloads, and
+   6. then **CHORE-58** (measure first; **next, in progress**): PNG character import copies its read buffer quadratically
+      on large assets (ledger row 532). It was placed last (`MC-151` 8, the Orchestrator's recommendation, accepted); the
+      maintainer moved it right after CHORE-59 on 2026-10-03: "start CHORE-59, and do chore-58 next, as it could be huge UX
+      problem if PNG buffer issue is real." (`MC-182`). Its first task is a measurement on the real module or the live
+      app; **the measurement step was started on 2026-10-03 on the maintainer's "commit chore-59 and start chore 58 with
+      measurement" (in progress, results not yet in)**; whether the problem is real is not yet known;
+   7. then steps 6 and 7 (they are built on the storage interface once it exists, `MC-167` 4). **Step 6 waits for the
+      `feat/ui-batch` merge** (`MC-179` 4);
+   8. then **CHORE-62** (on a Node server, another device's save makes this device stop saving until it reloads, and
       its edits since its last save are lost; `MC-159` 1 and 3). The option text the maintainer selected says only
-      "placed later in the work order"; the position after steps 6 and 7 and before CHORE-58 was the Orchestrator's,
-      and **the maintainer approved it** (`MC-160` 1: "I approve the chore-62 placement");
-   8. then **CHORE-58** (measure first): PNG character import copies its read buffer quadratically on
-      large assets (ledger row 532). It is import performance, not data loss, so it goes last; the maintainer
-      accepted the Orchestrator's recommended placement (`MC-151` 8). Its first task is a measurement on the
-      real module or the live app.
+      "placed later in the work order"; the position after steps 6 and 7 was the Orchestrator's, and **the maintainer
+      approved it** (`MC-160` 1: "I approve the chore-62 placement"). Its old "before CHORE-58" is superseded by `MC-182`,
+      which puts CHORE-58 before steps 6 and 7.
    - **CHORE-16 PG-1 is done** (Report 54, commit `08e43e65`), the small fix the maintainer approved on
      2026-10-01 between step 3b and step 4. Every character-list view skips `§playground` and `§temp`, as
      `checkCharOrder` does, so the Playground's "assistant" character can no longer be opened or deleted
@@ -891,10 +911,14 @@ Answered on 2026-10-01 and removed from this list:
   Node server is not affected.
 - `docs/wiki/Settings-Backup-and-Files.md`, the Load Internal Backup row, says it installs the restored database,
   shows "Loaded backup" and "does not reload the app". Since `448962f4`, `loadInternalBackup`
-  (`src/ts/drive/internalBackup.ts:154-180`) writes the snapshot as the main save and reloads the page (or
+  (`src/ts/drive/internalBackup.ts`) writes the snapshot as the main save and reloads the page (or
   relaunches on Tauri). The Clean Unused Cold Storage row uses the old label; the English label is now "Clean
   Unused Archived Data and Assets" (`cleanColdStorage` in `src/lang/en.ts`), and the clean-up also deletes
-  unused asset files and has more refusals (`src/ts/storage/manualCleanup.ts`, `currentRefusal`).
+  unused asset files and has more refusals (`src/ts/storage/manualCleanup.ts`, `currentRefusal`). **Since `4801a2f9` (CHORE-59;
+  2026-10-03) the same row also needs:** a snapshot with some damaged parts can be loaded after a confirm that lists what is
+  left out (root, framing and format-version damage are still refused whole), and every load first keeps the current main file, when one exists, as
+  a new numbered internal backup; a load is refused with a message if that copy fails or the rebuilt file does not match what
+  was read (Roadmap CHORE-59).
 - `docs/wiki/Settings-Advanced.md`, the Cold Storage row, uses the old label, the root key `coldstorage` and the
   old default. Since `33545c2c` the checkbox is "Archive characters at startup" (`coldStorage` in `en.ts`),
   bound to `archiveCharacters` (absent or `true` means on; `src/ts/setting/advancedSettingsData.ts`, id

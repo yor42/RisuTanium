@@ -4668,6 +4668,9 @@ local-file character import and then placed two tickets from the investigation o
    everything ahead of it in the order is data loss or memory stage 1, which is in progress. The code
    facts are under Roadmap CHORE-58.
 
+   *Amended by `MC-182` (2026-10-03): CHORE-58 now goes right after CHORE-59, ahead of steps 6 and 7 and CHORE-62. The "last"
+   placement and the work-order sentences below, here and in `MC-152`, are kept as written.*
+
    The work order is now: memory stage 1 step 5; then CHORE-53; then CHORE-43 with CHORE-54; then CHORE-51,
    CHORE-52 and CHORE-55; then steps 6 and 7; then CHORE-58 (measure first).
 
@@ -4710,6 +4713,8 @@ CHORE-54 right after CHORE-53 (`MC-151` 3). The code facts are under Roadmap CHO
 
 The work order is now: memory stage 1 step 5; then CHORE-53; then CHORE-43 with CHORE-54; then CHORE-51,
 CHORE-52, CHORE-55 and CHORE-59; then steps 6 and 7; then CHORE-58 (measure first).
+
+*The maintainer's four CHORE-59 answers are `MC-183`; `MC-182` moves CHORE-58 ahead of steps 6 and 7.*
 
 ---
 
@@ -5195,6 +5200,8 @@ once. The mechanisms and the Orchestrator's own calls are in those rows, in Live
 *Item 1's placement, "after steps 6 and 7 and before CHORE-58", was left to confirm. The maintainer approved it
 (`MC-160` 1).*
 
+*Amended by `MC-182` (2026-10-03): CHORE-58 now comes right after CHORE-59, before steps 6 and 7 and CHORE-62.*
+
 ---
 
 ### MC-160 — CHORE-62's placement approved; the message copy button's failures on upstream (Android, Samsung keyboard); copy is plain text by default, and CHORE-63 goes right after CHORE-53
@@ -5220,6 +5227,9 @@ once. The mechanisms and the Orchestrator's own calls are in those rows, in Live
    after steps 6 and 7 and before CHORE-58 (the Orchestrator's position in `MC-159` 1, which the option text the
    maintainer had selected there, "placed later in the work order", did not fix). The Roadmap's CHORE-62 status and
    placement and the Live-State work order now say the maintainer approved it (`MC-160` 1).
+
+   *"Before CHORE-58" is amended by `MC-182` (2026-10-03): CHORE-58 now goes before steps 6 and 7. CHORE-62's own place after
+   steps 6 and 7 is unchanged.*
 
 **What was stated** (an observation of an upstream build, `MC-011`; the fork has no separate evidence):
 2. **The message copy button behaves inconsistently on upstream's hosted site.** The maintainer reported it on
@@ -6412,5 +6422,70 @@ skipped name that a character actually uses would show as a missing image."
    or later: inlays with CHORE-48, the search index, CHORE-46's streaming). The Roadmap's CHORE-55 entry lists them as not
    scheduled, and they stay as later work. The stage 0 Windows live check recorded as not run (`MC-171` 2) stays open;
    this decision does not change it.
+
+---
+
+### MC-182 — CHORE-59 starts, and CHORE-58 goes right after it, ahead of memory steps 6 and 7 and CHORE-62
+
+- **Tag:** decision (stated in chat)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's chat message.
+- **Reasoning:** the maintainer's own words give it: the PNG import problem "could be huge UX problem" if it is real. Whether it is
+  real is not yet measured (Roadmap CHORE-58: TRACED in source; replica timings only).
+- **Alternatives rejected:** none (not chosen from options).
+- **Amends:** `MC-151` 8 (CHORE-58 "goes last in the current work order"), and the order restated in `MC-152`, `MC-159` 1 and
+  `MC-160` 1 ("after steps 6 and 7 and before CHORE-58"). Those entries stay as written; this entry governs where they
+  differ. CHORE-62's own placement after steps 6 and 7 (`MC-160` 1) is unchanged; only CHORE-58 moved ahead of it.
+- **Related:** `MC-151`, `MC-152`, `MC-159`, `MC-160`, `MC-179` 4, `MC-183`; CHORE-58; CHORE-59; CHORE-62.
+
+**What was decided:**
+1. **CHORE-59 starts, and CHORE-58 is next.** The maintainer, as typed: "start CHORE-59, and do chore-58 next, as it could be
+   huge UX problem if PNG buffer issue is real."
+2. **The work order is now:** CHORE-59; then CHORE-58 (measure first, as in the Roadmap's CHORE-58 entry); then memory steps 6
+   and 7; then CHORE-62.
+3. **What this does not change.** Memory step 6 still waits for `feat/ui-batch` to be merged (`MC-179` 4: "feat/ui-batch MUST
+   be merged into fix/persistence-conflict-platform-hardening BEFORE memory step 6 begins"). CHORE-58 is in the Main
+   Campaign's lane (`MC-179` 1).
+
+---
+
+### MC-183 — CHORE-59: any part of a partly damaged snapshot but the root is offered, from that snapshot only, after a confirm that lists what is left out; every load keeps the current data as a numbered backup first
+
+- **Tag:** decision (the maintainer's four answers to a multiple-choice question; each chosen option was the one the Orchestrator
+  marked "(Recommended)")
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the four questions the Orchestrator asked after the CHORE-59 investigation (ledger row
+  736). The option labels are quoted below. The full question and option texts are not in the records available to this entry:
+  `TODO(evidence)`: the verbatim question and option texts. The wording of items 1 to 4 below is the Orchestrator's plan wording
+  for the chosen option, not the maintainer's.
+- **Reasoning:** the maintainer gave no reason beyond the answers. The reasons in the option texts are the Orchestrator's.
+- **Alternatives rejected:** the other options the Orchestrator offered on each question. Their labels are not in the available
+  records: `TODO(evidence)`.
+- **Extends:** `MC-152` 1 ("5b: yes, there should be a option to load other data that is intact."), which left the four points
+  below "for the item's own plan and gate".
+- **Related:** `MC-152`, `MC-175` (the `.bin` round trip with upstream), `MC-011` (no fork userbase), `MC-182`; CHORE-59; commit
+  `4801a2f9` (local; its message states what it changed); ledger rows 736 to 747.
+
+**What was decided** (the dates are 2026-10-03):
+1. **Scope: "Any part but the root (Recommended)".** A missing or damaged character is left out on its own. Presets, modules,
+   loadouts, plugins and plugin data are each one block, so damage to one leaves out all of that kind (presets fall back to the
+   default preset). A damaged root, framing damage and an unknown format version stay refused whole.
+2. **Source: "This snapshot only (Recommended)".** A partial load uses only what the snapshot holds and the remote character
+   files it points to in storage. It reads nothing from the block cache. A v1 `.local.bin` remote file is read as it is stored
+   now, which may be newer than the snapshot.
+3. **Offer: "Confirm with a list first (Recommended)".** Before anything is written, the user is shown what would be left out and
+   chooses Load or Cancel. A character is named from another copy that knows it (the current data), otherwise by its id.
+   Cancel writes nothing.
+4. **Keep current: "Yes, for every load (Recommended)".** Before a load writes the main file, whether the load is partial or
+   full, the current main file is saved as a new numbered internal backup, so the load can be undone from the same list.
+
+**The Orchestrator's own calls, not maintainer decisions:**
+- O1: a cold-storage unit or an asset that a loaded character refers to, and that is missing, is not "affected" and is out of
+  scope (neither decoder looks at it).
+- O2: a snapshot that decodes strictly is still written as its exact bytes; only a partial load writes a rebuilt main file.
+- O3: a left-out character is named from the page's current in-memory data only; if that data does not hold the id, the id is
+  shown.
 
 ---

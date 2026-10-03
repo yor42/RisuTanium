@@ -3380,10 +3380,15 @@ identical in the parts that matter, by `git show` (upstream not run).
 
 ### CHORE-58 — PNG character import copies its read buffer quadratically on large assets (TRACED; replica timings only; upstream and fork)
 
+**Status (2026-10-03, latest): placed right after CHORE-59, ahead of memory steps 6 and 7 and CHORE-62 (`MC-182`, the
+maintainer's decision); measure first.** The placement below ("last in the current order", `MC-151`) is amended by `MC-182`;
+the rest of this entry is unchanged.
+
 **Status (2026-10-01):** TRACED in source (the Orchestrator verified F1's four code points,
 `AppendableBuffer.slice`, the `buffer` getter, `deappend` and `readGenerator`'s trim; the writer
 re-read the rest); not measured on the real module or the live app. **Scheduled: last in the current
-order, after steps 6 and 7 (`MC-151`)**; the first task is a measurement on the real module or the live app.
+order, after steps 6 and 7 (`MC-151`)** *(amended 2026-10-03 by `MC-182`: now right after CHORE-59)*; the first task is a
+measurement on the real module or the live app.
 Import performance, not data loss. Present on the fork at HEAD `448962f4`, and on `upstream/main`
 `f9728b14`: `src/ts/pngChunk.ts` is identical (`git diff upstream/main HEAD --stat` for it prints
 nothing), and the `AppendableBuffer` methods and the prereader are the same by text (`globalApi.svelte.ts`
@@ -3458,7 +3463,8 @@ upstream not run).
     drain changes peak memory, so it needs a peak-memory check on a large file.
   - A test that fails on today's code is proposed: a synthetic PNG with 100 x 1 MB `tEXt` chunks. It was
     not run against the real module.
-- **Placement (`MC-151`):** the Orchestrator recommended, and the maintainer accepted, last in the current
+- **Placement (`MC-151`; amended 2026-10-03 by `MC-182`, which moves CHORE-58 right after CHORE-59, ahead of steps 6 and 7):**
+  the Orchestrator recommended, and the maintainer accepted, last in the current
   order, after steps 6 and 7. The Orchestrator's reasons: it is import performance, not data loss, and
   everything ahead of it is data loss or memory stage 1; the fix is small and self-contained, in
   `readGenerator` and `AppendableBuffer`; and a local backup restore does not use `AppendableBuffer` (the
@@ -3469,7 +3475,74 @@ upstream not run).
 
 ### CHORE-59 — Load Internal Backup refuses a partly damaged snapshot as a whole
 
-**Status (2026-10-01):** open, not started; type: feature / recovery; **no design yet**. Filed from the
+**Status (2026-10-03, latest): done by `4801a2f9` (local, not pushed); the maintainer's four answers are `MC-183`.** Gate 1
+(`opus-reviewer`) took three rounds (`[REJECT]`, `[REJECT]`, `[EDITORIAL]`); Gate 2 (`opus-reviewer`) two (`[EDITORIAL]`,
+`[EDITORIAL]`). Ledger rows 736 to 745 are the work (the investigation, Gate 1, the implementation, the tests, the
+translations, Gate 2 with the remediation); rows 746 and 747 are these records and their fact-check. The older status
+block below is kept as written (its line numbers are from `57235222` and are stale); where this block differs, this block
+governs. The text of this block comes from the commit message (`git log -1 4801a2f9`; its Gate 2 round 2 review checked
+a draft of it) and the session's gate and plan files.
+
+- **What is now offered (from the commit message):** a snapshot that fails the strict decode is no longer always refused whole.
+  - **Still refused whole**, with the same "damaged or incomplete" message (`internalBackupUnreadable`): root damage,
+    framing damage and an unknown format version.
+  - **Any other damage** goes through a new salvage decode (`salvageRisuSave` in `src/ts/storage/risuSave.ts`). It never
+    reads the block cache, so no cached block newer than the snapshot is mixed in. A v1 `.local.bin` remote file is read
+    as it is now, which may be newer than the snapshot. It records each block it leaves out once, by name and kind: a
+    character (a damaged block, a missing directory entry, or a remote file that is missing, unreadable or not JSON), a whole
+    kind (presets, modules, loadouts, plugins, plugin data), or a part this version cannot read.
+  - **Before anything is written, a confirm lists what would be left out.** A character is named from the current data when it
+    holds that id, otherwise by its id; presets are noted as replaced by the default preset. Cancel writes nothing. A damaged
+    config block, whose content no decoder reads, is not listed and asks nothing.
+  - **On Load**, the main file is rebuilt with the same encoder the save uses, writing nothing to the block cache. The rebuilt
+    bytes are strictly decoded and compared with the salvaged data (the ordered character ids, each kind's presence and
+    size, the root keys). A mismatch refuses the load with a new message and writes no main file and no backup (on Tauri and
+    a Node server the encode may already have written content-addressed remote files, which are harmless). The next start
+    therefore decodes the main file strictly; it does not take the partial-install path (CHORE-70).
+  - **Every load, full or partial,** first writes the current main file, when one exists, as a new numbered internal backup, read
+    straight from the store so the Node server's main-file version does not move. A failed copy refuses the load with a new
+    message. A snapshot that decodes strictly is still written as its exact bytes. The last busy check still has no await
+    before the main-file write.
+  - **The encoder** gains an `init` option, `writeBlockCache` (default true); the save loop does not pass it and is unchanged.
+    The strict and default decode paths are unchanged. The file format is unchanged, so the `.bin` round trip with upstream is
+    unaffected (`MC-175`).
+- **Tests and checks (from the commit message):** two new files (`risuSaveSalvage.test.ts`; `risuSaveBlockFile.ts`, block-container
+  helpers) and new and changed tests in `internalBackupSnapshotLoad.svelte.test.ts`.
+  - Three existing tests change their expectation from a refusal to the new behaviour; each fails on its assertion against
+    the pre-change `internalBackup.ts` and `risuSave.ts`: the Node remote block that is not stored (confirms asked 0,
+    expected 1); the Tauri remote block file that is absent (the same); the damaged config block, whose content is never read
+    (writes to the main file 0, expected 1).
+  - The other loader reproducers (a damaged character on web, Node and Tauri; missing remote files; a damaged kind; the
+    pre-load copy) also fail on an assertion against the pre-change code. The salvage-decoder tests and the rebuilt-bytes
+    tamper tests use functions the pre-change code does not have, so they are new-behaviour tests, not reproducers.
+  - Two Tauri tests now filter their write and rename logs to the main file, because the copy is also written.
+  - Checks on the final tree: `pnpm test` 325 files, 6975 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build`
+    passes. **Not run:** native Tauri, a real `server.cjs`, a real browser. No live check.
+  - Gate 2 mutation run (the reviewer's scratch harness): 17 of 19 mutants killed in round 1; the two survivors (the busy
+    check after Yes removed; the byte-loop record in salvage removed) were killed in round 2 by added tests; the rebuild-before-
+    confirm mutant was killed only by accident in round 1. The mutation harness is not in the repo.
+- **Residuals (from the commit message):**
+  - each load adds a numbered backup, so the first save after a load prunes two when 20 exist, and about 100 minutes of saving
+    rotates the pre-load copy out;
+  - edits not yet saved when the load starts are not in the copy;
+  - a cold-storage unit or asset missing for a loaded character is not detected (the Orchestrator's call O1, `MC-183`);
+  - a left-out character's remote file stays in storage unreferenced (a v1 `.local.bin` file is deleted by the startup
+    clean-up after 7 days);
+  - a partly damaged snapshot with two characters sharing an id is refused by the rebuild check (one that decodes strictly still
+    loads as its exact bytes);
+  - a load refused by the busy check after the copy was written leaves that copy, one more numbered backup, which can push an
+    older snapshot out at the next prune;
+  - near the storage quota the copy can fail, and then nothing is loaded.
+- **Gate 1 note (round 3, paraphrased; `gate1\review-r3.md` in the session scratch):** the rebuild check compares an identity summary (ids in order,
+  each kind's presence and size, the root keys), not content; content fidelity comes from the rebuilt file being the
+  serialisation of the same objects the save writes. Damage that still parses as the same character passes. The commit message
+  states the check as it is.
+- **Maintainer decisions:** `MC-183`; the code commit was made at the maintainer's chat word of 2026-10-03: "commit chore-59
+  and start chore 58 with measurement".
+- **Related:** `MC-152`, `MC-182`, `MC-183`; CHORE-70 (startup installs a partly decoded save without trying a backup; not
+  changed by this ticket); the Wiki hand-off about the Load Internal Backup row (Live-State).
+
+**Earlier status (2026-10-01):** open, not started; type: feature / recovery; **no design yet**. Filed from the
 maintainer's answer to Live-State open follow-up 7 (`MC-152`: "5b: yes, there should be a option to load
 other data that is intact."). Source of the question: memory stage 1 step 5b's Gate 1 round 2, non-blocking
 finding N1 (ledger row 527). Present on the fork at HEAD `57235222`; the loader was committed with step 5b
@@ -3769,6 +3842,10 @@ entry records that upstream `main` has the same one-block-per-`chaId` code.
 
 ### CHORE-62 — On a Node server, another device's save makes this device stop saving until it reloads, and its edits since its last save are lost (TRACED; not run against a real server)
 
+**Status (2026-10-03 note):** since `MC-182` CHORE-58 comes right after CHORE-59, ahead of steps 6 and 7, so CHORE-62 is now
+the last of the four (CHORE-59, CHORE-58, steps 6 and 7, CHORE-62). Its own placement after steps 6 and 7 is unchanged. The
+status below is kept as approved on 2026-10-02.
+
 **Status (2026-10-02):** open, **placed in the work order after steps 6 and 7 and before CHORE-58, approved by the
 maintainer (`MC-160` 1)**; type: usability and data-loss risk for edits made after the last successful save. The
 position was the Orchestrator's; the only placement wording in `MC-159` 1 is in the option text the maintainer selected
@@ -3814,7 +3891,8 @@ step 5d-4's investigation (ledger row 588). The README documents the consequence
   and finish a boot on B with archiving on, then edit on A and watch for the toast and the icon; reload A and check
   whether the edit is gone. Not run. `server/node/server.cjs` resolves `dist` and `save` from its working directory,
   so a scratch folder does not touch the repo's `save/`.
-- **Placement:** after steps 6 and 7, before CHORE-58 (approved, `MC-160` 1: "I approve the chore-62 placement"). It
+- **Placement:** after steps 6 and 7, before CHORE-58 (approved, `MC-160` 1: "I approve the chore-62 placement"; "before
+  CHORE-58" is superseded by `MC-182`, which puts CHORE-58 before steps 6 and 7). It
   does not depend on the idle reload; it is placed late because the option text the maintainer selected says "later in
   the work order" and the README now states the behaviour.
 - **Related:** `MC-138`, `MC-158` 4, `MC-159`; Phase 1.5 Tier B items 2, 3 and 7 (above); memory stage 1 step 5d-4
