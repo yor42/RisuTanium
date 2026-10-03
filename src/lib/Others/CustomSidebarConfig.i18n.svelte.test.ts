@@ -83,8 +83,14 @@ function buttonWithText(target: HTMLElement, text: string): HTMLButtonElement {
     return found
 }
 
-function openSettingsSubmenu(target: HTMLElement, settingsText: string = languageEnglish.settings): void {
-    buttonWithText(target, 'Add Item').click()
+function openSettingsSubmenu(
+    target: HTMLElement,
+    settingsText: string = languageEnglish.settings,
+    addItemText: string = languageEnglish.othersUi.addItem,
+): void {
+    // The button is found by its translated label, else by the English literal.
+    const addItem = buttonTexts(target).includes(addItemText) ? addItemText : 'Add Item'
+    buttonWithText(target, addItem).click()
     flushSync()
     buttonWithText(target, settingsText).click()
     flushSync()
@@ -125,7 +131,7 @@ describe('custom sidebar settings submenu labels', () => {
     test('regression reproducer: Korean shows and stores the keyed item and the placeholder in Korean', () => {
         changeLanguage('ko')
         const target = mountDialog()
-        openSettingsSubmenu(target, languageKorean.settings)
+        openSettingsSubmenu(target, languageKorean.settings, languageKorean.othersUi.addItem)
 
         expect(languageKorean.visionQuality).not.toBe(languageEnglish.visionQuality)
         expect(buttonTexts(target)).toContain(languageKorean.visionQuality)
@@ -149,6 +155,39 @@ describe('custom sidebar settings submenu labels', () => {
         const stored = DBState.db.customSidebarItems.at(-1)
         expect(stored?.subType).toBe('test.neither')
         expect(stored?.label).toBe('test.neither')
+    })
+
+    test('regression reproducer: Korean shows the empty-list text, Delete, Add Item, Close and Back to List in Korean', () => {
+        changeLanguage('ko')
+        const ko = languageKorean
+        for (const [translated, english] of [
+            [ko.othersUi.noCustomSidebarItems, languageEnglish.othersUi.noCustomSidebarItems],
+            [ko.uiCommon.delete, languageEnglish.uiCommon.delete],
+            [ko.othersUi.addItem, languageEnglish.othersUi.addItem],
+            [ko.uiCommon.close, languageEnglish.uiCommon.close],
+            [ko.othersUi.backToList, languageEnglish.othersUi.backToList],
+        ]) {
+            expect(translated).not.toBe(english)
+        }
+
+        const target = mountDialog()
+        expect(target.textContent).toContain(ko.othersUi.noCustomSidebarItems)
+        expect(target.textContent).not.toContain('No custom sidebar items configured')
+        expect(buttonTexts(target)).toContain(ko.othersUi.addItem)
+        expect(buttonTexts(target)).toContain(ko.uiCommon.close)
+        expect(buttonTexts(target)).not.toContain('Add Item')
+        expect(buttonTexts(target)).not.toContain('Close')
+
+        buttonWithText(target, ko.othersUi.addItem).click()
+        flushSync()
+        expect(buttonTexts(target)).toContain(ko.othersUi.backToList)
+        expect(buttonTexts(target)).not.toContain('Back to List')
+
+        DBState.db.customSidebarItems.push({ id: 'x', type: 'model', subType: 'none', label: 'Entry' })
+        buttonWithText(target, ko.othersUi.backToList).click()
+        flushSync()
+        expect(buttonTexts(target)).toContain(ko.uiCommon.delete)
+        expect(buttonTexts(target)).not.toContain('Delete')
     })
 
     test('guard: English shows the keyed item by its English language value and the English placeholder', () => {

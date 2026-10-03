@@ -138,7 +138,7 @@
             {:else}
                 <LinkIcon />
             {/if}
-            <span class="text-xs">CHAR</span>
+            <span class="text-xs">{language.sidebarUi.loreScopeChar}</span>
         </button>
         <button onclick={() => {
             toggleChatLoreAlwaysActive()
@@ -148,7 +148,7 @@
             {:else}
                 <LinkIcon />
             {/if}
-            <span class="text-xs">CHAT</span>
+            <span class="text-xs">{language.sidebarUi.loreScopeChat}</span>
         </button>
     {/if}
 </div>

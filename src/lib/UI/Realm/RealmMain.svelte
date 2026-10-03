@@ -294,7 +294,7 @@
         <div class="max-w-full bg-darkbg rounded-md flex flex-col gap-4 overflow-y-auto p-4">
             <h1 class="font-bold text-2xl w-full">
                 <span>
-                    Menu
+                    {language.menu}
                 </span>
                 <button class="float-right text-textcolor2 hover:text-green-500" onclick={() => {menuOpen = false}}>
                     <XIcon />
@@ -316,7 +316,7 @@
                 const id = input.split("?").at(-1)
                 downloadRisuHub(id)
 
-            })}>Import Character from URL or ID</button>
+            })}>{language.uiCommon.importCharacterFromUrlOrId}</button>
         </div>
     </div>
 {/if}

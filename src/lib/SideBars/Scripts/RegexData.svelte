@@ -64,18 +64,18 @@ interface Props {
 
     const flags = [
         //Vanila JS flags
-        ['Global (g)', 'g'],
-        ['Case Insensitive (i)', 'i'],
-        ['Multi Line (m)', 'm'],
-        ['Unicode (u)', 'u'],
-        ['Dot All (s)', 's'],
+        [language.sidebarUi.flagGlobal, 'g'],
+        [language.sidebarUi.flagCaseInsensitive, 'i'],
+        [language.sidebarUi.flagMultiLine, 'm'],
+        [language.sidebarUi.flagUnicode, 'u'],
+        [language.sidebarUi.flagDotAll, 's'],
 
         //Custom flags
-        ['Move Top', '<move_top>'],
-        ['Move Bottom', '<move_bottom>'],
-        ['Repeat Back', '<repeat_back>'],
-        ['IN CBS Parsing', '<cbs>'],
-        ['No Newline Subfix', '<no_end_nl>'],
+        [language.sidebarUi.flagMoveTop, '<move_top>'],
+        [language.sidebarUi.flagMoveBottom, '<move_bottom>'],
+        [language.sidebarUi.flagRepeatBack, '<repeat_back>'],
+        [language.sidebarUi.flagInCbsParsing, '<cbs>'],
+        [language.sidebarUi.flagNoNewlineSubfix, '<no_end_nl>'],
     ]
 
     let open = $state(false)
@@ -92,7 +92,7 @@ interface Props {
                 onClose()
             }
         }}>
-            <span>{value.comment.length === 0 ? 'Unnamed Script' : value.comment}</span>
+            <span>{value.comment.length === 0 ? language.sidebarUi.unnamedScript : value.comment}</span>
         </button>
         <button class="valuer" onclick={async () => {
             const target = value
@@ -113,7 +113,7 @@ interface Props {
             <TextInput size="sm" bind:value={value.comment} onchange={(e) => {
                 $ReloadGUIPointer += 1
             }} />
-            <span class="text-textcolor mt-4">Modification Type</span>
+            <span class="text-textcolor mt-4">{language.sidebarUi.modificationType}</span>
             <SelectInput bind:value={value.type} onchange={(e) => {
                 $ReloadGUIPointer += 1
             }}>
@@ -124,17 +124,17 @@ interface Props {
                 <OptionInput value="edittrans">{language.editTranslationDisplay}</OptionInput>
                 <OptionInput value="disabled">{language.disabled}</OptionInput>
             </SelectInput>
-            <span class="text-textcolor mt-6">IN:</span>
+            <span class="text-textcolor mt-6">{language.sidebarUi.regexIn}</span>
             <TextInput size="sm" bind:value={value.in} />
-            <span class="text-textcolor mt-6">OUT:</span>
+            <span class="text-textcolor mt-6">{language.sidebarUi.regexOut}</span>
             <TextAreaInput highlight autocomplete="off" size="sm" bind:value={value.out} onInput={(e) => {
                 $ReloadGUIPointer += 1
             }} />
             {#if value.ableFlag}
                 <!-- <span class="text-textcolor mt-6">FLAG:</span>
                 <TextInput size="sm" bind:value={value.flag} /> -->
-                <Accordion styled name="FLAGS">
-                    <span class="text-textcolor mt-3">Normal Flag</span>
+                <Accordion styled name={language.sidebarUi.flagsHeading}>
+                    <span class="text-textcolor mt-3">{language.sidebarUi.normalFlag}</span>
                     <div class="grid w-full grid-cols-2 rounded-md border border-darkborderc">
                         {#each flags as flag, i}
                             <button class="w-full bg-darkbg border-darkborderc text-sm py-1"
@@ -151,7 +151,7 @@ interface Props {
                         {/each}
                     </div>
 
-                    <span class="text-textcolor mt-3">Order Flag</span>
+                    <span class="text-textcolor mt-3">{language.sidebarUi.orderFlag}</span>
                     <NumberInput value={getOrder(value.flag)} onChange={(e)=>{
                         changeOrder(parseInt(e.currentTarget.value))
                     }} />
@@ -164,7 +164,7 @@ interface Props {
                         value.flag = 'g'
                     }
                 }}/>
-                <span>Custom Flag</span>
+                <span>{language.sidebarUi.customFlag}</span>
             </div>
        </div>
     {/if}

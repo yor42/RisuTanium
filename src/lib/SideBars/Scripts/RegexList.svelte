@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { customscript } from "src/ts/storage/database.svelte";
     import RegexData from "./RegexData.svelte";
+    import { language } from "src/lang";
     import Sortable from "sortablejs";
     import { sleep, sortableOptions } from "src/ts/util";
     import { onDestroy, onMount } from "svelte";
@@ -67,7 +68,7 @@
 {#key sorted}
     <div class="contain w-full max-w-full mt-2 flex flex-col p-3 border-selected border-1 bg-darkbg rounded-md" bind:this={ele}>
         {#if value.length === 0}
-                <div class="text-textcolor2">No Scripts</div>
+                <div class="text-textcolor2">{language.sidebarUi.noScripts}</div>
         {/if}
         {#each value as customscript, i}
             <RegexData idx={i} bind:value={value[i]} onOpen={onOpen} onClose={onClose} onRemove={(target) => {

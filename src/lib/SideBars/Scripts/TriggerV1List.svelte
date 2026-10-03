@@ -5,6 +5,7 @@
   import { sleep, sortableOptions } from 'src/ts/util'
   import { onDestroy, onMount } from 'svelte'
   import TriggerData from './TriggerV1Data.svelte'
+  import { language } from 'src/lang'
 
   interface Props {
     value?: triggerscript[]
@@ -75,7 +76,7 @@
     bind:this={ele}
   >
     {#if value.length === 0}
-      <div class="text-textcolor2">No Scripts</div>
+      <div class="text-textcolor2">{language.sidebarUi.noScripts}</div>
     {/if}
     {#each value as triggerscript, i}
       <TriggerData

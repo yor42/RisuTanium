@@ -265,7 +265,7 @@
 
 {#if $CharConfigSubMenu === 0}
     {#if DBState.db.characters[$selectedCharID].type !== 'group' && licensed !== 'private'}
-        <TextInput size="xl" marginBottom placeholder="Character Name" bind:value={DBState.db.characters[$selectedCharID].name} />
+        <TextInput size="xl" marginBottom placeholder={language.sidebarUi.characterName} bind:value={DBState.db.characters[$selectedCharID].name} />
         <span class="text-textcolor">{language.description} <Help key="charDesc"/></span>
         <TextAreaInput highlight margin="both" autocomplete="off" bind:value={(DBState.db.characters[$selectedCharID] as character).desc}></TextAreaInput>
         <span class="text-textcolor2 mb-6 text-sm">{tokens.desc} {language.tokens}</span>
@@ -274,11 +274,11 @@
         <span class="text-textcolor2 mb-6 text-sm">{tokens.firstMsg} {language.tokens}</span>
 
     {:else if licensed !== 'private' && DBState.db.characters[$selectedCharID].type === 'group'}
-        <TextInput size="xl" marginBottom placeholder="Group Name" bind:value={DBState.db.characters[$selectedCharID].name} />
+        <TextInput size="xl" marginBottom placeholder={language.sidebarUi.groupName} bind:value={DBState.db.characters[$selectedCharID].name} />
         <span class="text-textcolor">{language.character}</span>
         <div class="p-4 gap-2 bg-bgcolor rounded-lg char-grid">
             {#if (DBState.db.characters[$selectedCharID] as groupChat).characters.length === 0}
-                <span class="text-textcolor2">No Character</span>
+                <span class="text-textcolor2">{language.sidebarUi.noCharacter}</span>
             {:else}
                 <div></div>
                 <div class="text-center">{language.talkness}</div>
@@ -344,7 +344,7 @@
         {/if}
     {/if}
 {:else if licensed === 'private'}
-    <span>You are not allowed</span>
+    <span>{language.sidebarUi.notAllowed}</span>
     {(() => {
         $CharConfigSubMenu = 0
     })()}
@@ -513,7 +513,7 @@
                                 {#await getCharImage(emo[1], 'plain')}
                                     <td class="font-medium truncate w-1/3"></td>
                                 {:then im}
-                                    <td class="font-medium truncate w-1/3"><img src={im} alt="img" class="w-full"></td>                        
+                                    <td class="font-medium truncate w-1/3"><img src={im} alt={language.sidebarUi.imageAlt} class="w-full"></td>                        
                                 {/await}
                                 <td class="font-medium truncate w-1/2">
                                     <TextInput marginBottom size='lg' bind:value={DBState.db.characters[$selectedCharID].emotionImages[i][0]} />
@@ -538,7 +538,7 @@
                         <PlusIcon />
                     </button>
                 {:else}
-                    <span>Loading...</span>
+                    <span>{language.loadingEllipsis}</span>
                 {/if}
             </div>
 
@@ -616,7 +616,7 @@
                     </tr>
                     {#if (!DBState.db.characters[$selectedCharID].additionalAssets) || DBState.db.characters[$selectedCharID].additionalAssets.length === 0}
                         <tr>
-                            <td class="text-textcolor2"> No Assets</td>
+                            <td class="text-textcolor2"> {language.sidebarUi.noAssets}</td>
                         </tr>
                     {:else}
                         {#each DBState.db.characters[$selectedCharID].additionalAssets as assets, i}
@@ -770,17 +770,17 @@
 
         {#if DBState.db.characters[$selectedCharID].ttsMode === 'webspeech'}
             {#if !speechSynthesis}
-                <span class="text-textcolor">Web Speech isn't supported in your browser or OS</span>
+                <span class="text-textcolor">{language.sidebarUi.webSpeechUnsupported}</span>
             {:else}
                 <span class="text-textcolor">{language.Speech}</span>
                 <SelectInput className="mb-4 mt-2" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>
-                    <OptionInput value="">Auto</OptionInput>
+                    <OptionInput value="">{language.optAuto}</OptionInput>
                     {#each getWebSpeechTTSVoices() as voice}
                         <OptionInput value={voice}>{voice}</OptionInput>
                     {/each}
                 </SelectInput>
                 {#if (DBState.db.characters[$selectedCharID] as character).ttsSpeech !== ''}
-                    <span class="text-red-400 text-sm">If you do not set it to Auto, it may not work properly when importing from another OS or browser.</span>
+                    <span class="text-red-400 text-sm">{language.sidebarUi.webSpeechAutoHint}</span>
                 {/if}
             {/if}
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'elevenlab'}
@@ -788,7 +788,7 @@
             {#await getElevenTTSVoices() then voices}
                 <span class="text-textcolor">{language.Speech}</span>
                 <SelectInput className="mb-4 mt-2" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>
-                    <OptionInput value="">Unset</OptionInput>
+                    <OptionInput value="">{language.sidebarUi.unset}</OptionInput>
                         {#each voices as voice}
                             <OptionInput value={voice.voice_id}>{voice.name}</OptionInput>
                         {/each}
@@ -822,7 +822,7 @@
 
                 <span class="text-textcolor">Intonation scale</span>
                 <NumberInput size={"sm"} marginBottom bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.INTONATION_SCALE}/>
-                <span class="text-sm mb-2 text-textcolor2">To use VOICEVOX, you need to run a colab and put the localtunnel URL in "Settings → Other Bots". https://colab.research.google.com/drive/1tyeXJSklNfjW-aZJAib1JfgOMFarAwze</span>
+                <span class="text-sm mb-2 text-textcolor2">{language.sidebarUi.voicevoxHint}</span>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'novelai'}
             <span class="text-textcolor">Custom Voice Seed</span>
             <Check bind:check={DBState.db.characters[$selectedCharID].naittsConfig.customvoice}/>
@@ -852,7 +852,7 @@
             <span class="text-textcolor">Voice</span>
             {#if !DBState.db.characters[$selectedCharID].oaiTTSConfig?.enabled}
                 <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].oaiVoice}>
-                    <OptionInput value="">Unset</OptionInput>
+                    <OptionInput value="">{language.sidebarUi.unset}</OptionInput>
                     {#each oaiVoices as voice}
                         <OptionInput value={voice}>{voice}</OptionInput>
                     {/each}
@@ -863,7 +863,7 @@
                     placeholder={DBState.db.characters[$selectedCharID].oaiVoice || 'alloy'} />
             {/if}
 
-            <span class="text-textcolor">Advanced (OpenAI-compatible endpoint)</span>
+            <span class="text-textcolor">{language.sidebarUi.ttsAdvancedEndpoint}</span>
             <Check bind:check={DBState.db.characters[$selectedCharID].oaiTTSConfig.enabled} />
 
             {#if DBState.db.characters[$selectedCharID].oaiTTSConfig?.enabled}
@@ -872,10 +872,10 @@
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.baseURL}
                     placeholder="https://api.openai.com/v1" />
 
-                <span class="text-textcolor">API Key (overrides global)</span>
+                <span class="text-textcolor">{language.sidebarUi.apiKeyOverridesGlobal}</span>
                 <TextInput className="mb-4 mt-2" hideText={DBState.db.hideApiKey}
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.apiKey}
-                    placeholder="Leave empty to use global OpenAI API key" />
+                    placeholder={language.sidebarUi.apiKeyEmptyPlaceholder} />
 
                 <span class="text-textcolor">Model</span>
                 <TextInput className="mb-4 mt-2"
@@ -901,9 +901,9 @@
             <TextInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].hfTTS.language} placeholder="en" />
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'vits'}
             {#if DBState.db.characters[$selectedCharID].vits}
-                <span class="text-textcolor">{DBState.db.characters[$selectedCharID].vits.name ?? 'Unnamed VitsModel'}</span>
+                <span class="text-textcolor">{DBState.db.characters[$selectedCharID].vits.name ?? language.sidebarUi.unnamedVitsModel}</span>
             {:else}
-                <span class="text-textcolor">No Model</span>
+                <span class="text-textcolor">{language.sidebarUi.noModel}</span>
             {/if}
             <Button onclick={async () => {
                 const model = await registerOnnxModel()
@@ -1016,11 +1016,11 @@
             </SelectInput>        
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'fishspeech'}
             {#await getFishSpeechModels()}
-                <span class="text-textcolor">Loading...</span>
+                <span class="text-textcolor">{language.loadingEllipsis}</span>
             {:then}
                 <span class="text-textcolor">Model</span>
                 <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].fishSpeechConfig.model._id}>
-                    <OptionInput value="">Not selected</OptionInput>
+                    <OptionInput value="">{language.sidebarUi.notSelected}</OptionInput>
                     {#each fishSpeechModels as model}
                         <OptionInput value={model._id}>
                             <div class="flex items-center">
@@ -1031,7 +1031,7 @@
                     {/each}
                 </SelectInput>
             {:catch}
-                <span class="text-textcolor">An error occurred while fetching the models.</span>
+                <span class="text-textcolor">{language.sidebarUi.modelsFetchError}</span>
             {/await}
 
             <span class="text-textcolor">Chunk Length</span>

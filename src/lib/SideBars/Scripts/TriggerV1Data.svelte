@@ -42,7 +42,7 @@
                 onClose()
             }
         }}>
-            <span>{value.comment.length === 0 ? 'Unnamed Trigger' : value.comment}</span>
+            <span>{value.comment.length === 0 ? language.sidebarUi.unnamedTrigger : value.comment}</span>
         </button>
         <button class="valuer" onclick={async () => {
             const target = value
@@ -69,7 +69,7 @@
                 <OptionInput value="manual">{language.triggerManual}</OptionInput>
             </SelectInput>
             
-            <span class="text-textcolor mt-4">Conditions
+            <span class="text-textcolor mt-4">{language.sidebarUi.conditions}
                 <button aria-labelledby="Add Conditions" class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
                     value.conditions.push({
                         type: 'value',
@@ -167,7 +167,7 @@
                 {/each}
             </div>
 
-            <span class="text-textcolor mt-4">Effects
+            <span class="text-textcolor mt-4">{language.sidebarUi.effects}
                 <button aria-labelledby="Add Effects" class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
                     if(value.type === 'start'){
                         value.effect.push({

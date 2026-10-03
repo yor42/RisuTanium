@@ -373,14 +373,14 @@
     }
 
     bulkResummaryState.isTranslating = true;
-    bulkResummaryState.translation = "Loading...";
+    bulkResummaryState.translation = language.loadingEllipsis;
 
     try {
       const result = await translateHTML(bulkResummaryState.result, false, "", -1, regenerate);
       
       bulkResummaryState.translation = result;
     } catch (error) {
-      bulkResummaryState.translation = `Translation failed: ${error}`;
+      bulkResummaryState.translation = fillLang(language.hypaV3Modal.translationFailed, { error: `${error}` });
     } finally {
       bulkResummaryState.isTranslating = false;
     }
@@ -647,21 +647,21 @@
       if (chat.hypaV3Data?.summaries?.length > 0) {
         return {
           success: false,
-          error: "HypaV3 data already exists.",
+          error: language.hypaV3Modal.convertErrorV3Exists,
         };
       }
 
       if (!hypaV2Data) {
         return {
           success: false,
-          error: "HypaV2 data not found.",
+          error: language.hypaV3Modal.convertErrorV2Missing,
         };
       }
 
       if (hypaV2Data.mainChunks.length === 0) {
         return {
           success: false,
-          error: "No main chunks found.",
+          error: language.hypaV3Modal.convertErrorNoMainChunks,
         };
       }
 
@@ -671,14 +671,14 @@
         if (!Array.isArray(mainChunk.chatMemos)) {
           return {
             success: false,
-            error: `Chunk ${i}'s chatMemos is not an array.`,
+            error: fillLang(language.hypaV3Modal.convertErrorChunkNotArray, { index: i }),
           };
         }
 
         if (mainChunk.chatMemos.length === 0) {
           return {
             success: false,
-            error: `Chunk ${i}'s chatMemos is empty.`,
+            error: fillLang(language.hypaV3Modal.convertErrorChunkEmpty, { index: i }),
           };
         }
       }
@@ -699,7 +699,7 @@
     } catch (error) {
       return {
         success: false,
-        error: `Error occurred: ${error.message}`,
+        error: fillLang(language.hypaV3Modal.convertErrorUnexpected, { message: `${error.message}` }),
       };
     }
   }

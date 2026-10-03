@@ -15,6 +15,7 @@
     ChevronDownIcon,
   } from "@lucide/svelte";
   import { language } from "src/lang";
+  import { fillLang } from "src/lang/fill";
   import {
     type SerializableHypaV3Data,
     type SerializableSummary,
@@ -154,7 +155,7 @@
     try {
       return await translateHTML(text, false, "", -1, regenerate);
     } catch (error) {
-      return `Translation failed: ${error}`;
+      return fillLang(language.hypaV3Modal.translationFailed, { error: `${error}` });
     }
   }
 
@@ -204,7 +205,7 @@
 
       rerolled = summarizeResult;
     } catch (error) {
-      rerolled = "Reroll failed";
+      rerolled = language.hypaV3Modal.rerollFailed;
     } finally {
       isRerolling = false;
     }
@@ -436,28 +437,28 @@
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-purple-200 bg-purple-900/70"
             >
-              Important
+              {language.hypaV3Modal.importantBadge}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastRecentSummaries.includes(summaryIndex)}
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-blue-200 bg-blue-900/70"
             >
-              Recent
+              {language.recent}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastSimilarSummaries.includes(summaryIndex)}
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-green-200 bg-green-900/70"
             >
-              Similar
+              {language.hypaV3Modal.similarBadge}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastRandomSummaries.includes(summaryIndex)}
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-yellow-200 bg-yellow-900/70"
             >
-              Random
+              {language.random}
             </span>
           {/if}
         </div>

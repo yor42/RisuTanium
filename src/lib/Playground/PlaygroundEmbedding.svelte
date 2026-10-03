@@ -73,7 +73,7 @@
     <OptionInput value="openai3small">OpenAI text-embedding-3-small</OptionInput>
     <OptionInput value="openai3large">OpenAI text-embedding-3-large</OptionInput>
     <OptionInput value="ada">OpenAI Ada</OptionInput>
-    <OptionInput value="custom">Custom (OpenAI-compatible)</OptionInput>
+    <OptionInput value="custom">{language.settingsPage.customOpenAiCompatible}</OptionInput>
 </SelectInput>
 
 {#if model === 'openai3small' || model === 'openai3large' || model === 'ada'}

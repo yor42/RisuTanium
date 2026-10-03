@@ -46,6 +46,7 @@
     import { v4 } from "uuid";
     import { checkCharOrder, getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
     import { alertInput, alertSelect } from "src/ts/alert";
+  import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
     import SideChatList from "./SideChatList.svelte";
   import { sideBarSize } from "src/ts/gui/guisize";
   import DevTool from "./DevTool.svelte";
@@ -644,14 +645,17 @@
                   }
                 }
                 else if(sel === 1){
-                  const colors = ["red","green","blue","yellow","indigo","purple","pink","default"]
-                  const sel = parseInt(await alertSelect(colors))
+                  const sel = parseInt(await alertSelect(getFolderColorLabels()))
+                  const colorValue = getFolderColorValue(sel)
+                  if(colorValue === undefined){
+                    return
+                  }
                   const db = DBState.db
                   const oder = db.characterOrder[ind]
                   if(typeof(oder) === 'string'){
                     return
                   }
-                  oder.color = colors[sel].toLocaleLowerCase()
+                  oder.color = colorValue
                   db.characterOrder[ind] = oder
                 }
                 else if(sel === 2) {

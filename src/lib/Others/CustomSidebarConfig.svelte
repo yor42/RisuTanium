@@ -26,7 +26,7 @@
             >
                 {#if DBState.db.customSidebarItems.length === 0}
                     <div class="text-textcolor2">
-                        No custom sidebar items configured
+                        {language.othersUi.noCustomSidebarItems}
                     </div>
                 {/if}
 
@@ -45,7 +45,7 @@
                                     );
                             }}
                         >
-                            Delete
+                            {language.uiCommon.delete}
                         </button>
                     </div>
                 {/each}
@@ -56,7 +56,7 @@
                     configPage = "add";
                 }}
             >
-                Add Item
+                {language.othersUi.addItem}
             </Button>
 
             <Button
@@ -64,7 +64,7 @@
                     customSideBarConfigDialogStore.open = false;
                 }}
             >
-                Close
+                {language.uiCommon.close}
             </Button>
         {/if}
 
@@ -139,7 +139,7 @@
                     configPage = "list";
                 }}
             >
-                Back to List
+                {language.othersUi.backToList}
             </Button>
         {/if}
 

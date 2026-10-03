@@ -139,7 +139,7 @@
                             <div class="flex items-center gap-1">
                                 <span class="text-xs text-textcolor2">{item.providerName}</span>
                                 {#if showSubBadge}
-                                    <span class="rounded px-1 text-[0.6rem] font-bold leading-tight bg-selected text-textcolor">SUB</span>
+                                    <span class="rounded px-1 text-[0.6rem] font-bold leading-tight bg-selected text-textcolor">{language.uiCommon.subBadge}</span>
                                 {/if}
                             </div>
                             <span class="line-clamp-2 text-sm font-medium leading-snug text-textcolor">{item.displayName}</span>

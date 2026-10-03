@@ -1,6 +1,7 @@
 <script lang="ts">
     import { BookIcon, FlagIcon, ImageIcon, PaperclipIcon, SmileIcon } from "@lucide/svelte";
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import { alertConfirm, alertInput, alertNormal } from "src/ts/alert";
     import { hubURL, type hubType, downloadRisuHub, getRealmInfo } from "src/ts/characterCards";
     import { askUpstreamAgreement } from "src/ts/upstreamAgreement";
@@ -27,14 +28,14 @@
         <div class="w-full flex flex-col">
             <h1 class="text-2xl font-bold max-w-full overflow-hidden whitespace-nowrap text-ellipsis">{openedData.name}</h1>
             {#if openedData.authorname}
-                <span class="text-borderc">Made by {openedData.authorname}</span>
+                <span class="text-borderc">{fillLang(language.uiCommon.madeBy, { name: openedData.authorname })}</span>
             {/if}
             {#if openedData.original}
                 <button class="text-blue-400 text-start" onclick={() => {
                     const original = openedData.original
                     openedData = null
                     getRealmInfo(original)
-                }}>Forked</button>
+                }}>{language.uiCommon.forked}</button>
             {/if}
             <div class="flex justify-start gap-4 mt-4">
                 {#if DBState.db.hideAllImages}
@@ -110,7 +111,7 @@
                 downloadRisuHub(openedData.id)
                 openedData = null
             }}>
-                Chat
+                {language.Chat}
             </button>
             
         </div>
