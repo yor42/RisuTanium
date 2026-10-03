@@ -2546,7 +2546,76 @@ filing and investigation record and is unchanged. What the commit message says i
 
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
-**Status (2026-10-03, stage 2a, latest): stage 2a done by `a29335f7` (local, not pushed). Stage 2b (remote blocks), stages 3
+**Status (2026-10-03, stage 2b, latest): stage 2 is done: 2a by `a29335f7` and 2b by `cbaeddd6` (local, not pushed). Stages 3
+and 4, and stage 5 or later, are open.** The older status blocks below are kept as they were; where this block differs,
+this block governs. Ledger rows 691 to 694 are the stage 2b work (the implementation, Gate 2, the commit message draft and
+its check); rows 695 and 696 are these records and their fact-check. `MC-174` records the maintainer's commit decision;
+`MC-175` the maintainer's correction of the compatibility invariant (a two-way `.bin` round trip), with `AGENTS.md` updated.
+
+- **What stage 2b changed (from the commit message):** the remote character blocks (`remotes/<chaId>.<hash>.bin`) are
+  written, skip-checked, read and cleaned up through the byte store.
+  - Writing a block (only Tauri and Node builds with remote saving on write blocks) is an unconditional store write; the
+    decoder reads through the store on every platform. On Tauri it is the adapter's atomic write (temp
+    file and rename), so a write that fails part-way leaves no partial file and keeps the file that was there. On Node a
+    peer's identical content-addressed block is no longer refused with `NodeStorageConflictError`.
+  - The exists-skip lists `remotes/` once per encoder init pass (on Node, one `/api/list`, not one existence check per
+    character). A failed listing fails the encode and nothing is written on a guess.
+  - The Tauri boot sweeps leftover `risu-write-*.tmp` files from `remotes/`, only when it exists, before the first remote
+    write of the page load.
+  - The remote-block clean-up in `bootstrap.ts` (Tauri and web) lists, reads, writes `.meta` and deletes through the
+    store. What it deletes is unchanged: v1 `.local.bin` blocks only, after the 7-day `.meta` rule. The Tauri boot no
+    longer creates `remotes/` (the first write does). On the web the remote blocks are listed separately through the store,
+    after the asset sweep, and a failure of that listing reaches the clean-up's error report.
+  - `saveDb` recognises `StoreVersionConflictError` only as the conflict. The post-commit conflict branch is kept, and a
+    test now reaches it through an injected conflict (the real server cannot send a 409 there).
+  - Not changed: the save format, the file and key names and the bytes written.
+  - Checks, as the commit message states them, RUN by the Orchestrator (`scratchpad\chore55\s2bfinal\`): `pnpm test` 315
+    files, 6624 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok. The session log also records the
+    build with `VITE_RISU_LEGAL_CONFIGURED=TRUE` and a grep finding no `dist` JS file with `FakeNodeServer`, `appStoreMock`
+    or `forageBackedStore` (Orchestrator-run; not in the logs folder).
+    Four comment-and-title-only edits by the Orchestrator (comments in `bootstrap.ts`, `risuSave.ts` and
+    `bootArchivePass.ts`; one test title in `globalApi.nodeSave.svelte.test.ts`) were not followed by a rerun.
+  - Tests: fake-backed (an in-memory Tauri file system and `FakeNodeServer` behind the real `NodeStorage` and Node store;
+    the eleven migrated suites run on a forage-backed stand-in store). No native Tauri, real `server.cjs`, browser or
+    Android run. The commit message lists the reproducers (red against a git-archive extract of HEAD) and the guards.
+- **Facts established in stage 2b (Gate 2 and the commit check):**
+  - Upstream's decoder reads only `remotes/<chaId>.local.bin` (v1) and ignores `v` and `hash` (the Orchestrator verified
+    `git show upstream/main:src/ts/storage/risuSave.ts`). A profile this fork saved with remote saving on is therefore
+    missing those characters on upstream. This comes from the fork's v2 content-addressed blocks and is not changed by 2b.
+    Per the maintainer's correction (`MC-175`), the requirement is a way to go back and forth between upstream and the
+    fork, and an upstream-compatible `.bin` export/import meets it; compatibility of the profile folder itself is not
+    required. Whether a `.bin` exported by this fork restores everything on upstream is under investigation (ledger row
+    697).
+  - An unreadable `.meta` kept the block at HEAD too (the reviewer RAN it). 2b's only change there: when the `.meta`
+    existence check errors, no fresh `.meta` is written (at HEAD a rejecting `exists()` led to one). When the read errors,
+    the block is kept and nothing is written, as at HEAD.
+  - The store's Tauri listing hides only atomic-write temp names. Foreign files, and v1 blocks truncated by older
+    non-atomic writes, are listed.
+  - `saveDb`'s post-commit conflict branch is settled: nothing else in its `try` makes a `NodeStorage` read or write
+    (traced), and only the conditional main-file write can get a 409 from `server.cjs`.
+- **Open, residual and non-blocking:**
+  - A remote file left truncated by the old non-atomic write is still accepted by the exists-skip, which checks existence
+    only.
+  - Android: "absent" is recognised from the "(os error 2|3)" text, which is unproven there. If the text differs, listing
+    a `remotes/` that does not exist yet rejects: with remote saving on, the encoder's init fails and saving does not
+    start for that page load, and the clean-up reports an error (INFERRED from source, not run; for the Android wrapper
+    plan).
+  - Remote writes now pass the store's key rules. A `chaId` with a backslash, a control character, a leading dot, or an
+    empty or dot-led segment (Node and Tauri), 89 bytes or more (Node; it failed at HEAD too), or any of `<>:"|?*` (Tauri,
+    on every platform) fails the save loudly. No app path makes such ids; a plugin or hand-edited data could.
+  - A stale marker: `test.skip('a6 SKIPPED: remotes/ cleanup coverage requires bootstrap.ts ...')` in
+    `src/ts/process/tests/coldStorageDeletionGuards.svelte.test.ts`. The remote clean-up now has tests
+    (`bootstrap.remoteBlockCleanup.test.ts`), so the marker is misleading. Not changed.
+  - Still open from 2a: the IPC fallback flip (TRACED, not run); two tabs on a fresh Node server (a suspicion);
+    `NodeStorage.peekItem` has no production caller; the stage 0 Windows live check (`MC-171` 2); asset-route staleness
+    untested on WebKit and Android; on Android, IPC uses postMessage with JSON (TRACED, not run; for the Android wrapper
+    plan). Settled by 2b: the
+    `saveDb` post-commit conflict branch (kept, now tested via an injected conflict; `NodeStorageConflictError` is no
+    longer recognised there).
+- **Next for CHORE-55:** stage 3 (assets), then stage 4 (cold-storage units, the OPFS switch removal and the copy-back per
+  `MC-173` 1).
+
+**Status (2026-10-03, stage 2a): stage 2a done by `a29335f7` (local, not pushed). Stage 2b (remote blocks), stages 3
 and 4, and stage 5 or later are open.** The older status blocks below are kept as they were; where this block differs,
 this block governs. Ledger rows 679 to 688 are the stage 2a work (the read-route investigation, the facts investigation,
 Gate 1, the implementation, the translation, Gate 2 round 1, the remediation, Gate 2 round 2, and the commit message with
@@ -2628,7 +2697,7 @@ stage. The `AGENTS.md` change in the records commit is `MC-173` 3.
     `nodeStorage.ts`).
   - `saveDb`'s post-commit conflict branch is unreachable after 2a; settle it in 2b.
   - The stage 0 Windows live check (`MC-171` 2) is still open.
-- **Next for CHORE-55:** stage 2b, already in the stage 2 plan (D7, D9 and scenarios S15 to S19): the remote-block encode
+- **Next for CHORE-55 (as of stage 2a; the stage 2b block above has the current line):** stage 2b, already in the stage 2 plan (D7, D9 and scenarios S15 to S19): the remote-block encode
   write (atomic on Tauri, through the store), the exists-skip, the decode read, the boot GC of v1 blocks and `.meta`, and a
   `remotes/` temp sweep. A residual already known for 2b: a remote file left partial by an older non-atomic write is still
   accepted by the existence check, because the read has no hash check. Then stages 3 and 4.
@@ -2695,7 +2764,7 @@ and their fact-check. `MC-172` records the maintainer's commit decision.
     investigation before stage 2 (the Tauri adapter reads with `readFile` for now).
   - Not handled (edge cases with no caller): a Windows `list` prefix containing `\`; Windows reserved device names in the
     creatable rule; the duplicated 8000-byte request budget in `nodeHttpStore.ts` and `manualCleanup.ts`.
-- **Next for CHORE-55 (as of stage 1; the stage 2a block above has the current line):** stage 2 (the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive
+- **Next for CHORE-55 (as of stage 1; the stage 2b block at the top has the current line):** stage 2 (the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive
   commit, restore and the internal-backup load). It is not yet planned. The asset-protocol against `readFile` investigation
   comes first.
 
@@ -2765,7 +2834,7 @@ maintainer's commit decision.
     new file default permissions rather than the old mode. No known user setup does this.
   - The test fake `tauriFsFake.ts` never emits "os error 17", so the Unix branch of the "temp already exists" carve-out is
     untested.
-- **Next for CHORE-55 (as of stage 0; the stage 2a block at the top has the current line):** stage 1: the contract, three adapters
+- **Next for CHORE-55 (as of stage 0; the stage 2b block at the top has the current line):** stage 1: the contract, three adapters
   and one conformance suite, with no callers moved (`fake-indexeddb` is approved by `MC-167` 6). The advisor's named
   investigation before stage 2, the Tauri boot read through the asset protocol against `readFile` on a large file, is still
   open.
@@ -2946,10 +3015,10 @@ then the prune.
   conflict check on IndexedDB and OPFS (INFERRED).
 - **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
 
-**Related:** `MC-167`, `MC-171`, `MC-172`, `MC-173`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48
+**Related:** `MC-167`, `MC-171`, `MC-172`, `MC-173`, `MC-174`, `MC-175`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48
 (inlays), CHORE-51 and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commits
-`d0decfb6` (stage 0), `d95b07da` (stage 1) and `a29335f7` (stage 2a); ledger rows 633, 635, 636, 658 to 665, 666 to 678 and
-679 to 690.
+`d0decfb6` (stage 0), `d95b07da` (stage 1), `a29335f7` (stage 2a) and `cbaeddd6` (stage 2b); ledger rows 633, 635, 636,
+658 to 665, 666 to 678, 679 to 690 and 691 to 696.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 

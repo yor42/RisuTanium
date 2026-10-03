@@ -135,12 +135,18 @@ The commits below were local when they were listed, and were pushed with it:
 - `a29335f7`: CHORE-55 stage 2a, the main file, the numbered backups and the internal-backup picker go through the one
   byte store, and the boot no longer replaces a 0-byte (Node) or unreadable (Tauri) main file with an empty save
   (`MC-173`; ledger rows 679 to 688). Local, not pushed;
-- the records commit that follows `a29335f7` and carries this file and the `AGENTS.md` Tauri-version correction (`MC-173`,
-  CHORE-55 stage 2a done, ledger rows 679 to 690). Local, not pushed.
+- the records commit that follows `a29335f7` (`67ae5b18`, by its commit subject: `MC-173`, CHORE-55 stage 2a done, ledger
+  rows 679 to 690; it also carries the `AGENTS.md` Tauri-version correction). Local, not pushed;
+- `cbaeddd6`: CHORE-55 stage 2b, remote character blocks go through the one byte store, so a Tauri write is atomic and a
+  Node write is no longer refused for a peer's identical block (`MC-174`; ledger rows 691 to 694). Local, not pushed;
+- the records commit that follows `cbaeddd6` and carries this file (`MC-174`, CHORE-55 stage 2b done, ledger rows 691 to
+  696; `MC-175`, the maintainer's correction of the compatibility invariant to a two-way `.bin` round trip, with the
+  `AGENTS.md` update the maintainer asked for). Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
-`d0decfb6`, `79658498`, `d95b07da`, `bced04b1` and `a29335f7`) are local and not pushed (`git rev-list --count
-1ce8abff..HEAD` gave 13 on 2026-10-03, before the records commit above); the records commit above will be local too.
+`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18` and `cbaeddd6`) are local and not pushed (`git
+rev-list --count 1ce8abff..HEAD` gave 15 on 2026-10-03, before the records commit above); the records commit above will be
+local too, making 16. The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -167,7 +173,9 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
   (`MC-172` 1): the code first, then the records as a second commit. Nothing is pushed.
 - `a29335f7` and the records commit after it (with the `AGENTS.md` change) at "Code, then records (Recommended)", the
   maintainer's answer to the commit question (`MC-173` 4); the `AGENTS.md` change was asked for in chat (`MC-173` 3).
-  Part 2b gets its own code and records commits later. Nothing is pushed.
+  Nothing is pushed.
+- `cbaeddd6` and the records commit after it at "Code, then records (Recommended)", the maintainer's answer to the commit
+  question (`MC-174` 2): the code first (24 files, staged by name), then the records as a second commit. Nothing is pushed.
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
@@ -189,7 +197,8 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-174` (`MC-173` is used), Report 57 (Report 56 is used), ledger row 691 and CHORE-74
+**Next free numbers:** `MC-176` (`MC-175` is used), Report 57 (Report 56 is used), ledger row 698 (row 697 is taken by
+the fork/upstream `.bin` round-trip investigation, in progress) and CHORE-74
 (`CHORE-73` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
@@ -283,8 +292,16 @@ should fill them.
    (`MC-173` 2); a fresh Node server asks for the password once, not twice. The asset-protocol against `readFile`
    investigation is done (row 679; RUN in a standalone probe, not the app). Checks, from the commit message (run before
    two comment-and-title-only edits; those two files were re-run: 71 passed): the suite 312 files, 6578 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok. The
-   Hono server never reaches the Node store (TRACED). **Next: CHORE-55 stage 2b (remote blocks), then stages 3 and 4,
-   then CHORE-59, then memory steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   Hono server never reaches the Node store (TRACED). **CHORE-55 stage 2b is done (2026-10-03; `cbaeddd6`, local; `MC-174`;
+   ledger rows 691 to 694; Roadmap CHORE-55):** the remote character blocks are written, skip-checked, read and cleaned up
+   through the one byte store. A Tauri block write is atomic; a Node block write is no longer refused for a peer's
+   identical block; the exists-skip lists `remotes/` once per encoder init pass; the Tauri boot sweeps leftover
+   `risu-write-*.tmp` files from `remotes/`. Checks, from the commit message (run before four comment-and-title-only
+   edits that were not re-run): the suite 315 files, 6624 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings;
+   `pnpm build` ok. Fake-backed tests only; no native Tauri, real `server.cjs`, browser or Android run. Upstream builds
+   still read only v1 `<chaId>.local.bin` pointers, so a profile this fork saved with remote saving on is missing those
+   characters on upstream (not changed by 2b). **Next: CHORE-55 stage 3 (assets), then stage 4, then CHORE-59, then memory
+   steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -589,11 +606,12 @@ should fill them.
       is open (`MC-171` 2); **stage 1, the contract, three adapters and one conformance suite with no callers moved, is
       done** as `d95b07da` (2026-10-03, local; `MC-172`; ledger rows 666 to 676); **stage 2a, the main file, the numbered
       backups and the internal-backup picker onto the store, is done** as `a29335f7` (2026-10-03, local; `MC-173`; ledger
-      rows 679 to 688); the later stages are a planning basis and not yet gated) and then
+      rows 679 to 688); **stage 2b, the remote blocks onto the store, is done** as `cbaeddd6` (2026-10-03, local; `MC-174`;
+      ledger rows 691 to 694); the later stages are a planning basis and not yet gated) and then
       **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
-      its own change with its own gates. **Next: CHORE-55 stage 2b** (remote blocks: the encode write, the exists-skip,
-      the decode read, the boot GC and a `remotes/` temp sweep), then stages 3 and 4, then CHORE-59. The investigation of
+      its own change with its own gates. **Next: CHORE-55 stage 3** (assets), then stage 4 (cold-storage units, the OPFS
+      switch removal and the copy-back, `MC-173` 1), then CHORE-59. The stage 0 Windows live check is open (`MC-171` 2). The investigation of
       the Tauri boot read through the asset protocol against `readFile` is done (row 679). The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it

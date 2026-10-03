@@ -6106,3 +6106,51 @@ maintainer; the commit message of `d0decfb6` states it.
 **The Orchestrator's call, not a maintainer decision:** the stage 2 read packet asked whether to accept the whole-file
 memory cost or build a separately gated ranged path. It was not put to the maintainer, because both read routes cost the
 same and stage 2 does not change the cost (ledger row 679).
+
+---
+
+### MC-174 — CHORE-55 stage 2b starts, and is committed as a code commit and then a records commit (nothing pushed)
+
+- **Tag:** decision (item 2, the maintainer's answer to `AskUserQuestion`); item 1 is stated in chat
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** one chat message (item 1) and the maintainer's answer to the one question the Orchestrator asked with
+  `AskUserQuestion` after stage 2b's Gate 2 had closed and its commit message had been checked (item 2). The question and
+  option text are quoted below. The reason in the option text is the Orchestrator's.
+- **Reasoning:** the reason given in the option text: the same order as stage 2a. The records are written and
+  fact-checked after the code is committed, as a second commit.
+- **Alternatives rejected** (the other options the Orchestrator offered): "One commit" and "Don't commit yet".
+- **Related:** MC-167, MC-173; CHORE-55; commit `cbaeddd6` (CHORE-55 stage 2b, local; its message states what it
+  changed); the records commit that carries this file; ledger rows 691 to 696.
+
+**What was decided:**
+1. **Stage 2b starts.** The maintainer, as typed after the context compaction: "resume the work order. start part 2b."
+2. **Stage 2b's code is committed first, and its records follow as a second commit. Nothing is pushed.** The question:
+   "Part 2b has passed review and its commit message is checked. How should I commit it?" The answer: "Code, then
+   records (Recommended)": "Same as 2a: commit the code now (24 files, staged by name), then write the records (decision
+   log, roadmap, ledger rows 691-694, live state), fact-check them and commit them separately." The options not chosen
+   were "One commit" and "Don't commit yet".
+
+### MC-175 — The compatibility invariant is a two-way round trip: a `.bin` backup moves between upstream and this fork in both directions; upstream need not read the fork's own storage
+
+- **Tag:** stated in chat (a correction of how the campaign had read the compatibility invariant), and a request (item 2)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** two chat messages, quoted below. The first followed the Orchestrator's report that upstream's decoder reads
+  only v1 `remotes/<chaId>.local.bin` pointers, so upstream cannot read this fork's v2 remote blocks from the fork's
+  profile folder.
+- **Reasoning:** the maintainer's own words in item 1.
+- **Alternatives rejected:** none offered.
+- **Related:** `AGENTS.md` ("AI Coding Agent Requirements": the compatibility invariant and the release-status bullet,
+  updated by the Orchestrator at the maintainer's request); MC-011, MC-089 (the release framing that the invariant had
+  been read with); MC-174; ledger row 697 (whether a `.bin` exported by this fork restores everything on upstream).
+
+**What was decided:**
+1. **The invariant is the round trip.** The maintainer, as typed: "correction: by the "upstream data must keep working in
+   our fork", I meant "there must be a way to go back and forth between upstream and the fork. so .bin export/import that
+   is compatible with upstream is enough for that condition." So a `.bin` backup exported by upstream must import into
+   this fork, and one exported by this fork must import into upstream, with nothing lost. Upstream reading this fork's
+   own storage directly (its profile folder, remote blocks or cold storage) is not required.
+2. **`AGENTS.md` is updated to say so.** The maintainer, as typed: "yes, update the agents.md while we are at it." The
+   Orchestrator kept, in the same sentence, the existing requirement that upstream characters, modules, presets, plugins
+   and other supported integrations continue to work on this fork.
