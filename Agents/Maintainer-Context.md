@@ -6594,3 +6594,107 @@ instead of holding it in memory?"
   image chunk imports with a truncated image and no error.
 
 ---
+
+### MC-187 — CHORE-77 follow-ups: a limit on files inside a .charx, the PWA share path, and the other whole-card downloads
+
+- **Tag:** decision (chosen from options put by the Orchestrator)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to six questions the Orchestrator put on the CHORE-77 follow-ups (the `.charx` save backlog
+  and the 50 MB cap; `#share_character`), as chosen options. The question texts, as the Orchestrator supplied them for this entry:
+  - Q1: "When a file inside a .charx is over 50 MB (an image, the card's data file, or its module file), what should the import do?
+    Today an oversized image or module is dropped with no message, so a card can import without its scripts and lorebook."
+  - Q2: "Sharing a file to the installed web app is broken at three separate points, so the #share_character fix can't be tested.
+    What should happen to it?"
+  - Q3: "Should the memory fix (a) also cover the other downloads that still load a whole card into memory (#import= links and Chub
+    links)?"
+  - Q4 (a follow-up to Q1, asked because the Orchestrator found that upstream imports such a card and quietly drops the over-50 MB
+    file, so "refuse whole card" would refuse a card upstream imports; `MC-175`): "How should the limit work?" The option
+    "Raise the limit" was described as: raise or remove the 50 MB limit for images and videos, keeping memory bounded by
+    streaming; card data and module over the limit still refuse.
+  - Q5: "What should the new limit for a single image or video inside a .charx be?"
+  - Q6: "If an image or video is still over the new limit, what happens?"
+- **Reasoning:** none recorded beyond the option labels.
+- **Alternatives rejected:** Q1: "Import and warn" and "Refuse only data/module" (the chosen option was "Refuse whole card
+  (Recommended)", later changed in effect by Q4). Q2: "File a ticket (Recommended)" was the recommended option; the maintainer
+  chose "Repair now"; "Remove it" was also rejected. Q3: "Charx fix only (Recommended)" was the recommended option; the maintainer
+  chose "Include them". Q4: "Refuse anyway" and "Refuse data, warn asset (Recommended)". Q5: "100 MB" and "No limit". Q6: "Refuse
+  the card".
+- **Related:** `MC-175`, `MC-184`, `MC-186`, `MC-179`, `MC-011`; CHORE-77; ledger row 783.
+
+**What was decided (chosen option labels, quoted):**
+1. **Q1. Chosen: "Refuse whole card (Recommended)".**
+2. **Q2. Chosen: "Repair now".**
+3. **Q3. Chosen: "Include them".**
+4. **Q4. Chosen: "Raise the limit".**
+5. **Q5. Chosen: "200 MB (Recommended)".**
+6. **Q6. Chosen: "Import, name what's left out (Recommended)".**
+
+**As the Orchestrator reads it (a reading, not a maintainer statement):** `card.json` and `module.risum` keep the 50 MB limit, and
+a card with either over it is refused. An image or video asset inside a `.charx` has a limit of 200 MB; an asset over 200 MB is
+skipped, and the user is told which file. The PWA share path is repaired now. The `#import=` and Chub downloads are included in
+the memory fix.
+
+**Orchestrator's implementation notes (not maintainer statements):**
+- The work is two stages. Stage C1 is `processzip`: a bounded save backlog, streaming size limits, and the outcomes above; it has
+  an `opus-reviewer` Gate 1. Stage C2 is the share-path repair and the `#import=` and Chub downloads read as a Blob; it has its own
+  plan.
+- The Orchestrator's plan proposes refusing before any save, by reading the zip's central directory. This is pending Gate 1.
+
+#### Amendment to MC-187 (2026-10-03): the first round rested on a false premise, and the limit questions were re-asked
+
+- **Tag:** decision (chosen from options put by the Orchestrator), amending the round above. The round above is kept as recorded.
+- **Date:** 2026-10-03
+- **The false premise.** In Q1 and Q4 the Orchestrator said an over-50 MB asset is dropped with no message, and that upstream
+  imports such a card without it. Gate 1 of Stage C1 traced and ran this at HEAD `0df2e266`, and read upstream `f9728b14` by
+  source. For any asset that `card.json` references, both the fork and upstream throw "Error while importing, asset <key> not
+  found" from `importCharacterCardSpec`, after the card's other assets have been saved. Only a file the card does not reference is
+  dropped silently. The `module.risum` outcome stated in round 1 was true; an over-50 MB `card.json` gave `noData`, after the assets were saved.
+- **The re-ask (2026-10-03, with the correction).** The two questions, with the chosen option first:
+  - Q7: "Correction: I told you an over-50 MB image is quietly dropped and that upstream imports such a card without it. That was
+    wrong for any image the card actually uses. Both upstream and this fork refuse the whole card with "asset … not found", after
+    already saving the card's other assets. With that corrected, what should happen to an image or video over the new limit?"
+    Chosen: "Refuse before saving (Recommended)". The other option was "Import without it".
+  - Q8: "The limit's real memory cost is higher than I said. Today a 200 MB asset takes about 3.3x its size (about 0.7 GB) while it
+    saves. Sizing the buffer exactly from the zip's file list brings that to about 2x (about 0.4 GB). Which limit for one image or
+    video?" Chosen: "200 MB, exact sizing (Recommended)". The other options were "100 MB, exact sizing" and "Keep 50 MB".
+  - Q9 (asked 2026-10-03, after Gate 1 round 2 of Stage C1 raised it as a maintainer decision, finding N2): "A .charx can
+    contain a file over 200 MB that the card never uses (only hand-repacked cards; RisuAI's own export never writes one).
+    Upstream and today's fork import such a card and silently drop that file. What should this fork do?" Chosen: "Refuse the
+    card (Recommended)". The other option was "Drop it like upstream".
+- **What now stands, as the Orchestrator reads it (a reading, not a maintainer statement):**
+  - `card.json` and `module.risum` have a 50 MB limit; an image or video has a 200 MB limit.
+  - Any entry over its limit refuses the card, with a message naming the file. The refusal comes before anything is saved when
+    the zip's central directory is readable; otherwise it comes while the entry streams in, and assets saved before that point
+    remain. Round 1's "Import, name what's left out" (Q6) is superseded: nothing is skipped.
+  - This includes a file the card never uses (Q9): such a card is refused, although upstream and today's fork import it and drop
+    that file.
+  - Exact buffer sizing is part of the work. As implemented in `96ffb490` it is an exact-length join of the copied chunks, not
+    preallocation from the central directory's declared size (see the Roadmap CHORE-77 entry).
+  - The share-path repair (Q2) and the inclusion of the `#import=` and Chub downloads (Q3) are unchanged.
+- **Orchestrator's implementation note (not a maintainer statement):** a `.charx` holding an unreferenced file over 200 MB, which
+  upstream and HEAD drop silently today, would now be refused. RisuAI's exporter never writes one. This is recorded in the plan
+  for Gate 1.
+
+---
+
+### MC-188 — CHORE-77 Stage C2: which file types the PWA share target accepts
+
+- **Tag:** decision (chosen from options put by the Orchestrator)
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to one question the Orchestrator put after the Stage C2 investigation (ledger row 792). The
+  question text, as the Orchestrator supplied it for this entry: "Sharing a file to the installed web app (Android/ChromeOS share
+  sheet) never worked, here or upstream. The app's manifest only offers RisuAI as a share target for .charx, .risup and .risum
+  files, so a PNG card or a .json card shared from a phone's gallery or files app never shows RisuAI as a destination. When I
+  repair it, which file types should the share target accept?"
+- **Reasoning:** none recorded beyond the option label.
+- **Alternatives rejected:** "Keep the three (Recommended)": "Repair only: .charx cards, .risup presets and .risum modules.
+  Smallest change; matches what the manifest already declares and what upstream intended."
+- **Related:** `MC-187`, `MC-175`; CHORE-77; ledger row 792.
+
+**What was decided (chosen option label, quoted):** **Chosen: "Add PNG/JPEG/JSON cards".** The option was described to the
+maintainer as: "Also accept .png, .jpg/.jpeg and .json character cards through share. More useful on a phone (cards are often
+saved as images), but widens what the share sheet offers RisuAI for: any shared PNG would list RisuAI as a target."
+
+---

@@ -3782,7 +3782,7 @@ CHORE-76 and CHORE-77).** From the commit message:
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
 - **Related:** CHORE-58 (`282b2da5`), CHORE-77, `MC-175` (an upstream-exported card must still import), `MC-185`.
 
-### CHORE-77 — A card downloaded from Realm is held in memory in full during import (done for the Realm PNG, `6173f58a`, measured in headless Chrome only, and the Realm `.charx`, `ff659397`; follow-ups open; upstream and fork)
+### CHORE-77 — A card downloaded from Realm is held in memory in full during import (done for the Realm PNG, `6173f58a`, measured in headless Chrome only, and the Realm `.charx`, `ff659397`; the `.charx` size limits and save backlog (Stage C1) done in `96ffb490`, Stage C2 open; upstream and fork)
 
 **Status (2026-10-03): done for the Realm PNG download (Stage A, `6173f58a`) and the Realm `.charx` download (Stage B,
 `ff659397`); both local, not pushed.** The follow-ups listed in the Stage B block below are not part of this ticket's
@@ -3809,8 +3809,9 @@ was written (superseded by `ff659397`): the Realm `.charx`** (`MC-186` 2), which
 which no caller passes, is buffered into a `File` first. No browser memory measurement of the `.charx` download was made
 (`TODO(evidence)`); the Stage A figures above are for the PNG only.
 
-**Follow-ups left open (not part of this ticket's acceptance; candidates for a later Stage C or a ticket, for the maintainer to
-decide; none is filed):**
+**Follow-ups, status 2026-10-04 (investigated 2026-10-03):** investigated (ledger row 783), decided by the maintainer (`MC-187`), and taken up as Stage C1
+(the `.charx` save backlog and the size limits) and Stage C2 (the `#share_character` repair, and the `#import=` and Chub
+downloads read as a Blob). Stage C1 is done in `96ffb490` (2026-10-04; ledger rows 787 to 791): `card.json` and `module.risum` are limited to 50 MiB and every other entry to 200 MiB; an entry over its limit refuses the card, before anything is saved when the central directory is readable, and from a streaming backstop otherwise; the reader waits while more than 32 MiB of decoded assets are queued or saving. **Mechanism note for the maintainer:** the `MC-187` amendment asked for "200 MB, exact sizing". It was implemented as an exact-length join of the copied chunks, not as preallocation from the central directory's declared size, so saved bytes never depend on a declared size. Measured (Node, i9-13900KF, best case, the `MC-003` floor not measured; one 200 MiB entry in 64 KiB chunks): the buffer holds about 400 MiB right after the join, against 456 MiB after `.buffer` for the buffer it replaces. The measured live peak is 2x (400 MiB for one 200 MiB entry). Under the plan's 3.3x accounting, which counts buffers that are no longer reachable, the shipped design is about 3x (chunks, joined array, store copy), against about 2x for preallocation (Gate 2 round 1, finding 5). The saved array is still copied by the digest and by the store. Stage C2 (the `#share_character` repair, and the `#import=` and Chub downloads read as a Blob) is next and has its own plan; it is not implemented. The step-0 figures and the two follow-up items as first found, before the investigation, stay below:
 - (a) **The charx save backlog.** Step 0 (scratch, noisy; ledger row 777): with 4 MB assets and 10 concurrent saves, the peak of
   queued asset buffers stayed 12-20 MB at a 100 ms save delay and grew with the asset count at a 2,000 ms delay: 32, 64, 88 and
   112 MB for 8, 16, 32 and 64 assets. `CharXWriter` archives use data descriptors, so each entry is buffered in full before the
