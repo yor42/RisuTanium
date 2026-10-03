@@ -220,7 +220,8 @@ Several sessions work **in this same checkout**:
   CHORE-44, CHORE-14 (UI-1 and UI-2), CHORE-15, CHORE-16 (PG-2 to PG-4), CHORE-12, CHORE-13, CHORE-23, CHORE-57, CHORE-05,
   CHORE-09, and the follow-up "a rejected avatar image shows no icon". **CHORE-68 and CHORE-74 also go to the UI session,
   but only after CHORE-55 stage 3 is committed and merged into its branch.**
-- **Tickets staying with the Main Campaign:** CHORE-55 stages 3 and 4, CHORE-59, memory steps 6 and 7, CHORE-62,
+- **Tickets staying with the Main Campaign:** CHORE-55 (stages 3 and 4 are done, `bf7f2cbf` and `980791fa`; stage 5 or
+  later stays as later work, `MC-181`), CHORE-59, memory steps 6 and 7, CHORE-62,
   CHORE-58, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-04, CHORE-10, CHORE-60
   (with the Rebranding session), and the existing Wiki hand-offs.
 - **The Main Campaign does not edit the delegated tickets' Roadmap entries.** The UI session owns their status lines.
