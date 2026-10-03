@@ -28,6 +28,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
+import type { ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
 //#region module mocks
 
@@ -180,6 +181,20 @@ vi.mock(import('src/ts/storage/autoStorage'), () => ({
         removeItem = vi.fn(async () => {})
     },
 }) as unknown as typeof import('src/ts/storage/autoStorage'))
+
+// `getFileSrc` reads through the page's byte store. The store here forwards to
+// the `forageStorage` spies above, looked up at call time because the module
+// under test is still loading when this factory runs.
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const forage = async () => (await import('src/ts/globalApi.svelte')).forageStorage as unknown as ForageLike
+    return appStoreModuleOver(() => ({
+        getItem: async (key) => (await forage()).getItem(key),
+        setItem: async (key, value) => (await forage()).setItem(key, value),
+        keys: async () => (await forage()).keys(),
+        removeItem: async (key) => (await forage()).removeItem(key),
+    })) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(import('src/ts/gui/animation'), () => ({
     updateAnimationSpeed: vi.fn(),

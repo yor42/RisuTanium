@@ -23,6 +23,7 @@ import { compareWithMainFileRecord } from "./mainFileRecord"
 import type { NodeStorage } from "./nodeStorage"
 import { decodeRisuSave } from "./risuSave"
 import { getAppStore } from "./store/appStore"
+import { StoreDeleteManyError } from "./store/errors"
 
 /**
  * The manual cold-storage clean-up: one exclusive, strictly-read pass that
@@ -54,6 +55,8 @@ import { getAppStore } from "./store/appStore"
 
 /** Keys per delete decision. */
 const DELETE_BATCH_SIZE = 100
+/** Asset keys per delete call: small enough that a Node server takes them in one request and the progress moves. */
+const ASSET_DELETE_GROUP_SIZE = 20
 /** Budget for the hex-encoded keys of one Node delete request, well under the server's 16 KB header limit that the revision header shares. */
 const NODE_REQUEST_KEY_BYTES = 8000
 /** How long to wait for other tabs of this app to release the shared storage lock. */
@@ -62,6 +65,7 @@ const MAIN_FILE = 'database/database.bin'
 const SNAPSHOT_DIR = 'database'
 const SNAPSHOT_PREFIX = 'dbbackup-'
 const UNIT_KEY_PREFIX = 'coldstorage/'
+const ASSET_KEY_PREFIX = 'assets/'
 
 /** A stop with a message that is meant to be shown to the user as it is. */
 class CleanupStop extends Error {}
@@ -494,25 +498,50 @@ async function removeSafeUnitBatch(keys: string[], done: number, total: number):
     return failed
 }
 
+/**
+ * Deletes the asset keys through the page's byte store and returns how many it
+ * could not delete, counted per key. The keys go in groups of
+ * `ASSET_DELETE_GROUP_SIZE`, each its own `deleteMany` call. The Node store
+ * stops at the first failed request of a call and leaves the rest unattempted,
+ * so a group must fit in one request (twenty keys of the longest name the
+ * server accepts stay well under its request budget): a failed group is then
+ * counted and the next group is still attempted.
+ */
 async function removeAssetBatch(keys: string[], done: number, total: number): Promise<number> {
-    if (isNodeServer) {
-        return await removeNodeBatch(keys, done, total)
-    }
+    const store = await getAppStore()
     let failed = 0
-    for (let i = 0; i < keys.length; i++) {
-        showRemoving(done + i + 1, total)
+    for (let start = 0; start < keys.length; start += ASSET_DELETE_GROUP_SIZE) {
+        const group = keys.slice(start, start + ASSET_DELETE_GROUP_SIZE)
+        showRemoving(done + start + group.length, total)
         try {
-            if (isTauri) {
-                await remove(keys[i], { baseDir: BaseDirectory.AppData })
-            } else {
-                await forageStorage.removeItem(keys[i])
-            }
+            await store.deleteMany(group.map((key) => ({ key, condition: 'unconditional' as const })))
         } catch (error) {
-            console.error('Cold storage cleanup: could not delete an asset:', error)
-            failed++
+            if (error instanceof StoreDeleteManyError) {
+                const notRemoved = error.report.filter((entry) => entry.outcome !== 'removed')
+                console.error('Cold storage cleanup: could not delete an asset:', notRemoved[0]?.error ?? error)
+                failed += notRemoved.length
+            } else {
+                console.error('Cold storage cleanup: could not delete assets:', error)
+                failed += group.length
+            }
         }
     }
     return failed
+}
+
+/**
+ * The form an asset name is compared in. The desktop file systems (Windows, and
+ * macOS by default) treat names that differ only in case as one file, so a
+ * file is the referenced one whatever the case of the reference; elsewhere the
+ * names are exact.
+ */
+function assetCompareName(name: string): string {
+    return isTauri ? name.toLowerCase() : name
+}
+
+/** On the desktop only a file directly under `assets/` is a candidate; a nested key is never swept. */
+function isAssetCandidateKey(key: string): boolean {
+    return !isTauri || !key.slice(ASSET_KEY_PREFIX.length).includes('/')
 }
 
 /** Unit keys that live memory refers to right now. */
@@ -555,7 +584,8 @@ async function cleanExclusively(): Promise<void> {
     // the progress counts deletions and a batch's live check only has to look
     // at keys that could go.
     const unitCandidates = [...loadListing.units].filter((key) => startListing.units.has(key) && !keep.units.has(key))
-    const assetCandidates = [...loadListing.assets].filter((key) => startListing.assets.has(key) && !keep.assets.has(getBasename(key)))
+    const keptAssetNames = new Set(Array.from(keep.assets, assetCompareName))
+    const assetCandidates = [...loadListing.assets].filter((key) => startListing.assets.has(key) && isAssetCandidateKey(key) && !keptAssetNames.has(assetCompareName(getBasename(key))))
 
     const units = await deleteInBatches(
         unitCandidates,
@@ -572,8 +602,8 @@ async function cleanExclusively(): Promise<void> {
         const assets = await deleteInBatches(
             assetCandidates,
             (batch) => {
-                const live = new Set(getUncleanablesSync(DBState.db))
-                return batch.filter((key) => !live.has(getBasename(key)))
+                const live = new Set(Array.from(getUncleanablesSync(DBState.db), assetCompareName))
+                return batch.filter((key) => !live.has(assetCompareName(getBasename(key))))
             },
             removeAssetBatch,
         )

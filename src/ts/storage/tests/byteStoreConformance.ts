@@ -37,6 +37,8 @@ export interface ConformanceHarness {
     oddKeys: string[]
     /** Makes removing `key` fail in the backing store, for adapters without conditions; returns the undo. */
     failDeleteOf?(key: string): () => void
+    /** Whether the adapter offers `urlFor`; an adapter that does not must leave it out. */
+    offersUrlFor?: boolean
 }
 
 /** Keys that fail the shared rule for creating a key; every adapter's `write` must refuse them. */
@@ -262,6 +264,24 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 ).rejects.toBeInstanceOf(StoreInvalidKeyError)
                 expect(harness.backendCalls()).toBe(before)
                 expect(await store.has('inv/dup')).toBe(true)
+            })
+        })
+
+        describe('S12 a URL for a key', () => {
+            test('only an adapter whose files the web view reaches itself offers one', () => {
+                expect(typeof store.urlFor).toBe(harness.offersUrlFor === true ? 'function' : 'undefined')
+            })
+
+            test('an adapter that offers one answers from the key alone, for an absent key too, and refuses an unusable key', async () => {
+                if (harness.offersUrlFor !== true || store.urlFor === undefined) {
+                    return
+                }
+                const before = harness.backendCalls()
+                expect(typeof await store.urlFor('assets/never-written.png')).toBe('string')
+                for (const key of harness.invalidEverywhere) {
+                    await expect(store.urlFor(key), `urlFor ${JSON.stringify(key)}`).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                }
+                expect(harness.backendCalls()).toBe(before)
             })
         })
 

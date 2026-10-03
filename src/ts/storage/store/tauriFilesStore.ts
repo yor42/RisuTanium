@@ -1,3 +1,5 @@
+import { convertFileSrc } from '@tauri-apps/api/core'
+import { appDataDir, join } from '@tauri-apps/api/path'
 import { BaseDirectory, exists, mkdir, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
@@ -17,6 +19,10 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * Writes go through `writeFileAtomic`, so a failed write keeps the old file.
  * The granted file system surface has no `stat` and no exclusive rename, so
  * this store cannot enforce `ifVersion` and reports `conditionalWrites: false`.
+ *
+ * It is the one store that offers `urlFor`: the web view loads a file from the
+ * asset protocol by its absolute path, so the URL comes from the key alone and
+ * no byte is read.
  */
 
 const APP_DATA = { baseDir: BaseDirectory.AppData }
@@ -93,7 +99,16 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
         }
     }
 
-    /** Appends the keys under `directory` whose first name starts with `namePrefix`; deeper names are not filtered. */
+    let appDataPath: string | undefined
+    const urls = new Map<string, string>()
+
+    /**
+     * Appends the keys under `directory` whose first name starts with `namePrefix`;
+     * deeper names are not filtered. A symbolic link is a key only while it
+     * resolves (`exists` follows links), and is never entered: the plugin
+     * reports it as neither a file nor a directory, and a link to a directory
+     * must not pull in files that live outside the key space.
+     */
     async function collect(directory: string, namePrefix: string, keys: string[]): Promise<void> {
         const path = directory === '' ? '.' : pluginPath(directory)
         let entries: Awaited<ReturnType<typeof readDir>>
@@ -112,7 +127,11 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             const key = directory === '' ? entry.name : `${directory}/${entry.name}`
             if (entry.isDirectory) {
                 await collect(key, '', keys)
-            } else if (entry.isFile && !ATOMIC_TEMP_NAME_PATTERN.test(entry.name)) {
+            } else if (ATOMIC_TEMP_NAME_PATTERN.test(entry.name)) {
+                continue
+            } else if (entry.isFile) {
+                keys.push(key)
+            } else if (entry.isSymlink && await exists(pluginPath(key), APP_DATA)) {
                 keys.push(key)
             }
         }
@@ -197,6 +216,18 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             } catch {
                 return true
             }
+        },
+
+        async urlFor(key: string): Promise<string> {
+            checkAddressable(key)
+            const known = urls.get(key)
+            if (known !== undefined) {
+                return known
+            }
+            appDataPath ??= await appDataDir()
+            const url = convertFileSrc(await join(appDataPath, key))
+            urls.set(key, url)
+            return url
         },
     }
 }

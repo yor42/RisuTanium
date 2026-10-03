@@ -10,7 +10,6 @@ import { markAppInitiatedReload } from "./reloadGuard"
 import { openUrlOnWeb } from "./openUrlWeb"
 import { convertFileSrc, invoke } from "@tauri-apps/api/core"
 import { v4 as uuidv4, v4 } from 'uuid';
-import { appDataDir, join } from "@tauri-apps/api/path";
 import { get } from "svelte/store";
 import { flushSync } from "svelte";
 import { open } from '@tauri-apps/plugin-shell'
@@ -31,7 +30,7 @@ import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { getAppStore, writeMainFile } from "./storage/store/appStore";
-import { StoreVersionConflictError } from "./storage/store/errors";
+import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -276,29 +275,68 @@ function touchFileCache(loc: string, entry: FileCacheEntry) {
     }
 }
 
-let pathCache: { [key: string]: string } = {}
 let checkedPaths: string[] = []
+
+/**
+ * Asset keys that `saveAsset` or a restore wrote, or tried to write, in this
+ * page load. A key is added before its I/O starts and stays whatever the
+ * outcome, so a sweep that consults it never deletes an asset that a caller is
+ * about to reference.
+ */
+const assetsWrittenThisPage = new Set<string>()
+
+/** Records `key` as written in this page load. Call it before the write starts. */
+export function noteAssetWrittenThisPage(key: string): void {
+    assetsWrittenThisPage.add(key)
+}
+
+/** Every key `saveAsset` or a restore wrote, or tried to write, in this page load. */
+export function listAssetsWrittenThisPage(): string[] {
+    return Array.from(assetsWrittenThisPage)
+}
+
+/** Whether `saveAsset` or a restore wrote, or tried to write, `key` in this page load. */
+export function wasAssetWrittenThisPage(key: string): boolean {
+    return assetsWrittenThisPage.has(key)
+}
+
+/**
+ * The bytes of `loc` for a URL built outside Tauri. A key the store cannot
+ * address holds nothing, so it reads as absent; any other failure propagates.
+ */
+async function readBytesForUrl(loc: string): Promise<Uint8Array | null> {
+    try {
+        return (await (await getAppStore()).read(loc)).bytes
+    } catch (error) {
+        if (error instanceof StoreInvalidKeyError) {
+            return null
+        }
+        throw error
+    }
+}
 
 /**
  * Gets the source URL of a file.
  *
+ * On Tauri an asset URL comes from the store's `urlFor`, from the key alone, so
+ * no byte is read; elsewhere the bytes come from the store and are handed to
+ * the service worker or encoded into a data URL.
+ *
  * @param {string} loc - The location of the file.
- * @returns {Promise<string>} - A promise that resolves to the source URL of the file.
+ * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made.
  */
 export async function getFileSrc(loc: string) {
     if (isTauri) {
         if (loc.startsWith('assets')) {
-            if (appDataDirPath === '') {
-                appDataDirPath = await appDataDir();
-            }
-            const cached = pathCache[loc]
-            if (cached) {
-                return convertFileSrc(cached)
-            }
-            else {
-                const joined = await join(appDataDirPath, loc)
-                pathCache[loc] = joined
-                return convertFileSrc(joined)
+            try {
+                const store = await getAppStore()
+                if (store.urlFor === undefined) {
+                    throw new Error('The desktop store offers no URL for a file.')
+                }
+                return await store.urlFor(loc)
+            } catch (error) {
+                console.error(error)
+                return ''
             }
         }
         return convertFileSrc(loc)
@@ -322,7 +360,7 @@ export async function getFileSrc(loc: string) {
                         if (hasCache) {
                             return { status: 'done' }
                         }
-                        const f: Uint8Array = await forageStorage.getItem(loc) as unknown as Uint8Array
+                        const f = await readBytesForUrl(loc)
                         if (f && f.byteLength > 0) {
                             await fetch("/sw/register/" + encoded, {
                                 method: "POST",
@@ -381,7 +419,7 @@ export async function getFileSrc(loc: string) {
                     // never rebuilding it per call. A caller that arrives
                     // after this entry is evicted or superseded by a retry
                     // still gets a different string than an earlier caller.
-                    const f: Uint8Array = await forageStorage.getItem(loc) as unknown as Uint8Array
+                    const f = await readBytesForUrl(loc)
                     const src = FILE_CACHE_SRC_PREFIX + Buffer.from(f ?? new Uint8Array()).toString('base64')
                     return { status: 'done', src }
                 })()
@@ -441,64 +479,112 @@ export async function getFileSrc(loc: string) {
     }
 }
 
-let appDataDirPath = ''
+/**
+ * The bytes under `key` in the page's store. A key with no value rejects on
+ * Tauri and resolves `null` elsewhere, and a key the store cannot address counts
+ * as absent there; callers and plugins observe both. Off Tauri the result is a
+ * `Buffer` over the stored bytes, without a copy.
+ *
+ * The `null` of the platforms that return one is typed away on purpose: the
+ * callers were written against `Uint8Array`, and the ones that need the absent
+ * case test for a falsy value.
+ */
+async function readAssetBytes(key: string): Promise<Uint8Array> {
+    const store = await getAppStore()
+    let bytes: Uint8Array | null
+    try {
+        bytes = (await store.read(key)).bytes
+    } catch (error) {
+        if (!isTauri && error instanceof StoreInvalidKeyError) {
+            return null as unknown as Uint8Array
+        }
+        throw error
+    }
+    if (bytes === null) {
+        if (isTauri) {
+            throw new Error(`The asset ${JSON.stringify(key)} does not exist.`)
+        }
+        return null as unknown as Uint8Array
+    }
+    return isTauri ? bytes : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+}
 
 /**
  * Reads an image file and returns its data.
- * 
+ *
  * @param {string} data - The path to the image file.
  * @returns {Promise<Uint8Array>} - A promise that resolves to the data of the image file.
  */
 export async function readImage(data: string) {
-    if (isTauri) {
-        if (data.startsWith('assets')) {
-            if (appDataDirPath === '') {
-                appDataDirPath = await appDataDir();
-            }
-            return await readFile(await join(appDataDirPath, data))
-        }
+    if (isTauri && !data.startsWith('assets')) {
+        // A path the caller names, not an asset key: the store only holds keys.
         return await readFile(data)
     }
-    else {
-        return (await forageStorage.getItem(data) as unknown as Uint8Array)
-    }
+    return await readAssetBytes(data)
 }
 
 /**
  * Saves an asset file with the given data, custom ID, and file name.
  * 
- * @param {Uint8Array} data - The data of the asset file.
+ * @param {Uint8Array} data - The data of the asset file; an ArrayBuffer or another typed-array view is taken as it is. Any other value rejects with a TypeError.
  * @param {string} [customId=''] - The custom ID for the asset file.
- * @param {string} [fileName=''] - The name of the asset file.
+ * @param {string} [fileName=''] - The name of the asset file. Its extension (the part after the last dot) is kept when it is 1 to 16 ASCII letters or digits, and is `png` otherwise.
  * @returns {Promise<string>} - A promise that resolves to the path of the saved asset file.
  */
-export async function saveAsset(data: Uint8Array, customId: string = '', fileName: string = '') {
+export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView, customId: string = '', fileName: string = '') {
+    const bytes = assetBytesOf(data)
     let id = ''
     if (customId !== '') {
         id = customId
     }
     else {
         try {
-            id = await hasher(data)
+            id = await hasher(bytes)
         } catch (error) {
             id = uuidv4()
         }
     }
     let fileExtension: string = 'png'
-    if (fileName && fileName.split('.').length > 0) {
-        fileExtension = fileName.split('.').pop()
+    if (fileName) {
+        const candidate = fileName.split('.').pop() ?? ''
+        if (ASSET_EXTENSION.test(candidate)) {
+            fileExtension = candidate
+        }
     }
-    if (isTauri) {
-        await writeFile(`assets/${id}.${fileExtension}`, data, {
-            baseDir: BaseDirectory.AppData
-        });
-        return `assets/${id}.${fileExtension}`
+    const key = `assets/${id}.${fileExtension}`
+    // Before any I/O, so a sweep that runs while this save is in flight, or
+    // after it failed, still leaves the key alone.
+    noteAssetWrittenThisPage(key)
+    const store = await getAppStore()
+    // A name is a content hash (or a fresh UUID), so an existing file holds
+    // these bytes already. Replacing it would rename over a file the web view
+    // may hold open. Only the desktop store checks a key without a scan.
+    if (isTauri && await store.has(key)) {
+        return key
     }
-    else {
-        let form = `assets/${id}.${fileExtension}`
-        await forageStorage.setItem(form, data)
-        return form
+    await store.write(key, bytes, 'unconditional')
+    return key
+}
+
+/** What follows the last dot of an asset's file name: short and plain, so the key stays one path segment on every platform. */
+const ASSET_EXTENSION = /^[A-Za-z0-9]{1,16}$/
+
+/**
+ * The bytes of a value handed to `saveAsset`: a `Uint8Array`, an `ArrayBuffer`
+ * or any other view over one, taken as they are without a copy. Anything else is
+ * a programming error and is refused before a key is made.
+ */
+function assetBytesOf(data: unknown): Uint8Array {
+    if (data instanceof Uint8Array) {
+        return data
     }
+    if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    }
+    if (Object.prototype.toString.call(data) === '[object ArrayBuffer]') {
+        return new Uint8Array(data as ArrayBuffer)
+    }
+    throw new TypeError(`An asset is saved from an ArrayBuffer or a typed array, not a value of type ${Object.prototype.toString.call(data).slice(8, -1)}.`)
 }
 
 /**
@@ -508,12 +594,7 @@ export async function saveAsset(data: Uint8Array, customId: string = '', fileNam
  * @returns {Promise<Uint8Array>} - A promise that resolves to the data of the loaded asset file.
  */
 export async function loadAsset(id: string) {
-    if (isTauri) {
-        return await readFile(id, { baseDir: BaseDirectory.AppData })
-    }
-    else {
-        return await forageStorage.getItem(id) as unknown as Uint8Array
-    }
+    return await readAssetBytes(id)
 }
 
 let lastSave = ''

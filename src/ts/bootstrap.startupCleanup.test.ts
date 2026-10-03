@@ -205,6 +205,7 @@ vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
 vi.mock(import('src/ts/storage/assetSweep'), () => ({
     sweepTauriAssets: vi.fn(async () => { }),
     sweepForageAssetKey: vi.fn(async () => { }),
+    ASSET_SWEEP_BATCH_SIZE: 100,
 }) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
@@ -282,6 +283,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     setUsingSw: vi.fn(),
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
+    wasAssetWrittenThisPage: vi.fn(() => false),
     AppendableBuffer: class { },
     BlankWriter: class { },
     LocalWriter: class { },

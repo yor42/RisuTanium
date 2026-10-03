@@ -21,10 +21,67 @@ import { indexedDbAddressableViolation, indexedDbCreatableViolation } from './ke
  * rejects with `StoreNotBinaryError` for the last; `has` and `list` report it
  * like any other entry, and `list` never loads a value.
  *
+ * That a key holds no value is settled by a point lookup on a second, plain
+ * connection to the same database, so a read of an absent key does not list
+ * every key. That connection never creates or upgrades anything and closes the
+ * moment another connection changes the schema.
+ *
  * The browser store keeps no version, so `conditionalWrites` is false.
  */
 
 const DATABASE_NAME = 'risuai'
+const OBJECT_STORE_NAME = 'keyvaluepairs'
+
+/**
+ * A plain connection to the existing database, opened without a version so it
+ * neither upgrades nor downgrades anything: if the database or its object store
+ * is missing it creates nothing and reports `null`. It closes itself when any
+ * other connection asks for a schema change, so it never blocks LocalForage's
+ * own open or a database delete.
+ */
+function openExistingDatabase(onClosed: (database: IDBDatabase) => void): Promise<IDBDatabase | null> {
+    return new Promise((resolve) => {
+        let request: IDBOpenDBRequest
+        try {
+            request = indexedDB.open(DATABASE_NAME)
+        } catch {
+            resolve(null)
+            return
+        }
+        request.onupgradeneeded = () => {
+            // Only an open of a database that does not exist gets here, since no
+            // version was asked for. Aborting the upgrade removes the database
+            // again.
+            try {
+                request.transaction?.abort()
+            } catch {
+                // The open then fails or succeeds on its own below.
+            }
+        }
+        request.onerror = (event) => {
+            event.preventDefault()
+            resolve(null)
+        }
+        request.onsuccess = () => {
+            const database = request.result
+            if (!database.objectStoreNames.contains(OBJECT_STORE_NAME)) {
+                database.close()
+                resolve(null)
+                return
+            }
+            database.onversionchange = () => {
+                database.close()
+                onClosed(database)
+            }
+            database.onclose = () => onClosed(database)
+            resolve(database)
+        }
+    })
+}
+
+function isInvalidStateError(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'InvalidStateError'
+}
 
 /** The bytes of a stored value, or `null` when it is not binary data. Checks by tag so a value from another realm is still recognised. */
 async function bytesOfStoredValue(value: unknown): Promise<Uint8Array | null> {
@@ -63,6 +120,62 @@ export function createIndexedDbStore(): ByteStore {
         await forage().removeItem(key)
     }
 
+    let connection: IDBDatabase | undefined
+    let opening: Promise<IDBDatabase | null> | undefined
+
+    function connect(): Promise<IDBDatabase | null> {
+        if (connection !== undefined) {
+            return Promise.resolve(connection)
+        }
+        opening ??= openExistingDatabase((closed) => {
+            if (connection === closed) {
+                connection = undefined
+            }
+        }).then((database) => {
+            connection = database ?? undefined
+            opening = undefined
+            return database
+        })
+        return opening
+    }
+
+    /**
+     * Whether `key` has an entry, answered by one point lookup instead of a
+     * list of every key. `null` when the lookup could not be made, so the
+     * caller takes the slower route: an unavailable connection is never read as
+     * "absent". A connection the browser closed is replaced once.
+     */
+    async function entryExists(key: string): Promise<boolean | null> {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const database = await connect()
+            if (database === null) {
+                return null
+            }
+            try {
+                return await new Promise<boolean>((resolve, reject) => {
+                    const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
+                    const request = transaction.objectStore(OBJECT_STORE_NAME).count(key)
+                    request.onsuccess = () => resolve(request.result > 0)
+                    request.onerror = () => reject(request.error)
+                    transaction.onabort = () => reject(transaction.error)
+                })
+            } catch (error) {
+                if (!isInvalidStateError(error)) {
+                    return null
+                }
+                if (connection === database) {
+                    connection = undefined
+                }
+                try {
+                    database.close()
+                } catch {
+                    // Already closed.
+                }
+            }
+        }
+        return null
+    }
+
     return {
         capabilities: { conditionalWrites: false },
 
@@ -72,11 +185,13 @@ export function createIndexedDbStore(): ByteStore {
             let value = await store.getItem<unknown>(key)
             if (value === null) {
                 // `getItem` answers null both for an absent key and for an entry
-                // stored as null or undefined, so absence is settled by the key
-                // list, which loads no values. Another tab may write the key in
-                // between, hence one more read before the entry is called
-                // non-binary.
-                if (!(await store.keys()).includes(key)) {
+                // stored as null or undefined, so absence is settled by a point
+                // lookup of the key, which loads no value, or when that cannot be
+                // made by the key list, which loads none either. Another tab may
+                // write the key in between, hence one more read before the entry
+                // is called non-binary.
+                const present = await entryExists(key) ?? (await store.keys()).includes(key)
+                if (!present) {
                     return { bytes: null, version: null }
                 }
                 value = await store.getItem<unknown>(key)

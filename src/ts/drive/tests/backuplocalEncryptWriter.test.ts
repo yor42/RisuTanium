@@ -74,6 +74,12 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     requiresFullEncoderReload: { state: false },
 }) as unknown as typeof import('../../globalApi.svelte'))
 
+// The assets are listed and read through the page's byte store; here it holds none.
+vi.mock(import('../../storage/store/appStore'), async () => {
+    const { appStoreModuleOver, forageOverMap } = await import('../../storage/tests/appStoreMock')
+    return appStoreModuleOver(() => forageOverMap(new Map())) as unknown as typeof import('../../storage/store/appStore')
+})
+
 vi.mock(import('../../alert'), () => ({
     alertError: vi.fn(),
     alertNormal: vi.fn(),

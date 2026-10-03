@@ -90,6 +90,7 @@ vi.mock(import('../../globalApi.svelte'), () => ({
         setItem: forageSetItemMock,
     },
     requiresFullEncoderReload: requiresFullEncoderReloadMock,
+    noteAssetWrittenThisPage: vi.fn(),
     dbWriteLock: { acquire: vi.fn(async () => vi.fn()) },
     // Granted immediately, standing in for "no other tab is open". The
     // encrypted-backup refusal (MC-081) fires before any lock is attempted

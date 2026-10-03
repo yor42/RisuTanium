@@ -2,6 +2,7 @@ import { BaseDirectory, exists, readDir } from "@tauri-apps/plugin-fs"
 import { forageStorage } from "../globalApi.svelte"
 import { isNodeServer, isTauri } from "../platform"
 import { isSafeColdStorageKey } from "../process/coldStorageKey"
+import { getAppStore } from "./store/appStore"
 
 /**
  * What is stored on the current backend, as two sets.
@@ -52,6 +53,16 @@ async function listOpfsUnits(): Promise<string[]> {
     return keys
 }
 
+/**
+ * The asset keys the page's byte store lists. The store hides the temp file of
+ * an atomic write. On the desktop a nested key is left out: only a file
+ * directly under `assets/` is ever a candidate for deletion.
+ */
+async function listAssetKeys(): Promise<Set<string>> {
+    const keys = await (await getAppStore()).list(ASSET_PREFIX)
+    return new Set(isTauri ? keys.filter((key) => !key.slice(ASSET_PREFIX.length).includes('/')) : keys)
+}
+
 /** The unit names that may be unit keys: a stored name the key rule rejects is never listed, so it is never a candidate for deletion. */
 function safeUnitKeys(names: Iterable<string>): Set<string> {
     const keys = new Set<string>()
@@ -65,21 +76,21 @@ function safeUnitKeys(names: Iterable<string>): Set<string> {
 
 /**
  * Lists the units and the assets on the current backend right now. Rejects
- * when either listing cannot be taken. A Node server answers one directory
- * listing that serves both. Only stored names that can be unit keys
+ * when either listing cannot be taken. Units are listed from their own
+ * directory or prefix; assets always through the byte store, so a Node server
+ * answers two listings. Only stored names that can be unit keys
  * (`isSafeColdStorageKey`) are listed as units.
  */
 export async function takeStorageListing(): Promise<StorageListing> {
     if (isTauri) {
         const unitNames = await listTauriDirectory('coldstorage')
-        const assetNames = await listTauriDirectory('assets')
         return {
             units: safeUnitKeys(unitNames.filter((name) => name.endsWith(UNIT_JSON_SUFFIX)).map((name) => name.slice(0, -UNIT_JSON_SUFFIX.length))),
-            assets: new Set(assetNames.map((name) => ASSET_PREFIX + name)),
+            assets: await listAssetKeys(),
         }
     }
     const keys = await forageStorage.keys()
-    const assets = new Set(keys.filter((key) => key.startsWith(ASSET_PREFIX)))
+    const assets = await listAssetKeys()
     if (isNodeServer) {
         return {
             units: safeUnitKeys(keys.filter((key) => key.startsWith(UNIT_PREFIX)).map((key) => key.slice(UNIT_PREFIX.length))),

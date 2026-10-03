@@ -27,6 +27,14 @@
  *   POSIX `(os error 2)`. `exists` is false for such a path.
  * - `readDir` lists one level, directories included, with `isDirectory`.
  *
+ * `setAppDataRoot` names the absolute AppData directory, so a call that gives
+ * an absolute path under it addresses the same file as its relative form.
+ *
+ * A symbolic link (`plantSymlink`) is reported by `readDir` as neither a file
+ * nor a directory (`isSymlink` only), as the plugin reports it. `exists` and
+ * `readFile` follow it: they see its target, and a dangling link does not
+ * exist. A link is never a directory the listing descends into.
+ *
  * Use it from a mock factory loaded with a dynamic import inside `vi.hoisted`.
  */
 
@@ -53,6 +61,9 @@ export interface FakeFsRename {
 export interface FakeFsFault {
     fired: number
 }
+
+/** What a planted symbolic link points at. */
+export type FakeSymlinkTarget = { kind: 'file', data: Uint8Array } | { kind: 'directory' } | { kind: 'missing' }
 
 export type FakeFsPlatform = 'windows' | 'posix'
 
@@ -90,6 +101,7 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
 
     const files = new Map<string, Uint8Array>()
     const directories = new Set<string>()
+    const symlinks = new Map<string, FakeSymlinkTarget>()
     const writeLog: FakeFsWrite[] = []
     const renameLog: FakeFsRename[] = []
     const removeLog: string[] = []
@@ -103,9 +115,15 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
     let readFileFault: { error: string, matches: ((path: string) => boolean) | undefined, handle: FakeFsFault } | undefined
     let existsOverride: boolean | undefined
 
+    /** The absolute AppData directory, when a suite names one: a path under it is the same file as its relative form. */
+    let appDataRoot: string | undefined
+
     /** The path a call was given, relative to AppData: a leading `./` is dropped, and in strict mode `.` is the root. */
     function resolved(path: string): string {
-        const bare = path.startsWith('./') ? path.slice(2) : path
+        let bare = path.startsWith('./') ? path.slice(2) : path
+        if (appDataRoot !== undefined && (path.startsWith(`${appDataRoot}/`) || path.startsWith(`${appDataRoot}\\`))) {
+            bare = path.slice(appDataRoot.length + 1).replace(/\\/g, '/')
+        }
         if (!strict) {
             return bare
         }
@@ -121,6 +139,7 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
         const prefix = `${directory}/`
         return Array.from(files.keys()).some((key) => key.startsWith(prefix))
             || Array.from(directories).some((known) => known.startsWith(prefix))
+            || Array.from(symlinks.keys()).some((key) => key.startsWith(prefix))
     }
 
     /** Strict mode: a directory exists when it was created, or a file lies under it. */
@@ -228,6 +247,10 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
             readFileFault.handle.fired++
             throw `failed to open file at path: ${path} with error: ${readFileFault.error}`
         }
+        const link = symlinks.get(target)
+        if (link?.kind === 'file') {
+            return link.data.slice()
+        }
         const found = files.get(target)
         if (!found) {
             if (strict) {
@@ -247,6 +270,10 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
             return existsOverride
         }
         const target = resolved(path)
+        const link = symlinks.get(target)
+        if (link !== undefined) {
+            return link.kind !== 'missing'
+        }
         if (strict) {
             return files.has(target) || directoryExists(target)
         }
@@ -304,12 +331,24 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
                 const name = rest.includes('/') ? rest.slice(0, rest.indexOf('/')) : rest
                 entries.set(name, { name, isFile: false, isDirectory: true, isSymlink: false })
             }
+            for (const link of symlinks.keys()) {
+                if (link.startsWith(prefix) && !link.slice(prefix.length).includes('/')) {
+                    const name = link.slice(prefix.length)
+                    entries.set(name, { name, isFile: false, isDirectory: false, isSymlink: true })
+                }
+            }
             return Array.from(entries.values())
         }
         const prefix = `${target}/`
-        return Array.from(files.keys())
-            .filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
-            .map((key): FakeFsDirEntry => ({ name: key.slice(prefix.length), isFile: true, isDirectory: false, isSymlink: false }))
+        const direct = (key: string) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/')
+        return [
+            ...Array.from(files.keys())
+                .filter(direct)
+                .map((key): FakeFsDirEntry => ({ name: key.slice(prefix.length), isFile: true, isDirectory: false, isSymlink: false })),
+            ...Array.from(symlinks.keys())
+                .filter(direct)
+                .map((key): FakeFsDirEntry => ({ name: key.slice(prefix.length), isFile: false, isDirectory: false, isSymlink: true })),
+        ]
     }
 
     return {
@@ -339,6 +378,19 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
         /** Puts a file in place the way a previous run left it, creating the directories above it. */
         plant(path: string, data: Uint8Array): void {
             files.set(path, data.slice())
+            registerAncestors(parentOf(path))
+        },
+
+        symlinks,
+
+        /** Names the absolute AppData directory; `undefined` restores relative paths only. */
+        setAppDataRoot(root: string | undefined): void {
+            appDataRoot = root
+        },
+
+        /** Puts a symbolic link in place, creating the directories above it. */
+        plantSymlink(path: string, target: FakeSymlinkTarget): void {
+            symlinks.set(path, target)
             registerAncestors(parentOf(path))
         },
 
@@ -402,6 +454,7 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
         reset(): void {
             files.clear()
             directories.clear()
+            symlinks.clear()
             writeLog.length = 0
             renameLog.length = 0
             removeLog.length = 0
@@ -413,6 +466,7 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
             readDirFault = undefined
             readFileFault = undefined
             existsOverride = undefined
+            appDataRoot = undefined
             platform = initialPlatform
         },
 

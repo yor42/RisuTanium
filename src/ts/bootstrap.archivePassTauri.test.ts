@@ -778,3 +778,48 @@ describe('loadData() Tauri: the boot removes the leftover temp files of interrup
         expect(world.files.has(LEFTOVER)).toBe(true)
     })
 })
+
+describe('loadData() Tauri: the boot removes the leftover temp files of interrupted asset writes', () => {
+    const ASSET_LEFTOVER = 'assets/risu-write-0123456789abcdef.tmp'
+
+    test('reproducer: removes only the temp-named files of assets, before the pass session opens', async () => {
+        armLegacy()
+        world.files.set(ASSET_LEFTOVER, new Uint8Array([1, 2, 3]))
+        world.files.set('assets/risu-write-fedcba9876543210.tmp', new Uint8Array([4]))
+        world.files.set('assets/0123.png', new Uint8Array([5]))
+        world.files.set('assets/risu-write-not-a-temp.tmp', new Uint8Array([6]))
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(fakeFs.listing('assets')).toEqual(['0123.png', 'risu-write-not-a-temp.tmp'])
+        const removes = world.events.filter((e) => e.startsWith('remove:assets/'))
+        expect(removes).toHaveLength(2)
+        expect(world.events.indexOf(removes[1])).toBeLessThan(world.events.indexOf('open:tauri'))
+    })
+
+    test('guard: with no assets directory the boot creates it and removes nothing', async () => {
+        armLegacy()
+        world.files.delete('assets')
+        const { loadData } = await freshLoadData()
+
+        await loadData()
+
+        expect(world.events.filter((e) => e.startsWith('remove:assets/'))).toEqual([])
+        expect(fakeFs.directories.has('assets')).toBe(true)
+    })
+
+    test('guard: a listing of assets that fails does not stop the boot', async () => {
+        armLegacy()
+        world.files.set(ASSET_LEFTOVER, new Uint8Array([1, 2, 3]))
+        const fault = fakeFs.failReadDirs('Access is denied. (os error 5)')
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(fault.fired).toBeGreaterThan(0)
+        expect(get(loadedStore)).toBe(true)
+        expect(world.files.has(ASSET_LEFTOVER)).toBe(true)
+    })
+})

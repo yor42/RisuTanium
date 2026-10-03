@@ -101,4 +101,13 @@ export interface ByteStore {
      * the path only.
      */
     has(key: string): Promise<boolean>
+
+    /**
+     * A URL a web view can load `key` from, derived from the key alone: it never
+     * reads, lists or checks the value, and a URL for an absent key is still a
+     * URL. Only a backend whose files the web view can reach itself offers it;
+     * on every other backend the caller reads the bytes instead. Refuses an
+     * unusable key like `read`.
+     */
+    urlFor?(key: string): Promise<string>
 }

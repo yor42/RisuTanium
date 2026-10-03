@@ -231,6 +231,7 @@ vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
 vi.mock(import('src/ts/storage/assetSweep'), () => ({
     sweepTauriAssets: sweepTauriAssetsMock,
     sweepForageAssetKey: sweepForageAssetKeyMock,
+    ASSET_SWEEP_BATCH_SIZE: 100,
 }) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
@@ -301,6 +302,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     setUsingSw: setUsingSwMock,
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
+    wasAssetWrittenThisPage: vi.fn(() => false),
     AppendableBuffer: class {
         chunks: Uint8Array[] = []
         append(chunk: Uint8Array) { this.chunks.push(chunk) }

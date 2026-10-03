@@ -178,6 +178,7 @@ vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
 vi.mock(import('src/ts/storage/assetSweep'), () => ({
     sweepTauriAssets: sweepTauriAssetsMock,
     sweepForageAssetKey: vi.fn(async () => { }),
+    ASSET_SWEEP_BATCH_SIZE: 100,
 }) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
@@ -247,6 +248,8 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     setUsingSw: vi.fn(),
     checkCharOrder: vi.fn(),
     getUncleanablesSync: vi.fn((): string[] => []),
+    wasAssetWrittenThisPage: vi.fn(() => false),
+    listAssetsWrittenThisPage: vi.fn((): string[] => []),
     AppendableBuffer: class {
         chunks: Uint8Array[] = []
         append(chunk: Uint8Array) { this.chunks.push(chunk) }

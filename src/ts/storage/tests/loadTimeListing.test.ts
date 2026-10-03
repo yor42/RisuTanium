@@ -5,10 +5,16 @@
  * listing is recorded as "no listing", never as an empty one, which is the
  * clean-up suite's concern.
  *
- * Only platform boundaries are faked: the key listing of `forageStorage`
- * (assets on the web and on a Node server, units on a Node server), the OPFS
- * root directory (units on the web), and the plugin-fs directory reads
- * (assets and units on Tauri). Nothing here proves native backend behaviour.
+ * Only platform boundaries are faked: the key listing behind the byte store
+ * (assets on the web and on a Node server) and of `forageStorage` (units on a
+ * Node server), the OPFS root directory (units on the web), and the plugin-fs
+ * directory reads (assets and units on Tauri; the assets go through the real
+ * desktop store). Nothing here proves native backend behaviour.
+ *
+ * Tests titled `guard` pin behaviour that holds before and after the assets
+ * moved behind the byte store; `reproducer` tests fail against the listing that
+ * read the asset directory itself; `new behaviour` tests assert what only the
+ * store-based listing does.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
@@ -17,9 +23,26 @@ import { writable } from 'svelte/store'
 
 const platformState = vi.hoisted(() => ({ isTauri: false, isNodeServer: false }))
 
+interface FakeDirEntry {
+    name: string
+    isFile?: boolean
+    isDirectory?: boolean
+    isSymlink?: boolean
+}
+
+/** A plain file, as the plugin reports one. */
+function file(name: string): FakeDirEntry {
+    return { name, isFile: true, isDirectory: false, isSymlink: false }
+}
+
+/** A directory, as the plugin reports one. */
+function directory(name: string): FakeDirEntry {
+    return { name, isFile: false, isDirectory: true, isSymlink: false }
+}
+
 const boundary = vi.hoisted(() => ({
     forageKeys: vi.fn(async (): Promise<string[]> => []),
-    readDir: vi.fn(async (_path: string, _options?: unknown): Promise<Array<{ name: string }>> => []),
+    readDir: vi.fn(async (_path: string, _options?: unknown): Promise<Array<{ name: string, isFile?: boolean, isDirectory?: boolean, isSymlink?: boolean }>> => []),
     exists: vi.fn(async (_path: string, _options?: unknown): Promise<boolean> => true),
     getDirectory: vi.fn(async () => ({
         entries: () => (async function* () {
@@ -64,6 +87,26 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     },
     getBasename: (p: string) => p.split('/').pop(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+// The page's store is the desktop store over the faked plugin on Tauri and a
+// store over the faked key listing elsewhere; the selection itself, and the
+// application graph it reaches, stay out of this suite.
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { createForageBackedStore, createSwitchedStore } = await import('src/ts/storage/tests/forageBackedStore')
+    const { createTauriFilesStore } = await import('src/ts/storage/store/tauriFilesStore')
+    const webStore = createForageBackedStore({
+        getItem: async () => null,
+        setItem: async () => { },
+        keys: () => boundary.forageKeys(),
+        removeItem: async () => { },
+    })
+    const tauriStore = createTauriFilesStore({ platform: 'posix' })
+    const store = createSwitchedStore(() => platformState.isTauri ? tauriStore : webStore)
+    return { getAppStore: async () => store } as unknown as typeof import('src/ts/storage/store/appStore')
+})
+
+vi.mock('@tauri-apps/api/path', () => ({ appDataDir: vi.fn(async () => '/appdata'), join: vi.fn(async (...p: string[]) => p.join('/')) }))
+vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((p: string) => p) }))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: {} },
@@ -112,7 +155,7 @@ beforeEach(() => {
     platformState.isNodeServer = false
     boundary.forageKeys.mockReset().mockResolvedValue(['assets/a.png', 'coldstorage/unit-1'])
     boundary.readDir.mockReset().mockImplementation(async (path: string) =>
-        path.includes('coldstorage') ? [{ name: 'unit-1.json' }] : [{ name: 'a.png' }],
+        path.includes('coldstorage') ? [file('unit-1.json')] : [file('a.png')],
     )
     boundary.exists.mockReset().mockResolvedValue(true)
     boundary.getDirectory.mockReset().mockImplementation(async () => ({
@@ -134,7 +177,7 @@ function breakAssetsListing(backend: Backend) {
             if (path.includes('assets')) {
                 throw failure
             }
-            return [{ name: 'unit-1.json' }]
+            return [file('unit-1.json')]
         })
     } else {
         boundary.forageKeys.mockRejectedValue(failure)
@@ -153,7 +196,7 @@ function breakUnitsListing(backend: 'web' | 'tauri') {
             if (path.includes('coldstorage')) {
                 throw failure
             }
-            return [{ name: 'a.png' }]
+            return [file('a.png')]
         })
     } else {
         boundary.getDirectory.mockRejectedValue(failure)
@@ -234,7 +277,7 @@ describe('the load-time listing of a Tauri profile whose units directory does no
             if (path.includes('coldstorage')) {
                 throw new Error(message)
             }
-            return [{ name: 'a.png' }]
+            return [file('a.png')]
         })
         boundary.exists.mockImplementation(async (path: string) => !path.includes('coldstorage'))
     }
@@ -265,7 +308,7 @@ describe('the load-time listing of a Tauri profile whose units directory does no
             if (path.includes('coldstorage')) {
                 throw new Error('Access is denied. (os error 5)')
             }
-            return [{ name: 'a.png' }]
+            return [file('a.png')]
         })
 
         await recordLoadTimeListing()
@@ -279,7 +322,7 @@ describe('the load-time listing of a Tauri profile whose units directory does no
             if (path.includes('coldstorage')) {
                 throw new Error('No such file or directory (os error 2)')
             }
-            return [{ name: 'a.png' }]
+            return [file('a.png')]
         })
         boundary.exists.mockResolvedValue(true)
 
@@ -287,4 +330,55 @@ describe('the load-time listing of a Tauri profile whose units directory does no
 
         expect(getLoadTimeListing()).toBeNull()
     })
+})
+
+describe('the asset part of the load-time listing', () => {
+    const TEMP = 'risu-write-0123456789abcdef.tmp'
+
+    test('reproducer: Tauri lists no atomic-write temp file of assets/, so the clean-up never takes one for an asset', async () => {
+        useBackend('tauri')
+        boundary.readDir.mockImplementation(async (path: string) =>
+            path.includes('coldstorage') ? [file('unit-1.json')] : [file('a.png'), file(TEMP)],
+        )
+
+        await recordLoadTimeListing()
+
+        expect([...(getLoadTimeListing()?.assets ?? [])]).toEqual(['assets/a.png'])
+    })
+
+    test('guard: Tauri lists only the files directly under assets/, never a nested key', async () => {
+        useBackend('tauri')
+        boundary.readDir.mockImplementation(async (path: string) => {
+            if (path.includes('coldstorage')) {
+                return [file('unit-1.json')]
+            }
+            return path.replace(/^\.\//, '') === 'assets' ? [file('a.png'), directory('d')] : [file('x.png')]
+        })
+
+        await recordLoadTimeListing()
+
+        expect([...(getLoadTimeListing()?.assets ?? [])]).toEqual(['assets/a.png'])
+    })
+
+    test('guard: Tauri lists a symbolic link that resolves to a file', async () => {
+        useBackend('tauri')
+        boundary.readDir.mockImplementation(async (path: string) =>
+            path.includes('coldstorage') ? [file('unit-1.json')] : [file('a.png'), { name: 'link.png', isFile: false, isDirectory: false, isSymlink: true }],
+        )
+
+        await recordLoadTimeListing()
+
+        expect([...(getLoadTimeListing()?.assets ?? [])].sort()).toEqual(['assets/a.png', 'assets/link.png'])
+    })
+
+    for (const backend of ['web', 'node'] as const) {
+        test(`guard: ${backend}: only the keys that start with assets/ are assets`, async () => {
+            useBackend(backend)
+            boundary.forageKeys.mockResolvedValue(['assets/a.png', 'assets/b.mp3', 'coldstorage/unit-1', 'database/database.bin', 'remotes/x.bin'])
+
+            await recordLoadTimeListing()
+
+            expect([...(getLoadTimeListing()?.assets ?? [])].sort()).toEqual(['assets/a.png', 'assets/b.mp3'])
+        })
+    }
 })

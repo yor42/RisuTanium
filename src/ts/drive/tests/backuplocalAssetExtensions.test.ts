@@ -12,9 +12,16 @@
  * `LocalWriter` from `src/ts/globalApi.svelte.ts`. Only its sinks are
  * replaced: `streamsaver` (web) and `@tauri-apps/plugin-fs` `writeFile`
  * (Tauri) capture the bytes the writer emits, so the assertions read real
- * `[nameLength][name][dataLength][data]` entries. The storage backend, the
- * Tauri file system and every dialog are mocked; a passing test here is not
- * evidence about a native Tauri backend or a real browser storage backend.
+ * `[nameLength][name][dataLength][data]` entries. The assets go through the
+ * page's byte store: the real desktop store over the in-memory file system of
+ * `tauriFsFake.ts` on Tauri, and a store over a key/value mock on the web.
+ * Every dialog is mocked; a passing test here is not evidence about a native
+ * Tauri backend or a real browser storage backend.
+ *
+ * Titles say what a test pins: `guard` tests hold before and after the assets
+ * moved behind the byte store, `reproducer` tests fail against the code that
+ * read the asset directory itself, and `new behaviour` tests assert what only
+ * the store-based export and restore do.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
@@ -31,37 +38,13 @@ const platformBox = vi.hoisted(() => {
 })
 const BACKUP_PATH = vi.hoisted(() => 'backup-output.bin')
 
-interface DirEntryFixture {
-    name: string
-    isFile: boolean
-    isDirectory: boolean
-    isSymlink: boolean
-}
-
 const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
-const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<DirEntryFixture[]> => []))
-const readFileMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Uint8Array | undefined> => new Uint8Array()))
-const tauriFiles = vi.hoisted(() => new Map<string, Uint8Array>())
+/** The Tauri file system: the desktop store runs for real over this in-memory model. */
+const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+/** Paths whose read the plugin answers with no data at all. */
+const emptyReads = vi.hoisted(() => new Set<string>())
 /** A path relative to AppData: the byte store addresses every key with a leading `./`. */
 const bare = vi.hoisted(() => (path: string): string => path.replace(/^\.\//, ''))
-const writeFileMock = vi.hoisted(() => vi.fn(async (path: string, data: Uint8Array, _options?: unknown): Promise<void> => {
-    if (path === BACKUP_PATH) {
-        backupSink.writes.push(data.slice())
-        return
-    }
-    tauriFiles.set(bare(path), data.slice())
-}))
-const renameMock = vi.hoisted(() => vi.fn(async (from: string, to: string, _options?: unknown): Promise<void> => {
-    const found = tauriFiles.get(bare(from))
-    if (!found) {
-        throw `no such file ${from} (os error 2)`
-    }
-    tauriFiles.set(bare(to), found)
-    tauriFiles.delete(bare(from))
-}))
-const removeMock = vi.hoisted(() => vi.fn(async (path: string, _options?: unknown): Promise<void> => {
-    tauriFiles.delete(bare(path))
-}))
 const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
 const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
 const forageSetItemMock = vi.hoisted(() => vi.fn(async (_key: string, _data: Uint8Array): Promise<void> => {}))
@@ -70,6 +53,14 @@ const setColdStorageItemMock = vi.hoisted(() => vi.fn(async () => true))
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertMdMock = vi.hoisted(() => vi.fn())
 const alertNormalMock = vi.hoisted(() => vi.fn())
+const alertNormalWaitMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<void> => { }))
+/** Whether the page was marked as about to reload itself; the real mark expires on a timer, which a test cannot reset. */
+const reloadMark = vi.hoisted(() => ({ marked: false }))
+
+vi.mock(import('src/ts/reloadGuard'), () => ({
+    markAppInitiatedReload: () => { reloadMark.marked = true },
+    isAppInitiatedReload: () => reloadMark.marked,
+}) as unknown as typeof import('src/ts/reloadGuard'))
 
 vi.mock('localforage', () => ({
     default: {
@@ -88,14 +79,21 @@ vi.mock(import('src/ts/platform'), () => ({
 }) as unknown as typeof import('src/ts/platform'))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0, Download: 1 },
-    writeFile: writeFileMock,
-    readFile: readFileMock,
-    readDir: readDirMock,
-    exists: vi.fn(async () => false),
-    mkdir: vi.fn(async () => { }),
-    remove: removeMock,
-    rename: renameMock,
+    ...fakeFs.module,
+    // The backup file the writer saves is a sink, not a file of the model.
+    writeFile: async (path: string, data: Uint8Array, options?: { createNew?: boolean, baseDir?: number }) => {
+        if (path === BACKUP_PATH) {
+            backupSink.writes.push(data.slice())
+            return
+        }
+        await fakeFs.module.writeFile(path, data, options)
+    },
+    readFile: async (path: string) => {
+        if (emptyReads.has(bare(path))) {
+            return undefined
+        }
+        return await fakeFs.module.readFile(path)
+    },
 }))
 
 vi.mock('@tauri-apps/plugin-process', () => ({
@@ -151,7 +149,7 @@ vi.mock(import('src/ts/alert'), () => ({
     alertSelect: vi.fn(),
     alertToast: vi.fn(),
     alertInput: vi.fn(),
-    alertNormalWait: vi.fn(),
+    alertNormalWait: alertNormalWaitMock,
     alertAddCharacter: vi.fn(),
     alertStore: writable({ type: 'none', msg: '' }),
     waitAlert: vi.fn(async () => { }),
@@ -272,7 +270,8 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
-import { LocalWriter, dbWriteLock } from 'src/ts/globalApi.svelte'
+import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { alertStore } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
@@ -380,45 +379,36 @@ function sortedRecord(record: Record<string, string>): Record<string, string> {
     return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
 }
 
-function fileEntry(name: string): DirEntryFixture {
-    return { name, isFile: true, isDirectory: false, isSymlink: false }
+/** A directory under `assets/`, which holds no value. */
+function plantDirectory(name: string) {
+    fakeFs.directories.add(`assets/${name}`)
 }
 
-function directoryEntry(name: string): DirEntryFixture {
-    return { name, isFile: false, isDirectory: true, isSymlink: false }
+/** A link to a file, as the plugin reports one: neither a file nor a directory, and followed by `exists` and `readFile`. */
+function plantFileLink(name: string) {
+    fakeFs.plantSymlink(`assets/${name}`, { kind: 'file', data: bytesFor(name) })
 }
 
-/** How Tauri's `readDir` reports a link to a file: it does not follow links, so `isFile` is false. */
-function symlinkEntry(name: string): DirEntryFixture {
-    return { name, isFile: false, isDirectory: false, isSymlink: true }
-}
-
-/** Makes `readFile` reject for `path` and serve every other path as before. */
+/** Makes the read of `assets/<name>` reject and serves every other path as before. */
 function failReadOf(path: string) {
-    const serve = readFileMock.getMockImplementation()
-    readFileMock.mockImplementation(async (requested, options) => {
-        if (requested === path) {
-            throw new Error('read failed')
-        }
-        return serve ? serve(requested, options) : undefined
-    })
+    fakeFs.failReadFiles('Access is denied. (os error 5)', (requested) => requested === path)
 }
 
-/** Serves each `assets/<name>` from `bytesFor`, on both the web storage mock and the Tauri file mock. */
+/** Every path a file read was given, relative to AppData. */
+function readPaths(): string[] {
+    return fakeFs.calls.filter((call) => call.op === 'readFile').map((call) => bare(call.path))
+}
+
+/** Serves each `assets/<name>` from `bytesFor`, on both the web storage mock and the Tauri file model. */
 function serveAssets(names: string[]) {
     forageKeysMock.mockImplementation(async () => names.map((n) => `assets/${n}`))
     forageGetItemMock.mockImplementation(async (key) => {
         const name = key.replace(/^assets\//, '')
         return names.includes(name) ? bytesFor(name) : null
     })
-    readDirMock.mockImplementation(async () => names.map(fileEntry))
-    readFileMock.mockImplementation(async (path) => {
-        const name = path.replace(/^assets\//, '')
-        if (!names.includes(name)) {
-            throw new Error(`no such file: ${path}`)
-        }
-        return bytesFor(name)
-    })
+    for (const name of names) {
+        fakeFs.plant(`assets/${name}`, bytesFor(name))
+    }
 }
 
 /** Runs a save and returns what it threw, or `null` when it completed. */
@@ -450,7 +440,7 @@ async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
 function restoredAssets(): Record<string, string> {
     const out: Record<string, string> = {}
     const calls: [string, Uint8Array][] = platformBox.isTauri
-        ? writeFileMock.mock.calls.map((c) => [c[0], c[1]])
+        ? Array.from(fakeFs.files.entries())
         : forageSetItemMock.mock.calls.map((c) => [c[0], c[1]])
     for (const [path, data] of calls) {
         if (path.startsWith('assets/')) {
@@ -469,12 +459,9 @@ function withPrefix(record: Record<string, string>): Record<string, string> {
 beforeEach(() => {
     platformBox.isTauri = false
     backupSink.writes.length = 0
-    readDirMock.mockClear()
-    readFileMock.mockClear()
-    writeFileMock.mockClear()
-    renameMock.mockClear()
-    removeMock.mockClear()
-    tauriFiles.clear()
+    fakeFs.reset()
+    fakeFs.directories.add('assets')
+    emptyReads.clear()
     forageKeysMock.mockClear()
     forageGetItemMock.mockClear()
     forageSetItemMock.mockClear()
@@ -482,8 +469,8 @@ beforeEach(() => {
     alertErrorMock.mockClear()
     alertMdMock.mockClear()
     alertNormalMock.mockClear()
-    readDirMock.mockImplementation(async () => [])
-    readFileMock.mockImplementation(async () => new Uint8Array())
+    alertNormalWaitMock.mockReset().mockImplementation(async () => { })
+    reloadMark.marked = false
     forageKeysMock.mockImplementation(async () => [])
     forageGetItemMock.mockImplementation(async () => null)
     // The main file's byte store follows the platform model of each test: the
@@ -572,29 +559,28 @@ describe('a full backup on Tauri writes every file in the assets directory whate
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(ASSET_NAMES)))
     })
 
-    test('guard: a directory entry is never read and the backup still completes', async () => {
+    test('guard: a directory is never read and the backup still completes', async () => {
         serveAssets(['a.png', 'b.mp3'])
-        readDirMock.mockImplementation(async () => [fileEntry('a.png'), directoryEntry('sub'), fileEntry('b.mp3')])
+        plantDirectory('sub')
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        const readPaths = readFileMock.mock.calls.map((c) => c[0])
-        expect(readPaths).not.toContain('assets/sub')
+        expect(readPaths()).not.toContain('assets/sub')
         expect(writtenEntries().map((e) => e.name)).toContain('database.risudat')
     })
 
-    test('a symlink entry is read and written like a file', async () => {
-        serveAssets(['a.png', 'link.mp3'])
-        readDirMock.mockImplementation(async () => [fileEntry('a.png'), symlinkEntry('link.mp3')])
+    test('guard: a symlink to a file is read and written like a file', async () => {
+        serveAssets(['a.png'])
+        plantFileLink('link.mp3')
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'link.mp3'])))
     })
 
-    test('a symlink whose read fails is reported as missing and the other assets are still written', async () => {
+    test('a symlink that resolves but whose read fails is reported as missing and the other assets are still written', async () => {
         serveAssets(['a.png', 'c.png'])
-        readDirMock.mockImplementation(async () => [fileEntry('a.png'), symlinkEntry('broken.mp3'), fileEntry('c.png')])
+        plantFileLink('broken.mp3')
         failReadOf('assets/broken.mp3')
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
@@ -605,19 +591,32 @@ describe('a full backup on Tauri writes every file in the assets directory whate
         expect(report).toContain('broken.mp3')
     })
 
-    test('guard: a directory entry that is not a symlink is never read while a symlink beside it is', async () => {
-        serveAssets(['a.png', 'link.mp3'])
-        readDirMock.mockImplementation(async () => [directoryEntry('sub'), symlinkEntry('link.mp3'), fileEntry('a.png')])
+    test('reproducer: a dangling symlink is dropped from the backup, not reported as missing, and the other assets are still written', async () => {
+        serveAssets(['a.png', 'c.png'])
+        fakeFs.plantSymlink('assets/dangling.mp3', { kind: 'missing' })
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        const readPaths = readFileMock.mock.calls.map((c) => c[0])
-        expect(readPaths).not.toContain('assets/sub')
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'c.png'])))
+        expect(writtenEntries().map((e) => e.name)).toContain('database.risudat')
+        const report = alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')
+        expect(report).not.toContain('dangling.mp3')
+        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+    })
+
+    test('guard: a directory that is not a symlink is never read while a symlink beside it is', async () => {
+        serveAssets(['a.png'])
+        plantDirectory('sub')
+        plantFileLink('link.mp3')
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(readPaths()).not.toContain('assets/sub')
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'link.mp3'])))
     })
 
     test('a file whose read fails is reported as missing and the other assets are still written', async () => {
-        serveAssets(['a.png', 'c.png'])
-        readDirMock.mockImplementation(async () => [fileEntry('a.png'), fileEntry('bad.png'), fileEntry('c.png')])
+        serveAssets(['a.png', 'bad.png', 'c.png'])
         failReadOf('assets/bad.png')
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
@@ -629,21 +628,41 @@ describe('a full backup on Tauri writes every file in the assets directory whate
     })
 
     test('guard: a file whose read yields no data is reported as missing and the other assets are still written', async () => {
-        serveAssets(['a.png', 'c.png'])
-        readDirMock.mockImplementation(async () => [fileEntry('a.png'), fileEntry('empty.png'), fileEntry('c.png')])
-        const serve = readFileMock.getMockImplementation()
-        readFileMock.mockImplementation(async (path, options) => {
-            if (path === 'assets/empty.png') {
-                return undefined
-            }
-            return serve ? serve(path, options) : undefined
-        })
+        serveAssets(['a.png', 'empty.png', 'c.png'])
+        emptyReads.add('assets/empty.png')
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'c.png'])))
         const report = alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')
         expect(report).toContain('empty.png')
+    })
+
+    test('reproducer: the temp file of an atomic write in flight is not a backup entry', async () => {
+        serveAssets(['a.png', 'c.png'])
+        fakeFs.plant('assets/risu-write-0123456789abcdef.tmp', encoder.encode('half a write'))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'c.png'])))
+        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+    })
+
+    test('guard: an asset with an unusual name that the store can list is kept under its bare name', async () => {
+        serveAssets(['a.png', 'weird name.PNG', 'noext'])
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'weird name.PNG', 'noext'])))
+    })
+
+    test('new behaviour: a file in a nested directory of assets/ is exported under its bare name', async () => {
+        serveAssets(['a.png'])
+        fakeFs.plant('assets/d/nested.mp3', bytesFor('nested.mp3'))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'nested.mp3'])))
     })
 })
 
@@ -678,15 +697,25 @@ describe('hardening: a partial backup includes every referenced asset whatever i
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['bg.webp', 'x.webp', 'y.png'])))
     })
 
-    test('Tauri: a referenced asset reported as a symlink is read and written', async () => {
+    test('guard: Tauri: a referenced asset that is a symlink to a file is read and written', async () => {
         platformBox.isTauri = true
-        readDirMock.mockImplementation(async () => [
-            fileEntry('bg.webp'), symlinkEntry('x.webp'), fileEntry('y.png'), fileEntry('unreferenced.png'),
-        ])
+        fakeFs.files.delete('assets/x.webp')
+        plantFileLink('x.webp')
 
         expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
 
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['bg.webp', 'x.webp', 'y.png'])))
+    })
+
+    test('new behaviour: Tauri: a referenced asset that is absent is reported as missing and the other referenced assets are still written', async () => {
+        platformBox.isTauri = true
+        fakeFs.files.delete('assets/x.webp')
+
+        expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
+
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['bg.webp', 'y.png'])))
+        const report = alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')
+        expect(report).toContain('assets/x.webp')
     })
 
     test('Tauri: a referenced asset whose read fails is reported as missing and the other referenced assets and the database are still written', async () => {
@@ -701,14 +730,16 @@ describe('hardening: a partial backup includes every referenced asset whatever i
         expect(report).toContain('assets/x.webp')
     })
 
-    test('guard: Tauri never reads a directory entry that carries a referenced name', async () => {
+    test('new behaviour: Tauri: a referenced name that is a directory is reported as missing and the other referenced assets are still written', async () => {
         platformBox.isTauri = true
-        readDirMock.mockImplementation(async () => [fileEntry('bg.webp'), directoryEntry('x.webp'), fileEntry('y.png')])
+        fakeFs.files.delete('assets/x.webp')
+        plantDirectory('x.webp')
 
         expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
 
-        const readPaths = readFileMock.mock.calls.map((c) => c[0])
-        expect(readPaths).not.toContain('assets/x.webp')
+        expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['bg.webp', 'y.png'])))
+        const report = alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')
+        expect(report).toContain('assets/x.webp')
     })
 
     test('guard: web writes a referenced png and leaves unreferenced assets out', async () => {
@@ -756,7 +787,9 @@ describe('a backup written by SaveLocalBackup restores every asset with identica
         serveAssets(ROUND_TRIP)
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
         const backupBytes = concat(backupSink.writes)
-        writeFileMock.mockClear()
+        for (const key of Array.from(fakeFs.files.keys()).filter((key) => key.startsWith('assets/'))) {
+            fakeFs.files.delete(key)
+        }
 
         await loadBackupBytes(backupBytes)
 
@@ -791,10 +824,154 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
         // The database entry reaches the main path by a rename over it, once, and no write opens the main path.
-        const databaseRenames = renameMock.mock.calls.filter((c) => bare(c[1]) === 'database/database.bin')
+        const databaseRenames = fakeFs.renameLog.filter((entry) => bare(entry.to) === 'database/database.bin')
         expect(databaseRenames).toHaveLength(1)
-        expect(writeFileMock.mock.calls.filter((c) => c[0] === 'database/database.bin')).toHaveLength(0)
-        expect(tauriFiles.has('database/database.bin')).toBe(true)
+        expect(fakeFs.writeLog.filter((entry) => bare(entry.path) === 'database/database.bin')).toHaveLength(0)
+        expect(fakeFs.files.has('database/database.bin')).toBe(true)
+    })
+})
+
+describe('restoring a backup onto the desktop store', () => {
+    const TEMP_NAME = 'risu-write-0123456789abcdef.tmp'
+    const KEPT = ['good1.png', 'good2.mp3']
+
+    function backupOf(entries: [string, Uint8Array][]): Uint8Array {
+        const parts = entries.map(([name, data]) => buildChunk(name, data))
+        parts.push(buildChunk('database.risudat', encodeRisuSaveLegacy(databaseWith({}), 'noCompression')))
+        return concat(parts)
+    }
+
+    function entriesOf(names: string[]): [string, Uint8Array][] {
+        return names.map((name) => [name, bytesFor(name)])
+    }
+
+    /** The messages of the `Success` wait alert and every other alert the restore set in the shared store, in order. */
+    function recordAlertStore(): { messages: string[], stop: () => void } {
+        const messages: string[] = []
+        const shared = alertStore as unknown as { set(value: { type: string, msg: string }): void, subscribe(run: (value: { msg: string }) => void): () => void }
+        // The store keeps the last notice of an earlier test; a subscriber is told it first.
+        shared.set({ type: 'none', msg: '' })
+        const stop = shared.subscribe((value) => {
+            if (value.msg) {
+                messages.push(value.msg)
+            }
+        })
+        return { messages, stop }
+    }
+
+    beforeEach(() => {
+        platformBox.isTauri = true
+    })
+
+    test('reproducer: a write that fails over an existing asset leaves the old bytes whole and no temp file', async () => {
+        const OLD = encoder.encode('old bytes of x.mp3, kept')
+        const NEW = encoder.encode('new bytes of x.mp3, restored but the write fails')
+        fakeFs.plant('assets/x.mp3', OLD)
+        const fault = fakeFs.failWritesOf((data) => data.length === NEW.length && data.every((byte, index) => byte === NEW[index]))
+
+        await loadBackupBytes(backupOf([['x.mp3', NEW]]))
+
+        expect(fault.fired).toBeGreaterThan(0)
+        expect(Array.from(fakeFs.files.get('assets/x.mp3') ?? [])).toEqual(Array.from(OLD))
+        expect(fakeFs.listing('assets')).toEqual(['x.mp3'])
+        expect(alertErrorMock).toHaveBeenCalled()
+        expect(fakeFs.files.has('database/database.bin')).toBe(false)
+    })
+
+    test('guard: a write error other than a refused name aborts the restore before the database is written', async () => {
+        fakeFs.failWritesOf((data) => data.length === bytesFor('bad.mp3').length && data.every((byte, index) => byte === bytesFor('bad.mp3')[index]))
+
+        await loadBackupBytes(backupOf(entriesOf(['bad.mp3', 'later.png'])))
+
+        expect(alertErrorMock).toHaveBeenCalled()
+        expect(fakeFs.files.has('database/database.bin')).toBe(false)
+        expect(fakeFs.files.has('assets/later.png')).toBe(false)
+        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+    })
+
+    test('new behaviour: names the store refuses are skipped, every other asset and the database are written, and the notice lists exactly the refused names', async () => {
+        const REFUSED = ['.DS_Store', TEMP_NAME, 'trailing.']
+
+        await loadBackupBytes(backupOf(entriesOf([KEPT[0], ...REFUSED, KEPT[1]])))
+
+        expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(KEPT))))
+        expect(fakeFs.files.has('database/database.bin')).toBe(true)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        const notice = alertNormalWaitMock.mock.calls[0][0]
+        for (const name of REFUSED) {
+            expect(notice).toContain(name)
+        }
+        for (const name of KEPT) {
+            expect(notice).not.toContain(name)
+        }
+        expect(notice).toContain('3')
+        expect(alertMdMock).not.toHaveBeenCalled()
+    })
+
+    test('new behaviour: the notice gives the count and only the first 20 refused names', async () => {
+        const REFUSED = Array.from({ length: 25 }, (_, index) => `.hidden${String(index).padStart(2, '0')}`)
+
+        await loadBackupBytes(backupOf(entriesOf(REFUSED)))
+
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        const notice = alertNormalWaitMock.mock.calls[0][0]
+        expect(notice).toContain('25')
+        expect(notice).toContain('5 more')
+        expect(REFUSED.filter((name) => notice.includes(name))).toEqual(REFUSED.slice(0, 20))
+    })
+
+    test('new behaviour: a very long refused name is cut in the notice', async () => {
+        const LONG = '.' + 'n'.repeat(500)
+
+        await loadBackupBytes(backupOf(entriesOf([LONG])))
+
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        const notice = alertNormalWaitMock.mock.calls[0][0]
+        expect(notice).not.toContain(LONG)
+        expect(notice).toContain('.' + 'n'.repeat(50))
+    })
+
+    test('new behaviour: the notice is shown after the database is written, awaited before the success notice, and before the reload is marked', async () => {
+        let releaseNotice: () => void = () => { }
+        let markedWhenShown: boolean | null = null
+        let databaseWrittenWhenShown: boolean | null = null
+        alertNormalWaitMock.mockImplementation(() => {
+            markedWhenShown = reloadMark.marked
+            databaseWrittenWhenShown = fakeFs.files.has('database/database.bin')
+            return new Promise<void>((resolve) => { releaseNotice = resolve })
+        })
+        const seen = recordAlertStore()
+
+        const restoring = loadBackupBytes(backupOf(entriesOf(['.DS_Store', KEPT[0]])))
+        await vi.waitFor(() => { expect(alertNormalWaitMock).toHaveBeenCalledTimes(1) })
+        await new Promise((resolve) => setTimeout(resolve, 20))
+
+        expect(seen.messages.some((message) => message.includes('Success, Refreshing your app.'))).toBe(false)
+
+        releaseNotice()
+        await restoring
+        seen.stop()
+
+        expect(seen.messages.some((message) => message.includes('Success, Refreshing your app.'))).toBe(true)
+        expect(markedWhenShown).toBe(false)
+        expect(reloadMark.marked).toBe(true)
+        expect(databaseWrittenWhenShown).toBe(true)
+    })
+
+    test('guard: a restore with no refused name shows no notice', async () => {
+        await loadBackupBytes(backupOf(entriesOf(KEPT)))
+
+        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+        expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(KEPT))))
+    })
+
+    test('new behaviour: every key the restore wrote or tried to write is recorded for the startup sweep, before the database is written', async () => {
+        await loadBackupBytes(backupOf(entriesOf([KEPT[0], '.DS_Store'])))
+
+        expect(wasAssetWrittenThisPage(`assets/${KEPT[0]}`)).toBe(true)
+        expect(wasAssetWrittenThisPage('assets/.DS_Store')).toBe(true)
+        expect(wasAssetWrittenThisPage('assets/never-seen.png')).toBe(false)
     })
 })
 

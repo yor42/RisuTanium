@@ -18,8 +18,11 @@ import {
 } from './tauriFsFake'
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+const fakePaths = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriPathFake')).createFakeTauriPaths())
 
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
+vi.mock('@tauri-apps/api/path', () => fakePaths.pathModule)
+vi.mock('@tauri-apps/api/core', () => fakePaths.coreModule)
 
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 
@@ -34,6 +37,7 @@ for (const platform of PLATFORMS) {
     describeByteStoreConformance({
         name: `Tauri files (${platform})`,
         conditionalWrites: false,
+        offersUrlFor: true,
         async create() {
             fakeFs.reset()
             fakeFs.setPlatform(platform)
@@ -88,6 +92,111 @@ describe('strict fake file system', () => {
 describe('Tauri files store', () => {
     beforeEach(() => {
         fakeFs.reset()
+        fakePaths.reset()
+    })
+
+    describe('symbolic links in a listing', () => {
+        const LINKED = Uint8Array.from([7, 7])
+
+        test('new behaviour: a link that resolves is listed as a key, beside the plain files', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            fakeFs.plant('assets/a.png', OLD)
+            fakeFs.plantSymlink('assets/linked.png', { kind: 'file', data: LINKED })
+
+            expect((await store.list('assets/')).sort()).toEqual(['assets/a.png', 'assets/linked.png'])
+            expect(Array.from((await store.read('assets/linked.png')).bytes ?? [])).toEqual(Array.from(LINKED))
+        })
+
+        test('guard: a link whose target is gone is not listed', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            fakeFs.plant('assets/a.png', OLD)
+            fakeFs.plantSymlink('assets/dangling.png', { kind: 'missing' })
+
+            expect(await store.list('assets/')).toEqual(['assets/a.png'])
+        })
+
+        test('guard: a link to a directory is never entered, so nothing behind it is listed', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            fakeFs.plant('assets/a.png', OLD)
+            fakeFs.plantSymlink('assets/linkdir', { kind: 'directory' })
+
+            const keys = await store.list('assets/')
+
+            expect(keys).toContain('assets/a.png')
+            expect(fakeFs.readDirLog).not.toContain('./assets/linkdir')
+        })
+
+        test('guard: a link named like an atomic-write temp is not listed', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            fakeFs.plantSymlink('assets/risu-write-0123456789abcdef.tmp', { kind: 'file', data: LINKED })
+
+            expect(await store.list('assets/')).toEqual([])
+        })
+
+        test('new behaviour: the rule holds for every prefix, a name-start prefix included', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            fakeFs.plantSymlink('database/dbbackup-1.bin', { kind: 'file', data: LINKED })
+            fakeFs.plantSymlink('database/dbbackup-2.bin', { kind: 'missing' })
+
+            expect(await store.list('database/dbbackup-')).toEqual(['database/dbbackup-1.bin'])
+        })
+    })
+
+    describe('urlFor', () => {
+        const WINDOWS_URL = 'http://asset.localhost/C%3A%5CUsers%5Ctester%5CAppData%5CRoaming%5Ccom.risuai.app%5Cassets%5Cabc.png'
+        const POSIX_URL = 'asset://localhost/%2Fhome%2Ftester%2F.local%2Fshare%2Fcom.risuai.app%2Fassets%2Fabc.png'
+
+        test.each([['windows', WINDOWS_URL], ['posix', POSIX_URL]] as const)(
+            'new behaviour: an asset key gives the asset-protocol URL of its path under AppData, the string the facade built from the same two calls (%s)',
+            async (platform, expected) => {
+                fakePaths.setPlatform(platform)
+                const store = createTauriFilesStore({ platform })
+
+                const url = await store.urlFor?.('assets/abc.png')
+
+                expect(url).toBe(expected)
+                expect(url).toBe(fakePaths.coreModule.convertFileSrc(await fakePaths.pathModule.join(await fakePaths.pathModule.appDataDir(), 'assets/abc.png')))
+            },
+        )
+
+        test('the URL is made from the key alone: no file is read, listed or checked, and a missing file still has one', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+
+            await store.urlFor?.('assets/never-written.png')
+
+            expect(fakeFs.calls).toEqual([])
+        })
+
+        test('the data directory is asked for once and each key is joined once, however often it is asked for', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            fakePaths.reset()
+
+            const first = await store.urlFor?.('assets/a.png')
+            await store.urlFor?.('assets/b.png')
+            const again = await store.urlFor?.('assets/a.png')
+
+            expect(again).toBe(first)
+            expect(fakePaths.calls.appDataDir).toBe(1)
+            expect(fakePaths.calls.join).toBe(2)
+        })
+
+        test.each(['', '/abs/x.png', 'assets/../database/database.bin', '../x.png', 'assets//x.png', 'C:x.png'])(
+            'a key outside the app data directory is refused before any path is built: %j',
+            async (key) => {
+                const store = createTauriFilesStore({ platform: 'posix' })
+                fakePaths.reset()
+
+                await expect(store.urlFor?.(key)).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                expect(fakePaths.calls.join).toBe(0)
+            },
+        )
+
+        test('on Windows a colon and a backslash traversal are refused too', async () => {
+            const store = createTauriFilesStore({ platform: 'windows' })
+
+            await expect(store.urlFor?.('assets/a:b.png')).rejects.toBeInstanceOf(StoreInvalidKeyError)
+            await expect(store.urlFor?.('assets\\..\\database\\database.bin')).rejects.toBeInstanceOf(StoreInvalidKeyError)
+        })
     })
 
     describe('listing', () => {

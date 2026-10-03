@@ -1,9 +1,7 @@
 import {
     BaseDirectory,
     exists,
-    mkdir,
-    readDir,
-    remove
+    mkdir
 } from "@tauri-apps/plugin-fs"
 import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
@@ -30,7 +28,7 @@ import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { verifyAssetCacheEntry } from "./storage/assetIntegrity";
 import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/remoteSaveCleanup";
-import { sweepTauriAssets, sweepForageAssetKey } from "./storage/assetSweep";
+import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from "./storage/assetSweep";
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAtomicWriteTemps } from "./storage/tauriAtomicWrite";
@@ -49,6 +47,8 @@ import {
     buildAssetKeepSet,
     getUncleanablesSync,
     getBasename,
+    wasAssetWrittenThisPage,
+    listAssetsWrittenThisPage,
     setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
@@ -115,6 +115,11 @@ export async function loadData() {
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
                 }
+                // `assets/` is written by imports and restores later in this
+                // page load, so a temp found here is a leftover. The directory
+                // exists by now, which keeps the sweep from listing a missing
+                // one.
+                await sweepAtomicWriteTemps('assets')
                 archiveSession = await openBootArchiveSession('tauri')
                 let outcome: BootArchiveOutcome | null = null
                 // Only an absent main file starts a first launch. A read that
@@ -782,6 +787,8 @@ async function checkNewFormat(): Promise<void> {
     checkCharOrder();
 }
 
+const ASSET_KEY_PREFIX = 'assets/'
+
 /**
  * Purges chunks of data that are not needed.
  */
@@ -838,20 +845,28 @@ async function cleanChunks(options:{
     // (never the remote-block cleanup that follows them) skip deleting
     // anything in that case, via the spread below.
     const keepSet = sweepAssets ? await buildAssetKeepSet(db) : null
+    // The keep-set is older than the listing and than any save made while the
+    // sweep runs, so a key this page load wrote, and a key the live database
+    // refers to now, are kept as well (see assetSweep.ts).
+    const assetGuards = () => ({
+        writtenThisPage: wasAssetWrittenThisPage,
+        liveUncleanable: () => new Set(getUncleanablesSync(getDatabase())),
+    })
     if (isTauri) {
+        // The store's listing leaves out the temp file of an atomic write in
+        // flight, and lists a directory that does not exist yet as empty.
+        const store = await getAppStore()
         if (keepSet) {
             await sweepTauriAssets({
                 ...keepSet,
-                listAssets: () => readDir('assets', { baseDir: BaseDirectory.AppData }),
-                removeAsset: (relativePath) => remove(relativePath, { baseDir: BaseDirectory.AppData }),
+                ...assetGuards(),
+                writtenKeysThisPage: listAssetsWrittenThisPage,
+                listAssets: async () => (await store.list(ASSET_KEY_PREFIX)).map((key) => ({ name: key.slice(ASSET_KEY_PREFIX.length) })),
+                removeAsset: (key) => store.delete(key, 'unconditional'),
                 getBasename
             })
         }
 
-
-        // The store's listing leaves out the temp file of an atomic write in
-        // flight, and lists a `remotes/` that does not exist yet as empty.
-        const store = await getAppStore()
         const remoteKeys = await store.list('remotes/')
 
         const remoteUncleanables = new Set<string>(
@@ -912,11 +927,9 @@ async function cleanChunks(options:{
     }
     else {
         // Both listings are taken before anything is removed, so a listing that
-        // fails rejects the clean-up with nothing deleted. The remote blocks
-        // are listed through the store; `forageStorage.keys()` is only the
-        // asset sweep's enumeration.
-        const indexes = await forageStorage.keys()
+        // fails rejects the clean-up with nothing deleted.
         const store = await getAppStore()
+        const assetKeys = await store.list(ASSET_KEY_PREFIX)
         const remoteKeys = await store.list('remotes/')
         const characterIds = new Set<string>(
             db.characters.map((v) => v.chaId)
@@ -924,12 +937,21 @@ async function cleanChunks(options:{
         if (keepSet?.complete === false) {
             console.log('cleanChunks: cold-storage read was incomplete, skipping the forage asset sweep this run')
         }
-        for (const asset of indexes) {
-            if (asset.startsWith('assets/')) {
-                if (keepSet) {
+        if (keepSet && keepSet.complete !== false) {
+            const guards = assetGuards()
+            // Only keys the keep-set does not protect are candidates, so the
+            // live references are walked once per batch of candidates and
+            // never for a listing the keep-set already covers.
+            const candidates = assetKeys.filter((key) => !keepSet.uncleanable.has(getBasename(key)))
+            for (let start = 0; start < candidates.length; start += ASSET_SWEEP_BATCH_SIZE) {
+                // One answer for the whole batch of deletes.
+                const live = guards.liveUncleanable()
+                for (const asset of candidates.slice(start, start + ASSET_SWEEP_BATCH_SIZE)) {
                     await sweepForageAssetKey(asset, {
                         ...keepSet,
-                        removeAsset: (key) => forageStorage.removeItem(key),
+                        writtenThisPage: guards.writtenThisPage,
+                        liveUncleanable: () => live,
+                        removeAsset: (key) => store.delete(key, 'unconditional'),
                         getBasename
                     })
                 }

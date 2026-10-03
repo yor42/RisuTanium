@@ -1551,6 +1551,8 @@ export const languageVietnamese = {
     "restoreNoLockWarningConfirm": "Trình duyệt của bạn không thể kiểm tra xem có tab khác của ứng dụng này đang mở trước khi khôi phục hay không. Nếu một tab khác của ứng dụng này đang mở, nó có thể ghi đè dữ liệu bạn đang khôi phục bằng dữ liệu cũ hơn của chính nó vào lần lưu tiếp theo — ngay cả khi tab đó không có thay đổi chưa lưu nào của riêng nó. Hãy đóng tất cả các tab khác của ứng dụng này trước, sau đó tiếp tục. Vẫn tiếp tục chứ?",
     "restoreWriteFailed": "Không thể lưu bản sao lưu đã khôi phục. Một số hình ảnh hoặc mục trong bộ nhớ lạnh có thể đã được thêm vào hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.",
     "restoreSavedReloadOrRestart": "Bản sao lưu của bạn đã được khôi phục và lưu, nhưng ứng dụng không thể tự động tải lại. Vui lòng tải lại trang (hoặc khởi động lại ứng dụng) để hoàn tất.",
+    "restoreAssetsSkipped": (count: number, names: string[]) =>
+        `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) có tên mà ứng dụng này không thể lưu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
     "internalBackupUnreadable": "Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",

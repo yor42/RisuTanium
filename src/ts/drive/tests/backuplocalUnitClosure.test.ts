@@ -310,6 +310,8 @@ import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { setColdStorageItem, readColdStorageItem, coldStorageHeader } from 'src/ts/process/coldstorage.svelte'
 import { formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
+import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 
 //#region helpers
 
@@ -521,6 +523,13 @@ beforeEach(() => {
     forageKeysMock.mockImplementation(async () => [])
     forageGetItemMock.mockImplementation(async () => null)
     forageSetItemMock.mockImplementation(async () => { })
+    // The assets are listed and read through the page's byte store, here over the key/value mock above.
+    injectAppStore(createForageBackedStore({
+        getItem: forageGetItemMock,
+        setItem: forageSetItemMock,
+        keys: forageKeysMock,
+        removeItem: async () => { },
+    }))
     getDatabaseMock.mockImplementation(() => databaseWith({}))
     vi.spyOn(console, 'log').mockImplementation(() => { })
 

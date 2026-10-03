@@ -1551,6 +1551,8 @@ export const languageSpanish = {
     "restoreNoLockWarningConfirm": "Tu navegador no puede comprobar si hay otra pestaña de esta aplicación abierta antes de restaurar. Si otra pestaña de esta aplicación está abierta, puede sobrescribir los datos que estás restaurando con sus propios datos más antiguos la próxima vez que guarde — incluso si esa pestaña no tiene cambios propios sin guardar. Cierra primero todas las demás pestañas de esta aplicación y luego continúa. ¿Continuar de todos modos?",
     "restoreWriteFailed": "No se pudo guardar la copia de seguridad restaurada. Es posible que ya se hayan añadido o reemplazado algunas imágenes o entradas de almacenamiento frío. Tu base de datos actual no se modificó.",
     "restoreSavedReloadOrRestart": "Tu copia de seguridad se restauró y guardó, pero la aplicación no pudo recargarse automáticamente. Recarga la página (o reinicia la aplicación) para finalizar.",
+    "restoreAssetsSkipped": (count: number, names: string[]) =>
+        `La copia de seguridad se restauró, excepto ${count} archivo(s) de recursos cuyos nombres esta aplicación no puede guardar. Un personaje que use alguno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "internalBackupUnreadable": "Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
     "internalBackupWriteFailed": "No se pudo guardar la copia de seguridad. Tus datos actuales no se modificaron.",
     "internalBackupListFailed": "No se pudo leer la lista de copias de seguridad. No se modificó nada.",

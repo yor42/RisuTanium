@@ -1,11 +1,11 @@
-import { BaseDirectory, readFile, readDir, writeFile } from "@tauri-apps/plugin-fs";
-import { alertError, alertNormal, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
-import { LocalWriter, forageStorage, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported } from "../globalApi.svelte";
+import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
+import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy } from "../storage/risuSave";
 import { noteMainFileBytes } from "../storage/mainFileRecord";
-import { writeMainFile } from "../storage/store/appStore";
+import { getAppStore, writeMainFile } from "../storage/store/appStore";
+import { StoreInvalidKeyError } from "../storage/store/errors";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -115,66 +115,35 @@ export async function SaveLocalBackup(){
     }
     const missingAssets: string[] = []
 
-    if(isTauri){
-        const assets = await readDir('assets', {baseDir: BaseDirectory.AppData})
-        let i = 0;
-        for(let asset of assets){
-            i += 1;
-            let message = `Saving local Backup... (${i} / ${assets.length})`
-            if (missingAssets.length > 0) {
-                const skippedItems = missingAssets.map(key => {
-                    const assetInfo = assetMap.get(key);
-                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
-                }).join(', ');
-                message += `\n(Skipping... ${skippedItems})`;
-            }
-            alertWait(message)
-
-            // Directories are skipped because readFile on one fails. readDir does not follow
-            // links, so a symlink is read, and lands in missingAssets if it is not a readable file.
-            const key = asset.name
-            if(!key || !(asset.isFile || asset.isSymlink)){
-                continue
-            }
-            let data: Uint8Array | undefined
-            try {
-                data = await readFile('assets/' + asset.name, {baseDir: BaseDirectory.AppData})
-            } catch (e) {
-                console.error(e)
-            }
-            if (data) {
-                await writer.writeBackup(key, data)
-            } else {
-                missingAssets.push(key)
-            }
+    // The store lists only keys that hold an entry. On the desktop that includes
+    // a symbolic link that resolves (a link to a directory is listed too and is
+    // reported as missing when its read fails), and never the temp file of an
+    // atomic write; a dangling link is not listed. A key that reads as absent or
+    // fails to read is reported as missing and the backup goes on.
+    const store = await getAppStore()
+    const assetKeys = await store.list('assets/')
+    for(let i=0;i<assetKeys.length;i++){
+        const key = assetKeys[i]
+        let message = `Saving local Backup... (${i + 1} / ${assetKeys.length})`
+        if (missingAssets.length > 0) {
+            const skippedItems = missingAssets.map(key => {
+                const assetInfo = assetMap.get(key);
+                return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+            }).join(', ');
+            message += `\n(Skipping... ${skippedItems})`;
         }
-    }
-    else{
-        const keys = await forageStorage.keys()
+        alertWait(message)
 
-        for(let i=0;i<keys.length;i++){
-            const key = keys[i]
-            let message = `Saving local Backup... (${i + 1} / ${keys.length})`
-            if (missingAssets.length > 0) {
-                const skippedItems = missingAssets.map(key => {
-                    const assetInfo = assetMap.get(key);
-                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
-                }).join(', ');
-                message += `\n(Skipping... ${skippedItems})`;
-            }
-            alertWait(message)
-
-            // The same storage also lists database, remote-block, marker and (on the Node server) cold-storage keys; only assets/ keys are assets.
-            if(!key || !key.startsWith('assets/')){
-                continue
-            }
-            const data = await forageStorage.getItem(key) as unknown as Uint8Array
-
-            if (data) {
-                await writer.writeBackup(key, data)
-            } else {
-                missingAssets.push(key)
-            }
+        let data: Uint8Array | null = null
+        try {
+            data = (await store.read(key)).bytes
+        } catch (e) {
+            console.error(e)
+        }
+        if (data) {
+            await writer.writeBackup(key, data)
+        } else {
+            missingAssets.push(key)
         }
     }
 
@@ -318,74 +287,38 @@ export async function SavePartialLocalBackup(){
     
     const missingAssets: string[] = []
 
-    if(isTauri){
-        // readDir returns entries without 'assets/' prefix, unlike forageStorage.keys()
-        const assets = await readDir('assets', {baseDir: BaseDirectory.AppData})
-        let i = 0;
-        for(let asset of assets){
-            if(!asset.name || !(asset.isFile || asset.isSymlink)){
-                continue
-            }
+    const store = await getAppStore()
+    const assetKeys = Array.from(assetMap.keys())
 
-            const keyWithPrefix = asset.name.startsWith('assets/') ? asset.name : `assets/${asset.name}`
-
-            // Only process if this asset is in our map (profile images only)
-            if(!assetMap.has(keyWithPrefix)){
-                continue
-            }
-            
-            i += 1;
-            let message = `Saving partial local backup... (${i} / ${assetMap.size})`
-            if (missingAssets.length > 0) {
-                const skippedItems = missingAssets.map(key => {
-                    const assetInfo = assetMap.get(key);
-                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
-                }).join(', ');
-                message += `\n(Skipping... ${skippedItems})`;
-            }
-            alertWait(message)
-
-            let data: Uint8Array | undefined
-            try {
-                data = await readFile(keyWithPrefix, {baseDir: BaseDirectory.AppData})
-            } catch (e) {
-                console.error(e)
-            }
-            if (data) {
-                await writer.writeBackup(keyWithPrefix, data)
-            } else {
-                missingAssets.push(keyWithPrefix)
-            }
+    for(let i=0;i<assetKeys.length;i++){
+        const key = assetKeys[i]
+        let message = `Saving partial local backup... (${i + 1} / ${assetKeys.length})`
+        if (missingAssets.length > 0) {
+            const skippedItems = missingAssets.map(key => {
+                const assetInfo = assetMap.get(key);
+                return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+            }).join(', ');
+            message += `\n(Skipping... ${skippedItems})`;
         }
-    }
-    else{
-        const keys = await forageStorage.keys()
-        const assetKeys = Array.from(assetMap.keys())
+        alertWait(message)
 
-        for(let i=0;i<assetKeys.length;i++){
-            const key = assetKeys[i]
-            let message = `Saving partial local backup... (${i + 1} / ${assetKeys.length})`
-            if (missingAssets.length > 0) {
-                const skippedItems = missingAssets.map(key => {
-                    const assetInfo = assetMap.get(key);
-                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
-                }).join(', ');
-                message += `\n(Skipping... ${skippedItems})`;
-            }
-            alertWait(message)
+        // A referenced key outside assets/ is not an asset of this store.
+        if(!key || !key.startsWith('assets/')){
+            continue
+        }
 
-            // A referenced key outside assets/ is not an asset of this store.
-            if(!key || !key.startsWith('assets/')){
-                continue
-            }
-
-            const data = await forageStorage.getItem(key) as unknown as Uint8Array
-
-            if (data) {
-                await writer.writeBackup(key, data)
-            } else {
-                missingAssets.push(key)
-            }
+        // A referenced asset that is absent or cannot be read is reported
+        // as missing on every platform, and the backup goes on.
+        let data: Uint8Array | null = null
+        try {
+            data = (await store.read(key)).bytes
+        } catch (e) {
+            console.error(e)
+        }
+        if (data) {
+            await writer.writeBackup(key, data)
+        } else {
+            missingAssets.push(key)
         }
     }
 
@@ -447,6 +380,10 @@ export async function SavePartialLocalBackup(){
  * similar length that would have finished moments later.
  */
 export const RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS = 2000;
+
+/** How many skipped asset names, and how many characters of each, the restore notice lists. */
+const SKIPPED_ASSET_NAMES_SHOWN = 20;
+const SKIPPED_ASSET_NAME_CHARS_SHOWN = 100;
 
 export function LoadLocalBackup(){
     // A restore replaces the database under any work still writing into it.
@@ -547,6 +484,7 @@ export function LoadLocalBackup(){
                 let remainingBuffer = new Uint8Array();
                 let pendingDatabase: Uint8Array | null = null;
                 const restoredColdStorageKeys = new Set<string>();
+                const skippedAssetNames: string[] = [];
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -644,10 +582,21 @@ export function LoadLocalBackup(){
                             }
 
                             if (!handledAsColdStorage) {
-                                if (isTauri) {
-                                    await writeFile(`assets/` + name, data, { baseDir: BaseDirectory.AppData });
-                                } else {
-                                    await forageStorage.setItem('assets/' + name, data);
+                                // The entry name comes from the file. A name the store
+                                // cannot hold (a leading dot, a character the desktop
+                                // file system forbids, a reserved temp name) skips that
+                                // entry and is reported after the database is written;
+                                // any other failure aborts the restore.
+                                const assetKey = 'assets/' + name
+                                noteAssetWrittenThisPage(assetKey)
+                                try {
+                                    await (await getAppStore()).write(assetKey, data, 'unconditional')
+                                } catch (error) {
+                                    if (!(error instanceof StoreInvalidKeyError)) {
+                                        throw error
+                                    }
+                                    console.error(error)
+                                    skippedAssetNames.push(name)
                                 }
                             }
                         }
@@ -721,6 +670,15 @@ export function LoadLocalBackup(){
                 // restore did not complete.
                 setDatabase(dbData);
                 requiresFullEncoderReload.state = true;
+
+                // Awaited here, before the wait notice below and the reload that
+                // would hide it. Plain text: the names come from the file.
+                if (skippedAssetNames.length > 0) {
+                    await alertNormalWait(language.restoreAssetsSkipped(
+                        skippedAssetNames.length,
+                        skippedAssetNames.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name),
+                    ));
+                }
 
                 alertStore.set({
                     type: "wait",

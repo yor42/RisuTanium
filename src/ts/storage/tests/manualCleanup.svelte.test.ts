@@ -685,13 +685,17 @@ async function units(): Promise<string[]> {
 }
 
 function assetKeys(): string[] {
-    const keys = platform === 'node' ? Array.from(server.files.keys()) : Array.from(h.forage.keys())
+    const keys = platform === 'node'
+        ? Array.from(server.files.keys())
+        : platform === 'tauri' ? Array.from(h.fs.keys()) : Array.from(h.forage.keys())
     return keys.filter((k) => k.startsWith('assets/'))
 }
 
 function seedAsset(name: string): void {
     if (platform === 'node') {
         server.seed('assets/' + name, new Uint8Array([9, 9]))
+    } else if (platform === 'tauri') {
+        h.fs.set('assets/' + name, new Uint8Array([9, 9]))
     } else {
         h.forage.set('assets/' + name, new Uint8Array([9, 9]))
     }
@@ -1631,6 +1635,36 @@ describe('Node server: bounded batches, reported failures, revisions', () => {
         expect(removeRequests.length).toBeGreaterThanOrEqual(2)
     })
 
+    test('guard: with one delete request failing, the other requests for assets are still attempted and the notice counts the keys per key', async () => {
+        await setup({ platform: 'node' })
+        const hex64 = () => crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
+        const TOTAL = 150
+        for (let i = 0; i < TOTAL; i++) {
+            seedAsset(`${hex64()}.png`)
+        }
+        setLive(makeDb([]))
+        await prime()
+        let requestNumber = 0
+        let keysOfFailedRequest = 0
+        server.removeOverride = (keys) => {
+            requestNumber++
+            if (requestNumber !== 2) {
+                return undefined
+            }
+            keysOfFailedRequest = keys.length
+            return new Response(JSON.stringify({ success: false, error: 'rejected' }), { status: 500 })
+        }
+
+        await run()
+
+        const requests = server.requestsTo('/api/remove')
+        expect(requests.length).toBeGreaterThanOrEqual(3)
+        expect(requests).toHaveLength(requestNumber)
+        expect(keysOfFailedRequest).toBeGreaterThan(0)
+        expect(assetKeys()).toHaveLength(keysOfFailedRequest)
+        expect(errorMessages().some((m) => m.includes(`${keysOfFailedRequest} item(s) could not be deleted`) && m.includes(`${TOTAL - keysOfFailedRequest} item(s) were deleted`))).toBe(true)
+    })
+
     test.each([409, 431, 500])('ends with a notice counting the units when the server answers %i to a delete', async (status) => {
         await setup({ platform: 'node' })
         seedManyNodeUnits(7)
@@ -1897,6 +1931,83 @@ describe('assets', () => {
 
         expect(assetKeys()).not.toContain('assets/filler-000.png')
         expect(assetKeys()).toContain('assets/late-reference.png')
+    })
+
+    test('guard: Tauri: deletes an unreferenced asset and keeps a referenced one through the desktop store', async () => {
+        await setup({ platform: 'tauri' })
+        seedAsset('orphan.png')
+        seedAsset('hero.png')
+        setLive(makeDb([fullCharacter('hero-cha', 'Hero', { image: 'assets/hero.png' })]))
+        await prime()
+
+        await run()
+
+        expect(assetKeys()).toEqual(['assets/hero.png'])
+    })
+
+    test('reproducer: Tauri: an asset whose name differs from the reference only in case is kept, as the file system sees one file', async () => {
+        await setup({ platform: 'tauri' })
+        seedAsset('orphan.png')
+        seedAsset('Hero.PNG')
+        setLive(makeDb([fullCharacter('hero-cha', 'Hero', { image: 'assets/hero.png' })]))
+        await prime()
+
+        await run()
+
+        expect(assetKeys()).toEqual(['assets/Hero.PNG'])
+    })
+
+    test('guard: Tauri: when deletes fail inside two groups of a batch, the counts are per key and every other group is still attempted', async () => {
+        await setup({ platform: 'tauri' })
+        const names = Array.from({ length: 60 }, (_, index) => `asset-${String(index).padStart(2, '0')}.png`)
+        for (const name of names) {
+            seedAsset(name)
+        }
+        const stuck = [names[2], names[45], names[46]]
+        for (const name of stuck) {
+            h.fsFail.add(`assets/${name}`)
+        }
+        setLive(makeDb([]))
+        await prime()
+
+        await run()
+
+        expect(assetKeys().sort()).toEqual(stuck.map((name) => `assets/${name}`).sort())
+        expect(errorMessages().some((m) => m.includes('3 item(s) could not be deleted') && m.includes('57 item(s) were deleted'))).toBe(true)
+    })
+
+    test('guard: web: names that differ only in case are different assets, so the unreferenced one goes', async () => {
+        await setup()
+        seedAsset('Hero.PNG')
+        seedAsset('hero.png')
+        setLive(makeDb([fullCharacter('hero-cha', 'Hero', { image: 'assets/hero.png' })]))
+        await prime()
+
+        await run()
+
+        expect(assetKeys()).toEqual(['assets/hero.png'])
+    })
+
+    test('reproducer: Tauri: a case-only reference that live memory gains before the deletion keeps the file', async () => {
+        await setup({ platform: 'tauri' })
+        for (let i = 0; i < 250; i++) {
+            seedAsset(`filler-${String(i).padStart(3, '0')}.png`)
+        }
+        seedAsset('Late-Reference.PNG')
+        setLive(makeDb([fullCharacter('late-cha', 'Late')]))
+        await prime()
+        const { remove } = await import('@tauri-apps/plugin-fs')
+        const realRemove = vi.mocked(remove).getMockImplementation()
+        vi.mocked(remove).mockImplementation(async (path, options) => {
+            vi.mocked(remove).mockImplementation(realRemove!)
+            ctx.stores.DBState.db.characters[0].image = 'assets/late-reference.png'
+            await realRemove!(path, options)
+        })
+
+        await run()
+
+        expect(assetKeys()).not.toContain('assets/filler-000.png')
+        expect(assetKeys()).toContain('assets/Late-Reference.PNG')
     })
 
     test('guard: deletes no asset when no load-time listing was recorded', async () => {
