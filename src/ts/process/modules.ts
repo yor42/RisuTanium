@@ -245,7 +245,7 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
             failed = await runAssetTasks(failed)
         }
         if (failed.length > 0) {
-            throw new Error(`Failed to save ${failed.length} assets`)
+            throw new Error(fillLang(language.errors.moduleAssetsSaveFailed, { count: `${failed.length}` }))
         }
     } finally {
         alertClear()

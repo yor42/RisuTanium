@@ -1,3 +1,4 @@
+import { language } from "src/lang"
 import { risuChatParser } from "src/ts/parser/parser.svelte"
 import { getDatabase } from "src/ts/storage/database.svelte"
 import { jsonOutputTrimmer } from "src/ts/util"
@@ -62,7 +63,7 @@ export function convertInterfaceToSchema(int:string, options?:{subject?:RunSubje
         let spData = content.replace(/ /g, '').split(':')
 
         if(spData.length !== 2){
-            throw "SyntaxError Found"
+            throw language.errors.jsonSchemaSyntaxError
         }
 
         let [property,typeData] = spData
@@ -94,7 +95,7 @@ export function convertInterfaceToSchema(int:string, options?:{subject?:RunSubje
                 const strings:string[] = []
                 for(const t of types){
                     if(!t.startsWith('\uE9b4d')){
-                        throw "Unsupported Type Detected"
+                        throw language.errors.jsonSchemaUnsupportedType
                     }
                     const textIndex = t.replace('\uE9b4d','')
                     const text = placeHolders[parseInt(textIndex)]

@@ -134,7 +134,7 @@ async function getLocalKey(retry = true) {
         return key
     } catch (error) {
         if(!retry){
-            throw `Error when getting local key: ${error}`
+            throw fillLang(language.errors.localKeyFailed, { error: `${error}` })
         }
         //if is cors error
         if(
@@ -143,12 +143,12 @@ async function getLocalKey(retry = true) {
         ){
             const installed = await installPython()
             if(!installed){
-                throw `Error when getting local key: local inference sidecar could not be started`
+                throw language.errors.localSidecarNotStarted
             }
             return await getLocalKey(false)
         }
         else{
-            throw `Error when getting local key: ${error}`
+            throw fillLang(language.errors.localKeyFailed, { error: `${error}` })
         }
     }
 }

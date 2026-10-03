@@ -753,7 +753,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         else{
             const member = entryCtx.member
             if(!member){
-                throwError(`cannot find character: ${origin.memberChaId}`)
+                throwError(fillLang(language.errors.characterNotFound, { id: `${origin.memberChaId}` }))
                 return false
             }
             currentChar = member
@@ -1602,7 +1602,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
         while(currentTokens > maxContextTokens){
             if(chats.length <= 1){
-                throwError(language.errors.toomuchtoken + "\n\nRequired Tokens: " + currentTokens)
+                throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokens, { tokens: `${currentTokens}` }))
 
                 return false
             }
@@ -1975,7 +1975,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         let pointer = 0
         while(inputTokens > maxContextTokens){
             if(pointer >= formated.length){
-                throwError(language.errors.toomuchtoken + "\n\nAt token rechecking. Required Tokens: " + inputTokens)
+                throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokensRecheck, { tokens: `${inputTokens}` }))
                 return false
             }
             if(formated[pointer].removable){
@@ -2679,7 +2679,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 if(abortSignal.aborted){
                     return true
                 }
-                throwError('Unexpected response type')
+                throwError(language.errors.unexpectedResponseType)
                 return true
             }
             else{
@@ -2731,7 +2731,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         else if(currentChar.viewScreen === 'imggen'){
             if(chatProcessIndex !== -1){
-                throwError("Stable diffusion in group chat is not supported")
+                throwError(language.errors.stableDiffusionGroupUnsupported)
             }
 
             const imggenCtx = subject.resolve()

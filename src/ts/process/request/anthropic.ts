@@ -8,6 +8,7 @@ import { registerClaudeObserver } from "src/ts/observer.svelte"
 import { getDatabase } from "src/ts/storage/database.svelte"
 import { replaceAsync, simplifySchema, sleep } from "src/ts/util"
 import { v4 } from "uuid"
+import { language } from "src/lang"
 import type { MultiModal } from "../index.svelte"
 import { extractJSON } from "../templates/jsonSchema"
 import { callTool, decodeToolCall, encodeToolCall } from "../mcp/mcp"
@@ -247,7 +248,7 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
     if(claudeChat.length === 0 && systemPrompt === ''){
         return {
             type: 'fail',
-            result: 'No input'
+            result: language.errors.claudeNoInput
         }
     }
     if(claudeChat.length === 0 && systemPrompt !== ''){
@@ -408,7 +409,7 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
             const [accessKeyId, secretAccessKey, region] = key.split(":");
           
             if (!accessKeyId || !secretAccessKey || !region) {
-              throw new Error("The key assigned to this request is invalid.");
+              throw new Error(language.errors.bedrockKeyInvalid);
             }
           
             return { accessKeyId, secretAccessKey, region };
@@ -673,7 +674,7 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
             })
             return {
                 type: 'fail',
-                result: 'No results URL returned from Claude batch request'
+                result: language.errors.claudeBatchNoResultsUrl
             }
         }
 
@@ -718,7 +719,7 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
                             }
                         }
                         if(Date.now() - batchStartTime > BATCH_TIMEOUT){
-                            controller.error(new Error('Claude batch request timed out after 24 hours'))
+                            controller.error(new Error(language.errors.claudeBatchTimeout))
                             return
                         }
 
@@ -875,7 +876,7 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
                                     chatId: arg.chatId,
                                     status: batchRes.status
                                 })
-                                controller.error(new Error('Claude batch request expired'))
+                                controller.error(new Error(language.errors.claudeBatchExpired))
                                 return
                             }
                         }

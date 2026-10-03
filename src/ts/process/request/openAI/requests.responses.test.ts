@@ -50,7 +50,13 @@ vi.mock('src/ts/globalApi.svelte', () => ({
 }))
 
 vi.mock('src/lang', () => ({
-    language: { errors: { httpError: 'HTTP ' } },
+    language: {
+        errors: {
+            httpError: 'HTTP ',
+            incompleteResponse: 'Incomplete response',
+            incompleteResponseReason: 'Incomplete response: {reason}',
+        },
+    },
 }))
 
 vi.mock('src/ts/alert', () => ({

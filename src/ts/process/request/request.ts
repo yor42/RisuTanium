@@ -1,5 +1,6 @@
 import { Ollama } from 'ollama/dist/browser.mjs';
 import { language } from "../../../lang";
+import { fillLang } from "../../../lang/fill";
 import { fetchNative, globalFetch } from "../../globalApi.svelte";
 import { getModelInfo, LLMFlags, LLMFormat, type LLMModel } from "../../model/modellist";
 import { risuChatParser, risuEscape, risuUnescape } from "../../parser/parser.svelte";
@@ -740,7 +741,7 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
             oobaboogaSocket.close()
             return ({
                 type: "fail",
-                result: abortSignal?.reason || `WebSocket connection failed to '${streamUrl}' failed!`,
+                result: abortSignal?.reason || fillLang(language.errors.websocketConnectFailed, { url: `${streamUrl}` }),
             })
         }
 
@@ -963,7 +964,7 @@ async function requestPlugin(arg:RequestDataArgumentExtended):Promise<requestDat
         console.error(error)
         return {
             type: 'fail',
-            result: `Plugin Error from ${db.currentPluginProvider}: ` + JSON.stringify(error),
+            result: fillLang(language.errors.pluginProviderError, { provider: `${db.currentPluginProvider}`, error: JSON.stringify(error) }),
             model: responseModel
         }
     }
@@ -1268,7 +1269,7 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
             if(!lastChat){
                 return {
                     type: 'fail',
-                    result: 'Cohere requires a user message to generate a response'
+                    result: language.errors.cohereNeedsUserMessage
                 }
             }
             lastChatPrompt = (lastChat.role === 'user' ? '' : `${lastChat.role}: `) + '\n' + lastChat.content + lastChatPrompt
@@ -1453,11 +1454,6 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
         message:string
     } = await da.json()
 
-    let warnMessage = ""
-    if(json.message){
-        warnMessage = "with " + json.message
-    }
-
     while(true){
         await sleep(2000)
         const data = await (await fetch("https://stablehorde.net/api/v2/generate/text/status/" + json.id)).json()
@@ -1467,7 +1463,9 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
             })
             return {
                 type: 'fail',
-                result: "Response not possible" + warnMessage,
+                result: json.message
+                    ? fillLang(language.errors.hordeNotPossibleWith, { message: json.message })
+                    : language.errors.hordeNotPossible,
                 noRetry: true
             }
         }
@@ -1481,7 +1479,7 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
             }
             return {
                 type: 'fail',
-                result: "No Generations when done",
+                result: language.errors.hordeNoGenerations,
                 noRetry: true
             }
         }

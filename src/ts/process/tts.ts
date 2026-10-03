@@ -453,7 +453,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                         body.ref_audio_path = path.data.message + '/public/audio/' + character.gptSoVitsConfig.ref_audio_data.fileName
                     }
                     else{
-                        throw new Error('Failed to Auto get path')
+                        throw new Error(language.errors.ttsAutoPathFailed)
                     }
                 } else {
                     body.ref_audio_path = character.gptSoVitsConfig.ref_audio_path + '/public/audio/' + character.gptSoVitsConfig.ref_audio_data.fileName
@@ -492,7 +492,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             }
             case 'fishspeech':{
                 if (character.fishSpeechConfig.model._id === ''){
-                    throw new Error('FishSpeech Model is not selected')
+                    throw new Error(language.errors.fishSpeechModelNotSelected)
                 }
 
                 const body = {
