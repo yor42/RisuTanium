@@ -793,6 +793,54 @@ keys, `{name}` placeholders filled by `fillLang`.
   - **Stay English (the Orchestrator's disposition):** plugin API v3 throws (47), MCP throws (22), internal and swallowed
     throws, JSON-dump throws, the `scriptings` `'Error: '` strings returned to Lua, and the `cbs.ts` tag docs.
 
+**Status (2026-10-04, UI session, translation batch 5b: user-visible error and request-failure strings): committed as `edc8c8b6` (code) on the maintainer's word "commit and start 5c"; not pushed; the ticket stays open for the follow-ups below** (ledger rows 914 to 918). The request and the three answers are the maintainer's (`MC-215`); the dispositions in `MC-215` are the Orchestrator's, not the maintainer's.
+- **Done in batch 5b:**
+  - 36 new `errors.*` keys in `en.ts`, translated into the six other locales (each appended after `vertexAuthIncomplete`), plus
+    two reused keys (`errors.unexpectedResponseType`, `errors.vertexAuthIncomplete`). Placeholders sit inside the key text, for
+    example `{provider}: {error}` and `{tokens}`.
+  - 14 production files: `index.svelte.ts`, `request/request.ts`, `request/google.ts`, `request/anthropic.ts`,
+    `request/openAI/requests.ts`, `request/openAI/responses.ts`, `request/shared.ts`, `tts.ts`, `translator/presets.ts`,
+    `process/modules.ts`, `src/ts/interchangeability.ts`, `models/local.ts`, `templates/jsonSchema.ts` and
+    `plugins/plugins.svelte.ts` (the plugin-update rename error): 14 production files, plus the seven locale files and the
+    `requests.responses.test.ts` mock.
+  - Request failures (`{type:'fail', result}`), thrown errors shown in alerts, the Horde, Ooba WebSocket and local-model texts,
+    the translator preset errors and the module asset save error are translated.
+- **Disclosures (`MC-215`):**
+  - Translated failure text now reaches Lua `LLM` and `axLLM`, the trigger `runLLM` result, MCP `aiaccess`, the plugin v3
+    `runLLMModel` and, with "inlay error response" on, saved chats. A script that matches English words in those results would
+    stop matching in a non-English UI. The investigator found none in the repository (row 914).
+  - Three English texts were fixed, with the maintainer's answer "Fix them (Recommended)": `websocketConnectFailed` ("WebSocket
+    connection to '{url}' failed."), `hordeNotPossible` and `hordeNotPossibleWith` ("Response not possible." and "Response not
+    possible: {message}", where HEAD joined the parts with no space) and `localStreamingBlocked`. Every other English value is
+    byte-identical to HEAD (Gate 2).
+- **Kept English (the Orchestrator's dispositions, `MC-215`):** `chatTemplate.ts` "Template type is not set" (unreachable in
+  normal use), the `src/main.ts` preload alert (can fire before the language loads), the five "Failed to fetch model response
+  after tool execution" sites, "Aborted", "All models failed", the plugin-blocked text, the preview JSON, tool-call failure
+  texts sent to the model, the Anthropic stream retry and error text, `sp.error` from `memory/**`, the `pluginListMerge` header
+  errors and the Rust `unsupportedReason`.
+- **Tests (6 new files, 20 tests; one existing test file edited, `requests.responses.test.ts`, whose `src/lang` mock now
+  carries the English `incompleteResponse` keys):** `presets.i18n.test.ts`, `jsonSchema.i18n.test.ts`,
+  `interchangeability.i18n.test.ts`, `request/tests/shared.i18n.test.ts`, `models/tests/local.i18n.test.ts` and
+  `process/tests/requestErrors.i18n.svelte.test.ts`. Against production files served at `a5699f55` (a scratch alias config,
+  current `src/lang`), 13 reproducers fail on assertions and 7 guards pass (rows 916 and 917). Not tested: Cohere, Claude batch,
+  Bedrock, Vertex/Google token, TTS, MultiGen, `moduleAssetsSaveFailed`, `pluginNameChangeBlocked`, `characterNotFound`,
+  `requiredTokens`, the Korean `incompleteResponse` and `localSidecarNotStarted`.
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 376 files, 7242 passed, 4 skipped; `pnpm build` ok (row 916). Gate 1 and Gate 2
+  both ended `[EDITORIAL]` (rows 915 and 917), corrections made. Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch, as in earlier
+  batches. On the Main Campaign branch (merge-base `57e7be63`), of this batch's other files only `process/modules.ts` also
+  changed: Main's hunks are in `importModule` (about lines 271 to 276), this batch's in `readModule` (line 248), so they do
+  not overlap.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** listed in `MC-215` ("sidecar",
+  access token versus Token, vi plugin and `requiredTokens`, de "Charakter", "Voreinstellung" and "Assets", es tú and
+  "Reverificando tokens", ko `hordeNoGenerations`).
+- **Remaining:**
+  - **Batch 5c**: the `devToolActions` and `previewRunner` text, the `CharConfig` TTS prose labels and the `CharConfig` "Bias" label.
+  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, including the `processzip.ts`
+    "Failed to save N assets" text.
+  - **Known leftover out of bounds:** `hanuraiMemory.ts` "Required Tokens" (`process/memory`).
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`); cn, zh-Hant, vi, de and es remain unreviewed by a native speaker.
+
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
 below is the pre-fix measurement and is otherwise still current.

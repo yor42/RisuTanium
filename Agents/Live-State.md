@@ -362,10 +362,18 @@ Several sessions work **in this same checkout**:
   tests fail, 7 of them reproducers. Not run in a browser. Commit drafts: `commit-msg-21.txt` (code) and `commit-msg-22.txt`
   (records) in the scratchpad. **Next: batch 5b** (user-visible errors, about 40 keys), then 5c (dev-tool preview text and the
   `CharConfig` TTS prose labels).
-- **CHORE-05 status:** translation batches 1 to 4 and 5a done. The native-speaker review is deferred by the maintainer (`MC-212`);
-  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: batches 5b and 5c; delete `globalLoreBook` and `globalRegexScript`
+- **CHORE-05 status:** translation batches 1 to 4 and 5a done; 5b gated, not committed. The native-speaker review is deferred by the maintainer (`MC-212`);
+  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: batch 5c; delete `globalLoreBook` and `globalRegexScript`
   after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; the deferred items listed in the batch 3 block.
-- **Next free numbers in the UI ranges:** `MC-215`; ledger row 914; CHORE-100; Report 65.
+- **Translation batch 5b (CHORE-05: user-visible error and request-failure strings): committed as `edc8c8b6`
+  (code) on the maintainer's word "commit and start 5c"; not pushed.** `MC-215` (the "go ahead with 5b." and the three answers are the maintainer's; the
+  dispositions are the Orchestrator's); ledger rows 914 to 918. 36 new `errors.*` keys in all seven languages plus two reused
+  keys, across 14 production files; three defective English strings fixed (disclosed in `MC-215`). Gate 1 and Gate 2 both ended
+  `[EDITORIAL]`, corrections made. Checks on the final tree: `pnpm check` 0/0; `pnpm vitest run` 376 files, 7242 passed, 4
+  skipped; `pnpm build` ok. 6 new test files (20 tests); at `a5699f55` 13 fail on assertions and 7 guards pass. Not run in a
+  browser. Commit drafts: `commit-msg-25.txt` (code) and `commit-msg-26.txt` (records) in the scratchpad. **Next: batch 5c**
+  (dev-tool preview text and the `CharConfig` TTS prose labels and "Bias").
+- **Next free numbers in the UI ranges:** `MC-216`; ledger row 919; CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

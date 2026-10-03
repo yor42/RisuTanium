@@ -6862,3 +6862,68 @@ dispositions together, before the commit: "changes made by you seems reasonable;
 
 **What was decided (the maintainer's):** after a failed re-roll, once the user edits the re-roll text, Apply is enabled and
 applies the edited text.
+
+### MC-215 — Translation batch 5b: user-visible error and request-failure strings (CHORE-05)
+
+- **Tag:** decision (the request and the three answers); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "go ahead with 5b." They then answered three questions the Orchestrator asked
+  (AskUserQuestion). The option text was the Orchestrator's; the maintainer chose by label: "Translate all (Recommended)",
+  "Fix them (Recommended)" and "Translate it (Recommended)".
+- **Reasoning:** none stated.
+- **Alternatives rejected:** the options not chosen. On the request-failure messages: "Alert-only rows" (about 22 keys;
+  request results stay English). On the three defective English strings: "Keep byte-identical". On the plugin rename error: "Keep
+  English".
+- **Related:** `MC-209`, `MC-211`, `MC-213`, `MC-200`, `MC-179`; CHORE-05; ledger rows 914 to 918.
+
+**What was decided (the maintainer's):**
+1. **Translate all the user-visible request-failure messages**, not only the ones shown in an alert. The question the
+   maintainer answered said that these texts are also read by Lua, triggers, MCP and plugins (`runLLMModel`), and are saved in
+   the chat when "inlay error response" is on, and that some results already carry translated prefixes.
+2. **Fix three defective English strings** while translating them: the Horde "Response not possible" message joined to its
+   "with ..." text without a space; the "not allowed dude to browser/os security policy" text; and the "failed ... failed!"
+   WebSocket text.
+3. **Translate the plugin-update rename error** shown to the installer.
+
+**Disclosures:**
+- **(a) Translated failure text now reaches scripts.** A request-failure text is returned as `{type:'fail', result}`. By the
+  investigator (row 914), that text reaches Lua `LLM` and `axLLM` (prefixed `'Error: '` in `scriptings.ts`), the trigger `runLLM`
+  result (a chat variable), MCP `aiaccess` and the plugin v3 `runLLMModel`. `throwError` also saves the text into the chat as a
+  `risuerror` block when `inlayErrorResponse` is on (the setting has no default). A script that matches English words in these
+  results would stop matching in a non-English UI. The investigator found no such match in the repository. The investigator
+  found no TRANSLATE literal that contains `'Failed to fetch'` or `'NetworkError'`, which are the texts `alertError` matches.
+- **(b) Three English texts changed** (all other English values are byte-identical to HEAD; Gate 2 compared every value and
+  composite):
+  - `websocketConnectFailed`: "WebSocket connection to '{url}' failed." (HEAD: "WebSocket connection failed to '...' failed!").
+  - `hordeNotPossible` "Response not possible." and `hordeNotPossibleWith` "Response not possible: {message}" (HEAD joined the
+    two parts with no space: "Response not possiblewith ..."). The punctuation is Gate 1's NIT, accepted.
+  - `localStreamingBlocked`: "Local requests cannot use streaming because of browser and OS security policy. Turn off
+    streaming."
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Sites:** 36 new keys and 2 reused keys (`errors.unexpectedResponseType`, `errors.vertexAuthIncomplete`), from the
+  investigator's table of 42 TRANSLATE sites (row 914) plus the plugin rename error.
+- **Keys sit under `errors`** (the existing precedent), not top level (Gate 1 m2). Placeholders live inside the key text, for
+  example `{provider}: {error}` and `{tokens}` (m3).
+- **`chatTemplate.ts` "Template type is not set" stays English** (m1). It is unreachable in normal use: the type defaults with
+  `??= "chatml"` and the select has no empty option, so only a crafted `.risup` or a plugin could reach it.
+- **The `src/main.ts` vite-preload alert stays English** (m4). It can fire before the language loads, and while module loading
+  is failing.
+- **Other English typos stay byte-identical** outside the three fixes: "seperate", "SyntaxError Found", "Unsupported Type
+  Detected", "Failed to Auto get path".
+- **Stay English (the keep-English list in the investigator's table):** the five "Failed to fetch model response after tool
+  execution" sites, "Aborted", "All models failed", the plugin-blocked text, the preview JSON, tool-call failure texts sent to
+  the model, the Anthropic stream "Overload detected, retrying..." and "Error:" plus message, `sp.error` from `memory/**`, the
+  `pluginListMerge` header errors and the Rust `unsupportedReason`.
+- **Known leftovers:** `hanuraiMemory.ts` "Required Tokens" (`process/memory`, out of bounds); the `processzip.ts` "Failed to save
+  N assets" text until the Main Campaign merge (`MC-179`), and the `characterCards.ts` and `processzip.ts` strings after it.
+- **Test mock:** `requests.responses.test.ts` mocks `src/lang` as `{errors:{httpError:'HTTP '}}`. The plan's claim that it was
+  unaffected was false (Gate 1 M1); the mock now carries the English `incompleteResponse` keys.
+- **Low-confidence translation choices, for the deferred native-speaker review (`MC-212`):** "sidecar" is kept in English in
+  cn, zh-Hant, vi, de and es, and written 사이드카 in ko; cn and zh-Hant use "access token" (访问令牌, 存取權杖) where `toomuchtoken`
+  uses Token; vi keeps "plugin" in English and its `requiredTokens` "Số Token bắt buộc" differs from `toomuchtoken`'s term; de
+  uses "Charakter", "Voreinstellung" and "Assets"; es uses tú, "Reverificando tokens" and "solicitud por lotes"; ko
+  `hordeNoGenerations` is interpretive ("작업이 완료되었지만 생성된 결과가 없습니다"). The ko "에셋" form follows `ko.ts` (at HEAD
+  `a5699f55`: 에셋 on 39 lines, 프리셋 on 24, 애셋 on 0).
+- **Scope of batch 5b:** 36 new keys in seven languages, 14 production files, 1 edited test mock, 6 new test files, ledger rows 914 to 918.
