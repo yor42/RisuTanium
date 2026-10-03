@@ -6732,3 +6732,42 @@ name suffix and reports any file it cannot use.
 As implemented (the Orchestrator's addition, not a maintainer statement): the character field also accepts `application/zip`, and, at Gate 1's optional suggestion, `application/x-zip-compressed` (ledger rows 793 to 795).
 
 ---
+
+### MC-190 — Idea: an API-key field could hold an environment-variable reference instead of the key
+
+- **Tag:** idea stated in chat. It is not a decision to implement now; the maintainer placed it in a later, unscheduled section.
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat on 2026-10-04, quoted exactly: "I think I have found another potential QOL improvement that can go into maybe later section. environment variable support in API keys. Best practice for API key is to store keys in environment variables, under names such as OPENAI_API_KEY. so instead of holding whole API key in the save file, we can let this app to load API key through environment variable with unique syntax like `$OPENAI_API_KEY`."
+- **Reasoning:** the maintainer's own words, above. Nothing else is recorded.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-175`, `MC-143`, `MC-191`; Roadmap CHORE-80.
+
+**What was stated:** an API-key field may hold a reference such as `$OPENAI_API_KEY`. The app resolves the reference from an
+environment variable. The key itself is then not stored in the save file. No mechanism, scope or syntax was decided. The
+Orchestrator's open questions are in Roadmap CHORE-80.
+
+---
+
+### MC-191 — The hosted build is for private networks only (LAN or VPN); its security is barebones by design
+
+- **Tag:** fact and rule stated by the maintainer, first on 2026-09-22 and confirmed for the record on 2026-10-04.
+- **Date:** 2026-10-04 (first stated 2026-09-22)
+- **Sweep ref:** none (stated directly)
+- **Source:** the maintainer. First stated on 2026-09-22 and kept only in the Orchestrator's memory note, whose wording was:
+  "The hosted (node server / web) version of RisuAI is never meant to be public-facing. Its security is barebones and not
+  deploy-ready by design; it exists solely for private self-hosting (Raspberry Pi, mini PC) reached over VPN or LAN." On
+  2026-10-04 the Orchestrator asked to record it, and the maintainer confirmed in chat, quoted exactly: "yes, hosted is meant
+  to be private-only, record it."
+- **Reasoning:** none recorded beyond the statement.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-143`, `MC-190`.
+
+**What was stated:** the hosted build is never meant to be public-facing. It is for private self-hosting (for example a
+Raspberry Pi or a mini PC) reached over LAN or VPN. Its security is deliberately barebones.
+
+**Rule for agents (the consequence, as the Orchestrator put it for this entry):** hardening of inbound data is framed as
+integrity and correctness, not as internet-facing security. Authentication, rate-limit and public-exposure work is not
+proposed as a bug fix.
+
+---

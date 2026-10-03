@@ -4822,6 +4822,40 @@ maintainer's decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC
   (`MC-081`).
 - **Related:** `MC-175`, `MC-176`, `MC-081`; CHORE-55 (the round-trip note under its stage 2b block); ledger row 697.
 
+### CHORE-80 — Idea (feature / QOL, not a bug): read an API key from an environment variable instead of storing it in the save file (unscheduled; not investigated)
+
+**Status (2026-10-04):** open, **not scheduled**, **not investigated**. This is a feature idea, not a defect. The maintainer
+said it can go in "maybe later section" (`MC-190`). It is not placed in the work order; the maintainer places it.
+
+- **The idea (the maintainer's, `MC-190`):** an API-key field may hold a reference such as `$OPENAI_API_KEY`. The app resolves
+  it from an environment variable, so the key itself is not stored in the save file. Quoted from the maintainer, 2026-10-04:
+  "I think I have found another potential QOL improvement that can go into maybe later section. environment variable support
+  in API keys. Best practice for API key is to store keys in environment variables, under names such as OPENAI_API_KEY. so
+  instead of holding whole API key in the save file, we can let this app to load API key through environment variable with
+  unique syntax like `$OPENAI_API_KEY`."
+- **Open questions for planning** (the Orchestrator's preliminary questions, **unverified against code**; nothing here is
+  decided):
+  - **(a) Platform scope.** A browser page has no environment variables. The pure web build cannot read them; only the Tauri
+    desktop process and the Node or Hono self-hosted server can (the Node server today reads only `PORT` and `TRUST_PROXY`;
+    the Hono server reads none). On the hosted build the key would have to be resolved
+    server-side. Decide whether the key may ever reach the browser, or whether the server must substitute it into the outgoing
+    provider request so it never leaves the server. That depends on whether provider requests on that build go
+    browser-direct or through the server: TODO(evidence).
+  - **(b) Which fields.** Provider API keys only, or also other secrets (custom endpoint keys, plugin-provided keys, TTS and
+    image-generation keys)? TODO(evidence): where each of these is stored and read.
+  - **(c) Syntax.** `$NAME` versus an explicit form. What happens when a reference names a variable that is not set (a clear
+    error, never sending the literal text)? And can a real key begin with `$`?
+  - **(d) Compatibility (`MC-175`).** A `.bin` containing `$NAME` imported into upstream would send the literal text to the
+    provider: an authentication failure, but no data lost. Backups and exports would no longer carry the real key, which is
+    the point, but a restore on another machine needs the variable set there. (Reasoned, not run.)
+  - **(e) Security on the hosted build.** The hosted build is meant for private LAN or VPN use only, with barebones
+    security by design (`MC-191`). Should any client that can reach the server be able to make it spend a server-held key?
+    Still open.
+- **Next step:** when it is scheduled, open with an `investigator` pass on where API keys are read and how provider requests
+  are routed on each platform (web, Tauri, Node and Hono server). Nothing is decided.
+- **Placement:** unplaced; the maintainer places it.
+- **Related:** `MC-190`, `MC-191`, `MC-175`, `MC-143`.
+
 ## Sequencing Summary
 
 ```
