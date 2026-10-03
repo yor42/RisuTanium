@@ -322,10 +322,24 @@ Several sessions work **in this same checkout**:
   `index.svelte.ts` and `characterCards.ts` heavily; the edits there are string expressions and imports only. The new locale parity guard
   (`src/lang/localeParity.test.ts`) fails any lane, the Main Campaign's included, that adds an `en.ts` key without all six
   translations. No file on the UI session's out-of-bounds list is in the diff.
-- **Next in the lane:** CHORE-05 batch 2, the Settings pages (the maintainer's choice, 2026-10-03: "do settings page next";
-  about 480 hard-coded rows; names stay English, `MC-209`). Then the common UI chrome (SideBars and Others), then the
-  dead-key removal as its own batch.
-- **Next free numbers in the UI ranges:** `MC-210`, ledger row 887, CHORE-100, Report 65.
+- **Translation batch 2 (CHORE-05: the Settings pages): DONE, committed in
+  `694a4c89`**. `MC-210` (the order is the maintainer's; the dispositions are the Orchestrator's);
+  ledger rows 887 to 894. Gate 1 took two rounds (`[REJECT]`, then `[EDITORIAL]`) and Gate 2 approved. Checks on the working
+  tree: `pnpm check` 0/0; `pnpm test` 356 files, 7112 passed, 4 skipped; build ok. 167 new `en.ts` keys in all six locales, 66
+  registry `labelKey`s, 20 Svelte files and 7 `src/ts/setting` files, 4 new test files (20 tests). Three disclosures are not
+  yet answered by the maintainer (`MC-210`): newly added custom sidebar items store a label instead of an id; three English
+  `<br />` strings lose their forced line break and gain a space; the NovelAI reference area is translated unevenly. Not run in a browser or on a device. No new
+  tickets. Detail is in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-15.txt` (code) and `commit-msg-16.txt`
+  (records) in the scratchpad.
+- **Lane notes (translation batch 2, against `MC-179` 1):** the parity guard and the new `labelKey` guard
+  (`src/ts/setting/settingLabelKeys.test.ts`) fail any lane that adds an `en.ts` key without all six translations, or a
+  `labelKey` that names no `en.ts` key. No file on the UI session's out-of-bounds list is in the diff (the plan excluded
+  `StorageMaintenanceSettings.svelte`). `.claude/launch.json` is also modified in the working tree and is not part of this batch.
+- **Next in the lane:** CHORE-05 batch 3, SideBars, Others and the common UI chrome (the maintainer's earlier ordering;
+  includes the rest of `CustomSidebarConfig.svelte`'s strings, `LoreBookSetting.svelte` and the Playground Embedding
+  "Custom (OpenAI-compatible)" option). Then the dead-key removal as its
+  own batch, then the optional native-speaker review.
+- **Next free numbers in the UI ranges:** `MC-211`, ledger row 895, CHORE-100, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

@@ -579,7 +579,8 @@ ticket's key-drift premise, and the stale sections below are marked as supersede
   Not run in a browser or on a device.
 - **Merge note (`MC-179`):** the Main Campaign changed `request/*`, `local.ts`, `stableDiff.ts`, `index.svelte.ts` and
   `characterCards.ts` heavily; the edits here are string expressions and imports only.
-- **Remaining batches, in the lane (the maintainer chooses the order):**
+- **Remaining batches, in the lane (the maintainer chooses the order; as of batch 1, the current list is in the batch 2
+  block below):**
   1. **Settings pages**, about 480 hard-coded rows (row 878). `MC-209`'s rule: provider and model names, API, URL, JSON and
      parameter names such as Top P stay English; the rest is translated.
   2. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the same heuristic).
@@ -595,6 +596,63 @@ ticket's key-drift premise, and the stale sections below are marked as supersede
   {error}` network hint appears only when the raw error text contains `Failed to fetch` or Firefox's `NetworkError when
   attempting to fetch resource.` (a text match in `alertError`, not a network test); in English it appears on every error of
   that message.
+
+**Status (2026-10-03, UI session, translation batch 2: the Settings pages): DONE in `694a4c89`;
+the ticket stays open for the later batches** (ledger rows 887 to 894). Product choices in `MC-210` (the order) and `MC-209`
+(names stay English); the rest of `MC-210` is the Orchestrator's dispositions, not the maintainer's. Batch 1's mechanism is
+reused unchanged: flat string keys, `{name}` placeholders filled by `fillLang`, no function-valued keys.
+- **Done in batch 2:** 167 new `en.ts` keys (38 top-level and 129 in a new `settingsPage` object; the Orchestrator's count
+  from the working-tree diff), translated into all six locales (row 890). 20 Svelte files under `src/lib` (Settings pages,
+  `botpreset.svelte`, `SettingRenderer.svelte`, `SettingSelect.svelte`, `CustomSidebarConfig.svelte`) and 7 files under
+  `src/ts/setting` now route visible text through `language`. 66 registry entries gained a `labelKey` (advanced 12, bot
+  parameters 19, chat format 1, display 3, language 25, accessibility 6); the English `label` or `fallbackLabel` stays as the
+  fallback, because the registry objects are module-level and `getLabel` resolves the key lazily. Mixed strings use a
+  `{name}` placeholder key (for example `settingsPage.nameApiKey`, "{name} API Key") with the provider name kept English. The
+  Settings embedding dropdown's "Custom (OpenAI-compatible)" now uses `settingsPage.customOpenAiCompatible`; the Playground
+  copy in `PlaygroundEmbedding.svelte` (listed for this batch in batch 1) is still hard-coded and goes to batch 3.
+- **Behaviour changes, disclosed (`MC-210`, not answered by the maintainer):** (a) `CustomSidebarConfig.svelte` shows and
+  stores `getLabel(type) || type.id`, so a newly added custom sidebar item stores its label (the language value if it has a
+  `labelKey`, otherwise its English `fallbackLabel`) instead of an id such as `adv.visionQual`; only an item with neither
+  keeps its id; stored items are untouched. (b) `Upload<br />Image`, `Upload<br />Vibe` and `Uploading<br />Image..` are
+  single strings with a space: the English `textContent` gains a space and the forced line break is gone, so the text wraps
+  naturally in the 80px box and may fit on one line. (c) In the NovelAI reference area "Image Reference", "Vibe Trasfer", "Character Reference" and
+  "Upload Vibe" are translated while sibling NovelAI labels stay English (Gate 2 SHOULD 3, left; a later native or maintainer
+  call). Also: settings search now matches `fallbackLabel`; an item with only a `labelKey` stays searchable only in the
+  current language, as before.
+- **Left English on purpose (the Orchestrator's dispositions, `MC-210`):** parameter names (Top P, Top K, Min P, Top A,
+  Repetition penalty, Reasoning Effort, Verbosity, Thinking Mode, Jinja Template); sampler and scheduler names; Stability
+  style presets; resolutions and ratios; the UI mode names; tokenizer and `LLMFormat` names; Ooba snake_case names and
+  modes; NovelAI feature names; the role labels User, System and assistant in `PromptSettings.svelte`; colour-scheme preset
+  names; keyboard key names. Stored defaults (`New Persona`, `New Preset`, `New Lore`, `New Folder`, `New Event`) are not
+  translated. Translator target-language names are translated (endonyms kept). English typos kept byte-identical: "Vibe
+  Trasfer", "Text Spliting", "Seperator", "Malaysian", "Ukranian".
+- **Two fixes folded in:** the six new-message-button option labels in `accessibilitySettingsData.ts` were `language.x` at
+  module level (frozen at import); they are now `labelKey` plus an English `label`. `acc.longPressToPopupEditor` had a
+  `labelKey` with no `en.ts` key (upstream commit `e03c3897` renamed the item without adding one), so its checkbox had no
+  label; it has a fork-only key, "Long Press to Open Popup Editor", and a `fallbackLabel`.
+- **Deferred:** the registry `options.placeholder` strings ("Leave it blank to use default", "Leave it blank to not use" in
+  `advancedSettingsData.ts`) need a `placeholderKey` mechanism; `CustomSidebarConfig.svelte`'s other strings ("No custom
+  sidebar items configured", "Delete", "Add Item", "Close", "Back to List"), `LoreBookSetting.svelte` and the Playground
+  Embedding "Custom (OpenAI-compatible)" option go to the next batch.
+- **New tests (20, four files):** `src/ts/setting/settingLabelKeys.test.ts` (3 guards: every `labelKey` names an existing
+  `en.ts` key), `SettingWrappers.i18n.svelte.test.ts` (11), `CustomSidebarConfig.i18n.svelte.test.ts` (4) and
+  `OtherBotSettings.i18n.svelte.test.ts` (2). Against HEAD's production files (scratch config), 8 of the 20 fail for the
+  intended defects; with `en.ts` at HEAD too, 13 fail (row 891; re-run on the final tree by the Orchestrator, same counts,
+  row 892). The `fallbackLabel` search match has no failing-at-HEAD test
+  (guard only). Merge note: the parity guard and the `labelKey` guard fail any lane that adds an `en.ts` key without all six
+  translations, or a `labelKey` that names no `en.ts` key.
+- **Checks:** `pnpm check` 0/0; `pnpm test` 356 files, 7112 passed, 4 skipped; build ok (row 892). Gate 2 approved (row 893).
+  Not run in a browser or on a device.
+- **Remaining batches, in the lane (the maintainer chooses the order):**
+  1. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the row 878 heuristic), including the rest of
+     `CustomSidebarConfig.svelte`'s strings and `LoreBookSetting.svelte`. The registry `options.placeholder` strings wait
+     for a `placeholderKey` mechanism.
+  2. **Dead-key removal**, in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
+  3. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
+     batch 1 (row 882) and batch 2 (row 890: `optViaSound`, `optAxModel`, `nameThinking`, `hotBadge`, `starter`, `bias`, and the
+     de and vi wording of `visionQuality`). Also a review note from Gate 2 (row 893): five pairs of keys hold the same English
+     (`settingsPage.iconAlt` and `icon`, `helpTab` and `helpBlock`, `deleteButton` and `playground.delete`, `searchModels` and
+     `openRouterSearchModel`, `imagenImageSize` and `imageSize`) and can drift apart; and ko 유저 against 사용자.
 
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table

@@ -6653,3 +6653,66 @@ upstream cards do).
   `{version}(으)로`, 네거티브 프롬프트 and 바이브; Vietnamese does not copy three odd existing terms (Tính cách for
   character, Cắm vào for plugin, Sách truyền thuyết for lorebook); German uses the formal "Sie", Spanish the informal "tú".
   A native-speaker review is optional and listed in CHORE-05.
+
+### MC-210 — Translation batch 2: the Settings pages next (CHORE-05); the rest are the Orchestrator's dispositions
+
+- **Tag:** decision (the order of work); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, after batch 1 was gated: "let's commit and do settings page next." The rule that names stay
+  English in Settings is `MC-209`'s; this entry adds no new maintainer rule.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-091`, `MC-179`, `MC-209`; CHORE-05; ledger rows 887 to 894.
+
+**What was decided:**
+1. **Which batch goes next.** The Settings pages (`src/lib/Setting/**` and the settings registries in `src/ts/setting`).
+   `MC-209`'s rule applies unchanged: provider and model names, API, URL, JSON and parameter names stay English; the rest is
+   translated.
+
+**Rules that follow:**
+- Names that `MC-209` keeps English stay English in this batch. Everything below is how the Orchestrator applied that rule;
+  none of it was put to the maintainer.
+
+**Disclosures (consequences the maintainer should know; the maintainer has not answered them):**
+- **(a) New custom sidebar items store a readable label, not an id.** `CustomSidebarConfig.svelte` showed and stored
+  `language[type.labelKey] || type.id`. It now shows and stores `getLabel(type) || type.id`. A newly added custom sidebar
+  item therefore stores its label (the language value if it has a `labelKey`, otherwise its English `fallbackLabel`, as
+  for the parameter items Top P, Top K and the like) instead of an id such as `adv.visionQual`; only an item with neither
+  keeps its id. Items already stored are untouched.
+- **(b) Three English strings changed whitespace.** `Upload<br />Image`, `Upload<br />Vibe` and `Uploading<br />Image..`
+  became single strings with a space. The English `textContent` gains a space, and the forced line break is gone: the
+  text now wraps naturally inside the 80px box and may fit on one line.
+- **(c) The NovelAI reference area is translated unevenly.** "Image Reference", "Vibe Trasfer", "Character Reference" and
+  "Upload Vibe" are translated, while sibling NovelAI labels such as "Vibe Model", "Use SMEA" and "Variety+" stay English
+  (feature names). Gate 2 flagged it (SHOULD 3). It is left as is; a native-speaker or maintainer call for a later pass.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **R3, scope amendment for `CustomSidebarConfig.svelte`** (`MC-091`, a shared-cause correction; the file is in
+  `src/lib/Others`, which the next batch covers). The old expression showed the id of every item without a `labelKey`,
+  including those with a `fallbackLabel`, and adding `labelKey`s would have changed which items showed ids.
+  It is changed together with the registry; see disclosure (a).
+- **R4, settings search also matches `fallbackLabel`,** so an English search still finds an item whose label is now
+  translated. Known limitation: an item with only a `labelKey` stays searchable only in the current language, as before.
+- **R5, parameter `fallbackLabel`s stay English** and get no `labelKey`: Top P, Top K, Min P, Top A, Repetition penalty,
+  Reasoning Effort (two items), Verbosity, Thinking Mode and Jinja Template. The prose `fallbackLabel`s are translated.
+- **R6, names that stay English:** sampler and scheduler names, the Stability style presets, resolutions and ratios, the UI
+  mode names (Standard Risu, Waifulike, Mobile Chat, CardBoard, Custom HTML), tokenizer and `LLMFormat` names, Ooba's
+  snake_case parameter names and modes, NovelAI feature names (Vibe Model, Use SMEA, Variety+ and similar), the role labels
+  User, System and assistant in `PromptSettings.svelte`, colour-scheme preset names, and keyboard key names. Translator
+  target-language names are translated (one key per language, shared by both translator dropdowns); endonyms stay. The
+  `[Translate in your own language]` option is translated.
+- **English typos kept byte-identical:** "Vibe Trasfer", "Text Spliting", "Seperator", "Malaysian", "Ukranian". Fixing them
+  is not part of this batch.
+- **Stored defaults are not translated:** `New Persona`, `New Preset`, `New Lore`, `New Folder`, `New Event`.
+- **Two fixes folded in:** (1) `accessibilitySettingsData.ts` set its six new-message-button option labels from `language.x`
+  at module level, which freezes them at import; they are now `labelKey` plus an English `label`. (2) `acc.longPressToPopupEditor`
+  had a `labelKey` with no `en.ts` key (upstream commit `e03c3897` renamed the item without adding one), so its checkbox had
+  no label; it now has a fork-only `en.ts` key, "Long Press to Open Popup Editor", and a `fallbackLabel`.
+- **Deferred:** the registry `options.placeholder` strings ("Leave it blank to use default", "Leave it blank to not use" in
+  `advancedSettingsData.ts`) need a `placeholderKey` mechanism. `CustomSidebarConfig.svelte`'s other strings ("No custom
+  sidebar items configured", "Delete", "Add Item", "Close", "Back to List"), `LoreBookSetting.svelte` and the Playground
+  Embedding "Custom (OpenAI-compatible)" option go to the next batch (SideBars and Others).
+- **Translation choices, low-confidence by the translator's own report (row 890):** `optViaSound`, `optAxModel` ("auxiliary
+  model"), `nameThinking`, `hotBadge`, `starter`, `bias`, and the German and Vietnamese wording of `visionQuality`.
+  Vietnamese uses "nhân vật" for character. A native-speaker review is optional and listed in CHORE-05.
