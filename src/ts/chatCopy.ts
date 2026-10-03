@@ -1,3 +1,5 @@
+import { replaceThoughtsBlocks } from './parser/thoughts'
+
 export type CopyOutcome =
     | { ok: true }
     | { ok: false, errorName: string }
@@ -69,4 +71,42 @@ export function copyPlainText(text: string, report: (outcome: CopyOutcome) => vo
         () => report({ ok: true }),
         (error: unknown) => fallback(errorNameOf(error)),
     )
+}
+
+function countLineBreaks(run: string): number {
+    return run.split('\n').length - 1
+}
+
+/**
+ * Removes closed `<Thoughts>` sections (the chat screen's exact-case, nesting-aware
+ * rule) from `text` for the plain copy.
+ *
+ * A line break is `\n` or `\r\n`. A section at the very start leaves no leading line
+ * breaks (spaces and tabs stay). Elsewhere, the runs of line breaks before and after
+ * a removed section join into the longer one (the run before wins a tie), so a
+ * paragraph break is never collapsed. A section inside a line leaves its
+ * surroundings as written. When nothing but whitespace would remain, `text` is
+ * returned unchanged so a thinking-only message still copies its content.
+ */
+export function stripThoughtsForCopy(text: string): string {
+    let marker = '\uE000'
+    while (text.includes(marker)) marker += '\uE000'
+
+    const segments = replaceThoughtsBlocks(text, () => marker).split(marker)
+    if (segments.length === 1) return text
+
+    let out = segments[0]
+    for (let k = 1; k < segments.length; k++) {
+        const segment = segments[k]
+        const pre = /(?:\r?\n)+$/.exec(out)?.[0] ?? ''
+        const post = /^(?:\r?\n)+/.exec(segment)?.[0] ?? ''
+        const base = out.slice(0, out.length - pre.length)
+        const rest = segment.slice(post.length)
+        if (base === '') {
+            out = rest
+        } else {
+            out = base + (countLineBreaks(post) > countLineBreaks(pre) ? post : pre) + rest
+        }
+    }
+    return out.trim() === '' && text.trim() !== '' ? text : out
 }

@@ -185,6 +185,8 @@ const AVATAR_DATA_URL = 'data:image/jpeg;base64,ENCODEDAVATAR'
 const COPIED = 'Copied'
 const COPIED_SIMPLE_CARD = 'Copied (simple card)'
 const COPIED_AS_TEXT = 'Copied as text'
+const THINKING_MESSAGE = 'Plan\n\n<Thoughts>private reasoning</Thoughts>\n\nAnswer'
+const THINKING_STRIPPED = 'Plan\n\nAnswer'
 
 type ChatProps = ComponentProps<typeof Chat>
 
@@ -794,6 +796,42 @@ describe('the card copy and the plain copy button of one message', () => {
         expect(clipboard.writeText).toHaveBeenLastCalledWith(MESSAGE)
         expect(statusText(root)).toBe(COPIED)
         expect(unhandled).toEqual([])
+    })
+
+    test('regression reproducer: a plain copy of a message with thinking, written again when the card write settles, is the text without the thinking', async () => {
+        const clipboard = stubClipboard()
+        const gate = gateWrites(clipboard)
+        const { root } = await mountChat({ message: THINKING_MESSAGE })
+        await openMenu(root)
+
+        requireCopyCardItem().click()
+        await settle()
+        expect(clipboard.write).toHaveBeenCalledTimes(1)
+
+        root.querySelector<HTMLElement>('.button-icon-copy')!.click()
+        await settle()
+        expect(clipboard.writeText).toHaveBeenCalledTimes(1)
+        expect(clipboard.writeText).toHaveBeenLastCalledWith(THINKING_STRIPPED)
+
+        gate.release()
+        await settle()
+
+        expect(clipboard.writeText).toHaveBeenCalledTimes(2)
+        expect(clipboard.writeText).toHaveBeenLastCalledWith(THINKING_STRIPPED)
+        expect(statusText(root)).toBe(COPIED)
+        expect(unhandled).toEqual([])
+    })
+
+    test('guard: the card of a message with thinking still captures the thinking in its text/plain companion', async () => {
+        const clipboard = stubClipboard()
+        const { root } = await mountChat({ message: THINKING_MESSAGE })
+        await openMenu(root)
+
+        requireCopyCardItem().click()
+        await settle()
+
+        const { plain } = await writtenCard(clipboard)
+        expect(plain).toBe(THINKING_MESSAGE)
     })
 
     test('a second tap on the card item of the same message while its card is pending writes nothing more and shows Loading', async () => {

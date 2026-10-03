@@ -1,7 +1,7 @@
 <script lang="ts">
     import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
     import { aiLawApplies, changeChatTo, foldChatToMessage, createChatCopyName, getFileSrc } from "src/ts/globalApi.svelte"
-    import { copyPlainText, type CopyOutcome } from "src/ts/chatCopy"
+    import { copyPlainText, stripThoughtsForCopy, type CopyOutcome } from "src/ts/chatCopy"
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
@@ -224,9 +224,6 @@
     // is `frozenTranslationSeed` (the cached translation seeded at open), NOT
     // `baseData`/the key: a `tr:` record's `baseData` is categorically a
     // different string from any translation.
-    // `updateTranslationCache`'s own `editTranslationText = data` write (the
-    // save echo) is a programmatic assignment, not an `input` event, so it
-    // never reaches this function.
     function captureTranslationEdit(text: string) {
         if (!frozenTranslationIdentity) {
             return
@@ -428,9 +425,18 @@
         displaya(e.detail.newData)
     }
 
+    // Translation cache writes from this instance land in click order: each waits
+    // for the previous one to settle, whether it succeeded or failed, and every
+    // caller sees only its own outcome.
+    let translationWriteChain: Promise<void> = Promise.resolve()
+
+    // Translation saves clicked from this instance that have not settled yet.
+    let pendingTranslationSaves = 0
+
     async function updateTranslationCache(key: string, data: string) {
-        await setLLMCache(key, data)
-        editTranslationText = data
+        const write = translationWriteChain.then(() => setLLMCache(key, data))
+        translationWriteChain = write.then(() => {}, () => {})
+        await write
         chatBodyRevision += 1
     }
 
@@ -527,25 +533,52 @@
         if (editTranslationKey === null) return
 
         // Long-press SAVES on this editor, and shares this same function
-        // with the Save button -- both are a deliberate exit, once
-        // the save actually succeeds. The frozen identity stays in place
-        // until the cache write actually succeeds: `updateTranslationCache`'s
-        // own `editTranslationText = data` write (the save echo) is a
-        // programmatic assignment, never an `input` event, so it cannot
-        // reach `captureTranslationEdit` regardless of when it runs. A
-        // rejection propagates out of this function unchanged, leaving the
-        // frozen identity, the record, and `editTranslationMode` untouched,
-        // so the editor stays open with the same identity and record, and
-        // typing keeps being captured against it.
-        await updateTranslationCache(editTranslationKey, editTranslationText)
-
-        if (frozenTranslationIdentity) {
-            draftContentOrphanGate.delete(frozenTranslationIdentity)
+        // with the Save button. The key, identity and text are taken at the click;
+        // a rejection propagates unchanged and leaves the editor, buffer, identity
+        // and record untouched.
+        const key = editTranslationKey
+        const identity = frozenTranslationIdentity
+        const text = editTranslationText
+        pendingTranslationSaves += 1
+        try {
+            await updateTranslationCache(key, text)
+        } finally {
+            pendingTranslationSaves -= 1
         }
-        frozenTranslationIdentity = null
+        if (!identity) return
+
+        // The `tr:key` record is shared by every instance and session for this
+        // key, so a settle compares against the record itself: it deletes only a
+        // record holding the text it wrote. Only the settle that leaves no save
+        // from this instance pending may treat its text as final: while a later
+        // save is in flight, a record can hold the user's newest text, and a
+        // destroyed instance could never write it again.
+        if (pendingTranslationSaves === 0 && draftContentOrphanGate.get(identity, identity.key)?.text === text) {
+            draftContentOrphanGate.delete(identity)
+        }
+
+        // A destroyed instance, or one whose editor session differs from the
+        // clicked one, changes nothing beyond the cache and the record delete above.
+        if (destroyed || frozenTranslationIdentity !== identity || !editTranslationMode) return
+
+        if (editTranslationText === text && pendingTranslationSaves === 0) {
+            frozenTranslationIdentity = null
+            restoredTranslationRecord = null
+            editTranslationKey = null
+            editTranslationMode = false
+            return
+        }
+
+        // The editor stays open while the buffer differs from `text` or a later
+        // save from this instance is still pending. The cache holds `text`, so
+        // that is what Revert and "unchanged" compare against, and the buffer
+        // gets a record only when none exists (an existing record keeps its
+        // keystroke-time age) and the buffer differs from that seed.
+        frozenTranslationSeed = text
         restoredTranslationRecord = null
-        editTranslationKey = null
-        editTranslationMode = false
+        if (editTranslationText !== text && !draftContentOrphanGate.get(identity, identity.key)) {
+            draftContentOrphanGate.set(identity, editTranslationText, identity.key)
+        }
     }
 
     function revertTranslationEdit() {
@@ -1059,7 +1092,7 @@
 {#snippet majorIconButtonsBody(showNames:boolean)}
     {#if DBState.db.useChatCopy && !blankMessage}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
-        const copyText = currentCopyText()
+        const copyText = stripThoughtsForCopy(currentCopyText())
         copyPlainText(copyText, reportCopy)
         noteNewerPlainCopy(copyText, reportCopy)
     }}>
@@ -1246,6 +1279,9 @@
                     <div class="shadow-lg bg-textcolor2" style={m + (options?.styleFix ?? `height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`)}
                     class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
                 {/if}
+            {:catch}
+                <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
+                class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
             {/await}
             {:else}
                 <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
