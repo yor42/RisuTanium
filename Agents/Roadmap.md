@@ -2615,6 +2615,25 @@ its check); rows 695 and 696 are these records and their fact-check. `MC-174` re
 - **Next for CHORE-55:** stage 3 (assets), then stage 4 (cold-storage units, the OPFS switch removal and the copy-back per
   `MC-173` 1).
 
+**Note (2026-10-03, after stage 2b): the upstream <-> fork `.bin` round trip (`MC-175`) was checked (ledger row 697);
+this note supersedes the "under investigation" sentence in the stage 2b block above.** RUN with the real export and import
+code of both trees (fork `cbaeddd6`, upstream `f9728b14`) on a mocked web store and synthetic data; the Tauri and Node
+paths are TRACED only. None of the findings below was caused by CHORE-55.
+- **Fork -> upstream holds, with one gap (G1):** v3 plugin storage units that are not an array or an object with a
+  `character` or `message` key are not restored by upstream's import (its confirm calls them items that "could not be
+  linked to a character", and the values then read null). Upstream's own exporter omits them too, after an "incomplete
+  backup" confirm (RUN: `up.export.report.json`).
+- **Upstream -> fork holds.** Upstream's exporter silently drops assets that are not `.png` (B1). It also leaves the G1
+  units out of its own backup (B2), after an "incomplete backup" confirm whose text names "unknown characters" and items
+  that "could not be linked to a character"; B1, by contrast, is silent. An account-encrypted `.bin` is refused
+  (`MC-081`). The fork-added database fields (archive settings, stub metadata) are ignored by upstream without harm.
+- **Refuted:** the `.bin` holds no remote pointers (it is the whole database as `encodeRisuSaveLegacy`, identical in both
+  trees), so the fork's v2 remote blocks do not affect it. Archived characters and chats round-trip. Device-local stores
+  (inlay media, HypaMemory caches, plugin permissions) are in neither exporter (TRACED from source, not run).
+- **Decided (`MC-176`):** G1 and B1 are upstream's own limits and do not count against the invariant; they are documented
+  in the records now and in the wiki later. The fork's export will warn about G1-type plugin data: CHORE-74.
+- **Untested:** a real Tauri or Node run, upstream's UI for a fork group stub, and entries over 4 GiB.
+
 **Status (2026-10-03, stage 2a): stage 2a done by `a29335f7` (local, not pushed). Stage 2b (remote blocks), stages 3
 and 4, and stage 5 or later are open.** The older status blocks below are kept as they were; where this block differs,
 this block governs. Ledger rows 679 to 688 are the stage 2a work (the read-route investigation, the facts investigation,
@@ -4082,6 +4101,30 @@ an investigation before anything is decided.
   `classifyTauriColdRead` or the other consumers.
 - **What the ticket asks:** decide whether those consumers should read the missing folder as "missing". Not decided.
 - **Related:** CHORE-51; the note under CHORE-51 about `coldStorageCleanupSaveUnreadable` could be folded in; `MC-170` 1.
+
+### CHORE-74 — The `.bin` export warns when the backup holds plugin data that upstream will not restore
+
+**Status (2026-10-03):** open, **not scheduled**; a release item on the Orchestrator's reading of `MC-089` (which names the tickets open on
+2026-09-25; the maintainer has not stated it for CHORE-74). Type: a small UI change. Filed at the maintainer's
+decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC-176` 3).
+
+- **What happens today:** upstream's `.bin` import restores a cold-storage unit only when it is an array or an object with
+  a `character` or `message` key (upstream `isColdStorageBackupData`, the Orchestrator verified it in
+  `src/ts/process/coldstorageData.ts` at `upstream/main` `f9728b14`). v3 plugin storage values of any other shape are lost
+  there, and upstream's confirm calls them items that "could not be linked to a character". The fork's export carries
+  them, so it is the fork -> upstream direction that loses them (ledger row 697; RUN, with the real code of both trees on
+  a mocked web store). Upstream's own export shows an "incomplete backup" confirm for these units; the fork's export
+  shows nothing for them.
+- **Why it matters:** the compatibility invariant is a two-way `.bin` round trip (`MC-175`). The maintainer decided the
+  loss is upstream's own limit and does not count against the invariant (`MC-176` 1), so the fork cannot remove it. The
+  fork can tell the user.
+- **Acceptance (the mechanism is non-normative):** when an export includes v3 plugin storage units that upstream would not
+  restore, the user is told before or when the export finishes, in plain words: the plugin data will not come back if this
+  file is loaded into upstream RisuAI, and it does in this app. The export bytes do not change. The new English string
+  goes in with its call site; the translations go to `translator`. Gated as usual (`AGENTS.md` section 4).
+- **Not in scope:** upstream's own export losses (B1, non-`.png` assets; B2), device-local stores, and an encrypted `.bin`
+  (`MC-081`).
+- **Related:** `MC-175`, `MC-176`, `MC-081`; CHORE-55 (the round-trip note under its stage 2b block); ledger row 697.
 
 ## Sequencing Summary
 

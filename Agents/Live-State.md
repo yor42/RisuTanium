@@ -139,14 +139,16 @@ The commits below were local when they were listed, and were pushed with it:
   rows 679 to 690; it also carries the `AGENTS.md` Tauri-version correction). Local, not pushed;
 - `cbaeddd6`: CHORE-55 stage 2b, remote character blocks go through the one byte store, so a Tauri write is atomic and a
   Node write is no longer refused for a peer's identical block (`MC-174`; ledger rows 691 to 694). Local, not pushed;
-- the records commit that follows `cbaeddd6` and carries this file (`MC-174`, CHORE-55 stage 2b done, ledger rows 691 to
-  696; `MC-175`, the maintainer's correction of the compatibility invariant to a two-way `.bin` round trip, with the
-  `AGENTS.md` update the maintainer asked for). Local, not pushed.
+- the records commit that follows `cbaeddd6` and carries this file (`f2a490b2`, by its commit subject: `MC-174`, CHORE-55
+  stage 2b done, ledger rows 691 to 696; `MC-175`, the maintainer's correction of the compatibility invariant to a two-way
+  `.bin` round trip, with the `AGENTS.md` update the maintainer asked for). Local, not pushed;
+- the records commit that carries this file's later edits (`MC-176`, CHORE-74, the round-trip note under CHORE-55's
+  stage 2b block, ledger rows 697 to 699; the maintainer's "Commit now", `MC-176` 3). Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
-`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18` and `cbaeddd6`) are local and not pushed (`git
-rev-list --count 1ce8abff..HEAD` gave 15 on 2026-10-03, before the records commit above); the records commit above will be
-local too, making 16. The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
+`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6` and `f2a490b2`) are local and not pushed
+(`git rev-list --count 1ce8abff..HEAD` gave 16 on 2026-10-03, at `f2a490b2`); the `MC-176` records commit will be a 17th.
+The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
 `9361ce1b` and `9b312962` at "commit the docs for now, and then 5c when ready."; `696ba5de` at "commit it, then
@@ -197,9 +199,9 @@ Several sessions work **in this same checkout**:
   build"** and **"Fork rebranding exploration"** are idle or done; see Report 39/41 and ledger
   row 428.
 
-**Next free numbers:** `MC-176` (`MC-175` is used), Report 57 (Report 56 is used), ledger row 698 (row 697 is taken by
-the fork/upstream `.bin` round-trip investigation, in progress) and CHORE-74
-(`CHORE-73` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
+**Next free numbers:** `MC-177` (`MC-176` is used), Report 57 (Report 56 is used), ledger row 700 (rows 697 to 699 are the
+fork/upstream `.bin` round-trip investigation and its records; the tokens of rows 698 and 699 are `TODO(evidence)`) and
+CHORE-75 (`CHORE-74` is used). Check the ledger's last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody
 should fill them.
 
 **Rules for every session:**
@@ -300,7 +302,12 @@ should fill them.
    edits that were not re-run): the suite 315 files, 6624 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings;
    `pnpm build` ok. Fake-backed tests only; no native Tauri, real `server.cjs`, browser or Android run. Upstream builds
    still read only v1 `<chaId>.local.bin` pointers, so a profile this fork saved with remote saving on is missing those
-   characters on upstream (not changed by 2b). **Next: CHORE-55 stage 3 (assets), then stage 4, then CHORE-59, then memory
+   characters on upstream (not changed by 2b). **The upstream <-> fork `.bin` round trip was checked (2026-10-03; ledger
+   row 697; RUN with the real code of both trees on a mocked web store, Tauri and Node TRACED only):** it holds in both
+   directions, with one fork -> upstream gap (G1: v3 plugin storage units that are not an array or an object with a
+   `character` or `message` key are not restored by upstream's import). G1 and upstream's non-`.png` asset drop (B1) are
+   upstream's own limits and do not count against the invariant (`MC-176` 1); **CHORE-74** (the fork's export warns about
+   such plugin data; `MC-176` 2) is filed. **Next: CHORE-55 stage 3 (assets), then stage 4, then CHORE-59, then memory
    steps 6 and 7, then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
@@ -674,6 +681,9 @@ Not placed in the sequence:
   entry whose name does not match the cold-storage key pattern to `assets/<name>`; LOW; not traced) and **CHORE-73** (on a
   Windows desktop, a chat whose pointer names a unit in a missing `coldstorage` folder reads "unreadable" instead of
   "missing"; LOW): filed 2026-10-02 from CHORE-51 and CHORE-52, open, not scheduled.
+- **CHORE-74** (the `.bin` export warns when the backup holds plugin data that upstream will not restore; a small UI change;
+  `MC-176` 2; LOW, `MC-176` 3): filed 2026-10-03, open, **unscheduled, before release** (on the Orchestrator's reading of `MC-089`, which
+  names the tickets open on 2026-09-25). That position is the Orchestrator's default, not a maintainer placement.
 - **CHORE-56** (under the beta mobile layout, a touch that ends on a button, input, select or textarea
   throws a TypeError in the swipe handler): suspected; TRACED, not run. The maintainer has not yet
   confirmed or placed it.

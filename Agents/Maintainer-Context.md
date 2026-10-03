@@ -6154,3 +6154,38 @@ same and stage 2 does not change the cost (ledger row 679).
 2. **`AGENTS.md` is updated to say so.** The maintainer, as typed: "yes, update the agents.md while we are at it." The
    Orchestrator kept, in the same sentence, the existing requirement that upstream characters, modules, presets, plugins
    and other supported integrations continue to work on this fork.
+
+### MC-176 — Upstream's own `.bin` limits do not count against the round-trip invariant; the fork's export warns when the backup holds plugin data upstream will not restore (CHORE-74)
+
+- **Tag:** decision (the maintainer's answers to `AskUserQuestion`)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to three questions the Orchestrator asked with `AskUserQuestion` (item 3 holds the
+  later two). The first came after the round-trip
+  investigation (ledger row 697) found that a `.bin` exported by this fork and imported into upstream does not restore
+  v3 plugin storage values that are not an array or an object with a `character` or `message` key. The question and
+  option text are quoted below. The reason in the option text is the Orchestrator's.
+- **Reasoning:** the reason given in the option text: upstream's own backups already lose these values, and the fork
+  cannot change what upstream accepts.
+- **Alternatives rejected:** "Treat as a blocker" ("Keep it open against the release. Only fixable by changing upstream,
+  which this fork doesn't do, so it would stay open indefinitely."). The recommended option, "Accept, document it
+  (Recommended)", was not chosen as offered; the answer took it as its base and added a ticket.
+- **Related:** MC-175 (the round-trip invariant); MC-081 (an encrypted `.bin` is refused); CHORE-74; ledger row 697.
+
+**What was decided:**
+1. **Upstream's own limits are documented and do not count against the invariant (`MC-175`).** The question: "Under the
+   round-trip rule, a fork .bin imported into upstream loses v3 plugin storage values that aren't lists or
+   chat/character-shaped. Upstream's own backups already lose them and the fork can't change what upstream accepts. How
+   should we treat it?" The answer: "Accept, warn at export": "Same, plus a new ticket: the fork's backup export tells
+   the user when it holds plugin data that upstream will not restore. Small UI change, gated as usual." "Same" refers to
+   the option "Accept, document it (Recommended)": "Record it (with upstream's non-.png asset drop) as upstream's own
+   limits that don't count against the invariant; note them in the records and later in the wiki. No code change." The two
+   limits are G1 (the plugin storage values above) and B1 (upstream's exporter drops assets that are not `.png`); both
+   are described in ledger row 697.
+2. **CHORE-74 is filed:** the fork's `.bin` export tells the user when the backup holds plugin data that upstream will not
+   restore. The notes for the wiki come later, in the Wiki session's lane.
+3. **CHORE-74 is LOW priority, and these records are committed now.** Two further `AskUserQuestion` answers: for "What
+   priority should CHORE-74 (the export warning about plugin data upstream won't restore) carry?", "LOW (Recommended)"
+   ("A small notice; no data is lost in the fork itself, only when moving a backup to upstream."; not chosen: "MEDIUM",
+   "Leave unset"); for "The round-trip records (MC-176, ticket CHORE-74, ledger rows 697-699) are written and
+   fact-checked. Commit them now?", "Commit now (Recommended)" (not chosen: "Hold them"). Nothing is pushed.
