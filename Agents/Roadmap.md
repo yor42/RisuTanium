@@ -2552,8 +2552,136 @@ filing and investigation record and is unchanged. What the commit message says i
 
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
-**Status (2026-10-03, stage 3, latest): stage 3 (assets) is done: Gate 2 approved; code commit
-`bf7f2cbf`, then a records commit (local, not pushed).** Stages 4 and 5 or later are open. The older status blocks
+**Status (2026-10-03, stage 4, latest): stage 4 (cold-storage units, the OPFS switch removal and the copy-back) is done
+by `980791fa` (local, not pushed); Gate 2 closed `[EDITORIAL]`.** Stages 0 to 4 are done. The older status blocks below
+are kept as they were; where this block differs, this block governs. Ledger rows 718 to 731 are the stage 4 work (the
+facts investigation, the phone check, Gate 1 in three rounds, the implementation in two parts, the translations, Gate 2
+in two rounds with the remediation, the commit message draft and its check); rows 732 and 733 are these records and their
+fact-check. `MC-180` records the maintainer's answers. The text of this block comes from the commit message (`git log -1
+980791fa`, fact-checked by the Gate 2 reviewer before the commit, ledger row 731) and the session's gate and plan files;
+the AVD figures are from `avd\result.md` in the session scratch.
+
+- **What stage 4 changed (from the commit message):** archived chats and plugin data (cold-storage units,
+  `coldstorage/<key>`) go through the one byte store, and the Backup & Files switch that put a profile on OPFS is removed.
+  OPFS receives no new data except from a page whose copy-back could not run.
+  - Units (`coldstorage.svelte.ts`, new `coldUnitLocation.ts`): a unit is a value in the page's byte store under
+    `coldstorage/<key>`; on Tauri the key keeps the existing `.json` suffix (the files already on disk), on Node the server
+    file names are unchanged. The per-platform names are decided in one module.
+    - Read: the store first. Only when it holds nothing, and only on the web, the legacy OPFS file
+      `coldstorage_<key>.json` is read; a unit in the store is never shadowed by its legacy file. A failed store read is an
+      error and never falls through to OPFS. A key the cold-key rule accepts but the store refuses (such as one with a
+      leading dot) reads as kind damaged and writes `false`. A store that cannot be opened reads as kind unavailable.
+    - Write: the page's store only; a legacy file is never written. On Node a write presents the version this page last
+      read or wrote for that unit, so a unit another device changed in between is refused (`false`) as before; a unit never
+      read, or deleted by this page, is written unconditionally. On Tauri a unit write is now the adapter's temp file and
+      rename, so a failed write leaves no partial unit (before, a plain `writeFile`).
+    - Delete (manual clean-up): on the web the legacy OPFS file is removed first, then the store entry; a unit counts as
+      deleted only when both succeeded. The clean-up deletes through the store in groups of 20 on Node and one unit per
+      call elsewhere; a failed call does not stop the next.
+    - Listing (load-time and clean-up start): the store's `coldstorage/` entries (on Tauri only top-level `.json` files),
+      united on the web with the legacy `coldstorage_*.json` names. A browser without `navigator.storage.getDirectory`
+      lists the store only; a `getDirectory` that rejects fails the whole listing, as before.
+    - Tauri boot: leftover temp files in `coldstorage/` are removed before the boot archive pass can write there, when the
+      folder exists.
+  - The OPFS switch is removed: `enableOpfs`, `disableOpfs` and the OPFS panel in `StorageMaintenanceSettings.svelte` (the
+    asset-integrity panel stays). `AutoStorage` no longer selects OPFS, no longer copies LocalForage into it and no longer
+    carries `opfsSwitchNotice`. 13 strings are removed and 5 added (the progress text and four fallback notices), in all
+    seven languages. The English wording says "browser storage" (`MC-180` 7).
+  - Copy-back at startup (new `storage/opfsCopyBack.ts`, run from the web branch of the store selection). A profile with
+    `opfs_flag!` set is classified from the flag, the IndexedDB main file and the IndexedDB `migrated` marker:
+    - flag unset: not OPFS-main; IndexedDB is used and nothing in OPFS is copied;
+    - flag set, IndexedDB holds the main file and no marker: the move to OPFS never completed, so IndexedDB is current;
+      the flag is cleared and nothing is copied. The same applies when the browser cannot write OPFS files (no
+      `createWritable`), because HEAD served IndexedDB there;
+    - flag set otherwise (no IndexedDB main file, or the marker present): OPFS is current and is copied back.
+    The inputs are read again under the exclusive storage-migration lock. The copy writes every hex-named OPFS file into
+    IndexedDB, compares the main file by SHA-256 against its read-back, and only then sets the clean-up marker, removes
+    the flag and removes `migrated` (best effort). The page uses IndexedDB only if the flag removal succeeded. If OPFS
+    holds no main file there is nothing to copy: the flag is cleared and IndexedDB is used. Progress shows through the wait
+    alert every 25 files.
+    - If the copy cannot run or finish (lock not granted, not enough free quota, a changed or failed copy, IndexedDB
+      unsupported), the keys written by the attempt are removed from IndexedDB, the flag and OPFS files are left as they
+      were, and the page runs from OPFS as at HEAD with a notice (another tab, space, no IndexedDB, or the error). The
+      next start tries again. A tab that loses the lock while a reload is pending stops without reading or writing; one
+      that finds the flag cleared by the winning tab uses IndexedDB.
+    - IndexedDB being supported but failing to open, or a deciding read throwing, fails the boot loudly, as at HEAD.
+    - Under the lock, before the space check, IndexedDB entries under the keys OPFS holds are removed, so leftovers of an
+      interrupted attempt do not count against the check.
+    - A final comparison of the OPFS files' name, size and `lastModified` against the snapshot taken at the start rolls
+      the copy back if a fallback tab wrote during it.
+  - OPFS leftovers (`MC-180` 6): after a copy-back the OPFS files stay for one start. At a later start that read an
+    existing main file from IndexedDB and decoded it (not the start that copied, not one that seeded an empty main file,
+    not one that fell back to a backup), the hex-named OPFS files are deleted, each only if IndexedDB holds its key (a raw
+    point lookup). `coldstorage_<key>.json` legacy unit files are never touched by this clean-up. The marker is removed
+    only when every presence check was answered and every deletion succeeded. It runs after the boot and is not awaited.
+  - Archive pass gate (`MC-180` 4): the web boot archive pass runs where the page's store is the IndexedDB store, including
+    browsers without OPFS `createWritable`, and not in a page that fell back to OPFS. It was gated on OPFS file writing.
+  - IndexedDB store: the point-lookup probe is exposed as `createEntryProbe` and is what the copy-back and the clean-up use
+    for presence checks.
+- **Behaviour changes (from the commit message):** a Node unit stored as a 0-byte file now reads as damaged (was missing); a
+  Tauri unit read that fails with `os error 3` while the file is absent is missing everywhere (it was an error; the manual
+  clean-up already skipped that case through its own folder check, which is removed); a browser without `getDirectory`
+  reads an absent unit as missing (was kind unavailable); a cold-safe key the store refuses reads damaged and writes
+  `false`. Fork-specific: nothing here changes the `.bin` format or its unit entries; export reads units, and restore
+  writes them, through the same facade, so a profile with units in the store and units only in legacy OPFS exports both.
+- **Tests (from the commit message):** run against a copy of HEAD, 7 tests fail on their own assertions and are the ones
+  offered as reproducers or as failures of a new assertion: the Tauri unit write that fails part-way leaves the earlier
+  unit readable and no temp, and a successful Tauri write renames a temp over the unit (2); the web archive pass runs for
+  the IndexedDB store without `createWritable`, and does not run for a page that fell back to OPFS (2); the Tauri boot
+  removes only the temp files of interrupted writes from `coldstorage/` (2, both new-behaviour tests of that sweep);
+  `AutoStorage` never selects OPFS (1, new behaviour). Other new tests fail at HEAD only because the module or export
+  they use does not exist, or on assertions of new behaviour; they are labelled new-behaviour tests and are not proof of
+  a fix. Guards, passing before and after: the Node unit file names for both upstream key shapes (UUID,
+  `<uuid>_accessMeta`). Three test files of the removed switch are deleted with it. Everything is fake-backed
+  (`fake-indexeddb`, a fake OPFS root, an in-memory Tauri fs and a fake Node server); the `lastModified` comparison is a
+  logic test of the fake and says nothing about how a real browser updates it.
+- **Phone check (RUN by `perf-analyzer`, not a gate input; `avd\result.md`, ledger row 719):** Android 13 (API 33) x86_64
+  emulator on the i9 host, profile `Pixel_6a_LowRam`, 2 GB RAM, Chrome 109. A standalone page measured IndexedDB put and
+  get of 1, 2, 5, 20 and 50 MB values with 0 mismatches and 0 errors. `avd\result.md` medians (put / get, ms): 1 MB 17 /
+  6; 2 MB 27 / 10; 5 MB 38 / 17; 20 MB 83 / 58; 50 MB 205 / 146. A synthetic 1.9 MB gzip payload read and decoded to 5.27
+  MB of JSON in 93 ms cold and about 40 ms warm. It measured the mechanism, not the app; emulator times are not a real
+  phone's, and backgrounding was not tested. The page was in the foreground for the whole run (6.5 s).
+- **Gate 1 (`opus-reviewer`, plan; ledger rows 720 to 722):** round 1 `[REJECT]`: the losing tab could serve OPFS after
+  the winner cleared the flag (BLOCKER), a commit-step failure path, and no progress. Round 2 `[REJECT]`: the round-1 fix
+  that skipped keys the IndexedDB store refuses would, with the later clean-up, have deleted an upstream asset with a
+  backslash in its name. The Orchestrator replaced the skip with a raw copy of every file and a clean-up that deletes
+  only files whose key IndexedDB holds. Round 3 `[EDITORIAL]`; the plan was accepted.
+- **Gate 2 (`opus-reviewer`, code; ledger rows 727 to 729):** round 1 `[REJECT]`: a start that created an empty main file
+  let the clean-up delete the only OPFS copy (MAJOR); fixed (a boot that seeded an empty main file does not start the
+  clean-up). Round 2 `[EDITORIAL]`: one new test was mislabelled as a regression reproducer and was retitled. The commit
+  message check (row 731) was also `[EDITORIAL]`; seven corrections were applied by the Orchestrator.
+- **Facts packet, refuted premises (ledger row 718):** `disableOpfs` was a button flow, not a boot copy-back; the flag
+  decides which store is current, not the `migrated` marker; `listColdStorageItems` has no production caller. Correction
+  (Gate 1 round 1, F13): the facts packet called HEAD's no-Web-Locks and lost-race `AutoStorage` branches stale-data
+  hazards. That is false: they ran only after the IndexedDB main file was found present and the marker absent, when
+  IndexedDB was current.
+- **Checks on the final tree (RUN by the Orchestrator, as the commit message states them; before two editorial edits, a
+  test retitle and one comment):** `pnpm test` 324 files, 6874 passed, 4 skipped; `pnpm check` 0 errors, 0 warnings;
+  `pnpm build` passes. **Not run:** native Tauri, a real `server.cjs`, a real browser's OPFS (including how
+  `lastModified` behaves), WebKit, Android Tauri.
+- **Open, residual and non-blocking (from the commit message):**
+  - A fallback tab's plugin-unit or asset write that lands in OPFS after the copy-back's final comparison is not carried
+    into IndexedDB; the page is served from IndexedDB afterwards.
+  - A profile whose origin quota cannot hold its data twice stays on OPFS at every start with the space notice; no data is
+    lost. A real browser may free deleted IndexedDB space lazily, so the pre-delete may not help there (the test is
+    fake-only).
+  - OPFS files whose key was deleted from IndexedDB between the copy-back and the clean-up stay in OPFS (quota only).
+  - The snapshot comparison walks every OPFS file twice and the clean-up does one IndexedDB count per file; neither is
+    measured on a large (350k-asset class) profile.
+  - IndexedDB `migrated` is removed best effort, and retried only while the clean-up marker is pending.
+  - Upstream's restore drops a fork-exported v3 plugin unit whose value is not chat- or character-shaped. This exists
+    before this change (INFERRED, not run); it appears to be the G1 limit in the round-trip note below (`MC-176`); that match
+    was not checked.
+  - The restart cost of an interrupted copy-back is accepted: it restarts, with no resume (the Orchestrator's call F3,
+    `MC-180`).
+- **Release blocker status:** stage 0 (the original defect, the non-atomic Tauri main-file write) is done by `d0decfb6`,
+  per its block below, and stages 1 to 4 are done. `TODO(evidence)`: no Roadmap line states whether the maintainer counts
+  CHORE-55's release blocker as closed now; this block does not say so.
+- **Next for CHORE-55:** stages 0 to 4 are done. Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's
+  streaming) is not scheduled. Per `MC-179` 4, `feat/ui-batch` must be merged here before memory step 6.
+
+**Status (2026-10-03, stage 3, superseded by the stage 4 block above where they differ): stage 3 (assets) is done: Gate 2 approved; code commit
+`bf7f2cbf`, then a records commit (local, not pushed).** Stages 4 and 5 or later were open when this block was written. The older status blocks
 below are kept as they were; where this block differs, this block governs. Ledger rows 704 to 713 are the stage 3 work
 (the facts investigation, Gate 1 in two rounds, the implementation in two parts, the translations, the I8 measurement,
 Gate 2 in two rounds with the remediation between them); rows 714 to 717 are the commit message draft and its check, and
@@ -2647,7 +2775,7 @@ files (the optional `urlFor`, the extension rule, the sweep batch size, the grou
   - Off Tauri a stored entry that is not binary now rejects instead of returning whatever IndexedDB held.
   - On Tauri `getFileSrc` returns `''` for any failure, not only a refused key; before, a URL was built from a refused
     key, including one whose path led outside `assets/`.
-- **Next for CHORE-55:** stage 4 (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1). Per
+- **Next for CHORE-55 (as of stage 3; the stage 4 block at the top has the current line):** stage 4 (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1). Per
   `MC-179` 4, when stage 3 is committed the maintainer is told, and its commits are merged into `feat/ui-batch` so the UI
   session can take CHORE-68 and CHORE-74.
 
@@ -3082,6 +3210,13 @@ and the two asset sites by stage 3. The extension prerequisite in the stage list
 extension (1 to 16 ASCII letters or digits, else `png`), and existing asset names are kept as they are. The remote-block
 and meta sites were already store calls before stage 3 (moved by 2b). The other `writeFile(` hits in `src` are not the
 Tauri plugin: `process/mcp/filesystemclient.ts` (a class method) and `process/pyworker.ts` (`py.FS.writeFile`).
+
+*Dated note (2026-10-03, after stage 4; the list and the note above are kept as written):* the cold-unit site in
+`coldstorage.svelte.ts` is now a store call (`980791fa`; on Tauri a unit write is the adapter's temp file and rename). No
+Tauri `writeFile` site from the list above remains outside the store. A grep of `writeFile\(` in `src` at `980791fa`,
+excluding `*.test.ts`, finds `globalApi.svelte.ts` (line 89, a write into the Download folder; line 2395,
+`TauriWriter.write`, a user-chosen export path), the temp write inside `storage/tauriAtomicWrite.ts` (line 98), the
+test fake `storage/tests/tauriFsFake.ts` (line 168), and the two non-plugin hits named above.
 
 **Why stage 0 matters: the decode cut RUN (ledger row 636).** A synthetic save (four characters, 686 bytes) was cut at
 many points and decoded with `decodeRisuSave`, strictly and not strictly, with an empty and a populated `risuSaveCache`.

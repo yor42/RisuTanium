@@ -6310,3 +6310,80 @@ skipped name that a character actually uses would show as a missing image."
 5. **Shared resources.** `src/lang/*.ts`: both sessions add keys; add yours as one contiguous block (stage 3b's restore
    notice is one example). Live checks: the Main Campaign keeps port 6011 and `risuai-prod-scratch`; the UI session uses
    6012. "Never stop a process you did not start."
+
+### MC-180 — CHORE-55 stage 4: deleting a unit removes it from IndexedDB and OPFS; an OPFS profile is copied back at startup and falls back to OPFS with a notice; web archiving runs wherever IndexedDB works; the phone check runs on the maintainer's emulator; leftover OPFS copies are deleted at the next normal start; the copy-back wording says "browser storage"; stage 4 is committed as code, then records
+
+- **Tag:** decision (items 2, 3, 4, 6 and 8, the maintainer's answers to `AskUserQuestion`); items 1, 5 and 7 are stated in chat (item 5 is a typed answer to a question that offered options)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** one chat message (item 1), the maintainer's answers to five questions the Orchestrator asked with
+  `AskUserQuestion` (items 2, 3, 4, 6 and 8; item 5 was a typed answer to a sixth), and one chat message (item 7). The
+  question and option texts are quoted below. The reasons in the option texts are the Orchestrator's, not the
+  maintainer's.
+- **Reasoning:** the reasons in the option texts.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 2: "Never touch OPFS";
+  - item 3: "Auto at startup, else stop" and "No copy, message only";
+  - item 4: "Keep today's reach";
+  - item 5: "Record as not run (Recommended)" and "I'll run it" (the maintainer typed an answer instead);
+  - item 6: "Delete right after copy" and "Keep them, file a ticket";
+  - item 8: "Hold".
+- **Amends:** `MC-167` 2, in how its "OPFS is never written again" is read: deletions in OPFS are allowed (item 2), and
+  a page whose copy-back could not run still writes to OPFS (item 3's option text: "start from OPFS this time as
+  today"). New data goes to OPFS only from such a page.
+- **Related:** `MC-167`, `MC-170`, `MC-173`, `MC-175`, `MC-011`, `MC-179`; CHORE-55 stage 4; commit `980791fa` (local;
+  its message states what it changed); the records commit that carries this file; ledger rows 718 to 733.
+
+**What was decided** (the dates are 2026-10-03):
+1. **Stage 4 starts.** The maintainer, as typed: "start CHORE-55 stage 4".
+2. **Deleting an archived chat or plugin slot removes it from OPFS too.** The question ("OPFS delete"): "Stage 4 keeps
+   old archived chats readable from OPFS when they aren't in IndexedDB yet. But if deleting one removes only the
+   IndexedDB copy, the OPFS copy comes back on the next read, and the manual clean-up can never free that space. May the
+   fork delete files in OPFS (it still never writes new data there)?" The answer: "Delete in both (Recommended)":
+   "Deleting an archived chat or plugin slot removes it from IndexedDB and from OPFS. OPFS gets no new data, only
+   deletions. Clean-up frees the old space and deleted items never come back." The option not chosen was "Never touch
+   OPFS".
+3. **At startup an OPFS-main profile is copied back into IndexedDB, with a fallback.** The question ("Copy-back"):
+   "Profiles whose main save is in OPFS (the switch in Backup & Files, or a flag an upstream user set by hand) must be
+   moved back to IndexedDB when the switch goes away. Today the only copy-back is the switch's 'turn off' button;
+   nothing does it at startup. What should stage 4 do?" The answer: "Auto at startup, fall back (Recommended)": "At
+   startup, copy the OPFS save back into IndexedDB once (one tab at a time, checked before the flag is cleared). If it
+   can't run (another tab open, not enough space), start from OPFS this time as today, show a notice, and try again next
+   start. Data is never lost, but the old OPFS save path stays in the code as the fallback." The options not chosen were
+   "Auto at startup, else stop" and "No copy, message only".
+4. **Web archiving runs wherever IndexedDB works.** The question ("Archive gate"): "In browsers, archiving old chats
+   (moving them out of memory at startup) only runs where the browser can write OPFS files. Once archives go to
+   IndexedDB, that check no longer fits. Where should archiving run?" The answer: "Wherever IndexedDB works
+   (Recommended)": "Archiving runs in every browser that can store data, which adds browsers without OPFS file writing,
+   including some phones. Phones are where the memory saving matters most, but they get the boot archive pass for the
+   first time." The option not chosen was "Keep today's reach".
+5. **The phone check runs on the maintainer's emulator.** The Orchestrator offered "Record as not run (Recommended)"
+   and "I'll run it". The maintainer typed instead: "I have avd installed, with virtual 2gb device.(Pixel_6a_LowRam).
+   see if we can use that." The outcome is a fact, not a decision: `perf-analyzer` ran it on that emulator (ledger row
+   719; the Roadmap's CHORE-55 stage 4 block has the figures).
+6. **The OPFS copies left after a copy-back are deleted at the next normal start.** The question ("OPFS leftover"):
+   "After a successful copy-back, the profile's old OPFS files (main save, backups, images) stay in OPFS. The reviewer
+   points out the cost: that space (as large as the whole profile) is never freed, there's no button to free it, and
+   every start still has to walk past those files when it lists old archived chats. What should happen to them?" The
+   answer: "Delete after next start (Recommended)": "Keep them through the copy-back. At the first later start that
+   loads normally from IndexedDB, delete the old OPFS copies (not archived chats that are only in OPFS). The data has
+   then been used from IndexedDB once, so the copy is proven before the fallback goes." The options not chosen were
+   "Delete right after copy" and "Keep them, file a ticket".
+7. **The English copy-back strings say "browser storage".** The maintainer, as typed: "use "browser storage" instead of
+   "main storage" in english. I think that explains this better." The six translations followed.
+8. **Stage 4's code is committed first, and its records follow as a second commit. Nothing is pushed.** The question
+   ("Commit 4"): "CHORE-55 stage 4 has passed both reviews and all checks, and its commit message is fact-checked. How
+   should I commit it?" The answer: "Code, then records (Recommended)": "Commit stage 4's code now (by explicit path,
+   about 70 files under src/), then write and fact-check the records (MC-180 with your answers today, Roadmap, ledger
+   rows from 718, Live-State, AGENTS.md's data-layer paragraph about the OPFS flag) and commit them as a second commit.
+   Nothing is pushed." The option not chosen was "Hold". The code commit staged 65 paths; "about 70" was the question's
+   estimate.
+
+**The Orchestrator's own calls, not maintainer decisions:**
+- O1: Node unit writes keep the per-key conflict refusal.
+- O2: the cold-key rule stays, and a store refusal reads as damaged.
+- O4: no archive pass runs on a fallback page.
+- O5: an OPFS-authoritative profile with no OPFS main file clears the flag and uses IndexedDB.
+- E-3: a failed IndexedDB open or deciding read is a loud boot failure; the fallback to OPFS applies only when IndexedDB
+  is unsupported.
+- F3: the restart cost of an interrupted copy-back is accepted (no resume).

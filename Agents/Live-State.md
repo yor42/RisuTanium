@@ -148,13 +148,17 @@ The commits below were local when they were listed, and were pushed with it:
   refused asset names, UI work moves to `feat/ui-batch`) and ledger rows 700 to 703. It is the 18th commit since
   `1ce8abff`, committed by explicit path (the four `Agents/` files named in `MC-179` 2) at the maintainer's "commit the
   records once the verifier passes". Local, not pushed. The UI worktree is to be made from it;
-- `bf7f2cbf`: CHORE-55 stage 3, assets go through the one byte store (the 19th), and the stage 3 records commit that
-  carries this line (the 20th), both at the maintainer's "Code, then records". Local, not pushed.
+- `bf7f2cbf`: CHORE-55 stage 3, assets go through the one byte store (the 19th), and the stage 3 records commit
+  (`7c5b27da`, by its commit subject: the 20th), both at the maintainer's "Code, then records". Local, not pushed;
+- `980791fa`: CHORE-55 stage 4, archived chats and plugin data go through the one byte store, the OPFS switch is gone, and
+  an OPFS profile is copied back into IndexedDB at startup (the 21st; `MC-180`; ledger rows 718 to 731), and the stage 4
+  records commit that carries this line (the 22nd), both at the maintainer's "Code, then records (Recommended)"
+  (`MC-180` 8). Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
-`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63` and
-`bf7f2cbf`) are local and not pushed (`git rev-list --count 1ce8abff..HEAD` gave 19 on 2026-10-03, at `bf7f2cbf`); the stage 3
-records commit is the 20th.
+`d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63`,
+`bf7f2cbf`, `7c5b27da` and `980791fa`) are local and not pushed (`git rev-list --count 1ce8abff..HEAD` gave 21 on 2026-10-03, at
+`980791fa`); the stage 4 records commit is the 22nd.
 The remote-tracking ref `origin/HEAD` was `1ce8abff` on 2026-10-03.
 
 `712a76ad` and `38583d3b` were committed at the maintainer's approval ("commit the finished side works.");
@@ -188,8 +192,8 @@ stage when ready." and the merge at "Merge after CHORE-53 commits (Recommended)"
 - The records commit `abdcef97` at "2. do the records". Push only at the maintainer's request. Everything through `48f00223`
 is pushed (the local remote-tracking ref, 2026-10-02; it was `0a3fb2b0` on 2026-10-01).
 
-The working tree holds this records batch's edits to the `Agents/` documents (until they are committed), and the
-uncommitted CHORE-55 stage 3 changes (3a and 3b), which Gate 2 has approved. Report 56
+The working tree holds this records batch's edits to the `Agents/` documents and `AGENTS.md` (until they are committed);
+the CHORE-55 stage 3 and stage 4 code is committed. Report 56
 (`Agents/Reports/56-memory-stage-1-step-5-boot-archive-pass.md`) is fact-checked and committed as `a7956237`.
 `docs/` is tracked and holds the maintainer's own Terms of Service and Privacy Policy, which they write and commit
 themselves, so a commit touching those two files is theirs (`MC-156`); agents do not edit them (`MC-155` 4). The
@@ -263,9 +267,10 @@ Empty. Only the UI session edits this block.
 | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
-Next free within the Main Campaign's ranges: `MC-180` (`MC-179` is used), ledger row 718 (rows 700 to 703 are the `MC-177`
+Next free within the Main Campaign's ranges: `MC-181` (`MC-180` is used), ledger row 734 (rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
-message draft and its check, these records and their fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
+message draft and its check, those records and their fact-check; rows 718 to 731 are the stage 4 work, its commit message
+draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
 is used). All are within the reserved ranges. Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
 last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody should fill
 them.
@@ -379,8 +384,17 @@ them.
    committed (`bf7f2cbf`, then the records commit); Gate 2 approved after round 1 `[REJECT]` and round 2 `[APPROVE]`.** Gate 1 accepted the plan after round 1 `[REJECT]` and round 2 `[EDITORIAL]`. The restore rule for a refused
    asset name is `MC-178`. Checks on the final tree: `pnpm test` 6772 passed, 4 skipped; `pnpm check` 0 errors and 0
    warnings; `pnpm build` ok (fake-backed; no native Tauri, real `server.cjs`, WebKit or Android run). The Roadmap's
-   CHORE-55 stage 3 block has the detail. **Next after stage 3: stage 4, then
-   CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch` is merged, `MC-179` 4), then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   CHORE-55 stage 3 block has the detail. **CHORE-55 stage 4 is done (2026-10-03; `980791fa`, local, not pushed; `MC-180`;
+   ledger rows 718 to 731; Roadmap CHORE-55):** cold-storage units go through the one byte store (a Tauri unit write is
+   now a temp file and a rename), the Backup & Files OPFS switch is removed, an OPFS profile is copied back into IndexedDB
+   at startup (falling back to OPFS with a notice when the copy cannot run), leftover OPFS copies are deleted at a later
+   normal start, and the web boot archive pass runs wherever the page's store is IndexedDB. Gate 1 took three rounds
+   (`[REJECT]`, `[REJECT]`, `[EDITORIAL]`); Gate 2 two (`[REJECT]`, `[EDITORIAL]`). Checks on the final tree, from the commit
+   message: `pnpm test` 324 files, 6874 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes
+   (fake-backed; not run: native Tauri, a real `server.cjs`, a real browser's OPFS, WebKit, Android Tauri). A phone check
+   on the Pixel_6a_LowRam emulator passed for the mechanism (Roadmap CHORE-55 stage 4 block). **Stages 0 to 4 are done;
+   stage 5 or later is not scheduled.** **Next after stage 4: CHORE-59, then memory steps 6 and 7 (after `feat/ui-batch`
+   is merged, `MC-179` 4: memory step 6 waits for that merge), then CHORE-62, then CHORE-58 last** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -690,7 +704,7 @@ them.
       **CHORE-59** (Load Internal Backup
       offers to load the intact data of a partly damaged snapshot; `MC-152`; placement is the Orchestrator's choice), each
       its own change with its own gates. **CHORE-55 stage 3 (assets) started on the maintainer's word** (`MC-177` 3; done, Gate 2 approved, committed as `bf7f2cbf`), then stage 4 (cold-storage units, the OPFS
-      switch removal and the copy-back, `MC-173` 1), then CHORE-59. The stage 0 Windows live check is open (`MC-171` 2). The investigation of
+      switch removal and the copy-back, `MC-173` 1; done, committed as `980791fa`, `MC-180`), then CHORE-59. The stage 0 Windows live check is open (`MC-171` 2). The investigation of
       the Tauri boot read through the asset protocol against `readFile` is done (row 679). The maintainer
       asked on 2026-10-01 for CHORE-51 and CHORE-52 to be added to the work order; their position is
       the Orchestrator's choice. Neither depends on step 5 or step 6, and CHORE-51 is DATA LOSS, so it
