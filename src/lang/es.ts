@@ -824,6 +824,7 @@ export const languageSpanish = {
     "textScreenBorder": "Bordes de Pantalla de Texto",
     "ttsReadOnlyQuoted": "Leer Solo Citas",
     "ttsStop": "Detener TTS",
+    "ttsElevenLabsKeyHint": "Configura la clave de API de ElevenLabs en Configuración → Otros Bots → TTS → ElevenLabs API key.",
     "askRemoval": "Pedir Confirmación de Eliminación",
     "replaceGlobalNote": "Reemplazo de Nota Global",
     "charLoreBook": "Libro de Lore del Personaje",

@@ -824,6 +824,7 @@ export const languageGerman = {
     "textScreenBorder": "Textbildschirmränder",
     "ttsReadOnlyQuoted": "Nur Zitate vorlesen",
     "ttsStop": "TTS stoppen",
+    "ttsElevenLabsKeyHint": "Lege den ElevenLabs-API-Schlüssel unter Einstellungen → Hilfs-KIs → TTS → ElevenLabs API key fest.",
     "askRemoval": "Vor dem Löschen nochmal fragen",
     "replaceGlobalNote": "Globalnote ersetzen",
     "charLoreBook": "Charakter spezifisches Lore-Buch",

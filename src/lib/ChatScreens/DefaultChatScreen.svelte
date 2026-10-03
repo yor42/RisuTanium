@@ -8,11 +8,12 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { getCharImage } from "../../ts/characters";
     import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
-    import { livePersona, sleep } from "../../ts/util";
+    import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
     import { alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
+    import { canChatSpeak } from "src/ts/process/ttsModes";
     import MainMenu from '../UI/MainMenu.svelte';
     import AssetInput from './AssetInput.svelte';
     import { aiLawApplies, chatFoldedState, chatFoldedStateMessageIndex, downloadFile } from 'src/ts/globalApi.svelte';
@@ -952,7 +953,7 @@
 
                     
                     <!-- svelte-ignore block_empty -->
-                    {#if DBState.db.characters[$selectedCharID].ttsMode === 'webspeech' || DBState.db.characters[$selectedCharID].ttsMode === 'elevenlab'}
+                    {#if canChatSpeak(DBState.db.characters[$selectedCharID], (id) => findCharacterbyId(id))}
                         <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
                             stopTTS()
                         }}>

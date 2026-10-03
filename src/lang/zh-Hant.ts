@@ -870,6 +870,7 @@ export const languageChineseTraditional = {
     "textScreenBorder": "文字區域邊框",
     "ttsReadOnlyQuoted": "只朗讀引號內容",
     "ttsStop": "停止 TTS",
+    "ttsElevenLabsKeyHint": "請在 設定 → 其他 Bot → TTS → ElevenLabs API key 中設定 ElevenLabs API 金鑰。",
     "askRemoval": "移除前詢問",
     "replaceGlobalNote": "全域備註替換",
     "charLoreBook": "角色 Lorebook",

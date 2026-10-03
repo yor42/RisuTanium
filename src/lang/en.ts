@@ -959,6 +959,7 @@ export const languageEnglish = {
     textScreenBorder: "Text Screen Borders",
     ttsReadOnlyQuoted: "Read Only Quoted",
     ttsStop: "Stop TTS",
+    ttsElevenLabsKeyHint: "Set the ElevenLabs API key in Settings → Other Bots → TTS → ElevenLabs API key.",
     askRemoval: "Ask Removal",
     replaceGlobalNote: "Global Note Replacement",
     charLoreBook: "Character Lorebook",

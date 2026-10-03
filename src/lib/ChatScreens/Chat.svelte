@@ -12,6 +12,8 @@
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
     import { sayTTS } from "src/ts/process/tts"
+    import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
+    import { isTTSVoiceMode } from "src/ts/process/ttsModes"
     import { DBState, ReloadChatPointer, CurrentTriggerIdStore, popupStore } from 'src/ts/stores.svelte'
     import { registerDraft, unregisterDraft } from "src/ts/localDrafts"
     import { draftContentOrphanGate } from "src/ts/draftContentOrphanGate"
@@ -594,8 +596,13 @@
         restoredTranslationRecord = null
     }
 
+    function displayParseOptions(){
+        const conditions = getCbsCondition()
+        return buildDisplayParseOptions({chara: name, chatID: idx, firstmsg: conditions.firstmsg, chatRole: conditions.chatRole ?? null})
+    }
+
     function displaya(message:string){
-        msgDisplay = risuChatParser(message, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
+        msgDisplay = risuChatParser(message, displayParseOptions())
     }
 
     // At most one status timer is pending, and it only clears the status text it was
@@ -627,7 +634,7 @@
     // The text a copy puts on the clipboard: what the message shows, or the
     // parsed raw text while a strong-optimised stream is rendered raw.
     const currentCopyText = ():string => renderRawStreaming
-        ? risuChatParser(rawStreamingText, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
+        ? risuChatParser(rawStreamingText, displayParseOptions())
         : msgDisplay
 
     // Identifies this message component to the card copy: the same message is
@@ -1103,9 +1110,9 @@
     </button>    
 {/if}
 {#if idx > -1}
-    {#if DBState.db.characters[selIdState.selId].type !== 'group' && DBState.db.characters[selIdState.selId].ttsMode !== 'none' && (DBState.db.characters[selIdState.selId].ttsMode)}
+    {#if DBState.db.characters[selIdState.selId].type !== 'group' && isTTSVoiceMode(DBState.db.characters[selIdState.selId].ttsMode)}
         <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
-            return sayTTS(null, isOptimizedStreamingMessage ? rawStreamingText : message)
+            return sayTTS(null, stripThoughtsForCopy(currentCopyText()))
         }}>
             <Volume2Icon size={20}/>
             {#if showNames}

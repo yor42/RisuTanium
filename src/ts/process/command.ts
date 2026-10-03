@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 import { alertInput, alertMd, alertNormal, alertSelect } from "../alert";
 import { sayTTS } from "./tts";
+import { stripThoughtsForCopy } from "../chatCopy";
 import { risuChatParser } from "../parser/parser.svelte";
 import { doingChat, sendChat } from "./index.svelte";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
@@ -170,7 +171,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
         }
         case 'speak': {
             if(currentChar.type === 'character'){
-                await sayTTS(currentChar, arg)
+                await sayTTS(currentChar, stripThoughtsForCopy(arg))
                 return pipe
             }
             if(currentChar.type === 'group'){

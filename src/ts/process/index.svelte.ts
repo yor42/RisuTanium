@@ -8,12 +8,14 @@ import { alertError, alertToast } from "../alert";
 import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
-import { findCharacterbyId, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
+import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
 import { sayTTS } from "./tts";
+import { ttsAddition } from "./ttsAddition";
+import { buildDisplayParseOptions } from "./displayParseOptions";
 import { supaMemory } from "./memory/supaMemory";
 import { v4 } from "uuid";
 import { groupOrder } from "./group";
@@ -2056,7 +2058,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     let result = ''
     let emoChanged = false
     let resendChat = false
-    
+    // The reply's stored text when this run began writing to it, for auto-TTS.
+    let ttsBefore = ''
+
     if(abortSignal.aborted === true){
         return false
     }
@@ -2083,6 +2087,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             else{
                 trackReply(streamCtx.chat, continuedIndex)
                 prefix = streamCtx.chat.message[continuedIndex].data
+                ttsBefore = prefix
             }
         }
         else{
@@ -2309,9 +2314,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 return endGone()
             }
             await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, locateReply(listenerCtx.chat))
-            if(DBState.db.ttsAutoSpeech){
-                await sayTTS(currentChar, result)
-            }
         }
     }
     else{
@@ -2338,6 +2340,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 const continuedTarget = resolveReply()
                 if(continuedTarget){
                     const beforeData = continuedTarget.ctx.chat.message[continuedTarget.index].data
+                    ttsBefore = beforeData
                     result2 = await processScriptFull(nowChatroom, reformatContent(beforeData + mess), 'editoutput', continuedTarget.index, {}, undefined, subject, replyMessageRef(continuedTarget))
                 }
             }
@@ -2404,9 +2407,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             if(keysCtx){
                 keysCtx.owner.reloadKeys += 1
             }
-            if(DBState.db.ttsAutoSpeech){
-                await sayTTS(currentChar, result)
-            }
         }
 
         if(mrerolls.length >1){
@@ -2429,6 +2429,24 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 return endGone()
             }
             await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, locateReply(listenerCtx.chat))
+        }
+    }
+
+    if(!abortSignal.aborted && DBState.db.ttsAutoSpeech){
+        const ttsTarget = resolveReply()
+        if(ttsTarget){
+            const storedReply = ttsTarget.ctx.chat.message[ttsTarget.index]
+            const ttsChara = storedReply.role === 'user' ? getUserName() : ttsTarget.ctx.owner.name
+            const spoken = ttsAddition(ttsBefore, storedReply.data, (stored) => risuChatParser(stored, buildDisplayParseOptions({
+                chara: ttsChara,
+                chatID: ttsTarget.index,
+                firstmsg: false,
+                chatRole: storedReply.role,
+                subject,
+            })), !!currentChar.ttsReadOnlyQuoted)
+            if(spoken.trim()){
+                await sayTTS(currentChar, spoken, { skipTextFilter: true })
+            }
         }
     }
 

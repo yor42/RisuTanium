@@ -824,6 +824,7 @@ export const languageVietnamese = {
     "textScreenBorder": "Viền màn hình văn bản",
     "ttsReadOnlyQuoted": "Chỉ đọc trích dẫn",
     "ttsStop": "Dừng TTS",
+    "ttsElevenLabsKeyHint": "Hãy đặt khóa API ElevenLabs trong Cài đặt → Bot khác → TTS → ElevenLabs API key.",
     "askRemoval": "Yêu cầu xóa",
     "replaceGlobalNote": "Thay thế ghi chú toàn cầu",
     "charLoreBook": "Truyện nhân vật",

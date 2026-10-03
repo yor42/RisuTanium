@@ -784,7 +784,7 @@
                 {/if}
             {/if}
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'elevenlab'}
-            <span class="text-sm mb-2 text-textcolor2">Please set the ElevenLabs API key in "global Settings → Bot Settings → Others → ElevenLabs API key"</span>
+            <span class="text-sm mb-2 text-textcolor2">{language.ttsElevenLabsKeyHint}</span>
             {#await getElevenTTSVoices() then voices}
                 <span class="text-textcolor">{language.Speech}</span>
                 <SelectInput className="mb-4 mt-2" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>

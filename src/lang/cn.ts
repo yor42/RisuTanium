@@ -824,6 +824,7 @@ export const languageChinese = {
     "textScreenBorder": "文本窗口边框",
     "ttsReadOnlyQuoted": "仅朗读引号内容",
     "ttsStop": "停止语音合成",
+    "ttsElevenLabsKeyHint": "请在 设置 → 其他机器人 → TTS → ElevenLabs API key 中设置 ElevenLabs API 密钥。",
     "askRemoval": "请求删除",
     "replaceGlobalNote": "替换全局备注",
     "charLoreBook": "角色世界书",

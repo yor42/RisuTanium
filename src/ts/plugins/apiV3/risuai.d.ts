@@ -1923,6 +1923,11 @@ interface RisuaiPluginAPI {
      * Applies to all providers (including 'webspeech'). No permission prompt.
      * Auto-unregistered when the plugin unloads.
      *
+     * For automatic speech of a continued reply, `ctx.text` is only what the
+     * continuation added; when earlier text of the reply was changed, it starts
+     * at the first change. Automatic speech does not run preprocessors when
+     * there is nothing to speak.
+     *
      * @example
      * ```typescript
      * await risuai.addTTSPreprocessor(async (ctx) => {

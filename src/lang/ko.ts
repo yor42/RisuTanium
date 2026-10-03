@@ -824,6 +824,7 @@ export const languageKorean = {
     "textScreenBorder": "채팅창 윤곽선",
     "ttsReadOnlyQuoted": "따옴표 안 텍스트만 읽기",
     "ttsStop": "TTS 중지",
+    "ttsElevenLabsKeyHint": "설정 → 기타 봇 → TTS → ElevenLabs API key에서 ElevenLabs API 키를 설정하세요.",
     "askRemoval": "삭제 확인",
     "replaceGlobalNote": "글로벌 노트 덮어쓰기",
     "charLoreBook": "캐릭터 로어북",
