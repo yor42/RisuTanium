@@ -5,6 +5,7 @@
     import { getModelInfo } from 'src/ts/model/modellist';
     import { settingRegistry } from 'src/ts/setting/settingRegistry';
     import { checkCondition } from 'src/ts/setting/utils';
+    import { language } from 'src/lang';
 
     interface Props {
         items: SettingItem[];
@@ -34,7 +35,7 @@
         {#if Component}
             <Component {item} {ctx} />
         {:else}
-            <div class="text-draculared text-xs mt-2">Unknown setting type: {item.type}</div>
+            <div class="text-draculared text-xs mt-2">{language.settingsPage.unknownSettingType} {item.type}</div>
         {/if}
     {/if}
 {/each}

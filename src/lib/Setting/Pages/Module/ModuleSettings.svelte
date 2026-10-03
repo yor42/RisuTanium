@@ -152,7 +152,7 @@
                     </div>
                 </div>
                 <div class="mt-1 mb-3 pl-3">
-                    <span class="text-sm text-textcolor2">{rmodule.description || 'No description provided'}</span>
+                    <span class="text-sm text-textcolor2">{rmodule.description || language.settingsPage.noDescriptionProvided}</span>
                 </div>
             {/each}
         {/if}

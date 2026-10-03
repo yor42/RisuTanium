@@ -153,7 +153,7 @@
 {/if}
 {#if warns.length > 0 && subMenu === 0}
     <div class="text-red-500 flex flex-col items-start p-2 rounded-md border-red-500 border mt-4">
-        <h2 class="text-xl font-bold">Warning</h2>
+        <h2 class="text-xl font-bold">{language.settingsPage.warning}</h2>
         <div class="border-b border-b-red-500 mt-1 mb-2 w-full"></div>
         {#each warns as warn}
             <span class="ml-4">{warn}</span>
@@ -164,7 +164,7 @@
 {#if subMenu === 0}
     <div class="contain w-full max-w-full mt-4 flex flex-col p-3 rounded-md">
         {#if DBState.db.promptTemplate.length === 0}
-                <div class="text-textcolor2">No Format</div>
+                <div class="text-textcolor2">{language.settingsPage.noFormat}</div>
         {/if}
         {#key sorted}
             {#each getReorderedTemplate() as { item: prompt, originalIndex, displayIndex }}
@@ -341,13 +341,13 @@
         <Accordion name={language.model} styled>
             {@render fallbackModelList('model')}
         </Accordion>
-        <Accordion name={"Memory"} styled>
+        <Accordion name={language.settingsPage.memory} styled>
             {@render fallbackModelList('memory')}
         </Accordion>
-        <Accordion name={"Translations"} styled>
+        <Accordion name={language.settingsPage.translations} styled>
             {@render fallbackModelList('translate')}
         </Accordion>
-        <Accordion name={"Emotion"} styled>
+        <Accordion name={language.settingsPage.emotion} styled>
             {@render fallbackModelList('emotion')}
         </Accordion>
         <Accordion name={"OtherAx"} styled>

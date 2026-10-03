@@ -54,12 +54,12 @@ export const advancedSettingsItems: SettingItem[] = [
 
     // Vision Quality
     {
-        id: 'adv.visionQual', type: 'select', fallbackLabel: 'Vision Quality', bindKey: 'gptVisionQuality',
+        id: 'adv.visionQual', type: 'select', labelKey: 'visionQuality', fallbackLabel: 'Vision Quality', bindKey: 'gptVisionQuality',
         helpKey: 'gptVisionQuality',
         options: {
             selectOptions: [
-                { value: 'low', label: 'Low' },
-                { value: 'high', label: 'High' }
+                { value: 'low', label: 'Low', labelKey: 'optLow' },
+                { value: 'high', label: 'High', labelKey: 'optHigh' }
             ]
         }
     },
@@ -69,8 +69,8 @@ export const advancedSettingsItems: SettingItem[] = [
         id: 'adv.keepSessionAlive', type: 'select', labelKey: 'keepSessionAlive', bindKey: 'keepSessionAlive', helpKey: 'keepSessionAlive',
         options: {
             selectOptions: [
-                { value: 'off', label: 'Off' },
-                { value: 'sound', label: 'Via Sound' },
+                { value: 'off', label: 'Off', labelKey: 'optOff' },
+                { value: 'sound', label: 'Via Sound', labelKey: 'optViaSound' },
             ]
         }
     },
@@ -81,8 +81,8 @@ export const advancedSettingsItems: SettingItem[] = [
         id: 'adv.heightMode', type: 'select', labelKey: 'heightMode', bindKey: 'heightMode',
         options: {
             selectOptions: [
-                { value: 'normal', label: 'Normal' },
-                { value: 'percent', label: 'Percent' },
+                { value: 'normal', label: 'Normal', labelKey: 'normal' },
+                { value: 'percent', label: 'Percent', labelKey: 'optPercent' },
                 { value: 'vh', label: 'VH' },
                 { value: 'dvh', label: 'DVH' },
                 { value: 'svh', label: 'SVH' },
@@ -107,7 +107,7 @@ export const advancedSettingsItems: SettingItem[] = [
         condition: () => !isNodeServer && !isTauri,
         options: {
             segmentOptions: [
-                { value: '', label: 'Default' },
+                { value: '', label: 'Default', labelKey: 'optDefault' },
                 { value: 'eu', label: 'EU (GDPR)' },
                 { value: 'fedramp', label: 'US (FedRAMP)' }
             ]
@@ -125,13 +125,14 @@ export const advancedSettingsItems: SettingItem[] = [
     {
         id: 'adv.localNetworkMode',
         type: 'check',
+        labelKey: 'localNetworkMode',
         fallbackLabel: 'Local Network Mode (Experimental)',
         bindKey: 'localNetworkMode',
         helpKey: 'localNetworkModeDesc',
         classes: 'mt-4'
     },
     {
-        id: 'adv.localNetworkTimeout', type: 'number', fallbackLabel: 'Local Network Timeout (sec)', bindKey: 'localNetworkTimeoutSec',
+        id: 'adv.localNetworkTimeout', type: 'number', labelKey: 'localNetworkTimeout', fallbackLabel: 'Local Network Timeout (sec)', bindKey: 'localNetworkTimeoutSec',
         condition: (ctx) => ctx.db.localNetworkMode,
         classes: 'block mb-1',
         containerClasses: 'pl-7',
@@ -159,7 +160,7 @@ export const advancedSettingsItems: SettingItem[] = [
     { id: 'adv.newOai', type: 'check', labelKey: 'newOAIHandle', bindKey: 'newOAIHandle', classes: 'mt-4' },
     { id: 'adv.noWaitTrans', type: 'check', labelKey: 'noWaitForTranslate', bindKey: 'noWaitForTranslate', classes: 'mt-4' },
     { id: 'adv.newImgBeta', type: 'check', labelKey: 'newImageHandlingBeta', bindKey: 'newImageHandlingBeta', classes: 'mt-4' },
-    { id: 'adv.allowExt', type: 'check', fallbackLabel: 'Allow all in file select', bindKey: 'allowAllExtentionFiles', classes: 'mt-4' },
+    { id: 'adv.allowExt', type: 'check', labelKey: 'allowAllFileSelect', fallbackLabel: 'Allow all in file select', bindKey: 'allowAllExtentionFiles', classes: 'mt-4' },
     { id: 'adv.dynamicModelRegistry', type: 'check', labelKey: 'dynamicModelRegistry', bindKey: 'dynamicModelRegistry', classes: 'mt-4' },
     { id: 'adv.disableSeperateParameterChangeOnPresetChange', type: 'check', labelKey: 'disableSeperateParameterChangeOnPresetChange', bindKey: 'disableSeperateParameterChangeOnPresetChange', classes: 'mt-4' },
     { id: 'adv.coldstorage', type: 'check', labelKey: 'coldStorage', getValue: (db) => db.archiveCharacters !== false, setValue: (db, val: boolean) => { db.archiveCharacters = val; clearStubEnrichStrikes(); if (!val) { clearArchiveMemo() } }, classes: 'mt-4', helpKey: 'coldstorage', keywords: ['cold storage', 'archive'] },
@@ -215,7 +216,7 @@ export const advancedSettingsItems: SettingItem[] = [
 
     // More Experimental (Condition: useExperimental)
     {
-        id: 'adv.exp.googleTrans', type: 'check', fallbackLabel: 'New Google Translate Experimental', bindKey: 'useExperimentalGoogleTranslator',
+        id: 'adv.exp.googleTrans', type: 'check', labelKey: 'newGoogleTranslateExperimental', fallbackLabel: 'New Google Translate Experimental', bindKey: 'useExperimentalGoogleTranslator',
         condition: (ctx) => ctx.db.useExperimental, helpKey: 'unrecommended', helpUnrecommended: true, classes: 'mt-4'
     },
     {

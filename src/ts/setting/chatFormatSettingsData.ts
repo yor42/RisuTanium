@@ -22,7 +22,7 @@ export const chatFormatSettingsItems: SettingItem[] = [
                 { value: 'llama2', label: 'Llama2' },
                 { value: 'vicuna', label: 'Vicuna' },
                 { value: 'alpaca', label: 'Alpaca' },
-                { value: 'jinja', label: 'Custom (Jinja)' },
+                { value: 'jinja', label: 'Custom (Jinja)', labelKey: 'optCustomJinja' },
             ],
         },
         keywords: ['chat', 'format', 'template', 'chatml', 'llama', 'jinja'],

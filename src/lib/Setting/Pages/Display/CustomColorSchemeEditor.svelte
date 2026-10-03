@@ -9,17 +9,19 @@
     import SelectInput from 'src/lib/UI/GUI/SelectInput.svelte';
     import OptionInput from 'src/lib/UI/GUI/OptionInput.svelte';
     import { DownloadIcon, HardDriveUploadIcon } from '@lucide/svelte';
+    import { language } from 'src/lang';
+    import { fillLang } from 'src/lang/fill';
 
     const colors = [
-        ['bgcolor', 'Background'],
-        ['darkbg', 'Dark Background'],
-        ['borderc', 'Color 1'],
-        ['selected', 'Color 2'],
-        ['draculared', 'Color 3'],
-        ['darkBorderc', 'Color 4'],
-        ['darkbutton', 'Color 5'],
-        ['textcolor', 'Text Color'],
-        ['textcolor2', 'Text Color 2'],
+        ['bgcolor', () => language.settingsPage.background],
+        ['darkbg', () => language.settingsPage.darkBackground],
+        ['borderc', () => fillLang(language.settingsPage.colorNumber, { n: 1 })],
+        ['selected', () => fillLang(language.settingsPage.colorNumber, { n: 2 })],
+        ['draculared', () => fillLang(language.settingsPage.colorNumber, { n: 3 })],
+        ['darkBorderc', () => fillLang(language.settingsPage.colorNumber, { n: 4 })],
+        ['darkbutton', () => fillLang(language.settingsPage.colorNumber, { n: 5 })],
+        ['textcolor', () => language.textColor],
+        ['textcolor2', () => fillLang(language.settingsPage.textColorNumber, { n: 2 })],
     ] as const;
 </script>
 
@@ -32,8 +34,8 @@
                 changeColorSchemeType((e.target as HTMLInputElement).value as 'light' | 'dark');
             }}
         >
-            <OptionInput value="light">Light</OptionInput>
-            <OptionInput value="dark">Dark</OptionInput>
+            <OptionInput value="light">{language.settingsPage.light}</OptionInput>
+            <OptionInput value="dark">{language.settingsPage.dark}</OptionInput>
         </SelectInput>
 
         {#each colors as color}
@@ -41,11 +43,11 @@
                 <input
                     type="color"
                     class="native-color-input"
-                    aria-label={color[1]}
+                    aria-label={color[1]()}
                     bind:value={DBState.db.customColorScheme[color[0]]}
                     oninput={updateCustomColorScheme}
                 />
-                <span class="ml-2">{color[1]}</span>
+                <span class="ml-2">{color[1]()}</span>
             </div>
         {/each}
 

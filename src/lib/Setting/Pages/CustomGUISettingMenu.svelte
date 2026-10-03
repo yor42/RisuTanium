@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { language } from "src/lang";
+
     interface CustomTree {
         name: string; // dom name, like div, span, etc. for component, we use 'component'
         type: string; // type, used for identifying in editor
@@ -239,13 +241,13 @@
     <div class="flex">
         <button class="mr-2 p-2 border border-black rounded-sm" class:text-gray-500={subMenu !== 0} onclick={() => {
             subMenu = 0
-        }}>Component</button>
+        }}>{language.settingsPage.component}</button>
         <button class="mr-2 p-2 border border-black rounded-sm" class:text-gray-500={subMenu !== 1} onclick={() => {
             subMenu = 1
-        }}>Container</button>
+        }}>{language.settingsPage.container}</button>
         <button class="mr-2 p-2 border border-black rounded-sm" class:text-gray-500={subMenu !== 2} onclick={() => {
             subMenu = 2
-        }}>Help</button>
+        }}>{language.settingsPage.helpTab}</button>
     </div>
     <div class="border-b border-b-gray-200">
 
@@ -265,12 +267,12 @@
             }}>{container.type}</button>
         {/each}
     {:else if subMenu === 2}
-        <p>Left click to select, Right click to delete</p>
-        <p>Press a component/container in the menu to add it to the selected container</p>
+        <p>{language.settingsPage.customGuiSelectHelp}</p>
+        <p>{language.settingsPage.customGuiAddHelp}</p>
     {/if}
 </div>
 {:else}
     <button class="absolute top-0 right-0 z-20 p-2 border bg-white rounded-sm" onclick={() => {
         menuOpen = !menuOpen
-    }}>Menu</button>
+    }}>{language.menu}</button>
 {/if}

@@ -101,7 +101,7 @@ export const displayThemeSettingsItems: SettingItem[] = [
             selectOptions: [
                 { value: 'standard', labelKey: 'classicRisu' },
                 { value: 'highcontrast', labelKey: 'highcontrast' },
-                { value: 'custom', label: 'Custom' },
+                { value: 'custom', label: 'Custom', labelKey: 'optCustom' },
             ],
         },
         keywords: ['text', 'color', 'theme'],
@@ -122,9 +122,9 @@ export const displayThemeSettingsItems: SettingItem[] = [
         onChange: () => updateTextThemeAndCSS(),
         options: {
             selectOptions: [
-                { value: 'default', label: 'Default' },
+                { value: 'default', label: 'Default', labelKey: 'optDefault' },
                 { value: 'timesnewroman', label: 'Times New Roman' },
-                { value: 'custom', label: 'Custom' },
+                { value: 'custom', label: 'Custom', labelKey: 'optCustom' },
             ],
         },
         keywords: ['font', 'typeface'],

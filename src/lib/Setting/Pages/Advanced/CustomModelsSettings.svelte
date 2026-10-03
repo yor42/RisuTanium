@@ -46,7 +46,7 @@
                     openedModels = new Set(openedModels)
                 }}
             >
-                <span class="text-left">{model.name ?? "Unnamed"}</span>
+                <span class="text-left">{model.name ?? language.settingsPage.unnamed}</span>
                 <div class="flex items-center gap-1">
                     <Button size="sm" styled="outlined" onclick={(e) => {
                         e.stopPropagation()
@@ -94,7 +94,7 @@
             <SelectInput size={"sm"} value={DBState.db.customModels[index].tokenizer.toString()} onchange={(e) => {
                 DBState.db.customModels[index].tokenizer = parseInt(e.currentTarget.value) as LLMTokenizer
             }}>
-                <OptionInput value="0">Unknown</OptionInput>
+                <OptionInput value="0">{language.settingsPage.unknown}</OptionInput>
                 <OptionInput value="1">tiktokenCl100kBase</OptionInput>
                 <OptionInput value="2">tiktokenO200Base</OptionInput>
                 <OptionInput value="3">Mistral</OptionInput>

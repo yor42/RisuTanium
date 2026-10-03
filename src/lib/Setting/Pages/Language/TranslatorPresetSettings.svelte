@@ -29,7 +29,7 @@
     }
 </script>
 
-<span class="text-textcolor mt-4">Preset</span>
+<span class="text-textcolor mt-4">{language.settingsPage.preset}</span>
 <select
     class={"border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 text-md px-4 py-2 mb-1"}
     bind:value={() => DBState.db.translatorPresetId, (value) => {

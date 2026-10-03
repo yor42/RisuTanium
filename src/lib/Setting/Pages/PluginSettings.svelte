@@ -46,7 +46,7 @@
                 </span>
                 {#if hotReloading.includes(plugin.name)}
                     <span class="text-sm rounded bg-amber-700 ml-2 px-2 py-1 text-white">
-                        Hot
+                        {language.settingsPage.hotBadge}
                     </span>
                 {/if}
             </div>

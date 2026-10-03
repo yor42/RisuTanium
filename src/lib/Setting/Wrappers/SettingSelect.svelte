@@ -51,7 +51,7 @@
 <SelectInput bind:value={localValue}>
     {#each processedOptions as opt}
         <OptionInput value={opt.value}>
-            {opt.labelKey ? (language as any)[opt.labelKey] : opt.label}
+            {opt.labelKey ? ((language as any)[opt.labelKey] ?? opt.label) : opt.label}
         </OptionInput>
     {/each}
 </SelectInput>

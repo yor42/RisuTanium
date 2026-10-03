@@ -21,7 +21,7 @@
 <Button
     className="mt-4"
     onclick={async () => {
-        let mdTable = "| Type | Value |\n| --- | --- |\n"
+        let mdTable = `| ${language.type} | ${language.value} |\n| --- | --- |\n`
         const s = DBState.db.statics
         for (const key in s) {
             mdTable += `| ${key} | ${s[key]} |\n`
@@ -30,7 +30,7 @@
         alertMd(mdTable)
     }}
 >
-Show Statistics
+{language.settingsPage.showStatistics}
 </Button>
 
 <Button
@@ -72,5 +72,5 @@ Show Statistics
 
     }}
 >
-Export Settings for Bug Report
+{language.settingsPage.exportSettingsBugReport}
 </Button>
