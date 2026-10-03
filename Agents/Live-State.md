@@ -228,7 +228,7 @@ Several sessions work **in this same checkout**:
   CHORE-09, and the follow-up "a rejected avatar image shows no icon". **CHORE-68 and CHORE-74 also go to the UI session,
   but only after CHORE-55 stage 3 is committed and merged into its branch.**
 - **Tickets staying with the Main Campaign:** CHORE-55 (stages 3 and 4 are done, `bf7f2cbf` and `980791fa`; stage 5 or
-  later stays as later work, `MC-181`), CHORE-59 (done, `4801a2f9`), CHORE-58 (next, `MC-182`), memory steps 6 and 7,
+  later stays as later work, `MC-181`), CHORE-59 (done, `4801a2f9`), CHORE-58 (done, `282b2da5`), CHORE-76 and CHORE-77 (`MC-185`, in progress), memory steps 6 and 7,
   CHORE-62, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-75 (filed 2026-10-03, unplaced;
   the maintainer places it), CHORE-04, CHORE-10, CHORE-60 (with the Rebranding session), and the existing Wiki hand-offs.
 - **The Main Campaign does not edit the delegated tickets' Roadmap entries.** The UI session owns their status lines.
@@ -275,12 +275,12 @@ Empty. Only the UI session edits this block.
 | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
-Next free within the Main Campaign's ranges: `MC-184` (`MC-183` is used), ledger row 748 (rows 736 to 745 are the CHORE-59
+Next free within the Main Campaign's ranges: `MC-186` (`MC-185` is used), ledger row 760 (rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
 work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
 message draft and its check, those records and their fact-check; rows 718 to 731 are the stage 4 work, its commit message
-draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-76` (`CHORE-75` is used) and Report 57 (Report 56
+draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-78` (`CHORE-77` is used) and Report 57 (Report 56
 is used). All are within the reserved ranges. Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
 last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody should fill
 them.
@@ -410,9 +410,13 @@ them.
    numbered internal backup. Gate 1 took three rounds (`[REJECT]`, `[REJECT]`, `[EDITORIAL]`); Gate 2 two (`[EDITORIAL]`,
    `[EDITORIAL]`); 17 of 19 mutants were killed in round 1 and the two survivors in round 2. Checks on the final tree, from the
    commit message: `pnpm test` 325 files, 6975 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes
-   (not run: native Tauri, a real `server.cjs`, a real browser; no live check). **Next after CHORE-59 (`MC-182`): CHORE-58
-   (measure first), then memory steps 6 and 7 (step 6 after `feat/ui-batch` is merged, `MC-179` 4), then CHORE-62**
-   (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
+   (not run: native Tauri, a real `server.cjs`, a real browser; no live check). **CHORE-58 is done (2026-10-03; `282b2da5`, local, not pushed; `MC-184`, `MC-185`; ledger rows 748 to 756; Roadmap CHORE-58):**
+   a PNG card picked, dropped or downloaded is read by the stream branch with a linear amount of copying; measured on the real code on
+   an i9-13900K (best-case hardware, the `MC-003` floor not measured), 100 x 1 MB assets took 17.1 s for a whole import before and 1.2 s
+   after. Gate 1 two rounds (`[REJECT]`, `[EDITORIAL]`), Gate 2 two (`[EDITORIAL]`, `[EDITORIAL]`). Checks on the final tree, from the commit
+   message: `pnpm test` 326 files, 7005 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes (no live app,
+   no Chromium `File.stream()` measurement). **Next (`MC-185`): CHORE-76 and CHORE-77, then memory steps 6 and 7 (step 6 after
+   `feat/ui-batch` is merged, `MC-179` 4), then CHORE-62** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
    `getDatabase()` proxy with no prompt; that route is CHORE-65 (DATA LOSS (V2.1 proxy route)).
@@ -730,12 +734,15 @@ them.
       should not wait behind the idle reload and the measurements. CHORE-55 goes in this stretch by
       the maintainer's choice (`MC-151` 3, "With CHORE-51/52"), and the maintainer confirmed its place before steps 6 and 7
       and the order CHORE-43/54, then CHORE-51/52, then CHORE-55 with stage 0 first (a summary of `MC-167` 4);
-   6. then **CHORE-58** (measure first; **next, in progress**): PNG character import copies its read buffer quadratically
-      on large assets (ledger row 532). It was placed last (`MC-151` 8, the Orchestrator's recommendation, accepted); the
-      maintainer moved it right after CHORE-59 on 2026-10-03: "start CHORE-59, and do chore-58 next, as it could be huge UX
-      problem if PNG buffer issue is real." (`MC-182`). Its first task is a measurement on the real module or the live
-      app; **the measurement step was started on 2026-10-03 on the maintainer's "commit chore-59 and start chore 58 with
-      measurement" (in progress, results not yet in)**; whether the problem is real is not yet known;
+   6. then **CHORE-58** (**done, 2026-10-03, `282b2da5`; its records commit follows it; `MC-184`, `MC-185`; ledger rows 748 to 758**):
+      PNG character import copied its read buffer quadratically on large assets (ledger row 532). The maintainer moved it right
+      after CHORE-59: "start CHORE-59, and do chore-58 next, as it could be huge UX problem if PNG buffer issue is real."
+      (`MC-182`). The measurement confirmed the quadratic shape on the real code (best-case hardware only); the fix is in the
+      Roadmap's CHORE-58 entry. Then **CHORE-76 and CHORE-77** (`MC-185`, **in progress**): a PNG card cut short inside a tEXt
+      chunk imports with a partial or missing asset and says nothing (CHORE-76); a Realm PNG download is held in memory in full
+      during import (CHORE-77; call structure TRACED, the hold MEASURED in Node streams at +208 MB for a 200 MB card, not measured in a
+      browser; the maintainer's proposed direction is a temporary file, to be investigated per platform before
+      a plan). They go ahead of steps 6 and 7 while `feat/ui-batch` is unmerged;
    7. then steps 6 and 7 (they are built on the storage interface once it exists, `MC-167` 4). **Step 6 waits for the
       `feat/ui-batch` merge** (`MC-179` 4);
    8. then **CHORE-62** (on a Node server, another device's save makes this device stop saving until it reloads, and

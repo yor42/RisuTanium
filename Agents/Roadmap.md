@@ -3380,7 +3380,71 @@ identical in the parts that matter, by `git show` (upstream not run).
 
 ### CHORE-58 — PNG character import copies its read buffer quadratically on large assets (TRACED; replica timings only; upstream and fork)
 
-**Status (2026-10-03, latest): placed right after CHORE-59, ahead of memory steps 6 and 7 and CHORE-62 (`MC-182`, the
+**Status (2026-10-03, latest): done by `282b2da5` (local, not pushed; `MC-184`, `MC-185`).** Measured first (ledger rows 748 and
+749), then planned: Gate 1 (`opus-reviewer`) took two rounds (`[REJECT]`, `[EDITORIAL]`), Gate 2 (`opus-reviewer`) two
+(`[EDITORIAL]`, `[EDITORIAL]`). Ledger rows 748 to 756 are the work, rows 757 and 758 are these records and their fact-check.
+The older status blocks below are kept as written (their line numbers are from `448962f4`/`5bbc591a` and are stale; the code
+they cite has moved); where this block differs, this block governs. The text of this block comes from the commit message (`git
+log -1 282b2da5`; Gate 2 round 1 checked it) and the session's measurement, plan and gate files.
+
+- **What changed (from the commit message):** `PngChunk.readGenerator`'s stream branch (a `File` is turned into its `stream()`
+  first) now reads through a forward-only window, `StreamWindow` in `src/ts/pngChunk.ts`. It keeps the stream's own reads, copies
+  only the requested range on each slice, and at the start of each PNG chunk drops the reads that end before it.
+  - **Unchanged:** the `Uint8Array` branch, `AppendableBuffer`, the trimmed-PNG output, the counting prereader and the progress
+    display. The exact asset-count percentage is kept (`MC-184`). A card imports into the same character, assets and trimmed
+    image as before, so the upstream-card compatibility invariant holds (`MC-175`).
+  - **Behaviour kept on the stream branch:** a read that the ended stream cannot fill returns nothing (a tEXt body cut short
+    yields an empty key and value, never a partial asset); a failed stream read, such as a dropped download, is thrown, never
+    taken as the end of the file; empty reads are skipped; nothing after IEND is parsed.
+  - **A move for testability:** `AppendableBuffer`, `VirtualWriter` and `blobToUint8Array` moved unchanged into the new
+    `src/ts/byteBuffer.ts`, which imports nothing from the app; `globalApi.svelte.ts` and `util.ts` re-export them by name, so
+    every existing import and `instanceof` check sees the same class.
+- **Measured (from the commit message; Node v24.19.0, happy-dom, an i9-13900K: best-case hardware, not the Pi 3 or phone floor
+  of `MC-003`; synthetic cards; a 64 KB-chunk stream, and a `File` that arrives as one chunk):**
+  - bytes produced by `Uint8Array.prototype.slice` per file byte in one pass, before: 100 x 1 MB assets 342x (stream) / 859x
+    (`File`), 400 x 250 KB 848x / 3047x. After, counting every copy (slice, set, copying constructors, `ArrayBuffer.slice`):
+    about 2.0x at 10 and 40 assets, the same as a card passed in memory;
+  - the counting pass plus the main pass at 100 x 1 MB: 16.6 s (stream) / 40 s (`File`) before, about 1.2 to 1.5 s after; at
+    200 x 1 MB about 68 s / 150 s before, about 2.9 s after;
+  - a whole import with the store mocked, from a 64 KB-chunk stream: 100 x 1 MB 17.1 s before, 1.2 s after; 400 x 250 KB 40.3 s
+    before, 1.5 s after, about the same as the same bytes passed in memory.
+  - **Not measured:** Chromium's `File.stream()` chunking, real store I/O, a live app, and any hardware slower than the i9.
+  - Before this change the shape was quadratic: scaling 25, 50, 100, 200 assets of 1 MB gave 1.8, 5.0, 16.6 and 67.8 s total
+    (`measurement.md` in the session scratch).
+- **Tests (from the commit message and `pngChunk.readGenerator.test.ts`):** 30 tests in `src/ts/pngChunk.readGenerator.test.ts`.
+  - Two reproducers, a 64 KB-chunk stream and a `File`, fail against the pre-change reader on the copy-ratio assertion (42.74 and
+    91.83 bytes copied per file byte, limit 5); they also require the ratio not to grow from 10 to 40 assets. The red run
+    against `HEAD` before the memory tests were added was 26 tests, 24 pass and 2 fail (`red\head-table.txt` in the session
+    scratch).
+  - Guards that pass before and after: output identical to the `Uint8Array` branch over many chunkings; nine truncated files
+    whose expected output is written down from the pre-change reader; a stream that fails mid-file; the trimmed result's class
+    and exact size (G4: an `AppendableBuffer` whose `.buffer` is an exactly-sized fresh `Uint8Array`).
+  - Four memory guards (`StreamWindow` does not exist before this change, so they cannot be shown failing there): three tests
+    that `release()` drops only the reads that end at or before its offset, and a pass over 8 x 1 MB assets in 64 KB reads
+    during which the window holds at most 1,262,144 bytes; without the release it holds 8,000,663.
+- **Checks (from the commit message):** `pnpm test` 326 files, 7005 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings;
+  `pnpm build` passes.
+- **Gate 2 evidence (`opus-reviewer`, round 1; the reviewer's scratch harness, not in the repo):** a differential fuzz of the old
+  and new stream branch over 4,500 random cards (truncations, flipped bytes, bad lengths, long keys, trailing bytes, chunkings
+  from 1 byte to 70 KB, empty reads): 0 mismatches. A mutation run of 19 mutants: 13 killed, 2 survived (`release_none`,
+  `release_one_fewer`: memory only, no test saw the release) and 4 equivalent (the reviewer's label). The remediation added the
+  memory guards above, and the two survivors are then killed (the Orchestrator's record; `gate2fix\` in the session scratch holds
+  the `release_none` mutant only). The round 1 findings were editorial: the commit message's "1.0x after" counted only
+  `Uint8Array.prototype.slice` and missed the window's `set()` copies (the full count is about 2.0x), a test comment implied an
+  extra copy, and `MC-184` was cited before it was recorded.
+- **Residuals (from the commit message and the plan):**
+  - a Realm PNG download is still held in memory in full while the counting pass reads its `tee()` branch (ticket CHORE-77; call structure TRACED, the hold MEASURED in Node streams at +208 MB for a 200 MB card, not measured in a browser);
+  - base64 decoding and asset hashing remain linear costs;
+  - the `Uint8Array` branch (the Charahub import and Tauri `importFile`) can still save a partial asset from a tEXt body cut short
+    (ticket CHORE-76);
+  - the counting prereader still decodes every tEXt body to a string a second time (linear, kept so the count keeps the
+    reader's exact semantics; the Gate 1 round 2 review expected it to cost several times more on the `MC-003` floor than on the
+    i9, unmeasured).
+- **Maintainer decisions:** `MC-184` (keep the exact percentage; the fix plan approved) and `MC-185` (commit; CHORE-76 and
+  CHORE-77 next).
+- **Related:** `MC-182`, `MC-184`, `MC-185`; CHORE-59 (the previous item); CHORE-76; CHORE-77; Maybe-Later QOL-04.
+
+**Earlier status (2026-10-03): placed right after CHORE-59, ahead of memory steps 6 and 7 and CHORE-62 (`MC-182`, the
 maintainer's decision); measure first.** The placement below ("last in the current order", `MC-151`) is amended by `MC-182`;
 the rest of this entry is unchanged.
 
@@ -3433,7 +3497,10 @@ upstream not run).
   - Assets under about 150 KB drain as fast as they arrive, and are not affected (see the replica).
   - Other `readGenerator` callers pass a `Uint8Array`, so they do not take the stream branch:
     `characters.ts:144` (`img`) and `persona.ts:110` (`v.data`). The export at `characterCards.ts:1422`
-    passes `rData`, which was not traced for this entry. `TODO(evidence)`.
+    passes `rData`, which is declared `let rData:Uint8Array` (`:1316`) and assigned `img` or `await readImage(key)` (`:1319`,
+    `:1325`), so it takes the `Uint8Array` branch, which CHORE-58 leaves unchanged (settled 2026-10-03 by the CHORE-58 investigation,
+    ledger row 749, and checked in source at `282b2da5`; it is a declared type, not a run-time check). The trimmed
+    result of a stream import is a separate value: an `AppendableBuffer` whose `.buffer` is a `Uint8Array` (test G4).
 - **Evidence and its label:**
   - The code trace above is TRACED.
   - The timings are a replica, not the real module and not Chromium. The investigator ran a copy of the
@@ -3594,6 +3661,74 @@ The message is false. Found in CHORE-59's Gate 2 round 1 review (`opus-reviewer`
     shows the "kept" notice. Write it against the unfixed code and confirm it fails first.
 - **Open for the maintainer:** where to place it in the order. Gate it as small and low-risk unless it grows (the load path
   is persistence-adjacent; the change is a message choice after the copy step, not a change to what is written).
+
+### CHORE-76 — A PNG card cut short inside a tEXt chunk imports with a partial or missing asset, and the import does not say so (TRACED; upstream and fork)
+
+**Status (2026-10-03): open, in progress.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Found by the CHORE-58 plan
+review (Gate 1 round 1, `opus-reviewer`, probe `gate1\probe.out.jsonl` line 7, run against the real reader at `5bbc591a`) and
+named as a residual of `282b2da5`. Data-integrity, small. The fork and upstream share `pngChunk.ts` text
+(`git diff upstream/main HEAD -- src/ts/pngChunk.ts` printed nothing at `5bbc591a`; not re-run since CHORE-58 changed the
+stream branch).
+
+- **What happens (TRACED; the stream-branch result is also pinned by CHORE-58's tests, the `Uint8Array` result by the Gate 1
+  probe at `5bbc591a`):**
+  - `PngChunk.readGenerator` (`src/ts/pngChunk.ts:184`) reads a tEXt body with `slice(pos+8, pos+8+len)` (`:236`) and takes the
+    key from the first NUL within the first 70 bytes (`:239-245`), then yields `{key, value}` (`:246`).
+  - **`Uint8Array` branch** (`slice` is `data.slice(start,end)`, `:203-206`): `Uint8Array.prototype.slice` does not fail when
+    `end` is past the end of the data, so a body that runs past the end comes back shorter. If the key's NUL is inside the part
+    that is present, the yield is a partial value (probe: 21 of 240 characters). A partial asset can be saved. This branch is used
+    by every caller that passes bytes to `importCharacterProcess`: the Charahub import (`src/ts/characterCards.ts:374-377`);
+    and, through `importFile` (`:509`, which calls `importCharacterProcess` at `:511`), the `#import=` URL path (`:394`), the
+    PWA `launchQueue` path (`:471`) and the Tauri open-file caller (`:489`).
+  - **Stream branch** (a picked or dropped `File` and the Realm download): `StreamWindow.slice` returns an empty array when the
+    stream ends before `end` (`pngChunk.ts:102-107`), so the same cut yields an empty key and an empty value, and that asset is
+    dropped. CHORE-58 kept this on purpose (`282b2da5`).
+  - **Neither branch reports the truncation to the user.** The caller rejects a card only when neither `chara` nor `ccv3` was
+    found (`characterCards.ts:212`), or when there is no trimmed image (`:221`). A card cut inside an asset therefore imports without that asset, or with a partial one, and no message says so.
+    A cut after the last tEXt chunk's body but inside its CRC still yields that asset in full on the stream branch (tEXt CRCs are
+    never read), and the trimmed image then has no IEND (Gate 1 round 2).
+- **Not decided (for the maintainer; put it to them with this evidence):** what a truncated card should do. Options to put:
+  refuse the import with a message, or import what is intact and say what is missing. Whether the two branches should agree is
+  part of the same question. `TODO(evidence)`: how many real cards in the wild are truncated; none is known.
+- **Next step:** investigation of the caller and of every `readGenerator` input source for the cut cases (a cut inside a length
+  field, a type, a body, a CRC, missing IEND), then a plan, then the maintainer's decision above, then the usual gates. The change
+  is in `pngChunk.ts` and the import caller; the guards of `pngChunk.readGenerator.test.ts` (nine truncation cases written down
+  from the pre-CHORE-58 reader) would change with the decision and must be updated deliberately, not to make a test pass.
+- **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
+- **Related:** CHORE-58 (`282b2da5`), CHORE-77, `MC-175` (an upstream-exported card must still import), `MC-185`.
+
+### CHORE-77 — A PNG card downloaded from Realm is held in memory in full during import (call structure TRACED; the hold MEASURED in Node streams (+208 MB for a 200 MB card), not measured in a browser; upstream and fork)
+
+**Status (2026-10-03): open, in progress.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Named as a residual of
+`282b2da5`: CHORE-58 made the reading linear and left this unchanged.
+
+- **What happens:**
+  - **TRACED:** the Realm PNG download is passed to `importCharacterProcess` as the response body stream
+    (`src/ts/characterCards.ts:1797-1800`, `data: res.body`; a Realm `.charx` or zip is read into a `Uint8Array` instead,
+    `:1791-1794`). `importCharacterProcess` splits a stream with `tee()` (`:142-146`): one branch is kept for the main pass, the
+    other goes to the counting prereader (`:151-162`), which reads it to the end before the main pass reads the first branch
+    (`:166` onward).
+  - **MEASURED in Node streams, not in a browser (CHORE-76/77 investigation, ledger row 759; scratch `chore76-77\b.probe.ts`):**
+    with the real `readGenerator` on a synthetic 200 MB card (100 x 2 MB assets, 64 KB chunks), `process.memoryUsage().arrayBuffers`
+    rose by about 208 MB when the counting pass finished with the main `tee()` branch still unread (re-run by the Orchestrator,
+    output in `chore76-77\b.probe.out.txt`; a 4 x 50 MB card gave +306 MB). The same card read once without `tee()` showed no
+    measurable rise (the probe's peak sampler stayed below its baseline), so it gives no comparable figure. The spec reading (a tee branch nobody reads queues what the other branch pulls) is
+    consistent with this. `TODO(evidence)`: a measurement in Chromium (and Firefox and Safari); none was made.
+  - **TRACED:** the Realm download is a plain global `fetch` in `downloadRisuHub` (`characterCards.ts:1766` is the function,
+    `:1779` the call), on every platform; it is not plugin-http and not the Node server's proxy.
+  - **TRACED:** a card exported by RisuAI writes its asset chunks before `chara`/`ccv3` (the asset writes are at
+    `characterCards.ts:1254`, `:1271`, `:1288` and `:1331`; the `ccv3` write is at `:1477`, then `writer.end()` at `:1480`), so the
+    asset count cannot be read from the start of the file.
+  - The `File` inputs (picker, drop) do not tee: the `File` is read twice, as two independent `stream()` calls.
+- **Direction proposed by the maintainer (`MC-185` 3), not a decided mechanism:** download the PNG to a temporary file rather
+  than holding it in memory. To be investigated per platform before a plan: web (browser), Tauri, and the Node server. What each
+  platform allows, and where a temporary file would live and be cleaned up, is not established. `TODO(evidence)`: the
+  per-platform investigation.
+- **Constraint from `MC-184`:** the exact asset-count percentage stays, so the counting pass stays unless a different way of
+  getting the same count is found.
+- **Next step:** investigation per platform, then a plan, then the usual gates.
+- **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
+- **Related:** CHORE-58 (`282b2da5`), CHORE-76, `MC-184`, `MC-185`.
 
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 

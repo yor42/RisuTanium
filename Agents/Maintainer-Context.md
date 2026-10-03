@@ -6489,3 +6489,51 @@ skipped name that a character actually uses would show as a missing image."
   shown.
 
 ---
+
+### MC-184 — CHORE-58: keep the exact percentage
+
+- **Tag:** decision (stated in chat)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's chat message, before Gate 1 (the plan's Revision 0 already cites it). The question it answered is not in
+  the records available to this entry: `TODO(evidence)`: the verbatim question.
+- **Reasoning:** none given beyond the words below.
+- **Alternatives rejected:** none stated by the maintainer. The Roadmap's CHORE-58 entry listed, as a non-normative shape, a
+  progress figure of bytes read over file size; "keep the exact percentage" is read as not taking it.
+- **Related:** `MC-182`, `MC-175` (the `.bin` round trip and upstream-compatible cards), `MC-003` (the hardware floor); CHORE-58;
+  commit `282b2da5`; ledger rows 748 to 758.
+
+**What was decided:**
+1. **The maintainer approved the fix plan (Revision 0, before Gate 1) and asked to keep the exact percentage.** As typed: "go
+   ahead with the fix plan, keep the exact percentage."
+2. **Implemented as:** the import progress keeps the exact asset-count percentage. The counting prereader in
+   `importCharacterProcess` stays, so the percentage is computed from the number of assets as before. This item is how the
+   request was implemented, not a further maintainer statement.
+
+---
+
+### MC-185 — CHORE-58 is committed; CHORE-76 and CHORE-77 are taken up while `feat/ui-batch` is unmerged
+
+- **Tag:** decision (stated in chat), with one direction proposed and not yet decided (item 3)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's chat message, sent after CHORE-58's implementation was finished and reviewed.
+- **Reasoning:** the maintainer's own words give it: the UI session "needs more time", so "we can use this spare time".
+- **Alternatives rejected:** none (not chosen from options).
+- **Amends:** the work order of `MC-182` (CHORE-59, CHORE-58, memory steps 6 and 7, CHORE-62): CHORE-76 and CHORE-77 are inserted
+  after CHORE-58 and before steps 6 and 7. `MC-182` stays as written; this entry governs where they differ.
+- **Related:** `MC-179` 4 (the `feat/ui-batch` merge before step 6), `MC-182`, `MC-184`; CHORE-58; CHORE-76; CHORE-77; commit
+  `282b2da5`.
+
+**What was decided:** the maintainer, as typed: "yes commit both, but since UI session needs more time, I think we can use this
+spare time to tackle truncation issue and Realm PNG download being held in memory. what if we download them as temporary file
+instead of holding it in memory?"
+1. **Commit CHORE-58's code and its records.** The code is `282b2da5`. The records are this records commit, which follows it.
+2. **Two new tickets go ahead of memory steps 6 and 7, while `feat/ui-batch` is unmerged:** CHORE-76 (the "truncation issue":
+   a PNG card cut short inside a tEXt chunk) and CHORE-77 (the Realm PNG download held in memory, in the maintainer's words; the hold is measured in Node streams and not in a browser, Roadmap CHORE-77). Memory step 6 still waits for
+   the `feat/ui-batch` merge (`MC-179` 4).
+3. **Direction proposed for CHORE-77, not yet a decided mechanism.** The maintainer asked "what if we download them as temporary
+   file instead of holding it in memory?". It is to be investigated per platform (web, Tauri, Node server) before a plan. What
+   the platforms allow is not yet established.
+
+---
