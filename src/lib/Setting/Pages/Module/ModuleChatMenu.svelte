@@ -17,15 +17,11 @@
     let { close = (i:string) => {}, alertMode = false }: Props = $props();
     let moduleSearch = $state('')
 
-    function sortModules(modules:RisuModule[], search:string){
-        const db = DBState.db
+    // Rows follow the order of db.modules; the search only filters.
+    function filterModules(modules:RisuModule[], search:string){
         return modules.filter((v) => {
             if(search === '') return true
             return v.name.toLowerCase().includes(search.toLowerCase())
-        
-        }).sort((a, b) => {
-            let score = a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-            return score
         })
     }
 
@@ -54,7 +50,7 @@
             {#if DBState.db.modules.length === 0}
                 <div class="text-textcolor2 p-3">{language.noModules}</div>
             {:else}
-                {#each sortModules(DBState.db.modules, moduleSearch) as rmodule, i}
+                {#each filterModules(DBState.db.modules, moduleSearch) as rmodule, i}
                     {#if i !== 0}
                         <div class="border-t-1 border-selected"></div>
                     {/if}

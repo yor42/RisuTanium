@@ -620,6 +620,7 @@ export const languageChinese = {
     },
     "playground": {
         "playground": "Playground",
+        "embeddingSharedSettingsNote": "这两个字段是您的长期记忆设置。在此处修改也会同时更改聊天的长期记忆设置。",
         "inlayDeleteConfirm": "确定要删除\"{name}\"吗？",
         "inlayDeleteMultipleConfirm": "确定要删除选中的{count}个资源吗？",
         "inlayDeleteSelected": "删除选中项",

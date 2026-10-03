@@ -620,6 +620,7 @@ export const languageSpanish = {
     },
     "playground": {
         "playground": "Playground",
+        "embeddingSharedSettingsNote": "Estos dos campos son tu configuración de memoria a largo plazo. Editarlos aquí también cambia la memoria del chat.",
         "inlayDeleteConfirm": "¿Estás seguro de que deseas eliminar \"{name}\"?",
         "inlayDeleteMultipleConfirm": "¿Estás seguro de que deseas eliminar los {count} recursos seleccionados?",
         "inlayDeleteSelected": "Eliminar seleccionados",

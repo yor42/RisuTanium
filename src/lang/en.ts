@@ -755,6 +755,7 @@ export const languageEnglish = {
     },
     playground: {
         playground: "Playground",
+        embeddingSharedSettingsNote: "These two fields are your memory settings. Editing them here changes chat memory too.",
         inlayDeleteSelected: "Delete Selected",
         inlayDeselectAll: "Deselect All",
         inlayEmpty: "No saved inlay assets",
@@ -1344,8 +1345,8 @@ export const languageEnglish = {
     previewInfo: "This preview shows prompt before model-specific processing.",
     groupPreviewNoSpeaker: "No group member would reply right now.",
     miscTools: "Misc Tools",
-    promptConvertion: "Prompt Convertion",
-    convertionStep1: "Select all file related to the prompt (Context, Instruct and Sampler JSON is supported)",
+    promptConvertion: "Prompt Conversion",
+    convertionStep1: "Select all related files for the prompt (Context, Instruct and Sampler JSON is supported)",
     customCSS: "Custom CSS",
     betaMobileGUI: "Beta Mobile GUI",
     enableScrollToActiveChar: "Enable Scroll to Active Character",

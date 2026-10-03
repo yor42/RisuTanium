@@ -620,6 +620,7 @@ export const languageKorean = {
     },
     "playground": {
         "playground": "플레이그라운드",
+        "embeddingSharedSettingsNote": "이 두 항목은 장기기억 설정입니다. 여기서 수정하면 채팅의 장기기억 설정도 함께 바뀝니다.",
         "inlayDeleteConfirm": "\"{name}\"을(를) 정말 삭제하시겠습니까?",
         "inlayDeleteMultipleConfirm": "선택한 {count}개의 에셋을 정말 삭제하시겠습니까?",
         "inlayDeleteSelected": "선택 항목 삭제",

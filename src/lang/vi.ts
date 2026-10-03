@@ -620,6 +620,7 @@ export const languageVietnamese = {
     },
     "playground": {
         "playground": "Playground",
+        "embeddingSharedSettingsNote": "Hai trường này là cài đặt bộ nhớ dài hạn của bạn. Chỉnh sửa tại đây cũng sẽ thay đổi bộ nhớ dài hạn của cuộc trò chuyện.",
         "inlayDeleteConfirm": "Bạn có chắc muốn xóa \"{name}\" không?",
         "inlayDeleteMultipleConfirm": "Bạn có chắc muốn xóa {count} tài sản được chọn không?",
         "inlayDeleteSelected": "Xóa mục đã chọn",

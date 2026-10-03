@@ -42,6 +42,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(0),
+        ReloadGUIPointer: writable(0),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
@@ -92,7 +93,7 @@ function installDb(modules: RisuModule[], enabled: string[] = []): void {
     DBState.db = { modules, enabledModules: enabled, moduleIntergration: '' } as unknown as Database
 }
 
-/** The list is shown sorted by name, so fixtures use names that sort as listed. */
+/** The list is shown in array order, so the fixtures list modules in the order the assertions expect. */
 const names = () => DBState.db.modules.map((m) => m.name)
 
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
@@ -184,10 +185,10 @@ describe('a module remove', () => {
         installDb(four())
         const target = mountModules()
         await clickRemove(target, 'Mc')
-        DBState.db.modules.push(makeModule('A-new'))
+        DBState.db.modules.unshift(makeModule('A-new'))
         flushSync()
         await answer(true)
-        expect(names()).toEqual(['Ma', 'Mb', 'Md', 'A-new'])
+        expect(names()).toEqual(['A-new', 'Ma', 'Mb', 'Md'])
     })
 
     test('two pending removes of the same module remove it once', async () => {

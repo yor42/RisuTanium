@@ -620,6 +620,7 @@ export const languageGerman = {
     },
     "playground": {
         "playground": "Spielwiese",
+        "embeddingSharedSettingsNote": "Diese beiden Felder sind Ihre Einstellungen für das Langzeitgedächtnis. Änderungen hier wirken sich auch auf das Chat-Gedächtnis aus.",
         "inlayDeleteConfirm": "Möchten Sie \"{name}\" wirklich löschen?",
         "inlayDeleteMultipleConfirm": "Möchten Sie die ausgewählten {count} Ressourcen wirklich löschen?",
         "inlayDeleteSelected": "Ausgewählte löschen",
