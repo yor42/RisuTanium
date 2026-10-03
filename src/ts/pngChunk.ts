@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer';
 import crc32 from 'crc/crc32';
-import { AppendableBuffer, VirtualWriter, type LocalWriter } from './globalApi.svelte';
-import { blobToUint8Array } from './util';
+import { AppendableBuffer, VirtualWriter, blobToUint8Array } from './byteBuffer';
+import type { LocalWriter } from './globalApi.svelte';
 
 class StreamChunkWriter{
     constructor(private data:Uint8Array, private writer:LocalWriter|WritableStreamDefaultWriter<Uint8Array>|VirtualWriter){
@@ -90,6 +90,59 @@ class StreamChunkWriter{
     }
 }
 
+//Forward-only read window over a stream: keeps the stream reads that end after the last release() offset,
+//and a slice() copies only the requested range. Offsets are absolute positions in the stream.
+export class StreamWindow{
+    private chunks:Uint8Array[] = []
+    private base = 0 //absolute offset of chunks[0]
+    private total = 0 //absolute offset just past the last buffered byte
+    constructor(private reader:ReadableStreamDefaultReader<Uint8Array>){}
+    get bufferedBytes():number{ return this.total - this.base } //bytes of stream reads currently held
+
+    async slice(start:number,end:number):Promise<Uint8Array>{
+        while(end > this.total){
+            const rs = await this.reader.read()
+            if(!rs.value && rs.done){
+                return new Uint8Array(0)
+            }
+            if(!rs.value || rs.value.length === 0){
+                continue
+            }
+            this.chunks.push(rs.value)
+            this.total += rs.value.length
+        }
+        const out = new Uint8Array(end - start)
+        let chunkStart = this.base
+        let written = 0
+        for(const chunk of this.chunks){
+            const chunkEnd = chunkStart + chunk.length
+            if(chunkEnd > start && chunkStart < end){
+                const from = Math.max(start, chunkStart) - chunkStart
+                const to = Math.min(end, chunkEnd) - chunkStart
+                out.set(chunk.subarray(from, to), written)
+                written += to - from
+            }
+            if(chunkEnd >= end){
+                break
+            }
+            chunkStart = chunkEnd
+        }
+        return out
+    }
+
+    //drops the stream reads that end at or before pos; later slices must start at or after pos
+    release(pos:number){
+        let drop = 0
+        while(drop < this.chunks.length && this.base + this.chunks[drop].length <= pos){
+            this.base += this.chunks[drop].length
+            drop++
+        }
+        if(drop > 0){
+            this.chunks.splice(0, drop)
+        }
+    }
+}
+
 export const PngChunk = {
     read: (data:Uint8Array, chunkName:string[], arg:{checkCrc?:boolean} = {}) => {
         let pos = 8
@@ -138,8 +191,7 @@ export const PngChunk = {
                 data = await blobToUint8Array(data);
             }
         }
-        const reader = data instanceof ReadableStream ? data.getReader() : null
-        let readableStreamData = new AppendableBuffer()
+        const reader = data instanceof ReadableStream ? new StreamWindow(data.getReader()) : null
         const trimedData = new AppendableBuffer()
 
         function appendTrimed(data:Uint8Array){
@@ -153,23 +205,7 @@ export const PngChunk = {
                 return data.slice(start,end)
             }
             else{
-                while(end > readableStreamData.length()){
-                    const rs = await reader.read()
-                    if(!rs.value && rs.done){
-                        return new Uint8Array(0)
-                    }
-                    if(!rs.value){
-                        continue
-                    }
-                    readableStreamData.append(rs.value)
-                }
-                const data = readableStreamData.slice(start, end)
-
-                if(start - readableStreamData.deapended > 200000){
-                    readableStreamData.deappend(50000)
-                }
-
-                return data
+                return await reader.slice(start, end)
             }
         }
 
@@ -179,6 +215,7 @@ export const PngChunk = {
         let pos = 8
         const size = data instanceof Uint8Array ? data.length : Infinity
         while(pos < size){
+            reader?.release(pos)
             const dataPart = await slice(pos,pos+4)
             const len = dataPart[0] * 0x1000000 + dataPart[1] * 0x10000 + dataPart[2] * 0x100 + dataPart[3]
             const type = await slice(pos+4,pos+8)

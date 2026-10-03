@@ -544,23 +544,7 @@ export const capitalize = (s:string) => {
     return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-export function blobToUint8Array(data:Blob){
-    return new Promise<Uint8Array>((resolve,reject) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-            if(reader.result instanceof ArrayBuffer){
-                resolve(new Uint8Array(reader.result))
-            }
-            else{
-                reject(new Error('reader.result is not ArrayBuffer'))
-            }
-        }
-        reader.onerror = () => {
-            reject(reader.error)
-        }
-        reader.readAsArrayBuffer(data)
-    })
-}
+export { blobToUint8Array } from './byteBuffer'
 
 export const languageCodes = ["af","ak","am","an","ar","as","ay","az","be","bg","bh","bm","bn","br","bs","ca","co","cs","cy","da","de","dv","ee","el","en","eo","es","et","eu","fa","fi","fo","fr","fy","ga","gd","gl","gn","gu","ha","he","hi","hr","ht","hu","hy","ia","id","ig","is","it","iu","ja","jv","ka","kk","km","kn","ko","ku","ky","la","lb","lg","ln","lo","lt","lv","mg","mi","mk","ml","mn","mr","ms","mt","my","nb","ne","nl","nn","no","ny","oc","om","or","pa","pl","ps","pt","qu","rm","ro","ru","rw","sa","sd","si","sk","sl","sm","sn","so","sq","sr","st","su","sv","sw","ta","te","tg","th","ti","tk","tl","tn","to","tr","ts","tt","tw","ug","uk","ur","uz","vi","wa","wo","xh","yi","yo","zh","zu"]
 
