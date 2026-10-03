@@ -947,6 +947,70 @@ for the Orchestrator to decide whether it needs its own note.
 
 ### CHORE-15 — TTS: 7 suspected bugs (none lose data)
 
+**Status (2026-10-03, UI session): TTS-1 to TTS-7 DONE 2026-10-03 in `2c4b7fae`** (ledger rows 834
+to 853). TTS batch (`MC-200` 1); product choices in `MC-204`. The investigator confirmed TTS-1, TTS-2, TTS-4, TTS-5 and
+TTS-7, found TTS-3 understated, and refuted a premise: auto-TTS also spoke raw text, not only the speaker button (row 834).
+Gate 1 took five rounds, with a `senior-advisor` escalation after the third rejection; Gate 2 approved (rows 837 to 851).
+Resolutions:
+- **TTS-1:** the Huggingface voice mode translates the reply from English into `hfTTS.language`
+  (`runTranslator(text, true, 'en', lang)`, as `jaTrans` does). The language is trimmed and lower-cased; an empty value or
+  `en` is not translated.
+- **TTS-2:** the reply is translated once, before any request. A 503 with a JSON content type is retried only when its
+  `estimated_time` is a finite positive number that fits the remaining wait budget (30 s in total), and while fewer than 5
+  requests have been made. Any other failure ends with one alert (a 503 without `estimated_time` used to return with no
+  message); only a Stop, or text that is empty after trimming, ends without one. The request also moved
+  from `api-inference.huggingface.co` to `https://router.huggingface.co/hf-inference/models/${model}` (`MC-204` 1; ledger row
+  835). Browser CORS for the router is unverified (CHORE-97).
+- **TTS-3:** the Stop TTS entry is shown for every voice mode, and for a group chat when at least one member has a voice
+  mode. Stop silences every clip still playing, including VITS and overlapping clips, aborts requests in flight where the
+  transport accepts a signal, and shows no error alert for a cancelled call. `speechSynthesis` is guarded with `typeof`
+  checks (`MC-204` 3).
+- **TTS-4:** the ElevenLabs hint reads its text from a new language string (`ttsElevenLabsKeyHint`: "Set the ElevenLabs API key
+  in Settings → Other Bots → TTS → ElevenLabs API key.") and names the real path. The "TTS" accordion and "ElevenLabs API
+  key" labels are hard-coded English in `OtherBotSettings.svelte`, so the translations keep them in English (CHORE-05).
+- **TTS-5:** `FixNAITTS` is deleted (a search of `src` finds no remaining reference).
+- **TTS-6:** the speaker button, auto-TTS and `/speak` speak CBS-parsed text with closed `<Thoughts>` sections removed
+  (`MC-204` 2). The button speaks exactly what the plain Copy button writes.
+- **TTS-7:** the speaker button shows when `ttsMode` is set and is neither `'none'` nor `'normal'` (`'normal'` is what card
+  import writes for "no TTS"). Plugin-defined modes keep their button. No saved data is rewritten.
+
+**Behaviour changes to know about:**
+- Auto-TTS is one call per run, after the output trigger and the output listeners, speaking the stored reply. It speaks a
+  fresh reply whole and a continuation (auto-continue or the Continue button) only its addition. When a script or trigger
+  changed earlier text, it speaks from the first differing point (`MC-204` 4 and 5).
+- Multiline alternates are no longer spoken; only the stored message is.
+- An aborted non-streaming run speaks nothing.
+- A reply that cannot be located speaks nothing. One existing `sendChatOrigin` test changed to say so.
+- Non-streaming speech now starts after the output trigger and the listeners, not before.
+- Plugin TTS preprocessors receive only a continuation's addition on the automatic path. On the automatic path they are not
+  run when there is nothing to speak (the `addTTSPreprocessor` comment in `risuai.d.ts` says so); the button path with Read
+  Only Quoted can still run them with empty text (CHORE-98).
+
+**Tests:** 180 new tests in 11 files: 75 regression reproducers that fail at HEAD for behavioural reasons, 47 guards and 58
+new-behaviour tests. Final checks: `pnpm check` 0 errors 0 warnings; `pnpm test` 6986 passed, 4 skipped; `pnpm build` ok
+(ledger row 852).
+
+**Merge note (`MC-179`):** `index.svelte.ts` (the two auto-TTS calls inside the streaming and non-streaming branches are
+replaced by one call after them, plus a `ttsBefore` capture at two sites) and `command.ts` (one import and the `/speak` call)
+are on neither lane's list in `MC-179` 1; `transformers.ts`, `risuai.d.ts`, `DefaultChatScreen.svelte` and the seven
+`src/lang` files (one key) are on neither list either. They are listed here so the merge is expected. `tts.ts` and
+`CharConfig.svelte` are on the UI lane list; `Chat.svelte` is listed only for its copy code, which this batch touches (the
+display-parse options for the copy text and the speaker button) along with the speaker button's visibility.
+
+**Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):**
+- `docs/wiki/TTS.md`: the speaker button reads the stored message as displayed (CBS parsed, thinking removed), not the raw
+  text; Stop TTS is no longer only for Web Speech and ElevenLabs; the Huggingface retry wording (retry cap, wait budget, one
+  alert); the translation-direction note (English into the chosen language).
+- `docs/wiki/RisuAI-Basics.md`: the Stop TTS visibility line.
+- New behaviour to document: a continuation speaks only its addition; Stop is shown for all modes and in group chats with a
+  voiced member; the Huggingface request goes to the router endpoint.
+
+**New tickets from this batch:** CHORE-93 to CHORE-99 (below). **Recorded, not ticketed:** TTS translations enter the shared
+translation cache, as `jaTrans` already does; the default Google engine uses `translatorInputLanguage` as the source
+language.
+
+**Original report (2026-09-22):**
+
 Found by the wiki session while rewriting the [[TTS]] wiki page (2026-09-22). Full hand-off, with
 per-bug evidence, status and suggested investigation: **`Agents/Reports/99-tts.md`**. Every entry is
 a code-reading claim; none has been reproduced.
@@ -4219,6 +4283,81 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **What the ticket asks:** decide whether the companion should leave out thinking like the plain Copy button now does.
   Not decided.
 - **Related:** CHORE-69; CHORE-68; `MC-203` 1.
+
+### CHORE-93 — There is no speaker button on a character's first message
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Found at the TTS batch's Gate 1 round 1 (ledger row 837).
+Type: new feature.
+
+- **What happens:** the per-message speaker button is rendered inside the `idx > -1` block of `Chat.svelte`, and the first
+  message is rendered with `idx={-1}` in `DefaultChatScreen.svelte`, so it gets no button. The TTS batch did not add one.
+- **What the ticket asks:** add a speaker button to the first message. Not decided.
+- **Related:** CHORE-15; `MC-204` 2.
+
+### CHORE-94 — The Playground translator may translate in the opposite direction to its labels
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch (CHORE-15 TTS-1). Type: suspected bug,
+**INFERRED**, not reproduced.
+
+- **What happens (INFERRED):** `PlaygroundTranslation.svelte` calls `runTranslator(text, false, sourceLang, outputLang)`
+  (at two call sites). With `reverse` false, `runTranslator` sets `arg.from` to its `target` parameter and `arg.to` to its
+  `from` parameter (`src/ts/translator/translator.ts:61-69`), so these calls look inverted: `outputLang` would be the
+  language translated from. The Playground call sites are `src/lib/Playground/PlaygroundTranslation.svelte:114` and `:142`.
+- **Labels:** the labels are Source Language (above the input) and Translator Language (above the output); so with the
+  default Google path `tl` is the source-language selection. Still INFERRED: no translation has been run.
+- **Related:** CHORE-15 TTS-1 (the same parameter order); CHORE-16.
+
+### CHORE-95 — Three TTS configs and `hfTTS.model` are used without a guard when the TTS settings page was never opened
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch. Type: error handling.
+
+- **What happens:** `sayTTS` reads `naittsConfig` (NovelAI), `gptSoVitsConfig` (GPT-SoVITS), `fishSpeechConfig` (Fish Speech)
+  and `hfTTS.model` (Huggingface) without a guard. When the TTS settings page was never opened for a character, the
+  field may be missing, so the read throws a `TypeError` that the user sees as "TTS Error". Not reproduced.
+- **Related:** CHORE-15.
+
+### CHORE-96 — Auto-continue's `tokenize(result)` and `isLastCharPunctuation(result)` still read the raw `result`, which differs per branch
+
+**Status (2026-10-03, UI session):** open, **not scheduled**, and **outside both lanes** (`index.svelte.ts`, `MC-179`). Filed
+from the TTS batch. Type: consistency.
+
+- **What happens:** in `index.svelte.ts` the auto-continue check calls `tokenize(result)` and `isLastCharPunctuation(result)`.
+  `result` is not the same text in the streaming and non-streaming branches (raw in one, processed in the other). The TTS
+  batch moved auto-TTS off `result`; these two uses are unchanged. Whether the difference changes when auto-continue fires
+  was not traced.
+- **Related:** CHORE-15; the plan's out-of-scope list (scratchpad `tts-batch-plan.md`).
+
+### CHORE-97 — Browser CORS for the Hugging Face router is unverified; a live check with a real Hugging Face TTS model is owed
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Type: verification.
+
+- **What is unverified:** the new Huggingface request goes to `https://router.huggingface.co/hf-inference/models/${model}`
+  from the browser. That `huggingface.js` builds this URL and returns a raw audio Blob is read from its source (ledger row
+  835). Whether the router sends CORS headers that allow the call from a browser page, and whether any real model answers
+  with audio there, has not been tested. All TTS tests mock the network.
+- **What the ticket asks:** a live check by the maintainer with a real Hugging Face TTS model and key.
+- **Related:** CHORE-15 TTS-1 and TTS-2; `MC-204` 1.
+
+### CHORE-98 — `sayTTS` with Read Only Quoted and quote-free text still sends a request with empty text
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch. Type: wasted request. Pre-existing.
+
+- **What happens:** with `ttsReadOnlyQuoted` set and text that contains no quote, the filter yields an empty string and
+  `sayTTS` still goes on to make its request. Auto-TTS avoids this (it speaks only when the filtered addition is non-empty);
+  `sayTTS` itself does not check.
+- **Related:** CHORE-15.
+
+### CHORE-99 — Auto-TTS parses even for a character with no voice mode, and the user name comes from the selected chat's persona (optional)
+
+**Status (2026-10-03, UI session):** open, **not scheduled**, optional. Filed from the TTS batch. Type: efficiency
+and exactness.
+
+- **What happens:** at the auto-TTS call site in `index.svelte.ts` the only conditions are that the run is not aborted and
+  `ttsAutoSpeech` is on; the reply is parsed before `sayTTS` runs, whatever the character's `ttsMode`. The site also takes a
+  user message's name from `getUserName()` (`src/ts/util.ts:187`), which passes no chat, so `checkPersonaBinded`
+  (`src/ts/util.ts:131-145`) reads the selected character's current chat; the call is at `src/ts/process/index.svelte.ts:2439`
+  and applies only when the stored reply's role is `'user'`.
+- **Related:** CHORE-15; `MC-204` 2.
 
 ## Sequencing Summary
 

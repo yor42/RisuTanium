@@ -258,10 +258,21 @@ Several sessions work **in this same checkout**:
   uncommitted, by the maintainer's word (`MC-202` 2).
 - **Chat UI batch: committed in `0651493b`** (10 files, local, not pushed; `.claude/launch.json` left uncommitted):
   CHORE-21, the rejected-avatar-icon follow-up and CHORE-69 (Gate 2 approved after three rounds; `MC-203`; ledger rows
-  816 to 832). **The records for it (`MC-203`, ledger rows 816 to 833, the Roadmap status lines and CHORE-90 to CHORE-92,
-  this block) are uncommitted, commit pending.** The chat batch touched no file on the Main Campaign's out-of-bounds list.
-- **Next in the lane:** TTS, settings, Playground, modules, small items, translations (the order in `MC-200` 1).
-- **Next free numbers in the UI ranges:** `MC-204`, ledger row 834, CHORE-93, Report 65.
+  816 to 832). **Its records (`MC-203`, ledger rows 816 to 833, the Roadmap status lines and CHORE-90 to CHORE-92) are
+  committed in `2d5c25cd`.** The chat batch touched no file on the Main Campaign's out-of-bounds list.
+- **TTS batch (CHORE-15, TTS-1 to TTS-7): committed in `2c4b7fae`** (31 files, local, not pushed; `MC-204`; ledger rows
+  834 to 853). Gate 1 took five rounds with a `senior-advisor` escalation; Gate 2 approved, with one remediation. Final
+  checks: `pnpm check` 0/0; `pnpm test` 6986 passed, 4 skipped; build ok. **Its records are committed in the records
+  commit that follows `2c4b7fae`;** `.claude/launch.json` stays out. New tickets CHORE-93 to CHORE-99. The batch changed `index.svelte.ts`
+  (the two auto-TTS calls inside the streaming and non-streaming branches are replaced by one call after them, plus a
+  `ttsBefore` capture at two sites) and `command.ts` (one import and the `/speak` call), which are on neither lane's list, and
+  also `transformers.ts`, `risuai.d.ts`, `DefaultChatScreen.svelte` and the seven `src/lang` files (one key), which `MC-179` 1
+  names on neither list either. `tts.ts` and `CharConfig.svelte` are on the UI lane list; `Chat.svelte` is listed only for its
+  copy code, which this batch touches (the display-parse options for the copy text and the speaker button) along with the
+  speaker button's visibility.
+- **Next in the lane:** settings (CHORE-14 UI-1 and UI-2), then Playground, modules, small items, translations (the order in
+  `MC-200` 1).
+- **Next free numbers in the UI ranges:** `MC-206`, ledger row 854, CHORE-100, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".
@@ -276,7 +287,14 @@ Several sessions work **in this same checkout**:
   emotion box is labelled "Emotion Instructions". CD-4's keep-edited-text behaviour is `MC-077`. New: the `mobilechat`
   Save and Discard behaviour while a message is edited, and the Delete button's touch long-press force delete (`MC-201`
   1 and 2).
-- **Files outside the UI lane touched so far:** none. Step-6 flows touched (memory step 6 hooks): `CharConfig.svelte`'s
+- **Wiki hand-offs (TTS batch, for the Wiki session):** `docs/wiki/TTS.md` (the speaker button reads the stored, parsed
+  message; Stop is no longer only for Web Speech and ElevenLabs; the retry wording; the translation-direction note) and
+  `docs/wiki/RisuAI-Basics.md` (the Stop visibility line). New behaviour: a continuation speaks only its addition; Stop for
+  all modes and in group chats with a voiced member; the Hugging Face router endpoint (`MC-204`). Detail is in the CHORE-15
+  entry of the Roadmap.
+- **Files outside the UI lane touched so far:** the TTS batch edits `index.svelte.ts` (the two auto-TTS calls are replaced by one call
+  after the streaming and non-streaming branches, plus a `ttsBefore` capture at two sites) and `command.ts` (one import and
+  the `/speak` call), neither on a lane list (above); the mobile and chat batches touched none. Step-6 flows touched (memory step 6 hooks): `CharConfig.svelte`'s
   emotion settings label (a one-line label change); `Chat.svelte`'s editor exits (Save and Discard share the discard
   function with the editor's mouse long-press; they are deliberate exits).
 

@@ -2148,6 +2148,8 @@ other. The page marks that route as read from the code and not tested: nobody he
 account backup. Only official-site account users can hit the refusal, because upstream encrypts
 only on `risuai.xyz` origins.
 
+The request not to probe the endpoint is clarified by MC-205 (2026-10-03).
+
 ---
 
 ### MC-082 — A duplicate `chaId` that has never been saved: the first holder is written once, then frozen
@@ -6415,3 +6417,55 @@ skipped name that a character actually uses would show as a missing image."
 2. **CHORE-21, the translation editor after a save.** "Keep editor open (Recommended)": if the user typed during a
    translation save, the editor stays open and that text is kept as a draft. The rule: only the save that leaves no save
    from that view pending treats its text as final.
+
+### MC-204 — The TTS batch's product choices (CHORE-15): the Hugging Face endpoint, what is spoken, Stop, and continuations
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below. Items 4 and 5 were asked after the Gate 1 escalation to `senior-advisor` (ledger row 840); items
+  1 to 3 were asked earlier.
+- **Reasoning:** none stated, except the maintainer's own words quoted in item 1.
+- **Alternatives rejected:** listed per item below.
+- **Related:** `MC-011`, `MC-179`, `MC-200`, `MC-205`; CHORE-15; ledger rows 834 to 853.
+
+**What was decided:**
+1. **The Hugging Face endpoint.** "Fix and switch endpoint". The maintainer's words: "can confirm that current
+   api-inference.huggingface.co is indeed outdated. fix and switch the endpoint." The Huggingface voice mode's request
+   moves to `https://router.huggingface.co/hf-inference/models/${model}`, found by the Orchestrator's web lookup (ledger row
+   835). Not chosen: "Fix TTS-1/2, file a ticket (Recommended)" (fix the language and retry bugs, and file the endpoint as a
+   ticket); "I'll check it myself first".
+2. **What is spoken.** "Parse in all three (Recommended)": the speaker button, auto-TTS and `/speak` speak CBS-parsed text
+   with closed `<Thoughts>` sections removed. Not chosen: "Button only".
+3. **Stop TTS.** "Full stop (Recommended)": the Stop TTS entry is shown for every voice mode, stops all audio including
+   VITS, and cancels requests in flight. Not chosen: "Show for all modes only".
+4. **Continuations.** "Speak only the addition (Recommended)": a fresh reply is spoken whole; a continuation (auto-continue
+   or the Continue button) speaks only its addition. Not chosen: "Speak the whole reply each time"; "Don't speak
+   continuations".
+5. **Text changed earlier in the reply.** "Speak from the first change (Recommended)": when a script or trigger changed
+   earlier text, speech starts at the first point where the new text differs from the old. Not chosen: "Speak the whole
+   reply".
+
+### MC-205 — "Do not probe upstream" means do not overload or interfere with upstream services; looking up documentation online is fine (clarifies MC-081)
+
+- **Tag:** clarification (of `MC-081`)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in the same exchange as `MC-204`. `MC-081` records the maintainer's request that the
+  `sv.risuai.xyz/cryptokey` endpoint not be probed; Live-State carries it as "do not probe upstream services (`MC-081`)".
+- **Reasoning:** the maintainer's own words, below.
+- **Alternatives rejected:** none; stated directly, not chosen from options.
+- **Related:** `MC-081`, `MC-204`; ledger row 835.
+
+> small correction to my past decision: "do not probe upstream" means 'do not overload or mess with risurealm or other
+> upstream risuAI services. looking up docs or informations online is okay.
+
+**What was decided:**
+- **The rule means** not to overload or interfere with RisuRealm or other upstream RisuAI services. Looking up
+  documentation or information online is allowed.
+- **Applied in this session:** the Orchestrator's web lookup of the Hugging Face documentation and the `huggingface.js`
+  source for CHORE-15 (ledger row 835).
+- **Left unchanged:** `MC-081`'s body, which still carries the old wording (it has a one-line forward reference to this
+  entry), and the Live-State "Network" bullet in the browser-check section ("do not probe upstream services (`MC-081`)"),
+  which sits outside the UI session's block.
