@@ -175,7 +175,8 @@ The commits below were local when they were listed, and were pushed with it:
 - `ff659397`: CHORE-76 and CHORE-77 Stage B, a `.charx` cut short or damaged is refused with a clear message and a Realm `.charx`
   download is read from a Blob (the 33rd; `MC-186` 2 and 4; ledger rows 775 to 780). Local, not pushed. The records commit that
   carries this line (the Roadmap blocks, ledger rows 775 to 782) follows it and is the 34th.
-- `96ffb490`: CHORE-77 Stage C1, a `.charx` with a file over its size limit is refused before anything is saved and queued asset saves are bounded (the 35th, `git rev-list --count 1ce8abff..HEAD` gave 35 on 2026-10-04; `MC-187` and its amendment; ledger rows 787 to 791). Local, not pushed.
+- `96ffb490`: CHORE-77 Stage C1, a `.charx` with a file over its size limit is refused before anything is saved and queued asset saves are bounded (the 35th, `git rev-list --count 1ce8abff..HEAD` gave 35 on 2026-10-04; `MC-187` and its amendment; ledger rows 787 to 791; `b2406e0e`, the CHORE-77 C1 records, is the 36th). Local, not pushed.
+- `f8f16c0d`: CHORE-77 Stage C2, files shared to the installed web app are imported, and `#import=` and Chub downloads are read from a Blob (the 37th: `git rev-list --count 1ce8abff..HEAD` gave 36 on 2026-10-04 at `b2406e0e`, before this commit; `MC-187`, `MC-188`, `MC-189`; ledger rows 793 to 799 and 1001). Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
 `d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63`,
@@ -292,7 +293,9 @@ Empty. Only the UI session edits this block.
 | CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
-Next free within the Main Campaign's ranges: `MC-189` (`MC-188` is the latest used), ledger row 793 (row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
+(Main Campaign rows continue at 1001; `MC-179` amendment of 2026-10-04)
+
+Next free within the Main Campaign's ranges: `MC-190` (`MC-189` is the latest used), ledger row 1002 (the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
 work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit

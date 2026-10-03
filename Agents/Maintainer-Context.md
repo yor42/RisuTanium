@@ -6322,6 +6322,18 @@ skipped name that a character actually uses would show as a missing image."
    notice is one example). Live checks: the Main Campaign keeps port 6011 and `risuai-prod-scratch`; the UI session uses
    6012. "Never stop a process you did not start."
 
+#### Amendment to MC-179 (2026-10-04): the Main Campaign's ledger rows continue at 1001
+
+- **Tag:** decision (stated in chat), amending item 3's ledger-row range. The table in item 3 is kept as recorded.
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat, after the Main Campaign's range 700 to 799 was used up by the CHORE-77 Stage C2 rows
+  (ledger rows 793 to 799): "900-1000 is also used by ui session, so use 1001 and onwards."
+- **What was decided:** the Main Campaign's next ledger rows are 1001 and onwards. Rows 800 to 899 stay the UI session's
+  (item 3) and 900 to 1000 are also used by the UI session. Other ranges in item 3 are unchanged.
+- **Context:** on 2026-10-03 the maintainer gave the UI session rows 900 to 1000. That grant was made to the UI session and is not
+  recorded in this checkout's `Agents/` files.
+
 ### MC-180 — CHORE-55 stage 4: deleting a unit removes it from IndexedDB and OPFS; an OPFS profile is copied back at startup and falls back to OPFS with a notice; web archiving runs wherever IndexedDB works; the phone check runs on the maintainer's emulator; leftover OPFS copies are deleted at the next normal start; the copy-back wording says "browser storage"; stage 4 is committed as code, then records
 
 - **Tag:** decision (items 2, 3, 4, 6 and 8, the maintainer's answers to `AskUserQuestion`); items 1, 5 and 7 are stated in chat (item 5 is a typed answer to a question that offered options)
@@ -6696,5 +6708,27 @@ the memory fix.
 **What was decided (chosen option label, quoted):** **Chosen: "Add PNG/JPEG/JSON cards".** The option was described to the
 maintainer as: "Also accept .png, .jpg/.jpeg and .json character cards through share. More useful on a phone (cards are often
 saved as images), but widens what the share sheet offers RisuAI for: any shared PNG would list RisuAI as a target."
+
+---
+
+### MC-189 — CHORE-77 Stage C2: the share target also accepts files of unknown type
+
+- **Tag:** decision (chosen from options put by the Orchestrator)
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to question Q-A, which the Stage C2 Gate 1 reviewer raised in round 1 (ledger row 793) and the
+  Orchestrator put to the maintainer. The premise given with the question: on Android, Chromium routes a shared file by the
+  extension in the content URI or by its MIME type, so a `.charx`, `.risum` or `.risup` from another app often arrives typed
+  `application/octet-stream` (the reviewer's inference from Android's `MimeTypeMap`; neither this nor the Chromium reading was run on a device). The reviewer read this in Chromium source (`WebApkShareTargetUtil` and `MimeTypeFilter`); it was
+  not run on a device. The question text, as the Orchestrator supplied it for this entry: "On Android, Chrome matches a shared file against the share target's accept list by the extension in the sending app's file URI (which often has none), or by MIME type. A .charx, .risum or .risup shared from a file manager or chat app usually arrives as application/octet-stream, so with an extension-only list, RisuAI often won't appear in the share sheet at all. (The reviewer read this in Chromium source but did not test it on a device.) How should the share target accept these files?" The options were "Also accept octet-stream (Recommended)" and "Extensions only".
+- **Reasoning:** none recorded beyond the option label.
+- **Alternatives rejected:** "Extensions only" (sharing a `.charx`, `.risup` or `.risum` then depends on the sending app).
+- **Related:** `MC-188`, `MC-187`, `MC-175`, `MC-179`; CHORE-77; ledger rows 793 to 795.
+
+**What was decided (chosen option label, quoted):** **Chosen: "Also accept octet-stream (Recommended)".** The share target also
+accepts `application/octet-stream` and `application/zip`, so RisuAI appears for files of unknown type. The page sorts files by
+name suffix and reports any file it cannot use.
+
+As implemented (the Orchestrator's addition, not a maintainer statement): the character field also accepts `application/zip`, and, at Gate 1's optional suggestion, `application/x-zip-compressed` (ledger rows 793 to 795).
 
 ---
