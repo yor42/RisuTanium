@@ -352,10 +352,19 @@ Several sessions work **in this same checkout**:
   keys deleted from all seven language files; `globalLoreBook` and `globalRegexScript` kept until after the merge. No new test.
   Checks: `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok. Not run in a browser. Commit drafts:
   `commit-msg-19.txt` (code) and `commit-msg-20.txt` (records) in the scratchpad.
-- **CHORE-05 status:** translation batches 1 to 4 done. The native-speaker review is deferred by the maintainer (`MC-212`);
-  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: delete `globalLoreBook` and `globalRegexScript`
-  after the merge if the pages go; the 35 computed-group names; the deferred items listed in the batch 3 block.
-- **Next free numbers in the UI ranges:** `MC-213`; ledger row 905; CHORE-100; Report 65.
+- **Translation batch 5a (CHORE-05: small deferrals and 29 dead computed-group names): DONE, committed in `fb454bc0`**.
+  `MC-213` (the request, the split into 5a, 5b and 5c, and the TTS label rule are the maintainer's; the dispositions are the
+  Orchestrator's); ledger rows 905 to 910. 29 dead names deleted from all seven language files, 5 new keys, `placeholderKey`
+  for the two registry placeholders, the `/?` help, `OtherAx`, `MobileCharacters` and `botpreset` Unnamed. One behaviour fix,
+  disclosed: the `HypaV3Modal` re-roll Apply button no longer writes `"Loading..."` or the failure message into the summary.
+  Checks: `pnpm check` 0/0; `pnpm test` 370 files, 7218 passed, 4 skipped; build ok. 5 new test files (56 tests); at HEAD 13
+  tests fail, 7 of them reproducers. Not run in a browser. Commit drafts: `commit-msg-21.txt` (code) and `commit-msg-22.txt`
+  (records) in the scratchpad. **Next: batch 5b** (user-visible errors, about 40 keys), then 5c (dev-tool preview text and the
+  `CharConfig` TTS prose labels).
+- **CHORE-05 status:** translation batches 1 to 4 and 5a done. The native-speaker review is deferred by the maintainer (`MC-212`);
+  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: batches 5b and 5c; delete `globalLoreBook` and `globalRegexScript`
+  after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; the deferred items listed in the batch 3 block.
+- **Next free numbers in the UI ranges:** `MC-214`; ledger row 911; CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

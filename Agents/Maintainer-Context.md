@@ -6812,3 +6812,38 @@ dispositions together, before the commit: "changes made by you seems reasonable;
 - **No new test.** There is no defect to reproduce. A guard that every key is referenced was rejected: computed groups make it
   unsound, or it needs a hand-kept allowlist.
 - **Scope of the removal:** 131 keys, deleted from all seven language files together (ledger rows 900 to 903).
+
+### MC-213 — Translation batch 5: finish the deferred items in three gated batches (CHORE-05); the request, the split and the TTS rule are the maintainer's, the dispositions are the Orchestrator's
+
+- **Tag:** decision (the request, the split and the TTS label rule); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "let's complete the earlier deferral and possible leftovers." They then answered two
+  questions the Orchestrator asked (the split, and the `CharConfig` TTS labels); the answers are in the list below.
+- **Reasoning:** none stated for the request or the answers.
+- **Alternatives rejected:** the options not chosen. On the split: "One big batch" and "5a only for now". On the TTS
+  labels: "Keep all English" (batch 3's disposition) and "Translate all". The chosen options were the ones marked
+  "(Recommended)".
+- **Related:** `MC-179`, `MC-200`, `MC-209`, `MC-211`, `MC-212`; CHORE-05; ledger rows 905 to 910.
+
+**What was decided (the maintainer's):**
+1. **Finish the deferred translation items and the leftovers** from batches 3 and 4.
+2. **Split the work into three gated batches.** The maintainer chose "Three gated batches (Recommended)"; the option
+   text, written by the Orchestrator from the investigator's sizing (row 906), proposed 5a small and safe items, 5b
+   user-visible errors (about 40 keys) and 5c the dev-tool preview text and the `CharConfig` TTS labels.
+3. **`CharConfig` TTS labels:** translate the descriptive (prose) labels and keep parameter and engine names in English (the
+   `MC-209` rule).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **`characterCards.ts` and `processzip.ts` strings wait until after the Main Campaign merge.** They sit inside Main Campaign
+  hunks (`MC-179`).
+- **Stay English:** plugin API v3 throws (47, plugin-author-facing), MCP throws (22), internal and swallowed throws, JSON-dump
+  throws, the `scriptings` `'Error: '` strings returned to Lua, and the `cbs.ts` tag docs.
+- **`v2UnsupportedTrigger` is kept.** It is dead in code but reachable through `triggerDesc[type]` from saved effect data (row
+  905).
+- **`LoreBookList` debug dumps:** both are commented out, so there is nothing to translate and no change.
+- **The `globalApi` toasts are not touched:** `globalApi.svelte.ts` is out of bounds for the UI session except `openURL`
+  (`MC-200` 4).
+- **The reroll Apply defect is folded into batch 5a** (found by Gate 1, row 907).
+- **`OtherAx` is translated.** Its siblings in the same accordion are translated (Gate 1 N1 asked the Orchestrator to confirm).
+- **Scope of batch 5a:** 29 dead computed-group names deleted, 5 new keys, ledger rows 905 to 910.

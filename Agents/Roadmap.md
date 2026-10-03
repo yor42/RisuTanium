@@ -733,7 +733,63 @@ keys, `{name}` placeholders filled by `fillLang`.
 - **Native-speaker review: deferred by the maintainer (`MC-212`).** The maintainer said the Korean and English translations look good
   (the Orchestrator reads that as batches 1 to 3) and will report issues; cn, zh-Hant, vi, de and es remain unreviewed by a native speaker.
 - **Remaining follow-ups:** delete `globalLoreBook` and `globalRegexScript` after the merge if those pages go; decide the 35
-  computed-group names; the deferred items in the batch 3 block above.
+  computed-group names (decided in batch 5a: 29 deleted, 6 kept); the deferred items in the batch 3 block above.
+
+**Status (2026-10-04, UI session, translation batch 5a: small deferrals and 29 dead computed-group names): DONE in `fb454bc0`; the ticket stays open for the follow-ups below** (ledger rows 905 to 910). The request and the split into three batches are the maintainer's (`MC-213`); the dispositions in `MC-213` are the Orchestrator's, not the maintainer's.
+- **Done in batch 5a:**
+  - 29 dead computed-group names deleted from all seven language files (`help` 11, `setup` 18). They are unused on HEAD and on the
+    Main Campaign tip `b2406e0e` (row 905). Each file's survivors are equal in value and order, and no comment line was removed (row 908).
+  - 5 new `en.ts` keys, translated into the six other locales: `unnamedPreset`, `emotionPromptPlaceholder`,
+    `presetChainPlaceholder`, `settingsPage.otherAx` and `slashCommandHelp`. Leaves go from 2031 to 2007 (2002 survivors plus 5).
+  - `placeholderKey` on `SettingOptions` and a `getPlaceholder` helper (`src/ts/setting/types.ts`, `utils.ts`), read by
+    `SettingText.svelte` and `SettingTextarea.svelte`. It is resolved lazily like `labelKey`, and the English `placeholder`
+    stays as the fallback. The two registry placeholders (`adv.emoPrompt`, `adv.presetChain`) now use it.
+  - The three `nanoGPT` keys in `BotSettings.svelte` are static `language.x` chains, without `as any` and without the dead
+    `"Manual Model Select"` fallback. No text change; the keys are now type-checked.
+  - The four `"Loading..."` assignments in `modal-summary-item.svelte` use `language.loadingEllipsis`.
+  - `MobileCharacters.svelte` "Unnamed" uses `settingsPage.unnamed`; the `botpreset.svelte` drag label uses `unnamedPreset`.
+  - `OtherAx` (the `AuxModelSelectors.svelte` label and the `PromptSettings.svelte` accordion name) is translated, because its
+    siblings in the same accordion are (Gate 1 N1, confirmed by the Orchestrator).
+  - The `/?` slash-command help (`command.ts`) is one key, `slashCommandHelp`. The English text is byte-identical to HEAD's
+    template literal (1788 characters; Gate 2 re-ran the comparison). Command names, argument syntax and example commands stay
+    English in every locale; descriptions and the "Example:" label are translated (ko uses "예시:"; cn and zh-Hant use a full-width colon).
+- **Behaviour fix, disclosed (found by Gate 1, M1; the Orchestrator confirmed it by reading the component):** at HEAD the
+  Apply button in the `HypaV3Modal` re-roll box could write the `"Loading..."` placeholder, or the failure message, into
+  `summary.text`. Apply is now disabled unless a result exists, the re-roll is not pending and it has not failed
+  (`canApplyRerolled`; `rerollFailed` is set in the catch and cleared when a re-roll starts), and `applyRerolled` returns early. Pre-fix
+  failure: two reproducers, where the summary text became `'Loading...'` (Apply while pending) and `'Reroll failed'` (Apply
+  after a failure). Not done, optional (Gate 2): clear `rerollFailed` when the textarea is edited after a failure; after a
+  failed re-roll, hand-typed text in the re-roll box cannot be applied, which Gate 2 judged acceptable.
+- **Kept, or not touched:** the five live `triggerDesc` names (`v2GetCharacterDesc`, `v2SetCharacterDesc`, `v2GetPersonaDesc`,
+  `v2SetPersonaDesc`, `v2UnsupportedTriggerDesc`) and `v2UnsupportedTrigger`, which is reachable through `triggerDesc[type]`
+  from saved effect data (row 905). The `LoreBookList` debug dumps are commented out, so there is nothing to translate and no
+  change. The `HypaV3Modal` conversion errors got tests only (guards), no source change. The `globalApi` toasts are not touched:
+  `globalApi.svelte.ts` is out of bounds for this session except `openURL` (`MC-200` 4). `Legal.svelte` is never edited.
+- **Tests (5 new files, 56 tests; no existing test file edited, apart from the `collect()` extension below):**
+  `SettingPlaceholder.i18n.svelte.test.ts` (11), `HypaV3Modal.rerollConvert.svelte.test.ts` (12), `command.help.test.ts` (27),
+  `MobileCharacters.unnamed.svelte.test.ts` (3) and `botpreset.unnamedPreset.svelte.test.ts` (3).
+  `settingLabelKeys.test.ts` has its `collect()` extended to cover `options.placeholderKey`. Against HEAD's production files
+  (the scratch config `tw5a-head.vitest.config.mts`, language files at the working tree), 13 tests fail and 43 pass. Seven
+  failures are regression reproducers on their intended assertions (the Korean `adv.emoPrompt` placeholder, the textarea
+  placeholder, Apply while pending, Apply after a failure, the Korean `/?` help, `MobileCharacters` Unnamed, `botpreset` Unnamed
+  Preset). Six are `getPlaceholder` unit tests that fail only because the export is missing, so they are not counted as
+  reproducers. The 43 passes are compatibility guards (row 908).
+- **Checks:** `pnpm check` 0/0; `pnpm test` 370 files, 7218 passed, 4 skipped; build ok (row 908). Gate 1 and Gate 2 both
+  approved (rows 907 and 909). Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch. By Gate 1's check, no
+  other file of this batch is touched on Main.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** de "Sonstige Hilfsmodelle" for
+  `otherAx`; the terseness of `otherAx` in vi, cn and zh-Hant; the vi term for the trigger; the cn term for the preset; es
+  uses Latin American forms.
+- **Remaining, as planned (`MC-213`):**
+  - **Batch 5b**, user-visible thrown errors and request-failure strings (about 40 keys): `request/*`, the `throwError`
+    literals in `index.svelte.ts`, `tts.ts`, `translator/presets.ts` (and its test assertions), `modules.ts`, `interchangeability.ts`.
+  - **Batch 5c**, the `devToolActions` and `previewRunner` markdown (about 12 keys) and the `CharConfig` TTS prose labels (about
+    15 to 20; parameter and engine names stay English), plus the `CharConfig` "Bias" label.
+  - **After the Main Campaign merge:** the `characterCards.ts` wait messages and asset-not-found throws, and the `processzip.ts`
+    strings (both sit inside Main Campaign hunks).
+  - **Stay English (the Orchestrator's disposition):** plugin API v3 throws (47), MCP throws (22), internal and swallowed
+    throws, JSON-dump throws, the `scriptings` `'Error: '` strings returned to Lua, and the `cbs.ts` tag docs.
 
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
