@@ -1734,4 +1734,9 @@ export const languageGerman = {
     "assetIntegrityVerifyButton": "Asset-Cache jetzt überprüfen",
     "cardFileIncomplete": "Diese Kartendatei ist unvollständig oder beschädigt und wurde daher nicht importiert.",
     "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `Die Datei "${fileName}" in dieser Karte ist größer als das Limit von ${limitMiB} MB, daher wurde die Karte nicht importiert.`,
+    "shareFailed": "Die geteilten Dateien konnten nicht empfangen werden, daher wurde nichts importiert. Versuchen Sie, sie erneut zu teilen.",
+    "shareEmpty": "Die Freigabe enthielt keine Dateien, daher wurde nichts importiert.",
+    "shareNotFound": "Diese Freigabe wurde nicht gefunden. Möglicherweise wurde sie bereits importiert oder ist abgelaufen. Versuchen Sie, die Dateien erneut zu teilen.",
+    "shareInvalid": "Die geteilten Dateien konnten nicht gelesen werden, daher wurde nichts importiert. Versuchen Sie, sie erneut zu teilen.",
+    "shareFilesNotImported": (fileNames: string) => `Diese Dateien konnten nicht importiert werden: ${fileNames}`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

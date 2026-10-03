@@ -1878,6 +1878,11 @@ export const languageEnglish = {
     cardFileIncomplete: "This card file is incomplete or damaged, so it was not imported.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) =>
         `The file "${fileName}" inside this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
+    shareFailed: "The shared files could not be received, so nothing was imported. Try sharing them again.",
+    shareEmpty: "The share contained no files, so nothing was imported.",
+    shareNotFound: "This share was not found. It may already have been imported, or it may have expired. Try sharing the files again.",
+    shareInvalid: "The shared files could not be read, so nothing was imported. Try sharing them again.",
+    shareFilesNotImported: (fileNames: string) => `These files could not be imported: ${fileNames}`,
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

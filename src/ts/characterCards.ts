@@ -352,6 +352,50 @@ export async function handlePendingRealmLink(): Promise<void> {
 
 export const showRealmInfoStore:Writable<null|hubType> = writable(null)
 
+type ClassifiedImport = {kind: 'card'|'preset'|'module', name: string}
+type ShareIndexEntry = {key: string, name: string, type: string}
+
+//A file's kind is decided by its name suffix, compared without regard to case, whatever the form field or link it came from.
+//The returned name carries the lower-case suffix because the importers compare suffixes case-sensitively.
+const importSuffixes:Array<[string, ClassifiedImport['kind']]> = [
+    ['.charx', 'card'], ['.png', 'card'], ['.jpg', 'card'], ['.jpeg', 'card'], ['.json', 'card'],
+    ['.risupreset', 'preset'], ['.risup', 'preset'], ['.preset', 'preset'],
+    ['.risum', 'module'],
+]
+const importTypeSuffixes:{[type:string]:string} = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'application/json': '.json',
+}
+
+function classifyImportFile(name:string, type:string):ClassifiedImport|null {
+    const lower = name.toLowerCase()
+    for(const [suffix, kind] of importSuffixes){
+        if(lower.endsWith(suffix)){
+            return {kind, name: name.slice(0, name.length - suffix.length) + suffix}
+        }
+    }
+    //Octet-stream, zip and an empty type say nothing about the kind, so only these types stand in for a missing suffix.
+    const typeSuffix = importTypeSuffixes[type.split(';')[0].trim().toLowerCase()]
+    return typeSuffix ? {kind: 'card', name: name + typeSuffix} : null
+}
+
+//A share index lists only files stored under its own share id.
+function parseShareIndex(value:{files?: Partial<ShareIndexEntry>[]}|null, id:string):ShareIndexEntry[]|null {
+    if(!value || !Array.isArray(value.files)){
+        return null
+    }
+    const entries:ShareIndexEntry[] = []
+    const keyPattern = new RegExp(`^/sw/share/${id.replace(/[^0-9a-z-]/gi, '')}/[0-9]+$`)
+    for(const entry of value.files){
+        if(!entry || typeof entry.key !== 'string' || !keyPattern.test(entry.key) || typeof entry.name !== 'string' || typeof entry.type !== 'string'){
+            return null
+        }
+        entries.push({key: entry.key, name: entry.name, type: entry.type})
+    }
+    return entries
+}
+
 export async function characterURLImport() {
     const realmPath = (new URLSearchParams(location.search)).get('realm')
     try {
@@ -380,11 +424,16 @@ export async function characterURLImport() {
                     "content-type": "application/json"
                 }
             })
-            const img = new Uint8Array(await chara.arrayBuffer())
+            if(!chara.ok){
+                alertError(language.errors.noData)
+                return null
+            }
+            //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
             await importCharacterProcess({
                 name: 'charahub.png',
-                data: img
+                data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'})
             })
+            checkCharOrder()
         }
     } catch (error) {
         alertError(language.errors.noData)
@@ -400,8 +449,14 @@ export async function characterURLImport() {
             const res = await fetch(url, {
                 method: 'GET',
             })
-            const data = new Uint8Array(await res.arrayBuffer())
-            await importFile(getFileName(res), data)
+            if(!res.ok){
+                alertError(language.errors.noData)
+                return null
+            }
+            const fileName = getFileName(res)
+            //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+            const blob = await res.blob()
+            await importFile(fileName, new File([blob], fileName, {type: blob.type}))
             checkCharOrder()
         } catch (error) {
             alertError(language.errors.noData)
@@ -436,49 +491,20 @@ export async function characterURLImport() {
         settingsOpen.set(true)
         return
     }
-    if(hash.startsWith('#share_character')){
-        const data = await fetch("/sw/share/character")
-        if(data.status !== 200){
-            return
+    //A failure while receiving a share never stops the rest of the start-up work below.
+    const shareId = /^#share=([0-9]+-[0-9a-f-]+)$/i.exec(hash)?.[1]
+    if(shareId || hash === '#share-empty' || hash === '#share-failed'){
+        try {
+            await consumeShare(hash, shareId)
+        } catch (error) {
+            alertError(language.shareFailed)
         }
-        const charx = new Uint8Array(await data.arrayBuffer())
-        await importCharacterProcess({
-            name: 'shared.charx',
-            data: charx
-        })
-    }
-    if(hash.startsWith('#share_module')){
-        const data = await fetch("/sw/share/module")
-        if(data.status !== 200){
-            return
-        }
-        const module = new Uint8Array(await data.arrayBuffer())
-        const md = await readModule(Buffer.from(module))
-        md.id = v4()
-        DBState.db.modules.push(md)
-        alertNormal(language.successImport)
-        SettingsMenuIndex.set(14)
-        settingsOpen.set(true)
-    }
-    if(hash.startsWith('#share_preset')){
-        const data = await fetch("/sw/share/preset")
-        if(data.status !== 200){
-            return
-        }
-        const preset = new Uint8Array(await data.arrayBuffer())
-        await importPreset({
-            name: 'shared.risup',
-            data: preset
-        })
-        SettingsMenuIndex.set(1)
-        settingsOpen.set(true)
     }
     if ("launchQueue" in window) {
         const handleFiles = async (files:FileSystemFileHandle[]) => {
             for(const f of files){
                 const file = await f.getFile()
-                const data = new Uint8Array(await file.arrayBuffer())
-                await importFile(f.name, data);
+                await importFile(f.name, file);
             }
         }
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
@@ -516,32 +542,106 @@ export async function characterURLImport() {
         })
     }
 
-    async function importFile(name:string, data:Uint8Array) {
-        if(name.endsWith('.charx') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png')){
+    async function importFile(name:string, data:Uint8Array|File) {
+        const kind = classifyImportFile(name, '')
+        if(kind){
+            await importClassified(kind, data)
+        }
+    }
+
+    //Cards are handed on as they are (a File is read in pieces); presets and modules are read whole, as the file picker does.
+    async function importClassified(file:ClassifiedImport, data:Uint8Array|File) {
+        if(file.kind === 'card'){
             await importCharacterProcess({
-                name: name,
+                name: file.name,
                 data: data
             })
             return
         }
-        if(name.endsWith('.risupreset') || name.endsWith('.risup')){
+        const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : data
+        if(file.kind === 'preset'){
             await importPreset({
-                name: name,
-                data: data
+                name: file.name,
+                data: bytes
             })
             SettingsMenuIndex.set(1)
             settingsOpen.set(true)
             alertNormal(language.successImport)
             return
         }
-        if(name.endsWith('risum')){
-            const md = await readModule(Buffer.from(data))
-            md.id = v4()
-            DBState.db.modules.push(md)
-            alertNormal(language.successImport)
-            SettingsMenuIndex.set(14)
-            settingsOpen.set(true)
+        const md = await readModule(Buffer.from(bytes))
+        md.id = v4()
+        DBState.db.modules.push(md)
+        alertNormal(language.successImport)
+        SettingsMenuIndex.set(14)
+        settingsOpen.set(true)
+    }
+
+    function clearShareHash() {
+        window.history.replaceState(null, '', location.pathname + location.search)
+    }
+
+    //Exactly one caller wins the claim of a share's index; every other caller finds nothing and imports nothing.
+    //The share's stored files are removed afterwards whether or not the imports succeeded.
+    async function consumeShare(shareHash:string, id:string|undefined) {
+        if(!id){
+            clearShareHash()
+            alertError(shareHash === '#share-empty' ? language.shareEmpty : language.shareFailed)
             return
+        }
+        const base = `/sw/share/${id}`
+        let claim:Response
+        try {
+            claim = await fetch(`${base}/index`, {method: 'DELETE'})
+        } catch (error) {
+            clearShareHash()
+            alertError(language.shareFailed)
+            return
+        }
+        clearShareHash()
+        if(claim.status !== 200){
+            alertError(language.shareNotFound)
+            return
+        }
+        try {
+            let entries:ShareIndexEntry[]|null = null
+            try {
+                entries = parseShareIndex(await claim.json(), id)
+            } catch (error) {}
+            if(!entries){
+                alertError(language.shareInvalid)
+                return
+            }
+            const notImported:string[] = []
+            for(const entry of entries){
+                const kind = classifyImportFile(entry.name, entry.type)
+                if(!kind){
+                    notImported.push(entry.name)
+                    continue
+                }
+                try {
+                    const res = await fetch(entry.key)
+                    if(!res.ok){
+                        notImported.push(entry.name)
+                        continue
+                    }
+                    //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                    await importClassified(kind, new File([await res.blob()], kind.name, {type: entry.type}))
+                    if(kind.kind === 'card'){
+                        checkCharOrder()
+                    }
+                } catch (error) {
+                    alertError(error)
+                    notImported.push(entry.name)
+                }
+            }
+            if(notImported.length > 0){
+                alertError(language.shareFilesNotImported(notImported.join(', ')))
+            }
+        } finally {
+            try {
+                await fetch(base, {method: 'DELETE'})
+            } catch (error) {}
         }
     }
 

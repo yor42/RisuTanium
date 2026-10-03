@@ -1734,4 +1734,9 @@ export const languageKorean = {
     assetIntegrityVerifyButton: "지금 에셋 캐시 검증",
     cardFileIncomplete: "이 카드 파일이 불완전하거나 손상되어 임포트하지 않았습니다.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `이 카드 안의 "${fileName}" 파일이 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
+    shareFailed: "공유된 파일을 받지 못해 아무것도 임포트하지 않았습니다. 다시 공유해 보세요.",
+    shareEmpty: "공유된 파일이 없어 아무것도 임포트하지 않았습니다.",
+    shareNotFound: "이 공유를 찾을 수 없습니다. 이미 임포트되었거나 만료되었을 수 있습니다. 파일을 다시 공유해 보세요.",
+    shareInvalid: "공유된 파일을 읽을 수 없어 아무것도 임포트하지 않았습니다. 다시 공유해 보세요.",
+    shareFilesNotImported: (fileNames: string) => `다음 파일을 임포트하지 못했습니다: ${fileNames}`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

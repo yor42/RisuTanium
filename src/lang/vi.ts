@@ -1734,4 +1734,9 @@ export const languageVietnamese = {
     assetIntegrityVerifyButton: "Xác minh Bộ nhớ đệm Tài sản Ngay",
     cardFileIncomplete: "Tệp thẻ này không đầy đủ hoặc bị hỏng nên không được nhập.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `Tệp "${fileName}" bên trong thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
+    shareFailed: "Không thể nhận các tệp được chia sẻ nên không có gì được nhập. Hãy thử chia sẻ lại.",
+    shareEmpty: "Lượt chia sẻ không chứa tệp nào nên không có gì được nhập.",
+    shareNotFound: "Không tìm thấy lượt chia sẻ này. Có thể nó đã được nhập hoặc đã hết hạn. Hãy thử chia sẻ lại các tệp.",
+    shareInvalid: "Không thể đọc các tệp được chia sẻ nên không có gì được nhập. Hãy thử chia sẻ lại.",
+    shareFilesNotImported: (fileNames: string) => `Không thể nhập các tệp sau: ${fileNames}`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

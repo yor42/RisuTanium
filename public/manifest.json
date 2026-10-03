@@ -38,7 +38,7 @@
             "files": [
                 {
                     "name": "character",
-                    "accept": [".charx"]
+                    "accept": [".charx", ".png", ".jpg", ".jpeg", ".json", "image/png", "image/jpeg", "application/json", "application/octet-stream", "application/zip", "application/x-zip-compressed"]
                 },
                 {
                     "name": "preset",

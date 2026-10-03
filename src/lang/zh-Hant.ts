@@ -1780,4 +1780,9 @@ export const languageChineseTraditional = {
     "assetIntegrityVerifyButton": "立即驗證資源快取",
     "cardFileIncomplete": "此角色卡檔案不完整或已損毀，因此未匯入。",
     "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `此角色卡內的檔案「${fileName}」超過了 ${limitMiB} MB 的限制，因此該角色卡未匯入。`,
+    "shareFailed": "無法接收分享的檔案，因此未匯入任何內容。請嘗試重新分享。",
+    "shareEmpty": "此次分享不包含任何檔案，因此未匯入任何內容。",
+    "shareNotFound": "找不到此次分享。它可能已被匯入，或已過期。請嘗試重新分享檔案。",
+    "shareInvalid": "無法讀取分享的檔案，因此未匯入任何內容。請嘗試重新分享。",
+    "shareFilesNotImported": (fileNames: string) => `無法匯入以下檔案：${fileNames}`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

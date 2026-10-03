@@ -1734,4 +1734,9 @@ export const languageSpanish = {
     assetIntegrityVerifyButton: "Verificar Caché de Activos Ahora",
     cardFileIncomplete: "Este archivo de tarjeta está incompleto o dañado, por lo que no se importó.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `El archivo "${fileName}" dentro de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
+    shareFailed: "No se pudieron recibir los archivos compartidos, por lo que no se importó nada. Intenta compartirlos de nuevo.",
+    shareEmpty: "Lo compartido no contenía archivos, por lo que no se importó nada.",
+    shareNotFound: "No se encontró este elemento compartido. Puede que ya se haya importado o que haya caducado. Intenta compartir los archivos de nuevo.",
+    shareInvalid: "No se pudieron leer los archivos compartidos, por lo que no se importó nada. Intenta compartirlos de nuevo.",
+    shareFilesNotImported: (fileNames: string) => `No se pudieron importar estos archivos: ${fileNames}`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;
