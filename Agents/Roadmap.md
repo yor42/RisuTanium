@@ -3662,10 +3662,10 @@ The message is false. Found in CHORE-59's Gate 2 round 1 review (`opus-reviewer`
 - **Open for the maintainer:** where to place it in the order. Gate it as small and low-risk unless it grows (the load path
   is persistence-adjacent; the change is a message choice after the copy step, not a change to what is written).
 
-### CHORE-76 — A PNG card cut short inside a tEXt chunk imports with a partial or missing asset, and the import does not say so (TRACED; upstream and fork)
+### CHORE-76 — A PNG card cut short inside a tEXt chunk imports with a partial or missing asset, and the import does not say so (done: Stage A `6173f58a` and Stage B `ff659397`; TRACED; upstream and fork)
 
-**Status (2026-10-03): open, in progress; the PNG half (Stage A) is done in `6173f58a` (local, not pushed); the `.charx` half
-(Stage B) is open.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Found by the CHORE-58 plan
+**Status (2026-10-03): done. The PNG half (Stage A) is `6173f58a` and the `.charx` half (Stage B) is `ff659397` (both local, not
+pushed).** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Found by the CHORE-58 plan
 review (Gate 1 round 1, `opus-reviewer`, probe `gate1\probe.out.jsonl` line 7, run against the real reader at `5bbc591a`) and
 named as a residual of `282b2da5`. Data-integrity, small. The fork and upstream share `pngChunk.ts` text
 (`git diff upstream/main HEAD -- src/ts/pngChunk.ts` printed nothing at `5bbc591a`; not re-run since CHORE-58 changed the
@@ -3699,11 +3699,59 @@ bullet below is superseded for PNG by `MC-186` 3 and is kept as the record of th
   before the image data (not RisuAI's own export order), the character is imported with a truncated image, with no error. A non-PNG
   file named `.png`, or one under 8 bytes, now gets the incomplete message instead of `noData`.
 - **The split (`MC-091` scope amendment, recorded at the `senior-advisor` escalation after three Gate 1 `[REJECT]` rounds):** Stage
-  A is the PNG half. **Stage B (the `.charx` half) is next and needs its own plan and Gate 1:** the Realm `.charx` read as a `File`
+  A is the PNG half. **Stage B (the `.charx` half) was next and needed its own plan and Gate 1 (done: `ff659397`, see the Stage B block below):** the Realm `.charx` read as a `File`
   from `res.blob()`; the end-of-central-directory check (`MC-186` 4); `CharXImporter` parse failures tagged by origin, input or zip,
   with no inspection of an error's code, message or name; the progress alerts stopped before the final message; and the `.charx`
   branch of `importCharacterProcess` owning the message. Step 0, the charx save backlog, is a Stage B measurement; any backpressure
-  fix is a separate Stage C. **CHORE-76's open part is the `.charx` side** (`MC-186` 4).
+  fix is a separate Stage C. **CHORE-76's open part was the `.charx` side** (`MC-186` 4; done by `ff659397`).
+
+**Stage B is done by `ff659397` (2026-10-03; local, not pushed; `MC-186` 2 and 4; ledger rows 775 to 780; the `.charx` half of
+CHORE-76 and CHORE-77).** From the commit message:
+- **End check.** Before parsing, a `.charx` or a jpg/jpeg card must end with a zip end-of-central-directory record: some
+  `50 4B 05 06` in the last 65,557 bytes whose record and comment fit inside the file. Without one, a `.charx` is refused with
+  `cardFileIncomplete` ("This card file is incomplete or damaged, so it was not imported."), and a `.jpg` or `.jpeg` with `noData`
+  (a plain photo has no zip, and a jpg-charx cut short cannot be told from one by its tail). Nothing is saved in either case. A cut
+  between two entries, inside a local header, inside a data descriptor or inside the central directory raises no error in the zip
+  reader, so this check is what catches it.
+- **Three failure origins.** `CharXImporter.parse()` rejects on every failure with a `CharXParseError` naming where it came from:
+  input (reading the File, Blob or stream failed), importer (the importer's own code failed while handling an entry, for example
+  a buffer could not be allocated) or zip (the zip reader threw from `push()` or reported an entry error to the handler, including
+  a throw from its own `start()` call). The importer's handlers catch their own throws, so these never return through the zip
+  reader's error argument. The first recorded failure wins. After it, no entry is started, no data is handled, no save is queued
+  or started, and progress updates stop, so a save still in flight cannot replace the final message. The `.charx` branch of
+  `importCharacterProcess` shows `cardFileIncomplete` for a zip failure and the usual error with its message for an input or
+  importer failure, then returns; nothing inspects the underlying error's code, message, name or class to choose. A failed asset
+  save still surfaces through `done()`, as before.
+- **Realm `.charx`.** A Realm `.charx` download is passed on as `new File([await res.blob()])`, without `arrayBuffer()`. A
+  `ReadableStream` `.charx` input, which no caller passes, is buffered into a `File` first. When `importCharacterProcess` returns
+  without a character, `importModule` shows `noData` only for a boolean (the low-level-access decline, which shows nothing
+  itself), so a refusal message is not followed by a second alert; a throw still reaches `importModule`'s catch as before
+  (CHORE-79).
+- **Caller outcomes change.** A parse failure is now shown inside `importCharacterProcess`, which then returns, so callers that
+  used to receive a throw now see the message: the picker continues with the next file (CHORE-78); a dropped file and a
+  `#share_character` link show the message where they had no handler; `#import=` shows it instead of `noData`; the PWA launch
+  queue no longer rejects unhandled; the Tauri open-file loop continues. A refused Realm card with `goCharacterOnImport` set
+  now opens the last existing character, as the `noData` path and the PNG refusals already do. An input failure is shown by
+  `importCharacterProcess` and returns, where before it was thrown to the caller with the same message.
+- **Residuals:**
+  - A cut that leaves every entry intact (in the last data descriptor, the central directory or the end record) imported the
+    complete card before. It is now refused, as `MC-186` 4 chose ("Check the end").
+  - A valid archive followed by more than about 64 KB of trailing bytes is refused too; no known writer produces one.
+  - A jpg-charx cut short reads as a plain image and gets `noData`, not the incomplete message.
+- **Tests and checks.** `src/ts/characterCards.charxImport.test.ts` and `src/ts/process/modules.importCharx.test.ts` (new, 86
+  tests), on archives from the real `CharXWriter` (level 0 and 6), from `zipSync` (including a stored entry), a jpg-charx and a
+  zip with an archive comment. Against the pre-change `processzip.ts`, `characterCards.ts` and `modules.ts`, the reproducers fail
+  on their behavioural assertions: archives cut at 9 positions by 3 makers end in "invalid zip data" or "asset not found" after
+  1-2 saves, or import the complete card with no error (cuts in the last data descriptor, the central directory or the end
+  record); a damaged entry with an intact end record ends in a `TypeError` from `append(null)`; the Realm `.charx` calls
+  `arrayBuffer()`; `importModule` shows a second `noData`. Compatibility guards pass before and after. The red table covered 83
+  tests (80 + 3), 69 failing at HEAD and 14 passing (guards, all among the 83); the final suites have 86 (83 + 3), so 3 tests were
+  added after the red table. The final mutant tables (`stageB\red\mutant-table.txt` and `mutant-table-subset.txt`) give 22
+  mutants, 19 killed and 3 survived: M09 (the data-skip flag), M13 (the `#handleFileComplete` check) and M21 (labelled "both
+  save guards removed" but, per the Gate 2 reviewer, removing only the complete-check, like M13). The surviving guards are
+  layered, and the Gate 2 reviewer found the `#handleFileComplete` check to be an equivalent mutant (ledger rows 777 and 778). Checks on the final tree, from the commit message: `pnpm test` 330
+  files, 7173 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes. Gate 1 took two rounds (`[REJECT]`,
+  `[EDITORIAL]`) and Gate 2 two (`[EDITORIAL]`, `[APPROVE]`); ledger rows 775 to 780.
 
 - **What happens, as found before `6173f58a` (TRACED; line numbers at `5bbc591a`; the stream-branch result is also pinned by
   CHORE-58's tests, the `Uint8Array` result by the Gate 1 probe at `5bbc591a`):**
@@ -3726,7 +3774,7 @@ bullet below is superseded for PNG by `MC-186` 3 and is kept as the record of th
   refuse the import with a message, or import what is intact and say what is missing. Whether the two branches should agree is
   part of the same question. `TODO(evidence)`: how many real cards in the wild are truncated; none is known.
 - **Next step (done for the PNG half; superseded):** the investigation is done (ledger rows 759 and 760), the maintainer decided
-  (`MC-186`), and the plan was split (`MC-091`; Stage A done as `6173f58a`, Stage B open). The original text was: investigation of
+  (`MC-186`), and the plan was split (`MC-091`; Stage A done as `6173f58a`; Stage B, open then, is done as `ff659397`). The original text was: investigation of
   the caller and of every `readGenerator` input source for the cut cases (a cut inside a length
   field, a type, a body, a CRC, missing IEND), then a plan, then the maintainer's decision above, then the usual gates. The change
   is in `pngChunk.ts` and the import caller; the guards of `pngChunk.readGenerator.test.ts` (nine truncation cases written down
@@ -3734,10 +3782,11 @@ bullet below is superseded for PNG by `MC-186` 3 and is kept as the record of th
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
 - **Related:** CHORE-58 (`282b2da5`), CHORE-77, `MC-175` (an upstream-exported card must still import), `MC-185`.
 
-### CHORE-77 — A card downloaded from Realm is held in memory in full during import (the PNG hold is fixed by `6173f58a`, measured in headless Chrome only; the Realm `.charx` part is open; upstream and fork)
+### CHORE-77 — A card downloaded from Realm is held in memory in full during import (done for the Realm PNG, `6173f58a`, measured in headless Chrome only, and the Realm `.charx`, `ff659397`; follow-ups open; upstream and fork)
 
-**Status (2026-10-03): open, in progress; the Realm PNG half (Stage A) is done in `6173f58a` (local, not pushed); the Realm
-`.charx` is open.** Placed now, ahead of memory steps 6 and 7 (`MC-185`). Named as a residual of
+**Status (2026-10-03): done for the Realm PNG download (Stage A, `6173f58a`) and the Realm `.charx` download (Stage B,
+`ff659397`); both local, not pushed.** The follow-ups listed in the Stage B block below are not part of this ticket's
+acceptance. Placed now, ahead of memory steps 6 and 7 (`MC-185`). Named as a residual of
 `282b2da5`: CHORE-58 made the reading linear and left this unchanged.
 
 **Stage A is done (2026-10-03; `6173f58a`; `MC-186` 1 and 2; ledger rows 768 and 770).** The maintainer chose "Browser blob, all"
@@ -3751,8 +3800,22 @@ line exposing `downloadRisuHub` to the driver, importing a synthetic 300 MB Real
 request reached Realm): renderer private bytes at the end of the counting pass were 453-519 MB before and 93-115 MB after (3 runs
 each); the browser process rose by at most 12 MB in either build. Where the Blob's bytes are kept was not established. The counting
 pass on a 3,000-asset card took a median of 96 ms before (6 runs) and 78 ms after (5 runs). The browser measurement closes the
-"not measured in a browser" `TODO(evidence)` below for Chrome only; Firefox and Safari were not measured. **Open part: the Realm
-`.charx`** (`MC-186` 2), which `downloadRisuHub` still reads with `arrayBuffer()`; it is in Stage B (see CHORE-76 for the split).
+"not measured in a browser" `TODO(evidence)` below for Chrome only; Firefox and Safari were not measured. **Open part when Stage A
+was written (superseded by `ff659397`): the Realm `.charx`** (`MC-186` 2), which `downloadRisuHub` then still read with
+`arrayBuffer()`; it was in Stage B (see CHORE-76 for the split).
+
+**Stage B is done (2026-10-03; `ff659397`; `MC-186` 2; ledger rows 775 to 780; the full block is under CHORE-76).** A Realm
+`.charx` download is passed on as `new File([await res.blob()])`, without `arrayBuffer()`; a `ReadableStream` `.charx` input,
+which no caller passes, is buffered into a `File` first. No browser memory measurement of the `.charx` download was made
+(`TODO(evidence)`); the Stage A figures above are for the PNG only.
+
+**Follow-ups left open (not part of this ticket's acceptance; candidates for a later Stage C or a ticket, for the maintainer to
+decide; none is filed):**
+- (a) **The charx save backlog.** Step 0 (scratch, noisy; ledger row 777): with 4 MB assets and 10 concurrent saves, the peak of
+  queued asset buffers stayed 12-20 MB at a 100 ms save delay and grew with the asset count at a 2,000 ms delay: 32, 64, 88 and
+  112 MB for 8, 16, 32 and 64 assets. `CharXWriter` archives use data descriptors, so each entry is buffered in full before the
+  50 MB per-entry cap is checked. Both are unchanged by `ff659397`.
+- (b) **`#share_character`** still reads its `.charx` with `arrayBuffer()`.
 
 - **What happens, as found before `6173f58a` (line numbers at `5bbc591a`; the Realm PNG part no longer applies, the Realm
   `.charx` part still does):**
@@ -3780,7 +3843,7 @@ pass on a 3,000-asset card took a median of 96 ms before (6 runs) and 78 ms afte
 - **Constraint from `MC-184`:** the exact asset-count percentage stays, so the counting pass stays unless a different way of
   getting the same count is found.
 - **Next step (done for the PNG half; superseded):** the investigation is done (ledger rows 759 and 760) and the maintainer
-  decided (`MC-186` 1 and 2). The Realm `.charx` is the open part: Stage B needs its own plan and Gate 1 (CHORE-76 has the split).
+  decided (`MC-186` 1 and 2). The Realm `.charx` was the open part: Stage B needed its own plan and Gate 1 (CHORE-76 has the split; done by `ff659397`, superseded).
   The original text was: investigation per platform, then a plan, then the usual gates.
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
 - **Related:** CHORE-58 (`282b2da5`), CHORE-76, `MC-184`, `MC-185`, `MC-186`.
@@ -3812,8 +3875,10 @@ wrongly; the user can miss that one file was not imported.
     stream read or from `#feedChunk` (the `unzip.push` call; whether fflate throws there was not opened, INFERRED). Asset save
     errors never reject `parse()`: `#processAssetQueue` (`processzip.ts:383-391`) collects them, and only `done()` rejects
     with them (see CHORE-79).
-  - The charx Stage B refusal (CHORE-76 Stage B) is not in `ece53227`; if it follows the `alertError` then `return` shape it
-    would join the first group. `TODO(evidence)`: not yet written.
+  - The charx Stage B refusal (CHORE-76 Stage B) is not in `ece53227`. Since `ff659397` (from its commit message, not
+    re-traced here) the charx branch of `importCharacterProcess` shows its refusal with `alertError` and returns, so CHORE-78's
+    caller outcomes include charx refusals, and charx input and importer failures no longer throw out of
+    `importCharacterProcess`.
 - **Alerts (TRACED at store level, `ece53227`):** `alertStore.set` (`src/ts/alert.ts:28-36`) calls the writable
   `alertStoreImported.set` (`stores.svelte.ts:62`), ignoring type `'none'` while a prompt is showing. `alertError`
   (`alert.ts:75`) and `alertNormal` (`alert.ts:118`) set the same store. Each set replaces the single current alert. Not
