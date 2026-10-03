@@ -139,6 +139,65 @@ export class CharXWriter{
 }
 
 /**
+ * Where a failed CharX parse came from:
+ * - 'input': reading the File, Blob or stream failed.
+ * - 'importer': the importer's own handlers threw (for example an allocation failure while buffering an entry).
+ * - 'zip': the ZIP library reported the archive as unreadable.
+ */
+export type CharXFailureOrigin = 'input' | 'importer' | 'zip'
+
+/**
+ * The single error `CharXImporter.parse()` and `hasZipEndRecord()` reject with. Callers decide the message from
+ * `origin` alone and never from the underlying error's code, name, message or class.
+ */
+export class CharXParseError extends Error {
+    readonly origin: CharXFailureOrigin
+    readonly cause: unknown
+
+    constructor(origin: CharXFailureOrigin, cause: unknown) {
+        super(cause instanceof Error ? cause.message : String(cause))
+        this.name = 'CharXParseError'
+        this.origin = origin
+        this.cause = cause
+        if (cause instanceof Error && cause.stack) {
+            this.stack = cause.stack
+        }
+    }
+}
+
+const ZIP_END_RECORD_SIZE = 22
+const ZIP_MAX_COMMENT_SIZE = 0xFFFF
+
+/**
+ * Tells whether the end of a ZIP archive holds an end-of-central-directory record: the signature `PK\x05\x06` with
+ * the 22-byte record and the comment length it declares both inside the data. The central directory offset is not
+ * checked, because the offsets of an archive written after a JPEG are relative to the archive, not to the file.
+ *
+ * Rejects with a `CharXParseError` of origin 'input' when the tail cannot be read.
+ */
+export async function hasZipEndRecord(data: Uint8Array | File): Promise<boolean> {
+    let tail: Uint8Array
+    try {
+        const size = data instanceof File ? data.size : data.byteLength
+        const start = Math.max(0, size - (ZIP_END_RECORD_SIZE + ZIP_MAX_COMMENT_SIZE))
+        tail = data instanceof File
+            ? new Uint8Array(await data.slice(start).arrayBuffer())
+            : data.subarray(start)
+    } catch (error) {
+        throw new CharXParseError('input', error)
+    }
+    for (let i = tail.byteLength - ZIP_END_RECORD_SIZE; i >= 0; i--) {
+        if (tail[i] === 0x50 && tail[i + 1] === 0x4B && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) {
+            const commentLength = tail[i + 20] | (tail[i + 21] << 8)
+            if (i + ZIP_END_RECORD_SIZE + commentLength <= tail.byteLength) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+/**
  * Streaming importer for CharX (character export) files.
  *
  * CharX files are ZIP archives containing:
@@ -169,6 +228,10 @@ export class CharXImporter{
     private errors: Error[] = []
     private onProgress?: (done: number, total: number) => void
 
+    // The first parse failure. Once set, no entry is started, no data is handled, no save is queued or started,
+    // and no progress is shown; parse() rejects with it.
+    #failure: CharXParseError|undefined
+
     // Results: filename -> saved asset ID mapping
     assets:{[key:string]:string} = {}
 
@@ -194,7 +257,7 @@ export class CharXImporter{
 
         this.semaphore = new Semaphore(MAX_CONCURRENT_ASSET_SAVES)
         this.onProgress = (done, total) => {
-            if(this.alertInfo){
+            if(this.alertInfo && !this.#failure){
                 alertStore.set({
                     type: 'wait',
                     msg: `Loading... (Saving Assets ${done}/${total})`
@@ -210,6 +273,9 @@ export class CharXImporter{
      * - ReadableStream: Streams data chunks as they arrive
      * - Uint8Array: Automatically converted to stream
      * - File: Uses built-in stream() method
+     *
+     * parse() rejects with a CharXParseError whose origin says where the first failure came from. Nothing is
+     * started, queued or shown after that failure, and the completion promise is never settled.
      *
      * After parse() completes:
      * - cardData and moduleData are immediately available
@@ -228,31 +294,66 @@ export class CharXImporter{
         // Create completion promise at the start of parsing
         this.completionPromise = this.#awaitCompletion()
 
-        // Convert all input types to ReadableStream for uniform processing
-        const stream = this.#toStream(data)
+        this.#failure = undefined
 
-        const reader = stream.getReader()
-        while(true){
-            const {done, value} = await reader.read()
-            if(value){
-                await this.#feedChunk(value, false)
+        // Convert all input types to ReadableStream for uniform processing
+        let reader:ReadableStreamDefaultReader<Uint8Array>
+        try {
+            reader = this.#toStream(data).getReader()
+        } catch (error) {
+            this.#record('input', error)
+            throw this.#failure
+        }
+
+        while(!this.#failure){
+            let chunk:ReadableStreamReadResult<Uint8Array>
+            try {
+                chunk = await reader.read()
+            } catch (error) {
+                this.#record('input', error)
+                break
             }
-            if(done){
-                await this.#feedChunk(new Uint8Array(0), true)
+            if(chunk.value){
+                this.#feedChunk(chunk.value, false)
+            }
+            if(this.#failure){
+                break
+            }
+            if(chunk.done){
+                this.#feedChunk(new Uint8Array(0), true)
                 break
             }
         }
+
+        // The failure is thrown before #finalize(), so the completion promise is never rejected without a listener.
+        if(this.#failure){
+            reader.cancel().catch(() => {})
+            throw this.#failure
+        }
+        await this.#finalize()
+    }
+
+    /**
+     * Records a failure unless one is already recorded: the first failure wins, whatever its origin.
+     * Entries still buffered are released.
+     */
+    #record(origin:CharXFailureOrigin, cause:unknown) {
+        if(this.#failure){
+            return
+        }
+        this.#failure = new CharXParseError(origin, cause)
+        this.assetBuffers = {}
     }
 
     /**
      * Feeds a chunk of ZIP data to the streaming parser.
-     * When final=true, marks input as complete and finalizes the save queue.
+     * A throw from the parser is a ZIP failure; the importer's own handlers never throw out of it.
      */
-    async #feedChunk(data:Uint8Array, final:boolean = false){
-        this.unzip.push(data, final)
-
-        if(final){
-            await this.#finalize()
+    #feedChunk(data:Uint8Array, final:boolean){
+        try {
+            this.unzip.push(data, final)
+        } catch (error) {
+            this.#record('zip', error)
         }
     }
 
@@ -325,10 +426,18 @@ export class CharXImporter{
      * Sets up streaming handlers and starts processing if file size is acceptable.
      */
     #handleFile(file: fflate.UnzipFile) {
+        if(this.#failure){
+            return
+        }
         const assetIndex = file.name
-        this.assetBuffers[assetIndex] = new AppendableBuffer()
+        try {
+            this.assetBuffers[assetIndex] = new AppendableBuffer()
 
-        file.ondata = (_err, dat, final) => this.#handleFileData(assetIndex, dat, final)
+            file.ondata = (err, dat, final) => this.#handleFileData(assetIndex, err, dat, final)
+        } catch (error) {
+            this.#record('importer', error)
+            return
+        }
 
         // Only process files smaller than MAX_ASSET_SIZE_BYTES (50MB)
         if((file.originalSize ?? 0) < MAX_ASSET_SIZE_BYTES){
@@ -339,11 +448,24 @@ export class CharXImporter{
     /**
      * Called for each chunk of file data as it streams in.
      * Accumulates chunks into buffer until file is complete.
+     * An error argument is the ZIP library's; an exception raised here is the importer's own and is caught here,
+     * so it never travels back through the library as if it were a ZIP failure.
      */
-    #handleFileData(fileName: string, data: Uint8Array, final: boolean) {
-        this.assetBuffers[fileName].append(data)
-        if(final){
-            this.#handleFileComplete(fileName)
+    #handleFileData(fileName: string, err: fflate.FlateError|null, data: Uint8Array, final: boolean) {
+        if(this.#failure){
+            return
+        }
+        if(err){
+            this.#record('zip', err)
+            return
+        }
+        try {
+            this.assetBuffers[fileName].append(data)
+            if(final){
+                this.#handleFileComplete(fileName)
+            }
+        } catch (error) {
+            this.#record('importer', error)
         }
     }
 
@@ -352,6 +474,9 @@ export class CharXImporter{
      * Routes files to appropriate handlers based on filename/extension.
      */
     #handleFileComplete(fileName: string) {
+        if(this.#failure){
+            return
+        }
         const assetData = this.assetBuffers[fileName].buffer
 
         if(assetData.byteLength > MAX_ASSET_SIZE_BYTES){
@@ -386,6 +511,9 @@ export class CharXImporter{
         try {
             await this.semaphore.acquire()
             acquired = true
+            if(this.#failure){
+                return
+            }
             this.assets[asset.id] = await saveAsset(asset.data)
         } catch (error) {
             this.errors.push(error instanceof Error ? error : new Error(String(error)))

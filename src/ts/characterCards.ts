@@ -15,7 +15,7 @@ import { type CharacterCardV3, type LorebookEntry } from '@risuai/ccardlib'
 import { reencodeImage } from "./process/files/inlays"
 import { PngChunk } from "./pngChunk"
 import type { OnnxModelFiles } from "./process/transformers"
-import { CharXImporter, CharXWriter } from "./process/processzip"
+import { CharXImporter, CharXParseError, CharXWriter, hasZipEndRecord } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { readFile } from "@tauri-apps/plugin-fs"
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
@@ -86,7 +86,23 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
 
         const importer = new CharXImporter()
         importer.alertInfo = true
-        await importer.parse(f.data)
+        //A zip failure means the archive is unreadable; a failure of the read or of the importer itself shows its own message.
+        //The importer shows no progress after its first failure, so nothing replaces the message.
+        try {
+            //The end-of-archive check needs the tail of the whole input, so a stream is buffered into a Blob-backed File first.
+            const charxData:File|Uint8Array = f.data instanceof ReadableStream
+                ? new File([await new Response(f.data).blob()], f.name, {type: 'application/zip'})
+                : f.data
+            //An archive without its end record was cut short. A jpg or jpeg without one is treated as a plain image (a jpg-charx cut short cannot be told apart by its tail).
+            if(!(await hasZipEndRecord(charxData))){
+                alertError(f.name.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
+                return
+            }
+            await importer.parse(charxData)
+        } catch (error) {
+            alertError(error instanceof CharXParseError && error.origin === 'zip' ? language.cardFileIncomplete : error)
+            return
+        }
         const cardData = importer.cardData
         if(!cardData){
             alertError(language.errors.noData)
@@ -1777,9 +1793,10 @@ export async function downloadRisuHub(id:string, arg:{
 
         if(res.headers.get('content-type') === 'image/png' || res.headers.get('content-type') === 'application/zip' || res.headers.get('content-type') === 'application/charx'){
             if(res.headers.get('content-type') === 'application/zip' || res.headers.get('content-type') === 'application/charx'){
+                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                 await importCharacterProcess({
                     name: 'realm.charx',
-                    data: new Uint8Array(await res.arrayBuffer()),
+                    data: new File([await res.blob()], 'realm.charx', {type: res.headers.get('content-type')}),
                 })
             }
             else{

@@ -268,8 +268,12 @@ export async function importModule(){
                 data: buf,
                 returnCharacter: true
             })
-            if(!char || typeof char === 'number'){
+            //Only a declined low-level-access prompt returns false without showing a message; every other refusal has shown its own.
+            //The declared return type leaves false out, so it is told apart by its type.
+            if(typeof char === 'boolean'){
                 alertError(language.errors.noData)
+            }
+            if(!char || typeof char === 'number'){
                 return
             }
             const module = convertCharacterToModule(char)
