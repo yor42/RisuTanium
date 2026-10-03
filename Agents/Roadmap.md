@@ -3570,6 +3570,31 @@ as `448962f4`.
 - **Related:** `MC-011`, `MC-089`, `MC-149`, `MC-151`; Report 49 section 3.3 D3 (the internal backup load
   writes the snapshot and reloads); CHORE-55.
 
+### CHORE-75 — Load Internal Backup on a profile with no main file says the previous data was kept, when no copy was written (TRACED; wording only, not data loss)
+
+**Status (2026-10-03): open, unplaced.** The maintainer asked for this ticket on 2026-10-03 ("yes, ticket the no-main-file
+notice quirk"). It is not placed in the work order; the maintainer places it (`MC-089`: nothing ships until every open
+ticket clears). Small. Not a data-loss item: when there is no main file there is nothing to keep, so nothing is lost.
+The message is false. Found in CHORE-59's Gate 2 round 1 review (`opus-reviewer`) as optional item N4 and left out of
+`4801a2f9` (`MC-183`, CHORE-59 above).
+
+- **What happens (TRACED by the Orchestrator at HEAD `5519745f`, from `src/ts/drive/internalBackup.ts` and `src/lang/en.ts`):**
+  - `keepCurrentMainFile` (`internalBackup.ts:169-182`) reads the main file through the store and, when there is none
+    (`if (!bytes) { return }`, lines 172-174), returns without writing anything.
+  - `loadInternalBackup` calls it (line 314), writes the snapshot as the main file (lines 321-324), and then always shows
+    `language.internalBackupLoaded` (line 326).
+  - The English text of that key (`src/lang/en.ts:1710`) is "The backup was loaded. Your previous data was kept as the
+    newest internal backup. Refreshing your app." On a profile with no main file, the second sentence claims a copy that was
+    not written.
+  - The same key is in all seven `src/lang` files (en, ko, cn, zh-Hant, vi, de, es).
+- **Likely shape (non-normative):** have `keepCurrentMainFile` report whether it wrote a copy, and show a second message
+  without the "previous data was kept" sentence when it did not.
+  - One new English key, with its call site, to `sonnet-coder`; its six translations to `translator`.
+  - A test in `src/ts/drive/tests/internalBackupSnapshotLoad.svelte.test.ts` that fails today: a load with no main file
+    shows the "kept" notice. Write it against the unfixed code and confirm it fails first.
+- **Open for the maintainer:** where to place it in the order. Gate it as small and low-risk unless it grows (the load path
+  is persistence-adjacent; the change is a message choice after the copy step, not a change to what is written).
+
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 
 **Status (2026-10-01):** open, **not scheduled**; a release blocker under `MC-089` and `MC-011` (nothing ships

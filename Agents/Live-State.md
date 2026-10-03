@@ -229,8 +229,8 @@ Several sessions work **in this same checkout**:
   but only after CHORE-55 stage 3 is committed and merged into its branch.**
 - **Tickets staying with the Main Campaign:** CHORE-55 (stages 3 and 4 are done, `bf7f2cbf` and `980791fa`; stage 5 or
   later stays as later work, `MC-181`), CHORE-59 (done, `4801a2f9`), CHORE-58 (next, `MC-182`), memory steps 6 and 7,
-  CHORE-62, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-04, CHORE-10, CHORE-60
-  (with the Rebranding session), and the existing Wiki hand-offs.
+  CHORE-62, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-75 (filed 2026-10-03, unplaced;
+  the maintainer places it), CHORE-04, CHORE-10, CHORE-60 (with the Rebranding session), and the existing Wiki hand-offs.
 - **The Main Campaign does not edit the delegated tickets' Roadmap entries.** The UI session owns their status lines.
 - **Out of bounds for the UI session (the Main Campaign's lane):** `src/ts/storage/**`, `globalApi.svelte.ts`,
   `bootstrap.ts`, `src/ts/drive/**`, `risuSave.ts`, `coldstorage*.ts`, `process/memory/**`, `manualCleanup.ts`,
@@ -280,7 +280,7 @@ work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 ar
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
 message draft and its check, those records and their fact-check; rows 718 to 731 are the stage 4 work, its commit message
-draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-75` (`CHORE-74` is used) and Report 57 (Report 56
+draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-76` (`CHORE-75` is used) and Report 57 (Report 56
 is used). All are within the reserved ranges. Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
 last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody should fill
 them.
