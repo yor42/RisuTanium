@@ -6495,3 +6495,46 @@ skipped name that a character actually uses would show as a missing image."
 - The Global Lorebook and Global Regex settings pages are retired.
 - `db.loreBook`, `db.loreBookPage` and `db.globalscript` are kept untouched, for the round trip (`MC-175`).
 - The character sidebar's close strip shows an X.
+
+### MC-207 — The Playground and modules batch: the Embedding tool's own key and URL, the modules' real order, one refresh on editor close, and the persona's embedded module stays inert (CHORE-16 PG-4, CHORE-12 MOD-1, MOD-2, MOD-6)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions, in two rounds,
+  and one instruction in chat)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option labels are
+  quoted below; the option text each one carried is not reproduced here. MOD-1's second question was asked after Gate 1
+  round 1 (ledger row 863) found that turning MOD-1 on would also connect the embedded module's MCP and stamp its low-level
+  access on Lua triggers with no consent step.
+- **Reasoning:** for MOD-1, the instruction quoted below. None stated for the others.
+- **Alternatives rejected:** for PG-4, "Fully separate" and "Keep shared, add a note"; for MOD-1's first question, none (it
+  was answered "Turn it on", then superseded); for MOD-1's second question, "Content only (Recommended)" and "Everything, as
+  upstream wrote it"; for MOD-2, "Real order + reordering" and "Leave as is" in the first round, and "Settings list only"
+  in the follow-up; for MOD-6, "Leave it (Recommended)".
+- **Related:** `MC-011`, `MC-175`, `MC-179`, `MC-206`; CHORE-16; CHORE-12; CHORE-04 (the Main Campaign's); CHORE-05; QOL-10
+  in `Agents/Maybe-Later.md`; ledger rows 860 to 868.
+
+**What was decided:**
+1. **PG-4, the Playground Embedding tool's shared settings.** "Own key+URL, label rest (Recommended)".
+2. **MOD-1, a persona's embedded module is never applied to chats.** First "Turn it on". After Gate 1 round 1 (B1), the
+   follow-up question offered "Content only (Recommended)", "Everything, as upstream wrote it" and "Back out: leave it
+   inert". The answer was "Back out: leave it inert". The maintainer then wrote in chat: "MOD-1 seems more like a leftover
+   feature that is left half-implemented. add it into maybe later.md so we can come back to it properly later." That is
+   QOL-10 in `Agents/Maybe-Later.md`.
+3. **MOD-2, the order of the module lists.** "Show the real order (Recommended)". For the chat's module picker, the
+   follow-up was answered "Both lists (Recommended)".
+4. **MOD-6, a module editor's edits do not refresh an open chat.** "Refresh once on close".
+
+**Rules that follow:**
+- The Playground Embedding tool has its own copy of the OpenAI key and the custom URL, which editing never writes back to
+  the settings. The custom key and the request model stay the live memory settings, and the page says so.
+- The persona's embedded module stays inert. It is not applied in this fork, as in upstream, until the maintainer picks
+  QOL-10 up.
+- The Modules settings list and the chat's module picker show the modules in the order they are stored. The search still
+  filters.
+- Closing the module editor refreshes the open chat once.
+
+**Orchestrator dispositions (not maintainer decisions):** MOD-3 (`RisuModule.cjs` is declared and carried as data, never
+read) is left as it is. MOD-4's two unused language keys go to CHORE-05. MOD-5 (no editing UI for a module's icon) is a new
+feature and stays open. PG-4's two blank-field error messages and the Playground pages' other labels are hard-coded
+English, left for CHORE-05. The Vietnamese and German wording of the new note is low-confidence, by the translator's own report (ledger row 865).

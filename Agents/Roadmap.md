@@ -552,6 +552,11 @@ changing anything on `ReloadGUIPointer`.
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
 below is the pre-fix measurement and is otherwise still current.
 
+**Items added by the UI session (2026-10-03):** from the Playground and modules batch (`MC-207`): the two module language keys
+`moduleContent` and `confirmRemoveModuleFeature` have no consumers (CHORE-12 MOD-4); the Playground's Prompt Conversion and
+Embedding pages have hard-coded English labels and two hard-coded English error messages (CHORE-16 PG-2 and PG-4). These are
+added to this ticket's scope.
+
 **Next priority — the plugin permission consent prompts (verified 2026-09-22).** The seven V3
 consent strings shown by `getPluginPermission` (`src/ts/plugins/apiV3/v3.svelte.ts:614-622`;
 keys at `src/lang/en.ts:1622-1628`) are the dialogs where a user decides whether a plugin may read
@@ -844,6 +849,45 @@ UI branch, or a cosmetic label; none touch saved data.
 
 ### CHORE-12 — Modules: 6 suspected bugs (none lose data)
 
+**Status (2026-10-03, UI session): MOD-2 and MOD-6 DONE 2026-10-03 in `0d41f06a`** (ledger rows
+861 to 868; the same commit as CHORE-16 PG-2 to PG-4). Product choices in `MC-207`. MOD-1 is **not done**, by the maintainer's
+decision. MOD-3 is left, MOD-4 goes to CHORE-05 and MOD-5 stays open. The investigator (row 861, the Orchestrator's summary)
+found: MOD-1 is upstream behaviour (upstream `0055f0cb`; the same code at upstream/main `f9728b14`) and neither app has a
+UI or in-repo code path that creates the embedded module (a plugin's database write or a `.bin` restore can still bring it
+in, not traced); MOD-6 was partly refuted (`RegexData` bumps `ReloadGUIPointer` on name, type and OUT edits;
+the IN field and lorebook, trigger and asset edits do not); MOD-2 holds, and order matters for regex, triggers and toggles.
+- **MOD-1, not done.** Gate 1 round 1 (row 863, B1) found that applying the persona's embedded module would also connect
+  its MCP (`internal:fs`, `internal:risuai`, `plugin:`, and `stdio:`, which launches a local process on desktop) and stamp its
+  own `lowLevelAccess` on its Lua triggers, with no consent step (ordinary module imports ask through `lowLevelAccessConfirm`).
+  The maintainer chose "Back out: leave it inert" and asked for it to be parked as QOL-10 in `Agents/Maybe-Later.md`
+  (`MC-207`). `modules.ts` is unchanged; the module's data is still kept.
+- **MOD-2:** the Modules settings list (`ModuleSettings.svelte`) and the chat's module picker (`ModuleChatMenu.svelte`) show
+  `db.modules` in array order; the name sorts are removed and the search still filters. `db.modules` is never reordered. The
+  order modules apply in is the storage order, and it is **not user-controllable**: a new module appends and there is no
+  reorder UI. The lists now match it.
+- **MOD-6:** closing the module editor refreshes the open chat once. The editor is `ModuleSettings` mode 1 (create) or 2
+  (edit). Both buttons now close through one function that sets the mode to 0 and bumps `ReloadGUIPointer` once; destroying
+  the component while an editor is open (leaving Settings) bumps once; destroying it with no editor open does not. There is
+  no per-keystroke bump, and `trackModuleUpdateDeps`, `moduleUpdate` and the `stores.svelte.ts` effect are unchanged.
+- **MOD-3:** left. `RisuModule.cjs` is declared and carried as data (the investigator's finding), so it is left; this is the
+  Orchestrator's disposition, not a maintainer decision.
+- **MOD-4:** the keys `moduleContent` and `confirmRemoveModuleFeature` are unused in 7 files. They are left for CHORE-05.
+- **MOD-5:** open. An icon editor is a new feature.
+- **Tests:** two new files and one updated. `ModuleSettings.order.svelte.test.ts` (6 reproducers: the list order, and the
+  create and edit button closes, each destroy while open, and button-then-destroy giving one bump in total; 3 guards) and
+  `ModuleChatMenu.order.svelte.test.ts` (2 reproducers, 2 guards). `ModuleSettings.deleteTarget.svelte.test.ts` gains a
+  `ReloadGUIPointer` mock, and its fixture comment now says the list shows array order; Gate 2 noted that one test had stopped
+  inserting above its target, and the Orchestrator restored that (row 867). At HEAD, in Gate 2's scratch run, exactly the 8
+  "regression reproducer:" tests of the two new files fail and every guard and the `deleteTarget` suite pass. The MOD-6 tests
+  use a plain `writable`, so the `onDestroy` teardown's safety rests on reasoning, not a test. Checks are those in the
+  CHORE-16 entry (row 866). Not live-checked.
+- **Merge note (`MC-179`):** `ModuleSettings.svelte` and `ModuleChatMenu.svelte` are on neither lane list (`MC-179` 1 names
+  `ModuleMenu.svelte` only, which is untouched). **Flag for the merge:** MOD-6 adds one `ReloadGUIPointer` bump per editor
+  close, and that pointer is CHORE-04's mechanism, which stays with the Main Campaign; check the two together.
+- **Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):** `docs/wiki/Modules.md`'s "Order" section (line 63)
+  says the Modules settings list "sorts by name", which is no longer true: both lists show the stored order, which is also the
+  order active modules apply in. Line 143 documents MOD-1 (the embedded module is not applied to chats); that stays true.
+
 Found by the wiki session while writing the [[Modules]] wiki page (2026-09-22). Full hand-off, with
 per-bug evidence, status and suggested investigation: **`Agents/Reports/99-modules.md`**. MOD-1 and
 MOD-2 also had a doc-verifier pass on the wiki page itself; the rest are the agent's own trace.
@@ -1131,7 +1175,7 @@ button, dead code, and a settings field shared with live long-term-memory settin
 - **Wiki coupling:** the Playground wiki page (`docs/wiki/Playground.md`; the folder moved from `wiki/` on 2026-10-01) documents PG-1 (the Playground
   chat appears in the character grid) and PG-4 (the Embedding tool shares memory settings) as
   current behaviour; a fix to either must update the page. PG-1's part is done: the Wiki session
-  committed the update as `6ad13bac`. PG-4's part is open.
+  committed the update as `6ad13bac`. PG-4's part is open (the hand-off is in the PG-2, PG-3 and PG-4 bullet below).
 - **Scheduling (2026-10-01):** PG-1 is scheduled as its own small fix between memory stage 1 step 3b and
   step 4, by the maintainer's approval of 2026-10-01 (`Agents/Live-State.md`, work order at the time).
 - **PG-1 fixed (2026-10-01; commit `08e43e65`; Report 54):** the grid (grid, list and trash tabs), the
@@ -1146,7 +1190,49 @@ button, dead code, and a settings field shared with live long-term-memory settin
   rounds (corrections applied). Not live-checked. Residue: a `§playground` trashed before the fix and
   never opened still reaches the boot purge, and a stray `§temp` copy has no UI path now (Report 54 section
   7). The Wiki session updated the Playground page (then `wiki/Playground.md`, now `docs/wiki/Playground.md`) in `6ad13bac`.
-- **PG-2, PG-3 and PG-4 remain open.**
+- **PG-2, PG-3 and PG-4 DONE 2026-10-03, in `0d41f06a`** (ledger rows 860 to 868). Product choice
+  for PG-4 in `MC-207`. The investigator (row 860, the Orchestrator's summary) confirmed PG-2 and PG-4 and found more: on Tauri,
+  cancelling the file picker (`selectMultipleFile` returns null) threw a TypeError; Run with no usable files created an empty
+  "Converted from JSON" preset; and an Embedding run that threw left the spinner on. It partly refuted PG-3: `PlaygroundRegex.svelte`
+  was empty and unimported, but `PlaygroundStore` value 2 is live (`openPlaygroundChat` writes it, and two `playgroundChat` test files
+  assert it: `playgroundChat.coldStub.svelte.test.ts` and `playgroundChat.trashTime.svelte.test.ts`). The mobile back arrow, the home hotkey and character delete leave it at 2, which gave a blank page with only a back
+  arrow (traced from source, not run). Gate 1 took two rounds (`[REJECT]` then `[APPROVE]`; the round-1 findings were mostly
+  about CHORE-12's MOD-1, below) and Gate 2 approved at once (rows 863, 864, 867). Resolutions:
+  - **PG-2 (`ToolConversion.svelte`):** each row's Delete removes that row. Cancelling the picker adds nothing and throws
+    nothing. Run is disabled until a listed file is of a supported type. Run's handler catches an exception from
+    `promptConvertion` and shows it with `alertError`, so the page stays usable (a PARAMETERS file without samplers can throw,
+    per Gate 1). The stray `console.log` and the self-assignment of `files` in `addFile` are gone. In `en.ts`,
+    `promptConvertion` is now "Prompt Conversion" and `convertionStep1` "Select all related files for the prompt (Context,
+    Instruct and Sampler JSON is supported)"; keys unchanged. The page's hard-coded English ("Delete", "Add", "Run") is left
+    for CHORE-05.
+  - **PG-3 (`PlaygroundMenu.svelte`):** the tool grid renders for `PlaygroundStore` values 1 and 2, and the dead
+    `=== 2` block is removed, so value 2 no longer shows a blank page. `PlaygroundRegex.svelte` is deleted. The store value 2,
+    `MobileHeader`, `hotkey.ts` and `characters.ts` are unchanged.
+  - **PG-4 (`PlaygroundEmbedding.svelte`):** the OpenAI key and the custom URL are the page's own copies, seeded from
+    `supaMemoryKey` and `hypaCustomSettings.url` when the page mounts; editing them never writes the settings, and Run passes
+    them to `HypaProcesser`. The custom key and request model still bind the live memory settings, because `HypaProcesser` reads
+    those from `getDatabase()` with no override and changing that would need `hypamemory.ts` (out of bounds); a new note under
+    them says so (new key `playground.embeddingSharedSettingsNote`, translated into the six other locales; the vi and de
+    wording is low-confidence). `HypaProcesser` falls back to the saved value when given a blank one, so Run stops with an
+    error alert when the custom model's URL or an OpenAI model's key is blank or whitespace-only. A run that throws clears the
+    spinner and shows the error. The dead `customEmbeddingUrl` state is now the URL's copy. The two error messages are
+    hard-coded English, left for CHORE-05. A change made in Settings while the page is open shows only after the page remounts
+    (by design).
+  - **Tests:** three new test files: `ToolConversion.svelte.test.ts` (5 reproducers, 2 guards),
+    `PlaygroundEmbedding.svelte.test.ts` (8 reproducers, 3 guards) and `PlaygroundMenu.svelte.test.ts` (1 reproducer, 2 guards).
+    At HEAD, in Gate 2's scratch run (row 867), exactly the 14 "regression reproducer:" tests of these files fail (5, 8 and 1) and
+    every guard passes. Checks on the working tree: `pnpm check` 0 errors 0 warnings; `pnpm test` 341 files, 7016 passed, 4
+    skipped; `pnpm build` ok (row 866). Not live-checked in a browser or on a device.
+  - **Merge note (`MC-179`):** `ToolConversion.svelte`, `PlaygroundMenu.svelte`, `PlaygroundEmbedding.svelte` and the deleted
+    `PlaygroundRegex.svelte` are in the Playground, which is on the UI lane's list. The seven `src/lang` files (one new key, and
+    two `en.ts` values) are on neither list. No file on the UI session's out-of-bounds list is touched
+    (`git diff --stat -- src/ts` is empty, row 867).
+  - **Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):** `docs/wiki/Playground.md` (line 64) says the
+    Embedding tool's OpenAI key, URL, key and model fields "are the same settings long-term memory uses, so changing them here
+    changes them for memory too". After this change that holds only for the custom key and the request model; the OpenAI key
+    and the URL are local to the page. The page's Prompt Convertion section (the table row at line 35 and the heading at line 147; the UI label is now
+    "Prompt Conversion") could mention that Delete removes a row and Run needs a supported file. The page has no mention of
+    PG-3's blank page or the empty regex page.
 
 ### CHORE-17 — Plugin `setDatabase` re-encodes every character (a cost, not data loss)
 

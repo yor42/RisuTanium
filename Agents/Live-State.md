@@ -274,9 +274,23 @@ Several sessions work **in this same checkout**:
   854 to 859). Gate 2 ended `[EDITORIAL]`, and the title corrections are done. Checks: `pnpm check` 0/0; `pnpm test` 336
   files, 6982 passed, 4 skipped; build ok. `db.loreBook`, `db.loreBookPage` and `db.globalscript` are untouched. No new
   tickets. `.claude/launch.json` stays out of the commit. Detail is in the CHORE-14 entry of the Roadmap.
-- **Next in the lane:** Playground and modules (CHORE-16 PG-2 to PG-4, CHORE-12), then small items and translations (the order
-  in `MC-200` 1).
-- **Next free numbers in the UI ranges:** `MC-207`, ledger row 860, CHORE-100, Report 65.
+- **Playground and modules batch (CHORE-16 PG-2 to PG-4; CHORE-12 MOD-2 and MOD-6): DONE 2026-10-03 in
+  `0d41f06a`**. `MC-207`; ledger rows 860 to 868. Gate 1 took two
+  rounds (`[REJECT]`, then `[APPROVE]`) and Gate 2 approved. Checks on the working tree: `pnpm check` 0/0; `pnpm test` 341 files,
+  7016 passed, 4 skipped; build ok. The persona's embedded module (MOD-1) stays inert by the maintainer's decision and is parked
+  as QOL-10 in `Agents/Maybe-Later.md`. Not live-checked in a browser or on a device. No new tickets; the hard-coded English and the
+  two unused module keys are added to CHORE-05's entry. Detail is in the CHORE-16 and CHORE-12 entries of the Roadmap.
+- **Wiki hand-offs (Playground and modules batch, for the Wiki session):** `docs/wiki/Playground.md` (line 64: only the custom
+  key and the request model are still the memory settings; the OpenAI key and the URL are the page's own; the "Prompt
+  Conversion" label) and `docs/wiki/Modules.md` (line 63: both module lists now show the stored order, not name order; line 143,
+  MOD-1, is unchanged).
+- **Lane notes (Playground and modules batch, against `MC-179` 1):** the three Playground files edited and the one deleted are in
+  the Playground, on the UI lane's list. `ModuleSettings.svelte` and `ModuleChatMenu.svelte` are on neither list (`ModuleMenu.svelte`
+  is listed and untouched), and neither are the seven `src/lang` files (one key, two `en.ts` values). MOD-6 adds one
+  `ReloadGUIPointer` bump per module-editor close, which is CHORE-04's mechanism (the Main Campaign's): flag for the merge.
+  Nothing on the UI session's out-of-bounds list is touched.
+- **Next in the lane:** small items (CHORE-13, CHORE-57, CHORE-23, optionally CHORE-09), then translations (CHORE-05).
+- **Next free numbers in the UI ranges:** `MC-208`, ledger row 869, CHORE-100, Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

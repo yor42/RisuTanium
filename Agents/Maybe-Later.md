@@ -1060,6 +1060,73 @@ A single-character export that includes the chats, and the matching import.
 
 ---
 
+## QOL-10 — Persona embedded modules: a half-built upstream feature
+
+**Status:** idea; half-built upstream; deliberately left inert in this fork. Decision recorded as `MC-207`.
+**Raised by:** yor42, 2026-10-03. The maintainer called it "a leftover feature that is left
+half-implemented" and asked for it to be parked here to come back to properly. See also CHORE-12 MOD-1
+(`Agents/Roadmap.md`, CHORE-12, MOD-1) and `Agents/Reports/99-modules.md:38-45`.
+
+### What already exists
+
+- **A data field and a half-wired read path.** `RisuPersona.embeddedModule?: RisuModule`
+  (`src/ts/storage/database.svelte.ts:807`). Upstream commit `0055f0cb` (kwaroran, 2026-06-09, "feat: add
+  embbeded modules on persona", empty body) added three things: the persona lookup and
+  `ids.concat([persona.embeddedModule?.id])` in `getModules` (`src/ts/process/modules.ts:421-423`), the
+  `'$embedded'` branch in `getModuleById` (`modules.ts:366-371`), and `embeddedModule.id = '$embedded'` in
+  `convertModuleToPersona` (`src/ts/interchangeability.ts:191`; the file is not under `process/`). The same
+  commit protected the module's assets from cleanup. Upstream/main `f9728b14` has the same code (read with
+  `git show`; upstream not run).
+- **Why it is inert.** `getModules` appends the id, but `getModuleByIds` only filters `db.modules`
+  (`modules.ts:375-382`), so the persona's own module object is never returned. Only `getModuleById`
+  resolves `'$embedded'`, and its only caller is `applyModule` (`modules.ts:526`).
+- **No UI or in-repo code path creates it.** `convertCharacterToPersona` and `convertModuleToPersona`
+  (`interchangeability.ts:136`, `:174`) have no non-test callers at HEAD or in `upstream/main`
+  (`git grep`). No `src/lib` file mentions `embeddedModule`. Persona PNG export and import
+  (`src/ts/persona.ts:54-102`, `:104-141`) carry only `name`, `personaPrompt` and `note`. The data can
+  arrive through a `.bin` restore, a plugin's database write (`'personas'` is in `allowedDbKeys`,
+  `src/ts/plugins/plugins.svelte.ts:382`, and `src/ts/plugins/apiV3/risuai.d.ts:384` exposes `personas`), or
+  hand-edited data; the last two were not traced.
+- **Other readers and producers in `src/ts/interchangeability.ts`.** `convertPersonaToCharacter` reads
+  `p.embeddedModule` (`:125-126`) and `convertPersonaToModule` reads it (`:154-155`). The two producers are
+  `convertCharacterToPersona` (`:142`) and `convertModuleToPersona` (`:179`); the latter also edits the embedded
+  module's lorebook and sets its id (`:183-191`).
+- **Its assets are kept.** `globalApi.svelte.ts:2138-2153` marks a persona's icon, embedded-module assets
+  and embedded-module icon as uncleanable. (`99-modules.md:44` cites this as `:1970-1978`; that range has
+  drifted.)
+
+### What is missing
+
+Any way to create, see, edit, remove or activate a persona's embedded module.
+
+### Design considerations (considerations, not findings)
+
+- **What turning it on would activate.** Lorebook, regex, triggers, assets, toggles, `hideIcon` and
+  `backgroundEmbedding` (the `getModule*` readers and `moduleUpdate`, `modules.ts:441-593`). Also MCP:
+  `getModuleMcps` (`modules.ts:514-518`) feeds `createMCPClient` (`src/ts/process/mcp/mcp.ts:93`), which
+  handles `internal:` clients such as `internal:fs` and `internal:risuai` (`:99-108`), `plugin:` (`:137`)
+  and `stdio:` (`:144`), which on desktop launches a local process through the shell plugin
+  (`:156-164`). Lua triggers are stamped with the module's own `lowLevelAccess` flag
+  (`modules.ts:477-480`).
+- **Consent.** An ordinary module import asks first: `alertConfirm(language.lowLevelAccessConfirm)`
+  (`modules.ts:307-308`; the character-card paths ask at `characterCards.ts:406-407`, `:882-883`). An
+  embedded module has no such step and no UI to see or remove it. A consent or review step on restore or
+  on bind is one option; whether MCP and `lowLevelAccess` should ever apply to it is a separate question.
+- **UI and producer.** A view/edit/remove surface for the embedded module, and a way to convert a module or
+  character into a persona.
+- **Memo keys collide.** `getModules` memoizes on `ids.join('-')` (`modules.ts:428-431`), and every
+  embedded module has id `'$embedded'`, so two personas with embedded modules would share a cache entry.
+  Adding the persona id to the key only when the persona has an embedded module avoids it. Keying every
+  persona would bump `ReloadGUIPointer` on each persona switch (CHORE-04 territory). `moduleUpdate`'s
+  `lastModuleIds` reload key (`modules.ts:560-592`) is built from module ids and has the same issue.
+- **Tests do not use the real shape.** The two `embeddedModule` cases in
+  `src/ts/process/tests/requestOrigin.svelte.test.ts` (`:657`, `:813`) give the embedded module an id equal
+  to a `db.modules` entry, so they do not exercise the `'$embedded'` shape.
+- **Compatibility.** `MC-175`: do not change the data shape. Upstream may finish the feature differently,
+  so check upstream before building.
+
+---
+
 ## Note on the evidence directories
 
 `Agents/Evidences of Investigations/` holds third-party community plugin bundles used as
