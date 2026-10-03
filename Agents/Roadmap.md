@@ -2546,7 +2546,94 @@ filing and investigation record and is unchanged. What the commit message says i
 
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
 
-**Status (2026-10-03, latest): stage 1 done by `d95b07da` (local, not pushed). Stages 2 to 4, and stage 5 or later, are open, not yet gated.** The
+**Status (2026-10-03, stage 2a, latest): stage 2a done by `a29335f7` (local, not pushed). Stage 2b (remote blocks), stages 3
+and 4, and stage 5 or later are open.** The older status blocks below are kept as they were; where this block differs,
+this block governs. Ledger rows 679 to 688 are the stage 2a work (the read-route investigation, the facts investigation,
+Gate 1, the implementation, the translation, Gate 2 round 1, the remediation, Gate 2 round 2, and the commit message with
+its check); rows 689 and 690 are these records and their fact-check. `MC-173` records the maintainer's decisions for this
+stage. The `AGENTS.md` change in the records commit is `MC-173` 3.
+
+- **The advisor's named investigation (the asset protocol against `readFile`) is answered (ledger row 679).** RUN in a
+  standalone Tauri 2.11.5 probe on Windows with WebView2, not in the app: both routes gave equal bytes in about 0.95 s
+  and the same per-process peak commit on a 155 MiB file (host about 10 times the file size on both routes, which comes
+  from delivering the whole file in one response; the exact cause inside the host is not isolated), on a 64 GB i9
+  desktop, best-case hardware. No staleness after a rename on WebView2. Key encoding is safe on both routes. The IPC
+  absence errors match the stage 1 regex. Not run on WebKit (macOS, Linux) or Android. Two hazards, both TRACED and not
+  run: a failed large IPC read flips the page to Tauri's JSON postMessage fallback, and ranged asset reads re-open the
+  file and are not a snapshot.
+- **What stage 2a changed (from the commit message):**
+  - The main file, at every site, and the numbered backups (the write, the listing and prune, and the internal-backup
+    picker) go through the byte store that `src/ts/storage/store/appStore.ts` selects once per page load. Stage 2b
+    (remote blocks), stage 3 (assets) and stage 4 (cold-storage units) are not moved.
+  - Selection: Tauri uses the desktop files store; the Node server uses the Node HTTP store, signed in through the one
+    `NodeStorage` that `AutoStorage` built; the web uses the IndexedDB store pinned to the IndexedDB driver. A web
+    profile whose main store was moved to OPFS uses a transitional store over its `OpfsStorage`
+    (`opfsTransitionalStore.ts`) until stage 4 (`MC-173` 1). A browser without IndexedDB stops the boot with the new
+    message `browserStorageUnavailable`, in all seven languages (`MC-173` 2).
+  - The Node main file's version is one explicit cell, set by `readMainFile` and by a successful `writeMainFile`; a
+    conditional write with no version rejects and never falls back to an unconditional write. The numbered-backup writes
+    and the prune are unconditional. One Node auth state serves every entry point of the page.
+  - The Tauri boot reads the main file and the backups through the file plugin, not the asset protocol.
+  - Checks, as the commit message states them, RUN by the Orchestrator on the final tree: `pnpm test` 312 files, 6578
+    passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok (`VITE_RISU_LEGAL_CONFIGURED=TRUE`). Two
+    later comment-and-title-only edits (the `appStore.ts` header clause and one test title in
+    `internalBackupSnapshotLoad.svelte.test.ts`) were re-run in their two files: 71 passed.
+  - Tests: the commit message lists the reproducers (each red against a git-archive extract of HEAD with the new tests
+    and harness changes copied in), the guards and the new-behaviour tests, and says which tests run over the real
+    `server/node/server.cjs` and which over the `FakeNodeServer` stand-in.
+- **What a user can see (the commit message's "What a user can see", with its corrected wording):**
+  - Node, a main file of 0 bytes: the boot took it for absent and wrote an empty save over it. It now takes the newest
+    decodable backup, and with none the boot fails with the error shown. The boot writes no main file and no seed (as
+    on any boot it may still delete numbered backups beyond the newest 20); the next save replaces the 0-byte file with
+    the data the boot loaded from the backup (a save happens when something changes, so the file stays as it is until
+    then; traced in source, no test runs the next save after these fallbacks).
+  - Tauri, a main file whose read fails with an error other than "not found" while `exists()` also answers false: the
+    boot took it for absent and wrote a seed over it. It now writes no seed or main file at boot and takes the newest
+    backup (the prune may still delete numbered backups beyond the newest 20); the next save replaces the file with that
+    backup's data (traced, not tested; whether that write succeeds depends on why the read failed). Only a file the read reports as not found, and `exists()` confirms
+    absent, is seeded, and the seed now happens after the boot archive session opens.
+  - Web on IndexedDB, a main-key entry stored as null: the boot used to seed over it. It now raises
+    `StoreNotBinaryError` and takes the backup route.
+  - A browser where IndexedDB is missing or cannot be opened: the boot used to continue on LocalForage's fallback driver;
+    it now stops with the new message and reads and writes nothing. The outcome stands for the page; a reload is the way
+    to try again.
+  - Node, a fresh server with no password: the page asked for the password twice (the double prompt was REPRODUCED against
+    the real server, ledger row 682); it now asks once.
+  - Backups: the prune runs after a numbered-backup write, at every Tauri boot, and when any boot falls back to the
+    backups, not after every save. `getDbBackups` only counts names that are exactly `dbbackup-<digits>.bin`, and
+    deletes the listed key itself.
+  - Not changed: the save format, the file and key names and the bytes written. Two devices on one Node server: a stale
+    save is still refused (`MC-159`).
+- **Facts that refuted planning text (ledger rows 679 and 680):**
+  - Read-through is unsound for an OPFS-main profile, because the copy into OPFS never removes a LocalForage key, so the
+    LocalForage copy is stale (the Orchestrator re-read `autoStorage.ts` and `storageMaintenance.ts` `disableOpfs`).
+    This qualifies `MC-167` 2 for the stage 2 kinds; it stands for cold units (stage 4).
+  - "Snapshots" are the `dbbackup` files on the read side, not a separate kind.
+  - The stage 1 note below, that a non-binary entry "stage 2 callers will meet", is false for stage 2 callers: only
+    `AutoStorage` reads `migrated` (it writes it, and `storageMaintenance.ts` removes it); no source in this fork reads
+    or writes `denied_opfs`, so no stage 2 caller meets a non-binary entry.
+  - The boot used the asset protocol at two sites only (the main read and the backup fallback), and three other sites
+    already read main-file-size data through IPC `readFile`. Remote blocks are written only on Tauri and Node.
+  - `AGENTS.md`'s "tauri pinned at 2.9.5" was wrong (`MC-173` 3; the Orchestrator verified `.gitignore` and a local lock).
+  - The Hono server is a static-web deployment: it sets no `__NODE__` and serves no `/api/read`, so it never reaches the
+    Node store (Gate 1 and Gate 2, TRACED). A fact for later stages, not a correction.
+- **Open, residual and non-blocking:**
+  - The IPC fallback flip (above; TRACED, not run).
+  - Two tabs on a fresh Node server: the second tab's boot can fail at set-password, and a reload recovers. A suspicion,
+    not reproduced.
+  - Asset-route staleness is untested on WebKit and Android; the boot no longer uses that route. On Android the stage 1
+    absence regex is not proven and IPC uses postMessage with JSON (TRACED in tauri 2.11.5's `ipc-protocol.js`, not
+    run; for the Android wrapper plan).
+  - `NodeStorage.peekItem` has no production caller left (a Grep of `src/` found one hit, the definition in
+    `nodeStorage.ts`).
+  - `saveDb`'s post-commit conflict branch is unreachable after 2a; settle it in 2b.
+  - The stage 0 Windows live check (`MC-171` 2) is still open.
+- **Next for CHORE-55:** stage 2b, already in the stage 2 plan (D7, D9 and scenarios S15 to S19): the remote-block encode
+  write (atomic on Tauri, through the store), the exists-skip, the decode read, the boot GC of v1 blocks and `.meta`, and a
+  `remotes/` temp sweep. A residual already known for 2b: a remote file left partial by an older non-atomic write is still
+  accepted by the existence check, because the read has no hash check. Then stages 3 and 4.
+
+**Status (2026-10-03, stage 1): stage 1 done by `d95b07da` (local, not pushed). Stages 2 to 4, and stage 5 or later, are open, not yet gated.** The
 older status blocks below are kept as they were; where this block differs, this block governs. Ledger rows 666 to 676 are
 the stage 1 work (the facts investigation, the three Gate 1 rounds, the implementation, Gate 2 round 1,
 the escalation, the remediation, Gate 2 round 2, and the commit message with its check); rows 677 and 678 are these records
@@ -2608,7 +2695,7 @@ and their fact-check. `MC-172` records the maintainer's commit decision.
     investigation before stage 2 (the Tauri adapter reads with `readFile` for now).
   - Not handled (edge cases with no caller): a Windows `list` prefix containing `\`; Windows reserved device names in the
     creatable rule; the duplicated 8000-byte request budget in `nodeHttpStore.ts` and `manualCleanup.ts`.
-- **Next for CHORE-55:** stage 2 (the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive
+- **Next for CHORE-55 (as of stage 1; the stage 2a block above has the current line):** stage 2 (the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive
   commit, restore and the internal-backup load). It is not yet planned. The asset-protocol against `readFile` investigation
   comes first.
 
@@ -2678,7 +2765,7 @@ maintainer's commit decision.
     new file default permissions rather than the old mode. No known user setup does this.
   - The test fake `tauriFsFake.ts` never emits "os error 17", so the Unix branch of the "temp already exists" carve-out is
     untested.
-- **Next for CHORE-55 (as of stage 0; the stage 1 block above has the current line):** stage 1: the contract, three adapters
+- **Next for CHORE-55 (as of stage 0; the stage 2a block at the top has the current line):** stage 1: the contract, three adapters
   and one conformance suite, with no callers moved (`fake-indexeddb` is approved by `MC-167` 6). The advisor's named
   investigation before stage 2, the Tauri boot read through the asset protocol against `readFile` on a large file, is still
   open.
@@ -2859,9 +2946,10 @@ then the prune.
   conflict check on IndexedDB and OPFS (INFERRED).
 - **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
 
-**Related:** `MC-167`, `MC-171`, `MC-172`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48 (inlays),
-CHORE-51 and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commits `d0decfb6`
-(stage 0) and `d95b07da` (stage 1); ledger rows 633, 635, 636, 658 to 665 and 666 to 678.
+**Related:** `MC-167`, `MC-171`, `MC-172`, `MC-173`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48
+(inlays), CHORE-51 and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commits
+`d0decfb6` (stage 0), `d95b07da` (stage 1) and `a29335f7` (stage 2a); ledger rows 633, 635, 636, 658 to 665, 666 to 678 and
+679 to 690.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 

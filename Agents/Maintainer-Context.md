@@ -6048,3 +6048,61 @@ maintainer; the commit message of `d0decfb6` states it.
    answer: "Commit both (Recommended)": "Commit the code now, then write and fact-check the records (Roadmap, ledger rows
    666 onward, Live-State) and commit them as a second commit. Nothing is pushed." The options not chosen were "Code
    only" and "Hold".
+
+---
+
+### MC-173 — CHORE-55 stage 2: profiles whose main save is in OPFS are left until stage 4, a browser without IndexedDB stops with a message, the AGENTS.md Tauri line is corrected, and stage 2a is committed as a code commit and then a records commit (nothing pushed)
+
+- **Tag:** decision (items 1, 2 and 4, the maintainer's answers to `AskUserQuestion`); item 3 is stated in chat
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to three questions the Orchestrator asked with `AskUserQuestion` (items 1, 2 and 4),
+  and two chat messages (item 3). The question and option texts are quoted below. The reasons in the option texts are the
+  Orchestrator's.
+- **Reasoning:** the reasons given in the option texts. For item 1, the copy into OPFS never removes a LocalForage key, so
+  the LocalForage copy of an OPFS-main profile is stale (the Orchestrator's, from the stage 2 facts packet, ledger row
+  680; the Orchestrator re-read `autoStorage.ts`). This qualifies `MC-167` 2's read-through for the stage 2 kinds; `MC-167`
+  2 stands for cold units (stage 4). For item 4, the records are written and fact-checked after the code is committed.
+- **Alternatives rejected** (the other options the Orchestrator offered):
+  - item 1: "Copy back in stage 2" and "Stop with a notice";
+  - item 2: "Keep the fallback";
+  - item 4: "Code now, records after 2b" and "Hold until 2b".
+- **Related:** MC-167, MC-171, MC-172, MC-011, MC-089, MC-091, MC-159; CHORE-55; commit `a29335f7` (CHORE-55 stage 2a,
+  local; its message states what it changed); the records commit that carries this file and the `AGENTS.md` change;
+  ledger rows 679 to 690.
+
+**What was decided:**
+1. **Browser profiles whose main save is in OPFS stay on OPFS until stage 4.** The question: "Some browser profiles keep
+   the main save in the browser's file storage (OPFS): anyone who turned on the OPFS switch in Backup & Files, or an
+   upstream user who set the flag by hand (upstream has no switch for it). For those profiles IndexedDB still holds an old
+   copy of the save from before the switch, so stage 2's "read IndexedDB, fall back to OPFS" would start with that old
+   save and overwrite the newer one on the next save. Stage 4 was already going to copy OPFS back into IndexedDB once when
+   the switch goes away. What should stage 2 do for these profiles?" The answer: "Leave them until stage 4
+   (Recommended)": "Profiles with the switch on keep saving and loading the main file and backups through OPFS exactly as
+   today; everyone else moves to the new store. Stage 4 then copies them back and removes the switch. Stage 2 stays
+   smaller, at the cost of one extra browser path for the save until stage 4." The options not chosen were "Copy back in
+   stage 2" and "Stop with a notice".
+2. **A browser without IndexedDB stops with a clear message after stage 2, instead of the silent fallback.** The
+   question: "The new browser store uses IndexedDB only. Today, a browser without IndexedDB (very old browsers, some old
+   private-browsing modes) silently falls back to a much smaller store that a real save usually doesn't fit in. What
+   should happen there after stage 2?" The answer: "Say it can't save here (Recommended)": "The app starts with a clear
+   message that this browser can't store RisuAI data, instead of the silent fallback. One store for every browser, all
+   covered by the same tests." The option not chosen was "Keep the fallback". Note (the Orchestrator's, from Gate 1): one
+   failed open of a pinned LocalForage instance looks the same as a missing IndexedDB, so the message says nothing was
+   changed and to reload first.
+3. **The `AGENTS.md` Tauri version line is corrected, and `AGENTS.md` is committed with the stage 2 records.** The
+   maintainer, as typed: "also fix the AGENTS.md tauri version line while we are at it", then "commit agent.md with the
+   stage 2 records". The Orchestrator corrected the line: the `tauri` crate is not pinned (`Cargo.toml` versions are
+   minimums, and `Cargo.lock` is gitignored), and the JS packages are exact. The diff is the one Desktop bullet in "Project
+   Overview".
+4. **Stage 2a's code is committed first, and its records follow, with the `AGENTS.md` change, as a second commit. Nothing
+   is pushed.** The question: "CHORE-55 part 2a has passed both reviews and all checks, and its commit message is
+   fact-checked. How should I commit it? (Part 2b, remote blocks, comes next either way; nothing is pushed.)" The answer:
+   "Code, then records (Recommended)": "Commit 2a's code now, then write and fact-check the records (your two answers
+   today as MC-173, the Roadmap, ledger rows 679 onward, Live-State) and commit them together with the AGENTS.md fix as a
+   second commit. Part 2b gets its own code and records commits later." The options not chosen were "Code now, records
+   after 2b" and "Hold until 2b".
+
+**The Orchestrator's call, not a maintainer decision:** the stage 2 read packet asked whether to accept the whole-file
+memory cost or build a separately gated ranged path. It was not put to the maintainer, because both read routes cost the
+same and stage 2 does not change the cost (ledger row 679).
