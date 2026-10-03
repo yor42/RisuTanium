@@ -422,14 +422,15 @@ export async function exportChat(page:number){
 }
 
 export async function importChat(){
-    const dat =await selectSingleFile(['json','jsonl','txt','html'])
+    const dat =await selectSingleFile(['json','jsonl','html'])
     if(!dat){
         return
     }
     try {
         const selectedID = get(selectedCharID)
+        const lowerName = dat.name.toLowerCase()
 
-        if(dat.name.endsWith('jsonl')){
+        if(lowerName.endsWith('jsonl')){
             const lines = Buffer.from(dat.data).toString('utf-8').split('\n')
             let newChat:Chat = {
                 message: [],
@@ -442,7 +443,10 @@ export async function importChat(){
 
             let isFirst = true
             for(const line of lines){
-                
+                if(line.trim() === ''){
+                    continue
+                }
+
                 const presedLine = JSON.parse(line)
                 if(presedLine.name && presedLine.is_user, presedLine.mes){
                     if(!isFirst){
@@ -470,7 +474,7 @@ export async function importChat(){
             changeChatTo(0)
             alertNormal(language.successImport)
         }
-        else if(dat.name.endsWith('json')){
+        else if(lowerName.endsWith('json')){
             const json = JSON.parse(Buffer.from(dat.data).toString('utf-8'))
             if((json.type === 'risuAllChats' || json.type === 'risuChat') && json.ver === 2){
                 const folders = json.folders || []
@@ -538,7 +542,7 @@ export async function importChat(){
                 return
             }
         }
-        else if(dat.name.endsWith('html')){
+        else if(lowerName.endsWith('html')){
             const doc = new DOMParser().parseFromString(Buffer.from(dat.data).toString('utf-8'), 'text/html')
             const chat = doc.querySelector('.idat').textContent
             const json = JSON.parse(chat)
@@ -550,6 +554,9 @@ export async function importChat(){
             else{
                 alertError(language.errors.noData)
             }
+        }
+        else{
+            alertError(language.errors.noData)
         }
     } catch (error) {
         alertError(error)

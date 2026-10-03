@@ -2547,32 +2547,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
     }
 
-    if(req.special){
-        if(req.special.emotion){
-            let charemotions = get(CharEmotion)
-            let currentEmotion = currentChar.emotionImages
-
-            let tempEmotion = charemotions[currentChar.chaId]
-            if(!tempEmotion){
-                tempEmotion = []
-            }
-            if(tempEmotion.length > 4){
-                tempEmotion.splice(0, 1)
-            }
-
-            for(const emo of currentEmotion){
-                if(emo[0] === req.special.emotion){
-                    const emos:[string, string,number] = [emo[0], emo[1], Date.now()]
-                    tempEmotion.push(emos)
-                    charemotions[currentChar.chaId] = tempEmotion
-                    CharEmotion.set(charemotions)
-                    emoChanged = true
-                    break
-                }
-            }
-        }
-    }
-
     if(!currentChar.inlayViewScreen){
         if(currentChar.viewScreen === 'emotion' && (!emoChanged) && (abortSignal.aborted === false)){
 

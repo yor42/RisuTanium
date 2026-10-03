@@ -290,9 +290,6 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
             if(script.ableFlag){
                 flag = script.flag || 'g'
             }
-            if(outScript.startsWith('@@move_top') || outScript.startsWith('@@move_bottom') || pscript.actions.includes('move_top') || pscript.actions.includes('move_bottom')){
-                flag = flag.replace('g', '') //temperary fix
-            }
             if(outScript.endsWith('>') && !pscript.actions.includes('no_end_nl')){
                 outScript += '\n'
             }
@@ -359,13 +356,18 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
                         outScript.startsWith('@@move_top') || outScript.startsWith('@@move_bottom') ||
                         pscript.actions.includes('move_top') || pscript.actions.includes('move_bottom')
                     ){
+                        // The test above advances lastIndex of a global or sticky regex; every
+                        // match the replace below removes must also be found here.
+                        reg.lastIndex = 0
                         const isGlobal = flag.includes('g')
                         const matchAll = isGlobal ? data.matchAll(reg) : [data.match(reg)]
                         data = data.replace(reg, "")
+                        const template = outScript.replace('@@move_top ', '').replace('@@move_bottom ', '')
+                        const moved:string[] = []
                         for(const matched of matchAll){
                             if(matched){
                                 const inData = matched[0]
-                                let out = outScript.replace('@@move_top ', '').replace('@@move_bottom ', '')
+                                moved.push(template
                                     .replace(/(?<!\$)\$[0-9]+/g, (v)=>{
                                         const index = parseInt(v.substring(1))
                                         if(index < matched.length){
@@ -374,20 +376,22 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
                                         return v
                                     })
                                     .replace(/\$\&/g, inData)
-                                    .replace(/(?<!\$)\$<([^>]+)>/g, (v) => {
-                                        const groupName = parseInt(v.substring(2, v.length - 1))
-                                        if(matched.groups && matched.groups[groupName]){
-                                            return matched.groups[groupName]
+                                    .replace(/(?<!\$)\$<([^>]+)>/g, (v, groupName:string) => {
+                                        // Like String.replace: without named groups the text stays literal,
+                                        // with them a group that did not participate is empty.
+                                        if(matched.groups){
+                                            return matched.groups[groupName] ?? ''
                                         }
                                         return v
-                                    })
-                                if(outScript.startsWith('@@move_top') || pscript.actions.includes('move_top')){
-                                    data = out + '\n' +data
-                                }
-                                else{
-                                    data = data + '\n' + out
-                                }
+                                    }))
                             }
+                        }
+                        // Built once: moved[0] is the first match; move_top ends with the last match on top.
+                        if(outScript.startsWith('@@move_top') || pscript.actions.includes('move_top')){
+                            data = moved.reverse().map((out) => out + '\n').join('') + data
+                        }
+                        else{
+                            data = data + moved.map((out) => '\n' + out).join('')
                         }
                     }
                     else{

@@ -135,6 +135,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { selectSingleFile } from 'src/ts/util'
+import { alertError } from 'src/ts/alert'
 import { selectedCharID } from 'src/ts/stores.svelte'
 import { importChat } from './characters'
 
@@ -238,5 +239,71 @@ describe('importChat -- risuAllChats v1 import gives every imported chat a fresh
         expect(importedA.id).not.toBe('dup-id')
         expect(importedB.id).not.toBe('dup-id')
         expect(survivingExisting.id).toBe('dup-id')
+    })
+})
+
+describe('importChat -- file type selection', () => {
+    const header = JSON.stringify({ user_name: 'U', character_name: 'C' })
+    const message = JSON.stringify({ name: 'C', is_user: false, mes: 'hello there' })
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    test('the picker offers json, jsonl and html but not txt', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue(undefined as never)
+
+        await importChat()
+
+        expect(selectSingleFile).toHaveBeenCalledTimes(1)
+        const list = vi.mocked(selectSingleFile).mock.calls[0][0]
+        expect([...list].sort()).toEqual(['html', 'json', 'jsonl'])
+    })
+
+    test('a .txt file shows the no-data error and adds no chat', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: 'export.txt', data: utf8('some text') })
+
+        await importChat()
+
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect((testDb.db.characters[0] as character).chats).toHaveLength(0)
+    })
+
+    test('an upper-case extension is recognised', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: 'CHAT.JSONL', data: utf8(`${header}\n${message}`) })
+
+        await importChat()
+
+        expect(alertError).not.toHaveBeenCalled()
+        expect((testDb.db.characters[0] as character).chats).toHaveLength(1)
+    })
+
+    test('a JSONL file ending with a newline, or containing blank lines, imports', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({
+            name: 'chat.jsonl',
+            data: utf8(`${header}\n\n${message}\n   \n`),
+        })
+
+        await importChat()
+
+        expect(alertError).not.toHaveBeenCalled()
+        const chats = (testDb.db.characters[0] as character).chats
+        expect(chats).toHaveLength(1)
+        expect(chats[0].message).toHaveLength(1)
+    })
+
+    test('blank lines before the header do not turn the first message into the skipped header', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({
+            name: 'chat.jsonl',
+            data: utf8(`\n${header}\n${message}\n`),
+        })
+
+        await importChat()
+
+        const chats = (testDb.db.characters[0] as character).chats
+        expect(chats).toHaveLength(1)
+        expect(chats[0].message).toHaveLength(1)
     })
 })

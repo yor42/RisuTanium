@@ -659,10 +659,7 @@ export function applyEdittransRegex(
               continue
           }
 
-          let flag = 'g'
-          if (script.ableFlag) {
-              flag = script.flag || 'g'
-          }
+          let flag = script.ableFlag ? (script.flag ?? '') : ''
 
           let order = 0
           const actions: string[] = []
@@ -683,9 +680,8 @@ export function applyEdittransRegex(
               return ''
           })
 
-          if (actions.includes('move_top') || actions.includes('move_bottom')) {
-              flag = flag.replace('g', '') //temperary fix
-          }
+          //a flag text with no regex flags left, once the tags are removed, is global
+          flag = flag || 'g'
 
           //remove unsupported flag
           flag = flag.trim().replace(/[^dgimsuvy]/g, '')
@@ -720,10 +716,11 @@ export function applyEdittransRegex(
                   const isGlobal = pscript.flag.includes('g')
                   const matchAll = isGlobal ? text.matchAll(reg) : [text.match(reg)]
                   text = text.replace(reg, "")
+                  const moved: string[] = []
                   for (const matched of matchAll) {
                       if (matched) {
                           const inData = matched[0]
-                          const out = outScript
+                          moved.push(outScript
                               .replace(/(?<!\$)\$[0-9]+/g, (v) => {
                                   const index = parseInt(v.substring(1))
                                   if (index < matched.length) {
@@ -732,21 +729,22 @@ export function applyEdittransRegex(
                                   return v
                               })
                               .replace(/\$\&/g, inData)
-                              //kept identical to processScriptFull, where parseInt on a group name never resolves
-                              .replace(/(?<!\$)\$<([^>]+)>/g, (v) => {
-                                  const groupName = parseInt(v.substring(2, v.length - 1))
-                                  if (matched.groups && matched.groups[groupName]) {
-                                      return matched.groups[groupName]
+                              //same as processScriptFull: without named groups the text stays literal,
+                              //with them a group that did not participate is empty
+                              .replace(/(?<!\$)\$<([^>]+)>/g, (v, groupName: string) => {
+                                  if (matched.groups) {
+                                      return matched.groups[groupName] ?? ''
                                   }
                                   return v
-                              })
-                          if (pscript.actions.includes('move_top')) {
-                              text = out + '\n' + text
-                          }
-                          else {
-                              text = text + '\n' + out
-                          }
+                              }))
                       }
+                  }
+                  //built once: moved[0] is the first match; move_top ends with the last match on top
+                  if (pscript.actions.includes('move_top')) {
+                      text = moved.reverse().map((out) => out + '\n').join('') + text
+                  }
+                  else {
+                      text = text + moved.map((out) => '\n' + out).join('')
                   }
               }
               else {

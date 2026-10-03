@@ -76,8 +76,6 @@ export async function tokenizePreset(prompts:PromptItem[], consti:boolean = fals
             }
             case 'persona':
             case 'description':
-            case 'lorebook':
-            case 'postEverything':
             case 'authornote':
             case 'memory':{
                 if(prompt.innerFormat){

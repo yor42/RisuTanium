@@ -72,10 +72,19 @@ describe("applyEdittransRegex", () => {
         ])).toBe("hi hi");
     });
 
-    it("falls back to the u flag when no native flag is left", () => {
+    it("falls back to the u flag when only unsupported flag characters are left", () => {
+        expect(apply("aaa", [
+            script({ in: "a", out: "b", ableFlag: true, flag: "z<cbs>" }),
+        ])).toBe("baa");
+    });
+
+    it("regression reproducer: a flag text with only tags left is global, like an off flag box", () => {
         expect(apply("aaa", [
             script({ in: "a", out: "b", ableFlag: true, flag: "<cbs>" }),
-        ])).toBe("baa");
+        ])).toBe("bbb");
+        expect(apply("aaa", [
+            script({ in: "a", out: "b", ableFlag: false, flag: "i" }),
+        ])).toBe("bbb");
     });
 
     it("parses curly braced syntaxes in IN with the cbs flag", () => {
@@ -128,6 +137,53 @@ describe("applyEdittransRegex", () => {
         expect(apply("body", [
             script({ in: "<note>.*?</note>", out: "$&", ableFlag: true, flag: "g<move_top>" }),
         ])).toBe("body");
+    });
+
+    describe("move flags with several matches", () => {
+        const move = (text: string, flag: string, inRe = "a\\d", out = "$&") => apply(text, [
+            script({ in: inRe, out, ableFlag: true, flag }),
+        ]);
+
+        it("regression reproducer: g<move_top> moves every match, the last match on top", () => {
+            expect(move("a1 b a2 c a3", "g<move_top>")).toBe("a3\na2\na1\n b  c ");
+        });
+
+        it("regression reproducer: g<move_bottom> moves every match, in source order", () => {
+            expect(move("a1 b a2 c a3", "g<move_bottom>")).toBe(" b  c \na1\na2\na3");
+        });
+
+        it("regression reproducer: a tag-only flag text is global for a move", () => {
+            expect(move("a1 b a2", "<move_top>")).toBe("a2\na1\n b ");
+            expect(move("a1 b a2", "<order 1, move_bottom>")).toBe(" b \na1\na2");
+        });
+
+        it("guard: a flag text without g moves only the first match", () => {
+            expect(move("a1 b a2", "i<move_top>")).toBe("a1\n b a2");
+            expect(move("a1 b a2", "i<move_bottom>")).toBe(" b a2\na1");
+        });
+
+        it("regression reproducer: $<name> resolves a participating group, empty when it did not participate or does not exist", () => {
+            expect(move("a", "g<move_bottom>", "(?<n>a)|(?<m>b)", "[$<n>|$<m>|$<z>]")).toBe("\n[a||]");
+            expect(move("b", "g<move_bottom>", "(?<n>a)|(?<m>b)", "[$<n>|$<m>]")).toBe("\n[|b]");
+        });
+
+        it("regression reproducer: $<name> of a participating empty group is empty", () => {
+            expect(move("a", "g<move_bottom>", "(?<n>)a", "[$<n>]")).toBe("\n[]");
+        });
+
+        it("guard: $<name> stays literal when the regex has no named groups", () => {
+            expect(move("a", "g<move_bottom>", "(a)", "[$<n>|$1]")).toBe("\n[$<n>|a]");
+        });
+
+        it("regression reproducer: a pattern matching at every position terminates and moves every match", () => {
+            const text = "y".repeat(100000);
+            const start = performance.now();
+            const result = move(text, "g<move_bottom>", "x*", "$&");
+            expect(performance.now() - start).toBeLessThan(2000);
+            expect(result.length).toBe(text.length + 100001);
+            const top = move(text, "g<move_top>", "x*", "$&");
+            expect(top.length).toBe(text.length + 100001);
+        });
     });
 
     it("ignores custom flags that are not supported here", () => {

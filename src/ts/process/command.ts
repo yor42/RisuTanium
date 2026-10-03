@@ -8,6 +8,7 @@ import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { runTrigger } from "./triggers";
 import { createRunSubject, createSendSubject, registerWork, type Origin, type OriginHint, type RunSubject } from "./chatOrigin";
 import { isComposerWindowOpen } from "./generationOwnership.svelte";
+import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
 
 /**
  * What a command line runs against. Every field is fixed when the line
@@ -41,7 +42,11 @@ export interface CommandContext {
      * its own `/trigger`s share.
      */
     recursion?: { count: number }
-    /** Whether the trigger that runs the line is exempt from the nesting bound. */
+    /**
+     * Whether the trigger that runs the line nests up to the low-level limit
+     * instead of the normal one. `runtrigger` and `v2RunTrigger` apply the same
+     * two limits (`./triggerLimits`).
+     */
     lowLevelAccess?: boolean
     /**
      * Called at the start of every command that can change chat state, before
@@ -49,10 +54,6 @@ export interface CommandContext {
      */
     noteWrite?: () => void
 }
-
-// Mirrors the bound the `runtrigger` effect applies to nested runs; a change
-// to one must be made in both.
-const NESTED_TRIGGER_LIMIT = 10
 
 // Every command outside this set changes no chat state: `/speak`, `/echo`,
 // `/popup`, `/pass`, `/input`, `/buttons`, `/len`, `/getvar`, `/setinput`,
@@ -329,7 +330,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
             if(currentChar.type === 'group'){
                 return pipe
             }
-            if(recursion.count >= NESTED_TRIGGER_LIMIT && !ctx.lowLevelAccess){
+            if(recursion.count >= (ctx.lowLevelAccess ? LOW_LEVEL_NESTED_TRIGGER_LIMIT : NORMAL_NESTED_TRIGGER_LIMIT)){
                 return pipe
             }
             recursion.count++

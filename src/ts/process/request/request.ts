@@ -73,24 +73,15 @@ export type requestDataResponse = {
     type: 'success'|'fail'
     result: string
     noRetry?: boolean,
-    special?: {
-        emotion?: string
-    },
     failByServerError?: boolean
     model?: string
 }|{
     type: "streaming",
     result: ReadableStream<StreamResponseChunk>,
-    special?: {
-        emotion?: string
-    }
     model?: string
 }|{
     type: "multiline",
     result: ['user'|'char',string][],
-    special?: {
-        emotion?: string
-    }
     model?: string
 }
 

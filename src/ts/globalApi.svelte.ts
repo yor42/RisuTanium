@@ -2266,7 +2266,15 @@ export function getFetchLogs() {
  */
 export function openURL(url: string) {
     if (isTauri) {
-        open(url)
+        // The warning never includes the URL: OAuth URLs carry state and PKCE values.
+        try {
+            open(url).catch(() => {
+                console.warn('openURL: the system could not open the link')
+            })
+        }
+        catch {
+            console.warn('openURL: the system could not open the link')
+        }
     }
     else {
         openUrlOnWeb(url, window)
