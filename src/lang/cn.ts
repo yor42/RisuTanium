@@ -1678,7 +1678,7 @@ export const languageChinese = {
     "applyAdditionalParamsToAll": "将附加参数应用于所有模型",
     "localToggles": "本地开关",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     "staleAccountProfileNotice":
         "此浏览器的用户资料使用了本应用不支持的 RisuAccount 同步功能。\n\n您现在看到的是同步开启之前，此浏览器保存的数据。此后，其他浏览器或设备可能已经更改了您的数据。您账号中的数据仍保留在 RisuAccount 上。\n\n如果您现在看到的数据中，可能包含您账号里没有的内容，请在导入任何内容之前，先为它做一次本地备份。\n\n要将账号中的数据带到这里，请在上游 RisuAI 上登录，制作一份本地备份（.bin），然后在此处导入。若是自托管或本地部署的上游版本，请先前往高级设置，开启“显示不建议的设置”，然后取消勾选“Skip Saving Assets on Web Sync”，否则图片会被遗漏。在 risuai.xyz 上，登录状态下制作的完整备份无法在此处导入；导入界面会列出可用的替代方案。详情请参阅迁移指南。\n\n点击“OK”将重新加载应用程序。",
     "keiImageProviderUnavailable": "此应用不支持“Kei”图像提供者。请在设置中选择其他图像提供者。",
@@ -1710,23 +1710,15 @@ export const languageChinese = {
     "assetIntegrityReportEvicted": (n: number) => `\n已移除 ${n} 个已损坏的缓存条目。请重新加载应用以使修复生效。`,
     "assetIntegrityReportLeftInCache": "\n按照您的要求，保留在缓存中。",
     "assetIntegrityReportNoCorruption": "\n在已检查的资源中未发现损坏。",
-    "opfsEnableConfirm": "将本地存储切换为 OPFS（实验性）并重新加载应用？您现有的本地数据将在重新加载时自动迁移。",
-    "opfsDisableConfirm": "将本地存储切换回默认后端并重新加载应用？您现有的 OPFS 数据将在重新加载前自动迁移。",
-    "opfsEnableSpaceWarningConfirm": (usageBytes: number, freeBytes: number) => `此次切换可能没有足够的可用空间：当前已使用约 ${(usageBytes / (1024 * 1024)).toFixed(1)} MB，可用空间约 ${(freeBytes / (1024 * 1024)).toFixed(1)} MB。如果切换中途失败，您将保留在当前存储上，不会丢失任何数据。仍要继续吗？`,
-    "opfsDisableRefused": "此标签页当前未使用 OPFS 存储，因此无法从这里切换回去。",
-    "opfsSwitchNoticeQuota": "存储后端未被切换：浏览器存储空间不足。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。",
-    "opfsSwitchNoticeUnsupported": "存储后端未被切换：此浏览器不支持此次切换所需的功能。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。",
-    "opfsSwitchNoticeInterrupted": "存储后端未被切换：另一个标签页处于打开状态，或切换过程被中断。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。",
-    "opfsSwitchNoticeError": (detail: string) => `存储后端未被切换：${detail}。您的数据未发生变化，您可以在设置的备份 & 文件中再次切换。`,
+    "opfsCopyBackProgress": (done: number, total: number) => `正在将您的数据移至浏览器存储... (${done} / ${total})。请在完成前保持此标签页打开。`,
+    "opfsFallbackNoticeTab": "本次未能将您的数据移至浏览器存储，因为本应用的另一个标签页已打开，或此浏览器无法检查其他标签页。RisuAI 正在使用您现有的数据运行，没有任何数据丢失。请关闭其他标签页；应用下次启动时会再次尝试。",
+    "opfsFallbackNoticeSpace": "本次未能将您的数据移至浏览器存储，因为可用存储空间不足。RisuAI 正在使用您现有的数据运行，没有任何数据丢失。请释放一些存储空间；应用下次启动时会再次尝试。",
+    "opfsFallbackNoticeNoIndexedDb": "本次未能将您的数据移至浏览器存储，因为此浏览器无法使用 IndexedDB。RisuAI 正在使用您现有的数据运行，没有任何数据丢失。应用下次启动时会再次尝试。",
+    "opfsFallbackNoticeError": (detail: string) => `本次未能将您的数据移至浏览器存储：${detail}。RisuAI 正在使用您现有的数据运行，没有任何数据丢失。应用下次启动时会再次尝试。`,
     "browserStorageUnavailable": "此浏览器无法打开 RisuAI 用于保存您数据的存储，因此没有加载任何内容，也没有更改任何内容。请重新加载页面。如果此提示持续出现，说明此浏览器无法存储 RisuAI 的数据（无痕浏览模式和过旧的浏览器都可能导致这种情况）：请在其他浏览器中打开 RisuAI，或在非无痕浏览模式下打开。",
-    "storageMigrationLockError": "此应用似乎在另一个标签页中打开（或您的浏览器不支持此处所需的检查）。请先关闭所有其他标签页，然后重试。",
     "backupAndFiles": "备份 & 文件",
     "assetIntegrityHeading": "资源缓存完整性",
     "assetIntegrityDescription": "将缓存的图片/资源与其自身的内容哈希进行比对以检测损坏，无需从存储中重新下载任何内容。除非您选择移除已损坏的条目，否则此操作为只读。",
     "assetIntegrityWarnOnStartup": "启动时若快速抽样检查发现损坏则发出警告",
     "assetIntegrityVerifyButton": "立即验证资源缓存",
-    "opfsBackendHeading": "本地存储后端",
-    "opfsBackendDescription": "实验性功能。相比默认的 IndexedDB 后端，OPFS 具有更强的写入原子性。切换后应用将重新加载，并自动迁移您现有的本地数据。",
-    "opfsSwitchToDefault": "切换回默认存储",
-    "opfsSwitchToOpfs": "切换到 OPFS 存储（实验性）"
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

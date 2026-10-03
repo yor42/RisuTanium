@@ -19,7 +19,6 @@ import 'fake-indexeddb/auto'
 import localforage from 'localforage'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { FakeNodeServer } from './manualCleanupHarness'
-import { FakeOpfsRoot, hexName } from './fakeOpfsRoot'
 
 const MAIN = 'database/database.bin'
 
@@ -133,36 +132,6 @@ describe('the store each platform gets', () => {
         const read = await app.readMainFile()
         expect(Array.from(read.bytes ?? [])).toEqual([7])
         expect(server.requestsTo('/api/read').length).toBe(1)
-    })
-
-    test('OPFS main store: the main file and the backups are read and written in OPFS and the IndexedDB copy is never touched', async () => {
-        const { OpfsStorage } = await import('src/ts/storage/opfsStorage')
-        const root = new FakeOpfsRoot()
-        const opfs = new OpfsStorage()
-        opfs.opfs = root as unknown as FileSystemDirectoryHandle
-        h.forage.realStorage = opfs
-        root.files.set(hexName(MAIN), bytes(9, 9))
-        root.files.set(hexName('database/dbbackup-5.bin'), bytes(5))
-        // The stale copy that stays in IndexedDB after a profile moved to OPFS.
-        await profile.clear()
-        await profile.setItem(MAIN, bytes(1))
-        await profile.setItem('database/dbbackup-1.bin', bytes(1))
-        const idbRead = vi.spyOn(IDBObjectStore.prototype, 'get')
-        const idbWrite = vi.spyOn(IDBObjectStore.prototype, 'put')
-
-        const read = await app.readMainFile()
-        await app.writeMainFile(bytes(2, 2))
-        const store = await app.getAppStore()
-        await store.write('database/dbbackup-6.bin', bytes(6), 'unconditional')
-        const backups = await store.list('database/dbbackup-')
-
-        expect(Array.from(read.bytes ?? [])).toEqual([9, 9])
-        expect(Array.from(root.files.get(hexName(MAIN)) ?? [])).toEqual([2, 2])
-        expect(backups.sort()).toEqual(['database/dbbackup-5.bin', 'database/dbbackup-6.bin'])
-        expect(idbRead).not.toHaveBeenCalled()
-        expect(idbWrite).not.toHaveBeenCalled()
-        expect(Array.from((await profile.getItem<Uint8Array>(MAIN)) ?? [])).toEqual([1])
-        expect(Array.from((await profile.getItem<Uint8Array>('database/dbbackup-1.bin')) ?? [])).toEqual([1])
     })
 
     test('IndexedDB: the pinned IndexedDB store over the database upstream already uses', async () => {

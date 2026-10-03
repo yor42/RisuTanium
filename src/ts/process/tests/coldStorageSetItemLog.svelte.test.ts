@@ -4,9 +4,10 @@
  * every logged object reachable for as long as it is open, which would defeat
  * the memory the boot archive pass exists to free.
  *
- * The real `setColdStorageItem` runs; only the OPFS storage backend underneath
- * is a stand-in. A passing test here says nothing about the Tauri or Node
- * backends, which log through the same line.
+ * The real `setColdStorageItem` runs; only the page's byte store underneath is
+ * a stand-in (a key/value model, with an OPFS directory that must stay empty).
+ * A passing test here says nothing about the real stores, which log through
+ * the same line.
  *
  * Tests titled `guard:` hold both before and after the change; every other
  * test fails without it.
@@ -233,6 +234,8 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 })
 
 import { setColdStorageItem } from '../coldstorage.svelte'
+import { injectAppStore } from '../../storage/store/appStore'
+import { createForageBackedStore } from '../../storage/tests/forageBackedStore'
 
 const KEY = '00000000-0000-4000-8000-0000000000aa'
 const MARKER = 'name-that-only-the-unit-value-holds'
@@ -241,6 +244,13 @@ let logSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
     opfsStore.clear()
+    forageMem.clear()
+    injectAppStore(createForageBackedStore({
+        getItem: async (key) => forageMem.get(key) ?? null,
+        setItem: async (key, value) => { forageMem.set(key, value) },
+        keys: async () => Array.from(forageMem.keys()),
+        removeItem: async (key) => { forageMem.delete(key) },
+    }))
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 })
 
@@ -259,7 +269,8 @@ describe('setColdStorageItem logging', () => {
         const written = await setColdStorageItem(KEY, { character: { chaId: 'c1', name: MARKER, chats: [] } })
 
         expect(written).toBe(true)
-        expect(opfsStore.has(`coldstorage_${KEY}.json`)).toBe(true)
+        expect(forageMem.has(`coldstorage/${KEY}`)).toBe(true)
+        expect(opfsStore.size).toBe(0)
         expect(everythingLogged()).toContain(KEY)
     })
 

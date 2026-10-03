@@ -3,26 +3,26 @@
  * succeed later: `readColdStorageItem`, `preLoadChat` and
  * `retryLegacyColdChatLoad` in `../coldstorage.svelte`, run for real over the
  * real fflate decoder, with only the storage underneath replaced by stand-ins
- * (an OPFS `navigator.storage`, a Node `getItem`, a Tauri `readFile`). A pass
- * here says nothing about a real browser, Node server or Tauri file system.
+ * (a page byte store per platform, and for the web an OPFS `navigator.storage`
+ * holding legacy unit files). A pass here says nothing about a real browser,
+ * Node server or Tauri file system.
  *
  * Invariants pinned here:
  * - A read stays `status: 'error'` whatever its cause; the cause travels
- *   beside it as `kind`. `'unavailable'` is set only on the OPFS branch, only
- *   when `navigator.storage` or its `getDirectory` function does not exist.
+ *   beside it as `kind`. A browser with no `navigator.storage.getDirectory`
+ *   has no legacy unit file, so an absent unit there is `'missing'`; a
  *   `getDirectory` that exists and rejects is a plain read error, and the Node
  *   and Tauri branches never look at `navigator.storage`.
  * - `kind: 'damaged'` is set when the bytes were obtained but do not decode:
  *   truncated or garbage compression, valid compression holding invalid JSON,
- *   or, on the browser-storage and desktop paths, nothing at all. The Node
- *   storage reads an empty body as an absent unit, so there it is missing.
- * - `preLoadChat` and `retryLegacyColdChatLoad` resolve `'unavailable'` or
- *   `'damaged'` for those reads, and `'damaged'` for a decoded value that is
- *   not a chat. A plain read error stays `'error'`, a missing unit `'missing'`.
+ *   or nothing at all (a zero-length value is a value on every platform).
+ * - `preLoadChat` and `retryLegacyColdChatLoad` resolve `'damaged'` for those
+ *   reads, and `'damaged'` for a decoded value that is not a chat. A plain
+ *   read error stays `'error'`, a missing unit `'missing'`.
  *   None of them mutates the chat or rejects. The legacy side-field merge
  *   failure stays `'error'`: the merge can fail from the live chat as well.
- * - `collectColdStorageBackupPayloads` takes the same branch for a no-storage,
- *   a damaged and a plain-error read of the same unit.
+ * - `collectColdStorageBackupPayloads` takes the same branch for a failed, a
+ *   damaged and a plain-error read of the same unit.
  * - A key that cannot become a storage name (`isSafeColdStorageKey`) reads as
  *   an error of kind `damaged` on every backend, even where the backend would
  *   report the spliced name as absent (a `/` on Tauri, an over-long name on
@@ -41,10 +41,10 @@ import { compressSync } from 'fflate'
 
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
-    node: new Map<string, Uint8Array>(),
-    nodeFailure: null as Error | null,
-    tauri: new Map<string, Uint8Array>(),
-    tauriFailure: null as Error | null,
+    /** The page store's content on each platform: `coldstorage/<key>` (`coldstorage/<key>.json` on the desktop). */
+    units: { node: new Map<string, Uint8Array>(), tauri: new Map<string, Uint8Array>(), web: new Map<string, Uint8Array>() },
+    /** A failure every read of that platform's page store throws. */
+    failure: { node: null as Error | null, tauri: null as Error | null, web: null as Error | null },
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -53,44 +53,23 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock(import('src/ts/globalApi.svelte'), () => ({
-    forageStorage: {
-        realStorage: {
-            getItem: async (key: string) => {
-                if (h.nodeFailure) {
-                    throw h.nodeFailure
-                }
-                // The real server answers a file name longer than the file
-                // system allows (the key travels hex-encoded, 255 bytes at
-                // most) with an empty 200, exactly as it does for a name that
-                // is absent.
-                if (new TextEncoder().encode(key).length * 2 > 255) {
-                    return null
-                }
-                const bytes = h.node.get(key)
-                return bytes && bytes.length > 0 ? bytes : null
-            },
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
+    const platform = () => h.platform.isNodeServer ? 'node' : h.platform.isTauri ? 'tauri' : 'web'
+    const store = createForageBackedStore({
+        getItem: async (key) => {
+            const failure = h.failure[platform()]
+            if (failure) {
+                throw failure
+            }
+            return h.units[platform()].get(key) ?? null
         },
-    },
-}) as unknown as typeof import('src/ts/globalApi.svelte'))
-
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    readFile: async (path: string) => {
-        if (h.tauriFailure) {
-            throw h.tauriFailure
-        }
-        const bytes = h.tauri.get(path)
-        if (!bytes) {
-            throw new Error(`No such file or directory (os error 2): ${path}`)
-        }
-        return bytes
-    },
-    exists: async (path: string) => h.tauri.has(path),
-    writeFile: vi.fn(),
-    mkdir: vi.fn(),
-    readDir: vi.fn(async () => []),
-    BaseDirectory: { AppData: 0 },
-}))
+        setItem: async (key, value) => { h.units[platform()].set(key, value) },
+        keys: async () => Array.from(h.units[platform()].keys()),
+        removeItem: async (key) => { h.units[platform()].delete(key) },
+    })
+    return { getAppStore: async () => store } as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: {} },
@@ -181,13 +160,14 @@ function selectBackend(backend: Backend): void {
     h.platform.isTauri = backend === 'tauri'
 }
 
+/** Places a unit where the backend keeps it: the OPFS backend is a legacy unit file, the others the page store. */
 function putBytes(backend: Backend, key: string, bytes: Uint8Array): void {
     if (backend === 'opfs') {
         opfsFiles.set('coldstorage_' + key + '.json', bytes)
     } else if (backend === 'node') {
-        h.node.set('coldstorage/' + key, bytes)
+        h.units.node.set('coldstorage/' + key, bytes)
     } else {
-        h.tauri.set('./coldstorage/' + key + '.json', bytes)
+        h.units.tauri.set('coldstorage/' + key + '.json', bytes)
     }
 }
 
@@ -207,9 +187,9 @@ const DAMAGED_BYTES: Array<[string, () => Uint8Array]> = [
     [EMPTY_UNIT_LABEL, () => new Uint8Array(0)],
 ]
 
-/** The fixtures a backend can hand the reader as stored bytes: the Node storage never returns an empty body. */
-function damagedBytesFor(backend: Backend): Array<[string, () => Uint8Array]> {
-    return backend === 'node' ? DAMAGED_BYTES.filter(([label]) => label !== EMPTY_UNIT_LABEL) : DAMAGED_BYTES
+/** The fixtures a backend can hand the reader as stored bytes: every backend can hold a zero-length value. */
+function damagedBytesFor(_backend: Backend): Array<[string, () => Uint8Array]> {
+    return DAMAGED_BYTES
 }
 
 type ReadResult = Awaited<ReturnType<typeof readColdStorageItem>>
@@ -252,10 +232,10 @@ beforeEach(() => {
     selectBackend('opfs')
     opfsFiles.clear()
     opfsFailure = null
-    h.node.clear()
-    h.nodeFailure = null
-    h.tauri.clear()
-    h.tauriFailure = null
+    for (const platform of ['node', 'tauri', 'web'] as const) {
+        h.units[platform].clear()
+        h.failure[platform] = null
+    }
     Object.defineProperty(navigator, 'storage', { configurable: true, value: opfsStorage })
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -268,34 +248,37 @@ afterEach(() => {
 
 //#endregion
 
-describe('a read on a page with no storage for archived data', () => {
-    test('with navigator.storage removed the read is an error of kind unavailable', async () => {
-        const result = await withNavigatorStorage(undefined, () => readColdStorageItem('any-key'))
+describe('a read on a web page whose browser offers no OPFS', () => {
+    // No legacy unit file can exist there, so an absent unit is absent, not a
+    // page without storage for archived data.
+    test.each([
+        ['navigator.storage removed', undefined],
+        ['navigator.storage present but without getDirectory', {}],
+        ['getDirectory present but not a function', { getDirectory: 'not a function' }],
+    ])('new behaviour: with %s an absent unit is missing', async (_label, storage) => {
+        const result = await withNavigatorStorage(storage, () => readColdStorageItem('any-key'))
 
-        expect(result.status).toBe('error')
-        expect(kindOf(result)).toBe('unavailable')
+        expect(result).toEqual({ status: 'missing' })
     })
 
-    test('with navigator.storage present but without getDirectory the read is an error of kind unavailable', async () => {
-        const result = await withNavigatorStorage({}, () => readColdStorageItem('any-key'))
+    test('new behaviour: with navigator.storage removed a unit the page store holds is ok', async () => {
+        h.units.web.set('coldstorage/stored', encodeUnit({ character: { chaId: 'a' } }))
 
-        expect(result.status).toBe('error')
-        expect(kindOf(result)).toBe('unavailable')
+        const result = await withNavigatorStorage(undefined, () => readColdStorageItem('stored'))
+
+        expect(result).toEqual({ status: 'ok', value: { character: { chaId: 'a' } } })
     })
 
-    test('with getDirectory present but not a function the read is an error of kind unavailable', async () => {
-        const result = await withNavigatorStorage({ getDirectory: 'not a function' }, () => readColdStorageItem('any-key'))
+    test('guard: a failing page store read is a plain read error with no kind, with or without navigator.storage', async () => {
+        h.failure.web = new Error('IndexedDB read failed')
 
-        expect(result.status).toBe('error')
-        expect(kindOf(result)).toBe('unavailable')
-    })
+        const without = await withNavigatorStorage(undefined, () => readColdStorageItem('any-key'))
+        const withStorage = await readColdStorageItem('any-key')
 
-    test('guard: the no-storage read stays status error, never missing and never ok', async () => {
-        const result = await withNavigatorStorage(undefined, () => readColdStorageItem('any-key'))
-
-        expect(result.status).toBe('error')
-        expect(result.status).not.toBe('missing')
-        expect(result).toHaveProperty('error')
+        expect(without.status).toBe('error')
+        expect(kindOf(without)).toBeUndefined()
+        expect(withStorage.status).toBe('error')
+        expect(kindOf(withStorage)).toBeUndefined()
     })
 
     test('guard: a getDirectory that exists and rejects is a plain read error with no kind', async () => {
@@ -318,8 +301,8 @@ describe('a read on a page with no storage for archived data', () => {
 
     test.each(['node', 'tauri'] as const)('guard: a failing %s read with navigator.storage removed is a plain read error with no kind', async (backend) => {
         selectBackend(backend)
-        h.nodeFailure = new Error('server answered 500')
-        h.tauriFailure = new Error('permission denied')
+        h.failure.node = new Error('server answered 500')
+        h.failure.tauri = new Error('permission denied')
 
         const result = await withNavigatorStorage(undefined, () => readColdStorageItem('unit-key'))
 
@@ -367,11 +350,14 @@ describe('a read whose bytes were obtained but do not decode', () => {
         expect((result as { error: unknown }).error).toBeTruthy()
     })
 
-    test('guard: on node a zero-length unit is missing, because the Node storage reads an empty body as absent', async () => {
+    test('new behaviour: on node a zero-length unit is a value that does not decode, so it is damaged and not missing', async () => {
         selectBackend('node')
         putBytes('node', 'unit-key', new Uint8Array(0))
 
-        expect(await readColdStorageItem('unit-key')).toEqual({ status: 'missing' })
+        const result = await readColdStorageItem('unit-key')
+
+        expect(result.status).toBe('error')
+        expect(kindOf(result)).toBe('damaged')
     })
 
     test.each(BACKENDS)('guard: on %s a unit that decodes is ok', async (backend) => {
@@ -383,13 +369,13 @@ describe('a read whose bytes were obtained but do not decode', () => {
 })
 
 describe('preLoadChat on a pointer chat', () => {
-    test('with no storage it resolves unavailable and leaves the chat untouched', async () => {
+    test('new behaviour: with no OPFS an absent unit resolves missing and leaves the chat untouched', async () => {
         const chat = installChat(pointerChat('chat-unit'))
         const before = snapshot(chat)
 
         const result = await withNavigatorStorage(undefined, () => preLoadChat(0, 0))
 
-        expect(result).toBe('unavailable')
+        expect(result).toBe('missing')
         expect(snapshot(chat)).toBe(before)
     })
 
@@ -456,23 +442,24 @@ describe('preLoadChat on a pointer chat', () => {
         expect(chat.message.map((m) => m.data)).toEqual(['archived'])
     })
 
-    test('never rejects for a no-storage or damaged read', async () => {
+    test('never rejects for a failed or damaged read', async () => {
         installChat(pointerChat('chat-unit'))
         putBytes('opfs', 'chat-unit', new Uint8Array([1, 2, 3, 4]))
 
         await expect(preLoadChat(0, 0)).resolves.toBe('damaged')
-        await expect(withNavigatorStorage(undefined, () => preLoadChat(0, 0))).resolves.toBe('unavailable')
+        h.failure.web = new Error('IndexedDB read failed')
+        await expect(withNavigatorStorage(undefined, () => preLoadChat(0, 0))).resolves.toBe('error')
     })
 })
 
 describe('retryLegacyColdChatLoad on a chat holding the legacy error text', () => {
-    test('with no storage it resolves unavailable and leaves the chat untouched', async () => {
+    test('new behaviour: with no OPFS an absent unit resolves missing and leaves the chat untouched', async () => {
         const chat = installChat(errorTextChat('chat-unit'))
         const before = snapshot(chat)
 
         const result = await withNavigatorStorage(undefined, () => retryLegacyColdChatLoad(0, 0))
 
-        expect(result).toBe('unavailable')
+        expect(result).toBe('missing')
         expect(snapshot(chat)).toBe(before)
     })
 
@@ -546,7 +533,10 @@ describe('the backup collector takes one branch for every unreadable unit', () =
             opfsFailure = new StandInNotReadableError('the file could not be read')
             return collectColdStorageBackupPayloads(db())
         }],
-        ['no storage on the page', async () => withNavigatorStorage(undefined, () => collectColdStorageBackupPayloads(db()))],
+        ['a page store that cannot be read', async () => {
+            h.failure.web = new Error('IndexedDB read failed')
+            return collectColdStorageBackupPayloads(db())
+        }],
         ['stored bytes that do not decode', async () => {
             opfsFiles.set('coldstorage_' + KEY + '.json', new Uint8Array([1, 2, 3, 4]))
             return collectColdStorageBackupPayloads(db())

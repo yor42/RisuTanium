@@ -1,6 +1,7 @@
 /**
- * Real cross-tab mutual exclusion for a storage-backend switch initiated from
- * Settings (`enableOpfs()`/`disableOpfs()`), built on the browser's Web Locks
+ * Real cross-tab mutual exclusion for an operation that must run with no other
+ * tab alive (the copy back of an OPFS-main profile into IndexedDB at startup,
+ * `opfsCopyBack.ts`, and the restores), built on the browser's Web Locks
  * API (`navigator.locks`) rather than a ping-and-wait heartbeat — a
  * timeout-based liveness check can never be a genuine guarantee (a
  * backgrounded/suspended tab may simply not get to run its event loop in
@@ -19,10 +20,10 @@
  * "suspended peer missed the ping" and "new tab opened mid-switch" gaps a
  * heartbeat approach cannot.
  *
- * This exclusion also covers the boot copy in `AutoStorage.Init()`, which
- * takes the same exclusive lock around its own copy so that a second tab
- * opening mid-copy waits for it and then reads the already-settled outcome
- * instead of racing a copy of its own.
+ * This exclusion also covers the copy back from OPFS at startup, which takes
+ * the same exclusive lock around its own copy so that a second tab opening
+ * mid-copy waits for it and then reads the already-settled outcome instead of
+ * racing a copy of its own.
  *
  * A page that only ever WAITS on this lock (queued for exclusive access, or
  * timed out) can still lose a race the lock itself cannot see: a queued
@@ -42,7 +43,7 @@
  * ran during this attempt's own lifetime, so this attempt reloads instead
  * of proceeding or letting its caller's save loop resume. A page with no
  * persisted reading yet -- still inside its own first `AutoStorage.Init()`,
- * e.g. a boot-copy participant -- skips both comparisons instead of
+ * or one whose epoch store could not be read -- skips both comparisons instead of
  * reloading merely for losing an ordinary queued race for this same lock
  * against another such page; see `acquireExclusiveStorageMigrationLock()`'s
  * own doc comment for the full gating and exactly which holds a mismatch
@@ -112,18 +113,19 @@ export interface StorageTabLocks {
      * alone, and does not need to: both mean "stop, nothing was granted").
      * Internally also acquires the write lock passed to
      * `createStorageTabLocks()` — callers must NOT separately acquire it
-     * themselves. A caller that reloads right after its migration may leave
-     * the lock unreleased; one that carries on in this page (a failed
-     * `disableOpfs()`, the boot copy in `AutoStorage.Init()`) must call the
-     * release function once its migration is fully done.
+     * themselves. A caller that reloads right after its operation may leave
+     * the lock unreleased; one that carries on in this page (the copy back
+     * from OPFS at startup) must call the release function once its
+     * operation is fully done.
      *
      * **The storage epoch.** Every successful grant writes a fresh random
      * token to the shared per-origin epoch store before returning it to the
      * caller, so a later attempt (by this page or another) can tell whether
      * some exclusive operation ran in between. This attempt's own baseline
      * is whichever of these is available: this instance's persisted
-     * reading (see `recordStorageEpoch()` -- a boot-copy participant, still
-     * inside `AutoStorage.Init()`, has none yet) if it has one, or else a
+     * reading (see `recordStorageEpoch()` -- a page still inside
+     * `AutoStorage.Init()`, or one whose epoch store could not be read, has
+     * none) if it has one, or else a
      * fresh reading taken right now, before this attempt even queues. Two
      * points compare the current token against that baseline, both gated
      * the same way -- **only when this instance already has a persisted
@@ -146,9 +148,7 @@ export interface StorageTabLocks {
      * comparison against each other's own concurrent grant+bump with no
      * third party involved, spuriously reloading whichever one merely lost
      * (or timed out waiting behind) the ordinary queued race for the lock
-     * itself -- exactly a boot-copy participant's own first attempt inside
-     * `AutoStorage.Init()`, which keeps CHORE-39's own re-read of the
-     * migration marker and the flag instead. A persisted reading, once this
+     * itself. A persisted reading, once this
      * instance has one, was always taken at a distinct, already-settled
      * earlier point (a prior grant of this instance's own, or an explicit
      * `recordStorageEpoch()` call), so comparing against it never races
@@ -174,8 +174,7 @@ export interface StorageTabLocks {
      * if called more than once (including with a different argument on a
      * later call — the first call's argument wins). Called with no
      * argument (or `false`), it releases the write lock too, exactly as
-     * every existing caller (`enableOpfs`/`disableOpfs`, the boot copy)
-     * expects. Called with `true`, it releases only the cross-tab
+     * the copy back from OPFS at startup expects. Called with `true`, it releases only the cross-tab
      * exclusive Web Lock and restores this tab's own shared presence,
      * leaving the write lock closed forever — for a caller whose own write
      * has already landed and who will never write this key again from
@@ -228,8 +227,7 @@ export interface StorageTabLocks {
  * write mutex. Production (`globalApi.svelte.ts`) builds exactly one instance
  * per page, passing `navigator.locks` and the same `dbWriteLock` object that
  * `saveDb()` and `LoadLocalBackup()`'s restore write take — a second production instance would let
- * an autosave land in the new backend after `disableOpfs()`/`enableOpfs()`
- * already read it, and would give the tab a second shared hold that blocks
+ * an autosave land in the middle of an exclusive operation, and would give the tab a second shared hold that blocks
  * its own exclusive request. Tests build one instance per simulated tab
  * against a fake lock manager instead. `options` lets a test inject the
  * epoch store `recordStorageEpoch()` reads from, and/or the reload function;
@@ -330,12 +328,9 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
             // Gated on this instance actually having a persisted reading,
             // exactly like the grant path below and for the identical
             // reason: a page still inside its own first-ever
-            // `AutoStorage.Init()` (a boot-copy participant) has no
-            // baseline that means anything yet, so it skips this check
-            // entirely and keeps CHORE-39's own re-read of the migration
-            // marker and the flag, which `AutoStorage` takes under its
-            // restored presence hold after this call returns null, instead
-            // of reloading merely for losing this race.
+            // `AutoStorage.Init()` has no baseline that means anything yet,
+            // so it skips this check entirely instead of reloading merely
+            // for losing this race.
             if (hasRecordedEpoch) {
                 let epochNow: string | null
                 let epochReadFailed = false
@@ -419,8 +414,8 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
             // Restores this tab's shared presence hold, freeing a new tab
             // (or this same tab's own next attempt) to proceed against an
             // exclusive hold that has nothing left to do. It matters for
-            // disableOpfs()'s failure path and for the boot copy in
-            // AutoStorage.Init(), whose success path never reloads.
+            // the copy back from OPFS at startup, whose success path never
+            // reloads.
             await acquireOwnSharedPresenceLock()
             if (!keepWriteLock) {
                 // Gives back the write lock so saveDb() can write again. A

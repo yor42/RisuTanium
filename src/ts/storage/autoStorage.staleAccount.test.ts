@@ -6,14 +6,14 @@
  * `Init()`'s -- see `bootstrap.staleAccountProfile.svelte.test.ts` for the
  * removal-on-acknowledgement behaviour).
  *
- * Three platform cases, each with `accountst`, `dosync` and
+ * Three cases, each with `accountst`, `dosync` and
  * `fallbackRisuToken` set as a returning account-sync profile would leave
  * them. Every case asserts both that `staleAccountProfile` becomes `true`
  * and that the backend is positively the platform's native one: the real
- * `NodeStorage`, the real `OpfsStorage`, or (for the plain static case) the
+ * `NodeStorage`, or (for the static cases, with or without `opfs_flag!`) the
  * exact object `localforage.createInstance({ name: 'risuai' })` returns.
  *
- * Real, unmocked: `AutoStorage`, `NodeStorage`, `OpfsStorage` (this file's
+ * Real, unmocked: `AutoStorage`, `NodeStorage` (this file's
  * subject); `alert.ts` (a thin wrapper `AutoStorage` imports `alertStore`
  * from, needing only mocked leaves); `src/lang` (real, needed by `alert.ts`
  * and `NodeStorage`).
@@ -23,11 +23,9 @@
  * getter backed by a hoisted flag, toggled per test; `isTauri` fixed `false`,
  * since `Init()`'s stale-profile detection is a non-Tauri-only path),
  * `globalApi.svelte` (`tabPresenceLockAcquired` and a no-op
- * `recordStorageEpoch`, since every scenario here settles `Init()` on a path
- * that records; `acquireExclusiveStorageMigrationLock` is never reached in
- * any of these three cases), `storage/database.svelte` (just
+ * `recordStorageEpoch`), `storage/database.svelte` (just
  * `getDatabase`, needed by `alert.ts`), `util` (the handful of leaves
- * `alert.ts`/`NodeStorage`/`OpfsStorage` import but never call in any
+ * `alert.ts`/`NodeStorage` import but never call in any
  * scenario here), `stores.svelte` (just `alertStore`, needed by `alert.ts`).
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
@@ -77,7 +75,6 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 
 import { AutoStorage } from './autoStorage'
 import { NodeStorage } from './nodeStorage'
-import { OpfsStorage } from './opfsStorage'
 
 /** Minimal shape `AutoStorage.Init()` actually reads off the global `FileSystemFileHandle` (a truthy `prototype.createWritable`); never constructed or called here. */
 interface MinimalFileSystemFileHandle {
@@ -123,7 +120,7 @@ describe('AutoStorage.Init() detects a stale account-sync profile and lands on t
         expectFlagsUntouched()
     })
 
-    test('static build, OPFS backend (opfs_flag! able)', async () => {
+    test('static build with opfs_flag! set (regression reproducer): the storage object still lands on LocalForage and leaves the flag for the page store to decide', async () => {
         setStaleAccountFlags()
         localStorage.setItem('opfs_flag!', 'able')
         Object.defineProperty(window.navigator, 'storage', {
@@ -143,14 +140,11 @@ describe('AutoStorage.Init() detects a stale account-sync profile and lands on t
 
         await storage.Init()
 
-        // Same invariant as the LocalForage case: an accountst === 'able'
-        // profile must still land on the OPFS backend the platform would
-        // otherwise choose.
-        expect(storage.realStorage).toBeInstanceOf(OpfsStorage)
+        expect(storage.realStorage).toBe(localforageCreateInstanceMock.mock.results[0].value)
         expect(storage.staleAccountProfile).toBe(true)
+        expect(localStorage.getItem('opfs_flag!')).toBe('able')
         expectFlagsUntouched()
     })
-
     test('Node server backend', async () => {
         setStaleAccountFlags()
         platformState.isNodeServer = true

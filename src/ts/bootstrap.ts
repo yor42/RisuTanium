@@ -32,7 +32,7 @@ import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from ".
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAtomicWriteTemps } from "./storage/tauriAtomicWrite";
-import { AppStoreUnavailableError, getAppStore, readMainFile, writeMainFile } from "./storage/store/appStore";
+import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice, writeMainFile } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
 import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
@@ -111,6 +111,12 @@ export async function loadData() {
                 // error the sweep would only log.
                 if (await exists('remotes', { baseDir: BaseDirectory.AppData })) {
                     await sweepAtomicWriteTemps('remotes')
+                }
+                // Units are written atomically too, by the boot archive pass,
+                // restores and plugins later in this page load, and the folder
+                // is created by the first unit write.
+                if (await exists('coldstorage', { baseDir: BaseDirectory.AppData })) {
+                    await sweepAtomicWriteTemps('coldstorage')
                 }
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
@@ -219,9 +225,11 @@ export async function loadData() {
                 // takes the backup route; it is never written over.
                 let gotStorage: Uint8Array | null = null
                 let mainReadable = true
+                let mainFileSeeded = false
                 try {
                     gotStorage = (await readMainFile()).bytes
                     if (gotStorage === null) {
+                        mainFileSeeded = true
                         gotStorage = encodeRisuSaveLegacy({})
                         await writeMainFile(gotStorage)
                     }
@@ -265,6 +273,12 @@ export async function loadData() {
                     }
                 }
                 await archiveSession.release()
+                // The OPFS leftovers of a completed copy back are deleted only
+                // after a boot that read an existing main file from the page's
+                // own store and decoded it. A boot that created an empty main
+                // file, or fell back to a backup, leaves them: they may be the
+                // only copy of the profile.
+                const mainFileLoaded = outcome?.kind === 'install' && !mainFileSeeded
                 if (outcome?.kind !== 'install') {
                     const backups = await getDbBackups()
                     let backupLoaded = false
@@ -286,19 +300,20 @@ export async function loadData() {
                     }
                 }
 
-                // CHORE-39: the OPFS boot copy in AutoStorage.Init() records a
-                // reason here instead of posting UI itself, since Init() runs
-                // before setDatabase() above has picked the boot language.
-                // Shown once, after decode, so the notice is translated. Both
-                // this notice and the stale-account notice below are posted
-                // before loadedStore is set; they never collide because this
-                // one is awaited to clear before the stale-account check runs.
-                if (forageStorage.opfsSwitchNotice) {
-                    const notice = forageStorage.opfsSwitchNotice
-                    const message = notice.reason === 'quota' ? language.opfsSwitchNoticeQuota
-                        : notice.reason === 'unsupported' ? language.opfsSwitchNoticeUnsupported
-                        : notice.reason === 'interrupted' ? language.opfsSwitchNoticeInterrupted
-                        : language.opfsSwitchNoticeError(notice.detail ?? '')
+                // A page that runs from OPFS because the copy back into
+                // IndexedDB could not run records its reason in the page's
+                // store selection, which runs before setDatabase() above has
+                // picked the boot language. Shown once, after decode, so the
+                // notice is translated. Both this notice and the stale-account
+                // notice below are posted before loadedStore is set; they never
+                // collide because this one is awaited to clear before the
+                // stale-account check runs.
+                const fallbackNotice = takeStorageFallbackNotice()
+                if (fallbackNotice) {
+                    const message = fallbackNotice.reason === 'space' ? language.opfsFallbackNoticeSpace
+                        : fallbackNotice.reason === 'tab' ? language.opfsFallbackNoticeTab
+                        : fallbackNotice.reason === 'noIndexedDb' ? language.opfsFallbackNoticeNoIndexedDb
+                        : language.opfsFallbackNoticeError(fallbackNotice.detail ?? '')
                     alertNormal(message)
                     await waitForAlertCleared()
                 }
@@ -343,6 +358,10 @@ export async function loadData() {
                 }
                 if (getDatabase().didFirstSetup) {
                     characterURLImport()
+                }
+                if (mainFileLoaded) {
+                    // Never awaited: the clean-up must not delay the app.
+                    void cleanUpCopiedBackOpfs()
                 }
             }
             // Both boot branches reach here on the non-stale path (the

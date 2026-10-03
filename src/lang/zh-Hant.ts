@@ -1724,7 +1724,7 @@ export const languageChineseTraditional = {
     "applyAdditionalParamsToAll": "將額外參數套用至所有模型",
     "localToggles": "本機開關",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     "staleAccountProfileNotice":
         "此瀏覽器的使用者資料使用了此應用程式不支援的 RisuAccount 同步功能。\n\n您現在看到的是開啟同步之前，此瀏覽器儲存的資料。在那之後，其他瀏覽器或裝置可能已經變更了您的資料。您帳號的資料仍保留在 RisuAccount 上。\n\n如果您現在看到的資料中，可能含有您帳號裡沒有的內容，請在匯入任何內容之前，先為其建立本機備份。\n\n若要將帳號的資料帶到這裡，請在上游 RisuAI 上登入，建立本機備份（.bin），然後在此處匯入。若是自架或本機部署的上游版本，請先前往進階設定，開啟「顯示不建議使用的設定」，然後取消勾選「Web Sync 時略過儲存資源」，否則圖片會被遺漏。在 risuai.xyz 上，登入狀態下建立的完整備份無法在此處匯入；匯入畫面會列出可用的替代方案。詳情請參閱遷移指南。\n\n點擊「OK」將重新載入應用程式。",
     "keiImageProviderUnavailable": "此應用程式不支援「Kei」圖像提供商。請在設定中選擇其他圖像提供商。",
@@ -1756,23 +1756,15 @@ export const languageChineseTraditional = {
     "assetIntegrityReportEvicted": (n: number) => `\n已移除 ${n} 個已損毀的快取項目。請重新載入應用程式，修復才會生效。`,
     "assetIntegrityReportLeftInCache": "\n依您的要求，保留於快取中。",
     "assetIntegrityReportNoCorruption": "\n在已檢查的資源中未偵測到損毀。",
-    "opfsEnableConfirm": "將本機儲存空間切換為 OPFS（實驗性）並重新載入應用程式？您現有的本機資料將在重新載入時自動遷移。",
-    "opfsDisableConfirm": "將本機儲存空間切換回預設後端並重新載入應用程式？您現有的 OPFS 資料將在重新載入前自動遷移。",
-    "opfsEnableSpaceWarningConfirm": (usageBytes: number, freeBytes: number) => `此次切換可能沒有足夠的可用空間：目前已使用約 ${(usageBytes / (1024 * 1024)).toFixed(1)} MB，可用空間約 ${(freeBytes / (1024 * 1024)).toFixed(1)} MB。若切換途中失敗，您將保留在目前的儲存空間上，不會遺失任何資料。仍要繼續嗎？`,
-    "opfsDisableRefused": "此分頁目前未使用 OPFS 儲存空間，因此無法從這裡切換回去。",
-    "opfsSwitchNoticeQuota": "儲存後端未被切換：瀏覽器儲存空間不足。您的資料未發生變化，您可以在設定的備份 & 檔案中再次切換。",
-    "opfsSwitchNoticeUnsupported": "儲存後端未被切換：此瀏覽器不支援此次切換所需的功能。您的資料未發生變化，您可以在設定的備份 & 檔案中再次切換。",
-    "opfsSwitchNoticeInterrupted": "儲存後端未被切換：另一個分頁處於開啟狀態，或切換過程被中斷。您的資料未發生變化，您可以在設定的備份 & 檔案中再次切換。",
-    "opfsSwitchNoticeError": (detail: string) => `儲存後端未被切換：${detail}。您的資料未發生變化，您可以在設定的備份 & 檔案中再次切換。`,
+    "opfsCopyBackProgress": (done: number, total: number) => `正在將您的資料移至瀏覽器儲存空間... (${done} / ${total})。請在完成前保持此分頁開啟。`,
+    "opfsFallbackNoticeTab": "本次未能將您的資料移至瀏覽器儲存空間，因為本應用程式的另一個分頁已開啟，或此瀏覽器無法檢查其他分頁。RisuAI 正在使用您現有的資料執行，沒有任何資料遺失。請關閉其他分頁；應用程式下次啟動時會再次嘗試。",
+    "opfsFallbackNoticeSpace": "本次未能將您的資料移至瀏覽器儲存空間，因為可用儲存空間不足。RisuAI 正在使用您現有的資料執行，沒有任何資料遺失。請釋放一些儲存空間；應用程式下次啟動時會再次嘗試。",
+    "opfsFallbackNoticeNoIndexedDb": "本次未能將您的資料移至瀏覽器儲存空間，因為此瀏覽器無法使用 IndexedDB。RisuAI 正在使用您現有的資料執行，沒有任何資料遺失。應用程式下次啟動時會再次嘗試。",
+    "opfsFallbackNoticeError": (detail: string) => `本次未能將您的資料移至瀏覽器儲存空間：${detail}。RisuAI 正在使用您現有的資料執行，沒有任何資料遺失。應用程式下次啟動時會再次嘗試。`,
     "browserStorageUnavailable": "此瀏覽器無法開啟 RisuAI 用來保存您資料的儲存空間，因此沒有載入任何內容，也沒有變更任何內容。請重新載入頁面。若此訊息持續出現，表示此瀏覽器無法儲存 RisuAI 的資料（無痕模式或私密瀏覽，以及過舊的瀏覽器，都可能造成這種情況）：請改用其他瀏覽器開啟 RisuAI，或在非無痕／非私密瀏覽的視窗中開啟。",
-    "storageMigrationLockError": "此應用程式似乎已在另一個分頁中開啟（或您的瀏覽器不支援此處所需的檢查）。請先關閉所有其他分頁，然後再試一次。",
     "backupAndFiles": "備份 & 檔案",
     "assetIntegrityHeading": "資源快取完整性",
     "assetIntegrityDescription": "將快取的圖片/資源與其自身的內容雜湊值進行比對以偵測損毀，無需從儲存空間重新下載任何內容。除非您選擇移除已損毀的項目，否則此操作為唯讀。",
     "assetIntegrityWarnOnStartup": "啟動時若快速取樣檢查發現損毀則發出警告",
     "assetIntegrityVerifyButton": "立即驗證資源快取",
-    "opfsBackendHeading": "本機儲存後端",
-    "opfsBackendDescription": "實驗性功能。相較於預設的 IndexedDB 後端，OPFS 具有更強的寫入原子性。切換後應用程式將重新載入，並自動遷移您現有的本機資料。",
-    "opfsSwitchToDefault": "切換回預設儲存空間",
-    "opfsSwitchToOpfs": "切換到 OPFS 儲存空間（實驗性）"
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

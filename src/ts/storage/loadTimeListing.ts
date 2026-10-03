@@ -1,7 +1,6 @@
-import { BaseDirectory, exists, readDir } from "@tauri-apps/plugin-fs"
-import { forageStorage } from "../globalApi.svelte"
 import { isNodeServer, isTauri } from "../platform"
 import { isSafeColdStorageKey } from "../process/coldStorageKey"
+import { COLD_UNIT_STORE_PREFIX, coldUnitKeyOfStoreKey, legacyOpfsUnitKeyOfName } from "../process/coldUnitLocation"
 import { getAppStore } from "./store/appStore"
 
 /**
@@ -14,43 +13,51 @@ export interface StorageListing {
     assets: ReadonlySet<string>
 }
 
-const UNIT_PREFIX = 'coldstorage/'
 const ASSET_PREFIX = 'assets/'
-const OPFS_UNIT_PREFIX = 'coldstorage_'
-const UNIT_JSON_SUFFIX = '.json'
 
 /** null until a complete listing has been recorded, and again after a listing failed. */
 let recorded: StorageListing | null = null
 
 /**
- * Lists one Tauri app-data directory. A directory that does not exist is an
- * empty listing (the units directory is only created by the first unit
- * write); any other failure rejects, so a listing that could not be taken is
- * never mistaken for an empty one. Whether the directory exists is decided by
- * `exists()`, never by the wording or code of the read error, which differs
- * per platform.
+ * The names of the units kept as OPFS root files before units went through the
+ * byte store. Only the web build can hold any: a browser without
+ * `navigator.storage.getDirectory` has none, so there is nothing to list. A
+ * `getDirectory` that rejects fails the listing, so it is never mistaken for an
+ * empty one.
  */
-async function listTauriDirectory(dir: string): Promise<string[]> {
-    try {
-        const entries = await readDir(dir, { baseDir: BaseDirectory.AppData })
-        return entries.filter((entry) => !entry.isDirectory).map((entry) => entry.name)
-    } catch (error) {
-        if (!await exists(dir, { baseDir: BaseDirectory.AppData })) {
-            return []
-        }
-        throw error
+async function listLegacyOpfsUnitNames(): Promise<string[]> {
+    if (isTauri || isNodeServer || typeof navigator === 'undefined' || typeof navigator.storage?.getDirectory !== 'function') {
+        return []
     }
+    const opfs = await navigator.storage.getDirectory()
+    const names: string[] = []
+    for await (const [name] of opfs.entries()) {
+        const key = legacyOpfsUnitKeyOfName(name)
+        if (key !== null) {
+            names.push(key)
+        }
+    }
+    return names
 }
 
-async function listOpfsUnits(): Promise<string[]> {
-    const opfs = await navigator.storage.getDirectory()
-    const keys: string[] = []
-    for await (const [name] of opfs.entries()) {
-        if (name.startsWith(OPFS_UNIT_PREFIX) && name.endsWith(UNIT_JSON_SUFFIX)) {
-            keys.push(name.slice(OPFS_UNIT_PREFIX.length, -UNIT_JSON_SUFFIX.length))
+/**
+ * Every stored name that may be a unit: the page store's entries under
+ * `coldstorage/` (on the desktop the `.json` files directly in that folder),
+ * united on the web with the legacy OPFS unit files. The names are not checked
+ * against the key rule. Rejects when either listing cannot be taken.
+ */
+export async function listStoredUnitNames(): Promise<string[]> {
+    const names = new Set<string>()
+    for (const storeKey of await (await getAppStore()).list(COLD_UNIT_STORE_PREFIX)) {
+        const name = coldUnitKeyOfStoreKey(storeKey)
+        if (name !== null) {
+            names.add(name)
         }
     }
-    return keys
+    for (const name of await listLegacyOpfsUnitNames()) {
+        names.add(name)
+    }
+    return Array.from(names)
 }
 
 /**
@@ -76,28 +83,14 @@ function safeUnitKeys(names: Iterable<string>): Set<string> {
 
 /**
  * Lists the units and the assets on the current backend right now. Rejects
- * when either listing cannot be taken. Units are listed from their own
- * directory or prefix; assets always through the byte store, so a Node server
- * answers two listings. Only stored names that can be unit keys
- * (`isSafeColdStorageKey`) are listed as units.
+ * when either listing cannot be taken. Units and assets both come from the
+ * page's byte store, the units also from the legacy OPFS files on the web. Only
+ * stored names that can be unit keys (`isSafeColdStorageKey`) are listed as
+ * units.
  */
 export async function takeStorageListing(): Promise<StorageListing> {
-    if (isTauri) {
-        const unitNames = await listTauriDirectory('coldstorage')
-        return {
-            units: safeUnitKeys(unitNames.filter((name) => name.endsWith(UNIT_JSON_SUFFIX)).map((name) => name.slice(0, -UNIT_JSON_SUFFIX.length))),
-            assets: await listAssetKeys(),
-        }
-    }
-    const keys = await forageStorage.keys()
-    const assets = await listAssetKeys()
-    if (isNodeServer) {
-        return {
-            units: safeUnitKeys(keys.filter((key) => key.startsWith(UNIT_PREFIX)).map((key) => key.slice(UNIT_PREFIX.length))),
-            assets,
-        }
-    }
-    return { units: safeUnitKeys(await listOpfsUnits()), assets }
+    const units = safeUnitKeys(await listStoredUnitNames())
+    return { units, assets: await listAssetKeys() }
 }
 
 /**

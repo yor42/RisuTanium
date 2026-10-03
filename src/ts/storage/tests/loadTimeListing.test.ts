@@ -6,10 +6,11 @@
  * clean-up suite's concern.
  *
  * Only platform boundaries are faked: the key listing behind the byte store
- * (assets on the web and on a Node server) and of `forageStorage` (units on a
- * Node server), the OPFS root directory (units on the web), and the plugin-fs
- * directory reads (assets and units on Tauri; the assets go through the real
- * desktop store). Nothing here proves native backend behaviour.
+ * (assets and units on the web and on a Node server), the OPFS root directory
+ * (the legacy unit files on the web), and the plugin-fs directory reads (assets
+ * and units on Tauri, both through the real desktop store). Nothing here proves
+ * native backend behaviour. The listing over the real stores is in
+ * `process/tests/coldUnitsWeb.test.ts` and `process/tests/coldUnitsTauri.test.ts`.
  *
  * Tests titled `guard` pin behaviour that holds before and after the assets
  * moved behind the byte store; `reproducer` tests fail against the listing that

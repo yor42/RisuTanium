@@ -195,7 +195,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => {
     return {
         forageStorage: {
             staleAccountProfile: false,
-            opfsSwitchNotice: null,
             get realStorage() { return world.storage },
             Init: vi.fn(async () => { }),
             getItem: (key: string) => storage().getItem(key),

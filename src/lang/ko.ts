@@ -1678,7 +1678,7 @@ export const languageKorean = {
     applyAdditionalParamsToAll: "모든 모델에 추가 매개변수 적용",
     localToggles: "로컬 토글",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     staleAccountProfileNotice:
         "이 브라우저 프로필은 이 앱이 지원하지 않는 RisuAccount 동기화를 사용했습니다.\n\n지금 보이는 것은 동기화를 켜기 전에 이 브라우저에 저장되어 있던 데이터입니다. 그 이후 다른 브라우저나 기기에서 데이터가 변경되었을 수 있습니다. 계정의 데이터는 여전히 RisuAccount에 남아 있습니다.\n\n지금 보이는 데이터에 계정에는 없는 내용이 들어 있을 수 있다면, 무엇이든 가져오기 전에 먼저 로컬 백업을 만들어 두세요.\n\n계정의 데이터를 이곳으로 가져오려면, 업스트림 RisuAI에 로그인한 뒤 로컬 백업(.bin)을 만들어 이곳에서 가져오세요. 셀프 호스팅 또는 로컬 업스트림에서는 먼저 고급 설정으로 이동해 \"비권장 설정 보이기\"를 켠 다음 \"Skip Saving Assets on Web Sync\"의 선택을 해제하세요. 그렇지 않으면 이미지가 빠집니다. risuai.xyz에서는 로그인한 상태로 만든 전체 백업을 이곳으로 가져올 수 없습니다. 가져오기 화면에 대안이 안내되어 있습니다. 자세한 내용은 마이그레이션 가이드를 참고하세요.\n\nOK를 누르면 앱이 새로고침됩니다.",
     keiImageProviderUnavailable: "\"Kei\" 이미지 공급자는 이 앱에서 사용할 수 없습니다. 설정에서 다른 이미지 공급자를 선택하세요.",
@@ -1710,23 +1710,15 @@ export const languageKorean = {
     assetIntegrityReportEvicted: (n: number) => `\n손상된 캐시 항목 ${n}개를 제거했습니다. 수정 사항을 적용하려면 앱을 새로고침하세요.`,
     assetIntegrityReportLeftInCache: "\n요청하신 대로 캐시에 남겨두었습니다.",
     assetIntegrityReportNoCorruption: "\n확인한 에셋에서 손상이 발견되지 않았습니다.",
-    opfsEnableConfirm: "로컬 저장소를 OPFS(실험적 기능)로 전환하고 앱을 새로고침하시겠습니까? 기존 로컬 데이터는 새로고침 시 자동으로 마이그레이션됩니다.",
-    opfsDisableConfirm: "로컬 저장소를 기본 백엔드로 되돌리고 앱을 새로고침하시겠습니까? 기존 OPFS 데이터는 새로고침 전에 자동으로 마이그레이션됩니다.",
-    opfsEnableSpaceWarningConfirm: (usageBytes: number, freeBytes: number) => `전환 시 여유 공간이 부족할 수 있습니다: 사용 중인 용량 약 ${(usageBytes / (1024 * 1024)).toFixed(1)} MB, 여유 공간 약 ${(freeBytes / (1024 * 1024)).toFixed(1)} MB. 도중에 실패하더라도 현재 저장소를 그대로 사용하며 데이터는 손실되지 않습니다. 계속하시겠습니까?`,
-    opfsDisableRefused: "이 탭은 현재 OPFS 저장소를 사용하고 있지 않으므로, 여기서 되돌릴 것이 없습니다.",
-    opfsSwitchNoticeQuota: "저장소 백엔드가 전환되지 않았습니다: 브라우저의 저장 공간이 부족합니다. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.",
-    opfsSwitchNoticeUnsupported: "저장소 백엔드가 전환되지 않았습니다: 이 브라우저는 전환에 필요한 기능을 지원하지 않습니다. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.",
-    opfsSwitchNoticeInterrupted: "저장소 백엔드가 전환되지 않았습니다: 다른 탭이 열려 있었거나 전환이 중단되었습니다. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.",
-    opfsSwitchNoticeError: (detail: string) => `저장소 백엔드가 전환되지 않았습니다: ${detail}. 데이터는 변경되지 않았으며, 설정의 백업 & 파일에서 다시 전환할 수 있습니다.`,
+    opfsCopyBackProgress: (done: number, total: number) => `데이터를 브라우저 저장소로 옮기는 중입니다... (${done} / ${total}). 완료될 때까지 이 탭을 열어 두세요.`,
+    opfsFallbackNoticeTab: "이번에는 이 앱의 다른 탭이 열려 있거나 이 브라우저가 다른 탭을 확인할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuAI는 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 다른 탭을 닫아 주세요. 앱을 다음에 시작할 때 다시 시도합니다.",
+    opfsFallbackNoticeSpace: "이번에는 여유 저장 공간이 부족해서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuAI는 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 저장 공간을 확보해 주세요. 앱을 다음에 시작할 때 다시 시도합니다.",
+    opfsFallbackNoticeNoIndexedDb: "이번에는 이 브라우저에서 IndexedDB를 사용할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuAI는 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.",
+    opfsFallbackNoticeError: (detail: string) => `이번에는 데이터를 브라우저 저장소로 옮기지 못했습니다: ${detail}. RisuAI는 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.`,
     browserStorageUnavailable: "이 브라우저가 RisuAI가 데이터를 보관하는 저장소를 열지 못해 아무것도 불러오지 못했고, 아무것도 변경되지 않았습니다. 페이지를 새로고침하세요. 이 메시지가 계속 나타난다면 이 브라우저는 RisuAI의 데이터를 저장할 수 없는 환경입니다 (시크릿 모드나 매우 오래된 브라우저가 원인일 수 있습니다). 다른 브라우저에서 RisuAI를 열거나, 시크릿 모드가 아닌 창에서 여세요.",
-    storageMigrationLockError: "이 앱의 다른 탭이 열려 있는 것 같습니다 (또는 브라우저가 여기 필요한 검사를 지원하지 않습니다). 먼저 다른 모든 탭을 닫은 후 다시 시도하세요.",
     backupAndFiles: "백업 & 파일",
     assetIntegrityHeading: "에셋 캐시 무결성",
     assetIntegrityDescription: "캐시된 이미지/에셋을 자체 콘텐츠 해시와 대조해 손상 여부를 확인하며, 저장소에서 다시 다운로드하지는 않습니다. 손상된 항목을 제거하도록 선택하지 않는 한 읽기 전용입니다.",
     assetIntegrityWarnOnStartup: "시작 시 빠른 샘플 검사에서 손상이 발견되면 경고 표시",
     assetIntegrityVerifyButton: "지금 에셋 캐시 검증",
-    opfsBackendHeading: "로컬 스토리지 백엔드",
-    opfsBackendDescription: "실험적 기능입니다. OPFS는 기본 IndexedDB 백엔드보다 쓰기 원자성이 더 강력합니다. 전환하면 앱이 새로고침되며 기존 로컬 데이터가 자동으로 마이그레이션됩니다.",
-    opfsSwitchToDefault: "기본 저장소로 되돌리기",
-    opfsSwitchToOpfs: "OPFS 저장소로 전환 (실험적 기능)",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

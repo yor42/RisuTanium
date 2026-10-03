@@ -178,7 +178,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         staleAccountProfile: false,
-        opfsSwitchNotice: null,
         Init: vi.fn(async () => { }),
         getItem: vi.fn(async (key: string) => world.items.get(key) ?? null),
         setItem: vi.fn(async () => { }),

@@ -5,12 +5,12 @@ import { indexedDbAddressableViolation, indexedDbCreatableViolation } from './ke
 import type { OpfsStorage } from '../opfsStorage'
 
 /**
- * A byte store over the `OpfsStorage` instance that `AutoStorage` selected, for
- * a profile whose main store was moved to OPFS. Used only while the OPFS main
- * store is selected: such a profile keeps its main file and numbered backups in
- * OPFS, and the copy of those keys that IndexedDB still holds is stale, so
- * nothing here reads or writes IndexedDB. It goes away together with the OPFS
- * switch.
+ * A byte store over an `OpfsStorage`, for a page whose profile's main store is
+ * still OPFS because the copy back into IndexedDB at startup could not run
+ * (`opfsCopyBack.ts`). Such a profile keeps its main file, numbered backups,
+ * snapshots and assets in OPFS, and the copy of those keys that IndexedDB still
+ * holds is stale, so nothing here reads or writes IndexedDB. A page gets it only
+ * when the copy could not run, with a notice; the next start tries the copy again.
  *
  * OPFS keeps no version, so `conditionalWrites` is false. A file is replaced
  * through a writable stream that commits on close, so a write that fails

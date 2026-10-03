@@ -16,8 +16,8 @@ export class OpfsStorage{
             // Under the File System spec's entry lock, a still-open writable
             // can block removeEntry() on this same file -- best-effort abort()
             // it before rethrowing, which may let a caller cleaning up this key
-            // (see AutoStorage.copyLocalForageIntoOpfs's failure path) remove
-            // it. A write that already errored the stream is not helped. Any error from abort() itself is not the original
+            // remove it. A write that already errored the stream is not
+            // helped. Any error from abort() itself is not the original
             // failure and is dropped.
             try {
                 await stream.abort()
@@ -50,9 +50,10 @@ export class OpfsStorage{
         await this.Init()
         let entries:string[] = []
         for await (const entry of this.opfs.values()) {
-            // Cold storage writes its own `coldstorage_<key>.json` files into
-            // this same OPFS root (`getDirectory()` returns the origin root
-            // to every caller), never hex-encoded -- a name only this class
+            // Legacy cold-storage units sit as `coldstorage_<key>.json` files
+            // in this same OPFS root (`getDirectory()` returns the origin
+            // root to every caller), never hex-encoded, and are only read and
+            // deleted. A name only this class
             // itself ever wrote round-trips back to the same hex string on
             // re-encode, so a foreign name is excluded here rather than
             // surfacing as a garbage "key".

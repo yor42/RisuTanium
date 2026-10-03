@@ -42,18 +42,18 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock(import('src/ts/globalApi.svelte'), () => ({
-    forageStorage: { realStorage: {} },
-}) as unknown as typeof import('src/ts/globalApi.svelte'))
-
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    readFile: vi.fn(),
-    exists: vi.fn(async () => false),
-    writeFile: vi.fn(),
-    mkdir: vi.fn(),
-    readDir: vi.fn(async () => []),
-    BaseDirectory: { AppData: 0 },
-}))
+// The page store holds no unit, so every read falls through to the legacy OPFS
+// file whose bytes the stubbed decompressor then fails on.
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
+    const store = createForageBackedStore({
+        getItem: async () => null,
+        setItem: async () => { },
+        keys: async () => [],
+        removeItem: async () => { },
+    })
+    return { getAppStore: async () => store } as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: {} },

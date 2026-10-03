@@ -10,6 +10,7 @@
  * subject is not storage put its in-memory model behind the store seam.
  */
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from 'src/ts/storage/store/contract'
+import { StoreDeleteManyError, type DeleteReportEntry } from 'src/ts/storage/store/errors'
 
 export interface ForageLike {
     getItem(key: string): Promise<unknown>
@@ -57,8 +58,18 @@ export function createForageBackedStore(forage: ForageLike): ByteStore {
         },
 
         async deleteMany(entries: readonly DeleteEntry[]): Promise<void> {
+            // Like the real stores: every key is attempted, and a failure is reported per key.
+            const report: DeleteReportEntry[] = []
             for (const entry of entries) {
-                await forage.removeItem(entry.key)
+                try {
+                    await forage.removeItem(entry.key)
+                    report.push({ key: entry.key, outcome: 'removed' })
+                } catch (error) {
+                    report.push({ key: entry.key, outcome: 'failed', error })
+                }
+            }
+            if (report.some((entry) => entry.outcome !== 'removed')) {
+                throw new StoreDeleteManyError(report)
             }
         },
 

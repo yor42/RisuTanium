@@ -14,7 +14,7 @@ import {
     resetArchiveStrikes,
 } from './bootArchiveMemo'
 import type { BootArchiveDeps, BootArchiveEnvironment, BootArchiveHost } from './bootArchivePass'
-import { readMainFile as readMainFileFromStore, writeMainFile as writeMainFileToStore } from './store/appStore'
+import { pageStoreIsIndexedDb, readMainFile as readMainFileFromStore, writeMainFile as writeMainFileToStore } from './store/appStore'
 
 /**
  * The production binding of the boot archive pass's effects: the lock binding,
@@ -45,20 +45,32 @@ function isTauriDesktop(): boolean {
     }
 }
 
-function opfsWritable(): boolean {
-    return !!navigator.storage?.getDirectory
-        && typeof FileSystemFileHandle !== 'undefined'
-        && !!FileSystemFileHandle.prototype?.createWritable
+/**
+ * Whether a web page's byte store is the IndexedDB store. A selection that
+ * fails answers false: the boot reads the main file through the same store
+ * right after and reports the failure itself.
+ */
+async function webPageStoreIsIndexedDb(host: BootArchiveHost): Promise<boolean> {
+    if (host !== 'web' || isNodeServer) {
+        return false
+    }
+    try {
+        return await pageStoreIsIndexedDb()
+    } catch (error) {
+        console.error('The page store could not be selected for the boot archive pass:', error)
+        return false
+    }
 }
 
 export async function createProductionBootArchiveDeps(host: BootArchiveHost): Promise<BootArchiveDeps> {
+    const indexedDbStore = await webPageStoreIsIndexedDb(host)
     return {
         env: (): BootArchiveEnvironment => ({
             host,
             isNodeServer,
             tauriDesktop: host === 'tauri' && isTauriDesktop(),
             locksSupported: locksSupported !== false && !!navigator.locks,
-            opfsWritable: opfsWritable(),
+            indexedDbStore,
             staleAccountProfile: !!forageStorage.staleAccountProfile,
         }),
         acquireHold: (timeoutMs) => acquireExclusiveStorageMigrationLock(timeoutMs),

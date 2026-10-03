@@ -4,20 +4,22 @@
  * turn a key into a storage location (`readColdStorageItem`,
  * `setColdStorageItem`, the legacy `getColdStorageItem` in
  * `../coldstorage.svelte`), run for real over the real fflate codec with only
- * the storage underneath replaced by stand-ins (a Node `getItem`/`setItem`, a
- * Tauri file system, an OPFS directory). A pass here says nothing about a real
- * browser, Node server or Tauri file system.
+ * the storage underneath replaced by stand-ins (an in-memory byte store for the
+ * page's store, an OPFS directory for the legacy unit files). A pass here says
+ * nothing about a real browser, Node server or Tauri file system.
  *
  * Pinned here:
  * - the rule accepts every key the app writes and rejects the shapes the
  *   backends cannot hold, and never throws;
- * - contract: for a rejected key every backend sees no call at all, a read is
- *   an error of kind `damaged`, a write is `false` and the legacy get is
- *   `null`;
+ * - contract: for a rejected key neither the page store nor OPFS sees any call,
+ *   a read is an error of kind `damaged`, a write is `false` and the legacy get
+ *   is `null`;
  * - a key at the length limit and an `<uuid>_accessMeta` key still round-trip
- *   on every backend.
+ *   on every backend, in the page store and never in OPFS.
  * The contract tests do not reproduce the POSIX or Node defects behind the
  * rule: the regression reproducers for those are in `coldReadKinds.test.ts`.
+ * The store's own refusal of a key the rule accepts is pinned in
+ * `coldUnitsThroughStore.test.ts`.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
@@ -28,8 +30,8 @@ const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
     /** Every storage call made by a stand-in, in order. */
     calls: [] as string[],
-    node: new Map<string, Uint8Array>(),
-    tauri: new Map<string, Uint8Array>(),
+    /** The page store's content: `coldstorage/<key>` (`coldstorage/<key>.json` on the desktop). */
+    store: new Map<string, Uint8Array>(),
     opfs: new Map<string, Uint8Array>(),
 }))
 
@@ -39,51 +41,16 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock(import('src/ts/globalApi.svelte'), () => ({
-    forageStorage: {
-        realStorage: {
-            getItem: async (key: string) => {
-                h.calls.push('node.getItem ' + key)
-                // The real server answers a name over 255 hex bytes with an empty 200.
-                if (new TextEncoder().encode(key).length * 2 > 255) {
-                    return null
-                }
-                return h.node.get(key) ?? null
-            },
-            setItem: async (key: string, value: Uint8Array) => {
-                h.calls.push('node.setItem ' + key)
-                h.node.set(key, value)
-            },
-        },
-    },
-}) as unknown as typeof import('src/ts/globalApi.svelte'))
-
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    readFile: async (path: string) => {
-        h.calls.push('tauri.readFile ' + path)
-        const bytes = h.tauri.get(path)
-        if (!bytes) {
-            throw new Error(`No such file or directory (os error 2): ${path}`)
-        }
-        return bytes
-    },
-    exists: async (path: string) => {
-        h.calls.push('tauri.exists ' + path)
-        return h.tauri.has(path)
-    },
-    writeFile: async (path: string, bytes: Uint8Array) => {
-        h.calls.push('tauri.writeFile ' + path)
-        h.tauri.set(path, bytes)
-    },
-    mkdir: async (path: string) => {
-        h.calls.push('tauri.mkdir ' + path)
-    },
-    readDir: async (path: string) => {
-        h.calls.push('tauri.readDir ' + path)
-        return []
-    },
-    BaseDirectory: { AppData: 0 },
-}))
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
+    const store = createForageBackedStore({
+        getItem: async (key) => { h.calls.push('store.read ' + key); return h.store.get(key) ?? null },
+        setItem: async (key, value) => { h.calls.push('store.write ' + key); h.store.set(key, value) },
+        keys: async () => { h.calls.push('store.list'); return Array.from(h.store.keys()) },
+        removeItem: async (key) => { h.calls.push('store.delete ' + key); h.store.delete(key) },
+    })
+    return { getAppStore: async () => store } as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: {} },
@@ -150,8 +117,7 @@ function selectBackend(backend: Backend): void {
 beforeEach(() => {
     selectBackend('opfs')
     h.calls.length = 0
-    h.node.clear()
-    h.tauri.clear()
+    h.store.clear()
     h.opfs.clear()
     Object.defineProperty(navigator, 'storage', { configurable: true, value: opfsStorage })
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -291,7 +257,7 @@ describe('contract: a key the rule rejects reaches no backend', () => {
             test.each(REJECTED_KEYS)('%s: the write resolves false', async (_label, key) => {
                 expect(await setColdStorageItem(key as string, { message: [] })).toBe(false)
                 expect(h.calls).toEqual([])
-                expect(h.node.size + h.tauri.size + h.opfs.size).toBe(0)
+                expect(h.store.size + h.opfs.size).toBe(0)
             })
 
             test.each(REJECTED_KEYS)('%s: the legacy get resolves null', async (_label, key) => {
@@ -329,6 +295,8 @@ describe('a key the rule accepts is stored and read as before', () => {
                 expect(await setColdStorageItem(key, value)).toBe(true)
                 expect(await readColdStorageItem(key)).toEqual({ status: 'ok', value })
                 expect(await getColdStorageItem(key)).toEqual(value)
+                expect(h.store.size).toBe(1)
+                expect(h.opfs.size).toBe(0)
             })
 
             test('an accepted key that was never written is still missing', async () => {

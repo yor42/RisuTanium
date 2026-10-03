@@ -7,9 +7,10 @@
  * (`src/ts/drive/backuplocal.ts`) run for real together with the REAL
  * collector, the real `setColdStorageItem` / `readColdStorageItem` and the
  * real `LocalWriter`. The storage and output sinks are replaced:
- * `streamsaver` captures the bytes the writer emits, an OPFS stand-in is the
- * cold-storage backend, and the key/value store behind `forageStorage` is a
- * mock. Every dialog is a mock, `getDatabase` returns each test's own
+ * `streamsaver` captures the bytes the writer emits, the page's byte store is a
+ * key/value mock that keeps the units in memory apart from the assets, and an
+ * empty OPFS stand-in plays the legacy unit files. Every dialog is a mock,
+ * `getDatabase` returns each test's own
  * database, `dbWriteLock.acquire` is spied, and the
  * modules loaded transitively for unrelated work (stores, plugins, parser,
  * platform and the Tauri APIs) are stubbed. A
@@ -233,69 +234,43 @@ vi.mock(import('src/ts/process/modules'), () => ({
 
 //#endregion
 
-//#region OPFS backend stand-in (navigator.storage)
+//#region units and the legacy OPFS stand-in
 
-const opfsStore = new Map<string, Uint8Array>()
-const opfsReadLog: string[] = []
+/** The page store's units (coldstorage/<key>), kept apart from the assets, and every unit key read from it. */
+const unitMem = new Map<string, Uint8Array>()
+const unitReadLog: string[] = []
 
-function opfsFilename(key: string): string {
-    return 'coldstorage_' + key + '.json'
+function isUnitKey(key: string): boolean {
+    return key.startsWith('coldstorage/')
+}
+
+/** Places raw bytes as the page store's unit key. */
+function putRawUnit(key: string, bytes: Uint8Array): void {
+    unitMem.set('coldstorage/' + key, bytes)
 }
 
 class MockNotFoundError extends Error {
     name = 'NotFoundError'
 }
 
+/** The legacy OPFS unit files: no test here places one, so every read falls through to "not found". */
 const mockDirectoryHandle = {
-    async getFileHandle(name: string, opts?: { create?: boolean }) {
-        if (opts?.create) {
-            return {
-                async createWritable() {
-                    return {
-                        async write(data: Uint8Array) {
-                            opfsStore.set(name, data)
-                        },
-                        async close() { },
-                    }
-                },
-            }
-        }
-        opfsReadLog.push(name)
-        if (!opfsStore.has(name)) {
-            throw new MockNotFoundError(`not found: ${name}`)
-        }
-        return {
-            async getFile() {
-                const bytes = opfsStore.get(name)!
-                return {
-                    async arrayBuffer() {
-                        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-                    },
-                }
-            },
-        }
+    async getFileHandle(name: string) {
+        throw new MockNotFoundError("not found: " + name)
     },
-    async removeEntry(name: string) {
-        opfsStore.delete(name)
-    },
+    async removeEntry() { },
     entries() {
-        const iter = opfsStore.keys()
         return {
             [Symbol.asyncIterator]() {
                 return {
                     async next() {
-                        const r = iter.next()
-                        if (r.done) {
-                            return { done: true as const, value: undefined }
-                        }
-                        return { done: false as const, value: [r.value, {}] as [string, unknown] }
+                        return { done: true as const, value: undefined }
                     },
                 }
             },
         }
     },
 }
-
 Object.defineProperty(globalThis.navigator, 'storage', {
     configurable: true,
     value: {
@@ -511,8 +486,8 @@ const PLUGIN_VALUES: [string, unknown][] = [
 beforeEach(() => {
     platformBox.isTauri = false
     backupSink.writes.length = 0
-    opfsStore.clear()
-    opfsReadLog.length = 0
+    unitMem.clear()
+    unitReadLog.length = 0
     forageKeysMock.mockReset()
     forageGetItemMock.mockReset()
     forageSetItemMock.mockClear()
@@ -523,12 +498,24 @@ beforeEach(() => {
     forageKeysMock.mockImplementation(async () => [])
     forageGetItemMock.mockImplementation(async () => null)
     forageSetItemMock.mockImplementation(async () => { })
-    // The assets are listed and read through the page's byte store, here over the key/value mock above.
+    // The assets are listed and read through the page's byte store, here over the key/value mock above; the units are kept apart in memory.
     injectAppStore(createForageBackedStore({
-        getItem: forageGetItemMock,
-        setItem: forageSetItemMock,
-        keys: forageKeysMock,
-        removeItem: async () => { },
+        getItem: async (key) => {
+            if (isUnitKey(key)) {
+                unitReadLog.push(key)
+                return unitMem.get(key) ?? null
+            }
+            return forageGetItemMock(key)
+        },
+        setItem: async (key, value) => {
+            if (isUnitKey(key)) {
+                unitMem.set(key, value)
+                return
+            }
+            await forageSetItemMock(key, value)
+        },
+        keys: async () => [...(await forageKeysMock()), ...unitMem.keys()],
+        removeItem: async (key) => { unitMem.delete(key) },
     }))
     getDatabaseMock.mockImplementation(() => databaseWith({}))
     vi.spyOn(console, 'log').mockImplementation(() => { })
@@ -585,7 +572,7 @@ describe('SaveLocalBackup carries the units a blob and its archives refer to', (
         const BLOB = uid(5)
         const X = uid(6)
         await putBlob(BLOB, 'c1', [errorTextChat('inner-1', X)])
-        opfsStore.set(opfsFilename(X), encoder.encode('bytes that are not a compressed unit'))
+        putRawUnit(X, encoder.encode('bytes that are not a compressed unit'))
         expect(await unitStatus(X)).toBe('error')
         getDatabaseMock.mockImplementation(() => databaseWith({ characters: [makeStub('c1', 'Alice', BLOB)] }))
 
@@ -757,7 +744,7 @@ describe('restoring plugin storage units of every value shape', () => {
         getDatabaseMock.mockImplementation(() => databaseWith({ pluginCustomStorage: { _coldplugin: mapping } }))
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
         const backupBytes = concat(backupSink.writes)
-        opfsStore.clear()
+        unitMem.clear()
         alertConfirmMock.mockClear()
 
         await loadBackupBytes(backupBytes)
@@ -805,7 +792,7 @@ describe('restoring plugin storage units of every value shape', () => {
     test('a character blob whose unit on the device reads as damaged is still reported as missing after the restore', async () => {
         const BLOB = uid(43)
         vi.spyOn(console, 'error').mockImplementation(() => { })
-        opfsStore.set(opfsFilename(BLOB), new Uint8Array([1, 2, 3, 4]))
+        putRawUnit(BLOB, new Uint8Array([1, 2, 3, 4]))
         const read = await readColdStorageItem(BLOB)
         expect(read).toMatchObject({ status: 'error', kind: 'damaged' })
         const db = databaseWith({ characters: [makeStub('c1', 'Alice', BLOB)] })
@@ -863,7 +850,7 @@ const SAVES: [string, () => Promise<void>][] = [
 ]
 
 function readCount(key: string): number {
-    return opfsReadLog.filter((n) => n === opfsFilename(key)).length
+    return unitReadLog.filter((n) => n === 'coldstorage/' + key).length
 }
 
 function entryCount(name: string): number {

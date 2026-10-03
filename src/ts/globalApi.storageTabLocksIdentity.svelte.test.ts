@@ -4,9 +4,9 @@
  * `StorageTabLocks` instance per page, and its write mutex must be the same
  * `dbWriteLock` object `saveDb()` and `LoadLocalBackup()`'s restore write
  * take -- a second, differently-wired instance would let an autosave land in
- * OPFS after `disableOpfs()` already read it. Compatibility guard: the lock seam
- * extraction wires this correctly on its own, independent of `AutoStorage`'s
- * own O1-O9 boot-copy behaviour, which this test is not evidence of.
+ * the middle of an exclusive operation such as the copy back from OPFS.
+ * Compatibility guard: the lock seam extraction wires this correctly on its
+ * own, independent of `AutoStorage`, which this test is not evidence of.
  *
  * This drives the REAL, unmocked `src/ts/globalApi.svelte.ts` -- the
  * module-mock set below is copied verbatim from

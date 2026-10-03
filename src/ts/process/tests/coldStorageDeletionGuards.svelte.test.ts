@@ -27,7 +27,9 @@
  *     `src/ts/process/coldstorage.svelte.ts` (real, unmocked).
  * Every other module reachable from those three is mocked below. Only the
  * STORAGE BACKEND underneath `getColdStorageItem` is faked (Tauri
- * `@tauri-apps/plugin-fs` and an OPFS `navigator.storage` stand-in) --
+ * `@tauri-apps/plugin-fs` under the real desktop store, and the key/value
+ * store behind `forageStorage` as the web page store, beside an OPFS
+ * `navigator.storage` stand-in for the legacy unit files) --
  * `getColdStorageItem` itself is never mocked directly, so a read failure
  * has to go through its own real try/catch-swallows-errors path, exactly as
  * it does in production.
@@ -78,6 +80,9 @@ const platformState = vi.hoisted(() => ({ isTauri: true }))
 // The key/value store behind `forageStorage`: the committed main file that
 // `cleanColdStorage` reads lives here on the web build.
 const forageMem = vi.hoisted(() => new Map<string, Uint8Array>())
+// Hooks on the reads of that key/value store: a key that fails once, and a
+// callback run before every read.
+const storeHooks = vi.hoisted(() => ({ throwOnce: new Set<string>(), onRead: null as null | ((key: string) => void) }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -217,7 +222,13 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
 vi.mock(import('src/ts/storage/autoStorage'), () => ({
     AutoStorage: class {
         realStorage: unknown = undefined
-        async getItem(key: string) { return forageMem.get(key) ?? null }
+        async getItem(key: string) {
+            storeHooks.onRead?.(key)
+            if (storeHooks.throwOnce.delete(key)) {
+                throw new Error(`simulated transient store read failure for ${key}`)
+            }
+            return forageMem.get(key) ?? null
+        }
         async setItem(key: string, value: Uint8Array) { forageMem.set(key, value) }
         async keys() { return Array.from(forageMem.keys()) }
         async removeItem(key: string) { forageMem.delete(key) }
@@ -306,7 +317,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
             throw new Error(`simulated transient Tauri fs read failure for ${p}`)
         }
         if (!fsStore.has(p)) {
-            throw new Error(`ENOENT (mock): ${p}`)
+            throw new Error(`ENOENT (mock): ${p} (os error 2)`)
         }
         return fsStore.get(p)!
     }),
@@ -322,6 +333,15 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     }),
     exists: vi.fn(async (path: string) => fsStore.has(normalizePath(path))),
     mkdir: vi.fn(async () => {}),
+    rename: vi.fn(async (from: string, to: string) => {
+        const source = normalizePath(from)
+        const bytes = fsStore.get(source)
+        if (!bytes) {
+            throw new Error(`ENOENT (mock, rename): ${source} (os error 2)`)
+        }
+        fsStore.set(normalizePath(to), bytes)
+        fsStore.delete(source)
+    }),
 }))
 
 function seedTauriAssets(): void {
@@ -343,18 +363,19 @@ function tauriFsHas(path: string): boolean {
 
 //#endregion
 
-//#region OPFS backend mock (navigator.storage) -- copied from
-// cold-storage-orphan-repro.
+//#region web unit storage: the key/value store behind `forageStorage` (page
+// store, `coldstorage/<key>`) and the legacy OPFS unit files (navigator.storage),
+// which no test here writes.
 
 const opfsStore = new Map<string, Uint8Array>()
-const throwOnceFilenames = new Set<string>()
 
 function opfsFilename(key: string): string {
     return 'coldstorage_' + key + '.json'
 }
 
+/** The next read of unit `key` from the web page store fails once. */
 function armTransientOpfsFailure(key: string): void {
-    throwOnceFilenames.add(opfsFilename(key))
+    storeHooks.throwOnce.add('coldstorage/' + key)
 }
 
 class MockNotFoundError extends Error {
@@ -369,23 +390,7 @@ class FakeTypeMismatchError extends Error {
 }
 
 const mockDirectoryHandle = {
-    async getFileHandle(name: string, opts?: { create?: boolean }) {
-        if (throwOnceFilenames.has(name)) {
-            throwOnceFilenames.delete(name)
-            throw new Error(`simulated transient OPFS read failure for ${name}`)
-        }
-        if (opts?.create) {
-            return {
-                async createWritable() {
-                    return {
-                        async write(data: Uint8Array) {
-                            opfsStore.set(name, data)
-                        },
-                        async close() {},
-                    }
-                },
-            }
-        }
+    async getFileHandle(name: string) {
         if (!opfsStore.has(name)) {
             throw new MockNotFoundError(`not found: ${name}`)
         }
@@ -433,7 +438,13 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 function resetOpfs(): void {
     opfsStore.clear()
-    throwOnceFilenames.clear()
+    storeHooks.throwOnce.clear()
+    storeHooks.onRead = null
+    for (const key of Array.from(forageMem.keys())) {
+        if (key.startsWith('coldstorage/')) {
+            forageMem.delete(key)
+        }
+    }
 }
 
 //#endregion
@@ -451,9 +462,7 @@ import {
     collectColdStorageBackupPayloads,
     coldStorageHeader,
     readColdStorageItem,
-    classifyTauriColdRead,
     classifyOpfsColdRead,
-    classifyNodeColdRead,
     retryLegacyColdChatLoad,
 } from '../coldstorage.svelte'
 import { isColdChat, formatColdStorageLoadError, mergeRetriedColdChatSideFields } from '../coldstorageData'
@@ -571,7 +580,12 @@ function makeRetryDb(chaId: string, chat: unknown): Database {
  * and set `DBState.db`, immediately before `cleanColdStorage()`.
  */
 async function primeCleanupPreconditions(): Promise<void> {
-    forageMem.clear()
+    // The units the test stored stay: they live in this same key/value store.
+    for (const key of Array.from(forageMem.keys())) {
+        if (!key.startsWith('coldstorage/')) {
+            forageMem.delete(key)
+        }
+    }
     const encoder = new RisuSaveEncoder()
     await encoder.init(DBState.db, {})
     const committed = new Uint8Array(encoder.encode()!)
@@ -1407,52 +1421,15 @@ describe('CHORE-07 stage 7b: isColdChat', () => {
 })
 
 /**
- * CHORE-07 stage 7c-1 -- `readColdStorageItem`'s per-backend classification
- * seams (`classifyTauriColdRead`/`classifyOpfsColdRead`/
- * `classifyNodeColdRead`), Agents/Reports/13-chore07-cold-read-failure-plan.md.
- * Each classifies a raw read outcome for its backend as `missing` (the
- * file, key or directory genuinely doesn't exist) or `error` (anything else
- * -- permission, corruption, an unrelated OS error), so a caller can tell a
- * transient or ambiguous failure apart from a confirmed absence. No
- * platform mocking is needed for these -- every dependency is a plain
- * injected function.
+ * CHORE-07 stage 7c-1 -- the classification seam of the legacy OPFS unit
+ * files (`classifyOpfsColdRead`), Agents/Reports/13-chore07-cold-read-failure-plan.md.
+ * It classifies a raw read outcome as `missing` (the file genuinely doesn't
+ * exist) or `error` (anything else -- permission, corruption, an unrelated
+ * error), so a caller can tell a transient or ambiguous failure apart from a
+ * confirmed absence. No platform mocking is needed for these -- every
+ * dependency is a plain injected function. The page store's own absent/error
+ * classification is pinned in `coldUnitsThroughStore.test.ts`.
  */
-describe('CHORE-07 stage 7c-1: classifyTauriColdRead', () => {
-    test('"(os error 2)" with exists() false is missing', async () => {
-        const readFileFn = vi.fn(async () => { throw new Error('reading file failed: (os error 2)') })
-        const existsFn = vi.fn(async () => false)
-        const result = await classifyTauriColdRead('./coldstorage/x.json', readFileFn, existsFn)
-        expect(result).toEqual({ status: 'missing' })
-        expect(existsFn).toHaveBeenCalledTimes(1)
-    })
-
-    test('"(os error 2)" with exists() true is error, not missing', async () => {
-        const readError = new Error('reading file failed: (os error 2)')
-        const readFileFn = vi.fn(async () => { throw readError })
-        const existsFn = vi.fn(async () => true)
-        const result = await classifyTauriColdRead('./coldstorage/x.json', readFileFn, existsFn)
-        expect(result.status).toBe('error')
-        expect((result as { error: unknown }).error).toBe(readError)
-    })
-
-    test('an exists() throw is error, not missing', async () => {
-        const readFileFn = vi.fn(async () => { throw new Error('reading file failed: (os error 2)') })
-        const existsError = new Error('simulated Tauri fs scope violation')
-        const existsFn = vi.fn(async () => { throw existsError })
-        const result = await classifyTauriColdRead('./coldstorage/x.json', readFileFn, existsFn)
-        expect(result.status).toBe('error')
-        expect((result as { error: unknown }).error).toBe(existsError)
-    })
-
-    test('"(os error 3)" is error, and never calls exists()', async () => {
-        const readFileFn = vi.fn(async () => { throw new Error('reading file failed: (os error 3)') })
-        const existsFn = vi.fn(async () => false)
-        const result = await classifyTauriColdRead('./coldstorage/x.json', readFileFn, existsFn)
-        expect(result.status).toBe('error')
-        expect(existsFn).not.toHaveBeenCalled()
-    })
-})
-
 describe('CHORE-07 stage 7c-1: classifyOpfsColdRead', () => {
     test('a NotFoundError from getFileHandle() is missing', async () => {
         const getDirectoryFn = vi.fn(async () => ({
@@ -1479,22 +1456,6 @@ describe('CHORE-07 stage 7c-1: classifyOpfsColdRead', () => {
         const result = await classifyOpfsColdRead(getDirectoryFn as never, 'coldstorage_x.json')
         expect(result.status).toBe('error')
         expect(getDirectoryFn).toHaveBeenCalledTimes(1)
-    })
-})
-
-describe('CHORE-07 stage 7c-1: classifyNodeColdRead', () => {
-    test('a null getItem is missing', async () => {
-        const getItemFn = vi.fn(async () => null)
-        const result = await classifyNodeColdRead(getItemFn, 'coldstorage/x')
-        expect(result).toEqual({ status: 'missing' })
-    })
-
-    test('a throw is error', async () => {
-        const thrown = new Error('simulated Node getItem failure')
-        const getItemFn = vi.fn(async () => { throw thrown })
-        const result = await classifyNodeColdRead(getItemFn, 'coldstorage/x')
-        expect(result.status).toBe('error')
-        expect((result as { error: unknown }).error).toBe(thrown)
     })
 })
 
@@ -2286,19 +2247,17 @@ describe('cleanColdStorage refuses while a chaId is frozen against a save-file r
 
         // Entry check passes: nothing is frozen yet (reset in beforeEach).
         await primeCleanupPreconditions()
-        const originalGetFileHandle = mockDirectoryHandle.getFileHandle.bind(mockDirectoryHandle)
-        const spy = vi.spyOn(mockDirectoryHandle, 'getFileHandle').mockImplementation(async (name: string, opts?: { create?: boolean }) => {
-            if (name === opfsFilename(COLD_CHAR_KEY)) {
+        storeHooks.onRead = (key) => {
+            if (key === 'coldstorage/' + COLD_CHAR_KEY) {
                 // A duplicate chaId appears while this cold character's own
                 // blob is being verified -- after the entry check, before
                 // anything is removed.
                 frozenSaveKeysStore.set([{ chaId: 'g12-dup-id-2', names: ['C', 'D'] }])
             }
-            return originalGetFileHandle(name, opts)
-        })
+        }
 
         await cleanColdStorage()
-        spy.mockRestore()
+        storeHooks.onRead = null
 
         const afterItems = (await listColdStorageItems()).items
         expect(afterItems).toContain(ORPHAN_KEY)

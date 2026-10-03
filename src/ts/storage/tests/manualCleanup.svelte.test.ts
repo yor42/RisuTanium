@@ -24,9 +24,10 @@
  * The real `cleanColdStorage`, `globalApi.svelte.ts`, `RisuSaveEncoder`,
  * `NodeStorage`, `storageTabLocks` and `chatOrigin` are driven; only platform
  * boundaries are replaced: the `isTauri`/`isNodeServer` flags, an OPFS
- * directory, a `forageStorage` key/value store, the Tauri file system, the Web
- * Locks manager, `fetch` for the Node server, and the alert functions. A mocked
- * success here is not evidence of native backend behaviour.
+ * directory (the legacy unit files), a `forageStorage` key/value store (the
+ * web page store, which holds the units and the assets), the Tauri file system,
+ * the Web Locks manager, `fetch` for the Node server, and the alert functions.
+ * A mocked success here is not evidence of native backend behaviour.
  *
  * Each test builds its own module graph (`vi.resetModules()`), because
  * `globalApi.svelte.ts` reads `navigator.locks` once when it is evaluated.
@@ -80,19 +81,18 @@ const h = vi.hoisted(() => {
             onGetItem: undefined as undefined | ((key: string) => void),
             onRemove: undefined as undefined | ((key: string) => void),
             afterRemove: undefined as undefined | ((key: string) => void),
+            /** Called after the page store has listed the units (the coldstorage/ prefix). */
+            afterUnitListing: undefined as undefined | (() => void),
         },
         forageFail: new Set<string>(),
-        /** The OPFS root directory: cold-storage units on the web build. */
+        /** Keys whose read fails with an error that is not "absent". */
+        forageReadFail: new Set<string>(),
+        /** The units (coldstorage/ keys) the web page store was asked to read or remove, and how many reads overlapped. */
+        unitLog: { reads: [] as string[], removed: [] as string[], inFlight: 0, peakInFlight: 0 },
+        /** The legacy OPFS root directory: unit files from before units went through the byte store (web build). */
         opfs: new Map<string, Uint8Array>(),
-        opfsHooks: {
-            afterEntries: undefined as undefined | (() => void),
-            onRemove: undefined as undefined | ((name: string) => void),
-            afterRemove: undefined as undefined | ((name: string) => void),
-        },
-        opfsFail: new Set<string>(),
-        /** File names whose read fails with an error that is not "not found". */
-        opfsReadFail: new Set<string>(),
-        opfsLog: { reads: [] as string[], removed: [] as string[], inFlight: 0, peakInFlight: 0 },
+        /** Legacy file names whose removal fails. */
+        opfsRemoveFail: new Set<string>(),
         /** The Tauri app-data directory. */
         fs: new Map<string, Uint8Array>(),
         /** Every path `readFile` was asked for, in order. */
@@ -272,7 +272,22 @@ vi.mock(import('src/ts/storage/autoStorage'), () => ({
                 return await this.realStorage.getItem(key)
             }
             h.forageHooks.onGetItem?.(key)
-            return h.forage.get(key) ?? null
+            if (!key.startsWith('coldstorage/')) {
+                return h.forage.get(key) ?? null
+            }
+            h.unitLog.reads.push(key)
+            h.unitLog.inFlight++
+            h.unitLog.peakInFlight = Math.max(h.unitLog.peakInFlight, h.unitLog.inFlight)
+            try {
+                await Promise.resolve()
+                await Promise.resolve()
+                if (h.forageReadFail.has(key)) {
+                    throw new Error(`simulated storage read failure for ${key}`)
+                }
+                return h.forage.get(key) ?? null
+            } finally {
+                h.unitLog.inFlight--
+            }
         }
 
         async setItem(key: string, value: Uint8Array) {
@@ -294,6 +309,9 @@ vi.mock(import('src/ts/storage/autoStorage'), () => ({
                 return await this.realStorage.removeItem(key)
             }
             h.forageHooks.onRemove?.(key)
+            if (key.startsWith('coldstorage/')) {
+                h.unitLog.removed.push(key)
+            }
             if (h.forageFail.has(key)) {
                 throw new Error(`simulated storage removal failure for ${key}`)
             }
@@ -382,6 +400,15 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: vi.fn(async (path: string, data: Uint8Array) => {
         h.fs.set(normalizeFsPath(path), data)
     }),
+    rename: vi.fn(async (from: string, to: string) => {
+        const source = normalizeFsPath(from)
+        const bytes = h.fs.get(source)
+        if (!bytes) {
+            throw new Error(`No such file (os error 2): ${source}`)
+        }
+        h.fs.set(normalizeFsPath(to), bytes)
+        h.fs.delete(source)
+    }),
     remove: vi.fn(async (path: string) => {
         const p = normalizeFsPath(path)
         const injected = h.fsRemoveError.get(p)
@@ -412,7 +439,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-//#region OPFS directory stand-in (cold-storage units on the web build)
+//#region legacy OPFS unit files (the web build's units from before units went through the byte store)
 
 class FakeNotFoundError extends Error {
     name = 'NotFoundError'
@@ -423,37 +450,14 @@ function opfsName(key: string): string {
 }
 
 const opfsDirectory = {
-    async getFileHandle(name: string, opts?: { create?: boolean }) {
-        if (opts?.create) {
-            return {
-                async createWritable() {
-                    return {
-                        async write(data: Uint8Array) {
-                            h.opfs.set(name, data)
-                        },
-                        async close() {},
-                    }
-                },
-            }
-        }
-        h.opfsLog.reads.push(name)
-        h.opfsLog.inFlight++
-        h.opfsLog.peakInFlight = Math.max(h.opfsLog.peakInFlight, h.opfsLog.inFlight)
-        if (h.opfsReadFail.has(name)) {
-            h.opfsLog.inFlight--
-            throw new Error(`simulated OPFS read failure for ${name}`)
-        }
+    async getFileHandle(name: string) {
         if (!h.opfs.has(name)) {
-            h.opfsLog.inFlight--
             throw new FakeNotFoundError(`not found: ${name}`)
         }
         return {
             async getFile() {
                 return {
                     async arrayBuffer() {
-                        await Promise.resolve()
-                        await Promise.resolve()
-                        h.opfsLog.inFlight--
                         const bytes = h.opfs.get(name)!
                         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
                     },
@@ -462,16 +466,13 @@ const opfsDirectory = {
         }
     },
     async removeEntry(name: string) {
-        h.opfsLog.removed.push(name)
-        h.opfsHooks.onRemove?.(name)
-        if (h.opfsFail.has(name)) {
+        if (h.opfsRemoveFail.has(name)) {
             throw new Error(`simulated OPFS removal failure for ${name}`)
         }
         if (!h.opfs.has(name)) {
             throw new FakeNotFoundError(`not found: ${name}`)
         }
         h.opfs.delete(name)
-        h.opfsHooks.afterRemove?.(name)
     },
     entries() {
         const iter = Array.from(h.opfs.keys())[Symbol.iterator]()
@@ -481,7 +482,6 @@ const opfsDirectory = {
                     async next() {
                         const r = iter.next()
                         if (r.done) {
-                            h.opfsHooks.afterEntries?.()
                             return { done: true as const, value: undefined }
                         }
                         return { done: false as const, value: [r.value, {}] as [string, unknown] }
@@ -530,17 +530,15 @@ function resetWorld(): void {
     h.forageHooks.onGetItem = undefined
     h.forageHooks.onRemove = undefined
     h.forageHooks.afterRemove = undefined
+    h.forageHooks.afterUnitListing = undefined
     h.forageFail.clear()
+    h.forageReadFail.clear()
+    h.unitLog.reads = []
+    h.unitLog.removed = []
+    h.unitLog.inFlight = 0
+    h.unitLog.peakInFlight = 0
     h.opfs.clear()
-    h.opfsHooks.afterEntries = undefined
-    h.opfsHooks.onRemove = undefined
-    h.opfsHooks.afterRemove = undefined
-    h.opfsFail.clear()
-    h.opfsReadFail.clear()
-    h.opfsLog.reads = []
-    h.opfsLog.removed = []
-    h.opfsLog.inFlight = 0
-    h.opfsLog.peakInFlight = 0
+    h.opfsRemoveFail.clear()
     h.fs.clear()
     h.fsReads = []
     h.fsFail.clear()
@@ -591,7 +589,17 @@ async function setup(options: { platform?: Platform, locks?: 'single' | 'none' }
     } else if (platform === 'web') {
         // The web build's byte store is the key/value model behind `forageStorage` here.
         const { injectAppStore } = await import('src/ts/storage/store/appStore')
-        injectAppStore(createForageBackedStore(ctx.globalApi.forageStorage as unknown as ForageLike))
+        const base = createForageBackedStore(ctx.globalApi.forageStorage as unknown as ForageLike)
+        injectAppStore({
+            ...base,
+            list: async (prefix) => {
+                const keys = await base.list(prefix)
+                if (prefix === 'coldstorage/') {
+                    h.forageHooks.afterUnitListing?.()
+                }
+                return keys
+            },
+        })
     }
     return ctx
 }
@@ -667,7 +675,7 @@ function seedUnit(key: string): void {
     } else if (platform === 'tauri') {
         h.fs.set('coldstorage/' + key + '.json', bytes)
     } else {
-        h.opfs.set(opfsName(key), bytes)
+        h.forage.set('coldstorage/' + key, bytes)
     }
 }
 
@@ -1055,14 +1063,14 @@ describe('units: what the clean-up keeps', () => {
         storeSnapshot(17000000001, await encodeTree(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1))])))
         storeSnapshot(17000000002, await encodeTree(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1)), stubCharacter(cha(3), 'Blobby 3', blob(3))])))
         storeSnapshot(17000000003, await encodeTree(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1))])))
-        h.opfsLog.reads = []
-        h.opfsLog.peakInFlight = 0
+        h.unitLog.reads = []
+        h.unitLog.peakInFlight = 0
 
         await run()
 
-        const readsOf = (n: number) => h.opfsLog.reads.filter((name) => name === opfsName(blob(n))).length
+        const readsOf = (n: number) => h.unitLog.reads.filter((name) => name === 'coldstorage/' + blob(n)).length
         expect([readsOf(1), readsOf(2), readsOf(3)]).toEqual([1, 1, 1])
-        expect(h.opfsLog.peakInFlight).toBeLessThanOrEqual(1)
+        expect(h.unitLog.peakInFlight).toBeLessThanOrEqual(1)
     })
 
     test('guard: does not prune the retained snapshots while listing them', async () => {
@@ -1178,8 +1186,8 @@ describe('units: the load-time listing bounds what may be deleted', () => {
         seedUnit('present-at-load')
         setLive(makeDb([]))
         await prime()
-        h.opfsHooks.afterEntries = () => {
-            h.opfsHooks.afterEntries = undefined
+        h.forageHooks.afterUnitListing = () => {
+            h.forageHooks.afterUnitListing = undefined
             seedUnit('written-during-run')
         }
 
@@ -1325,7 +1333,7 @@ describe('Tauri: a leftover temp file of an interrupted atomic write is not a sn
 describe('unreadable blobs stop the run with a notice that names the character and the source', () => {
     const BLOB_FAILURES = [
         ['is missing', async (_blobKey: string) => {}],
-        ['cannot be decoded', async (blobKey: string) => { h.opfs.set(opfsName(blobKey), new Uint8Array([1, 2, 3, 4])) }],
+        ['cannot be decoded', async (blobKey: string) => { h.forage.set('coldstorage/' + blobKey, new Uint8Array([1, 2, 3, 4])) }],
         ['belongs to a different character', async (blobKey: string) => { await putBlob(blobKey, fullCharacter('someone-else', 'Someone Else')) }],
     ] as const
 
@@ -1358,30 +1366,20 @@ describe('unreadable blobs stop the run with a notice that names the character a
     })
 })
 
-describe('a blob that cannot be read because the page has no storage stops the run like any other unreadable blob', () => {
-    test.each([
-        ['navigator.storage is removed', undefined],
-        ['navigator.storage has no getDirectory', {}],
-    ])('guard: aborts naming the character and deletes nothing when %s after the load-time listing was taken', async (_label, storage) => {
+describe('a blob that cannot be read because the page store fails stops the run like any other unreadable blob', () => {
+    test('guard: aborts naming the character and deletes nothing when the read of the blob fails after the load-time listing was taken', async () => {
         await setup()
         seedUnit('unreferenced-unit')
         await putBlob('main-only-blob', fullCharacter('link-cha', 'Link'))
         setLive(makeDb([]))
         await prime(makeDb([stubCharacter('link-cha', 'Link', 'main-only-blob')]))
-        const original = Object.getOwnPropertyDescriptor(navigator, 'storage')
-        Object.defineProperty(navigator, 'storage', { configurable: true, value: storage })
+        h.forageReadFail.add('coldstorage/main-only-blob')
 
-        try {
-            await run()
-        } finally {
-            if (original) {
-                Object.defineProperty(navigator, 'storage', original)
-            }
-        }
+        await run()
 
         expect(await units()).toEqual(expect.arrayContaining(['unreferenced-unit', 'main-only-blob']))
         expect(errorMessages().some((m) => m.includes('Link'))).toBe(true)
-        expect(h.opfsLog.removed).toEqual([])
+        expect(h.unitLog.removed).toEqual([])
     })
 })
 
@@ -1456,14 +1454,14 @@ describe('exclusivity', () => {
         let saveAcquired = false
         let saveAcquiredAtFirstRemoval: boolean | undefined
         let parkedSave: Promise<void> = Promise.resolve()
-        h.opfsHooks.afterEntries = () => {
-            h.opfsHooks.afterEntries = undefined
+        h.forageHooks.afterUnitListing = () => {
+            h.forageHooks.afterUnitListing = undefined
             parkedSave = ctx.globalApi.dbWriteLock.acquire().then((release) => {
                 saveAcquired = true
                 release()
             })
         }
-        h.opfsHooks.onRemove = () => {
+        h.forageHooks.onRemove = () => {
             saveAcquiredAtFirstRemoval ??= saveAcquired
         }
 
@@ -1565,8 +1563,8 @@ describe('busy: the run refuses while anything else is working', () => {
         seedUnit('unreferenced-unit')
         setLive(makeDb([]))
         await prime()
-        h.opfsHooks.afterEntries = () => {
-            h.opfsHooks.afterEntries = undefined
+        h.forageHooks.afterUnitListing = () => {
+            h.forageHooks.afterUnitListing = undefined
             ctx.chatOrigin.registerWork({ chaId: 'busy-cha', chatId: 'busy-chat' })
         }
 
@@ -1580,8 +1578,8 @@ describe('busy: the run refuses while anything else is working', () => {
         seedUnit('unreferenced-unit')
         setLive(makeDb([]))
         await prime()
-        h.opfsHooks.afterEntries = () => {
-            h.opfsHooks.afterEntries = undefined
+        h.forageHooks.afterUnitListing = () => {
+            h.forageHooks.afterUnitListing = undefined
             ctx.stores.frozenSaveKeysStore.set([{ chaId: 'dup-id', names: ['A', 'B'] }])
         }
 
@@ -1615,6 +1613,19 @@ describe('Node server: bounded batches, reported failures, revisions', () => {
         expect(longestHeader).toBeLessThanOrEqual(12288)
         expect(removeRequests.length).toBeGreaterThanOrEqual(2)
         expect(server.keysWithPrefix('coldstorage/')).toEqual([])
+    })
+
+    test('guard: a unit this page wrote and the clean-up then deleted can be written again in the same page', async () => {
+        await setup({ platform: 'node' })
+        await putUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime()
+
+        await run()
+
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(await ctx.cold.setColdStorageItem('unreferenced-unit', CHAT_VALUE)).toBe(true)
+        expect(await units()).toContain('unreferenced-unit')
     })
 
     test('deletes unused assets with long keys in requests whose file-path header stays within 12288 bytes', async () => {
@@ -1737,14 +1748,14 @@ describe('Node server: bounded batches, reported failures, revisions', () => {
 })
 
 describe('failed deletes and the completion notice on the other backends', () => {
-    test('ends with a notice counting the units that could not be removed from OPFS', async () => {
+    test('ends with a notice counting the units that could not be removed from the page store', async () => {
         await setup()
         const keys = ['unit-1', 'unit-2', 'unit-3', 'unit-4', 'unit-5', 'unit-6', 'unit-7']
         keys.forEach(seedUnit)
         setLive(makeDb([]))
         await prime()
         for (const key of ['unit-2', 'unit-4', 'unit-6']) {
-            h.opfsFail.add(opfsName(key))
+            h.forageFail.add('coldstorage/' + key)
         }
 
         await run()
@@ -1785,22 +1796,103 @@ describe('failed deletes and the completion notice on the other backends', () =>
         expect(h.hub.current.type).not.toBe('wait')
     })
 
-    test('guard: shows the wait indicator during every OPFS removal even when a toast was raised in between', async () => {
+    test('guard: shows the wait indicator during every unit removal even when a toast was raised in between', async () => {
         await setup()
         ;['unit-1', 'unit-2', 'unit-3'].forEach(seedUnit)
         setLive(makeDb([]))
         await prime()
         const seenDuringDelete: string[] = []
-        h.opfsHooks.onRemove = () => {
+        h.forageHooks.onRemove = () => {
             seenDuringDelete.push(h.hub.current.type)
         }
-        h.opfsHooks.afterRemove = () => {
+        h.forageHooks.afterRemove = () => {
             h.hub.set({ type: 'toast', msg: 'Failed to save data, retrying' })
         }
 
         await run()
 
         expect(seenDuringDelete).toEqual(['wait', 'wait', 'wait'])
+    })
+})
+
+describe('legacy OPFS unit files on the web', () => {
+    /** Moves a unit written through the page store into the legacy OPFS root, as an older build kept it. */
+    async function makeLegacy(key: string, value: unknown = CHAT_VALUE): Promise<void> {
+        await putUnit(key, value)
+        h.opfs.set(opfsName(key), h.forage.get('coldstorage/' + key)!)
+        h.forage.delete('coldstorage/' + key)
+    }
+
+    test('new behaviour: the clean-up deletes an unreferenced unit from the page store and from OPFS, whichever holds it, and neither is listed afterwards', async () => {
+        await setup()
+        await putUnit('store-only')
+        await makeLegacy('legacy-only')
+        await putUnit('both')
+        h.opfs.set(opfsName('both'), new Uint8Array([1, 2, 3]))
+        setLive(makeDb([]))
+        await prime()
+
+        await run()
+
+        expect(await units()).toEqual([])
+        expect(h.opfs.size).toBe(0)
+        expect(h.forage.has('coldstorage/both')).toBe(false)
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('new behaviour: a legacy file that cannot be removed keeps its unit, which the notice counts as not deleted, and the newer value in the store stays readable', async () => {
+        await setup()
+        await putUnit('stuck', { ...CHAT_VALUE, message: [{ time: 1, data: 'newer', role: 'user' }] })
+        h.opfs.set(opfsName('stuck'), new Uint8Array([1, 2, 3]))
+        await putUnit('plain')
+        setLive(makeDb([]))
+        await prime()
+        h.opfsRemoveFail.add(opfsName('stuck'))
+
+        await run()
+
+        expect(await units()).toEqual(['stuck'])
+        expect(errorMessages().some((m) => /\b1\b/.test(m))).toBe(true)
+        expect(await ctx.cold.readColdStorageItem('stuck')).toMatchObject({ status: 'ok', value: { message: [{ data: 'newer' }] } })
+    })
+
+    test('new behaviour: a unit that only a legacy file holds is read through, so the chain it names is kept', async () => {
+        await setup()
+        await putUnit('unit-v')
+        await makeLegacy('unit-u', { ...CHAT_VALUE, message: [errorTextChat('inner', 'unit-v').message[0], ...CHAT_VALUE.message] })
+        seedUnit('orphan-o')
+        setLive(makeDb([]))
+        await prime(makeDb([fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', 'unit-u')] })]))
+
+        await run()
+
+        const after = await units()
+        expect(after).toEqual(expect.arrayContaining(['unit-u', 'unit-v']))
+        expect(after).not.toContain('orphan-o')
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('new behaviour: a listing of the legacy files that fails at the start of the run deletes nothing', async () => {
+        await setup()
+        await putUnit('present-at-load')
+        setLive(makeDb([]))
+        await prime()
+        const original = Object.getOwnPropertyDescriptor(navigator, 'storage')
+        Object.defineProperty(navigator, 'storage', {
+            configurable: true,
+            value: { getDirectory: async () => { throw new Error('OPFS listing failed') } },
+        })
+
+        try {
+            await run()
+        } finally {
+            if (original) {
+                Object.defineProperty(navigator, 'storage', original)
+            }
+        }
+
+        expect(h.forage.has('coldstorage/present-at-load')).toBe(true)
+        expect(errorMessages().length).toBeGreaterThan(0)
     })
 })
 
@@ -1818,7 +1910,7 @@ describe('a run that stops partway', () => {
         setLive(makeDb([]))
         await prime()
         let removed = 0
-        h.opfsHooks.afterRemove = () => {
+        h.forageHooks.afterRemove = () => {
             removed++
             if (removed === 100) {
                 interrupt()
@@ -2093,12 +2185,12 @@ describe('unit names the key rule rejects', () => {
             await setup({ platform: which })
             seedUnit('a:b')
             const { removeUnitBatch } = await import('src/ts/storage/manualCleanup')
-            h.opfsLog.removed = []
+            h.unitLog.removed = []
             server.requests = []
 
             expect(await removeUnitBatch(['a:b', 'c:d'], 0, 2)).toBe(2)
 
-            expect(h.opfsLog.removed).toEqual([])
+            expect(h.unitLog.removed).toEqual([])
             expect(server.requestsTo('/api/remove')).toEqual([])
             expect(await units()).toContain('a:b')
         })
@@ -2128,7 +2220,7 @@ describe('archived chats: the clean-up follows what they refer to', () => {
         } else if (platform === 'tauri') {
             h.fs.set('coldstorage/' + key + '.json', bytes)
         } else {
-            h.opfs.set(opfsName(key), bytes)
+            h.forage.set('coldstorage/' + key, bytes)
         }
     }
 
@@ -2139,7 +2231,7 @@ describe('archived chats: the clean-up follows what they refer to', () => {
         } else if (platform === 'tauri') {
             h.fsReadError.set('coldstorage/' + key + '.json', { message: 'Access is denied. (os error 5)', removeFile: false })
         } else {
-            h.opfsReadFail.add(opfsName(key))
+            h.forageReadFail.add('coldstorage/' + key)
         }
     }
 
@@ -2151,7 +2243,7 @@ describe('archived chats: the clean-up follows what they refer to', () => {
         if (platform === 'tauri') {
             return h.fsReads.filter((path) => path === 'coldstorage/' + key + '.json').length
         }
-        return h.opfsLog.reads.filter((name) => name === opfsName(key)).length
+        return h.unitLog.reads.filter((name) => name === 'coldstorage/' + key).length
     }
 
     const aliceHolding = (key: string) => makeDb([fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', key)] })])
@@ -2489,9 +2581,7 @@ describe('archived chats: the clean-up follows what they refer to', () => {
         })
     })
 
-    // The stop comes from the read of the archived chat, so the assertion is on the stop notice. Nothing could be removed
-    // without a storage directory in any case, so the empty removal log is not what this test proves.
-    test('stops with a notice naming the character when the page has no storage for archived data', async () => {
+    test('new behaviour: a browser without OPFS still reads, keeps and deletes units in the page store', async () => {
         await setup()
         await putUnit('unit-u')
         seedUnit('orphan-o')
@@ -2508,9 +2598,10 @@ describe('archived chats: the clean-up follows what they refer to', () => {
             }
         }
 
-        expect(await units()).toEqual(expect.arrayContaining(['orphan-o', 'unit-u']))
-        expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
-        expect(h.opfsLog.removed).toEqual([])
+        const after = await units()
+        expect(after).toContain('unit-u')
+        expect(after).not.toContain('orphan-o')
+        expect(errorMessages()).toEqual([])
     })
 
     describe('Tauri: a read that fails inside a units folder that does not exist', () => {
@@ -2535,14 +2626,24 @@ describe('archived chats: the clean-up follows what they refer to', () => {
             expect(errorMessages()).toEqual([])
         })
 
-        test('guard: stops, naming the character, when the same read fails while the units folder exists', async () => {
+        test('guard: stops, naming the character, when the unit file is present but its read fails with the path-not-found code', async () => {
             await arrange()
-            seedUnit('other-unit')
+            seedUnit('unit-u')
 
             await run()
 
             expect(h.fs.has(ORPHAN_ASSET)).toBe(true)
             expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
+        })
+
+        test('new behaviour: treats the archived chat as missing and carries on when the same read fails while the units folder exists and the file is absent', async () => {
+            await arrange()
+            seedUnit('other-unit')
+
+            await run()
+
+            expect(h.fs.has(ORPHAN_ASSET)).toBe(false)
+            expect(errorMessages()).toEqual([])
         })
 
         test('stops, naming the character, when the units folder is reported absent but units were listed at load', async () => {
@@ -2563,9 +2664,9 @@ describe('archived chats: the clean-up follows what they refer to', () => {
             expect(errorMessages().some((m) => m.includes('Alice'))).toBe(true)
         })
 
-        test('guard: stops when it cannot be told whether the units folder exists', async () => {
+        test('guard: stops when it cannot be told whether the unit file exists', async () => {
             await arrange()
-            h.fsExistsError.add('coldstorage')
+            h.fsExistsError.add(UNIT_PATH)
 
             await run()
 
@@ -2603,21 +2704,21 @@ describe('archived chats: the clean-up follows what they refer to', () => {
         await prime(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1)), fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', 'unit-u1')] })]))
         storeSnapshot(17000000001, await encodeTree(makeDb([stubCharacter(cha(1), 'Blobby 1', blob(1))])))
         storeSnapshot(17000000002, await encodeTree(aliceHolding('unit-u1')))
-        h.opfsLog.reads = []
-        h.opfsLog.peakInFlight = 0
+        h.unitLog.reads = []
+        h.unitLog.peakInFlight = 0
         let readsAtListing: number | undefined
         let readsAtFirstRemoval: number | undefined
-        h.opfsHooks.afterEntries = () => {
-            readsAtListing ??= h.opfsLog.reads.length
+        h.forageHooks.afterUnitListing = () => {
+            readsAtListing ??= h.unitLog.reads.length
         }
-        h.opfsHooks.onRemove = () => {
-            readsAtFirstRemoval ??= h.opfsLog.reads.length
+        h.forageHooks.onRemove = () => {
+            readsAtFirstRemoval ??= h.unitLog.reads.length
         }
 
         await run()
 
         expect([blob(1), blob(2), 'unit-u1', 'unit-u2', 'unit-v'].map(readsOf)).toEqual([1, 1, 1, 1, 1])
-        expect(h.opfsLog.peakInFlight).toBeLessThanOrEqual(1)
+        expect(h.unitLog.peakInFlight).toBeLessThanOrEqual(1)
         expect(readsAtListing).toBe(5)
         expect(readsAtFirstRemoval).toBe(5)
         const after = await units()

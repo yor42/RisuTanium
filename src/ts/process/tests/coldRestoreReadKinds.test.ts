@@ -7,8 +7,8 @@
  * real restore (`../coldCharacterRestore`), the real plugin and MCP access
  * functions (`../coldCharacterAccess`) and the real group-turn restore
  * (`../coldMemberRestore`) run over stand-ins for the storage underneath (an
- * OPFS `navigator.storage`, a Node `getItem`, a Tauri `readFile`) and a mocked
- * alert. A pass here says nothing about a real browser, Node server or Tauri
+ * page byte store per platform, and for the web an OPFS `navigator.storage`
+ * holding legacy unit files) and a mocked alert. A pass here says nothing about a real browser, Node server or Tauri
  * file system, and `v3.svelte.ts` and the MCP modules are not driven: they
  * call `readArchivedCharacter` and `restoreArchivedForWrite`, which are.
  *
@@ -39,8 +39,10 @@ import { compressSync } from 'fflate'
 
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
-    node: new Map<string, Uint8Array>(),
-    tauri: new Map<string, Uint8Array>(),
+    /** The page store's content on each platform: `coldstorage/<key>` (`coldstorage/<key>.json` on the desktop). */
+    units: { node: new Map<string, Uint8Array>(), tauri: new Map<string, Uint8Array>(), web: new Map<string, Uint8Array>() },
+    /** While set, the page store cannot be opened, as when the browser has no usable IndexedDB. */
+    storeUnavailable: false,
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -49,26 +51,24 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock(import('src/ts/globalApi.svelte'), () => ({
-    forageStorage: {
-        realStorage: { getItem: async (key: string) => h.node.get(key) ?? null },
-    },
-}) as unknown as typeof import('src/ts/globalApi.svelte'))
-
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    readFile: async (path: string) => {
-        const bytes = h.tauri.get(path)
-        if (!bytes) {
-            throw new Error(`No such file or directory (os error 2): ${path}`)
-        }
-        return bytes
-    },
-    exists: async (path: string) => h.tauri.has(path),
-    writeFile: vi.fn(),
-    mkdir: vi.fn(),
-    readDir: vi.fn(async () => []),
-    BaseDirectory: { AppData: 0 },
-}))
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
+    const platform = () => h.platform.isNodeServer ? 'node' : h.platform.isTauri ? 'tauri' : 'web'
+    const store = createForageBackedStore({
+        getItem: async (key) => h.units[platform()].get(key) ?? null,
+        setItem: async (key, value) => { h.units[platform()].set(key, value) },
+        keys: async () => Array.from(h.units[platform()].keys()),
+        removeItem: async (key) => { h.units[platform()].delete(key) },
+    })
+    return {
+        getAppStore: async () => {
+            if (h.storeUnavailable) {
+                throw Object.assign(new Error('IndexedDB is not available in this browser.'), { name: 'AppStoreUnavailableError' })
+            }
+            return store
+        },
+    } as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: {} },
@@ -171,13 +171,24 @@ function selectBackend(backend: Backend): void {
     h.platform.isTauri = backend === 'tauri'
 }
 
+/** Runs `run` while the page store cannot be opened. */
+async function withStoreUnavailable<T>(run: () => Promise<T>): Promise<T> {
+    h.storeUnavailable = true
+    try {
+        return await run()
+    } finally {
+        h.storeUnavailable = false
+    }
+}
+
+/** Places a unit where the backend keeps it: the OPFS backend is a legacy unit file, the others the page store. */
 function putBytes(backend: Backend, key: string, bytes: Uint8Array): void {
     if (backend === 'opfs') {
         opfsFiles.set('coldstorage_' + key + '.json', bytes)
     } else if (backend === 'node') {
-        h.node.set('coldstorage/' + key, bytes)
+        h.units.node.set('coldstorage/' + key, bytes)
     } else {
-        h.tauri.set('./coldstorage/' + key + '.json', bytes)
+        h.units.tauri.set('coldstorage/' + key + '.json', bytes)
     }
 }
 
@@ -185,7 +196,7 @@ function hasBytes(backend: Backend, key: string): boolean {
     if (backend === 'opfs') {
         return opfsFiles.has('coldstorage_' + key + '.json')
     }
-    return backend === 'node' ? h.node.has('coldstorage/' + key) : h.tauri.has('./coldstorage/' + key + '.json')
+    return backend === 'node' ? h.units.node.has('coldstorage/' + key) : h.units.tauri.has('coldstorage/' + key + '.json')
 }
 
 function encodeUnit(value: unknown): Uint8Array {
@@ -253,8 +264,10 @@ beforeEach(() => {
     selectBackend('opfs')
     opfsFiles.clear()
     opfsFailure = null
-    h.node.clear()
-    h.tauri.clear()
+    for (const platform of ['node', 'tauri', 'web'] as const) {
+        h.units[platform].clear()
+    }
+    h.storeUnavailable = false
     Object.defineProperty(navigator, 'storage', { configurable: true, value: opfsStorage })
     vi.mocked(alertError).mockClear()
     vi.mocked(characterFormatUpdate).mockClear()
@@ -267,10 +280,9 @@ afterEach(() => {
     consoleErrorSpy.mockRestore()
 })
 
-/** Every way the storage can be absent on this page. */
-const NO_STORAGE: Array<[string, unknown]> = [
-    ['navigator.storage removed', undefined],
-    ['navigator.storage without getDirectory', {}],
+/** Every way the storage can be absent on this page: the page store cannot be opened. */
+const NO_STORAGE: Array<[string]> = [
+    ['the page store unavailable'],
 ]
 
 /** The stub is where it was, still an archived placeholder, and nothing was installed, formatted or marked for save. */
@@ -286,12 +298,12 @@ function expectStubUntouched(stub: character): void {
 //#endregion
 
 describe('opening an archived character with no storage on the page', () => {
-    test.each(NO_STORAGE)('with %s the restore is refused as unavailable and says so, without claiming loss or asking for a retry', async (_label, storage) => {
+    test.each(NO_STORAGE)('with %s the restore is refused as unavailable and says so, without claiming loss or asking for a retry', async () => {
         const stub = placeholder()
         installDb([stub])
         putBytes('opfs', UNIT, encodeUnit(LARGE_CHARACTER))
 
-        const outcome = await withNavigatorStorage(storage, () => restoreColdCharacter(stub))
+        const outcome = await withStoreUnavailable(() => restoreColdCharacter(stub))
 
         expect(outcome).toEqual({ status: 'refused', reason: 'unavailable' })
         expect(alerts()).toHaveLength(1)
@@ -305,7 +317,7 @@ describe('opening an archived character with no storage on the page', () => {
         const stub = placeholder()
         installDb([stub])
 
-        const outcome = await withNavigatorStorage(undefined, () => restoreColdCharacter(stub, { quiet: true }))
+        const outcome = await withStoreUnavailable(() => restoreColdCharacter(stub, { quiet: true }))
 
         expect(outcome).toEqual({ status: 'refused', reason: 'unavailable' })
         expect(alerts()).toEqual([])
@@ -316,7 +328,7 @@ describe('opening an archived character with no storage on the page', () => {
         const stub = placeholder()
         installDb([stub])
 
-        const outcome = await withNavigatorStorage(undefined, () => restoreColdCharacter(stub, { byChaId: true }))
+        const outcome = await withStoreUnavailable(() => restoreColdCharacter(stub, { byChaId: true }))
 
         expect(outcome).toEqual({ status: 'refused', reason: 'unavailable' })
         expect(alerts()).toHaveLength(1)
@@ -328,7 +340,7 @@ describe('opening an archived character with no storage on the page', () => {
         const stub = placeholder()
         installDb([stub])
 
-        const copy = await withNavigatorStorage(undefined, () => readColdCharacterCopy(stub))
+        const copy = await withStoreUnavailable(() => readColdCharacterCopy(stub))
 
         expect(copy).toMatchObject({ status: 'unreadable', kind: 'unavailable' })
         expect(alerts()).toEqual([])
@@ -339,7 +351,7 @@ describe('opening an archived character with no storage on the page', () => {
         const stub = placeholder()
         installDb([stub])
 
-        const copy = await withNavigatorStorage(undefined, () => readColdCharacterCopy(stub))
+        const copy = await withStoreUnavailable(() => readColdCharacterCopy(stub))
 
         expect(copy.status).toBe('unreadable')
         expect(copy).toHaveProperty('error')
@@ -497,11 +509,11 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
 })
 
 describe('the named wording for a plugin or MCP read of an archived character', () => {
-    test.each(NO_STORAGE)('with %s the read fails with the named no-storage text, shown once', async (_label, storage) => {
+    test.each(NO_STORAGE)('with %s the read fails with the named no-storage text, shown once', async () => {
         const stub = placeholder()
         installDb([stub])
 
-        const result = await withNavigatorStorage(storage, () => readArchivedCharacter(stub))
+        const result = await withStoreUnavailable(() => readArchivedCharacter(stub))
 
         expect(result.status).toBe('failed')
         const message = (result as { message: string }).message
@@ -553,18 +565,18 @@ describe('the named wording for a plugin or MCP read of an archived character', 
         const stub = placeholder('member', UNIT, '')
         installDb([stub])
 
-        const result = await withNavigatorStorage(undefined, () => readArchivedCharacter(stub))
+        const result = await withStoreUnavailable(() => readArchivedCharacter(stub))
 
         expect((result as { message: string }).message).toContain(language.errors.coldStorageUnknownCharacterName)
     })
 })
 
 describe('the named wording for a plugin, MCP or group add-member write to an archived character', () => {
-    test.each(NO_STORAGE)('with %s the restore for a write fails with the named no-storage text and leaves the stub', async (_label, storage) => {
+    test.each(NO_STORAGE)('with %s the restore for a write fails with the named no-storage text and leaves the stub', async () => {
         const stub = placeholder()
         installDb([stub])
 
-        const result = await withNavigatorStorage(storage, () => restoreArchivedForWrite('member'))
+        const result = await withStoreUnavailable(() => restoreArchivedForWrite('member'))
 
         expect(result.status).toBe('failed')
         expectNoStorageWording((result as { message: string }).message)
@@ -609,11 +621,11 @@ describe('the named wording for a plugin, MCP or group add-member write to an ar
 })
 
 describe('the named wording when a group turn restores an archived member', () => {
-    test.each(NO_STORAGE)('with %s the member is not restored, the named no-storage text is shown once and the stub stays', async (_label, storage) => {
+    test.each(NO_STORAGE)('with %s the member is not restored, the named no-storage text is shown once and the stub stays', async () => {
         const stub = placeholder()
         installDb([stub])
 
-        const restored = await withNavigatorStorage(storage, () => restoreColdCharacterByChaId('member'))
+        const restored = await withStoreUnavailable(() => restoreColdCharacterByChaId('member'))
 
         expect(restored).toBe(false)
         expect(alerts()).toHaveLength(1)
@@ -653,11 +665,11 @@ describe('the MCP tools report the named wording when an archived character cann
         return { subject: undefined, touched: new Set<string>() } as unknown as Parameters<typeof recheckCharacterForWrite>[1]
     }
 
-    test.each(NO_STORAGE)('with %s a read tool throws the named no-storage text and the stub stays', async (_label, storage) => {
+    test.each(NO_STORAGE)('with %s a read tool throws the named no-storage text and the stub stays', async () => {
         const stub = placeholder()
         installDb([stub])
 
-        const failure = await withNavigatorStorage(storage, () => getCharacterForRead('member')).then(() => null, (error: unknown) => error as Error)
+        const failure = await withStoreUnavailable(() => getCharacterForRead('member')).then(() => null, (error: unknown) => error as Error)
 
         expect(failure).toBeInstanceOf(Error)
         expectNoStorageWording((failure as Error).message)
@@ -691,7 +703,7 @@ describe('the MCP tools report the named wording when an archived character cann
         installDb([stub])
         const ctx = toolContext()
 
-        const write = withNavigatorStorage(undefined, () => recheckCharacterForWrite('member', ctx, stub))
+        const write = withStoreUnavailable(() => recheckCharacterForWrite('member', ctx, stub))
 
         await expect(write).rejects.toThrow(/offers no storage/i)
         expect(ctx.touched.size).toBe(0)
@@ -767,12 +779,12 @@ describe('the message chosen for every restore failure reason', () => {
 })
 
 describe('restoring every archived character for a plugin keeps its neutral notice', () => {
-    test.each(NO_STORAGE)('guard: with %s the characters stay archived and one notice names them, whatever the reason', async (_label, storage) => {
+    test.each(NO_STORAGE)('guard: with %s the characters stay archived and one notice names them, whatever the reason', async () => {
         const first = placeholder('first', 'cold-key-first', 'First')
         const second = placeholder('second', 'cold-key-second', 'Second')
         installDb([first, second])
 
-        await withNavigatorStorage(storage, () => restoreAllColdCharacters())
+        await withStoreUnavailable(() => restoreAllColdCharacters())
 
         expect(alerts()).toEqual([language.errors.coldStoragePluginRestoreIncomplete('First, Second')])
         expect(slot(0)).toBe(first)

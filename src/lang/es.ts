@@ -1678,7 +1678,7 @@ export const languageSpanish = {
     applyAdditionalParamsToAll: "Aplicar Parámetros Adicionales a Todos los Modelos",
     localToggles: "Interruptores Locales",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     staleAccountProfileNotice:
         "Este perfil de navegador usaba la sincronización de RisuAccount, que esta aplicación no admite.\n\nLo que ves ahora son los datos que este navegador guardó antes de activar la sincronización. Es posible que otros navegadores o dispositivos hayan cambiado tus datos desde entonces. Los datos de tu cuenta siguen estando en RisuAccount.\n\nSi lo que ves puede contener algo que le falte a tu cuenta, haz una copia de seguridad local de ello antes de importar nada.\n\nPara traer aquí los datos de tu cuenta, inicia sesión en una versión upstream de RisuAI, haz una copia de seguridad local (.bin) e impórtala aquí. En una versión upstream autoalojada o local, ve primero a Configuraciones Avanzadas, activa \"Mostrar Configuraciones No Recomendadas\" y luego desmarca \"Skip Saving Assets on Web Sync\", o las imágenes quedarán excluidas. En risuai.xyz, un respaldo completo hecho mientras se está conectado no se puede importar aquí; la pantalla de importación indica las alternativas. La guía de migración tiene los detalles.\n\nAl pulsar OK, la aplicación se recargará.",
     keiImageProviderUnavailable: "El proveedor de imágenes \"Kei\" no está disponible en esta aplicación. Elige otro proveedor de imágenes en la configuración.",
@@ -1710,23 +1710,15 @@ export const languageSpanish = {
     assetIntegrityReportEvicted: (n: number) => `\nSe eliminaron ${n} entradas de caché dañadas. Recarga la aplicación para que la corrección surta efecto.`,
     assetIntegrityReportLeftInCache: "\nSe dejaron en la caché, tal como solicitaste.",
     assetIntegrityReportNoCorruption: "\nNo se detectó corrupción en los activos comprobados.",
-    opfsEnableConfirm: "¿Cambiar el almacenamiento local a OPFS (experimental) y recargar la aplicación? Tus datos locales existentes se migrarán automáticamente al recargar.",
-    opfsDisableConfirm: "¿Volver a cambiar el almacenamiento local al backend predeterminado y recargar la aplicación? Tus datos de OPFS existentes se migrarán automáticamente antes de recargar.",
-    opfsEnableSpaceWarningConfirm: (usageBytes: number, freeBytes: number) => `Puede que no haya suficiente espacio libre para el cambio: aproximadamente ${(usageBytes / (1024 * 1024)).toFixed(1)} MB en uso, y aproximadamente ${(freeBytes / (1024 * 1024)).toFixed(1)} MB libres. Si falla a mitad de camino, permanecerás en tu almacenamiento actual y no se perderá ningún dato. ¿Continuar de todos modos?`,
-    opfsDisableRefused: "Esta pestaña no está usando actualmente el almacenamiento OPFS, así que no hay nada que revertir desde aquí.",
-    opfsSwitchNoticeQuota: "El backend de almacenamiento no se cambió: el navegador se quedó sin espacio de almacenamiento. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.",
-    opfsSwitchNoticeUnsupported: "El backend de almacenamiento no se cambió: este navegador no admite una función que el cambio necesita. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.",
-    opfsSwitchNoticeInterrupted: "El backend de almacenamiento no se cambió: otra pestaña estaba abierta, o un cambio fue interrumpido. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.",
-    opfsSwitchNoticeError: (detail: string) => `El backend de almacenamiento no se cambió: ${detail}. Tus datos no han cambiado, y puedes volver a cambiar desde Respaldo y Archivos en la configuración.`,
+    opfsCopyBackProgress: (done: number, total: number) => `Moviendo tus datos al almacenamiento del navegador... (${done} / ${total}). Mantén esta pestaña abierta hasta que termine.`,
+    opfsFallbackNoticeTab: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque hay otra pestaña de esta aplicación abierta o este navegador no puede comprobar si hay otras pestañas. RisuAI se está ejecutando con tus datos existentes y no se ha perdido nada. Cierra las demás pestañas; se volverá a intentar la próxima vez que se inicie la aplicación.",
+    opfsFallbackNoticeSpace: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque no hay suficiente espacio de almacenamiento libre. RisuAI se está ejecutando con tus datos existentes y no se ha perdido nada. Libera algo de espacio; se volverá a intentar la próxima vez que se inicie la aplicación.",
+    opfsFallbackNoticeNoIndexedDb: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque este navegador no puede usar IndexedDB. RisuAI se está ejecutando con tus datos existentes y no se ha perdido nada. Se volverá a intentar la próxima vez que se inicie la aplicación.",
+    opfsFallbackNoticeError: (detail: string) => `Esta vez no se pudieron mover tus datos al almacenamiento del navegador: ${detail}. RisuAI se está ejecutando con tus datos existentes y no se ha perdido nada. Se volverá a intentar la próxima vez que se inicie la aplicación.`,
     browserStorageUnavailable: "Este navegador no pudo abrir el almacenamiento donde RisuAI guarda tus datos, así que no se cargó nada y no se cambió nada. Recarga la página. Si este mensaje sigue apareciendo, este navegador no puede almacenar los datos de RisuAI (la navegación privada y los navegadores muy antiguos pueden causar esto): abre RisuAI en otro navegador o fuera de la navegación privada.",
-    storageMigrationLockError: "Parece que hay otra pestaña de esta aplicación abierta (o tu navegador no admite la comprobación necesaria aquí). Cierra primero todas las demás pestañas y vuelve a intentarlo.",
     backupAndFiles: "Respaldo y Archivos",
     assetIntegrityHeading: "Integridad de la Caché de Activos",
     assetIntegrityDescription: "Comprueba las imágenes/activos en caché contra su propio hash de contenido para detectar corrupción, sin volver a descargar nada del almacenamiento. Es de solo lectura, salvo que elijas eliminar una entrada dañada.",
     assetIntegrityWarnOnStartup: "Advertir al iniciar si una comprobación rápida de muestra encuentra corrupción",
     assetIntegrityVerifyButton: "Verificar Caché de Activos Ahora",
-    opfsBackendHeading: "Backend de Almacenamiento Local",
-    opfsBackendDescription: "Experimental. OPFS ofrece una atomicidad de escritura más sólida que el backend predeterminado de IndexedDB. Cambiar recargará la aplicación y migrará automáticamente tus datos locales existentes.",
-    opfsSwitchToDefault: "Volver al Almacenamiento Predeterminado",
-    opfsSwitchToOpfs: "Cambiar a Almacenamiento OPFS (experimental)",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

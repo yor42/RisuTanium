@@ -1821,7 +1821,7 @@ export const languageEnglish = {
     applyAdditionalParamsToAll: "Apply Additional Parameters to All Models",
     localToggles: "Local Toggles",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     staleAccountProfileNotice:
         "This browser profile used RisuAccount sync, which this app does not support.\n\nWhat you see now is the data this browser stored before it turned on sync. Other browsers or devices may have changed your data since then. Your account's data is still on RisuAccount.\n\nIf what you see may hold anything your account lacks, make a local backup of it before importing anything.\n\nTo bring your account's data here, sign in on an upstream RisuAI, make a local backup (.bin), and import it here. On a self-hosted or local upstream, first go to Advanced Settings, turn on \"Show Unrecommended Settings\", then untick \"Skip Saving Assets on Web Sync\", or images are left out. On risuai.xyz, a full backup made while signed in cannot be imported here; the import screen names the alternatives. The migration guide has the details.\n\nPressing OK reloads the app.",
     keiImageProviderUnavailable: "The \"Kei\" image provider is not available in this app. Choose another image provider in settings.",
@@ -1853,25 +1853,17 @@ export const languageEnglish = {
     assetIntegrityReportEvicted: (n: number) => `\nRemoved ${n} corrupted cache entries. Reload the app for the fix to take effect.`,
     assetIntegrityReportLeftInCache: "\nLeft in the cache, as requested.",
     assetIntegrityReportNoCorruption: "\nNo corruption detected in the checked assets.",
-    opfsEnableConfirm: "Switch local storage to OPFS (experimental) and reload the app? Your existing local data will be migrated automatically on reload.",
-    opfsDisableConfirm: "Switch local storage back to the default backend and reload the app? Your existing OPFS data will be migrated automatically before reloading.",
-    opfsEnableSpaceWarningConfirm: (usageBytes: number, freeBytes: number) => `The switch may not have enough free space: about ${(usageBytes / (1024 * 1024)).toFixed(1)} MB in use, and about ${(freeBytes / (1024 * 1024)).toFixed(1)} MB free. If it fails partway, you stay on your current storage with no data lost. Continue anyway?`,
-    opfsDisableRefused: "This tab isn't currently using OPFS storage, so there is nothing to switch back from here.",
-    opfsSwitchNoticeQuota: "The storage backend was not switched: the browser ran out of storage space. Your data is unchanged, and you can switch again from Backup & Files in Settings.",
-    opfsSwitchNoticeUnsupported: "The storage backend was not switched: this browser does not support a feature the switch needs. Your data is unchanged, and you can switch again from Backup & Files in Settings.",
-    opfsSwitchNoticeInterrupted: "The storage backend was not switched: another tab was open, or a switch was interrupted. Your data is unchanged, and you can switch again from Backup & Files in Settings.",
-    opfsSwitchNoticeError: (detail: string) => `The storage backend was not switched: ${detail}. Your data is unchanged, and you can switch again from Backup & Files in Settings.`,
+    opfsCopyBackProgress: (done: number, total: number) => `Moving your data to browser storage... (${done} / ${total}). Keep this tab open until it finishes.`,
+    opfsFallbackNoticeTab: "Your data could not be moved to browser storage this time, because another tab of this app is open or this browser cannot check for other tabs. RisuAI is running from your existing data, and nothing was lost. Close the other tabs; it will try again the next time the app starts.",
+    opfsFallbackNoticeSpace: "Your data could not be moved to browser storage this time, because there is not enough free storage space. RisuAI is running from your existing data, and nothing was lost. Free up some space; it will try again the next time the app starts.",
+    opfsFallbackNoticeNoIndexedDb: "Your data could not be moved to browser storage this time, because this browser cannot use IndexedDB. RisuAI is running from your existing data, and nothing was lost. It will try again the next time the app starts.",
+    opfsFallbackNoticeError: (detail: string) => `Your data could not be moved to browser storage this time: ${detail}. RisuAI is running from your existing data, and nothing was lost. It will try again the next time the app starts.`,
     browserStorageUnavailable: "This browser could not open the storage RisuAI keeps your data in, so nothing was loaded and nothing was changed. Reload the page. If this message keeps appearing, this browser cannot store RisuAI's data (private browsing and very old browsers can cause this): open RisuAI in another browser, or outside private browsing.",
-    storageMigrationLockError: "Another tab of this app appears to be open (or your browser does not support the check needed here). Close all other tabs first, then try again.",
     backupAndFiles: "Backup & Files",
     assetIntegrityHeading: "Asset Cache Integrity",
     assetIntegrityDescription: "Checks cached images/assets against their own content hash to detect corruption, without re-downloading anything from storage. Read-only unless you choose to remove a corrupted entry.",
     assetIntegrityWarnOnStartup: "Warn on startup if a quick sample check finds corruption",
     assetIntegrityVerifyButton: "Verify Asset Cache Now",
-    opfsBackendHeading: "Local Storage Backend",
-    opfsBackendDescription: "Experimental. OPFS has a stronger write-atomicity story than the default IndexedDB backend. Switching reloads the app and migrates your existing local data automatically.",
-    opfsSwitchToDefault: "Switch back to default storage",
-    opfsSwitchToOpfs: "Switch to OPFS storage (experimental)",
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

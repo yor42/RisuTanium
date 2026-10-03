@@ -66,8 +66,12 @@ export interface BootArchiveEnvironment {
     tauriDesktop: boolean
     /** Web only: `locksSupported !== false && !!navigator.locks`. */
     locksSupported: boolean
-    /** Web only: `navigator.storage.getDirectory` and `FileSystemFileHandle.prototype.createWritable` both exist. */
-    opfsWritable: boolean
+    /**
+     * Web only: the page's byte store is the IndexedDB store. A page that fell
+     * back to OPFS must not archive, because the pass writes new units into the
+     * page's store.
+     */
+    indexedDbStore: boolean
     /** `forageStorage.staleAccountProfile`: that boot never reaches plugins or `saveDb`. */
     staleAccountProfile: boolean
 }
@@ -275,7 +279,7 @@ function disabledSession(): BootArchiveSession {
 async function createSession(host: BootArchiveHost, deps: BootArchiveDeps): Promise<BootArchiveSession> {
     const env = deps.env()
     const capable = host === 'web'
-        ? env.locksSupported && (env.isNodeServer || env.opfsWritable)
+        ? env.locksSupported && (env.isNodeServer || env.indexedDbStore)
         : env.tauriDesktop
     let releaseHold: BootArchiveHoldRelease | null = null
     let canArchive = false

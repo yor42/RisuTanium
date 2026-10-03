@@ -1,10 +1,8 @@
-import { BaseDirectory, exists, remove } from "@tauri-apps/plugin-fs"
 import { get } from "svelte/store"
 import { language } from "src/lang"
 import { alertClear, alertConfirm, alertError, alertNormal, alertWait } from "../alert"
 import {
     acquireExclusiveStorageMigrationLock,
-    forageStorage,
     getBasename,
     getUncleanablesSync,
     locksSupported,
@@ -13,14 +11,13 @@ import {
 import { isNodeServer, isTauri } from "../platform"
 import { DBState, frozenSaveKeysStore, savingStoppedReason } from "../stores.svelte"
 import { isWorkInProgress } from "../process/chatOrigin"
-import { readColdStorageItem, type ColdStorageReadResult } from "../process/coldstorage.svelte"
+import { deleteColdStorageUnits, readColdStorageItem, type ColdStorageReadResult } from "../process/coldstorage.svelte"
 import { isSafeColdStorageKey } from "../process/coldStorageKey"
 import { listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, listRecoverableErrorKeysFromDb } from "../process/coldstorageData"
 import { isAppInitiatedReload } from "../reloadGuard"
 import type { Database } from "./database.svelte"
-import { getLoadTimeListing, takeStorageListing, type StorageListing } from "./loadTimeListing"
+import { getLoadTimeListing, takeStorageListing } from "./loadTimeListing"
 import { compareWithMainFileRecord } from "./mainFileRecord"
-import type { NodeStorage } from "./nodeStorage"
 import { decodeRisuSave } from "./risuSave"
 import { getAppStore } from "./store/appStore"
 import { StoreDeleteManyError } from "./store/errors"
@@ -55,16 +52,13 @@ import { StoreDeleteManyError } from "./store/errors"
 
 /** Keys per delete decision. */
 const DELETE_BATCH_SIZE = 100
-/** Asset keys per delete call: small enough that a Node server takes them in one request and the progress moves. */
+/** Asset keys per delete call on every platform, and unit keys per call on a Node server only (elsewhere a unit is its own call): small enough that a Node server takes a group in one request and the progress moves. */
 const ASSET_DELETE_GROUP_SIZE = 20
-/** Budget for the hex-encoded keys of one Node delete request, well under the server's 16 KB header limit that the revision header shares. */
-const NODE_REQUEST_KEY_BYTES = 8000
 /** How long to wait for other tabs of this app to release the shared storage lock. */
 const EXCLUSIVE_LOCK_TIMEOUT_MS = 2000
 const MAIN_FILE = 'database/database.bin'
 const SNAPSHOT_DIR = 'database'
 const SNAPSHOT_PREFIX = 'dbbackup-'
-const UNIT_KEY_PREFIX = 'coldstorage/'
 const ASSET_KEY_PREFIX = 'assets/'
 
 /** A stop with a message that is meant to be shown to the user as it is. */
@@ -189,16 +183,15 @@ class KeepSet {
      * Reads every queued archived chat, one at a time, and keeps the units each
      * names, by the pointer in or the legacy error text as the first message of
      * a chat it holds, queueing those in turn until none is new (a chain of any
-     * depth, and a cycle, end here). A chat that is not stored (on Tauri that
-     * includes a failed read when `loadListing` held no unit and the units
-     * folder is reported absent), whose bytes do not decode or whose key cannot
-     * be a storage name is kept by name and followed no further, as is one that
+     * depth, and a cycle, end here). A chat that is not stored, whose bytes do
+     * not decode or whose key cannot be a storage name is kept by name and
+     * followed no further, as is one that
      * reads but holds nothing a chat unit holds. Any other read failure stops
      * the run: what the chat names cannot be known. A key that is the blob of a
      * stub was read as a blob and is not read again. Call it after every tree
      * has been added, so that every blob is known.
      */
-    async followArchivedChats(loadListing: StorageListing): Promise<void> {
+    async followArchivedChats(): Promise<void> {
         for (let i = 0; i < this.chatQueue.length; i++) {
             const { key, origin } = this.chatQueue[i]
             if (this.blobs.has(key)) {
@@ -211,11 +204,6 @@ class KeepSet {
                 read = { status: 'error', error }
             }
             if (read.status === 'missing' || (read.status === 'error' && read.kind === 'damaged')) {
-                continue
-            }
-            // With no unit listed at load, no unit is a deletion candidate, and archived chats add no assets to the keep set,
-            // so skipping a chat here cannot lead to a deletion.
-            if (read.status === 'error' && read.kind === undefined && loadListing.units.size === 0 && await isTauriUnitFolderAbsent()) {
                 continue
             }
             if (read.status === 'error') {
@@ -234,18 +222,6 @@ class KeepSet {
 //#region reading the stored saves
 
 /**
- * True only when a failed Tauri read or removal of this file failed with "(os
- * error 2)" AND `exists()` says the file is not there. A missing file inside an
- * existing directory reports that code on every platform, and `exists()` alone
- * is false on any metadata error, so it could pass off a present file whose
- * metadata cannot be read as missing. Every other failure stays a failure.
- */
-async function isMissingTauriFile(path: string, error: unknown): Promise<boolean> {
-    const message = String((error as { message?: unknown })?.message ?? error)
-    return /\(os error 2\)/.test(message) && !await exists(path, { baseDir: BaseDirectory.AppData })
-}
-
-/**
  * Reads a stored file, or null when it is not there. The read is the store's
  * plain `read`, never the main file's version-taking read: this tab's next save
  * of the main file must still present the version it last read or wrote, or it
@@ -261,28 +237,6 @@ async function listSnapshotNames(): Promise<string[]> {
     return (await (await getAppStore()).list(keyPrefix))
         .filter((key) => key.endsWith('.bin'))
         .map((key) => key.slice(SNAPSHOT_DIR.length + 1))
-}
-
-/**
- * What `exists()` reports for the Tauri `coldstorage` folder: true only when it
- * resolves false, false when it resolves true or rejects. `exists()` is also
- * false when the folder's metadata cannot be read, so a false here does not
- * prove the folder is absent; the caller therefore also requires a load-time
- * listing with no unit in it. The first unit write creates the folder, so on a
- * profile that never archived a unit it is absent, and Windows then fails a
- * read of a file inside it with "(os error 3)", a path that was not found,
- * instead of the "(os error 2)" that classifies as missing. POSIX reports
- * "(os error 2)" there, which is already classified as missing.
- */
-async function isTauriUnitFolderAbsent(): Promise<boolean> {
-    if (!isTauri) {
-        return false
-    }
-    try {
-        return !await exists('coldstorage', { baseDir: BaseDirectory.AppData })
-    } catch {
-        return false
-    }
 }
 
 /** Decodes a stored save strictly: anything the file promises but does not deliver stops the run. */
@@ -412,88 +366,26 @@ async function deleteInBatches(
 }
 
 /**
- * Deletes `keys` (full server keys) in requests that each carry a bounded
- * `file-path` header: every key travels hex-encoded, so the budget is counted
- * in encoded bytes, not in keys, and asset keys are longer than unit keys.
- */
-async function removeNodeBatch(keys: string[], done: number, total: number): Promise<number> {
-    const storage = forageStorage.realStorage as NodeStorage
-    let failed = 0
-    let handled = 0
-    let start = 0
-    while (start < keys.length) {
-        let end = start
-        let headerBytes = 0
-        while (end < keys.length && (end === start || headerBytes + keys[end].length * 2 + 2 <= NODE_REQUEST_KEY_BYTES)) {
-            headerBytes += keys[end].length * 2 + 2
-            end++
-        }
-        const requestKeys = keys.slice(start, end)
-        handled += requestKeys.length
-        showRemoving(done + handled, total)
-        try {
-            await storage.removeItem(requestKeys)
-        } catch (error) {
-            console.error('Cold storage cleanup: a delete request failed:', error)
-            failed += requestKeys.length
-        }
-        start = end
-    }
-    return failed
-}
-
-/**
- * Deletes the units named by `keys` and returns how many it could not delete. A
- * key that cannot be a storage name (`isSafeColdStorageKey`) is counted as not
- * deleted and never reaches a backend: no unit can be stored under it, so a
- * delete could only name some other path.
+ * Deletes the units named by `keys` and returns how many it could not delete,
+ * counted per key. A key that cannot be a storage name (`isSafeColdStorageKey`)
+ * is counted as not deleted and never reaches a backend: no unit can be stored
+ * under it, so a delete could only name some other path. On a Node server the
+ * keys go in groups of `ASSET_DELETE_GROUP_SIZE`, one request each; elsewhere
+ * each unit is its own call, so the progress moves with every removal. A call
+ * that fails is counted and the next one is still attempted.
  */
 export async function removeUnitBatch(keys: string[], done: number, total: number): Promise<number> {
     const removable = keys.filter((key) => isSafeColdStorageKey(key))
-    const rejected = keys.length - removable.length
-    if (removable.length === 0) {
-        return rejected
-    }
-    return rejected + await removeSafeUnitBatch(removable, done, total)
-}
-
-async function removeSafeUnitBatch(keys: string[], done: number, total: number): Promise<number> {
-    if (isNodeServer) {
-        return await removeNodeBatch(keys.map((key) => UNIT_KEY_PREFIX + key), done, total)
-    }
-    let failed = 0
-    if (isTauri) {
-        for (let i = 0; i < keys.length; i++) {
-            showRemoving(done + i + 1, total)
-            const path = './coldstorage/' + keys[i] + '.json'
-            try {
-                await remove(path, { baseDir: BaseDirectory.AppData })
-            } catch (error) {
-                if (!await isMissingTauriFile(path, error)) {
-                    console.error('Cold storage cleanup: could not delete a unit:', error)
-                    failed++
-                }
-            }
+    let failed = keys.length - removable.length
+    const groupSize = isNodeServer ? ASSET_DELETE_GROUP_SIZE : 1
+    for (let start = 0; start < removable.length; start += groupSize) {
+        const group = removable.slice(start, start + groupSize)
+        showRemoving(done + start + group.length, total)
+        const notDeleted = await deleteColdStorageUnits(group)
+        if (notDeleted.length > 0) {
+            console.error('Cold storage cleanup: could not delete a unit:', notDeleted[0].error)
         }
-        return failed
-    }
-    let opfs: FileSystemDirectoryHandle
-    try {
-        opfs = await navigator.storage.getDirectory()
-    } catch (error) {
-        console.error('Cold storage cleanup: the storage directory is not available:', error)
-        return keys.length
-    }
-    for (let i = 0; i < keys.length; i++) {
-        showRemoving(done + i + 1, total)
-        try {
-            await opfs.removeEntry('coldstorage_' + keys[i] + '.json')
-        } catch (error) {
-            if ((error as { name?: unknown })?.name !== 'NotFoundError') {
-                console.error('Cold storage cleanup: could not delete a unit:', error)
-                failed++
-            }
-        }
+        failed += notDeleted.length
     }
     return failed
 }
@@ -574,7 +466,7 @@ async function cleanExclusively(): Promise<void> {
     }
     // After every tree, so each blob is known, and before the start listing, so
     // that no read of an archived chat happens once a deletion is possible.
-    await keep.followArchivedChats(loadListing)
+    await keep.followArchivedChats()
 
     // Taken after the keep-set is built, so it names what exists now. The
     // load-time listing still bounds what may go: anything written since

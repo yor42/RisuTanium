@@ -22,7 +22,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
-import type { OpfsSwitchNotice } from 'src/ts/storage/autoStorage'
+import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { BLOCK, composeSave, corruptBlockPayload } from 'src/ts/storage/tests/manualCleanupHarness'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
@@ -38,7 +38,7 @@ const dbState = vi.hoisted(() => ({
 const world = vi.hoisted(() => ({
     events: [] as string[],
     staleAccountProfile: false,
-    opfsSwitchNotice: null as OpfsSwitchNotice | null,
+    fallbackNotice: null as FallbackNotice | null,
     items: new Map<string, Uint8Array>(),
     failingKeys: new Set<string>(),
     blockCache: new Map<string, unknown>(),
@@ -194,12 +194,19 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
+vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
+    ...await importOriginal(),
+    takeStorageFallbackNotice: () => {
+        const notice = world.fallbackNotice
+        world.fallbackNotice = null
+        return notice
+    },
+}))
+
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         get staleAccountProfile() { return world.staleAccountProfile },
         set staleAccountProfile(v: boolean) { world.staleAccountProfile = v },
-        get opfsSwitchNotice() { return world.opfsSwitchNotice },
-        set opfsSwitchNotice(v: OpfsSwitchNotice | null) { world.opfsSwitchNotice = v },
         Init: vi.fn(async () => { world.events.push('init') }),
         getItem: vi.fn(async (key: string) => {
             world.readKeys.push(key)
@@ -342,7 +349,7 @@ beforeEach(() => {
     localStorage.clear()
     world.events.length = 0
     world.staleAccountProfile = false
-    world.opfsSwitchNotice = null
+    world.fallbackNotice = null
     world.items.clear()
     world.failingKeys.clear()
     world.blockCache.clear()
@@ -582,16 +589,16 @@ describe('loadData() web: a main file that does not decode, or does not decode c
 })
 
 describe('loadData() web: the pass notices are posted after the install and awaited in order', () => {
-    const quota: OpfsSwitchNotice = { reason: 'quota' }
+    const space: FallbackNotice = { reason: 'space' }
 
     /** Waits until `count` alerts have been recorded. */
     async function waitForAlerts(seen: unknown[], count: number) {
         await vi.waitFor(() => { expect(seen.length).toBeGreaterThanOrEqual(count) }, { timeout: 1000, interval: 5 })
     }
 
-    test('G3 / D4: the archive notice and then the stopped-pass notice follow the OPFS-switch notice, each awaited before characterURLImport', async () => {
+    test('G3 / D4: the archive notice and then the stopped-pass notice follow the storage fallback notice, each awaited before characterURLImport', async () => {
         armLegacy()
-        world.opfsSwitchNotice = quota
+        world.fallbackNotice = space
         pass.run = async (input) => ({
             kind: 'install',
             tree: (input as RunInput).tree,

@@ -101,25 +101,21 @@ async function bytesOfStoredValue(value: unknown): Promise<Uint8Array | null> {
     return null
 }
 
-export function createIndexedDbStore(): ByteStore {
-    let instance: LocalForage | undefined
+/** Point lookups of whether a key has an entry, on a connection of their own. */
+export interface EntryProbe {
+    /**
+     * Whether `key` has an entry, answered by one point lookup instead of a
+     * list of every key, whatever the entry holds. `null` when the lookup could
+     * not be made, so the caller takes the slower route: an unavailable
+     * connection is never read as "absent". A connection the browser closed is
+     * replaced once.
+     */
+    exists(key: string): Promise<boolean | null>
+    /** Closes the connection; a later lookup opens a new one. */
+    close(): void
+}
 
-    function forage(): LocalForage {
-        instance ??= localforage.createInstance({ name: DATABASE_NAME, driver: localforage.INDEXEDDB })
-        return instance
-    }
-
-    function checkAddressable(key: string): void {
-        const reason = indexedDbAddressableViolation(key)
-        if (reason !== null) {
-            throw new StoreInvalidKeyError(key, reason)
-        }
-    }
-
-    async function removeKey(key: string): Promise<void> {
-        await forage().removeItem(key)
-    }
-
+export function createEntryProbe(): EntryProbe {
     let connection: IDBDatabase | undefined
     let opening: Promise<IDBDatabase | null> | undefined
 
@@ -139,42 +135,73 @@ export function createIndexedDbStore(): ByteStore {
         return opening
     }
 
-    /**
-     * Whether `key` has an entry, answered by one point lookup instead of a
-     * list of every key. `null` when the lookup could not be made, so the
-     * caller takes the slower route: an unavailable connection is never read as
-     * "absent". A connection the browser closed is replaced once.
-     */
-    async function entryExists(key: string): Promise<boolean | null> {
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const database = await connect()
-            if (database === null) {
-                return null
-            }
-            try {
-                return await new Promise<boolean>((resolve, reject) => {
-                    const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
-                    const request = transaction.objectStore(OBJECT_STORE_NAME).count(key)
-                    request.onsuccess = () => resolve(request.result > 0)
-                    request.onerror = () => reject(request.error)
-                    transaction.onabort = () => reject(transaction.error)
-                })
-            } catch (error) {
-                if (!isInvalidStateError(error)) {
+    return {
+        async exists(key: string): Promise<boolean | null> {
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const database = await connect()
+                if (database === null) {
                     return null
                 }
-                if (connection === database) {
-                    connection = undefined
+                try {
+                    return await new Promise<boolean>((resolve, reject) => {
+                        const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
+                        const request = transaction.objectStore(OBJECT_STORE_NAME).count(key)
+                        request.onsuccess = () => resolve(request.result > 0)
+                        request.onerror = () => reject(request.error)
+                        transaction.onabort = () => reject(transaction.error)
+                    })
+                } catch (error) {
+                    if (!isInvalidStateError(error)) {
+                        return null
+                    }
+                    if (connection === database) {
+                        connection = undefined
+                    }
+                    try {
+                        database.close()
+                    } catch {
+                        // Already closed.
+                    }
                 }
+            }
+            return null
+        },
+
+        close(): void {
+            const database = connection
+            connection = undefined
+            if (database !== undefined) {
                 try {
                     database.close()
                 } catch {
                     // Already closed.
                 }
             }
-        }
-        return null
+        },
     }
+}
+
+export function createIndexedDbStore(): ByteStore {
+    let instance: LocalForage | undefined
+
+    function forage(): LocalForage {
+        instance ??= localforage.createInstance({ name: DATABASE_NAME, driver: localforage.INDEXEDDB })
+        return instance
+    }
+
+    function checkAddressable(key: string): void {
+        const reason = indexedDbAddressableViolation(key)
+        if (reason !== null) {
+            throw new StoreInvalidKeyError(key, reason)
+        }
+    }
+
+    async function removeKey(key: string): Promise<void> {
+        await forage().removeItem(key)
+    }
+
+    const probe = createEntryProbe()
+    const entryExists = (key: string): Promise<boolean | null> => probe.exists(key)
 
     return {
         capabilities: { conditionalWrites: false },

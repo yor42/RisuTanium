@@ -372,9 +372,10 @@ export async function SavePartialLocalBackup(){
  * lock -- so this wait can never turn a genuinely open tab into a grant;
  * every value of this timeout refuses that case identically, only sooner or
  * later. What this wait actually bounds is how long this restore waits
- * behind another tab's own IN-PROGRESS exclusive operation (an OPFS switch,
- * or another restore) before giving up on it and refusing instead. Kept
- * well under the OPFS switch's own 5000ms default so a restore doesn't make
+ * behind another tab's own IN-PROGRESS exclusive operation (the copy back
+ * from OPFS at startup, or another restore) before giving up on it and
+ * refusing instead. Kept well under that copy back's own 5000ms default so a
+ * restore doesn't make
  * its own user wait for however long an unrelated tab's operation takes to
  * finish, at the cost of occasionally refusing an in-progress operation of
  * similar length that would have finished moments later.

@@ -3,10 +3,10 @@
  * needs (Agents/Reports/49-memory-stage-1-plan.md, D13; MC-147).
  *
  * `collectColdStorageBackupPayloads` runs for real over the real
- * `setColdStorageItem` / `readColdStorageItem`; only the OPFS storage backend
+ * `setColdStorageItem` / `readColdStorageItem`; only the page's byte store
  * underneath is a stand-in, and it records every read so a test can tell how
- * often a unit was read. A passing test here says nothing about the Tauri or
- * Node backends.
+ * often a unit was read. A passing test here says nothing about the real
+ * IndexedDB, Tauri or Node stores.
  *
  * Invariants pinned here:
  *   - the unit set is closed under "refers to": from every character blob and
@@ -34,6 +34,9 @@ import type { Database } from '../../storage/database.svelte'
 
 const platformState = vi.hoisted(() => ({ isTauri: false }))
 const forageMem = vi.hoisted(() => new Map<string, Uint8Array>())
+/** The page store's content (`coldstorage/<key>`) and every key read from it, in order. */
+const unitStore = vi.hoisted(() => new Map<string, Uint8Array>())
+const unitReadLog = vi.hoisted(() => [] as string[])
 
 vi.mock('localforage', () => ({
     default: {
@@ -170,6 +173,17 @@ vi.mock(import('src/ts/storage/autoStorage'), () => ({
     },
 }) as unknown as typeof import('src/ts/storage/autoStorage'))
 
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
+    const store = createForageBackedStore({
+        getItem: async (key) => { unitReadLog.push(key); return unitStore.get(key) ?? null },
+        setItem: async (key, value) => { unitStore.set(key, value) },
+        keys: async () => Array.from(unitStore.keys()),
+        removeItem: async (key) => { unitStore.delete(key) },
+    })
+    return { getAppStore: async () => store } as unknown as typeof import('src/ts/storage/store/appStore')
+})
+
 vi.mock(import('src/ts/gui/animation'), () => ({
     updateAnimationSpeed: vi.fn(),
 }) as unknown as typeof import('src/ts/gui/animation'))
@@ -225,35 +239,16 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-//#region OPFS backend stand-in (navigator.storage)
+//#region legacy OPFS unit files stand-in (navigator.storage); no test here places one, so a read falls through to "not found"
 
 const opfsStore = new Map<string, Uint8Array>()
-/** Every file name opened for reading, in order. */
-const opfsReadLog: string[] = []
-
-function opfsFilename(key: string): string {
-    return 'coldstorage_' + key + '.json'
-}
 
 class MockNotFoundError extends Error {
     name = 'NotFoundError'
 }
 
 const mockDirectoryHandle = {
-    async getFileHandle(name: string, opts?: { create?: boolean }) {
-        if (opts?.create) {
-            return {
-                async createWritable() {
-                    return {
-                        async write(data: Uint8Array) {
-                            opfsStore.set(name, data)
-                        },
-                        async close() {},
-                    }
-                },
-            }
-        }
-        opfsReadLog.push(name)
+    async getFileHandle(name: string) {
         if (!opfsStore.has(name)) {
             throw new MockNotFoundError(`not found: ${name}`)
         }
@@ -405,7 +400,12 @@ function unavailableKeys(result: CollectResult): string[] {
 }
 
 function readCount(key: string): number {
-    return opfsReadLog.filter((n) => n === opfsFilename(key)).length
+    return unitReadLog.filter((n) => n === 'coldstorage/' + key).length
+}
+
+/** Places raw bytes as the page store's unit `key`. */
+function putRawUnit(key: string, bytes: Uint8Array): void {
+    unitStore.set('coldstorage/' + key, bytes)
 }
 
 function payloadOf(result: CollectResult, key: string): ColdStorageBackupPayload {
@@ -425,7 +425,8 @@ function promptTexts(): string[] {
 beforeEach(() => {
     platformState.isTauri = false
     opfsStore.clear()
-    opfsReadLog.length = 0
+    unitStore.clear()
+    unitReadLog.length = 0
     vi.mocked(alertConfirm).mockClear()
     vi.spyOn(console, 'log').mockImplementation(() => {})
 })
@@ -554,7 +555,7 @@ describe('the backup carries the unit a legacy error text names', () => {
         const BLOB = uid(24)
         const X = uid(25)
         await putBlob(BLOB, 'c1', [errorTextChat('inner-1', X)])
-        opfsStore.set(opfsFilename(X), encoder.encode('bytes that are not a compressed unit'))
+        putRawUnit(X, encoder.encode('bytes that are not a compressed unit'))
         expect((await readColdStorageItem(X)).status).toBe('error')
         const db = makeDb([makeStub('c1', 'Alice', BLOB, [])])
 
@@ -616,7 +617,7 @@ describe('a key found inside an archive or named by error text that the restore 
     const NAME = '../x'
 
     test('guard: a non-UUID error-text key on a live chat is neither read nor carried and raises no prompt', async () => {
-        opfsStore.set(opfsFilename(NAME), encoder.encode('would be carried by a naive follow'))
+        putRawUnit(NAME, encoder.encode('would be carried by a naive follow'))
         const db = makeDb([makeLiveCharacter('c1', 'Alice', [errorTextChat('chat-1', NAME)])])
 
         const result = await collectColdStorageBackupPayloads(db)
@@ -643,7 +644,7 @@ describe('a key found inside an archive or named by error text that the restore 
     test('a non-UUID pointer key found inside a blob is neither read nor carried and is reported as unavailable', async () => {
         const BLOB = uid(51)
         await putBlob(BLOB, 'c1', [pointerChat('inner-1', NAME)])
-        opfsStore.set(opfsFilename(NAME), encoder.encode('would be carried by a naive follow'))
+        putRawUnit(NAME, encoder.encode('would be carried by a naive follow'))
         const db = makeDb([makeStub('c1', 'Alice', BLOB, [])])
 
         const result = await collectColdStorageBackupPayloads(db)

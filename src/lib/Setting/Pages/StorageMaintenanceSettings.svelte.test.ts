@@ -1,23 +1,24 @@
 // @vitest-environment happy-dom
 
 /**
- * `StorageMaintenanceSettings.svelte` hosts the two panels merged into the
- * "Backup & Files" tab (MC-088): the Asset Cache Integrity panel, gated
- * `!isTauri`, and the OPFS "Local Storage Backend" switch, gated
- * `!isTauri && !isNodeServer && opfsSupported` (`opfsSupported` reads
- * `navigator.storage.getDirectory`, `FileSystemFileHandle.prototype.createWritable`
- * and `navigator.locks` off the live browser environment at mount time, so a
- * fresh mount after changing those globals observes the change).
+ * `StorageMaintenanceSettings.svelte` hosts one panel of the "Backup & Files"
+ * tab (MC-088): Asset Cache Integrity, gated `!isTauri`. It has no OPFS
+ * storage switch: a profile whose main store is OPFS is copied back into
+ * IndexedDB at startup (`opfsCopyBack.ts`).
+ *
+ * Tests here are labelled by purpose in their titles: "new-behaviour test"
+ * asserts what only a component without a switch does, "compatibility guard"
+ * holds before and after.
  *
  * MOCKED: `src/ts/platform` (`isTauri`/`isNodeServer`, both mutable getters
  * backed by a hoisted flag), `src/ts/stores.svelte` (`DBState`, a thin
  * reactive stand-in so `Check`'s `bind:check={DBState.db.checkCorruption}`
- * has somewhere to write) and `src/ts/storage/storageMaintenance` (every
- * export the component calls, as plain spies -- this file asserts only on
- * which panels render, not on the panels' own logic, which
- * `storageMaintenanceOpfs.test.ts` and `storageMaintenanceAssetIntegrity.test.ts`
- * cover directly). `src/lang` and `src/lib/UI/GUI/CheckInput.svelte` are
- * real: both are plain, dependency-light modules.
+ * has somewhere to write) and `src/ts/storage/storageMaintenance` (the one
+ * export the component calls, as a spy -- this file asserts only on which
+ * panels render, not on the panel's own logic, which
+ * `storageMaintenanceAssetIntegrity.test.ts` covers directly). `src/lang` and
+ * `src/lib/UI/GUI/CheckInput.svelte` are real: both are plain,
+ * dependency-light modules.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
@@ -41,9 +42,6 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 vi.mock(import('src/ts/storage/storageMaintenance'), () => ({
     verifyAssetIntegrity: vi.fn(async () => {}),
-    isOpfsEnabled: vi.fn(() => false),
-    enableOpfs: vi.fn(async () => {}),
-    disableOpfs: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/storage/storageMaintenance'))
 
 //#endregion
@@ -51,8 +49,7 @@ vi.mock(import('src/ts/storage/storageMaintenance'), () => ({
 import { language } from 'src/lang'
 import StorageMaintenanceSettings from './StorageMaintenanceSettings.svelte'
 
-/** Grants every global `opfsSupported` reads: `navigator.storage.getDirectory`,
- *  `FileSystemFileHandle.prototype.createWritable` and `navigator.locks`. */
+/** Grants every global a browser with OPFS support has; the component renders the same with them. */
 function grantOpfsSupport(): void {
     Object.defineProperty(window.navigator, 'storage', {
         value: { getDirectory: vi.fn(async () => ({})) },
@@ -69,8 +66,6 @@ function grantOpfsSupport(): void {
     }
 }
 
-/** Leaves every global `opfsSupported` reads absent, as a plain static build
- *  without OPFS support would. */
 function revokeOpfsSupport(): void {
     Object.defineProperty(window.navigator, 'storage', { value: undefined, configurable: true })
     Object.defineProperty(window.navigator, 'locks', { value: undefined, configurable: true })
@@ -93,10 +88,6 @@ function hasIntegrityPanel(target: HTMLElement): boolean {
     return target.textContent?.includes(language.assetIntegrityHeading) ?? false
 }
 
-function hasOpfsPanel(target: HTMLElement): boolean {
-    return target.textContent?.includes(language.opfsBackendHeading) ?? false
-}
-
 beforeEach(() => {
     platformState.isTauri = false
     platformState.isNodeServer = false
@@ -107,8 +98,8 @@ afterEach(() => {
     revokeOpfsSupport()
 })
 
-describe('StorageMaintenanceSettings gates its two panels per build (I15)', () => {
-    test('Tauri: neither panel renders', async () => {
+describe('StorageMaintenanceSettings renders only the asset integrity panel (scenario 20)', () => {
+    test('compatibility guard, Tauri: no panel renders', async () => {
         platformState.isTauri = true
         grantOpfsSupport()
 
@@ -116,12 +107,12 @@ describe('StorageMaintenanceSettings gates its two panels per build (I15)', () =
         flushSync()
 
         expect(hasIntegrityPanel(target)).toBe(false)
-        expect(hasOpfsPanel(target)).toBe(false)
+        expect(target.querySelectorAll('button').length).toBe(0)
 
         await teardown(target, app)
     })
 
-    test('Node: the integrity panel renders, the OPFS panel does not', async () => {
+    test('compatibility guard, Node: the integrity panel renders with its one button', async () => {
         platformState.isNodeServer = true
         grantOpfsSupport()
 
@@ -129,31 +120,32 @@ describe('StorageMaintenanceSettings gates its two panels per build (I15)', () =
         flushSync()
 
         expect(hasIntegrityPanel(target)).toBe(true)
-        expect(hasOpfsPanel(target)).toBe(false)
+        expect(target.querySelectorAll('button').length).toBe(1)
 
         await teardown(target, app)
     })
 
-    test('static with OPFS support: both panels render', async () => {
+    test('new-behaviour test, web with OPFS support: the integrity panel renders and no storage switch button does', async () => {
         grantOpfsSupport()
 
         const { target, app } = mountPanel()
         flushSync()
 
         expect(hasIntegrityPanel(target)).toBe(true)
-        expect(hasOpfsPanel(target)).toBe(true)
+        expect(target.querySelectorAll('button').length).toBe(1)
+        expect(target.querySelectorAll('button')[0].textContent?.trim()).toBe(language.assetIntegrityVerifyButton)
 
         await teardown(target, app)
     })
 
-    test('static without OPFS support: the integrity panel renders, the OPFS panel does not', async () => {
+    test('compatibility guard, web without OPFS support: the integrity panel renders with its one button', async () => {
         revokeOpfsSupport()
 
         const { target, app } = mountPanel()
         flushSync()
 
         expect(hasIntegrityPanel(target)).toBe(true)
-        expect(hasOpfsPanel(target)).toBe(false)
+        expect(target.querySelectorAll('button').length).toBe(1)
 
         await teardown(target, app)
     })

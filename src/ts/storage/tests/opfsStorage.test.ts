@@ -6,8 +6,8 @@
  * the same directory `OpfsStorage` itself uses -- so `OpfsStorage.keys()`
  * must return only file names that round-trip through hex-decode then
  * re-encode. A foreign name that does not round-trip (as a plain-text cold
- * storage file name does not) must never surface as a "key" `AutoStorage`
- * or `disableOpfs()` then tries to read back.
+ * storage file name does not) must never surface as a "key" a caller then
+ * tries to read back.
  *
  * Real, unmocked: `OpfsStorage` (this file's subject). Mocked: `src/ts/util`
  * (`asBuffer`, kept as the real identity function so no behaviour is

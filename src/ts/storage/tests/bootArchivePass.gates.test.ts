@@ -237,7 +237,7 @@ describe('boot archive pass: the archive-characters setting', () => {
 describe('boot archive pass: capability per host', () => {
     test.each([
         ['no Web Locks', 'opfs', { locksSupported: false }],
-        ['Web Locks without OPFS writes and not the Node server', 'opfs', { opfsWritable: false }],
+        ['Web Locks on a page whose store is not the IndexedDB store, not the Node server', 'opfs', { indexedDbStore: false }],
         ['the Node server without Web Locks', 'node', { locksSupported: false }],
         ['a Tauri build that is not a desktop build', 'tauri', { tauriDesktop: false }],
     ] as const)('B4: guard: %s archives nothing, takes no hold and raises no notice', async (_label, host, env) => {
@@ -247,8 +247,8 @@ describe('boot archive pass: capability per host', () => {
         expect(world.holdRequests).toEqual([])
     })
 
-    test('the Node server needs Web Locks but not OPFS writes', async () => {
-        const { world, result } = await boot('node', twoCharacters(), { env: { opfsWritable: false } })
+    test('the Node server needs Web Locks but not the IndexedDB store', async () => {
+        const { world, result } = await boot('node', twoCharacters(), { env: { indexedDbStore: false } })
 
         expect(charactersOf(installedTree(result.outcome)).map((c) => !!c.coldstorage)).toEqual([true, true])
         expect(world.mainWrites.length).toBe(1)

@@ -588,7 +588,7 @@ export function hostEnvironment(host: WorldHost, overrides: Partial<BootArchiveE
         isNodeServer: host === 'node',
         tauriDesktop: host === 'tauri',
         locksSupported: host !== 'tauri',
-        opfsWritable: host === 'opfs',
+        indexedDbStore: host === 'opfs',
         staleAccountProfile: false,
         ...overrides,
     }

@@ -1678,7 +1678,7 @@ export const languageGerman = {
     "applyAdditionalParamsToAll": "Zusätzliche Parameter auf alle Modelle anwenden",
     "localToggles": "Lokale Schalter",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     "staleAccountProfileNotice":
         "Dieses Browserprofil hat RisuAccount-Sync verwendet, was diese App nicht unterstützt.\n\nWas Sie jetzt sehen, sind die Daten, die dieser Browser gespeichert hat, bevor die Synchronisierung aktiviert wurde. Andere Browser oder Geräte haben Ihre Daten seitdem möglicherweise geändert. Die Daten Ihres Kontos befinden sich weiterhin auf RisuAccount.\n\nFalls das, was Sie sehen, etwas enthalten könnte, das Ihrem Konto fehlt, erstellen Sie davon eine lokale Sicherung, bevor Sie irgendetwas importieren.\n\nUm die Daten Ihres Kontos hierher zu bringen, melden Sie sich bei einem Upstream-RisuAI an, erstellen Sie eine lokale Sicherung (.bin) und importieren Sie diese hier. Gehen Sie bei einer selbst gehosteten oder lokalen Upstream-Installation zunächst zu Erweitert, aktivieren Sie „Nicht empfohlene Einstellungen anzeigen“, und deaktivieren Sie dann „Skip Saving Assets on Web Sync“ — sonst werden Bilder ausgelassen. Auf risuai.xyz kann ein vollständiges Backup, das im angemeldeten Zustand erstellt wurde, hier nicht importiert werden; der Import-Bildschirm nennt die Alternativen. Die Migrationsanleitung enthält die Details.\n\nWenn Sie auf OK klicken, wird die App neu geladen.",
     "keiImageProviderUnavailable": "Der Bildanbieter „Kei“ ist in dieser App nicht verfügbar. Wählen Sie in den Einstellungen einen anderen Bildanbieter.",
@@ -1710,23 +1710,15 @@ export const languageGerman = {
     "assetIntegrityReportEvicted": (n: number) => `\n${n} beschädigte Cache-Einträge entfernt. Laden Sie die App neu, damit die Korrektur wirksam wird.`,
     "assetIntegrityReportLeftInCache": "\nWie gewünscht im Cache belassen.",
     "assetIntegrityReportNoCorruption": "\nKeine Beschädigung in den geprüften Assets festgestellt.",
-    "opfsEnableConfirm": "Lokalen Speicher auf OPFS (experimentell) umstellen und die App neu laden? Ihre vorhandenen lokalen Daten werden beim Neuladen automatisch migriert.",
-    "opfsDisableConfirm": "Lokalen Speicher zurück auf das Standard-Backend umstellen und die App neu laden? Ihre vorhandenen OPFS-Daten werden vor dem Neuladen automatisch migriert.",
-    "opfsEnableSpaceWarningConfirm": (usageBytes: number, freeBytes: number) => `Für den Wechsel steht möglicherweise nicht genügend freier Speicherplatz zur Verfügung: etwa ${(usageBytes / (1024 * 1024)).toFixed(1)} MB werden verwendet, und etwa ${(freeBytes / (1024 * 1024)).toFixed(1)} MB sind frei. Wenn der Vorgang mitten im Ablauf fehlschlägt, bleiben Sie bei Ihrem aktuellen Speicher, und es gehen keine Daten verloren. Trotzdem fortfahren?`,
-    "opfsDisableRefused": "Dieser Tab verwendet derzeit keinen OPFS-Speicher, daher gibt es hier nichts, wovon zurückgewechselt werden könnte.",
-    "opfsSwitchNoticeQuota": "Das Speicher-Backend wurde nicht umgestellt: Dem Browser ist der Speicherplatz ausgegangen. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.",
-    "opfsSwitchNoticeUnsupported": "Das Speicher-Backend wurde nicht umgestellt: Dieser Browser unterstützt eine für die Umstellung benötigte Funktion nicht. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.",
-    "opfsSwitchNoticeInterrupted": "Das Speicher-Backend wurde nicht umgestellt: Ein anderer Tab war geöffnet, oder eine Umstellung wurde unterbrochen. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.",
-    "opfsSwitchNoticeError": (detail: string) => `Das Speicher-Backend wurde nicht umgestellt: ${detail}. Ihre Daten sind unverändert, und Sie können über Backup & Dateien in den Einstellungen erneut umstellen.`,
+    "opfsCopyBackProgress": (done: number, total: number) => `Ihre Daten werden in den Browserspeicher verschoben... (${done} / ${total}). Lassen Sie diesen Tab geöffnet, bis der Vorgang abgeschlossen ist.`,
+    "opfsFallbackNoticeTab": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil ein anderer Tab dieser App geöffnet ist oder dieser Browser andere Tabs nicht prüfen kann. RisuAI läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Schließen Sie die anderen Tabs; beim nächsten Start der App wird es erneut versucht.",
+    "opfsFallbackNoticeSpace": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil nicht genügend freier Speicherplatz vorhanden ist. RisuAI läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Geben Sie etwas Speicherplatz frei; beim nächsten Start der App wird es erneut versucht.",
+    "opfsFallbackNoticeNoIndexedDb": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil dieser Browser IndexedDB nicht verwenden kann. RisuAI läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Beim nächsten Start der App wird es erneut versucht.",
+    "opfsFallbackNoticeError": (detail: string) => `Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden: ${detail}. RisuAI läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Beim nächsten Start der App wird es erneut versucht.`,
     "browserStorageUnavailable": "Dieser Browser konnte den Speicher, in dem RisuAI Ihre Daten ablegt, nicht öffnen. Deshalb wurde nichts geladen und nichts verändert. Laden Sie die Seite neu. Wenn diese Meldung weiterhin erscheint, kann dieser Browser die Daten von RisuAI nicht speichern (der private Modus und sehr alte Browser können die Ursache sein): Öffnen Sie RisuAI in einem anderen Browser oder außerhalb des privaten Modus.",
-    "storageMigrationLockError": "Ein weiterer Tab dieser App scheint bereits geöffnet zu sein (oder Ihr Browser unterstützt die hier benötigte Prüfung nicht). Schließen Sie zuerst alle anderen Tabs und versuchen Sie es dann erneut.",
     "backupAndFiles": "Backup & Dateien",
     "assetIntegrityHeading": "Asset-Cache-Integrität",
     "assetIntegrityDescription": "Vergleicht zwischengespeicherte Bilder/Assets mit ihrem eigenen Inhalts-Hash, um Beschädigungen zu erkennen, ohne etwas erneut aus dem Speicher herunterzuladen. Der Vorgang ist schreibgeschützt, es sei denn, Sie entscheiden sich, einen beschädigten Eintrag zu entfernen.",
     "assetIntegrityWarnOnStartup": "Beim Start warnen, wenn eine schnelle Stichprobenprüfung Beschädigungen findet",
     "assetIntegrityVerifyButton": "Asset-Cache jetzt überprüfen",
-    "opfsBackendHeading": "Lokales Speicher-Backend",
-    "opfsBackendDescription": "Experimentell. OPFS bietet eine stärkere Schreib-Atomarität als das Standard-IndexedDB-Backend. Das Umschalten lädt die App neu und migriert Ihre vorhandenen lokalen Daten automatisch.",
-    "opfsSwitchToDefault": "Zurück zum Standardspeicher wechseln",
-    "opfsSwitchToOpfs": "Zu OPFS-Speicher wechseln (experimentell)"
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

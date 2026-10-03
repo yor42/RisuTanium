@@ -16,9 +16,9 @@
  * (`alertErrorWait`) or 'wait' (`alertWait`) alert; only Escape closes those. It records every notice
  * that was replaced while still on screen. A boot that does not finish fails
  * with the alert that is on screen. `loadPlugins`, `loadV2Plugin`, `coldRestoreAll.ts`
- * and `coldCharacterRestore.ts` (reading on the Node-server storage branch,
- * backed by an in-memory map) are real; the V3 plugin loader is a mock. This
- * says nothing about the OPFS or Tauri storage paths.
+ * and `coldCharacterRestore.ts` (reading through the page's byte store, backed
+ * by an in-memory map) are real; the V3 plugin loader is a mock. This says
+ * nothing about the real IndexedDB, Node or Tauri stores.
  *
  * The second half covers the crash-loop breaker of that restore (the raw
  * `localStorage` key `v21RestoreAllStrikes`): once the restore has been started
@@ -176,18 +176,24 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     saveAsset: vi.fn(),
     toGetter: vi.fn((obj: unknown) => obj),
     requiresFullEncoderReload: { state: false },
-    forageStorage: {
-        realStorage: {
-            setItem: async (key: string, value: Uint8Array) => { unitStore.set(key, value) },
-            getItem: async (key: string) => {
-                unitReads.countAtRead.push(localStorage.getItem('v21RestoreAllStrikes'))
-                return unitStore.get(key) ?? null
-            },
-            keys: async () => Array.from(unitStore.keys()),
-        },
-    },
+    forageStorage: {},
     isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../globalApi.svelte'))
+
+// The page's byte store, over the in-memory map; every read records the count.
+vi.mock(import('../../storage/store/appStore'), async () => {
+    const { createForageBackedStore } = await import('../../storage/tests/forageBackedStore')
+    const store = createForageBackedStore({
+        setItem: async (key, value) => { unitStore.set(key, value) },
+        getItem: async (key) => {
+            unitReads.countAtRead.push(localStorage.getItem('v21RestoreAllStrikes'))
+            return unitStore.get(key) ?? null
+        },
+        keys: async () => Array.from(unitStore.keys()),
+        removeItem: async (key) => { unitStore.delete(key) },
+    })
+    return { getAppStore: async () => store } as unknown as typeof import('../../storage/store/appStore')
+})
 
 vi.mock(import('../pluginSafety'), () => ({
     checkCodeSafety: vi.fn(async (code: string) => ({ modifiedCode: code })),

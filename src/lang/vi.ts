@@ -1678,7 +1678,7 @@ export const languageVietnamese = {
     applyAdditionalParamsToAll: "Áp dụng Tham số Bổ sung cho Tất cả Mô hình",
     localToggles: "Chuyển đổi Cục bộ",
 
-    // Backup & Files panel, asset cache integrity, OPFS backend, and account-migration notices
+    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
     staleAccountProfileNotice:
         "Hồ sơ trình duyệt này đã sử dụng đồng bộ RisuAccount, mà ứng dụng này không hỗ trợ.\n\nNhững gì bạn thấy bây giờ là dữ liệu mà trình duyệt này đã lưu trước khi bật đồng bộ. Các trình duyệt hoặc thiết bị khác có thể đã thay đổi dữ liệu của bạn kể từ đó. Dữ liệu tài khoản của bạn vẫn còn trên RisuAccount.\n\nNếu những gì bạn thấy có thể chứa nội dung mà tài khoản của bạn không có, hãy tạo một bản sao lưu cục bộ cho nó trước khi nhập bất kỳ thứ gì.\n\nĐể mang dữ liệu tài khoản của bạn về đây, hãy đăng nhập trên một bản RisuAI thượng nguồn, tạo một bản sao lưu cục bộ (.bin), rồi nhập nó vào đây. Trên bản thượng nguồn tự lưu trữ hoặc cục bộ, trước tiên hãy vào Cài đặt nâng cao, bật \"Hiển thị cài đặt không được đề xuất\", sau đó bỏ chọn \"Skip Saving Assets on Web Sync\", nếu không hình ảnh sẽ bị bỏ sót. Trên risuai.xyz, một bản sao lưu đầy đủ được tạo khi đã đăng nhập không thể nhập được vào đây; màn hình nhập sẽ nêu tên các phương án thay thế. Hướng dẫn di chuyển có đầy đủ chi tiết.\n\nNhấn OK sẽ tải lại ứng dụng.",
     keiImageProviderUnavailable: "Nhà cung cấp hình ảnh \"Kei\" không khả dụng trong ứng dụng này. Hãy chọn nhà cung cấp hình ảnh khác trong cài đặt.",
@@ -1710,23 +1710,15 @@ export const languageVietnamese = {
     assetIntegrityReportEvicted: (n: number) => `\nĐã xóa ${n} mục bộ nhớ đệm bị hỏng. Hãy tải lại ứng dụng để bản sửa lỗi có hiệu lực.`,
     assetIntegrityReportLeftInCache: "\nĐã giữ lại trong bộ nhớ đệm theo yêu cầu của bạn.",
     assetIntegrityReportNoCorruption: "\nKhông phát hiện hỏng dữ liệu nào trong các tài sản đã kiểm tra.",
-    opfsEnableConfirm: "Chuyển đổi lưu trữ cục bộ sang OPFS (thử nghiệm) và tải lại ứng dụng? Dữ liệu cục bộ hiện có của bạn sẽ được tự động di chuyển khi tải lại.",
-    opfsDisableConfirm: "Chuyển đổi lưu trữ cục bộ trở về backend mặc định và tải lại ứng dụng? Dữ liệu OPFS hiện có của bạn sẽ được tự động di chuyển trước khi tải lại.",
-    opfsEnableSpaceWarningConfirm: (usageBytes: number, freeBytes: number) => `Việc chuyển đổi có thể không có đủ dung lượng trống: khoảng ${(usageBytes / (1024 * 1024)).toFixed(1)} MB đang được sử dụng, và khoảng ${(freeBytes / (1024 * 1024)).toFixed(1)} MB còn trống. Nếu quá trình thất bại giữa chừng, bạn sẽ vẫn giữ nguyên lưu trữ hiện tại và không mất dữ liệu nào. Vẫn tiếp tục?`,
-    opfsDisableRefused: "Tab này hiện không sử dụng lưu trữ OPFS, vì vậy không có gì để chuyển ngược lại từ đây.",
-    opfsSwitchNoticeQuota: "Backend lưu trữ chưa được chuyển đổi: trình duyệt đã hết dung lượng lưu trữ. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.",
-    opfsSwitchNoticeUnsupported: "Backend lưu trữ chưa được chuyển đổi: trình duyệt này không hỗ trợ một tính năng cần thiết cho việc chuyển đổi. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.",
-    opfsSwitchNoticeInterrupted: "Backend lưu trữ chưa được chuyển đổi: một tab khác đang mở, hoặc quá trình chuyển đổi đã bị gián đoạn. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.",
-    opfsSwitchNoticeError: (detail: string) => `Backend lưu trữ chưa được chuyển đổi: ${detail}. Dữ liệu của bạn không thay đổi, và bạn có thể chuyển đổi lại từ Sao lưu & Tệp trong Cài đặt.`,
+    opfsCopyBackProgress: (done: number, total: number) => `Đang chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt... (${done} / ${total}). Hãy giữ tab này mở cho đến khi hoàn tất.`,
+    opfsFallbackNoticeTab: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì một tab khác của ứng dụng này đang mở hoặc trình duyệt này không thể kiểm tra các tab khác. RisuAI đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Hãy đóng các tab khác; ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
+    opfsFallbackNoticeSpace: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì không đủ dung lượng lưu trữ trống. RisuAI đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Hãy giải phóng bớt dung lượng; ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
+    opfsFallbackNoticeNoIndexedDb: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì trình duyệt này không thể sử dụng IndexedDB. RisuAI đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
+    opfsFallbackNoticeError: (detail: string) => `Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt: ${detail}. RisuAI đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.`,
     browserStorageUnavailable: "Trình duyệt này không thể mở nơi lưu trữ mà RisuAI dùng để giữ dữ liệu của bạn, nên chưa có gì được tải và không có gì bị thay đổi. Hãy tải lại trang. Nếu thông báo này tiếp tục xuất hiện, trình duyệt này không thể lưu trữ dữ liệu của RisuAI (chế độ duyệt web riêng tư và các trình duyệt quá cũ có thể gây ra điều này): hãy mở RisuAI trong trình duyệt khác, hoặc bên ngoài chế độ duyệt web riêng tư.",
-    storageMigrationLockError: "Có vẻ như một tab khác của ứng dụng này đang mở (hoặc trình duyệt của bạn không hỗ trợ kiểm tra cần thiết ở đây). Hãy đóng tất cả các tab khác trước, sau đó thử lại.",
     backupAndFiles: "Sao lưu & Tệp",
     assetIntegrityHeading: "Tính toàn vẹn Bộ nhớ đệm Tài sản",
     assetIntegrityDescription: "Đối chiếu hình ảnh/tài sản đã lưu trong bộ nhớ đệm với mã băm nội dung của chính chúng để phát hiện hỏng dữ liệu, mà không cần tải lại bất kỳ thứ gì từ bộ nhớ lưu trữ. Đây là thao tác chỉ đọc, trừ khi bạn chọn xóa một mục bị hỏng.",
     assetIntegrityWarnOnStartup: "Cảnh báo khi khởi động nếu kiểm tra mẫu nhanh phát hiện hỏng dữ liệu",
     assetIntegrityVerifyButton: "Xác minh Bộ nhớ đệm Tài sản Ngay",
-    opfsBackendHeading: "Backend Lưu trữ Cục bộ",
-    opfsBackendDescription: "Tính năng thử nghiệm. OPFS có tính nguyên tử khi ghi mạnh hơn so với backend IndexedDB mặc định. Việc chuyển đổi sẽ tải lại ứng dụng và tự động di chuyển dữ liệu cục bộ hiện có của bạn.",
-    opfsSwitchToDefault: "Chuyển về Lưu trữ Mặc định",
-    opfsSwitchToOpfs: "Chuyển sang Lưu trữ OPFS (thử nghiệm)",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

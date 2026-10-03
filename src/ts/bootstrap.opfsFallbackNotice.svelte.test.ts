@@ -1,42 +1,34 @@
 /**
- * CHORE-39, O1 (Agents/Reports/30-chore39-opfs-migration-plan.md): a boot that
- * could not complete the OPFS switch must not boot silently on LocalForage.
- * Drives the REAL `loadData()` from `src/ts/bootstrap.ts`, non-Tauri branch,
- * the same way `bootstrap.staleAccountProfile.svelte.test.ts` does.
+ * New-behaviour tests (the notice and its reasons are new) and a compatibility
+ * guard (no notice, no alert). A page that runs from OPFS because the copy back
+ * into IndexedDB could not run must not boot silently: `loadData()` in
+ * `src/ts/bootstrap.ts`, non-Tauri branch, posts one notice and pauses until it
+ * is acknowledged. Drives the REAL `loadData()` the same way
+ * `bootstrap.staleAccountProfile.svelte.test.ts` does.
  *
- * `AutoStorage` itself (the real detection logic behind `opfsSwitchNotice`)
- * is out of scope here and covered by `storage/tests/autoStorage.opfsMigration.test.ts`;
- * this file only drives `bootstrap.ts`'s own reaction to the field, so
- * `forageStorage.opfsSwitchNotice` is set directly on the mock below, exactly
- * as `bootstrap.staleAccountProfile.svelte.test.ts` sets
- * `forageStorage.staleAccountProfile` directly rather than through a real
- * `Init()` call.
+ * The decision behind the notice (`resolveWebStore`, `appStore.ts`) is covered by
+ * `storage/tests/opfsCopyBack.test.ts` and `storage/tests/appStore.copyBack.test.ts`;
+ * this file only drives `bootstrap.ts`'s own reaction to
+ * `takeStorageFallbackNotice()`, which is overridden below to hand out a notice
+ * a test sets directly.
  *
  * `alert.ts` is real (a thin wrapper), so this file observes `alertStore`
  * (from the mocked `stores.svelte` below) as the effect of whichever prompt
- * function `loadData()` calls, instead of spying on that function by name --
- * the exact alert type and copy are not fixed by the plan, only the
- * behaviour: a notice is posted, boot pauses until it is acknowledged, the
- * "error" reason's text carries its detail, and different reasons carry
- * different text. Acknowledgement is simulated the way `AlertComp.svelte`'s
- * own OK button resolves an `'error'`/`'normal'`/`'markdown'` alert: writing
+ * function `loadData()` calls: a notice is posted, boot pauses until it is
+ * acknowledged, the "error" reason's text carries its detail, and different
+ * reasons carry different text. Acknowledgement is simulated the way
+ * `AlertComp.svelte`'s own OK button resolves a `'normal'` alert: writing
  * `{ type: 'none', msg: '' }` back onto the shared store.
  *
  * Everything else `bootstrap.ts` imports is mocked, mirroring the sibling
- * bootstrap test files: `globalApi.svelte`, `storage/database.svelte`,
- * `platform`, `util`, `reloadGuard`, `update`, `stores.svelte`,
- * `plugins/plugins.svelte`, `characterCards`, `gui/*`,
- * `observer.svelte`, `characters`, `hotkey`, `process/modules`,
- * `storage/assetIntegrity`,
- * `storage/remoteSaveCleanup`, `storage/assetSweep`, `media/avatarThumb`,
- * `model/modellist`, and every `@tauri-apps/*` package `bootstrap.ts` touches.
+ * bootstrap test files.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
-import type { OpfsSwitchNotice } from 'src/ts/storage/autoStorage'
+import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
-type OpfsSwitchNoticeReason = OpfsSwitchNotice['reason']
+type FallbackReason = FallbackNotice['reason']
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -49,10 +41,11 @@ const dbState = vi.hoisted(() => ({
 
 const forageState = vi.hoisted(() => ({
     staleAccountProfile: false,
-    opfsSwitchNotice: null as OpfsSwitchNotice | null,
+    fallbackNotice: null as FallbackNotice | null,
     items: new Map<string, Uint8Array | (() => Uint8Array)>(),
 }))
 
+const cleanUpMock = vi.hoisted(() => vi.fn(async () => { }))
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
@@ -228,12 +221,20 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async (path: string) => { fsStore.delete(path) }),
 }))
 
+vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
+    ...await importOriginal(),
+    cleanUpCopiedBackOpfs: cleanUpMock,
+    takeStorageFallbackNotice: () => {
+        const notice = forageState.fallbackNotice
+        forageState.fallbackNotice = null
+        return notice
+    },
+}))
+
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         get staleAccountProfile() { return forageState.staleAccountProfile },
         set staleAccountProfile(v: boolean) { forageState.staleAccountProfile = v },
-        get opfsSwitchNotice() { return forageState.opfsSwitchNotice },
-        set opfsSwitchNotice(v: OpfsSwitchNotice | null) { forageState.opfsSwitchNotice = v },
         Init: vi.fn(async () => { }),
         getItem: vi.fn(async (key: string) => {
             const entry = forageState.items.get(key)
@@ -318,11 +319,12 @@ beforeEach(() => {
     localStorage.clear()
     fsStore.clear()
     forageState.staleAccountProfile = false
-    forageState.opfsSwitchNotice = null
+    forageState.fallbackNotice = null
     forageState.items.clear()
     dbState.current = baseDb()
     platformState.isTauri = false
     platformState.isNodeServer = false
+    cleanUpMock.mockClear()
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
@@ -346,10 +348,10 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-describe('loadData(): no opfs switch notice recorded (guard)', () => {
-    test('boots straight through to loadedStore true, posting no alert at all, when opfsSwitchNotice is null', async () => {
+describe('loadData(): no storage fallback notice recorded (compatibility guard)', () => {
+    test('boots straight through to loadedStore true, posting no alert at all, when no fallback notice is recorded', async () => {
         armDecode(baseDb())
-        forageState.opfsSwitchNotice = null
+        forageState.fallbackNotice = null
         const { loadData, alertStore, loadedStore } = await freshLoadData()
         const seenTypes: string[] = []
         const unsubscribe = alertStore.subscribe((v) => seenTypes.push(v.type))
@@ -363,20 +365,20 @@ describe('loadData(): no opfs switch notice recorded (guard)', () => {
     })
 })
 
-describe('loadData(): an opfs switch notice pauses boot until acknowledged (O1)', () => {
-    const reasons: OpfsSwitchNoticeReason[] = ['quota', 'error', 'interrupted', 'unsupported']
+describe('loadData(): a storage fallback notice pauses boot until acknowledged (new-behaviour test)', () => {
+    const reasons: FallbackReason[] = ['space', 'tab', 'noIndexedDb', 'error']
 
     for (const reason of reasons) {
         test(`reason "${reason}": an alert is posted, boot does not continue past it, and continues once acknowledged`, async () => {
             armDecode(baseDb())
-            forageState.opfsSwitchNotice = { reason, detail: reason === 'error' ? 'notice-detail-marker' : undefined }
+            forageState.fallbackNotice = { reason, detail: reason === 'error' ? 'notice-detail-marker' : undefined }
             const { loadData, alertStore, loadedStore } = await freshLoadData()
 
             const loadPromise = loadData()
             try {
                 await vi.waitFor(() => {
                     if (get(alertStore).type === 'none') {
-                        throw new Error(`expected an opfs switch notice for reason "${reason}" to be showing`)
+                        throw new Error(`expected a fallback notice for reason "${reason}" to be showing`)
                     }
                 }, { timeout: 500, interval: 5 })
 
@@ -400,10 +402,10 @@ describe('loadData(): an opfs switch notice pauses boot until acknowledged (O1)'
     }
 })
 
-describe('loadData(): the opfs switch notice text is reason-specific', () => {
-    test('the "error" reason\'s text carries the detail, and differs from the "quota" reason\'s text', async () => {
+describe('loadData(): the storage fallback notice text is reason-specific (new-behaviour test)', () => {
+    test('the "error" reason\'s text carries the detail, and differs from the "space" reason\'s text', async () => {
         armDecode(baseDb())
-        forageState.opfsSwitchNotice = { reason: 'error', detail: 'notice-detail-marker' }
+        forageState.fallbackNotice = { reason: 'error', detail: 'notice-detail-marker' }
         const errorRun = await freshLoadData()
         const errorLoadPromise = errorRun.loadData()
         let errorMsg: string
@@ -421,31 +423,31 @@ describe('loadData(): the opfs switch notice text is reason-specific', () => {
 
         vi.resetModules()
         armDecode(baseDb())
-        forageState.opfsSwitchNotice = { reason: 'quota' }
-        const quotaRun = await freshLoadData()
-        const quotaLoadPromise = quotaRun.loadData()
-        let quotaMsg: string
+        forageState.fallbackNotice = { reason: 'space' }
+        const spaceRun = await freshLoadData()
+        const spaceLoadPromise = spaceRun.loadData()
+        let spaceMsg: string
         try {
             await vi.waitFor(() => {
-                if (get(quotaRun.alertStore).type === 'none') {
-                    throw new Error('expected the "quota" reason notice to be showing')
+                if (get(spaceRun.alertStore).type === 'none') {
+                    throw new Error('expected the "space" reason notice to be showing')
                 }
             }, { timeout: 500, interval: 5 })
-            quotaMsg = get(quotaRun.alertStore).msg
+            spaceMsg = get(spaceRun.alertStore).msg
         } finally {
-            quotaRun.alertStore.set({ type: 'none', msg: '' })
-            await quotaLoadPromise.catch(() => { })
+            spaceRun.alertStore.set({ type: 'none', msg: '' })
+            await spaceLoadPromise.catch(() => { })
         }
 
         expect(errorMsg).toContain('notice-detail-marker')
-        expect(quotaMsg).not.toBe(errorMsg)
+        expect(spaceMsg).not.toBe(errorMsg)
     })
 })
 
-describe('loadData(): the opfs switch notice is posted only after setDatabase() runs (N1)', () => {
+describe('loadData(): the storage fallback notice is posted only after setDatabase() runs (new-behaviour test)', () => {
     test('setDatabase() is called strictly before the notice reaches alertStore, so the notice shows in the language setDatabase() selects', async () => {
         armDecode(baseDb())
-        forageState.opfsSwitchNotice = { reason: 'quota' }
+        forageState.fallbackNotice = { reason: 'space' }
         const { loadData, alertStore, loadedStore } = await freshLoadData()
         const alertSetSpy = vi.spyOn(alertStore, 'set')
 
@@ -454,7 +456,7 @@ describe('loadData(): the opfs switch notice is posted only after setDatabase() 
             await vi.waitFor(() => {
                 const hasNotice = alertSetSpy.mock.calls.some(([v]) => v.type !== 'none')
                 if (!hasNotice) {
-                    throw new Error('expected an opfs switch notice call on alertStore.set')
+                    throw new Error('expected a fallback notice call on alertStore.set')
                 }
             }, { timeout: 500, interval: 5 })
 
@@ -471,5 +473,41 @@ describe('loadData(): the opfs switch notice is posted only after setDatabase() 
             alertStore.set({ type: 'none', msg: '' })
             await loadPromise.catch(() => { })
         }
+    })
+})
+
+describe('loadData(): the OPFS leftovers clean-up is started only after the main file decoded (new-behaviour test)', () => {
+    test('a boot that decoded the main file starts the clean-up once, without waiting for it', async () => {
+        armDecode(baseDb())
+        let finishCleanUp: () => void = () => { }
+        cleanUpMock.mockImplementation(() => new Promise<void>((resolve) => { finishCleanUp = resolve }))
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(cleanUpMock).toHaveBeenCalledTimes(1)
+        finishCleanUp()
+    })
+
+    test('a boot that fell back to a numbered backup because the main file would not decode does not start the clean-up', async () => {
+        forageState.items.set('database/database.bin', new Uint8Array([1, 2, 3]))
+        forageState.items.set('database/dbbackup-1.bin', encodeRisuSaveLegacy(baseDb()))
+        getDbBackupsMock.mockResolvedValue([1])
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(cleanUpMock).not.toHaveBeenCalled()
+    })
+
+    test('new behaviour: a boot that found no main file and seeded an empty one does not start the clean-up', async () => {
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(cleanUpMock).not.toHaveBeenCalled()
     })
 })

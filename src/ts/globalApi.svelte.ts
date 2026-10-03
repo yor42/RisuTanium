@@ -627,8 +627,8 @@ export let requiresFullEncoderReload = $state({
  * A minimal async mutex serializing writes to the shared `database/database.bin`
  * key between saveDb()'s autosave loop and any other direct writer (currently
  * LoadLocalBackup()'s restore write, `loadInternalBackup` (drive/internalBackup.ts)'s
- * snapshot write, and the exclusive storage-migration lock's
- * `enableOpfs()`/`disableOpfs()`/boot-copy holders below). LoadLocalBackup()'s
+ * snapshot write, and the exclusive storage-migration lock's holders below,
+ * such as the copy back from OPFS at startup). LoadLocalBackup()'s
  * restore write and the internal-backup load's write acquire this directly only
  * on Tauri or when Web Locks aren't supported; on an ordinary web build their
  * exclusive storage lock already holds this internally for the same reason (see

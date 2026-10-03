@@ -186,7 +186,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => {
     return {
         forageStorage: {
             staleAccountProfile: false,
-            opfsSwitchNotice: null,
             get realStorage() { return world.storage },
             Init: vi.fn(async () => { }),
             getItem: (key: string) => storage().getItem(key),
@@ -626,6 +625,60 @@ describe('the Tauri boot removes the leftover temp files of interrupted writes f
     })
 
     test('a temp file that cannot be removed does not stop the boot', async () => {
+        fakeFs.plant(LEFTOVER, new Uint8Array([1, 2, 3]))
+        const fault = fakeFs.failRemoves('Access is denied. (os error 5)', (path) => path === LEFTOVER)
+        const { boot } = await freshLoadData()
+
+        const { loaded } = await boot()
+
+        expect(fault.fired).toBeGreaterThan(0)
+        expect(loaded).toBe(true)
+        expect(fakeFs.files.has(LEFTOVER)).toBe(true)
+    })
+})
+
+describe('the Tauri boot removes the leftover temp files of interrupted writes from coldstorage/', () => {
+    const LEFTOVER = 'coldstorage/risu-write-0123456789abcdef.tmp'
+    const OTHER_LEFTOVER = 'coldstorage/risu-write-fedcba9876543210.tmp'
+    const UNIT = 'coldstorage/3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10.json'
+
+    beforeEach(() => {
+        platformState.isTauri = true
+        platformState.isNodeServer = false
+        tauriBackend().seedMain(mainFileOf('kept'))
+    })
+
+    test('new behaviour: removes only the files whose name is a temp name, before the boot reads the main file and so before the boot archive pass can write a unit', async () => {
+        fakeFs.plant(LEFTOVER, new Uint8Array([1, 2, 3]))
+        fakeFs.plant(OTHER_LEFTOVER, new Uint8Array([4, 5, 6]))
+        fakeFs.plant(UNIT, new Uint8Array([7]))
+        fakeFs.plant('coldstorage/risu-write-not-a-temp.tmp', new Uint8Array([8]))
+        const { boot } = await freshLoadData()
+
+        await boot()
+
+        expect(fakeFs.listing('coldstorage')).toEqual([
+            '3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10.json',
+            'risu-write-not-a-temp.tmp',
+        ])
+        const mainRead = fakeFs.calls.findIndex((call) => call.op === 'readFile' && relative(call.path) === MAIN_KEY)
+        const removed = [LEFTOVER, OTHER_LEFTOVER].map((path) => fakeFs.calls.findIndex((call) => call.op === 'remove' && relative(call.path) === path))
+        expect(mainRead).toBeGreaterThan(-1)
+        expect(Math.max(...removed)).toBeGreaterThan(-1)
+        expect(Math.max(...removed)).toBeLessThan(mainRead)
+    })
+
+    test('guard: a boot with no coldstorage/ directory yet loads, reports nothing and never lists it', async () => {
+        const { boot } = await freshLoadData()
+
+        const { loaded } = await boot()
+
+        expect(loaded).toBe(true)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(fakeFs.readDirLog.map(relative)).not.toContain('coldstorage')
+    })
+
+    test('new behaviour: a temp file that cannot be removed does not stop the boot', async () => {
         fakeFs.plant(LEFTOVER, new Uint8Array([1, 2, 3]))
         const fault = fakeFs.failRemoves('Access is denied. (os error 5)', (path) => path === LEFTOVER)
         const { boot } = await freshLoadData()
