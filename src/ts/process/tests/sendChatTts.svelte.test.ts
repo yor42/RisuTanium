@@ -337,6 +337,7 @@ import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { writeAt } from '../chatOrigin'
 import { stopTTS } from '../tts'
+import { getUserName } from '../../util'
 
 //#region fixtures
 
@@ -368,6 +369,8 @@ function makeCharacter(chaId: string, chats: Chat[], extra: Record<string, unkno
         depth_prompt: undefined,
         reloadKeys: 0,
         supaMemory: false,
+        // A voiced character: auto speech only runs for a speaker whose mode produces speech.
+        ttsMode: 'webspeech',
         chats,
         ...extra,
     } as unknown as CharacterFixture
@@ -534,6 +537,8 @@ beforeEach(() => {
     parserSpy.mockReset()
     parserSpy.mockImplementation(parserBox.actual!)
     ttsBox.useReal = false
+    vi.mocked(getUserName).mockReset()
+    vi.mocked(getUserName).mockImplementation(() => 'User')
     processScriptFullMock.mockReset()
     processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     isLastCharPunctuationMock.mockReset()
@@ -896,6 +901,82 @@ describe('the spoken text of a message and its displayed text', () => {
 
         expect(spoken()).toEqual(['The Party says hi to User. Mood: calm'])
         expect(sayTTSMock.mock.calls[0][0]).toBe(charById('member-1'))
+    })
+})
+
+describe('which speaker is voiced', () => {
+    test.each([
+        ['an empty mode', ''],
+        ['an unset mode', undefined],
+        ['the none mode', 'none'],
+        ['the normal mode', 'normal'],
+    ] as const)('regression reproducer: a character with %s is neither parsed for speech nor spoken', async (_title, ttsMode) => {
+        installSingle({ ttsMode })
+        mockReplyIn('non-streaming', 'Hello {{user}}.')
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(sayTTSMock).not.toHaveBeenCalled()
+        expect(ttsParseCalls()).toEqual([])
+    })
+
+    test('regression reproducer: a group turn is not parsed or spoken when the speaking member has no voice, even if another member has one', async () => {
+        const group = makeGroup('group-1', 'The Party', ['member-1', 'member-2'], [makeChat('group-chat', [msg('user', 'Hi')])])
+        installDb([
+            group,
+            makeCharacter('member-1', [makeChat('m1-chat', [])]),
+            makeCharacter('member-2', [makeChat('m2-chat', [])], { ttsMode: 'none' }),
+        ])
+        selectedCharID.set(0)
+        mockReplyIn('non-streaming', 'I am {{char}}.')
+
+        const result = await settled(() => sendChat(1))
+
+        expect(result).toBe(true)
+        expect(sayTTSMock).not.toHaveBeenCalled()
+        expect(ttsParseCalls()).toEqual([])
+    })
+
+    test('guard: a group turn of a voiced member is parsed with the group name and spoken with the member voice', async () => {
+        const group = makeGroup('group-1', 'The Party', ['member-1', 'member-2'], [makeChat('group-chat', [msg('user', 'Hi')])])
+        installDb([
+            group,
+            makeCharacter('member-1', [makeChat('m1-chat', [])], { ttsMode: 'none' }),
+            makeCharacter('member-2', [makeChat('m2-chat', [])]),
+        ])
+        selectedCharID.set(0)
+        outputTriggerEdits((chat) => { chat.message.at(-1)!.data = 'I am {{char}}.' })
+        mockReplyIn('non-streaming', 'Placeholder.')
+
+        const result = await settled(() => sendChat(1))
+
+        expect(result).toBe(true)
+        expect(spoken()).toEqual(['I am The Party.'])
+        expect(sayTTSMock.mock.calls[0][0]).toBe(charById('member-2'))
+        expect(ttsParseCalls()[0].options.chara).toBe('The Party')
+    })
+
+    test('regression reproducer: a user-role reply is parsed with the user name of the chat the send belongs to, after the screen switched chats', async () => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])]),
+            makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])]),
+        ])
+        selectedCharID.set(0)
+        vi.mocked(getUserName).mockImplementation((chat) => (chat && chat.id === 'chat-origin' ? 'Origin User' : 'Screen User'))
+        runTriggerMock.mockImplementation(async (_char: unknown, triggerMode: string) => {
+            if (triggerMode === 'output') {
+                selectedCharID.set(1)
+            }
+            return undefined
+        })
+        requestChatDataMock.mockResolvedValueOnce({ type: 'multiline', result: [['user', 'I am {{user}}.']] })
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(spoken()).toEqual(['I am Origin User.'])
+        expect(ttsParseCalls()[0].options.chara).toBe('Origin User')
     })
 })
 

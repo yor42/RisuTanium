@@ -15,6 +15,7 @@ import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
 import { sayTTS } from "./tts";
+import { isTTSVoiceMode } from "./ttsModes";
 import { ttsAddition } from "./ttsAddition";
 import { buildDisplayParseOptions } from "./displayParseOptions";
 import { supaMemory } from "./memory/supaMemory";
@@ -2057,6 +2058,10 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
 
     let result = ''
+    // This request's own model text (the addition only, for a continue), before
+    // output scripts and inlay processing; the last message's text for a
+    // multiline answer.
+    let modelText = ''
     let emoChanged = false
     let resendChat = false
     // The reply's stored text when this run began writing to it, for auto-TTS.
@@ -2231,6 +2236,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     if(DBState.db.removeIncompleteResponse){
                         result = trimUntilPunctuation(result)
                     }
+                    modelText = result
                     if(coalesceStreamingDisplay){
                         pendingStreamingResult = result
                         scheduleStreamingDisplayFlush()
@@ -2345,6 +2351,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     result2 = await processScriptFull(nowChatroom, reformatContent(beforeData + mess), 'editoutput', continuedTarget.index, {}, undefined, subject, replyMessageRef(continuedTarget))
                 }
             }
+            modelText = DBState.db.removeIncompleteResponse ? trimUntilPunctuation(mess) : mess
             if(DBState.db.removeIncompleteResponse){
                 result2.data = trimUntilPunctuation(result2.data)
             }
@@ -2433,11 +2440,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
     }
 
-    if(!abortSignal.aborted && DBState.db.ttsAutoSpeech){
+    // Only a speaker whose mode produces speech is parsed and spoken: the parse
+    // of an unvoiced speaker would feed text to nothing, and `sayTTS` would run
+    // TTS preprocess hooks for it.
+    if(!abortSignal.aborted && DBState.db.ttsAutoSpeech && isTTSVoiceMode(currentChar.ttsMode)){
         const ttsTarget = resolveReply()
         if(ttsTarget){
             const storedReply = ttsTarget.ctx.chat.message[ttsTarget.index]
-            const ttsChara = storedReply.role === 'user' ? getUserName() : ttsTarget.ctx.owner.name
+            const ttsChara = storedReply.role === 'user' ? getUserName(ttsTarget.ctx.chat) : ttsTarget.ctx.owner.name
             const spoken = ttsAddition(ttsBefore, storedReply.data, (stored) => risuChatParser(stored, buildDisplayParseOptions({
                 chara: ttsChara,
                 chatID: ttsTarget.index,
@@ -2452,12 +2462,16 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
 
     let needsAutoContinue = false
-    const resultTokens = await tokenize(result) + (arg.usedContinueTokens || 0)
-    if(DBState.db.autoContinueMinTokens > 0 && resultTokens < DBState.db.autoContinueMinTokens){
+    // The decision reads the text this request produced, as the model returned
+    // it, so it does not depend on how the reply was delivered or on output
+    // scripts. A request that produced nothing never continues, so an empty
+    // reply cannot chain paid requests.
+    const resultTokens = await tokenize(modelText) + (arg.usedContinueTokens || 0)
+    if(modelText.trim() !== '' && DBState.db.autoContinueMinTokens > 0 && resultTokens < DBState.db.autoContinueMinTokens){
         needsAutoContinue = true
     }
 
-    if(DBState.db.autoContinueChat && (!isLastCharPunctuation(result))){
+    if(modelText.trim() !== '' && DBState.db.autoContinueChat && (!isLastCharPunctuation(modelText))){
         //if result doesn't end with punctuation or special characters, auto continue
         needsAutoContinue = true
     }

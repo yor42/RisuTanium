@@ -26,7 +26,7 @@
     import { type Unsubscriber } from "svelte/store"
     import { v4 as uuidv4, v4 } from 'uuid'
     import { language } from "../../lang"
-    import { alertConfirm, alertInput, alertRequestData, alertSelect } from "../../ts/alert"
+    import { alertConfirm, alertError, alertInput, alertRequestData, alertSelect } from "../../ts/alert"
     import { markCharacterForSave } from "../../ts/storage/characterSaveMarks"
     import { ParseMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
     import { getCurrentCharacter, getCurrentChat, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
@@ -418,7 +418,13 @@
         if (e.detail.target === 'translation') {
             if (!e.detail.translationKey) return
 
-            await updateTranslationCache(e.detail.translationKey, e.detail.newData)
+            // The partial editor has already closed when this runs, so a failed
+            // write is reported and the edited text is not recoverable from it.
+            try {
+                await updateTranslationCache(e.detail.translationKey, e.detail.newData)
+            } catch (error) {
+                alertError(error)
+            }
             return
         }
 
@@ -915,9 +921,9 @@
                     disabled={translationEditControlDisabled}
                     onclick={() => {
                         if(editTranslationMode){
-                            saveTranslationEdit()
+                            saveTranslationEdit().catch((error) => alertError(error))
                         } else {
-                            loadTranslationForEdit()
+                            loadTranslationForEdit().catch((error) => alertError(error))
                         }
                     }}
             >
@@ -978,7 +984,7 @@
             {@render draftRestoreMarker(restoredTranslationRecord, revertTranslationEdit, markerOnLightSurface)}
         {/if}
         <AutoresizeArea bind:value={editTranslationText} onUserEdit={captureTranslationEdit} handleLongPress={() => {
-            saveTranslationEdit()
+            saveTranslationEdit().catch((error) => alertError(error))
         }} />
     {/if}
     {#if editMode}

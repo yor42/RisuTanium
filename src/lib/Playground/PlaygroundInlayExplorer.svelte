@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { warnOnReject } from "src/ts/warnOnReject";
   import { onDestroy } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
 
@@ -182,26 +183,32 @@
           </div>
           <div class="mb-3">
             {#if asset.type === 'image'}
-              {#await getPreviewURL(id) then url}
+              {#await warnOnReject('PlaygroundInlayExplorer: image preview rejected', getPreviewURL(id)) then url}
                 {#if url}
                   <img alt={asset.name} class="w-full h-40 object-contain rounded bg-black/20" src={url} />
                 {/if}
+              {:catch}
+                <!-- no preview: nothing is rendered for a rejected promise -->
               {/await}
             {:else if asset.type === 'video'}
-              {#await getPreviewURL(id) then url}
+              {#await warnOnReject('PlaygroundInlayExplorer: video preview rejected', getPreviewURL(id)) then url}
                 {#if url}
                   <video class="w-full h-40 object-contain rounded bg-black/20" controls src={url}>
                     <track kind="captions" />
                   </video>
                 {/if}
+              {:catch}
+                <!-- no preview: nothing is rendered for a rejected promise -->
               {/await}
             {:else if asset.type === 'audio'}
-              {#await getPreviewURL(id) then url}
+              {#await warnOnReject('PlaygroundInlayExplorer: audio preview rejected', getPreviewURL(id)) then url}
                 {#if url}
                   <audio class="w-full" controls src={url}>
                     <track kind="captions" />
                   </audio>
                 {/if}
+              {:catch}
+                <!-- no preview: nothing is rendered for a rejected promise -->
               {/await}
             {/if}
           </div>

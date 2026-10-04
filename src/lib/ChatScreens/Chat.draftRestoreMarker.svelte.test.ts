@@ -103,6 +103,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
     alertConfirm: vi.fn(async () => true),
+    alertError: vi.fn(),
     alertNormal: vi.fn(),
     alertWait: vi.fn(),
     alertInput: vi.fn(async () => ''),
@@ -157,8 +158,12 @@ vi.mock(import('src/ts/characters'), () => ({
 vi.mock('./ChatBody.svelte', () => ({
     default: (_target: unknown) => ({ destroy: () => {} }),
 }))
+const partialEditProps = vi.hoisted(() => ({ current: null as null | { $$events?: { save?: (e: CustomEvent) => unknown } } }))
 vi.mock('./PartialEditController.svelte', () => ({
-    default: (_target: unknown) => ({ destroy: () => {} }),
+    default: (_target: unknown, props: { $$events?: { save?: (e: CustomEvent) => unknown } }) => {
+        partialEditProps.current = props
+        return { destroy: () => {} }
+    },
 }))
 
 //#endregion
@@ -171,6 +176,7 @@ import { chatWindowKey } from 'src/ts/chatWindowPolicy'
 import { hasLocalDrafts, resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { language } from '../../lang'
 import { getLLMCache, setLLMCache } from 'src/ts/translator/translator'
+import { alertError } from 'src/ts/alert'
 import { formatDraftAge } from 'src/ts/draftAge'
 import { ParseMarkdown } from 'src/ts/parser/parser.svelte'
 
@@ -280,34 +286,23 @@ async function typeInto(target: HTMLElement, value: string) {
     await tick()
 }
 
-// A rejecting `setLLMCache` drives a real, unhandled rejection: `saveTranslationEdit`'s
-// `onclick` handler in `Chat.svelte` fires-and-forgets (never awaits or
-// catches its own promise), and the function itself never catches a failed
-// save either, so the rejection genuinely reaches the JS engine unhandled.
-// Left alone, Node/Vitest's own 'unhandledRejection' listener reports it as a
-// suite-level "Unhandled Error" regardless of whether the test's own
-// assertions pass, which would make the run's totals lie about what actually
-// failed. This helper swaps out every currently-registered
-// 'unhandledRejection' listener for a single no-op one for the duration of
-// `fn`, so nothing outside this one, deliberately-provoked rejection is
-// affected, and restores the originals verbatim afterward. A no-op listener,
-// not zero listeners, is essential: Node's default `unhandledRejections`
-// mode escalates to an actual `uncaughtException` (crashing the process)
-// specifically when a rejection has NO listener at all -- `removeAllListeners`
-// alone would leave zero listeners and crash the process instead of staying
-// silent.
-async function withSuppressedUnhandledRejections<T>(fn: () => Promise<T>): Promise<T> {
-    const existingListeners = process.listeners('unhandledRejection')
-    process.removeAllListeners('unhandledRejection')
-    process.on('unhandledRejection', () => {})
+// A failed translation write is reported through `alertError` by the call
+// sites in `Chat.svelte`, so no rejection may reach the process unhandled.
+// This runs `fn` with its own 'unhandledRejection' listener registered
+// (Node escalates an unhandled rejection to an uncaught exception when no
+// listener exists) and fails if any rejection was reported meanwhile.
+async function expectNoUnhandledRejections<T>(fn: () => Promise<T>): Promise<T> {
+    const seen: unknown[] = []
+    const listener = (reason: unknown) => { seen.push(reason) }
+    process.on('unhandledRejection', listener)
+    let result: T
     try {
-        return await fn()
+        result = await fn()
     } finally {
-        process.removeAllListeners('unhandledRejection')
-        for (const listener of existingListeners) {
-            process.on('unhandledRejection', listener as NodeJS.UnhandledRejectionListener)
-        }
+        process.off('unhandledRejection', listener)
     }
+    expect(seen).toEqual([])
+    return result
 }
 
 afterEach(async () => {
@@ -593,13 +588,14 @@ describe('Chat.svelte translation editor: two overlapping failing saves must not
         const slowReject = () => new Promise<void>((_, rej) => setTimeout(() => rej(new Error('quota')), 5))
         vi.mocked(setLLMCache).mockImplementationOnce(slowReject).mockImplementationOnce(slowReject)
 
-        await withSuppressedUnhandledRejections(async () => {
+        await expectNoUnhandledRejections(async () => {
             const save = findButtonByText(target, language.editTranslationSave)
             save.click()
             save.click()
             await new Promise((r) => setTimeout(r, 40))
             flushSync()
         })
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(2)
 
         // Neither failed save is a deliberate exit -- the editor must still
         // be open.
@@ -1093,18 +1089,16 @@ describe('Chat.svelte translation editor: capture, marker and revert', () => {
 
         vi.mocked(setLLMCache).mockRejectedValueOnce(new Error('network down'))
 
-        // `saveTranslationEdit` never catches a failed save (a loud failure
-        // by design, not something to swallow), so the rejection propagates
-        // unchanged, making `onclick`'s fire-and-forget call a genuinely
-        // unhandled promise rejection at the JS level -- see
-        // `withSuppressedUnhandledRejections`'s own comment for why that
-        // needs handling here so it doesn't pollute the suite's own error
-        // reporting.
-        await withSuppressedUnhandledRejections(async () => {
+        // `saveTranslationEdit` propagates a failed save to its caller; the
+        // Save button reports it once through `alertError` and leaves the
+        // editor as it was.
+        await expectNoUnhandledRejections(async () => {
             findButtonByText(target, language.editTranslationSave).click()
             await new Promise((r) => setTimeout(r, 20))
             flushSync()
         })
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toEqual(new Error('network down'))
 
         // A failed save is not a deliberate exit: the record must survive,
         // and the identity capture writes under must stay the one already in
@@ -1124,6 +1118,114 @@ describe('Chat.svelte translation editor: capture, marker and revert', () => {
         await tick()
 
         expect(draftContentOrphanGate.get(trIdentity, messageText)?.text).toBe('typed again after the failed save')
+    })
+
+    test('a rejecting setLLMCache on a long-press save is reported once, keeps the editor open with the typed text and the record, and a retry closes it', async () => {
+        const messageText = 'source text for translation'
+        setUpTranslatable(messageText)
+        const trIdentity: TranslationIdentity = { kind: 'tr', key: messageText }
+        draftContentOrphanGate.set(trIdentity, 'typed translation draft', messageText)
+
+        vi.mocked(getLLMCache).mockResolvedValueOnce('cached translation')
+        const { target } = mountChat({ idx: 0, message: messageText, isLastMemory: false })
+        openTranslationEditor(target)
+        await vi.waitFor(() => {
+            flushSync()
+            expect(target.querySelector<HTMLTextAreaElement>('.message-edit-area')?.value).toBe('typed translation draft')
+        })
+
+        vi.mocked(setLLMCache).mockRejectedValueOnce(new Error('quota'))
+        await expectNoUnhandledRejections(async () => {
+            const textarea = target.querySelector<HTMLTextAreaElement>('.message-edit-area')!
+            textarea.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+            await new Promise((r) => setTimeout(r, 550))
+            flushSync()
+        })
+
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toEqual(new Error('quota'))
+        expect(target.querySelector<HTMLTextAreaElement>('.message-edit-area')?.value).toBe('typed translation draft')
+        expect(draftContentOrphanGate.get(trIdentity, messageText)?.text).toBe('typed translation draft')
+
+        findButtonByText(target, language.editTranslationSave).click()
+        await vi.waitFor(() => {
+            flushSync()
+            expect(target.querySelector('.message-edit-area')).toBeNull()
+        })
+        expect(draftContentOrphanGate.get(trIdentity, messageText)).toBeUndefined()
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+    })
+
+    test('a successful retry of a reported Save failure closes the editor and deletes the record', async () => {
+        const messageText = 'source text for translation'
+        setUpTranslatable(messageText)
+        const trIdentity: TranslationIdentity = { kind: 'tr', key: messageText }
+        draftContentOrphanGate.set(trIdentity, 'typed translation draft', messageText)
+
+        vi.mocked(getLLMCache).mockResolvedValueOnce('cached translation')
+        const { target } = mountChat({ idx: 0, message: messageText, isLastMemory: false })
+        openTranslationEditor(target)
+        await vi.waitFor(() => {
+            flushSync()
+            expect(target.querySelector<HTMLTextAreaElement>('.message-edit-area')?.value).toBe('typed translation draft')
+        })
+
+        vi.mocked(setLLMCache).mockRejectedValueOnce(new Error('quota'))
+        await expectNoUnhandledRejections(async () => {
+            findButtonByText(target, language.editTranslationSave).click()
+            await new Promise((r) => setTimeout(r, 20))
+            flushSync()
+        })
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(target.querySelector('.message-edit-area')).not.toBeNull()
+
+        findButtonByText(target, language.editTranslationSave).click()
+        await vi.waitFor(() => {
+            flushSync()
+            expect(target.querySelector('.message-edit-area')).toBeNull()
+        })
+        expect(draftContentOrphanGate.get(trIdentity, messageText)).toBeUndefined()
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+    })
+
+    test('a rejection while loading the translation for editing is reported once and leaves the editor closed', async () => {
+        const messageText = 'source text for translation'
+        setUpTranslatable(messageText)
+
+        vi.mocked(getLLMCache).mockRejectedValueOnce(new Error('cache read failed'))
+        const { target } = mountChat({ idx: 0, message: messageText, isLastMemory: false })
+        await expectNoUnhandledRejections(async () => {
+            openTranslationEditor(target)
+            await new Promise((r) => setTimeout(r, 20))
+            flushSync()
+        })
+
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toEqual(new Error('cache read failed'))
+        expect(target.querySelector('.message-edit-area')).toBeNull()
+    })
+
+    test('a rejecting translation write from a partial-edit save is reported once with no unhandled rejection', async () => {
+        const messageText = 'source text for translation'
+        DBState.db = baseDb({ translatorType: 'llm', translator: 'dummy-translator', enableBlockPartialEdit: true }) as never
+        const chat = makeChat([makeMessage(messageText, 'chat-id-1')])
+        DBState.db.characters = [makeCharacter([chat])] as never
+        selIdState.selId = 0
+
+        partialEditProps.current = null
+        mountChat({ idx: 0, message: messageText, isLastMemory: false })
+        const save = partialEditProps.current?.$$events?.save
+        expect(save).toBeTypeOf('function')
+
+        vi.mocked(setLLMCache).mockRejectedValueOnce(new Error('quota'))
+        await expectNoUnhandledRejections(async () => {
+            await save!(new CustomEvent('save', { detail: { newData: 'edited translation', target: 'translation', translationKey: messageText } }))
+            await new Promise((r) => setTimeout(r, 20))
+        })
+
+        expect(vi.mocked(setLLMCache)).toHaveBeenCalledWith(messageText, 'edited translation')
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toEqual(new Error('quota'))
     })
 
     test('a tr: record never seeds the main (original-text) editor', () => {

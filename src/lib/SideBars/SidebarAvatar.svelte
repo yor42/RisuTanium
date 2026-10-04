@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { warnOnReject } from "src/ts/warnOnReject";
   import { tooltipRight } from "src/ts/gui/tooltip";
   import { language } from "src/lang";
 
@@ -46,7 +47,7 @@
 >
   {#if src}
     {#if src === "slot"}
-      {#await backgroundimg}
+      {#await warnOnReject('SidebarAvatar: backgroundimg rejected', backgroundimg)}
       <div
         class="bg-skin-border sidebar-avatar rounded-md bg-top flex items-center justify-center {
           color === 'red' ? 'bg-red-700/50' :
@@ -87,9 +88,28 @@
         {@render children?.()}
       {/if}
         </div>
+      {:catch}
+      <div
+        class="bg-skin-border sidebar-avatar rounded-md bg-top flex items-center justify-center {
+          color === 'red' ? 'bg-red-700/50' :
+          color === 'yellow' ? 'bg-yellow-700/50' :
+          color === 'green' ? 'bg-green-700/50' :
+          color === 'blue' ? 'bg-blue-700/50' :
+          color === 'indigo' ? 'bg-indigo-700/50' :
+          color === 'purple' ? 'bg-purple-700/50' :
+          color === 'pink' ? 'bg-pink-700/50' :
+          'bg-darkbg/50'
+        }"
+        style:width={size + "px"}
+        style:height={size + "px"}
+        style:minWidth={size + "px"}
+        class:rounded-md={!rounded} class:rounded-full={rounded}
+      >
+        {@render children?.()}
+      </div>
     {/await}
     {:else}
-      {#await src}
+      {#await warnOnReject('SidebarAvatar: src rejected', src)}
         <div
           class="bg-skin-border sidebar-avatar rounded-md bg-top"
           style:width={size + "px"}
@@ -107,6 +127,14 @@
           class:rounded-md={!rounded} class:rounded-full={rounded} 
           alt={language.sidebarUi.avatarAlt}
         />
+      {:catch}
+        <div
+          class="bg-skin-border sidebar-avatar rounded-md bg-top"
+          style:width={size + "px"}
+          style:height={size + "px"}
+          style:minWidth={size + "px"}
+          class:rounded-md={!rounded} class:rounded-full={rounded}
+></div>
       {/await}
     {/if}
   {:else}
