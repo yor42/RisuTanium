@@ -6071,6 +6071,9 @@ from the TTS batch. Type: consistency.
 
 ### CHORE-97 — Browser CORS for the Hugging Face router is unverified; a live check with a real Hugging Face TTS model is owed
 
+**Status (2026-10-04, side session): DEFERRED by the maintainer (`MC-221`)**, like the native-speaker review (`MC-212`):
+there is no working Hugging Face key. It stays open and unscheduled until one is available.
+
 **Status (2026-10-03, UI session):** open, **not scheduled**. Type: verification.
 
 - **What is unverified:** the new Huggingface request goes to `https://router.huggingface.co/hf-inference/models/${model}`
