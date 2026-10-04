@@ -26,7 +26,7 @@ export const languageChinese = {
         "networkFetchPlain": "这可能是一次数据抓取（Fetch）错误。请尝试在设置中关闭强制抓取选项。",
         "requestLogRemoved": "该请求记录已被删除。",
         "requestLogRemovedDesc": "当客户端刷新或加载时，该请求记录会被删除。",
-        "secretRefUnavailable": (name: string) => `环境变量 ${name} 不可用（未设置，或服务器不允许使用）。`,
+        "secretRefUnavailable": (name: string) => `环境变量 ${name} 不可用：该变量未设置、服务器不允许使用，或服务器拒绝了请求。`,
         "secretRefUnsupported": (name: string) => `环境变量 ${name} 无法在此处使用：此平台无法访问服务器的环境。`,
         "secretRefNotForeign": (name: string) => `环境变量 ${name} 只会发送给其对应的提供商，因此本次请求未使用它。`,
         "secretRefInRequest": (name: string) => `请求中仍包含环境变量引用 ${name}，该请求未被发送。`,
@@ -328,6 +328,7 @@ export const languageChinese = {
     "settingsPage": {
         "nameApiKey": "{name} API 密钥",
         "nameApiKeyLower": "{name} API 密钥",
+        "apiKeyEnvRefNote": "可以输入 ${NAME} 来代替密钥，它是运行桌面应用或 Node 服务器的那台机器上的环境变量名称。只会读取形如 RISU_OPENAI_KEY 的名称（依次为 RISU_、一个名称、_KEY 或 _TOKEN），除非该名称已列在那台机器的 RISU_ALLOWED_ENV 变量中。没有 Node 服务器的网页版构建无法读取环境变量。",
         "nameKey": "{name} 密钥",
         "nameUrl": "{name} URL",
         "nameSettings": "{name} 设置",

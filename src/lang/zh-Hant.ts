@@ -26,7 +26,7 @@ export const languageChineseTraditional = {
         "networkFetchPlain": "這可能是一般 Fetch 錯誤。請嘗試在設定中停用「強制一般 Fetch」",
         "requestLogRemoved": "此請求記錄已被移除",
         "requestLogRemovedDesc": "重新整理或重新載入用戶端後，請求記錄會被移除",
-        "secretRefUnavailable": (name: string) => `環境變數 ${name} 無法使用（未設定，或伺服器不允許使用）。`,
+        "secretRefUnavailable": (name: string) => `環境變數 ${name} 無法使用：該變數未設定、伺服器不允許使用，或伺服器拒絕了請求。`,
         "secretRefUnsupported": (name: string) => `環境變數 ${name} 無法在此處使用：此平台無法存取伺服器的環境。`,
         "secretRefNotForeign": (name: string) => `環境變數 ${name} 只會傳送給其對應的提供者，因此本次請求未使用它。`,
         "secretRefInRequest": (name: string) => `請求中仍包含環境變數參照 ${name}，該請求未被傳送。`,
@@ -328,6 +328,7 @@ export const languageChineseTraditional = {
     "settingsPage": {
         "nameApiKey": "{name} API 金鑰",
         "nameApiKeyLower": "{name} API 金鑰",
+        "apiKeyEnvRefNote": "可以輸入 ${NAME} 來取代金鑰，它是執行桌面應用程式或 Node 伺服器的那台機器上的環境變數名稱。只會讀取形如 RISU_OPENAI_KEY 的名稱（依序為 RISU_、一個名稱、_KEY 或 _TOKEN），除非該名稱已列在那台機器的 RISU_ALLOWED_ENV 變數中。沒有 Node 伺服器的網頁版建置無法讀取環境變數。",
         "nameKey": "{name} 金鑰",
         "nameUrl": "{name} URL",
         "nameSettings": "{name} 設定",

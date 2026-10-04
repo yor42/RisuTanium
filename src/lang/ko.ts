@@ -26,7 +26,7 @@ export const languageKorean = {
         "networkFetchPlain": "이것은 요청 오류일 수 있습니다. 설정에서 직접 요청 보내기 옵션을 비활성화해 보세요.",
         "requestLogRemoved": "요청 로그가 삭제되었습니다.",
         "requestLogRemovedDesc": "요청 로그는 앱이 재시작되거나 새로고침되면 삭제됩니다.",
-        "secretRefUnavailable": (name: string) => `환경 변수 ${name}을(를) 사용할 수 없습니다 (설정되지 않았거나 서버에서 허용되지 않음).`,
+        "secretRefUnavailable": (name: string) => `환경 변수 ${name}을(를) 사용할 수 없습니다. 설정되지 않았거나, 서버에서 허용하지 않거나, 서버가 요청을 거부했습니다.`,
         "secretRefUnsupported": (name: string) => `환경 변수 ${name}은(는) 여기서 사용할 수 없습니다: 이 플랫폼은 서버의 환경에 접근할 수 없습니다.`,
         "secretRefNotForeign": (name: string) => `환경 변수 ${name}은(는) 해당 제공자에게만 전송되므로 이 요청에는 사용되지 않았습니다.`,
         "secretRefInRequest": (name: string) => `요청에 환경 변수 참조 ${name}이(가) 아직 남아 있습니다. 전송되지 않았습니다.`,
@@ -328,6 +328,7 @@ export const languageKorean = {
     "settingsPage": {
         "nameApiKey": "{name} API 키",
         "nameApiKeyLower": "{name} API 키",
+        "apiKeyEnvRefNote": "키 대신 ${NAME} 형식으로 입력할 수 있습니다. 데스크톱 앱 또는 Node 서버를 실행하는 컴퓨터의 환경 변수 이름입니다. RISU_OPENAI_KEY처럼 RISU_, 임의의 이름, _KEY 또는 _TOKEN 순서로 이루어진 이름만 읽으며, 해당 컴퓨터의 RISU_ALLOWED_ENV 변수에 나열된 이름은 예외입니다. Node 서버가 없는 웹 빌드는 환경 변수를 읽을 수 없습니다.",
         "nameKey": "{name} 키",
         "nameUrl": "{name} URL",
         "nameSettings": "{name} 설정",

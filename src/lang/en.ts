@@ -28,7 +28,7 @@ export const languageEnglish = {
         requestLogRemoved: "This request log is removed.",
         requestLogRemovedDesc: "This request log removes when client is refreshed or reloaded.",
         secretRefUnavailable: (name: string) =>
-            `Environment variable ${name} is unavailable (not set, or not allowed by the server).`,
+            `Environment variable ${name} is unavailable: it is not set, the server does not allow it, or the server refused the request.`,
         secretRefUnsupported: (name: string) =>
             `Environment variable ${name} cannot be used here: this platform has no access to the server's environment.`,
         secretRefNotForeign: (name: string) =>
@@ -333,6 +333,7 @@ export const languageEnglish = {
     settingsPage: {
         nameApiKey: "{name} API Key",
         nameApiKeyLower: "{name} API key",
+        apiKeyEnvRefNote: "Instead of a key, you can enter ${NAME}: the name of an environment variable on the machine that runs the desktop app or the Node server. Only names like RISU_OPENAI_KEY are read (RISU_, a name, then _KEY or _TOKEN), unless they are listed in the RISU_ALLOWED_ENV variable on that machine. A web build without the Node server cannot read environment variables.",
         nameKey: "{name} Key",
         nameUrl: "{name} URL",
         nameSettings: "{name} Settings",

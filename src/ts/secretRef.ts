@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
 import { language } from 'src/lang'
 import { isNodeServer, isTauri } from 'src/ts/platform'
+import { isSecretRef, secretRefName } from 'src/ts/secretRefPattern'
+
+export { isSecretRef, secretRefName }
 
 /**
  * Environment-variable references in secret fields.
@@ -14,8 +17,6 @@ import { isNodeServer, isTauri } from 'src/ts/platform'
  * replacing it would shred unrelated text. Every other value is used exactly
  * as typed.
  */
-
-const SECRET_REF_PATTERN = /^\$\{([A-Z_][A-Z0-9_]*)\}$/
 
 /** Auth-scheme prefixes a header value may carry in front of a reference. */
 const SCHEME_PREFIX_PATTERN = /^(?:Bearer|DeepL-Auth-Key|Key|Token)\s+/i
@@ -48,20 +49,6 @@ function secretRefMessage(variable: string, kind: SecretRefErrorKind): string {
         case 'foreign': return language.errors.secretRefNotForeign(name)
         default: return language.errors.secretRefUnavailable(name)
     }
-}
-
-/** True when the whole trimmed value is one `${NAME}` reference. */
-export function isSecretRef(value: unknown): value is string {
-    return typeof value === 'string' && SECRET_REF_PATTERN.test(value.trim())
-}
-
-/** The variable name of a reference, or null when the value is not one. */
-export function secretRefName(value: unknown): string | null {
-    if (typeof value !== 'string') {
-        return null
-    }
-    const match = SECRET_REF_PATTERN.exec(value.trim())
-    return match ? match[1] : null
 }
 
 /** '' when the value is a whole reference, else the value unchanged. */
