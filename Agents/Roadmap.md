@@ -841,6 +841,42 @@ keys, `{name}` placeholders filled by `fillLang`.
   - **Known leftover out of bounds:** `hanuraiMemory.ts` "Required Tokens" (`process/memory`).
   - **Native-speaker review:** deferred by the maintainer (`MC-212`); cn, zh-Hant, vi, de and es remain unreviewed by a native speaker.
 
+**Status (2026-10-04, UI session, translation batch 5c: dev-tool preview text, the `CharConfig` TTS labels and Bias): committed as `1ad02c3f` (code) on the maintainer's word "yes, commit 5c."; not pushed; the ticket stays open for the follow-ups below** (ledger rows 919 to 923). The request is the maintainer's ("commit and start 5c", `MC-216`); the dispositions in `MC-216` are the Orchestrator's, not the maintainer's. The three gated batches (5a, 5b, 5c) are done.
+- **Done in batch 5c:**
+  - 39 new keys in `en.ts` (8 in `devTool`, 31 in `sidebarUi`), translated into the six other locales. Reused keys:
+    `language.prompt`, `language.model`, `language.language`, `language.temperature` and the four `languageName*` keys.
+  - 3 production files, display text only: `devToolActions.ts`, `previewRunner.ts` and `CharConfig.svelte` (the TTS tab and the
+    Bias section), plus the seven locale files.
+  - The dev-tool preview text (rendered by `alertMd`, not sent to the model, not saved), the `CharConfig` TTS prose labels and
+    the Bias label and "string" placeholder are translated. Option values and stored settings are unchanged.
+- **Kept English (`MC-216`):** the role headings (Function, User, System, Assistant), "TTS", the engine names, the VOICEVOX
+  Speed, Pitch, Volume and Intonation scale names, Base URL, URL, Response Format and the formats, Top P and Top K, Chunk Length,
+  Normalize, v1 and v2, and the example placeholders.
+- **Disclosures (`MC-216`):** VOICEVOX "Speed scale" and "Volume scale" stay English beside the translated GPT-SoVITS "Speed"
+  and "Volume"; "Temperature" is translated while Top P and Top K stay English; `MC-211`'s kept-English TTS labels are superseded
+  for prose by `MC-213` decision 3.
+- **Tests (2 new files, 29 tests):** `CharConfig.ttsLabels.svelte.test.ts` (20) and `process/tests/previewText.i18n.test.ts`
+  (9). Against the three production files served at `ce33d027` (a scratch config, current locales), 17 reproducers fail on
+  assertions and 12 guards pass (row 921). Not covered: VITS mode (no translated label), the other five locales beyond key
+  parity, and the English "no undefined" check on the Bias tab.
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 378 files, 7271 passed, 4 skipped; `pnpm build` ok (row 921). Gate 1 and Gate 2
+  both ended `[APPROVE]` (rows 920 and 922). Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch, as in earlier
+  batches. On the Main Campaign branch (merge-base `57e7be63`), `git diff --name-only 57e7be63
+  fix/persistence-conflict-platform-hardening` on this batch's files (`devToolActions.ts`, `previewRunner.ts`,
+  `CharConfig.svelte` and the two new test files) lists none of them, so only the locale files are expected to conflict.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** listed in `MC-216` (ko
+  `instruction` and `cachePointNote`, cn and zh-Hant 指令 and 参考音频文本 / 參考音訊文本, zh-Hant 快取點 and 音訊, vi
+  `instruction`, "cache point", "custom voice seed" and the "Trộn …" labels, de "Eigener Stimm-Seed", "Cache-Punkt" and
+  "Nicht-Text-Inhalt(e)", es "Instrucción", "guion" and "cadena").
+- **Remaining for CHORE-05:**
+  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and
+    `globalRegexScript` if those pages go.
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`).
+  - **Known leftovers:** `hanuraiMemory.ts` "Required Tokens" (out of bounds); the `globalApi` toasts and `getRequestLog`
+    (out of bounds); the `botpreset.svelte` "string" placeholder; `PlaygroundImageTrans` "fontSize"; `ToolConversion`
+    "NOTSUPPORTED"; the ko `noBias` wording ("Bias 없음" beside `bias` "편향").
+
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
 below is the pre-fix measurement and is otherwise still current.

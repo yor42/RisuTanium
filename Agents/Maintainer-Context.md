@@ -6927,3 +6927,60 @@ applies the edited text.
   `hordeNoGenerations` is interpretive ("작업이 완료되었지만 생성된 결과가 없습니다"). The ko "에셋" form follows `ko.ts` (at HEAD
   `a5699f55`: 에셋 on 39 lines, 프리셋 on 24, 애셋 on 0).
 - **Scope of batch 5b:** 36 new keys in seven languages, 14 production files, 1 edited test mock, 6 new test files, ledger rows 914 to 918.
+
+### MC-216 — Translation batch 5c: dev-tool preview text, the CharConfig TTS labels and Bias (CHORE-05)
+
+- **Tag:** decision (the request); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "commit and start 5c". It was also the commit word for batch 5b (`edc8c8b6` code,
+  `ce33d027` records). No question was put to the maintainer for 5c.
+- **Reasoning:** none stated. The TTS rule is `MC-213` decision 3 ("Translate prose, keep names (Recommended)"); the dev-panel
+  rule is `MC-211` decision 1 (translate labels only, technical terms English). No new maintainer decision.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-209`, `MC-210`, `MC-211`, `MC-213`, `MC-215`; CHORE-05; ledger rows 919 to 923.
+
+**What was decided (the maintainer's):** start batch 5c, the last of the three gated CHORE-05 batches: the text built in
+`devToolActions.ts` and `previewRunner.ts`, the `CharConfig` TTS tab labels, and the `CharConfig` Bias section.
+
+**Disclosures:**
+- **(a) VOICEVOX "Speed scale" and "Volume scale" stay English** (part of the "… scale" parameter names), beside the
+  translated GPT-SoVITS "Speed" and "Volume" (`sidebarUi.ttsSpeed`, `ttsVolume`).
+- **(b) "Temperature" is translated** (the existing `language.temperature` is reused) while "Top P" and "Top K" stay English.
+- **(c) `MC-211` kept the `CharConfig` TTS engine parameter labels English as the Orchestrator's reading of `MC-209`;
+  `MC-213` decision 3 supersedes that for the prose labels.** Names, such as
+  the engine names and "TTS", stay English.
+- **(d) Preview text is not sent to the model and is not saved.** It is rendered by `alertMd` in the dev-tool preview (row 919).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Sites:** 39 new keys (8 in `devTool`, 31 in `sidebarUi`) from the investigator's table (row 919): 9 literals in
+  `devToolActions.ts` and `previewRunner.ts`, 51 in the `CharConfig` TTS tab and 1 for Bias (label and header). Reused keys:
+  `language.prompt`, `language.model`, `language.language`, `language.temperature`, and `languageNameEnglish`,
+  `languageNameChinese`, `languageNameJapanese` and `languageNameKorean` for the matching text-language names.
+- **Q1, role headings stay English** (Function, User, System, Assistant): by analogy with `MC-210` R6, which kept User,
+  System and assistant English in `PromptSettings.svelte`; extending it to Function, Assistant and the preview headings is
+  the Orchestrator's own.
+- **Q2, Speaker, Style, Volume and Speed are translated** as ordinary words (`MC-213` decision 3).
+- **Q3, Temperature reuses `language.temperature`** (top-level, byte-identical English, already translated).
+- **Q4, the "string" placeholder and "chars" are translated** (`sidebarUi.biasTokenPlaceholder`; `maskedChars`
+  "{mask} ({count} chars)").
+- **Gate 1 (row 920), `[APPROVE]`:** M1, `botpreset.svelte` "string" is the preset-name placeholder, not the bias token (the
+  Orchestrator verified the line), so it is not shared and not touched. m1, the `CharConfig` keys go in `sidebarUi` (batch 3
+  put the sibling TTS strings there) and the preview keys in `devTool`. m2, Bias is a new `sidebarUi.bias`, translated the
+  same as `settingsPage.bias`, because the `MC-211` rule rules out reusing a domain-group key. m3 and m4 were
+  test-fixture and fallback notes: a missing key shows English in the other locales and "undefined" only in `en`.
+- **Stay English:** the engine names, "TTS", the VOICEVOX Speed, Pitch, Volume and Intonation scale names, Base URL, URL,
+  Response Format and the format names, Top P and Top K, Chunk Length, Normalize, v1 and v2, the example placeholders and the
+  role headings. `getRequestLog` in `globalApi.svelte.ts` is out of bounds.
+- **Leftovers, left alone:** the `botpreset.svelte` "string" placeholder, `PlaygroundImageTrans` "fontSize", `ToolConversion`
+  "NOTSUPPORTED" and the `CharConfig` CSS class typo `text=neutral-200`; the ko `noBias` "Bias 없음" beside `bias` "편향"
+  (existing wording, Gate 2 NIT).
+- **Locale files:** CRLF, no BOM, additions only (en +39/-0; each other locale +41/-2, the
+  two removed lines being `requestLog` and `avatarAlt`, re-added with a comma). `sidebarUi.bias` equals `settingsPage.bias` in
+  every locale (ko 편향, cn and zh-Hant 偏置, vi Độ lệch, de Bias, es Sesgo).
+- **Low-confidence translation choices, for the deferred native-speaker review (`MC-212`):** ko `instruction` 지시문 and
+  `cachePointNote` 캐시 지점; cn and zh-Hant 指令 and 参考音频文本 / 參考音訊文本, zh-Hant 快取點 and 音訊; vi `instruction`,
+  "cache point", "custom voice seed" and the "Trộn …" labels; de "Eigener Stimm-Seed", "Cache-Punkt" and
+  "Nicht-Text-Inhalt(e)"; es "Instrucción", "guion" and "cadena". "Cut N" is kept as the leading name in every locale.
+- **Scope of batch 5c:** 39 new keys in seven languages, 3 production files (`devToolActions.ts`, `previewRunner.ts`,
+  `CharConfig.svelte`, display text only), 2 new test files, ledger rows 919 to 923.
