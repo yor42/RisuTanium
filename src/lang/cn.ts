@@ -162,6 +162,7 @@ export const languageChinese = {
         "separateParamsMissing": "未找到模型 {modelId} 在模型模式 {modelMode} 下的独立参数。请为此模型设置参数",
         "ttsAutoPathFailed": "自动获取路径失败",
         "fishSpeechModelNotSelected": "未选择 FishSpeech 模型",
+        "ttsNotSetUp": "此角色尚未设置 TTS",
         "invalidTranslatorPresetFile": "翻译器预设文件无效。",
         "moduleAssetsSaveFailed": "保存 {count} 个资源失败",
         "mcpModuleConversionUnsupported": "MCP 模块不支持角色转换。",

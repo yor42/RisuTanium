@@ -8,7 +8,7 @@
  * Invariants pinned here:
  *  - the item exists only when `useChatCopy` is on, the message is not blank and
  *    the browser has `ClipboardItem` and `navigator.clipboard.write`; it exists
- *    for the first message (idx -1);
+ *    for the first message (idx -1), whose popup holds no Bookmark;
  *  - a click calls `navigator.clipboard.write` once, synchronously inside the
  *    click handler, with one `ClipboardItem` whose `text/plain` is the message
  *    copy text and whose `text/html` is a card holding the escaped display
@@ -283,16 +283,20 @@ async function settle(): Promise<void> {
 
 /**
  * Opens the "..." menu. `PopupList` registers its outside-click listener a
- * timer after it mounts, so the wait outlasts that timer.
+ * timer after it mounts, so the wait outlasts that timer. A stored message
+ * (idx 0) also offers Bookmark, which the harness checks; the first message
+ * (idx -1) offers no Bookmark, so `firstMessage` skips that check.
  */
-async function openMenu(root: HTMLElement): Promise<void> {
+async function openMenu(root: HTMLElement, options: { firstMessage?: boolean } = {}): Promise<void> {
     const menuButton = root.querySelector<HTMLElement>('.button-icon-menu')
     expect(menuButton, 'the "..." menu button').not.toBeNull()
     menuButton!.click()
     await new Promise((resolve) => setTimeout(resolve, 60))
     flushSync()
     expect(popupStore.children, 'the popup is open').not.toBeNull()
-    expect(document.querySelector('.button-icon-bookmark'), 'the popup shows its other items').not.toBeNull()
+    if (!options.firstMessage) {
+        expect(document.querySelector('.button-icon-bookmark'), 'the popup shows its other items').not.toBeNull()
+    }
 }
 
 function copyCardItem(): HTMLButtonElement | null {
@@ -482,7 +486,7 @@ describe('the "Copy as card" menu item', () => {
         stubClipboard()
         const { root } = await mountChat({ idx: -1, message: 'Welcome' })
 
-        await openMenu(root)
+        await openMenu(root, { firstMessage: true })
 
         requireCopyCardItem()
     })
@@ -516,12 +520,11 @@ describe('the "Copy as card" menu item', () => {
         expect(copyCardItem()).toBeNull()
     })
 
-    test('guard: is absent for a blank first message', async () => {
+    test('guard: is absent for a blank first message, which has no menu button at all', async () => {
         stubClipboard()
         const { root } = await mountChat({ idx: -1, message: '' })
 
-        await openMenu(root)
-
+        expect(root.querySelector('.button-icon-menu')).toBeNull()
         expect(copyCardItem()).toBeNull()
     })
 })

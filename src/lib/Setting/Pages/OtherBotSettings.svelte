@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { warnOnReject } from "src/ts/warnOnReject";
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
@@ -536,12 +537,14 @@
                                 <span class="text-sm">{language.settingsPage.uploadImage}</span>
                             </div>
                         {:else}
-                            {#await getCharImage(DBState.db.NAIImgConfig.character_image, 'plain')}
+                            {#await warnOnReject('OtherBotSettings: NAI character image rejected', getCharImage(DBState.db.NAIImgConfig.character_image, 'plain'))}
                                 <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                 </div>
                             {:then im}
                                 <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" alt={language.settingsPage.basePreviewAlt}/>
+                            {:catch}
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center"></div>
                             {/await}
                         {/if}
                     </button>
@@ -620,12 +623,14 @@
                                 <span class="text-sm">{language.settingsPage.uploadImage}</span>
                             </div>
                         {:else}
-                            {#await getCharImage(DBState.db.NAIImgConfig.image, 'plain')}
+                            {#await warnOnReject('OtherBotSettings: NAI base image rejected', getCharImage(DBState.db.NAIImgConfig.image, 'plain'))}
                                 <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                 </div>
                             {:then im}
                                 <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" alt={language.settingsPage.basePreviewAlt}/>
+                            {:catch}
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center"></div>
                             {/await}
                         {/if}
                     </button>
@@ -928,12 +933,14 @@
                                     <span class="text-sm">{language.settingsPage.uploadImage}</span>
                                 </div>
                             {:else}
-                                {#await getCharImage(DBState.db.wavespeedImage.reference_image, 'plain')}
+                                {#await warnOnReject('OtherBotSettings: wavespeed reference image rejected', getCharImage(DBState.db.wavespeedImage.reference_image, 'plain'))}
                                     <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
                                         <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                     </div>
                                 {:then im}
                                     <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" alt={language.settingsPage.basePreviewAlt}/>
+                                {:catch}
+                                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center"></div>
                                 {/await}
                             {/if}
                         </button>

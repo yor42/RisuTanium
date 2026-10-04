@@ -163,6 +163,7 @@ export const languageEnglish = {
         separateParamsMissing: "No seperate parameters found for model {modelId} in model mode {modelMode}. Please set parameters for this model",
         ttsAutoPathFailed: "Failed to Auto get path",
         fishSpeechModelNotSelected: "FishSpeech Model is not selected",
+        ttsNotSetUp: "TTS is not set up for this character",
         invalidTranslatorPresetFile: "Invalid translator preset file.",
         moduleAssetsSaveFailed: "Failed to save {count} assets",
         mcpModuleConversionUnsupported: "MCP modules are not supported for character conversion.",

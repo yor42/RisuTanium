@@ -1,6 +1,7 @@
 <!-- TODO: REMOVE AND REFACTOR TO BASE BUTTON UI COMPONENT -->
 
 <script lang="ts">
+  import { warnOnReject } from "src/ts/warnOnReject";
   interface Props {
     onClick?: any;
     additionalStyle?: string | Promise<string>;
@@ -10,10 +11,12 @@
   let { onClick = () => {}, additionalStyle = "", children }: Props = $props();
 </script>
 
-{#await additionalStyle}
+{#await warnOnReject('BarIcon: additionalStyle rejected', additionalStyle)}
   <button onclick={onClick} class="ico">{@render children?.()}</button>
 {:then as}
   <button onclick={onClick} class="ico" style={as || null}>{@render children?.()}</button>
+{:catch}
+  <button onclick={onClick} class="ico">{@render children?.()}</button>
 {/await}
 
 <style>

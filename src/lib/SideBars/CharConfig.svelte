@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { warnOnReject } from "src/ts/warnOnReject";
     import { language } from "../../lang";
     import { tokenizeAccurate } from "../../ts/tokenizer";
     import { getCurrentCharacter, saveImage as saveAsset, type character, type groupChat } from "../../ts/storage/database.svelte";
@@ -16,6 +17,7 @@
     import Help from "../Others/Help.svelte";
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
     import { getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
+    import { createFishSpeechDefaults, createNovelAIVoiceDefaults } from "src/ts/process/ttsDefaults";
     import { getFileSrc } from "src/ts/globalApi.svelte";
     import { addGroupChar, rmCharFromGroup } from "src/ts/process/group";
     import TextInput from "../UI/GUI/TextInput.svelte";
@@ -114,11 +116,7 @@
     });
     $effect.pre(() => {
         if (DBState.db.characters[$selectedCharID].ttsMode === 'novelai' && (DBState.db.characters[$selectedCharID] as character).naittsConfig === undefined) {
-            (DBState.db.characters[$selectedCharID] as character).naittsConfig = {
-                customvoice: false,
-                voice: 'Aini',
-                version: 'v2'
-            };
+            (DBState.db.characters[$selectedCharID] as character).naittsConfig = createNovelAIVoiceDefaults();
         }
     });
     $effect.pre(() => {
@@ -154,15 +152,7 @@
 
     $effect.pre(() => {
         if (DBState.db.characters[$selectedCharID].ttsMode === 'fishspeech' && (DBState.db.characters[$selectedCharID] as character).fishSpeechConfig === undefined) {
-            (DBState.db.characters[$selectedCharID] as character).fishSpeechConfig = {
-                model: {
-                    _id: '',
-                    title: '',
-                    description: ''
-                },
-                chunk_length: 200,
-                normalize: false,
-            };
+            (DBState.db.characters[$selectedCharID] as character).fishSpeechConfig = createFishSpeechDefaults();
         }
     });
 
@@ -285,7 +275,7 @@
                 <div class="text-center">{language.talkness}</div>
                 <div class="text-center">{language.active}</div>
                 {#each (DBState.db.characters[$selectedCharID] as groupChat).characters as char, i}
-                    {#await getCharImage(findCharacterbyId(char).image, 'css')}
+                    {#await warnOnReject('CharConfig: group member icon rejected', getCharImage(findCharacterbyId(char).image, 'css'))}
                         <BarIcon onClick={() => {
                             rmCharFromGroup(i)
                         }}>
@@ -295,6 +285,12 @@
                         <BarIcon onClick={() => {
                             rmCharFromGroup(i)
                         }} additionalStyle={im} />
+                    {:catch}
+                        <BarIcon onClick={() => {
+                            rmCharFromGroup(i)
+                        }}>
+                            <User/>
+                        </BarIcon>
                     {/await}
                     <div class="flex items-center px-2 py-3">
                         {#each [1,2,3,4,5,6] as barIndex}
@@ -375,10 +371,12 @@
     {#if viewSubMenu === 0}
         {#if DBState.db.characters[$selectedCharID].type === 'group'}
             <button onclick={async () => {await selectCharImg($selectedCharID)}}>
-                {#await getCharImage(DBState.db.characters[$selectedCharID].image, 'css')}
+                {#await warnOnReject('CharConfig: group icon rejected', getCharImage(DBState.db.characters[$selectedCharID].image, 'css'))}
                     <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3"></div>
                 {:then im}
-                    <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3" style={im}></div>     
+                    <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3" style={im}></div>
+                {:catch}
+                    <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3"></div>
                 {/await}
             </button>
         {:else}
@@ -398,7 +396,7 @@
                             iconRemoveMode = false
                         }
                     }}>
-                        {#await getCharImage(DBState.db.characters[$selectedCharID].image, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css')}
+                        {#await warnOnReject('CharConfig: character icon rejected', getCharImage(DBState.db.characters[$selectedCharID].image, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
                             <div
                                 class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
                                 class:ring-red-500={iconRemoveMode}
@@ -408,7 +406,12 @@
                                 class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
                                 class:ring-red-500={iconRemoveMode}
                                 style={im}
-    ></div>     
+    ></div>
+                        {:catch}
+                            <div
+                                class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
+                                class:ring-red-500={iconRemoveMode}
+    ></div>
                         {/await}
                     </button>
                 {/if}
@@ -423,7 +426,7 @@
                                 iconRemoveMode = false
                             }
                         }}>
-                            {#await getCharImage(assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css')}
+                            {#await warnOnReject('CharConfig: additional asset icon rejected', getCharImage(assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
                                     class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}
@@ -432,7 +435,12 @@
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
                                     style={im} class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}
-    ></div>     
+    ></div>
+                            {:catch}
+                                <div
+                                    class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
+                                    class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}
+    ></div>
                             {/await}
                         </button>
                     {/each}
@@ -511,10 +519,12 @@
                     {:else}
                         {#each emos as emo, i}
                             <tr>
-                                {#await getCharImage(emo[1], 'plain')}
+                                {#await warnOnReject('CharConfig: emotion image rejected', getCharImage(emo[1], 'plain'))}
                                     <td class="font-medium truncate w-1/3"></td>
                                 {:then im}
-                                    <td class="font-medium truncate w-1/3"><img src={im} alt={language.sidebarUi.imageAlt} class="w-full"></td>                        
+                                    <td class="font-medium truncate w-1/3"><img src={im} alt={language.sidebarUi.imageAlt} class="w-full"></td>
+                                {:catch}
+                                    <td class="font-medium truncate w-1/3"></td>
                                 {/await}
                                 <td class="font-medium truncate w-1/2">
                                     <TextInput marginBottom size='lg' bind:value={DBState.db.characters[$selectedCharID].emotionImages[i][0]} />

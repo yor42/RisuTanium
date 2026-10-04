@@ -112,6 +112,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
     alertConfirm: vi.fn(async () => true),
+    alertError: vi.fn(),
     alertNormal: vi.fn(),
     alertWait: vi.fn(),
     alertInput: vi.fn(async () => ''),
@@ -180,6 +181,7 @@ import { chatWindowKey } from 'src/ts/chatWindowPolicy'
 import { hasLocalDrafts, resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { language } from '../../lang'
 import { getLLMCache, setLLMCache } from 'src/ts/translator/translator'
+import { alertError } from 'src/ts/alert'
 
 //#region fixture helpers (see Chat.messageEditor.svelte.test.ts for the identical originals)
 
@@ -287,32 +289,23 @@ async function typeInto(target: HTMLElement, value: string) {
     await tick()
 }
 
-// A rejecting `setLLMCache` drives a real, unhandled rejection: `saveTranslationEdit`'s
-// `onclick` handler in `Chat.svelte` fires-and-forgets (never awaits or
-// catches its own promise), and the function itself never catches a failed
-// save either, so the rejection genuinely reaches the JS engine unhandled.
-// Left alone, Node/Vitest's own 'unhandledRejection' listener reports it as a
-// suite-level "Unhandled Error" regardless of whether the test's own
-// assertions pass, which would make the run's totals lie about what actually
-// failed. This helper swaps out every currently-registered
-// 'unhandledRejection' listener for a single no-op one for the duration of
-// `fn`, so nothing outside this one, deliberately-provoked rejection is
-// affected, and restores the originals verbatim afterward. A no-op listener,
-// not zero listeners, is essential: Node's default `unhandledRejections`
-// mode escalates to an actual `uncaughtException` (crashing the process)
-// specifically when a rejection has NO listener at all.
-async function withSuppressedUnhandledRejections<T>(fn: () => Promise<T>): Promise<T> {
-    const existingListeners = process.listeners('unhandledRejection')
-    process.removeAllListeners('unhandledRejection')
-    process.on('unhandledRejection', () => {})
+// A failed translation write is reported through `alertError` by the call
+// sites in `Chat.svelte`, so no rejection may reach the process unhandled.
+// This runs `fn` with its own 'unhandledRejection' listener registered
+// (Node escalates an unhandled rejection to an uncaught exception when no
+// listener exists) and fails if any rejection was reported meanwhile.
+async function expectNoUnhandledRejections<T>(fn: () => Promise<T>): Promise<T> {
+    const seen: unknown[] = []
+    const listener = (reason: unknown) => { seen.push(reason) }
+    process.on('unhandledRejection', listener)
+    let result: T
     try {
-        return await fn()
+        result = await fn()
     } finally {
-        process.removeAllListeners('unhandledRejection')
-        for (const listener of existingListeners) {
-            process.on('unhandledRejection', listener as NodeJS.UnhandledRejectionListener)
-        }
+        process.off('unhandledRejection', listener)
     }
+    expect(seen).toEqual([])
+    return result
 }
 
 afterEach(async () => {
@@ -490,7 +483,7 @@ describe('translation editor: revert / type-back / unmount sequences', () => {
             const failing = () => new Promise<void>((_res, rej) => { setTimeout(() => rej(new Error('transient')), failDelay) })
             const passing = () => new Promise<void>((res) => { setTimeout(() => res(), okDelay) })
             vi.mocked(setLLMCache).mockImplementationOnce(failing).mockImplementationOnce(passing)
-            await withSuppressedUnhandledRejections(async () => {
+            await expectNoUnhandledRejections(async () => {
                 const save = findButtonByText(fx.target, language.editTranslationSave)
                 save.click()
                 await typeInto(fx.target, 'T2')
@@ -498,6 +491,7 @@ describe('translation editor: revert / type-back / unmount sequences', () => {
                 await sleepMs(50)
                 flushSync()
             })
+            expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
             const saved = vi.mocked(setLLMCache).mock.calls.map((c) => c[1])
             expect(saved).toEqual(['T1', 'T2'])
             expect(editArea(fx.target)).toBeNull()
@@ -521,12 +515,13 @@ describe('translation editor: revert / type-back / unmount sequences', () => {
         await typeInto(fx.target, 'T1')
         const failing = () => new Promise<void>((_res, rej) => { setTimeout(() => rej(new Error('quota')), 10) })
         vi.mocked(setLLMCache).mockImplementationOnce(failing)
-        await withSuppressedUnhandledRejections(async () => {
+        await expectNoUnhandledRejections(async () => {
             findButtonByText(fx.target, language.editTranslationSave).click()
             await typeInto(fx.target, 'T1 plus more typed during the save')
             await sleepMs(40)
             flushSync()
         })
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
         expect(editArea(fx.target)?.value).toBe('T1 plus more typed during the save')
         await unmountFixture(fx)
         expect(draftContentOrphanGate.get(tr, 'source text')?.text).toBe('T1 plus more typed during the save')
@@ -541,11 +536,12 @@ describe('translation editor: revert / type-back / unmount sequences', () => {
             await typeInto(fx.target, 'T1')
             const settle = () => new Promise<void>((res, rej) => { setTimeout(() => (outcome === 'success' ? res() : rej(new Error('x'))), 10) })
             vi.mocked(setLLMCache).mockImplementationOnce(settle)
-            await withSuppressedUnhandledRejections(async () => {
+            await expectNoUnhandledRejections(async () => {
                 findButtonByText(fx.target, language.editTranslationSave).click()
                 await unmountFixture(fx)
                 await sleepMs(40)
             })
+            expect(vi.mocked(alertError)).toHaveBeenCalledTimes(outcome === 'failure' ? 1 : 0)
             const rec = draftContentOrphanGate.get(tr, 'source text')
             if (outcome === 'success') expect(rec).toBeUndefined()
             else expect(rec?.text).toBe('T1')
@@ -559,10 +555,11 @@ describe('translation editor: revert / type-back / unmount sequences', () => {
         await openTr(fx.target, 'cached')
         await typeInto(fx.target, 'retry text')
         vi.mocked(setLLMCache).mockRejectedValueOnce(new Error('x'))
-        await withSuppressedUnhandledRejections(async () => {
+        await expectNoUnhandledRejections(async () => {
             findButtonByText(fx.target, language.editTranslationSave).click()
             await sleepMs(20)
         })
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
         findButtonByText(fx.target, language.editTranslationSave).click()
         await vi.waitFor(() => { flushSync(); expect(editArea(fx.target)).toBeNull() })
         expect(draftContentOrphanGate.get(tr, 'source text')).toBeUndefined()

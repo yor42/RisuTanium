@@ -7636,3 +7636,81 @@ applies the edited text.
   batch 5e block.
 - **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`, the `hanuraiMemory.ts` "Required Tokens", and
   `Legal.svelte`.
+
+### MC-219 — Side session (`feat/side-batch`): batches A and B, five tickets closed without code, the number ranges, and three product rulings (CHORE-91, CHORE-96, CHORE-99)
+
+- **Tag:** decision (the eight answers below); the CHORE-100 scope amendment (under "Orchestrator dispositions") is the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the Orchestrator's `AskUserQuestion` prompts in the side session. The option text was
+  written by the Orchestrator. The answers, in the order below: "Skip; fix records (Recommended)"; "Handoff's ranges
+  (Recommended)"; "Skip CHORE-41"; "Raw model output (Recommended)"; "Error box, as now (Recommended)"; "Include it
+  (Recommended)"; "Commit Batch A now (Recommended)"; "Commit Batch B (Recommended)". The setup (branch, lanes, ranges) is the
+  Main Campaign's hand-off file `sideSession/handoff.md` (2026-10-04), which the maintainer told this session to follow on
+  2026-10-04; its split and batches are recorded there as the maintainer's own answers ("Separate session (Recommended)";
+  "A: TTS and Playground, B: chat robustness, C: reroll data loss").
+- **Reasoning:** none stated beyond the choices.
+- **Alternatives rejected:** the option labels the Orchestrator offered and the maintainer did not choose. Item 1: "Re-audit
+  Batch C" (have `opus-reviewer` re-audit `71e75d9d`) and "Something else". Item 2: "Non-overlapping" (`MC-240` to `MC-259`,
+  CHORE-120 to CHORE-139, Reports 80 to 89). Item 3: "Proceed without it (Recommended)" (the Orchestrator recommended
+  fixing the traced remount mechanism defensively; **on item 3 the maintainer declined the Orchestrator's recommendation**)
+  and "I'll get the console log". Item 4: "Stored reply" and "Leave CHORE-96". Item 5: "Toast". Item 6: "Leave it out".
+  Item 7: "One commit at the end". Item 8: "Hold".
+- **Related:** `MC-090`, `MC-091`, `MC-175`, `MC-179`, `MC-204`, `MC-218`; CHORE-16, CHORE-24, CHORE-40, CHORE-41,
+  CHORE-43, CHORE-54, CHORE-90, CHORE-91, CHORE-93 to CHORE-100; ledger rows 1101 to 1121.
+
+**What was decided (the maintainer's):**
+1. **Five tickets the hand-off listed are already fixed in this branch, so they are closed and no code is done on them**
+   ("Skip; fix records (Recommended)"). By the commit subjects: CHORE-43 and CHORE-54 in `71e75d9d` (each chat keeps its own
+   reroll history, and edits are kept), CHORE-40 in `d013e7cf` (the copy button writes the message text inside the tap and
+   fetches nothing), CHORE-16 in `08e43e65` and `0d41f06a` (the Playground and the character lists; the Playground and
+   modules batch), CHORE-24 in `2af8d4fe` (dead code removed, `GithubStars.svelte` among it). The records are corrected: a
+   closure line is added to CHORE-24's Roadmap entry citing `2af8d4fe`. The pairing of each ticket with its commit is the
+   Orchestrator's reading of the maintainer's list and the commit subjects.
+2. **The number ranges are the hand-off's** ("Handoff's ranges (Recommended)"): `MC-219` to `MC-239`, ledger rows 1101 to 1200,
+   CHORE-100 to CHORE-119 and Reports 70 to 79. The `MC`, CHORE and Report ranges overlap the UI session's reserved
+   `MC-200` to `MC-229`, CHORE-90 to CHORE-109 and Reports 65 to 74 (`MC-179` 3). The UI session's lane is finished, and its
+   next free numbers were `MC-219`, CHORE-100 and Report 65, so the side session takes over the tail. The ledger rows do not
+   overlap (the UI session's were 800 to 899).
+3. **CHORE-41 is not taken by the side session** ("Skip CHORE-41"). It stays open, with the blocker already recorded in its
+   entry.
+4. **CHORE-96, auto-continue judges the model's raw output of this request** ("Raw model output (Recommended)"), the same in
+   streaming and non-streaming mode.
+5. **CHORE-91, a failed translation-cache write keeps the error box** ("Error box, as now (Recommended)").
+6. **CHORE-99 is included** ("Include it (Recommended)"). It is folded into the `index.svelte.ts` edit that CHORE-96 needs. The
+   side session sent the Main Campaign session a cross-session message about it on 2026-10-04; that is a peer notice,
+   not a maintainer decision.
+7. **Batch A is committed** ("Commit Batch A now (Recommended)"), as `af2ebc0b`.
+8. **Batch B is committed** ("Commit Batch B (Recommended)"), as `3c8a142a`.
+
+**Context from the hand-off (the Main Campaign's setup, not new decisions):**
+- Branch `feat/side-batch`, cut at `517f0cdb` or later, in its own worktree. The side session does not merge: the Main
+  Campaign merges with an explicit merge commit when the maintainer says so, and then runs check, the full suite and the build.
+- The side session's lane is `src/lib/**` (except the Main Campaign's files), `src/ts/process/tts.ts` and the TTS and
+  Playground code, and `src/ts/process/index.svelte.ts` for CHORE-96 only. The Main Campaign's files (`src/ts/storage/**`,
+  `src/ts/drive/**`, `src/ts/process/memory/**`, `globalApi.svelte.ts`, `bootstrap.ts`, `risuSave.ts`,
+  `database.svelte.ts`, `coldstorage*.ts`, `characters.ts` `changeChar`, `src/ts/process/modules.ts`, the module settings
+  pages, `SavePopupIcon.svelte`, `StorageMaintenanceSettings.svelte`, `server/**`) are not edited.
+- The Main Campaign keeps `MC-194` to `MC-199`, ledger rows 1031 to 1100 and CHORE-88 and CHORE-89. `MC-212`'s native-speaker
+  review is the Main Campaign's.
+- The hand-off lists CHORE-43 and CHORE-54 as Batch C (the reroll data loss); item 1 closes both without code.
+
+**Disclosures:**
+- **(a) CHORE-99 edits `index.svelte.ts`, which the hand-off's lane allows for CHORE-96 only** (item 6). That is a lane
+  deviation the maintainer accepted by choosing "Include it"; the side session messaged the Main Campaign about it (above).
+- **(b) `src/lang`: one key, `errors.ttsNotSetUp`,** added to `en.ts` and the six translated files.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Scope amendment, CHORE-100 (`MC-091`, AGENTS "Scope amendments").** While scoping CHORE-93 (the first message's speaker
+  button) the investigation found that the first message's popup menu has the same cause: the first message is rendered with
+  index -1. Its Branch, Disable and Disable-above actions read or write `message[-1]` and throw a `TypeError`, and its
+  Bookmark does nothing. The Orchestrator filed this as CHORE-100 and fixed it in `af2ebc0b` with CHORE-93, one coherent
+  correction in `Chat.svelte` rather than a speaker button added next to a broken popup. This is the Orchestrator's call under
+  the amendment rule, recorded here as the rule requires; the maintainer did not rule on it.
+- **CHORE-95's premise was only partly true** (ledger row 1101): the configs are defaulted whenever `CharConfig` mounts, so the
+  `TypeError` needs foreign or null data. It was fixed as a guard: GPT-SoVITS and Hugging Face with nothing configured show
+  "TTS is not set up for this character" before any request is made.
+- **CHORE-90 is hardening, not a visible bug** (ledger row 1102): the image promises almost never reject. The change gives
+  each media `{#await}` a `{:catch}` and a production-safe warning.
+- **CHORE-91 was found to show an error box already** through `bootstrap.ts`'s unhandled-rejection handler (ledger row 1102).
+  The change reports through `alertError` at the call site, which is item 5's "error box, as now" with the rejection handled.

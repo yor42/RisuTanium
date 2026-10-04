@@ -112,7 +112,7 @@
                     bulkProgressText += ' ' + fillLang(language.playground.bulkPreviousTokens, { count: await tokenize(prContext) })
                 }
 
-                const translatedChunk = await runTranslator(preChunks[i], false, sourceLang, outputLang, {
+                const translatedChunk = await runTranslator(preChunks[i], true, sourceLang, outputLang, {
                     translatorNote: prContext ? `<Previous Content>${prContext.trim()}</Previous Content>\n${pvc}` : ""
                 })
                 if(keepContext){
@@ -140,7 +140,7 @@
             return
         }
         loading = true
-        output = await runTranslator(r, false, sourceLang, outputLang)   
+        output = await runTranslator(r, true, sourceLang, outputLang)   
         loading = false
     } catch (error) {
         console.error(error)

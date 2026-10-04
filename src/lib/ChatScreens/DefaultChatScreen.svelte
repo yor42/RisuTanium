@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { warnOnReject } from "src/ts/warnOnReject";
 
     import Suggestion from './Suggestion.svelte';
     import { CameraIcon, DatabaseIcon, DicesIcon, GlobeIcon, ImagePlusIcon, LanguagesIcon, Laugh, MenuIcon, MicOffIcon, PackageIcon, Plus, RefreshCcwIcon, ReplyIcon, Send, StepForwardIcon, XIcon, BrainIcon, ArrowDown, SparkleIcon } from "@lucide/svelte";
@@ -735,7 +736,7 @@
             {#if shownDraft.fileInput.length > 0}
                 <div class="flex items-center ml-4 flex-wrap p-2 m-2 border-darkborderc border rounded-md">
                     {#each shownDraft.fileInput as file, i}
-                        {#await getInlayAsset(file) then inlayAsset}
+                        {#await warnOnReject('DefaultChatScreen: draft attachment rejected', getInlayAsset(file)) then inlayAsset}
                             <div class="relative">
                                 {#if inlayAsset.type === 'image'}
                                     <img src={inlayAsset.data} alt={language.uiCommon.inlayAlt} class="max-w-48 max-h-48 border border-darkborderc">
@@ -753,6 +754,15 @@
                                 {:else}
                                     <div class="max-w-24 max-h-24">{file}</div>
                                 {/if}
+                                <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" onclick={() => {
+                                    writeDraft((record) => { record.fileInput.splice(i, 1) })
+                                }}>
+                                    <XIcon size={18} />
+                                </button>
+                            </div>
+                        {:catch}
+                            <div class="relative">
+                                <div class="max-w-24 max-h-24">{file}</div>
                                 <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" onclick={() => {
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
                                 }}>

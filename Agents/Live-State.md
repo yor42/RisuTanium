@@ -474,6 +474,41 @@ Several sessions work **in this same checkout**:
   emotion settings label (a one-line label change); `Chat.svelte`'s editor exits (Save and Discard share the discard
   function with the editor's mouse long-press; they are deliberate exits).
 
+### Side session (feat/side-batch)
+
+- **Branch and worktree:** `feat/side-batch`, cut at `517f0cdb`, in the worktree
+  `C:\Projects\RisuAI\.claude\worktrees\handoff-instructions-16b8eb` (local, not pushed). Set up by the Main Campaign's
+  hand-off (`MC-219`). Batches A and B are done; Batch C is not run (CHORE-43 and CHORE-54 are already fixed, `MC-219` 1).
+- **Commits:** Batch A is `af2ebc0b` (CHORE-93, CHORE-94, CHORE-95, CHORE-98 and the new CHORE-100; 17 files). Batch B is
+  `3c8a142a` (CHORE-90, CHORE-91, CHORE-96, CHORE-99; 19 files). Ledger rows 1101 to 1119; the records batch and its
+  fact-check are rows 1120 and 1121.
+- **Checks:** before `af2ebc0b`, on the working tree (which also held the uncommitted CHORE-96 and CHORE-99 changes):
+  `pnpm test` 429 files, 8397 passed, 4 skipped; `pnpm check` 0 errors, 0 warnings; `pnpm build` succeeded. The baseline at
+  `517f0cdb` was 424 files, 8322 passed, 4 skipped. Before `3c8a142a`, exactly that change on `af2ebc0b`: `pnpm test` 432
+  files, 8426 passed, 4 skipped; `pnpm check` 0 and 0; `pnpm build` succeeded. Not run in a browser or against a real TTS server.
+- **Closed without code (`MC-219` 1):** CHORE-43 and CHORE-54 (`71e75d9d`), CHORE-40 (`d013e7cf`), CHORE-16 (`08e43e65` and
+  `0d41f06a`), CHORE-24 (`2af8d4fe`). CHORE-41 is not taken by this session and stays open (`MC-219` 3).
+- **Lane notes (against the hand-off's lanes):** no file on the Main Campaign's do-not-edit list was touched. Outside the
+  hand-off's literal side-lane list: `index.svelte.ts`, edited for CHORE-96 and for CHORE-99, which the maintainer included
+  (`MC-219` 6; the side session messaged the Main Campaign about it on 2026-10-04); the new `src/ts/warnOnReject.ts` (with
+  its test) and `src/ts/process/ttsDefaults.ts`; and `src/lang` (shared): one key, `errors.ttsNotSetUp`, in `en.ts` and the
+  six translated files.
+- **Next free numbers (side session, `MC-219` 2):** `MC-220`; ledger row 1122; CHORE-101; Report 70. These ranges
+  (`MC-219` to `MC-239`, rows 1101 to 1200, CHORE-100 to CHORE-119, Reports 70 to 79) overlap the UI session's reserved `MC`,
+  CHORE and Report ranges, whose tail the side session took over because the UI lane is finished.
+- **Merging:** not this session's. The Main Campaign merges `feat/side-batch` on the maintainer's word, with an explicit
+  merge commit, and then runs check, the full suite and the build.
+- **Wiki hand-offs (for the Wiki session):** (1) the first-message speaker button: a character's first message now has the
+  speaker button when the character has a voice mode and the message is not blank; it speaks the displayed text and follows
+  the alternate first message page showing; `mobilechat` has no icon buttons and `customHTML` shows them only with
+  `RISUBUTTONS`. (2) The Playground translation direction: it outputs in the Translator Language, translated from the input.
+  (3) Auto-continue's new rule: it judges the model's own output of the request, the same in both modes, and stops when the
+  request produced no non-whitespace text. (4) Auto-TTS skips a speaker that has no voice mode, the group member speaking
+  in a group turn. Likely pages, by file name only (their text was not read): `docs/wiki/TTS.md` (1, 4),
+  `docs/wiki/Playground.md` (2), `docs/wiki/Settings-Advanced.md` (3, the only page that mentions auto-continue).
+- **Operational notes:** `pnpm test` rewrites `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` with LF
+  endings; never stage it, and restore its CRLF bytes after a full run (the same note as the UI session's block).
+
 **Next free numbers (reserved ranges, `MC-179` 3):**
 
 | | Main Campaign (this session) | UI session |

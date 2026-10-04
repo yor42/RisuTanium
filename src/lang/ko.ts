@@ -162,6 +162,7 @@ export const languageKorean = {
         "separateParamsMissing": "모델 {modelId}의 모델 모드 {modelMode}에 대한 별도 매개변수를 찾을 수 없습니다. 이 모델의 매개변수를 설정해 주세요",
         "ttsAutoPathFailed": "경로를 자동으로 가져오지 못했습니다",
         "fishSpeechModelNotSelected": "FishSpeech 모델이 선택되지 않았습니다",
+        "ttsNotSetUp": "이 캐릭터에는 TTS가 설정되어 있지 않습니다",
         "invalidTranslatorPresetFile": "번역기 프리셋 파일이 올바르지 않습니다.",
         "moduleAssetsSaveFailed": "에셋 {count}개를 저장하지 못했습니다",
         "mcpModuleConversionUnsupported": "MCP 모듈은 캐릭터 변환을 지원하지 않습니다.",

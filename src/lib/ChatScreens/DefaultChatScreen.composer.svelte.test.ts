@@ -335,6 +335,7 @@ import { hasLocalDrafts, hasMessageEditorDrafts, resetLocalDraftsForTest } from 
 import { getMultiTabAction } from 'src/ts/storage/multiTabReload'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte'
+import { getInlayAsset } from 'src/ts/process/files/inlays'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 
 //#region fixtures
@@ -1302,6 +1303,45 @@ describe('the staged file\'s remove button is scoped to the on-screen record', (
 
         expect(stagedFilePreviews(target).length).toBe(0)
         expect(composerDrafts.peek({ chaId: charB.chaId as string, chatId: chatB.id as string }).fileInput).toEqual(['b-staged.png'])
+    })
+})
+
+describe('a staged file whose asset cannot be loaded', () => {
+    test('regression reproducer: a rejected asset shows the file name, warns, raises no unhandled rejection, and its remove button still removes it from the record', async () => {
+        const unhandled: unknown[] = []
+        const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        process.on('unhandledRejection', onUnhandled)
+        vi.mocked(getInlayAsset).mockImplementation(async () => { throw new Error('asset gone') })
+        try {
+            const chatA = makeChat(freshId('chat'), [])
+            const charA = makeCharacter(freshId('cha'), [chatA])
+            installDb([charA])
+            composerDrafts.write({ chaId: charA.chaId as string, chatId: chatA.id as string }, (record) => {
+                record.fileInput.push('broken-asset.png')
+            })
+
+            const { target } = mountScreen()
+            await settle()
+            await new Promise((r) => setTimeout(r, 20))
+            flushSync()
+
+            expect(unhandled).toEqual([])
+            expect(warn).toHaveBeenCalled()
+            expect(target.textContent).toContain('broken-asset.png')
+            const removeButtons = stagedFileRemoveButtons(target)
+            expect(removeButtons.length).toBe(1)
+
+            removeButtons[0].click()
+            await settle()
+
+            expect(composerDrafts.peek({ chaId: charA.chaId as string, chatId: chatA.id as string }).fileInput).toEqual([])
+            expect(target.textContent).not.toContain('broken-asset.png')
+        } finally {
+            process.off('unhandledRejection', onUnhandled)
+            warn.mockRestore()
+            vi.mocked(getInlayAsset).mockImplementation((async () => ({ type: 'image', data: '' })) as never)
+        }
     })
 })
 
