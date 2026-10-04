@@ -169,7 +169,9 @@ export const languageChineseTraditional = {
         "localSidecarNotStarted": "取得本機金鑰時發生錯誤：無法啟動本機推論 sidecar",
         "jsonSchemaSyntaxError": "發現 SyntaxError",
         "jsonSchemaUnsupportedType": "偵測到不支援的類型",
-        "pluginNameChangeBlocked": "更新外掛 \"{original}\" 時，不能將外掛名稱變更為 \"{new}\"。請保留原名稱以進行更新。"
+        "pluginNameChangeBlocked": "更新外掛 \"{original}\" 時，不能將外掛名稱變更為 \"{new}\"。請保留原名稱以進行更新。",
+        "importAssetNotFound": "匯入時發生錯誤，找不到資源 {key}",
+        "noImageInZip": "ZIP 檔案中找不到圖片"
     },
     "alerts": {
         "screenshotTaking": "正在擷取螢幕畫面...",
@@ -213,7 +215,17 @@ export const languageChineseTraditional = {
         "writingExif": "載入中...（正在寫入 Exif）",
         "writingPng": "載入中...（正在寫入）",
         "presetConverted": "預設集轉換成功。您可以在 Bot 設定的預設集中找到它",
-        "presetNotFound": "找不到預設集：{name}"
+        "presetNotFound": "找不到預設集：{name}",
+        "readingCard": "載入中...（正在讀取）",
+        "loadingAssets": "載入中...（正在載入資源）",
+        "loadingEmotions": "載入中...（正在載入情緒立繪）",
+        "loadingVits": "載入中...（正在載入 VITS）",
+        "addingEmotions": "載入中...（正在新增情緒立繪）",
+        "addingAdditionalAssets": "載入中...（正在新增額外資源）",
+        "addingVits": "載入中...（正在新增 VITS）",
+        "addingCardAssets": "載入中...（正在新增資源）",
+        "downloading": "下載中...",
+        "savingAssets": "載入中...（正在儲存資源 {done}/{total}）"
     },
     "loadingEllipsis": "載入中...",
     "slashCommandHelp":
@@ -1194,8 +1206,6 @@ export const languageChineseTraditional = {
     "ttsElevenLabsKeyHint": "請在 設定 → 其他 Bot → TTS → ElevenLabs API key 中設定 ElevenLabs API 金鑰。",
     "askRemoval": "移除前詢問",
     "replaceGlobalNote": "全域備註替換",
-    "globalLoreBook": "全域 Lorebook",
-    "globalRegexScript": "全域 Regex",
     "accessibility": "無障礙",
     "sendWithEnter": "使用 Enter 鍵送出",
     "fixedChatTextarea": "固定在對話視窗底部（取消勾選後，Shift + Enter 將改為送出訊息。）",

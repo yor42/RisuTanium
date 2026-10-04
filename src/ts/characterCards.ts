@@ -264,7 +264,7 @@ async function readCharacterFile(f:{
         console.log('reading charx')
         alertStore.set({
             type: 'wait',
-            msg: 'Loading... (Reading)'
+            msg: language.alerts.readingCard
         })
 
         const importer = new CharXImporter()
@@ -344,7 +344,7 @@ async function readCharacterFile(f:{
 
     alertStore.set({
         type: 'wait',
-        msg: 'Loading... (Reading)'
+        msg: language.alerts.readingCard
     })
     await sleep(10)
     
@@ -403,7 +403,7 @@ async function readCharacterFile(f:{
             else{
                 alertStore.set({
                     type: 'progress',
-                    msg: 'Loading... (Loading Assets)',
+                    msg: language.alerts.loadingAssets,
                     submsg: (readedPngChunks / pngChunks * 100).toFixed(2)
                 })
             }
@@ -986,7 +986,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
             for(let i=0;i<risuext.emotions.length;i++){
                 alertStore.set({
                     type: 'progress',
-                    msg: `Loading... (Loading Emotions)`,
+                    msg: language.alerts.loadingEmotions,
                     submsg: (i / risuext.emotions.length * 100).toFixed(2)
                 })
                 await sleep(10)
@@ -994,7 +994,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     const key = risuext.emotions[i][1].replace('__asset:', '')
                     const imgp = assetDict[key]
                     if(!imgp){
-                        throw new Error('Error while importing, asset ' + key + ' not found')
+                        throw new Error(fillLang(language.errors.importAssetNotFound, { key }))
                     }
                     emotions.push([risuext.emotions[i][0],imgp])
                     continue
@@ -1007,7 +1007,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
             for(let i=0;i<risuext.additionalAssets.length;i++){
                 alertStore.set({
                     type: 'progress',
-                    msg: `Loading... (Loading Assets)`,
+                    msg: language.alerts.loadingAssets,
                     submsg: (i / risuext.additionalAssets.length * 100).toFixed(2)
                 })
 
@@ -1021,7 +1021,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     const key = risuext.additionalAssets[i][1].replace('__asset:', '')
                     const imgp = assetDict[key]
                     if(!imgp){
-                        throw new Error('Error while importing, asset ' + key + ' not found')
+                        throw new Error(fillLang(language.errors.importAssetNotFound, { key }))
                     }
                     extAssets.push([risuext.additionalAssets[i][0],imgp,fileName])
                     continue
@@ -1035,7 +1035,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
             for(let i=0;i<keys.length;i++){
                 alertStore.set({
                     type: 'progress',
-                    msg: `Loading... (Loading VITS)`,
+                    msg: language.alerts.loadingVits,
                     submsg: (i / keys.length * 100).toFixed(2)
                 })
                 await sleep(10)
@@ -1044,7 +1044,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     const rkey = risuext.vits[key].replace('__asset:', '')
                     const imgp = assetDict[rkey]
                     if(!imgp){
-                        throw new Error('Error while importing, asset ' + rkey + ' not found')
+                        throw new Error(fillLang(language.errors.importAssetNotFound, { key: rkey }))
                     }
                     risuext.vits[key] = imgp
                     continue
@@ -1078,7 +1078,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
             for(let i=0;i<data.assets.length;i++){
                 alertStore.set({
                     type: 'progress',
-                    msg: `Loading... (Assets)`,
+                    msg: language.alerts.loadingAssets,
                     submsg: (i / data.assets.length * 100).toFixed(2)
                 })
                 if(i % 100 === 0){
@@ -1093,7 +1093,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     const key = data.assets[i].uri.replace('__asset:', '')
                     imgp = assetDict[key]
                     if(!imgp){
-                        throw new Error('Error while importing, asset ' + key + ' not found')
+                        throw new Error(fillLang(language.errors.importAssetNotFound, { key }))
                     }
                 }
                 else if(data.assets[i].uri === 'ccdefault:'){
@@ -1103,7 +1103,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     const key = data.assets[i].uri.replace('embeded://', '')
                     imgp = assetDict[key]
                     if(!imgp){
-                        throw new Error('Error while importing, asset ' + key + ' not found')
+                        throw new Error(fillLang(language.errors.importAssetNotFound, { key }))
                     }
                 }
                 else if(data.assets[i].uri.startsWith('data:')){
@@ -1504,7 +1504,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 'png': ['Image File', 'png'],
                 'json': ['JSON File', 'json'],
                 'charx': ['CharX File', 'charx'],
-                'charxJpeg': ['CharX Embeded Jpeg', 'jpeg']
+                'charxJpeg': ['CharX Embedded Jpeg', 'jpeg']
             }
             const ext = nameExt[type]
             await (localWriter as LocalWriter).init(ext[0], [ext[1]])
@@ -1521,7 +1521,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 for(let i=0;i<card.data.extensions.risuai.emotions.length;i++){
                     alertStore.set({
                         type: 'progress',
-                        msg: 'Loading... (Adding Emotions)',
+                        msg: language.alerts.addingEmotions,
                         submsg: (i / card.data.extensions.risuai.emotions.length * 100).toFixed(2)
                     })
                     const key = card.data.extensions.risuai.emotions[i][1]
@@ -1538,7 +1538,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 for(let i=0;i<card.data.extensions.risuai.additionalAssets.length;i++){
                     alertStore.set({
                         type: 'progress',
-                        msg: 'Loading... (Adding Additional Assets)',
+                        msg: language.alerts.addingAdditionalAssets,
                         submsg: (i / card.data.extensions.risuai.additionalAssets.length * 100).toFixed(2)
                     })
                     const key = card.data.extensions.risuai.additionalAssets[i][1]
@@ -1555,7 +1555,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 for(let i=0;i<keys.length;i++){
                     alertStore.set({
                         type: 'progress',
-                        msg: 'Loading... (Adding VITS)',
+                        msg: language.alerts.addingVits,
                         submsg: (i / keys.length * 100).toFixed(2)
                     })
                     const key = keys[i]
@@ -1575,7 +1575,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             await sleep(10)
             alertStore.set({
                 type: 'wait',
-                msg: 'Loading... (Writing)'
+                msg: language.alerts.writingPng
             })
     
             await writer.write("chara", Buffer.from(JSON.stringify(card)).toString('base64'))     
@@ -1587,7 +1587,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 for(let i=0;i<card.data.assets.length;i++){
                     alertStore.set({
                         type: 'progress',
-                        msg: 'Loading... (Adding Assets)',
+                        msg: language.alerts.addingCardAssets,
                         submsg: (i / card.data.assets.length * 100).toFixed(2)
                     })
                     let key = card.data.assets[i].uri
@@ -1731,7 +1731,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             await sleep(10)
             alertStore.set({
                 type: 'wait',
-                msg: 'Loading... (Writing)'
+                msg: language.alerts.writingPng
             })
     
             if(type === 'charx' || type === 'charxJpeg'){
@@ -2057,7 +2057,7 @@ async function downloadRealmCard(id:string, arg:{
         if(!arg.forceRedirect){
             alertStore.set({
                 type: "wait",
-                msg: "Downloading..."
+                msg: language.alerts.downloading
             })
         }
         const res = await fetch("https://realm.risuai.net/api/v1/download/dynamic/" + id + '?cors=true', {

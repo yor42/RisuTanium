@@ -169,7 +169,9 @@ export const languageChinese = {
         "localSidecarNotStarted": "获取本地密钥时出错：无法启动本地推理 sidecar",
         "jsonSchemaSyntaxError": "发现 SyntaxError",
         "jsonSchemaUnsupportedType": "检测到不支持的类型",
-        "pluginNameChangeBlocked": "更新插件 \"{original}\" 时，不能将插件名称更改为 \"{new}\"。请保留原名称以进行更新。"
+        "pluginNameChangeBlocked": "更新插件 \"{original}\" 时，不能将插件名称更改为 \"{new}\"。请保留原名称以进行更新。",
+        "importAssetNotFound": "导入时出错，找不到资源 {key}",
+        "noImageInZip": "ZIP 文件中未找到图片"
     },
     "alerts": {
         "screenshotTaking": "正在截图...",
@@ -213,7 +215,17 @@ export const languageChinese = {
         "writingExif": "加载中...（正在写入 Exif）",
         "writingPng": "加载中...（正在写入）",
         "presetConverted": "预设转换成功。您可以在机器人设置的预设中找到它",
-        "presetNotFound": "找不到预设：{name}"
+        "presetNotFound": "找不到预设：{name}",
+        "readingCard": "加载中...（正在读取）",
+        "loadingAssets": "加载中...（正在加载资源）",
+        "loadingEmotions": "加载中...（正在加载表情立绘）",
+        "loadingVits": "加载中...（正在加载 VITS）",
+        "addingEmotions": "加载中...（正在添加表情立绘）",
+        "addingAdditionalAssets": "加载中...（正在添加额外资源）",
+        "addingVits": "加载中...（正在添加 VITS）",
+        "addingCardAssets": "加载中...（正在添加资源）",
+        "downloading": "下载中...",
+        "savingAssets": "加载中...（正在保存资源 {done}/{total}）"
     },
     "loadingEllipsis": "加载中...",
     "slashCommandHelp":
@@ -1149,8 +1161,6 @@ export const languageChinese = {
     "ttsElevenLabsKeyHint": "请在 设置 → 其他机器人 → TTS → ElevenLabs API key 中设置 ElevenLabs API 密钥。",
     "askRemoval": "请求删除",
     "replaceGlobalNote": "替换全局备注",
-    "globalLoreBook": "全局世界书",
-    "globalRegexScript": "全局正则表达式",
     "accessibility": "辅助功能",
     "sendWithEnter": "使用 Enter 键发送（取消检查时Shift + Enter更改为消息传送。）",
     "fixedChatTextarea": "固定聊天窗口底部",

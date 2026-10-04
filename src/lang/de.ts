@@ -169,7 +169,9 @@ export const languageGerman = {
         "localSidecarNotStarted": "Fehler beim Abrufen des lokalen Schlüssels: Der lokale Inferenz-Sidecar konnte nicht gestartet werden",
         "jsonSchemaSyntaxError": "SyntaxError gefunden",
         "jsonSchemaUnsupportedType": "Nicht unterstützter Typ erkannt",
-        "pluginNameChangeBlocked": "Beim Aktualisieren des Plugins \"{original}\" darf der Plugin-Name nicht in \"{new}\" geändert werden. Bitte behalten Sie den ursprünglichen Namen bei, um das Plugin zu aktualisieren."
+        "pluginNameChangeBlocked": "Beim Aktualisieren des Plugins \"{original}\" darf der Plugin-Name nicht in \"{new}\" geändert werden. Bitte behalten Sie den ursprünglichen Namen bei, um das Plugin zu aktualisieren.",
+        "importAssetNotFound": "Fehler beim Importieren: Medium {key} nicht gefunden",
+        "noImageInZip": "Kein Bild in der ZIP-Datei gefunden"
     },
     "alerts": {
         "screenshotTaking": "Screenshot wird erstellt...",
@@ -213,7 +215,17 @@ export const languageGerman = {
         "writingExif": "Wird geladen... (Exif wird geschrieben)",
         "writingPng": "Wird geladen... (Wird geschrieben)",
         "presetConverted": "Voreinstellung erfolgreich konvertiert. Sie finden sie in den Voreinstellungen der Bot-Einstellungen",
-        "presetNotFound": "Voreinstellung nicht gefunden: {name}"
+        "presetNotFound": "Voreinstellung nicht gefunden: {name}",
+        "readingCard": "Wird geladen... (Wird gelesen)",
+        "loadingAssets": "Wird geladen... (Medien werden geladen)",
+        "loadingEmotions": "Wird geladen... (Emotionsbilder werden geladen)",
+        "loadingVits": "Wird geladen... (VITS wird geladen)",
+        "addingEmotions": "Wird geladen... (Emotionsbilder werden hinzugefügt)",
+        "addingAdditionalAssets": "Wird geladen... (Zusätzliche Medien werden hinzugefügt)",
+        "addingVits": "Wird geladen... (VITS wird hinzugefügt)",
+        "addingCardAssets": "Wird geladen... (Medien werden hinzugefügt)",
+        "downloading": "Wird heruntergeladen...",
+        "savingAssets": "Wird geladen... (Medien werden gespeichert {done}/{total})"
     },
     "loadingEllipsis": "Wird geladen...",
     "slashCommandHelp":
@@ -1149,8 +1161,6 @@ export const languageGerman = {
     "ttsElevenLabsKeyHint": "Lege den ElevenLabs-API-Schlüssel unter Einstellungen → Hilfs-KIs → TTS → ElevenLabs API key fest.",
     "askRemoval": "Vor dem Löschen nochmal fragen",
     "replaceGlobalNote": "Globalnote ersetzen",
-    "globalLoreBook": "Lore Buch",
-    "globalRegexScript": "Regex",
     "accessibility": "Barrierefreiheit",
     "sendWithEnter": "Mit Enter senden(Umschalt + Enter beim Entpacken zu senden)",
     "fixedChatTextarea": "Unten im Chatfenster fixieren",

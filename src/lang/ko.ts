@@ -169,7 +169,9 @@ export const languageKorean = {
         "localSidecarNotStarted": "로컬 키를 가져오는 중 오류가 발생했습니다: 로컬 추론 사이드카를 시작할 수 없습니다",
         "jsonSchemaSyntaxError": "SyntaxError가 발견되었습니다",
         "jsonSchemaUnsupportedType": "지원되지 않는 타입이 감지되었습니다",
-        "pluginNameChangeBlocked": "플러그인 \"{original}\"을(를) 업데이트할 때 플러그인 이름을 \"{new}\"(으)로 변경할 수 없습니다. 업데이트하려면 원래 이름을 유지해 주세요."
+        "pluginNameChangeBlocked": "플러그인 \"{original}\"을(를) 업데이트할 때 플러그인 이름을 \"{new}\"(으)로 변경할 수 없습니다. 업데이트하려면 원래 이름을 유지해 주세요.",
+        "importAssetNotFound": "가져오는 중 오류가 발생했습니다. 에셋 {key}을(를) 찾을 수 없습니다",
+        "noImageInZip": "ZIP 파일에서 이미지를 찾을 수 없습니다"
     },
     "alerts": {
         "screenshotTaking": "스크린샷을 찍는 중...",
@@ -213,7 +215,17 @@ export const languageKorean = {
         "writingExif": "불러오는 중... (Exif 기록 중)",
         "writingPng": "불러오는 중... (기록 중)",
         "presetConverted": "프리셋을 변환했습니다. 봇 설정의 프리셋에서 확인할 수 있습니다",
-        "presetNotFound": "프리셋을 찾을 수 없습니다: {name}"
+        "presetNotFound": "프리셋을 찾을 수 없습니다: {name}",
+        "readingCard": "불러오는 중... (읽는 중)",
+        "loadingAssets": "불러오는 중... (에셋 불러오는 중)",
+        "loadingEmotions": "불러오는 중... (감정 이미지 불러오는 중)",
+        "loadingVits": "불러오는 중... (VITS 불러오는 중)",
+        "addingEmotions": "불러오는 중... (감정 이미지 추가 중)",
+        "addingAdditionalAssets": "불러오는 중... (추가 에셋 추가 중)",
+        "addingVits": "불러오는 중... (VITS 추가 중)",
+        "addingCardAssets": "불러오는 중... (에셋 추가 중)",
+        "downloading": "다운로드하는 중...",
+        "savingAssets": "불러오는 중... (에셋 저장 중 {done}/{total})"
     },
     "loadingEllipsis": "불러오는 중...",
     "slashCommandHelp":
@@ -1149,8 +1161,6 @@ export const languageKorean = {
     "ttsElevenLabsKeyHint": "설정 → 기타 봇 → TTS → ElevenLabs API key에서 ElevenLabs API 키를 설정하세요.",
     "askRemoval": "삭제 확인",
     "replaceGlobalNote": "글로벌 노트 덮어쓰기",
-    "globalLoreBook": "글로벌 로어북",
-    "globalRegexScript": "글로벌 정규식",
     "accessibility": "접근성",
     "sendWithEnter": "엔터키로 메세지 보내기(체크 해제시 Shift + Enter가 메세지 전송으로 변경.)",
     "fixedChatTextarea": "채팅창 하단 고정",
