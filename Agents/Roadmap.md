@@ -190,7 +190,7 @@ This phase is the load-bearing one: it's what Phase 4 (Android) is gated behind,
 - **Item 1 (module-editor keystroke cost): done on the i9-13900K, best case.** Stage A `f4867e63` and Stage B (2026-09-21) are both marked done. Asset-heavy modules still exceed the frame budget while being edited, and Pi and mobile are unmeasured.
 - **Item 2 (`saveDb()` change-tracking effects): partly done.** The selected-character effect is partitioned (CHORE-01 Stage 2, `fbf799a7`). The top-level part of the effect family (`characterOrder` and the other non-character keys) was not repartitioned by Stage 2.
 - **Item 3 (virtual scrolling): partly done.** The avatar track AV-1 to AV-4 is committed (`64777a34`, `97c3f53a`, `d6ee89db`, `41977ac0`), and so is the chat-list Stage A (`96311c4a`). Real windowing of the chat list, virtual scrolling of the character lists and the sidebar rework are still open.
-- **Item 8 (resident chat data for characters that are not open): in progress.** The memory-footprint work (`MC-119`, `MC-130`, Report 49) addresses the problem this item measures, at the character grain; see the 2026-09-30 note under item 8 (`Reports/49-memory-stage-1-plan.md`). Stage 1 as a whole is not done: step 1 is committed as `2b3dd636` (Report 50, Gate 2 approved at round 3), step 2 as `db49aeeb` (Report 51; Gate 2: round 1 [REJECT], round 2 [APPROVE], round 3 [EDITORIAL]), step 3a (plugin and MCP reads and writes of archived characters) as `bd57aa19` (Report 52; Gate 2: rounds 1 and 2 [REJECT], round 3 [APPROVE]), and step 3b (groups, the Playground's restore, the dataset export, the asset-integrity check and the plugin documentation) as `1b38b5d5` (Report 53; Gate 2: round 1 [REJECT], rounds 2 and 3 [APPROVE]). **Step 4 (the backup: units closed under "refers to", error-text keys, plugin storage of any shape, `value` retention dropped; D13, `MC-147`) is done**, committed as `a6719e35` (Report 55; Gate 2 by `opus-reviewer`: round 1 [REJECT], round 2 [EDITORIAL]). Steps 5-7 are not started.
+- **Item 8 (resident chat data for characters that are not open): in progress.** The memory-footprint work (`MC-119`, `MC-130`, Report 49) addresses the problem this item measures, at the character grain; see the 2026-09-30 note under item 8 (`Reports/49-memory-stage-1-plan.md`). Stage 1 as a whole is not done: step 1 is committed as `2b3dd636` (Report 50, Gate 2 approved at round 3), step 2 as `db49aeeb` (Report 51; Gate 2: round 1 [REJECT], round 2 [APPROVE], round 3 [EDITORIAL]), step 3a (plugin and MCP reads and writes of archived characters) as `bd57aa19` (Report 52; Gate 2: rounds 1 and 2 [REJECT], round 3 [APPROVE]), and step 3b (groups, the Playground's restore, the dataset export, the asset-integrity check and the plugin documentation) as `1b38b5d5` (Report 53; Gate 2: round 1 [REJECT], rounds 2 and 3 [APPROVE]). **Step 4 (the backup: units closed under "refers to", error-text keys, plugin storage of any shape, `value` retention dropped; D13, `MC-147`) is done**, committed as `a6719e35` (Report 55; Gate 2 by `opus-reviewer`: round 1 [REJECT], round 2 [EDITORIAL]). Steps 5, 6 and 7 are done (see the note under item 8's stage 1 below, 2026-10-04). D20's heap projection was not met: 344 MB after boot against 70-76 MB, with modules about 305 MB of it.
 - **Item 4 (size-based compaction): open.** Stage 1 touches it only at the character grain; see the 2026-09-30 note under item 4.
 - **Items 5, 6, 7: no work recorded in this file** (item 7's characters list was folded into item 3 on 2026-09-21). **Item 9 (per-chat save blocks): not started** (its own text says so).
 - **Exit criterion: not recorded as met** (last paragraph of this phase). Phase 4's gate is unchanged.
@@ -323,11 +323,13 @@ This phase is the load-bearing one: it's what Phase 4 (Android) is gated behind,
    - **Relationship to other items.** Items 4 (size-based compaction) and 5 (per-character slices) are candidate mechanisms. This item states the measured problem; plan it after a live-app heap measurement confirms the proxy multiplier with pointer compression on. **Android caveat:** no Android build exists in the repo (`src-tauri/gen` has no `android/`, `[lib]` is commented out at `Cargo.toml:47`), so the OOM premise cannot be observed from this codebase.
    - **Status 2026-09-30 — in progress.** The memory-footprint work (`MC-119`, `MC-130`, Report 49) addresses the problem this item measures, at the character grain. This placement follows the maintainer's 2026-09-30 observation that the campaign is running Phase 2, and `MC-035`'s description (quoting Report 17) of the boot proxy materialisation as "Phase 2 item 8's main lever"; no decision entry names item 8. Decisions: `MC-119` (the work comes after W2e) and `MC-130` to `MC-145` (some amended by later entries). The accepted stage 1 plan and its gate record are in [`Reports/49-memory-stage-1-plan.md`](Reports/49-memory-stage-1-plan.md) (Gate 1 accepted at round 5 as [EDITORIAL]; the editorial corrections were applied by the Orchestrator and are not yet re-verified).
      - **Stage 1 (Report 49 section 1):** each eligible character that is not open (not trashed, not `§`/Playground, not when a V2/V2.1 plugin is enabled, not when the opt-out is off) is archived by a boot pass that runs on the raw save tree under exclusive access, from before the main file is read until the pass's own commit resolves. A character stays loaded once opened. When the characters opened since the last load add up past a threshold and the user is idle and nothing is in progress, the app saves and reloads itself, and the re-run boot pass releases them (`MC-140`, `MC-141`). There is **no runtime archive engine**. The 10-day archiving paths are to be retired in step 5 (see the note under item 4).
-     - **Steps 1-7 are listed in Report 49 section 3.4.** Steps 1-6 each get their own implementation and Gate 2; step 7 (measurement, D20) has no Gate 2. As of 2026-10-01, step 1 (the exclusive manual clean-up, D11 and D12) is committed as `2b3dd636` ([`Reports/50-memory-stage-1-step-1-clean-up.md`](Reports/50-memory-stage-1-step-1-clean-up.md); Gate 2 approved at round 3), and step 2 (the v2 stub and the shared restore, D6, D7 and D9 restore side) as `db49aeeb` ([`Reports/51-memory-stage-1-step-2-stub-and-restore.md`](Reports/51-memory-stage-1-step-2-stub-and-restore.md); Gate 2: round 1 [REJECT], round 2 [APPROVE], round 3 [EDITORIAL]), step 3a (plugins and MCP) as `bd57aa19` ([`Reports/52-memory-stage-1-step-3a-plugins-and-mcp.md`](Reports/52-memory-stage-1-step-3a-plugins-and-mcp.md)), step 3b (groups, the Playground and exports) as `1b38b5d5` ([`Reports/53-memory-stage-1-step-3b-groups-playground-exports.md`](Reports/53-memory-stage-1-step-3b-groups-playground-exports.md)), and step 4 (the backup, D13) as `a6719e35` ([`Reports/55-memory-stage-1-step-4-backup-closure.md`](Reports/55-memory-stage-1-step-4-backup-closure.md)); Report 49's STATUS line records them. Steps 5-7 are not started.
+     - **Steps 1-7 are listed in Report 49 section 3.4.** Steps 1-6 each get their own implementation and Gate 2; step 7 (measurement, D20) has no Gate 2. As of 2026-10-01, step 1 (the exclusive manual clean-up, D11 and D12) is committed as `2b3dd636` ([`Reports/50-memory-stage-1-step-1-clean-up.md`](Reports/50-memory-stage-1-step-1-clean-up.md); Gate 2 approved at round 3), and step 2 (the v2 stub and the shared restore, D6, D7 and D9 restore side) as `db49aeeb` ([`Reports/51-memory-stage-1-step-2-stub-and-restore.md`](Reports/51-memory-stage-1-step-2-stub-and-restore.md); Gate 2: round 1 [REJECT], round 2 [APPROVE], round 3 [EDITORIAL]), step 3a (plugins and MCP) as `bd57aa19` ([`Reports/52-memory-stage-1-step-3a-plugins-and-mcp.md`](Reports/52-memory-stage-1-step-3a-plugins-and-mcp.md)), step 3b (groups, the Playground and exports) as `1b38b5d5` ([`Reports/53-memory-stage-1-step-3b-groups-playground-exports.md`](Reports/53-memory-stage-1-step-3b-groups-playground-exports.md)), and step 4 (the backup, D13) as `a6719e35` ([`Reports/55-memory-stage-1-step-4-backup-closure.md`](Reports/55-memory-stage-1-step-4-backup-closure.md)); Report 49's STATUS line records them. Step 5 is done (see the Live-State work order). **Steps 6 and 7 are done (2026-10-04):** step 6a is `cd26764d` (the busy registry, the save-clean signal and the restored-bytes counter) and step 6b is `cdf700f3` (the idle reload; web on, desktop off, CHORE-86); step 7 is Part A (the D20 measurements at `c9c57c9e`), the AVD retry at `cd26764d`, and Part B in the 6b live check (ledger rows 1018 to 1030; `MC-193`). Report 49's STATUS line still says steps 5-7 are not started, so it is stale for step 5 as well as steps 6 and 7.
      - **Projections, not measurements:** Report 49 estimates the maintainer's 155.8 MB main file at about 41-46 MB after stage 1 and the heap after boot at about 70-76 MB (against 258.6 MB of parsed heap today, raw parsed objects in Node, a lower bound). The measurement that replaces the estimates is D20 (step 7). The app measurements so far ran on an i9-13900K and say nothing about a Pi or a phone.
+     - **D20 measured (2026-10-04; step 7, ledger rows 1023, 1024 and 1027; an i9 and a 2 GB emulator, not a phone).** Report 49 section 1's projection is replaced by these measurements for characters only. The main file after the boot pass is 43.2 MB (the projection held). The heap after boot is 344 MB against the 70-76 MB projection (modules about 305 MB of it; 39 MB with modules emptied). On the 2 GB emulator (Chrome 109, V8 limit about 503.6 MiB), in-tab reloads of the full profile hit the V8 heap limit in 6 of 7 reloads in a live renderer and in 0 of 5 first loads in a fresh renderer; with modules emptied, 0 of 6. The retry attributes the heap to the module tree. 6b's own idle reload was run on the emulator only with the modules-emptied profile (no crash).
      - **Already committed: `ccf45c53`, "switching chats no longer keeps the previous chat's messages in memory"** (Report 49 section 6). After a chat switch about 28 of 46.6 MB stayed until another character was selected; with the fix the heap is +0.9 MB above baseline against +28.0 MB without it (one machine, i9-13900K, headless Chrome, synthetic data). Not fixed: a switch to a cold-storage pointer chat whose unit is missing still keeps the array (Report 49 section 5, item 1).
      - **Not in stage 1 (Report 49 section 3.7):** per-chat archiving inside a loaded character (item 4), modules, streamed or inline backup, and the Node streamed write (CHORE-46), and the other exclusions in section 3.7 (the long-chat display window, unit reuse, inlays in backups CHORE-48, the missing-unit retainer, the Android D1 review).
-     - **Order after stage 1 (`MC-145`):** the upstream-compatible "inline everything" backup first, then archiving of modules that are not enabled (`MC-143` 3 as amended), then the rest of stage 2.
+     - **Order after stage 1 (`MC-145`, amended by `MC-193` 5, 2026-10-04):** archiving of modules that are not enabled first (the maintainer's "Modules first (Recommended)"), then the upstream-compatible "inline everything" backup, then the rest of stage 2. `MC-145` had the backup first.
+     - **Open after stage 1:** CHORE-86 (the desktop idle reload ships off), CHORE-81 to CHORE-85 (found in steps 6 and 7), and an exploration the maintainer asked for (`MC-193` 10): unloading the previous character into cold storage when another is selected, instead of the idle reload. Its investigation was started on 2026-10-04 and has no result yet.
 
 9. **[added 2026-09-22, CHORE-17 measurement] Per-chat save blocks: every save re-encodes the whole selected character.**
    - Each character, with all of its chats, is one save block (`RisuSaveType.CHARACTER_WITH_CHAT` in `risuSave.ts`), and the selected character is re-encoded on every save it's marked for — it's the tracker's sticky front. So during an ordinary chat, each save re-encodes every chat that character has, not only the one that changed.
@@ -5653,6 +5655,90 @@ said it can go in "maybe later section" (`MC-190`). It is not placed in the work
   are routed on each platform (web, Tauri, Node and Hono server). Nothing is decided.
 - **Placement:** unplaced; the maintainer places it.
 - **Related:** `MC-190`, `MC-191`, `MC-175`, `MC-143`.
+
+### CHORE-81 — Tauri launch inputs are dead code: the desktop app ignores files opened with it and deep links (TRACED, not run)
+
+**Status (2026-10-04):** open, **not scheduled**. Severity: not assessed. Filed from the step 6 audit (ledger row 1018, R6),
+re-checked by the Orchestrator against source.
+
+- **What was traced:** `characterURLImport()` in `src/ts/characterCards.ts` has one caller, inside the web branch of
+  `loadData` in `src/ts/bootstrap.ts`. The Tauri code that follows it (`tauriOpenedFiles`, `onOpenUrl`) therefore never
+  runs, and `window.tauriOpenedFiles` is never set anywhere. So a file opened with the desktop app, and a deep link, are
+  ignored. TRACED in source, not run on a desktop build.
+- **Why it came up:** the idle reload's design had assumed these launch inputs would run again after `relaunch()`. They do
+  not run at all.
+- **Not known:** whether upstream has the same shape: TODO(evidence). Whether the desktop app is meant to handle these
+  inputs at all, and what a user sees today: TODO(evidence).
+- **Related:** ledger row 1018; `MC-193`.
+
+### CHORE-82 — Backup loads do not wait for an import or an asset add that is still writing (TRACED in review, not run)
+
+**Status (2026-10-04):** open, **not scheduled**. Severity: not assessed. Filed from step 6a's Gate 2 (round 1, N3; ledger
+row 1021).
+
+- **What was found:** `refuseBackupLoadWhileBusy` (`src/ts/drive/backupWorkGuard.ts`) does not read the step 6a busy
+  registry (`src/ts/process/memory/busyActions.ts`). A backup load replaces the whole database under an import or an asset add
+  that is still writing. 6a left it unchanged on purpose and the Gate 2 reviewer found that consistent with the plan.
+- **Not known:** what a user would lose or see if it happens, and how likely it is to be reachable in practice: TODO(evidence).
+- **Related:** `cd26764d`; ledger row 1021.
+
+### CHORE-83 — Every boot writes the main file, a numbered backup and about 507 block-cache entries even when nothing changed (measured on an i9)
+
+**Status (2026-10-04):** open, **not scheduled**. Priority: LOW to MEDIUM (the Orchestrator's assessment, not the maintainer's); it matters most on phones. Filed from the step 7
+measurements (Part A, items 1d and the anomalies list; ledger row 1023).
+
+- **What was measured:** on the real2-shaped synthetic profile, a later boot writes the main file (about 43.4 MB) plus a
+  numbered backup (another 43.4 MB) and 507 block-cache entries (about 49 MB), with nothing changed. The same happens with
+  archiving off (the "off" run), so it is not caused by the archive pass. Which code path issues these writes was not traced:
+  TODO(evidence). On cd26764d the harness's cache-write counter for the encoder's first pass read 0, which is unexplained
+  (not a ticket, see ledger row 1024).
+- **Not known:** the cost on a phone, and whether upstream does the same: TODO(evidence).
+- **Related:** ledger row 1023; `MC-193`.
+
+### CHORE-84 — The page-load listing of stored units and assets is awaited before plugins and costs about 3.7 s at 350,000 asset keys (measured on an i9)
+
+**Status (2026-10-04):** open, **not scheduled**. Severity: not assessed. Filed from the step 7 measurements (Part A, item 6;
+ledger row 1023).
+
+- **What was measured:** D11's page-load listing is two full `keys()` listings (units, then assets) and is awaited before
+  `loadPlugins`. With one-byte placeholder values and the real2 key count (350,350 keys) it took 3.65 to 3.83 s, so a later
+  boot's time to `loadedStore` went from about 0.5 s to about 4.2 s. At 50,000 keys it took 535 ms. The test measured key
+  count only, not value reads.
+- **Not known:** the cost with the real 36 GB asset store, and on a phone: TODO(evidence).
+- **Related:** ledger row 1023; `MC-193`.
+
+### CHORE-85 — A browser crash within seconds of a committing boot pass can leave the pass breaker at 'one' and keep the idle reload off (LOW priority)
+
+**Status (2026-10-04):** open, **LOW priority**, not scheduled. The maintainer asked for it: "yep. file it as low priority
+ticket." (`MC-193` 11). Filed from the step 6b live check (finding 1; ledger row 1027).
+
+- **What was seen:** in the live check, a profile copied right after Chrome was killed had not flushed the removal of the
+  `archivePassStrikes` key (`src/ts/storage/bootArchiveMemo.ts`). The next boot read the D18 breaker as 'one' and the idle
+  reload stayed blocked. With a graceful close after a 10 s wait the key stayed absent. It was a harness artifact; it was
+  not reproduced beyond that kill.
+- **Consequence if it can happen for real:** the idle reload stays off for that profile until the next committing pass. It costs
+  one missed release and never loses data. SUSPECTED, not pursued.
+- **Related:** ledger row 1027; `MC-193`; `MC-158`.
+
+### CHORE-86 — Turn on the desktop idle reload after a Windows live check
+
+**Status (2026-10-04):** open, **not scheduled**. The desktop idle reload ships off: `IDLE_RELOAD_DESKTOP_ENABLED = false` in
+`src/ts/process/memory/idleReloadHost.ts` (commit `cdf700f3`, step 6b). Tauri neither reads nor writes the record and arms
+nothing. Mobile Tauri has no idle-reload path.
+
+- **Condition to turn it on:** a Windows live check that an off-screen composer draft survives an idle relaunch. The
+  maintainer observed that `relaunch()` brings the app back (`MC-193` 3); nothing else of the desktop path has been run.
+- **Four notes from `cdf700f3`'s message, and a fifth found in review, to carry into that work:**
+  1. The boot's file medium and the controller's file medium are two instances with separate queues on one file. Use one, so
+     a deferred drafts removal cannot interleave with a new record write.
+  2. The desktop's rate-limit history is in `localStorage` and its record in a file. Whether the history survives
+     `relaunch()` is unobserved. Losing it costs at most one extra reload inside the interval.
+  3. `writeFileAtomic` puts its temp file in the AppData root, which no boot sweep covers, and the fs scope for a root file is
+     unverified. Check both in the live check.
+  4. The Tauri boot call site of `keepInline` is the same helper as the web one and is not separately tested.
+  5. `idleReloadPlatform()` returns 'desktop' for any Tauri page once the flag is on, with no mobile exclusion. Turning the flag
+     on must also exclude mobile Tauri.
+- **Related:** `cdf700f3`; `MC-193`; CHORE-81 (the Tauri launch inputs are separate dead code).
 
 ### CHORE-90 — 13 sibling image `{#await}` blocks have no `{:catch}`, so a rejected image raises an unhandled rejection
 

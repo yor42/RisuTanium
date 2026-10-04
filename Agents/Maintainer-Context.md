@@ -6801,6 +6801,65 @@ proposed as a bug fix.
 
 ---
 
+### MC-193 — Memory step 6 and step 7: drafts carried across the idle reload, plugin calls count as activity, desktop relaunch, the PWA guard, module archiving moves ahead of the inline backup, 6b ships with the phone heap risk, explore in-session unloading
+
+- **Tag:** decisions (several chosen from options put by the Orchestrator; some typed by the maintainer)
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers while step 6 (the idle reload, D17) was planned, built, gated and live-checked, and
+  while step 7 (the D20 measurements) ran. Where an answer was a choice from options, the chosen option's label is quoted;
+  typed answers are quoted as typed. The text of each question is given in short; the full option text was not kept.
+- **Reasoning:** none stated, except where a quotation below carries it.
+- **Alternatives rejected:** item 1: the other options of that question (not recorded). Item 2: the other options (not
+  recorded). Item 5: archiving the inline backup first (`MC-145`'s order). Item 6: not recorded; the alternative was to hold
+  6b until module archiving was done.
+- **Amends:** `MC-145` (item 5).
+- **Related:** `MC-139`, `MC-140`, `MC-141`, `MC-143`, `MC-145`, `MC-158`, `MC-159`, `MC-175`, `MC-179`, `MC-011`,
+  `MC-089`; CHORE-81 to CHORE-86; ledger rows 1018 to 1030; commits `88c509de`, `cd26764d` (step 6a), `cdf700f3` (step 6b).
+
+**What was decided:**
+1. **Drafts across the idle reload.** The question was about unsent text that is not in an open editor. Answer: "Keep it
+   across reload (Recommended)". Text in chats that are not on screen, and text left over from an editor that has closed,
+   is carried across the idle reload and put back. It never blocks the reload. The chat on screen (its composer text) and
+   open editors (message editor, partial-message editor, HypaV3 modal) keep blocking it, as the question's stated premise
+   and Report 49 D17's scenario "a draft in the composer, no reload" have it. The wording is plan section 0 as corrected
+   at Gate 1 round 3.
+2. **Plugin and Realm UI.** Answer: "Plugin calls count as activity (Recommended)". A V3 plugin call into the host counts
+   as activity for the idle timer, and an open plugin panel or the Realm window blocks the reload.
+3. **Desktop.** The maintainer typed: "yes it does come back up on its own after load." This is about `relaunch()` after
+   Load Internal Backup and Load Local Backup, observed by the maintainer on Windows, not by an agent. So `relaunch()` is
+   the desktop reload. Whether to turn the desktop idle reload on is not decided here; it ships off (CHORE-86).
+4. **PWA launch guard.** The maintainer typed: "add guard for pwa just in case." The guard ships without the observation
+   the plan wanted first (plan section 4.5): the boot right after an idle reload does not import files the installed app hands
+   over again; other boots import as before.
+5. **Order of the work after step 6.** Answer: "Modules first (Recommended)". After step 6: archive modules that are not
+   enabled, then the upstream-compatible full ("inline everything") backup, then the rest of stage 2. This reverses the
+   order in `MC-145`. The maintainer had asked to "wait for the retry result first" (item 8) before deciding this.
+6. **6b on phones before module archiving.** Answer: "Ship as planned (Recommended)". The risk is recorded and no extra
+   code is written. The risk: on the 2 GB emulator, in-tab reloads of the full module-heavy profile hit the V8 heap limit
+   (6 of 7 reloads in a live renderer; 0 of 5 first loads in a fresh renderer). The idle reload is such a reload. Not
+   observed on a real phone.
+7. **AVD retry.** The maintainer typed: "give avd another try after taskkill." (the commit instruction in item 12 carries the
+   same words). No emulator, qemu or adb process of ours was running, and nothing was killed.
+8. **Order of decisions.** The maintainer typed: "lets wait for the retry result first", before item 5 was decided.
+9. **6b commit.** The maintainer typed: "yes. lets commit." The commit is `cdf700f3`.
+10. **The post-reload boot time, and a request to explore.** After a 100-character session the boot after an idle reload
+    takes about 6.5 s on an i9 (Part B). The maintainer accepted it: "acceptable, but I'd like to explore the room for
+    improvement, for example, aggressively unloading the previous character into the cold storage when user selects another
+    character, and only loading currently active ones instead of idle reload." An investigation was started on 2026-10-04;
+    it has no result yet. Nothing is decided about in-session unloading.
+11. **The breaker left at 'one' after a browser crash.** The maintainer typed: "yep. file it as low priority ticket." This is
+    CHORE-85.
+12. **6a commit and records.** The maintainer typed: "commit stage 6a, and give avd another try after taskkill." The commit
+    is `cd26764d`. For the merge records the maintainer typed: "commit the records for now" (no period). The commit is `88c509de`.
+
+**The Orchestrator's own call (not a maintainer decision).** At Gate 2 of step 6b, after the reviewer's round 1 finding that
+a heap-limit crash after the put-back could lose the carried drafts, the Orchestrator chose that the carried drafts are kept until the new page has saved once, so a crash during its start-up
+cannot lose them. This supersedes plan I2's rule of deleting them in the same synchronous task as the put-back. The stated
+cost: text the user cleared can come back after such a crash.
+
+---
+
 ### MC-200 — The UI session's work order; CHORE-56 confirmed; CHORE-44 re-verified and closed; CHORE-23 may edit `openURL` minimally
 
 - **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
