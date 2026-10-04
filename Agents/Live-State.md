@@ -176,7 +176,9 @@ The commits below were local when they were listed, and were pushed with it:
   download is read from a Blob (the 33rd; `MC-186` 2 and 4; ledger rows 775 to 780). Local, not pushed. The records commit that
   carries this line (the Roadmap blocks, ledger rows 775 to 782) follows it and is the 34th.
 - `96ffb490`: CHORE-77 Stage C1, a `.charx` with a file over its size limit is refused before anything is saved and queued asset saves are bounded (the 35th, `git rev-list --count 1ce8abff..HEAD` gave 35 on 2026-10-04; `MC-187` and its amendment; ledger rows 787 to 791; `b2406e0e`, the CHORE-77 C1 records, is the 36th). Local, not pushed.
-- `f8f16c0d`: CHORE-77 Stage C2, files shared to the installed web app are imported, and `#import=` and Chub downloads are read from a Blob (the 37th: `git rev-list --count 1ce8abff..HEAD` gave 36 on 2026-10-04 at `b2406e0e`, before this commit; `MC-187`, `MC-188`, `MC-189`; ledger rows 793 to 799 and 1001). Local, not pushed.
+- `f8f16c0d`: CHORE-77 Stage C2, files shared to the installed web app are imported, and `#import=` and Chub downloads are read from a Blob (the 37th: `git rev-list --count 1ce8abff..HEAD` gave 36 on 2026-10-04 at `b2406e0e`, before this commit; `MC-187`, `MC-188`, `MC-189`; ledger rows 793 to 799 and 1001). Local, not pushed. `a4cef56c` (the CHORE-77 C2 records) is the 38th and `89993b28` (`MC-190`, `MC-191`, CHORE-80) the 39th.
+- `ae8636a2`: CHORE-79 (stage 1 of 2 of CHORE-78/79), a module import shows success only when a module was added, and a `.risum` that is not a module is refused (the 40th: `git rev-list --count 1ce8abff..HEAD` gave 41 on 2026-10-04 at `bab2af36`; `MC-192` D2 and D3; ledger rows 1002 to 1009 and 1016). Local, not pushed.
+- `bab2af36`: CHORE-78 (stage 2 of 2), every file of a multi-file import is attempted and the files that did not import are listed in one message (the 41st; `MC-192` D1; ledger rows 1010 to 1015). Local, not pushed. The records commit that carries this line (`MC-192`, the Roadmap blocks, ledger rows 1002 to 1016) follows it and is the 42nd.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
 `d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63`,
@@ -247,8 +249,7 @@ Several sessions work **in this same checkout**:
 - **Tickets staying with the Main Campaign:** CHORE-55 (stages 3 and 4 are done, `bf7f2cbf` and `980791fa`; stage 5 or
   later stays as later work, `MC-181`), CHORE-59 (done, `4801a2f9`), CHORE-58 (done, `282b2da5`), CHORE-76 and CHORE-77 (`MC-185`; done: Stage A `6173f58a`, Stage B `ff659397`), memory steps 6 and 7,
   CHORE-62, CHORE-70, CHORE-48, CHORE-46, CHORE-49, CHORE-50, CHORE-65, CHORE-71 to 73, CHORE-75 (filed 2026-10-03, unplaced;
-  the maintainer places it), CHORE-78 and CHORE-79 (filed 2026-10-03, unplaced; found by the CHORE-76/77 Stage B Gate 1
-  reviewer, not yet investigated; the maintainer places them), CHORE-04, CHORE-10, CHORE-60 (with the Rebranding session), and the existing Wiki hand-offs.
+  the maintainer places it), CHORE-78 and CHORE-79 (filed 2026-10-03; done 2026-10-04: CHORE-79 `ae8636a2`, CHORE-78 `bab2af36`; `MC-192`), CHORE-04, CHORE-10, CHORE-60 (with the Rebranding session), and the existing Wiki hand-offs.
 - **The Main Campaign does not edit the delegated tickets' Roadmap entries.** The UI session owns their status lines.
 - **Out of bounds for the UI session (the Main Campaign's lane):** `src/ts/storage/**`, `globalApi.svelte.ts`,
   `bootstrap.ts`, `src/ts/drive/**`, `risuSave.ts`, `coldstorage*.ts`, `process/memory/**`, `manualCleanup.ts`,
@@ -295,7 +296,7 @@ Empty. Only the UI session edits this block.
 
 (Main Campaign rows continue at 1001; `MC-179` amendment of 2026-10-04)
 
-Next free within the Main Campaign's ranges: `MC-192` (`MC-191` is the latest used; it records that the hosted build is private-only, 2026-10-04; `MC-190` records the environment-variable API-key idea), ledger row 1002 (the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
+Next free within the Main Campaign's ranges: `MC-193` (`MC-192` is the latest used; it records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1017 (rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
 work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
@@ -448,7 +449,7 @@ them.
    Checks on the final tree, from the commit message: `pnpm test` 330 files, 7173 passed, 4 skipped; `pnpm check` 0 errors and 0
    warnings; `pnpm build` passes. Residuals are in the Roadmap block. **The CHORE-77 follow-ups ((a) the charx save backlog, including the
    data-descriptor buffering before the 50 MB cap, and (b) `#share_character` reading with `arrayBuffer()`) await a maintainer decision;
-   none is filed.** **Next: memory steps 6 and 7 (step 6 only after `feat/ui-batch` is merged, `MC-179` 4: check before step 6
+   none is filed.** **CHORE-79 and CHORE-78 are done (2026-10-04; `ae8636a2` and `bab2af36`, local, not pushed; `MC-192`; ledger rows 1002 to 1016; Roadmap CHORE-78 and CHORE-79):** a module import shows success only when a module was added and a `.risum` that is not a module is refused; every file of a multi-file import is attempted and one message lists the files that were not imported. Plan gate `[REJECT]`, `[EDITORIAL]`; stage 1 code gate `[EDITORIAL]`, `[APPROVE]`; stage 2 code gate `[EDITORIAL]`, `[APPROVE]`; no escalation. Checks on the final tree, from the commit messages: `pnpm test` 336 files, 7319 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` passes. Residuals are in the Roadmap blocks (two import actions at once share the alert slot; the drop handler was not live-checked). **Outstanding: `feat/ui-batch` (tip `a5dfc611` as of this record) must be merged before memory step 6; CHORE-80 is unscheduled; CHORE-62; the native-speaker review of the vi, de and es wording of the four new import strings (item 1 under "Open follow-ups").** **Next: memory steps 6 and 7 (step 6 only after `feat/ui-batch` is merged, `MC-179` 4: check before step 6
    planning, and stop and ask if it has not happened), then CHORE-62** (work order below). **CHORE-64 is closed (2026-10-02; `48f00223`, pushed; `MC-163`; Roadmap CHORE-64; ledger
    rows 618 to 622):** a write to the plugin list through `setDatabase` or `setDatabaseLite` never deletes plugins, and
    updates keep saved settings. A V2.1 plugin can still delete or replace installed plugins through the live
@@ -880,6 +881,11 @@ Not placed in the sequence:
      read slightly odd; vi, "nhóm trò chuyện" could read as "chat group" rather than "the group talks",
      and "chưa được kiểm tra tài sản" is clipped; de and es, "spricht" and "habla" are literal; es,
      "activos" in the report line reads stiff.
+   - CHORE-78 (`bab2af36`) added four strings (`importFilesNotImported`, `importUnsupportedFile`, `importNotCardFile`,
+     `importFileNotReceived`) to ko, cn, zh-Hant, vi, de and es. The translator's low-confidence notes: es, the first
+     wording "No se importaron N de M archivos" (reworded to "Archivos no importados (n de m)"); de, "Charakterkarten-Datei"
+     against the "Kartendatei" used in `cardFileIncomplete`; vi, "chưa được nhập", which reads as "not yet imported". The
+     native-speaker check is open for vi, de and es (Roadmap CHORE-78; ledger row 1011).
 2. **CHORE-41's console output** (ledger rows 201-202 and 206): why the edit button stays dead across
    repeated clicks.
 3. **The MC-091 workflow pilot:** evaluating it is the maintainer's.

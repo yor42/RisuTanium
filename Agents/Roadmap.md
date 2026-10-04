@@ -3861,9 +3861,57 @@ downloads read as a Blob). Stage C1 is done in `96ffb490` (2026-10-04; ledger ro
 - **Placement:** `MC-185`, now, ahead of steps 6 and 7. Step 6 still waits for the `feat/ui-batch` merge (`MC-179` 4).
 - **Related:** CHORE-58 (`282b2da5`), CHORE-76, `MC-184`, `MC-185`, `MC-186`.
 
-### CHORE-78 — Importing several cards at once can hide an earlier card's failure (TRACED at `ece53227`; UX, no data loss)
+### CHORE-78 — Importing several cards at once can hide an earlier card's failure (TRACED at `ece53227`; UX, no data loss) (done in `bab2af36`, 2026-10-04, stage 2 of 2 of CHORE-78/79)
 
-**Status (2026-10-03): open, unplaced.** The maintainer approved filing it on 2026-10-03 ("yes, file CHORE-78 and
+**Status (2026-10-04): done in `bab2af36`, local, not pushed.** Stage 2 of 2; stage 1 is CHORE-79 (`ae8636a2`). Decision: `MC-192`
+D1. Ledger rows 1002 to 1016 (the investigation 1002, the plan gate 1003 and 1004, stage 2 rows 1010 to 1013, the commit message
+rows 1014 and 1015; row 1016 is the stage 1 commit message draft). Plan gate: `[REJECT]`, then `[EDITORIAL]`. Stage 2 code gate (`adversarial-reviewer`): `[EDITORIAL]`, then
+`[APPROVE]` after the corrections. From the commit message:
+- **Outcome.** Every file of a multi-file import is attempted, whatever happened to the files before it (the file picker, files
+  shared to the installed web app, files opened from the OS through `launchQueue`, files opened by Tauri, and `#import=`). When
+  any file was refused or failed, the action ends with exactly one message, "Files not imported (n of m):", then one
+  "name: reason" line per file. Files that imported, and files the user declined, are not listed. A single file keeps its own
+  message; a single file that is not a card, preset or module, or that could not be received, gets the summary, with the new
+  reasons "This file type cannot be imported." and "The file could not be received.". The outcome of a file is decided by the
+  code (imported, declined, refused or failed), never read from alert text.
+- **Other behaviour changes in the same commit.** A refused `.risum` shows its reason as text on the `launchQueue`, Tauri
+  opened-files, share and `#import=` paths (this closes the interim regression stage 1 disclosed). A declined card (json spec
+  card, png rcc card, charx) is not imported, not counted, and shows nothing; a declined json card no longer falls through to
+  the off-spec import, and a declined charx returns no index. A password-protected png card whose import throws shows its own
+  reason, and a declined one shows nothing; "Wrong Password" remains for a password that does not decrypt. `downloadRisuHub`
+  stops after a download that did not import and does not switch characters. `checkCharOrder` also runs after a card imported
+  through `launchQueue` or Tauri opened files.
+- **MC-091 scope amendment.** The Chub and `#import=` blocks of `characterURLImport` no longer return on a failed response or
+  an error. They show "The file is invalid" and go on, so share handling, the `launchQueue` registration, Tauri opened files and
+  `onOpenUrl` are always reached. `#import_module=` and `#import_preset=` show a malformed or failed link with `alertError` and go
+  on. Reason: at the parent commit those returns ended start-up work before the `launchQueue` and `onOpenUrl` registrations.
+- **Strings.** Four keys added to all seven language files (`importFilesNotImported`, `importUnsupportedFile`,
+  `importNotCardFile`, `importFileNotReceived`); `shareFilesNotImported` removed from all seven (nothing in `src/ts` used it).
+- **Tests and checks.** One new file (`characterCards.picker.test.ts`) and four changed. The Gate 2 reviewer ran five test files
+  (224 tests) against the parent commit's `characterCards.ts` through a scratch config: 33 failed, with behavioural failure
+  messages. Mutants run by the reviewer: 12, 11 killed; the survivor (a `ModuleRefusal` classified as a failure) is now caught by
+  a test that asserts the message is a string. `pnpm test` 336 files, 7319 passed, 4 skipped; `pnpm check` 0 errors and 0
+  warnings; `pnpm build` succeeded (all three runs by the Orchestrator on the Stage 2 snapshot; logs in the session scratchpad).
+- **Accepted residual (not fixed).** Two import actions running at once (for example a `launchQueue` event during a share) share
+  the single alert slot, so one summary can replace the other. The plan accepted it as rare.
+- **Not covered by a test.** The rcc decrypt and parse edge cases (a non-password `decryptBuffer` failure and a `JSON.parse`
+  failure) are read-verified only.
+- **Out of scope, from the plan.** Assets saved before a failure stay unreferenced, as before; the startup asset sweep is their
+  cleanup (whether the sweep removes those exact assets was not established). Multi-file drag and drop: the drop handler takes
+  only the first file (`files[0]`), so it is not a multi-file entry. `db.statics.imports` does not count refusals (it is
+  incremented before any validation).
+- **Open follow-up: a native-speaker review of the vi, de and es wording of the four new strings** (and of the reworded summary).
+  This is added to the existing native-review item (Live-State, item 1, "A native-speaker check on the new translations."; CHORE-77's Stage C2
+  residuals carry the same kind of note), not a new ticket. The translator flagged: es "No se importaron"-style phrasing (the
+  first wording, since reworded to "Archivos no importados (n de m)"), de "Charakterkarten-Datei" against the "Kartendatei" used
+  in `cardFileIncomplete`, and vi "chưa được nhập", which reads as "not yet imported". These are flags, not known defects. ko, cn
+  and zh-Hant were not flagged.
+- **Merge note.** `feat/ui-batch`, read at `a5699f55` at plan time, did not touch the picker loop, `consumeShare`, `alert.ts`
+  or `processzip.ts`, but had one-line string hunks elsewhere in `characterCards.ts` and in `readModule`. Its tip has since
+  moved to `a5dfc611`, where `modules.ts` has 5 changed lines, `characterCards.ts` 9 and `AlertComp.svelte` 60 against
+  `89993b28`. Textual conflicts are possible at the merge; the lang files are listed in Live-State as expected conflicts.
+
+**Status as filed (2026-10-03): open, unplaced.** The maintainer approved filing it on 2026-10-03 ("yes, file CHORE-78 and
 CHORE-79"). It is not placed in the work order; the maintainer places it (`MC-089`: nothing ships until every open ticket
 clears). Found by the Stage B Gate 1 reviewer of CHORE-76/77, not yet investigated. UX only: nothing is lost or written
 wrongly; the user can miss that one file was not imported.
@@ -3898,12 +3946,50 @@ wrongly; the user can miss that one file was not imported.
   established: whether every UI mode shows only the current alert.
 - **Next step:** investigation, then a plan. One possible shape, not decided: collect each file's outcome and show a summary
   at the end. Nothing is decided.
-- **Placement:** unplaced; the maintainer places it.
+- **Placement (as filed, 2026-10-03):** unplaced; the maintainer places it.
 - **Related:** CHORE-76, CHORE-77, `6173f58a`, `MC-185`, `MC-186`.
 
-### CHORE-79 — Importing a module from a .charx can report success after asset saving failed (TRACED at `ece53227`; a false success message, no module added)
+### CHORE-79 — Importing a module from a .charx can report success after asset saving failed (TRACED at `ece53227`; a false success message, no module added) (done in `ae8636a2`, 2026-10-04, stage 1 of 2 of CHORE-78/79)
 
-**Status (2026-10-03): open, unplaced.** The maintainer approved filing it on 2026-10-03 ("yes, file CHORE-78 and
+**Status (2026-10-04): done in `ae8636a2`, local, not pushed.** Stage 1 of 2; stage 2 is CHORE-78 (`bab2af36`). Decisions: `MC-192`
+D2 and D3. Ledger rows 1002 to 1009 and 1016 (the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, its commit message draft 1016). Stage 1
+code gate (`opus-reviewer`, because the change touches the asset-save queue): `[EDITORIAL]`, then `[APPROVE]` for the
+remediation; the commit message check was `[EDITORIAL]` with one required correction, applied. From the commit message:
+- **Outcome.** A `.charx` module import shows success only when a module was added. A failure shows its real reason as the last
+  message (D2), for example "Failed to save 3 assets"; a declined low-level-access prompt shows nothing. Before: the generic
+  "The file is invalid" message and then "Successfuly imported", and a declined prompt showed the "invalid" message.
+- **`readModule` (D3).** It throws a `ModuleRefusal` (new, `src/ts/process/moduleRefusal.ts`) for a wrong magic byte, an
+  unsupported version, a wrong module type and a bad block mark, instead of alerting and returning `undefined`. It never returns
+  without a module and never shows an error itself; any other error (a truncated file, corrupt JSON, a failed asset save) passes
+  through as it is. Before: `importModule` and the drop handler pushed the `undefined` onto the module list (the drop handler then
+  showed "Successfuly imported"), and the card import and `importClassified` (share, `#import=`, `launchQueue`, Tauri) threw a
+  `TypeError` on it. Now a `.risum` that fails one of those checks is refused with one error in `importModule` and the drop
+  handler, and a `.charx` card with an unusable embedded module is refused as a card (one error, no character).
+- **Drop handler.** Its body moved to `importDroppedFile` (`src/ts/dropImport.ts`) with a try/catch, so a failed preset, module
+  or card drop shows an error instead of an unhandled rejection.
+- **Quiet exits of a `.charx` card import.** When the import stops after the archive was parsed, `CharXImporter.abandon()` now
+  runs in a `finally`: asset saves that have not started do not start, no "Saving Assets" progress message replaces the error,
+  the importer's completion promise no longer becomes an unhandled rejection, and saves already in flight are not waited for or
+  cancelled. `abandon()` runs only after `done()` has settled on a successful import, so a successful import saves every asset as
+  before (the Gate 2 reviewer's mutant that called it earlier was caught by a test).
+- **Interim regression, disclosed in the commit message and closed by stage 2.** A malformed `.risum` opened from the OS through
+  `launchQueue` or the Tauri opened-files path showed no message after stage 1 (its `ModuleRefusal` was an unhandled rejection;
+  those two paths had no catch). Before stage 1 the same file showed the "invalid" message and then an uncaught `TypeError`.
+  `bab2af36` adds the catch and tests a refused `.risum` on both paths.
+- **Resolved from the filing.** The filing listed as UNVERIFIED whether `importCharacterCardSpec` with `returnCharacter` can
+  leave a character behind. The investigation (row 1002) read it and found that no character or other database state is left
+  (only the `db.statics.imports` counter moves). TRACED by the `investigator`; not run.
+- **Tests and checks.** Three new test files and two changed. Against the parent commit's `modules.ts`, `processzip.ts` and
+  `characterCards.ts`, the three files `modules.importRisum`, `charxQuietExit` and `modules.importCharx` give 13 failed and 11
+  passed of 24, each for its own reason. The `dropImport.test.ts` red count (4 failed, 3 passed) is the implementer's, against
+  the handler body extracted without its try/catch, and was not re-run by the reviewer. `pnpm test` 335 files, 7276 passed, 4
+  skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` succeeded (the Orchestrator re-ran the build after the remediation, exit 0, and did not save the log; the reviewer could not verify the build claim).
+- **Not done.** The drop handler was not live-checked in a browser (the Svelte handler is a one-line call to
+  `importDroppedFile`).
+- **Out of scope, from the plan.** Assets saved before a failure stay unreferenced, as before; the startup asset sweep is their
+  cleanup (whether the sweep removes those exact assets was not established).
+
+**Status as filed (2026-10-03): open, unplaced.** The maintainer approved filing it on 2026-10-03 ("yes, file CHORE-78 and
 CHORE-79"). It is not placed in the work order; the maintainer places it (`MC-089`). Found by the Stage B Gate 1 reviewer of
 CHORE-76/77, not yet investigated.
 
@@ -3931,7 +4017,7 @@ CHORE-76/77, not yet investigated.
   other failure paths.
 - **Next step:** investigation. Likely shape (non-normative): return from the `catch`, as the `.risum` branch effectively does.
   Nothing is decided.
-- **Placement:** unplaced; the maintainer places it.
+- **Placement (as filed, 2026-10-03):** unplaced; the maintainer places it.
 - **Related:** CHORE-76, CHORE-78, `MC-185`.
 
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity

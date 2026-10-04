@@ -6771,3 +6771,28 @@ integrity and correctness, not as internet-facing security. Authentication, rate
 proposed as a bug fix.
 
 ---
+
+### MC-192 — CHORE-78 and CHORE-79: how a multi-file import reports failures, and what a failed `.charx` module import shows
+
+- **Tag:** decisions (three, chosen from options put by the Orchestrator)
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the Orchestrator's questions while planning CHORE-78 and CHORE-79, after the
+  investigation (ledger row 1002). The options came from section 13 of that investigation packet (A: four ways to report the
+  outcomes of a multi-file import; C: whether the `readModule` return is part of CHORE-79; D: the real error or the generic
+  one). The exact question and option wording as the Orchestrator put them was not supplied for this entry; the decisions are
+  as the Orchestrator reported them and as the plan (revision 2) states them.
+- **Reasoning:** none recorded beyond the choices.
+- **Alternatives rejected:** none recorded for D1 (the exact options offered are not in the evidence). D2: keeping the generic "file is
+  invalid" message. D3: ticketing the `readModule` fix separately.
+- **Related:** `MC-175`, `MC-179`, `MC-185`, `MC-089`; CHORE-78, CHORE-79; ledger rows 1002 to 1016.
+
+**What was decided:**
+1. **D1 (CHORE-78).** A multi-file import imports every file, then shows one message at the end that lists each file that was
+   not imported and why.
+2. **D2 (CHORE-79).** A failed `.charx` module import shows the real reason (for example "Failed to save 3 assets"), not the
+   generic "file is invalid" message.
+3. **D3 (CHORE-79).** The fix for `readModule` returning `undefined` on a malformed `.risum` is folded into CHORE-79. It is not
+   ticketed separately.
+
+---
