@@ -25,6 +25,8 @@ const h = vi.hoisted(() => ({
     modules: [] as Array<Record<string, unknown>>,
     presets: [] as Array<{ name: string, data: unknown }>,
     moduleReads: [] as unknown[],
+    /** makes the mocked readModule throw a ModuleRefusal with this message */
+    moduleFails: null as string | null,
     ordered: 0,
     uuid: 0,
 }))
@@ -148,6 +150,7 @@ vi.mock(import('src/ts/process/modules'), () => ({
     readModule: vi.fn(async (data: Uint8Array) => {
         h.moduleReads.push(data)
         h.events.push('module')
+        if (h.moduleFails) throw new ModuleRefusal(h.moduleFails)
         return { name: 'synthetic module', lorebook: [], trigger: [], regex: [] }
     }),
 }) as unknown as typeof import('src/ts/process/modules'))
@@ -165,6 +168,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 import { characterURLImport } from 'src/ts/characterCards'
 import { CharXImporter, CharXWriter } from 'src/ts/process/processzip'
 import { PngChunk } from 'src/ts/pngChunk'
+import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import type { VirtualWriter } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 
@@ -319,6 +323,7 @@ beforeEach(() => {
     h.modules = []
     h.presets = []
     h.moduleReads = []
+    h.moduleFails = null
     h.ordered = 0
     h.uuid = 0
     shares.clear()
@@ -538,6 +543,20 @@ describe('#share= hash', () => {
         await characterURLImport()
         expect(charName(0)).toBe('Survivor')
         expect(h.errors).toContain(language.cardFileIncomplete)
+        expect(shares.has(id)).toBe(false)
+    })
+
+    test('a module that readModule refuses adds nothing and is named among the files not imported, while the files after it import (guard)', async () => {
+        h.moduleFails = language.errors.noData
+        const id = seedShare([
+            { name: 'bad.risum', type: '', bytes: new U8([8, 8]) },
+            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
+        ])
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(h.modules).toEqual([])
+        expect(charName(0)).toBe('Survivor')
+        expect(h.errors[h.errors.length - 1]).toBe(language.shareFilesNotImported('bad.risum'))
         expect(shares.has(id)).toBe(false)
     })
 

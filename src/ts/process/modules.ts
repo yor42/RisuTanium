@@ -12,6 +12,7 @@ import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } f
 import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, importCharacterProcess } from "../characterCards"
+import { ModuleRefusal, importErrorMessage } from "./moduleRefusal"
 
 export interface MCPModule{
     url: string
@@ -123,6 +124,12 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
     return apb.buffer
 }
 
+/**
+ * Reads a `.risum` module and saves its assets. The magic byte, version, module type and block mark checks throw a
+ * ModuleRefusal; any other error (a truncated file, corrupt JSON, "Failed to save n assets") passes through as it is.
+ * It shows save progress and clears it before it returns or throws, and never shows an error itself: the caller
+ * shows it. It never returns without a module.
+ */
 export async function readModule(buf:Buffer):Promise<RisuModule> {
     let pos = 0
 
@@ -144,13 +151,11 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
 
     if(readByte() !== 111){
         console.error("Invalid magic number")
-        alertError(language.errors.noData)
-        return
+        throw new ModuleRefusal(language.errors.noData)
     }
     if(readByte() !== 0){ //Version check
         console.error("Invalid version")
-        alertError(language.errors.noData)
-        return
+        throw new ModuleRefusal(language.errors.noData)
     }
 
     const mainLen = readLength()
@@ -162,8 +167,7 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
 
     if(main.type !== 'risuModule'){
         console.error("Invalid module type")
-        alertError(language.errors.noData)
-        return
+        throw new ModuleRefusal(language.errors.noData)
     }
 
     let module = main.module
@@ -223,8 +227,7 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
             break
         }
         if(mark !== 1){
-            alertError(language.errors.noData)
-            return
+            throw new ModuleRefusal(language.errors.noData)
         }
         const len = readLength()
         const data = readData(len)
@@ -268,11 +271,7 @@ export async function importModule(){
                 data: buf,
                 returnCharacter: true
             })
-            //Only a declined low-level-access prompt returns false without showing a message; every other refusal has shown its own.
-            //The declared return type leaves false out, so it is told apart by its type.
-            if(typeof char === 'boolean'){
-                alertError(language.errors.noData)
-            }
+            //A refusal has shown its own message and a declined low-level-access prompt shows none (it returns false, a type the declared return leaves out); neither is followed by another message.
             if(!char || typeof char === 'number'){
                 return
             }
@@ -280,7 +279,8 @@ export async function importModule(){
             DBState.db.modules.push(module)
         } catch (error) {
             console.error(error)
-            alertError(language.errors.noData)
+            alertError(importErrorMessage(error))
+            return
         }
         alertNormal(language.successImport)
         return
@@ -292,7 +292,7 @@ export async function importModule(){
             DBState.db.modules.push(module)
         } catch (error) {
             console.error(error)
-            alertError(language.errors.noData)
+            alertError(importErrorMessage(error))
         }
         return
     }

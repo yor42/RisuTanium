@@ -1,6 +1,6 @@
 /**
  * `importModule` in `src/ts/process/modules.ts` for a `.charx` file: which message the user is left with when
- * `importCharacterProcess` returns without a character.
+ * `importCharacterProcess` returns without a character or throws.
  *
  * The real `modules.ts` runs; the character import and everything else it reaches are replaced by recorders.
  */
@@ -12,19 +12,24 @@ const h = vi.hoisted(() => ({
     modules: [] as unknown[],
     imported: undefined as unknown,
     importer: null as null | ((arg: { name: string, data: Uint8Array, returnCharacter?: boolean }) => Promise<unknown>),
+    /** what the single alert slot holds: every alert function replaces it */
+    last: 'none' as string,
 }))
 
 vi.mock('uuid', () => ({ v4: () => 'uuid' }))
 
-vi.mock(import('src/ts/alert'), () => ({
-    alertClear: vi.fn(),
-    alertConfirm: vi.fn(async () => false),
-    alertError: vi.fn((msg: string) => { h.log.push('error:' + msg) }),
-    alertModuleSelect: vi.fn(),
-    alertNormal: vi.fn((msg: string) => { h.log.push('normal:' + msg) }),
-    alertStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
-    alertWait: vi.fn(),
-}) as unknown as typeof import('src/ts/alert'))
+vi.mock(import('src/ts/alert'), () => {
+    const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
+    return {
+        alertClear: vi.fn(() => { h.last = 'none' }),
+        alertConfirm: vi.fn(async () => false),
+        alertError: vi.fn((msg: string | Error) => { h.log.push('error:' + text(msg)); h.last = 'error:' + text(msg) }),
+        alertModuleSelect: vi.fn(),
+        alertNormal: vi.fn((msg: string) => { h.log.push('normal:' + msg); h.last = 'normal:' + msg }),
+        alertStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
+        alertWait: vi.fn((msg: string) => { h.last = 'wait:' + msg }),
+    } as unknown as typeof import('src/ts/alert')
+})
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
     getCurrentCharacter: vi.fn(),
@@ -85,6 +90,7 @@ import { language } from 'src/lang'
 
 beforeEach(() => {
     h.log = []
+    h.last = 'none'
     h.modules = []
     h.importer = null
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -115,10 +121,18 @@ describe('importModule with a .charx file', () => {
         expect(h.modules).toEqual([])
     })
 
-    test('a declined low-level-access prompt, which shows no message of its own, still shows noData (compatibility guard)', async () => {
+    test('a declined low-level-access prompt shows neither an error nor a success message', async () => {
         h.importer = async () => false
         await importModule()
-        expect(h.log).toEqual(['error:' + language.errors.noData])
+        expect(h.log).toEqual([])
+        expect(h.modules).toEqual([])
+    })
+
+    test('a failure inside importCharacterProcess shows its own reason as the last message, no success, and adds no module', async () => {
+        h.importer = async () => { throw new Error('Failed to save 3 assets') }
+        await importModule()
+        expect(h.last).toBe('error:Failed to save 3 assets')
+        expect(h.log).toEqual(['error:Failed to save 3 assets'])
         expect(h.modules).toEqual([])
     })
 

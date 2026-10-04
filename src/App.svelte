@@ -10,11 +10,9 @@
     import WelcomeRisu from './lib/Others/WelcomeRisu.svelte';
     import BookmarkList from './lib/Others/BookmarkList.svelte';
     import Settings from './lib/Setting/Settings.svelte';
-    import { showRealmInfoStore, importCharacterProcess } from './ts/characterCards';
-    import { importPreset, getDatabase, setDatabase } from './ts/storage/database.svelte';
-    import { readModule } from './ts/process/modules';
-    import { alertNormal } from './ts/alert';
-    import { language } from './lang';
+    import { showRealmInfoStore } from './ts/characterCards';
+    import { getDatabase, setDatabase } from './ts/storage/database.svelte';
+    import { importDroppedFile } from './ts/dropImport';
     import RealmFrame from './lib/UI/Realm/RealmFrame.svelte';
     import SavePopupIconComp from './lib/Others/SavePopupIcon.svelte';
     import Botpreset from './lib/Setting/botpreset.svelte';
@@ -23,7 +21,6 @@
     import MobileBody from './lib/Mobile/MobileBody.svelte';
     import MobileFooter from './lib/Mobile/MobileFooter.svelte';
     import CustomGUISettingMenu from './lib/Setting/Pages/CustomGUISettingMenu.svelte';
-    import { checkCharOrder } from './ts/globalApi.svelte';
     import { ArrowUpIcon, GlobeIcon, PlusIcon } from '@lucide/svelte';
     import { hypaV3ModalOpen, hypaV3ProgressStore } from "./ts/stores.svelte";
     import HypaV3Modal from './lib/Others/HypaV3Modal.svelte';
@@ -82,24 +79,7 @@
         return
     }
     e.preventDefault()
-    const name = file.name.toLowerCase()
-
-    if (name.endsWith('.risup')) {
-        const data = new Uint8Array(await file.arrayBuffer())
-        await importPreset({ name: file.name, data })
-        alertNormal(language.successImport)
-    } else if (name.endsWith('.risum')) {
-        const data = new Uint8Array(await file.arrayBuffer())
-        const module = await readModule(Buffer.from(data))
-        DBState.db.modules.push(module)
-        alertNormal(language.successImport)
-    } else {
-        await importCharacterProcess({
-            name: file.name,
-            data: file
-        })
-        checkCharOrder()
-    }
+    await importDroppedFile(file)
 }} onclick={() => {
     if(keepingSessionAlive){
         return

@@ -386,6 +386,10 @@ export class CharXImporter{
     // and no progress is shown; parse() rejects with it.
     #failure: CharXParseError|undefined
 
+    // Set by abandon(): the importer's owner has finished with it, so no save that has not started is started and no
+    // progress is shown.
+    #abandoned: boolean = false
+
     // Results: filename -> saved asset ID mapping
     assets:{[key:string]:string} = {}
 
@@ -413,7 +417,7 @@ export class CharXImporter{
 
         this.semaphore = new Semaphore(MAX_CONCURRENT_ASSET_SAVES)
         this.onProgress = (done, total) => {
-            if(this.alertInfo && !this.#failure){
+            if(this.alertInfo && !this.#failure && !this.#abandoned){
                 alertStore.set({
                     type: 'wait',
                     msg: `Loading... (Saving Assets ${done}/${total})`
@@ -559,6 +563,17 @@ export class CharXImporter{
             throw new Error('parse() must be called before done()')
         }
         return this.completionPromise
+    }
+
+    /**
+     * Ends the importer's use without waiting for its saves: a save that has not started never starts, no progress is
+     * shown from now on, and a rejection of the completion promise that nobody awaits is not reported as unhandled.
+     * Saves already in flight run to their end. Call it when the import stops after parse() succeeded without a
+     * call to done() having returned; it is harmless after done() has settled.
+     */
+    abandon(){
+        this.#abandoned = true
+        this.completionPromise?.catch(() => {})
     }
 
     #awaitCompletion(): Promise<void> {
@@ -712,7 +727,7 @@ export class CharXImporter{
         try {
             await this.semaphore.acquire()
             acquired = true
-            if(this.#failure){
+            if(this.#failure || this.#abandoned){
                 return
             }
             this.assets[asset.id] = await saveAsset(asset.data)

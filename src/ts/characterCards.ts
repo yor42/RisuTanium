@@ -17,6 +17,7 @@ import { PngChunk } from "./pngChunk"
 import type { OnnxModelFiles } from "./process/transformers"
 import { CharXImporter, CharXParseError, CharXWriter, hasZipEndRecord } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
+import { ModuleRefusal } from "./process/moduleRefusal"
 import { readFile } from "@tauri-apps/plugin-fs"
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
@@ -108,34 +109,49 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
             }
             return
         }
-        const cardData = importer.cardData
-        if(!cardData){
-            alertError(language.errors.noData)
-            return
-        }
-        const card:CharacterCardV3 = JSON.parse(cardData)
-        if(card.spec !== 'chara_card_v3'){
-            alertError(language.errors.noData)
-            return
-        }
-        let lorebook:loreBook[] = null
-        if(importer.moduleData){
-            const md = await readModule(Buffer.from(importer.moduleData))
-            card.data.extensions ??= {}
-            card.data.extensions.risuai ??= {}
-            card.data.extensions.risuai.triggerscript = md.trigger ?? []
-            card.data.extensions.risuai.customScripts = md.regex ?? []
-            if(md.lorebook){
-                lorebook = md.lorebook
+        //Whichever way this ends, the importer is finished with: asset saves that have not started do not start, and no progress message replaces what the import shows next.
+        try {
+            const cardData = importer.cardData
+            if(!cardData){
+                alertError(language.errors.noData)
+                return
             }
+            const card:CharacterCardV3 = JSON.parse(cardData)
+            if(card.spec !== 'chara_card_v3'){
+                alertError(language.errors.noData)
+                return
+            }
+            let lorebook:loreBook[] = null
+            if(importer.moduleData){
+                let md:RisuModule
+                try {
+                    md = await readModule(Buffer.from(importer.moduleData))
+                } catch (error) {
+                    //An embedded module that is not usable refuses the whole card
+                    if(error instanceof ModuleRefusal){
+                        alertError(error.message)
+                        return
+                    }
+                    throw error
+                }
+                card.data.extensions ??= {}
+                card.data.extensions.risuai ??= {}
+                card.data.extensions.risuai.triggerscript = md.trigger ?? []
+                card.data.extensions.risuai.customScripts = md.regex ?? []
+                if(md.lorebook){
+                    lorebook = md.lorebook
+                }
+            }
+            await importer.done()
+            let v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter)
+            if(f.returnCharacter){
+                return v as any
+            }
+            let db = getDatabase()
+            return db.characters.length - 1
+        } finally {
+            importer.abandon()
         }
-        await importer.done()
-        let v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter)
-        if(f.returnCharacter){
-            return v as any
-        }
-        let db = getDatabase()
-        return db.characters.length - 1
     }
 
     if(!f.name.endsWith('png')){
