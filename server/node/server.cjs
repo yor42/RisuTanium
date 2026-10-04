@@ -7,7 +7,7 @@ const http = require('http');
 const path = require('path');
 const net = require('net');
 const htmlparser = require('node-html-parser');
-const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs');
+const { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync } = require('fs');
 const fs = require('fs/promises')
 const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
@@ -42,55 +42,212 @@ if(existsSync(knownPublicKeysPath)){
 }
 
 // Per-file revision counters backing /api/write's optimistic-concurrency
-// check (Agents/Roadmap.md Phase 1.5 Tier B, Stage 1). Loaded synchronously
-// at startup like the other small config files above; kept as a single
-// in-memory object mutated in place and persisted back to disk (atomically,
-// via saveRevisions() below) after every successful write. This is
-// single-process-only: it assumes one Node process owns `savePath`, same
-// assumption the rest of this file already makes (no clustering support
-// anywhere else in server.cjs either).
+// check. The recovered value of a key is the maximum over the snapshot
+// (__revisions.json) and every valid record of the append log
+// (__revisions.log, one JSON record `{"k":<key>,"r":<revision>}` per bump,
+// each preceded by a newline so a torn tail can never merge into the next
+// record). A record is valid only when it parses and has own properties `k`
+// (a string) and `r` (a non-negative safe integer); anything else is skipped
+// and never lowers a revision. Replay is idempotent under max, so a process
+// crash at any point of a compaction recovers every revision that was ever
+// exposed to a client.
+//
+// The in-memory map is a null-prototype object: a key such as `__proto__` or
+// `constructor` is data, never a property lookup through the prototype.
+// Single-process-only: one Node process owns `savePath`, same assumption the
+// rest of this file makes.
 const revisionsPath = path.join(process.cwd(), 'save', '__revisions.json')
-let revisions = {}
-if(existsSync(revisionsPath)){
-    try {
-        revisions = JSON.parse(readFileSync(revisionsPath, 'utf-8'));
-    } catch (error) {
-        console.error('Failed to parse __revisions.json, starting with an empty revision store:', error);
-        revisions = {};
+const revisionsLogPath = path.join(process.cwd(), 'save', '__revisions.log')
+const revisions = Object.create(null)
+
+// The log is compacted (a full snapshot written, the log deleted) at startup
+// and again once it holds this many records. The default can be overridden by
+// the environment for tests.
+const REVISION_LOG_COMPACT_DEFAULT = 20000
+const revisionLogCompactAt = (() => {
+    const configured = Number(process.env.RISU_REVISION_LOG_COMPACT_AT)
+    return Number.isSafeInteger(configured) && configured > 0 ? configured : REVISION_LOG_COMPACT_DEFAULT
+})()
+// Records currently in the log, the count at which the next compaction is
+// attempted (pushed out by one threshold after a failed attempt, so a failing
+// compaction is not retried on every write), and whether a runtime compaction
+// is already queued.
+let revisionLogRecords = 0
+let revisionCompactionDueAt = revisionLogCompactAt
+let revisionCompactionQueued = false
+
+function isValidRevisionValue(value){
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function raiseRevision(key, revision){
+    if(revision > (revisions[key] ?? 0)){
+        revisions[key] = revision
     }
 }
 
-// Writes `revisions` to __revisions.json atomically (temp file + rename).
-// Does NOT queue itself — callers must already be serialized via
-// withRevisionTransaction() below. It used to queue its own calls, but that
-// only serialized the DISK WRITE, not the "read current value, validate,
-// mutate in memory" step that happens before it — which meant one request's
-// queued save could pick up and durably persist a DIFFERENT, concurrent
-// request's in-memory mutation before that second request's own save had
-// confirmed anything, since saveRevisions() always serializes whatever the
-// live `revisions` object looks like at the moment its turn runs, not a
-// snapshot tied to any one caller. If that second request's own save then
-// failed and it rolled back its in-memory entry, the rollback would be a
-// lie — the value was already durable via the first request's write.
-async function saveRevisions(){
-    const tempPath = path.join(process.cwd(), 'save', `__revisions.json.tmp-${crypto.randomBytes(8).toString('hex')}`);
+// Returns the record's { k, r } when `line` is a valid revision record, else null.
+function parseRevisionRecord(line){
+    let record
     try {
-        await fs.writeFile(tempPath, JSON.stringify(revisions));
-        await fs.rename(tempPath, revisionsPath);
+        record = JSON.parse(line)
     } catch (error) {
-        await fs.unlink(tempPath).catch(() => {});
-        throw error;
+        return null
     }
+    if(typeof record !== 'object' || record === null || !Object.hasOwn(record, 'k') || !Object.hasOwn(record, 'r')){
+        return null
+    }
+    if(typeof record.k !== 'string' || !isValidRevisionValue(record.r)){
+        return null
+    }
+    return record
+}
+
+function revisionSnapshotTempPath(){
+    return path.join(process.cwd(), 'save', `__revisions.json.tmp-${crypto.randomBytes(8).toString('hex')}`)
+}
+
+// Startup path (synchronous fs): the new snapshot is renamed into place, after
+// being flushed to disk, before the log it absorbs is deleted.
+function compactRevisionsSync(){
+    const tempPath = revisionSnapshotTempPath()
+    try {
+        const fd = openSync(tempPath, 'w')
+        try {
+            writeFileSync(fd, JSON.stringify(revisions))
+            fsyncSync(fd)
+        } finally {
+            closeSync(fd)
+        }
+        renameSync(tempPath, revisionsPath)
+    } catch (error) {
+        try { unlinkSync(tempPath) } catch (unlinkError) {}
+        throw error
+    }
+    try {
+        unlinkSync(revisionsLogPath)
+    } catch (error) {
+        if(error?.code !== 'ENOENT'){
+            throw error
+        }
+    }
+}
+
+if(existsSync(revisionsPath)){
+    try {
+        const parsed = JSON.parse(readFileSync(revisionsPath, 'utf-8'))
+        if(typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)){
+            throw new Error('not a revision object')
+        }
+        for(const key of Object.keys(parsed)){
+            if(isValidRevisionValue(parsed[key])){
+                raiseRevision(key, parsed[key])
+            }
+        }
+    } catch (error) {
+        console.error('Failed to parse __revisions.json, starting with an empty revision store:', error);
+    }
+}
+if(existsSync(revisionsLogPath)){
+    // An existing log that cannot be read stops startup: running on the
+    // snapshot alone would serve revisions lower than ones already exposed to
+    // clients. The log is left untouched. It is read as bytes and split on
+    // newline bytes, so its size cannot hit the string-length limit.
+    let logBytes
+    try {
+        logBytes = readFileSync(revisionsLogPath)
+    } catch (error) {
+        console.error(`Cannot read ${revisionsLogPath}; refusing to start with lower revisions (${error?.code ?? 'unknown'}):`, error);
+        process.exit(1)
+    }
+    let lineStart = 0
+    while(lineStart <= logBytes.length){
+        let lineEnd = logBytes.indexOf(10, lineStart)
+        if(lineEnd === -1){
+            lineEnd = logBytes.length
+        }
+        if(lineEnd > lineStart){
+            const record = parseRevisionRecord(logBytes.toString('utf-8', lineStart, lineEnd))
+            if(record !== null){
+                raiseRevision(record.k, record.r)
+                revisionLogRecords++
+            }
+        }
+        lineStart = lineEnd + 1
+    }
+    try {
+        compactRevisionsSync()
+        revisionLogRecords = 0
+    } catch (error) {
+        revisionCompactionDueAt = revisionLogRecords + revisionLogCompactAt
+        console.error('Failed to compact the revision log at startup, continuing from memory:', error);
+    }
+}
+
+// Appends one record per key in `keys` (their current in-memory revisions) to
+// the revision log. Does NOT queue itself — callers must already be inside
+// withRevisionTransaction() below, because compaction snapshots the whole map
+// and then deletes the log: no bump, append or rollback may overlap it. A
+// multi-key append is not atomic; after a failure some of its records may be
+// durable, so a persisted revision can be higher than memory (which can only
+// cause a later 409, never a lower revision). Cost is independent of the
+// number of keys.
+async function appendRevisionRecords(keys){
+    const data = keys.map((key) => '\n' + JSON.stringify({ k: key, r: revisions[key] })).join('')
+    await fs.appendFile(revisionsLogPath, data)
+    revisionLogRecords += keys.length
+}
+
+// Runtime compaction, run as its own queued transaction so no bump or append
+// overlaps it. Never throws and never affects a request whose append
+// succeeded: on failure the log stays intact (the snapshot and the log
+// together still hold every revision) and the next attempt waits for another full threshold of records.
+async function compactRevisions(){
+    revisionCompactionQueued = false
+    if(revisionLogRecords < revisionCompactionDueAt){
+        return
+    }
+    const tempPath = revisionSnapshotTempPath()
+    try {
+        try {
+            const handle = await fs.open(tempPath, 'w')
+            try {
+                await handle.writeFile(JSON.stringify(revisions))
+                await handle.sync()
+            } finally {
+                await handle.close()
+            }
+            await fs.rename(tempPath, revisionsPath)
+        } catch (error) {
+            await fs.unlink(tempPath).catch(() => {})
+            throw error
+        }
+        await fs.rm(revisionsLogPath, { force: true })
+        revisionLogRecords = 0
+        revisionCompactionDueAt = revisionLogCompactAt
+    } catch (error) {
+        revisionCompactionDueAt = revisionLogRecords + revisionLogCompactAt
+        console.error('Failed to compact the revision log, continuing from memory:', error);
+    }
+}
+
+// Called after a request's append succeeded, outside that request's rollback
+// path.
+function scheduleRevisionCompaction(){
+    if(revisionCompactionQueued || revisionLogRecords < revisionCompactionDueAt){
+        return
+    }
+    revisionCompactionQueued = true
+    withRevisionTransaction(compactRevisions).catch(() => {})
 }
 
 // Every read-current-revision → validate-precondition → mutate-in-memory →
-// persist-to-disk(-or-roll-back) sequence, for ANY key, goes through this
-// single global queue — not just the final disk write. This is what
-// actually closes the gap above: since the full mutate+persist step for one
-// request can never overlap with another's, there is no window left where
-// an uncommitted mutation from one request could be captured by a
-// different, concurrent request's own save. This is intentionally a
-// separate, coarser-grained lock than the per-key `fileWriteQueues` below
+// append-to-log(-or-roll-back) sequence, for ANY key, goes through this
+// single global queue — not just the final disk write. Compaction runs in the
+// same queue: it snapshots the whole map and then deletes the log, so a bump
+// appended between those two steps would be deleted with the log without being
+// in the snapshot. This is intentionally a separate, coarser-grained lock
+// than the per-key `fileWriteQueues` below
 // (which still lets unrelated keys' actual file I/O run concurrently) —
 // only the comparatively cheap revision bookkeeping itself is globally
 // serialized, not full-batches's content writes/removals.
@@ -1362,12 +1519,10 @@ app.get('/api/remove', authenticatedRouteLimiter, async (req, res, next) => {
             // rollback on a save failure) all happen inside
             // withRevisionTransaction — the same global queue /api/write uses
             // — not just the per-key locks withFileWriteLocks already holds.
-            // See its own comment for why: without this, one request's
-            // in-memory revision bump could be durably persisted by a
-            // DIFFERENT, concurrent request's own save (for different keys,
-            // so not blocked by the per-key locks) before this request's own
-            // saveRevisions() call — and therefore its rollback-on-failure —
-            // ever runs, making that rollback a lie.
+            // See its own comment for why: revision compaction snapshots the
+            // whole map and then deletes the log, so no bump, append or
+            // rollback of any key may overlap it, and the per-key locks
+            // alone do not order requests for different keys.
             const newRevisions = await withRevisionTransaction(async () => {
                 const currentRevisions = {};
                 for(let i = 0; i < filePaths.length; i++){
@@ -1410,14 +1565,17 @@ app.get('/api/remove', authenticatedRouteLimiter, async (req, res, next) => {
                     revisions[filePath] = bumped[filePath];
                 }
                 try {
-                    await saveRevisions();
+                    await appendRevisionRecords(filePaths);
                 } catch (saveError) {
                     // Persistence itself failed — roll back every key's
                     // in-memory bump from this batch (not just one), safe to
                     // do unconditionally since nothing else could have
                     // mutated these entries in between (globally serialized
-                    // by this same queue). Nothing in this batch actually
-                    // committed, so — unlike the fs.rm failure case below —
+                    // by this same queue). The append is not atomic, so some
+                    // of this batch's records may be durable and a persisted
+                    // revision can end up higher than memory; that can only
+                    // cause a later 409, never a lower revision. No file was
+                    // removed, so — unlike the fs.rm failure case below —
                     // no committedRevisions is attached here; the client's
                     // existing knownRevisions are still correct.
                     for(const filePath of filePaths){
@@ -1425,6 +1583,7 @@ app.get('/api/remove', authenticatedRouteLimiter, async (req, res, next) => {
                     }
                     throw saveError;
                 }
+                scheduleRevisionCompaction();
                 return bumped;
             });
 
@@ -1487,7 +1646,8 @@ app.get('/api/list', authenticatedRouteLimiter, async (req, res, next) => {
     }
     try {
         // Only whole, even-length hex names are keys. Everything else in the
-        // directory (write temps `<hex>.tmp-<random>`, `__revisions.json`,
+        // directory (write temps `<hex>.tmp-<random>`, the revision snapshot
+        // `__revisions.json`, its log `__revisions.log` and their temps,
         // `__password` and the other `__` files) is not a key. Decoding a `__`
         // file gives an empty name; decoding a write temp gives the key it was
         // written for, a second copy of an existing key or a phantom one when
@@ -1540,7 +1700,7 @@ app.post('/api/write', authenticatedRouteLimiter, async (req, res, next) => {
         await withFileWriteLock(filePath, async () => {
             // Revision is committed BEFORE content, not after — these are two
             // separate files (this one's own content, and the shared
-            // __revisions.json), so there's no way to rename both atomically
+            // revision log), so there's no way to rename both atomically
             // as one transaction. Ordering still matters: if the process
             // crashes between the two, "revision bumped, content not yet
             // replaced" is the SAFE direction to fail in — a later reader
@@ -1555,11 +1715,9 @@ app.post('/api/write', authenticatedRouteLimiter, async (req, res, next) => {
             //
             // The precondition-check + bump + persist sequence runs inside
             // withRevisionTransaction (a separate, GLOBAL queue from this
-            // per-key lock) — see its own comment for why: without it, this
-            // request's in-memory bump could be durably persisted by a
-            // DIFFERENT concurrent request's own save before this one's own
-            // saveRevisions() call (and therefore its rollback-on-failure)
-            // ever runs, making that rollback a lie.
+            // per-key lock) — see its own comment for why: revision
+            // compaction snapshots the whole map and then deletes the log, so
+            // no bump, append or rollback of any key may overlap it.
             const newRevision = await withRevisionTransaction(async () => {
                 const currentRevision = revisions[filePath] ?? 0;
 
@@ -1576,11 +1734,13 @@ app.post('/api/write', authenticatedRouteLimiter, async (req, res, next) => {
                 const bumped = currentRevision + 1;
                 revisions[filePath] = bumped;
                 try {
-                    await saveRevisions();
+                    await appendRevisionRecords([filePath]);
                 } catch (saveError) {
-                    // Persistence itself failed — roll back the in-memory bump
-                    // so it doesn't silently diverge from what's actually
-                    // durable on disk. Safe to do unconditionally here (unlike
+                    // Persistence itself failed — roll back the in-memory bump.
+                    // A partially written record may still be durable, so the
+                    // persisted revision can end up higher than memory; that
+                    // can only cause a later 409, never a lower revision.
+                    // Safe to do unconditionally here (unlike
                     // if this ran outside the transaction queue): nothing else
                     // could have mutated `revisions[filePath]` in between,
                     // since the whole read-validate-mutate-persist sequence for
@@ -1588,6 +1748,7 @@ app.post('/api/write', authenticatedRouteLimiter, async (req, res, next) => {
                     revisions[filePath] = currentRevision;
                     throw saveError;
                 }
+                scheduleRevisionCompaction();
                 return bumped;
             });
 

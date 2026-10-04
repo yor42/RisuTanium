@@ -12,7 +12,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const SERVER_SCRIPT = fileURLToPath(new URL('../../../../server/node/server.cjs', import.meta.url))
+// RISU_NODE_SERVER_SCRIPT points the fixture at another build of the server,
+// for running a test against an earlier version of server.cjs.
+const SERVER_SCRIPT = process.env.RISU_NODE_SERVER_SCRIPT ?? fileURLToPath(new URL('../../../../server/node/server.cjs', import.meta.url))
+if (process.env.RISU_NODE_SERVER_SCRIPT !== undefined) {
+    console.warn(`nodeServerFixture: running the Node server from RISU_NODE_SERVER_SCRIPT=${SERVER_SCRIPT}`)
+}
 const READY_TIMEOUT_MS = 20_000
 const EXIT_TIMEOUT_MS = 5_000
 const READY_LINE = 'HTTP server is running'
@@ -25,6 +30,19 @@ export interface NodeServerFixture {
     authHeader(): Promise<string>
     /** Removes every stored key. The server's own files (names starting with `__`) stay. */
     clearKeys(): Promise<void>
+    /**
+     * Ends the server process and keeps the working directory. `hard` sends
+     * SIGKILL (no shutdown handlers run); otherwise the default termination
+     * signal. Safe to call when the process is already gone.
+     */
+    halt(mode?: 'graceful' | 'hard'): Promise<void>
+    /**
+     * Starts the server again on the same working directory and port (ending
+     * a running process first). Each of `env` and `nodeArgs` replaces the one
+     * the previous run used; an omitted field keeps the previous value. The login
+     * survives: the server keeps the fixture's key hash on disk.
+     */
+    restart(options?: NodeServerLaunchOptions): Promise<void>
     /** Stops the server and removes its working directory. Safe to call twice. */
     stop(): Promise<void>
 }
@@ -49,7 +67,14 @@ function base64url(value: unknown): string {
     return Buffer.from(JSON.stringify(value), 'utf-8').toString('base64url')
 }
 
-export interface NodeServerOptions {
+export interface NodeServerLaunchOptions {
+    /** Extra environment variables for the server process. */
+    env?: Record<string, string>
+    /** Extra Node arguments placed before the server script, such as `--require <file>`. */
+    nodeArgs?: string[]
+}
+
+export interface NodeServerOptions extends NodeServerLaunchOptions {
     /**
      * Set a password and register the fixture's key pair (the default). `false`
      * leaves a fresh server with no password, as a first run finds it; the
@@ -68,30 +93,38 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
     let stopped = false
     let output = ''
 
-    const killChild = () => {
+    let launchOptions: NodeServerLaunchOptions = { env: options.env, nodeArgs: options.nodeArgs }
+
+    const killChild = (signal?: NodeJS.Signals) => {
         if (child !== undefined && child.exitCode === null && child.signalCode === null) {
-            child.kill()
+            child.kill(signal)
         }
     }
-    process.once('exit', killChild)
+    const exitHook = () => killChild()
+    process.once('exit', exitHook)
+
+    const halt = async (mode: 'graceful' | 'hard' = 'graceful') => {
+        killChild(mode === 'hard' ? 'SIGKILL' : undefined)
+        if (exited !== undefined) {
+            await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, EXIT_TIMEOUT_MS))])
+        }
+    }
 
     const stop = async () => {
         if (stopped) {
             return
         }
         stopped = true
-        process.removeListener('exit', killChild)
-        killChild()
-        if (exited !== undefined) {
-            await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, EXIT_TIMEOUT_MS))])
-        }
+        process.removeListener('exit', exitHook)
+        await halt()
         await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
 
-    try {
-        child = spawn(process.execPath, [SERVER_SCRIPT], {
+    const launch = async () => {
+        output = ''
+        child = spawn(process.execPath, [...(launchOptions.nodeArgs ?? []), SERVER_SCRIPT], {
             cwd: workDir,
-            env: { ...process.env, PORT: String(port) },
+            env: { ...process.env, PORT: String(port), ...launchOptions.env },
             stdio: ['ignore', 'pipe', 'pipe'],
         })
         const running = child
@@ -116,6 +149,10 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                 reject(new Error(`The Node server exited with code ${code} before it was ready.\n${output}`))
             })
         })
+    }
+
+    try {
+        await launch()
 
         const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
         const publicJwk = await crypto.subtle.exportKey('jwk', publicKey)
@@ -156,6 +193,15 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                         await rm(join(saveDir, name), { force: true })
                     }
                 }
+            },
+            halt,
+            async restart(restartOptions) {
+                await halt()
+                launchOptions = {
+                    env: restartOptions?.env ?? launchOptions.env,
+                    nodeArgs: restartOptions?.nodeArgs ?? launchOptions.nodeArgs,
+                }
+                await launch()
             },
             stop,
         }
