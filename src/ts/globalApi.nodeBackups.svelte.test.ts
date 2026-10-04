@@ -210,6 +210,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     noteMainFileBytes: vi.fn(),
     resetMainFileRecordForTests: vi.fn(),
+    matchesMainFileRecord: vi.fn(async () => false),
+    getMainFileRecordDigest: vi.fn(async () => null),
+    digestMainFileBytes: vi.fn(async () => null),
 }) as unknown as typeof import('src/ts/storage/mainFileRecord'))
 
 import { forageStorage, getDbBackups } from 'src/ts/globalApi.svelte'

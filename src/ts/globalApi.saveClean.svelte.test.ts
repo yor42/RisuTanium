@@ -225,6 +225,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     noteMainFileBytes: vi.fn(),
     resetMainFileRecordForTests: vi.fn(),
+    matchesMainFileRecord: vi.fn(async () => false),
+    getMainFileRecordDigest: vi.fn(async () => null),
+    digestMainFileBytes: vi.fn(async () => null),
 }) as unknown as typeof import('src/ts/storage/mainFileRecord'))
 
 import { afterNextSaveCommit, forageStorage, isSaveClean, requiresFullEncoderReload, saveAsset, saveDb } from 'src/ts/globalApi.svelte'
@@ -339,7 +342,7 @@ describe('isSaveClean', () => {
         expect(callback).toHaveBeenCalledTimes(1)
     })
 
-    test('a change followed by a change back is not clean until a later save commits', async () => {
+    test('a change followed by a change back is not clean until a later save commits, and that save writes no main file', async () => {
         const doneBefore = h.mainWritesDone
         h.db!.mainPrompt = 'changed'
         markCharacterForSave(CHA_ID)
@@ -347,7 +350,7 @@ describe('isSaveClean', () => {
         markCharacterForSave(CHA_ID)
         expect(isSaveClean()).toBe(false)
         await becomesClean()
-        expect(h.mainWritesDone).toBeGreaterThan(doneBefore)
+        expect(h.mainWritesDone).toBe(doneBefore)
     })
 
     test('an edit marked while a save is in flight is not clean when that save commits, only after the next one', async () => {

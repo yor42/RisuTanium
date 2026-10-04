@@ -212,6 +212,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     noteMainFileBytes: vi.fn(),
     resetMainFileRecordForTests: vi.fn(),
+    matchesMainFileRecord: vi.fn(async () => false),
+    getMainFileRecordDigest: vi.fn(async () => null),
+    digestMainFileBytes: vi.fn(async () => null),
 }) as unknown as typeof import('src/ts/storage/mainFileRecord'))
 
 import { saveDb } from 'src/ts/globalApi.svelte'
@@ -299,6 +302,8 @@ describe('saveDb on the Node server', () => {
         requestSave('second')
         await vi.waitFor(() => { expect(notedCount()).toBe(1) }, { timeout: 8000, interval: 10 })
         await vi.waitFor(() => { expect(backupWrites()).toHaveLength(1) }, { timeout: 8000, interval: 10 })
+        // The prune that follows the backup write is still in flight when the backup request is seen.
+        await settle()
 
         expect(mainWrites()).toHaveLength(1)
         expect(mainWrites()[0].headers['if-match-revision']).toBe(readVersion)

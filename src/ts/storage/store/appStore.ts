@@ -13,6 +13,7 @@ import type { FilePlatform } from './keyRules'
 import { createNodeHttpStore } from './nodeHttpStore'
 import { createOpfsTransitionalStore } from './opfsTransitionalStore'
 import { createTauriFilesStore } from './tauriFilesStore'
+import { beginMainFileWrite, confirmMainFileWrite, noteMainFileRead, resetMainFileOutcomeForTests } from '../mainFileOutcome'
 
 /**
  * The one byte store the app's main file, numbered backups, snapshots and
@@ -48,6 +49,13 @@ import { createTauriFilesStore } from './tauriFilesStore'
  * next save would overwrite another device's newer save instead of being refused.
  * A refused write never moves the version: only a fresh `readMainFile` does, so
  * a stale writer keeps being refused.
+ *
+ * Both calls also report to `mainFileOutcome.ts`, synchronously and without any
+ * I/O: a write is reported as begun just before the store's write and as
+ * confirmed only when that write returns, and a read is reported when it
+ * returns. A write that throws is therefore never a confirmed one. The report
+ * adds no await, so a caller that checks the page is idle and then writes has
+ * no new task boundary between the two.
  */
 
 export const MAIN_FILE_KEY = 'database/database.bin'
@@ -211,6 +219,7 @@ export function getAppStore(): Promise<ByteStore> {
 export async function readMainFile(): Promise<ReadResult> {
     const result = await (await getAppStore()).read(MAIN_FILE_KEY)
     mainFileVersion = result.version
+    noteMainFileRead()
     return result
 }
 
@@ -229,15 +238,18 @@ export async function writeMainFile(bytes: Uint8Array): Promise<void> {
         }
         condition = { ifVersion: mainFileVersion }
     }
+    const attempt = beginMainFileWrite()
     const { version } = await store.write(MAIN_FILE_KEY, bytes, condition)
     mainFileVersion = version
+    confirmMainFileWrite(attempt)
 }
 
-/** Test seam: makes `store` the page's store and forgets the main file's version. `null` restores the real selection. */
+/** Test seam: makes `store` the page's store and forgets the main file's version and the outcome of earlier main-file writes. `null` restores the real selection. */
 export function injectAppStore(store: ByteStore | null): void {
     injected = store
     selection = null
     mainFileVersion = null
+    resetMainFileOutcomeForTests()
     selectedKind = null
     fallbackNotice = null
     copiedBackThisPage = false

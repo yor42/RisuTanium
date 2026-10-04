@@ -272,6 +272,19 @@ type EncodeBlockOption = {
 const risuSaveCacheForage = localforage.createInstance({
     name: 'risuSaveCache'
 });
+
+/**
+ * The blocks an encoder holds, in the order `encode()` writes them. Two layouts
+ * with the same keys in the same order and equal bytes per block encode to the
+ * same file, and two that differ in either encode to different files, because
+ * each block is framed with its own type, name and length. Holds references to
+ * blocks, never copies.
+ */
+export interface SaveLayout {
+    readonly keys: readonly string[];
+    readonly blocks: readonly Uint8Array[];
+}
+
 export class RisuSaveEncoder {
 
     private blocks: { [key: string]: Uint8Array } = {};
@@ -323,6 +336,67 @@ export class RisuSaveEncoder {
     /** A snapshot of the chaId keys currently frozen against a rewrite. */
     getFrozenKeys(): Set<string> {
         return new Set(this.frozenKeys);
+    }
+
+    // The layout the owner of this encoder has confirmed storage holds. Only
+    // `markLayoutCommitted` moves it; `set`, `encode` and the block comparison
+    // in `encodeRawBlock` never do, so it names bytes a write actually put in
+    // storage and nothing this encoder merely produced.
+    private committedLayout: SaveLayout | null = null;
+
+    /**
+     * The blocks as `encode()` would write them right now, or null when
+     * `encode()` would return nothing. A cheap walk over references: no block
+     * is copied or compared.
+     */
+    snapshotLayout(): SaveLayout | null {
+        if(!this.blocks['config']){
+            return null;
+        }
+        const keys: string[] = [];
+        const blocks: Uint8Array[] = [];
+        for(const key in this.blocks){
+            keys.push(key);
+            blocks.push(this.blocks[key]);
+        }
+        return { keys, blocks };
+    }
+
+    /** Whether a layout was committed on this encoder, so the next layout can be compared with it. */
+    hasCommittedLayout(): boolean {
+        return this.committedLayout !== null;
+    }
+
+    /**
+     * Whether `layout` encodes to exactly the bytes of the committed layout:
+     * the same keys in the same order, and per key the same block or a block
+     * with equal bytes. False when nothing was committed.
+     */
+    layoutEqualsCommitted(layout: SaveLayout): boolean {
+        const committed = this.committedLayout;
+        if(!committed || committed.keys.length !== layout.keys.length){
+            return false;
+        }
+        for(let i = 0; i < layout.keys.length; i++){
+            if(committed.keys[i] !== layout.keys[i]){
+                return false;
+            }
+            const a = committed.blocks[i];
+            const b = layout.blocks[i];
+            if(a !== b && !rawBlockBytesEqual(a, b)){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Declares that storage holds the bytes `layout` encodes to. The caller
+     * calls it only once a write of exactly those bytes has returned, or once
+     * an iteration found them equal to bytes it has already confirmed.
+     */
+    markLayoutCommitted(layout: SaveLayout): void {
+        this.committedLayout = layout;
     }
 
     async init(data:Database,arg:{

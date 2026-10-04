@@ -21,7 +21,15 @@
  * no Web Locks, so the clean-up already asks the user to confirm that no other
  * tab is open. The fingerprint detects a file that changed; it is not a
  * security boundary.
+ *
+ * The record is exact only with the native digest. `matchesMainFileRecord`, which
+ * decides that a write can be skipped, and `getMainFileRecordDigest` and
+ * `digestMainFileBytes`, which name bytes in the persisted backup fingerprint,
+ * answer from the SHA-256 form alone and treat the sampled form as a
+ * difference.
  */
+
+import { noteMainFileRecorded } from './mainFileOutcome'
 
 type DigestAlgorithm = 'sha256' | 'js'
 
@@ -161,10 +169,13 @@ function nativeDigestAvailable(): boolean {
 /**
  * Records the main file bytes this tab has just read from storage or has
  * just written to it. Call it only after a read succeeded or a write
- * completed: a failed write leaves the earlier record standing. Never
+ * completed: a failed write leaves the earlier record standing. Also tells
+ * `mainFileOutcome.ts` that bytes were recorded, which is what makes the outcome
+ * of an unconfirmed write known again after a read of the file. Never
  * throws, and does not wait for the digest.
  */
 export function noteMainFileBytes(bytes: Uint8Array): void {
+    noteMainFileRecorded()
     const note: Note = { fingerprint: Promise.resolve(null) }
     // The note must be the latest before hashing starts: the staleness check
     // runs synchronously on the first piece.
@@ -210,6 +221,82 @@ export async function compareWithMainFileRecord(bytes: Uint8Array): Promise<Main
         return 'different'
     }
     return actual.pieces.every((digest, i) => digest === expected.pieces[i]) ? 'same' : 'different'
+}
+
+/**
+ * Whether `bytes` are exactly the bytes this tab last read or committed, for a
+ * caller that skips a write on a yes. Yes only when the record is the SHA-256
+ * form, has finished, was not replaced while the comparison ran, and every
+ * slice digest matches. The sampled form, a missing record and any failure
+ * answer no.
+ */
+export async function matchesMainFileRecord(bytes: Uint8Array): Promise<boolean> {
+    try {
+        const recorded = latest
+        if (!recorded) {
+            return false
+        }
+        const expected = await recorded.fingerprint
+        if (!expected || expected.algorithm !== 'sha256' || latest !== recorded || expected.length !== bytes.length) {
+            return false
+        }
+        const actual = await fingerprintBytes(bytes, 'sha256', () => false)
+        if (!actual || latest !== recorded || actual.pieces.length !== expected.pieces.length) {
+            return false
+        }
+        return actual.pieces.every((digest, i) => digest === expected.pieces[i])
+    } catch (error) {
+        return false
+    }
+}
+
+/**
+ * The persisted name of a SHA-256 fingerprint: its length and one digest of
+ * its slice digests. Equal bytes always give the same name.
+ */
+async function nameOfFingerprint(fingerprint: Fingerprint): Promise<string> {
+    const joined = `${fingerprint.length}:${fingerprint.pieces.join(',')}`
+    const digest = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(joined) as BufferSource)))
+    return `sha256:${fingerprint.length}:${digest}`
+}
+
+/**
+ * The persisted name of the newest recorded bytes, or null when there is no
+ * finished SHA-256 record, the record was replaced while this ran, or anything
+ * failed.
+ */
+export async function getMainFileRecordDigest(): Promise<string | null> {
+    try {
+        const recorded = latest
+        if (!recorded) {
+            return null
+        }
+        const fingerprint = await recorded.fingerprint
+        if (!fingerprint || fingerprint.algorithm !== 'sha256') {
+            return null
+        }
+        const name = await nameOfFingerprint(fingerprint)
+        return latest === recorded ? name : null
+    } catch (error) {
+        return null
+    }
+}
+
+/**
+ * The persisted name of `bytes`, computed the way `getMainFileRecordDigest`
+ * names the record, so the two are equal exactly when the bytes are. Null when
+ * the native digest is unavailable or fails: the sampled form is never named.
+ */
+export async function digestMainFileBytes(bytes: Uint8Array): Promise<string | null> {
+    try {
+        if (!nativeDigestAvailable()) {
+            return null
+        }
+        const fingerprint = await fingerprintBytes(bytes, 'sha256', () => false)
+        return fingerprint ? await nameOfFingerprint(fingerprint) : null
+    } catch (error) {
+        return null
+    }
 }
 
 /** Clears the recorded main file fingerprint between tests. */

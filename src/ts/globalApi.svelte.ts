@@ -28,7 +28,9 @@ import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
 import { installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
-import { noteMainFileBytes } from "./storage/mainFileRecord";
+import { digestMainFileBytes, getMainFileRecordDigest, matchesMainFileRecord, noteMainFileBytes } from "./storage/mainFileRecord";
+import { getMainFileEpoch, isMainFileOutcomeKnown } from "./storage/mainFileOutcome";
+import { didBootPassCommit } from "./process/memory/idleReloadBootState";
 import { getAppStore, writeMainFile } from "./storage/store/appStore";
 import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
@@ -615,6 +617,41 @@ let lastBackupWriteTime = 0
 // backup snapshot is taken — the primary database.bin write is unaffected.
 const DB_BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000
 const DB_BACKUP_KEY_PREFIX = 'database/dbbackup-'
+/**
+ * Fork-only record of which bytes the newest numbered backup this fork wrote
+ * holds: the persisted name `digestMainFileBytes` gives them, as text. It is
+ * written only after that backup's write has returned, and read only by the
+ * page's first committing save iteration, and only when that iteration skips the
+ * main-file write, to decide whether the backups already hold the main file.
+ * Its key is outside `database/dbbackup-`, `assets/`, `remotes/` and
+ * `coldstorage/`, so no backup listing, pruning, export or asset, remote-block
+ * or cold-storage enumeration sees it, and nothing exports it.
+ */
+const BACKUP_FINGERPRINT_KEY = 'database/backupfingerprint'
+
+/** Whether the stored backup fingerprint names the bytes the main-file record holds. Any failure answers no, which takes a backup. */
+async function storedBackupFingerprintNamesMain(): Promise<boolean> {
+    try {
+        const current = await getMainFileRecordDigest()
+        if (current === null) {
+            return false
+        }
+        const stored = (await (await getAppStore()).read(BACKUP_FINGERPRINT_KEY)).bytes
+        return stored !== null && new TextDecoder().decode(stored) === current
+    } catch (error) {
+        return false
+    }
+}
+
+/** Records that the newest numbered backup holds `backupBytes`. Writes nothing when they cannot be named. */
+async function writeBackupFingerprint(backupBytes: Uint8Array): Promise<void> {
+    const name = await digestMainFileBytes(backupBytes)
+    if (name === null) {
+        return
+    }
+    await (await getAppStore()).write(BACKUP_FINGERPRINT_KEY, new TextEncoder().encode(name), 'unconditional')
+}
+
 export let saving = $state({
     state: false
 })
@@ -639,7 +676,8 @@ export let requiresFullEncoderReload = $state({
  * `changed = true`), so a change followed by a change back is still a change
  * until a later iteration's snapshot covers it. `snapshotMarkCount` is the count
  * at the latest iteration's snapshot, and `lastIterationCommitted` is true only
- * after that iteration's main-file write landed. `saveLoopPending` reads the
+ * after that iteration's main-file write landed or the iteration found storage
+ * already holding the same bytes and skipped the write. `saveLoopPending` reads the
  * loop's own closure state (a debounce running, `changed`, an unsaved
  * iteration) and is null until `saveDb()` starts.
  */
@@ -650,7 +688,19 @@ let saveLoopPending: (() => boolean) | null = null
 
 const nextCommitCallbacks = new Set<() => void>()
 
-/** Calls `callback` once, when the next save iteration's main-file write lands. */
+/** Calls and forgets every callback registered for the next commit; a throwing callback never stops the others. */
+function fireNextCommitCallbacks(): void {
+    for (const callback of [...nextCommitCallbacks]) {
+        nextCommitCallbacks.delete(callback)
+        try {
+            callback()
+        } catch (error) {
+            console.error(error)
+        }
+    }
+}
+
+/** Calls `callback` once, when the next save iteration commits: its main-file write lands or it is skipped because storage already holds the same bytes. */
 export function afterNextSaveCommit(callback: () => void): void {
     nextCommitCallbacks.add(callback)
 }
@@ -1313,6 +1363,52 @@ export async function saveDb() {
             alertError(error instanceof Error ? error : String(error))
         }
     }
+    // The main-file write is skipped only when the bytes to write equal bytes
+    // storage is known to hold: the encoder's committed layout while nothing
+    // else has touched the main file since this loop confirmed it
+    // (`baselineStamp` is the outcome epoch right after that). Whenever there
+    // is no such steady baseline -- the encoder has no committed layout, the
+    // epoch moved because another writer acted on the main file, or an earlier
+    // main write's outcome is unknown -- the main-file record decides instead,
+    // but it can permit a skip only when every earlier main write's outcome is
+    // known; with an unknown outcome the iteration writes. A write whose outcome
+    // is unknown, in this loop or in any other writer, ends the steady baseline.
+    let baselineStamp = -1
+    // "Save mine" must write even bytes equal to the baseline; the force
+    // survives a failed attempt and clears only on a confirmed main write.
+    let forceMainWrite = false
+    // True while this page has committed main-file bytes that no numbered
+    // backup holds. A page whose boot pass wrote the main file starts true.
+    let backupBehind = didBootPassCommit()
+    // Whether the page's first commit, if it is a skip, still has to check the
+    // persisted backup fingerprint against the main-file record. The check runs
+    // once, only when that first commit is a skip. A first commit that writes the
+    // main file drops it without reading the record, because a write already
+    // marks the backups as behind.
+    let bootBackupCheckPending = true
+    // Writes the numbered backup of `bytes`, then the fingerprint record naming
+    // them, then prunes. The record is written only after the backup's write has
+    // returned, and a failure of it still lets the prune run before it is
+    // rethrown.
+    async function writeNumberedBackup(bytes: Uint8Array) {
+        // A new name per write, so nothing can be overwritten and the
+        // write needs no condition.
+        await (await getAppStore()).write(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, bytes, 'unconditional')
+        lastBackupWriteTime = Date.now()
+        backupBehind = false
+        let recordFailure: { error: unknown } | null = null
+        try {
+            await writeBackupFingerprint(bytes)
+        } catch (error) {
+            recordFailure = { error }
+        }
+        // The backups only grow with a backup write, so only then are
+        // they pruned.
+        await getDbBackups()
+        if (recordFailure) {
+            throw recordFailure.error
+        }
+    }
     await sleep(1000)
     while (true) {
         // Releases any orphan draft-content registration whose
@@ -1411,6 +1507,7 @@ export async function saveDb() {
                         // Just let the normal save loop pick this up and stay put.
                         saveMarkCount += 1
                         changed = true
+                        forceMainWrite = true
                     }
                 }
             }
@@ -1496,83 +1593,172 @@ export async function saveDb() {
                 // failed write and retried forever.
                 console.error('Failed to publish the frozen-save indicator:', error)
             }
-            const encoded = encoder.encode()
-            if (!encoded) {
+            // The blocks as they stand, taken before any await so the layout
+            // names exactly the bytes this iteration encodes.
+            const layout = encoder.snapshotLayout()
+            if (!layout) {
                 mergeUnsavedChanges(changeTracker, toSave)
                 await sleep(1000)
                 continue
             }
-            const dbData = new Uint8Array(encoded)
-            // The Node server refuses a body over its limit before any route runs,
-            // so sending one only re-uploads the whole file to a refusal. It is not
-            // sent; the catch below parks the loop.
-            if (isNodeServer && !fitsNodeBodyLimit(dbData.length, NODE_BODY_LIMIT_BYTES)) {
-                throw new MainFileTooLargeError(dbData.length)
+            // A skip is decided only by an exact comparison against bytes known
+            // to be in storage. An unknown outcome, a different layout, the
+            // sampled record form and any comparison failure all write.
+            const baselineHolds = () => baselineStamp === getMainFileEpoch() && isMainFileOutcomeKnown()
+            let steadyBaseline = false
+            let skipMain = false
+            try {
+                steadyBaseline = encoder.hasCommittedLayout() && baselineHolds()
+                skipMain = steadyBaseline && !forceMainWrite && encoder.layoutEqualsCommitted(layout)
+            } catch (error) {
+                // A comparison never fails the iteration; it writes.
+                console.error(error)
+                steadyBaseline = false
+                skipMain = false
             }
-            // Best-effort, non-blocking heads-up before storage actually fills up —
-            // browser storage has no other quota signal until a write starts failing.
-            if (!isTauri && !quotaWarningShown && navigator.storage?.estimate) {
-                try {
-                    const { quota, usage } = await navigator.storage.estimate()
-                    if (quota && (quota - (usage ?? 0)) < dbData.byteLength * 2) {
-                        quotaWarningShown = true
-                        alertToast('Your browser storage is running low — saves may start failing soon. Consider freeing up space (delete old chats/characters or old backups).')
-                    }
-                } catch (error) {
-                    // estimate() is best-effort only; a failure here must not block saving.
+            // The encoding to write. Null only for an iteration that is skipped on
+            // the strength of the committed layout alone.
+            let dbData: Uint8Array | null = null
+            const encodeForWrite = async (): Promise<Uint8Array> => {
+                const encoded = encoder.encode()
+                if (!encoded) {
+                    throw new Error('The encoder produced no file.')
                 }
+                const bytes = new Uint8Array(encoded)
+                // The Node server refuses a body over its limit before any route runs,
+                // so sending one only re-uploads the whole file to a refusal. It is not
+                // sent; the catch below parks the loop.
+                if (isNodeServer && !fitsNodeBodyLimit(bytes.length, NODE_BODY_LIMIT_BYTES)) {
+                    throw new MainFileTooLargeError(bytes.length)
+                }
+                // Best-effort, non-blocking heads-up before storage actually fills up —
+                // browser storage has no other quota signal until a write starts failing.
+                if (!isTauri && !quotaWarningShown && navigator.storage?.estimate) {
+                    try {
+                        const { quota, usage } = await navigator.storage.estimate()
+                        if (quota && (quota - (usage ?? 0)) < bytes.byteLength * 2) {
+                            quotaWarningShown = true
+                            alertToast('Your browser storage is running low — saves may start failing soon. Consider freeing up space (delete old chats/characters or old backups).')
+                        }
+                    } catch (error) {
+                        // estimate() is best-effort only; a failure here must not block saving.
+                    }
+                }
+                return bytes
+            }
+            if (!skipMain) {
+                dbData = await encodeForWrite()
             }
             const shouldWriteBackup = (Date.now() - lastBackupWriteTime) > DB_BACKUP_MIN_INTERVAL_MS
-            // Acquired before the write and held through it (not just checked-then-acted
-            // on) so a concurrent direct writer to this same key (LoadLocalBackup()'s
-            // restore write, the internal-backup load's write) can never interleave with this write — see AsyncMutex/dbWriteLock above.
-            const releaseWriteLock = await dbWriteLock.acquire()
-            try {
-                await writeMainFile(dbData)
-            } finally {
-                releaseWriteLock()
+            // A skipped iteration commits like a write: the tab is clean, the
+            // commit callbacks fire and the retry counters reset. It sends no
+            // broadcast (no peer has anything new to load) and records no bytes
+            // (storage was not written). The committed layout is refreshed so
+            // it holds the newest blocks.
+            const commitSkippedIteration = () => {
+                primaryCommitted = true
+                lastIterationCommitted = true
+                encoder.markLayoutCommitted(layout)
+                baselineStamp = getMainFileEpoch()
+                savetrys = 0
+                conflictAlertShown = false
+                fireNextCommitCallbacks()
             }
-            // Reached only when the write above did not throw, so the record
-            // never claims bytes storage does not hold.
-            noteMainFileBytes(dbData)
-            // The primary database write has landed. Everything after this point
-            // (backup write, getDbBackups) is best-effort and must never be
-            // able to resurrect and re-commit this payload — see the catch below.
-            primaryCommitted = true
-            lastIterationCommitted = true
-            for (const callback of [...nextCommitCallbacks]) {
-                nextCommitCallbacks.delete(callback)
-                try {
-                    callback()
-                } catch (error) {
-                    console.error(error)
+            // After a skip: the persisted backup fingerprint is checked once, when
+            // the page's first commit is a skip, and a numbered backup is written
+            // when the backups may not hold the committed bytes and the interval
+            // is due.
+            const keepBackupsFreshAfterSkip = async () => {
+                if (bootBackupCheckPending) {
+                    bootBackupCheckPending = false
+                    if (!await storedBackupFingerprintNamesMain()) {
+                        backupBehind = true
+                    }
+                }
+                if (backupBehind && shouldWriteBackup) {
+                    // The committed bytes: this iteration's encoding when it made
+                    // one, otherwise the blocks, which equal them.
+                    await writeNumberedBackup(dbData ?? new Uint8Array(encoder.encode()!))
+                    postCommitFailStreak = 0
                 }
             }
-            if (channel) {
+            let skippedIteration = false
+            if (skipMain && !bootBackupCheckPending && !(backupBehind && shouldWriteBackup)) {
+                // Nothing to write and no backup due: no lock is needed.
+                skippedIteration = true
+                commitSkippedIteration()
+            } else {
+                // Acquired before the write and held through it (not just checked-then-acted
+                // on) so a concurrent direct writer to this same key (LoadLocalBackup()'s
+                // restore write, the internal-backup load's write) can never interleave with this write — see AsyncMutex/dbWriteLock above.
+                // A skipped iteration's backup, record write and prune run under the same hold.
+                const releaseWriteLock = await dbWriteLock.acquire()
                 try {
-                    channel.postMessage(sessionID)
-                } catch (error) {
-                    // A failed notification must never fail a save that succeeded.
-                    console.error(error)
+                    if (skipMain && !baselineHolds()) {
+                        // Another writer acted on the main file while this
+                        // iteration waited for the lock: the layout does not
+                        // name what storage holds.
+                        skipMain = false
+                        steadyBaseline = false
+                        dbData = await encodeForWrite()
+                    }
+                    if (!skipMain && dbData && !forceMainWrite && !steadyBaseline) {
+                        // No steady baseline to compare with: the main-file record
+                        // decides, and only when the outcome of every earlier main
+                        // write is known and nothing wrote or recorded during the
+                        // comparison.
+                        const epochBefore = getMainFileEpoch()
+                        if (isMainFileOutcomeKnown() && await matchesMainFileRecord(dbData) && isMainFileOutcomeKnown() && getMainFileEpoch() === epochBefore) {
+                            skipMain = true
+                        }
+                    }
+                    if (skipMain) {
+                        skippedIteration = true
+                        commitSkippedIteration()
+                        await keepBackupsFreshAfterSkip()
+                    } else {
+                        await writeMainFile(dbData!)
+                    }
+                } finally {
+                    releaseWriteLock()
                 }
             }
-            if (shouldWriteBackup) {
-                // A new name per write, so nothing can be overwritten and the
-                // write needs no condition.
-                await (await getAppStore()).write(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, dbData, 'unconditional')
-                lastBackupWriteTime = Date.now()
-                // The backups only grow with a backup write, so only then are
-                // they pruned.
-                await getDbBackups()
-            }
+            if (!skippedIteration) {
+                // Reached only when the write above did not throw, so the record
+                // never claims bytes storage does not hold.
+                noteMainFileBytes(dbData!)
+                encoder.markLayoutCommitted(layout)
+                baselineStamp = getMainFileEpoch()
+                forceMainWrite = false
+                bootBackupCheckPending = false
+                // Cleared when a numbered backup of these bytes lands.
+                backupBehind = true
+                // The primary database write has landed. Everything after this point
+                // (backup write, getDbBackups) is best-effort and must never be
+                // able to resurrect and re-commit this payload — see the catch below.
+                primaryCommitted = true
+                lastIterationCommitted = true
+                fireNextCommitCallbacks()
+                if (channel) {
+                    try {
+                        channel.postMessage(sessionID)
+                    } catch (error) {
+                        // A failed notification must never fail a save that succeeded.
+                        console.error(error)
+                    }
+                }
+                if (shouldWriteBackup) {
+                    await writeNumberedBackup(dbData!)
+                }
 
-            savetrys = 0
-            conflictAlertShown = false
-            // A full iteration -- primary write, backup write, and getDbBackups
-            // (the steps above that can actually throw) -- completed without
-            // error, so this is a genuinely clean cycle: reset the consecutive
-            // post-commit failure streak.
-            postCommitFailStreak = 0
+                savetrys = 0
+                conflictAlertShown = false
+                // A full iteration -- primary write, backup write, and getDbBackups
+                // (the steps above that can actually throw) -- completed without
+                // error, so this is a genuinely clean cycle: reset the consecutive
+                // post-commit failure streak.
+                postCommitFailStreak = 0
+            }
             await sleep(500)
         } catch (error) {
             // `primaryCommitted` separates two independent concerns: (1) whether
