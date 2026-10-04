@@ -336,7 +336,7 @@
 
         {#if DBState.db.characters[$selectedCharID].type === 'group'}
             <div class="flex mt-2 items-center">
-                <Check bind:check={(DBState.db.characters[$selectedCharID] as groupChat).orderByOrder} name={language.orderByOrder}/>
+                <Check bind:check={() => (DBState.db.characters[$selectedCharID] as groupChat).orderByOrder ?? false, (v) => (DBState.db.characters[$selectedCharID] as groupChat).orderByOrder = v} name={language.orderByOrder}/>
             </div>
         {/if}
     {/if}
@@ -465,7 +465,7 @@
 
         {#if DBState.db.characters[$selectedCharID].type === 'character' && DBState.db.characters[$selectedCharID].image !== ''}
             <div class="flex items-center mt-4">
-                <Check bind:check={(DBState.db.characters[$selectedCharID] as character).largePortrait} name={language.largePortrait}/>
+                <Check bind:check={() => (DBState.db.characters[$selectedCharID] as character).largePortrait ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).largePortrait = v} name={language.largePortrait}/>
             </div>
         {/if}
 
@@ -558,7 +558,7 @@
                 <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.emotionInstructions} />
             {/if}
 
-            <CheckInput bind:check={(DBState.db.characters[$selectedCharID] as character).inlayViewScreen} name={language.inlayViewScreen} onChange={() => {
+            <CheckInput bind:check={() => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen = v} name={language.inlayViewScreen} onChange={() => {
                 if(DBState.db.characters[$selectedCharID].type === 'character'){
                     if((DBState.db.characters[$selectedCharID] as character).inlayViewScreen && (DBState.db.characters[$selectedCharID] as character).additionalAssets === undefined){
                         (DBState.db.characters[$selectedCharID] as character).additionalAssets = []
@@ -581,7 +581,7 @@
             <span class="text-textcolor mt-2">{language.imgGenInstructions}</span>
             <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.instructions} />
 
-            <CheckInput bind:check={(DBState.db.characters[$selectedCharID] as character).inlayViewScreen} name={language.inlayViewScreen} onChange={() => {
+            <CheckInput bind:check={() => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen = v} name={language.inlayViewScreen} onChange={() => {
                 if((DBState.db.characters[$selectedCharID] as character).type === 'character'){
                     (DBState.db.characters[$selectedCharID] as character) = updateInlayScreen((DBState.db.characters[$selectedCharID] as character))
                 }
@@ -590,7 +590,7 @@
     {:else if viewSubMenu === 2}
 
             {#if DBState.db.newImageHandlingBeta}
-            <CheckInput bind:check={DBState.db.characters[$selectedCharID].prebuiltAssetCommand} name={language.insertAssetPrompt}/>
+            <CheckInput bind:check={() => DBState.db.characters[$selectedCharID].prebuiltAssetCommand ?? false, (v) => DBState.db.characters[$selectedCharID].prebuiltAssetCommand = v} name={language.insertAssetPrompt}/>
 
             <span class="text-textcolor mt-2">{language.assetStyle}</span>
             <SelectInput className="mb-2" bind:value={DBState.db.characters[$selectedCharID].prebuiltAssetStyle}>
@@ -1058,7 +1058,7 @@
         {/if}
         {#if DBState.db.characters[$selectedCharID].ttsMode}
             <div class="flex items-center mt-2">
-                <Check bind:check={DBState.db.characters[$selectedCharID].ttsReadOnlyQuoted} name={language.ttsReadOnlyQuoted}/>
+                <Check bind:check={() => DBState.db.characters[$selectedCharID].ttsReadOnlyQuoted ?? false, (v) => DBState.db.characters[$selectedCharID].ttsReadOnlyQuoted = v} name={language.ttsReadOnlyQuoted}/>
             </div>
         {/if}
     {/if}
@@ -1216,12 +1216,13 @@
         </div>
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].lowLevelAccess} name={language.lowLevelAccess}/>
+            <!-- Optional top-level boolean flags of the character use function bindings: binding an absent flag directly makes Svelte write `false` into the character on mount. -->
+            <Check bind:check={() => DBState.db.characters[$selectedCharID].lowLevelAccess ?? false, (v) => DBState.db.characters[$selectedCharID].lowLevelAccess = v} name={language.lowLevelAccess}/>
             <span> <Help key="lowLevelAccess" name={language.lowLevelAccess}/></span>
         </div>
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].hideChatIcon} name={language.hideChatIcon}/>
+            <Check bind:check={() => DBState.db.characters[$selectedCharID].hideChatIcon ?? false, (v) => DBState.db.characters[$selectedCharID].hideChatIcon = v} name={language.hideChatIcon}/>
         </div>
 
         <div class="flex items-center mt-4">
@@ -1230,7 +1231,7 @@
         </div>
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].escapeOutput} name={language.escapeOutput}/>
+            <Check bind:check={() => (DBState.db.characters[$selectedCharID] as character).escapeOutput ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).escapeOutput = v} name={language.escapeOutput}/>
         </div>
 
         {#if DBState.db.supaModelType !== 'none' && DBState.db.hypav2}
@@ -1289,7 +1290,7 @@
         {/if}
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].lowLevelAccess} name={language.lowLevelAccess}/>
+            <Check bind:check={() => DBState.db.characters[$selectedCharID].lowLevelAccess ?? false, (v) => DBState.db.characters[$selectedCharID].lowLevelAccess = v} name={language.lowLevelAccess}/>
             <span> <Help key="lowLevelAccess" name={language.lowLevelAccess}/></span>
         </div>
     {/if}

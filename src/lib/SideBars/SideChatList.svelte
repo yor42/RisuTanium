@@ -480,7 +480,8 @@
     </div>
     {#if chara.type === 'group'}
     <div class="flex mt-2 items-center">
-        <CheckInput bind:check={chara.orderByOrder} name={language.orderByOrder}/>
+        <!-- Function binding: binding an absent flag directly makes Svelte write `false` into the group on mount. -->
+        <CheckInput bind:check={() => (chara as groupChat).orderByOrder ?? false, (v) => (chara as groupChat).orderByOrder = v} name={language.orderByOrder}/>
     </div>
     {/if}
 </div>
