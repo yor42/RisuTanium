@@ -162,6 +162,7 @@ export const languageSpanish = {
         "separateParamsMissing": "No se encontraron parámetros separados para el modelo {modelId} en el modo de modelo {modelMode}. Configura los parámetros para este modelo",
         "ttsAutoPathFailed": "No se pudo obtener la ruta automáticamente",
         "fishSpeechModelNotSelected": "No se ha seleccionado el modelo de FishSpeech",
+        "ttsNotSetUp": "TTS no está configurado para este personaje",
         "invalidTranslatorPresetFile": "Archivo de preset del traductor no válido.",
         "moduleAssetsSaveFailed": "No se pudieron guardar {count} recursos",
         "mcpModuleConversionUnsupported": "Los módulos MCP no son compatibles con la conversión de personajes.",

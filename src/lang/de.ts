@@ -162,6 +162,7 @@ export const languageGerman = {
         "separateParamsMissing": "Für das Modell {modelId} im Modellmodus {modelMode} wurden keine separaten Parameter gefunden. Bitte legen Sie Parameter für dieses Modell fest",
         "ttsAutoPathFailed": "Der Pfad konnte nicht automatisch ermittelt werden",
         "fishSpeechModelNotSelected": "Es ist kein FishSpeech-Modell ausgewählt",
+        "ttsNotSetUp": "TTS ist für diesen Charakter nicht eingerichtet",
         "invalidTranslatorPresetFile": "Ungültige Übersetzer-Voreinstellungsdatei.",
         "moduleAssetsSaveFailed": "{count} Assets konnten nicht gespeichert werden",
         "mcpModuleConversionUnsupported": "MCP-Module werden für die Charakterkonvertierung nicht unterstützt.",

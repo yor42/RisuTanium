@@ -162,6 +162,7 @@ export const languageVietnamese = {
         "separateParamsMissing": "Không tìm thấy tham số riêng cho mô hình {modelId} ở chế độ mô hình {modelMode}. Vui lòng đặt tham số cho mô hình này",
         "ttsAutoPathFailed": "Không thể tự động lấy đường dẫn",
         "fishSpeechModelNotSelected": "Chưa chọn mô hình FishSpeech",
+        "ttsNotSetUp": "Chưa thiết lập TTS cho nhân vật này",
         "invalidTranslatorPresetFile": "Tệp cài đặt trước của trình dịch không hợp lệ.",
         "moduleAssetsSaveFailed": "Không thể lưu {count} tài nguyên",
         "mcpModuleConversionUnsupported": "Mô-đun MCP không được hỗ trợ khi chuyển đổi nhân vật.",

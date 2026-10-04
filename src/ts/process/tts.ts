@@ -15,6 +15,7 @@ import {
     type AfterTTSContext,
     type AfterTTSResult,
 } from "./ttsHooks";
+import { createFishSpeechDefaults, createNovelAIVoiceDefaults, createVoicevoxDefaults } from "./ttsDefaults";
 
 const HF_MAX_REQUESTS = 5
 const HF_WAIT_BUDGET_MS = 30_000
@@ -149,6 +150,11 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             return;
         }
         text = beforeResult.ctx.text;
+        // A provider is never asked to speak nothing: the filter and the hooks
+        // may leave empty, blank or non-string text.
+        if(typeof text !== 'string' || !text.trim()){
+            return
+        }
         const hookCtx = { ttsMode: character.ttsMode ?? '', characterId: character.chaId }
 
         switch(character.ttsMode){
@@ -201,6 +207,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 break
             }
             case "VOICEVOX": {
+                const voicevoxConfig = character.voicevoxConfig ?? createVoicevoxDefaults()
                 const jpText = await translateVox(text)
                 if(signal.aborted){
                     return
@@ -220,10 +227,10 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     }
                     const bodyData = {
                         accent_phrases: queryJson.accent_phrases,
-                        speedScale: character.voicevoxConfig.SPEED_SCALE,
-                        pitchScale: character.voicevoxConfig.PITCH_SCALE,
-                        volumeScale: character.voicevoxConfig.VOLUME_SCALE,
-                        intonationScale: character.voicevoxConfig.INTONATION_SCALE,
+                        speedScale: voicevoxConfig.SPEED_SCALE,
+                        pitchScale: voicevoxConfig.PITCH_SCALE,
+                        volumeScale: voicevoxConfig.VOLUME_SCALE,
+                        intonationScale: voicevoxConfig.INTONATION_SCALE,
                         prePhonemeLength: queryJson.prePhonemeLength,
                         postPhonemeLength: queryJson.postPhonemeLength,
                         outputSamplingRate: queryJson.outputSamplingRate,
@@ -303,10 +310,11 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 if(text === ''){
                     break;
                 }
+                const naittsConfig = character.naittsConfig ?? createNovelAIVoiceDefaults()
                 const encodedText = encodeURIComponent(text);
-                const encodedSeed = encodeURIComponent(character.naittsConfig.voice);
+                const encodedSeed = encodeURIComponent(naittsConfig.voice);
 
-                const url = `https://api.novelai.net/ai/generate-voice?text=${encodedText}&voice=-1&seed=${encodedSeed}&opus=false&version=${character.naittsConfig.version}`;
+                const url = `https://api.novelai.net/ai/generate-voice?text=${encodedText}&voice=-1&seed=${encodedSeed}&opus=false&version=${naittsConfig.version}`;
 
                 const response = await globalFetch(url, {
                     method: 'GET',
@@ -330,6 +338,9 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             case 'huggingface': {
                 if(!text.trim()){
                     return
+                }
+                if(!character.hfTTS?.model?.trim()){
+                    throw new Error(language.errors.ttsNotSetUp)
                 }
                 const targetLanguage = (character.hfTTS.language ?? '').trim().toLowerCase()
                 if(targetLanguage && targetLanguage !== 'en'){
@@ -406,6 +417,9 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 break;
             }
             case 'gptsovits':{
+                if(!character.gptSoVitsConfig?.url?.trim() || !character.gptSoVitsConfig.ref_audio_data?.assetId){
+                    throw new Error(language.errors.ttsNotSetUp)
+                }
                 const audio: Uint8Array = await loadAsset(character.gptSoVitsConfig.ref_audio_data.assetId);
                 if(signal.aborted){
                     return
@@ -491,15 +505,16 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 break;
             }
             case 'fishspeech':{
-                if (character.fishSpeechConfig.model._id === ''){
+                const fishSpeechConfig = character.fishSpeechConfig ?? createFishSpeechDefaults()
+                if (!fishSpeechConfig.model?._id){
                     throw new Error(language.errors.fishSpeechModelNotSelected)
                 }
 
                 const body = {
                     text: text,
-                    reference_id: character.fishSpeechConfig.model._id,
-                    chunk_length: character.fishSpeechConfig.chunk_length,
-                    normalize: character.fishSpeechConfig.normalize,
+                    reference_id: fishSpeechConfig.model._id,
+                    chunk_length: fishSpeechConfig.chunk_length,
+                    normalize: fishSpeechConfig.normalize,
                     format: 'mp3',
                     mp3_bitrate: 192,
                 }

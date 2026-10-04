@@ -698,6 +698,19 @@
 
 
     let blankMessage = $derived((message === '{{none}}' || message === '{{blank}}' || message === '') && idx === -1 || isComment)
+
+    // Whether an icon button renders. The "..." popup asks the same functions, so
+    // an item and the popup that holds it cannot disagree. A first message
+    // (idx -1) is not a stored message: no action that targets `message[idx]`
+    // is offered for it.
+    const copyButtonShown = () => !!DBState.db.useChatCopy && !blankMessage
+    const copyAsCardShown = () => copyButtonShown() && typeof ClipboardItem === 'function' && typeof navigator.clipboard?.write === 'function'
+    const speakerButtonShown = () => (idx > -1 || (firstMessage && !blankMessage))
+        && DBState.db.characters[selIdState.selId]?.type !== 'group'
+        && isTTSVoiceMode(DBState.db.characters[selIdState.selId]?.ttsMode)
+    const popupHasItems = (withMajorItems:boolean) => idx > -1
+        || copyAsCardShown()
+        || (withMajorItems && (copyButtonShown() || speakerButtonShown()))
     let displayMessage = $derived(isOptimizedStreamingMessage ? rawStreamingText : message)
     let renderRawStreaming = $derived(isOptimizedStreamingMessage && streamingOptimizationMode === 'strong')
 
@@ -1073,17 +1086,19 @@
                 {@render translationButton()}
                 {#if window.innerWidth >= 640}
                     {@render majorIconButtonsBody(false)}
-                    {#if DBState.db.characters[selIdState.selId]}
+                    {#if DBState.db.characters[selIdState.selId] && popupHasItems(false)}
                         <PopupButton>
                             {@render minorIconButtonsBody(true)}
                         </PopupButton>
                     {/if}
                 {:else}
                     {#if DBState.db.characters[selIdState.selId]}
-                        <PopupButton>
-                            {@render majorIconButtonsBody(true)}
-                            {@render minorIconButtonsBody(true)}
-                        </PopupButton>
+                        {#if popupHasItems(true)}
+                            <PopupButton>
+                                {@render majorIconButtonsBody(true)}
+                                {@render minorIconButtonsBody(true)}
+                            </PopupButton>
+                        {/if}
                     {:else}
                         {@render majorIconButtonsBody(false)}
                     {/if}
@@ -1097,7 +1112,7 @@
 
 
 {#snippet majorIconButtonsBody(showNames:boolean)}
-    {#if DBState.db.useChatCopy && !blankMessage}
+    {#if copyButtonShown()}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
         const copyText = stripThoughtsForCopy(currentCopyText())
         copyPlainText(copyText, reportCopy)
@@ -1109,17 +1124,17 @@
         {/if}
     </button>    
 {/if}
+{#if speakerButtonShown()}
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
+        return sayTTS(null, stripThoughtsForCopy(currentCopyText()))
+    }}>
+        <Volume2Icon size={20}/>
+        {#if showNames}
+            <span class="ml-1">TTS</span>
+        {/if}
+    </button>
+{/if}
 {#if idx > -1}
-    {#if DBState.db.characters[selIdState.selId].type !== 'group' && isTTSVoiceMode(DBState.db.characters[selIdState.selId].ttsMode)}
-        <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
-            return sayTTS(null, stripThoughtsForCopy(currentCopyText()))
-        }}>
-            <Volume2Icon size={20}/>
-            {#if showNames}
-                <span class="ml-1">TTS</span>
-            {/if}
-        </button>
-    {/if}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove select-none [-webkit-touch-callout:none]" onclick={(e) => rm(e, false)} use:longpress={{callback: (e) => rm(e, true), touch: true}}>
         <TrashIcon size={20}/>
 
@@ -1180,7 +1195,7 @@
 {/snippet}
 
 {#snippet minorIconButtonsBody(showNames:boolean)}
-    
+    {#if idx > -1}
     {#if DBState.db.enableBookmark}
         <button class="flex items-center hover:text-blue-500 transition-colors button-icon-bookmark {isBookmarked ? 'text-yellow-400' : ''}" onclick={async () => {
             await sleep(1)
@@ -1251,8 +1266,9 @@
             <span class="ml-1">{language.disableAbove}</span>
         {/if}
     </button>
+    {/if}
 
-    {#if DBState.db.useChatCopy && !blankMessage && typeof ClipboardItem === 'function' && typeof navigator.clipboard?.write === 'function'}
+    {#if copyAsCardShown()}
         <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy-card" onclick={copyAsCard}>
             <IdCardIcon size={20}/>
             {#if showNames}

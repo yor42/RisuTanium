@@ -16,6 +16,7 @@
     import Help from "../Others/Help.svelte";
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
     import { getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
+    import { createFishSpeechDefaults, createNovelAIVoiceDefaults } from "src/ts/process/ttsDefaults";
     import { getFileSrc } from "src/ts/globalApi.svelte";
     import { addGroupChar, rmCharFromGroup } from "src/ts/process/group";
     import TextInput from "../UI/GUI/TextInput.svelte";
@@ -114,11 +115,7 @@
     });
     $effect.pre(() => {
         if (DBState.db.characters[$selectedCharID].ttsMode === 'novelai' && (DBState.db.characters[$selectedCharID] as character).naittsConfig === undefined) {
-            (DBState.db.characters[$selectedCharID] as character).naittsConfig = {
-                customvoice: false,
-                voice: 'Aini',
-                version: 'v2'
-            };
+            (DBState.db.characters[$selectedCharID] as character).naittsConfig = createNovelAIVoiceDefaults();
         }
     });
     $effect.pre(() => {
@@ -154,15 +151,7 @@
 
     $effect.pre(() => {
         if (DBState.db.characters[$selectedCharID].ttsMode === 'fishspeech' && (DBState.db.characters[$selectedCharID] as character).fishSpeechConfig === undefined) {
-            (DBState.db.characters[$selectedCharID] as character).fishSpeechConfig = {
-                model: {
-                    _id: '',
-                    title: '',
-                    description: ''
-                },
-                chunk_length: 200,
-                normalize: false,
-            };
+            (DBState.db.characters[$selectedCharID] as character).fishSpeechConfig = createFishSpeechDefaults();
         }
     });
 
