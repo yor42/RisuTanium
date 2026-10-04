@@ -9,6 +9,7 @@ import {
 import { globalFetch } from "../globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { alertError } from "../alert"
+import { resolveSecret, SecretRefError } from "../secretRef"
 import { language } from "../../lang"
 import { requestChatData } from "../process/request/request"
 import { doingChat, type OpenAIChat } from "../process/index.svelte"
@@ -139,9 +140,18 @@ async function translateMain(text:string, arg:{from:string, to:string, host:stri
             target_lang: arg.to.toLocaleUpperCase(),
         }
         let url = db.deeplOptions.freeApi ? "https://api-free.deepl.com/v2/translate" : "https://api.deepl.com/v2/translate"
+        let deeplKey: string
+        try {
+            deeplKey = await resolveSecret(db.deeplOptions.key)
+        } catch (error) {
+            if(error instanceof SecretRefError){
+                return 'ERR::' + error.message
+            }
+            throw error
+        }
         const f = await globalFetch(url, {
             headers: {
-                "Authorization": "DeepL-Auth-Key " + db.deeplOptions.key,
+                "Authorization": "DeepL-Auth-Key " + deeplKey,
                 "Content-Type": "application/json"
             },
             body: body
@@ -177,7 +187,16 @@ async function translateMain(text:string, arg:{from:string, to:string, host:stri
         const body = {text: text, target_lang: arg.to.toLocaleUpperCase(), source_lang: arg.from.toLocaleUpperCase()}
 
     
-        if(db.deeplXOptions.token.trim() !== '') { headers["Authorization"] = "Bearer " + db.deeplXOptions.token}
+        if(db.deeplXOptions.token.trim() !== '') {
+            try {
+                headers["Authorization"] = "Bearer " + await resolveSecret(db.deeplXOptions.token)
+            } catch (error) {
+                if(error instanceof SecretRefError){
+                    return 'ERR::' + error.message
+                }
+                throw error
+            }
+        }
         
         //Since the DeepLX API is non-CORS restricted, we can use the plain fetch function
         const f = await globalFetch(url, { method: "POST", headers: headers, body: body, plainFetchForce:true })

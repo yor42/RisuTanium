@@ -10,6 +10,20 @@ import type { RunSubject } from "./chatOrigin"
 import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import random from "lodash/random"
+import { resolveSecret } from "../secretRef"
+
+/**
+ * The credential to send for an image provider, or null after telling the user why it cannot be
+ * resolved. A value that is not a `${NAME}` reference comes back unchanged.
+ */
+async function resolveImageKey(value: string): Promise<string|null> {
+    try {
+        return await resolveSecret(value)
+    } catch (error) {
+        alertError(error instanceof Error ? error.message : `${error}`)
+        return null
+    }
+}
 
 export async function stableDiff(currentChar:character,prompt:string,subject?:RunSubject){
     let db = getDatabase()
@@ -362,7 +376,13 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
            
         }
         try {
-            const da = await globalFetch(db.NAIImgUrl, reqlist)   
+            if(reqlist.headers){
+                reqlist.headers = {
+                    ...reqlist.headers,
+                    "Authorization": "Bearer " + await resolveSecret(db.NAIApiKey)
+                }
+            }
+            const da = await globalFetch(db.NAIImgUrl, reqlist)
 
             if(returnSdData === 'inlay'){
                 if(da.ok){
@@ -396,6 +416,10 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         }
     }
     if(db.sdProvider === 'dalle'){
+        const dalleKey = await resolveImageKey(db.openAIKey)
+        if(dalleKey === null){
+            return returnSdData === 'inlay' ? '' : false
+        }
         const da = await globalFetch("https://api.openai.com/v1/images/generations", {
             body: {
                 "prompt": genPrompt,
@@ -405,7 +429,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
                 "quality": db.dallEQuality || 'standard'
             },
             headers: {
-                "Authorization": "Bearer " + db.openAIKey
+                "Authorization": "Bearer " + dalleKey
             }
         })
 
@@ -439,6 +463,10 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         return returnSdData
     }
     if(db.sdProvider === 'stability'){
+        const stabilityKey = await resolveImageKey(db.stabilityKey)
+        if(stabilityKey === null){
+            return returnSdData === 'inlay' ? '' : false
+        }
         const formData = new FormData()
         const model = db.stabilityModel
         formData.append('prompt', genPrompt)
@@ -459,7 +487,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         const da = await fetch("https://api.stability.ai/v2beta/stable-image/generate/" + uri, {
             body: formData,
             headers:{
-                "authorization": "Bearer " + db.stabilityKey,
+                "authorization": "Bearer " + stabilityKey,
                 "accept": "image/*"
             },
             method: 'POST'
@@ -596,7 +624,10 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
     }
     if(db.sdProvider === 'fal'){
         const model = db.falModel
-        const token = db.falToken
+        const token = await resolveImageKey(db.falToken)
+        if(token === null){
+            return returnSdData === 'inlay' ? '' : false
+        }
 
         let body:{[key:string]:any} = {
             prompt: genPrompt,
@@ -678,7 +709,11 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             }
         }
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${db.google.accessToken}`
+        const imagenKey = await resolveImageKey(db.google.accessToken)
+        if(imagenKey === null){
+            return returnSdData === 'inlay' ? '' : false
+        }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${imagenKey}`
 
         const res = await globalFetch(url, {
             headers: {
@@ -726,7 +761,11 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         }
 
         if(config.key){
-            headers["Authorization"] = "Bearer " + config.key
+            const compatKey = await resolveImageKey(config.key)
+            if(compatKey === null){
+                return returnSdData === 'inlay' ? '' : false
+            }
+            headers["Authorization"] = "Bearer " + compatKey
         }
 
         const da = await globalFetch(config.url, {
@@ -766,6 +805,10 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         if (!config.key) {
             alertError(language.errors.wavespeedEnterKey)
             return false
+        }
+        const wavespeedKey = await resolveImageKey(config.key)
+        if(wavespeedKey === null){
+            return returnSdData === 'inlay' ? '' : false
         }
         const body: {[key:string]: any} = {}
 
@@ -811,7 +854,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
                 body: body,
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer " + config.key
+                    "Authorization": "Bearer " + wavespeedKey
                 }
             })
             let requestId: string;
@@ -848,7 +891,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
                 const taskResponse = await globalFetch(taskEndpoint, {
                     method: 'GET',
                     headers: {
-                        "Authorization": "Bearer " + config.key
+                        "Authorization": "Bearer " + wavespeedKey
                     }
                 })
                 if (taskResponse.ok) {
@@ -888,7 +931,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             const resultResponse = await globalFetch(resultEndpoint, {
                 method: 'GET',
                 headers: {
-                    "Authorization": "Bearer " + config.key
+                    "Authorization": "Bearer " + wavespeedKey
                 },
                 rawResponse: true
             })

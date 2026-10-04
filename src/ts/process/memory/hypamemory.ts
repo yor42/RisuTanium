@@ -3,6 +3,7 @@ import { globalFetch } from "src/ts/globalApi.svelte";
 import { runEmbedding } from "../transformers";
 import { appendLastPath } from "src/ts/util";
 import { getDatabase } from "src/ts/storage/database.svelte";
+import { resolveSecret } from "src/ts/secretRef";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 
 export type HypaModel = 'custom'|'ada'|'openai3small'|'openai3large'|'MiniLM'|'MiniLMGPU'|'nomic'|'nomicGPU'|'bgeSmallEn'|'bgeSmallEnGPU'|'bgem3'|'bgem3GPU'|'multiMiniLM'|'multiMiniLMGPU'|'bgeM3Ko'|'bgeM3KoGPU'|'voyageContext3'
@@ -99,9 +100,11 @@ export class HypaProcesser{
             const replaceUrl = customEmbeddingUrl.endsWith('/embeddings')?customEmbeddingUrl:appendLastPath(customEmbeddingUrl,'embeddings')
 
             const db = getDatabase()
+            const customKey = db.hypaCustomSettings?.key?.trim()
+            const resolvedCustomKey = customKey ? await resolveSecret(customKey) : ''
             const fetchArgs = {
                 headers: {
-                    ...(db.hypaCustomSettings?.key?.trim() ? {"Authorization": "Bearer " + db.hypaCustomSettings.key.trim()} : {})
+                    ...(customKey ? {"Authorization": "Bearer " + resolvedCustomKey} : {})
                 },
                 body: {
                     "input": input,
@@ -119,9 +122,12 @@ export class HypaProcesser{
                 'openai3large':'text-embedding-3-large'
             }
 
+            const chosenKey = this.oaikey?.trim() || db.supaMemoryKey?.trim()
+            const resolvedKey = chosenKey ? await resolveSecret(chosenKey) : chosenKey
+
             gf = await globalFetch("https://api.openai.com/v1/embeddings", {
                 headers: {
-                    "Authorization": "Bearer " + (this.oaikey?.trim() || db.supaMemoryKey?.trim())
+                    "Authorization": "Bearer " + resolvedKey
                 },
                 body: {
                     "input": input,

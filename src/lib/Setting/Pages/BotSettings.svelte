@@ -285,6 +285,8 @@
                         DBState.db.ollamaCloudModelName = name
                     }}
                 />
+            {:catch error}
+                <span class="text-draculared">{error instanceof Error ? error.message : String(error)}</span>
             {/await}
         {/if}
 

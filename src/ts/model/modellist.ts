@@ -14,6 +14,7 @@ import { OpenAIModels } from './providers/openai'
 import { AnthropicModels } from './providers/anthropic'
 import { GoogleModels } from './providers/google'
 import { fetchNative } from "../globalApi.svelte"
+import { resolveSecret } from "../secretRef"
 import { DBState } from "../stores.svelte"
 import { customProviderStore, pluginV2 } from "../plugins/plugins.svelte"
 import { get } from "svelte/store"
@@ -618,7 +619,8 @@ export async function registerModelDynamic(){
     //google
     try {
         if(DBState.db.google.accessToken){
-            const res = await fetchNative(`https://generativelanguage.googleapis.com/v1beta/models?key=${DBState.db.google.accessToken}`, {
+            const googleKey = await resolveSecret(DBState.db.google.accessToken)
+            const res = await fetchNative(`https://generativelanguage.googleapis.com/v1beta/models?key=${googleKey}`, {
                 method: 'GET',
             })
             const json = await res.json()
@@ -659,11 +661,12 @@ export async function registerModelDynamic(){
     //Anthropic
     try {
         if(DBState.db.claudeAPIKey){
+            const anthropicKey = await resolveSecret(DBState.db.claudeAPIKey)
             const res = await fetchNative('https://api.anthropic.com/v1/models', {
                 method: 'GET',
                 headers: {
                     'anthropic-version': '2023-06-01',
-                    "x-api-key": DBState.db.claudeAPIKey,
+                    "x-api-key": anthropicKey,
                 }
             })
 
@@ -706,10 +709,11 @@ export async function registerModelDynamic(){
 
     try {
         if(DBState.db.openAIKey){
+            const openAIKey = await resolveSecret(DBState.db.openAIKey)
             const res = await fetchNative(`https://api.openai.com/v1/models`, {
                 method: 'GET',
                 headers: {
-                    "Authorization": 'Bearer ' + DBState.db.openAIKey
+                    "Authorization": 'Bearer ' + openAIKey
                 }
             })
             const json = await res.json()
@@ -764,7 +768,7 @@ export async function registerModelDynamic(){
             }
         }
     } catch (error){
-
+        console.error('Error fetching OpenAI models', error)
     }
 
 }

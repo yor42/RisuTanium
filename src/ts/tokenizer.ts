@@ -10,6 +10,7 @@ import { getModelInfo, LLMTokenizer, type LLMModel } from "./model/modellist";
 import { pluginV2 } from "./plugins/plugins.svelte";
 import type { GemmaTokenizer } from "@huggingface/transformers";
 import { LRUMap } from 'mnemonist';
+import { resolveSecret } from "./secretRef";
 
 const MAX_CACHE_SIZE = 1500;
 
@@ -228,7 +229,16 @@ async function tokenizeGoogleCloud(text:string) {
         return new Uint32Array(count)
     }
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.internalID}:countTokens?key=${db.google?.accessToken}`, {
+    let apiKey: string
+    try {
+        apiKey = await resolveSecret(db.google?.accessToken)
+    } catch (error) {
+        // An unresolvable reference sends nothing; counting falls back to the local tokenizer like any failed request.
+        console.error('Gemini token count key', error)
+        return await tokenizeWebTokenizers(text, 'gemma')
+    }
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.internalID}:countTokens?key=${apiKey}`, {
         method: 'POST',
         headers: {
             "Content-Type": "application/json",
@@ -294,10 +304,18 @@ async function tikJS(text:string, model='cl100k_base') {
 
 async function geminiTokenizer(text:string) {
     const db = getDatabase()
+    let apiKey: string
+    try {
+        apiKey = await resolveSecret(db.google.accessToken)
+    } catch (error) {
+        // An unresolvable reference sends nothing; counting falls back to the local tokenizer like any failed request.
+        console.error('Gemini token count key', error)
+        return await tikJS(text)
+    }
     const fetchResult = await globalFetch(`https://generativelanguage.googleapis.com/v1beta/${db.aiModel}:countTextTokens`, {
         "headers": {
             "content-type": "application/json",
-            "authorization": `Bearer ${db.google.accessToken}`
+            "authorization": `Bearer ${apiKey}`
         },
         "body": JSON.stringify({
             "prompt":{

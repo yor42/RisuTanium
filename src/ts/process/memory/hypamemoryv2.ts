@@ -7,6 +7,7 @@ import { globalFetch } from "src/ts/globalApi.svelte";
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { appendLastPath } from "src/ts/util";
 import { isMobile } from "src/ts/platform";
+import { resolveSecret } from "src/ts/secretRef";
 
 export interface HypaProcessorV2Options {
   model?: HypaModel;
@@ -438,10 +439,12 @@ export class HypaProcessorV2<TMetadata> {
         ? this.options.customEmbeddingUrl
         : appendLastPath(this.options.customEmbeddingUrl, "embeddings");
 
+      const customKey = db.hypaCustomSettings?.key?.trim();
+      const resolvedCustomKey = customKey ? await resolveSecret(customKey) : "";
       const fetchArgs = {
         headers: {
-          ...(db.hypaCustomSettings?.key?.trim()
-            ? { Authorization: "Bearer " + db.hypaCustomSettings.key.trim() }
+          ...(customKey
+            ? { Authorization: "Bearer " + resolvedCustomKey }
             : {}),
         },
         body: {
@@ -462,11 +465,11 @@ export class HypaProcessorV2<TMetadata> {
         openai3large: "text-embedding-3-large",
       };
 
+      const chosenKey = this.options.oaiKey?.trim() || db.supaMemoryKey?.trim();
+      const resolvedKey = chosenKey ? await resolveSecret(chosenKey) : chosenKey;
       const fetchArgs = {
         headers: {
-          Authorization:
-            "Bearer " +
-            (this.options.oaiKey?.trim() || db.supaMemoryKey?.trim()),
+          Authorization: "Bearer " + resolvedKey,
         },
         body: {
           input: contents,

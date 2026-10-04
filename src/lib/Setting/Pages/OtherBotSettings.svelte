@@ -6,7 +6,9 @@
     import Help from "src/lib/Others/Help.svelte";
     import { selectSingleFile } from "src/ts/util";
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
-    import { saveAsset, downloadFile, globalFetch } from "src/ts/globalApi.svelte";
+    import { saveAsset, downloadFile } from "src/ts/globalApi.svelte";
+    import { requestWavespeedModels } from "src/ts/process/wavespeedModels";
+    import { SecretRefError } from "src/ts/secretRef";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { isTauri } from "src/ts/platform"
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
@@ -114,12 +116,7 @@
 
         isWavespeedLoading = true;
         try {
-            const result = await globalFetch('https://api.wavespeed.ai/api/v3/models', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${DBState.db.wavespeedImage.key}`
-                },
-            });
+            const result = await requestWavespeedModels(DBState.db.wavespeedImage.key);
 
             if (!result.ok || !result.data) {
                 alertError('Failed to fetch WaveSpeed models');
@@ -164,7 +161,11 @@
             wavespeedModels = filteredModels;
             alertNormal(fillLang(language.alerts.wavespeedModelsLoaded, { count: filteredModels.length }));
         } catch (error) {
-            alertError(fillLang(language.errors.fetchModelsFailed, { error: `${error}` }));
+            if (error instanceof SecretRefError) {
+                alertError(error.message);
+            } else {
+                alertError(fillLang(language.errors.fetchModelsFailed, { error: `${error}` }));
+            }
         } finally {
             isWavespeedLoading = false;
         }

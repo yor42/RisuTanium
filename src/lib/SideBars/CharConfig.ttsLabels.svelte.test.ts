@@ -14,8 +14,8 @@
  *  - the Bias label, the table header and the token placeholder follow the language.
  *
  * Every module `CharConfig.svelte` imports and every child component other than the
- * form inputs is a fake; the fish-speech model request is a stubbed `fetch` that
- * returns an empty list, so nothing reaches the network.
+ * form inputs is a fake; the fish-speech model list comes from the faked tts module
+ * and is empty, and `fetch` is stubbed as well, so nothing reaches the network.
  */
 
 import { flushSync, mount, tick, unmount } from 'svelte'
@@ -81,6 +81,7 @@ vi.mock(import('src/ts/process/tts'), () => ({
     getWebSpeechTTSVoices: vi.fn(() => []),
     getVOICEVOXVoices: vi.fn(async () => []),
     getNovelAIVoices: vi.fn(() => []),
+    fetchFishSpeechModels: vi.fn(async () => []),
     oaiVoices: [],
 }) as unknown as typeof import('src/ts/process/tts'))
 

@@ -28,21 +28,21 @@ export type SecretFieldEntry = SecretFieldOwner & {
 
 export const SECRET_FIELDS = [
     //#region chat providers (stage 1)
-    { scope: 'database', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses; reverse proxy fallback' },
+    { scope: 'database', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses; reverse proxy fallback; modellist; tts.ts (OpenAI TTS, default host only); stableDiff.ts (DALL-E); PlaygroundSubtitle' },
     { scope: 'database', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses (reverse proxy)' },
     { scope: 'botPreset', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'preset copy of db.openAIKey; blanked on preset import' },
     { scope: 'botPreset', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'preset copy of db.proxyKey; blanked on preset import' },
-    { scope: 'database', field: 'claudeAPIKey', class: 'resolved', stage: 1, reader: 'anthropic (Bedrock: whole AKID:SECRET:region triple)' },
+    { scope: 'database', field: 'claudeAPIKey', class: 'resolved', stage: 1, reader: 'anthropic (Bedrock: whole AKID:SECRET:region triple); modellist' },
     { scope: 'database', field: 'openrouterKey', class: 'resolved', stage: 1, reader: 'openAI requests (OpenRouter)' },
     { scope: 'database', field: 'nanogptKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses (NanoGPT)' },
     { scope: 'database', field: 'mistralKey', class: 'resolved', stage: 1, reader: 'openAI requests (Mistral)' },
     { scope: 'database', field: 'cohereAPIKey', class: 'resolved', stage: 1, reader: 'request.ts (Cohere)' },
-    { scope: 'database', field: 'ollamaApiKey', class: 'resolved', stage: 1, reader: 'request.ts (Ollama)' },
+    { scope: 'database', field: 'ollamaApiKey', class: 'resolved', stage: 1, reader: 'request.ts (Ollama); ollama.ts (model list)' },
     { scope: 'database', field: 'novellistAPI', class: 'resolved', stage: 1, reader: 'request.ts (NovelList)' },
     { scope: 'database', field: 'mancerHeader', class: 'resolved', stage: 1, reader: 'request.ts (Mancer)' },
     { scope: 'database', field: 'novelai', sub: '.token', class: 'resolved', stage: 1, reader: 'request.ts (NovelAI)' },
     { scope: 'database', field: 'hordeConfig', sub: '.apiKey', class: 'resolved', stage: 1, reader: 'request.ts (AI Horde)' },
-    { scope: 'database', field: 'google', sub: '.accessToken', class: 'resolved', stage: 1, reader: 'google.ts (Gemini key, Vertex)' },
+    { scope: 'database', field: 'google', sub: '.accessToken', class: 'resolved', stage: 1, reader: 'google.ts (Gemini key, Vertex); modellist; tokenizer.ts; stableDiff.ts (Imagen)' },
     { scope: 'database', field: 'vertexPrivateKey', class: 'resolved', stage: 1, reader: 'google.ts (Vertex PEM; minted token stays in memory)' },
     { scope: 'database', field: 'OaiCompAPIKeys', sub: '[*]', class: 'resolved', stage: 1, reader: 'openAI requests/responses (per-model keys)' },
     { scope: 'database', field: 'customModels', sub: '[].key', class: 'resolved', stage: 1, reader: 'request.ts (custom models)' },
@@ -51,18 +51,18 @@ export const SECRET_FIELDS = [
     //#region stage 2 readers
     { scope: 'database', field: 'elevenLabKey', class: 'resolved', stage: 2, reader: 'tts.ts' },
     { scope: 'database', field: 'huggingfaceKey', class: 'resolved', stage: 2, reader: 'tts.ts' },
-    { scope: 'database', field: 'fishSpeechKey', class: 'resolved', stage: 2, reader: 'tts.ts' },
+    { scope: 'database', field: 'fishSpeechKey', class: 'resolved', stage: 2, reader: 'tts.ts (speech and the CharConfig model list)' },
     { scope: 'database', field: 'NAIApiKey', class: 'resolved', stage: 2, reader: 'stableDiff.ts, tts.ts (NovelAI)' },
     { scope: 'database', field: 'stabilityKey', class: 'resolved', stage: 2, reader: 'stableDiff.ts' },
     { scope: 'database', field: 'falToken', class: 'resolved', stage: 2, reader: 'stableDiff.ts' },
     { scope: 'database', field: 'openaiCompatImage', sub: '.key', class: 'resolved', stage: 2, reader: 'stableDiff.ts' },
-    { scope: 'database', field: 'wavespeedImage', sub: '.key', class: 'resolved', stage: 2, reader: 'stableDiff.ts, globalApi.svelte.ts' },
+    { scope: 'database', field: 'wavespeedImage', sub: '.key', class: 'resolved', stage: 2, reader: 'stableDiff.ts (generation); wavespeedModels.ts (OtherBotSettings model list)' },
     { scope: 'database', field: 'deeplOptions', sub: '.key', class: 'resolved', stage: 2, reader: 'translator.ts' },
     { scope: 'database', field: 'deeplXOptions', sub: '.token', class: 'resolved', stage: 2, reader: 'translator.ts' },
-    { scope: 'database', field: 'supaMemoryKey', class: 'resolved', stage: 2, reader: 'memory (supaMemory, hypamemory, hypav2/v3)' },
+    { scope: 'database', field: 'supaMemoryKey', class: 'resolved', stage: 2, reader: 'memory (supaMemory, hypav2 summaries; hypamemory, hypamemoryv2 embeddings)' },
     { scope: 'database', field: 'hypaMemoryKey', class: 'resolved', stage: 2, reader: 'stored only; no request reader found' },
     { scope: 'database', field: 'voyageApiKey', class: 'resolved', stage: 2, reader: 'contextualEmbedding.ts' },
-    { scope: 'database', field: 'hypaCustomSettings', sub: '.key', class: 'resolved', stage: 2, reader: 'hypamemory custom embedding' },
+    { scope: 'database', field: 'hypaCustomSettings', sub: '.key', class: 'resolved', stage: 2, reader: 'hypamemory, hypamemoryv2 (custom embedding)' },
     //#endregion
 
     //#region exclusions

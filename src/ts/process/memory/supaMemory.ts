@@ -9,6 +9,7 @@ import { runSummarizer } from "../transformers";
 import { parseChatML } from "src/ts/parser/chatML";
 import { getUserName } from "src/ts/util";
 import type { RunSubject } from "../chatOrigin";
+import { resolveSecret, SecretRefError } from "src/ts/secretRef";
 
 export async function supaMemory(
         chats:OpenAIChat[],
@@ -210,10 +211,24 @@ export async function supaMemory(
             if(db.supaModelType !== 'subModel'){
                 const promptbody = stringlizedChat + '\n\n' + supaPrompt + "\n\nOutput:"
 
+                let supaKey: string
+                try {
+                    supaKey = await resolveSecret(db.supaMemoryKey)
+                } catch (error) {
+                    if(error instanceof SecretRefError){
+                        return {
+                            currentTokens: currentTokens,
+                            chats: chats,
+                            error: "SupaMemory: " + error.message
+                        }
+                    }
+                    throw error
+                }
+
                 const da = await globalFetch("https://api.openai.com/v1/completions",{
                     headers: {
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer " + db.supaMemoryKey
+                        "Authorization": "Bearer " + supaKey
                     },
                     method: "POST",
                     body: {

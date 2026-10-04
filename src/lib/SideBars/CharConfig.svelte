@@ -10,13 +10,14 @@
     import Check from "../UI/GUI/CheckInput.svelte";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
-    import { alertNormal, showHypaV2Alert } from "../../ts/alert";
+    import { alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
+    import { SecretRefError } from "src/ts/secretRef";
     import BarIcon from "./BarIcon.svelte";
     import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFile, selectSingleFile } from "../../ts/util";
     import { beginBusy } from "../../ts/process/memory/busyActions";
     import Help from "../Others/Help.svelte";
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
-    import { getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
+    import { fetchFishSpeechModels, getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
     import { createFishSpeechDefaults, createNovelAIVoiceDefaults } from "src/ts/process/ttsDefaults";
     import { getFileSrc } from "src/ts/globalApi.svelte";
     import { addGroupChar, rmCharFromGroup } from "src/ts/process/group";
@@ -174,27 +175,13 @@
 
     async function getFishSpeechModels() {
         try {
-            const res = await fetch(`https://api.fish.audio/model?self=true`, {
-                headers: {
-                    'Authorization': `Bearer ${DBState.db.fishSpeechKey}`
-                }
-            });
-            const data = await res.json();
-            console.log(data.items);
-            console.log(DBState.db.characters[$selectedCharID])
-            
-            if (Array.isArray(data.items)) {
-                fishSpeechModels = data.items.map((item) => ({
-                    _id: item._id || '',
-                    title: item.title || '',
-                    description: item.description || ''
-                }));
-            } else {
-                console.error('Expected an array of items, but received:', data.items);
-                fishSpeechModels = [];
-            }
+            fishSpeechModels = await fetchFishSpeechModels(DBState.db.fishSpeechKey);
         } catch (error) {
-            console.error('Error fetching fish speech models:', error);
+            if (error instanceof SecretRefError) {
+                alertError(error.message);
+            } else {
+                console.error('Error fetching fish speech models:', error);
+            }
             fishSpeechModels = [];
         }
     }
@@ -809,6 +796,8 @@
                             <OptionInput value={voice.voice_id}>{voice.name}</OptionInput>
                         {/each}
                 </SelectInput>
+            {:catch error}
+                <span class="text-draculared">{error instanceof Error ? error.message : String(error)}</span>
             {/await}
          {:else if DBState.db.characters[$selectedCharID].ttsMode === 'VOICEVOX'}
                 <span class="text-textcolor">{language.sidebarUi.ttsSpeaker}</span>
