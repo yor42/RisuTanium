@@ -477,27 +477,48 @@ Several sessions work **in this same checkout**:
 ### Side session (feat/side-batch)
 
 - **Branch and worktree:** `feat/side-batch`, cut at `517f0cdb`, in the worktree
-  `C:\Projects\RisuAI\.claude\worktrees\handoff-instructions-16b8eb` (local, not pushed). Set up by the Main Campaign's
-  hand-off (`MC-219`). Batches A and B are done; Batch C is not run (CHORE-43 and CHORE-54 are already fixed, `MC-219` 1).
+  `C:\Projects\RisuAI\.claude\worktrees\handoff-instructions-16b8eb`. **The tip is `f38b503c` and nothing is pushed.** Set up
+  by the Main Campaign's hand-off (`MC-219`). Batches A and B are done; Batch C is not run (CHORE-43 and CHORE-54 are already
+  fixed, `MC-219` 1). The follow-ups CHORE-88, CHORE-81 and CHORE-80 are done and closed (`MC-220`).
 - **Commits:** Batch A is `af2ebc0b` (CHORE-93, CHORE-94, CHORE-95, CHORE-98 and the new CHORE-100; 17 files). Batch B is
-  `3c8a142a` (CHORE-90, CHORE-91, CHORE-96, CHORE-99; 19 files). Ledger rows 1101 to 1119; the records batch and its
-  fact-check are rows 1120 and 1121.
+  `3c8a142a` (CHORE-90, CHORE-91, CHORE-96, CHORE-99; 19 files). The records commit is `aeedbe4d` (`MC-219`, ledger rows 1101
+  to 1121). **Five commits since `aeedbe4d`** (the branch also holds `32fa1184`, the Main Campaign's merge of `aeedbe4d`, and `2aa55398`, below the five): `54b1a819` (CHORE-88), `04484500` (CHORE-81), `7aeabdf9` (CHORE-80 stage 1),
+  `aa6e442a` (stage 2) and `f38b503c` (stage 3). Ledger rows 1122 to 1176 cover them; the records batch for them and its
+  fact-check are rows 1177 and 1178.
 - **Checks:** before `af2ebc0b`, on the working tree (which also held the uncommitted CHORE-96 and CHORE-99 changes):
   `pnpm test` 429 files, 8397 passed, 4 skipped; `pnpm check` 0 errors, 0 warnings; `pnpm build` succeeded. The baseline at
   `517f0cdb` was 424 files, 8322 passed, 4 skipped. Before `3c8a142a`, exactly that change on `af2ebc0b`: `pnpm test` 432
-  files, 8426 passed, 4 skipped; `pnpm check` 0 and 0; `pnpm build` succeeded. Not run in a browser or against a real TTS server.
+  files, 8426 passed, 4 skipped; `pnpm check` 0 and 0; `pnpm build` succeeded. For the five newer commits: before `54b1a819`
+  and `04484500` together, 442 files, 8524 passed, 4 skipped; before `7aeabdf9`, 447 files, 8702 passed; before `aa6e442a`,
+  450 files, 8819 passed; before `f38b503c` (exactly that tree), 452 files, 8825 passed, 4 skipped, `pnpm check` 0 and 0,
+  `pnpm build` ok. Not run in a browser (except stage 3's live check on a dev build), against a real TTS server, or on a
+  Tauri build (CHORE-81's launch inputs, and CHORE-80's Rust command inside an app).
 - **Closed without code (`MC-219` 1):** CHORE-43 and CHORE-54 (`71e75d9d`), CHORE-40 (`d013e7cf`), CHORE-16 (`08e43e65` and
-  `0d41f06a`), CHORE-24 (`2af8d4fe`). CHORE-41 is not taken by this session and stays open (`MC-219` 3).
-- **Lane notes (against the hand-off's lanes):** no file on the Main Campaign's do-not-edit list was touched. Outside the
-  hand-off's literal side-lane list: `index.svelte.ts`, edited for CHORE-96 and for CHORE-99, which the maintainer included
-  (`MC-219` 6; the side session messaged the Main Campaign about it on 2026-10-04); the new `src/ts/warnOnReject.ts` (with
-  its test) and `src/ts/process/ttsDefaults.ts`; and `src/lang` (shared): one key, `errors.ttsNotSetUp`, in `en.ts` and the
-  six translated files.
-- **Next free numbers (side session, `MC-219` 2):** `MC-220`; ledger row 1122; CHORE-101; Report 70. These ranges
+  `0d41f06a`), CHORE-24 (`2af8d4fe`). **Closed with code since:** CHORE-88 (`54b1a819`), CHORE-81 (`04484500`) and CHORE-80
+  (`7aeabdf9`, `aa6e442a`, `f38b503c`).
+- **Still open in the side lane:** CHORE-41 (skipped by the maintainer's choice, `MC-219` 3), CHORE-97 (needs a Hugging Face
+  key), and CHORE-68 and CHORE-92 (locked).
+- **Lane notes (against the hand-off's lanes):** the follow-ups edited `bootstrap.ts` and `characterCards.ts` for CHORE-81, inside the Main Campaign's
+  grant of 2026-10-04 (the launch-input handling in `loadData` and `characterURLImport`, nothing else in `bootstrap.ts`; the
+  `desktopLaunchImport()` call is that handling; `MC-220`). The `bootstrap.ts` edit is inside the grant. The `characterCards.ts` edit is partly outside its literal text (`04484500` also adds the exported `importOpenedFiles()` and drops the `onOpenUrl` import); the Orchestrator reads these as the launch-input handling, and the Main Campaign is asked to confirm in the merge report. The CHORE-80 request, TTS, image, translator, tokenizer and
+  model-list files are the side session's own lane or unowned, not Main Campaign files. Outside the hand-off's literal side-lane list: `index.svelte.ts`, edited for CHORE-96 and for CHORE-99, which the
+  maintainer included (`MC-219` 6; the side session messaged the Main Campaign about it on 2026-10-04); the new
+  `src/ts/warnOnReject.ts` (with its test) and `src/ts/process/ttsDefaults.ts`; and `src/lang` (shared): one key,
+  `errors.ttsNotSetUp`, in `en.ts` and the six translated files, then the four secret-reference error strings, the CHORE-80
+  note `settingsPage.apiKeyEnvRefNote` and a revised `errors.secretRefUnavailable`. The follow-ups' grants (`MC-220`):
+  `server.cjs`, `globalApi.svelte.ts` and `database.svelte.ts` for CHORE-80 stage 1 (maintainer-confirmed), `main.rs` for
+  CHORE-81, and the key reads in `src/ts/process/memory/**` for stage 2 (the Main Campaign granted it and it closed with
+  `aa6e442a`). Scope amendments (`MC-091`): CHORE-88 widened to `CharConfig`, `SideChatList` and `PersonaSettings`, and
+  `hypav2.ts` returns `retryable:false` for an unresolvable reference.
+- **Next free numbers (side session, `MC-219` 2):** `MC-221`; ledger row 1179; CHORE-101; Report 70. These ranges
   (`MC-219` to `MC-239`, rows 1101 to 1200, CHORE-100 to CHORE-119, Reports 70 to 79) overlap the UI session's reserved `MC`,
   CHORE and Report ranges, whose tail the side session took over because the UI lane is finished.
-- **Merging:** not this session's. The Main Campaign merges `feat/side-batch` on the maintainer's word, with an explicit
-  merge commit, and then runs check, the full suite and the build.
+- **Merging:** not this session's. The maintainer will instruct the Main Campaign session to queue the merge of
+  `feat/side-batch` into its work order. The Main Campaign merges on the maintainer's word, with an explicit merge commit,
+  and then runs check, the full suite and the build.
+- **Native review wanted (not started):** the CHORE-80 note `settingsPage.apiKeyEnvRefNote` in ko, cn, zh-Hant, vi and es (the
+  translator flagged the word for "build" and some phrasing). The side session hands it to the Main Campaign with the merge
+  report, alongside `MC-212`'s native-speaker review.
 - **Wiki hand-offs (for the Wiki session):** (1) the first-message speaker button: a character's first message now has the
   speaker button when the character has a voice mode and the message is not blank; it speaks the displayed text and follows
   the alternate first message page showing; `mobilechat` has no icon buttons and `customHTML` shows them only with
@@ -506,6 +527,8 @@ Several sessions work **in this same checkout**:
   request produced no non-whitespace text. (4) Auto-TTS skips a speaker that has no voice mode, the group member speaking
   in a group turn. Likely pages, by file name only (their text was not read): `docs/wiki/TTS.md` (1, 4),
   `docs/wiki/Playground.md` (2), `docs/wiki/Settings-Advanced.md` (3, the only page that mentions auto-continue).
+  (5) **CHORE-80, API keys from environment variables: the packet is handed to the Wiki session** (ledger rows 1164 and 1172
+  to 1176), including the V2.1 plugin exposure the maintainer chose to document (`MC-220` 7).
 - **Operational notes:** `pnpm test` rewrites `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` with LF
   endings; never stage it, and restore its CRLF bytes after a full run (the same note as the UI session's block).
 
