@@ -804,7 +804,7 @@
                     {/await}
                 </SelectInput>
                 {#if DBState.db.characters[$selectedCharID].voicevoxConfig.speaker}
-                <span class="text=neutral-200">{language.sidebarUi.ttsStyle}</span>
+                <span class="text-textcolor">{language.sidebarUi.ttsStyle}</span>
                 <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].ttsSpeech}>
                 {#each JSON.parse(DBState.db.characters[$selectedCharID].voicevoxConfig.speaker) as styles}
                         <OptionInput value={styles.id} selected={DBState.db.characters[$selectedCharID].ttsSpeech === styles.id}>{styles.name}</OptionInput>

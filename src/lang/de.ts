@@ -210,6 +210,8 @@ export const languageGerman = {
         "mcpInputAuthorizationCode": "Autorisierungscode eingeben",
         "updatingTo": "Aktualisierung auf {version}...",
         "addingAssets": "Wird geladen... (Medien werden hinzugefügt {completed} / {total})",
+        "writingExif": "Wird geladen... (Exif wird geschrieben)",
+        "writingPng": "Wird geladen... (Wird geschrieben)",
         "presetConverted": "Voreinstellung erfolgreich konvertiert. Sie finden sie in den Voreinstellungen der Bot-Einstellungen",
         "presetNotFound": "Voreinstellung nicht gefunden: {name}"
     },
@@ -912,6 +914,7 @@ export const languageGerman = {
     },
     "playground": {
         "playground": "Spielwiese",
+        "notSupported": "Nicht unterstützt",
         "embeddingSharedSettingsNote": "Diese beiden Felder sind Ihre Einstellungen für das Langzeitgedächtnis. Änderungen hier wirken sich auch auf das Chat-Gedächtnis aus.",
         "inlayDeleteConfirm": "Möchten Sie \"{name}\" wirklich löschen?",
         "inlayDeleteMultipleConfirm": "Möchten Sie die ausgewählten {count} Ressourcen wirklich löschen?",
@@ -998,7 +1001,7 @@ export const languageGerman = {
     "none": "Keine",
     "emotionImage": "Emotionsbilder",
     "noImages": "Keine Bilder",
-    "noBias": "Keine Voreingenommenheit",
+    "noBias": "Kein Bias",
     "image": "Bild",
     "name": "Name",
     "folderName": "Ordnername",
@@ -1455,6 +1458,7 @@ export const languageGerman = {
     "applyModule": "Modul anwenden",
     "successApplyModule": "Modul erfolgreich angewendet",
     "font": "Schriftart",
+    "fontSize": "Schriftgröße",
     "lineHeight": "Zeilenhöhe",
     "notCharxWarn": "Dieser Charakter verwendet mehrere Assets. Es wird empfohlen, diesen Charakter im CharX-Format zu exportieren, um eine bessere Kompatibilität zu gewährleisten.",
     "noPlugins": "Keine Plugins installiert",

@@ -210,6 +210,8 @@ export const languageSpanish = {
         "mcpInputAuthorizationCode": "Introduce el código de autorización",
         "updatingTo": "Actualizando a {version}...",
         "addingAssets": "Cargando... (Añadiendo activos {completed} / {total})",
+        "writingExif": "Cargando... (Escribiendo Exif)",
+        "writingPng": "Cargando... (Escribiendo)",
         "presetConverted": "Preset convertido correctamente. Puedes encontrarlo en los presets de la configuración del bot",
         "presetNotFound": "No se encontró el preset: {name}"
     },
@@ -912,6 +914,7 @@ export const languageSpanish = {
     },
     "playground": {
         "playground": "Playground",
+        "notSupported": "No compatible",
         "embeddingSharedSettingsNote": "Estos dos campos son tu configuración de memoria a largo plazo. Editarlos aquí también cambia la memoria del chat.",
         "inlayDeleteConfirm": "¿Estás seguro de que deseas eliminar \"{name}\"?",
         "inlayDeleteMultipleConfirm": "¿Estás seguro de que deseas eliminar los {count} recursos seleccionados?",
@@ -998,7 +1001,7 @@ export const languageSpanish = {
     "none": "Ninguno",
     "emotionImage": "Imágenes de Emoción",
     "noImages": "Sin Imágenes",
-    "noBias": "Sin Bias",
+    "noBias": "Sin sesgo",
     "image": "Imagen",
     "name": "Nombre",
     "folderName": "Nombre de la Carpeta",
@@ -1455,6 +1458,7 @@ export const languageSpanish = {
     "applyModule": "Aplicar Módulo",
     "successApplyModule": "El módulo se aplicó exitosamente",
     "font": "Fuente",
+    "fontSize": "Tamaño de fuente",
     "lineHeight": "Altura de Línea",
     "notCharxWarn": "Este personaje usa múltiples activos. se recomienda exportar este personaje como un formato CharX para mejor compatibilidad.",
     "noPlugins": "No hay Plugins Instalados",

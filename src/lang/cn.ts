@@ -210,6 +210,8 @@ export const languageChinese = {
         "mcpInputAuthorizationCode": "输入授权码",
         "updatingTo": "正在更新到 {version}...",
         "addingAssets": "加载中...（正在添加资源 {completed} / {total}）",
+        "writingExif": "加载中...（正在写入 Exif）",
+        "writingPng": "加载中...（正在写入）",
         "presetConverted": "预设转换成功。您可以在机器人设置的预设中找到它",
         "presetNotFound": "找不到预设：{name}"
     },
@@ -912,6 +914,7 @@ export const languageChinese = {
     },
     "playground": {
         "playground": "Playground",
+        "notSupported": "不支持",
         "embeddingSharedSettingsNote": "这两个字段是您的长期记忆设置。在此处修改也会同时更改聊天的长期记忆设置。",
         "inlayDeleteConfirm": "确定要删除\"{name}\"吗？",
         "inlayDeleteMultipleConfirm": "确定要删除选中的{count}个资源吗？",
@@ -998,7 +1001,7 @@ export const languageChinese = {
     "none": "无",
     "emotionImage": "表情立绘",
     "noImages": "没有图片",
-    "noBias": "No Bias",
+    "noBias": "无偏置",
     "image": "图片",
     "name": "名称",
     "folderName": "文件夹名称",
@@ -1455,6 +1458,7 @@ export const languageChinese = {
     "applyModule": "套用模块",
     "successApplyModule": "已成功套用模块",
     "font": "字体",
+    "fontSize": "字体大小",
     "lineHeight": "行距",
     "notCharxWarn": "角色使用多项资源，建议导出为 CharX 格式以提升兼容性。",
     "noPlugins": "未安装插件",

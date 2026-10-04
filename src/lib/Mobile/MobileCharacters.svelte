@@ -33,7 +33,7 @@
 
     function makeAgoText(time:number){
         if(time === 0){
-            return "Unknown";
+            return language.settingsPage.unknown;
         }
         const diff = Date.now() - time;
         if(diff < 3600000){

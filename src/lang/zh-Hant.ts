@@ -210,6 +210,8 @@ export const languageChineseTraditional = {
         "mcpInputAuthorizationCode": "輸入授權碼",
         "updatingTo": "正在更新至 {version}...",
         "addingAssets": "載入中...（正在新增資源 {completed} / {total}）",
+        "writingExif": "載入中...（正在寫入 Exif）",
+        "writingPng": "載入中...（正在寫入）",
         "presetConverted": "預設集轉換成功。您可以在 Bot 設定的預設集中找到它",
         "presetNotFound": "找不到預設集：{name}"
     },
@@ -957,6 +959,7 @@ export const languageChineseTraditional = {
     },
     "playground": {
         "playground": "Playground",
+        "notSupported": "不支援",
         "embeddingSharedSettingsNote": "這兩個欄位是您的長期記憶設定。在此處修改也會同時變更聊天的長期記憶設定。",
         "inlayDeleteConfirm": "確定要刪除 {name} 嗎？",
         "inlayDeleteMultipleConfirm": "確定要刪除已選取的 {count} 個資源嗎？",
@@ -1043,7 +1046,7 @@ export const languageChineseTraditional = {
     "none": "無",
     "emotionImage": "情緒立繪",
     "noImages": "沒有圖片",
-    "noBias": "未設定 Bias",
+    "noBias": "無偏置",
     "image": "圖片",
     "name": "名稱",
     "folderName": "資料夾名稱",
@@ -1500,6 +1503,7 @@ export const languageChineseTraditional = {
     "applyModule": "套用模組",
     "successApplyModule": "已成功套用模組",
     "font": "字型",
+    "fontSize": "字型大小",
     "lineHeight": "行高",
     "notCharxWarn": "此角色使用多個資源。為了獲得較佳相容性，建議以 CharX 格式匯出",
     "noPlugins": "尚未安裝外掛",

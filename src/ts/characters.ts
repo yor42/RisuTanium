@@ -786,7 +786,7 @@ export async function makeGroupImage() {
     try {
         alertStore.set({
             type: 'wait',
-            msg: `Loading..`
+            msg: language.loadingEllipsis
         })
         const db = getDatabase()
         const charID = get(selectedCharID)

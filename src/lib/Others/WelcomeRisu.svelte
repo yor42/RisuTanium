@@ -19,7 +19,7 @@
     {
         const browserLang = navigator.language
         const browserLangShort = browserLang.split('-')[0]
-        const usableLangs = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant']
+        const usableLangs = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant', 'es']
         if(usableLangs.includes(browserLangShort)){
             changeLanguage(browserLangShort)
             DBState.db.language = browserLangShort
@@ -141,6 +141,10 @@
                             DBState.db.translator = 'vi'
                             break
                         }
+                        case 'es':{
+                            DBState.db.translator = 'es'
+                            break
+                        }
                         case 'zh-Hant':{
                             DBState.db.translator = 'zh-TW'
                             break
@@ -205,6 +209,11 @@
                             DBState.db.language='vi'
                             step = 1
                         }}>• Tiếng Việt</button>
+                        <button class="hover:text-green-500 transition-colors" onclick={() => {
+                            changeLanguage('es')
+                            DBState.db.language='es'
+                            step = 1
+                        }}>• Español</button>
                     </div>
 
                 {:else}

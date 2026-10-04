@@ -210,6 +210,8 @@ export const languageKorean = {
         "mcpInputAuthorizationCode": "인증 코드 입력",
         "updatingTo": "{version}(으)로 업데이트하는 중...",
         "addingAssets": "불러오는 중... (에셋 추가 중 {completed} / {total})",
+        "writingExif": "불러오는 중... (Exif 기록 중)",
+        "writingPng": "불러오는 중... (기록 중)",
         "presetConverted": "프리셋을 변환했습니다. 봇 설정의 프리셋에서 확인할 수 있습니다",
         "presetNotFound": "프리셋을 찾을 수 없습니다: {name}"
     },
@@ -912,6 +914,7 @@ export const languageKorean = {
     },
     "playground": {
         "playground": "플레이그라운드",
+        "notSupported": "지원되지 않음",
         "embeddingSharedSettingsNote": "이 두 항목은 장기기억 설정입니다. 여기서 수정하면 채팅의 장기기억 설정도 함께 바뀝니다.",
         "inlayDeleteConfirm": "\"{name}\"을(를) 정말 삭제하시겠습니까?",
         "inlayDeleteMultipleConfirm": "선택한 {count}개의 에셋을 정말 삭제하시겠습니까?",
@@ -998,7 +1001,7 @@ export const languageKorean = {
     "none": "없음",
     "emotionImage": "감정 이미지",
     "noImages": "이미지 없음",
-    "noBias": "Bias 없음",
+    "noBias": "편향 없음",
     "image": "이미지",
     "name": "이름",
     "folderName": "폴더 이름",
@@ -1455,6 +1458,7 @@ export const languageKorean = {
     "applyModule": "모듈 적용",
     "successApplyModule": "모듈이 성공적으로 적용되었습니다.",
     "font": "폰트",
+    "fontSize": "폰트 크기",
     "lineHeight": "줄간격",
     "notCharxWarn": "이 캐릭터는 여러 에셋을 사용합니다. 더 나은 호환성을 위해 이 캐릭터를 CharX 포맷으로 엑스포트하는 것이 좋습니다.",
     "noPlugins": "설치된 플러그인이 없습니다.",

@@ -81,7 +81,7 @@ export async function exportUserPersona() {
 
     alertStore.set({
         type: 'wait',
-        msg: 'Loading... (Writing Exif)'
+        msg: language.alerts.writingExif
     })
 
     await sleep(10)
@@ -92,7 +92,7 @@ export async function exportUserPersona() {
 
     alertStore.set({
         type: 'wait',
-        msg: 'Loading... (Writing)'
+        msg: language.alerts.writingPng
     })
 
     await sleep(10)

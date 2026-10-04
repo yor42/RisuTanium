@@ -101,7 +101,7 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
         writeByte(1) //mark as asset
         alertStore.set({
             type: 'wait',
-            msg: `Loading... (Adding Assets ${i} / ${assets.length})`
+            msg: fillLang(language.alerts.addingAssets, { completed: i, total: assets.length })
         })
         let rData = await readImage(asset[1])
         if(!rData){

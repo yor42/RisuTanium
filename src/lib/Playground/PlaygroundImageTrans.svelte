@@ -344,7 +344,7 @@
 <span class="text-textcolor text-lg mt-4">{language.font}</span>
 <TextInput bind:value={fontFamily} />
 
-<span class="text-textcolor text-lg mt-4">fontSize</span>
+<span class="text-textcolor text-lg mt-4">{language.fontSize}</span>
 <NumberInput bind:value={fontSize} />
 
 {#if mode === 'manual'}

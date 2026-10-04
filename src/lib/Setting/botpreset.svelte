@@ -189,7 +189,7 @@
                 dragOverIndex = -1
             }}>
                 {#if editMode}
-                    <TextInput bind:value={DBState.db.botPresets[i].name} placeholder="string" padding={false}/>
+                    <TextInput bind:value={DBState.db.botPresets[i].name} placeholder={language.name} padding={false}/>
                 {:else}
                     {#if i < 9}
                         <span class="w-2 text-center mr-2 text-textcolor2">{i + 1}</span>

@@ -210,6 +210,8 @@ export const languageVietnamese = {
         "mcpInputAuthorizationCode": "Nhập mã ủy quyền",
         "updatingTo": "Đang cập nhật lên {version}...",
         "addingAssets": "Đang tải... (Đang thêm tài sản {completed} / {total})",
+        "writingExif": "Đang tải... (Đang ghi Exif)",
+        "writingPng": "Đang tải... (Đang ghi)",
         "presetConverted": "Đã chuyển đổi cài đặt trước thành công. Bạn có thể tìm thấy nó trong các cài đặt trước của cài đặt bot",
         "presetNotFound": "Không tìm thấy cài đặt trước: {name}"
     },
@@ -912,6 +914,7 @@ export const languageVietnamese = {
     },
     "playground": {
         "playground": "Playground",
+        "notSupported": "Không được hỗ trợ",
         "embeddingSharedSettingsNote": "Hai trường này là cài đặt bộ nhớ dài hạn của bạn. Chỉnh sửa tại đây cũng sẽ thay đổi bộ nhớ dài hạn của cuộc trò chuyện.",
         "inlayDeleteConfirm": "Bạn có chắc muốn xóa \"{name}\" không?",
         "inlayDeleteMultipleConfirm": "Bạn có chắc muốn xóa {count} tài sản được chọn không?",
@@ -998,7 +1001,7 @@ export const languageVietnamese = {
     "none": "Không có",
     "emotionImage": "Hình ảnh cảm xúc",
     "noImages": "Không có hình ảnh",
-    "noBias": "Không thiên vị",
+    "noBias": "Không có độ lệch",
     "image": "Hình ảnh",
     "name": "Tên",
     "folderName": "Tên thư mục",
@@ -1455,6 +1458,7 @@ export const languageVietnamese = {
     "applyModule": "Áp dụng mô-đun",
     "successApplyModule": "Mô-đun đã được áp dụng thành công",
     "font": "Phông chữ",
+    "fontSize": "Cỡ chữ",
     "lineHeight": "Chiều cao dòng",
     "notCharxWarn": "Nhân vật này sử dụng nhiều tài sản. Nên xuất nhân vật này dưới dạng định dạng CharX để tương thích tốt hơn.",
     "noPlugins": "Không có plugin nào được cài đặt",

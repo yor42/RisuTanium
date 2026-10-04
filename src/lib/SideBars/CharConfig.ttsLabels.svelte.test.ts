@@ -513,4 +513,41 @@ describe('the Bias section of the advanced tab', () => {
         expect(biasHeader(root)).toBe(koValue('sidebarUi.bias'))
         expect(biasTokenPlaceholder(root)).toBe(enValue('sidebarUi.biasTokenPlaceholder', 'string'))
     })
+
+    function emptyRowText(root: HTMLElement): string {
+        return root.querySelector('table.tabler td[colspan="3"]')?.textContent?.trim() ?? ''
+    }
+
+    test('compatibility guard: English shows "No Bias" in the empty table row', async () => {
+        changeLanguage('en')
+        install('', { bias: [] })
+        CharConfigSubMenu.set(2)
+
+        expect(emptyRowText(await mountConfig())).toBe('No Bias')
+    })
+
+    test('regression reproducer: Korean words the empty table row with the Korean Bias word', async () => {
+        changeLanguage('ko')
+        install('', { bias: [] })
+        CharConfigSubMenu.set(2)
+
+        const text = emptyRowText(await mountConfig())
+
+        expect(text).toBe(koValue('noBias'))
+        expect(text).toContain(koValue('sidebarUi.bias'))
+    })
+})
+
+describe('the VOICEVOX Style label', () => {
+    test('regression reproducer: the label uses the theme text colour class', async () => {
+        changeLanguage('en')
+        install('VOICEVOX')
+
+        const root = await mountConfig()
+
+        const label = [...root.querySelectorAll('span')].find((s) => s.textContent?.trim() === 'Style')
+        expect(label, 'the Style label').toBeDefined()
+        expect(label!.classList.contains('text-textcolor')).toBe(true)
+        expect(label!.getAttribute('class')).not.toContain('=')
+    })
 })
