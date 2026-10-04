@@ -1,6 +1,33 @@
 
+<script module lang="ts">
+    import { resolveSecret } from "src/ts/secretRef";
+
+    /**
+     * Transcribes a file with OpenAI's Whisper endpoint. A `${NAME}` reference in `openAIKey` is
+     * resolved here, so the literal is never sent; a failed resolution throws `SecretRefError`
+     * before any request is made.
+     */
+    export async function requestOpenAITranscription(file: File, openAIKey: string): Promise<string> {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('model', 'whisper-1')
+        formData.append('response_format', 'vtt')
+
+        const d = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await resolveSecret(openAIKey)}`
+            },
+            body: formData
+
+        })
+        return await d.text()
+    }
+</script>
+
 <script lang="ts">
     import { language } from "src/lang";
+    import { SecretRefError } from "src/ts/secretRef";
     import { fillLang } from "src/lang/fill";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
@@ -279,21 +306,16 @@
             }
         }
         else{
-            const formData = new FormData()
-            formData.append('file', requestFile)
-            formData.append('model', 'whisper-1')
-            formData.append('response_format', 'vtt')
-
-
-            const d = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${DBState.db.openAIKey}`
-                },
-                body: formData
-
-            })
-            outputText = await d.text()
+            try {
+                outputText = await requestOpenAITranscription(requestFile, DBState.db.openAIKey)
+            } catch (error) {
+                if(error instanceof SecretRefError){
+                    alertError(error.message)
+                    outputText = ''
+                    return
+                }
+                throw error
+            }
         }
 
 

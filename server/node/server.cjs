@@ -440,6 +440,16 @@ async function checkProxyAuth(req, res) {
     return await checkAuth(req, res);
 }
 
+// Only RISU_*_KEY / RISU_*_TOKEN or operator-listed names are readable.
+const ENV_NAME_SYNTAX = /^[A-Z_][A-Z0-9_]*$/;
+const RISU_ENV_NAME = /^RISU_[A-Z0-9_]*_(KEY|TOKEN)$/;
+function isResolvableEnvName(name) {
+    if (!ENV_NAME_SYNTAX.test(name)) return false;
+    if (RISU_ENV_NAME.test(name)) return true;
+    const allowed = (process.env.RISU_ALLOWED_ENV || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return allowed.includes(name);
+}
+
 function getRequestTimeoutMs(timeoutHeader) {
     const raw = Array.isArray(timeoutHeader) ? timeoutHeader[0] : timeoutHeader;
     if (!raw) {
@@ -1286,6 +1296,25 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, async (req, res) => {
         jobId: job.id,
         heartbeatSec: job.heartbeatSec
     });
+});
+
+// A name that is not allowed and one that is not set answer identically, so names cannot be probed.
+app.post('/api/env-secret', authenticatedRouteLimiter, async (req, res) => {
+    if (!await checkProxyAuth(req, res)) {
+        return;
+    }
+    res.set('Cache-Control', 'no-store');
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    if (!isResolvableEnvName(name)) {
+        res.status(404).send({ error: 'unavailable' });
+        return;
+    }
+    const value = Object.hasOwn(process.env, name) ? String(process.env[name]).trim() : '';
+    if (value === '' || /[\r\n]/.test(value)) {
+        res.status(404).send({ error: 'unavailable' });
+        return;
+    }
+    res.send({ value });
 });
 
 app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, res) => {

@@ -10,13 +10,14 @@
     import Check from "../UI/GUI/CheckInput.svelte";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
-    import { alertNormal, showHypaV2Alert } from "../../ts/alert";
+    import { alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
+    import { SecretRefError } from "src/ts/secretRef";
     import BarIcon from "./BarIcon.svelte";
     import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFile, selectSingleFile } from "../../ts/util";
     import { beginBusy } from "../../ts/process/memory/busyActions";
     import Help from "../Others/Help.svelte";
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
-    import { getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
+    import { fetchFishSpeechModels, getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
     import { createFishSpeechDefaults, createNovelAIVoiceDefaults } from "src/ts/process/ttsDefaults";
     import { getFileSrc } from "src/ts/globalApi.svelte";
     import { addGroupChar, rmCharFromGroup } from "src/ts/process/group";
@@ -174,27 +175,13 @@
 
     async function getFishSpeechModels() {
         try {
-            const res = await fetch(`https://api.fish.audio/model?self=true`, {
-                headers: {
-                    'Authorization': `Bearer ${DBState.db.fishSpeechKey}`
-                }
-            });
-            const data = await res.json();
-            console.log(data.items);
-            console.log(DBState.db.characters[$selectedCharID])
-            
-            if (Array.isArray(data.items)) {
-                fishSpeechModels = data.items.map((item) => ({
-                    _id: item._id || '',
-                    title: item.title || '',
-                    description: item.description || ''
-                }));
-            } else {
-                console.error('Expected an array of items, but received:', data.items);
-                fishSpeechModels = [];
-            }
+            fishSpeechModels = await fetchFishSpeechModels(DBState.db.fishSpeechKey);
         } catch (error) {
-            console.error('Error fetching fish speech models:', error);
+            if (error instanceof SecretRefError) {
+                alertError(error.message);
+            } else {
+                console.error('Error fetching fish speech models:', error);
+            }
             fishSpeechModels = [];
         }
     }
@@ -336,7 +323,7 @@
 
         {#if DBState.db.characters[$selectedCharID].type === 'group'}
             <div class="flex mt-2 items-center">
-                <Check bind:check={(DBState.db.characters[$selectedCharID] as groupChat).orderByOrder} name={language.orderByOrder}/>
+                <Check bind:check={() => (DBState.db.characters[$selectedCharID] as groupChat).orderByOrder ?? false, (v) => (DBState.db.characters[$selectedCharID] as groupChat).orderByOrder = v} name={language.orderByOrder}/>
             </div>
         {/if}
     {/if}
@@ -465,7 +452,7 @@
 
         {#if DBState.db.characters[$selectedCharID].type === 'character' && DBState.db.characters[$selectedCharID].image !== ''}
             <div class="flex items-center mt-4">
-                <Check bind:check={(DBState.db.characters[$selectedCharID] as character).largePortrait} name={language.largePortrait}/>
+                <Check bind:check={() => (DBState.db.characters[$selectedCharID] as character).largePortrait ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).largePortrait = v} name={language.largePortrait}/>
             </div>
         {/if}
 
@@ -558,7 +545,7 @@
                 <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.emotionInstructions} />
             {/if}
 
-            <CheckInput bind:check={(DBState.db.characters[$selectedCharID] as character).inlayViewScreen} name={language.inlayViewScreen} onChange={() => {
+            <CheckInput bind:check={() => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen = v} name={language.inlayViewScreen} onChange={() => {
                 if(DBState.db.characters[$selectedCharID].type === 'character'){
                     if((DBState.db.characters[$selectedCharID] as character).inlayViewScreen && (DBState.db.characters[$selectedCharID] as character).additionalAssets === undefined){
                         (DBState.db.characters[$selectedCharID] as character).additionalAssets = []
@@ -581,7 +568,7 @@
             <span class="text-textcolor mt-2">{language.imgGenInstructions}</span>
             <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.instructions} />
 
-            <CheckInput bind:check={(DBState.db.characters[$selectedCharID] as character).inlayViewScreen} name={language.inlayViewScreen} onChange={() => {
+            <CheckInput bind:check={() => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen = v} name={language.inlayViewScreen} onChange={() => {
                 if((DBState.db.characters[$selectedCharID] as character).type === 'character'){
                     (DBState.db.characters[$selectedCharID] as character) = updateInlayScreen((DBState.db.characters[$selectedCharID] as character))
                 }
@@ -590,7 +577,7 @@
     {:else if viewSubMenu === 2}
 
             {#if DBState.db.newImageHandlingBeta}
-            <CheckInput bind:check={DBState.db.characters[$selectedCharID].prebuiltAssetCommand} name={language.insertAssetPrompt}/>
+            <CheckInput bind:check={() => DBState.db.characters[$selectedCharID].prebuiltAssetCommand ?? false, (v) => DBState.db.characters[$selectedCharID].prebuiltAssetCommand = v} name={language.insertAssetPrompt}/>
 
             <span class="text-textcolor mt-2">{language.assetStyle}</span>
             <SelectInput className="mb-2" bind:value={DBState.db.characters[$selectedCharID].prebuiltAssetStyle}>
@@ -809,6 +796,8 @@
                             <OptionInput value={voice.voice_id}>{voice.name}</OptionInput>
                         {/each}
                 </SelectInput>
+            {:catch error}
+                <span class="text-draculared">{error instanceof Error ? error.message : String(error)}</span>
             {/await}
          {:else if DBState.db.characters[$selectedCharID].ttsMode === 'VOICEVOX'}
                 <span class="text-textcolor">{language.sidebarUi.ttsSpeaker}</span>
@@ -1058,7 +1047,7 @@
         {/if}
         {#if DBState.db.characters[$selectedCharID].ttsMode}
             <div class="flex items-center mt-2">
-                <Check bind:check={DBState.db.characters[$selectedCharID].ttsReadOnlyQuoted} name={language.ttsReadOnlyQuoted}/>
+                <Check bind:check={() => DBState.db.characters[$selectedCharID].ttsReadOnlyQuoted ?? false, (v) => DBState.db.characters[$selectedCharID].ttsReadOnlyQuoted = v} name={language.ttsReadOnlyQuoted}/>
             </div>
         {/if}
     {/if}
@@ -1216,12 +1205,13 @@
         </div>
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].lowLevelAccess} name={language.lowLevelAccess}/>
+            <!-- Optional top-level boolean flags of the character use function bindings: binding an absent flag directly makes Svelte write `false` into the character on mount. -->
+            <Check bind:check={() => DBState.db.characters[$selectedCharID].lowLevelAccess ?? false, (v) => DBState.db.characters[$selectedCharID].lowLevelAccess = v} name={language.lowLevelAccess}/>
             <span> <Help key="lowLevelAccess" name={language.lowLevelAccess}/></span>
         </div>
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].hideChatIcon} name={language.hideChatIcon}/>
+            <Check bind:check={() => DBState.db.characters[$selectedCharID].hideChatIcon ?? false, (v) => DBState.db.characters[$selectedCharID].hideChatIcon = v} name={language.hideChatIcon}/>
         </div>
 
         <div class="flex items-center mt-4">
@@ -1230,7 +1220,7 @@
         </div>
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].escapeOutput} name={language.escapeOutput}/>
+            <Check bind:check={() => (DBState.db.characters[$selectedCharID] as character).escapeOutput ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).escapeOutput = v} name={language.escapeOutput}/>
         </div>
 
         {#if DBState.db.supaModelType !== 'none' && DBState.db.hypav2}
@@ -1289,7 +1279,7 @@
         {/if}
 
         <div class="flex items-center mt-4">
-            <Check bind:check={DBState.db.characters[$selectedCharID].lowLevelAccess} name={language.lowLevelAccess}/>
+            <Check bind:check={() => DBState.db.characters[$selectedCharID].lowLevelAccess ?? false, (v) => DBState.db.characters[$selectedCharID].lowLevelAccess = v} name={language.lowLevelAccess}/>
             <span> <Help key="lowLevelAccess" name={language.lowLevelAccess}/></span>
         </div>
     {/if}

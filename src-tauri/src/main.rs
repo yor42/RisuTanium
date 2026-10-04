@@ -16,6 +16,62 @@ use std::{path::Path, time::Duration};
 use tauri::path::BaseDirectory;
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_fs::FsExt;
+
+mod env_secret;
+mod launch_inputs;
+use launch_inputs::LaunchInputs;
+use std::sync::Mutex;
+
+/// Files and deep links handed in by the operating system that the page has not
+/// taken yet.
+struct PendingLaunch(Mutex<LaunchInputs>);
+
+fn lock_pending(state: &PendingLaunch) -> std::sync::MutexGuard<'_, LaunchInputs> {
+    state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The fs scope grows only by files the operating system handed in as launch inputs.
+fn allow_launch_files(app: &AppHandle, files: &[std::path::PathBuf]) {
+    if let Some(scope) = app.try_fs_scope() {
+        for file in files {
+            if let Err(e) = scope.allow_file(file) {
+                println!("Failed to allow launch file {}: {}", file.display(), e);
+            }
+        }
+    }
+}
+
+/// Queues inputs that arrive while the app runs and tells the page to take them.
+#[allow(dead_code)]
+fn queue_launch_inputs(app: &AppHandle, inputs: LaunchInputs) {
+    if inputs.is_empty() {
+        return;
+    }
+    allow_launch_files(app, &inputs.files);
+    if let Some(state) = app.try_state::<PendingLaunch>() {
+        lock_pending(&state).extend(inputs);
+    }
+    let _ = app.emit("risu-launch-inputs", ());
+}
+
+/// Reads one process environment variable for a secret reference. Registered on
+/// every target; on mobile it reads that process's own environment.
+#[tauri::command]
+fn read_env_secret(name: String) -> Result<String, String> {
+    env_secret::resolve_env_secret(&name, |key| std::env::var_os(key))
+}
+
+#[tauri::command]
+fn take_launch_inputs(state: tauri::State<'_, PendingLaunch>) -> Value {
+    let taken = lock_pending(&state).drain();
+    let files: Vec<String> = taken
+        .files
+        .iter()
+        .map(|file| file.to_string_lossy().into_owned())
+        .collect();
+    json!({ "files": files, "urls": taken.urls })
+}
 
 #[tauri::command]
 async fn native_request(url: String, body: String, header: String, method: String) -> String {
@@ -665,11 +721,33 @@ async fn streamed_fetch(
 
 
 fn main() {
-    let mut builder = tauri::Builder::default();
+    // The command line is consumed once per process chain: a relaunch finds the
+    // marker and starts with an empty queue. This runs before any thread starts.
+    #[cfg(desktop)]
+    let cold_launch = {
+        let relaunched = launch_inputs::argv_gate(|name| std::env::var_os(name));
+        // Only a process started by this app's own restart sees the marker;
+        // nothing else this process spawns carries it.
+        std::env::remove_var(launch_inputs::LAUNCH_CONSUMED_ENV);
+        if relaunched {
+            LaunchInputs::default()
+        } else {
+            let cwd = std::env::current_dir().ok();
+            launch_inputs::classify(std::env::args_os(), cwd.as_deref())
+        }
+    };
+    #[cfg(not(desktop))]
+    let cold_launch = LaunchInputs::default();
+
+    let mut builder = tauri::Builder::default().manage(PendingLaunch(Mutex::new(cold_launch)));
 
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            queue_launch_inputs(
+                app,
+                launch_inputs::classify(args.into_iter().map(Into::into), Some(Path::new(&cwd))),
+            );
             let _ = app
                 .get_webview_window("main")
                 .expect("no main window")
@@ -691,8 +769,17 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            if let Some(state) = app.try_state::<PendingLaunch>() {
+                let files = lock_pending(&state).files.clone();
+                allow_launch_files(app.handle(), &files);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
+            take_launch_inputs,
+            read_env_secret,
             native_request,
             check_auth,
             check_requirements_local,
@@ -704,8 +791,37 @@ fn main() {
             install_py_dependencies,
             streamed_fetch
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application")
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // Set at exit so a restart child inherits it and a plain exit spawns
+            // nothing afterwards. If request_exit fails, tauri restarts without
+            // running this callback and the argv file may import once more. Runtime
+            // threads exist here; accepted because only the restart child starts after.
+            #[cfg(desktop)]
+            if let tauri::RunEvent::Exit = _event {
+                std::env::set_var(launch_inputs::LAUNCH_CONSUMED_ENV, "1");
+            }
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let cwd = std::env::current_dir().ok();
+                let mut inputs = LaunchInputs::default();
+                for url in urls {
+                    if url.scheme() == "file" {
+                        if let Some(file) = url
+                            .to_file_path()
+                            .ok()
+                            .and_then(|path| launch_inputs::file_input(&path, cwd.as_deref()))
+                        {
+                            inputs.files.push(file);
+                        }
+                    } else if launch_inputs::is_deep_link(url.as_str()) {
+                        inputs.urls.push(url.to_string());
+                    }
+                }
+                queue_launch_inputs(_app, inputs);
+            }
+        });
 }
 
 fn header_map_to_json(header_map: &HeaderMap) -> serde_json::Value {

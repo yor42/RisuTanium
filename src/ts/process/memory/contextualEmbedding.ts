@@ -1,6 +1,7 @@
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { contextHash, type VectorArray } from "./hypamemory";
+import { resolveSecret } from "src/ts/secretRef";
 
 export interface ContextualEmbeddingProvider {
   readonly modelId: string;
@@ -30,17 +31,17 @@ const MAX_INPUTS_PER_REQUEST = 1000;
 class VoyageContext3Provider implements ContextualEmbeddingProvider {
   readonly modelId = VOYAGE_MODEL;
 
-  private getApiKey(): string {
+  private async getApiKey(): Promise<string> {
     const db = getDatabase();
     const apiKey = db.voyageApiKey?.trim();
     if (!apiKey) {
       throw new Error('Voyage Context 3 requires a Voyage API Key');
     }
-    return apiKey;
+    return await resolveSecret(apiKey);
   }
 
   async embedDocumentGroups(groups: string[][]): Promise<VectorArray[][]> {
-    const apiKey = this.getApiKey();
+    const apiKey = await this.getApiKey();
     const batches = this.batchGroups(groups);
     const allResults: VectorArray[][] = new Array(groups.length);
 
@@ -76,7 +77,7 @@ class VoyageContext3Provider implements ContextualEmbeddingProvider {
   }
 
   async embedQueries(queries: string[]): Promise<VectorArray[]> {
-    const apiKey = this.getApiKey();
+    const apiKey = await this.getApiKey();
     const response = await globalFetch(VOYAGE_API_URL, {
       headers: {
         "Authorization": "Bearer " + apiKey,

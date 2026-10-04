@@ -14,6 +14,7 @@ import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset } from '../process/memory/hypav3'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import { isTauri, isNodeServer } from "src/ts/platform"
+import { blankSecretRef } from '../secretRef'
 import { safeStructuredClone } from '../polyfill';
 import { hasEnabledV21Plugin } from '../plugins/v21Plugins';
 import { AssetList, toAssetList } from './assetList';
@@ -2538,6 +2539,8 @@ export async function importPreset(f:{
     if(!Array.isArray(db.botPresets)){
         db.botPresets = []
     }
+    pre.openAIKey = blankSecretRef(pre.openAIKey)
+    pre.proxyKey = blankSecretRef(pre.proxyKey)
     db.botPresets.push(pre)
 }
 

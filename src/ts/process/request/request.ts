@@ -22,6 +22,8 @@ import { requestClaude } from './anthropic';
 import { requestGoogleCloudVertex } from './google';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type ModelModeExtended } from './shared';
+import { resolveRequestKey } from './secretKey';
+import { SecretRefError } from '../../secretRef';
 
 export type ToolCall = {
     name: string;
@@ -455,7 +457,28 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
 }
 
 
+/**
+ * A credential that is a `${NAME}` reference and cannot be read ends this model's attempt: no
+ * retry on the same model (the variable will not appear by itself), and the next fallback
+ * model, which may use another credential, is still tried.
+ */
 export async function requestChatDataMain(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
+    try{
+        return await requestChatDataByFormat(arg, model, abortSignal)
+    }
+    catch(error){
+        if(error instanceof SecretRefError){
+            return {
+                type: 'fail',
+                result: error.message,
+                noRetry: true
+            }
+        }
+        throw error
+    }
+}
+
+async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
     const db = getDatabase()
     const targ:RequestDataArgumentExtended = arg
 
@@ -492,12 +515,12 @@ export async function requestChatDataMain(arg:requestDataArgument, model:ModelMo
         targ.modelInfo.internalID = db.customProxyRequestModel
         targ.modelInfo.format = db.customAPIFormat
         targ.customURL = db.forceReplaceUrl
-        targ.key = db.proxyKey
+        targ.key = await resolveRequestKey(arg, db.proxyKey)
     }
     if(targ.aiModel.startsWith('xcustom:::')){
         const found = db.customModels.find(m => m.id === targ.aiModel)
         targ.customURL = found?.url
-        targ.key = found?.key
+        targ.key = await resolveRequestKey(arg, found?.key)
     }
 
     const format = targ.modelInfo.format
@@ -646,7 +669,7 @@ async function requestNovelAI(arg:RequestDataArgumentExtended):Promise<requestDa
     }
 
     let headers = {
-        "Authorization": "Bearer " + (arg.key ?? db.novelai.token)
+        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.novelai.token)
     }
 
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(aiModel))
@@ -714,7 +737,7 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
     }
 
     let headers: Record<string, string> = (aiModel === 'textgen_webui') ? {} : {
-        'X-API-KEY': db.mancerHeader
+        'X-API-KEY': await resolveRequestKey(arg, db.mancerHeader)
     }
 
     bodyTemplate = applyAdditionalParameters(bodyTemplate, headers, getAdditionalParameters(aiModel))
@@ -1063,7 +1086,7 @@ async function requestNovelList(arg:RequestDataArgumentExtended):Promise<request
     const biasString = arg.biasString
     const charName = getRequestCharName(arg.subject)
     const aiModel = arg.aiModel
-    const auth_key = db.novellistAPI;
+    const auth_key = await resolveRequestKey(arg, db.novellistAPI);
     const api_server_url = 'https://api.tringpt.com/';
     const logit_bias:string[] = []
     const logit_bias_values:string[] = []
@@ -1148,21 +1171,21 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
 
     if(isCloud && requestFormat === LLMFormat.OpenAICompatible){
         arg.customURL = 'https://ollama.com/v1/chat/completions'
-        arg.key = db.ollamaApiKey
+        arg.key = await resolveRequestKey(arg, db.ollamaApiKey)
         arg.modelInfo.internalID = ollamaModel
         return requestOpenAI(arg)
     }
 
     if(isCloud && requestFormat === LLMFormat.OpenAIResponseAPI){
         arg.customURL = 'https://ollama.com/v1/responses'
-        arg.key = db.ollamaApiKey
+        arg.key = await resolveRequestKey(arg, db.ollamaApiKey)
         arg.modelInfo.internalID = ollamaModel
         return requestOpenAIResponseAPI(arg)
     }
 
     if(isCloud && requestFormat === LLMFormat.Anthropic){
         arg.customURL = 'https://ollama.com/v1/messages'
-        arg.key = db.ollamaApiKey
+        arg.key = await resolveRequestKey(arg, db.ollamaApiKey)
         arg.modelInfo = {
             ...arg.modelInfo,
             internalID: ollamaModel,
@@ -1181,7 +1204,7 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
         }
     }
 
-    let customHeaders: Record<string, string> = isCloud && db.ollamaApiKey ? { Authorization: 'Bearer ' + db.ollamaApiKey } : {}
+    let customHeaders: Record<string, string> = isCloud && db.ollamaApiKey ? { Authorization: 'Bearer ' + await resolveRequestKey(arg, db.ollamaApiKey) } : {}
 
     let requestBody: any = {
         model: ollamaModel,
@@ -1332,7 +1355,7 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     }
 
     let headers: Record<string, string> = {
-        "Authorization": "Bearer " + (arg.key ?? db.cohereAPIKey),
+        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.cohereAPIKey),
         "Content-Type": "application/json"
     }
 
@@ -1424,7 +1447,7 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
 
     let apiKey = '0000000000'
     if(db.hordeConfig.apiKey.length > 2){
-        apiKey = db.hordeConfig.apiKey
+        apiKey = await resolveRequestKey(arg, db.hordeConfig.apiKey)
     }
 
     let headers: Record<string, string> = {

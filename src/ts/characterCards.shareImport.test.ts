@@ -40,7 +40,6 @@ const h = vi.hoisted(() => ({
     isTauri: false,
     /** what readFile answers per path; an Error is thrown */
     tauriFiles: {} as Record<string, Uint8Array | Error>,
-    deepLinkRegistered: 0,
 }))
 
 vi.mock('uuid', () => ({
@@ -176,13 +175,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     }),
 }))
 
-vi.mock('@tauri-apps/plugin-deep-link', () => ({
-    onOpenUrl: vi.fn(async () => { h.deepLinkRegistered++; return vi.fn() }),
-}))
-
 //#endregion
 
-import { characterURLImport } from 'src/ts/characterCards'
+import { characterURLImport, importOpenedFiles } from 'src/ts/characterCards'
 import { CharXImporter, CharXWriter } from 'src/ts/process/processzip'
 import { PngChunk } from 'src/ts/pngChunk'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
@@ -350,7 +345,6 @@ beforeEach(() => {
     h.presetFails = null
     h.isTauri = false
     h.tauriFiles = {}
-    h.deepLinkRegistered = 0
     shares.clear()
     routes.clear()
     fetchCalls = []
@@ -376,7 +370,6 @@ afterEach(() => {
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
     delete (window as unknown as { launchQueue?: unknown }).launchQueue
-    delete (window as unknown as { tauriOpenedFiles?: unknown }).tauriOpenedFiles
     setUrl('/')
 })
 
@@ -814,9 +807,8 @@ describe('launchQueue', () => {
 // Files opened through Tauri, and the links that import a module or a preset inline
 // ---------------------------------------------------------------------------------------------
 
-describe('tauriOpenedFiles', () => {
-    test('a file that cannot be read does not stop the files after it, the start-up work continues, and what did not import is named once at the end', async () => {
-        h.isTauri = true
+describe('importOpenedFiles', () => {
+    test('a file that cannot be read does not stop the files after it, and what did not import is named once at the end', async () => {
         h.moduleFails = language.errors.noData
         const good = await charxBytes('Opened')
         h.tauriFiles = {
@@ -824,23 +816,30 @@ describe('tauriOpenedFiles', () => {
             'C:\\docs\\ok.charx': good,
             'C:\\docs\\bad.risum': new U8([8]),
         }
-        ;(window as unknown as { tauriOpenedFiles: string[] }).tauriOpenedFiles = ['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum']
-        await characterURLImport()
+        await importOpenedFiles(['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum'])
         expect(charName(0)).toBe('Opened')
         expect(h.characters).toHaveLength(1)
         expect(h.modules).toEqual([])
         expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read denied\nbad.risum: ' + language.errors.noData))
-        expect(h.deepLinkRegistered).toBe(1)
     })
 
-    test('files that all import show no error and the deep-link handler is registered (guard)', async () => {
-        h.isTauri = true
+    test('files that all import show no error (guard)', async () => {
         h.tauriFiles = { '/docs/a.charx': await charxBytes('A'), '/docs/b.charx': await charxBytes('B') }
-        ;(window as unknown as { tauriOpenedFiles: string[] }).tauriOpenedFiles = ['/docs/a.charx', '/docs/b.charx']
-        await characterURLImport()
+        await importOpenedFiles(['/docs/a.charx', '/docs/b.charx'])
         expect(h.characters).toHaveLength(2)
         expect(h.errors).toEqual([])
-        expect(h.deepLinkRegistered).toBe(1)
+    })
+
+    test('characterURLImport reads no file from a window.tauriOpenedFiles list', async () => {
+        const { readFile } = await import('@tauri-apps/plugin-fs')
+        vi.mocked(readFile).mockClear()
+        h.isTauri = true
+        h.tauriFiles = { '/docs/a.charx': await charxBytes('A') }
+        ;(window as unknown as { tauriOpenedFiles: string[] }).tauriOpenedFiles = ['/docs/a.charx']
+        await characterURLImport()
+        delete (window as unknown as { tauriOpenedFiles?: unknown }).tauriOpenedFiles
+        expect(readFile).not.toHaveBeenCalled()
+        expect(h.characters).toHaveLength(0)
     })
 })
 

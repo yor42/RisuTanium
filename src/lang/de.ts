@@ -26,6 +26,10 @@ export const languageGerman = {
         "networkFetchPlain": "Dies kann ein einfacher Abruffehler sein. Versuchen Sie, die Option 'Erzwinge einfachen Abruf' in den Einstellungen zu deaktivieren.",
         "requestLogRemoved": "Dieses Anfrage-Protokoll wurde entfernt.",
         "requestLogRemovedDesc": "Dieses Anfrage-Protokoll wird entfernt, wenn der Client aktualisiert oder neu geladen wird.",
+        "secretRefUnavailable": (name: string) => `Die Umgebungsvariable ${name} ist nicht verfügbar, weil sie nicht gesetzt ist, der Server sie nicht erlaubt oder der Server die Anfrage abgelehnt hat.`,
+        "secretRefUnsupported": (name: string) => `Die Umgebungsvariable ${name} kann hier nicht verwendet werden: Diese Plattform hat keinen Zugriff auf die Umgebung des Servers.`,
+        "secretRefNotForeign": (name: string) => `Die Umgebungsvariable ${name} wird nur an ihren eigenen Anbieter gesendet und wurde daher für diese Anfrage nicht verwendet.`,
+        "secretRefInRequest": (name: string) => `Eine Anfrage enthält noch den Verweis auf die Umgebungsvariable ${name}. Sie wurde nicht gesendet.`,
         "coldStorageRestoreFailed": "Kaltlagerdaten konnten nicht geladen werden. Die Daten des betroffenen Charakters können dauerhaft verloren sein.",
         "coldStorageRestoreUnreadable": "Dieser Charakter konnte gerade nicht geladen werden. Es wurde nichts verändert. Versuchen Sie es bitte erneut.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
@@ -324,6 +328,7 @@ export const languageGerman = {
     "settingsPage": {
         "nameApiKey": "{name} API-Schlüssel",
         "nameApiKeyLower": "{name} API-Schlüssel",
+        "apiKeyEnvRefNote": "Anstelle eines Schlüssels können Sie ${NAME} eingeben: den Namen einer Umgebungsvariable auf dem Rechner, auf dem die Desktop-App oder der Node-Server läuft. Gelesen werden nur Namen wie RISU_OPENAI_KEY (RISU_, ein Name, dann _KEY oder _TOKEN), es sei denn, sie sind in der Variable RISU_ALLOWED_ENV auf diesem Rechner aufgeführt. Ein Web-Build ohne den Node-Server kann keine Umgebungsvariablen lesen.",
         "nameKey": "{name} Schlüssel",
         "nameUrl": "{name} URL",
         "nameSettings": "{name} Einstellungen",

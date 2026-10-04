@@ -16,6 +16,21 @@ import {
     type AfterTTSResult,
 } from "./ttsHooks";
 import { createFishSpeechDefaults, createNovelAIVoiceDefaults, createVoicevoxDefaults } from "./ttsDefaults";
+import { SecretRefError, isSecretRef, resolveSecret, secretRefName } from "../secretRef";
+
+/**
+ * True only for an `https:` URL whose hostname is exactly `api.openai.com` (any port, path or
+ * userinfo): the one host a referenced `db.openAIKey` may be sent to from the per-character OpenAI
+ * TTS settings. An unparsable URL is not the default.
+ */
+function isDefaultOpenAIHost(baseURL: string): boolean {
+    try {
+        const parsed = new URL(baseURL)
+        return parsed.protocol === 'https:' && parsed.hostname === 'api.openai.com'
+    } catch {
+        return false
+    }
+}
 
 const HF_MAX_REQUESTS = 5
 const HF_WAIT_BUDGET_MS = 30_000
@@ -174,6 +189,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 break
             }
             case "elevenlab": {
+                const elevenKey = await resolveSecret(db.elevenLabKey)
                 const da = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${character.ttsSpeech}`, {
                     body: JSON.stringify({
                         text: text,
@@ -182,7 +198,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        'xi-api-key': db.elevenLabKey || undefined
+                        'xi-api-key': elevenKey || undefined
                     },
                     signal,
                 })
@@ -259,8 +275,17 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             case 'openai':{
                 const cfg = character.oaiTTSConfig?.enabled ? character.oaiTTSConfig : null
                 const baseURL = (cfg?.baseURL?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '')
-                const apiKey  = (cfg?.apiKey || db.openAIKey || '').trim()
-                const model   = cfg?.model || 'tts-1'
+                let apiKey  = (cfg?.apiKey || db.openAIKey || '').trim()
+                // Only the app-wide key may be a reference, and only for the default OpenAI host: a
+                // card chooses the base URL, so it must not be able to aim a referenced key elsewhere.
+                // The card's own key never resolves; globalFetch refuses a request that carries it.
+                if(!cfg?.apiKey && isSecretRef(apiKey)){
+                    if(!isDefaultOpenAIHost(baseURL)){
+                        throw new SecretRefError(secretRefName(apiKey), 'foreign')
+                    }
+                    apiKey = await resolveSecret(apiKey)
+                }
+                const model  = cfg?.model || 'tts-1'
                 const voice   = cfg?.voice || character.oaiVoice || 'alloy'
                 const format  = cfg?.format || 'mp3'
 
@@ -319,7 +344,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 const response = await globalFetch(url, {
                     method: 'GET',
                     headers: {
-                        "Authorization": "Bearer " + db.NAIApiKey,
+                        "Authorization": "Bearer " + await resolveSecret(db.NAIApiKey),
                     },
                     rawResponse: true,
                     abortSignal: signal,
@@ -350,12 +375,16 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     }
                 }
                 const url = `https://router.huggingface.co/hf-inference/models/${character.hfTTS.model}`
+                const hfKey = await resolveSecret(db.huggingfaceKey)
+                if(signal.aborted){
+                    return
+                }
                 let waitedMs = 0
                 for(let requests = 1; ; requests++){
                     const response = await fetch(url, {
                         method: 'POST',
                         headers: {
-                            "Authorization": "Bearer " + db.huggingfaceKey,
+                            "Authorization": "Bearer " + hfKey,
                             "Content-Type": "application/json",
                         },
                         body: JSON.stringify({
@@ -526,7 +555,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${db.fishSpeechKey}`
+                        'Authorization': `Bearer ${await resolveSecret(db.fishSpeechKey)}`
                     },
                     body: body,
                     rawResponse: true,
@@ -578,15 +607,39 @@ export function getWebSpeechTTSVoices() {
 export async function getElevenTTSVoices() {
     let db = getDatabase()
 
+    const elevenKey = await resolveSecret(db.elevenLabKey)
     const data = await fetch('https://api.elevenlabs.io/v1/voices', {
         headers: {
-            'xi-api-key': db.elevenLabKey || undefined
+            'xi-api-key': elevenKey || undefined
         }
     })
     const res = await data.json()
 
     console.log(res)
     return res.voices
+}
+
+/**
+ * The Fish Audio voice models of the account behind `fishSpeechKey`. A `${NAME}` reference is
+ * resolved here, so the literal is never sent; a failed resolution throws `SecretRefError` before
+ * any request is made. Anything that is not an array of items yields an empty list.
+ */
+export async function fetchFishSpeechModels(fishSpeechKey: string): Promise<{ _id: string, title: string, description: string }[]> {
+    const res = await fetch(`https://api.fish.audio/model?self=true`, {
+        headers: {
+            'Authorization': `Bearer ${await resolveSecret(fishSpeechKey)}`
+        }
+    });
+    const data = await res.json();
+    if (Array.isArray(data.items)) {
+        return data.items.map((item: { _id?: string, title?: string, description?: string }) => ({
+            _id: item._id || '',
+            title: item.title || '',
+            description: item.description || ''
+        }));
+    }
+    console.error('Expected an array of items, but received:', data.items);
+    return [];
 }
 
 export async function getVOICEVOXVoices() {

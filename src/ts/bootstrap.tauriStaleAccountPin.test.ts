@@ -117,6 +117,10 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
     loadPlugins: loadPluginsMock,
 }) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
 
+vi.mock(import('src/ts/desktopLaunch'), () => ({
+    desktopLaunchImport: vi.fn(async () => { }),
+}) as unknown as typeof import('src/ts/desktopLaunch'))
+
 vi.mock(import('src/ts/characterCards'), () => ({
     characterURLImport: vi.fn(),
     handlePendingRealmLink: vi.fn(async () => { }),

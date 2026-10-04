@@ -14,6 +14,8 @@ import { extractJSON } from "../templates/jsonSchema"
 import { callTool, decodeToolCall, encodeToolCall } from "../mcp/mcp"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from './shared'
+import { resolveRequestKey } from './secretKey'
+import { isSecretRef } from 'src/ts/secretRef'
 
 interface Claude3TextBlock {
     type: 'text',
@@ -77,7 +79,8 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
     const useStreaming = arg.useStreaming
     const ollamaCloudAnthropic = aiModel === 'ollama-cloud'
     let replacerURL = arg.customURL ?? ('https://api.anthropic.com/v1/messages')
-    let apiKey = arg.key || ((aiModel === 'reverse_proxy') ? db.proxyKey : db.claudeAPIKey)
+    // Resolved once, whole: a Bedrock key is the AKID:SECRET:region triple and is split after resolution.
+    let apiKey = await resolveRequestKey(arg, arg.key || ((aiModel === 'reverse_proxy') ? db.proxyKey : db.claudeAPIKey))
     const maxTokens = arg.maxTokens
     if(aiModel === 'reverse_proxy' && db.autofillRequestUrl){
         if(replacerURL.endsWith('v1')){
@@ -414,7 +417,11 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
           
             return { accessKeyId, secretAccessKey, region };
         }
-        const { accessKeyId, secretAccessKey, region } = getCredentialParts(apiKey);
+        // A preview keeps a referenced key as the reference. The reference is not an AKID:SECRET:region
+        // triple, so the preview is signed with it as a stand-in and shows a placeholder region.
+        const { accessKeyId, secretAccessKey, region } = (arg.previewBody && isSecretRef(apiKey))
+            ? { accessKeyId: apiKey.trim(), secretAccessKey: apiKey.trim(), region: '%REGION%' }
+            : getCredentialParts(apiKey);
 
         const AMZ_HOST = "bedrock-runtime.%REGION%.amazonaws.com";
         const host = AMZ_HOST.replace("%REGION%", region);

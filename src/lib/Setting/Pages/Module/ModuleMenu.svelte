@@ -250,7 +250,7 @@
     <span class="mt-4">{language.namespace} <Help key="namespace" /></span>
     <TextInput bind:value={currentModule.namespace} className="mt-1" size="sm"/>
     <div class="flex items-center mt-4">
-        <Check bind:check={currentModule.hideIcon} name={language.hideChatIcon}/>
+        <Check bind:check={() => currentModule.hideIcon ?? false, (v) => currentModule.hideIcon = v} name={language.hideChatIcon}/>
     </div>
     <span class="mt-4">{language.customPromptTemplateToggle} <Help key='customPromptTemplateToggle' /></span>
     <TextAreaInput bind:value={currentModule.customModuleToggle}/>
@@ -362,7 +362,7 @@
     <TriggerList bind:value={currentModule.trigger} lowLevelAble={currentModule.lowLevelAccess} />
 
     <div class="flex items-center mt-4">
-        <Check bind:check={currentModule.lowLevelAccess} name={language.lowLevelAccess}/>
+        <Check bind:check={() => currentModule.lowLevelAccess ?? false, (v) => currentModule.lowLevelAccess = v} name={language.lowLevelAccess}/>
         <span> <Help key="lowLevelAccess" name={language.lowLevelAccess}/></span>
     </div>
 {/if}

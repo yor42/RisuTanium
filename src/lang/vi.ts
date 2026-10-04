@@ -26,6 +26,10 @@ export const languageVietnamese = {
         "networkFetchPlain": "Đây có thể là lỗi plain fetch. Hãy thử tắt tùy chọn buộc dùng plain fetch trong cài đặt.",
         "requestLogRemoved": "Nhật ký yêu cầu này đã bị xóa.",
         "requestLogRemovedDesc": "Nhật ký yêu cầu này sẽ bị xóa khi client được làm mới hoặc tải lại.",
+        "secretRefUnavailable": (name: string) => `Biến môi trường ${name} không khả dụng: biến này chưa được đặt, máy chủ không cho phép, hoặc máy chủ đã từ chối yêu cầu.`,
+        "secretRefUnsupported": (name: string) => `Không thể dùng biến môi trường ${name} ở đây: nền tảng này không có quyền truy cập vào môi trường của máy chủ.`,
+        "secretRefNotForeign": (name: string) => `Biến môi trường ${name} chỉ được gửi tới nhà cung cấp của chính nó, nên không được dùng cho yêu cầu này.`,
+        "secretRefInRequest": (name: string) => `Yêu cầu vẫn còn chứa tham chiếu biến môi trường ${name}. Yêu cầu đã không được gửi.`,
         "coldStorageRestoreFailed": "Không thể tải dữ liệu bộ nhớ lạnh. Dữ liệu của nhân vật bị ảnh hưởng có thể đã bị mất vĩnh viễn.",
         "coldStorageRestoreUnreadable": "Hiện không thể tải nhân vật này. Không có gì bị thay đổi. Hãy thử lại.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
@@ -324,6 +328,7 @@ export const languageVietnamese = {
     "settingsPage": {
         "nameApiKey": "Khóa API {name}",
         "nameApiKeyLower": "Khóa API {name}",
+        "apiKeyEnvRefNote": "Thay cho khóa, bạn có thể nhập ${NAME}: tên của một biến môi trường trên máy chạy ứng dụng desktop hoặc máy chủ Node. Chỉ những tên có dạng như RISU_OPENAI_KEY mới được đọc (RISU_, một tên, rồi _KEY hoặc _TOKEN), trừ khi chúng được liệt kê trong biến RISU_ALLOWED_ENV trên máy đó. Bản dựng web không có máy chủ Node thì không thể đọc biến môi trường.",
         "nameKey": "Khóa {name}",
         "nameUrl": "URL {name}",
         "nameSettings": "Cài đặt {name}",

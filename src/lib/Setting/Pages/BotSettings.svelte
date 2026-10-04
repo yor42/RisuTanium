@@ -170,6 +170,8 @@
     <span class="text-textcolor mt-2">{language.submodel} <Help key="submodel"/></span>
     <ModelList bind:value={DBState.db.subModel}/>
 
+    <p class="text-textcolor2 text-sm mt-4 mb-2" data-testid="api-key-env-ref-note">{language.settingsPage.apiKeyEnvRefNote}</p>
+
     {#if modelInfo.provider === LLMProvider.GoogleCloud || subModelInfo.provider === LLMProvider.GoogleCloud}
         <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
         <TextInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.google.accessToken}/>
@@ -285,6 +287,8 @@
                         DBState.db.ollamaCloudModelName = name
                     }}
                 />
+            {:catch error}
+                <span class="text-draculared">{error instanceof Error ? error.message : String(error)}</span>
             {/await}
         {/if}
 

@@ -7714,3 +7714,103 @@ applies the edited text.
   each media `{#await}` a `{:catch}` and a production-safe warning.
 - **CHORE-91 was found to show an error box already** through `bootstrap.ts`'s unhandled-rejection handler (ledger row 1102).
   The change reports through `alertError` at the call site, which is item 5's "error box, as now" with the rejection handled.
+
+### MC-220 — Side session (`feat/side-batch`): the follow-ups CHORE-88, CHORE-81 and CHORE-80, their lane grants, the rulings on environment-variable keys, and the commits
+
+- **Tag:** decision (the answers below); the two scope amendments (under "Orchestrator dispositions") are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the Orchestrator's `AskUserQuestion` prompts in the side session, and two typed
+  instructions (items 5 and 8). The option text was written by the Orchestrator. The answers, in the order below: "Confirm
+  all three (Recommended)"; "Fix both, grant main.rs (Recommended)"; "Yes, resolve in browser (Recommended)"; "Anyone with
+  the password (Recommended)"; "All secret fields (Recommended)"; "${NAME}"; "Names ending in _KEY/_TOKEN (Recommended)",
+  revised after Gate 1 to "Require a RISU_ prefix (Recommended)"; "Blank on import, skip TTS (Recommended)"; "Stage it
+  (Recommended)"; "Commit both now (Recommended)"; "Commit stage 1, start 2 (Recommended)"; "Commit stage 2, start 3
+  (Recommended)"; "Show references unmasked (Recommended)"; "One note at the top of the API keys area (Recommended)"; "Fix
+  the note, then commit"; "Document it (Recommended)". The answers are attested by the Orchestrator's brief; the prompts
+  themselves are not quoted here.
+- **Reasoning:** none stated beyond the choices.
+- **Alternatives rejected:** only the scoping options for where a key is resolved are recorded (`followups-packets.md`, in the
+  session scratchpad): A, browser-side resolution; B, server-side substitution; C, a hybrid. The maintainer chose "Yes, resolve
+  in browser (Recommended)", which is A. The other unchosen option labels are not recorded.
+- **Related:** `MC-091`, `MC-175`, `MC-179`, `MC-190`, `MC-191`, `MC-212`, `MC-219`; CHORE-80, CHORE-81, CHORE-88; ledger rows
+  1122 to 1178.
+
+**What was decided (the maintainer's):**
+1. **The three follow-ups are taken, each with a lane grant from the Main Campaign** ("Confirm all three (Recommended)"):
+   CHORE-88, CHORE-81 and CHORE-80. The grants are listed under "Lane grants" below.
+2. **CHORE-81 fixes both file opening and deep links, and `main.rs` is granted** ("Fix both, grant main.rs (Recommended)").
+3. **CHORE-80, how it works** (an API-key field whose whole value is a `${NAME}` reference to an environment variable):
+   - the reference is resolved in the browser ("Yes, resolve in browser (Recommended)");
+   - anyone who can sign in to the server may use it ("Anyone with the password (Recommended)"; anyone who can sign in to the server; this answers open
+     question (e) in CHORE-80's entry);
+   - it covers all secret fields ("All secret fields (Recommended)");
+   - the syntax is `${NAME}`;
+   - which variables may be read: first "Names ending in _KEY/_TOKEN (Recommended)", then, after Gate 1 round 1 of the plan,
+     revised to "Require a RISU_ prefix (Recommended)". The revised rule is the one that stands.
+4. **CHORE-80, after Gate 1 round 1:** "Blank on import, skip TTS (Recommended)" and "Stage it (Recommended)". By the commit
+   messages, the first became: a preset import blanks a reference in the OpenAI and proxy key fields, and the card's own
+   OpenAI TTS key never resolves; the second became three stages (`7aeabdf9`, `aa6e442a`, `f38b503c`). The pairing of each
+   label with its behaviour is the Orchestrator's reading.
+5. **Commits.** "Commit both now (Recommended)", together with the typed "go ahead and commit chore 88 and 81": CHORE-88 as
+   `54b1a819` and CHORE-81 as `04484500`. "Commit stage 1, start 2 (Recommended)": CHORE-80 stage 1 as `7aeabdf9`. "Commit
+   stage 2, start 3 (Recommended)": stage 2 as `aa6e442a`.
+6. **CHORE-80 stage 3:** "Show references unmasked (Recommended)" and "One note at the top of the API keys area
+   (Recommended)". The fact-check of the stage 3 commit message found that the note said a name like `RISU_KEY` is read, and
+   it is not: `RISU_KEY` itself is not read (the pattern needs a second underscore before KEY/TOKEN; ledger row 1170). The maintainer answered "Fix the note, then
+   commit"; the note was reworded and stage 3 is `f38b503c`.
+7. **V2.1 plugins and environment variables:** "Document it (Recommended)", with no code change. An already-enabled V2.1
+   plugin can plausibly reach the resolver and nothing prevents it; the details are in the CHORE-80 Roadmap entry and ledger
+   row 1175. The wiki hand-off documents it.
+8. **The merge is the maintainer's to queue.** The typed instruction: "do the records and report to prepare the merge. I will
+   instruct the main session to queue the merge into our work order." The side session does not merge (`MC-219` hand-off
+   context).
+
+**Lane grants (the hand-off's do-not-edit list applies except as granted):**
+- **Stage 1, maintainer-confirmed (item 1):** `server/node/server.cjs` (a route, two hunks), `src/ts/globalApi.svelte.ts` (the
+  imports, entries and four log sinks) and `src/ts/storage/database.svelte.ts` (an import and two lines in `importPreset`'s
+  default branch), by the stage 1 commit message.
+- **CHORE-81, item 2:** `src-tauri/src/main.rs`, plus the new Rust file it needed.
+- **Stage 2:** the key reads in `src/ts/process/memory/**`, key-read sites only. The Main Campaign granted this, and the
+  stage closed with `aa6e442a`.
+- **CHORE-81, `bootstrap.ts` and `characterCards.ts`:** the Main Campaign's grant message for CHORE-81 (2026-10-04) reads:
+  "Grant: the launch-input handling in `src/ts/bootstrap.ts` (`characterURLImport`, `tauriOpenedFiles` and `onOpenUrl` in
+  `loadData`), plus `characterCards.ts`'s `characterURLImport`. Nothing else in bootstrap.ts." CHORE-81's `bootstrap.ts` edit is
+  the `desktopLaunchImport()` call in `loadData`'s launch handling, so it is inside the grant (the Orchestrator's reading of
+  the grant against the commit message). The same message asked the side session to add a Roadmap entry for CHORE-88, which
+  the Main Campaign lists as handed to the side session. The `characterCards.ts` edit is partly outside that literal text:
+  besides removing the dead blocks in `characterURLImport`, `04484500` adds the exported `importOpenedFiles()` and drops the
+  `onOpenUrl` import. The Orchestrator reads these as the grant's launch-input handling; the Main Campaign is asked to confirm
+  in the merge report.
+- **Not Main Campaign files:** the request, TTS, image, translator, tokenizer and model-list files that CHORE-80 touches, and
+  `src/lib`, are in the side session's own lane or unowned: the hand-off gives the side lane `src/lib/**` and `tts.ts`, and
+  does not list the others as Main Campaign files. `src/lang` is shared.
+
+**Disclosures:**
+- **(a) `src/lang`.** Stage 1 added four error strings to the seven language files. Stage 3 added `settingsPage.apiKeyEnvRefNote`
+  and revised `errors.secretRefUnavailable` in all seven. **Native review of the new note is wanted in ko, cn, zh-Hant, vi
+  and es** (the translator flagged the word for "build" and some phrasing; `f38b503c`'s message). `MC-212`'s native-speaker
+  review is the Main Campaign's; the side session hands the review of this note to the Main Campaign with the merge report,
+  alongside MC-212's.
+- **(b) Not run on a Tauri build (CHORE-81):** cold start with a file, a second instance, a relaunch, deep links, macOS
+  `Opened`, and the mobile compile. Only the Rust unit tests and the JS tests ran (`04484500`'s message).
+- **(c) The Rust command for CHORE-80 (`read_env_secret`) was not run inside a Tauri app** (`7aeabdf9`'s message); its nine
+  `cargo test` cases passed.
+- **(d)** A resolved value stays in page memory until the page reloads (details: the CHORE-80 Roadmap entry); the stage 1
+  commit message does not say this.
+- **(e) Compatibility (`MC-175`).** No save format, block format or `.bin` change in any of the five commits. A backup carries
+  a reference as typed; upstream would send the literal and the provider would reject it, so nothing is lost (`7aeabdf9`).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Scope amendment, CHORE-88 widened (`MC-091`, AGENTS "Scope amendments").** The ticket was the module editor's basic-info
+  tab. Gate 2 round 1 (`opus-reviewer`, ledger row 1128) found the same defect, from the same cause, in `CharConfig`,
+  `SideChatList` and `PersonaSettings`. They are fixed in `54b1a819` rather than ticketed apart. The Orchestrator's call under
+  the amendment rule, recorded here as the rule requires; the maintainer did not rule on it. Two behaviours were left on
+  purpose and are in CHORE-88's Roadmap entry.
+- **Scope amendment, `hypav2.ts` returns `retryable:false` for a `SecretRefError` (`MC-091`).** An unresolvable reference is no
+  longer retried; the error returns at once. The change is outside a bare key read; **the lane owner accepted it on
+  conditions**, which the Gate 2 reviewer found held (ledger rows 1154, 1157, 1159), and `aa6e442a` carries it.
+- **Gate counts.** CHORE-80's plan gate ended `[REJECT]` twice and then `[EDITORIAL]`, so it stopped below the three-round
+  escalation threshold (ledger rows 1129, 1132, 1133). No dispatch escalated.
+- **A reviewer claim not propagated.** The stage 3 commit message fact-check (ledger row 1170) said the trailer should read
+  Sonnet 5.5. The session's attribution is Opus 5.5, as on the earlier commits; the claim was rejected.

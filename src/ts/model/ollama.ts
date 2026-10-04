@@ -1,4 +1,5 @@
 import { globalFetch } from '../globalApi.svelte'
+import { resolveSecret, SecretRefError } from '../secretRef'
 import type { ModelGridItem } from './modelGrid'
 
 export type OllamaModelSource = 'local' | 'cloud'
@@ -26,7 +27,7 @@ export async function getOllamaModels(host: string, source: OllamaModelSource, a
         const headers: Record<string, string> = {}
 
         if (source === 'cloud' && apiKey) {
-            headers.Authorization = `Bearer ${apiKey}`
+            headers.Authorization = `Bearer ${await resolveSecret(apiKey)}`
         }
 
         const response = await globalFetch(`${baseUrl}/api/tags`, {
@@ -39,7 +40,11 @@ export async function getOllamaModels(host: string, source: OllamaModelSource, a
         const models: OllamaTagModel[] = response.data?.models ?? []
 
         return models.map((model) => toModelGridItem(model, source))
-    } catch {
+    } catch (error) {
+        // An unusable key reference is rethrown so the caller can show why the list is empty.
+        if (error instanceof SecretRefError) {
+            throw error
+        }
         return []
     }
 }

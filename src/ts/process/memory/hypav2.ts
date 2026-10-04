@@ -12,6 +12,7 @@ import { requestChatData } from "../request/request";
 import { HypaProcesser } from "./hypamemory";
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { runSummarizer } from "../transformers";
+import { resolveSecret, SecretRefError } from "src/ts/secretRef";
 
 export interface HypaV2Data {
     lastMainChunkID: number; // can be removed, but exists to more readability of the code.
@@ -40,7 +41,7 @@ export interface SerializableHypaV2Data extends Omit<HypaV2Data, 'mainChunks'> {
 async function summary(
     stringlizedChat: string,
     subject: RunSubject | undefined
-): Promise<{ success: boolean; data: string }> {
+): Promise<{ success: boolean; data: string; retryable?: boolean }> {
     const db = getDatabase();
     console.log("Summarizing");
 
@@ -65,10 +66,20 @@ async function summary(
     if (db.supaModelType !== "subModel") {
         const promptbody = stringlizedChat + "\n\n" + supaPrompt + "\n\nOutput:";
 
+        let supaKey: string;
+        try {
+            supaKey = await resolveSecret(db.supaMemoryKey);
+        } catch (error) {
+            if (error instanceof SecretRefError) {
+                return { success: false, data: "SupaMemory: " + error.message, retryable: false };
+            }
+            throw error;
+        }
+
         const da = await globalFetch("https://api.openai.com/v1/completions", {
             headers: {
                 "Content-Type": "application/json",
-                Authorization: "Bearer " + db.supaMemoryKey,
+                Authorization: "Bearer " + supaKey,
             },
             method: "POST",
             body: {
@@ -500,6 +511,14 @@ export async function hypaMemoryV2(
 
         if (!summaryData.success) {
             console.log("Summarization failed:", summaryData.data);
+            if (summaryData.retryable === false) {
+                // A key that cannot be resolved fails identically on every retry.
+                return {
+                    currentTokens: currentTokens,
+                    chats: chats,
+                    error: summaryData.data,
+                };
+            }
             summarizationFailures++;
             if (summarizationFailures >= maxSummarizationFailures) {
                 console.error("[HypaV2] Summarization failed multiple times. Aborting...");

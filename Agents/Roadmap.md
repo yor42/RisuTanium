@@ -5646,7 +5646,51 @@ maintainer's decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC
 
 ### CHORE-80 — Idea (feature / QOL, not a bug): read an API key from an environment variable instead of storing it in the save file (unscheduled; not investigated)
 
-**Status (2026-10-04):** open, **not scheduled**, **not investigated**. This is a feature idea, not a defect. The maintainer
+**Status (2026-10-04, side session): DONE in three stages, `7aeabdf9`, `aa6e442a` and `f38b503c`** (ledger rows 1123, 1129, 1132,
+1133, 1137, 1141, 1143, 1145 and 1147 to 1176; `MC-220`). The maintainer took it, with the design answers recorded in
+`MC-220` 3 and 4. An API-key field whose whole trimmed value is `${NAME}` is a reference to an environment variable on the
+machine that runs the Node server or the desktop app. It is resolved at use time, and never written to the
+database, a save, a backup or a preset. On the Node server the route accepts the server password or a signed `risu-auth` login, so anyone who can sign in may use it. Only names of the form `RISU_<name>_KEY` or `RISU_<name>_TOKEN`, and names listed in
+`RISU_ALLOWED_ENV`, resolve; the server and the Rust command enforce that, not the browser. The pure web build answers "not
+supported". Any other value is used exactly as typed. No save format or `.bin` change (`MC-175`).
+- **Stage 1, `7aeabdf9`:** the resolver, the Node route `/api/env-secret`, the Tauri command `read_env_secret`, a tripwire that
+  makes `globalFetch` and `fetchNative` refuse a request carrying a whole reference (they are plugin-reachable, so they never
+  substitute), redaction of resolved values in the fetch log, and the chat providers. A plugin that sent a header or URL query
+  value that is a whole `${UPPERCASE}` token now gets a refusal instead of the literal (the commit's PLUGIN-VISIBLE CHANGE).
+- **Stage 2, `aa6e442a`:** the remaining key readers: TTS, image, speech to text, translator, tokenizer, model lists and the
+  memory key reads (the lane grant, `MC-220`). A card's OpenAI TTS base URL that is not `api.openai.com` refuses a referenced
+  `db.openAIKey` fallback. `hypav2.ts` returns `retryable:false` for an unresolvable reference (the scope amendment, `MC-220`).
+- **Stage 3, `f38b503c`:** `TextInput` shows a whole reference as text and keeps a real key masked; one note on the model tab
+  of Bot Settings (`settingsPage.apiKeyEnvRefNote`) says what a key field accepts; `errors.secretRefUnavailable` also names a
+  refused request.
+- **Gates:** plan `[REJECT]` twice, then `[EDITORIAL]`. Stage 1 code `[REJECT]` (plugin-safety tests that were vacuous,
+  test-only), then `[EDITORIAL]`. Stage 2 code `[REJECT]` (the Fish and WaveSpeed model lists were not migrated), then
+  `[EDITORIAL]`. Stage 3 code `[REJECT]` (a delegated write-back missed non-bubbling input events), then `[APPROVE]`.
+- **Checks:** `pnpm test` 447 files, 8702 passed, 4 skipped before stage 1; 450 files, 8819 passed before stage 2; 452 files,
+  8825 passed before stage 3; `pnpm check` 0 and 0 and `pnpm build` ok for each. `cargo test env_secret` 9 passed. The Rust
+  command was not run inside a Tauri app.
+- **Known and left (each from the commit messages or the wiki packet, none fixed here):**
+  - The dynamic Google, Anthropic and OpenAI model lists, and the Google tokenizer, give the user no message for an
+    unresolvable reference; a failure is only logged to the console (the tokenizer falls back to the local tokenizer).
+  - With `googleClaudeTokenizing` on, a Gemini model and an unresolvable reference, the tokenizer requests the reference again
+    on every uncached encode, because failures are not cached.
+  - WaveSpeed's result request sends the key to a URL taken from the provider's own response. A plain key already does the
+    same.
+  - A changed Vertex PEM keeps using the token already minted from it for up to 3500 s, or until the page reloads. The 5-minute cache per name only controls how soon a changed variable is picked up.
+    **Correction to the stage 1 commit message (from the Wiki session, checked in source):** a resolved value is held in page memory until the page reloads, because `resolveSecret` registers it for log redaction in a module-level map that only `resetSecretRefState` clears.
+  - **V2.1 plugins and allowed variables.** An already-enabled V2.1 plugin runs in the main page and can reach both the route
+    and the command, so the exposure is plausible and not prevented: it could read a variable the name rule allows, including
+    ones never typed into the app. V2.1 code passes through `checkCodeSafety`'s identifier rewrite, which does not cover `fetch`
+    or the Tauri internals (ledger row 1175; V3 plugins cannot). The maintainer chose to document it and make no code change (`MC-220` 7); it is in the wiki
+    packet.
+  - **The note's name rule is slightly loose.** The committed `f38b503c` message and the shipped note say a name in the middle
+    is required. The pattern is `RISU_`, then zero or more of A-Z, 0-9 or `_`, then `_KEY` or `_TOKEN`: `RISU_KEY` itself is not
+    read, but `RISU__KEY` is, with an empty middle. Harmless.
+  - **Native review is wanted for the new note in ko, cn, zh-Hant, vi and es** (the translator flagged the word for "build" and
+    some phrasing).
+- **Wiki:** the CHORE-80 wiki packet is handed to the Wiki session (row 1176). This session did not edit `docs/wiki`.
+
+**Superseded by the status above (history):** **Status (2026-10-04):** open, **not scheduled**, **not investigated**. This is a feature idea, not a defect. The maintainer
 said it can go in "maybe later section" (`MC-190`). It is not placed in the work order; the maintainer places it.
 
 - **The idea (the maintainer's, `MC-190`):** an API-key field may hold a reference such as `$OPENAI_API_KEY`. The app resolves
@@ -5672,7 +5716,7 @@ said it can go in "maybe later section" (`MC-190`). It is not placed in the work
     the point, but a restore on another machine needs the variable set there. (Reasoned, not run.)
   - **(e) Security on the hosted build.** The hosted build is meant for private LAN or VPN use only, with barebones
     security by design (`MC-191`). Should any client that can reach the server be able to make it spend a server-held key?
-    Still open.
+    Still open. Answered: `MC-220` item 3.
 - **Next step:** when it is scheduled, open with an `investigator` pass on where API keys are read and how provider requests
   are routed on each platform (web, Tauri, Node and Hono server). Nothing is decided.
 - **Placement:** unplaced; the maintainer places it.
@@ -5680,7 +5724,30 @@ said it can go in "maybe later section" (`MC-190`). It is not placed in the work
 
 ### CHORE-81 — Tauri launch inputs are dead code: the desktop app ignores files opened with it and deep links (TRACED, not run)
 
-**Status (2026-10-04):** open, **not scheduled**. Severity: not assessed. Filed from the step 6 audit (ledger row 1018, R6),
+**Status (2026-10-04, side session): DONE in `04484500`** (ledger rows 1122, 1126, 1127, 1131, 1135, 1136, 1138, 1144, 1146;
+`MC-220` 2: the maintainer chose to fix both file opening and deep links and granted `main.rs`). The scoping confirmed the
+trace below and found the cause upstream: the Rust half that set `window.tauriOpenedFiles` was removed in `a92545cd`, and
+`characterURLImport()` was always in the non-Tauri branch of `loadData` (ledger row 1122). Now a new Rust module
+`launch_inputs.rs` classifies the command-line arguments (existing `.risum`, `.risup` and `.charx` files, and
+`risutaniumlocal:` and `risuailocal:` links); `main.rs` queues them behind a `take_launch_inputs` command, queues a second
+instance's arguments and emits `risu-launch-inputs`, handles macOS `RunEvent::Opened` (untested), and adds each queued file to
+the fs scope. `desktopLaunch.ts` listens, drains the queue and imports through the new `importOpenedFiles` in
+`characterCards.ts`; Realm links go to `downloadRisuHub`. `bootstrap.ts` calls it once first setup is done. The dead
+`tauriOpenedFiles` and `onOpenUrl` blocks are removed; the web and PWA paths are unchanged. A restart does not re-import the
+same file (a consumed marker in the environment). No save format or `.bin` change. `importOpenedFiles` lives outside
+`characterURLImport`, which the Main Campaign's grant text names.
+- **Gates:** plan `[REJECT]`, then `[EDITORIAL]`. Code `[EDITORIAL]` (the marker leaked into spawned processes; fixed, plus
+  labels), then `[APPROVE]`.
+- **Checks:** `cargo check` passed; `cargo test launch_inputs` 10 passed (resolved tauri 2.12.1, tauri-plugin-fs 2.6.0); with
+  CHORE-88's commit, `pnpm test` 442 files, 8524 passed, 4 skipped; `pnpm check` 0 and 0; `pnpm build` ok.
+- **Not run on a Tauri build:** cold start with a file, a second instance, a relaunch, deep links, macOS `Opened`, and the
+  mobile compile. Only the Rust unit tests and the JS tests ran. The "Not known" items below that depend on a desktop run are
+  still not observed.
+- **Known gaps (from the commit message):** if `request_exit` fails, tauri restarts without running the exit callback, so the
+  argv file may import once more; a file opened before first setup completes is not imported in that process; the queue is
+  emptied when the page takes it, so an import that fails is reported and not retried.
+
+**Superseded by the status above (history):** **Status (2026-10-04):** open, **not scheduled**. Severity: not assessed. Filed from the step 6 audit (ledger row 1018, R6),
 re-checked by the Orchestrator against source.
 
 - **What was traced:** `characterURLImport()` in `src/ts/characterCards.ts` has one caller, inside the web branch of
@@ -5761,6 +5828,44 @@ nothing. Mobile Tauri has no idle-reload path.
   5. `idleReloadPlatform()` returns 'desktop' for any Tauri page once the flag is on, with no mobile exclusion. Turning the flag
      on must also exclude mobile Tauri.
 - **Related:** `cdf700f3`; `MC-193`; CHORE-81 (the Tauri launch inputs are separate dead code).
+
+### CHORE-88 — Opening a module's basic-info tab, or a character's, group's or persona's settings, wrote `false` into optional flags the data did not carry
+
+**Status (2026-10-04, side session): filed and DONE in `54b1a819`** (ledger rows 1124, 1125, 1128, 1130, 1134, 1139, 1140,
+1142, 1144, 1146; `MC-220`; the Main Campaign held the CHORE-88 number; its CHORE-81 grant message of 2026-10-04 asked the side session to add this entry,
+and it lists the ticket as handed to the side session). Type:
+bug. Closed.
+
+- **What happened:** opening a module's basic-info tab, a character's settings, a group's chat list or a persona's settings
+  wrote `false` into optional flags the data did not carry, without the user touching anything. For the module editor the tests
+  show this marks the modules block changed, so a save is scheduled and the whole block is written again; the other screens
+  write into the character, group or persona through the same reactive proxy.
+- **Cause:** when a checkbox mounts with a bound value that is null or undefined, Svelte 5's `bind_checked` (svelte 5.56.8,
+  `internal/client/dom/elements/bindings/input.js`, as cited in the commit message) writes the input's `checked` back into that
+  value. Binding an optional boolean that the data does not carry therefore wrote `false` into it at mount, through the
+  reactive proxy.
+- **What changed:** the affected checkboxes use a function binding, `bind:check={() => X ?? false, (v) => X = v}`: the getter
+  supplies the display default and nothing is written until the user toggles. Covered: `ModuleMenu` (`hideIcon`,
+  `lowLevelAccess`); `CharConfig` (`lowLevelAccess` for a character and a group, `hideChatIcon`, `escapeOutput`,
+  `largePortrait`, `orderByOrder`, `inlayViewScreen` in both places, `prebuiltAssetCommand`, `ttsReadOnlyQuoted`);
+  `SideChatList` (the group's `orderByOrder`); `PersonaSettings` (the persona's `largePortrait`). Readers of these fields treat
+  undefined like false, so leaving the default unwritten changes no behaviour. No save format, block format or `.bin` change
+  (`MC-175`).
+- **Scope:** the ticket began with `ModuleMenu`. `CharConfig`, `SideChatList` and `PersonaSettings` have the same defect (the
+  Gate 2 reviewer's finding, row 1128) and were added to it (the scope amendment, `MC-220`).
+- **Left on purpose:**
+  - `ModuleMenu`'s tab-click defaults (lorebook and regex `??= []`, the trigger tab seeding two rows, `commitAssets([])` for
+    the assets tab): a one-time normalisation that gates rendering.
+  - The nested TTS config flags in `CharConfig`.
+  - `utilityBot`, which is defaulted at load.
+- **Tests:** against the base (the reviewer's re-run, each component swapped in through a scratch config), 14 fail in
+  `ModuleMenu.assets.svelte.test.ts` (2 opening reproducers and 12 asset-tab tests), 10 in the new
+  `CharConfig.lowLevelAccess.svelte.test.ts`, 1 in the new `SideChatList.orderByOrder.svelte.test.ts` and 1 in the new
+  `PersonaSettings.largePortrait.svelte.test.ts`. The new toggle tests are `guard:` tests and pass before and after.
+- **Gates:** no plan gate (small and well-contained). Gate 2 (`opus-reviewer`) ended `[EDITORIAL]` three rounds running
+  (labels and two test-header sentences); all corrections were applied. Checks with the CHORE-81 commit: `pnpm test` 442 files,
+  8524 passed, 4 skipped; `pnpm check` 0 and 0; `pnpm build` ok.
+- **Related:** CHORE-81 (committed right before it; the checks ran on both together); `MC-220`.
 
 ### CHORE-90 — 13 sibling image `{#await}` blocks have no `{:catch}`, so a rejected image raises an unhandled rejection
 

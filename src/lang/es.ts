@@ -26,6 +26,10 @@ export const languageSpanish = {
         "networkFetchPlain": "Esto puede ser un error de fetch simple. Intenta desactivar la opción de forzar fetch simple en la configuración.",
         "requestLogRemoved": "Este registro de solicitud ha sido eliminado.",
         "requestLogRemovedDesc": "Este registro de solicitud se elimina cuando el cliente se actualiza o recarga.",
+        "secretRefUnavailable": (name: string) => `La variable de entorno ${name} no está disponible: no está definida, el servidor no la permite o el servidor rechazó la solicitud.`,
+        "secretRefUnsupported": (name: string) => `La variable de entorno ${name} no se puede usar aquí: esta plataforma no tiene acceso al entorno del servidor.`,
+        "secretRefNotForeign": (name: string) => `La variable de entorno ${name} solo se envía a su propio proveedor, por lo que no se usó en esta solicitud.`,
+        "secretRefInRequest": (name: string) => `Una solicitud aún contiene la referencia a la variable de entorno ${name}. No se envió.`,
         "coldStorageRestoreFailed": "No se pudieron cargar los datos del almacenamiento frío. Los datos del personaje afectado pueden haberse perdido permanentemente.",
         "coldStorageRestoreUnreadable": "No se pudo cargar este personaje en este momento. No se cambió nada. Inténtalo de nuevo.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
@@ -324,6 +328,7 @@ export const languageSpanish = {
     "settingsPage": {
         "nameApiKey": "Clave API de {name}",
         "nameApiKeyLower": "Clave API de {name}",
+        "apiKeyEnvRefNote": "En lugar de una clave, se puede escribir ${NAME}: el nombre de una variable de entorno de la máquina que ejecuta la aplicación de escritorio o el servidor Node. Solo se leen los nombres como RISU_OPENAI_KEY (RISU_, un nombre y luego _KEY o _TOKEN), salvo que figuren en la variable RISU_ALLOWED_ENV de esa máquina. Una compilación web sin el servidor Node no puede leer variables de entorno.",
         "nameKey": "Clave de {name}",
         "nameUrl": "URL de {name}",
         "nameSettings": "Ajustes de {name}",

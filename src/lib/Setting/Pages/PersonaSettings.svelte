@@ -172,7 +172,8 @@
                     changeUserPersona(0, 'noSave')
                 }
             }}>{language.remove}</Button>
-            <Check bind:check={DBState.db.personas[DBState.db.selectedPersona].largePortrait}>{language.largePortrait}</Check>
+            <!-- Function binding: binding an absent flag directly makes Svelte write `false` into the persona on mount. -->
+            <Check bind:check={() => DBState.db.personas[DBState.db.selectedPersona].largePortrait ?? false, (v) => DBState.db.personas[DBState.db.selectedPersona].largePortrait = v}>{language.largePortrait}</Check>
         </div>
     </div>
 </div>

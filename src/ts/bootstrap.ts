@@ -15,6 +15,7 @@ import { MobileGUI, botMakerMode, selectedCharID, loadedStore, DBState, LoadingS
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertConfirm, alertInput, alertToast } from "./alert";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
+import { desktopLaunchImport } from "./desktopLaunch";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { decodeRisuSave, encodeRisuSaveLegacy } from "./storage/risuSave";
 import { updateAnimationSpeed } from "./gui/animation";
@@ -505,6 +506,11 @@ export async function loadData() {
             // upstream-services agreement was given: not awaited,
             // so boot never blocks on the user's answer.
             void handlePendingRealmLink()
+            // Files and deep links the operating system passed in; not
+            // awaited, and a boot before first setup leaves them queued.
+            if (isTauri && getDatabase().didFirstSetup) {
+                void desktopLaunchImport()
+            }
 
         } catch (error) {
             await archiveSession?.release().catch(() => { })

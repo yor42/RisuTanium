@@ -53,6 +53,7 @@ import { isTauri, isNodeServer } from "./platform";
 import { isLocalNetworkUrl } from "./network/localNetwork";
 import { decodeProxyJobWsChunk, formatProxyStreamErrorMessage, parseProxyJobWsEvent } from "./network/proxyJobWs";
 import { getNodeServerProxyAuth } from "./storage/nodeStorage";
+import { assertNoSecretRef, redactResolved } from "./secretRef";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint } from "./process/memory/busyActions";
@@ -2092,13 +2093,13 @@ export function addFetchLog(arg: {
     status?: number
 }): number {
     fetchLog.unshift({
-        body: typeof (arg.body) === 'string' ? arg.body : JSON.stringify(arg.body, null, 2),
-        header: JSON.stringify(arg.headers ?? {}, null, 2),
-        response: typeof (arg.response) === 'string' ? arg.response : JSON.stringify(arg.response, null, 2),
+        body: redactResolved(typeof (arg.body) === 'string' ? arg.body : JSON.stringify(arg.body, null, 2)),
+        header: redactResolved(JSON.stringify(arg.headers ?? {}, null, 2)),
+        response: redactResolved(typeof (arg.response) === 'string' ? arg.response : JSON.stringify(arg.response, null, 2)),
         responseType: arg.resType ?? 'json',
         success: arg.success,
         date: (new Date()).toLocaleTimeString(),
-        url: arg.url,
+        url: redactResolved(arg.url),
         chatId: arg.chatId,
         status: arg.status
     });
@@ -2114,6 +2115,7 @@ export function addFetchLog(arg: {
  */
 export async function globalFetch(url: string, arg: GlobalFetchArgs = {}): Promise<GlobalFetchResult> {
     try {
+        assertNoSecretRef(arg.headers, url);
         const db = getDatabase();
         if (arg.abortSignal?.aborted) { return { ok: false, data: 'aborted', headers: {}, status: 400 }; }
 
@@ -2184,24 +2186,24 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}): Promi
 function addFetchLogInGlobalFetch(response: any, success: boolean, url: string, arg: GlobalFetchArgs, status?: number) {
     try {
         fetchLog.unshift({
-            body: JSON.stringify(arg.body, null, 2),
-            header: JSON.stringify(arg.headers ?? {}, null, 2),
-            response: JSON.stringify(response, null, 2),
+            body: redactResolved(JSON.stringify(arg.body, null, 2)),
+            header: redactResolved(JSON.stringify(arg.headers ?? {}, null, 2)),
+            response: redactResolved(JSON.stringify(response, null, 2)),
             success: success,
             date: (new Date()).toLocaleTimeString(),
-            url: url,
+            url: redactResolved(url),
             chatId: arg.chatId,
             status: status
         })
     }
     catch {
         fetchLog.unshift({
-            body: JSON.stringify(arg.body, null, 2),
-            header: JSON.stringify(arg.headers ?? {}, null, 2),
-            response: `${response}`,
+            body: redactResolved(JSON.stringify(arg.body, null, 2)),
+            header: redactResolved(JSON.stringify(arg.headers ?? {}, null, 2)),
+            response: redactResolved(`${response}`),
             success: success,
             date: (new Date()).toLocaleTimeString(),
-            url: url,
+            url: redactResolved(url),
             chatId: arg.chatId,
             status: status
         })
@@ -2899,7 +2901,7 @@ const pipeFetchLog = (fetchLogIndex: number, readableStream: ReadableStream<Uint
     
     (async () => {
         const text = await (new Response(splited[0])).text()
-        fetchLog[fetchLogIndex].response = text
+        fetchLog[fetchLogIndex].response = redactResolved(text)
     })()
     
     return splited[1]
@@ -3114,6 +3116,7 @@ export async function fetchNative(url: string, arg: {
     networkRoute?: 'auto' | 'local_network'
 }): Promise<Response> {
 
+    assertNoSecretRef(arg.headers, url)
     const useInterceptor = !!arg.interceptor
     console.log(arg.body, 'body')
     if (arg.body === undefined && (arg.method === 'POST' || arg.method === 'PUT')) {

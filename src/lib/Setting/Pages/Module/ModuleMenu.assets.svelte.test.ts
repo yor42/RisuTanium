@@ -4,7 +4,8 @@
  * The module editor's asset tab edits a module that the real `setDatabase`
  * installed, so its `assets` is an `AssetList` and is not reactive. Every edit
  * (rename, add, delete) must still re-render the rows and schedule a save, and
- * a rename must not reload the previews.
+ * a rename must not reload the previews. Opening the editor, or its trigger
+ * tab, must not write the module's optional flags or mark the block dirty.
  *
  * Mounts the REAL `ModuleMenu.svelte` on `DBState.db.modules[0]`, with the real
  * `setDatabase` and the real `registerDbChangeEffects` over a `$state`
@@ -144,6 +145,7 @@ import { AssetList, type AssetTuple } from 'src/ts/storage/assetList'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import type { RisuPlugin } from 'src/ts/plugins/plugins.svelte'
+import { language } from 'src/lang'
 import ModuleMenu from './ModuleMenu.svelte'
 
 //#region helpers
@@ -181,10 +183,16 @@ interface Editor {
 let mounted: { target: HTMLElement, app: Record<string, unknown> }[] = []
 let cleanup: (() => void) | undefined
 
-/** Installs a database holding one module through the real `setDatabase`, and mounts the editor on it at the asset tab. */
-function openAssetTab(count: number, options: { preview?: boolean, plugins?: RisuPlugin[] } = {}): Editor {
+/**
+ * Installs a database holding `module` through the real `setDatabase`, registers
+ * the dirty tracker, and mounts the editor on the module's basic-info tab.
+ * Registration marks the modules block dirty once, so the flag is cleared after
+ * registration and before the mount: whatever it reads afterwards was set by the
+ * editor.
+ */
+function openEditor(module: RisuModule, options: { preview?: boolean, plugins?: RisuPlugin[] } = {}): Editor {
     setDatabase({
-        modules: [makeModule(count)],
+        modules: [module],
         plugins: options.plugins ?? [],
         useAdditionalAssetsPreview: options.preview ?? false,
         pluginCustomStorage: {},
@@ -194,20 +202,29 @@ function openAssetTab(count: number, options: { preview?: boolean, plugins?: Ris
         registerDbChangeEffects({ tracker, markChanged: vi.fn() })
     })
     flushSync()
+    tracker.modules = false
 
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ModuleMenu, { target, props: { currentModule: DBState.db.modules[0] } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
-    const tabs = target.querySelectorAll('div.flex.w-full > button')
-    ;(tabs[4] as HTMLButtonElement).click()
-    flushSync()
-    // Mounting the editor on its basic-info tab marks the modules block dirty
-    // before any asset is touched; the tests below look only at what the asset
-    // tab does, so the flag is cleared here.
-    tracker.modules = false
     return { target, tracker }
+}
+
+const tabButtons = (target: HTMLElement) => Array.from(target.querySelectorAll('div.flex.w-full > button')) as HTMLButtonElement[]
+
+/** Installs a database holding one module through the real `setDatabase`, and mounts the editor on it at the asset tab. */
+function openAssetTab(count: number, options: { preview?: boolean, plugins?: RisuPlugin[] } = {}): Editor {
+    const editor = openEditor(makeModule(count), options)
+    // The editor mounts on the basic-info tab and the mount itself writes nothing.
+    expect(editor.tracker.modules).toBe(false)
+    // The fixture already has an `assets` list, so opening the tab writes nothing
+    // either; every flag the tests below read comes from the tab's own controls.
+    tabButtons(editor.target)[4].click()
+    flushSync()
+    expect(editor.tracker.modules).toBe(false)
+    return editor
 }
 
 const inputs = (target: HTMLElement) => Array.from(target.querySelectorAll('table input')) as HTMLInputElement[]
@@ -391,5 +408,66 @@ describe('the asset previews', () => {
 
         expect(apiMocks.getFileSrc).toHaveBeenCalledWith('assets/saved')
         expect(target.querySelectorAll('table img')).toHaveLength(3)
+    })
+})
+
+describe('the module editor on a module lacking its optional flags', () => {
+    const bare = (): RisuModule => ({ name: 'Module', description: '', id: 'id-bare' })
+    const checkbox = (target: HTMLElement, label: string) =>
+        target.querySelector(`input[type="checkbox"][alt="${label}"]`) as HTMLInputElement
+
+    test('opening the editor leaves the module unchanged and the modules block clean', () => {
+        const before = JSON.stringify(bare())
+        const { target, tracker } = openEditor(bare())
+
+        expect(JSON.stringify(DBState.db.modules[0])).toBe(before)
+        expect('hideIcon' in DBState.db.modules[0]).toBe(false)
+        expect(tracker.modules).toBe(false)
+        expect(checkbox(target, language.hideChatIcon).checked).toBe(false)
+    })
+
+    test('opening the trigger tab on a module that has its lists leaves lowLevelAccess unset and the block clean', () => {
+        const { target, tracker } = openEditor({ ...bare(), lorebook: [], regex: [], trigger: [] })
+
+        tabButtons(target)[3].click()
+        flushSync()
+
+        expect('lowLevelAccess' in DBState.db.modules[0]).toBe(false)
+        expect(tracker.modules).toBe(false)
+        expect(checkbox(target, language.lowLevelAccess).checked).toBe(false)
+    })
+
+    test('guard: toggling the hide-icon checkbox writes a boolean and marks the block dirty', () => {
+        const { target, tracker } = openEditor(bare())
+        const box = checkbox(target, language.hideChatIcon)
+
+        box.click()
+        flushSync()
+        expect(DBState.db.modules[0].hideIcon).toBe(true)
+        expect(tracker.modules).toBe(true)
+
+        tracker.modules = false
+        box.click()
+        flushSync()
+        expect(DBState.db.modules[0].hideIcon).toBe(false)
+        expect(tracker.modules).toBe(true)
+    })
+
+    test('guard: toggling the low-level-access checkbox writes a boolean and marks the block dirty', () => {
+        const { target, tracker } = openEditor({ ...bare(), lorebook: [], regex: [], trigger: [] })
+        tabButtons(target)[3].click()
+        flushSync()
+        const box = checkbox(target, language.lowLevelAccess)
+
+        box.click()
+        flushSync()
+        expect(DBState.db.modules[0].lowLevelAccess).toBe(true)
+        expect(tracker.modules).toBe(true)
+
+        tracker.modules = false
+        box.click()
+        flushSync()
+        expect(DBState.db.modules[0].lowLevelAccess).toBe(false)
+        expect(tracker.modules).toBe(true)
     })
 })

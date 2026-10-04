@@ -20,7 +20,6 @@ import { CharXImporter, CharXParseError, CharXWriter, hasZipEndRecord } from "./
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { readFile } from "@tauri-apps/plugin-fs"
-import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
 
@@ -141,6 +140,15 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
             }
             return await importClassified(kind, data)
         }
+    }
+}
+
+//Files the operating system handed to the desktop app, read through the plugin-fs scope that was widened for exactly these paths. Never rejects.
+export async function importOpenedFiles(paths:string[]):Promise<void> {
+    try {
+        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => readFile(path))))
+    } catch (error) {
+        alertError(error)
     }
 }
 
@@ -725,33 +733,6 @@ export async function characterURLImport() {
                 return handleFiles(files)
             }
         });
-    }
-
-    if("tauriOpenedFiles" in window){
-        //@ts-expect-error tauriOpenedFiles is custom Tauri property, not defined in Window interface
-        const files:string[] = window.tauriOpenedFiles
-        try {
-            if(files){
-                await importFiles(files.map((file) => classifiedImport(file.split(/[\\/]/).pop() || file, file, '', () => readFile(file))))
-            }
-        } catch (error) {
-            alertError(error)
-        }
-    }
-    
-    if(isTauri){
-        await onOpenUrl((urls) => {
-            for(const url of urls){
-                const splited = url.split('/')
-                const id = splited[splited.length - 1]
-                const type = splited[splited.length - 2]
-                switch(type){
-                    case 'realm':{
-                        downloadRisuHub(id)
-                    }
-                }
-            }
-        })
     }
 
     function clearShareHash() {
