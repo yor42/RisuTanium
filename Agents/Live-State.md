@@ -15,6 +15,8 @@ treat it as a log or history.
 
 ## Branch and commit state
 
+**Current (2026-10-04, `git status -sb`):** the branch is ahead of its remote-tracking ref (`origin/fix/persistence-conflict-platform-hardening`, `1ce8abff`) by 98 commits. HEAD is `6aecff59`, a Wiki session commit; this campaign's last commits are `f04068f1` (Stage 0 (i)+(iii)) and the merge `ddd47655`. Nothing from the 2026-10-04 batch is pushed. The paragraph below, about being pushed through `48f00223`, is the 2026-10-02 state and is superseded.
+
 The branch is `fix/persistence-conflict-platform-hardening`. **It is pushed through `48f00223`** (`git status -sb` showed
 the branch in step with its remote-tracking ref on 2026-10-02; the repository is now yor42/RisuTanium, `MC-164`).
 The commits below were local when they were listed, and were pushed with it:
@@ -183,6 +185,17 @@ The commits below were local when they were listed, and were pushed with it:
 - `88c509de`: the records of the merge, committed at the maintainer's "commit the records for now" (ledger row 1017; the 44th on the first-parent line, `git rev-list --count --first-parent 1ce8abff..88c509de` printed 44 on 2026-10-04). Local, not pushed.
 - `cd26764d`: memory stage 1 step 6a, the busy registry, the save-clean signal and the restored-bytes counter, committed at the maintainer's "commit stage 6a, and give avd another try after taskkill." (the 45th; `MC-193`; ledger rows 1018 to 1022). Local, not pushed.
 - `cdf700f3`: memory stage 1 step 6b, the automatic idle reload (web on, desktop off), committed at the maintainer's "yes. lets commit." (the 46th; `MC-193`; ledger rows 1025 to 1028). Local, not pushed. The records commit that carries this line (`MC-193`, CHORE-81 to CHORE-86, ledger rows 1018 to 1030) follows it and will be the 47th.
+- `7ff0d092`: the records of memory steps 6 and 7 (`MC-193`, CHORE-81 to CHORE-86, ledger rows 1018 to 1030). Local, not pushed.
+- `148924b0`: CHORE-82, a backup load refuses while a registered action or a choke-point write is in flight, at the maintainer's "yep, commit the chore 82." (`MC-194` 7; ledger rows 1032, 1034 to 1037). Local, not pushed.
+- `3472e63a`: the merge of `feat/ui-batch` (UI session, tip `61ce12bc`, batch 5e) at "yes, let's merge." (`MC-194` 8; ledger row 1039). Local, not pushed.
+- `517f0cdb`: CHORE-87, the Node size guard, at "yep. go ahead and commit them." (`MC-194` 2 and 9; ledger rows 1040 to 1047). Local, not pushed.
+- `b1d2804b`: Stage A of the save-layer track, module asset lists out of Svelte's reactive graph, at "commit stage A once checks pass" (`MC-194` 5 and 15; ledger rows 1048, 1051, 1052, 1056 to 1058). Local, not pushed.
+- `32fa1184`: the merge of `feat/side-batch` (side session, tip `aeedbe4d`) at "Merge now (Recommended)" (`MC-194` 13; ledger row 1062). Local, not pushed.
+- `2aa55398`: Stage 0 (ii), the Node revision log, committed on the maintainer's word (the words were not kept; `MC-194` 15; ledger rows 1054, 1055, 1059 to 1061). Local, not pushed.
+- `f04068f1`: Stage 0 (i)+(iii), skip an equal main-file write and keep backups fresh, at "you have my approval on both commit and the merge." (`MC-194` 12 and 16; ledger rows 1063 to 1067). Local, not pushed.
+- `ddd47655`: the merge of `feat/side-batch` (tip `0023f16f`; CHORE-88, CHORE-81, CHORE-80 and the side session's records `MC-220`) at the same approval (ledger row 1068). Local, not pushed.
+- `d1a78902` and `6aecff59`: the Wiki session's pages on API keys from environment variables (by their commit subjects; not this session's).
+- The records commit that carries this line (`MC-194`, the Roadmap's CHORE-87, CHORE-89 and CHORE-120 and the save-layer track, ledger rows 1031 to 1070) follows these. Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
 `d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63`,
@@ -242,7 +255,7 @@ Several sessions work **in this same checkout**:
   row 428.
 - **"UI session"** (`MC-179` 1) works on branch `feat/ui-batch`, in its own worktree (`C:\Projects\RisuAI-ui`), made from
   the records commit `57e7be63` (the 18th, above), not in this checkout. The maintainer creates the worktree; no agent runs a
-  `git worktree` command.
+  `git worktree` command (**lifted 2026-10-04**: the maintainer said the rule was a temporary restriction for the UI branch separation and no longer applies, `MC-194` 4).
 
 ### The UI lane and the Main Campaign's lane (`MC-179` 1, 2026-10-03)
 
@@ -538,17 +551,17 @@ Several sessions work **in this same checkout**:
 |---|---|---|
 | MC ids | MC-178 to MC-199 | MC-200 to MC-229 |
 | Ledger rows | 700 to 799 | 800 to 899 |
-| CHORE ids | CHORE-75 to CHORE-89 | CHORE-90 to CHORE-109 |
+| CHORE ids | CHORE-75 to CHORE-89, and CHORE-120 to CHORE-129 (`MC-194` 14) | CHORE-90 to CHORE-109 |
 | Reports | 57 to 64 | 65 to 74 |
 
 (Main Campaign rows continue at 1001; `MC-179` amendment of 2026-10-04)
 
-Next free within the Main Campaign's ranges: `MC-194` (`MC-193` is the latest used; it records the memory step 6 and step 7 decisions, 2026-10-04; `MC-192` records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1031 (rows 1018 to 1030 are memory steps 6 and 7: the audit 1018, Gate 1 1019, 6a rows 1020 to 1022, step 7 Part A and the AVD retry 1023 and 1024, 6b rows 1025 and 1026, the live check and Part B 1027, the 6b message draft 1028, the fact-check of the merge records 1029, and this records batch 1030; row 1017 is the `feat/ui-batch` merge, `c9c57c9e`; rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
+Next free within the Main Campaign's ranges: `MC-195` (`MC-194` is the latest used; it records the Main Campaign's decisions of 2026-10-04 after `7ff0d092`; `MC-193` records the memory step 6 and step 7 decisions, 2026-10-04; `MC-192` records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1071 (rows 1031 to 1070 are the work after `7ff0d092`: the in-session unloading investigation and CHORE-82 (1031 to 1037, with 1033 the module archiving discovery), the module archiving plan's Gate 1 and escalation (1038, 1041), the `3472e63a` merge (1039), the Node limit investigation and CHORE-87 (1040, 1042 to 1047), the module heap measurement and Stage A (1048, 1051, 1052, 1056 to 1058), the delta-save, PocketRisu and save-layer work (1049, 1050, 1053), Stage 0 (1054, 1055, 1059 to 1061, 1063 to 1067), the merges `32fa1184` and `ddd47655` (1062, 1068), this records batch 1069 and its fact-check 1070; the side session's rows start at 1101 (`MC-219`); rows 1018 to 1030 are memory steps 6 and 7: the audit 1018, Gate 1 1019, 6a rows 1020 to 1022, step 7 Part A and the AVD retry 1023 and 1024, 6b rows 1025 and 1026, the live check and Part B 1027, the 6b message draft 1028, the fact-check of the merge records 1029, and this records batch 1030; row 1017 is the `feat/ui-batch` merge, `c9c57c9e`; rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
 work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
 message draft and its check, those records and their fact-check; rows 718 to 731 are the stage 4 work, its commit message
-draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-87` (`CHORE-81` to `CHORE-86` are used, filed 2026-10-04 from memory steps 6 and 7; `CHORE-80` is used, filed 2026-10-04 as the unscheduled environment-variable API-key idea; `CHORE-79` is used; CHORE-78 and CHORE-79 were filed on 2026-10-03; Stage B and Stage C stay under CHORE-76 and CHORE-77, so they took no CHORE id) and Report 57 (Report 56
+draft and its check; rows 732 and 733 are the stage 4 records and their fact-check), `CHORE-121` (`CHORE-87`, `CHORE-89` and `CHORE-120` are used, filed 2026-10-04; `CHORE-88` was taken from this range and handed to the side session; `CHORE-81` to `CHORE-86` are used, filed 2026-10-04 from memory steps 6 and 7; `CHORE-80` is used, filed 2026-10-04 as the unscheduled environment-variable API-key idea; `CHORE-79` is used; CHORE-78 and CHORE-79 were filed on 2026-10-03; Stage B and Stage C stay under CHORE-76 and CHORE-77, so they took no CHORE id) and Report 57 (Report 56
 is used). All are within the reserved ranges. Tell the maintainer before a range runs out, and never take a number from the other range. Check the ledger's
 last row before taking one. `MC-114` and ledger rows 371-374 were reserved for W2c-a and left unused; nobody should fill
 them.
@@ -586,7 +599,7 @@ them.
    [EDITORIAL], ledger row 518; Gate 2 by `opus-reviewer`, round 1 [REJECT], round 2 [EDITORIAL], row 519;
    the investigation is row 517 and the records fact-check row 520; `MC-147`). No live check was run.
    **Steps 5a, 5b, 5c, 5d-1, 5d-2a, 5d-2b, 5d-3 and 5d-4 are done** (`33545c2c`, `448962f4`, `9b312962`, `e8cf50de`,
-   `29bf2f24`, `4d23b1b4`, `3fca470e`, `e7d7f093`; item 2). **Steps 6 and 7 are done (2026-10-04):** step 6a is `cd26764d` (the busy registry, the save-clean signal, the restored-bytes counter), step 6b is `cdf700f3` (the idle reload; web on, desktop off), and step 7 is Part A, the AVD retry and Part B (ledger rows 1018 to 1030; `MC-193`). The D20 headline, on an i9 and a 2 GB emulator and not on a phone: the main file after the pass is 43.2 MB (the projection held); the heap after boot is 344 MB against the 70-76 MB projection (modules about 305 MB; 39 MB with modules emptied); on the emulator, in-tab reloads of the full profile hit the V8 heap limit in 6 of 7 reloads in a live renderer, 0 of 5 first loads in a fresh renderer and 0 of 6 with modules emptied. **Steps 6 and 7 are done; CHORE-81 to CHORE-86 stay open, D20's heap projection was not met (344 MB against 70-76 MB, modules ~305 MB), and the in-session unloading exploration (MC-193 item 10) has no result yet.** Next, per `MC-193` 5: archive modules that are not enabled, then the upstream-compatible inline backup, then the rest of stage 2. The maintainer asked for an exploration of unloading the previous character when another is selected (`MC-193` 10); its investigation was started on 2026-10-04 and has no result yet. Open tickets from these steps: CHORE-81 to CHORE-86.
+   `29bf2f24`, `4d23b1b4`, `3fca470e`, `e7d7f093`; item 2). **Steps 6 and 7 are done (2026-10-04):** step 6a is `cd26764d` (the busy registry, the save-clean signal, the restored-bytes counter), step 6b is `cdf700f3` (the idle reload; web on, desktop off), and step 7 is Part A, the AVD retry and Part B (ledger rows 1018 to 1030; `MC-193`). The D20 headline, on an i9 and a 2 GB emulator and not on a phone: the main file after the pass is 43.2 MB (the projection held); the heap after boot is 344 MB against the 70-76 MB projection (modules about 305 MB; 39 MB with modules emptied); on the emulator, in-tab reloads of the full profile hit the V8 heap limit in 6 of 7 reloads in a live renderer, 0 of 5 first loads in a fresh renderer and 0 of 6 with modules emptied. **Steps 6 and 7 are done; CHORE-83 to CHORE-86 stay open (CHORE-81 and CHORE-82 are closed), and D20's heap projection was not met (344 MB against 70-76 MB, modules ~305 MB).** What followed on 2026-10-04 (`MC-194`): the in-session unloading investigation is done (feasible in a scratch build on an i9; the maintainer chose to pursue a gated unload "after module archiving"; ledger row 1031). Whole-module archiving is **shelved** after three Gate 1 rejections, and Stage A (`b1d2804b`) removed most of the module heap another way. The save-layer track is running: Stage A, Stage 0 (ii) (`2aa55398`) and Stage 0 (i)+(iii) (`f04068f1`) are committed, and **Stage 1 is next, with its pre-measurements pending.** The `MC-193` 5 order (modules first, then the inline backup, then the rest of stage 2) has no scheduled first step; whether the gated unload moves up is the maintainer's to place.
    **CHORE-16 PG-1 is done:** every character-list view (the grid, the mobile list, the group-member
    picker and the previous/next hotkeys; the sidebar's order already skipped both when `checkCharOrder`
    adds ids) skips `§playground` and `§temp`, and opening the Playground clears its `trashTime` and marks
@@ -1026,7 +1039,7 @@ them.
       ahead of steps 6 and 7 while `feat/ui-batch` is unmerged;
    7. then steps 6 and 7 (they are built on the storage interface once it exists, `MC-167` 4). **Step 6 waits for the
       `feat/ui-batch` merge** (`MC-179` 4). **The merge is done (`c9c57c9e`) and steps 6 and 7 started on 2026-10-04:** the
-      step 6 audit, and the step 7 measurements that do not depend on step 6. **Steps 6 and 7 are done (2026-10-04):** 6a `cd26764d`, 6b `cdf700f3`, step 7 Part A, the AVD retry and Part B (`MC-193`; ledger rows 1018 to 1030). CHORE-81 to CHORE-86 stay open, D20's heap projection was not met (344 MB against 70-76 MB, modules ~305 MB), and the in-session unloading exploration (MC-193 item 10) has no result yet;
+      step 6 audit, and the step 7 measurements that do not depend on step 6. **Steps 6 and 7 are done (2026-10-04):** 6a `cd26764d`, 6b `cdf700f3`, step 7 Part A, the AVD retry and Part B (`MC-193`; ledger rows 1018 to 1030). CHORE-83 to CHORE-86 stay open (CHORE-81 and CHORE-82 are closed), D20's heap projection was not met (344 MB against 70-76 MB, modules ~305 MB), and the in-session unloading investigation is done (`MC-194` 1; ledger row 1031);
    8. then **CHORE-62** (on a Node server, another device's save makes this device stop saving until it reloads, and
       its edits since its last save are lost; `MC-159` 1 and 3). The option text the maintainer selected says only
       "placed later in the work order"; the position after steps 6 and 7 was the Orchestrator's, and **the maintainer
@@ -1037,7 +1050,7 @@ them.
      `checkCharOrder` does, so the Playground's "assistant" character can no longer be opened or deleted
      from the grid or the mobile list. The Wiki session has updated `docs/wiki/Playground.md` (`6ad13bac`, made before the move from `wiki/`). PG-2,
      PG-3 and PG-4 are open.
-2. **Module archiving (modules that are not enabled), then the inline-everything backup** (`MC-193` 5, which amends the order in `MC-145`), then the rest of stage 2. This follows step 6 directly.
+2. **The save-layer track** (`MC-194` 11): Stage A (`b1d2804b`), Stage 0 (ii) (`2aa55398`) and Stage 0 (i)+(iii) (`f04068f1`) are done; **Stage 1 is next, its pre-measurements pending**; then Stage 2 (per-module blocks). **Module archiving (modules that are not enabled) is shelved** (`MC-194` 5). It was first in `MC-193` 5's order, which also named the inline-everything backup and the rest of stage 2; those are not re-ordered and not scheduled. The gated in-session unload (`MC-194` 1) is chosen but waits on a placement the maintainer has not given. The "Release at ~80%" change (`MC-194` 2) comes later, as its own change.
 3. **The wiki's composer and send batch** (Wiki session; unblocked since W2 and W3 are done).
 4. **CHORE-35's opt-in stage:** the remaining upstream-infrastructure features (`MC-092`). **It is also a CHORE-60
    release condition** (`MC-157` 4): the legal flag is on by default, so the missing upstream-service prompts must
@@ -1095,6 +1108,7 @@ Not placed in the sequence:
 - **CHORE-57** (chat import offers `.txt` but has no `.txt` branch, so a picked `.txt` does nothing and
   says nothing): suspected, from reading; not run. **Low priority**, by the maintainer's decision
   (`MC-151` 7); no position in the order.
+- **CHORE-89 and CHORE-120** (Node server: `/hub-proxy` forwards a request to any URL named in a header with no authentication check; `/api/set_password` lets the first client set the password): filed 2026-10-04, open, unscheduled; fixes are to be proposed after Stage 0 (`MC-194` 14).
 - **Follow-ups from the memory work** (Report 49, section 5):
   - switching to a chat whose cold-storage unit is missing still retains the previous chat's
     messages;
@@ -1286,6 +1300,8 @@ Escape on alerts stage 2 and W2c-a were merged as `1d6fa16b`.
 
 ## Operational notes for this environment
 
+- **Worktrees (2026-10-04):** `MC-179` 1's ban on `git worktree` commands is lifted (`MC-194` 4). A stale-worktree check can still be blocked by the tool's safety check; when asked to clear stale worktrees, the maintainer said "I will take a look."
+- **Scratch data stays in the scratchpad.** Future briefs are to forbid `C:\s7` (the delta-save investigator wrote a profile there); `C:\s7` is empty and cannot be removed by an agent (a drive-root folder, `MC-194` 3).
 - **Git Bash here fails on heredocs, and on single commands longer than about 230 characters.**
   Write scripts with the Write tool, or use PowerShell. Commit with `git commit -F <file>`.
 - **Git Bash rewrites any argument that begins with `/`** (MSYS path conversion). `git grep
@@ -1327,10 +1343,11 @@ Escape on alerts stage 2 and W2c-a were merged as `1d6fa16b`.
 
 ## Open items
 
+- **Open now (2026-10-04):** Stage 1 of the save layer (pre-measurements pending; no plan or gate yet); the `doc-verifier` pass over this records batch (ledger row 1070); the native-speaker review of `settingsPage.apiKeyEnvRefNote` in ko, cn, zh-Hant, vi and es, which joins `MC-212`'s review (low priority), together with the vi nit on `savingStoppedTooLargeMessage` ("Nếu việc lưu lại dừng" loses "again"); the tickets CHORE-62, CHORE-83, CHORE-84, CHORE-85, CHORE-86, CHORE-89 and CHORE-120; the two unnumbered candidates at the end of the Roadmap's CHORE entries (a V2.1 plugin disabling itself through `setDatabase`; an unparseable `__revisions.json`); the placement of the gated in-session unload and the "Release at ~80%" change (the maintainer's). Reports 57 to 64 are unused.
 - **Possibly still present:** `C:\Projects\scratch_investigator_tmp` (empty) and
   `Temp\claude\coldstorage.svelte.ts.bak`. The maintainer deleted `%TEMP%\qa1`.
 - **Scratch trees with `node_modules` junctions.** Remove each junction with `cmd /c rmdir` before
-  any recursive delete.
+  any recursive delete. A reviewer left such junctions under the scratchpad's `stage0/gate2` (2026-10-04).
 - **The `.gitignore` entry** for `Asset Cache/Community Mitigation_Webrowser Plugin/` names a path
   that no longer exists.
 - **Card description contrast** (`text-textcolor2` on the home cards) measured 3.32:1 in a live check
@@ -1342,6 +1359,7 @@ Escape on alerts stage 2 and W2c-a were merged as `1d6fa16b`.
 
 ## Test suite
 
+- **The merged tree of `ddd47655` (2026-10-04):** 458 files, 8909 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` succeeded; the Rust changes were not built (the merge message; ledger row 1068). The trees before it: `148924b0` 419 files, 8286 passed; `3472e63a` 420 files, 8316 passed; `517f0cdb` 424 files, 8322 passed; `b1d2804b` 429 files, 8369 passed (the working tree, which also held the uncommitted Stage 0 (ii)); `32fa1184` 437 files, 8473 passed; `2aa55398` 437 files, 8475 passed; `f04068f1` 443 files, 8559 passed. Each had 4 skipped, `pnpm check` 0 and 0 and a successful build. The snapshots are not all the same tree as the commit (see each commit message).
 - **Step 5d-4's final tree (`e7d7f093`):** 261 files, 4,956 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings;
   the build was run (`step5/5d4/full-*-r2.txt` in the session scratchpad). Before the Gate 2 remediation the tree was 261
   files, 4,955 passed. Gate 2 round 1's reviewer ran the 14 test files of the step against the working tree (588
