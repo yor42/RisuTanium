@@ -1988,6 +1988,10 @@ row 142). Traced to source, not reproduced. Minor. Not fixed.
 
 ### CHORE-24 — `src/lib/Others/GithubStars.svelte` is unused
 
+**Status (2026-10-04, side session): closed.** Already fixed by `2af8d4fe` (chore: remove dead code: LiteMain, GithubStars,
+Communities, oauth_login; see CHORE-37's entry, which records `2af8d4fe` as DONE under Report 31), found when the hand-off listed it. No code done in the side session
+(`MC-219` 1).
+
 **Status (2026-09-24):** found while investigating the openURL fix (`Agents/Investigation-Ledger.md`
 row 142). Traced to source, not fixed. Minor housekeeping only.
 
@@ -2357,6 +2361,9 @@ above is the ticket as filed and is unchanged.
   the external fetches would leave CHORE-63's problems in place.
 
 ### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
+
+**Status (2026-10-04, side session): still open.** The hand-off listed it in Batch B; the maintainer chose not to take it in
+the side session ("Skip CHORE-41", `MC-219` 3). Nothing changed. It is still blocked on the console output below.
 
 **Status (2026-09-26):** filed from the maintainer's bug report (`MC-090`) and two follow-up
 investigations, ledger rows 201, 202 and 206. Not fixed. Blocked on the maintainer's console
@@ -5757,6 +5764,21 @@ nothing. Mobile Tauri has no idle-reload path.
 
 ### CHORE-90 — 13 sibling image `{#await}` blocks have no `{:catch}`, so a rejected image raises an unhandled rejection
 
+**Status (2026-10-04, side session): DONE in `3c8a142a`** (Batch B; ledger rows 1102, 1106, 1107, 1114 to 1117, 1119; `MC-219`).
+The scoping found that these promises almost never reject, so the change is hardening (row 1102). Every image or media
+`{#await}` in `SidebarAvatar`, `BarIcon`, `CharConfig`, `PersonaSettings`, `OtherBotSettings`, `EmotionBox`,
+`DefaultChatScreen` (the draft attachment) and `PlaygroundInlayExplorer` now has a `{:catch}`, so a rejected promise raises
+no unhandled rejection and the control stays usable (the pending placeholder, or nothing where a block has no pending
+branch; the draft attachment shows its stored reference and keeps the remove button). A rejection is logged once with
+`console.warn`, not an error box, by the new `src/ts/warnOnReject.ts`, called inside the `{#await}` expression so that it
+also runs in production builds. `getCharImage` and the other producers are unchanged.
+- **Gates:** plan `[REJECT]` then `[APPROVE]` (rows 1106, 1107). Code review round 1 `[REJECT]`: the first version put the
+  warning in a `{@const}` tag, which compiles to an unread derived that only dev mode evaluates (row 1115). After the
+  remediation (row 1116), round 2 `[APPROVE]` (row 1117).
+- **Not covered:** a production-mode mount that logs the warning (only the reviewer's scratch run showed it) and a real image
+  load failure in a browser.
+- **Limitation:** a producer that builds a fresh promise on each evaluation warns once per evaluation while it keeps failing.
+
 **Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the chat UI batch's rejected-avatar-icon fix
 (ledger row 817). Type: error handling.
 
@@ -5774,6 +5796,17 @@ nothing. Mobile Tauri has no idle-reload path.
 - **Related:** the rejected-avatar-icon follow-up (CHORE-69's block); ledger row 817.
 
 ### CHORE-91 — The `onclick` and long-press calls to `saveTranslationEdit()` leave a rejection unhandled (same at HEAD)
+
+**Status (2026-10-04, side session): DONE in `3c8a142a`** (Batch B; ledger rows 1102, 1106, 1107, 1114 to 1117, 1119; `MC-219`
+5: the maintainer kept the error box). The scoping found that `bootstrap.ts`'s handler already showed an error box for the
+unhandled rejection (row 1102). When the translation cache write rejects, the Save button, the long-press save and the
+load-for-edit button each now show one error box through `alertError`; the editor stays open with the typed text and the draft
+record intact, and a successful retry closes it. `saveTranslationEdit` itself is unchanged. The partial-edit save
+(`handlePartialEditSave`) also reports through `alertError`.
+- **Gates:** as CHORE-90 (the same batch and rounds).
+- **Limitations:** a failed partial-edit translation write is reported, but the partial editor has already closed, so that
+  partial edit is lost. Two overlapping Save clicks that both fail give two error boxes; a single failure gives one.
+- **Not covered:** a real translation cache failure.
 
 **Status (2026-10-03, UI session):** open, **not scheduled**. Found at the chat UI batch's Gate 2 and left out of the
 batch. Type: error handling.
@@ -5801,6 +5834,17 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-93 — There is no speaker button on a character's first message
 
+**Status (2026-10-04, side session): DONE in `af2ebc0b`** (Batch A; ledger rows 1101, 1103 to 1105, 1110, 1112, 1113; `MC-219`).
+A character's first message gets the speaker button when the character has a voice mode and the message is not blank. It
+speaks the text as displayed (CBS parsed as a first message, so `{{isfirstmsg}}` holds) and follows the alternate first
+message page that is showing. Remove stays hidden on the first message. A `Chat` with no `idx` and no first message (the 14
+call sites in `WelcomeRisu`) renders as before, with no button and no throw. Messages with `idx >= 0` are unchanged. The
+same cause (the first message is index -1) produced CHORE-100, filed and fixed in the same commit.
+- **Gates:** plan `[REJECT]` (four MAJOR, one MINOR), then `[APPROVE]`; code review `[APPROVE]` with no findings.
+- **Limitations, not changed:** the `mobilechat` theme renders no icon buttons for any message, so its first message has no
+  speaker button either; `customHTML` shows the buttons only when the card HTML contains `RISUBUTTONS`.
+- **Wiki hand-off:** listed in Live-State's side-session block.
+
 **Status (2026-10-03, UI session):** open, **not scheduled**. Found at the TTS batch's Gate 1 round 1 (ledger row 837).
 Type: new feature.
 
@@ -5810,6 +5854,18 @@ Type: new feature.
 - **Related:** CHORE-15; `MC-204` 2.
 
 ### CHORE-94 — The Playground translator may translate in the opposite direction to its labels
+
+**Status (2026-10-04, side session): DONE in `af2ebc0b`** (Batch A; ledger rows 1101, 1103 to 1105, 1110, 1112, 1113; `MC-219`).
+The scoping confirmed the inversion (row 1101). The Playground outputs in the Translator Language, translated from the input;
+the single and the bulk run in `PlaygroundTranslation.svelte` called `runTranslator` with `reverse=false`, which swapped the
+languages. Both now pass `reverse=true` with `(sourceLang, outputLang)`, as `tts.ts` does. Citation correction: the entry
+below cites `src/ts/translator/translator.ts:61-69`; `runTranslator` and its `arg` object are at `:62-72` (checked at
+`517f0cdb` and at HEAD).
+- **Tests:** against the base, 2 new tests fail (the single and the bulk run pass `reverse=false`).
+- **Limitations, not changed:** the default Google translator path takes its source language from the app's
+  input-language setting (`translatorInputLanguage`), not from the Playground's source language. The LLM translator's cache
+  (`LLMCacheStorage`) is keyed by text only and shared with chat translation, so a Playground LLM result can be served to a
+  later chat translation of the same text.
 
 **Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch (CHORE-15 TTS-1). Type: suspected bug,
 **INFERRED**, not reproduced.
@@ -5824,6 +5880,18 @@ Type: new feature.
 
 ### CHORE-95 — Three TTS configs and `hfTTS.model` are used without a guard when the TTS settings page was never opened
 
+**Status (2026-10-04, side session): DONE in `af2ebc0b`** (Batch A; ledger rows 1101, 1103 to 1105, 1110, 1112, 1113; `MC-219`).
+The premise was only partly true (row 1101): the configs are defaulted whenever `CharConfig` mounts, so the `TypeError`
+needs foreign or null data. `sayTTS` no longer throws when `naittsConfig`, `gptSoVitsConfig`, `fishSpeechConfig`,
+`voicevoxConfig` or `hfTTS` is missing or null. NovelAI and Fish Speech fall back to the defaults `CharConfig` sets, and
+VOICEVOX to the defaults `characterFormatUpdate` (`characters.ts`) sets, all held in local variables; Fish Speech then gives
+its "model not selected" error. GPT-SoVITS (no url or no reference audio asset) and Hugging Face (no model) show "TTS is not
+set up for this character" before any request. The defaults live in the new `src/ts/process/ttsDefaults.ts`; the `characters.ts`
+defaults are not changed. One new string, `errors.ttsNotSetUp`, in all seven language files.
+- **Gates:** as CHORE-93 (the same batch and rounds). The first plan was rejected partly because the GPT-SoVITS and Hugging
+  Face defaults would have sent requests (row 1103).
+- **Tests:** 26 new tests fail against the base and 4 guards pass. Not covered: a real TTS server (the tests mock the network).
+
 **Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch. Type: error handling.
 
 - **What happens:** `sayTTS` reads `naittsConfig` (NovelAI), `gptSoVitsConfig` (GPT-SoVITS), `fishSpeechConfig` (Fish Speech)
@@ -5832,6 +5900,20 @@ Type: new feature.
 - **Related:** CHORE-15.
 
 ### CHORE-96 — Auto-continue's `tokenize(result)` and `isLastCharPunctuation(result)` still read the raw `result`, which differs per branch
+
+**Status (2026-10-04, side session): DONE in `3c8a142a`** (Batch B; ledger rows 1102, 1106, 1107, 1108, 1111, 1118, 1119; `MC-219`
+4: the maintainer chose the raw model output). The scoping found the ticket understated (row 1102): the non-streaming branch
+counted the minimum tokens twice and read the text after the `editoutput` scripts. In both modes the decision now reads the
+model's output of this request (for a continue, the addition only), after the `removeIncompleteResponse` trim and before the
+`editoutput` scripts and inlay processing. The minimum-token total is the tokens of that text plus `usedContinueTokens`,
+counted once. Auto-continue also stops when the request produced no non-whitespace text, in both modes. This edits
+`index.svelte.ts`, in the lane for this ticket.
+- **Gates:** plan `[REJECT]` then `[APPROVE]` (rows 1106, 1107; the first plan's Option A would have let an empty
+  continuation loop paid requests in non-streaming mode). Code review `[EDITORIAL]` (one test title), corrected (row 1111).
+- **Tests:** against the base, 8 of the 13 new tests fail; the other 5 are guards.
+- **Limitations:** a first reply that is empty, or trims to empty, under the minimum tokens does not auto-continue.
+  `autoContinueChat` alone can still chain without end if the model never ends on punctuation, as before. In a multi-message
+  (multiline) non-streaming answer the decision reads the last message's text only.
 
 **Status (2026-10-03, UI session):** open, **not scheduled**, and **outside both lanes** (`index.svelte.ts`, `MC-179`). Filed
 from the TTS batch. Type: consistency.
@@ -5855,6 +5937,11 @@ from the TTS batch. Type: consistency.
 
 ### CHORE-98 — `sayTTS` with Read Only Quoted and quote-free text still sends a request with empty text
 
+**Status (2026-10-04, side session): DONE in `af2ebc0b`** (Batch A; ledger rows 1101, 1103 to 1105, 1110, 1112, 1113; `MC-219`).
+After the filters and the preprocessor hooks, `sayTTS` returns with no request, audio or alert when the text is not a string
+or is blank (for example Read Only Quoted on text with no quotes, `'***'`, or a hook that returns `{text: null}`). A hook that
+supplies text still speaks.
+
 **Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch. Type: wasted request. Pre-existing.
 
 - **What happens:** with `ttsReadOnlyQuoted` set and text that contains no quote, the filter yields an empty string and
@@ -5863,6 +5950,18 @@ from the TTS batch. Type: consistency.
 - **Related:** CHORE-15.
 
 ### CHORE-99 — Auto-TTS parses even for a character with no voice mode, and the user name comes from the selected chat's persona (optional)
+
+**Status (2026-10-04, side session): DONE in `3c8a142a`** (Batch B; ledger rows 1102, 1106 to 1108, 1111, 1118, 1119; `MC-219`
+6: the maintainer included it). Auto-speech now runs the parse and `sayTTS` only when the speaker has a voice mode
+(`isTTSVoiceMode`). The speaker is the member speaking in a group turn, the owner otherwise. A user-role reply is parsed with
+`getUserName` of the chat the send started in, so a chat switch during a send does not give the new chat's user name. A
+char-role reply keeps the owner's name (the group's, in a group chat), as the display parse does; the member is used only for
+the voice check and the voice. This edits `index.svelte.ts`, outside the hand-off's lane for CHORE-96 only; folded into that
+edit on the maintainer's word; the side session messaged the Main Campaign about it on 2026-10-04 (`MC-219`).
+- **Tests:** a new group of 7 in `sendChatTts.svelte.test.ts`; 6 fail against the base and the voiced-group-member test is a guard.
+- **Limitation:** a plugin TTS preprocess hook does not run for auto-speech when the speaker's mode is unset, `'none'` or
+  `'normal'` (no voice).
+- **Not covered:** a real TTS server.
 
 **Status (2026-10-03, UI session):** open, **not scheduled**, optional. Filed from the TTS batch. Type: efficiency
 and exactness.
@@ -5873,6 +5972,23 @@ and exactness.
   (`src/ts/util.ts:131-145`) reads the selected character's current chat; the call is at `src/ts/process/index.svelte.ts:2439`
   and applies only when the stored reply's role is `'user'`.
 - **Related:** CHORE-15; `MC-204` 2.
+
+### CHORE-100 — The first message's popup offered Branch, Disable and Disable-above, which throw on message[-1], and a Bookmark that did nothing
+
+**Status (2026-10-04, side session): filed and DONE in `af2ebc0b`** (Batch A; ledger rows 1101, 1103 to 1105, 1110, 1112, 1113;
+`MC-219`, the Orchestrator's scope amendment under `MC-091`). Type: bug. Same cause as CHORE-93: the first message is rendered
+with index -1.
+
+- **What happened:** the first message's popup menu offered Branch, Disable and Disable-above, which read or write `message[-1]`
+  and throw a `TypeError`, and Bookmark, which did nothing. Found by the Batch A scoping (row 1101).
+- **What changed:** the first message's popup offers none of the four, in both width paths (>= 640 and < 640). Its popup
+  button shows only when at least one item inside would render (no empty popup for a blank first message, with chat copy off,
+  or without `ClipboardItem`). Whether Copy as card is available is one function, used by the item and by the popup guard.
+  Messages with `idx >= 0` keep all four actions.
+- **Tests:** `Chat.firstMessagePopup.svelte.test.ts` (new): against the base 9 fail and 2 guards pass (idx 0 keeps all four
+  items, wide and narrow). The blank-first-message test in `Chat.copyCard.svelte.test.ts` was edited to assert there is no
+  menu button.
+- **Related:** CHORE-93.
 
 ## Sequencing Summary
 
