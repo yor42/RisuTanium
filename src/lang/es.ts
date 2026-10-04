@@ -1022,7 +1022,7 @@ export const languageSpanish = {
     "removeConfirm2": "¿REALMENTE deseas eliminar: ",
     "removeChatWhileWorking": "Actualmente hay algo escribiendo en este chat. Al eliminarlo se detiene esa tarea, aunque un paso que ya esté en ejecución aún podría terminar.",
     "removeCharacterWhileWorking": "Actualmente hay algo escribiendo en este personaje. Al eliminarlo se detiene esa tarea, aunque un paso que ya esté en ejecución aún podría terminar.",
-    "backupLoadWorkInProgress": "Aún hay algo escribiendo en un chat, por lo que no se cargó el respaldo. Espera a que termine o deténlo, y luego vuelve a intentarlo. Recargar la página también finaliza todo el trabajo.",
+    "backupLoadWorkInProgress": "Todavía hay algo en ejecución (una respuesta del chat, una importación o exportación, una imagen o un recurso que se está añadiendo, una limpieza o una solicitud de un plugin), por lo que no se cargó el respaldo. Espera a que termine o deténlo, y luego vuelve a intentarlo. Recargar la página también finaliza todo el trabajo.",
     "insertOrder": "Orden de Inserción",
     "activationKeys": "Claves de Activación",
     "activationKeysInfo": "Separado por comas",

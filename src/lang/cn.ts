@@ -1022,7 +1022,7 @@ export const languageChinese = {
     "removeConfirm2": "你**真的**确定要删除：",
     "removeChatWhileWorking": "当前有内容正在写入此聊天。删除后会中止该操作，但已在运行的步骤仍可能执行完毕。",
     "removeCharacterWhileWorking": "当前有内容正在写入此角色。删除后会中止该操作，但已在运行的步骤仍可能执行完毕。",
-    "backupLoadWorkInProgress": "仍有操作正在向聊天写入内容，因此未读取备份。请等待其完成或将其停止，然后重试。重新加载页面也会结束所有操作。",
+    "backupLoadWorkInProgress": "仍有操作正在运行（聊天回复、导入或导出、正在添加的图片或资源、清理操作，或插件请求），因此未读取备份。请等待其完成或将其停止，然后重试。重新加载页面也会结束所有操作。",
     "insertOrder": "插入顺序",
     "activationKeys": "关键词",
     "activationKeysInfo": "使用逗号分隔",

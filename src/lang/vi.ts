@@ -1022,7 +1022,7 @@ export const languageVietnamese = {
     "removeConfirm2": "Bạn có THỰC SỰ muốn loại bỏ:",
     "removeChatWhileWorking": "Hiện có tác vụ đang ghi vào cuộc trò chuyện này. Việc xóa sẽ dừng tác vụ đó, tuy nhiên bước đang chạy có thể vẫn hoàn tất.",
     "removeCharacterWhileWorking": "Hiện có tác vụ đang ghi vào nhân vật này. Việc xóa sẽ dừng tác vụ đó, tuy nhiên bước đang chạy có thể vẫn hoàn tất.",
-    "backupLoadWorkInProgress": "Vẫn còn tác vụ đang ghi vào một cuộc trò chuyện, nên bản sao lưu chưa được tải. Hãy đợi tác vụ hoàn tất hoặc dừng nó, rồi thử lại. Tải lại trang cũng sẽ kết thúc mọi tác vụ.",
+    "backupLoadWorkInProgress": "Vẫn còn tác vụ đang chạy (phản hồi trò chuyện, nhập hoặc xuất, hình ảnh hoặc tài nguyên đang được thêm, dọn dẹp, hoặc yêu cầu của plugin), nên bản sao lưu chưa được tải. Hãy đợi tác vụ hoàn tất hoặc dừng nó, rồi thử lại. Tải lại trang cũng sẽ kết thúc mọi tác vụ.",
     "insertOrder": "Thứ tự chèn",
     "activationKeys": "Phím kích hoạt",
     "activationKeysInfo": "Được phân tách bằng dấu phẩy",

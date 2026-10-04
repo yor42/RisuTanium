@@ -1022,7 +1022,7 @@ export const languageGerman = {
     "removeConfirm2": "Bitte bestätigen Sie ein weiteres mal, dass Sie Folgendes löschen möchten: ",
     "removeChatWhileWorking": "Derzeit schreibt etwas in diesen Chat. Das Löschen beendet dies, ein bereits laufender Schritt kann aber trotzdem noch abgeschlossen werden.",
     "removeCharacterWhileWorking": "Derzeit schreibt etwas in diesen Charakter. Das Löschen beendet dies, ein bereits laufender Schritt kann aber trotzdem noch abgeschlossen werden.",
-    "backupLoadWorkInProgress": "Es schreibt noch etwas in einen Chat, daher wurde das Backup nicht geladen. Warten Sie, bis der Vorgang abgeschlossen ist, oder beenden Sie ihn, und versuchen Sie es dann erneut. Das Neuladen der Seite beendet ebenfalls alle laufenden Vorgänge.",
+    "backupLoadWorkInProgress": "Es läuft noch etwas (eine Chat-Antwort, ein Import oder Export, ein Bild oder Asset, das hinzugefügt wird, eine Bereinigung oder eine Plugin-Anfrage), daher wurde das Backup nicht geladen. Warten Sie, bis der Vorgang abgeschlossen ist, oder beenden Sie ihn, und versuchen Sie es dann erneut. Das Neuladen der Seite beendet ebenfalls alle laufenden Vorgänge.",
     "insertOrder": "Einfügereihenfolge",
     "activationKeys": "Aktivierungsschlüssel",
     "activationKeysInfo": "Kommagetrennt",

@@ -15,7 +15,7 @@ import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, decodeEntryName, findEncryptionMarkerEntry, parseBackupEntryHeader, type BackupEntryHeader } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
-import { beginBusy, withBusy } from "../process/memory/busyActions";
+import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -407,7 +407,7 @@ export function LoadLocalBackup(){
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.bin';
-        const restoreSelectedFile = async () => {
+        const restoreSelectedFile = async (busy: BusyHandle) => {
             if (!input.files || input.files.length === 0) {
                 input.remove();
                 return;
@@ -415,7 +415,7 @@ export function LoadLocalBackup(){
             const file = input.files[0];
             input.remove();
 
-            if (refuseBackupLoadWhileBusy()) {
+            if (refuseBackupLoadWhileBusy(busy)) {
                 return;
             }
 
@@ -665,7 +665,7 @@ export function LoadLocalBackup(){
                 // writes nothing further: the assets and cold-storage items
                 // already read from the file stay, as on the other early exits.
                 // The finally releases what was taken above.
-                if (refuseBackupLoadWhileBusy()) {
+                if (refuseBackupLoadWhileBusy(busy)) {
                     return;
                 }
 
@@ -753,7 +753,7 @@ export function LoadLocalBackup(){
         input.onchange = async () => {
             const busy = beginBusy('backupLoad');
             try {
-                await restoreSelectedFile();
+                await restoreSelectedFile(busy);
             } finally {
                 busy.end();
             }

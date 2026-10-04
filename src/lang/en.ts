@@ -1146,7 +1146,7 @@ export const languageEnglish = {
     removeConfirm2: "Do you REALLY want to remove: ",
     removeChatWhileWorking: "Something is currently writing into this chat. Deleting it stops that, though a step that is already running may still finish.",
     removeCharacterWhileWorking: "Something is currently writing into this character. Deleting it stops that, though a step that is already running may still finish.",
-    backupLoadWorkInProgress: "Something is still writing into a chat, so the backup was not loaded. Wait for it to finish or stop it, then try again. Reloading the page also ends all work.",
+    backupLoadWorkInProgress: "Something is still running (a chat reply, an import or export, an image or asset being added, a clean-up, or a plugin request), so the backup was not loaded. Wait for it to finish or stop it, then try again. Reloading the page also ends all work.",
     insertOrder: "Insertion Order",
     activationKeys: "Activation keys",
     activationKeysInfo: "Comma seperated",

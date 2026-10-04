@@ -4,9 +4,13 @@
  * A backup is never loaded while work is in progress.
  *
  * `loadInternalBackup` refuses while a send holds `doingChat`, a unit is
- * registered or the composer window is open, both when it starts and immediately
- * before it writes the chosen snapshot; a refusal writes nothing and reloads
- * nothing. The backup buttons in `UserSettings.svelte` refuse before either of
+ * registered, the composer window is open, other registered work is running
+ * (import, export, clean-up, asset add, backup save) or a write is in flight at
+ * a choke point (asset, inlay, cold storage, plugin bridge). It checks when it
+ * starts and immediately before it writes the chosen snapshot; `LoadLocalBackup`
+ * checks before its picker opens, after the file is chosen and before its
+ * write. A refusal writes nothing, reloads nothing and leaves no entry of the
+ * load behind. The backup buttons in `UserSettings.svelte` refuse before either of
  * their confirmations is asked. With no work in progress it writes the chosen
  * snapshot as the main file and reloads, and installs nothing in the page.
  *
@@ -912,8 +916,8 @@ import UserSettings from 'src/lib/Setting/Pages/UserSettings.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 
 /**
- * A `loadInternalBackup` built on its own module graph, with its own lock
- * manager and write lock. A successful load keeps `dbWriteLock` closed for the
+ * `loadInternalBackup`, `LoadLocalBackup` and the busy-action registry, built
+ * on a module graph of their own with their own lock manager and write lock. A successful load keeps `dbWriteLock` closed for the
  * life of its module graph, so a test that lets one succeed must not share the
  * file's graph: a later load in that graph would wait on the closed lock and
  * never settle.
@@ -932,8 +936,10 @@ async function importIsolatedLoad() {
         isolatedAppStore.injectAppStore(createForageBackedStore(api.forageStorage as unknown as ForageLike))
         const stores = await import('src/ts/stores.svelte')
         const database = await import('src/ts/storage/database.svelte')
+        const local = await import('src/ts/drive/backuplocal')
+        const busy = await import('src/ts/process/memory/busyActions')
         await api.tabPresenceLockAcquired
-        return { load: internal.loadInternalBackup, requiresFullEncoderReload: api.requiresFullEncoderReload, stores, database }
+        return { load: internal.loadInternalBackup, loadLocal: local.LoadLocalBackup, busy, requiresFullEncoderReload: api.requiresFullEncoderReload, stores, database }
     } finally {
         if (originalLocks) {
             Object.defineProperty(window.navigator, 'locks', originalLocks)
@@ -1241,3 +1247,159 @@ describe('the backup buttons in UserSettings', () => {
         await vi.waitFor(() => expect(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1), { timeout: 3000 })
     })
 })
+
+//#region registered work and in-flight writes
+
+type BusyModule = typeof import('src/ts/process/memory/busyActions')
+
+/** Starts one piece of other work in the given module graph, and returns the function that ends it. */
+interface OtherWork { name: string, start: (busy: BusyModule) => () => void }
+
+const otherWork: OtherWork[] = [
+    ...(['import', 'export', 'cleanup', 'assetAdd', 'backupSave'] as const).map((kind): OtherWork => ({
+        name: `a registered ${kind} action`,
+        start: (busy) => { const handle = busy.beginBusy(kind); return () => handle.end() },
+    })),
+    ...(['asset', 'inlay', 'coldStorage', 'pluginBridge'] as const).map((point): OtherWork => ({
+        name: `a write in flight at the ${point} choke point`,
+        start: (busy) => busy.beginChokePoint(point),
+    })),
+]
+
+/** `loadLocal()` opened, then `act` runs while the picker is open, then the chosen file is delivered. */
+async function pickBackupBytes(loadLocal: () => void, bytes: Uint8Array, act: () => void): Promise<void> {
+    const realCreateElement = document.createElement.bind(document)
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        const el = realCreateElement(tag)
+        if (tag === 'input') {
+            capturedInput = el as HTMLInputElement
+        }
+        return el
+    })
+    try {
+        capturedInput = null
+        loadLocal()
+        const input = capturedInput as HTMLInputElement | null
+        if (!input) {
+            return
+        }
+        act()
+        const file = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+        Object.defineProperty(input, 'files', { value: [file], configurable: true })
+        await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
+    } finally {
+        createElementSpy.mockRestore()
+    }
+}
+
+/** Every load below runs in a module graph of its own, so a load that goes ahead cannot close the write lock for the next test. */
+async function isolatedWorld() {
+    installWorld()
+    const bytes = await seedInternalBackup()
+    const isolated = await importIsolatedLoad()
+    isolated.stores.DBState.db = DBState.db
+    return { isolated, bytes, dbBefore: isolated.stores.DBState.db }
+}
+
+function expectRefusedWithNothingChanged(isolated: Awaited<ReturnType<typeof importIsolatedLoad>>, dbBefore: unknown): void {
+    expect.soft(alertErrorMock, 'the work-in-progress message').toHaveBeenCalledWith(language.backupLoadWorkInProgress)
+    expect.soft(isolated.stores.DBState.db === dbBefore, 'DBState.db is the same object').toBe(true)
+    expectNoWriteAndNoReload()
+}
+
+describe('a backup load is refused while other work is registered or writing', () => {
+    describe.each(otherWork)('$name', ({ start }) => {
+        test('loadInternalBackup is refused, asks no picker and leaves no entry of its own', async () => {
+            const { isolated, dbBefore } = await isolatedWorld()
+            const end = start(isolated.busy)
+            const kindsBefore = isolated.busy.busyKinds()
+
+            await isolated.load()
+
+            expectRefusedWithNothingChanged(isolated, dbBefore)
+            expect.soft(alertSelectMock, 'the backup picker was asked').not.toHaveBeenCalled()
+            expect.soft(isolated.busy.busyKinds(), 'registered entries').toEqual(kindsBefore)
+            end()
+        })
+
+        test('loadInternalBackup is refused when the work starts while the picker is open', async () => {
+            const { isolated, dbBefore } = await isolatedWorld()
+            let end = () => {}
+            alertSelectMock.mockImplementation(async () => { end = start(isolated.busy); return '1' })
+
+            await isolated.load()
+
+            expectRefusedWithNothingChanged(isolated, dbBefore)
+            expect.soft(isolated.busy.busyKinds().includes('backupLoad'), 'an entry of the load is left behind').toBe(false)
+            end()
+        })
+
+        test('LoadLocalBackup is refused when the work starts while the file picker is open', async () => {
+            const { isolated, dbBefore } = await isolatedWorld()
+            const { fixture } = localBackupBytes('refused-marker')
+            let end = () => {}
+
+            await pickBackupBytes(isolated.loadLocal, fixture, () => { end = start(isolated.busy) })
+
+            expectRefusedWithNothingChanged(isolated, dbBefore)
+            expect.soft(isolated.busy.busyKinds().includes('backupLoad'), 'an entry of the load is left behind').toBe(false)
+            end()
+        })
+
+        test('LoadLocalBackup is refused before the picker opens', async () => {
+            const { isolated, dbBefore } = await isolatedWorld()
+            const { fixture } = localBackupBytes('refused-marker')
+            const end = start(isolated.busy)
+
+            await pickBackupBytes(isolated.loadLocal, fixture, () => {})
+
+            expectRefusedWithNothingChanged(isolated, dbBefore)
+            end()
+        })
+    })
+
+    test('a retry of loadInternalBackup proceeds once the other work has ended', async () => {
+        const { isolated, bytes } = await isolatedWorld()
+        const other = isolated.busy.beginBusy('import')
+        const point = isolated.busy.beginChokePoint('asset')
+
+        await isolated.load()
+        const refusedWrite = forageMemStore.has('database/database.bin')
+        expect(refusedWrite, 'the first load was refused: the main file was not written').toBe(false)
+        other.end()
+        point()
+        alertErrorMock.mockClear()
+        await isolated.load()
+
+        expect.soft(refusedWrite, 'the main file was written while work was registered').toBe(false)
+        expect.soft(alertErrorMock, 'an error shown on the retry').not.toHaveBeenCalled()
+        expect.soft(forageMemStore.get('database/database.bin'), 'the main file holds the backup bytes').toEqual(bytes)
+        expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
+    })
+
+    test('guard: loadInternalBackup with nothing else registered holds only its own entry until it reloads', async () => {
+        const { isolated, bytes } = await isolatedWorld()
+        let during: string[] = []
+        reloadSpy.mockImplementation(() => { during = isolated.busy.busyKinds() })
+
+        await isolated.load()
+
+        expect.soft(during, 'registered entries at the reload').toEqual(['backupLoad'])
+        expect.soft(isolated.busy.isBusy(), 'an entry left behind').toBe(false)
+        expect.soft(forageMemStore.get('database/database.bin'), 'the main file holds the backup bytes').toEqual(bytes)
+    })
+
+    test('guard: LoadLocalBackup with nothing else registered is not refused by its own entry', async () => {
+        const { isolated } = await isolatedWorld()
+        const { fixture } = localBackupBytes('accepted-marker')
+
+        await pickBackupBytes(isolated.loadLocal, fixture, () => {})
+
+        expect.soft(alertErrorMock, 'the work-in-progress message').not.toHaveBeenCalledWith(language.backupLoadWorkInProgress)
+        expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(true)
+        expect.soft(isolated.busy.isBusy(), 'an entry left behind').toBe(false)
+    })
+})
+
+//#endregion
+

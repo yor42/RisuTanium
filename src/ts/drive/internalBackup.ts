@@ -11,7 +11,7 @@ import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
-import { beginBusy } from "../process/memory/busyActions";
+import { beginBusy, type BusyHandle } from "../process/memory/busyActions";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
 
 const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
@@ -220,14 +220,14 @@ export async function loadInternalBackup() {
     // Registered once a snapshot is chosen, and ended however the load leaves.
     const busy = beginBusy('backupLoad')
     try {
-        await loadSelectedBackup(selectedBackup)
+        await loadSelectedBackup(selectedBackup, busy)
     } finally {
         busy.end()
     }
 }
 
-async function loadSelectedBackup(selectedBackup: string) {
-    if (refuseBackupLoadWhileBusy()) {
+async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
+    if (refuseBackupLoadWhileBusy(busy)) {
         return
     }
 
@@ -313,7 +313,7 @@ async function loadSelectedBackup(selectedBackup: string) {
                 }
                 alertWait('Loading backup...')
                 // Work can start while the confirm is up.
-                if (refuseBackupLoadWhileBusy()) {
+                if (refuseBackupLoadWhileBusy(busy)) {
                     return
                 }
             }
@@ -325,7 +325,7 @@ async function loadSelectedBackup(selectedBackup: string) {
         await keepCurrentMainFile()
 
         // No await between this check and the write.
-        if (refuseBackupLoadWhileBusy()) {
+        if (refuseBackupLoadWhileBusy(busy)) {
             return
         }
 
