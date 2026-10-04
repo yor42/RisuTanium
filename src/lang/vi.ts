@@ -26,6 +26,10 @@ export const languageVietnamese = {
         "networkFetchPlain": "Đây có thể là lỗi plain fetch. Hãy thử tắt tùy chọn buộc dùng plain fetch trong cài đặt.",
         "requestLogRemoved": "Nhật ký yêu cầu này đã bị xóa.",
         "requestLogRemovedDesc": "Nhật ký yêu cầu này sẽ bị xóa khi client được làm mới hoặc tải lại.",
+        "secretRefUnavailable": (name: string) => `Biến môi trường ${name} không khả dụng (chưa được đặt, hoặc máy chủ không cho phép).`,
+        "secretRefUnsupported": (name: string) => `Không thể dùng biến môi trường ${name} ở đây: nền tảng này không có quyền truy cập vào môi trường của máy chủ.`,
+        "secretRefNotForeign": (name: string) => `Biến môi trường ${name} chỉ được gửi tới nhà cung cấp của chính nó, nên không được dùng cho yêu cầu này.`,
+        "secretRefInRequest": (name: string) => `Yêu cầu vẫn còn chứa tham chiếu biến môi trường ${name}. Yêu cầu đã không được gửi.`,
         "coldStorageRestoreFailed": "Không thể tải dữ liệu bộ nhớ lạnh. Dữ liệu của nhân vật bị ảnh hưởng có thể đã bị mất vĩnh viễn.",
         "coldStorageRestoreUnreadable": "Hiện không thể tải nhân vật này. Không có gì bị thay đổi. Hãy thử lại.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

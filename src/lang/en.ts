@@ -27,6 +27,14 @@ export const languageEnglish = {
         networkFetchPlain: "This can be a plain fetch error. try disabling force plain fetch option in settings.",
         requestLogRemoved: "This request log is removed.",
         requestLogRemovedDesc: "This request log removes when client is refreshed or reloaded.",
+        secretRefUnavailable: (name: string) =>
+            `Environment variable ${name} is unavailable (not set, or not allowed by the server).`,
+        secretRefUnsupported: (name: string) =>
+            `Environment variable ${name} cannot be used here: this platform has no access to the server's environment.`,
+        secretRefNotForeign: (name: string) =>
+            `Environment variable ${name} is only sent to its own provider, so it was not used for this request.`,
+        secretRefInRequest: (name: string) =>
+            `A request still contains the environment variable reference ${name}. It was not sent.`,
         coldStorageRestoreFailed: "Cold storage data could not be loaded. The affected character's data may be permanently lost.",
         coldStorageRestoreUnreadable: "This character could not be loaded right now. Nothing was changed. Please try again.",
         coldStorageNamedRestoreFailed: (characterName: string) =>

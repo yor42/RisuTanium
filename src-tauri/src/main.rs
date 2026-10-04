@@ -18,6 +18,7 @@ use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 
+mod env_secret;
 mod launch_inputs;
 use launch_inputs::LaunchInputs;
 use std::sync::Mutex;
@@ -52,6 +53,13 @@ fn queue_launch_inputs(app: &AppHandle, inputs: LaunchInputs) {
         lock_pending(&state).extend(inputs);
     }
     let _ = app.emit("risu-launch-inputs", ());
+}
+
+/// Reads one process environment variable for a secret reference. Registered on
+/// every target; on mobile it reads that process's own environment.
+#[tauri::command]
+fn read_env_secret(name: String) -> Result<String, String> {
+    env_secret::resolve_env_secret(&name, |key| std::env::var_os(key))
 }
 
 #[tauri::command]
@@ -771,6 +779,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             greet,
             take_launch_inputs,
+            read_env_secret,
             native_request,
             check_auth,
             check_requirements_local,

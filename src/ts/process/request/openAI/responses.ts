@@ -14,6 +14,7 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, is
 
 import type { OpenAIChatExtra, ResponseFunctionCallItem, ResponseInputItem, ResponseItem, ResponseOutputItem } from './types'
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
+import { resolveRequestKey } from '../secretKey'
 
 function responseTextContentToString(content:any):string{
     if(typeof content === 'string'){
@@ -227,16 +228,16 @@ function getResponsesRequestURL(arg:RequestDataArgumentExtended):{requestURL:str
     return { requestURL, risuIdentify }
 }
 
-function buildResponsesHeaders(arg:RequestDataArgumentExtended, risuIdentify:boolean):Record<string,string>{
+async function buildResponsesHeaders(arg:RequestDataArgumentExtended, risuIdentify:boolean):Promise<Record<string,string>>{
     const db = getDatabase()
     const aiModel = arg.aiModel
+    // Only the chosen field is resolved, so an unset reference in a field this model does not use cannot fail it.
+    const chosenKey = arg.modelInfo?.keyIdentifier
+        ? db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
+        : (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ? db.proxyKey : db.openAIKey))
     const headers = {
-        "Authorization": "Bearer " + (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ? db.proxyKey : db.openAIKey)),
+        "Authorization": "Bearer " + await resolveRequestKey(arg, chosenKey),
         "Content-Type": "application/json"
-    }
-
-    if(arg.modelInfo?.keyIdentifier){
-        headers["Authorization"] = "Bearer " + db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
     }
     if(risuIdentify){
         headers["X-Proxy-Risu"] = 'RisuAI'
@@ -803,7 +804,7 @@ export async function requestOpenAIResponseAPI(arg:RequestDataArgumentExtended):
     const aiModel = arg.aiModel
     let body = await buildResponsesBody(arg)
     const { requestURL, risuIdentify } = getResponsesRequestURL(arg)
-    const headers = buildResponsesHeaders(arg, risuIdentify)
+    const headers = await buildResponsesHeaders(arg, risuIdentify)
 
     if(aiModel === 'reverse_proxy' || aiModel?.startsWith('xcustom:::')){
         body = applyAdditionalParameters(body, headers, getAdditionalParameters(aiModel))

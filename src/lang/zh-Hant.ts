@@ -26,6 +26,10 @@ export const languageChineseTraditional = {
         "networkFetchPlain": "這可能是一般 Fetch 錯誤。請嘗試在設定中停用「強制一般 Fetch」",
         "requestLogRemoved": "此請求記錄已被移除",
         "requestLogRemovedDesc": "重新整理或重新載入用戶端後，請求記錄會被移除",
+        "secretRefUnavailable": (name: string) => `環境變數 ${name} 無法使用（未設定，或伺服器不允許使用）。`,
+        "secretRefUnsupported": (name: string) => `環境變數 ${name} 無法在此處使用：此平台無法存取伺服器的環境。`,
+        "secretRefNotForeign": (name: string) => `環境變數 ${name} 只會傳送給其對應的提供者，因此本次請求未使用它。`,
+        "secretRefInRequest": (name: string) => `請求中仍包含環境變數參照 ${name}，該請求未被傳送。`,
         "coldStorageRestoreFailed": "無法載入冷儲存資料。受影響角色的資料可能已永久遺失",
         "coldStorageRestoreUnreadable": "暫時無法載入此角色。未做任何變更。請再試一次。",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

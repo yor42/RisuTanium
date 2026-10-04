@@ -13,6 +13,11 @@ import { addFetchLog } from "src/ts/globalApi.svelte"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type LLMParameter } from './shared'
 import { bodyIntercepterStore } from "src/ts/stores.svelte"
+import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
+import { resolveRequestKey } from "./secretKey"
+
+/** Vertex access token minted from a referenced service-account key. Memory only; never stored. */
+let vertexMemoryToken: { reference: string, email: string, token: string, expires: number } | null = null
 
 type GeminiFunctionCall = {
     id?: string;
@@ -419,7 +424,7 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         return /^gemini-3-.*-preview$/.test(modelId) || /^gemini-3\.[5678]-flash/.test(modelId)
     }
 
-    async function generateToken(email:string,key:string){
+    async function generateToken(email:string,key:string,persist:boolean = true){
         if (!window.crypto || !window.crypto.subtle) {
             throw new Error(language.errors.webCryptoUnavailable);
         }
@@ -503,14 +508,37 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
             throw new Error(language.errors.googleNoAccessToken);
         }
 
-        const db2 = getDatabase()
-        db2.vertexAccessToken = token
-        db2.vertexAccessTokenExpires = Date.now() + 3500 * 1000
-        setDatabase(db2)
+        if(persist){
+            const db2 = getDatabase()
+            db2.vertexAccessToken = token
+            db2.vertexAccessTokenExpires = Date.now() + 3500 * 1000
+            setDatabase(db2)
+        }
         return token;
-    }    
-    
-    if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
+    }
+
+    if(arg.modelInfo.format === LLMFormat.VertexAIGemini && isSecretRef(db.vertexPrivateKey)){
+        // A token minted from a referenced key is derived from a secret that is not stored, so it is
+        // kept in memory only and never written to the database.
+        if (!db.vertexClientEmail) {
+            alertError(language.errors.vertexAuthIncomplete);
+            return { type: 'fail', result: language.errors.vertexAuthIncomplete };
+        }
+        const reference = db.vertexPrivateKey.trim()
+        if(arg.previewBody){
+            headers['Authorization'] = "Bearer " + reference
+        }
+        else if(vertexMemoryToken && vertexMemoryToken.reference === reference && vertexMemoryToken.email === db.vertexClientEmail && vertexMemoryToken.expires > Date.now()){
+            headers['Authorization'] = "Bearer " + vertexMemoryToken.token
+        }
+        else{
+            const token = await generateToken(db.vertexClientEmail, await resolveSecret(db.vertexPrivateKey), false)
+            registerSensitive(token, reference + ':token')
+            vertexMemoryToken = { reference, email: db.vertexClientEmail, token, expires: Date.now() + 3500 * 1000 }
+            headers['Authorization'] = "Bearer " + token
+        }
+    }
+    else if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
         if(db.vertexAccessTokenExpires < Date.now()){
             if (!db.vertexClientEmail || !db.vertexPrivateKey) {
                 alertError(language.errors.vertexAuthIncomplete);
@@ -531,8 +559,11 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     }    
     
     let url = ''
-    let apiKey = arg.key || db.google.accessToken
-    
+    // A Vertex request without a custom URL authenticates with the minted token, not this key, so
+    // an unusable reference in the Gemini key must not fail it.
+    const urlCarriesKey = !!arg.customURL || arg.modelInfo.format !== LLMFormat.VertexAIGemini
+    let apiKey = urlCarriesKey ? await resolveRequestKey(arg, arg.key || db.google.accessToken) : (arg.key || db.google.accessToken)
+
     if(arg.customURL){
         let baseURL = arg.customURL
         if (!baseURL.endsWith('/')) {

@@ -26,6 +26,10 @@ export const languageSpanish = {
         "networkFetchPlain": "Esto puede ser un error de fetch simple. Intenta desactivar la opción de forzar fetch simple en la configuración.",
         "requestLogRemoved": "Este registro de solicitud ha sido eliminado.",
         "requestLogRemovedDesc": "Este registro de solicitud se elimina cuando el cliente se actualiza o recarga.",
+        "secretRefUnavailable": (name: string) => `La variable de entorno ${name} no está disponible (no está definida o el servidor no la permite).`,
+        "secretRefUnsupported": (name: string) => `La variable de entorno ${name} no se puede usar aquí: esta plataforma no tiene acceso al entorno del servidor.`,
+        "secretRefNotForeign": (name: string) => `La variable de entorno ${name} solo se envía a su propio proveedor, por lo que no se usó en esta solicitud.`,
+        "secretRefInRequest": (name: string) => `Una solicitud aún contiene la referencia a la variable de entorno ${name}. No se envió.`,
         "coldStorageRestoreFailed": "No se pudieron cargar los datos del almacenamiento frío. Los datos del personaje afectado pueden haberse perdido permanentemente.",
         "coldStorageRestoreUnreadable": "No se pudo cargar este personaje en este momento. No se cambió nada. Inténtalo de nuevo.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

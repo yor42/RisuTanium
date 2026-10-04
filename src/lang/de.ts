@@ -26,6 +26,10 @@ export const languageGerman = {
         "networkFetchPlain": "Dies kann ein einfacher Abruffehler sein. Versuchen Sie, die Option 'Erzwinge einfachen Abruf' in den Einstellungen zu deaktivieren.",
         "requestLogRemoved": "Dieses Anfrage-Protokoll wurde entfernt.",
         "requestLogRemovedDesc": "Dieses Anfrage-Protokoll wird entfernt, wenn der Client aktualisiert oder neu geladen wird.",
+        "secretRefUnavailable": (name: string) => `Die Umgebungsvariable ${name} ist nicht verfügbar (nicht gesetzt oder vom Server nicht erlaubt).`,
+        "secretRefUnsupported": (name: string) => `Die Umgebungsvariable ${name} kann hier nicht verwendet werden: Diese Plattform hat keinen Zugriff auf die Umgebung des Servers.`,
+        "secretRefNotForeign": (name: string) => `Die Umgebungsvariable ${name} wird nur an ihren eigenen Anbieter gesendet und wurde daher für diese Anfrage nicht verwendet.`,
+        "secretRefInRequest": (name: string) => `Eine Anfrage enthält noch den Verweis auf die Umgebungsvariable ${name}. Sie wurde nicht gesendet.`,
         "coldStorageRestoreFailed": "Kaltlagerdaten konnten nicht geladen werden. Die Daten des betroffenen Charakters können dauerhaft verloren sein.",
         "coldStorageRestoreUnreadable": "Dieser Charakter konnte gerade nicht geladen werden. Es wurde nichts verändert. Versuchen Sie es bitte erneut.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

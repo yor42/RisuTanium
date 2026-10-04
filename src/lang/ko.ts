@@ -26,6 +26,10 @@ export const languageKorean = {
         "networkFetchPlain": "이것은 요청 오류일 수 있습니다. 설정에서 직접 요청 보내기 옵션을 비활성화해 보세요.",
         "requestLogRemoved": "요청 로그가 삭제되었습니다.",
         "requestLogRemovedDesc": "요청 로그는 앱이 재시작되거나 새로고침되면 삭제됩니다.",
+        "secretRefUnavailable": (name: string) => `환경 변수 ${name}을(를) 사용할 수 없습니다 (설정되지 않았거나 서버에서 허용되지 않음).`,
+        "secretRefUnsupported": (name: string) => `환경 변수 ${name}은(는) 여기서 사용할 수 없습니다: 이 플랫폼은 서버의 환경에 접근할 수 없습니다.`,
+        "secretRefNotForeign": (name: string) => `환경 변수 ${name}은(는) 해당 제공자에게만 전송되므로 이 요청에는 사용되지 않았습니다.`,
+        "secretRefInRequest": (name: string) => `요청에 환경 변수 참조 ${name}이(가) 아직 남아 있습니다. 전송되지 않았습니다.`,
         "coldStorageRestoreFailed": "콜드 스토리지 데이터를 불러올 수 없습니다. 해당 캐릭터의 데이터가 영구적으로 손실되었을 수 있습니다.",
         "coldStorageRestoreUnreadable": "지금은 이 캐릭터를 불러올 수 없습니다. 변경된 내용은 없습니다. 다시 시도하세요.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

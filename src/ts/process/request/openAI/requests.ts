@@ -18,6 +18,7 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters } f
 import type { Contents, OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
+import { resolveRequestKey } from '../secretKey'
 export { requestOpenAIResponseAPI, __testResponsesAPI } from './responses'
 function isOfficialOpenAIURL(url: string): boolean {
     try {
@@ -213,6 +214,8 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
     }
 
     if(aiModel === 'openrouter' && db.openrouterRequestModel === 'risu/free'){
+        // The model list swallows its own failures; resolving here first reports an unusable reference as such.
+        await resolveRequestKey(arg, db.openrouterKey)
         openrouterRequestModel = await getFreeOpenRouterModels()
     }
 
@@ -292,7 +295,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
                 modelId: arg.modelInfo.id
             } ),
             headers: {
-                "Authorization": "Bearer " + (arg.key ?? db.mistralKey),
+                "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.mistralKey),
             },
             abortSignal: arg.abortSignal,
             chatId: arg.chatId,
@@ -544,13 +547,14 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         body.service_tier = 'flex'
     }
 
+    // The field is chosen first and only the chosen one is resolved, so an unset reference in a
+    // field this model does not use cannot fail the request.
+    const chosenKey = arg.modelInfo?.keyIdentifier
+        ? db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
+        : (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ?  db.proxyKey : (aiModel === 'openrouter' ? db.openrouterKey : db.openAIKey)))
     let headers = {
-        "Authorization": "Bearer " + (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ?  db.proxyKey : (aiModel === 'openrouter' ? db.openrouterKey : db.openAIKey))),
+        "Authorization": "Bearer " + await resolveRequestKey(arg, chosenKey),
         "Content-Type": "application/json"
-    }
-
-    if(arg.modelInfo?.keyIdentifier){
-        headers["Authorization"] = "Bearer " + db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
     }
     if(aiModel === 'openrouter'){
         headers["X-Title"] = 'RisuAI'
@@ -943,7 +947,7 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
 
     let headers:any = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + (arg.key ?? db.openAIKey)
+        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.openAIKey)
     }
 
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(arg.aiModel))
