@@ -1,6 +1,7 @@
 <script lang="ts">
     import { PlusIcon, ArrowLeftIcon, DownloadIcon, UploadIcon } from "@lucide/svelte";
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import CheckInput from "src/lib/UI/GUI/CheckInput.svelte";
     import OptionInput from "src/lib/UI/GUI/OptionInput.svelte";
@@ -2291,7 +2292,7 @@
             >
                 {#if selectedTriggerIndices.length > 1 && selectMode === 0}
                     <div class="text-textcolor2 text-xs border-b border-darkborderc pb-2 mb-2">
-                        {selectedTriggerIndices.length} selected
+                        {fillLang(language.sidebarUi.nSelected, { count: selectedTriggerIndices.length })}
                     </div>
                 {/if}
                 
@@ -2457,9 +2458,9 @@
                                         
                                         const dragElement = document.createElement('div')
                                         if (isMultipleSelected() && isTriggerSelected(i)) {
-                                            dragElement.textContent = `${selectedTriggerIndices.length} triggers selected`
+                                            dragElement.textContent = fillLang(language.sidebarUi.nTriggersSelected, { count: selectedTriggerIndices.length })
                                         } else {
-                                            dragElement.textContent = trigger?.comment || 'Unnamed Trigger'
+                                            dragElement.textContent = trigger?.comment || language.sidebarUi.unnamedTrigger
                                         }
                                         dragElement.className = 'absolute -top-96 -left-96 px-4 py-2 bg-darkbg text-textcolor2 rounded-sm text-sm whitespace-nowrap shadow-lg pointer-events-none z-50'
                                         document.body.appendChild(dragElement)
@@ -2514,7 +2515,7 @@
                                         handleContextMenu(e, 0, i)
                                     }}
                                 >
-                                    {trigger?.comment || 'Unnamed Trigger'}
+                                    {trigger?.comment || language.sidebarUi.unnamedTrigger}
                                 </button>
                             {/if}
                         {/each}
@@ -2579,7 +2580,7 @@
                     <Button className="mt-2" onclick={(e) => {
                         e?.stopPropagation();
                         close();
-                    }}>Close</Button>
+                    }}>{language.uiCommon.close}</Button>
                 </div>
 
                 <div class="md:flex-1 bg-darkbg flex-col flex h-svh min-h-svh md:h-auto md:min-h-0">
@@ -2775,7 +2776,7 @@
                                              markEffectDrag(e, i)
                                              
                                              const dragElement = document.createElement('div')
-                                             dragElement.textContent = formatEffectLabel(effect, effectSupportContext()) || 'Effect'
+                                             dragElement.textContent = formatEffectLabel(effect, effectSupportContext()) || language.sidebarUi.effectFallback
                                              dragElement.className = 'absolute -top-96 -left-96 px-4 py-2 bg-darkbg text-textcolor2 rounded-sm text-sm whitespace-nowrap shadow-lg pointer-events-none z-50'
                                              document.body.appendChild(dragElement)
                                              e.dataTransfer?.setDragImage(dragElement, 10, 10)
@@ -2859,7 +2860,7 @@
                                 >
                                     {language.triggerCategories[category] || category}
                                     {#if category === 'Deprecated'}
-                                        <span class="text-xs opacity-60 ml-1">(Deprecated)</span>
+                                        <span class="text-xs opacity-60 ml-1">{language.sidebarUi.deprecatedTag}</span>
                                     {/if}
                                 </button>
                             {/each}
@@ -2900,7 +2901,7 @@
                                     <div>
                                         {language.triggerDesc[type]}
                                         {#if effectCategories.Deprecated.includes(type)}
-                                            <span class="text-xs opacity-60 ml-1">(Deprecated)</span>
+                                            <span class="text-xs opacity-60 ml-1">{language.sidebarUi.deprecatedTag}</span>
                                         {/if}
                                     </div>
                                 </button>
@@ -3006,7 +3007,7 @@
                                 {#if i === 0}
                                     <!-- Header, skip the first trigger -->
                                 {:else}
-                                    <OptionInput value={trigger.comment}>{trigger.comment || 'Unnamed Trigger'}</OptionInput>
+                                    <OptionInput value={trigger.comment}>{trigger.comment || language.sidebarUi.unnamedTrigger}</OptionInput>
                                 {/if}
                             {/each}
                         </SelectInput>
@@ -3646,9 +3647,9 @@
 
                         <span class="block text-textcolor">{language.condition}</span>
                         <SelectInput bind:value={editTrigger.condition}>
-                            <OptionInput value="loose">loose</OptionInput>
-                            <OptionInput value="strict">strict</OptionInput>
-                            <OptionInput value="regex">regex</OptionInput>
+                            <OptionInput value="loose">{language.sidebarUi.conditionLoose}</OptionInput>
+                            <OptionInput value="strict">{language.sidebarUi.conditionStrict}</OptionInput>
+                            <OptionInput value="regex">{language.sidebarUi.conditionRegex}</OptionInput>
                         </SelectInput>
 
                         <span class="block text-textcolor">{language.depth}</span>
@@ -4074,7 +4075,7 @@
                         }
                         menuMode = 0
                         updateGuideLines()
-                    }}>Save</Button>
+                    }}>{language.uiCommon.save}</Button>
 
                     {#if menuMode === 3}
                         <Button className="mt-2" onclick={() => {
@@ -4085,7 +4086,7 @@
                                 selectedEffectIndexSaved = selectedEffectIndex;
                             }
                             menuMode = 0
-                        }}>Delete</Button>
+                        }}>{language.uiCommon.delete}</Button>
                     {/if}
                 </div>
             {/if}

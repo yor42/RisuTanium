@@ -7,6 +7,8 @@ import { saveInlayedSignature, setInlayAsset, writeInlayImage, type InlaySignatu
 import { extractJSON, getGeneralJSONSchema } from "../templates/jsonSchema"
 import { callTool, decodeToolCall, encodeToolCall } from "../mcp/mcp"
 import { alertError } from "src/ts/alert";
+import { language } from "src/lang";
+import { fillLang } from "src/lang/fill";
 import { addFetchLog } from "src/ts/globalApi.svelte"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type LLMParameter } from './shared'
@@ -419,15 +421,15 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
 
     async function generateToken(email:string,key:string){
         if (!window.crypto || !window.crypto.subtle) {
-            throw new Error("Web Crypto API is not available in this environment. Please ensure you are using HTTPS.");
+            throw new Error(language.errors.webCryptoUnavailable);
         }
         // Input validation
         if (!email.includes("gserviceaccount.com")) {
-            throw new Error("Invalid Vertex client email. Must include gserviceaccount.com");
+            throw new Error(language.errors.vertexInvalidClientEmail);
         }
         if (!key.includes("-----BEGIN PRIVATE KEY-----") ||
             !key.includes("-----END PRIVATE KEY-----")) {
-            throw new Error("Invalid Vertex private key. Must include proper key markers.");
+            throw new Error(language.errors.vertexInvalidPrivateKey);
         }
 
         function str2ab(privateKey:string):ArrayBuffer {
@@ -491,14 +493,14 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
             } catch {
                 errorText = response.status.toString();
             }
-            throw new Error(`Failed to refresh google access token: ${errorText}`);
+            throw new Error(fillLang(language.errors.googleTokenRefreshFailed, { error: `${errorText}` }));
         }
 
         const data = await response.json();
         const token = data.access_token;
 
         if (!token) {
-            throw new Error("No google access token in the response");
+            throw new Error(language.errors.googleNoAccessToken);
         }
 
         const db2 = getDatabase()
@@ -511,8 +513,8 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
         if(db.vertexAccessTokenExpires < Date.now()){
             if (!db.vertexClientEmail || !db.vertexPrivateKey) {
-                alertError("Vertex AI authentication information is missing or incomplete. Please check your settings.");
-                return { type: 'fail', result: "Vertex AI authentication information is missing or incomplete. Please check your settings." };
+                alertError(language.errors.vertexAuthIncomplete);
+                return { type: 'fail', result: language.errors.vertexAuthIncomplete };
             }
             headers['Authorization'] = "Bearer " + await generateToken(db.vertexClientEmail, db.vertexPrivateKey)
         }
@@ -944,7 +946,7 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
     if(!result) {
         return {
             type: 'fail',
-            result: `Got empty response: ${JSON.stringify(resData)}`
+            result: fillLang(language.errors.googleEmptyResponse, { response: JSON.stringify(resData) })
         }
     }
 

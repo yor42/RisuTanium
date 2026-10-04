@@ -30,6 +30,7 @@
     HomeIcon,
     WrenchIcon,
     User2Icon,
+    XIcon,
   } from "@lucide/svelte";
     import {
   addCharacter,
@@ -45,6 +46,7 @@
     import { v4 } from "uuid";
     import { checkCharOrder, getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
     import { alertInput, alertSelect } from "src/ts/alert";
+  import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
     import SideChatList from "./SideChatList.svelte";
   import { sideBarSize } from "src/ts/gui/guisize";
   import DevTool from "./DevTool.svelte";
@@ -643,18 +645,21 @@
                   }
                 }
                 else if(sel === 1){
-                  const colors = ["red","green","blue","yellow","indigo","purple","pink","default"]
-                  const sel = parseInt(await alertSelect(colors))
+                  const sel = parseInt(await alertSelect(getFolderColorLabels()))
+                  const colorValue = getFolderColorValue(sel)
+                  if(colorValue === undefined){
+                    return
+                  }
                   const db = DBState.db
                   const oder = db.characterOrder[ind]
                   if(typeof(oder) === 'string'){
                     return
                   }
-                  oder.color = colors[sel].toLocaleLowerCase()
+                  oder.color = colorValue
                   db.characterOrder[ind] = oder
                 }
                 else if(sel === 2) {
-                  const sel = parseInt(await alertSelect(['Reset to Default Image', 'Select Image File']))
+                  const sel = parseInt(await alertSelect([language.alerts.resetToDefaultImage, language.alerts.selectImageFile]))
                   const db = DBState.db
                   const oder = db.characterOrder[ind]
                   if(typeof(oder) === 'string'){
@@ -948,7 +953,9 @@
   }}
 >
   <button
-    class="flex w-full justify-end text-textcolor"
+    class="flex w-full justify-end text-textcolor hover:text-textcolor2"
+    aria-label={language.closeSidebar}
+    title={language.closeSidebar}
     onclick={async () => {
       if($sideBarClosing){
         return
@@ -956,7 +963,7 @@
       $sideBarClosing = true;
     }}
   >
-    <!-- <button class="border-none bg-transparent p-0 text-textcolor"><X /></button> -->
+    <XIcon size={18} />
   </button>
   {#if sideBarMode === 0}
     {#if $selectedCharID < 0 || $settingsOpen}

@@ -58,7 +58,7 @@
         <!-- <h2 class="text-xl font-bold">Popup Editor</h2> -->
          <!-- Header Toolbar -->
          <div class="flex items-center justify-between">
-            <h2 class="text-xl font-bold">Popup Editor</h2>
+            <h2 class="text-xl font-bold">{language.othersUi.popupEditor}</h2>
             <div class="flex items-center gap-2">
                 {#if ['markdown', 'cbs'].includes(languageMode)}
                     {#if !previewing}

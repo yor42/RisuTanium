@@ -1,4 +1,5 @@
 import { alertError } from "src/ts/alert"
+import { language } from "src/lang"
 import { importPlugin } from "../plugins.svelte"
 import { sleep } from "src/ts/util"
 
@@ -8,7 +9,7 @@ export async function hotReloadPluginFiles(){
 
 
     if(!('showOpenFilePicker' in window)){
-        alertError("Your browser does not support the File System Access API, which is required for hot-reloading plugin files.")
+        alertError(language.errors.fileSystemAccessUnsupported)
         return
     }
 

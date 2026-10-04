@@ -5,7 +5,6 @@
  */
 
 import type { SettingItem } from './types';
-import { language } from "src/lang";
 
 export const accessibilitySettingsItems: SettingItem[] = [
     // Header
@@ -70,6 +69,7 @@ export const accessibilitySettingsItems: SettingItem[] = [
         id: 'acc.longPressToPopupEditor',
         type: 'check',
         labelKey: 'longPressToPopupEditor',
+        fallbackLabel: 'Long Press to Open Popup Editor',
         bindKey: 'longPressToPopupEditor',
         keywords: ['long', 'press', 'popup', 'editor']
     },
@@ -173,12 +173,12 @@ export const accessibilitySettingsItems: SettingItem[] = [
         condition: (ctx) => ctx.db.autoScrollToNewMessage && !ctx.db.alwaysScrollToNewMessage,
         options: {
             selectOptions: [
-                { value: 'bottom-center', label: language.newMessageButtonBottomCenter },
-                { value: 'bottom-right', label: language.newMessageButtonBottomRight },
-                { value: 'bottom-left', label: language.newMessageButtonBottomLeft },
-                { value: 'floating-circle', label: language.newMessageButtonFloatingCircle },
-                { value: 'right-center', label: language.newMessageButtonRightCenter },
-                { value: 'top-bar', label: language.newMessageButtonTopBar }
+                { value: 'bottom-center', label: 'Bottom Center (Default)', labelKey: 'newMessageButtonBottomCenter' },
+                { value: 'bottom-right', label: 'Bottom Right', labelKey: 'newMessageButtonBottomRight' },
+                { value: 'bottom-left', label: 'Bottom Left', labelKey: 'newMessageButtonBottomLeft' },
+                { value: 'floating-circle', label: 'Floating Circle (Bottom Right)', labelKey: 'newMessageButtonFloatingCircle' },
+                { value: 'right-center', label: 'Right Center', labelKey: 'newMessageButtonRightCenter' },
+                { value: 'top-bar', label: 'Top Bar', labelKey: 'newMessageButtonTopBar' }
             ]
         }
     },

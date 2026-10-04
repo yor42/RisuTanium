@@ -6,6 +6,7 @@ import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlock
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
 import { alertStore, DBState, loadoutModalStore, MobileGUIStack, MobileSideBar, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import { updateTextThemeAndCSS } from "./gui/colorscheme"
 import { defaultHotkeys } from "./defaulthotkeys"
 import { previewMayStart, renderPromptResult, runPreview } from "./process/previewRunner"
@@ -514,20 +515,27 @@ function focusQuery(query:string){
 export function initMobileGesture(){
     let pressingPointers = new Map<number, {x:number, y:number}>()
 
-    document.addEventListener('touchstart', (ev) => {
+    const onTouchStart = (ev: TouchEvent) => {
         for(const touch of ev.changedTouches){
             const ele = touch.target as HTMLElement
+            // A control's own touch is never a swipe; the other touches of the event still are.
             if(ele.tagName === 'BUTTON' || ele.tagName === 'INPUT' || ele.tagName === 'SELECT' || ele.tagName === 'TEXTAREA'){
-                return
+                continue
             }
             pressingPointers.set(touch.identifier, {x: touch.clientX, y: touch.clientY})
         }
-    }, {
-        passive: true
-    })
-    document.addEventListener('touchend', (ev) => {
+    }
+    const onTouchCancel = (ev: TouchEvent) => {
+        for(const touch of ev.changedTouches){
+            pressingPointers.delete(touch.identifier)
+        }
+    }
+    const onTouchEnd = (ev: TouchEvent) => {
         for(const touch of ev.changedTouches){
             const d = pressingPointers.get(touch.identifier)
+            if(!d){
+                continue
+            }
             const moveX = touch.clientX - d.x
             const moveY = touch.clientY - d.y
             pressingPointers.delete(touch.identifier)
@@ -557,9 +565,18 @@ export function initMobileGesture(){
                 }
             }
         }
-    }, {
-        passive: true
-    })
+    }
+
+    document.addEventListener('touchstart', onTouchStart, {passive: true})
+    document.addEventListener('touchend', onTouchEnd, {passive: true})
+    document.addEventListener('touchcancel', onTouchCancel, {passive: true})
+
+    return () => {
+        document.removeEventListener('touchstart', onTouchStart)
+        document.removeEventListener('touchend', onTouchEnd)
+        document.removeEventListener('touchcancel', onTouchCancel)
+        pressingPointers.clear()
+    }
 }
 
 function changeToPreset(num:number){
@@ -567,7 +584,7 @@ function changeToPreset(num:number){
         let db = getDatabase()
         let pres = db.botPresets
         if(pres.length > num){
-            alertToast(`Changed to Preset: ${pres[num].name}`)
+            alertToast(fillLang(language.alerts.changedToPreset, { name: pres[num].name }))
             changeToPreset2(num)
         }
     }

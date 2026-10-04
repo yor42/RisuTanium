@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import markdownit from 'markdown-it'
+import { replaceThoughtsBlocks } from './thoughts';
 import { appVer, getCurrentCharacter, getDatabase, type Database, type character, type customscript, type groupChat, type triggerscript } from '../storage/database.svelte';
 import { DBState, selIdState } from '../stores.svelte';
 import { aiWatermarkingLawApplies, getFileSrc, isPlainHttpFileSrc } from '../globalApi.svelte';
@@ -739,24 +740,8 @@ export interface simpleCharacterArgument{
     triggerscript?: triggerscript[]
 }
 
-function parseThoughtsAndTools(data:string){
-    let result = '', i = 0
-    while (i < data.length) {
-        if (data.slice(i, i + 10) === '<Thoughts>') {
-            let j = i + 10, depth = 1
-            while (j < data.length && depth > 0) {
-                if (data.slice(j, j + 10) === '<Thoughts>') depth++
-                if (data.slice(j, j + 11) === '</Thoughts>') depth--
-                j++
-            }
-            if (depth === 0) {
-                result += `<details><summary>${language.cot}</summary>${data.substring(i + 10, j - 1)}</details>`
-                i = j + 10
-                continue
-            }
-        }
-        result += data[i++]
-    }
+export function parseThoughtsAndTools(data:string){
+    const result = replaceThoughtsBlocks(data, (inner) => `<details><summary>${language.cot}</summary>${inner}</details>`)
     return result.replace(/<tool_call>(.+?)<\/tool_call>/gms, (full, txt:string) => {
         return `<div class="x-risu-tool-call">🛠️ ${language.toolCalled.replace('{{tool}}',txt.split('\uf100')?.[1] ?? 'unknown')}</div>\n\n`
     })

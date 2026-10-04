@@ -567,7 +567,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         if(arg.tools && arg.tools.length > 0){
             return {
                 type: 'fail',
-                result: 'MultiGen mode cannot be used with tool calls. Please disable one of them.'
+                result: language.errors.multiGenWithTools
             }
         }
         body.n = db.genTime
@@ -591,7 +591,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
             if(!isTauri && !isNodeServer){
                 return {
                     type: 'fail',
-                    result: 'You are trying local request on streaming. this is not allowed dude to browser/os security policy. turn off streaming.',
+                    result: language.errors.localStreamingBlocked,
                 }
             }
         }

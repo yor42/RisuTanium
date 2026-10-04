@@ -3,6 +3,8 @@ import { MCPClient, type JsonRPC, type MCPTool, type RPCToolCallContent } from "
 import { DBState } from "src/ts/stores.svelte";
 import { getModuleMcps } from "../modules";
 import { alertError, alertInput, alertNormal } from "src/ts/alert";
+import { language } from "src/lang";
+import { fillLang } from "src/lang/fill";
 import { v4 } from "uuid";
 import type { MCPClientLike } from "./internalmcp";
 import localforage from "localforage";
@@ -423,7 +425,7 @@ export async function callTool(methodName:string, args:any, ctx?:MCPCallContext)
 }
 
 export async function importMCPModule(){
-    const x = await alertInput('Please enter the URL of the MCP module to import:', [
+    const x = await alertInput(language.alerts.mcpEnterModuleUrl, [
         ['internal:aiaccess', 'LLM Call Client (internal:aiaccess)'],
         ['internal:risuai', 'Risu Access Client (internal:risuai)'],
         ['internal:fs', 'File System Client (internal:fs)'],
@@ -445,7 +447,7 @@ export async function importMCPModule(){
         !x.startsWith('stdio:') &&
         !x.startsWith('plugin:')
     ){
-        alertError('Invalid URL');
+        alertError(language.errors.invalidUrl);
         return;
     }
     try {
@@ -453,7 +455,7 @@ export async function importMCPModule(){
         console.log(metas)
         const meta = metas[x];
         if(!meta) {
-            alertError('MCP module not found or invalid URL');
+            alertError(language.errors.mcpModuleNotFound);
             return;
         }
         const db = getDatabase();
@@ -475,7 +477,7 @@ export async function importMCPModule(){
                 selective: false
             }]
         })
-        alertNormal(`MCP module imported successfully!\nName: ${meta.serverInfo.name}`);
+        alertNormal(fillLang(language.alerts.mcpModuleImported, { name: meta.serverInfo.name }));
 
     } catch (error) {
         alertError(error)

@@ -548,10 +548,389 @@ changing anything on `ReloadGUIPointer`.
 
 ### CHORE-05 — Translation coverage: much of the UI is English-only
 
+**Status (2026-10-03, UI session, translation batch 1): DONE in `39f00517`; the ticket stays
+open for the later batches** (ledger rows 878 to 886). Product choices in `MC-209`. The investigator (row 878) refuted the
+ticket's key-drift premise, and the stale sections below are marked as superseded; they are kept as written.
+- **Key drift is zero.** Before batch 1 all six locales had the same 1668 keys as `en.ts` (1801 after it) (`131fdcd5`, 2026-09-23, filled 510 keys), and the
+  seven plugin consent keys are translated. The Orchestrator re-ran the drift script. This supersedes the "Next priority"
+  consent table and the "Measured key drift (2026-09-21)" table below (1529 keys, 53 to 99 missing per locale). The
+  TTS-4 citation `CharConfig.svelte:792` is stale too: the hint is now `language.ttsElevenLabsKeyHint`.
+- **Done in batch 1 (Errors + Playground):** 133 new `en.ts` keys (43 `errors`, 40 in a new top-level `alerts` object, 47
+  `playground`, 2 `hypaV3Modal`, `loadingEllipsis`), translated into all six locales (row 882). 50 call-site files route
+  hard-coded alert, error and Playground strings through `language`: `ts/process/**` (`local.ts`, `stableDiff.ts`, `mcp/*`,
+  `request/*`, `prompt.ts`, `scripts.ts`, `index.svelte.ts`, `modules.ts`, `previewRunner.ts`), `characterCards.ts`,
+  `characters.ts`, `persona.ts`, `gui/colorscheme.ts`, `hotkey.ts`, the Realm UI, the Playground pages and others. New keys
+  are flat strings with `{name}` placeholders, filled by `fillLang` in the new `src/lang/fill.ts`.
+- **MC-207's items:** the Playground Embedding and Prompt Conversion literals (CHORE-16 PG-2 and PG-4) are done in this batch.
+  `moduleContent` and `confirmRemoveModuleFeature` (CHORE-12 MOD-4) are still unused; they go to the dead-key batch.
+- **Typo fixes in the English text:** "screenShot", "least one preset" (now shared with `TranslatorPresetSettings.svelte` as
+  `errors.atLeastOnePreset`), "invaid", "copywrite", "additional Assets", and a double space in "Converting  video".
+- **Left English on purpose (the Orchestrator's disposition, `MC-209`):** `Failed to fetch model response after tool execution`
+  at five request sites and `Failed to fetch WaveSpeed models`, because `alertError` adds a network hint to messages that
+  include `Failed to fetch` and `globalFetch` returns `ok: false` on real network failures too.
+- **Deferred:** thrown error messages; the five `alertToast` strings in `globalApi.svelte.ts` (out of bounds, `MC-200` 4);
+  the `/?` slash-command help in `command.ts`; the drag-and-drop debugging dump in `LoreBookList.svelte`.
+- **New guard:** `src/lang/localeParity.test.ts` fails when a locale's key set, a value's kind or a string's `{placeholder}`
+  set differs from `en.ts`. Merge note: it fails any lane, the Main Campaign's included, that adds an English key without
+  all six translations. Other new tests: `fill.test.ts`, `fetchModelsFailed.test.ts`, `persona.i18n.test.ts`,
+  `colorscheme.i18n.test.ts`, `PlaygroundEmbedding.i18n.svelte.test.ts`, `RealmFrame.i18n.svelte.test.ts` (at HEAD, 6 of the
+  11 i18n tests fail and the 5 English guards pass; row 883).
+- **Checks:** `pnpm check` 0/0; `pnpm test` 352 files, 7092 passed, 4 skipped; build ok (row 884). Gate 2 approved (row 885).
+  Not run in a browser or on a device.
+- **Merge note (`MC-179`):** the Main Campaign changed `request/*`, `local.ts`, `stableDiff.ts`, `index.svelte.ts` and
+  `characterCards.ts` heavily; the edits here are string expressions and imports only.
+- **Remaining batches, in the lane (the maintainer chooses the order; as of batch 1, the current list is in the batch 2
+  block below):**
+  1. **Settings pages**, about 480 hard-coded rows (row 878). `MC-209`'s rule: provider and model names, API, URL, JSON and
+     parameter names such as Top P stay English; the rest is translated.
+  2. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the same heuristic).
+  3. **Dead-key removal** (done in batch 4; see the batch 4 block), in its own batch after a second check. The investigator found 118 likely-dead keys, with
+     dynamically accessed groups (`help`, `setup`, `triggerDesc`, `hotkeyDesc` and others) excluded. Skip the keys that may
+     belong to a planned feature: persistent storage (`persistentStorage`, `persistentStorageRecommended`,
+     `persistentStorageDesc`), license (`license`, `licenseDesc`) and Claude caching (`claudeCachingExperimental`,
+     `claudeCachingRetrivalDesc`), by the names in the investigator's list. Include `moduleContent` and
+     `confirmRemoveModuleFeature`.
+  4. **Optional native-speaker review** of the 203 strings identical to English (`de` 65) and of the translator's
+     low-confidence items (row 882). The Playground Embedding label "Custom (OpenAI-compatible)" is for the Settings batch.
+- **Disclosure (`MC-209`, not answered by the maintainer):** in the six non-English locales the `Failed to fetch models:
+  {error}` network hint appears only when the raw error text contains `Failed to fetch` or Firefox's `NetworkError when
+  attempting to fetch resource.` (a text match in `alertError`, not a network test); in English it appears on every error of
+  that message.
+
+**Status (2026-10-03, UI session, translation batch 2: the Settings pages): DONE in `694a4c89`;
+the ticket stays open for the later batches** (ledger rows 887 to 894). Product choices in `MC-210` (the order) and `MC-209`
+(names stay English); the rest of `MC-210` is the Orchestrator's dispositions, not the maintainer's. Batch 1's mechanism is
+reused unchanged: flat string keys, `{name}` placeholders filled by `fillLang`, no function-valued keys.
+- **Done in batch 2:** 167 new `en.ts` keys (38 top-level and 129 in a new `settingsPage` object; the Orchestrator's count
+  from the working-tree diff), translated into all six locales (row 890). 20 Svelte files under `src/lib` (Settings pages,
+  `botpreset.svelte`, `SettingRenderer.svelte`, `SettingSelect.svelte`, `CustomSidebarConfig.svelte`) and 7 files under
+  `src/ts/setting` now route visible text through `language`. 66 registry entries gained a `labelKey` (advanced 12, bot
+  parameters 19, chat format 1, display 3, language 25, accessibility 6); the English `label` or `fallbackLabel` stays as the
+  fallback, because the registry objects are module-level and `getLabel` resolves the key lazily. Mixed strings use a
+  `{name}` placeholder key (for example `settingsPage.nameApiKey`, "{name} API Key") with the provider name kept English. The
+  Settings embedding dropdown's "Custom (OpenAI-compatible)" now uses `settingsPage.customOpenAiCompatible`; the Playground
+  copy in `PlaygroundEmbedding.svelte` (listed for this batch in batch 1) is still hard-coded and goes to batch 3.
+- **Behaviour changes, disclosed (`MC-210`, not answered by the maintainer):** (a) `CustomSidebarConfig.svelte` shows and
+  stores `getLabel(type) || type.id`, so a newly added custom sidebar item stores its label (the language value if it has a
+  `labelKey`, otherwise its English `fallbackLabel`) instead of an id such as `adv.visionQual`; only an item with neither
+  keeps its id; stored items are untouched. (b) `Upload<br />Image`, `Upload<br />Vibe` and `Uploading<br />Image..` are
+  single strings with a space: the English `textContent` gains a space and the forced line break is gone, so the text wraps
+  naturally in the 80px box and may fit on one line. (c) In the NovelAI reference area "Image Reference", "Vibe Trasfer", "Character Reference" and
+  "Upload Vibe" are translated while sibling NovelAI labels stay English (Gate 2 SHOULD 3, left; a later native or maintainer
+  call). Also: settings search now matches `fallbackLabel`; an item with only a `labelKey` stays searchable only in the
+  current language, as before.
+- **Left English on purpose (the Orchestrator's dispositions, `MC-210`):** parameter names (Top P, Top K, Min P, Top A,
+  Repetition penalty, Reasoning Effort, Verbosity, Thinking Mode, Jinja Template); sampler and scheduler names; Stability
+  style presets; resolutions and ratios; the UI mode names; tokenizer and `LLMFormat` names; Ooba snake_case names and
+  modes; NovelAI feature names; the role labels User, System and assistant in `PromptSettings.svelte`; colour-scheme preset
+  names; keyboard key names. Stored defaults (`New Persona`, `New Preset`, `New Lore`, `New Folder`, `New Event`) are not
+  translated. Translator target-language names are translated (endonyms kept). English typos kept byte-identical: "Vibe
+  Trasfer", "Text Spliting", "Seperator", "Malaysian", "Ukranian".
+- **Two fixes folded in:** the six new-message-button option labels in `accessibilitySettingsData.ts` were `language.x` at
+  module level (frozen at import); they are now `labelKey` plus an English `label`. `acc.longPressToPopupEditor` had a
+  `labelKey` with no `en.ts` key (upstream commit `e03c3897` renamed the item without adding one), so its checkbox had no
+  label; it has a fork-only key, "Long Press to Open Popup Editor", and a `fallbackLabel`.
+- **Deferred:** the registry `options.placeholder` strings ("Leave it blank to use default", "Leave it blank to not use" in
+  `advancedSettingsData.ts`) need a `placeholderKey` mechanism; `CustomSidebarConfig.svelte`'s other strings ("No custom
+  sidebar items configured", "Delete", "Add Item", "Close", "Back to List"), `LoreBookSetting.svelte` and the Playground
+  Embedding "Custom (OpenAI-compatible)" option go to the next batch.
+- **New tests (20, four files):** `src/ts/setting/settingLabelKeys.test.ts` (3 guards: every `labelKey` names an existing
+  `en.ts` key), `SettingWrappers.i18n.svelte.test.ts` (11), `CustomSidebarConfig.i18n.svelte.test.ts` (4) and
+  `OtherBotSettings.i18n.svelte.test.ts` (2). Against HEAD's production files (scratch config), 8 of the 20 fail for the
+  intended defects; with `en.ts` at HEAD too, 13 fail (row 891; re-run on the final tree by the Orchestrator, same counts,
+  row 892). The `fallbackLabel` search match has no failing-at-HEAD test
+  (guard only). Merge note: the parity guard and the `labelKey` guard fail any lane that adds an `en.ts` key without all six
+  translations, or a `labelKey` that names no `en.ts` key.
+- **Checks:** `pnpm check` 0/0; `pnpm test` 356 files, 7112 passed, 4 skipped; build ok (row 892). Gate 2 approved (row 893).
+  Not run in a browser or on a device.
+- **Remaining batches, in the lane (the maintainer chooses the order):**
+  1. **SideBars, Others and the common UI chrome** (about 167 and 114 rows by the row 878 heuristic), including the rest of
+     `CustomSidebarConfig.svelte`'s strings and `LoreBookSetting.svelte`. The registry `options.placeholder` strings wait
+     for a `placeholderKey` mechanism. Batch 3 is done (see the batch 3 block below).
+  2. **Dead-key removal** (done in batch 4; see the batch 4 block), in its own batch after a second check; the exclusions and the list are in the batch 1 block above.
+  3. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
+     batch 1 (row 882) and batch 2 (row 890: `optViaSound`, `optAxModel`, `nameThinking`, `hotBadge`, `starter`, `bias`, and the
+     de and vi wording of `visionQuality`). Also a review note from Gate 2 (row 893): five pairs of keys hold the same English
+     (`settingsPage.iconAlt` and `icon`, `helpTab` and `helpBlock`, `deleteButton` and `playground.delete`, `searchModels` and
+     `openRouterSearchModel`, `imagenImageSize` and `imageSize`) and can drift apart; and ko 유저 against 사용자.
+
+**Status (2026-10-03, UI session, translation batch 3: SideBars, Others and the common UI): DONE in `40a64aaf`; the ticket stays open for the later batches** (ledger rows 895 to 899). Product choices in `MC-211` (dev panels,
+Easter eggs, the Iris dialog, one batch; the maintainer's four answers) and `MC-209` (names stay English); the dispositions and
+disclosures in `MC-211` are the Orchestrator's, not the maintainer's. The mechanism of batches 1 and 2 is reused: flat string
+keys, `{name}` placeholders filled by `fillLang`.
+- **Done in batch 3:** 205 new leaf keys in `en.ts` (8 new objects: `devTool` 24, `sidebarUi` 61, `alertComp` 15, `loadoutModal` 13,
+  `promptDiff` 38, `iris` 11, `othersUi` 9, `uiCommon` 24 = 195; plus 10 in `hypaV3Modal`), translated into all six locales
+  (row 897). 39 Svelte files (ChatScreens 3, Others 14, Playground 1, SideBars 13, UI 8) and the new
+  `src/lib/SideBars/folderColors.ts` route visible text through `language`. An existing key is reused only when its English
+  value is byte-identical to the old literal and the key is generic (top-level, or the generic `settingsPage.back`,
+  `settingsPage.unnamed` and `settingsPage.customOpenAiCompatible`); other domain-group keys are not reused. English
+  rendering is checked by a 307-row manifest: the 296 rows with a key all give `fillLang(en[key])` equal to the old literal
+  (0 bad); the 11 rows without a key (the `GridCatalog` data field, the Iris dictionary text and scaffolding, the colour-array
+  plumbing) are covered by the ko and zh-Hant byte-identity checks and the tests (row 897).
+  - **Iris dialog:** the intro and unsupported-model text moved into the language files, so all seven languages have them; the
+    ko text and the zh-Hant intro and tip are byte-identical to the old component text. A saved dialogue loads unchanged; the
+    'Iris' and 'You' speaker values are unchanged.
+  - **Folder colours:** the Sidebar and `SideChatList` folder colour select shows translated names from one list of value and
+    label pairs in `folderColors.ts`; the stored value is the English lower-case name as before.
+- **Behaviour changes, disclosed (`MC-211`; the maintainer approved them before the commit):** (a) a non-index answer to the folder colour
+  select now writes nothing; at HEAD Sidebar threw an unhandled TypeError (`colors[sel].toLocaleLowerCase()` on undefined) and
+  `SideChatList` stored undefined as the colour. (b) The Iris intro line is sent to the model as the first assistant turn, so
+  cn, vi, de and es users now send it in their language (English before); ko and zh-Hant are unchanged. (c) The zh-Hant Iris
+  unsupported-model line was in Simplified characters at HEAD and is now Traditional. (d) A `GridCatalog` entry without creator
+  notes has `desc` `''` instead of 'No description'; the display is the same in English.
+- **Left English on purpose (the Orchestrator's dispositions, `MC-211`):** the `CharConfig` TTS engine parameter labels (the
+  `MC-209` reading; the maintainer may revisit); the `AlertComp` technical labels (ID, GenID, Bytes, URL, Request Body,
+  Request Header, Response, Chunks, the OK/ERR badge, export format names, the bug-report block); stored defaults; the Easter
+  eggs (the maintainer's answer); Realm NSFW/SFW; "Choose your language"; "XHigh"; the "Performace" typo; typos in general.
+- **Deferred:** `MobileCharacters.svelte` "Unnamed"; the `HypaV3Modal` conversion errors have no component test; the registry
+  `options.placeholder` strings (need a `placeholderKey`); thrown errors; `globalApi` toasts (out of bounds, `MC-200` 4); the
+  `/?` help; the `LoreBookList` drag debug dump; UI text produced in `src/ts/**` (for example `devToolActions` output);
+  `Legal.svelte` (never edited). `src/lib/Setting/**` and `App.svelte` have no edit; `src/lib/Setting/**` was not
+  independently audited (its roughly 325 literals are nearly all KEEP-ENGLISH by the inventory).
+- **New tests (9 new files):** `AlertComp.i18n`, `GridCatalog.i18n`, `IrisModal.i18n`, `LoadoutModal.i18n`,
+  `PromptDiffModal.i18n`, `RegexData.i18n`, `Sidebar.folderColor.i18n` and `SideChatList.folderColor.i18n`
+  (`*.svelte.test.ts`) and `folderColors.i18n.test.ts`; `CustomSidebarConfig.i18n.svelte.test.ts` gains one reproducer. Against
+  HEAD's 9 mounted Svelte files (the scratch config `head.vitest.config.mts` in the Orchestrator's scratchpad, with those
+  files in `HEAD_FILES` and the language files at the working tree), 22 of 78 i18n tests fail, all 22
+  labelled "regression reproducer:"; the others are guards and batch 1 and 2 tests (row 898). The `HypaV3Modal` conversion
+  errors have no test. Merge note (`MC-179`): the parity guard fails any lane that adds an `en.ts` key without all six
+  translations, which is intended.
+- **Checks:** `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok (row 898). Gate 1 took two rounds
+  (`[REJECT]`, then `[EDITORIAL]`; row 896) and Gate 2 approved (row 898). Not run in a browser or on a device.
+- **Merge note (`MC-179`):** ChatScreens (3), Others (14), Playground (1), SideBars (13) and UI (8) Svelte files, the new
+  `folderColors.ts`, and the seven `src/lang` files. Three are on the Main Campaign's return list: `CharConfig.svelte`
+  (strings only, 21 lines changed), `PlaygroundEmbedding.svelte` (one line) and `Chat.svelte` (one line, the User/Assistant
+  label; not the copy code). `.claude/launch.json` is modified in the working tree and stays out of the commits. No file on the UI session's out-of-bounds list, `src/App.svelte` or
+  `docs/` is in the diff (the Orchestrator's path check over the modified and untracked files; Gate 2 confirmed the same).
+- **Remaining batches, in the lane (the maintainer chooses the order):**
+  1. **Dead-key removal** is done (see the batch 4 block below).
+  2. **Optional native-speaker review** of the strings identical to English and of the translators' low-confidence items:
+     batch 1 (row 882), batch 2 (row 890) and batch 3 (row 897: the regex flag names, the prompt-diff view names Unified, Split,
+     Intraline and Legacy, Autopilot, Instruct, Join, Forked, the vi CHAR/CHAT badge length, the informal du and tú in the de and
+     es Iris text, and the mainland wording of the zh-Hant intro and tip). Deferred by the maintainer in batch 4 (`MC-212`).
+
+**Status (2026-10-04, UI session, translation batch 4: dead-key removal): DONE in `e2602d4d`; the ticket stays open for the follow-ups below** (ledger rows 900 to 904). The request is the maintainer's (`MC-212`); the dispositions in `MC-212` are the Orchestrator's, not the maintainer's.
+- **Done in batch 4:** 131 unused `en.ts` keys deleted from all seven language files (107 top-level, 20 `triggerInputLabels`, 4
+  `errors`). `en.ts` leaves go from 2162 to 2031. Each file lost 132 lines (`coldStorageCleanupAborted` spans two lines) and gained
+  none; the survivors are equal in value and order, and no deleted line is a comment (row 902). `moduleContent` and
+  `confirmRemoveModuleFeature` (`MC-207`) are among the deleted keys. The second check found the old 118-key list wrong: it held
+  three live keys (`nanoGPTSelectFromList`, `nanoGPTManualInput`, `nanoGPTManualModelSelect`, read as `(language as any)` in
+  `BotSettings.svelte`) and missed 25 dead ones (row 900).
+- **Kept on purpose:** the seven planned-feature keys the maintainer excluded earlier (the batch 1 block above), and
+  `globalLoreBook` and `globalRegexScript` until after the merge (the Orchestrator's disposition, `MC-212`): the Main Campaign
+  branch still reads them in `GlobalLoreBookSettings.svelte` and `GlobalRegex.svelte`; they were retired on this branch in
+  `408c32dd`.
+- **Not touched:** 35 possibly-dead names inside computed groups (`help` 11, `setup` 18, `triggerDesc` 6). Ten groups were
+  treated as wholly live because they are read by computed access (row 900).
+- **No new test (the Orchestrator's disposition, `MC-212`):** there is no defect to reproduce; a guard that every key is
+  referenced was rejected because computed groups make it unsound, or it needs a hand-kept allowlist.
+- **Checks:** `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok (row 902). Gate 1 and Gate 2 both
+  approved (rows 901 and 903). Not run in a browser.
+- **Merge note (`MC-179`):** the parity guard and the `satisfies DeepPartial<...>` on each locale mean a key deleted from
+  `en.ts` has to go from all seven files together. All 131 keys are also unused on the Main Campaign branch tip `0df2e266`
+  (row 900). After the merge, a Main Campaign use of a deleted key through a static chain fails `pnpm check`, but a computed
+  access would not. Expect textual conflicts in the seven locale files (row 903).
+- **Native-speaker review: deferred by the maintainer (`MC-212`).** The maintainer said the Korean and English translations look good
+  (the Orchestrator reads that as batches 1 to 3) and will report issues; cn, zh-Hant, vi, de and es remain unreviewed by a native speaker.
+- **Remaining follow-ups:** delete `globalLoreBook` and `globalRegexScript` after the merge if those pages go; decide the 35
+  computed-group names (decided in batch 5a: 29 deleted, 6 kept); the deferred items in the batch 3 block above.
+
+**Status (2026-10-04, UI session, translation batch 5a: small deferrals and 29 dead computed-group names): DONE in `fb454bc0`; the ticket stays open for the follow-ups below** (ledger rows 905 to 910). The request and the split into three batches are the maintainer's (`MC-213`); the dispositions in `MC-213` are the Orchestrator's, not the maintainer's.
+- **Done in batch 5a:**
+  - 29 dead computed-group names deleted from all seven language files (`help` 11, `setup` 18). They are unused on HEAD and on the
+    Main Campaign tip `b2406e0e` (row 905). Each file's survivors are equal in value and order, and no comment line was removed (row 908).
+  - 5 new `en.ts` keys, translated into the six other locales: `unnamedPreset`, `emotionPromptPlaceholder`,
+    `presetChainPlaceholder`, `settingsPage.otherAx` and `slashCommandHelp`. Leaves go from 2031 to 2007 (2002 survivors plus 5).
+  - `placeholderKey` on `SettingOptions` and a `getPlaceholder` helper (`src/ts/setting/types.ts`, `utils.ts`), read by
+    `SettingText.svelte` and `SettingTextarea.svelte`. It is resolved lazily like `labelKey`, and the English `placeholder`
+    stays as the fallback. The two registry placeholders (`adv.emoPrompt`, `adv.presetChain`) now use it.
+  - The three `nanoGPT` keys in `BotSettings.svelte` are static `language.x` chains, without `as any` and without the dead
+    `"Manual Model Select"` fallback. No text change; the keys are now type-checked.
+  - The four `"Loading..."` assignments in `modal-summary-item.svelte` use `language.loadingEllipsis`.
+  - `MobileCharacters.svelte` "Unnamed" uses `settingsPage.unnamed`; the `botpreset.svelte` drag label uses `unnamedPreset`.
+  - `OtherAx` (the `AuxModelSelectors.svelte` label and the `PromptSettings.svelte` accordion name) is translated, because its
+    siblings in the same accordion are (Gate 1 N1, confirmed by the Orchestrator).
+  - The `/?` slash-command help (`command.ts`) is one key, `slashCommandHelp`. The English text is byte-identical to HEAD's
+    template literal (1788 characters; Gate 2 re-ran the comparison). Command names, argument syntax and example commands stay
+    English in every locale; descriptions and the "Example:" label are translated (ko uses "예시:"; cn and zh-Hant use a full-width colon).
+- **Behaviour fix, disclosed (found by Gate 1, M1; the Orchestrator confirmed it by reading the component):** at HEAD the
+  Apply button in the `HypaV3Modal` re-roll box could write the `"Loading..."` placeholder, or the failure message, into
+  `summary.text`. Apply is now disabled unless a result exists, the re-roll is not pending and it has not failed
+  (`canApplyRerolled`; `rerollFailed` is set in the catch and cleared when a re-roll starts), and `applyRerolled` returns early. Pre-fix
+  failure: two reproducers, where the summary text became `'Loading...'` (Apply while pending) and `'Reroll failed'` (Apply
+  after a failure). Gate 2's optional item was then done at the maintainer's request (`MC-214`, rows 911 to 913, committed in
+  `e61a0f72`): editing the re-roll text after a failure clears `rerollFailed`, so Apply applies the edited text; typing while
+  a re-roll is pending changes nothing. 4 tests added to `HypaV3Modal.rerollConvert.svelte.test.ts`, 2 of them regression
+  reproducers that fail at `e6c45b3d`.
+- **Kept, or not touched:** the five live `triggerDesc` names (`v2GetCharacterDesc`, `v2SetCharacterDesc`, `v2GetPersonaDesc`,
+  `v2SetPersonaDesc`, `v2UnsupportedTriggerDesc`) and `v2UnsupportedTrigger`, which is reachable through `triggerDesc[type]`
+  from saved effect data (row 905). The `LoreBookList` debug dumps are commented out, so there is nothing to translate and no
+  change. The `HypaV3Modal` conversion errors got tests only (guards), no source change. The `globalApi` toasts are not touched:
+  `globalApi.svelte.ts` is out of bounds for this session except `openURL` (`MC-200` 4). `Legal.svelte` is never edited.
+- **Tests (5 new files, 56 tests; no existing test file edited, apart from the `collect()` extension below):**
+  `SettingPlaceholder.i18n.svelte.test.ts` (11), `HypaV3Modal.rerollConvert.svelte.test.ts` (12), `command.help.test.ts` (27),
+  `MobileCharacters.unnamed.svelte.test.ts` (3) and `botpreset.unnamedPreset.svelte.test.ts` (3).
+  `settingLabelKeys.test.ts` has its `collect()` extended to cover `options.placeholderKey`. Against HEAD's production files
+  (the scratch config `tw5a-head.vitest.config.mts`, language files at the working tree), 13 tests fail and 43 pass. Seven
+  failures are regression reproducers on their intended assertions (the Korean `adv.emoPrompt` placeholder, the textarea
+  placeholder, Apply while pending, Apply after a failure, the Korean `/?` help, `MobileCharacters` Unnamed, `botpreset` Unnamed
+  Preset). Six are `getPlaceholder` unit tests that fail only because the export is missing, so they are not counted as
+  reproducers. The 43 passes are compatibility guards (row 908).
+- **Checks:** `pnpm check` 0/0; `pnpm test` 370 files, 7218 passed, 4 skipped; build ok (row 908). Gate 1 and Gate 2 both
+  approved (rows 907 and 909). Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch. By Gate 1's check, no
+  other file of this batch is touched on Main.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** de "Sonstige Hilfsmodelle" for
+  `otherAx`; the terseness of `otherAx` in vi, cn and zh-Hant; the vi term for the trigger; the cn term for the preset; es
+  uses Latin American forms.
+- **Remaining, as planned (`MC-213`):**
+  - **Batch 5b**, user-visible thrown errors and request-failure strings (about 40 keys): `request/*`, the `throwError`
+    literals in `index.svelte.ts`, `tts.ts`, `translator/presets.ts` (and its test assertions), `modules.ts`, `interchangeability.ts`.
+  - **Batch 5c**, the `devToolActions` and `previewRunner` markdown (about 12 keys) and the `CharConfig` TTS prose labels (about
+    15 to 20; parameter and engine names stay English), plus the `CharConfig` "Bias" label.
+  - **After the Main Campaign merge:** the `characterCards.ts` wait messages and asset-not-found throws, and the `processzip.ts`
+    strings (both sit inside Main Campaign hunks).
+  - **Stay English (the Orchestrator's disposition):** plugin API v3 throws (47), MCP throws (22), internal and swallowed
+    throws, JSON-dump throws, the `scriptings` `'Error: '` strings returned to Lua, and the `cbs.ts` tag docs.
+
+**Status (2026-10-04, UI session, translation batch 5b: user-visible error and request-failure strings): committed as `edc8c8b6` (code) on the maintainer's word "commit and start 5c"; not pushed; the ticket stays open for the follow-ups below** (ledger rows 914 to 918). The request and the three answers are the maintainer's (`MC-215`); the dispositions in `MC-215` are the Orchestrator's, not the maintainer's.
+- **Done in batch 5b:**
+  - 36 new `errors.*` keys in `en.ts`, translated into the six other locales (each appended after `vertexAuthIncomplete`), plus
+    two reused keys (`errors.unexpectedResponseType`, `errors.vertexAuthIncomplete`). Placeholders sit inside the key text, for
+    example `{provider}: {error}` and `{tokens}`.
+  - 14 production files: `index.svelte.ts`, `request/request.ts`, `request/google.ts`, `request/anthropic.ts`,
+    `request/openAI/requests.ts`, `request/openAI/responses.ts`, `request/shared.ts`, `tts.ts`, `translator/presets.ts`,
+    `process/modules.ts`, `src/ts/interchangeability.ts`, `models/local.ts`, `templates/jsonSchema.ts` and
+    `plugins/plugins.svelte.ts` (the plugin-update rename error): 14 production files, plus the seven locale files and the
+    `requests.responses.test.ts` mock.
+  - Request failures (`{type:'fail', result}`), thrown errors shown in alerts, the Horde, Ooba WebSocket and local-model texts,
+    the translator preset errors and the module asset save error are translated.
+- **Disclosures (`MC-215`):**
+  - Translated failure text now reaches Lua `LLM` and `axLLM`, the trigger `runLLM` result, MCP `aiaccess`, the plugin v3
+    `runLLMModel` and, with "inlay error response" on, saved chats. A script that matches English words in those results would
+    stop matching in a non-English UI. The investigator found none in the repository (row 914).
+  - Three English texts were fixed, with the maintainer's answer "Fix them (Recommended)": `websocketConnectFailed` ("WebSocket
+    connection to '{url}' failed."), `hordeNotPossible` and `hordeNotPossibleWith` ("Response not possible." and "Response not
+    possible: {message}", where HEAD joined the parts with no space) and `localStreamingBlocked`. Every other English value is
+    byte-identical to HEAD (Gate 2).
+- **Kept English (the Orchestrator's dispositions, `MC-215`):** `chatTemplate.ts` "Template type is not set" (unreachable in
+  normal use), the `src/main.ts` preload alert (can fire before the language loads), the five "Failed to fetch model response
+  after tool execution" sites, "Aborted", "All models failed", the plugin-blocked text, the preview JSON, tool-call failure
+  texts sent to the model, the Anthropic stream retry and error text, `sp.error` from `memory/**`, the `pluginListMerge` header
+  errors and the Rust `unsupportedReason`.
+- **Tests (6 new files, 20 tests; one existing test file edited, `requests.responses.test.ts`, whose `src/lang` mock now
+  carries the English `incompleteResponse` keys):** `presets.i18n.test.ts`, `jsonSchema.i18n.test.ts`,
+  `interchangeability.i18n.test.ts`, `request/tests/shared.i18n.test.ts`, `models/tests/local.i18n.test.ts` and
+  `process/tests/requestErrors.i18n.svelte.test.ts`. Against production files served at `a5699f55` (a scratch alias config,
+  current `src/lang`), 13 reproducers fail on assertions and 7 guards pass (rows 916 and 917). Not tested: Cohere, Claude batch,
+  Bedrock, Vertex/Google token, TTS, MultiGen, `moduleAssetsSaveFailed`, `pluginNameChangeBlocked`, `characterNotFound`,
+  `requiredTokens`, the Korean `incompleteResponse` and `localSidecarNotStarted`.
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 376 files, 7242 passed, 4 skipped; `pnpm build` ok (row 916). Gate 1 and Gate 2
+  both ended `[EDITORIAL]` (rows 915 and 917), corrections made. Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch, as in earlier
+  batches. On the Main Campaign branch (merge-base `57e7be63`), of this batch's other files only `process/modules.ts` also
+  changed: Main's hunks are in `importModule` (about lines 271 to 276), this batch's in `readModule` (line 248), so they do
+  not overlap.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** listed in `MC-215` ("sidecar",
+  access token versus Token, vi plugin and `requiredTokens`, de "Charakter", "Voreinstellung" and "Assets", es tú and
+  "Reverificando tokens", ko `hordeNoGenerations`).
+- **Remaining:**
+  - **Batch 5c**: the `devToolActions` and `previewRunner` text, the `CharConfig` TTS prose labels and the `CharConfig` "Bias" label.
+  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, including the `processzip.ts`
+    "Failed to save N assets" text.
+  - **Known leftover out of bounds:** `hanuraiMemory.ts` "Required Tokens" (`process/memory`).
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`); cn, zh-Hant, vi, de and es remain unreviewed by a native speaker.
+
+**Status (2026-10-04, UI session, translation batch 5c: dev-tool preview text, the `CharConfig` TTS labels and Bias): committed as `1ad02c3f` (code) on the maintainer's word "yes, commit 5c."; not pushed; the ticket stays open for the follow-ups below** (ledger rows 919 to 923). The request is the maintainer's ("commit and start 5c", `MC-216`); the dispositions in `MC-216` are the Orchestrator's, not the maintainer's. The three gated batches (5a, 5b, 5c) are done.
+- **Done in batch 5c:**
+  - 39 new keys in `en.ts` (8 in `devTool`, 31 in `sidebarUi`), translated into the six other locales. Reused keys:
+    `language.prompt`, `language.model`, `language.language`, `language.temperature` and the four `languageName*` keys.
+  - 3 production files, display text only: `devToolActions.ts`, `previewRunner.ts` and `CharConfig.svelte` (the TTS tab and the
+    Bias section), plus the seven locale files.
+  - The dev-tool preview text (rendered by `alertMd`, not sent to the model, not saved), the `CharConfig` TTS prose labels and
+    the Bias label and "string" placeholder are translated. Option values and stored settings are unchanged.
+- **Kept English (`MC-216`):** the role headings (Function, User, System, Assistant), "TTS", the engine names, the VOICEVOX
+  Speed, Pitch, Volume and Intonation scale names, Base URL, URL, Response Format and the formats, Top P and Top K, Chunk Length,
+  Normalize, v1 and v2, and the example placeholders.
+- **Disclosures (`MC-216`):** VOICEVOX "Speed scale" and "Volume scale" stay English beside the translated GPT-SoVITS "Speed"
+  and "Volume"; "Temperature" is translated while Top P and Top K stay English; `MC-211`'s kept-English TTS labels are superseded
+  for prose by `MC-213` decision 3.
+- **Tests (2 new files, 29 tests):** `CharConfig.ttsLabels.svelte.test.ts` (20) and `process/tests/previewText.i18n.test.ts`
+  (9). Against the three production files served at `ce33d027` (a scratch config, current locales), 17 reproducers fail on
+  assertions and 12 guards pass (row 921). Not covered: VITS mode (no translated label), the other five locales beyond key
+  parity, and the English "no undefined" check on the Bias tab.
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 378 files, 7271 passed, 4 skipped; `pnpm build` ok (row 921). Gate 1 and Gate 2
+  both ended `[APPROVE]` (rows 920 and 922). Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch, as in earlier
+  batches. On the Main Campaign branch (merge-base `57e7be63`), `git diff --name-only 57e7be63
+  fix/persistence-conflict-platform-hardening` on this batch's files (`devToolActions.ts`, `previewRunner.ts`,
+  `CharConfig.svelte` and the two new test files) lists none of them, so only the locale files are expected to conflict.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** listed in `MC-216` (ko
+  `instruction` and `cachePointNote`, cn and zh-Hant 指令 and 参考音频文本 / 參考音訊文本, zh-Hant 快取點 and 音訊, vi
+  `instruction`, "cache point", "custom voice seed" and the "Trộn …" labels, de "Eigener Stimm-Seed", "Cache-Punkt" and
+  "Nicht-Text-Inhalt(e)", es "Instrucción", "guion" and "cadena").
+- **Remaining for CHORE-05:**
+  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and
+    `globalRegexScript` if those pages go.
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`).
+  - **Known leftovers:** `hanuraiMemory.ts` "Required Tokens" (out of bounds); the `globalApi` toasts and `getRequestLog`
+    (out of bounds); the `botpreset.svelte` "string" placeholder; `PlaygroundImageTrans` "fontSize"; `ToolConversion`
+    "NOTSUPPORTED"; the ko `noBias` wording ("Bias 없음" beside `bias` "편향").
+
+**Status (2026-10-04, UI session, translation batch 5d: the in-bounds leftovers and Spanish as a selectable UI language): committed as `c81ad3e8` (code), on the maintainer's "commit everything when ready" (the message that also asked for the merge coordination); not pushed; the ticket stays open for the follow-ups below** (ledger rows 924 to 928). The request and the five answers are the maintainer's (`MC-217`); the dispositions in `MC-217` are the Orchestrator's, not the maintainer's. The option text of every question was the Orchestrator's; the maintainer chose the "(Recommended)" option each time.
+- **Done in batch 5d:**
+  - 4 new keys in `en.ts` (top-level `fontSize`; `playground.notSupported`; `alerts.writingExif`; `alerts.writingPng`), translated into the six other locales.
+    Reused keys: `language.name`, `language.loadingEllipsis`, `language.settingsPage.unknown` and `language.alerts.addingAssets`.
+  - The leftovers from batch 5c: the preset name placeholder (`botpreset.svelte`), the "Font Size" label
+    (`PlaygroundImageTrans.svelte`) and the unsupported badge (`ToolConversion.svelte`, the internal `'NOTSUPPORTED'` value is unchanged).
+  - The sweep's four finds: `MobileCharacters.svelte` "Unknown", `characters.ts` `makeGroupImage` "Loading..", the two `persona.ts` wait
+    texts and the legacy export in `modules.ts` (identical English).
+  - **Four English text changes** (disclosed in `MC-217`): "fontSize" is now "Font Size"; "NOTSUPPORTED" is now "Not supported";
+    "Loading.." is now "Loading..."; the preset name placeholder "string" is now "Name".
+  - **All six `noBias` values replaced** (upstream's strings): ko 편향 없음 (was "Bias 없음"), cn 无偏置 (was "No Bias"), zh-Hant 無偏置
+    (was "未設定 Bias"), vi Không có độ lệch (was "Không thiên vị"), de Kein Bias (was "Keine Voreingenommenheit"), es Sin sesgo (was "Sin Bias").
+  - **The `CharConfig` Style label** class `text=neutral-200` (matched no CSS, inherited the parent colour) is now `text-textcolor`, so
+    its colour follows the theme.
+  - **`es` in the `translang` export list** (appended, so the existing indices are unchanged).
+  - **Spanish is selectable as the app language** in the Language setting (`lang.uiLanguage`, "Español" after Tiếng Việt) and on the welcome
+    screen (an "• Español" button; `es` in `usableLangs`, so a Spanish browser language auto-selects it on first run; `case 'es'` sets
+    `db.translator = 'es'`). `es.ts` has existed since upstream `7944bb3d`; upstream has the same gap, so this is a **fork difference**.
+- **Kept English (`MC-217`):** the image-generator parameter names (Steps, Strength, Noise, Upscaler and so on; `MC-209`), the Ooba
+  parameter checkboxes, stored defaults, units, Easter eggs, plugin and CBS messages and console text.
+- **Tests (9 new files, 29 tests, counting the 3 added to `CharConfig.ttsLabels.svelte.test.ts`):** `botpreset.namePlaceholder`,
+  `PlaygroundImageTrans.i18n`, `ToolConversion.i18n`, `languageSettingsData.translangExport` (6), `MobileCharacters.unknownAgo`,
+  `characters.makeGroupImageWait`, `persona.waitText`, `modules.legacyExportWait` and `WelcomeRisu.spanish` (4). Against `a5dfc611`,
+  18 of the 29 tests fail on assertions, all of them reproducers, and the 11 guards pass: 14 in the first-pass run, the `noBias`
+  reproducer (against HEAD's `ko.ts`) and the 3 Spanish reproducers (rows 925 and 927). Not covered: the welcome screen's translator
+  `case 'es'` (first-setup translator for Spanish is untested).
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 387 files, 7300 passed, 4 skipped; `pnpm build` ok (row 927). Gate 1 skipped under the
+  `AGENTS.md` carve-out (string swaps and one-line fixes); Gate 2 ended `[APPROVE]`, and the resumed review after the Spanish follow-up ended
+  `[APPROVE]` (rows 926 and 927). Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch, as in earlier batches. The Main
+  Campaign tip was `d15149d8` on 2026-10-04 (`b2406e0e` and `ae8636a2` are ancestors). Main now changes `modules.ts` near lines 15, 125 to 132 and 147 to 226
+  and in `importModule`; this batch's `modules.ts` hunk is line 104, so there is no overlap. The same overlap command on `botpreset.svelte`,
+  `PlaygroundImageTrans.svelte`, `ToolConversion.svelte`, `CharConfig.svelte`, `languageSettingsData.svelte.ts`, `MobileCharacters.svelte`,
+  `characters.ts` and `persona.ts` listed none of them, and the same command on `WelcomeRisu.svelte` lists nothing either. Re-check every batch's
+  overlap at merge time, because Main keeps moving.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** vi `noBias` (follows the locale's unusual "Độ lệch"),
+  vi `notSupported`, de `writingPng` "(Wird geschrieben)", es `notSupported` "No compatible".
+- **Remaining for CHORE-05 (status after 5d):**
+  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and
+    `globalRegexScript` if those pages go; re-check every batch's overlap with Main at merge time.
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`).
+  - **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`; `hanuraiMemory.ts` "Required Tokens"; `Legal.svelte`.
+  - The batch 5c "known leftovers" (the `botpreset.svelte` placeholder, "fontSize", "NOTSUPPORTED", the ko `noBias` wording) are done in this batch.
+
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
 below is the pre-fix measurement and is otherwise still current.
 
+**Items added by the UI session (2026-10-03):** from the Playground and modules batch (`MC-207`): the two module language keys
+`moduleContent` and `confirmRemoveModuleFeature` have no consumers (CHORE-12 MOD-4); the Playground's Prompt Conversion and
+Embedding pages have hard-coded English labels and two hard-coded English error messages (CHORE-16 PG-2 and PG-4). These are
+added to this ticket's scope.
+
+**(Superseded 2026-10-03: the consent keys are translated in all six locales; see the status block above.)**
 **Next priority — the plugin permission consent prompts (verified 2026-09-22).** The seven V3
 consent strings shown by `getPluginPermission` (`src/ts/plugins/apiV3/v3.svelte.ts:614-622`;
 keys at `src/lang/en.ts:1622-1628`) are the dialogs where a user decides whether a plugin may read
@@ -578,6 +957,7 @@ others) — each locale is **deep-merged over English**. A key missing from `ko.
 throw or render blank; it **silently renders the English string**. That is exactly the "shows
 English regardless of language" symptom, and it is why drift accumulates unnoticed: nothing fails.
 
+**(Superseded 2026-10-03: key drift is zero, 1668 keys in every locale before batch 1 and 1801 after; see the status block above. The table is history.)**
 **Measured key drift (2026-09-21).** Read-only diff of the flattened exported key sets of
 `src/lang/*.ts` against `en.ts`, loaded with Node 24's native type stripping (no build, no source
 change). This replaces an earlier line-count estimate.
@@ -746,6 +1126,55 @@ visible error) with the maintainer before implementing. Translations of the prom
 
 ### CHORE-09 — Scripting, regex and lorebook bugs found during the wiki rewrite (none lose data)
 
+**Status (2026-10-03, UI session): items 1, 3, 5 and 6 DONE 2026-10-03 in `e10cbbbd`** (ledger
+rows 869 to 877). Product choices in `MC-208`. The investigator (row 870) refuted the premise below: `scriptings.ts` and
+`triggers.ts` are no longer identical to upstream. The Orchestrator verified items 2, 5 and 6 in source.
+- **Item 1 (`runAxLLM`), done and fork-only.** `triggers.ts` handles `runAxLLM` in the same `case` as `runLLM`, and it calls
+  the model with the mode `'otherAx'` (the Lua `axLLM`'s default mode; "Other auxiliary", `MC-208`). Upstream has the effect's type and
+  editor entry only (commit `fb941148`) and no runtime (row 871). It still does nothing without `lowLevelAccess`.
+- **Item 3 (nesting cap), done.** The new `src/ts/process/triggerLimits.ts` holds `NORMAL_NESTED_TRIGGER_LIMIT` = 10 and
+  `LOW_LEVEL_NESTED_TRIGGER_LIMIT` = 50. `runtrigger` and `v2RunTrigger` in `triggers.ts` and `/trigger` in `command.ts` use
+  them; `/trigger` was a third uncapped site (row 871), and `command.ts`'s own `NESTED_TRIGGER_LIMIT` is removed. A nested run
+  beyond the limit is skipped and the run that asked for it continues. Measurement (Node and Vitest, cap removed, synchronous
+  self-call; row 874): `RangeError` at about 367 levels for `runtrigger` and `v2RunTrigger` and about 289 for `/trigger`.
+  The value follows the Orchestrator's rule (1000 if at most a quarter of the smallest measured depth, else the largest round
+  number at most a quarter, here a quarter of 289 is about 72, so 50). A `RangeError` inside `runTrigger` is not caught.
+  **Consequences, disclosed in `MC-208` and not answered separately by the maintainer:** (a) the counter is per run and cumulative
+  over sequential calls, so a low-level run that starts more than 50 nested runs in sequence has the later ones skipped (at
+  HEAD low-level runs were unlimited; normal runs already had the cumulative cap of 10); (c) two self-calls per level are
+  bounded in depth, not in total work; (d) 50 was measured on Node and Vitest stacks, and browser and mobile stacks may be smaller.
+- **Items 5 and 6 (move scripts), done.** `scripts.ts` and `translator.ts` no longer strip `g` for `@@move_top`,
+  `@@move_bottom` and the `<move_top>` and `<move_bottom>` flags. Every match moves; `move_top` ends with the last match on
+  top and `move_bottom` keeps source order. `scripts.ts` resets `reg.lastIndex` before collecting the matches, because the
+  earlier `reg.test` advances it on a global regex (keeping `g` alone would have lost the first match; row 871). The outputs
+  are collected and joined once. `$<name>` in the move output now resolves: a participating group (an empty one too) gives its
+  text, a regex with named groups where this one did not participate gives `''`, and a regex with no named groups leaves it
+  literal, as `String.replace` does. The script with the flag box off defaults to `g` and now moves every match; this was put to
+  the maintainer before the choice ("Yes, honour g", `MC-208`). **(b)** In the translator (edittrans) engine, a flag text made
+  only of tags (`<cbs>`, `<order 1>`, `<move_top>`) with the flag box on is now `g` instead of `'u'`, as in `scripts.ts`; this
+  affects plain replace scripts too (one existing test's flag changed from `<cbs>` to `z<cbs>` to keep testing the `'u'` fallback).
+- **Item 2, already fixed on the fork:** `setDescription` checks `desc` (row 870). **Item 7:** what remains is the no-subject
+  fallback (the selected character), which belongs to the Main Campaign's origin plumbing; the subject path already resolves
+  the owner. **Item 8:** moot after CHORE-14 (the Global Regex page is retired). **Items 4, 9, 10 and 11:** left; fixing them would
+  change what upstream cards do (Orchestrator's disposition, not the maintainer's).
+- **Tests:** `src/ts/process/tests/scriptsMove.test.ts` (new: 10 "regression reproducer:" and 3 "guard:" tests),
+  `src/ts/process/tests/triggerNestingLimit.test.ts` (new: 3 reproducers, 3 guards, one pair per flavour: `runtrigger`,
+  `v2RunTrigger`, `/trigger`), `src/ts/translator/edittransRegex.test.ts` (extended; 24 tests after the change), and
+  `src/ts/process/tests/requestOrigin.svelte.test.ts` (extended: three `runAxLLM` reproducers and one guard). Against HEAD's
+  sources, through scratch `load()` configs: `scriptsMove` 10 of 13 fail; `triggerNestingLimit` 3 of 6 ("expected 150 to be
+  51"); `edittransRegex` 7 of 24; `requestOrigin` 3 of 108; removing only `reg.lastIndex = 0` makes 9 of 13 `scriptsMove`
+  tests fail with the first match lost (row 874). Gate 2 re-ran them (row 876). Checks are those in CHORE-13's entry (row 875).
+- **Merge note (`MC-179`):** `triggers.ts`, `command.ts`, `scripts.ts` and `translator.ts` were heavily changed by the Main
+  Campaign, so **merge conflicts are likely in all four.**
+- **Wiki hand-offs (for the Wiki session; `docs/wiki` was not edited):** `docs/wiki/Trigger-Script.md` line 87 says `runAxLLM`
+  "does nothing" (it now calls the other auxiliary model with low-level access) and line 95 contrasts the V2 effects with "V1's
+  `runAxLLM`"; line 46 says there is "no depth cap" with low-level access (now 50, counted per run and cumulative, and `/trigger`
+  is capped the same way), and lines 76 and 123 refer back to that note. `docs/wiki/Regex-Script.md` line 107 and line 112 say
+  only the first match moves (every match moves now); line 95 says `$<name>` does not work in move output; line 106 says
+  `@@inject` "always targets the currently selected character" (stale where a subject is passed; item 7); line 20 is the stale
+  Global Regex note (CHORE-14). `docs/wiki/@-Syntaxes.md` line 46 says `g` is dropped for the move directives, and line 61 that
+  `$<name>` does not work. Line numbers were read from the wiki files on 2026-10-03.
+
 Found by the documentation agents on 2026-09-22. All are upstream behaviour (`scriptings.ts` and
 `triggers.ts` are identical to upstream). Items marked **verified** were checked by the
 Orchestrator in source; the rest are the agents' traces, to be confirmed before fixing. The wiki
@@ -805,6 +1234,27 @@ not just prompt quality.
 
 ### CHORE-11 — Character display (emotion images, image generation): 5 suspected bugs
 
+**Status (2026-10-03, UI session):** CD-4 was already fixed on 2026-09-24 as `910b07de` (ledger row 163; `MC-076`,
+`MC-077`); this entry had not been updated. CD-3 is fixed and committed in `e9a80ec5` on 2026-10-03 (new label key `emotionInstructions`;
+Gate 2 [APPROVE], ledger row 801). CD-1, CD-2 and CD-5 remain open, deferred to
+the small-items batch (ledger row 800; CD-5's field is declared in `src/ts/storage/database.svelte.ts`, outside the UI
+lane under `MC-179`).
+
+**Status (2026-10-03, UI session, small-items batch): CD-1 and CD-2 DONE 2026-10-03 in `e10cbbbd`;
+CD-5 closed without code** (ledger rows 869 to 877). The paragraph above is kept as written; this one supersedes its "remain open".
+- **CD-1, done.** No code produces `special.emotion` (row 869). The block that read it in `index.svelte.ts` and the three
+  `special?: { emotion?: string }` fields of `requestDataResponse` in `request/request.ts` are removed.
+- **CD-2, done.** The `waifuMobile` branch and the `.per33` CSS in `ChatScreen.svelte` are removed. The theme cannot be selected
+  from the UI, but an old upstream save can still hold `'waifuMobile'` (row 869); with the branch gone, such a save falls to
+  the final `{:else}` layout of `ChatScreen.svelte` (read from the diff; not run).
+- **CD-5, closed without code.** The field is not dead: boot and backup code write and read `groupChat.emotionImages`
+  (`characterDefaults.ts`, `bootstrap.ts`, `globalApi.svelte.ts`, `drive/backuplocal.ts`; the Orchestrator's disposition,
+  with `characterDefaults`' line spot-checked, row 869). The field is declared at `database.svelte.ts:1533`, outside the UI lane.
+  It is part of the saved data, so it stays for the round trip (`MC-175`).
+- **Merge note (`MC-179`):** `ChatScreen.svelte`, `index.svelte.ts` and `request/request.ts` are on neither lane list, as for
+  the TTS batch; `index.svelte.ts` was also edited by the TTS batch. Stale citation from the original entry: CD-1's block in
+  `index.svelte.ts` was at lines 2550-2574 at HEAD, not where the report put it (row 869).
+
 Found by the wiki session while rewriting the [[Additional Character Screen]] wiki page
 (2026-09-22). Full hand-off, with per-bug evidence, status and suggested investigation:
 **`Agents/Reports/99-character-display.md`**. Every entry is a code-reading claim; none has been
@@ -838,6 +1288,45 @@ UI branch, or a cosmetic label; none touch saved data.
 
 ### CHORE-12 — Modules: 6 suspected bugs (none lose data)
 
+**Status (2026-10-03, UI session): MOD-2 and MOD-6 DONE 2026-10-03 in `0d41f06a`** (ledger rows
+861 to 868; the same commit as CHORE-16 PG-2 to PG-4). Product choices in `MC-207`. MOD-1 is **not done**, by the maintainer's
+decision. MOD-3 is left, MOD-4 goes to CHORE-05 and MOD-5 stays open. The investigator (row 861, the Orchestrator's summary)
+found: MOD-1 is upstream behaviour (upstream `0055f0cb`; the same code at upstream/main `f9728b14`) and neither app has a
+UI or in-repo code path that creates the embedded module (a plugin's database write or a `.bin` restore can still bring it
+in, not traced); MOD-6 was partly refuted (`RegexData` bumps `ReloadGUIPointer` on name, type and OUT edits;
+the IN field and lorebook, trigger and asset edits do not); MOD-2 holds, and order matters for regex, triggers and toggles.
+- **MOD-1, not done.** Gate 1 round 1 (row 863, B1) found that applying the persona's embedded module would also connect
+  its MCP (`internal:fs`, `internal:risuai`, `plugin:`, and `stdio:`, which launches a local process on desktop) and stamp its
+  own `lowLevelAccess` on its Lua triggers, with no consent step (ordinary module imports ask through `lowLevelAccessConfirm`).
+  The maintainer chose "Back out: leave it inert" and asked for it to be parked as QOL-10 in `Agents/Maybe-Later.md`
+  (`MC-207`). `modules.ts` is unchanged; the module's data is still kept.
+- **MOD-2:** the Modules settings list (`ModuleSettings.svelte`) and the chat's module picker (`ModuleChatMenu.svelte`) show
+  `db.modules` in array order; the name sorts are removed and the search still filters. `db.modules` is never reordered. The
+  order modules apply in is the storage order, and it is **not user-controllable**: a new module appends and there is no
+  reorder UI. The lists now match it.
+- **MOD-6:** closing the module editor refreshes the open chat once. The editor is `ModuleSettings` mode 1 (create) or 2
+  (edit). Both buttons now close through one function that sets the mode to 0 and bumps `ReloadGUIPointer` once; destroying
+  the component while an editor is open (leaving Settings) bumps once; destroying it with no editor open does not. There is
+  no per-keystroke bump, and `trackModuleUpdateDeps`, `moduleUpdate` and the `stores.svelte.ts` effect are unchanged.
+- **MOD-3:** left. `RisuModule.cjs` is declared and carried as data (the investigator's finding), so it is left; this is the
+  Orchestrator's disposition, not a maintainer decision.
+- **MOD-4:** the keys `moduleContent` and `confirmRemoveModuleFeature` are unused in 7 files. They are left for CHORE-05.
+- **MOD-5:** open. An icon editor is a new feature.
+- **Tests:** two new files and one updated. `ModuleSettings.order.svelte.test.ts` (6 reproducers: the list order, and the
+  create and edit button closes, each destroy while open, and button-then-destroy giving one bump in total; 3 guards) and
+  `ModuleChatMenu.order.svelte.test.ts` (2 reproducers, 2 guards). `ModuleSettings.deleteTarget.svelte.test.ts` gains a
+  `ReloadGUIPointer` mock, and its fixture comment now says the list shows array order; Gate 2 noted that one test had stopped
+  inserting above its target, and the Orchestrator restored that (row 867). At HEAD, in Gate 2's scratch run, exactly the 8
+  "regression reproducer:" tests of the two new files fail and every guard and the `deleteTarget` suite pass. The MOD-6 tests
+  use a plain `writable`, so the `onDestroy` teardown's safety rests on reasoning, not a test. Checks are those in the
+  CHORE-16 entry (row 866). Not live-checked.
+- **Merge note (`MC-179`):** `ModuleSettings.svelte` and `ModuleChatMenu.svelte` are on neither lane list (`MC-179` 1 names
+  `ModuleMenu.svelte` only, which is untouched). **Flag for the merge:** MOD-6 adds one `ReloadGUIPointer` bump per editor
+  close, and that pointer is CHORE-04's mechanism, which stays with the Main Campaign; check the two together.
+- **Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):** `docs/wiki/Modules.md`'s "Order" section (line 63)
+  says the Modules settings list "sorts by name", which is no longer true: both lists show the stored order, which is also the
+  order active modules apply in. Line 143 documents MOD-1 (the embedded module is not applied to chats); that stays true.
+
 Found by the wiki session while writing the [[Modules]] wiki page (2026-09-22). Full hand-off, with
 per-bug evidence, status and suggested investigation: **`Agents/Reports/99-modules.md`**. MOD-1 and
 MOD-2 also had a doc-verifier pass on the wiki page itself; the rest are the agent's own trace.
@@ -870,6 +1359,21 @@ mismatch, a missing editor control, or a GUI-refresh lag; none touch what's save
 
 ### CHORE-13 — Prompt template: 2 suspected bugs (none lose data)
 
+**Status (2026-10-03, UI session): PT-1 DONE 2026-10-03 in `e10cbbbd`; PT-2 closed without code**
+(ledger rows 869 to 877). The Orchestrator's dispositions, not maintainer decisions (`MC-208`).
+- **PT-1, done.** `tokenizePreset()` in `prompt.ts` no longer counts `innerFormat` for `lorebook` and `postEverything` items.
+  The investigator (row 869) confirmed that the prompt-build side never applies it for those two types and that the editor
+  (`PromptDataItem`) shows `innerFormat` only for persona, description, authornote and memory items; PT-1 is upstream
+  behaviour. **Not changed, a pre-existing undercount noted at Gate 1:** `postEverything`'s `promptSettings.postEndInnerFormat`
+  is not counted either. Test: `src/ts/process/prompt.tokenizePreset.test.ts` (new; one test each for the lorebook and postEverything counts
+  and one for the four kept types). It is covered by the small-fixes red check, in which 9 of 14 tests fail at HEAD (row 874; the 14 are `prompt.tokenizePreset.test.ts` 3, `globalApi.openURL.svelte.test.ts` 3 and `characters.importChat.test.ts` 8). Stale citations: the
+  build-side lines in `index.svelte.ts` are now 1155-1168 and 1789-1802, not `782-795` (row 869).
+- **PT-2, closed without code.** `promptSettings.assistantPrefill` is inert and identical to upstream; it round-trips with
+  upstream presets, and removing it needs edits in the storage lane (out of bounds, `MC-179`).
+- **Checks on the working tree for the whole batch (row 875):** `pnpm check` 0 errors 0 warnings; `pnpm test` 345 files, 7059
+  passed, 4 skipped; `pnpm build` ok. Gate 2 ended `[EDITORIAL]` and its title corrections are done (row 876).
+- **Wiki hand-off:** none needed. `docs/wiki/Prompt-Template.md:51-53` already lists only persona, description, author's note and memory for Custom Inner Format, and the wiki never mentions `assistantPrefill` (row 869); this answers the coupling `TODO(evidence)` below.
+
 Found by the wiki session while rewriting the [[Prompt Template]] wiki page (2026-09-22). Full
 hand-off: **`Agents/Reports/99-prompt-template.md`**. Every entry is a code-reading claim; none has
 been reproduced.
@@ -899,6 +1403,51 @@ reader.
   PT-2's behaviour before fixing either.
 
 ### CHORE-14 — Settings and main UI: 2 suspected bugs (none lose data)
+
+**Status (2026-10-03, UI session): UI-1 and UI-2 DONE 2026-10-03 in `408c32dd`** (ledger rows
+854 to 859). Product choices in `MC-206`. The investigator found that the Global Lorebook and Global Regex pages are a
+deliberate upstream deprecation (`8ed4555b`, with the migration into modules later disabled), and that the chat runtime reads
+neither field. The pages were already unreachable: upstream removed their menu entries in `8ed4555b`, and nothing sets index
+8 or 9. The Global Lorebook page's code was also broken: it listed no entries, add went to the chat's local lore, and the
+`'sglobal'` import and export indexed `chats[-1]`. The investigator also found that the Communities and Files parts of UI-1 were
+already resolved (`MC-093`, `MC-088`), and that the sidebar's X was commented out in upstream `5e9683a5` (2023-07-26),
+which left an empty full-width close button (row 854). Gate 2 ended `[EDITORIAL]`; the two Sidebar guard test titles were
+corrected (row 858). Resolutions:
+- **UI-1:** the Global Lorebook and Global Regex settings pages are retired. Deleted: `GlobalLoreBookSettings.svelte`,
+  `GlobalRegex.svelte`, `lorepreset.svelte` and its `deleteTarget` test. `Settings.svelte` loses the three imports (the two
+  pages and `Lorepreset`), the `openLoreList` state, the render cases for indices 8 and 9, and the `Lorepreset` overlay block. The `globalMode` prop is gone from `LoreBookList.svelte` and
+  `LoreBookSetting.svelte`, and `importLoreBook` and `exportLoreBook` in `lorebook.svelte.ts` take only `'global'|'local'`
+  (the `'sglobal'` mode is gone).
+- **The data stays:** `db.loreBook`, `db.loreBookPage` and `db.globalscript` are untouched, so a backup moves to and from
+  upstream with nothing lost (`MC-175`, `MC-206`). Old entries stay invisible, as before. The `exportRegex` default of
+  `db.globalscript` in `scripts.ts` (`const script = s ?? db.globalscript`) is left as it is.
+- **UI-2:** the character sidebar's close strip shows an X (`XIcon`, size 18) again, with the accessible name and tooltip from
+  a new language key, `closeSidebar` ("Close sidebar"; six other locales translated). The click handler is unchanged.
+- **Language keys left without callers:** `globalLoreBook` and `globalRegexScript` have no caller in `src` after this change
+  (a search of non-test files finds only the seven `src/lang` definitions). They are left for CHORE-05.
+
+**Tests:** two new test files, five tests: one regression reproducer (`Sidebar.closeButton.svelte.test.ts`: the close button is
+found by its accessible name and contains an `svg`) and four guards. The reproducer fails at HEAD at `expect(btn).toBeDefined()`;
+the two Sidebar guards also fail at HEAD, because they find the button by its new name. The Gate 2 reviewer's scratch mutant
+that removes the `if($sideBarClosing) return` guard survived: the second-click guard cannot fail, since a svelte writable does
+not notify on an equal value; its title now says only that `sideBarClosing` stays true. Not done (non-blocking): tests for the
+narrowed `importLoreBook` and `exportLoreBook` modes. Checks: `pnpm check` 0 errors 0 warnings; `pnpm test` 336 files, 6982
+passed, 4 skipped; `pnpm build` ok (ledger row 857).
+
+**Merge note (`MC-179`):** `Settings.svelte` is on the UI lane's list (the files the Main Campaign keeps out of); this batch
+removes its three imports, the `openLoreList` state, the two render cases and the `Lorepreset` overlay block. `LoreBookList.svelte`,
+`LoreBookSetting.svelte`, `Sidebar.svelte`, `lorebook.svelte.ts` (two signatures narrowed) and the seven `src/lang` files (one
+key) are on neither lane's list in `MC-179` 1. No file on the UI session's out-of-bounds list is touched.
+
+**Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):**
+- `docs/wiki/Lorebook.md` (line 18) says the Global Lorebook settings page can't be opened. It should say the page is retired,
+  and that its data is kept in the save file but unused.
+- `docs/wiki/Settings.md` (lines 79 and 80) describes the "Global Lorebook" and "Global Regex" editors as existing.
+- `docs/wiki/Regex-Script.md` (line 20) has a note about the separate "Global Regex" page.
+- `docs/wiki/Settings-Chat-Bot.md` (line 257) refers to "the separate, unreachable Global Regex page described on [[Settings]]".
+- These pages should say the two pages are retired and their data is kept but unused (`MC-206`).
+- The character sidebar has a visible X in its close strip; any page that describes closing the sidebar by clicking an empty
+  area or the backdrop should mention it.
 
 Found by the wiki session while rewriting the [[RisuAI Basics]] and [[Creating a Basic Bot]] wiki
 pages (2026-09-22). Full hand-off: **`Agents/Reports/99-settings-ui.md`**. Every entry is a
@@ -940,6 +1489,70 @@ for the Orchestrator to decide whether it needs its own note.
   menu button setting those indices (verified at HEAD).
 
 ### CHORE-15 — TTS: 7 suspected bugs (none lose data)
+
+**Status (2026-10-03, UI session): TTS-1 to TTS-7 DONE 2026-10-03 in `2c4b7fae`** (ledger rows 834
+to 853). TTS batch (`MC-200` 1); product choices in `MC-204`. The investigator confirmed TTS-1, TTS-2, TTS-4, TTS-5 and
+TTS-7, found TTS-3 understated, and refuted a premise: auto-TTS also spoke raw text, not only the speaker button (row 834).
+Gate 1 took five rounds, with a `senior-advisor` escalation after the third rejection; Gate 2 approved (rows 837 to 851).
+Resolutions:
+- **TTS-1:** the Huggingface voice mode translates the reply from English into `hfTTS.language`
+  (`runTranslator(text, true, 'en', lang)`, as `jaTrans` does). The language is trimmed and lower-cased; an empty value or
+  `en` is not translated.
+- **TTS-2:** the reply is translated once, before any request. A 503 with a JSON content type is retried only when its
+  `estimated_time` is a finite positive number that fits the remaining wait budget (30 s in total), and while fewer than 5
+  requests have been made. Any other failure ends with one alert (a 503 without `estimated_time` used to return with no
+  message); only a Stop, or text that is empty after trimming, ends without one. The request also moved
+  from `api-inference.huggingface.co` to `https://router.huggingface.co/hf-inference/models/${model}` (`MC-204` 1; ledger row
+  835). Browser CORS for the router is unverified (CHORE-97).
+- **TTS-3:** the Stop TTS entry is shown for every voice mode, and for a group chat when at least one member has a voice
+  mode. Stop silences every clip still playing, including VITS and overlapping clips, aborts requests in flight where the
+  transport accepts a signal, and shows no error alert for a cancelled call. `speechSynthesis` is guarded with `typeof`
+  checks (`MC-204` 3).
+- **TTS-4:** the ElevenLabs hint reads its text from a new language string (`ttsElevenLabsKeyHint`: "Set the ElevenLabs API key
+  in Settings → Other Bots → TTS → ElevenLabs API key.") and names the real path. The "TTS" accordion and "ElevenLabs API
+  key" labels are hard-coded English in `OtherBotSettings.svelte`, so the translations keep them in English (CHORE-05).
+- **TTS-5:** `FixNAITTS` is deleted (a search of `src` finds no remaining reference).
+- **TTS-6:** the speaker button, auto-TTS and `/speak` speak CBS-parsed text with closed `<Thoughts>` sections removed
+  (`MC-204` 2). The button speaks exactly what the plain Copy button writes.
+- **TTS-7:** the speaker button shows when `ttsMode` is set and is neither `'none'` nor `'normal'` (`'normal'` is what card
+  import writes for "no TTS"). Plugin-defined modes keep their button. No saved data is rewritten.
+
+**Behaviour changes to know about:**
+- Auto-TTS is one call per run, after the output trigger and the output listeners, speaking the stored reply. It speaks a
+  fresh reply whole and a continuation (auto-continue or the Continue button) only its addition. When a script or trigger
+  changed earlier text, it speaks from the first differing point (`MC-204` 4 and 5).
+- Multiline alternates are no longer spoken; only the stored message is.
+- An aborted non-streaming run speaks nothing.
+- A reply that cannot be located speaks nothing. One existing `sendChatOrigin` test changed to say so.
+- Non-streaming speech now starts after the output trigger and the listeners, not before.
+- Plugin TTS preprocessors receive only a continuation's addition on the automatic path. On the automatic path they are not
+  run when there is nothing to speak (the `addTTSPreprocessor` comment in `risuai.d.ts` says so); the button path with Read
+  Only Quoted can still run them with empty text (CHORE-98).
+
+**Tests:** 180 new tests in 11 files: 75 regression reproducers that fail at HEAD for behavioural reasons, 47 guards and 58
+new-behaviour tests. Final checks: `pnpm check` 0 errors 0 warnings; `pnpm test` 6986 passed, 4 skipped; `pnpm build` ok
+(ledger row 852).
+
+**Merge note (`MC-179`):** `index.svelte.ts` (the two auto-TTS calls inside the streaming and non-streaming branches are
+replaced by one call after them, plus a `ttsBefore` capture at two sites) and `command.ts` (one import and the `/speak` call)
+are on neither lane's list in `MC-179` 1; `transformers.ts`, `risuai.d.ts`, `DefaultChatScreen.svelte` and the seven
+`src/lang` files (one key) are on neither list either. They are listed here so the merge is expected. `tts.ts` and
+`CharConfig.svelte` are on the UI lane list; `Chat.svelte` is listed only for its copy code, which this batch touches (the
+display-parse options for the copy text and the speaker button) along with the speaker button's visibility.
+
+**Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):**
+- `docs/wiki/TTS.md`: the speaker button reads the stored message as displayed (CBS parsed, thinking removed), not the raw
+  text; Stop TTS is no longer only for Web Speech and ElevenLabs; the Huggingface retry wording (retry cap, wait budget, one
+  alert); the translation-direction note (English into the chosen language).
+- `docs/wiki/RisuAI-Basics.md`: the Stop TTS visibility line.
+- New behaviour to document: a continuation speaks only its addition; Stop is shown for all modes and in group chats with a
+  voiced member; the Huggingface request goes to the router endpoint.
+
+**New tickets from this batch:** CHORE-93 to CHORE-99 (below). **Recorded, not ticketed:** TTS translations enter the shared
+translation cache, as `jaTrans` already does; the default Google engine uses `translatorInputLanguage` as the source
+language.
+
+**Original report (2026-09-22):**
 
 Found by the wiki session while rewriting the [[TTS]] wiki page (2026-09-22). Full hand-off, with
 per-bug evidence, status and suggested investigation: **`Agents/Reports/99-tts.md`**. Every entry is
@@ -1016,7 +1629,7 @@ button, dead code, and a settings field shared with live long-term-memory settin
 - **Wiki coupling:** the Playground wiki page (`docs/wiki/Playground.md`; the folder moved from `wiki/` on 2026-10-01) documents PG-1 (the Playground
   chat appears in the character grid) and PG-4 (the Embedding tool shares memory settings) as
   current behaviour; a fix to either must update the page. PG-1's part is done: the Wiki session
-  committed the update as `6ad13bac`. PG-4's part is open.
+  committed the update as `6ad13bac`. PG-4's part is open (the hand-off is in the PG-2, PG-3 and PG-4 bullet below).
 - **Scheduling (2026-10-01):** PG-1 is scheduled as its own small fix between memory stage 1 step 3b and
   step 4, by the maintainer's approval of 2026-10-01 (`Agents/Live-State.md`, work order at the time).
 - **PG-1 fixed (2026-10-01; commit `08e43e65`; Report 54):** the grid (grid, list and trash tabs), the
@@ -1031,7 +1644,49 @@ button, dead code, and a settings field shared with live long-term-memory settin
   rounds (corrections applied). Not live-checked. Residue: a `§playground` trashed before the fix and
   never opened still reaches the boot purge, and a stray `§temp` copy has no UI path now (Report 54 section
   7). The Wiki session updated the Playground page (then `wiki/Playground.md`, now `docs/wiki/Playground.md`) in `6ad13bac`.
-- **PG-2, PG-3 and PG-4 remain open.**
+- **PG-2, PG-3 and PG-4 DONE 2026-10-03, in `0d41f06a`** (ledger rows 860 to 868). Product choice
+  for PG-4 in `MC-207`. The investigator (row 860, the Orchestrator's summary) confirmed PG-2 and PG-4 and found more: on Tauri,
+  cancelling the file picker (`selectMultipleFile` returns null) threw a TypeError; Run with no usable files created an empty
+  "Converted from JSON" preset; and an Embedding run that threw left the spinner on. It partly refuted PG-3: `PlaygroundRegex.svelte`
+  was empty and unimported, but `PlaygroundStore` value 2 is live (`openPlaygroundChat` writes it, and two `playgroundChat` test files
+  assert it: `playgroundChat.coldStub.svelte.test.ts` and `playgroundChat.trashTime.svelte.test.ts`). The mobile back arrow, the home hotkey and character delete leave it at 2, which gave a blank page with only a back
+  arrow (traced from source, not run). Gate 1 took two rounds (`[REJECT]` then `[APPROVE]`; the round-1 findings were mostly
+  about CHORE-12's MOD-1, below) and Gate 2 approved at once (rows 863, 864, 867). Resolutions:
+  - **PG-2 (`ToolConversion.svelte`):** each row's Delete removes that row. Cancelling the picker adds nothing and throws
+    nothing. Run is disabled until a listed file is of a supported type. Run's handler catches an exception from
+    `promptConvertion` and shows it with `alertError`, so the page stays usable (a PARAMETERS file without samplers can throw,
+    per Gate 1). The stray `console.log` and the self-assignment of `files` in `addFile` are gone. In `en.ts`,
+    `promptConvertion` is now "Prompt Conversion" and `convertionStep1` "Select all related files for the prompt (Context,
+    Instruct and Sampler JSON is supported)"; keys unchanged. The page's hard-coded English ("Delete", "Add", "Run") is left
+    for CHORE-05.
+  - **PG-3 (`PlaygroundMenu.svelte`):** the tool grid renders for `PlaygroundStore` values 1 and 2, and the dead
+    `=== 2` block is removed, so value 2 no longer shows a blank page. `PlaygroundRegex.svelte` is deleted. The store value 2,
+    `MobileHeader`, `hotkey.ts` and `characters.ts` are unchanged.
+  - **PG-4 (`PlaygroundEmbedding.svelte`):** the OpenAI key and the custom URL are the page's own copies, seeded from
+    `supaMemoryKey` and `hypaCustomSettings.url` when the page mounts; editing them never writes the settings, and Run passes
+    them to `HypaProcesser`. The custom key and request model still bind the live memory settings, because `HypaProcesser` reads
+    those from `getDatabase()` with no override and changing that would need `hypamemory.ts` (out of bounds); a new note under
+    them says so (new key `playground.embeddingSharedSettingsNote`, translated into the six other locales; the vi and de
+    wording is low-confidence). `HypaProcesser` falls back to the saved value when given a blank one, so Run stops with an
+    error alert when the custom model's URL or an OpenAI model's key is blank or whitespace-only. A run that throws clears the
+    spinner and shows the error. The dead `customEmbeddingUrl` state is now the URL's copy. The two error messages are
+    hard-coded English, left for CHORE-05. A change made in Settings while the page is open shows only after the page remounts
+    (by design).
+  - **Tests:** three new test files: `ToolConversion.svelte.test.ts` (5 reproducers, 2 guards),
+    `PlaygroundEmbedding.svelte.test.ts` (8 reproducers, 3 guards) and `PlaygroundMenu.svelte.test.ts` (1 reproducer, 2 guards).
+    At HEAD, in Gate 2's scratch run (row 867), exactly the 14 "regression reproducer:" tests of these files fail (5, 8 and 1) and
+    every guard passes. Checks on the working tree: `pnpm check` 0 errors 0 warnings; `pnpm test` 341 files, 7016 passed, 4
+    skipped; `pnpm build` ok (row 866). Not live-checked in a browser or on a device.
+  - **Merge note (`MC-179`):** `ToolConversion.svelte`, `PlaygroundMenu.svelte`, `PlaygroundEmbedding.svelte` and the deleted
+    `PlaygroundRegex.svelte` are in the Playground, which is on the UI lane's list. The seven `src/lang` files (one new key, and
+    two `en.ts` values) are on neither list. No file on the UI session's out-of-bounds list is touched
+    (`git diff --stat -- src/ts` is empty, row 867).
+  - **Wiki hand-off (for the Wiki session; `docs/wiki` was not edited):** `docs/wiki/Playground.md` (line 64) says the
+    Embedding tool's OpenAI key, URL, key and model fields "are the same settings long-term memory uses, so changing them here
+    changes them for memory too". After this change that holds only for the custom key and the request model; the OpenAI key
+    and the URL are local to the page. The page's Prompt Convertion section (the table row at line 35 and the heading at line 147; the UI label is now
+    "Prompt Conversion") could mention that Delete removes a row and Run needs a supported file. The page has no mention of
+    PG-3's blank page or the empty regex page.
 
 ### CHORE-17 — Plugin `setDatabase` re-encodes every character (a cost, not data loss)
 
@@ -1208,6 +1863,10 @@ how far the cause was traced, since several were seen in passing and not investi
 
 ### CHORE-19 — Theme text is unreadable on the always-light `mobilechat` and `cardboard` surfaces
 
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e9a80ec5`** (ledger rows 806 to 813). Mobile batch (`MC-200` 1);
+product choices in `MC-201`; mechanism in ledger row 803. The cardboard editor is already dark text; the cardboard
+problem was the rendered reply body. Not covered by the live check: a light colour scheme and a physical device.
+
 **Status (2026-09-24):** observed during the durable-drafts live check in Chrome, with the
 `고대비` (high-contrast) text colour scheme. Cause **suspected, not traced**. Not fixed.
 
@@ -1227,6 +1886,11 @@ scheme. Trace which elements are affected under each colour scheme before choosi
 
 ### CHORE-20 — `mobilechat` on a touchscreen has no way to save or leave the message editor
 
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e9a80ec5`** (ledger rows 806 to 813). Mobile batch (`MC-200` 1);
+product choices in `MC-201`; mechanism in ledger row 803. Wider than filed: mobilechat renders no message buttons at all,
+and the editor's only exit discarded. Save and Discard now appear inside the bubble while editing. Not covered by the
+live check: a physical device.
+
 **Status (2026-09-24):** found by reasoning from source during durable-drafts Gate 2; **not
 reproduced on a device**. Not fixed.
 
@@ -1245,6 +1909,12 @@ reproduced on a device**. Not fixed.
 **Check first:** confirm on a real touch device, or with touch emulation, before designing a fix.
 
 ### CHORE-21 — Typing during a translation-edit save is lost
+
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `0651493b`** (ledger rows 816 to 832). Chat UI batch (`MC-200` 1);
+product choice in `MC-203` 2: if the user typed during a save, the editor stays open and the text is kept as a draft;
+only the save that leaves no save from that view pending treats its text as final. Translation cache writes from one
+message view now run in click order. Gate 2 approved after three rounds (rows 826 to 830). The `onclick` and long-press
+calls to `saveTranslationEdit()` still leave a rejection unhandled (CHORE-91).
 
 **Status (2026-09-24):** found by reasoning during durable-drafts Gate 2 (Report 20 section 11).
 Upstream behaviour. Not fixed.
@@ -1274,6 +1944,17 @@ row 142). Traced to source. **Decided 2026-09-24 (`MC-070`): self-hosted builds 
 - The maintainer decided self-hosted builds should get the same guard (`MC-070`).
 
 ### CHORE-23 — `mcplib.ts`'s `oauthLogin` does not await or catch `openURL`
+
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e10cbbbd`** (ledger rows 869 to 877; the
+`MC-200` item 4 boundary). The fix is inside `openURL` in `globalApi.svelte.ts`, the only edit to that file: the Tauri branch
+catches a rejected `open()` and a synchronous throw from it, and `console.warn`s a fixed string that does not include the
+URL (OAuth URLs carry state and PKCE values). The investigator found 11 call sites in 9 files and none uses a return value
+(row 869), so `openURL` stays synchronous and `oauthLogin` is unchanged. The fixed warning is the Orchestrator's disposition.
+**Limitation:** the user sees no alert, so an MCP OAuth login that cannot open the browser then waits at the code prompt.
+Test: `src/ts/globalApi.openURL.svelte.test.ts` (new; a rejected `open()`, a synchronous throw and a resolved call).
+**Unverified, left as written below:** the investigator's check of the installed JS package (`tauri-plugin-shell` 2.3.3)
+showed no deprecation, against the "2.3.6 ... deprecated" line below; that line was not re-checked. **Flag for the merge
+(`MC-179` 1):** `globalApi.svelte.ts` is on the Main Campaign's lane, and `openURL` is the only function touched.
 
 **Status (2026-09-24):** found while investigating the openURL fix (`Agents/Investigation-Ledger.md`
 row 142). Traced to source, not reproduced. Minor. Not fixed.
@@ -1833,6 +2514,9 @@ array. What the `71e75d9d` commit message says it fixed:
   `MC-151` 3; ledger rows 634 and 637 to 641.
 
 ### CHORE-44 — Auto mode cannot be stopped from a remounted composer
+
+**Status (2026-10-03, UI session): closed.** Re-verified at HEAD `57e7be63` with no code change (`MC-200` 3; ledger row
+802).
 
 **Status (2026-09-28):** filed from Gate 2 round 1 of the composer stage's S1 (Report 22; ledger
 row 284). **Fixed in `67f17f1a`**, folded into S2 (Report 22 section 7, D11 and D12; an `MC-091`
@@ -3294,6 +3978,10 @@ then the prune.
 
 ### CHORE-56 — Under the beta mobile layout, a touch that ends on a button, input, select or textarea throws a TypeError in the swipe handler (suspected; upstream and fork)
 
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e9a80ec5`** (ledger rows 806 to 813). Confirmed and placed by the
+maintainer (`MC-200` 2) in the mobile batch; the fix keeps controls excluded from swipes and only stops the error
+(`MC-201` 3). Mechanism re-traced at HEAD, with current line numbers, in ledger row 803.
+
 **Status (2026-10-01):** suspected; TRACED, not run. **Not placed** (the maintainer has not yet confirmed or
 placed it). Filed by the Orchestrator: the maintainer was told it would be filed unless they had never
 seen such a popup, and has not answered. Present on the fork at HEAD `448962f4`, and the same lines are on
@@ -3336,6 +4024,23 @@ seen such a popup, and has not answered. Present on the fork at HEAD `448962f4`,
 - **Related:** Maybe-Later QOL-07 (it reads this same handler for the sideways gestures).
 
 ### CHORE-57 — Chat import offers `.txt` but has no `.txt` branch, so a picked `.txt` does nothing and says nothing (suspected; upstream and fork)
+
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `e10cbbbd`** (ledger rows 869 to 877).
+The maintainer chose "Drop .txt, alert (Recommended)" over "Parse Risu's TXT export" and "Leave as is" (`MC-208`); the
+earlier low-priority note (`MC-151` 7) is below. `importChat` in `characters.ts`:
+- The picker offers `json`, `jsonl` and `html`.
+- A file that matches no branch shows `alertError(language.errors.noData)`; this covers `.txt` and, with
+  `allowAllExtentionFiles` on, any other extension.
+- **New finding (row 869):** the extension tests were case-sensitive while the picker lowercases, so `CHAT.JSONL` was silently
+  ignored. The tests now compare the lowercased name.
+- JSONL blank lines are skipped before the header-line logic, so a file with a trailing newline imports (the Orchestrator's
+  disposition). Whether SillyTavern's JSONL exports end in a newline is still unchecked: `TODO(evidence)`.
+- The comma-operator condition `presedLine.name && presedLine.is_user, presedLine.mes` is unchanged.
+- **Tests:** five new tests in `src/ts/characters.importChat.test.ts` (the picker list, a `.txt` showing the error and adding no
+  chat, an upper-case extension, a trailing newline or blank lines, and blank lines before the header). They are in the
+  small-fixes red check, in which 9 of 14 tests fail at HEAD on assertions (row 874; the 14 are `prompt.tokenizePreset.test.ts` 3, `globalApi.openURL.svelte.test.ts` 3 and `characters.importChat.test.ts` 8). Checks are those in CHORE-13's entry.
+- **Stale line citations below:** the line numbers in the original entry (`characters.ts:424` and onward) are those of
+  `448962f4`; this change shifts them.
 
 **Status (2026-10-01):** suspected, from reading; not run. **Low priority**, by the maintainer's decision
 (`MC-151` 7: "mark txt import bug as low priority for now. most people uses json anyway."). **Not placed**:
@@ -4797,6 +5502,13 @@ RUN = executed in the investigation; TRACED = read in source.
 
 ### CHORE-69 — The plain Copy button copies the message's raw text, including the thinking section and hidden blocks as raw markup
 
+**Status (2026-10-03, UI session): DONE 2026-10-03 in `0651493b`** (ledger rows 816 to 832). Decided in `MC-203` 1: the
+plain Copy button leaves out closed `<Thoughts>` sections only; markdown, hidden HTML and inlay tags stay. If only thinking
+remains, the message is copied unchanged. Copy as card and its `text/plain` companion are unchanged, so the companion
+still includes the thinking text (CHORE-92). The rejected-avatar-icon follow-up (the sender icon shows the loading
+placeholder when its image rejects) is also done in `0651493b` (ledger rows 817 and 823 to 830); its sibling blocks are
+CHORE-90.
+
 **Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-166` 5: "File a ticket
 (Recommended)"). Type: surprising output; no change now, and no persisted data is involved.
 
@@ -4941,6 +5653,125 @@ said it can go in "maybe later section" (`MC-190`). It is not placed in the work
   are routed on each platform (web, Tauri, Node and Hono server). Nothing is decided.
 - **Placement:** unplaced; the maintainer places it.
 - **Related:** `MC-190`, `MC-191`, `MC-175`, `MC-143`.
+
+### CHORE-90 — 13 sibling image `{#await}` blocks have no `{:catch}`, so a rejected image raises an unhandled rejection
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the chat UI batch's rejected-avatar-icon fix
+(ledger row 817). Type: error handling.
+
+- **What happens:** the sender icon's `{#await img}` had no `{:catch}`, and a rejected image gave no icon and an unhandled
+  rejection (RUN, ledger row 817). The batch fixed that one block only. Sibling image blocks without `{:catch}` remain
+  in `SidebarAvatar`, `BarIcon`, `CharConfig`, `PersonaSettings` and `OtherBotSettings` (count below). Not all are
+  avatars: `CharConfig` has an emotion image, `OtherBotSettings` has NAI and WaveSpeed reference images, and `BarIcon`'s
+  `additionalStyle` is a style promise rather than an image element.
+- **Count at `0651493b` (Orchestrator grep of `{#await` and `{:catch}`):** 18 `{#await` blocks in those five files, 13 of
+  them image blocks with no `{:catch}`: `SidebarAvatar.svelte` 2 (`backgroundimg`, `src`), `BarIcon.svelte` 1
+  (`additionalStyle`), `CharConfig.svelte` 5 (`getCharImage`), `PersonaSettings.svelte` 2 (`getCharImage`),
+  `OtherBotSettings.svelte` 3 (`getCharImage`). The other 5 are voice/model lists and the memory ratio; two of them
+  (`getFishSpeechModels`, `getMaxMemoryRatio`) have a `{:catch}`. Whether each image block can actually reject was
+  not traced.
+- **Related:** the rejected-avatar-icon follow-up (CHORE-69's block); ledger row 817.
+
+### CHORE-91 — The `onclick` and long-press calls to `saveTranslationEdit()` leave a rejection unhandled (same at HEAD)
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Found at the chat UI batch's Gate 2 and left out of the
+batch. Type: error handling.
+
+- **What happens:** `Chat.svelte` calls `saveTranslationEdit()` without handling its result from the translation editor's
+  save button `onclick` and from the `AutoresizeArea` `handleLongPress`. A rejected save is therefore an unhandled
+  rejection. `saveTranslationEdit` rethrows a rejected cache write by design (the editor stays open for a retry), and
+  the Gate 2 reviewer reported that its probe of a rejected first save surfaced as a Vitest unhandled error (no log
+  retained); in the app the `unhandledrejection` handler in `bootstrap.ts` would show it as an error alert (ledger
+  row 817 traced that handler for the avatar case). The same at HEAD.
+- **Related:** CHORE-21; ledger rows 826 to 830.
+
+### CHORE-92 — The copy-as-card `text/plain` companion still includes the thinking text
+
+**Status (2026-10-03, UI session):** open, **not scheduled**, and **locked behind CHORE-68** (`MC-179` 4: CHORE-68 and
+CHORE-74 move only after CHORE-55 stage 3 is merged into `feat/ui-batch`). CHORE-68 as written covers only embedding the
+app's own images into the card, not the companion text, so this is its own ticket rather than a note under CHORE-68.
+
+- **What happens:** copy as card is unchanged by the chat UI batch (`MC-203` 1), so its `text/plain` companion is still
+  the text that carries the `<Thoughts>` section. `currentCopyText` is shared with the card's `captureText` (ledger row
+  818).
+- **What the ticket asks:** decide whether the companion should leave out thinking like the plain Copy button now does.
+  Not decided.
+- **Related:** CHORE-69; CHORE-68; `MC-203` 1.
+
+### CHORE-93 — There is no speaker button on a character's first message
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Found at the TTS batch's Gate 1 round 1 (ledger row 837).
+Type: new feature.
+
+- **What happens:** the per-message speaker button is rendered inside the `idx > -1` block of `Chat.svelte`, and the first
+  message is rendered with `idx={-1}` in `DefaultChatScreen.svelte`, so it gets no button. The TTS batch did not add one.
+- **What the ticket asks:** add a speaker button to the first message. Not decided.
+- **Related:** CHORE-15; `MC-204` 2.
+
+### CHORE-94 — The Playground translator may translate in the opposite direction to its labels
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch (CHORE-15 TTS-1). Type: suspected bug,
+**INFERRED**, not reproduced.
+
+- **What happens (INFERRED):** `PlaygroundTranslation.svelte` calls `runTranslator(text, false, sourceLang, outputLang)`
+  (at two call sites). With `reverse` false, `runTranslator` sets `arg.from` to its `target` parameter and `arg.to` to its
+  `from` parameter (`src/ts/translator/translator.ts:61-69`), so these calls look inverted: `outputLang` would be the
+  language translated from. The Playground call sites are `src/lib/Playground/PlaygroundTranslation.svelte:114` and `:142`.
+- **Labels:** the labels are Source Language (above the input) and Translator Language (above the output); so with the
+  default Google path `tl` is the source-language selection. Still INFERRED: no translation has been run.
+- **Related:** CHORE-15 TTS-1 (the same parameter order); CHORE-16.
+
+### CHORE-95 — Three TTS configs and `hfTTS.model` are used without a guard when the TTS settings page was never opened
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch. Type: error handling.
+
+- **What happens:** `sayTTS` reads `naittsConfig` (NovelAI), `gptSoVitsConfig` (GPT-SoVITS), `fishSpeechConfig` (Fish Speech)
+  and `hfTTS.model` (Huggingface) without a guard. When the TTS settings page was never opened for a character, the
+  field may be missing, so the read throws a `TypeError` that the user sees as "TTS Error". Not reproduced.
+- **Related:** CHORE-15.
+
+### CHORE-96 — Auto-continue's `tokenize(result)` and `isLastCharPunctuation(result)` still read the raw `result`, which differs per branch
+
+**Status (2026-10-03, UI session):** open, **not scheduled**, and **outside both lanes** (`index.svelte.ts`, `MC-179`). Filed
+from the TTS batch. Type: consistency.
+
+- **What happens:** in `index.svelte.ts` the auto-continue check calls `tokenize(result)` and `isLastCharPunctuation(result)`.
+  `result` is not the same text in the streaming and non-streaming branches (raw in one, processed in the other). The TTS
+  batch moved auto-TTS off `result`; these two uses are unchanged. Whether the difference changes when auto-continue fires
+  was not traced.
+- **Related:** CHORE-15; the plan's out-of-scope list (scratchpad `tts-batch-plan.md`).
+
+### CHORE-97 — Browser CORS for the Hugging Face router is unverified; a live check with a real Hugging Face TTS model is owed
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Type: verification.
+
+- **What is unverified:** the new Huggingface request goes to `https://router.huggingface.co/hf-inference/models/${model}`
+  from the browser. That `huggingface.js` builds this URL and returns a raw audio Blob is read from its source (ledger row
+  835). Whether the router sends CORS headers that allow the call from a browser page, and whether any real model answers
+  with audio there, has not been tested. All TTS tests mock the network.
+- **What the ticket asks:** a live check by the maintainer with a real Hugging Face TTS model and key.
+- **Related:** CHORE-15 TTS-1 and TTS-2; `MC-204` 1.
+
+### CHORE-98 — `sayTTS` with Read Only Quoted and quote-free text still sends a request with empty text
+
+**Status (2026-10-03, UI session):** open, **not scheduled**. Filed from the TTS batch. Type: wasted request. Pre-existing.
+
+- **What happens:** with `ttsReadOnlyQuoted` set and text that contains no quote, the filter yields an empty string and
+  `sayTTS` still goes on to make its request. Auto-TTS avoids this (it speaks only when the filtered addition is non-empty);
+  `sayTTS` itself does not check.
+- **Related:** CHORE-15.
+
+### CHORE-99 — Auto-TTS parses even for a character with no voice mode, and the user name comes from the selected chat's persona (optional)
+
+**Status (2026-10-03, UI session):** open, **not scheduled**, optional. Filed from the TTS batch. Type: efficiency
+and exactness.
+
+- **What happens:** at the auto-TTS call site in `index.svelte.ts` the only conditions are that the run is not aborted and
+  `ttsAutoSpeech` is on; the reply is parsed before `sayTTS` runs, whatever the character's `ttsMode`. The site also takes a
+  user message's name from `getUserName()` (`src/ts/util.ts:187`), which passes no chat, so `checkPersonaBinded`
+  (`src/ts/util.ts:131-145`) reads the selected character's current chat; the call is at `src/ts/process/index.svelte.ts:2439`
+  and applies only when the stored reply's role is `'user'`.
+- **Related:** CHORE-15; `MC-204` 2.
 
 ## Sequencing Summary
 

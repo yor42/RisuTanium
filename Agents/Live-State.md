@@ -283,7 +283,180 @@ Several sessions work **in this same checkout**:
 
 ### UI session (feat/ui-batch)
 
-Empty. Only the UI session edits this block.
+- **Branch:** `feat/ui-batch`, from `57e7be63`; one commit, `e9a80ec5` (local, not pushed; `MC-202`). Work order:
+  `MC-200` 1.
+- **Done (in `e9a80ec5`):** CHORE-11 CD-3, CHORE-19, CHORE-20 and CHORE-56 (the mobile batch; ledger rows 803 to 813). Closed
+  without code: CHORE-44 (ledger row 802). Already fixed earlier: CD-4 (`910b07de`).
+- **Mobile batch records:** committed in `1c187d3f`. `.claude/launch.json` (a new `risuai-ui-scratch` entry) stays
+  uncommitted, by the maintainer's word (`MC-202` 2).
+- **Chat UI batch: committed in `0651493b`** (10 files, local, not pushed; `.claude/launch.json` left uncommitted):
+  CHORE-21, the rejected-avatar-icon follow-up and CHORE-69 (Gate 2 approved after three rounds; `MC-203`; ledger rows
+  816 to 832). **Its records (`MC-203`, ledger rows 816 to 833, the Roadmap status lines and CHORE-90 to CHORE-92) are
+  committed in `2d5c25cd`.** The chat batch touched no file on the Main Campaign's out-of-bounds list.
+- **TTS batch (CHORE-15, TTS-1 to TTS-7): committed in `2c4b7fae`** (31 files, local, not pushed; `MC-204`; ledger rows
+  834 to 853). Gate 1 took five rounds with a `senior-advisor` escalation; Gate 2 approved, with one remediation. Final
+  checks: `pnpm check` 0/0; `pnpm test` 6986 passed, 4 skipped; build ok. **Its records are committed in `13d3e0cd`;** `.claude/launch.json` stays out. New tickets CHORE-93 to CHORE-99. The batch changed `index.svelte.ts`
+  (the two auto-TTS calls inside the streaming and non-streaming branches are replaced by one call after them, plus a
+  `ttsBefore` capture at two sites) and `command.ts` (one import and the `/speak` call), which are on neither lane's list, and
+  also `transformers.ts`, `risuai.d.ts`, `DefaultChatScreen.svelte` and the seven `src/lang` files (one key), which `MC-179` 1
+  names on neither list either. `tts.ts` and `CharConfig.svelte` are on the UI lane list; `Chat.svelte` is listed only for its
+  copy code, which this batch touches (the display-parse options for the copy text and the speaker button) along with the
+  speaker button's visibility.
+- **Settings batch (CHORE-14 UI-1 and UI-2): committed in `408c32dd`** (19 files, local, not pushed). The Global
+  Lorebook and Global Regex settings pages are retired and the sidebar's close strip shows an X again (`MC-206`; ledger rows
+  854 to 859). Gate 2 ended `[EDITORIAL]`, and the title corrections are done. Checks: `pnpm check` 0/0; `pnpm test` 336
+  files, 6982 passed, 4 skipped; build ok. `db.loreBook`, `db.loreBookPage` and `db.globalscript` are untouched. No new
+  tickets. `.claude/launch.json` stays out of the commit. Detail is in the CHORE-14 entry of the Roadmap.
+- **Playground and modules batch (CHORE-16 PG-2 to PG-4; CHORE-12 MOD-2 and MOD-6): DONE 2026-10-03 in
+  `0d41f06a`**. `MC-207`; ledger rows 860 to 868. Gate 1 took two
+  rounds (`[REJECT]`, then `[APPROVE]`) and Gate 2 approved. Checks on the working tree: `pnpm check` 0/0; `pnpm test` 341 files,
+  7016 passed, 4 skipped; build ok. The persona's embedded module (MOD-1) stays inert by the maintainer's decision and is parked
+  as QOL-10 in `Agents/Maybe-Later.md`. Not live-checked in a browser or on a device. No new tickets; the hard-coded English and the
+  two unused module keys are added to CHORE-05's entry. Detail is in the CHORE-16 and CHORE-12 entries of the Roadmap.
+- **Wiki hand-offs (Playground and modules batch, for the Wiki session):** `docs/wiki/Playground.md` (line 64: only the custom
+  key and the request model are still the memory settings; the OpenAI key and the URL are the page's own; the "Prompt
+  Conversion" label) and `docs/wiki/Modules.md` (line 63: both module lists now show the stored order, not name order; line 143,
+  MOD-1, is unchanged).
+- **Lane notes (Playground and modules batch, against `MC-179` 1):** the three Playground files edited and the one deleted are in
+  the Playground, on the UI lane's list. `ModuleSettings.svelte` and `ModuleChatMenu.svelte` are on neither list (`ModuleMenu.svelte`
+  is listed and untouched), and neither are the seven `src/lang` files (one key, two `en.ts` values). MOD-6 adds one
+  `ReloadGUIPointer` bump per module-editor close, which is CHORE-04's mechanism (the Main Campaign's): flag for the merge.
+  Nothing on the UI session's out-of-bounds list is touched.
+- **Small-items batch (CHORE-13 PT-1; CHORE-57; CHORE-23; CHORE-11 CD-1 and CD-2; CHORE-09 items 1, 3, 5 and 6):
+  DONE, committed in `e10cbbbd`**. `MC-208`;
+  ledger rows 869 to 877. Gate 1 approved in round 1; Gate 2 ended `[EDITORIAL]` and its corrections are done. Checks on the
+  working tree: `pnpm check` 0/0; `pnpm test` 345 files, 7059 passed, 4 skipped; build ok. Closed without code: CHORE-13 PT-2,
+  CHORE-11 CD-5, CHORE-09 items 2, 4, 7, 8, 9, 10 and 11. `runAxLLM` is implemented and is **fork-only** (upstream has no
+  runtime). Four consequences are disclosed in `MC-208` and not answered separately by the maintainer: the low-level nesting
+  cap (50) counts a run's sequential calls too; the translator's tag-only flag text is now global; fan-out is bounded in depth,
+  not total work; 50 was measured on Node stacks only. No new tickets. Detail is in the CHORE-09, CHORE-11, CHORE-13,
+  CHORE-23 and CHORE-57 entries of the Roadmap.
+- **Wiki hand-offs (small-items batch, for the Wiki session; line numbers read from `docs/wiki` on 2026-10-03):**
+  `docs/wiki/Trigger-Script.md` (line 87: `runAxLLM` "does nothing", now it calls the other auxiliary model; line 95: "unlike V1's
+  `runAxLLM`"; line 46: "no depth cap" for low-level access, now a limit of 50 counted per run, also for `/trigger`; lines 76
+  and 123 refer back to that note), `docs/wiki/Regex-Script.md` (lines 107 and 112: the first-match-only callout; line 95:
+  `$<name>` in move output now works; line 106: "@@inject always targets the currently selected character", stale where a
+  subject is passed; line 20: the stale Global Regex note), `docs/wiki/@-Syntaxes.md` (line 46: `g` is no longer dropped; line
+  61: `$<name>`), `docs/wiki/Settings.md` (lines 79 and 80) and `docs/wiki/Settings-Chat-Bot.md` (line 257), which describe the
+  Global Lorebook and Global Regex pages retired by CHORE-14, and `docs/wiki/Additional-Character-Screen.md` (line 46), which
+  still says the emotion box shares the "Image Generation Instructions" label (separate since CD-3); lines 65 and 70 of that page use the label for the image-generation mode and stay.
+- **Lane notes (small-items batch, against `MC-179` 1):** `globalApi.svelte.ts` is on the out-of-bounds list; only `openURL`
+  is edited (`MC-200` 4): flag for the merge. `triggers.ts`, `command.ts`, `scripts.ts` and `translator.ts` were heavily
+  changed by the Main Campaign, so merge conflicts are likely in those four. Also touched, on neither list: `characters.ts`,
+  `prompt.ts`, `index.svelte.ts` (the CD-1 block; the TTS batch edited it too), `request/request.ts`, `ChatScreen.svelte`, and
+  the new `triggerLimits.ts`. Nothing else on the out-of-bounds list is touched.
+- **Translation batch 1 (CHORE-05: errors and the Playground): DONE, committed in `39f00517`**. `MC-209`; ledger rows 878 to 886. Gate 1 took two rounds (`[REJECT]`, then
+  `[APPROVE]`) and Gate 2 approved. Checks on the working tree: `pnpm check` 0/0; `pnpm test` 352 files, 7092 passed, 4
+  skipped; build ok. 133 new `en.ts` keys in all six locales, 50 call-site files, 7 new test files. Six `Failed to fetch ...`
+  strings stay English on purpose (`MC-209`). Key drift was already zero (row 878). Not run in a browser or on a device. No new
+  tickets. Detail is in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-13.txt` (code) and `commit-msg-14.txt`
+  (records) in the scratchpad.
+- **Lane notes (translation batch 1, against `MC-179` 1):** the Main Campaign changed `request/*`, `local.ts`, `stableDiff.ts`,
+  `index.svelte.ts` and `characterCards.ts` heavily; the edits there are string expressions and imports only. The new locale parity guard
+  (`src/lang/localeParity.test.ts`) fails any lane, the Main Campaign's included, that adds an `en.ts` key without all six
+  translations. No file on the UI session's out-of-bounds list is in the diff.
+- **Translation batch 2 (CHORE-05: the Settings pages): DONE, committed in
+  `694a4c89`**. `MC-210` (the order is the maintainer's; the dispositions are the Orchestrator's);
+  ledger rows 887 to 894. Gate 1 took two rounds (`[REJECT]`, then `[EDITORIAL]`) and Gate 2 approved. Checks on the working
+  tree: `pnpm check` 0/0; `pnpm test` 356 files, 7112 passed, 4 skipped; build ok. 167 new `en.ts` keys in all six locales, 66
+  registry `labelKey`s, 20 Svelte files and 7 `src/ts/setting` files, 4 new test files (20 tests). Three disclosures are not
+  yet answered by the maintainer (`MC-210`): newly added custom sidebar items store a label instead of an id; three English
+  `<br />` strings lose their forced line break and gain a space; the NovelAI reference area is translated unevenly. Not run in a browser or on a device. No new
+  tickets. Detail is in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-15.txt` (code) and `commit-msg-16.txt`
+  (records) in the scratchpad.
+- **Lane notes (translation batch 2, against `MC-179` 1):** the parity guard and the new `labelKey` guard
+  (`src/ts/setting/settingLabelKeys.test.ts`) fail any lane that adds an `en.ts` key without all six translations, or a
+  `labelKey` that names no `en.ts` key. No file on the UI session's out-of-bounds list is in the diff (the plan excluded
+  `StorageMaintenanceSettings.svelte`). `.claude/launch.json` is also modified in the working tree and is not part of this batch.
+- **Translation batch 3 (CHORE-05: SideBars, Others and the common UI): DONE, committed in
+  `40a64aaf`**. `MC-211` (the dev panels, Easter eggs, Iris dialog and
+  one-batch choices are the maintainer's; the dispositions and disclosures are the Orchestrator's); ledger rows 895 to 899. Gate 1
+  took two rounds (`[REJECT]`, then `[EDITORIAL]`) and Gate 2 approved ([APPROVE], no MUST). Checks on the working tree:
+  `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok. 205 new `en.ts` leaf keys in all six locales, 39
+  Svelte files, the new `src/lib/SideBars/folderColors.ts`, 9 new test files (HEAD red run: 22 of 78 i18n tests fail, all
+  labelled reproducers). Four disclosures, approved by the maintainer before the commit (`MC-211`): a non-index folder colour answer
+  now writes nothing (HEAD: Sidebar threw a TypeError, `SideChatList` stored undefined); the Iris intro line is sent to the
+  model in the user's language for cn, vi, de and es; the zh-Hant Iris unsupported-model line is now Traditional; a
+  `GridCatalog` entry without creator notes has `desc` `''`. Not run in a browser or on a device. No new tickets. Detail is
+  in the CHORE-05 entry of the Roadmap. Commit drafts: `commit-msg-17.txt` (code) and `commit-msg-18.txt` (records) in the
+  scratchpad.
+- **Translation batch 4 (CHORE-05: dead-key removal): DONE, committed in `e2602d4d`**. `MC-212` (the request and the
+  review deferral are the maintainer's; the dispositions are the Orchestrator's); ledger rows 900 to 904. 131 unused `en.ts`
+  keys deleted from all seven language files; `globalLoreBook` and `globalRegexScript` kept until after the merge. No new test.
+  Checks: `pnpm check` 0/0; `pnpm test` 365 files, 7162 passed, 4 skipped; build ok. Not run in a browser. Commit drafts:
+  `commit-msg-19.txt` (code) and `commit-msg-20.txt` (records) in the scratchpad.
+- **Translation batch 5a (CHORE-05: small deferrals and 29 dead computed-group names): DONE, committed in `fb454bc0`**. Follow-up (`MC-214`, rows 911 to 913, committed in `e61a0f72`): an edit after a failed
+  HypaV3 re-roll re-enables Apply.
+  `MC-213` (the request, the split into 5a, 5b and 5c, and the TTS label rule are the maintainer's; the dispositions are the
+  Orchestrator's); ledger rows 905 to 910. 29 dead names deleted from all seven language files, 5 new keys, `placeholderKey`
+  for the two registry placeholders, the `/?` help, `OtherAx`, `MobileCharacters` and `botpreset` Unnamed. One behaviour fix,
+  disclosed: the `HypaV3Modal` re-roll Apply button no longer writes `"Loading..."` or the failure message into the summary.
+  Checks: `pnpm check` 0/0; `pnpm test` 370 files, 7218 passed, 4 skipped; build ok. 5 new test files (56 tests); at HEAD 13
+  tests fail, 7 of them reproducers. Not run in a browser. Commit drafts: `commit-msg-21.txt` (code) and `commit-msg-22.txt`
+  (records) in the scratchpad.
+- **CHORE-05 status:** translation batches 1 to 4 and 5a, 5b and 5c done and committed (5c code `1ad02c3f`); batch 5d (the leftovers and Spanish as a UI language) committed (code `c81ad3e8`). The native-speaker review is deferred by the maintainer (`MC-212`);
+  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: delete `globalLoreBook` and `globalRegexScript`
+  after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; re-check every batch's overlap with Main at merge time; the deferred items listed in the batch 3 block and the out-of-bounds items in the Roadmap's batch 5d block.
+- **Translation batch 5b (CHORE-05: user-visible error and request-failure strings): committed as `edc8c8b6`
+  (code) on the maintainer's word "commit and start 5c"; not pushed.** `MC-215` (the "go ahead with 5b." and the three answers are the maintainer's; the
+  dispositions are the Orchestrator's); ledger rows 914 to 918. 36 new `errors.*` keys in all seven languages plus two reused
+  keys, across 14 production files; three defective English strings fixed (disclosed in `MC-215`). Gate 1 and Gate 2 both ended
+  `[EDITORIAL]`, corrections made. Checks on the final tree: `pnpm check` 0/0; `pnpm vitest run` 376 files, 7242 passed, 4
+  skipped; `pnpm build` ok. 6 new test files (20 tests); at `a5699f55` 13 fail on assertions and 7 guards pass. Not run in a
+  browser. Commit drafts: `commit-msg-25.txt` (code) and `commit-msg-26.txt` (records) in the scratchpad.
+- **Translation batch 5c (CHORE-05: dev-tool preview text, the `CharConfig` TTS labels and Bias): committed as `1ad02c3f`
+  (code) on the maintainer's word "yes, commit 5c."; not pushed.** `MC-216` (the request "commit and start 5c" is the maintainer's; the dispositions are the
+  Orchestrator's); ledger rows 919 to 923. 39 new keys in all seven languages (8 `devTool`, 31 `sidebarUi`), across 3 production
+  files, display text only. Gate 1 and Gate 2 both ended `[APPROVE]`. Checks on the final tree: `pnpm check` 0/0; `pnpm vitest
+  run` 378 files, 7271 passed, 4 skipped; `pnpm build` ok. 2 new test files (29 tests); at `ce33d027` 17 fail on assertions
+  and 12 guards pass. Not run in a browser. Commit drafts: `commit-msg-27.txt` (code) and `commit-msg-28.txt` (records) in the
+  scratchpad. The records are committed as `a5dfc611`.
+- **Translation batch 5d (CHORE-05: the in-bounds leftovers and Spanish as a selectable UI language): committed as
+  `c81ad3e8` (code); not pushed.** Next: the merge into the Main Campaign branch, which the Main Campaign session
+  resolves; this session checks its resolved `src/lang` and Agents diffs before the maintainer commits. `MC-217` (the request and the five answers in two question rounds are the maintainer's;
+  the option text and the dispositions are the Orchestrator's); ledger rows 924 to 928. 4 new keys in all seven languages, all six
+  `noBias` values replaced, 10 production files besides the locale files. Four English text changes and the `CharConfig` Style
+  label's theme colour are disclosed in `MC-217`. Spanish is now selectable in the Language setting and on the welcome screen
+  (browser-language auto-detect included); upstream has the same gap, so this is a fork difference. Gate 1 skipped under the
+  `AGENTS.md` carve-out; Gate 2 `[APPROVE]` twice (first pass and the resumed review after the Spanish follow-up). Checks on the
+  final tree: `pnpm check` 0/0; `pnpm vitest run` 387 files, 7300 passed, 4 skipped; `pnpm build` ok. 9 new test files and 3 tests
+  added to `CharConfig.ttsLabels.svelte.test.ts` (29 tests). Not run in a browser; the first-setup translator case for `es` is
+  untested. Main Campaign tip `d15149d8` (2026-10-04); no overlap found with this batch's `modules.ts` hunk. Commit drafts:
+  `commit-msg-29.txt` (code) and `commit-msg-30.txt` (records) in the scratchpad.
+- **Next free numbers in the UI ranges:** `MC-218`; ledger row 929; CHORE-100; Report 65.
+- **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
+  the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
+  "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".
+- **Not covered by the mobile batch's live check:** a physical device (callout, the phone's own follow-up click) and a
+  light colour scheme (ledger row 813). The optional guard so that a Discard confirm answered after the component
+  unmounts does nothing was not done (ledger row 812).
+- **Operational notes:** this worktree needed `pnpm install --frozen-lockfile`. `pnpm test` rewrites
+  `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` with LF endings; never stage it, and restore
+  its CRLF bytes after a full run.
+- **Wiki hand-offs (UI session, for the Wiki session):** `docs/wiki/Additional-Character-Screen.md` (around line 46)
+  says the emotion and image-generation Inlay boxes share the "Image Generation Instructions" label; after CD-3 the
+  emotion box is labelled "Emotion Instructions". CD-4's keep-edited-text behaviour is `MC-077`. New: the `mobilechat`
+  Save and Discard behaviour while a message is edited, and the Delete button's touch long-press force delete (`MC-201`
+  1 and 2).
+- **Wiki hand-offs (TTS batch, for the Wiki session):** `docs/wiki/TTS.md` (the speaker button reads the stored, parsed
+  message; Stop is no longer only for Web Speech and ElevenLabs; the retry wording; the translation-direction note) and
+  `docs/wiki/RisuAI-Basics.md` (the Stop visibility line). New behaviour: a continuation speaks only its addition; Stop for
+  all modes and in group chats with a voiced member; the Hugging Face router endpoint (`MC-204`). Detail is in the CHORE-15
+  entry of the Roadmap.
+- **Wiki hand-offs (settings batch, for the Wiki session):** `docs/wiki/Lorebook.md` says the Global Lorebook settings page
+  can't be opened; it should say the page is retired and its data is kept but unused (`MC-206`). `docs/wiki/Settings.md`
+  (the "Global Lorebook" and "Global Regex" editors), `docs/wiki/Regex-Script.md` (the note about the Global Regex page) and
+  `docs/wiki/Settings-Chat-Bot.md` (the reference to "the separate, unreachable Global Regex page") also describe the retired
+  pages. The character sidebar's close strip now shows a visible X.
+- **Lane notes (settings batch, against `MC-179` 1):** `Settings.svelte` is on the UI lane's list (the Main Campaign keeps
+  out of it). `LoreBookList.svelte`, `LoreBookSetting.svelte`, `Sidebar.svelte`, `src/ts/process/lorebook.svelte.ts` (the
+  `importLoreBook` and `exportLoreBook` signatures narrowed to `'global'|'local'`) and the seven `src/lang` files (one key,
+  `closeSidebar`) are on neither lane's list, so the merge is expected. None is on the UI session's out-of-bounds list.
+- **Files outside the UI lane touched so far:** the TTS batch edits `index.svelte.ts` (the two auto-TTS calls are replaced by one call
+  after the streaming and non-streaming branches, plus a `ttsBefore` capture at two sites) and `command.ts` (one import and
+  the `/speak` call), neither on a lane list (above); the mobile and chat batches touched none. Step-6 flows touched (memory step 6 hooks): `CharConfig.svelte`'s
+  emotion settings label (a one-line label change); `Chat.svelte`'s editor exits (Save and Discard share the discard
+  function with the editor's mouse long-press; they are deliberate exits).
 
 **Next free numbers (reserved ranges, `MC-179` 3):**
 

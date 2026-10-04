@@ -8,6 +8,7 @@
   import { alertNormalWait } from "src/ts/alert";
   import { DBState, selectedCharID, hypaV3ModalOpen } from "src/ts/stores.svelte";
   import { language } from "src/lang";
+  import { fillLang } from "src/lang/fill";
   import { translateHTML } from "src/ts/translator/translator";
   import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
   import { alertConfirmTwice } from "./HypaV3Modal/utils";
@@ -228,7 +229,7 @@
       .filter(summary => summary !== undefined);
 
     if (selectedSummaries.length < 2) {
-      await alertNormalWait(`Re-summarize Failed: ${language.hypaV3Modal.reSummarizeSelectionGoneMessage}`);
+      await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeFailed, { reason: language.hypaV3Modal.reSummarizeSelectionGoneMessage }));
       return;
     }
 
@@ -275,7 +276,7 @@
       if (run !== bulkRunToken) return;
       console.error('Re-summarize Failed:', error);
       bulkResummaryState = null;
-      await alertNormalWait(`Re-summarize Failed: ${error.message || error}`);
+      await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeFailed, { reason: `${error.message || error}` }));
     }
   }
 
@@ -351,7 +352,7 @@
       if (run !== bulkRunToken) return;
       console.error('Re-summarize Retry Failed:', error);
       bulkResummaryState = null;
-      await alertNormalWait(`Re-summarize Retry Failed: ${error.message || error}`);
+      await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeRetryFailed, { reason: `${error.message || error}` }));
     }
   }
 
@@ -372,14 +373,14 @@
     }
 
     bulkResummaryState.isTranslating = true;
-    bulkResummaryState.translation = "Loading...";
+    bulkResummaryState.translation = language.loadingEllipsis;
 
     try {
       const result = await translateHTML(bulkResummaryState.result, false, "", -1, regenerate);
       
       bulkResummaryState.translation = result;
     } catch (error) {
-      bulkResummaryState.translation = `Translation failed: ${error}`;
+      bulkResummaryState.translation = fillLang(language.hypaV3Modal.translationFailed, { error: `${error}` });
     } finally {
       bulkResummaryState.isTranslating = false;
     }
@@ -646,21 +647,21 @@
       if (chat.hypaV3Data?.summaries?.length > 0) {
         return {
           success: false,
-          error: "HypaV3 data already exists.",
+          error: language.hypaV3Modal.convertErrorV3Exists,
         };
       }
 
       if (!hypaV2Data) {
         return {
           success: false,
-          error: "HypaV2 data not found.",
+          error: language.hypaV3Modal.convertErrorV2Missing,
         };
       }
 
       if (hypaV2Data.mainChunks.length === 0) {
         return {
           success: false,
-          error: "No main chunks found.",
+          error: language.hypaV3Modal.convertErrorNoMainChunks,
         };
       }
 
@@ -670,14 +671,14 @@
         if (!Array.isArray(mainChunk.chatMemos)) {
           return {
             success: false,
-            error: `Chunk ${i}'s chatMemos is not an array.`,
+            error: fillLang(language.hypaV3Modal.convertErrorChunkNotArray, { index: i }),
           };
         }
 
         if (mainChunk.chatMemos.length === 0) {
           return {
             success: false,
-            error: `Chunk ${i}'s chatMemos is empty.`,
+            error: fillLang(language.hypaV3Modal.convertErrorChunkEmpty, { index: i }),
           };
         }
       }
@@ -698,7 +699,7 @@
     } catch (error) {
       return {
         success: false,
-        error: `Error occurred: ${error.message}`,
+        error: fillLang(language.hypaV3Modal.convertErrorUnexpected, { message: `${error.message}` }),
       };
     }
   }

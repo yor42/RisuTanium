@@ -22,7 +22,7 @@
 </script>
 
 <div class="h-full w-full flex flex-col overflow-y-auto items-center">
-    {#if $PlaygroundStore === 1}
+    {#if $PlaygroundStore === 1 || $PlaygroundStore === 2}
         <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.playground.playground}</h2>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 w-full max-w-4xl p-2">
             <button class="bg-darkbg rounded-md p-6 flex flex-col transition-shadow hover:ring-1 md:col-span-2" onclick={() => {
@@ -33,7 +33,7 @@
             <button class="bg-darkbg rounded-md p-6 flex flex-col transition-shadow hover:ring-1" onclick={() => {
                 PlaygroundStore.set(13)
             }}>
-                <h1 class="text-2xl font-bold text-start">CBS Doc</h1>
+                <h1 class="text-2xl font-bold text-start">{language.playground.cbsDoc}</h1>
             </button>
             <button class="bg-darkbg rounded-md p-6 flex flex-col transition-shadow hover:ring-1" onclick={() => {
                 PlaygroundStore.set(3)
@@ -63,7 +63,7 @@
             <button class="bg-darkbg rounded-md p-6 flex flex-col transition-shadow hover:ring-1" onclick={() => {
                 PlaygroundStore.set(8)
             }}>
-                <h1 class="text-2xl font-bold text-start">Parser</h1>
+                <h1 class="text-2xl font-bold text-start">{language.playground.parser}</h1>
             </button>
             <button class="bg-darkbg rounded-md p-6 flex flex-col transition-shadow hover:ring-1" onclick={() => {
                 PlaygroundStore.set(9)
@@ -100,11 +100,11 @@
             }}>
                 <h1 class="text-2xl font-bold text-start">
                     {#if easterEggTouch <= 10}
-                        🤗 Coming soon
+                        {language.playground.comingSoon}
                     {:else if easterEggTouch <= 30}
-                        🤗 Still coming soon
+                        {language.playground.stillComingSoon}
                     {:else if easterEggTouch <= 50}
-                        😇 Really soon
+                        {language.playground.reallySoon}
                     {/if}
                 </h1>
             </button>
@@ -120,9 +120,6 @@
                 </button>
             </div>
 
-            {#if $PlaygroundStore === 2}
-                <!-- <PlaygroundChat/> -->
-            {/if}
             {#if $PlaygroundStore === 3}
                 <PlaygroundEmbedding/>
             {/if}

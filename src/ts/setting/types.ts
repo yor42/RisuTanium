@@ -81,6 +81,7 @@ export interface SettingOptions {
     
     // text, textarea
     placeholder?: string;
+    placeholderKey?: string;
     hideText?: boolean;     // For password-like inputs
     inputClassName?: string;
     marginBottom?: boolean;

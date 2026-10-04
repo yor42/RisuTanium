@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tooltipRight } from "src/ts/gui/tooltip";
+  import { language } from "src/lang";
 
   interface Props {
     rounded: boolean;
@@ -104,7 +105,7 @@
           style:height={size + "px"}
           style:minWidth={size + "px"}
           class:rounded-md={!rounded} class:rounded-full={rounded} 
-          alt="avatar"
+          alt={language.sidebarUi.avatarAlt}
         />
       {/await}
     {/if}

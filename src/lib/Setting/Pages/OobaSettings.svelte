@@ -10,6 +10,7 @@
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import Accordion from "src/lib/UI/Accordion.svelte";
     import ChatFormatSettings from "./ChatFormatSettings.svelte";
+    import { fillLang } from "src/lang/fill";
     interface Props {
         instructionMode?: boolean;
     }
@@ -17,11 +18,11 @@
     let { instructionMode = false }: Props = $props();
 </script>
 
-<Accordion name="Ooba Settings" styled>
+<Accordion name={fillLang(language.settingsPage.nameSettings, { name: 'Ooba' })} styled>
     {#if instructionMode}
         <ChatFormatSettings />
     {:else}
-        <span class="text-textcolor">Ooba Mode</span>
+        <span class="text-textcolor">{fillLang(language.settingsPage.nameMode, { name: 'Ooba' })}</span>
         <SelectInput className="mt-2 mb-4" bind:value={DBState.db.reverseProxyOobaArgs.mode}>
             <OptionInput value="instruct">Instruct</OptionInput>
             <OptionInput value="chat">Chat</OptionInput>
@@ -30,23 +31,23 @@
         <!-- name1 = user | name2 = bot --->
 
         {#if DBState.db.reverseProxyOobaArgs.mode === 'instruct'}
-            <span class="text-textcolor">user prefix</span>
+            <span class="text-textcolor">{language.settingsPage.userPrefix}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.name1_instruct} />
-            <span class="text-textcolor">bot prefix</span>
+            <span class="text-textcolor">{language.settingsPage.botPrefix}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.name2_instruct} />
-            <span class="text-textcolor">system prefix</span>
+            <span class="text-textcolor">{language.settingsPage.systemPrefix}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.context_instruct} />
-            <span class="text-textcolor">system message</span>
+            <span class="text-textcolor">{language.settingsPage.systemMessage}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.system_message} />
         {/if}
         {#if DBState.db.reverseProxyOobaArgs.mode === 'chat' || DBState.db.reverseProxyOobaArgs.mode === 'chat-instruct'}
-            <span class="text-textcolor">user prefix</span>
+            <span class="text-textcolor">{language.settingsPage.userPrefix}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.name1} />
-            <span class="text-textcolor">bot prefix</span>
+            <span class="text-textcolor">{language.settingsPage.botPrefix}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.name2} />
-            <span class="text-textcolor">system prefix</span>
+            <span class="text-textcolor">{language.settingsPage.systemPrefix}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.context} />
-            <span class="text-textcolor">start message</span>
+            <span class="text-textcolor">{language.settingsPage.startMessage}</span>
             <OptionalInput marginBottom={true} bind:value={DBState.db.reverseProxyOobaArgs.greeting} />
         {/if}
         {#if DBState.db.reverseProxyOobaArgs.mode === 'chat-instruct'}

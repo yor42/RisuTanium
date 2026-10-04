@@ -2,12 +2,13 @@ import { v4 } from 'uuid';
 import type { RisuModule} from './process/modules.ts'
 import type { character, RisuPersona } from './storage/database.svelte.js';
 import { createBlankChar } from "src/ts/characters";
+import { language } from "src/lang";
 
 export function convertModuleToCharacter(m: RisuModule): character {
     const char = createBlankChar()
 
     if(m.mcp){
-        throw new Error("MCP modules are not supported for character conversion.")
+        throw new Error(language.errors.mcpModuleConversionUnsupported)
     }
 
     char.name = m.name

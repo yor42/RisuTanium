@@ -245,7 +245,7 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 export async function exportChat(page:number){
     try {
 
-        const mode = await alertSelect(['Export as JSON', "Export as TXT", "Export as HTML File", "Export as HTML Embed"])
+        const mode = await alertSelect([language.alerts.exportAsJson, language.alerts.exportAsTxt, language.alerts.exportAsHtmlFile, language.alerts.exportAsHtmlEmbed])
         const doTranslate = (mode === '2' || mode === '3') ? (await alertSelect([language.translateContent, language.doNotTranslate])) === '0' : false
         const anonymous = (mode === '2' || mode === '3') ? ((await alertSelect([language.includePersonaName, language.hidePersonaName])) === '1') : false
         const selectedID = get(selectedCharID)
@@ -291,7 +291,7 @@ export async function exportChat(page:number){
 
             let i = 0
             for(const v of chat.message){
-                alertWait(`Translating... ${i++}/${chat.message.length}`)
+                alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 chatContentHTML += `<div class="chat">
                     <h2>${name}</h2>
@@ -362,7 +362,7 @@ export async function exportChat(page:number){
 
             let i = 0
             for(const v of chat.message){
-                alertWait(`Translating... ${i++}/${chat.message.length}`)
+                alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 chatContentHTML += `<tr>
                     <td>${name}</td>
@@ -422,14 +422,15 @@ export async function exportChat(page:number){
 }
 
 export async function importChat(){
-    const dat =await selectSingleFile(['json','jsonl','txt','html'])
+    const dat =await selectSingleFile(['json','jsonl','html'])
     if(!dat){
         return
     }
     try {
         const selectedID = get(selectedCharID)
+        const lowerName = dat.name.toLowerCase()
 
-        if(dat.name.endsWith('jsonl')){
+        if(lowerName.endsWith('jsonl')){
             const lines = Buffer.from(dat.data).toString('utf-8').split('\n')
             let newChat:Chat = {
                 message: [],
@@ -442,7 +443,10 @@ export async function importChat(){
 
             let isFirst = true
             for(const line of lines){
-                
+                if(line.trim() === ''){
+                    continue
+                }
+
                 const presedLine = JSON.parse(line)
                 if(presedLine.name && presedLine.is_user, presedLine.mes){
                     if(!isFirst){
@@ -470,7 +474,7 @@ export async function importChat(){
             changeChatTo(0)
             alertNormal(language.successImport)
         }
-        else if(dat.name.endsWith('json')){
+        else if(lowerName.endsWith('json')){
             const json = JSON.parse(Buffer.from(dat.data).toString('utf-8'))
             if((json.type === 'risuAllChats' || json.type === 'risuChat') && json.ver === 2){
                 const folders = json.folders || []
@@ -538,7 +542,7 @@ export async function importChat(){
                 return
             }
         }
-        else if(dat.name.endsWith('html')){
+        else if(lowerName.endsWith('html')){
             const doc = new DOMParser().parseFromString(Buffer.from(dat.data).toString('utf-8'), 'text/html')
             const chat = doc.querySelector('.idat').textContent
             const json = JSON.parse(chat)
@@ -550,6 +554,9 @@ export async function importChat(){
             else{
                 alertError(language.errors.noData)
             }
+        }
+        else{
+            alertError(language.errors.noData)
         }
     } catch (error) {
         alertError(error)
@@ -779,7 +786,7 @@ export async function makeGroupImage() {
     try {
         alertStore.set({
             type: 'wait',
-            msg: `Loading..`
+            msg: language.loadingEllipsis
         })
         const db = getDatabase()
         const charID = get(selectedCharID)

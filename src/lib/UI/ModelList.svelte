@@ -4,6 +4,7 @@
     import { getHordeModels } from "src/ts/horde/getModels";
     import Accordion from "./Accordion.svelte";
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import CheckInput from "./GUI/CheckInput.svelte";
     import { getModelInfo, getModelList } from 'src/ts/model/modellist';
     import { ArrowLeft } from "@lucide/svelte";
@@ -49,7 +50,7 @@
                     onclick={() => {
                         openOptions = false
                     }}
-                    title="Back"
+                    title={language.settingsPage.back}
                 >
                     <ArrowLeft size={20} />
                 </button>
@@ -72,16 +73,16 @@
             {/each}
             <Accordion name="Horde">
                 {#await getHordeModels()}
-                    <button class="p-2">Loading...</button>
+                    <button class="p-2">{language.loadingEllipsis}</button>
                 {:then models}
                     <button onclick={() => {changeModel("horde:::" + 'auto')}} class="p-2 hover:text-green-500">
-                        Auto Model
-                        <br><span class="text-textcolor2 text-sm">Performace: Auto</span>
+                        {language.uiCommon.autoModel}
+                        <br><span class="text-textcolor2 text-sm">{language.uiCommon.performanceAuto}</span>
                     </button>
                     {#each models as model}
                         <button onclick={() => {changeModel("horde:::" + model.name)}} class="p-2 hover:text-green-500">
                             {model.name.trim()}
-                            <br><span class="text-textcolor2 text-sm">Performace: {model.performance.toFixed(1)}</span>
+                            <br><span class="text-textcolor2 text-sm">{fillLang(language.uiCommon.performance, { value: model.performance.toFixed(1) })}</span>
                         </button>
                     {/each}
                 {/await}
@@ -90,7 +91,7 @@
             {#if DBState?.db.customModels?.length > 0}
                 <Accordion name={language.customModels}>
                     {#each DBState.db.customModels as model}
-                        <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name ?? "Unnamed"}</button>
+                        <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name ?? language.settingsPage.unnamed}</button>
                     {/each}
                 </Accordion>
 

@@ -44,18 +44,18 @@
     )
     let hasVerbosity = $derived(modelInfo.parameters.includes('verbosity'))
     const verbosityOptions = [
-        { value: 0, label: 'Low' },
-        { value: 1, label: 'Medium' },
-        { value: 2, label: 'High' },
+        { value: 0, label: language.optLow },
+        { value: 1, label: language.optMedium },
+        { value: 2, label: language.optHigh },
     ]
     let reasoningEffortOptions = $derived([
         ...(!modelInfo.parameters.includes('reasoning_effort_min_medium') ? [{
             value: -1,
-            label: modelInfo.parameters.includes('reasoning_effort_none') ? 'None' : 'Minimal',
+            label: modelInfo.parameters.includes('reasoning_effort_none') ? language.none : language.optMinimal,
         }] : []),
-        ...(!modelInfo.parameters.includes('reasoning_effort_min_medium') ? [{ value: 0, label: 'Low' }] : []),
-        { value: 1, label: 'Medium' },
-        { value: 2, label: 'High' },
+        ...(!modelInfo.parameters.includes('reasoning_effort_min_medium') ? [{ value: 0, label: language.optLow }] : []),
+        { value: 1, label: language.optMedium },
+        { value: 2, label: language.optHigh },
         ...(modelInfo.parameters.includes('reasoning_effort_xhigh') ? [{ value: 3, label: 'XHigh' }] : []),
     ])
 

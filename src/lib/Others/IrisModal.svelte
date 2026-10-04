@@ -5,6 +5,8 @@
     import { DBState, irisStore } from "src/ts/stores.svelte";
     import { requestChatData } from "src/ts/process/request/request";
     import { alertError } from "src/ts/alert";
+    import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import { getIrisSystemPrompt } from "src/ts/iris";
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
     import { RisuAccessClient } from "src/ts/process/mcp/risuaccess";
@@ -22,29 +24,12 @@
         content: string;
     }
 
-    const introDialogue: Record<string, DialogueLine[]> = {
-        en: [
-            { speaker: "Iris", text: "Hello there. I've been waiting for you.", tip: "Iris can access various data through the Risuai system. It uses ax model defined in config." },
-        ],
-        ko: [
-            { speaker: "Iris", text: "안녕하세요. 아이리스라고 합니다~.", tip: "아이리스는 보조 모델을 사용하며, Risuai의 전반적인 데이터에 접근할 수 있습니다." },
-        ],
-        'zh-Hant': [
-            { speaker: "Iris", text: "你好，我一直在等你。", tip: "Iris 可以通過 Risuai 系統訪問各種數據。它使用配置中定義的輔助模型。" },
-        ],
-    };
-
-    const unsupportedModelDialogue: Record<string, DialogueLine[]> = {
-        en: [
-            { speaker: "Iris", text: "It seems your current model doesn't support me responding... Please switch to a compatible model, like GPT, Claude, or Gemini which are not plugins." },
-        ],
-        ko: [
-            { speaker: "Iris", text: "현재 모델이 제가 응답하는걸 지원하지 않는 것 같아요. 플러그인이 아닌 GPT, Claude, Gemini 모델로 전환해주세요." },
-        ],
-        'zh-Hant': [
-            { speaker: "Iris", text: "看起来您当前的模型不支持我响应... 请切换到兼容的模型，如 GPT、Claude 或 Gemini，这些都不是插件。" },
-        ],
-    };
+    // Built fresh on every call: the dialogue array is mutated by pushDialogue, so it must never be shared.
+    function buildIntroDialogue(): DialogueLine[] {
+        return [
+            { speaker: "Iris", text: language.iris.introText, tip: language.iris.introTip },
+        ];
+    }
 
     const forageInstance = localforage.createInstance({
         name: "iris_dialogues",
@@ -52,7 +37,7 @@
     });
 
     let dialogue = $state<DialogueLine[]>(
-        introDialogue[DBState.db.language] ?? introDialogue.en
+        buildIntroDialogue()
     );
 
     let currentIndex = $state(0);
@@ -234,7 +219,7 @@
         if(res.type === 'success') {
             pushDialogue({speaker: 'Iris', text: res.result});
         } else {
-            alertError("Failed to get response from LLM: " + res.result);
+            alertError(fillLang(language.errors.irisLlmFailed, { error: `${res.result}` }));
             dialogue.pop();
         }
     }
@@ -247,12 +232,12 @@
                 dialogue = saved;
                 currentIndex = dialogue.length - 1;
             } else {
-                dialogue = introDialogue[DBState.db.language] ?? introDialogue.en;
+                dialogue = buildIntroDialogue();
                 currentIndex = 0;
             }
             startTyping(dialogue[currentIndex].text);
         }).catch(() => {
-            dialogue = introDialogue[DBState.db.language] ?? introDialogue.en;
+            dialogue = buildIntroDialogue();
             currentIndex = 0;
             startTyping(dialogue[currentIndex].text);
         });
@@ -280,7 +265,7 @@
     });
 
     function resetDialogue() {
-        dialogue = introDialogue[DBState.db.language] ?? introDialogue.en;
+        dialogue = buildIntroDialogue();
         currentIndex = 0;
         saveDialogue();
         startTyping(dialogue[0].text);
@@ -299,12 +284,12 @@
     <button
         onclick={hide}
         class="absolute right-4 top-4 flex items-center gap-1 rounded-md bg-black/40 px-2 py-1 text-xs text-white/50 transition hover:bg-black/60 hover:text-white/80"
-        aria-label="Close"
+        aria-label={language.uiCommon.close}
     >
         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
-        Close
+        {language.uiCommon.close}
     </button>
 
     <!-- Character sprite -->
@@ -336,7 +321,7 @@
                 >
                     <button
                         class="text-white/40 transition hover:text-white/80"
-                        aria-label="Reset"
+                        aria-label={language.reset}
                         onclick={() => {
                             resetDialogue();
                             showBacklog = false;
@@ -359,7 +344,7 @@
                     <button
                         onclick={() => (showBacklog = false)}
                         class="text-white/40 transition hover:text-white/80"
-                        aria-label="Close backlog"
+                        aria-label={language.iris.closeBacklog}
                     >
                         <svg
                             class="h-4 w-4"
@@ -424,7 +409,7 @@
             <!-- Backlog button -->
             <button
                 onclick={openBacklog}
-                title="View backlog (L)"
+                title={language.iris.viewBacklog}
                 class="absolute right-4 top-4 flex items-center gap-1 rounded-md px-2 py-1 text-xs text-white/40 transition hover:bg-white/10 hover:text-white/70"
             >
                 <svg
@@ -440,7 +425,7 @@
                         d="M4 6h16M4 10h16M4 14h10"
                     />
                 </svg>
-                Log
+                {language.log}
             </button>
 
             <!-- Speaker name tag -->
@@ -461,7 +446,7 @@
                 role="button"
                 tabindex="0"
                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); advance(); } }}
-                aria-label={isTyping ? 'Dialogue loading…' : `${dialogue[currentIndex].speaker}: ${displayedText}. Click to advance.`}
+                aria-label={isTyping ? language.iris.dialogueLoading : fillLang(language.iris.dialogueAriaLabel, { speaker: dialogue[currentIndex].speaker, text: displayedText })}
                 aria-live="polite"
                 aria-atomic="true"
                 class="min-h-20 cursor-pointer select-none text-base leading-relaxed text-white/90"
@@ -476,7 +461,7 @@
                 {/if}
                 {#if isUnsupportedModel}
                     <div class="mt-2 rounded-md bg-red-600/80 px-3 py-2 text-sm text-white">
-                        {unsupportedModelDialogue[DBState.db.language]?.[0].text ?? unsupportedModelDialogue.en[0].text}
+                        {language.iris.unsupportedModel}
                     </div>
                 {/if}
             </div>
@@ -487,7 +472,7 @@
                     class="mt-1 flex items-center gap-2"
                     transition:fade={{ duration: 150 }}
                 >
-                    <span class="text-xs text-white/40">Iris is typing</span
+                    <span class="text-xs text-white/40">{language.iris.typing}</span
                     >
                     <span class="flex gap-1">
                         <span
@@ -514,8 +499,8 @@
                         onkeydown={handleInputKey}
                         type="text"
                         placeholder={waitingForReply
-                            ? "Waiting for reply…"
-                            : "Type a message…"}
+                            ? language.iris.waitingForReply
+                            : language.iris.typeMessage}
                         disabled={waitingForReply}
                         class="flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none transition focus:border-indigo-400 focus:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
                     />
@@ -524,7 +509,7 @@
                         disabled={!userInput.trim() || waitingForReply || isUnsupportedModel}
                         class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-40"
                     >
-                        Send
+                        {language.uiCommon.send}
                     </button>
                 </div>
             {/if}
@@ -536,7 +521,7 @@
         <button
             onclick={advance}
             class="absolute inset-0 -z-10 h-full w-full cursor-pointer bg-transparent"
-            aria-label="Advance dialogue"
+            aria-label={language.iris.advanceDialogue}
         ></button>
     {/if}
 </div>

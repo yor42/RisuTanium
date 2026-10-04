@@ -4,6 +4,7 @@ import { askUpstreamAgreement, isUpstreamAccepted, publishUpstreamAccepted } fro
 import { defaultSdDataFunc, type character, setDatabase, type customscript, type loreSettings, type loreBook, type triggerscript, importPreset, type groupChat, getDatabase, setDatabaseLite, appVer } from "./storage/database.svelte"
 import { checkNullish, decryptBuffer, isKnownUri, selectFileByDom, sleep } from "./util"
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import { v4 as uuidv4, v4 } from 'uuid';
 import { changeChar, characterFormatUpdate } from "./characters"
 import { AppendableBuffer, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, VirtualWriter } from "./globalApi.svelte"
@@ -391,7 +392,7 @@ async function readCharacterFile(f:{
             const assetIndex = chunk.key.replace('chara-ext-asset_:', '').replace('chara-ext-asset_', '')
             const assetData = Buffer.from(chunk.value, 'base64')
             if(pngChunks === 0){
-                alertWait('Loading... (Loaded ' + readedPngChunks + ' Assets)')
+                alertWait(fillLang(language.alerts.loadedAssets, { count: readedPngChunks }))
             }
             else{
                 alertStore.set({
@@ -594,7 +595,7 @@ export async function characterURLImport() {
     const charPath = (new URLSearchParams(location.search)).get('charahub')
     try {
         if(charPath){
-            alertWait('Loading from Chub...')
+            alertWait(language.alerts.loadingFromChub)
             const url = new URL(location.href);
             url.searchParams.delete('charahub');
             window.history.pushState(null, '', url.toString());
@@ -1087,7 +1088,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                         imgp = await saveAsset(Buffer.from(b64, 'base64'))
                     }
                     else{
-                        alertError('Data URI too large')
+                        alertError(language.errors.dataUriTooLarge)
                         continue
                     }
                 }
@@ -2086,7 +2087,7 @@ export async function downloadRisuHub(id:string, arg:{
     } catch (error) {
         console.error(error)
         console.log(error.stack)
-        alertError("Error while importing")
+        alertError(language.errors.importFailed)
     }
 }
 

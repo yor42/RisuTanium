@@ -1,5 +1,7 @@
 <script lang="ts">
     import { selectedCharID } from "src/ts/stores.svelte";
+    import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import NumberInput from "../UI/GUI/NumberInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
@@ -28,13 +30,13 @@
     let autopilot = $state([])
 </script>
 
-<Accordion styled name={"Variables"}>
+<Accordion styled name={language.devTool.variables}>
     <div class="rounded-md border border-darkborderc grid grid-cols-2 gap-2 p-2">
         {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate &&  Object.keys(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate).length > 0}
             {#each Object.keys(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate) as key}
                 <span>{key}</span>
                 {#if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "object"}
-                    <div class="p-2 text-center">Object</div>
+                    <div class="p-2 text-center">{language.devTool.object}</div>
                 {:else if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "string"}
                     <TextInput bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as string} />
                 {:else if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "number"}
@@ -42,45 +44,45 @@
                 {/if}
             {/each}
         {:else}
-            <div class="p-2 text-center">No variables</div>
+            <div class="p-2 text-center">{language.devTool.noVariables}</div>
         {/if}
     </div>
 </Accordion>
 
-<Accordion styled name={"Tokens"}>
+<Accordion styled name={language.tokens}>
     <div class="rounded-md border border-darkborderc grid grid-cols-2 gap-2 p-2">
         {#await getCharToken(DBState.db.characters[$selectedCharID])}
-            <span>Character Persistant</span>
-            <div class="p-2 text-center">Loading...</div>
-            <span>Character Dynamic</span>
-            <div class="p-2 text-center">Loading...</div>
+            <span>{language.devTool.characterPersistant}</span>
+            <div class="p-2 text-center">{language.loadingEllipsis}</div>
+            <span>{language.devTool.characterDynamic}</span>
+            <div class="p-2 text-center">{language.loadingEllipsis}</div>
         {:then token}
-            <span>Character Persistant</span>
-            <div class="p-2 text-center">{token.persistant} Tokens</div>
-            <span>Character Dynamic</span>
-            <div class="p-2 text-center">{token.dynamic} Tokens</div>
+            <span>{language.devTool.characterPersistant}</span>
+            <div class="p-2 text-center">{fillLang(language.devTool.tokenCount, { count: token.persistant })}</div>
+            <span>{language.devTool.characterDynamic}</span>
+            <div class="p-2 text-center">{fillLang(language.devTool.tokenCount, { count: token.dynamic })}</div>
         {/await}
         {#await getChatToken(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage])}
-            <span>Current Chat</span>
-            <div class="p-2 text-center">Loading...</div>
+            <span>{language.devTool.currentChat}</span>
+            <div class="p-2 text-center">{language.loadingEllipsis}</div>
         {:then token}
-            <span>Current Chat</span>
-            <div class="p-2 text-center">{token} Tokens</div>
+            <span>{language.devTool.currentChat}</span>
+            <div class="p-2 text-center">{fillLang(language.devTool.tokenCount, { count: token })}</div>
         {/await}
         {#if DBState.db.promptTemplate}
             {#await tokenizePreset(DBState.db.promptTemplate)}
-                <span>Prompt Template</span>
-                <div class="p-2 text-center">Loading...</div>
+                <span>{language.promptTemplate}</span>
+                <div class="p-2 text-center">{language.loadingEllipsis}</div>
             {:then token}
-                <span>Prompt Template</span>
-                <div class="p-2 text-center">{token} Tokens</div>
+                <span>{language.promptTemplate}</span>
+                <div class="p-2 text-center">{fillLang(language.devTool.tokenCount, { count: token })}</div>
             {/await}
         {/if}
     </div>
-    <span class="text-sm text-textcolor2">This is a estimate. The actual token count may be different.</span>
+    <span class="text-sm text-textcolor2">{language.devTool.estimateNote}</span>
 </Accordion>
 
-<Accordion styled name={"Autopilot"}>
+<Accordion styled name={language.devTool.autopilot}>
     <div class="flex flex-col p-2 border border-darkborderc rounded-md">
         {#each autopilot as text, i}
             <TextAreaInput bind:value={autopilot[i]} />
@@ -132,39 +134,39 @@
     </div>
     <Button className="mt-2" onclick={async () => {
         await runAutopilot(autopilot)
-    }}>Run</Button>
+    }}>{language.run}</Button>
 </Accordion>
 
 
-<Accordion styled name={"Preview Prompt"}>
-    <span>Type</span>
+<Accordion styled name={language.devTool.previewPrompt}>
+    <span>{language.type}</span>
     <SelectInput bind:value={previewMode}>
-        <OptionInput value="chat">Chat</OptionInput>
-        <OptionInput value="instruct">Instruct</OptionInput>
+        <OptionInput value="chat">{language.Chat}</OptionInput>
+        <OptionInput value="instruct">{language.devTool.instruct}</OptionInput>
     </SelectInput>
     {#if previewMode === 'instruct'}
-        <span>Instruction Type</span>
+        <span>{language.devTool.instructionType}</span>
         <SelectInput bind:value={instructType}>
             {#each Object.keys(chatTemplates) as template}
                 <OptionInput value={template}>{template}</OptionInput>
             {/each}
-            <OptionInput value="jinja">Custom Jinja</OptionInput>
+            <OptionInput value="jinja">{language.devTool.customJinja}</OptionInput>
         </SelectInput>
         {#if instructType === 'jinja'}
-            <span>Custom Jinja</span>
+            <span>{language.devTool.customJinja}</span>
             <TextAreaInput bind:value={instructCustom} />
         {/if}
     {/if}
-    <span>Join</span>
+    <span>{language.devTool.join}</span>
     <SelectInput bind:value={previewJoin}>
-        <OptionInput value="yes">With Join</OptionInput>
-        <OptionInput value="no">Without Join</OptionInput>
-        <OptionInput value="prompt">As Request</OptionInput>
+        <OptionInput value="yes">{language.devTool.withJoin}</OptionInput>
+        <OptionInput value="no">{language.devTool.withoutJoin}</OptionInput>
+        <OptionInput value="prompt">{language.devTool.asRequest}</OptionInput>
     </SelectInput>
-    <Button className="mt-2" onclick={() => {runPreviewPrompt(previewMode, previewJoin, instructType, instructCustom)}}>Run</Button>
+    <Button className="mt-2" onclick={() => {runPreviewPrompt(previewMode, previewJoin, instructType, instructCustom)}}>{language.run}</Button>
 </Accordion>
 
-<Accordion styled name={"Preview Lorebook"}>
+<Accordion styled name={language.devTool.previewLorebook}>
     <Button className="mt-2" onclick={async () => {
         const lorebookResult = await loadLoreBookV3Prompt()
         const html = `
@@ -173,15 +175,15 @@
         }).join('\n')}
         `.trim()
         alertMd(html)
-    }}>Test Lore</Button>
+    }}>{language.devTool.testLore}</Button>
     <Button className="mt-2" onclick={async () => {
         const lorebookResult = await loadLoreBookV3Prompt()
         const html = `
         <table>
             <thead>
                 <tr>
-                    <th>Key</th>
-                    <th>Source</th>
+                    <th>${language.devTool.key}</th>
+                    <th>${language.devTool.source}</th>
                 </tr>
             </thead>
             <tbody>
@@ -195,7 +197,7 @@
         </table>
         `.trim()
         alertMd(html)
-    }}>Match Sources</Button>
+    }}>{language.devTool.matchSources}</Button>
 </Accordion>
 
 <Button className="mt-2" onclick={() => {
@@ -206,8 +208,8 @@
     }).join('\n')}
     `.trim()
     alertMd(html)
-}}>Preview Module</Button>
+}}>{language.devTool.previewModule}</Button>
 
 <Button className="mt-2" onclick={() => {
     alertMd(getRequestLog())
-}}>Request Log</Button>
+}}>{language.devTool.requestLog}</Button>

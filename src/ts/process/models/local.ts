@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import * as path from "@tauri-apps/api/path";
 import { exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { alertClear, alertError, alertWait } from "src/ts/alert";
+import { language } from "src/lang";
+import { fillLang } from "src/lang/fill";
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { sleep } from "src/ts/util";
 
@@ -18,7 +20,7 @@ async function installPython():Promise<boolean>{
     }
     catch(error){
         alertClear()
-        alertError("Failed to check local inference support: " + error)
+        alertError(fillLang(language.errors.localInferenceCheckFailed, { error: `${error}` }))
         return false
     }
     if(initPython){
@@ -28,20 +30,20 @@ async function installPython():Promise<boolean>{
     const appDir = await path.appDataDir()
     const completedPath = await path.join(appDir, 'python', 'completed.txt')
     if(await exists(completedPath)){
-        alertWait("Python is already installed, skipping")
+        alertWait(language.alerts.pythonAlreadyInstalled)
     }
     else{
-        alertWait("Installing Python")
+        alertWait(language.alerts.installingPython)
         const installed = await invoke<boolean>("install_python", {
             path: appDir
         })
         if(!installed){
             initPython = false
             alertClear()
-            alertError("Failed to install the bundled Python runtime. The bundled Python local-inference server could not be started on this system.")
+            alertError(language.errors.pythonInstallFailed)
             return false
         }
-        alertWait("Installing Pip")
+        alertWait(language.alerts.installingPip)
         try{
             const pipInstalled = await invoke<boolean>("install_pip", {
                 path: appDir
@@ -49,17 +51,17 @@ async function installPython():Promise<boolean>{
             if(!pipInstalled){
                 initPython = false
                 alertClear()
-                alertError("Failed to install Pip for the bundled Python runtime. The bundled Python local-inference server could not be started on this system.")
+                alertError(language.errors.pipInstallFailed)
                 return false
             }
         }
         catch(error){
             initPython = false
             alertClear()
-            alertError("Failed to install Pip for the bundled Python runtime: " + error)
+            alertError(fillLang(language.errors.pipInstallError, { error: `${error}` }))
             return false
         }
-        alertWait("Rewriting requirements")
+        alertWait(language.alerts.rewritingRequirements)
         try{
             const postInstalled = await invoke<boolean>('post_py_install', {
                 path: appDir
@@ -67,14 +69,14 @@ async function installPython():Promise<boolean>{
             if(!postInstalled){
                 initPython = false
                 alertClear()
-                alertError("Failed to finalize the bundled Python runtime installation. The bundled Python local-inference server could not be started on this system.")
+                alertError(language.errors.pythonFinalizeFailed)
                 return false
             }
         }
         catch(error){
             initPython = false
             alertClear()
-            alertError("Failed to finalize the bundled Python runtime installation: " + error)
+            alertError(fillLang(language.errors.pythonFinalizeError, { error: `${error}` }))
             return false
         }
 
@@ -91,7 +93,7 @@ async function installPython():Promise<boolean>{
         'fastapi'
     ]
     for(const dep of dependencies){
-        alertWait("Installing Python Dependencies (" + dep + ")")
+        alertWait(fillLang(language.alerts.installingPythonDependency, { dependency: dep }))
         try{
             await invoke('install_py_dependencies', {
                 path: appDir,
@@ -101,7 +103,7 @@ async function installPython():Promise<boolean>{
         catch(error){
             initPython = false
             alertClear()
-            alertError("Failed to install Python dependency (" + dep + "): " + error)
+            alertError(fillLang(language.errors.pythonDependencyFailed, { dependency: dep, error: `${error}` }))
             return false
         }
     }
@@ -114,7 +116,7 @@ async function installPython():Promise<boolean>{
     catch(error){
         initPython = false
         alertClear()
-        alertError("Failed to start the local inference server: " + error)
+        alertError(fillLang(language.errors.localServerStartFailed, { error: `${error}` }))
         return false
     }
     await sleep(4000)
@@ -132,7 +134,7 @@ async function getLocalKey(retry = true) {
         return key
     } catch (error) {
         if(!retry){
-            throw `Error when getting local key: ${error}`
+            throw fillLang(language.errors.localKeyFailed, { error: `${error}` })
         }
         //if is cors error
         if(
@@ -141,12 +143,12 @@ async function getLocalKey(retry = true) {
         ){
             const installed = await installPython()
             if(!installed){
-                throw `Error when getting local key: local inference sidecar could not be started`
+                throw language.errors.localSidecarNotStarted
             }
             return await getLocalKey(false)
         }
         else{
-            throw `Error when getting local key: ${error}`
+            throw fillLang(language.errors.localKeyFailed, { error: `${error}` })
         }
     }
 }

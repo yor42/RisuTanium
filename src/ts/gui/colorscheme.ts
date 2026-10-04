@@ -3,6 +3,7 @@ import { getDatabase, setDatabase } from "../storage/database.svelte";
 import { downloadFile } from "../globalApi.svelte";
 import { BufferToText, selectSingleFile } from "../util";
 import { alertError } from "../alert";
+import { language } from "../../lang";
 import { isLite } from "../lite";
 import { CustomCSSStore, DBState, SafeModeStore } from "../stores.svelte";
 
@@ -319,14 +320,14 @@ export async function importColorScheme(){
             typeof colorScheme.darkbutton !== 'string' ||
             typeof colorScheme.type !== 'string'
         ){
-            alertError('Invalid color scheme')
+            alertError(language.errors.invalidColorScheme)
             return
         }
         DBState.db.customColorScheme = colorScheme
         updateCustomColorScheme()
     }
     catch(e){
-        alertError('Invalid color scheme')
+        alertError(language.errors.invalidColorScheme)
         return
     
     }

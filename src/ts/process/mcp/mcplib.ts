@@ -1,6 +1,7 @@
 import { v4 } from "uuid"
 import { fetchNative, openURL } from "../../globalApi.svelte"
 import { alertInput } from "../../alert";
+import { language } from "src/lang";
 import type { RunSubject } from "../chatOrigin";
 
 export type MCPPrompt = {
@@ -703,7 +704,7 @@ export class MCPClient{
         authUrl.searchParams.set("code_challenge_method", "S256")
 
         openURL(authUrl.toString())
-        const code = await alertInput("Input Authorization Code")
+        const code = await alertInput(language.alerts.mcpInputAuthorizationCode)
 
         const authHelperResponse = await fetchNative("https://account.sionyw.com/oauthhelper/api", {
             method: "POST",

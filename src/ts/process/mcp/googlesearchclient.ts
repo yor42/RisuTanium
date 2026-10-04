@@ -2,6 +2,7 @@ import { MCPClientLike } from "./internalmcp";
 import type { MCPTool, RPCToolCallContent } from "./mcplib";
 import { fetchNative } from "../../globalApi.svelte";
 import { alertInput } from "../../alert";
+import { language } from "src/lang";
 import localforage from "localforage";
 
 interface WebSearchArgs {
@@ -63,12 +64,12 @@ export class GoogleSearchClient extends MCPClientLike {
             return;
         }
 
-        const apiKey = await alertInput('Please enter your Google Custom Search API Key:');
+        const apiKey = await alertInput(language.alerts.googleSearchEnterApiKey);
         if (!apiKey || apiKey.trim() === '') {
             throw new Error('Google Custom Search API Key is required');
         }
 
-        const searchEngineId = await alertInput('Please enter your Google Custom Search Engine ID:');
+        const searchEngineId = await alertInput(language.alerts.googleSearchEnterEngineId);
         if (!searchEngineId || searchEngineId.trim() === '') {
             throw new Error('Google Custom Search Engine ID is required');
         }

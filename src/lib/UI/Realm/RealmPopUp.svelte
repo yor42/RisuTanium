@@ -1,6 +1,7 @@
 <script lang="ts">
     import { BookIcon, FlagIcon, ImageIcon, PaperclipIcon, SmileIcon } from "@lucide/svelte";
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import { alertConfirm, alertInput, alertNormal } from "src/ts/alert";
     import { hubURL, type hubType, downloadRisuHub, getRealmInfo } from "src/ts/characterCards";
     import { askUpstreamAgreement } from "src/ts/upstreamAgreement";
@@ -27,14 +28,14 @@
         <div class="w-full flex flex-col">
             <h1 class="text-2xl font-bold max-w-full overflow-hidden whitespace-nowrap text-ellipsis">{openedData.name}</h1>
             {#if openedData.authorname}
-                <span class="text-borderc">Made by {openedData.authorname}</span>
+                <span class="text-borderc">{fillLang(language.uiCommon.madeBy, { name: openedData.authorname })}</span>
             {/if}
             {#if openedData.original}
                 <button class="text-blue-400 text-start" onclick={() => {
                     const original = openedData.original
                     openedData = null
                     getRealmInfo(original)
-                }}>Forked</button>
+                }}>{language.uiCommon.forked}</button>
             {/if}
             <div class="flex justify-start gap-4 mt-4">
                 {#if DBState.db.hideAllImages}
@@ -61,17 +62,17 @@
                 <div class="border-l-selected border-l ml-1 mr-1"></div>
                 {#if openedData.hasEmotion}
                     <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
-                        alertNormal("This character includes emotion images")
+                        alertNormal(language.alerts.characterHasEmotion)
                     })}><SmileIcon /></button>
                 {/if}
                 {#if openedData.hasAsset}
                     <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
-                        alertNormal("This character includes additional Assets")
+                        alertNormal(language.alerts.characterHasAssets)
                     })}><ImageIcon /></button>
                 {/if}
                 {#if openedData.hasLore}
                     <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
-                        alertNormal("This character includes lorebook")
+                        alertNormal(language.alerts.characterHasLore)
                     })}><BookIcon /></button>
                 {/if}
             </div>
@@ -81,9 +82,9 @@
         <div class="flex flex-row-reverse gap-2">
             <button class="text-textcolor2 hover:text-red-500" onclick={(async (e) => {
                 e.stopPropagation()
-                const conf = await alertConfirm('Report this character?')
+                const conf = await alertConfirm(language.alerts.realmReportConfirm)
                 if(conf){
-                    const report = await alertInput('Write a report text that would be sent to the admin (for copywrite issues, use email)')
+                    const report = await alertInput(language.alerts.realmReportPrompt)
                     if(!(await askUpstreamAgreement())){
                         return
                     }
@@ -110,7 +111,7 @@
                 downloadRisuHub(openedData.id)
                 openedData = null
             }}>
-                Chat
+                {language.Chat}
             </button>
             
         </div>

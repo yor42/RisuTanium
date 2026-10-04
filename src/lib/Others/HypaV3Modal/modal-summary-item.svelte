@@ -15,6 +15,7 @@
     ChevronDownIcon,
   } from "@lucide/svelte";
   import { language } from "src/lang";
+  import { fillLang } from "src/lang/fill";
   import {
     type SerializableHypaV3Data,
     type SerializableSummary,
@@ -86,6 +87,8 @@
   let translation = $state<string | null>(null);
   let isRerolling = $state(false);
   let rerolled = $state<string | null>(null);
+  let rerollFailed = $state(false);
+  const canApplyRerolled = $derived(!!rerolled && !isRerolling && !rerollFailed);
   let isTranslatingRerolled = $state(false);
   let rerolledTranslation = $state<string | null>(null);
 
@@ -130,7 +133,7 @@
     }
 
     isTranslating = true;
-    translation = "Loading...";
+    translation = language.loadingEllipsis;
 
     // Focus on translation element after it's rendered
     await tick();
@@ -154,7 +157,7 @@
     try {
       return await translateHTML(text, false, "", -1, regenerate);
     } catch (error) {
-      return `Translation failed: ${error}`;
+      return fillLang(language.hypaV3Modal.translationFailed, { error: `${error}` });
     }
   }
 
@@ -184,7 +187,8 @@
     if (isOrphan()) return;
 
     isRerolling = true;
-    rerolled = "Loading...";
+    rerollFailed = false;
+    rerolled = language.loadingEllipsis;
 
     try {
       const toSummarize: OpenAIChat[] = await Promise.all(
@@ -204,7 +208,8 @@
 
       rerolled = summarizeResult;
     } catch (error) {
-      rerolled = "Reroll failed";
+      rerollFailed = true;
+      rerolled = language.hypaV3Modal.rerollFailed;
     } finally {
       isRerolling = false;
     }
@@ -274,7 +279,7 @@
     if (!rerolled) return;
 
     isTranslatingRerolled = true;
-    rerolledTranslation = "Loading...";
+    rerolledTranslation = language.loadingEllipsis;
 
     // Focus on rerolled translation element after it's rendered
     await tick();
@@ -300,6 +305,8 @@
   }
 
   function applyRerolled(): void {
+    if (!canApplyRerolled || rerolled === null) return;
+
     summary.text = rerolled;
     translation = null;
     rerolled = null;
@@ -323,7 +330,7 @@
     if (!message) return;
 
     expandedMessageState.isTranslating = true;
-    expandedMessageState.translation = "Loading...";
+    expandedMessageState.translation = language.loadingEllipsis;
 
     // Focus on translation element after it's rendered
     await tick();
@@ -436,28 +443,28 @@
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-purple-200 bg-purple-900/70"
             >
-              Important
+              {language.hypaV3Modal.importantBadge}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastRecentSummaries.includes(summaryIndex)}
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-blue-200 bg-blue-900/70"
             >
-              Recent
+              {language.recent}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastSimilarSummaries.includes(summaryIndex)}
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-green-200 bg-green-900/70"
             >
-              Similar
+              {language.hypaV3Modal.similarBadge}
             </span>
           {/if}
           {#if hypaV3Data.metrics.lastRandomSummaries.includes(summaryIndex)}
             <span
               class="px-1.5 py-0.5 rounded-full text-xs whitespace-nowrap text-yellow-200 bg-yellow-900/70"
             >
-              Random
+              {language.random}
             </span>
           {/if}
         </div>
@@ -582,8 +589,9 @@
 
           <!-- Apply Button -->
           <button
-            class="p-2 transition-colors text-zinc-400 hover:text-rose-300"
+            class="p-2 transition-colors text-zinc-400 hover:text-rose-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-zinc-400"
             tabindex="-1"
+            disabled={!canApplyRerolled}
             onclick={applyRerolled}
           >
             <CheckIcon class="w-4 h-4" />
@@ -598,6 +606,9 @@
         class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden focus:ring-2 focus:ring-zinc-500 text-zinc-200 bg-zinc-900"
         tabindex="-1"
         bind:value={rerolled}
+        oninput={() => {
+          if (!isRerolling) rerollFailed = false;
+        }}
       >
       </textarea>
     </div>

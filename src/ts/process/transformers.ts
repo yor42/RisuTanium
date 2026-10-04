@@ -3,6 +3,7 @@ import { unzip } from 'fflate';
 import { loadAsset, saveAsset } from 'src/ts/globalApi.svelte';
 import { selectSingleFile, asBuffer  } from 'src/ts/util';
 import { v4 } from 'uuid';
+import { beginClip, currentTTSSignal, releaseClip, startClip } from './ttsPlayback';
 let tfCache: Cache = null
 let tfLoaded = false
 let tfMap: { [key: string]: string } = {}
@@ -109,7 +110,7 @@ export interface OnnxModelFiles {
     name?: string
 }
 
-export const runVITS = async (text: string, modelData: string | OnnxModelFiles = 'Xenova/mms-tts-eng') => {
+export const runVITS = async (text: string, modelData: string | OnnxModelFiles = 'Xenova/mms-tts-eng', signal: AbortSignal = currentTTSSignal()) => {
     await initTransformers()
     const { WaveFile } = await import('wavefile')
     const { pipeline, env } = await import('@huggingface/transformers');
@@ -135,16 +136,23 @@ export const runVITS = async (text: string, modelData: string | OnnxModelFiles =
             synthesizer = await pipeline<"text-to-speech">('text-to-speech', modelData.id);
         }
     }
+    if (signal.aborted) {
+        return
+    }
     let out = await synthesizer(text, {});
+    if (signal.aborted) {
+        return
+    }
     const wav = new WaveFile();
     wav.fromScratch(1, out.sampling_rate, '32f', out.audio);
-    const audioContext = new AudioContext();
-    audioContext.decodeAudioData(asBuffer(wav.toBuffer().buffer), (decodedData) => {
-        const sourceNode = audioContext.createBufferSource();
-        sourceNode.buffer = decodedData;
-        sourceNode.connect(audioContext.destination);
-        sourceNode.start();
+    const clip = beginClip(new AudioContext());
+    // The callbacks handle the outcome; the promise form must not surface a rejection as an unhandled one.
+    const decoding = clip.context.decodeAudioData(asBuffer(wav.toBuffer().buffer), (decodedData) => {
+        startClip(clip, decodedData, signal);
+    }, () => {
+        releaseClip(clip);
     });
+    decoding?.catch(() => {});
 }
 
 export const registerOnnxModel = async (): Promise<OnnxModelFiles> => {

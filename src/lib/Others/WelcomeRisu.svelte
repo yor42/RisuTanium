@@ -19,7 +19,7 @@
     {
         const browserLang = navigator.language
         const browserLangShort = browserLang.split('-')[0]
-        const usableLangs = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant']
+        const usableLangs = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant', 'es']
         if(usableLangs.includes(browserLangShort)){
             changeLanguage(browserLangShort)
             DBState.db.language = browserLangShort
@@ -51,7 +51,7 @@
                     break
                 }
                 if(!input.startsWith('sk-')){
-                    alertError('Invalid API key')
+                    alertError(language.errors.invalidApiKey)
                     break
                 }
                 if(provider === 'openai'){
@@ -141,6 +141,10 @@
                             DBState.db.translator = 'vi'
                             break
                         }
+                        case 'es':{
+                            DBState.db.translator = 'es'
+                            break
+                        }
                         case 'zh-Hant':{
                             DBState.db.translator = 'zh-TW'
                             break
@@ -168,7 +172,7 @@
             <div class="w-full justify-center flex mt-8 logo-animation" onanimationend={() => {
                 start = true
             }}>
-                <img src="/logo_typo_trans.png" alt="logo" class="w-full max-w-(--breakpoint-sm)  mb-0">
+                <img src="/logo_typo_trans.png" alt={language.othersUi.logoAlt} class="w-full max-w-(--breakpoint-sm)  mb-0">
             </div>
         {:else}
             <div class="relative w-full flex-col bg-darkbg grow mt-5 max-w-full p-5 rounded-t-lg overflow-x-hidden flex border-gray-800 border chat-animation overflow-y-auto">
@@ -205,6 +209,11 @@
                             DBState.db.language='vi'
                             step = 1
                         }}>• Tiếng Việt</button>
+                        <button class="hover:text-green-500 transition-colors" onclick={() => {
+                            changeLanguage('es')
+                            DBState.db.language='es'
+                            step = 1
+                        }}>• Español</button>
                     </div>
 
                 {:else}

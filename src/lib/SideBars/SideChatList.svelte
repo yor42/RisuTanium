@@ -17,6 +17,7 @@
     import { sleep, sortableOptions } from "src/ts/util";
     import { bookmarkListOpen } from "src/ts/stores.svelte";
     import { language } from "src/lang";
+    import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
     import Toggles from "./Toggles.svelte";
     import { changeChatTo, createChatCopyName, reorderChatsKeepingCurrent } from "src/ts/globalApi.svelte";
 
@@ -183,9 +184,10 @@
                             const sel = parseInt(await alertSelect([language.changeFolderColor, language.cancel]))
                             switch (sel) {
                                 case 0:
-                                    const colors = ["red","green","blue","yellow","indigo","purple","pink","default"]
-                                    const sel = parseInt(await alertSelect(colors))
-                                    folder.color = colors[sel]
+                                    const colorValue = getFolderColorValue(parseInt(await alertSelect(getFolderColorLabels())))
+                                    if(colorValue !== undefined){
+                                        folder.color = colorValue
+                                    }
                                     break
                             }
                         }}>
@@ -229,7 +231,7 @@
                 <!-- chats in folder -->
                 <div class="risu-chat flex flex-col w-full text-textcolor border-solid border-0 border-darkborderc p-2 cursor-pointer rounded-md {folder.folded ? 'hidden' : ''}">
                     {#if chara.chats.filter(chat => chat.folderId == chara.chatFolders[i].id).length == 0}
-                    <span class="no-sort flex justify-center text-textcolor2">Empty</span>
+                    <span class="no-sort flex justify-center text-textcolor2">{language.sidebarUi.empty}</span>
                     <div></div>
                     {:else}
                     {#each chara.chats.filter(chat => chat.folderId == chara.chatFolders[i].id) as chat}

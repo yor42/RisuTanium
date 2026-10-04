@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { copyPlainText, type CopyOutcome } from './chatCopy'
+import { copyPlainText, stripThoughtsForCopy, type CopyOutcome } from './chatCopy'
 
 const realClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 const realExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand')
@@ -206,4 +206,63 @@ describe('the execCommand fallback', () => {
         expect(await copy('hello')).toEqual([{ ok: false, errorName: 'NotSupportedError' }])
         expect(document.querySelector('textarea')).toBeNull()
     })
+})
+
+// Feature tests of `stripThoughtsForCopy`. A line break is `\n` or `\r\n`; the run before a
+// removed block wins a tie with the run after it.
+describe('stripThoughtsForCopy', () => {
+    const T = '<Thoughts>x</Thoughts>'
+
+    const table: { name: string; input: string; expected: string }[] = [
+        { name: 'a leading block and its line breaks are removed', input: `${T}\n\nHello`, expected: 'Hello' },
+        { name: 'a leading block followed by CRLF breaks is removed with them', input: `${T}\r\n\r\nHello`, expected: 'Hello' },
+        { name: 'line breaks before a leading block are dropped with it', input: `\n\n${T}\nHello`, expected: 'Hello' },
+        { name: 'an indented first line keeps its indentation', input: `${T}\n  Hello`, expected: '  Hello' },
+        { name: 'a tab-indented first line keeps its tab', input: `${T}\n\n\tHello`, expected: '\tHello' },
+        { name: 'a mid-document block keeps the paragraph break', input: `para1\n\n${T}\n\npara2`, expected: 'para1\n\npara2' },
+        { name: 'a mid-document block with a single break each side keeps one break', input: `a\n${T}\nb`, expected: 'a\nb' },
+        { name: 'CRLF breaks on both sides stay CRLF', input: `a\r\n\r\n${T}\r\n\r\nb`, expected: 'a\r\n\r\nb' },
+        { name: 'a longer run after the block wins over a shorter run before it', input: `a\n${T}\n\nb`, expected: 'a\n\nb' },
+        { name: 'a longer run before the block wins over a shorter run after it', input: `a\n\n${T}\nb`, expected: 'a\n\nb' },
+        { name: 'a mixed join keeps the longer run as written (CRLF run after)', input: `a\n${T}\r\n\r\nb`, expected: 'a\r\n\r\nb' },
+        { name: 'a mixed join keeps the longer run as written (LF run before)', input: `a\n\n${T}\r\nb`, expected: 'a\n\nb' },
+        { name: 'a tie between an LF run before and a CRLF run after keeps the run before', input: `a\n\n${T}\r\n\r\nb`, expected: 'a\n\nb' },
+        { name: 'a tie between a CRLF run before and an LF run after keeps the run before', input: `a\r\n\r\n${T}\n\nb`, expected: 'a\r\n\r\nb' },
+        { name: 'a three-break run before the block stays three', input: `a\n\n\n${T}\nb`, expected: 'a\n\n\nb' },
+        { name: 'a three-break run after the block stays three', input: `a\n${T}\n\n\nb`, expected: 'a\n\n\nb' },
+        { name: 'a block inside a line leaves the surrounding spaces as written', input: `a ${T} b`, expected: 'a  b' },
+        { name: 'a block glued to words joins them', input: `a${T}b`, expected: 'ab' },
+        { name: 'line breaks before a block at the end of the text stay', input: `a\n\n${T}`, expected: 'a\n\n' },
+        { name: 'a nested block is removed whole', input: `a\n\n<Thoughts>o<Thoughts>i</Thoughts>t</Thoughts>\n\nb`, expected: 'a\n\nb' },
+        { name: 'two blocks are both removed', input: `${T}\n\nHello\n\n${T}\n\nWorld`, expected: 'Hello\n\nWorld' },
+        { name: 'two adjacent blocks are removed together', input: `a\n\n${T}${T}\n\nb`, expected: 'a\n\nb' },
+        { name: 'an unclosed block is kept', input: 'a\n\n<Thoughts>never closed', expected: 'a\n\n<Thoughts>never closed' },
+        {
+            name: 'a closed block inside an unclosed outer block is removed and the outer tag is kept',
+            input: '<Thoughts>outer\n\n<Thoughts>inner</Thoughts>\n\ntail',
+            expected: '<Thoughts>outer\n\ntail',
+        },
+        { name: 'the wrong case is kept', input: 'a\n\n<thoughts>x</thoughts>\n\nb', expected: 'a\n\n<thoughts>x</thoughts>\n\nb' },
+        { name: 'a stray close tag is kept', input: `a</Thoughts>\n\n${T}\n\nb`, expected: 'a</Thoughts>\n\nb' },
+        { name: 'markdown and HTML around the block are untouched', input: `**bold** <b>x</b>\n\n${T}\n\n# head\n<br>`, expected: '**bold** <b>x</b>\n\n# head\n<br>' },
+        { name: 'text that already holds the private-use character still strips', input: `a\uE000${T}b`, expected: 'a\uE000b' },
+    ]
+
+    for (const row of table) {
+        test(row.name, () => {
+            expect(stripThoughtsForCopy(row.input)).toBe(row.expected)
+        })
+    }
+
+    for (const input of [`${T}`, `\n${T}\n`, `${T}  `, `${T}\r\n\r\n${T}`]) {
+        test(`a thinking-only message returns the input unchanged: ${JSON.stringify(input)}`, () => {
+            expect(stripThoughtsForCopy(input)).toBe(input)
+        })
+    }
+
+    for (const input of ['', 'Hello', '  a\r\n\r\n\r\nb\t \n', 'a <thoughts>x</thoughts> b\n\n\nc', 'a</Thoughts>b']) {
+        test(`text with no closed thinking is byte-identical: ${JSON.stringify(input)}`, () => {
+            expect(stripThoughtsForCopy(input)).toBe(input)
+        })
+    }
 })

@@ -1,4 +1,5 @@
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import { alertError } from "src/ts/alert"
 import { getDatabase } from "src/ts/storage/database.svelte"
 import { LLMFlags } from "src/ts/model/modellist"
@@ -542,7 +543,7 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
     }
     if(data?.status === 'incomplete'){
         const result = extractResponsesText(data, arg)
-        const reason = data?.incomplete_details?.reason ? `Incomplete response: ${data.incomplete_details.reason}` : 'Incomplete response'
+        const reason = data?.incomplete_details?.reason ? fillLang(language.errors.incompleteResponseReason, { reason: `${data.incomplete_details.reason}` }) : language.errors.incompleteResponse
         return { type: 'fail', result: result ? `${reason}\n${result}` : reason }
     }
 
@@ -571,7 +572,7 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
 
     const result = extractResponsesText(data, arg)
     if(!result){
-        const incomplete = data?.incomplete_details?.reason ? `Incomplete response: ${data.incomplete_details.reason}` : ''
+        const incomplete = data?.incomplete_details?.reason ? fillLang(language.errors.incompleteResponseReason, { reason: `${data.incomplete_details.reason}` }) : ''
         return { type: 'fail', result: incomplete || JSON.stringify(data) }
     }
 

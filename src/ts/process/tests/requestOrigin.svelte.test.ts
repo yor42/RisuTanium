@@ -540,14 +540,25 @@ describe('a request with nothing switched', () => {
 
 //#region a trigger run's model calls
 
-/** A trigger whose one effect runs the model on `hello` (the two effect types that make a model call). */
-function llmTrigger(kind: 'v2RunLLM' | 'runLLM'): Fixture {
+/** A trigger whose one effect runs the model on `hello` (the effect types that make a model call). */
+function llmTrigger(kind: 'v2RunLLM' | 'runLLM' | 'runAxLLM', lowLevelAccess = true): Fixture {
     return {
-        comment: 'llm', type: 'start', conditions: [], lowLevelAccess: true,
+        comment: 'llm', type: 'start', conditions: [], lowLevelAccess,
         effect: [kind === 'v2RunLLM'
             ? { type: 'v2RunLLM', value: 'hello', valueType: 'value', model: 'model', outputVar: 'o', streaming: false, indent: 0 }
-            : { type: 'runLLM', value: 'hello', inputVar: 'o', indent: 0 }],
+            : { type: kind, value: 'hello', inputVar: 'o', indent: 0 }],
     }
+}
+
+/** Runs the start trigger of a character that owns one chat, while the selection is on another character, and returns the chat's `o` variable. */
+async function runAxLLMTrigger(lowLevelAccess: boolean, db: Fixture): Promise<string | undefined> {
+    const A = makeChar('a', 'Alice', [chat('c1', { $v: 'A1' })], [llmTrigger('runAxLLM')], { lowLevelAccess })
+    const B = makeChar('b', 'Bob', [chat('c2', { $v: 'B1' })])
+    installDb([A, B], db); selectedCharID.set(1)
+
+    await runTrigger(liveChar(0), 'start', { chat: liveChar(0).chats[0], origin: { chaId: 'a', chatId: 'c1' } })
+
+    return (liveChar(0).chats[0].scriptstate as Record<string, string>)['$o']
 }
 
 describe('a trigger run\'s model call follows the run\'s own chat', () => {
@@ -575,6 +586,38 @@ describe('a trigger run\'s model call follows the run\'s own chat', () => {
 
         expect(h.fetches.length, 'the model was called once').toBe(1)
         expect(messagesOf()[0]).toContain('hello')
+    })
+
+    test('runAxLLM calls the separate other-auxiliary model and writes the answer into its own chat', async () => {
+        h.reply = 'ax-answer'
+        const o = await runAxLLMTrigger(true, { aiModel: 'gpt4o', subModel: 'gpt4om', seperateModelsForAxModels: true, seperateModels: { otherAx: 'gpt41' } })
+
+        expect(h.fetches.length, 'the model was called once').toBe(1)
+        expect(h.fetches[0].body.model).toBe('gpt-4.1')
+        expect(o).toBe('ax-answer')
+    })
+
+    test('runAxLLM calls the sub model when separate models are off', async () => {
+        const o = await runAxLLMTrigger(true, { aiModel: 'gpt4o', subModel: 'gpt4om', seperateModelsForAxModels: false, seperateModels: { otherAx: 'gpt41' } })
+
+        expect(h.fetches.length, 'the model was called once').toBe(1)
+        expect(h.fetches[0].body.model).toBe('gpt-4o-mini')
+        expect(o).toBe('ok')
+    })
+
+    test('runAxLLM writes the failure into its variable behind "Error: "', async () => {
+        h.failNext = 10
+        const o = await runAxLLMTrigger(true, {})
+
+        expect(h.fetches.length, 'every attempt failed').toBeGreaterThan(0)
+        expect(o).toMatch(/^Error: /)
+    })
+
+    test('guard: a runAxLLM in a run without low-level access makes no request', async () => {
+        const o = await runAxLLMTrigger(false, {})
+
+        expect(h.fetches.length).toBe(0)
+        expect(o).toBeUndefined()
     })
 
     test('guard: a v2RunLLM in a chat whose id has two holders never reaches the provider', async () => {

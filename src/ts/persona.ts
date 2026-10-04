@@ -54,7 +54,7 @@ interface PersonaCard {
 export async function exportUserPersona() {
     let db = getDatabase({ snapshot: true })
     if ((!db.username) || (!db.personaPrompt)) {
-        alertError("username or persona prompt is empty")
+        alertError(language.errors.personaIncomplete)
         return
     }
 
@@ -81,7 +81,7 @@ export async function exportUserPersona() {
 
     alertStore.set({
         type: 'wait',
-        msg: 'Loading... (Writing Exif)'
+        msg: language.alerts.writingExif
     })
 
     await sleep(10)
@@ -92,7 +92,7 @@ export async function exportUserPersona() {
 
     alertStore.set({
         type: 'wait',
-        msg: 'Loading... (Writing)'
+        msg: language.alerts.writingPng
     })
 
     await sleep(10)

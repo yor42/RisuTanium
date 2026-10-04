@@ -14,6 +14,8 @@
  *  - when the clipboard API is absent or rejects, `document.execCommand('copy')`
  *    is the fallback, and the message's status line shows `Copied` or
  *    `<name of the first failure>: Copy failed`;
+ *  - the text written leaves out a closed `<Thoughts>` section (a message with
+ *    only thinking is written unchanged);
  *  - a rejected write leaves no unhandled rejection;
  *  - the status clears after its timeout, and an older timer never clears a
  *    newer status.
@@ -351,6 +353,55 @@ describe('a tap on the copy button', () => {
         expect(alertWait).not.toHaveBeenCalled()
         expect(alertNormal).not.toHaveBeenCalled()
         expect(alertClear).not.toHaveBeenCalled()
+    })
+})
+
+// The mocked `risuChatParser` returns its input, so the displayed text keeps the
+// `<Thoughts>` section exactly as the real parser's output does.
+describe('a tap on the copy button for a message with a thinking section', () => {
+    const THINKING = '<Thoughts>private reasoning</Thoughts>'
+
+    test('regression reproducer: writes the message without its thinking section, synchronously inside the click handler', async () => {
+        const clipboard = stubClipboard()
+        const root = await mountChat(`Plan\n\n${THINKING}\n\nAnswer **bold**`)
+
+        copyButton(root).click()
+
+        expect(clipboard.writeText).toHaveBeenCalledTimes(1)
+        expect(clipboard.writeText).toHaveBeenCalledWith('Plan\n\nAnswer **bold**')
+        expect(clipboard.write).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer: a leading thinking section and its line breaks are left out', async () => {
+        const clipboard = stubClipboard()
+        const root = await mountChat(`${THINKING}\n\nHello`)
+
+        copyButton(root).click()
+
+        expect(clipboard.writeText).toHaveBeenCalledWith('Hello')
+    })
+
+    test('writes a thinking-only message unchanged so the copy is never empty, and shows Copied', async () => {
+        const clipboard = stubClipboard()
+        const message = THINKING
+        const root = await mountChat(message)
+
+        copyButton(root).click()
+        await settle()
+
+        expect(clipboard.writeText).toHaveBeenCalledTimes(1)
+        expect(clipboard.writeText).toHaveBeenCalledWith(message)
+        expect(statusText(root)).toBe(language.copied)
+    })
+
+    test('guard: an unclosed thinking tag is written as text', async () => {
+        const clipboard = stubClipboard()
+        const message = 'a\n\n<Thoughts>never closed'
+        const root = await mountChat(message)
+
+        copyButton(root).click()
+
+        expect(clipboard.writeText).toHaveBeenCalledWith(message)
     })
 })
 

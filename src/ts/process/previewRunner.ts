@@ -1,5 +1,6 @@
 import { get } from "svelte/store"
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import { alertClear, alertMd, alertWait, type alertData } from "../alert"
 import { alertStore } from "../stores.svelte"
 import { alertIdle, promptWaiting } from "../alertPrompts"
@@ -113,7 +114,7 @@ export async function runPreview(
         }
     }
 
-    notice = alertWait("Loading...", () => {
+    notice = alertWait(language.loadingEllipsis, () => {
         if (cancelled) {
             return
         }
@@ -154,7 +155,7 @@ const SECRET_MASK = '••••'
 
 /** A value shown as a mask with the length of what it hides. */
 function maskText(secret: string): string {
-    return `${SECRET_MASK} (${secret.length} chars)`
+    return fillLang(language.devTool.maskedChars, { mask: SECRET_MASK, count: secret.length })
 }
 
 /** Values that show what is wrong with a credential instead of hiding it. */
@@ -257,14 +258,14 @@ export function memberLabel(memberName?: string): string | undefined {
  * early. Nothing here throws.
  */
 export function renderPromptPreview(body: string, memberName?: string): string {
-    let md = '### Prompt'
+    let md = '### ' + language.prompt
     const label = memberLabel(memberName)
     if (label !== undefined) {
         md += ' — ' + label
     }
     md += '\n'
     if (body.trim() === '') {
-        return md + '> The request body is empty.\n'
+        return md + '> ' + language.devTool.requestBodyEmpty + '\n'
     }
     let parsed: unknown
     try {

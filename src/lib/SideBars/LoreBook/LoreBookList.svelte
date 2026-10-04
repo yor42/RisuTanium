@@ -8,18 +8,18 @@
     import { sleep, sortableOptions } from "src/ts/util";
     import { v4 } from "uuid";
     import { alertError } from "src/ts/alert";
+    import { language } from "src/lang";
 
     let reinitializeSortable = false;
 
     interface Props {
-        globalMode?: boolean;
         submenu?: number;
         lorePlus?: boolean;
         externalLoreBooks?: loreBook[];
         showFolder?: string
     }
 
-    let { globalMode = false, submenu = 0, lorePlus = false, externalLoreBooks = null, showFolder = '' }: Props = $props();
+    let { submenu = 0, lorePlus = false, externalLoreBooks = null, showFolder = '' }: Props = $props();
     let stb: Sortable = null
     let ele: HTMLDivElement = $state()
     let sorted = $state(0)
@@ -49,10 +49,6 @@
             ).length;
         } else if (submenu === 1) {
             expectedElements = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore.filter(item => 
-                (!showFolder && !item.folder) || (showFolder === item.folder)
-            ).length;
-        } else if (globalMode) {
-            expectedElements = DBState.db.loreBook[DBState.db.loreBookPage].data.filter(item => 
                 (!showFolder && !item.folder) || (showFolder === item.folder)
             ).length;
         } else {
@@ -125,13 +121,13 @@
                 
                 // Basic condition check
                 if (!evt.from || !evt.to) {
-                    alertError('Error: \'evt.from\' or \'evt.to\' is null');
+                    alertError(language.errors.dragEndpointNull);
                     await recreateStb();
                     return;
                 }
                 
                 if (evt.oldIndex === undefined || evt.newIndex === undefined) {
-                    alertError('Error: oldIndex or newIndex is undefined');
+                    alertError(language.errors.dragIndexUndefined);
                     await recreateStb();
                     return;
                 }
@@ -177,9 +173,6 @@
                 } else if (submenu === 1) {
                     // Use local chat lorebook
                     currentArray = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore;
-                } else if (globalMode) {
-                    // Use global lorebook
-                    currentArray = DBState.db.loreBook[DBState.db.loreBookPage].data;
                 } else {
                     // Use character global lorebook (default)
                     currentArray = DBState.db.characters[$selectedCharID].globalLore;
@@ -282,8 +275,6 @@
                     externalLoreBooks.splice(0, externalLoreBooks.length, ...newArray);
                 } else if (submenu === 1) {
                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore = newArray;
-                } else if (globalMode) {
-                    DBState.db.loreBook[DBState.db.loreBookPage].data = newArray;
                 } else {
                     DBState.db.characters[$selectedCharID].globalLore = newArray;
                 }
@@ -355,13 +346,11 @@
     <div class="border-solid border-selected p-2 flex flex-col border-1 rounded-md" 
          bind:this={ele} 
          data-show-folder={showFolder || ''}>
-        {#if globalMode}
-            <!-- Intentionally empty: globalMode has no content here. -->
-        {:else if externalLoreBooks}
+        {#if externalLoreBooks}
             {@const visibleItems = externalLoreBooks.filter(book => (!showFolder && !book.folder) || (showFolder === book.folder))}
             {@const lastVisibleItem = visibleItems[visibleItems.length - 1]}
             {#if externalLoreBooks.length === 0}
-                <span class="text-textcolor2">No Lorebook</span>
+                <span class="text-textcolor2">{language.sidebarUi.noLorebook}</span>
             {:else}
                 {#each externalLoreBooks as book, i}
                     {#if (!showFolder && !book.folder) || (showFolder === book.folder)}
@@ -416,7 +405,7 @@
             {@const visibleItems = DBState.db.characters[$selectedCharID].globalLore.filter(book => (!showFolder && !book.folder) || (showFolder === book.folder))}
             {@const lastVisibleItem = visibleItems[visibleItems.length - 1]}
             {#if DBState.db.characters[$selectedCharID].globalLore.length === 0}
-                <span class="text-textcolor2">No Lorebook</span>
+                <span class="text-textcolor2">{language.sidebarUi.noLorebook}</span>
             {:else}
                 {#each DBState.db.characters[$selectedCharID].globalLore as book, i}
                     {#if (!showFolder && !book.folder) || (showFolder === book.folder)}
@@ -471,7 +460,7 @@
             {@const visibleItems = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore.filter(book => (!showFolder && !book.folder) || (showFolder === book.folder))}
             {@const lastVisibleItem = visibleItems[visibleItems.length - 1]}
             {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore.length === 0}
-                <span class="text-textcolor2">No Lorebook</span>
+                <span class="text-textcolor2">{language.sidebarUi.noLorebook}</span>
             {:else}
                 {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].localLore as book, i}
                     {#if (!showFolder && !book.folder) || (showFolder === book.folder)}

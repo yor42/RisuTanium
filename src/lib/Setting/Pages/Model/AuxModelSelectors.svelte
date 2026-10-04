@@ -12,17 +12,17 @@
 {#if DBState.db.seperateModelsForAxModels}
   <Check bind:check={DBState.db.doNotChangeSeperateModels} name={language.doNotChangeSeperateModels}></Check>
   <Accordion name={language.axModelsDef} styled>
-    <span class="text-textcolor mt-4"> Memory </span>
+    <span class="text-textcolor mt-4"> {language.settingsPage.memory} </span>
     <ModelList bind:value={DBState.db.seperateModels.memory} blankable />
 
-    <span class="text-textcolor mt-4"> Translations </span>
+    <span class="text-textcolor mt-4"> {language.settingsPage.translations} </span>
     <ModelList bind:value={DBState.db.seperateModels.translate} blankable />
 
-    <span class="text-textcolor mt-4"> Emotion </span>
+    <span class="text-textcolor mt-4"> {language.settingsPage.emotion} </span>
 
     <ModelList bind:value={DBState.db.seperateModels.emotion} blankable />
 
-    <span class="text-textcolor mt-4"> OtherAx </span>
+    <span class="text-textcolor mt-4"> {language.settingsPage.otherAx} </span>
 
     <ModelList bind:value={DBState.db.seperateModels.otherAx} blankable />
   </Accordion>

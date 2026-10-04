@@ -5,6 +5,7 @@
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
     import { alertConfirm, alertError, alertInput, alertNormal } from "src/ts/alert";
     import { downloadFile } from "src/ts/globalApi.svelte";
+    import { fillLang } from "src/lang/fill";
     import { DBState } from "src/ts/stores.svelte";
     import {
         createTranslatorPreset,
@@ -28,7 +29,7 @@
     }
 </script>
 
-<span class="text-textcolor mt-4">Preset</span>
+<span class="text-textcolor mt-4">{language.settingsPage.preset}</span>
 <select
     class={"border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 text-md px-4 py-2 mb-1"}
     bind:value={() => DBState.db.translatorPresetId, (value) => {
@@ -62,13 +63,13 @@
             const presets = DBState.db.translatorPresets;
 
             if (presets.length === 0) {
-                alertError("There must be at least one preset.");
+                alertError(language.errors.atLeastOnePreset);
                 return;
             }
 
             const id = DBState.db.translatorPresetId;
             const preset = presets[id];
-            const newName = await alertInput(`Enter new name for ${preset.name}`, [], preset.name);
+            const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name);
 
             if (!newName || newName.trim().length === 0) return;
 
@@ -86,7 +87,7 @@
             const presets = DBState.db.translatorPresets;
 
             if (presets.length <= 1) {
-                alertError("There must be at least one preset.");
+                alertError(language.errors.atLeastOnePreset);
                 return;
             }
 
@@ -118,7 +119,7 @@
                 const presets = DBState.db.translatorPresets;
 
                 if (presets.length === 0) {
-                    alertError("There must be at least one preset.");
+                    alertError(language.errors.atLeastOnePreset);
                     return;
                 }
 

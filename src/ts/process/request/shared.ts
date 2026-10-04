@@ -1,5 +1,7 @@
 import { getDatabase } from 'src/ts/storage/database.svelte'
 import { parseAdditionalParamJsonValue } from './additionalParams'
+import { language } from 'src/lang'
+import { fillLang } from 'src/lang/fill'
 
 export type LLMParameter =
     | 'temperature'
@@ -182,7 +184,7 @@ export function applyParameters(
             sepParams = db.seperateParameters.overrides[arg.modelId]
 
             if(!sepParams){
-                throw new Error(`No seperate parameters found for model ${arg.modelId} in model mode ${modelMode}. Please set parameters for this model`)
+                throw new Error(fillLang(language.errors.separateParamsMissing, { modelId: `${arg.modelId}`, modelMode: `${modelMode}` }))
             }
         }
         if (modelMode === 'submodel') {

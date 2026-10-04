@@ -61,7 +61,7 @@
                     index: i,
                     type: c.type,
                     name: c.name,
-                    desc: c.creatorNotes ?? 'No description',
+                    desc: c.creatorNotes ?? '',
                     chaId: c.chaId,
                     charRef: c
                 })
@@ -78,12 +78,12 @@
                 <button 
                     class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
                     onclick={() => endGrid()}
-                    title="Back"
+                    title={language.settingsPage.back}
                 >
                     <ArrowLeft size={20} />
                 </button>
                 <div class="flex-1">
-                    <TextInput placeholder="Search" bind:value={search} size="lg" autocomplete="off" fullwidth={true}/>
+                    <TextInput placeholder={language.search} bind:value={search} size="lg" autocomplete="off" fullwidth={true}/>
                 </div>
             </div>
             <div class="flex flex-wrap gap-2 mt-2">
@@ -141,8 +141,8 @@
                 } }}>
                     <BarIcon onClick={() => {changeChar(char.index)}} additionalStyle={avatarStyle}></BarIcon>
                     <div class="flex-1 flex flex-col ml-2 min-w-0">
-                        <h4 class="text-textcolor font-bold text-lg mb-1 break-words">{char.name || "Unnamed"}</h4>
-                        <span class="text-textcolor2 line-clamp-3 wrap-break-word">{parsedDesc['en'] || parsedDesc['xx'] || 'No description'}</span>
+                        <h4 class="text-textcolor font-bold text-lg mb-1 break-words">{char.name || language.settingsPage.unnamed}</h4>
+                        <span class="text-textcolor2 line-clamp-3 wrap-break-word">{parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}</span>
                         <div class="flex gap-2 justify-end">
                             <button class="hover:text-textcolor text-textcolor2" onclick={() => {
                                 changeChar(char.index)
@@ -170,8 +170,8 @@
                 } }}>
                     <BarIcon onClick={() => {changeChar(char.index)}} additionalStyle={avatarStyle}></BarIcon>
                     <div class="flex-1 flex flex-col ml-2 min-w-0">
-                        <h4 class="text-textcolor font-bold text-lg mb-1 break-words">{char.name || "Unnamed"}</h4>
-                        <span class="text-textcolor2 line-clamp-3 wrap-break-word">{parsedDesc['en'] || parsedDesc['xx'] || 'No description'}</span>
+                        <h4 class="text-textcolor font-bold text-lg mb-1 break-words">{char.name || language.settingsPage.unnamed}</h4>
+                        <span class="text-textcolor2 line-clamp-3 wrap-break-word">{parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}</span>
                         <div class="flex gap-2 justify-end">
                             <button class="hover:text-textcolor text-textcolor2" onclick={() => {
                                 restoreCharacterFromTrash(char.charRef)

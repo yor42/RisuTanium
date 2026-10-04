@@ -2,6 +2,7 @@ import { decode as decodeMsgpack, encode as encodeMsgpack } from "msgpackr/index
 import * as fflate from "fflate";
 import { decryptBuffer, encryptBuffer } from "src/ts/util";
 import { decodeRPack, encodeRPack } from "src/ts/rpack/rpack_js.js";
+import { language } from "src/lang";
 
 export interface TranslatorPreset {
     name: string;
@@ -173,7 +174,7 @@ async function decodeEncryptedTranslatorPresetFile(data: Uint8Array): Promise<Tr
     try {
         encodedPreset = await decodeRPack(data);
     } catch {
-        throw new Error("Invalid translator preset file.");
+        throw new Error(language.errors.invalidTranslatorPresetFile);
     }
 
     let decodedContainer: unknown;
@@ -181,17 +182,17 @@ async function decodeEncryptedTranslatorPresetFile(data: Uint8Array): Promise<Tr
     try {
         decodedContainer = decodeMsgpack(fflate.decompressSync(encodedPreset));
     } catch {
-        throw new Error("Invalid translator preset file.");
+        throw new Error(language.errors.invalidTranslatorPresetFile);
     }
 
     if (!isEncryptedTranslatorPresetFile(decodedContainer)) {
-        throw new Error("Invalid translator preset file.");
+        throw new Error(language.errors.invalidTranslatorPresetFile);
     }
 
     const encryptedPreset = getBytes(decodedContainer.preset);
 
     if (!encryptedPreset) {
-        throw new Error("Invalid translator preset file.");
+        throw new Error(language.errors.invalidTranslatorPresetFile);
     }
 
     let decryptedPreset: ArrayBuffer;
@@ -199,13 +200,13 @@ async function decodeEncryptedTranslatorPresetFile(data: Uint8Array): Promise<Tr
     try {
         decryptedPreset = await decryptBuffer(encryptedPreset, translatorPresetEncryptionKey);
     } catch {
-        throw new Error("Invalid translator preset file.");
+        throw new Error(language.errors.invalidTranslatorPresetFile);
     }
 
     const parsedPreset: unknown = decodeMsgpack(new Uint8Array(decryptedPreset));
 
     if (!isTranslatorPresetValue(parsedPreset)) {
-        throw new Error("Invalid translator preset file.");
+        throw new Error(language.errors.invalidTranslatorPresetFile);
     }
 
     return createTranslatorPreset(

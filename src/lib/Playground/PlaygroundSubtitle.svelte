@@ -1,6 +1,7 @@
 
 <script lang="ts">
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
@@ -31,7 +32,7 @@
     let sourceLang:string|null = $state(null)    
 
     async function runLLMMode() {
-        outputText = 'Loading...\n\n'
+        outputText = language.loadingEllipsis + '\n\n'
 
         const file = await selectSingleFile([
             'mp3', 'ogg', 'wav', 'flac',
@@ -125,7 +126,7 @@
     }
 
     async function runWhisperMode() {
-        outputText = 'Loading...\n\n'
+        outputText = language.loadingEllipsis + '\n\n'
 
         const files = await selectFileByDom([
             'mp3', 'ogg', 'wav', 'flac',
@@ -159,7 +160,7 @@
                 await video.play()
                 const d = video.duration
                 if(isNaN(d)){
-                    alertError('This video does not have a duration')
+                    alertError(language.playground.videoNoDuration)
                     return
                 }
                 video.pause()
@@ -167,7 +168,7 @@
                 duration = d
             }
 
-            outputText = 'Converting video to audio...\n\n'
+            outputText = language.playground.convertingVideo + '\n\n'
             const audioContext = new AudioContext()
             const audioBuffer = await audioContext.decodeAudioData(await file.arrayBuffer())
 
@@ -188,7 +189,7 @@
             for(let pointer = 0; pointer < leftInt16.length; pointer += 1152){
                 enc.append(mp3encoder.encodeBuffer(leftInt16.subarray(pointer, pointer + 1152), rightInt16.subarray(pointer, pointer + 1152)))
                 if(pointer % 115200 === 0){
-                    outputText = `Converting  video to audio... ${(pointer / leftInt16.length * 100).toFixed(2)}%\n`
+                    outputText = fillLang(language.playground.convertingVideoProgress, { percent: (pointer / leftInt16.length * 100).toFixed(2) }) + '\n'
                     await sleep(1)
                 }
             }
@@ -198,7 +199,7 @@
                 type: 'audio/mp3'
             })
 
-            outputText = 'Transcribing audio...\n\n'
+            outputText = language.playground.transcribingAudio + '\n\n'
             requestFile = file2
         }
         else{
@@ -251,9 +252,9 @@
                     }
                 }
                 
-                outputText = ('Transcribing... (This may take a while. Do not close the tab.)')
+                outputText = language.playground.transcribingLocal
                 if(device !== 'webgpu'){
-                    outputText += `\nYour browser or OS do not support WebGPU, so the transcription may be slower.`
+                    outputText += '\n' + language.playground.noWebGpuSlower
                 }
                 await sleep(10)
                 const res1 = await transcriber(combined, {
@@ -432,7 +433,7 @@
 {#if mode === 'whisperLocal'}
     <span class="text-textcolor text-lg mt-4">{language.sourceLanguage}</span>
     <SelectInput value={sourceLang === null ? 'auto' : sourceLang}>
-        <OptionInput value="auto">Auto</OptionInput>
+        <OptionInput value="auto">{language.playground.auto}</OptionInput>
         {#each getLanguageCodes() as lang}
             <OptionInput value={lang.code}>{lang.name}</OptionInput>
         {/each}

@@ -1,5 +1,6 @@
 import { get, writable } from "svelte/store";
 import { language } from "../../lang";
+import { fillLang } from "../../lang/fill";
 import { getCurrentCharacter, getDatabase, setDatabase, setDatabaseLite } from "../storage/database.svelte";
 import { alertConfirm, alertError, alertNormal, alertPluginConfirm, waitAlert } from "../alert";
 import { selectSingleFile, sleep } from "../util";
@@ -207,7 +208,7 @@ export async function importPlugin(code:string|null = null, argu:{
         const oldPluginIndex = db.plugins.findIndex((p: RisuPlugin) => p.name === pluginData.name);
 
         if(originalPluginName && originalPluginName !== pluginData.name){
-            showError(`When updating plugin "${originalPluginName}", the plugin name cannot be changed to "${pluginData.name}". Please keep the original name to update.`)
+            showError(fillLang(language.errors.pluginNameChangeBlocked, { original: `${originalPluginName}`, new: `${pluginData.name}` }))
             return
         }
 

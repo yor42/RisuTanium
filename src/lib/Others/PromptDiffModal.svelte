@@ -1,5 +1,7 @@
 <script lang="ts">
     import { XIcon } from "@lucide/svelte"
+    import { language } from "src/lang"
+    import { fillLang } from "src/lang/fill"
     import { getDatabase, type PromptDiffPrefs } from "../../ts/storage/database.svelte"
     import type { PromptItem, PromptItemPlain, PromptItemChatML, PromptItemTyped, PromptItemAuthorNote, PromptItemChat } from "src/ts/process/prompt.ts";
 
@@ -218,18 +220,18 @@
 // UI option lists
 // -----------------------------------------------------------------------------
      const diffOptions = [
-        { value: 'line', label: 'Line' },
-        { value: 'intraline', label: 'Intraline' },
+        { value: 'line', label: language.promptDiff.line },
+        { value: 'intraline', label: language.promptDiff.intraline },
     ] as const
 
     const formatOptions = [
-        { value: 'raw', label: 'Raw' },
-        { value: 'card', label: 'Card' },
+        { value: 'raw', label: language.promptDiff.raw },
+        { value: 'card', label: language.promptDiff.card },
     ] as const
 
     const viewOptions = [
-        { value: 'unified', label: 'Unified' },
-        { value: 'split', label: 'Split' },
+        { value: 'unified', label: language.promptDiff.unified },
+        { value: 'split', label: language.promptDiff.split },
     ] as const
 
 // Inputs
@@ -328,7 +330,7 @@
 
     function tagText(part: ModifyPart): string | null {
         if ((part.src === 'linebyline') && (part.right.lineRole === 'name' || part.right.lineRole === 'header')) {
-            return part.right.lineRole === 'name' ? 'NAME' : 'TYPE'
+            return part.right.lineRole === 'name' ? language.promptDiff.tagName : language.promptDiff.tagType
         }
         return null
     }
@@ -368,7 +370,7 @@
                 case isPromptItemPlain(item):{
                     cards.push({
                         kind: 'plain',
-                        name: item.name ?? `${item.type.toUpperCase()} Prompt`,
+                        name: item.name ?? fillLang(language.promptDiff.promptNameFallback, { type: item.type.toUpperCase() }),
                         role: item.role ?? 'unknown',
                         header: `${item.type}; ${item.type2}`,
                         body: item.text ? item.text : null,
@@ -1330,7 +1332,7 @@
     {:else}
       {lineTextOf(part)}{#if isLineby(part) && (part.line.lineRole === 'name' || part.line.lineRole === 'header')}
         <span class={nameHeaderTagClass}>
-          {part.line.lineRole === 'name' ? 'NAME' : 'TYPE'}
+          {part.line.lineRole === 'name' ? language.promptDiff.tagName : language.promptDiff.tagType}
         </span>
       {/if}
     {/if}
@@ -1363,7 +1365,7 @@
       class:mb-5={isLineby(part) && part.right.lineRole === 'header'}
     >
       {#if part.src === 'linebyline' && part.right.text === ''}
-        <span class="text-textcolor2/60 italic">[empty line]</span>
+        <span class="text-textcolor2/60 italic">{language.promptDiff.emptyLine}</span>
       {:else}
         {@render renderTokens(part.tokens, 'remove', tokenPackLineAdd)}{#if tag}<span class={nameHeaderTagClass}>{tag}</span>{/if}
       {/if}
@@ -1396,7 +1398,7 @@
     <div class={`whitespace-pre-wrap ${lineAddClass}`}>
     {#each parts as part, i (i)}
       {#if part.src === 'linebyline' && part.right.text === ''}
-        <span class="text-textcolor2/60 italic">[empty line]</span>
+        <span class="text-textcolor2/60 italic">{language.promptDiff.emptyLine}</span>
       {:else}
         {@render renderTokens(part.tokens, 'remove', tokenPackLineAdd)}{#if tagText(part)}<span class={nameHeaderTagClass}>{tagText(part)}</span>{/if}
       {/if}
@@ -1411,7 +1413,7 @@
 
 {#snippet renderCardMeta(part: DiffPart, type: string, side: Side | null)}
   <div class="flex flex-col gap-1">
-    <span class="text-[10px] uppercase tracking-wide text-textcolor2">{type}</span>
+    <span class="text-[10px] uppercase tracking-wide text-textcolor2">{type === 'name' ? language.promptDiff.metaName : language.promptDiff.metaType}</span>
 
     {#if part && part.src === 'linebyline'}
       {#if part.k === 'modify'}
@@ -1469,7 +1471,7 @@
         </div>
       {/if}
     {:else}
-      <div class="text-xs text-textcolor2 italic">No {type}</div>
+      <div class="text-xs text-textcolor2 italic">{type === 'name' ? language.promptDiff.noName : language.promptDiff.noType}</div>
     {/if}
   </div>
 {/snippet}
@@ -1483,23 +1485,23 @@
         ${d.omitted > 0 ? 'hover:border-white/40 hover:text-textcolor hover:shadow-lg cursor-pointer' : 'text-textcolor2/50 cursor-default'}`}
       disabled={d.omitted === 0}
       onclick={() => expandRange(scope, d.from, d.to)}
-      title={d.omitted > 0 ? 'Click to expand hidden lines' : ''}
+      title={d.omitted > 0 ? language.promptDiff.expandHiddenLines : ''}
     >
       {#if d.pos === 'start'}
         {#if d.omitted > 0}
-          … {d.omitted} lines above not shown (click to expand) …
+          {fillLang(language.promptDiff.linesAboveHidden, { count: d.omitted })}
         {:else}
-          BOF
+          {language.promptDiff.bof}
         {/if}
 
       {:else if d.pos === 'between'}
-        … {d.omitted} lines skipped (click to expand) …
+        {fillLang(language.promptDiff.linesSkipped, { count: d.omitted })}
 
       {:else} <!-- end -->
         {#if d.omitted > 0}
-          … {d.omitted} lines below not shown (click to expand) …
+          {fillLang(language.promptDiff.linesBelowHidden, { count: d.omitted })}
         {:else}
-          EOF
+          {language.promptDiff.eof}
         {/if}
       {/if}
     </button>
@@ -1538,7 +1540,7 @@
         class:mb-5={role === 'header'}
       >
         {#if isLineby(part) && sideText === ''}
-          <span class="text-textcolor2/60 italic">[empty line]</span>
+          <span class="text-textcolor2/60 italic">{language.promptDiff.emptyLine}</span>
         {:else}
           {@render renderTokens(part.tokens, isLeft ? 'add' : 'remove', diffStyle === 'line' ? (isLeft ? tokenPackLineRemove : tokenPackLineAdd) : tokenPackIntraline)}
         {/if}
@@ -1556,10 +1558,10 @@
   {@const cardChangeCount = (c.modifiedCount ?? 0) + (c.addedCount ?? 0) + (c.removedCount ?? 0)}
 
   {@const statusLabel =
-    cardPart.k === 'modify' ? 'Modified'
-    : cardPart.k === 'add'  ? 'Added'
-    : cardPart.k === 'remove' ? 'Removed'
-    : 'Unchanged'}
+    cardPart.k === 'modify' ? language.promptDiff.statusModified
+    : cardPart.k === 'add'  ? language.promptDiff.statusAdded
+    : cardPart.k === 'remove' ? language.promptDiff.statusRemoved
+    : language.promptDiff.statusUnchanged}
 
   {@const statusClass =
     cardPart.k === 'modify' ? 'bg-blue-500/15 text-blue-300 border-blue-500/40'
@@ -1572,7 +1574,7 @@
       {statusLabel}
     </span>
     <span class="text-[11px] text-textcolor2">
-      {cardChangeCount} change{cardChangeCount === 1 ? '' : 's'}
+      {fillLang(cardChangeCount === 1 ? language.promptDiff.changeSingular : language.promptDiff.changePlural, { count: cardChangeCount })}
     </span>
     <span class="text-[11px] text-textcolor2">
       ~{c.modifiedCount ?? 0} / +{c.addedCount ?? 0} / -{c.removedCount ?? 0}
@@ -1586,14 +1588,14 @@
     
     <div class="flex items-center justify-between px-4 py-3 border-b border-darkborderc">
       <div class="flex items-center gap-4 flex-wrap">
-        {@render pillRadioGroup('Diff', 'diffStyle', diffOptions, diffStyle, (v) => (diffStyle = v as DiffStyle))}
-        {@render pillRadioGroup('Format', 'formatStyle', formatOptions, formatStyle, (v) => (formatStyle = v as FormatStyle), isFlatText)}
-        {@render pillRadioGroup('View', 'viewStyle', viewOptions, viewStyle, (v) => (viewStyle = v as ViewStyle), isFlatText)}        
-        {@render checkboxToggle('Legacy', isFlatText, (v) => (isFlatText = v))}
-        {@render checkboxToggle( 'Grouped', isGrouped, (v) => (isGrouped = v), isFlatText || diffStyle !== 'line' || viewStyle === 'split', true)}
-        {@render checkboxToggle('Only changes', showOnlyChanges, (v) => (showOnlyChanges = v), isFlatText, true)}
+        {@render pillRadioGroup(language.promptDiff.diff, 'diffStyle', diffOptions, diffStyle, (v) => (diffStyle = v as DiffStyle))}
+        {@render pillRadioGroup(language.format, 'formatStyle', formatOptions, formatStyle, (v) => (formatStyle = v as FormatStyle), isFlatText)}
+        {@render pillRadioGroup(language.promptDiff.view, 'viewStyle', viewOptions, viewStyle, (v) => (viewStyle = v as ViewStyle), isFlatText)}        
+        {@render checkboxToggle(language.promptDiff.legacy, isFlatText, (v) => (isFlatText = v))}
+        {@render checkboxToggle( language.promptDiff.grouped, isGrouped, (v) => (isGrouped = v), isFlatText || diffStyle !== 'line' || viewStyle === 'split', true)}
+        {@render checkboxToggle(language.promptDiff.onlyChanges, showOnlyChanges, (v) => (showOnlyChanges = v), isFlatText, true)}
         {#if !isFlatText && showOnlyChanges}
-          {@render rangeControl('Context', contextRadius, (v) => (contextRadius = v), 0, 5)}
+          {@render rangeControl(language.promptDiff.context, contextRadius, (v) => (contextRadius = v), 0, 5)}
         {/if}
       </div>
 
@@ -1611,12 +1613,12 @@
           <div class="flex items-center justify-between mb-3 text-xs text-textcolor2">
             {@render renderCounts(cardDiffResult.counts)}
             <div class="text-xs text-textcolor2 flex items-center gap-2 flex-wrap">
-              <span class="text-textcolor2">Cards changed:</span>
+              <span class="text-textcolor2">{language.promptDiff.cardsChanged}</span>
               <span class="text-textcolor">{cardChangedTotal}</span>
               <span class="text-textcolor2/60">/</span>
-              <span class="text-textcolor2">compared {cardDiffResult.parts.length}</span>
+              <span class="text-textcolor2">{fillLang(language.promptDiff.comparedCount, { count: cardDiffResult.parts.length })}</span>
               <span class="text-textcolor2/60">·</span>
-              <span class="text-textcolor2">total {firstCards.length} → {secondCards.length}</span>
+              <span class="text-textcolor2">{fillLang(language.promptDiff.totalCards, { first: firstCards.length, second: secondCards.length })}</span>
               <span class="text-textcolor2/60">·</span>
               <span class="inline-flex items-center gap-1 text-blue-300">
                 ~{cardDiffResult.cardCounts.modifiedCount}
@@ -1655,7 +1657,7 @@
                 <!-- body -->
                 <div class="mt-2 border-t border-darkborderc pt-2 font-mono text-sm leading-5">
                   {#if bodyParts.length === 0}
-                    <div class="text-textcolor2 italic">No body content</div>
+                    <div class="text-textcolor2 italic">{language.promptDiff.noBodyContent}</div>
                   {:else}
                     {@const segments = buildSegments(bodyParts, { showOnlyChanges, contextRadius, scope: `card-${idx}`, expandedRanges })}
                     {#each segments as seg, sIdx (sIdx)}
@@ -1766,7 +1768,7 @@
             {/each}
           </div>
         {:else}
-          <div class="text-textcolor2 text-sm">No diff computed yet.</div>
+          <div class="text-textcolor2 text-sm">{language.promptDiff.noDiffYet}</div>
         {/if}
       {:else}<!-- raw view -->
         {#if currentFlatResult}
@@ -1777,7 +1779,7 @@
             <div class="flex items-center justify-center py-10">
               <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-darkborderc bg-black/30 text-textcolor2">
                 <span class="inline-block w-2 h-2 rounded-full bg-green-500/70"></span>
-                <span class="text-sm">No changes</span>
+                <span class="text-sm">{language.promptDiff.noChanges}</span>
               </div>
             </div>
           {:else if viewStyle === 'unified' || isFlatText}
@@ -1833,7 +1835,7 @@
             </div>
           {/if}
         {:else}
-          <div class="text-textcolor2 text-sm">No diff computed yet.</div>
+          <div class="text-textcolor2 text-sm">{language.promptDiff.noDiffYet}</div>
         {/if}
       {/if}
     </div>

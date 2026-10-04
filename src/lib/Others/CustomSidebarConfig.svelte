@@ -2,7 +2,7 @@
     import { customSideBarConfigDialogStore, DBState } from "src/ts/stores.svelte";
     import Button from "../UI/GUI/Button.svelte";
     import { language } from "src/lang";
-    import { getFullSettingsData } from "src/ts/setting/utils";
+    import { getFullSettingsData, getLabel } from "src/ts/setting/utils";
     import TextInput from "../UI/GUI/TextInput.svelte";
 
 
@@ -26,7 +26,7 @@
             >
                 {#if DBState.db.customSidebarItems.length === 0}
                     <div class="text-textcolor2">
-                        No custom sidebar items configured
+                        {language.othersUi.noCustomSidebarItems}
                     </div>
                 {/if}
 
@@ -45,7 +45,7 @@
                                     );
                             }}
                         >
-                            Delete
+                            {language.uiCommon.delete}
                         </button>
                     </div>
                 {/each}
@@ -56,7 +56,7 @@
                     configPage = "add";
                 }}
             >
-                Add Item
+                {language.othersUi.addItem}
             </Button>
 
             <Button
@@ -64,7 +64,7 @@
                     customSideBarConfigDialogStore.open = false;
                 }}
             >
-                Close
+                {language.uiCommon.close}
             </Button>
         {/if}
 
@@ -139,19 +139,19 @@
                     configPage = "list";
                 }}
             >
-                Back to List
+                {language.othersUi.backToList}
             </Button>
         {/if}
 
         {#if configPage === "addSettingsSubmenu"}
             <div class="flex flex-col gap-2">
-                <TextInput bind:value={search} placeholder="Search..." />
+                <TextInput bind:value={search} placeholder={language.settingsPage.searchEllipsis} />
                 <Button
                     onclick={() => {
                         configPage = "add";
                     }}
                 >
-                    Back
+                    {language.settingsPage.back}
                 </Button>
 
                 {#each getFullSettingsData(search) as type}
@@ -161,12 +161,12 @@
                                 id: crypto.randomUUID(),
                                 type: "setting",
                                 subType: type.id,
-                                label: language[type.labelKey] || type.id,
+                                label: getLabel(type) || type.id,
                             });
                             configPage = "list";
                         }}
                     >
-                        {language[type.labelKey] || type.id}
+                        {getLabel(type) || type.id}
                     </Button>
                 {/each}
             </div>

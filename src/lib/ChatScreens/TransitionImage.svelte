@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { language } from "src/lang";
     let currentSrc:string[] = $state([])
     let oldSrc:string[] = $state([]);
     let showOldImage = $state(false);
@@ -120,7 +121,7 @@
                 {#if styleType === 'normal'}
                     <img
                         src={img}
-                        alt="img"
+                        alt={language.uiCommon.imageAlt}
                         style:width={`${100 / currentSrc.length}%`}
                         style:left={`${100 / currentSrc.length * i}%`}
                     />
@@ -128,7 +129,7 @@
                     {#if i <= 1}
                         <img
                             src={img}
-                            alt="img"
+                            alt={language.uiCommon.imageAlt}
                             style:width={`${80 - (i*10)}%`}
                             style:left={`${30-(i*30)}%`}
                             style:z-index={9 - i}
@@ -141,7 +142,7 @@
                 {#each oldSrc as img2, i}
                     <img
                         src={oldSrc[i]}
-                        alt="img"
+                        alt={language.uiCommon.imageAlt}
                         class="old-image"
                         onanimationend={handleTransitionEnd}
                         style:width={`${100 / oldSrc.length}%`}
@@ -154,7 +155,7 @@
                     {#if i <= 1}
                         <img
                             src={oldSrc[i]}
-                            alt="img"
+                            alt={language.uiCommon.imageAlt}
                             class="old-image"
                             onanimationend={handleTransitionEnd}
                             style:width={`${80 - (i*10)}%`}
@@ -168,7 +169,7 @@
                 {#each currentSrc as img3, i}
                     <img
                         src={currentSrc[i]}
-                        alt="img"
+                        alt={language.uiCommon.imageAlt}
                         class="new-image"
                         style:width={`${100 / currentSrc.length}%`}
                         style:left={`${100 / currentSrc.length * i}%`}
@@ -180,7 +181,7 @@
                     {#if i <= 1}
                         <img
                             src={currentSrc[i]}
-                            alt="img"
+                            alt={language.uiCommon.imageAlt}
                             class="new-image"
                             style:width={`${80 - (i*10)}%`}
                             style:left={`${30-(i*30)}%`}

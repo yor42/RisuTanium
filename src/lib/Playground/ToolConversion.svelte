@@ -3,11 +3,14 @@
     import Button from "../UI/GUI/Button.svelte";
     import { selectMultipleFile } from "src/ts/util";
     import { detectPromptJSONType, promptConvertion } from "src/ts/process/prompt";
+    import { alertError } from "src/ts/alert";
 
     let files: { name: string, content: string, type:string }[] = $state([])
+    let hasSupportedFile = $derived(files.some((file) => file.type !== 'NOTSUPPORTED'))
 
     const addFile = async () => {
         const selFiles = await selectMultipleFile(['json'])
+        if(!selFiles) return
 
         for(let i = 0; i < selFiles.length; i++) {
             const file = selFiles[i]
@@ -18,10 +21,14 @@
                 type: detectPromptJSONType(text),
             })
         }
+    }
 
-        console.log(files)
-        files = files
-
+    const run = async () => {
+        try {
+            await promptConvertion(files)
+        } catch (error) {
+            alertError(error instanceof Error ? error : String(error))
+        }
     }
 </script>
 
@@ -35,15 +42,15 @@
                 {#if file.type !== 'NOTSUPPORTED'}
                     <span class="bg-blue-500 rounded-md text-white mr-2 font-bold px-2 py-1">{file.type}</span>
                 {:else}
-                    <span class="bg-red-500 rounded-md text-white mr-2 font-bold px-2 py-1">NOTSUPPORTED</span>
+                    <span class="bg-red-500 rounded-md text-white mr-2 font-bold px-2 py-1">{language.playground.notSupported}</span>
                 {/if}
                 <span>{file.name}</span>
             </div>
-            <Button>Delete</Button>
+            <Button onclick={() => {
+                files.splice(i, 1)
+            }}>{language.playground.delete}</Button>
         </div>
     {/each}
-    <Button onclick={addFile}>Add</Button>
+    <Button onclick={addFile}>{language.add}</Button>
 </div>
-<Button className="mt-6" onclick={() => {
-    promptConvertion(files)
-}}>Run</Button>
+<Button className="mt-6" disabled={!hasSupportedFile} onclick={run}>{language.run}</Button>

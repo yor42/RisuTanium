@@ -21,6 +21,18 @@ export function getLabel(item: SettingItem): string {
     return item.fallbackLabel ?? '';
 }
 
+export function getPlaceholder(item: SettingItem): string | undefined {
+    const key = item.options?.placeholderKey;
+    if (key) {
+        const table: Readonly<Record<string, unknown>> = language;
+        const translated = table[key];
+        if (typeof translated === 'string' && translated) {
+            return translated;
+        }
+    }
+    return item.options?.placeholder;
+}
+
 export function getSettingValue(item: SettingItem, ctx: SettingContext): any {
     if (item.getValue) {
         return item.getValue(DBState.db, ctx);
@@ -83,8 +95,9 @@ export function getFullSettingsData(searchTerm = '') {
     const lowerSearch = searchTerm.toLowerCase();
     return full.filter(item => {
         const label = getLabel(item).toLowerCase();
+        const fallbackLabel = item.fallbackLabel?.toLowerCase() ?? '';
         const keywords = item.keywords?.map(k => k.toLowerCase()) || [];
-        return label.includes(lowerSearch) || keywords.some(k => k.includes(lowerSearch));
+        return label.includes(lowerSearch) || fallbackLabel.includes(lowerSearch) || keywords.some(k => k.includes(lowerSearch));
     });
 
 

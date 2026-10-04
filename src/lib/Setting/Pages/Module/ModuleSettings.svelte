@@ -1,7 +1,7 @@
 <script lang="ts">
     import { language } from "src/lang";
     
-    import { DBState } from 'src/ts/stores.svelte';
+    import { DBState, ReloadGUIPointer } from 'src/ts/stores.svelte';
     import Button from "src/lib/UI/GUI/Button.svelte";
     import ModuleMenu from "src/lib/Setting/Pages/Module/ModuleMenu.svelte";
     import { exportModule, exportModuleLegacy, importModule, refreshModules, type RisuModule } from "src/ts/process/modules";
@@ -24,19 +24,26 @@
     let moduleSearch = $state('')
     let charConversionMode = $state(false)
 
-    function sortModules(modules:RisuModule[], search:string){
+    // Rows follow the order of db.modules; the search only filters.
+    function filterModules(modules:RisuModule[], search:string){
         return modules.filter((v) => {
             if(search === '') return true
             return v.name.toLowerCase().includes(search.toLowerCase())
-        
-        }).sort((a, b) => {
-            let score = a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-            return score
         })
+    }
+
+    // The editor (modes 1 and 2) changes modules while open without refreshing the chat;
+    // closing it, by a button or by this component being destroyed, refreshes once.
+    function closeEditor(){
+        mode = 0
+        $ReloadGUIPointer += 1
     }
 
     onDestroy(() => {
         refreshModules()
+        if(mode !== 0){
+            $ReloadGUIPointer += 1
+        }
     })
 </script>
 {#if mode === 0}
@@ -48,7 +55,7 @@
         {#if DBState.db.modules.length === 0}
             <div class="text-textcolor2 p-3">{language.noModules}</div>
         {:else}
-            {#each sortModules(DBState.db.modules, moduleSearch) as rmodule, i}
+            {#each filterModules(DBState.db.modules, moduleSearch) as rmodule, i}
                 {#if i !== 0}
                     <div class="border-t-1 border-selected"></div>
                 {/if}
@@ -94,7 +101,7 @@
                             {#if !rmodule.mcp}
                                 <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.download} onclick={async (e) => {
                                     e.stopPropagation()
-                                    const sel = parseInt(await alertSelect([`CharX (${language.recommended})`, `RisuM (Legacy)`]))
+                                    const sel = parseInt(await alertSelect([`CharX (${language.recommended})`, language.alerts.risumLegacy]))
                                     if(sel === 0){
                                         exportModule(rmodule)
                                     }
@@ -145,7 +152,7 @@
                     </div>
                 </div>
                 <div class="mt-1 mb-3 pl-3">
-                    <span class="text-sm text-textcolor2">{rmodule.description || 'No description provided'}</span>
+                    <span class="text-sm text-textcolor2">{rmodule.description || language.settingsPage.noDescriptionProvided}</span>
                 </div>
             {/each}
         {/if}
@@ -186,7 +193,7 @@
         // tempModule was already pushed onto DBState.db.modules when create mode was
         // entered (the "+" button above), so it doesn't need to be pushed again here —
         // doing so would insert every newly-created module twice.
-        mode = 0
+        closeEditor()
     }}>{language.createModule}</Button>
 {:else if mode === 2}
     <h2 class="mb-2 text-2xl font-bold mt-2">{language.editModule}</h2>
@@ -194,7 +201,7 @@
     {#if tempModule.name !== ''}
         <Button className="mt-6" onclick={() => {
             DBState.db.modules[editModuleIndex] = tempModule
-            mode = 0
+            closeEditor()
         }}>{language.editModule}</Button>
     {/if}
 {/if}

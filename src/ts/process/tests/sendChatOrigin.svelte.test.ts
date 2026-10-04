@@ -1432,7 +1432,7 @@ describe('an output trigger that rebuilds the chat without message ids', () => {
     test.each([
         ['streaming'],
         ['non-streaming'],
-    ] as const)('guard: the send carries on: it returns true, and TTS, the emotion request and the chatOutput listeners run (%s reply)', async (site) => {
+    ] as const)('the send carries on (guard): it returns true and the emotion request and the chatOutput listeners run; no TTS is spoken for the unlocatable reply (%s reply)', async (site) => {
         installDb(
             [makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])], { viewScreen: 'emotion', emotionImages: [['happy', 'img']] })],
             { ttsAutoSpeech: true },
@@ -1451,7 +1451,7 @@ describe('an output trigger that rebuilds the chat without message ids', () => {
         const result = await settled(() => sendChat())
 
         expect(result).toBe(true)
-        expect(sayTTSMock).toHaveBeenCalledTimes(1)
+        expect(sayTTSMock).not.toHaveBeenCalled()
         expect(requestChatDataMock.mock.calls.filter((call) => call[1] === 'emotion')).toHaveLength(1)
         expect(listener).toHaveBeenCalledTimes(1)
         expect(listener.mock.calls[0][0].messageIndex).toBe(-1)

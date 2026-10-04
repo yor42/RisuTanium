@@ -1,6 +1,8 @@
 import { tokenizeAccurate } from "../tokenizer";
 import { getDatabase, presetTemplate, setDatabase } from "../storage/database.svelte";
 import { alertError, alertNormal } from "../alert";
+import { language } from "../../lang";
+import { fillLang } from "../../lang/fill";
 import type { OobaChatCompletionRequestParams } from "../model/ooba";
 import { DBState } from "../stores.svelte";
 
@@ -76,8 +78,6 @@ export async function tokenizePreset(prompts:PromptItem[], consti:boolean = fals
             }
             case 'persona':
             case 'description':
-            case 'lorebook':
-            case 'postEverything':
             case 'authornote':
             case 'memory':{
                 if(prompt.innerFormat){
@@ -326,7 +326,7 @@ export function promptConvertion(files:{ name: string, content: string, type:str
     }
     if(files.findIndex(x=>x.type === 'STCHAT') !== -1){
         if(type !== ''){
-            alertError(`Both ${type} and STCHAT are not supported together.`)
+            alertError(fillLang(language.errors.promptTypeConflict, { type }))
             return
         }
         type = 'STCHAT'
@@ -418,7 +418,7 @@ export function promptConvertion(files:{ name: string, content: string, type:str
         preset.subModel = 'openrouter'
         DBState.db.botPresets.push(preset)
     
-        alertNormal('Preset converted successfully. You can find it in bot setting presets')
+        alertNormal(language.alerts.presetConverted)
         return
     }
 
@@ -494,5 +494,5 @@ export function promptConvertion(files:{ name: string, content: string, type:str
 
     DBState.db.botPresets.push(preset)
 
-    alertNormal('Preset converted successfully. You can find it in bot setting presets')
+    alertNormal(language.alerts.presetConverted)
 }

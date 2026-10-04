@@ -10,7 +10,7 @@
 
     const formatSchemeName = (name: string) => {
         if (name === 'custom') {
-            return 'Custom';
+            return language.optCustom;
         }
 
         return name
@@ -57,7 +57,7 @@
         class:border-darkborderc={DBState.db.colorSchemeName !== 'custom'}
         class:bg-darkbutton={DBState.db.colorSchemeName === 'custom'}
         aria-pressed={DBState.db.colorSchemeName === 'custom'}
-        title="Custom"
+        title={language.optCustom}
         onclick={() => changeColorScheme('custom')}
     >
         <span
@@ -66,7 +66,7 @@
         >
             <span class="palette-wheel-fill" style={paletteStyle(DBState.db.customColorScheme)}></span>
         </span>
-        <span class="w-full truncate text-sm text-textcolor">Custom</span>
+        <span class="w-full truncate text-sm text-textcolor">{language.optCustom}</span>
     </button>
 </div>
 

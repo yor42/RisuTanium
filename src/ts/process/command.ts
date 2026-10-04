@@ -1,12 +1,15 @@
 import { get } from "svelte/store";
 import { alertInput, alertMd, alertNormal, alertSelect } from "../alert";
 import { sayTTS } from "./tts";
+import { stripThoughtsForCopy } from "../chatCopy";
 import { risuChatParser } from "../parser/parser.svelte";
 import { doingChat, sendChat } from "./index.svelte";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { runTrigger } from "./triggers";
 import { createRunSubject, createSendSubject, registerWork, type Origin, type OriginHint, type RunSubject } from "./chatOrigin";
 import { isComposerWindowOpen } from "./generationOwnership.svelte";
+import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
+import { language } from "src/lang";
 
 /**
  * What a command line runs against. Every field is fixed when the line
@@ -40,7 +43,11 @@ export interface CommandContext {
      * its own `/trigger`s share.
      */
     recursion?: { count: number }
-    /** Whether the trigger that runs the line is exempt from the nesting bound. */
+    /**
+     * Whether the trigger that runs the line nests up to the low-level limit
+     * instead of the normal one. `runtrigger` and `v2RunTrigger` apply the same
+     * two limits (`./triggerLimits`).
+     */
     lowLevelAccess?: boolean
     /**
      * Called at the start of every command that can change chat state, before
@@ -48,10 +55,6 @@ export interface CommandContext {
      */
     noteWrite?: () => void
 }
-
-// Mirrors the bound the `runtrigger` effect applies to nested runs; a change
-// to one must be made in both.
-const NESTED_TRIGGER_LIMIT = 10
 
 // Every command outside this set changes no chat state: `/speak`, `/echo`,
 // `/popup`, `/pass`, `/input`, `/buttons`, `/len`, `/getvar`, `/setinput`,
@@ -170,7 +173,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
         }
         case 'speak': {
             if(currentChar.type === 'character'){
-                await sayTTS(currentChar, arg)
+                await sayTTS(currentChar, stripThoughtsForCopy(arg))
                 return pipe
             }
             if(currentChar.type === 'group'){
@@ -328,7 +331,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
             if(currentChar.type === 'group'){
                 return pipe
             }
-            if(recursion.count >= NESTED_TRIGGER_LIMIT && !ctx.lowLevelAccess){
+            if(recursion.count >= (ctx.lowLevelAccess ? LOW_LEVEL_NESTED_TRIGGER_LIMIT : NORMAL_NESTED_TRIGGER_LIMIT)){
                 return pipe
             }
             recursion.count++
@@ -348,61 +351,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
             return pipe
         }
         case '?':{
-            alertMd(`
-            # /input [text]
-            - Show input dialog
-            - Return input text
-            - Example: /input Hello World
-            # /echo [text]
-            - Show alert dialog
-            - Return input text
-            - Example: /echo Hello World
-            # /popup [text]
-            - Show alert dialog
-            - Return input text
-            - Example: /popup Hello World
-            # /pass [text]
-            - Return input text
-            - Example: /pass Hello World
-            # /buttons [labels]
-            - Show select dialog
-            - Return selected label
-            - Example: /buttons Yes§No
-            # /speak [text]
-            - Speak text
-            - Example: /speak Hello World
-            # /send [text]
-            - Send text to chat
-            - Example: /send Hello World
-            # /sendas [text]
-            - Send text to chat as character
-            - Example: /sendas Hello World
-            # /comment [text]
-            - Add comment to chat
-            - Example: /comment Hello World
-            # /cut [index]
-            - Cut chat message
-            - Example: /cut 1
-            # /del [size]
-            - Delete chat message
-            - Example: /del 1
-            # /len [array]
-            - Return length of array
-            - Example: /len Hello§World
-            # /setvar key=[key] [value]
-            - Set variable
-            - Example: /setvar key=hello world
-            # /addvar key=[key] [value]
-            - Add value to variable
-            - Example: /addvar key=damage 10
-            # /getvar key=[key]
-            - Get variable
-            - Example: /getvar key=damage
-            # /trigger [name]
-            - Run trigger
-            # /?
-            - Show help
-            `)
+            alertMd(language.slashCommandHelp)
             return 'help'
         }
 

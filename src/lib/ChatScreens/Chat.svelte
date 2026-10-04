@@ -1,16 +1,19 @@
 <script lang="ts">
     import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
     import { aiLawApplies, changeChatTo, foldChatToMessage, createChatCopyName, getFileSrc } from "src/ts/globalApi.svelte"
-    import { copyPlainText, type CopyOutcome } from "src/ts/chatCopy"
+    import { copyPlainText, stripThoughtsForCopy, type CopyOutcome } from "src/ts/chatCopy"
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
+    import { LIGHT_SURFACE_STYLE } from "src/ts/gui/lightSurface"
     import { getModelInfo } from "src/ts/model/modellist"
     import { runLuaButtonTrigger } from 'src/ts/process/scriptings'
     import { risuChatParser } from "src/ts/process/scripts"
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
     import { sayTTS } from "src/ts/process/tts"
+    import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
+    import { isTTSVoiceMode } from "src/ts/process/ttsModes"
     import { DBState, ReloadChatPointer, CurrentTriggerIdStore, popupStore } from 'src/ts/stores.svelte'
     import { registerDraft, unregisterDraft } from "src/ts/localDrafts"
     import { draftContentOrphanGate } from "src/ts/draftContentOrphanGate"
@@ -223,9 +226,6 @@
     // is `frozenTranslationSeed` (the cached translation seeded at open), NOT
     // `baseData`/the key: a `tr:` record's `baseData` is categorically a
     // different string from any translation.
-    // `updateTranslationCache`'s own `editTranslationText = data` write (the
-    // save echo) is a programmatic assignment, not an `input` event, so it
-    // never reaches this function.
     function captureTranslationEdit(text: string) {
         if (!frozenTranslationIdentity) {
             return
@@ -249,7 +249,7 @@
         rawStreamingText = state.rawStreamingText
     }
 
-    async function rm(e:MouseEvent, rec?:boolean){
+    async function rm(e:MouseEvent | TouchEvent, rec?:boolean){
         if(e.shiftKey){
             let msg = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message
             msg = msg.slice(0, idx)
@@ -371,6 +371,37 @@
         }
     }
 
+    // Deliberate exit without saving: the draft of `identity` is cleared rather
+    // than left to resurface later.
+    function discardOriginalEdit(identity: MessageIdentity | null) {
+        editMode = false
+        if (identity) {
+            draftContentOrphanGate.delete(identity)
+        }
+        frozenMessageIdentity = null
+        restoredMessageRecord = null
+    }
+
+    let discardConfirmOpen = $state(false)
+
+    // Asks only when leaving would drop a change. The answer acts only if the
+    // same edit session is still open, so it can never discard a newer one.
+    async function requestDiscardOriginalEdit() {
+        if (!editMode || discardConfirmOpen) return
+        const identity = frozenMessageIdentity
+        if (editBuffer !== frozenBaseData) {
+            discardConfirmOpen = true
+            let confirmed = false
+            try {
+                confirmed = await alertConfirm(language.messageEditDiscardConfirm)
+            } finally {
+                discardConfirmOpen = false
+            }
+            if (!confirmed || !editMode || frozenMessageIdentity !== identity) return
+        }
+        discardOriginalEdit(identity)
+    }
+
     function toggleTranslation() {
         if (translationViewControlsDisabled) return
         translated = !translated
@@ -396,9 +427,18 @@
         displaya(e.detail.newData)
     }
 
+    // Translation cache writes from this instance land in click order: each waits
+    // for the previous one to settle, whether it succeeded or failed, and every
+    // caller sees only its own outcome.
+    let translationWriteChain: Promise<void> = Promise.resolve()
+
+    // Translation saves clicked from this instance that have not settled yet.
+    let pendingTranslationSaves = 0
+
     async function updateTranslationCache(key: string, data: string) {
-        await setLLMCache(key, data)
-        editTranslationText = data
+        const write = translationWriteChain.then(() => setLLMCache(key, data))
+        translationWriteChain = write.then(() => {}, () => {})
+        await write
         chatBodyRevision += 1
     }
 
@@ -495,25 +535,52 @@
         if (editTranslationKey === null) return
 
         // Long-press SAVES on this editor, and shares this same function
-        // with the Save button -- both are a deliberate exit, once
-        // the save actually succeeds. The frozen identity stays in place
-        // until the cache write actually succeeds: `updateTranslationCache`'s
-        // own `editTranslationText = data` write (the save echo) is a
-        // programmatic assignment, never an `input` event, so it cannot
-        // reach `captureTranslationEdit` regardless of when it runs. A
-        // rejection propagates out of this function unchanged, leaving the
-        // frozen identity, the record, and `editTranslationMode` untouched,
-        // so the editor stays open with the same identity and record, and
-        // typing keeps being captured against it.
-        await updateTranslationCache(editTranslationKey, editTranslationText)
-
-        if (frozenTranslationIdentity) {
-            draftContentOrphanGate.delete(frozenTranslationIdentity)
+        // with the Save button. The key, identity and text are taken at the click;
+        // a rejection propagates unchanged and leaves the editor, buffer, identity
+        // and record untouched.
+        const key = editTranslationKey
+        const identity = frozenTranslationIdentity
+        const text = editTranslationText
+        pendingTranslationSaves += 1
+        try {
+            await updateTranslationCache(key, text)
+        } finally {
+            pendingTranslationSaves -= 1
         }
-        frozenTranslationIdentity = null
+        if (!identity) return
+
+        // The `tr:key` record is shared by every instance and session for this
+        // key, so a settle compares against the record itself: it deletes only a
+        // record holding the text it wrote. Only the settle that leaves no save
+        // from this instance pending may treat its text as final: while a later
+        // save is in flight, a record can hold the user's newest text, and a
+        // destroyed instance could never write it again.
+        if (pendingTranslationSaves === 0 && draftContentOrphanGate.get(identity, identity.key)?.text === text) {
+            draftContentOrphanGate.delete(identity)
+        }
+
+        // A destroyed instance, or one whose editor session differs from the
+        // clicked one, changes nothing beyond the cache and the record delete above.
+        if (destroyed || frozenTranslationIdentity !== identity || !editTranslationMode) return
+
+        if (editTranslationText === text && pendingTranslationSaves === 0) {
+            frozenTranslationIdentity = null
+            restoredTranslationRecord = null
+            editTranslationKey = null
+            editTranslationMode = false
+            return
+        }
+
+        // The editor stays open while the buffer differs from `text` or a later
+        // save from this instance is still pending. The cache holds `text`, so
+        // that is what Revert and "unchanged" compare against, and the buffer
+        // gets a record only when none exists (an existing record keeps its
+        // keystroke-time age) and the buffer differs from that seed.
+        frozenTranslationSeed = text
         restoredTranslationRecord = null
-        editTranslationKey = null
-        editTranslationMode = false
+        if (editTranslationText !== text && !draftContentOrphanGate.get(identity, identity.key)) {
+            draftContentOrphanGate.set(identity, editTranslationText, identity.key)
+        }
     }
 
     function revertTranslationEdit() {
@@ -529,8 +596,13 @@
         restoredTranslationRecord = null
     }
 
+    function displayParseOptions(){
+        const conditions = getCbsCondition()
+        return buildDisplayParseOptions({chara: name, chatID: idx, firstmsg: conditions.firstmsg, chatRole: conditions.chatRole ?? null})
+    }
+
     function displaya(message:string){
-        msgDisplay = risuChatParser(message, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
+        msgDisplay = risuChatParser(message, displayParseOptions())
     }
 
     // At most one status timer is pending, and it only clears the status text it was
@@ -562,7 +634,7 @@
     // The text a copy puts on the clipboard: what the message shows, or the
     // parsed raw text while a strong-optimised stream is rendered raw.
     const currentCopyText = ():string => renderRawStreaming
-        ? risuChatParser(rawStreamingText, {chara: name, chatID: idx, rmVar: true, visualize: true, cbsConditions: getCbsCondition()})
+        ? risuChatParser(rawStreamingText, displayParseOptions())
         : msgDisplay
 
     // Identifies this message component to the card copy: the same message is
@@ -900,16 +972,9 @@
         {#if restoredMessageRecord}
             {@render draftRestoreMarker(restoredMessageRecord, revertOriginalEdit, markerOnLightSurface)}
         {/if}
-        <AutoresizeArea bind:value={editBuffer} onUserEdit={captureMessageEdit} handleLongPress={() => {
-            // Long-press on the original-text editor discards -- deliberate
-            // exit, so the draft is cleared rather than left to resurface
-            // later.
-            editMode = false
-            if (frozenMessageIdentity) {
-                draftContentOrphanGate.delete(frozenMessageIdentity)
-            }
-            frozenMessageIdentity = null
-            restoredMessageRecord = null
+        <AutoresizeArea bind:value={editBuffer} onUserEdit={captureMessageEdit} lightSurface={DBState.db.theme === 'mobilechat'} handleLongPress={() => {
+            // Mouse long-press on the original-text editor discards without asking.
+            discardOriginalEdit(frozenMessageIdentity)
         }} />
     {:else if isComment}
         <div class="w-full flex justify-center text-textcolor2 italic mb-12">
@@ -945,7 +1010,7 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <span class="text chat-width chattext prose minw-0"
             class:hidden={editTranslationMode}
-            class:prose-invert={$ColorSchemeTypeStore}
+            class:prose-invert={$ColorSchemeTypeStore && !markerOnLightSurface}
             bind:this={bodyRoot}
             onclick={() => {
             if(DBState.db.clickToEdit && idx > -1 && !isOptimizedStreamingMessage){
@@ -1034,7 +1099,7 @@
 {#snippet majorIconButtonsBody(showNames:boolean)}
     {#if DBState.db.useChatCopy && !blankMessage}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
-        const copyText = currentCopyText()
+        const copyText = stripThoughtsForCopy(currentCopyText())
         copyPlainText(copyText, reportCopy)
         noteNewerPlainCopy(copyText, reportCopy)
     }}>
@@ -1045,9 +1110,9 @@
     </button>    
 {/if}
 {#if idx > -1}
-    {#if DBState.db.characters[selIdState.selId].type !== 'group' && DBState.db.characters[selIdState.selId].ttsMode !== 'none' && (DBState.db.characters[selIdState.selId].ttsMode)}
+    {#if DBState.db.characters[selIdState.selId].type !== 'group' && isTTSVoiceMode(DBState.db.characters[selIdState.selId].ttsMode)}
         <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
-            return sayTTS(null, isOptimizedStreamingMessage ? rawStreamingText : message)
+            return sayTTS(null, stripThoughtsForCopy(currentCopyText()))
         }}>
             <Volume2Icon size={20}/>
             {#if showNames}
@@ -1055,7 +1120,7 @@
             {/if}
         </button>
     {/if}
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove" onclick={(e) => rm(e, false)} use:longpress={(e) => rm(e, true)}>
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove select-none [-webkit-touch-callout:none]" onclick={(e) => rm(e, false)} use:longpress={{callback: (e) => rm(e, true), touch: true}}>
         <TrashIcon size={20}/>
 
         {#if showNames}
@@ -1221,6 +1286,9 @@
                     <div class="shadow-lg bg-textcolor2" style={m + (options?.styleFix ?? `height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`)}
                     class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
                 {/if}
+            {:catch}
+                <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
+                class:rounded-md={!options?.rounded} class:rounded-full={options?.rounded}></div>
             {/await}
             {:else}
                 <div class="shadow-lg bg-textcolor2" style={options?.styleFix ??`height:${DBState.db.iconsize * 3.5 / 100}rem;width:${DBState.db.iconsize * 3.5 / 100}rem;min-width:${DBState.db.iconsize * 3.5 / 100}rem`}
@@ -1389,10 +1457,26 @@
                     class="bg-gray-100 rounded-lg p-3 max-w-[70%] mx-2"
                     class:rounded-tl-none={role !== 'user'}
                     class:rounded-tr-none={role === 'user'}
+                    style={LIGHT_SURFACE_STYLE}
                 >
                     <p class="text-gray-800">{@render textBox()}</p>
+                    {#if editMode}
+                        <div class="flex justify-end gap-2 mt-2">
+                            <button
+                                type="button"
+                                class="rounded-md border border-gray-400 px-3 py-1 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-300/60 disabled:opacity-50 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                                disabled={discardConfirmOpen}
+                                onclick={requestDiscardOriginalEdit}
+                            >{language.messageEditDiscard}</button>
+                            <button
+                                type="button"
+                                class="rounded-md bg-gray-800 px-3 py-1 text-sm font-medium text-gray-100 transition-colors hover:bg-gray-700 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
+                                onclick={toggleOriginalEdit}
+                            >{language.messageEditSave}</button>
+                        </div>
+                    {/if}
                     {#if DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.time}
-                        <span class="text-xs text-textcolor2 mt-1 block">
+                        <span class="text-xs text-gray-600 mt-1 block">
                             {new Intl.DateTimeFormat(undefined, {
                                 hour: '2-digit',
                                 minute: '2-digit',
@@ -1435,7 +1519,7 @@
                                 <textarea class="grow min-h-0 overflow-y-auto bg-transparent text-black p-2 mb-2 resize-none message-edit-area" bind:value={editBuffer} oninput={(e) => captureMessageEdit((e.currentTarget as HTMLTextAreaElement).value)}></textarea>
                             </div>
                         {:else}
-                            <div class="grow h-138 sm:h-96 overflow-y-auto p-2 mb-2 sm:mb-0">
+                            <div class="grow h-138 sm:h-96 overflow-y-auto p-2 mb-2 sm:mb-0" style={LIGHT_SURFACE_STYLE}>
                                 {@render textBox()}
                             </div>
                         {/if}
@@ -1453,7 +1537,7 @@
                 <div class="flexium items-center chat-width">
                     {#if DBState.db.characters[selIdState.selId]?.chaId === "§playground" && !blankMessage && DBState.db.characters[selIdState.selId]?.chats?.[DBState.db.characters[selIdState.selId]?.chatPage]?.message?.[idx]}
                         <span class="chat-width text-xl border-darkborderc flex items-center text-textcolor">
-                            <span>{DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role === 'char' ? 'Assistant' : 'User'}</span>
+                            <span>{DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role === 'char' ? language.uiCommon.assistant : language.user}</span>
                             <button class="ml-2 text-textcolor2 hover:text-textcolor" onclick={() => {
                                 DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role === 'char' ? 'user' : 'char'
                                 ReloadChatPointer.update((v) => {

@@ -2148,6 +2148,8 @@ other. The page marks that route as read from the code and not tested: nobody he
 account backup. Only official-site account users can hit the refusal, because upstream encrypts
 only on `risuai.xyz` origins.
 
+The request not to probe the endpoint is clarified by MC-205 (2026-10-03).
+
 ---
 
 ### MC-082 — A duplicate `chaId` that has never been saved: the first holder is written once, then frozen
@@ -2717,6 +2719,8 @@ it as decided by proximity alone.
 > Settings → "Global Regex" (`db.globalscript`) is never read by the script engine; it is only an
 > import/export staging list. The effective global list is the preset's (`db.presetRegex`).
 > Possibly intended; confirm with the maintainer before calling it a bug.
+
+*Answered by `MC-206`: upstream deprecated Global Regex and Global Lorebook on purpose in `8ed4555b` (2024-02-07, "remove global regex and lorebook and add convertion to modules"). The conversion into modules was later disabled: `bootstrap.ts` still carries "//migration removed due to issues", introduced in `b3fddb81`. The maintainer retired the two pages and kept the data (`MC-206`).*
 
 ---
 
@@ -6796,3 +6800,737 @@ proposed as a bug fix.
    ticketed separately.
 
 ---
+
+### MC-200 — The UI session's work order; CHORE-56 confirmed; CHORE-44 re-verified and closed; CHORE-23 may edit `openURL` minimally
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** item 1: "Approve with changes". Item 2 (CHORE-56): "Not seen, drop it". Item 3 (CHORE-44):
+  "There's a remaining part". Item 4: "hand to the Main Campaign" and "defer".
+- **Related:** `MC-179`
+
+**What was decided:**
+1. **Work order.** "Approve as proposed (Recommended)": CHORE-11 (CD-4 first, CD-3 folded in), then the mobile batch
+   (CHORE-56, CHORE-20, CHORE-19), then the chat UI batch (CHORE-21, the rejected-avatar-icon follow-up, CHORE-69,
+   CHORE-44), then TTS (CHORE-15: TTS-1 and TTS-2 first), then settings (CHORE-14), then Playground and modules
+   (CHORE-16 PG-2 to PG-4, CHORE-12), then small items (CHORE-13, CHORE-57, CHORE-23, optional CHORE-09), then
+   translations (CHORE-05).
+2. **CHORE-56.** "Yes, fix it (Recommended)": fix it in the mobile batch.
+3. **CHORE-44.** "Re-verify and close (Recommended)": no code change unless it has regressed.
+4. **CHORE-23.** "Allow a minimal edit": the UI session may edit only `openURL` in `src/ts/globalApi.svelte.ts`
+   (otherwise out of bounds under `MC-179`). The edit is kept minimal and listed in the session's report, so the merge
+   is expected.
+
+### MC-201 — The mobile batch's product choices
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** listed per item below.
+- **Related:** `MC-068`, `MC-179`, `MC-200`
+
+**What was decided:**
+1. **CHORE-20.** "Save/discard pair in edit mode (Recommended)": while a `mobilechat` message is being edited, a Save and
+   a Discard button are shown inside the bubble. The editor still opens by "click to edit". Not chosen: the full
+   standard button row under each `mobilechat` bubble; both.
+2. **Long-press (amended within the same session).** The maintainer first chose "Yes, add touch (Recommended)" for the
+   long-press helper. The Orchestrator then raised that on a touchscreen a long-press inside a textarea is the normal way
+   to select text or open the paste menu, so touch long-press in the message editor would discard the typed edit, and in
+   the translation editor would save and close it mid-edit. The maintainer then chose "Delete button only
+   (Recommended)": touch long-press is added for the delete button only (force delete on touch); both editors keep a
+   mouse-only long-press, and on `mobilechat` the new Save and Discard pair is the exit. Not chosen: everywhere, as first
+   answered; nowhere.
+3. **CHORE-56.** "No, just stop the error (Recommended)": a touch that starts on a button, input, select or textarea
+   still does not count as a swipe. Only the error, and the skipped tracking of the other touches in the same event, is
+   fixed. Not chosen: allow swipes from controls.
+4. **CHORE-19.** "Fixed dark text there (Recommended)": on the always-light `mobilechat` bubble and the `cardboard` card
+   only, text uses fixed dark colours, as the draft restore marker already does (`MC-068`). Other themes are unchanged.
+   Not chosen: make those surfaces follow the colour scheme.
+
+### MC-202 — CD-3, the first records and the mobile batch are committed as one commit; `.claude/launch.json` stays out
+
+- **Tag:** decision (the maintainer's answer to the UI session Orchestrator's multiple-choice question, and the
+  maintainer's instruction to commit)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer. The question put was "The 7 language files contain both CD-3's key and the mobile batch's
+  keys on adjacent lines. How should I commit?" The selected option label is quoted below, as is the maintainer's
+  instruction.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Two commits via staged blobs" (build CD-3-only copies of the seven language files in the
+  scratchpad and stage them through index plumbing, so CD-3 and the mobile batch commit separately); "I'll split it
+  myself" (the Orchestrator stops and the maintainer stages and commits the two parts).
+- **Related:** `MC-179`, `MC-200`, `MC-201`
+
+**What was decided:**
+1. **One commit.** "One combined commit (Recommended)": CD-3, the mobile batch with its tests, and the first batch of
+   records are committed together. The Orchestrator had planned two commits, but the in-place split of the shared
+   language files was blocked by the tool-permission classifier; the Orchestrator did not work around the block and asked.
+   The commit is `e9a80ec5` on `feat/ui-batch` (local, not pushed).
+2. **`.claude/launch.json` stays uncommitted.** The maintainer's word was "commit both, leave launch.json out".
+   `launch.json` carries a new `risuai-ui-scratch` entry.
+
+### MC-203 — The chat UI batch: what the plain Copy leaves out (CHORE-69), and the translation editor stays open (CHORE-21)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below. Item 1's second and third points record what the maintainer accepted when the Orchestrator
+  put them, on 2026-10-03.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for CHORE-69, "Thinking + hidden blocks" (also drop hidden or collapsed HTML, as the card
+  does), "Exactly what is shown" (copy the rendered message as plain text) and "Keep as is" (record the raw copy as
+  intended); for CHORE-21, "Lock while saving" (disable the textarea and Save during the write).
+- **Related:** `MC-166` 5, `MC-179`, `MC-200` 1
+
+**What was decided:**
+1. **CHORE-69, what the plain Copy button leaves out.** "Thinking only (Recommended)":
+   - The plain Copy button leaves out closed `<Thoughts>` sections only. Markdown, hidden HTML and inlay tags stay in the
+     copied text.
+   - **Fallback (accepted):** if only thinking remains, the message is copied unchanged.
+   - **Line breaks at a removal point (accepted):** a block at the very start of the message drops the line breaks after
+     it. Line breaks only, never spaces or tabs. Anywhere else, the two runs of line breaks that the removal joins become
+     the longer of the two, with no cap; on a tie the run before the block wins. Spaces before a block mean it is not "at
+     the start".
+   - **Copy as card, and its `text/plain` companion, are unchanged.** CHORE-68 is locked until the maintainer says
+     CHORE-55 stage 3 is merged (`MC-179` 4), so the card's code is not touched in this batch.
+2. **CHORE-21, the translation editor after a save.** "Keep editor open (Recommended)": if the user typed during a
+   translation save, the editor stays open and that text is kept as a draft. The rule: only the save that leaves no save
+   from that view pending treats its text as final.
+
+### MC-204 — The TTS batch's product choices (CHORE-15): the Hugging Face endpoint, what is spoken, Stop, and continuations
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below. Items 4 and 5 were asked after the Gate 1 escalation to `senior-advisor` (ledger row 840); items
+  1 to 3 were asked earlier.
+- **Reasoning:** none stated, except the maintainer's own words quoted in item 1.
+- **Alternatives rejected:** listed per item below.
+- **Related:** `MC-011`, `MC-179`, `MC-200`, `MC-205`; CHORE-15; ledger rows 834 to 853.
+
+**What was decided:**
+1. **The Hugging Face endpoint.** "Fix and switch endpoint". The maintainer's words: "can confirm that current
+   api-inference.huggingface.co is indeed outdated. fix and switch the endpoint." The Huggingface voice mode's request
+   moves to `https://router.huggingface.co/hf-inference/models/${model}`, found by the Orchestrator's web lookup (ledger row
+   835). Not chosen: "Fix TTS-1/2, file a ticket (Recommended)" (fix the language and retry bugs, and file the endpoint as a
+   ticket); "I'll check it myself first".
+2. **What is spoken.** "Parse in all three (Recommended)": the speaker button, auto-TTS and `/speak` speak CBS-parsed text
+   with closed `<Thoughts>` sections removed. Not chosen: "Button only".
+3. **Stop TTS.** "Full stop (Recommended)": the Stop TTS entry is shown for every voice mode, stops all audio including
+   VITS, and cancels requests in flight. Not chosen: "Show for all modes only".
+4. **Continuations.** "Speak only the addition (Recommended)": a fresh reply is spoken whole; a continuation (auto-continue
+   or the Continue button) speaks only its addition. Not chosen: "Speak the whole reply each time"; "Don't speak
+   continuations".
+5. **Text changed earlier in the reply.** "Speak from the first change (Recommended)": when a script or trigger changed
+   earlier text, speech starts at the first point where the new text differs from the old. Not chosen: "Speak the whole
+   reply".
+
+### MC-205 — "Do not probe upstream" means do not overload or interfere with upstream services; looking up documentation online is fine (clarifies MC-081)
+
+- **Tag:** clarification (of `MC-081`)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in the same exchange as `MC-204`. `MC-081` records the maintainer's request that the
+  `sv.risuai.xyz/cryptokey` endpoint not be probed; Live-State carries it as "do not probe upstream services (`MC-081`)".
+- **Reasoning:** the maintainer's own words, below.
+- **Alternatives rejected:** none; stated directly, not chosen from options.
+- **Related:** `MC-081`, `MC-204`; ledger row 835.
+
+> small correction to my past decision: "do not probe upstream" means 'do not overload or mess with risurealm or other
+> upstream risuAI services. looking up docs or informations online is okay.
+
+**What was decided:**
+- **The rule means** not to overload or interfere with RisuRealm or other upstream RisuAI services. Looking up
+  documentation or information online is allowed.
+- **Applied in this session:** the Orchestrator's web lookup of the Hugging Face documentation and the `huggingface.js`
+  source for CHORE-15 (ledger row 835).
+- **Left unchanged:** `MC-081`'s body, which still carries the old wording (it has a one-line forward reference to this
+  entry), and the Live-State "Network" bullet in the browser-check section ("do not probe upstream services (`MC-081`)"),
+  which sits outside the UI session's block.
+
+### MC-206 — The Global Lorebook and Global Regex settings pages are retired with their data kept; the sidebar's close strip shows an X (CHORE-14)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option
+  labels are quoted below, with the option text each one carried.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for UI-1, "Retire + export leftovers" (also add a Settings button, shown only when leftover global lorebook or regex data exists, that exports it as a module file) and "Leave as is" (close UI-1 as upstream's intended behaviour); for UI-2, "Remove the empty strip" and "Leave as is".
+- **Related:** `MC-049`, `MC-088`, `MC-093`, `MC-175`; CHORE-14; ledger rows 854 to 858.
+
+**What was decided:**
+1. **UI-1, the Global Lorebook and Global Regex pages.** "Retire, keep data (Recommended)". The option text read: "Delete
+   the two pages and their dead code (about 5-7 UI files: the two pages, lorepreset, the global-mode code). The saved
+   fields stay in the save file untouched, so moving a backup to and from upstream keeps working. Old leftover entries
+   stay invisible, as they are today."
+2. **UI-2, the character sidebar's close strip.** "Restore the X (Recommended)". The option text read: "Put the X icon
+   back inside the existing close strip, so the close action is visible, especially on touch. One file (Sidebar.svelte)."
+
+**Rules that follow:**
+- The Global Lorebook and Global Regex settings pages are retired.
+- `db.loreBook`, `db.loreBookPage` and `db.globalscript` are kept untouched, for the round trip (`MC-175`).
+- The character sidebar's close strip shows an X.
+
+### MC-207 — The Playground and modules batch: the Embedding tool's own key and URL, the modules' real order, one refresh on editor close, and the persona's embedded module stays inert (CHORE-16 PG-4, CHORE-12 MOD-1, MOD-2, MOD-6)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions, in two rounds,
+  and one instruction in chat)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option labels are
+  quoted below; the option text each one carried is not reproduced here. MOD-1's second question was asked after Gate 1
+  round 1 (ledger row 863) found that turning MOD-1 on would also connect the embedded module's MCP and stamp its low-level
+  access on Lua triggers with no consent step.
+- **Reasoning:** for MOD-1, the instruction quoted below. None stated for the others.
+- **Alternatives rejected:** for PG-4, "Fully separate" and "Keep shared, add a note"; for MOD-1's first question, none (it
+  was answered "Turn it on", then superseded); for MOD-1's second question, "Content only (Recommended)" and "Everything, as
+  upstream wrote it"; for MOD-2, "Real order + reordering" and "Leave as is" in the first round, and "Settings list only"
+  in the follow-up; for MOD-6, "Leave it (Recommended)".
+- **Related:** `MC-011`, `MC-175`, `MC-179`, `MC-206`; CHORE-16; CHORE-12; CHORE-04 (the Main Campaign's); CHORE-05; QOL-10
+  in `Agents/Maybe-Later.md`; ledger rows 860 to 868.
+
+**What was decided:**
+1. **PG-4, the Playground Embedding tool's shared settings.** "Own key+URL, label rest (Recommended)".
+2. **MOD-1, a persona's embedded module is never applied to chats.** First "Turn it on". After Gate 1 round 1 (B1), the
+   follow-up question offered "Content only (Recommended)", "Everything, as upstream wrote it" and "Back out: leave it
+   inert". The answer was "Back out: leave it inert". The maintainer then wrote in chat: "MOD-1 seems more like a leftover
+   feature that is left half-implemented. add it into maybe later.md so we can come back to it properly later." That is
+   QOL-10 in `Agents/Maybe-Later.md`.
+3. **MOD-2, the order of the module lists.** "Show the real order (Recommended)". For the chat's module picker, the
+   follow-up was answered "Both lists (Recommended)".
+4. **MOD-6, a module editor's edits do not refresh an open chat.** "Refresh once on close".
+
+**Rules that follow:**
+- The Playground Embedding tool has its own copy of the OpenAI key and the custom URL, which editing never writes back to
+  the settings. The custom key and the request model stay the live memory settings, and the page says so.
+- The persona's embedded module stays inert. It is not applied in this fork, as in upstream, until the maintainer picks
+  QOL-10 up.
+- The Modules settings list and the chat's module picker show the modules in the order they are stored. The search still
+  filters.
+- Closing the module editor refreshes the open chat once.
+
+**Orchestrator dispositions (not maintainer decisions):** MOD-3 (`RisuModule.cjs` is declared and carried as data, never
+read) is left as it is. MOD-4's two unused language keys go to CHORE-05. MOD-5 (no editing UI for a module's icon) is a new
+feature and stays open. PG-4's two blank-field error messages and the Playground pages' other labels are hard-coded
+English, left for CHORE-05. The Vietnamese and German wording of the new note is low-confidence, by the translator's own report (ledger row 865).
+
+### MC-208 — The small-items batch: the chat import drops `.txt`, `runAxLLM` is implemented, nested trigger runs are capped, and move scripts honour `g` (CHORE-57, CHORE-09 items 1, 3, 5 and 6)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option labels
+  are quoted below; the option text each one carried is not reproduced here. The `g` question was asked after the
+  Orchestrator disclosed that a script with the flag box off defaults to `g`, which a move now honours.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for CHORE-57's `.txt`, "Parse Risu's TXT export" and "Leave as is"; for CHORE-09's multi-select,
+  "Hide runAxLLM in V1" was not selected; for the `runAxLLM` model, "Auxiliary model" (mode `'submodel'`); for the cap
+  value, "100" and "1000"; for the `g` flag, "Only explicit g" and "Drop this change".
+- **Related:** `MC-011`, `MC-175`, `MC-179`, `MC-200` 4; CHORE-57; CHORE-09; CHORE-13; CHORE-11; CHORE-23; ledger rows 869 to
+  877.
+
+**What was decided:**
+1. **CHORE-57, the chat import's `.txt`.** "Drop .txt, alert (Recommended)".
+2. **CHORE-09, what to fix (multi-select).** "Honour g in move_top", "Cap low-level recursion" and "Implement runAxLLM". "Hide
+   runAxLLM in V1" was not selected.
+3. **The `runAxLLM` model.** "Other auxiliary (Recommended)": the mode `'otherAx'`, the Lua `axLLM`'s default mode.
+4. **The nesting cap's value.** "Measure, then pick (Recommended)".
+5. **The `g` flag, after the disclosure that box-off scripts default to `g`.** "Yes, honour g (Recommended)".
+
+**Rules that follow:**
+- The chat import picker offers `json`, `jsonl` and `html`. A picked file that matches none of them (possible when `allowAllExtentionFiles` turns the picker's filter off) shows the no-data error.
+- `runAxLLM` in a V1 trigger with low-level access calls the other auxiliary model, as `runLLM` calls the main model. This
+  is **fork-only**: upstream has the effect's type and editor entry but no runtime for it.
+- A nested trigger run started through `runtrigger`, `v2RunTrigger` or `/trigger` is capped at 10 without low-level access and
+  at a fixed lower limit with it, instead of unlimited. The limit was set by the measurement the maintainer asked for.
+- `@@move_top` and `@@move_bottom` (and the `<move_top>` and `<move_bottom>` flags) honour `g`, including the default `g` of a
+  script with the flag box off, so every match moves.
+
+**Disclosures (consequences the maintainer should know; the maintainer has not answered them separately):**
+- **(a) The cap counter is per run and cumulative, not only depth.** A low-level run that starts more than 50 nested runs in
+  sequence (a loop, for example) has the later ones skipped. At HEAD, low-level runs were unlimited. Normal runs already had
+  this cumulative cap of 10.
+- **(b) The translator (edittrans) engine now matches the main regex engine for a flag text made only of tags.** With the flag
+  box on, a flag text such as `<cbs>`, `<order 1>` or `<move_top>` is now global (`g`) instead of `'u'`. This affects plain
+  replace scripts too, not only moves.
+- **(c) Fan-out is bounded in depth, not in total work.** A trigger that calls itself twice per level is stopped at the depth
+  limit, but the total number of runs it starts is not bounded by it.
+- **(d) The cap was measured on Node and Vitest stacks.** Browser and mobile stacks may be smaller.
+
+**Orchestrator dispositions (not maintainer decisions):** PT-1: lorebook and postEverything items no longer count their
+`innerFormat` in the token estimate. CHORE-23: `openURL` logs a fixed warning when the system cannot open a link. CHORE-57: JSONL
+blank lines are skipped and the extension tests ignore case. CD-1 and CD-2: dead code removed. CHORE-09 item 5 (`$<name>` in a
+move's output) fixed with the move change. The cap rule, the Orchestrator's reading of "well under": 1000 if that is at most a
+quarter of the smallest measured depth, else the largest round number at most a quarter of it. Closed without code: PT-2 (an
+inert field that round-trips with upstream presets; removing it needs storage-lane edits), CD-5 (boot and backup code write and
+read `groupChat.emotionImages`: `characterDefaults.ts`, `bootstrap.ts`, `globalApi.svelte.ts`, `drive/backuplocal.ts`),
+CHORE-09 item 2 (already fixed on the fork), item 7 (what remains is the no-subject fallback, which belongs to the Main
+Campaign's origin plumbing), item 8 (moot after CHORE-14), and items 4, 9, 10 and 11 (left: fixing them would change what
+upstream cards do).
+
+### MC-209 — Translation batch 1: errors and the Playground first; names stay English in Settings; dead keys go in their own later batch (CHORE-05)
+
+- **Tag:** decision (the maintainer's answers to the UI session Orchestrator's multiple-choice questions)
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, answering the UI session Orchestrator's multiple-choice questions. The selected option labels
+  are quoted below; the option text each one carried is not reproduced here. The questions were asked after the investigator
+  (ledger row 878) refuted CHORE-05's key-drift premise.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** first batch "Errors only" and "Common UI first"; Settings "Decide later"; dead keys "Keep them"
+  and "Fold into batch 1".
+- **Related:** `MC-011`, `MC-015`, `MC-018`, `MC-058`, `MC-175`, `MC-179`, `MC-200` 4, `MC-207`; CHORE-05; CHORE-12 MOD-4;
+  CHORE-16 PG-2 and PG-4; ledger rows 878 to 886.
+
+**What was decided:**
+1. **Which batch goes first.** "Errors + Playground (Recommended)": the hard-coded alert and error strings in the in-bounds
+   files, and the Playground's labels.
+2. **How Settings is translated, in the later Settings batch.** "Names stay English (Recommended)": provider and model
+   names, API, URL, JSON and parameter names such as Top P stay English; everything else is translated.
+3. **Dead language keys.** "Separate batch (Recommended)": they are removed in their own batch, after a second check, and
+   keys that may belong to a planned feature are skipped (persistent storage, license, Claude caching).
+
+**Rules that follow:**
+- Batch 1 translates the in-bounds alert and error strings and the Playground's labels. Names that rule 2 keeps in English
+  stay English there too.
+- The Settings batch keeps provider and model names, API, URL, JSON and parameter names in English and translates the rest.
+- No key is removed in a translation batch. The dead-key batch re-checks each key first and skips the planned-feature keys.
+
+**Disclosures (consequences the maintainer should know; the maintainer has not answered them):**
+- **(a) The network hint for `Failed to fetch models: {error}` depends on the locale.** `alertError` in `src/ts/alert.ts`
+  adds a network and CORS hint when the message text includes `Failed to fetch` or Firefox's `NetworkError when attempting
+  to fetch resource.`; it is a text match, not a network test. In English the message's own prefix matches, so the hint
+  appears on every error of that message. In the other six locales the translated prefix does not match, so the hint
+  appears only when the raw error text appended to the message contains one of those two strings. A guard test covers the
+  `Failed to fetch` case (`src/lang/fetchModelsFailed.test.ts`).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Six messages stay English:** `Failed to fetch model response after tool execution` at five request sites
+  (`request/google.ts`, `request/openAI/requests.ts`, `request/openAI/responses.ts`; the Orchestrator's count of sites
+  is five) and `Failed to fetch WaveSpeed models` in `OtherBotSettings.svelte`. `alertError` adds its network hint when the
+  message includes `Failed to fetch`, and `globalFetch` returns `ok: false` on real network failures as well as on other
+  failures, so translating them would lose a hint that is correct for the network case. The Orchestrator checked both in
+  source (ledger row 880). Showing the hint only for real network failures needs its own change.
+- **Deferred:** messages passed to `throw new Error` (a catch block or a plugin may read them); the five `alertToast`
+  strings in `globalApi.svelte.ts` (out of bounds, `MC-200` 4); the `/?` slash-command help in `command.ts`; the
+  drag-and-drop debugging dump in `LoreBookList.svelte`.
+- **Typo fixes made while routing the strings** (the English text changed on purpose): "screenShot" to "screenshot";
+  "There must be least one preset." to "There must be at least one preset." (now one key, shared with
+  `TranslatorPresetSettings.svelte`); "File invaid or corrupted" to "invalid"; "copywrite" to "copyright"; "additional
+  Assets" to "additional assets"; "Converting  video" (two spaces) to one space.
+- **New keys are flat strings with `{name}` placeholders**, filled by `fillLang` in the new `src/lang/fill.ts`, not
+  function-valued keys, because the translation export in `languageSettingsData.svelte.ts` serialises `language` with
+  `JSON.stringify` and drops function keys (the Orchestrator verified this, row 879).
+- **The locale parity guard** (`src/lang/localeParity.test.ts`) fails when a locale's key set, a value's kind, or a
+  string's `{placeholder}` set differs from `en.ts`. It will fail any branch, the Main Campaign's included, that adds an
+  English key without all six translations. That is intended.
+- **Translation choices, low-confidence by the translator's own report (row 882):** Korean `{type}과(와)` and
+  `{version}(으)로`, 네거티브 프롬프트 and 바이브; Vietnamese does not copy three odd existing terms (Tính cách for
+  character, Cắm vào for plugin, Sách truyền thuyết for lorebook); German uses the formal "Sie", Spanish the informal "tú".
+  A native-speaker review is optional and listed in CHORE-05.
+
+### MC-210 — Translation batch 2: the Settings pages next (CHORE-05); the rest are the Orchestrator's dispositions
+
+- **Tag:** decision (the order of work); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, after batch 1 was gated: "let's commit and do settings page next." The rule that names stay
+  English in Settings is `MC-209`'s; this entry adds no new maintainer rule.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-091`, `MC-179`, `MC-209`; CHORE-05; ledger rows 887 to 894.
+
+**What was decided:**
+1. **Which batch goes next.** The Settings pages (`src/lib/Setting/**` and the settings registries in `src/ts/setting`).
+   `MC-209`'s rule applies unchanged: provider and model names, API, URL, JSON and parameter names stay English; the rest is
+   translated.
+
+**Rules that follow:**
+- Names that `MC-209` keeps English stay English in this batch. Everything below is how the Orchestrator applied that rule;
+  none of it was put to the maintainer.
+
+**Disclosures (consequences the maintainer should know; the maintainer has not answered them):**
+- **(a) New custom sidebar items store a readable label, not an id.** `CustomSidebarConfig.svelte` showed and stored
+  `language[type.labelKey] || type.id`. It now shows and stores `getLabel(type) || type.id`. A newly added custom sidebar
+  item therefore stores its label (the language value if it has a `labelKey`, otherwise its English `fallbackLabel`, as
+  for the parameter items Top P, Top K and the like) instead of an id such as `adv.visionQual`; only an item with neither
+  keeps its id. Items already stored are untouched.
+- **(b) Three English strings changed whitespace.** `Upload<br />Image`, `Upload<br />Vibe` and `Uploading<br />Image..`
+  became single strings with a space. The English `textContent` gains a space, and the forced line break is gone: the
+  text now wraps naturally inside the 80px box and may fit on one line.
+- **(c) The NovelAI reference area is translated unevenly.** "Image Reference", "Vibe Trasfer", "Character Reference" and
+  "Upload Vibe" are translated, while sibling NovelAI labels such as "Vibe Model", "Use SMEA" and "Variety+" stay English
+  (feature names). Gate 2 flagged it (SHOULD 3). It is left as is; a native-speaker or maintainer call for a later pass.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **R3, scope amendment for `CustomSidebarConfig.svelte`** (`MC-091`, a shared-cause correction; the file is in
+  `src/lib/Others`, which the next batch covers). The old expression showed the id of every item without a `labelKey`,
+  including those with a `fallbackLabel`, and adding `labelKey`s would have changed which items showed ids.
+  It is changed together with the registry; see disclosure (a).
+- **R4, settings search also matches `fallbackLabel`,** so an English search still finds an item whose label is now
+  translated. Known limitation: an item with only a `labelKey` stays searchable only in the current language, as before.
+- **R5, parameter `fallbackLabel`s stay English** and get no `labelKey`: Top P, Top K, Min P, Top A, Repetition penalty,
+  Reasoning Effort (two items), Verbosity, Thinking Mode and Jinja Template. The prose `fallbackLabel`s are translated.
+- **R6, names that stay English:** sampler and scheduler names, the Stability style presets, resolutions and ratios, the UI
+  mode names (Standard Risu, Waifulike, Mobile Chat, CardBoard, Custom HTML), tokenizer and `LLMFormat` names, Ooba's
+  snake_case parameter names and modes, NovelAI feature names (Vibe Model, Use SMEA, Variety+ and similar), the role labels
+  User, System and assistant in `PromptSettings.svelte`, colour-scheme preset names, and keyboard key names. Translator
+  target-language names are translated (one key per language, shared by both translator dropdowns); endonyms stay. The
+  `[Translate in your own language]` option is translated.
+- **English typos kept byte-identical:** "Vibe Trasfer", "Text Spliting", "Seperator", "Malaysian", "Ukranian". Fixing them
+  is not part of this batch.
+- **Stored defaults are not translated:** `New Persona`, `New Preset`, `New Lore`, `New Folder`, `New Event`.
+- **Two fixes folded in:** (1) `accessibilitySettingsData.ts` set its six new-message-button option labels from `language.x`
+  at module level, which freezes them at import; they are now `labelKey` plus an English `label`. (2) `acc.longPressToPopupEditor`
+  had a `labelKey` with no `en.ts` key (upstream commit `e03c3897` renamed the item without adding one), so its checkbox had
+  no label; it now has a fork-only `en.ts` key, "Long Press to Open Popup Editor", and a `fallbackLabel`.
+- **Deferred:** the registry `options.placeholder` strings ("Leave it blank to use default", "Leave it blank to not use" in
+  `advancedSettingsData.ts`) need a `placeholderKey` mechanism. `CustomSidebarConfig.svelte`'s other strings ("No custom
+  sidebar items configured", "Delete", "Add Item", "Close", "Back to List"), `LoreBookSetting.svelte` and the Playground
+  Embedding "Custom (OpenAI-compatible)" option go to the next batch (SideBars and Others).
+- **Translation choices, low-confidence by the translator's own report (row 890):** `optViaSound`, `optAxModel` ("auxiliary
+  model"), `nameThinking`, `hotBadge`, `starter`, `bias`, and the German and Vietnamese wording of `visionQuality`.
+  Vietnamese uses "nhân vật" for character. A native-speaker review is optional and listed in CHORE-05.
+
+### MC-211 — Translation batch 3: SideBars, Others and the common UI in one batch (CHORE-05); the dev panels, Easter eggs, Iris dialog and split are the maintainer's, the rest are the Orchestrator's dispositions
+
+- **Tag:** decision (four choices put to the maintainer); the dispositions and disclosures below are the Orchestrator's, not the
+  maintainer's
+- **Date:** 2026-10-03
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "commit and start batch 3" (also the commit word for batch 2, `694a4c89` code and
+  `258e2701` records), then four answers to `AskUserQuestion`. Dev panels: "Translate labels only (Recommended)". Easter eggs:
+  "Keep English (Recommended)". Iris dialog: "Move into language files". Split: "One batch (Recommended)".
+- **Reasoning:** none stated.
+- **Alternatives rejected:** dev panels: "Translate everything" and "Leave in English"; Easter eggs: "Translate them"; Iris
+  dialog: "Leave the dictionaries" (the recommended option, not chosen); split: "Two batches" (Others first, then the rest).
+- **Related:** `MC-091`, `MC-179`, `MC-200` 4, `MC-209`, `MC-210`; CHORE-05; ledger rows 895 to 899.
+
+**What was decided (the maintainer's):**
+1. **Dev panels.** The Dev Tool sidebar and the alert dialog's request-log and generation-info panels: translate the labels
+   only. The option chosen read "translate ordinary words ...; keep technical terms like GenID, Request Body, Chunks
+   English". The full list of terms kept English is the Orchestrator's disposition below.
+2. **Easter eggs stay English:** the `App.svelte` "RisyGTP" parody, the `UI/Title.svelte` anniversary text and the
+   `UI/Googli.svelte` "TEST".
+3. **Iris dialog.** The intro and unsupported-model text move into the language files, so all seven languages get them; the
+   existing ko and zh-Hant text is carried over.
+4. **One batch** for SideBars, Others and the common UI.
+
+**Rules that follow:**
+- `MC-209`'s rule (provider, model, API, URL, JSON and parameter names stay English) and `MC-210`'s (stored defaults are not
+  translated; English typos kept byte-identical; NovelAI feature names stay English) apply unchanged. This entry adds no new
+  maintainer rule beyond the four answers above.
+
+**Disclosures (consequences the maintainer should know).** *Answered:* the maintainer approved the batch's changes and
+dispositions together, before the commit: "changes made by you seems reasonable; approved. go ahead and commit batch 3."
+- **(a) Folder colour select, non-index answers.** In `Sidebar.svelte` and `SideChatList.svelte`, an answer to the folder
+  colour select that is not a list index now writes nothing. At HEAD, Sidebar threw an unhandled TypeError
+  (`colors[sel].toLocaleLowerCase()` on undefined) and `SideChatList` stored undefined as the folder colour. The stored colour
+  values are unchanged (the English lower-case names).
+- **(b) The Iris intro line is sent to the model.** It is the first assistant turn in the history. Users of cn, vi, de and es
+  now send it in their language (they sent English before); ko and zh-Hant are unchanged.
+- **(c) zh-Hant Iris unsupported-model line.** It was in Simplified characters at HEAD and is rewritten in Traditional
+  characters.
+- **(d) `GridCatalog` description.** An entry without creator notes now has `desc` `''` instead of 'No description'. The
+  display is the same in English.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Kept English:** the `CharConfig` TTS engine parameter labels (the Orchestrator's reading of `MC-209`; the maintainer may
+  revisit); Realm NSFW/SFW tags; WelcomeRisu "Choose your language"; stored defaults ("New Folder", "New Lore", "New Persona");
+  the "Performace" typo; the Iris speaker names "Iris" and "You"; the technical labels of the alert dialog panels (ID, GenID,
+  Bytes, URL, Request Body, Request Header, Response, Chunks, the OK/ERR badge, export format names, the bug-report block);
+  "XHigh".
+- **Translated:** the folder colour names, through one list of value and label pairs (the stored value is the English name as
+  before); the "Unnamed X" display fallbacks; PluginAlertModal "Dev Info"; EasyPanel "Beta"; `OptionalInput` "Using default",
+  "True" and "False"; `ModelGrid` "SUB"; alt texts; Realm strings; `DefaultChatScreen` fallbacks; six `HypaV3Modal` conversion
+  errors (shown through `alertNormalWait`).
+- **Reuse rule:** an existing key is reused only when its English value is byte-identical to the literal and the key is
+  generic: a top-level key, or one of the generic `settingsPage` keys `back`, `unnamed` and `customOpenAiCompatible`. Other
+  domain-group keys (`setup.*`, `triggerCategories.*`, `triggerInputLabels.*` and the like) are not reused.
+- **Deferred:** `MobileCharacters.svelte` "Unnamed"; the `HypaV3Modal` conversion errors have no component test; the registry
+  `options.placeholder` strings (they need a `placeholderKey`); thrown errors; `globalApi` toasts (out of bounds, `MC-200` 4);
+  the `/?` help; the `LoreBookList` drag debug dump; UI text produced in `src/ts/**` (for example `devToolActions` output);
+  `Legal.svelte` (never edited).
+- **Translation choices, low-confidence by the translator's own report (row 897):** the regex flag names; the prompt-diff view
+  names (Unified, Split, Intraline, Legacy); Autopilot; Instruct; Join; Forked; the vi CHAR/CHAT badge length; the de and es
+  Iris text uses informal du and tú against the file's formal register; the zh-Hant intro and tip read as mainland wording
+  (kept). A native-speaker review is optional and listed in CHORE-05.
+
+### MC-212 — Translation batch 4: dead-key removal (CHORE-05); the request and the review deferral are the maintainer's, the dispositions are the Orchestrator's
+
+- **Tag:** decision (the request and the deferral); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "let's remove the unused key next." Then, on the native-speaker review: "full native
+  speaker check has to be deferred as while I am capable of english and korean, as a single maintainer I can't check all 6
+  languages." Then: "korean and english translations looks good to me. will report if I find any issue." (The quote does
+  not name its scope; the Orchestrator reads it as the translations so far, batches 1 to 3.)
+- **Reasoning:** the maintainer's, on the deferral: they read English and Korean, and as the only maintainer cannot check all
+  six non-English languages. No reasoning was stated for the request.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-179`, `MC-207`, `MC-209`, `MC-210`, `MC-211`; CHORE-05; ledger rows 900 to 904.
+
+**What was decided (the maintainer's):**
+1. **Remove the unused translation keys** as the next batch (batch 4).
+2. **The full native-speaker review is deferred.** The reason is the maintainer's own, quoted above.
+3. **The Korean and English translations look good to the maintainer**, who will report any issue they find (scope as read
+   above). The other five locales (cn, zh-Hant, vi, de, es) remain unreviewed by a native speaker.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **The seven planned-feature keys stay.** The maintainer's rule is `MC-209` decision 3 (three categories: persistent
+  storage, license, Claude caching); the seven key names are the investigator's.
+- **Keep `globalLoreBook` and `globalRegexScript` until after the merge.** The Main Campaign branch
+  `fix/persistence-conflict-platform-hardening` still reads them in `GlobalLoreBookSettings.svelte` and `GlobalRegex.svelte`;
+  they were retired on this branch in `408c32dd`. Delete them after the merge if those pages go.
+- **Leave the 35 possibly-dead names inside computed groups for later** (`help` 11, `setup` 18, `triggerDesc` 6). The scan
+  treats those groups as wholly live because they are read by computed access.
+- **No new test.** There is no defect to reproduce. A guard that every key is referenced was rejected: computed groups make it
+  unsound, or it needs a hand-kept allowlist.
+- **Scope of the removal:** 131 keys, deleted from all seven language files together (ledger rows 900 to 903).
+
+### MC-213 — Translation batch 5: finish the deferred items in three gated batches (CHORE-05); the request, the split and the TTS rule are the maintainer's, the dispositions are the Orchestrator's
+
+- **Tag:** decision (the request, the split and the TTS label rule); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "let's complete the earlier deferral and possible leftovers." They then answered two
+  questions the Orchestrator asked (the split, and the `CharConfig` TTS labels); the answers are in the list below.
+- **Reasoning:** none stated for the request or the answers.
+- **Alternatives rejected:** the options not chosen. On the split: "One big batch" and "5a only for now". On the TTS
+  labels: "Keep all English" (batch 3's disposition) and "Translate all". The chosen options were the ones marked
+  "(Recommended)".
+- **Related:** `MC-179`, `MC-200`, `MC-209`, `MC-211`, `MC-212`; CHORE-05; ledger rows 905 to 910.
+
+**What was decided (the maintainer's):**
+1. **Finish the deferred translation items and the leftovers** from batches 3 and 4.
+2. **Split the work into three gated batches.** The maintainer chose "Three gated batches (Recommended)"; the option
+   text, written by the Orchestrator from the investigator's sizing (row 906), proposed 5a small and safe items, 5b
+   user-visible errors (about 40 keys) and 5c the dev-tool preview text and the `CharConfig` TTS labels.
+3. **`CharConfig` TTS labels:** translate the descriptive (prose) labels and keep parameter and engine names in English (the
+   `MC-209` rule).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **`characterCards.ts` and `processzip.ts` strings wait until after the Main Campaign merge.** They sit inside Main Campaign
+  hunks (`MC-179`).
+- **Stay English:** plugin API v3 throws (47, plugin-author-facing), MCP throws (22), internal and swallowed throws, JSON-dump
+  throws, the `scriptings` `'Error: '` strings returned to Lua, and the `cbs.ts` tag docs.
+- **`v2UnsupportedTrigger` is kept.** It is dead in code but reachable through `triggerDesc[type]` from saved effect data (row
+  905).
+- **`LoreBookList` debug dumps:** both are commented out, so there is nothing to translate and no change.
+- **The `globalApi` toasts are not touched:** `globalApi.svelte.ts` is out of bounds for the UI session except `openURL`
+  (`MC-200` 4).
+- **The reroll Apply defect is folded into batch 5a** (found by Gate 1, row 907).
+- **`OtherAx` is translated.** Its siblings in the same accordion are translated (Gate 1 N1 asked the Orchestrator to confirm).
+- **Scope of batch 5a:** 29 dead computed-group names deleted, 5 new keys, ledger rows 905 to 910.
+
+### MC-214 — HypaV3 re-roll: an edit after a failed re-roll re-enables Apply (CHORE-05 batch 5a follow-up)
+
+- **Tag:** decision
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat, after the Orchestrator reported batch 5a and listed Gate 2's optional item (after a
+  failed re-roll, hand-typed text in the re-roll box cannot be applied): "let's commit and apply the optional idea." The same
+  message was the commit word for batch 5a (`fb454bc0` code, `e6c45b3d` records).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-213`; CHORE-05; ledger rows 911 to 913.
+
+**What was decided (the maintainer's):** after a failed re-roll, once the user edits the re-roll text, Apply is enabled and
+applies the edited text.
+
+### MC-215 — Translation batch 5b: user-visible error and request-failure strings (CHORE-05)
+
+- **Tag:** decision (the request and the three answers); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "go ahead with 5b." They then answered three questions the Orchestrator asked
+  (AskUserQuestion). The option text was the Orchestrator's; the maintainer chose by label: "Translate all (Recommended)",
+  "Fix them (Recommended)" and "Translate it (Recommended)".
+- **Reasoning:** none stated.
+- **Alternatives rejected:** the options not chosen. On the request-failure messages: "Alert-only rows" (about 22 keys;
+  request results stay English). On the three defective English strings: "Keep byte-identical". On the plugin rename error: "Keep
+  English".
+- **Related:** `MC-209`, `MC-211`, `MC-213`, `MC-200`, `MC-179`; CHORE-05; ledger rows 914 to 918.
+
+**What was decided (the maintainer's):**
+1. **Translate all the user-visible request-failure messages**, not only the ones shown in an alert. The question the
+   maintainer answered said that these texts are also read by Lua, triggers, MCP and plugins (`runLLMModel`), and are saved in
+   the chat when "inlay error response" is on, and that some results already carry translated prefixes.
+2. **Fix three defective English strings** while translating them: the Horde "Response not possible" message joined to its
+   "with ..." text without a space; the "not allowed dude to browser/os security policy" text; and the "failed ... failed!"
+   WebSocket text.
+3. **Translate the plugin-update rename error** shown to the installer.
+
+**Disclosures:**
+- **(a) Translated failure text now reaches scripts.** A request-failure text is returned as `{type:'fail', result}`. By the
+  investigator (row 914), that text reaches Lua `LLM` and `axLLM` (prefixed `'Error: '` in `scriptings.ts`), the trigger `runLLM`
+  result (a chat variable), MCP `aiaccess` and the plugin v3 `runLLMModel`. `throwError` also saves the text into the chat as a
+  `risuerror` block when `inlayErrorResponse` is on (the setting has no default). A script that matches English words in these
+  results would stop matching in a non-English UI. The investigator found no such match in the repository. The investigator
+  found no TRANSLATE literal that contains `'Failed to fetch'` or `'NetworkError'`, which are the texts `alertError` matches.
+- **(b) Three English texts changed** (all other English values are byte-identical to HEAD; Gate 2 compared every value and
+  composite):
+  - `websocketConnectFailed`: "WebSocket connection to '{url}' failed." (HEAD: "WebSocket connection failed to '...' failed!").
+  - `hordeNotPossible` "Response not possible." and `hordeNotPossibleWith` "Response not possible: {message}" (HEAD joined the
+    two parts with no space: "Response not possiblewith ..."). The punctuation is Gate 1's NIT, accepted.
+  - `localStreamingBlocked`: "Local requests cannot use streaming because of browser and OS security policy. Turn off
+    streaming."
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Sites:** 36 new keys and 2 reused keys (`errors.unexpectedResponseType`, `errors.vertexAuthIncomplete`), from the
+  investigator's table of 42 TRANSLATE sites (row 914) plus the plugin rename error.
+- **Keys sit under `errors`** (the existing precedent), not top level (Gate 1 m2). Placeholders live inside the key text, for
+  example `{provider}: {error}` and `{tokens}` (m3).
+- **`chatTemplate.ts` "Template type is not set" stays English** (m1). It is unreachable in normal use: the type defaults with
+  `??= "chatml"` and the select has no empty option, so only a crafted `.risup` or a plugin could reach it.
+- **The `src/main.ts` vite-preload alert stays English** (m4). It can fire before the language loads, and while module loading
+  is failing.
+- **Other English typos stay byte-identical** outside the three fixes: "seperate", "SyntaxError Found", "Unsupported Type
+  Detected", "Failed to Auto get path".
+- **Stay English (the keep-English list in the investigator's table):** the five "Failed to fetch model response after tool
+  execution" sites, "Aborted", "All models failed", the plugin-blocked text, the preview JSON, tool-call failure texts sent to
+  the model, the Anthropic stream "Overload detected, retrying..." and "Error:" plus message, `sp.error` from `memory/**`, the
+  `pluginListMerge` header errors and the Rust `unsupportedReason`.
+- **Known leftovers:** `hanuraiMemory.ts` "Required Tokens" (`process/memory`, out of bounds); the `processzip.ts` "Failed to save
+  N assets" text until the Main Campaign merge (`MC-179`), and the `characterCards.ts` and `processzip.ts` strings after it.
+- **Test mock:** `requests.responses.test.ts` mocks `src/lang` as `{errors:{httpError:'HTTP '}}`. The plan's claim that it was
+  unaffected was false (Gate 1 M1); the mock now carries the English `incompleteResponse` keys.
+- **Low-confidence translation choices, for the deferred native-speaker review (`MC-212`):** "sidecar" is kept in English in
+  cn, zh-Hant, vi, de and es, and written 사이드카 in ko; cn and zh-Hant use "access token" (访问令牌, 存取權杖) where `toomuchtoken`
+  uses Token; vi keeps "plugin" in English and its `requiredTokens` "Số Token bắt buộc" differs from `toomuchtoken`'s term; de
+  uses "Charakter", "Voreinstellung" and "Assets"; es uses tú, "Reverificando tokens" and "solicitud por lotes"; ko
+  `hordeNoGenerations` is interpretive ("작업이 완료되었지만 생성된 결과가 없습니다"). The ko "에셋" form follows `ko.ts` (at HEAD
+  `a5699f55`: 에셋 on 39 lines, 프리셋 on 24, 애셋 on 0).
+- **Scope of batch 5b:** 36 new keys in seven languages, 14 production files, 1 edited test mock, 6 new test files, ledger rows 914 to 918.
+
+### MC-216 — Translation batch 5c: dev-tool preview text, the CharConfig TTS labels and Bias (CHORE-05)
+
+- **Tag:** decision (the request); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "commit and start 5c". It was also the commit word for batch 5b (`edc8c8b6` code,
+  `ce33d027` records). No question was put to the maintainer for 5c.
+- **Reasoning:** none stated. The TTS rule is `MC-213` decision 3 ("Translate prose, keep names (Recommended)"); the dev-panel
+  rule is `MC-211` decision 1 (translate labels only, technical terms English). No new maintainer decision.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-209`, `MC-210`, `MC-211`, `MC-213`, `MC-215`; CHORE-05; ledger rows 919 to 923.
+
+**What was decided (the maintainer's):** start batch 5c, the last of the three gated CHORE-05 batches: the text built in
+`devToolActions.ts` and `previewRunner.ts`, the `CharConfig` TTS tab labels, and the `CharConfig` Bias section.
+
+**Disclosures:**
+- **(a) VOICEVOX "Speed scale" and "Volume scale" stay English** (part of the "… scale" parameter names), beside the
+  translated GPT-SoVITS "Speed" and "Volume" (`sidebarUi.ttsSpeed`, `ttsVolume`).
+- **(b) "Temperature" is translated** (the existing `language.temperature` is reused) while "Top P" and "Top K" stay English.
+- **(c) `MC-211` kept the `CharConfig` TTS engine parameter labels English as the Orchestrator's reading of `MC-209`;
+  `MC-213` decision 3 supersedes that for the prose labels.** Names, such as
+  the engine names and "TTS", stay English.
+- **(d) Preview text is not sent to the model and is not saved.** It is rendered by `alertMd` in the dev-tool preview (row 919).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Sites:** 39 new keys (8 in `devTool`, 31 in `sidebarUi`) from the investigator's table (row 919): 9 literals in
+  `devToolActions.ts` and `previewRunner.ts`, 51 in the `CharConfig` TTS tab and 1 for Bias (label and header). Reused keys:
+  `language.prompt`, `language.model`, `language.language`, `language.temperature`, and `languageNameEnglish`,
+  `languageNameChinese`, `languageNameJapanese` and `languageNameKorean` for the matching text-language names.
+- **Q1, role headings stay English** (Function, User, System, Assistant): by analogy with `MC-210` R6, which kept User,
+  System and assistant English in `PromptSettings.svelte`; extending it to Function, Assistant and the preview headings is
+  the Orchestrator's own.
+- **Q2, Speaker, Style, Volume and Speed are translated** as ordinary words (`MC-213` decision 3).
+- **Q3, Temperature reuses `language.temperature`** (top-level, byte-identical English, already translated).
+- **Q4, the "string" placeholder and "chars" are translated** (`sidebarUi.biasTokenPlaceholder`; `maskedChars`
+  "{mask} ({count} chars)").
+- **Gate 1 (row 920), `[APPROVE]`:** M1, `botpreset.svelte` "string" is the preset-name placeholder, not the bias token (the
+  Orchestrator verified the line), so it is not shared and not touched. m1, the `CharConfig` keys go in `sidebarUi` (batch 3
+  put the sibling TTS strings there) and the preview keys in `devTool`. m2, Bias is a new `sidebarUi.bias`, translated the
+  same as `settingsPage.bias`, because the `MC-211` rule rules out reusing a domain-group key. m3 and m4 were
+  test-fixture and fallback notes: a missing key shows English in the other locales and "undefined" only in `en`.
+- **Stay English:** the engine names, "TTS", the VOICEVOX Speed, Pitch, Volume and Intonation scale names, Base URL, URL,
+  Response Format and the format names, Top P and Top K, Chunk Length, Normalize, v1 and v2, the example placeholders and the
+  role headings. `getRequestLog` in `globalApi.svelte.ts` is out of bounds.
+- **Leftovers, left alone:** the `botpreset.svelte` "string" placeholder, `PlaygroundImageTrans` "fontSize", `ToolConversion`
+  "NOTSUPPORTED" and the `CharConfig` CSS class typo `text=neutral-200`; the ko `noBias` "Bias 없음" beside `bias` "편향"
+  (existing wording, Gate 2 NIT).
+- **Locale files:** CRLF, no BOM, additions only (en +39/-0; each other locale +41/-2, the
+  two removed lines being `requestLog` and `avatarAlt`, re-added with a comma). `sidebarUi.bias` equals `settingsPage.bias` in
+  every locale (ko 편향, cn and zh-Hant 偏置, vi Độ lệch, de Bias, es Sesgo).
+- **Low-confidence translation choices, for the deferred native-speaker review (`MC-212`):** ko `instruction` 지시문 and
+  `cachePointNote` 캐시 지점; cn and zh-Hant 指令 and 参考音频文本 / 參考音訊文本, zh-Hant 快取點 and 音訊; vi `instruction`,
+  "cache point", "custom voice seed" and the "Trộn …" labels; de "Eigener Stimm-Seed", "Cache-Punkt" and
+  "Nicht-Text-Inhalt(e)"; es "Instrucción", "guion" and "cadena". "Cut N" is kept as the leading name in every locale.
+- **Scope of batch 5c:** 39 new keys in seven languages, 3 production files (`devToolActions.ts`, `previewRunner.ts`,
+  `CharConfig.svelte`, display text only), 2 new test files, ledger rows 919 to 923.
+
+### MC-217 — Translation batch 5d: the leftovers, and Spanish as a selectable app language (CHORE-05)
+
+- **Tag:** decision (the five answers); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "main session is on the last stretch before merging, so I think we have time to tackle
+  the leftovers before merging." Then five answers in two question rounds, all to the option marked "(Recommended)". The option
+  text was written by the Orchestrator. Round 1 (four questions): No Bias, "Fix all six (Recommended)" (not chosen: "Korean
+  only", "Leave them"); English, "Fix all four (Recommended)" (not chosen: "Keep byte-identical"); CSS typo, "Use theme colour
+  (Recommended)" (not chosen: "Leave it"); es export, "Add es (Recommended)" (not chosen: "Leave it"). Round 2 (after Gate 2's
+  MINOR): Spanish UI language, "Add to both (Recommended)" (not chosen: "Settings only", "Leave it").
+- **Reasoning:** none stated beyond the quote.
+- **Alternatives rejected:** the not-chosen options above.
+- **Related:** `MC-209`, `MC-210`, `MC-211`, `MC-216`, `MC-179`; CHORE-05; ledger rows 924 to 928.
+
+**What was decided (the maintainer's):**
+1. **No Bias: fix all six non-English values.** The investigator found that none uses its locale's `bias` word (row 924).
+2. **English: fix all four.** `fontSize` becomes "Font Size"; the unsupported badge "NOTSUPPORTED" becomes "Not supported" (the
+   internal value `'NOTSUPPORTED'` stays); "Loading.." becomes "Loading..." (reusing the existing key); the preset name
+   placeholder "string" becomes "Name" (reusing an existing key).
+3. **CSS typo: use the theme colour.** The `CharConfig` Style label class `text=neutral-200` becomes `text-textcolor`.
+4. **es export: add `es`** to the `translang` export list in `languageSettingsData.svelte.ts`.
+5. **Spanish UI language: add it to both** the Language setting and the welcome screen, including browser-language
+   auto-detect.
+
+**Disclosures:**
+- **(a) English text changes** (answer 2): the label "fontSize" is now "Font Size"; the badge "NOTSUPPORTED" is now "Not
+  supported"; "Loading.." is now "Loading..."; the preset name placeholder "string" is now "Name".
+- **(b) All six `noBias` values are replaced** (answer 1). They were upstream's strings (the Orchestrator verified the ko value
+  was authored upstream, blame `c422000c`, kwaroran). New values: ko "편향 없음" (was "Bias 없음"), cn "无偏置" (was "No
+  Bias"), zh-Hant "無偏置" (was "未設定 Bias"), vi "Không có độ lệch" (was "Không thiên vị", which means impartial), de
+  "Kein Bias" (was "Keine Voreingenommenheit", which means no prejudice), es "Sin sesgo" (was "Sin Bias"). English stays "No
+  Bias".
+- **(c) The `CharConfig` Style label's colour now follows the theme** (answer 3). `text=neutral-200` matched no CSS, so the
+  label inherited the parent colour.
+- **(d) Spanish is now selectable** in the Language setting and on the welcome screen (answer 5), and a Spanish browser language
+  (`es`, `es-ES` and so on) auto-selects it on first run. `es.ts` has existed since upstream `7944bb3d` (2024-08-10), but
+  neither list offered it, and `upstream/main` has the same gap. This is a **fork difference** that users coming from upstream
+  will see. The first-setup translator case for `es` (the welcome screen's `case 'es'`, which sets `db.translator = 'es'`) is
+  untested.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Reuse rulings:** `language.settingsPage.unknown` is reused in `MobileCharacters.svelte`, an extension of `MC-211`'s list
+  of generic `settingsPage` keys (the file already uses `settingsPage.unnamed`). `language.alerts.addingAssets` is reused for
+  the legacy module export, an exception to the `MC-211` reuse rule: a domain-group key, reused because the feature and the
+  English text are identical and the same file's other asset path already uses it. `language.name` and
+  `language.loadingEllipsis` (top-level keys) are reused for the preset placeholder and `makeGroupImage`.
+- **New keys (4, in seven languages):** top-level `fontSize`; `playground.notSupported`; `alerts.writingExif` "Loading...
+  (Writing Exif)"; `alerts.writingPng` "Loading... (Writing)".
+- **Gate 1 skipped** under the `AGENTS.md` carve-out (string swaps and one-line fixes). Gate 2 judged the skip justified.
+- **KEEP list (stays English):** the image-generator parameter names (Steps, Strength, Noise, Upscaler and so on; `MC-209`), the
+  Ooba parameter checkboxes, stored defaults, units, Easter eggs, plugin and CBS messages, console text, and the sentinel value
+  `'NOTSUPPORTED'` (used in `ToolConversion.svelte` and `prompt.ts`).
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** vi `noBias` (it follows the locale's
+  unusual "Độ lệch"), vi `notSupported`, de `writingPng` "(Wird geschrieben)", es `notSupported` "No compatible".
+- **Merge:** of this batch's production files only `modules.ts` also changed on the Main Campaign branch, in other lines;
+  the overlap is re-checked at merge time.
+- **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`, the
+  `hanuraiMemory.ts` "Required Tokens", and `Legal.svelte`.
+- **Scope of batch 5d:** 4 new keys in seven languages, 6 `noBias` values replaced, 10 production files besides the seven
+  locale files (`botpreset.svelte`, `PlaygroundImageTrans.svelte`, `ToolConversion.svelte`, `CharConfig.svelte`,
+  `languageSettingsData.svelte.ts`, `MobileCharacters.svelte`, `characters.ts`, `persona.ts`, `modules.ts`,
+  `WelcomeRisu.svelte`), 9 new test files and 3 tests added to `CharConfig.ttsLabels.svelte.test.ts`, ledger rows 924 to 928.

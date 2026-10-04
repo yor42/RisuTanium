@@ -46,7 +46,7 @@
                 </span>
                 {#if hotReloading.includes(plugin.name)}
                     <span class="text-sm rounded bg-amber-700 ml-2 px-2 py-1 text-white">
-                        Hot
+                        {language.settingsPage.hotBadge}
                     </span>
                 {/if}
             </div>
@@ -258,8 +258,8 @@
     <button
         onclick={async () => {
             const v = parseInt(await alertSelect([
-                "Import plugin with hot reload",
-                "Download plugin template",
+                language.alerts.importPluginHotReload,
+                language.alerts.downloadPluginTemplate,
                 language.cancel
             ]))
             switch(v){

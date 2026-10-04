@@ -17,6 +17,7 @@ import { writeInlayImage } from "./files/inlays";
 import { runScripted } from "./scriptings";
 import { calcString } from "./infunctions";
 import { createRunSubject, type Origin } from "./chatOrigin";
+import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
 
 
 export interface triggerscript{
@@ -1550,7 +1551,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                     if(runner === null){
                         break
                     }
-                    if(arg.recursiveCount < 10 || trigger.lowLevelAccess){
+                    if(arg.recursiveCount < (trigger.lowLevelAccess ? LOW_LEVEL_NESTED_TRIGGER_LIMIT : NORMAL_NESTED_TRIGGER_LIMIT)){
                         arg.recursiveCount++
                         const r = await runTrigger(runner,'manual',{
                             chat,
@@ -1630,7 +1631,8 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                     break
                 }
 
-                case 'runLLM':{
+                case 'runLLM':
+                case 'runAxLLM':{
                     if(!trigger.lowLevelAccess){
                         break
                     }
@@ -1646,7 +1648,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                         useStreaming: false,
                         noMultiGen: true,
                         subject: subject ?? undefined,
-                    }, 'model')
+                    }, effect.type === 'runAxLLM' ? 'otherAx' : 'model')
 
                     if(result.type === 'fail' || result.type === 'streaming' || result.type === 'multiline'){
                         setVar(varName, 'Error: ' + result.result)
@@ -1966,7 +1968,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                     if(runner === null){
                         break
                     }
-                    if(arg.recursiveCount < 10 || trigger.lowLevelAccess){
+                    if(arg.recursiveCount < (trigger.lowLevelAccess ? LOW_LEVEL_NESTED_TRIGGER_LIMIT : NORMAL_NESTED_TRIGGER_LIMIT)){
                         arg.recursiveCount++
                         const r = await runTrigger(runner,'manual',{
                             chat,

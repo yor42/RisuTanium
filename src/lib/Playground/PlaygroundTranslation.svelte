@@ -1,6 +1,7 @@
 
 <script lang="ts">
     import { language } from "src/lang";
+    import { fillLang } from "src/lang/fill";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import { LLMCacheStorage, runTranslator } from "src/ts/translator/translator";
     import Button from "../UI/GUI/Button.svelte";
@@ -42,11 +43,11 @@
 <TextAreaInput value={output} />
 
 <CheckInput bind:check={bulk}>
-    Bulk
+    {language.playground.bulk}
 </CheckInput>
 {#if bulk}
     <CheckInput bind:check={keepContext}>
-        Keep Context
+        {language.playground.keepContext}
     </CheckInput>
 {/if}
 
@@ -98,7 +99,7 @@
                     continue
                 }
 
-                bulkProgressText = `(${i + 1} of ${preChunks.length})`
+                bulkProgressText = fillLang(language.playground.bulkProgress, { current: i + 1, total: preChunks.length })
 
                 if(prContexts.length > 10){
                     prContexts.shift()
@@ -108,7 +109,7 @@
                 const prContext = prContexts.length > 0 ? prContexts.join('\n\n') : ''
 
                 if(prContext){
-                    bulkProgressText += ` (previous ${await tokenize(prContext)} tokens)`
+                    bulkProgressText += ' ' + fillLang(language.playground.bulkPreviousTokens, { count: await tokenize(prContext) })
                 }
 
                 const translatedChunk = await runTranslator(preChunks[i], false, sourceLang, outputLang, {
@@ -147,13 +148,13 @@
     }
 }}>
     {#if loading}
-        Loading... {bulkProgressText}
+        {language.loadingEllipsis} {bulkProgressText}
     {:else}
-        Translate
+        {language.translate}
     {/if}
 </Button>
 <Button className="mt-4" onclick={() => {
     LLMCacheStorage.clear()
 }}>
-    Clear Cache
+    {language.playground.clearCache}
 </Button>

@@ -154,7 +154,7 @@
                 markPresetDrag(e, i)
 
                 const dragElement = document.createElement('div')
-                dragElement.textContent = preset?.name || 'Unnamed Preset'
+                dragElement.textContent = preset?.name || language.unnamedPreset
                 dragElement.className = 'absolute -top-96 -left-96 px-4 py-2 bg-darkbg text-textcolor2 rounded-sm text-sm whitespace-nowrap shadow-lg pointer-events-none z-50'
                 document.body.appendChild(dragElement)
                 e.dataTransfer?.setDragImage(dragElement, 10, 10)
@@ -189,13 +189,13 @@
                 dragOverIndex = -1
             }}>
                 {#if editMode}
-                    <TextInput bind:value={DBState.db.botPresets[i].name} placeholder="string" padding={false}/>
+                    <TextInput bind:value={DBState.db.botPresets[i].name} placeholder={language.name} padding={false}/>
                 {:else}
                     {#if i < 9}
                         <span class="w-2 text-center mr-2 text-textcolor2">{i + 1}</span>
                     {/if}
                     {#if preset.image}
-                        <img src={preset.image} alt="icon" class="mr-2 min-w-6 min-h-6 w-6 h-6 rounded-md" decoding="async"/>
+                        <img src={preset.image} alt={language.settingsPage.iconAlt} class="mr-2 min-w-6 min-h-6 w-6 h-6 rounded-md" decoding="async"/>
 
                     {/if}
                     <span>{preset.name}</span>

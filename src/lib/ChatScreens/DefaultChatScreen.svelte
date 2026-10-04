@@ -8,11 +8,12 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { getCharImage } from "../../ts/characters";
     import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
-    import { livePersona, sleep } from "../../ts/util";
+    import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
     import { alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
+    import { canChatSpeak } from "src/ts/process/ttsModes";
     import MainMenu from '../UI/MainMenu.svelte';
     import AssetInput from './AssetInput.svelte';
     import { aiLawApplies, chatFoldedState, chatFoldedStateMessageIndex, downloadFile } from 'src/ts/globalApi.svelte';
@@ -439,18 +440,18 @@
             await runWithFullWindow(chatWindowPolicyInstance, () => loadPages, (v) => { loadPages = v }, async () => {
                 const html2canvas = await import('html-to-image');
                 const chats = document.querySelectorAll('.default-chat-screen .risu-chat')
-                alertWait("Taking screenShot...")
+                alertWait(language.alerts.screenshotTaking)
                 let canvases:HTMLCanvasElement[] = []
 
                 for(const chat of chats){
                     const cnv = await html2canvas.toCanvas(chat as HTMLElement)
-                    alertWait("Taking screenShot... "+canvases.length+"/"+chats.length)
+                    alertWait(language.alerts.screenshotTaking+" "+canvases.length+"/"+chats.length)
                     canvases.push(cnv)
                 }
 
                 canvases.reverse()
 
-                alertWait("Merging images...")
+                alertWait(language.alerts.screenshotMerging)
 
                 let mergedCanvas = document.createElement('canvas');
                 mergedCanvas.width = 0;
@@ -486,7 +487,7 @@
             })
         } catch (error) {
             console.error(error)
-            alertError("Error while taking screenshot")
+            alertError(language.errors.screenshotFailed)
         }
     }
 
@@ -545,7 +546,7 @@
     {/if}
     {#if isScrollingToMessage}
         <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 text-white text-xl font-bold backdrop-blur-sm">
-            Loading...
+            {language.loadingEllipsis}
         </div>
     {/if}
     {#if $selectedCharID < 0}
@@ -737,17 +738,17 @@
                         {#await getInlayAsset(file) then inlayAsset}
                             <div class="relative">
                                 {#if inlayAsset.type === 'image'}
-                                    <img src={inlayAsset.data} alt="Inlay" class="max-w-48 max-h-48 border border-darkborderc">
+                                    <img src={inlayAsset.data} alt={language.uiCommon.inlayAlt} class="max-w-48 max-h-48 border border-darkborderc">
                                 {:else if inlayAsset.type === 'video'}
                                     <video controls class="max-w-48 max-h-48 border border-darkborderc">
                                         <source src={inlayAsset.data} type="video/mp4" />
                                         <track kind="captions" />
-                                        Your browser does not support the video tag.
+                                        {language.uiCommon.videoTagUnsupported}
                                     </video>
                                 {:else if inlayAsset.type === 'audio'}
                                     <audio controls class="max-w-48 max-h-24 border border-darkborderc">
                                         <source src={inlayAsset.data} type="audio/mpeg" />
-                                        Your browser does not support the audio tag.
+                                        {language.uiCommon.audioTagUnsupported}
                                     </audio>
                                 {:else}
                                     <div class="max-w-24 max-h-24">{file}</div>
@@ -952,7 +953,7 @@
 
                     
                     <!-- svelte-ignore block_empty -->
-                    {#if DBState.db.characters[$selectedCharID].ttsMode === 'webspeech' || DBState.db.characters[$selectedCharID].ttsMode === 'elevenlab'}
+                    {#if canChatSpeak(DBState.db.characters[$selectedCharID], (id) => findCharacterbyId(id))}
                         <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
                             stopTTS()
                         }}>

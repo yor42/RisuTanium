@@ -1,4 +1,5 @@
 import { language } from "src/lang"
+import { fillLang } from "src/lang/fill"
 import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getCurrentChat, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
@@ -101,7 +102,7 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
         writeByte(1) //mark as asset
         alertStore.set({
             type: 'wait',
-            msg: `Loading... (Adding Assets ${i} / ${assets.length})`
+            msg: fillLang(language.alerts.addingAssets, { completed: i, total: assets.length })
         })
         let rData = await readImage(asset[1])
         if(!rData){
@@ -201,7 +202,7 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
                 } catch (error) {
                     failed.push(task)
                 } finally {
-                    alertWait(`Loading... (Adding Assets ${completed} / ${totalAssets})`)
+                    alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
                 }
             })()
             inFlight.add(promise)
@@ -247,7 +248,7 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
             failed = await runAssetTasks(failed)
         }
         if (failed.length > 0) {
-            throw new Error(`Failed to save ${failed.length} assets`)
+            throw new Error(fillLang(language.errors.moduleAssetsSaveFailed, { count: `${failed.length}` }))
         }
     } finally {
         alertClear()
