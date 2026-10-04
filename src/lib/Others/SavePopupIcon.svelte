@@ -4,10 +4,14 @@
   import { saving } from "src/ts/globalApi.svelte";
   import { DBState, savingStoppedReason, frozenSaveKeysStore } from "src/ts/stores.svelte";
   import { language } from "src/lang";
+  import { NODE_BODY_LIMIT_BYTES } from "src/ts/storage/nodeBodyLimit";
 
   function savingStoppedMessage(reason: string){
     if(reason === 'node-conflict'){
       return language.savingStoppedNodeConflictMessage
+    }
+    if(reason === 'too-large'){
+      return language.savingStoppedTooLargeMessage(NODE_BODY_LIMIT_BYTES)
     }
     return language.savingStoppedStayMessage
   }

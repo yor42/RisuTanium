@@ -14,6 +14,7 @@ import {
     resetArchiveStrikes,
 } from './bootArchiveMemo'
 import type { BootArchiveDeps, BootArchiveEnvironment, BootArchiveHost } from './bootArchivePass'
+import { NODE_BODY_LIMIT_BYTES } from './nodeBodyLimit'
 import { pageStoreIsIndexedDb, readMainFile as readMainFileFromStore, writeMainFile as writeMainFileToStore } from './store/appStore'
 
 /**
@@ -24,13 +25,6 @@ import { pageStoreIsIndexedDb, readMainFile as readMainFileFromStore, writeMainF
  * import them; it is loaded on demand when a session is opened without
  * injected deps.
  */
-
-/**
- * The largest request body the self-hosted Node server accepts, in bytes. It
- * must equal `NODE_BODY_LIMIT_BYTES` in `server/node/bodyLimit.cjs`, which the
- * server's body parsers use; no endpoint reports it, so a test pins the two.
- */
-const NODE_BODY_LIMIT_BYTES = 104857600
 
 /** A Tauri desktop build: the native OS answers when it can, the user agent otherwise. No mobile build is supported, so a mobile OS never archives. */
 function isTauriDesktop(): boolean {

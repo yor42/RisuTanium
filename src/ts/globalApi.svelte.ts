@@ -31,6 +31,9 @@ import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { getAppStore, writeMainFile } from "./storage/store/appStore";
 import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
+import { NodeHttpError } from "./storage/store/nodeHttpStore";
+import { NODE_BODY_LIMIT_BYTES } from "./storage/nodeBodyLimit";
+import { fitsNodeBodyLimit } from "./storage/bootArchivePass";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -672,6 +675,27 @@ export function isSaveClean(): boolean {
         && !saveLoopPending()
         && !get(savingStoppedReason)
         && get(frozenSaveKeysStore).length === 0
+}
+
+/** The encoded main file is over the Node server's body limit, so it is not sent. */
+class MainFileTooLargeError extends Error {
+    constructor(public readonly length: number) {
+        super(`The encoded main file is ${length} bytes, over the ${NODE_BODY_LIMIT_BYTES} bytes the Node server accepts in one request.`)
+        this.name = 'MainFileTooLargeError'
+    }
+}
+
+/**
+ * True for the client's own refusal to send an oversized main file and for a
+ * Node server's 413 to any write made before the main file commits: the main
+ * file, a Remote Saving character block written in `encoder.set()` or the
+ * encoder reload. That covers a server whose limit is smaller than the one
+ * this client knows. Callers must also require that the main file has not
+ * committed.
+ */
+function isMainFileTooLarge(error: unknown): boolean {
+    return error instanceof MainFileTooLargeError
+        || (isNodeServer && error instanceof NodeHttpError && error.status === 413 && error.operation === 'write')
 }
 /**
  * A minimal async mutex serializing writes to the shared `database/database.bin`
@@ -1479,6 +1503,12 @@ export async function saveDb() {
                 continue
             }
             const dbData = new Uint8Array(encoded)
+            // The Node server refuses a body over its limit before any route runs,
+            // so sending one only re-uploads the whole file to a refusal. It is not
+            // sent; the catch below parks the loop.
+            if (isNodeServer && !fitsNodeBodyLimit(dbData.length, NODE_BODY_LIMIT_BYTES)) {
+                throw new MainFileTooLargeError(dbData.length)
+            }
             // Best-effort, non-blocking heads-up before storage actually fills up —
             // browser storage has no other quota signal until a write starts failing.
             if (!isTauri && !quotaWarningShown && navigator.storage?.estimate) {
@@ -1649,6 +1679,20 @@ export async function saveDb() {
                     savingStoppedReason.set('node-conflict')
                     await sleepForever()
                 }
+            }
+            else if (!primaryCommitted && isMainFileTooLarge(error)) {
+                // A retry of the same body cannot get accepted, so the loop
+                // stops for this page load instead of resending it. The unsaved
+                // changes were folded back into the tracker above and the
+                // iteration is not marked committed, so the page stays unclean
+                // and the idle reload does not fire. A reload loads the last
+                // saved file; the boot archive pass shrinks it only when that
+                // pass can run, so parking must not depend on a reload helping.
+                console.error(error)
+                alertToast(language.savingStoppedTooLargeMessage(NODE_BODY_LIMIT_BYTES))
+                saving.state = false
+                savingStoppedReason.set('too-large')
+                await sleepForever()
             }
             else if (isQuotaExceededError(error)) {
                 // A distinct, actionable message instead of the generic retry path —
