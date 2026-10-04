@@ -12,6 +12,8 @@ Two general notes that apply to every numeric field on this page:
 **Hide API Keys** (in **Settings → Display & Audio → Others**) masks a key field's text. On this page, only four key fields respect it: the Imagen **GoogleAI API Key**, the OpenAI-Compatible image **API Key**, the WaveSpeedAI **API Key**, and the Embedding section's **Voyage API Key**. Every other key or token field on this page (NovelAI, Dall-E/TTS's OpenAI key, Stability, Fal.ai, ComfyUI, the TTS provider keys, the SupaMemory/embedding OpenAI key, and the custom-embedding key/password) is always shown in plain text, regardless of that setting.
 <!-- src/ts/setting/displaySettingsData.svelte.ts:297; src/lib/Setting/Pages/OtherBotSettings.svelte:754,794,819,1321 -->
 
+Most key fields on this page also accept a ${NAME} environment-variable reference instead of a key. See [[API Keys from Environment Variables]].
+
 A few fields are one stored value shared by more than one place on this page (or elsewhere in the app). Editing the field in one place changes it everywhere it appears:
 
 - The **NovelAI API Key** on the Image Generation tab and the **NovelAI API key** on the TTS tab are the same field.

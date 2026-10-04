@@ -45,6 +45,7 @@
 **Settings**
 - [[Settings]]
   - [[Settings Chat Bot]]
+  - [[API Keys from Environment Variables]]
   - [[Settings Persona]]
   - [[Settings Other Bots]]
   - [[Settings Display]]

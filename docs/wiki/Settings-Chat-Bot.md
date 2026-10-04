@@ -24,6 +24,8 @@ Two mechanics apply across most of this page:
 
 Everything else on this tab appears only for the matching provider or model.
 
+In any API key field below you can type a ${NAME} reference to an environment variable instead of the key itself. See [[API Keys from Environment Variables]].
+
 ### Google Cloud / Vertex AI
 
 | Setting | Field | Default | Range/options | Shown when | What it does |

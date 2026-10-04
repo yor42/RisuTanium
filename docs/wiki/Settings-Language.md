@@ -52,6 +52,8 @@ No extra fields besides **Source Language** (see General options below).
 
 On the web version (not the desktop app), a warning is shown that DeepL can cause CORS errors.
 
+The **deepL API Key** and the **deepLX Token** (below) accept a ${NAME} environment-variable reference instead of a key. See [[API Keys from Environment Variables]].
+
 | Label | What it does | Default |
 |---|---|---|
 | **deepL API Key** | Authenticates DeepL requests. | empty |
