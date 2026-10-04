@@ -6984,3 +6984,67 @@ applies the edited text.
   "Nicht-Text-Inhalt(e)"; es "Instrucción", "guion" and "cadena". "Cut N" is kept as the leading name in every locale.
 - **Scope of batch 5c:** 39 new keys in seven languages, 3 production files (`devToolActions.ts`, `previewRunner.ts`,
   `CharConfig.svelte`, display text only), 2 new test files, ledger rows 919 to 923.
+
+### MC-217 — Translation batch 5d: the leftovers, and Spanish as a selectable app language (CHORE-05)
+
+- **Tag:** decision (the five answers); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "main session is on the last stretch before merging, so I think we have time to tackle
+  the leftovers before merging." Then five answers in two question rounds, all to the option marked "(Recommended)". The option
+  text was written by the Orchestrator. Round 1 (four questions): No Bias, "Fix all six (Recommended)" (not chosen: "Korean
+  only", "Leave them"); English, "Fix all four (Recommended)" (not chosen: "Keep byte-identical"); CSS typo, "Use theme colour
+  (Recommended)" (not chosen: "Leave it"); es export, "Add es (Recommended)" (not chosen: "Leave it"). Round 2 (after Gate 2's
+  MINOR): Spanish UI language, "Add to both (Recommended)" (not chosen: "Settings only", "Leave it").
+- **Reasoning:** none stated beyond the quote.
+- **Alternatives rejected:** the not-chosen options above.
+- **Related:** `MC-209`, `MC-210`, `MC-211`, `MC-216`, `MC-179`; CHORE-05; ledger rows 924 to 928.
+
+**What was decided (the maintainer's):**
+1. **No Bias: fix all six non-English values.** The investigator found that none uses its locale's `bias` word (row 924).
+2. **English: fix all four.** `fontSize` becomes "Font Size"; the unsupported badge "NOTSUPPORTED" becomes "Not supported" (the
+   internal value `'NOTSUPPORTED'` stays); "Loading.." becomes "Loading..." (reusing the existing key); the preset name
+   placeholder "string" becomes "Name" (reusing an existing key).
+3. **CSS typo: use the theme colour.** The `CharConfig` Style label class `text=neutral-200` becomes `text-textcolor`.
+4. **es export: add `es`** to the `translang` export list in `languageSettingsData.svelte.ts`.
+5. **Spanish UI language: add it to both** the Language setting and the welcome screen, including browser-language
+   auto-detect.
+
+**Disclosures:**
+- **(a) English text changes** (answer 2): the label "fontSize" is now "Font Size"; the badge "NOTSUPPORTED" is now "Not
+  supported"; "Loading.." is now "Loading..."; the preset name placeholder "string" is now "Name".
+- **(b) All six `noBias` values are replaced** (answer 1). They were upstream's strings (the Orchestrator verified the ko value
+  was authored upstream, blame `c422000c`, kwaroran). New values: ko "편향 없음" (was "Bias 없음"), cn "无偏置" (was "No
+  Bias"), zh-Hant "無偏置" (was "未設定 Bias"), vi "Không có độ lệch" (was "Không thiên vị", which means impartial), de
+  "Kein Bias" (was "Keine Voreingenommenheit", which means no prejudice), es "Sin sesgo" (was "Sin Bias"). English stays "No
+  Bias".
+- **(c) The `CharConfig` Style label's colour now follows the theme** (answer 3). `text=neutral-200` matched no CSS, so the
+  label inherited the parent colour.
+- **(d) Spanish is now selectable** in the Language setting and on the welcome screen (answer 5), and a Spanish browser language
+  (`es`, `es-ES` and so on) auto-selects it on first run. `es.ts` has existed since upstream `7944bb3d` (2024-08-10), but
+  neither list offered it, and `upstream/main` has the same gap. This is a **fork difference** that users coming from upstream
+  will see. The first-setup translator case for `es` (the welcome screen's `case 'es'`, which sets `db.translator = 'es'`) is
+  untested.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Reuse rulings:** `language.settingsPage.unknown` is reused in `MobileCharacters.svelte`, an extension of `MC-211`'s list
+  of generic `settingsPage` keys (the file already uses `settingsPage.unnamed`). `language.alerts.addingAssets` is reused for
+  the legacy module export, an exception to the `MC-211` reuse rule: a domain-group key, reused because the feature and the
+  English text are identical and the same file's other asset path already uses it. `language.name` and
+  `language.loadingEllipsis` (top-level keys) are reused for the preset placeholder and `makeGroupImage`.
+- **New keys (4, in seven languages):** top-level `fontSize`; `playground.notSupported`; `alerts.writingExif` "Loading...
+  (Writing Exif)"; `alerts.writingPng` "Loading... (Writing)".
+- **Gate 1 skipped** under the `AGENTS.md` carve-out (string swaps and one-line fixes). Gate 2 judged the skip justified.
+- **KEEP list (stays English):** the image-generator parameter names (Steps, Strength, Noise, Upscaler and so on; `MC-209`), the
+  Ooba parameter checkboxes, stored defaults, units, Easter eggs, plugin and CBS messages, console text, and the sentinel value
+  `'NOTSUPPORTED'` (used in `ToolConversion.svelte` and `prompt.ts`).
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** vi `noBias` (it follows the locale's
+  unusual "Độ lệch"), vi `notSupported`, de `writingPng` "(Wird geschrieben)", es `notSupported` "No compatible".
+- **Merge:** of this batch's production files only `modules.ts` also changed on the Main Campaign branch, in other lines;
+  the overlap is re-checked at merge time.
+- **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`, the
+  `hanuraiMemory.ts` "Required Tokens", and `Legal.svelte`.
+- **Scope of batch 5d:** 4 new keys in seven languages, 6 `noBias` values replaced, 10 production files besides the seven
+  locale files (`botpreset.svelte`, `PlaygroundImageTrans.svelte`, `ToolConversion.svelte`, `CharConfig.svelte`,
+  `languageSettingsData.svelte.ts`, `MobileCharacters.svelte`, `characters.ts`, `persona.ts`, `modules.ts`,
+  `WelcomeRisu.svelte`), 9 new test files and 3 tests added to `CharConfig.ttsLabels.svelte.test.ts`, ledger rows 924 to 928.

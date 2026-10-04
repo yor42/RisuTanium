@@ -361,9 +361,9 @@ Several sessions work **in this same checkout**:
   Checks: `pnpm check` 0/0; `pnpm test` 370 files, 7218 passed, 4 skipped; build ok. 5 new test files (56 tests); at HEAD 13
   tests fail, 7 of them reproducers. Not run in a browser. Commit drafts: `commit-msg-21.txt` (code) and `commit-msg-22.txt`
   (records) in the scratchpad.
-- **CHORE-05 status:** translation batches 1 to 4 and 5a, 5b and 5c done and committed (5c code `1ad02c3f`). The three gated batches are done. The native-speaker review is deferred by the maintainer (`MC-212`);
+- **CHORE-05 status:** translation batches 1 to 4 and 5a, 5b and 5c done and committed (5c code `1ad02c3f`); batch 5d (the leftovers and Spanish as a UI language) committed (code `c81ad3e8`). The native-speaker review is deferred by the maintainer (`MC-212`);
   the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: delete `globalLoreBook` and `globalRegexScript`
-  after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; the deferred items listed in the batch 3 block and the known leftovers in the Roadmap's batch 5c block.
+  after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; re-check every batch's overlap with Main at merge time; the deferred items listed in the batch 3 block and the out-of-bounds items in the Roadmap's batch 5d block.
 - **Translation batch 5b (CHORE-05: user-visible error and request-failure strings): committed as `edc8c8b6`
   (code) on the maintainer's word "commit and start 5c"; not pushed.** `MC-215` (the "go ahead with 5b." and the three answers are the maintainer's; the
   dispositions are the Orchestrator's); ledger rows 914 to 918. 36 new `errors.*` keys in all seven languages plus two reused
@@ -377,8 +377,20 @@ Several sessions work **in this same checkout**:
   files, display text only. Gate 1 and Gate 2 both ended `[APPROVE]`. Checks on the final tree: `pnpm check` 0/0; `pnpm vitest
   run` 378 files, 7271 passed, 4 skipped; `pnpm build` ok. 2 new test files (29 tests); at `ce33d027` 17 fail on assertions
   and 12 guards pass. Not run in a browser. Commit drafts: `commit-msg-27.txt` (code) and `commit-msg-28.txt` (records) in the
-  scratchpad.
-- **Next free numbers in the UI ranges:** `MC-217`; ledger row 924; CHORE-100; Report 65.
+  scratchpad. The records are committed as `a5dfc611`.
+- **Translation batch 5d (CHORE-05: the in-bounds leftovers and Spanish as a selectable UI language): committed as
+  `c81ad3e8` (code); not pushed.** Next: the merge into the Main Campaign branch, which the Main Campaign session
+  resolves; this session checks its resolved `src/lang` and Agents diffs before the maintainer commits. `MC-217` (the request and the five answers in two question rounds are the maintainer's;
+  the option text and the dispositions are the Orchestrator's); ledger rows 924 to 928. 4 new keys in all seven languages, all six
+  `noBias` values replaced, 10 production files besides the locale files. Four English text changes and the `CharConfig` Style
+  label's theme colour are disclosed in `MC-217`. Spanish is now selectable in the Language setting and on the welcome screen
+  (browser-language auto-detect included); upstream has the same gap, so this is a fork difference. Gate 1 skipped under the
+  `AGENTS.md` carve-out; Gate 2 `[APPROVE]` twice (first pass and the resumed review after the Spanish follow-up). Checks on the
+  final tree: `pnpm check` 0/0; `pnpm vitest run` 387 files, 7300 passed, 4 skipped; `pnpm build` ok. 9 new test files and 3 tests
+  added to `CharConfig.ttsLabels.svelte.test.ts` (29 tests). Not run in a browser; the first-setup translator case for `es` is
+  untested. Main Campaign tip `d15149d8` (2026-10-04); no overlap found with this batch's `modules.ts` hunk. Commit drafts:
+  `commit-msg-29.txt` (code) and `commit-msg-30.txt` (records) in the scratchpad.
+- **Next free numbers in the UI ranges:** `MC-218`; ledger row 929; CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".

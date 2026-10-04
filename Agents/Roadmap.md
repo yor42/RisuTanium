@@ -877,6 +877,50 @@ keys, `{name}` placeholders filled by `fillLang`.
     (out of bounds); the `botpreset.svelte` "string" placeholder; `PlaygroundImageTrans` "fontSize"; `ToolConversion`
     "NOTSUPPORTED"; the ko `noBias` wording ("Bias 없음" beside `bias` "편향").
 
+**Status (2026-10-04, UI session, translation batch 5d: the in-bounds leftovers and Spanish as a selectable UI language): committed as `c81ad3e8` (code), on the maintainer's "commit everything when ready" (the message that also asked for the merge coordination); not pushed; the ticket stays open for the follow-ups below** (ledger rows 924 to 928). The request and the five answers are the maintainer's (`MC-217`); the dispositions in `MC-217` are the Orchestrator's, not the maintainer's. The option text of every question was the Orchestrator's; the maintainer chose the "(Recommended)" option each time.
+- **Done in batch 5d:**
+  - 4 new keys in `en.ts` (top-level `fontSize`; `playground.notSupported`; `alerts.writingExif`; `alerts.writingPng`), translated into the six other locales.
+    Reused keys: `language.name`, `language.loadingEllipsis`, `language.settingsPage.unknown` and `language.alerts.addingAssets`.
+  - The leftovers from batch 5c: the preset name placeholder (`botpreset.svelte`), the "Font Size" label
+    (`PlaygroundImageTrans.svelte`) and the unsupported badge (`ToolConversion.svelte`, the internal `'NOTSUPPORTED'` value is unchanged).
+  - The sweep's four finds: `MobileCharacters.svelte` "Unknown", `characters.ts` `makeGroupImage` "Loading..", the two `persona.ts` wait
+    texts and the legacy export in `modules.ts` (identical English).
+  - **Four English text changes** (disclosed in `MC-217`): "fontSize" is now "Font Size"; "NOTSUPPORTED" is now "Not supported";
+    "Loading.." is now "Loading..."; the preset name placeholder "string" is now "Name".
+  - **All six `noBias` values replaced** (upstream's strings): ko 편향 없음 (was "Bias 없음"), cn 无偏置 (was "No Bias"), zh-Hant 無偏置
+    (was "未設定 Bias"), vi Không có độ lệch (was "Không thiên vị"), de Kein Bias (was "Keine Voreingenommenheit"), es Sin sesgo (was "Sin Bias").
+  - **The `CharConfig` Style label** class `text=neutral-200` (matched no CSS, inherited the parent colour) is now `text-textcolor`, so
+    its colour follows the theme.
+  - **`es` in the `translang` export list** (appended, so the existing indices are unchanged).
+  - **Spanish is selectable as the app language** in the Language setting (`lang.uiLanguage`, "Español" after Tiếng Việt) and on the welcome
+    screen (an "• Español" button; `es` in `usableLangs`, so a Spanish browser language auto-selects it on first run; `case 'es'` sets
+    `db.translator = 'es'`). `es.ts` has existed since upstream `7944bb3d`; upstream has the same gap, so this is a **fork difference**.
+- **Kept English (`MC-217`):** the image-generator parameter names (Steps, Strength, Noise, Upscaler and so on; `MC-209`), the Ooba
+  parameter checkboxes, stored defaults, units, Easter eggs, plugin and CBS messages and console text.
+- **Tests (9 new files, 29 tests, counting the 3 added to `CharConfig.ttsLabels.svelte.test.ts`):** `botpreset.namePlaceholder`,
+  `PlaygroundImageTrans.i18n`, `ToolConversion.i18n`, `languageSettingsData.translangExport` (6), `MobileCharacters.unknownAgo`,
+  `characters.makeGroupImageWait`, `persona.waitText`, `modules.legacyExportWait` and `WelcomeRisu.spanish` (4). Against `a5dfc611`,
+  18 of the 29 tests fail on assertions, all of them reproducers, and the 11 guards pass: 14 in the first-pass run, the `noBias`
+  reproducer (against HEAD's `ko.ts`) and the 3 Spanish reproducers (rows 925 and 927). Not covered: the welcome screen's translator
+  `case 'es'` (first-setup translator for Spanish is untested).
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 387 files, 7300 passed, 4 skipped; `pnpm build` ok (row 927). Gate 1 skipped under the
+  `AGENTS.md` carve-out (string swaps and one-line fixes); Gate 2 ended `[APPROVE]`, and the resumed review after the Spanish follow-up ended
+  `[APPROVE]` (rows 926 and 927). Not run in a browser.
+- **Merge note (`MC-179`):** the seven locale files will conflict textually with the Main Campaign branch, as in earlier batches. The Main
+  Campaign tip was `d15149d8` on 2026-10-04 (`b2406e0e` and `ae8636a2` are ancestors). Main now changes `modules.ts` near lines 15, 125 to 132 and 147 to 226
+  and in `importModule`; this batch's `modules.ts` hunk is line 104, so there is no overlap. The same overlap command on `botpreset.svelte`,
+  `PlaygroundImageTrans.svelte`, `ToolConversion.svelte`, `CharConfig.svelte`, `languageSettingsData.svelte.ts`, `MobileCharacters.svelte`,
+  `characters.ts` and `persona.ts` listed none of them, and the same command on `WelcomeRisu.svelte` lists nothing either. Re-check every batch's
+  overlap at merge time, because Main keeps moving.
+- **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** vi `noBias` (follows the locale's unusual "Độ lệch"),
+  vi `notSupported`, de `writingPng` "(Wird geschrieben)", es `notSupported` "No compatible".
+- **Remaining for CHORE-05 (status after 5d):**
+  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and
+    `globalRegexScript` if those pages go; re-check every batch's overlap with Main at merge time.
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`).
+  - **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`; `hanuraiMemory.ts` "Required Tokens"; `Legal.svelte`.
+  - The batch 5c "known leftovers" (the `botpreset.svelte` placeholder, "fontSize", "NOTSUPPORTED", the ko `noBias` wording) are done in this batch.
+
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table
 below is the pre-fix measurement and is otherwise still current.
