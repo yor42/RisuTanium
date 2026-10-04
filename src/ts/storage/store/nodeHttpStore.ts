@@ -104,9 +104,12 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         }
     }
 
+    // Every request opts out of the browser HTTP cache: concurrent requests for
+    // one URL (all reads share `/api/read`) are otherwise queued behind each
+    // other, and the key lives in a header, not in the URL.
     async function send(path: string, init: RequestInit & { headers: Record<string, string> }): Promise<Response> {
         const auth = await options.authHeader()
-        return await doFetch(`${baseUrl}${path}`, { ...init, headers: { ...init.headers, 'risu-auth': auth } })
+        return await doFetch(`${baseUrl}${path}`, { ...init, cache: 'no-store', headers: { ...init.headers, 'risu-auth': auth } })
     }
 
     /** The state `/api/read` reports for `key`; the body is read only for a GET. */
@@ -133,7 +136,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         try {
             const auth = await options.authHeader()
             try {
-                response = await doFetch(`${baseUrl}/api/remove`, { method: 'GET', headers: { ...headers, 'risu-auth': auth } })
+                response = await doFetch(`${baseUrl}/api/remove`, { method: 'GET', cache: 'no-store', headers: { ...headers, 'risu-auth': auth } })
             } catch (error) {
                 // The request may have reached the server before the connection failed.
                 return { kind: 'unknown', error }

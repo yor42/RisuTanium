@@ -332,6 +332,15 @@ const authenticatedRouteLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Too many requests. Please retry shortly.' }
 });
+// The storage routes carry the app's own save traffic (a full load reads
+// hundreds of blocks), so they draw on a bucket apart from the proxy's.
+const storageRouteLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please retry shortly.' }
+});
 const authRouteLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 2000,
@@ -823,12 +832,13 @@ async function forwardUpstreamResponse(originalResponse, res) {
     head.delete('content-security-policy-report-only');
     head.delete('clear-site-data');
     head.delete('Cache-Control');
+    head.set('Cache-Control', 'no-store');
     head.delete('Content-Encoding');
 
     const contentType = (head.get('content-type') || '').toLowerCase();
     const isSSE = contentType.includes('text/event-stream');
     if (isSSE) {
-        head.set('Cache-Control', 'no-cache, no-transform');
+        head.set('Cache-Control', 'no-store, no-transform');
         head.set('Connection', 'keep-alive');
         head.set('X-Accel-Buffering', 'no');
         head.delete('content-length');
@@ -1056,6 +1066,9 @@ const reverseProxyFunc = async (req, res, next) => {
         head.delete('content-security-policy-report-only');
         head.delete('clear-site-data');
         head.delete('Cache-Control');
+        // The target is chosen by a request header, so one URL stands for many
+        // responses: none may be stored or reused by the browser.
+        head.set('Cache-Control', 'no-store');
         head.delete('Content-Encoding');
         const headObj = {};
         for (let [k, v] of head) {
@@ -1124,6 +1137,8 @@ const reverseProxyFunc_get = async (req, res, next) => {
         head.delete('content-security-policy-report-only');
         head.delete('clear-site-data');
         head.delete('Cache-Control');
+        // See reverseProxyFunc: the response must never be cached.
+        head.set('Cache-Control', 'no-store');
         head.delete('Content-Encoding');
         const headObj = {};
         for (let [k, v] of head) {
@@ -1394,7 +1409,7 @@ app.post('/api/set_password', async (req, res) => {
     }
 })
 
-app.get('/api/read', authenticatedRouteLimiter, async (req, res, next) => {
+app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1468,7 +1483,7 @@ app.get('/api/read', authenticatedRouteLimiter, async (req, res, next) => {
     }
 });
 
-app.get('/api/remove', authenticatedRouteLimiter, async (req, res, next) => {
+app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1669,7 +1684,7 @@ app.get('/api/remove', authenticatedRouteLimiter, async (req, res, next) => {
     }
 });
 
-app.get('/api/list', authenticatedRouteLimiter, async (req, res, next) => {
+app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1695,7 +1710,7 @@ app.get('/api/list', authenticatedRouteLimiter, async (req, res, next) => {
     }
 });
 
-app.post('/api/write', authenticatedRouteLimiter, async (req, res, next) => {
+app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }

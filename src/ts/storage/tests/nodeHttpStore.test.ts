@@ -18,13 +18,14 @@ import { describeByteStoreConformance } from './byteStoreConformance'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from './nodeServerFixture'
 
 let fixture: NodeServerFixture
-const requests: Array<{ path: string, method: string, headers: Record<string, string> }> = []
+const requests: Array<{ path: string, method: string, headers: Record<string, string>, cache: RequestCache | undefined }> = []
 
 const recordingFetch: FetchLike = (url, init) => {
     requests.push({
         path: url.slice(fixture.baseUrl.length),
         method: init?.method ?? 'GET',
         headers: { ...(init?.headers as Record<string, string>) },
+        cache: init?.cache,
     })
     return fetch(url, init)
 }
@@ -109,6 +110,22 @@ describe('Node HTTP store against the real server', () => {
         const error = await store.read('k/1').catch((caught: unknown) => caught)
         expect(error).toBeInstanceOf(NodeHttpError)
         expect((error as NodeHttpError).status).toBeGreaterThanOrEqual(400)
+    })
+
+    test('every request to the server opts out of the browser HTTP cache', async () => {
+        const store = makeStore()
+        await store.write('cache/a', bytes(1), 'unconditional')
+        await store.write('cache/b', bytes(2), 'unconditional')
+        await store.read('cache/a')
+        await store.has('cache/a')
+        await store.list('cache/')
+        await store.delete('cache/a', 'unconditional')
+        await store.deleteMany([{ key: 'cache/b', condition: 'unconditional' }])
+
+        expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+            'POST /api/write', 'POST /api/write', 'GET /api/read', 'HEAD /api/read', 'GET /api/list', 'GET /api/remove', 'GET /api/remove',
+        ])
+        expect(requests.map((request) => request.cache)).toEqual(Array(7).fill('no-store'))
     })
 
     describe('listing', () => {
