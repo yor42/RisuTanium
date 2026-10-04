@@ -1738,5 +1738,8 @@ export const languageSpanish = {
     shareEmpty: "Lo compartido no contenía archivos, por lo que no se importó nada.",
     shareNotFound: "No se encontró este elemento compartido. Puede que ya se haya importado o que haya caducado. Intenta compartir los archivos de nuevo.",
     shareInvalid: "No se pudieron leer los archivos compartidos, por lo que no se importó nada. Intenta compartirlos de nuevo.",
-    shareFilesNotImported: (fileNames: string) => `No se pudieron importar estos archivos: ${fileNames}`,
+    importFilesNotImported: (notImported: number, total: number, details: string) => `Archivos no importados (${notImported} de ${total}):\n${details}`,
+    importUnsupportedFile: "Este tipo de archivo no se puede importar.",
+    importNotCardFile: "Este no es un archivo de tarjeta de personaje.",
+    importFileNotReceived: "No se pudo recibir el archivo.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

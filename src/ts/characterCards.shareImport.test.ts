@@ -19,6 +19,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const h = vi.hoisted(() => ({
     saved: 0,
     errors: [] as string[],
+    /** typeof of every value handed to alertError */
+    errorKinds: [] as string[],
     /** alert and import events in the order they happened */
     events: [] as string[],
     characters: [] as Array<Record<string, unknown>>,
@@ -29,6 +31,16 @@ const h = vi.hoisted(() => ({
     moduleFails: null as string | null,
     ordered: 0,
     uuid: 0,
+    /** what the single alert slot holds: every alert function replaces it */
+    last: 'none',
+    /** the answer of the low-level-access prompt */
+    confirm: true,
+    /** makes importPreset throw this message */
+    presetFails: null as string | null,
+    isTauri: false,
+    /** what readFile answers per path; an Error is thrown */
+    tauriFiles: {} as Record<string, Uint8Array | Error>,
+    deepLinkRegistered: 0,
 }))
 
 vi.mock('uuid', () => ({
@@ -36,7 +48,7 @@ vi.mock('uuid', () => ({
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
-    isTauri: false,
+    get isTauri() { return h.isTauri },
     isNodeServer: false,
 }) as unknown as typeof import('src/ts/platform'))
 
@@ -50,13 +62,13 @@ vi.mock(import('src/ts/alert'), () => {
     const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
     return {
         alertCardExport: vi.fn(),
-        alertConfirm: vi.fn(async () => true),
-        alertError: vi.fn((msg: string | Error) => { h.errors.push(text(msg)); h.events.push('error:' + text(msg)) }),
+        alertConfirm: vi.fn(async () => { h.last = 'ask'; const answer = h.confirm; h.last = 'none'; return answer }),
+        alertError: vi.fn((msg: string | Error) => { h.errors.push(text(msg)); h.errorKinds.push(typeof msg); h.events.push('error:' + text(msg)); h.last = 'error:' + text(msg) }),
         alertInput: vi.fn(async () => ''),
         alertMd: vi.fn(),
-        alertNormal: vi.fn((msg: string) => { h.events.push('normal:' + msg) }),
-        alertStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
-        alertWait: vi.fn(),
+        alertNormal: vi.fn((msg: string) => { h.events.push('normal:' + msg); h.last = 'normal:' + msg }),
+        alertStore: { set: (v: { type?: string, msg?: string }) => { h.last = v.type === 'none' ? 'none' : `${v.type}:${v.msg}` }, subscribe: vi.fn(), update: vi.fn() },
+        alertWait: vi.fn((msg: string) => { h.last = 'wait:' + msg }),
     } as unknown as typeof import('src/ts/alert')
 })
 
@@ -64,6 +76,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     defaultSdDataFunc: vi.fn(() => ({})),
     setDatabase: vi.fn(),
     importPreset: vi.fn(async (f: { name: string, data: unknown }) => {
+        if (h.presetFails !== null) throw new Error(h.presetFails)
         h.presets.push(f)
         h.events.push('preset:' + f.name)
     }),
@@ -156,11 +169,15 @@ vi.mock(import('src/ts/process/modules'), () => ({
 }) as unknown as typeof import('src/ts/process/modules'))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
-    readFile: vi.fn(async () => new Uint8Array()),
+    readFile: vi.fn(async (path: string) => {
+        const answer = h.tauriFiles[path] ?? new Uint8Array()
+        if (answer instanceof Error) throw answer
+        return answer
+    }),
 }))
 
 vi.mock('@tauri-apps/plugin-deep-link', () => ({
-    onOpenUrl: vi.fn(async () => vi.fn()),
+    onOpenUrl: vi.fn(async () => { h.deepLinkRegistered++; return vi.fn() }),
 }))
 
 //#endregion
@@ -318,6 +335,7 @@ const realScan = PngChunk.scanCard
 beforeEach(() => {
     h.saved = 0
     h.errors = []
+    h.errorKinds = []
     h.events = []
     h.characters = []
     h.modules = []
@@ -326,6 +344,12 @@ beforeEach(() => {
     h.moduleFails = null
     h.ordered = 0
     h.uuid = 0
+    h.last = 'none'
+    h.confirm = true
+    h.presetFails = null
+    h.isTauri = false
+    h.tauriFiles = {}
+    h.deepLinkRegistered = 0
     shares.clear()
     routes.clear()
     fetchCalls = []
@@ -351,6 +375,7 @@ afterEach(() => {
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
     delete (window as unknown as { launchQueue?: unknown }).launchQueue
+    delete (window as unknown as { tauriOpenedFiles?: unknown }).tauriOpenedFiles
     setUrl('/')
 })
 
@@ -542,11 +567,11 @@ describe('#share= hash', () => {
         setUrl('/#share=' + id)
         await characterURLImport()
         expect(charName(0)).toBe('Survivor')
-        expect(h.errors).toContain(language.cardFileIncomplete)
+        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'broken.charx: ' + language.cardFileIncomplete))
         expect(shares.has(id)).toBe(false)
     })
 
-    test('a module that readModule refuses adds nothing and is named among the files not imported, while the files after it import (guard)', async () => {
+    test('a module that readModule refuses adds nothing and is named among the files not imported, while the files after it import', async () => {
         h.moduleFails = language.errors.noData
         const id = seedShare([
             { name: 'bad.risum', type: '', bytes: new U8([8, 8]) },
@@ -556,8 +581,64 @@ describe('#share= hash', () => {
         await characterURLImport()
         expect(h.modules).toEqual([])
         expect(charName(0)).toBe('Survivor')
-        expect(h.errors[h.errors.length - 1]).toBe(language.shareFilesNotImported('bad.risum'))
+        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'bad.risum: ' + language.errors.noData))
         expect(shares.has(id)).toBe(false)
+    })
+
+    test('a refused card, a good card and an unrecognised file: the good card imports and the last message names the others with their reasons', async () => {
+        const id = seedShare([
+            { name: 'broken.charx', type: '', bytes: new U8(10).fill(7) },
+            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
+            { name: 'notes.bin', type: 'application/octet-stream', bytes: new U8([1]) },
+        ])
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(charName(0)).toBe('Survivor')
+        expect(h.characters).toHaveLength(1)
+        expect(h.last).toBe('error:Files not imported (2 of 3):\n'
+            + 'broken.charx: ' + language.cardFileIncomplete + '\n'
+            + 'notes.bin: ' + language.importUnsupportedFile)
+        expect(shares.has(id)).toBe(false)
+    })
+
+    test('a file that cannot be received is named with its reason and the files after it import', async () => {
+        //The index lists a file the share does not hold, so its fetch answers 404.
+        const id = seedShare([
+            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
+        ], SHARE_ID, () => new Response(JSON.stringify({ files: [
+            { key: `/sw/share/${SHARE_ID}/7`, name: 'gone.png', type: 'image/png' },
+            { key: `/sw/share/${SHARE_ID}/0`, name: 'ok.png', type: 'image/png' },
+        ] })))
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(h.characters.map((c) => (c as { name?: string }).name)).toEqual(['Survivor'])
+        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'gone.png: ' + language.importFileNotReceived))
+    })
+
+    test('a single refused card shows its own message, not a summary (guard)', async () => {
+        const id = seedShare([{ name: 'broken.charx', type: '', bytes: new U8(10).fill(7) }])
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(h.last).toBe('error:' + language.cardFileIncomplete)
+    })
+
+    test('a single unrecognised file has no message of its own and gets the summary', async () => {
+        const id = seedShare([{ name: 'notes.bin', type: 'application/octet-stream', bytes: new U8([1]) }])
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 1, 'notes.bin: ' + language.importUnsupportedFile))
+    })
+
+    test('a share of imported files shows no error and ends on the last file\'s own message (guard)', async () => {
+        const id = seedShare([
+            { name: 'a.png', type: 'image/png', bytes: pngCard('A') },
+            { name: 'b.png', type: 'image/png', bytes: pngCard('B') },
+        ])
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(h.errors).toEqual([])
+        expect(h.characters).toHaveLength(2)
+        expect(h.last).toBe('normal:' + language.importedCharacter)
     })
 
     const noImport = () => {
@@ -641,12 +722,117 @@ describe('launchQueue', () => {
         expect(charName(0)).toBe('Queued')
     })
 
+    test('a file that cannot be read does not stop the files after it; what did not import is named once at the end, a refused module with its reason', async () => {
+        const unhandled: unknown[] = []
+        const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
+        process.on('unhandledRejection', onUnhandled)
+        try {
+            h.moduleFails = language.errors.noData
+            let consumer: ((params: LaunchParams) => Promise<void>) | null = null
+            ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
+            await characterURLImport()
+            const good = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
+            await consumer!({ files: [
+                { name: 'broken.charx', getFile: async () => { throw new Error('read failed') } },
+                { name: 'q.charx', getFile: async () => good },
+                { name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') },
+            ] })
+            await vi.waitFor(() => expect(h.characters).toHaveLength(1), { timeout: 500 })
+            expect(charName(0)).toBe('Queued')
+            expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read failed\nbad.risum: ' + language.errors.noData))
+            expect(h.modules).toEqual([])
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            expect(unhandled).toEqual([])
+        } finally {
+            process.off('unhandledRejection', onUnhandled)
+        }
+    })
+
+    test('a refused module opened alone shows its reason as the last message', async () => {
+        h.moduleFails = language.errors.noData
+        let consumer: ((params: LaunchParams) => Promise<void>) | null = null
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
+        await characterURLImport()
+        await consumer!({ files: [{ name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') }] })
+        await vi.waitFor(() => expect(h.last).toBe('error:' + language.errors.noData), { timeout: 500 })
+        expect(h.errorKinds).toEqual(['string'])
+        expect(h.modules).toEqual([])
+    })
+
     test('a share step that fails still leaves the file-handler consumer registered (compatibility guard)', async () => {
         const setConsumer = vi.fn()
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
         vi.stubGlobal('fetch', async () => { throw new TypeError('network error') })
         setUrl('/#share=' + SHARE_ID)
         await characterURLImport()
+        expect(setConsumer).toHaveBeenCalledTimes(1)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Files opened through Tauri, and the links that import a module or a preset inline
+// ---------------------------------------------------------------------------------------------
+
+describe('tauriOpenedFiles', () => {
+    test('a file that cannot be read does not stop the files after it, the start-up work continues, and what did not import is named once at the end', async () => {
+        h.isTauri = true
+        h.moduleFails = language.errors.noData
+        const good = await charxBytes('Opened')
+        h.tauriFiles = {
+            'C:\\docs\\broken.charx': new Error('read denied'),
+            'C:\\docs\\ok.charx': good,
+            'C:\\docs\\bad.risum': new U8([8]),
+        }
+        ;(window as unknown as { tauriOpenedFiles: string[] }).tauriOpenedFiles = ['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum']
+        await characterURLImport()
+        expect(charName(0)).toBe('Opened')
+        expect(h.characters).toHaveLength(1)
+        expect(h.modules).toEqual([])
+        expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read denied\nbad.risum: ' + language.errors.noData))
+        expect(h.deepLinkRegistered).toBe(1)
+    })
+
+    test('files that all import show no error and the deep-link handler is registered (guard)', async () => {
+        h.isTauri = true
+        h.tauriFiles = { '/docs/a.charx': await charxBytes('A'), '/docs/b.charx': await charxBytes('B') }
+        ;(window as unknown as { tauriOpenedFiles: string[] }).tauriOpenedFiles = ['/docs/a.charx', '/docs/b.charx']
+        await characterURLImport()
+        expect(h.characters).toHaveLength(2)
+        expect(h.errors).toEqual([])
+        expect(h.deepLinkRegistered).toBe(1)
+    })
+})
+
+describe('#import_module= and #import_preset= links', () => {
+    const moduleLink = (body: string) => '/#import_module=' + encodeURIComponent(Buffer.from(body).toString('base64'))
+    const presetLink = (body: string) => '/#import_preset=' + encodeURIComponent(Buffer.from(body).toString('base64'))
+
+    test.each([
+        ['malformed module data', () => moduleLink('not json'), 'error:'],
+        ['a module whose low-level-access prompt is declined', () => { h.confirm = false; return moduleLink(JSON.stringify({ name: 'm', lowLevelAccess: true })) }, 'none'],
+        ['a module that imports', () => moduleLink(JSON.stringify({ name: 'm' })), 'normal:' + language.successImport],
+        ['a preset that fails to import', () => { h.presetFails = 'preset broken'; return presetLink('{"name":"p"}') }, 'error:preset broken'],
+        ['a preset that imports', () => presetLink('{"name":"p"}'), 'none'],
+    ] as Array<[string, () => string, string]>)('%s: the start-up work after it still runs and the file-handler consumer is registered', async (_label, link, lastStart) => {
+        const setConsumer = vi.fn()
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
+        setUrl(link())
+        await characterURLImport()
+        expect(setConsumer).toHaveBeenCalledTimes(1)
+        expect(h.last.startsWith(lastStart)).toBe(true)
+    })
+})
+
+describe('download links that fail', () => {
+    test.each([
+        ['a #import= link answered with a non-ok status', () => { routes.set('https://files.test/dl', () => new Response('gone', { status: 404 })); return '/#import=https://files.test/dl' }],
+        ['a ?charahub= download answered with a non-ok status', () => { routes.set('https://api.chub.ai/api/characters/download', () => new Response('gone', { status: 404 })); return '/?charahub=someone/card' }],
+    ] as Array<[string, () => string]>)('%s shows noData and the file-handler consumer is still registered', async (_label, link) => {
+        const setConsumer = vi.fn()
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
+        setUrl(link())
+        await characterURLImport()
+        expect(h.last).toBe('error:' + language.errors.noData)
         expect(setConsumer).toHaveBeenCalledTimes(1)
     })
 })

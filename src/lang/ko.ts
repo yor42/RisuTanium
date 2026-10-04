@@ -1738,5 +1738,8 @@ export const languageKorean = {
     shareEmpty: "공유된 파일이 없어 아무것도 임포트하지 않았습니다.",
     shareNotFound: "이 공유를 찾을 수 없습니다. 이미 임포트되었거나 만료되었을 수 있습니다. 파일을 다시 공유해 보세요.",
     shareInvalid: "공유된 파일을 읽을 수 없어 아무것도 임포트하지 않았습니다. 다시 공유해 보세요.",
-    shareFilesNotImported: (fileNames: string) => `다음 파일을 임포트하지 못했습니다: ${fileNames}`,
+    importFilesNotImported: (notImported: number, total: number, details: string) => `임포트하지 못한 파일 (${total}개 중 ${notImported}개):\n${details}`,
+    importUnsupportedFile: "이 파일 형식은 임포트할 수 없습니다.",
+    importNotCardFile: "캐릭터 카드 파일이 아닙니다.",
+    importFileNotReceived: "파일을 받지 못했습니다.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

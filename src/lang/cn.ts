@@ -1738,5 +1738,8 @@ export const languageChinese = {
     "shareEmpty": "此次分享不包含任何文件，因此未导入任何内容。",
     "shareNotFound": "未找到此次分享。它可能已被导入，或已过期。请尝试重新分享文件。",
     "shareInvalid": "无法读取分享的文件，因此未导入任何内容。请尝试重新分享。",
-    "shareFilesNotImported": (fileNames: string) => `无法导入以下文件：${fileNames}`,
+    "importFilesNotImported": (notImported: number, total: number, details: string) => `未能导入的文件（${total} 个中的 ${notImported} 个）：\n${details}`,
+    "importUnsupportedFile": "无法导入此文件类型。",
+    "importNotCardFile": "这不是角色卡文件。",
+    "importFileNotReceived": "未能接收到该文件。",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

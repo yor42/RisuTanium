@@ -21,6 +21,14 @@ const h = vi.hoisted(() => {
         alerts: [] as Alert[],
         characters: [] as Array<Record<string, unknown>>,
         uuid: 0,
+        /** what the single alert slot holds: every alert function replaces it */
+        last: 'none',
+        /** the answer of the low-level-access prompt */
+        confirm: true,
+        /** the answer of the card password prompt; an empty answer is a cancel */
+        password: '',
+        /** makes the decryption fail, as it does for a wrong password */
+        decryptFails: false,
     }
 })
 
@@ -41,13 +49,14 @@ vi.mock(import('src/ts/upstreamAgreement'), () => ({
 
 vi.mock(import('src/ts/alert'), () => ({
     alertCardExport: vi.fn(),
-    alertConfirm: vi.fn(async () => true),
-    alertError: vi.fn((msg: string) => { h.errors.push(String(msg)) }),
-    alertInput: vi.fn(async () => ''),
+    //A prompt shows itself and, like the real one, leaves the slot cleared once answered.
+    alertConfirm: vi.fn(async () => { h.last = 'ask'; const answer = h.confirm; h.last = 'none'; return answer }),
+    alertError: vi.fn((msg: string | Error) => { const text = msg instanceof Error ? msg.message : String(msg); h.errors.push(text); h.last = 'error:' + text }),
+    alertInput: vi.fn(async () => { h.last = 'input'; const answer = h.password; h.last = 'none'; return answer }),
     alertMd: vi.fn(),
-    alertNormal: vi.fn((msg: string) => { h.events.push('normal:' + msg) }),
-    alertStore: { set: (v: { type?: string, msg?: string, submsg?: string }) => { h.alerts.push(v) }, subscribe: vi.fn(), update: vi.fn() },
-    alertWait: vi.fn((msg: string) => { h.events.push('wait:' + msg) }),
+    alertNormal: vi.fn((msg: string) => { h.events.push('normal:' + msg); h.last = 'normal:' + msg }),
+    alertStore: { set: (v: { type?: string, msg?: string, submsg?: string }) => { h.alerts.push(v); h.last = v.type === 'none' ? 'none' : `${v.type}:${v.msg}` }, subscribe: vi.fn(), update: vi.fn() },
+    alertWait: vi.fn((msg: string) => { h.events.push('wait:' + msg); h.last = 'wait:' + msg }),
 }) as unknown as typeof import('src/ts/alert'))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
@@ -63,7 +72,10 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
-    decryptBuffer: vi.fn(async (d: unknown) => d),
+    decryptBuffer: vi.fn(async (d: unknown) => {
+        if (h.decryptFails) throw new Error('decryption failed')
+        return d
+    }),
     isKnownUri: vi.fn(() => false),
     selectFileByDom: vi.fn(async () => null),
     sleep: vi.fn(async () => {}),
@@ -109,8 +121,9 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     settingsOpen: { set: vi.fn() },
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
+//The digest of an rcc card's encrypted bytes is their length, so a fixture states a valid one without hashing.
 vi.mock(import('src/ts/parser/parser.svelte'), () => ({
-    hasher: vi.fn((s: string) => s),
+    hasher: vi.fn(async (d: Uint8Array) => `len${d.length}`),
 }) as unknown as typeof import('src/ts/parser/parser.svelte'))
 
 vi.mock(import('src/ts/process/files/inlays'), () => ({
@@ -277,6 +290,10 @@ function reset() {
     h.alerts = []
     h.characters = []
     h.uuid = 0
+    h.last = 'none'
+    h.confirm = true
+    h.password = ''
+    h.decryptFails = false
 }
 
 function describeOutcome(returned: number | null | undefined, thrown: string | null): Outcome {
@@ -464,6 +481,113 @@ describe('PNG import of cut cards (regression reproducer)', () => {
         const bytes = build([ihdr(), idat()], []).bytes
         const out = await runImport(bytes.subarray(0, bytes.length - 3), 'file')
         expectRefused(out, 'File')
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Declined prompts and rcc cards: what the user is left looking at
+// ---------------------------------------------------------------------------------------------
+
+const specCard = (opts: { lowLevelAccess?: boolean, missingAsset?: boolean } = {}) => JSON.stringify({
+    spec: 'chara_card_v2',
+    spec_version: '2.0',
+    data: {
+        name: 'Rcc', description: 'd', first_mes: 'hi', character_version: '1',
+        extensions: { risuai: {
+            ...(opts.lowLevelAccess ? { lowLevelAccess: true } : {}),
+            ...(opts.missingAsset ? { additionalAssets: [['a', '__asset:9', 'bin']] } : {}),
+        } },
+    },
+})
+
+/** A card image whose `chara` chunk is an rcc value; the encrypted part is the card text itself (decryption is the identity). */
+function rccCard(opts: { usePassword: boolean, content?: string, type?: string }): Uint8Array {
+    const encrypted = Buffer.from(opts.content ?? specCard())
+    const value = [
+        'rcc', opts.type ?? 'rccv1', encrypted.toString('base64'), `len${encrypted.length}`,
+        Buffer.from(JSON.stringify({ usePassword: opts.usePassword })).toString('base64'),
+    ].join('||')
+    return build([ihdr(), idat(), text('chara', value), iend()], []).bytes
+}
+
+/** Runs one import after `setup` has set the prompt answers; reports what the user was left looking at. */
+async function runWith(bytes: Uint8Array, setup: () => void = () => {}) {
+    reset()
+    setup()
+    let returned: unknown
+    let thrown: string | null = null
+    try {
+        returned = await importCharacterProcess({ name: 'card.png', data: fileOf(bytes) })
+    } catch (e) {
+        thrown = e instanceof Error ? e.message : String(e)
+    }
+    return { returned, thrown, last: h.last, errors: [...h.errors], characters: h.characters.length }
+}
+
+describe('PNG import: a declined prompt, a cancelled password and a failed import leave the right message', () => {
+    test('a card whose low-level-access prompt is declined is not imported, shows nothing and returns no index', async () => {
+        const out = await runWith(build([ihdr(), idat(), text('chara', b64(specCard({ lowLevelAccess: true }))), iend()], []).bytes, () => { h.confirm = false })
+        expect(out.thrown).toBeNull()
+        expect(out.returned).toBeUndefined()
+        expect(out.characters).toBe(0)
+        expect(out.errors).toEqual([])
+        expect(out.last).toBe('none')
+    })
+
+    test('a password card whose low-level-access prompt is declined is declined, not reported as a wrong password', async () => {
+        const out = await runWith(rccCard({ usePassword: true, content: specCard({ lowLevelAccess: true }) }), () => { h.password = 'pw'; h.confirm = false })
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.last).toBe('none')
+        expect(out.characters).toBe(0)
+    })
+
+    test('a password card whose import throws shows that error, not a wrong password', async () => {
+        const out = await runWith(rccCard({ usePassword: true, content: specCard({ missingAsset: true }) }), () => { h.password = 'pw' })
+        expect(out.thrown).toBeNull()
+        expect(out.last).toBe('error:Error while importing, asset 9 not found')
+        expect(out.errors).not.toContain(language.errors.wrongPassword)
+        expect(out.characters).toBe(0)
+    })
+
+    test('a card without a password whose low-level-access prompt is declined is declined, with no error escaping', async () => {
+        const out = await runWith(rccCard({ usePassword: false, content: specCard({ lowLevelAccess: true }) }), () => { h.confirm = false })
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.last).toBe('none')
+        expect(out.characters).toBe(0)
+    })
+
+    test('an rcc card of another type is refused with noData and no error escaping', async () => {
+        const out = await runWith(rccCard({ usePassword: false, type: 'rccv2' }))
+        expect(out.thrown).toBeNull()
+        expect(out.last).toBe('error:' + language.errors.noData)
+        expect(out.characters).toBe(0)
+    })
+
+    test('a cancelled password prompt is declined and shows nothing (guard)', async () => {
+        const out = await runWith(rccCard({ usePassword: true }), () => { h.password = '' })
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.last).toBe('none')
+        expect(out.characters).toBe(0)
+    })
+
+    test('a password card that cannot be decrypted shows the wrong password message (guard)', async () => {
+        const out = await runWith(rccCard({ usePassword: true }), () => { h.password = 'pw'; h.decryptFails = true })
+        expect(out.last).toBe('error:' + language.errors.wrongPassword)
+        expect(out.characters).toBe(0)
+    })
+
+    test('a password card with the right password and a plain rcc card import one character each (guard)', async () => {
+        const withPassword = await runWith(rccCard({ usePassword: true }), () => { h.password = 'pw' })
+        expect(withPassword.errors).toEqual([])
+        expect(withPassword.characters).toBe(1)
+        expect(withPassword.returned).toBe(0)
+        const plain = await runWith(rccCard({ usePassword: false }))
+        expect(plain.errors).toEqual([])
+        expect(plain.characters).toBe(1)
+        expect(plain.returned).toBe(0)
     })
 })
 

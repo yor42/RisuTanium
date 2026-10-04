@@ -224,7 +224,8 @@ vi.mock('fflate', async (importOriginal) => {
 
 import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
 import { CharXImporter, CharXWriter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
-import type { VirtualWriter } from 'src/ts/globalApi.svelte'
+import { checkCharOrder, type VirtualWriter } from 'src/ts/globalApi.svelte'
+import { changeChar } from 'src/ts/characters'
 import { language } from 'src/lang'
 
 // ---------------------------------------------------------------------------------------------
@@ -413,6 +414,8 @@ function reset() {
     h.lateOndataError = false
     h.latePushThrow = false
     h.maxEntryBytes = 0
+    vi.mocked(changeChar).mockClear()
+    vi.mocked(checkCharOrder).mockClear()
     Object.assign(charxLimits, defaultLimits)
 }
 
@@ -550,14 +553,27 @@ describe('import of complete charx and jpg-charx archives (compatibility guard)'
             expect(out.characters, input).toEqual([])
         }
     })
+})
 
-    test('a failing asset save on a complete archive still surfaces through done(), not as an incomplete file', async () => {
+describe('import of a complete charx archive whose asset saves fail (regression reproducer)', () => {
+    test('a failing asset save on a complete archive shows the save failure as the last message, not an incomplete file, and returns no character', async () => {
         const bytes = await writerArchive(cardEntries(), 6)
         h.saveFail = 'storage full'
         const out = await runImport(bytes, 'card.charx', 'file')
-        expect(out.thrown).toBe('Failed to save 3 assets')
-        expect(out.errors).not.toContain(language.cardFileIncomplete)
+        expect(out.thrown).toBeNull()
+        expect(out.returned).toBeUndefined()
+        expect(out.errors).toEqual(['Failed to save 3 assets'])
+        expect(lastLog(out)).toBe('error:Failed to save 3 assets')
         expect(out.characters).toEqual([])
+    })
+
+    test('with returnCharacter a failing asset save shows the save failure as the last message and returns no character', async () => {
+        const bytes = await writerArchive(cardEntries(), 6)
+        h.saveFail = 'storage full'
+        const returned = await importCharacterProcess({ name: 'card.charx', data: fileOf(bytes, 'card.charx'), returnCharacter: true })
+        expect(returned).toBeUndefined()
+        expect(h.log[h.log.length - 1]).toBe('error:Failed to save 3 assets')
+        expect(h.characters).toEqual([])
     })
 })
 
@@ -788,6 +804,29 @@ describe('downloadRisuHub charx download', () => {
         expect(h.saveCalls).toBe(0)
         expect(h.characters).toEqual([])
         expect(h.errors).toEqual([language.cardFileIncomplete])
+    })
+
+    test.each([
+        ['a cut archive', async () => { const z = await writerArchive(cardEntries(), 6); return z.subarray(0, entryOf(geometry(z), 'assets/b.bin').dataStart + 100) }],
+        ['an archive whose asset saves fail (guard)', async () => { h.saveFail = 'storage full'; return await writerArchive(cardEntries(), 6) }],
+    ] as Array<[string, () => Promise<Uint8Array>]>)('a download of %s with a character already in the library does not order or open any character', async (_label, make) => {
+        const bytes = await make()
+        h.characters = [{ name: 'Existing' }]
+        vi.stubGlobal('fetch', vi.fn(async () => realmResponse(bytes).res))
+        await downloadRisuHub('some-id', { forceRedirect: true })
+        expect(h.characters).toEqual([{ name: 'Existing' }])
+        expect(changeChar).not.toHaveBeenCalled()
+        expect(checkCharOrder).not.toHaveBeenCalled()
+        expect(h.log[h.log.length - 1].startsWith('error:')).toBe(true)
+    })
+
+    test('a download that imports orders the characters and opens the new one (compatibility guard)', async () => {
+        const z = await writerArchive(cardEntries(), 6)
+        vi.stubGlobal('fetch', vi.fn(async () => realmResponse(z).res))
+        await downloadRisuHub('some-id', { forceRedirect: true })
+        expect(h.characters).toHaveLength(1)
+        expect(checkCharOrder).toHaveBeenCalledTimes(1)
+        expect(changeChar).toHaveBeenCalledWith(0)
     })
 
     test('a download whose body fails still ends in an error and imports nothing (compatibility guard)', async () => {

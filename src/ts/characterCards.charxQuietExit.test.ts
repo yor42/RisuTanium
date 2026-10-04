@@ -320,13 +320,15 @@ describe('a charx import that ends without a character while asset saves are in 
         expect(h.characters).toEqual([])
     })
 
-    test('an import that throws after parsing sets no progress message after the throw', async () => {
+    test('an import that fails after parsing shows the failure and sets no progress message after it', async () => {
         h.gated = true
         const out = await runImport(archive({ card: '{ this is not json' }))
-        expect(out.thrown).not.toBeNull()
+        expect(out.thrown).toBeNull()
+        expect(h.last.startsWith('error:')).toBe(true)
         const shown = [...h.log]
         await drain()
         expect(h.log).toEqual(shown)
+        expect(h.last.startsWith('error:')).toBe(true)
         expect(h.characters).toEqual([])
     })
 

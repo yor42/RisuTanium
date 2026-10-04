@@ -30,6 +30,146 @@ export const hubURL = isNodeServer
     ? NIGHTLY_HUB_URL 
     : EXTERNAL_HUB_URL;
 
+/**
+ * How the attempt to import one file ended. The import code decides it; nothing reads alert text.
+ * - imported: a character, preset or module was added (`index` is the new character's position, `null` for a preset, a
+ *   module, or a character handed back instead of added).
+ * - declined: the user chose not to go on (the low-level-access prompt or the card password prompt). Nothing is shown.
+ * - refused: the file is not usable; `reason` is shown as text. `summaryOnly` marks a reason that has no message of its own.
+ * - failed: an unexpected error; it is shown with its details.
+ */
+type ImportOutcome =
+    | {kind: 'imported', index: number|null, character?: character}
+    | {kind: 'declined'}
+    | {kind: 'refused', reason: string, summaryOnly?: true}
+    | {kind: 'failed', error: Error|string}
+
+type ImportItem = {name: string, run: () => Promise<ImportOutcome>}
+
+const refusedOutcome = (reason:string):ImportOutcome => ({kind: 'refused', reason})
+
+//A refused module is a refusal whichever import it came out of; any other error is a failure.
+function outcomeOfError(error:unknown):ImportOutcome {
+    if(error instanceof ModuleRefusal){
+        return refusedOutcome(error.message)
+    }
+    return {kind: 'failed', error: error instanceof Error ? error : String(error)}
+}
+
+function outcomeReason(outcome:ImportOutcome):string {
+    if(outcome.kind === 'refused'){
+        return outcome.reason
+    }
+    if(outcome.kind === 'failed'){
+        return outcome.error instanceof Error ? outcome.error.message : outcome.error
+    }
+    return ''
+}
+
+//One file's own message: a refusal as text, a failure with its details.
+function showOutcome(outcome:ImportOutcome) {
+    if(outcome.kind === 'refused'){
+        alertError(outcome.reason)
+    }
+    else if(outcome.kind === 'failed'){
+        alertError(outcome.error)
+    }
+}
+
+/**
+ * Attempts every item, whatever an earlier item's outcome, then shows what did not import. The loop never rejects.
+ * When something was refused or failed, the last message of the action is one error: the file's own message when the
+ * action had a single file with a message of its own, otherwise a summary naming each file and its reason. Nothing is
+ * shown after it. When nothing was refused or failed, the alerts of the last file stay as they are.
+ */
+async function importFiles(items:ImportItem[]):Promise<void> {
+    const results:ImportOutcome[] = []
+    for(const item of items){
+        let outcome:ImportOutcome
+        try {
+            outcome = await item.run()
+        } catch (error) {
+            console.error(error)
+            outcome = outcomeOfError(error)
+        }
+        if(outcome.kind === 'imported' && outcome.index !== null){
+            try {
+                checkCharOrder()
+            } catch (error) {
+                console.error(error)
+            }
+        }
+        results.push(outcome)
+    }
+    const notImported = items
+        .map((item, i) => ({item, outcome: results[i]}))
+        .filter(({outcome}) => outcome.kind === 'refused' || outcome.kind === 'failed')
+    if(notImported.length === 0){
+        return
+    }
+    const only = notImported[0].outcome
+    if(items.length === 1 && !(only.kind === 'refused' && only.summaryOnly)){
+        showOutcome(only)
+        return
+    }
+    alertError(language.importFilesNotImported(
+        notImported.length,
+        items.length,
+        notImported.map(({item, outcome}) => `${item.name}: ${outcomeReason(outcome)}`).join('\n')
+    ))
+}
+
+//One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
+function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<Uint8Array|File|null>):ImportItem {
+    return {
+        name: label,
+        run: async () => {
+            const kind = classifyImportFile(name, type)
+            if(!kind){
+                return {kind: 'refused', reason: language.importUnsupportedFile, summaryOnly: true}
+            }
+            const data = await read(kind)
+            if(!data){
+                return {kind: 'refused', reason: language.importFileNotReceived, summaryOnly: true}
+            }
+            return await importClassified(kind, data)
+        }
+    }
+}
+
+//Cards are handed on as they are (a File is read in pieces); presets and modules are read whole, as the file picker does.
+async function importClassified(file:ClassifiedImport, data:Uint8Array|File):Promise<ImportOutcome> {
+    try {
+        if(file.kind === 'card'){
+            return await importCharacterFile({
+                name: file.name,
+                data: data
+            })
+        }
+        const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : data
+        if(file.kind === 'preset'){
+            await importPreset({
+                name: file.name,
+                data: bytes
+            })
+            SettingsMenuIndex.set(1)
+            settingsOpen.set(true)
+            alertNormal(language.successImport)
+            return {kind: 'imported', index: null}
+        }
+        const md = await readModule(Buffer.from(bytes))
+        md.id = v4()
+        DBState.db.modules.push(md)
+        alertNormal(language.successImport)
+        SettingsMenuIndex.set(14)
+        settingsOpen.set(true)
+        return {kind: 'imported', index: null}
+    } catch (error) {
+        console.error(error)
+        return outcomeOfError(error)
+    }
+}
+
 export async function importCharacter() {
     try {
         const files = await selectFileByDom(["*"], 'multiple')
@@ -37,43 +177,78 @@ export async function importCharacter() {
             return
         }
 
-        for(const f of files){
-            await importCharacterProcess({
+        await importFiles(Array.from(files, (f) => ({
+            name: f.name,
+            run: () => importCharacterFile({
                 name: f.name,
                 data: f
             })
-            checkCharOrder()
-        }
+        })))
     } catch (error) {
         alertError(error)
         return null
     }
 }
 
+type ImportProcessResult<T extends boolean> = T extends true ? character | number | null : number | null
+
+/**
+ * Imports one character file and shows its own message when it is refused or fails. It never rejects: the result is
+ * the new character's index (or the character itself with `returnCharacter`) when something was imported, and
+ * `undefined` when the file was declined, refused or failed.
+ */
 export async function importCharacterProcess<T extends boolean = false>(f:{
     name: string;
     data: Uint8Array|File|ReadableStream<Uint8Array>
     returnCharacter?:T //note That this option only works with v3 charx
-}):Promise<T extends true ? character | number | null : number | null>{
+}):Promise<ImportProcessResult<T>>{
+    const outcome = await importCharacterFile(f)
+    if(outcome.kind === 'imported'){
+        return (outcome.character ?? outcome.index) as ImportProcessResult<T>
+    }
+    showOutcome(outcome)
+    return undefined
+}
+
+//Reads one character file and reports how it ended. It never rejects.
+async function importCharacterFile(f:{
+    name: string;
+    data: Uint8Array|File|ReadableStream<Uint8Array>
+    returnCharacter?:boolean
+}):Promise<ImportOutcome>{
+    try {
+        return await readCharacterFile(f)
+    } catch (error) {
+        console.error(error)
+        return outcomeOfError(error)
+    }
+}
+
+async function readCharacterFile(f:{
+    name: string;
+    data: Uint8Array|File|ReadableStream<Uint8Array>
+    returnCharacter?:boolean
+}):Promise<ImportOutcome>{
     if(f.name.endsWith('json')){
-        if(f.data instanceof ReadableStream){
-            return null
+        if(!f.data || f.data instanceof ReadableStream){
+            return refusedOutcome(language.errors.noData)
         }
         const data = f.data instanceof Uint8Array ? f.data : new Uint8Array(await f.data.arrayBuffer())
         const da = JSON.parse(Buffer.from(data).toString('utf-8'))
-        if(await importCharacterCardSpec(da)){
+        const spec = await importCharacterCardSpec(da)
+        if(spec){
             let db = getDatabase()
-            return db.characters.length - 1 as any
+            return {kind: 'imported', index: db.characters.length - 1}
         }
-        if((da.char_name || da.name) && (da.char_persona || da.description) && (da.char_greeting || da.first_mes)){
+        if(spec === false){
+            return {kind: 'declined'}
+        }
+        if((da?.char_name || da?.name) && (da.char_persona || da.description) && (da.char_greeting || da.first_mes)){
             DBState.db.characters.push(convertOffSpecCards(da))
             alertNormal(language.importedCharacter)
-            return
+            return {kind: 'imported', index: DBState.db.characters.length - 1}
         }
-        else{
-            alertError(language.errors.noData)
-            return
-        }
+        return refusedOutcome(language.errors.noData)
     }
     let db = getDatabase()
     db.statics.imports += 1
@@ -96,30 +271,27 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
                 : f.data
             //An archive without its end record was cut short. A jpg or jpeg without one is treated as a plain image (a jpg-charx cut short cannot be told apart by its tail).
             if(!(await hasZipEndRecord(charxData))){
-                alertError(f.name.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
-                return
+                return refusedOutcome(f.name.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
             }
             await importer.parse(charxData)
         } catch (error) {
             if(error instanceof CharXParseError && error.origin === 'size'){
-                alertError(language.cardFileEntryTooLarge(error.entryName ?? '', Math.round((error.limitBytes ?? 0) / (1024 * 1024))))
+                return refusedOutcome(language.cardFileEntryTooLarge(error.entryName ?? '', Math.round((error.limitBytes ?? 0) / (1024 * 1024))))
             }
-            else{
-                alertError(error instanceof CharXParseError && error.origin === 'zip' ? language.cardFileIncomplete : error)
+            if(error instanceof CharXParseError && error.origin === 'zip'){
+                return refusedOutcome(language.cardFileIncomplete)
             }
-            return
+            return outcomeOfError(error)
         }
         //Whichever way this ends, the importer is finished with: asset saves that have not started do not start, and no progress message replaces what the import shows next.
         try {
             const cardData = importer.cardData
             if(!cardData){
-                alertError(language.errors.noData)
-                return
+                return refusedOutcome(language.errors.noData)
             }
             const card:CharacterCardV3 = JSON.parse(cardData)
             if(card.spec !== 'chara_card_v3'){
-                alertError(language.errors.noData)
-                return
+                return refusedOutcome(language.errors.noData)
             }
             let lorebook:loreBook[] = null
             if(importer.moduleData){
@@ -129,8 +301,7 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
                 } catch (error) {
                     //An embedded module that is not usable refuses the whole card
                     if(error instanceof ModuleRefusal){
-                        alertError(error.message)
-                        return
+                        return refusedOutcome(error.message)
                     }
                     throw error
                 }
@@ -143,20 +314,24 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
                 }
             }
             await importer.done()
-            let v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter)
-            if(f.returnCharacter){
-                return v as any
+            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter)
+            if(v === null){
+                return refusedOutcome(language.errors.noData)
             }
-            let db = getDatabase()
-            return db.characters.length - 1
+            if(v === false){
+                return {kind: 'declined'}
+            }
+            if(v === true){
+                return {kind: 'imported', index: getDatabase().characters.length - 1}
+            }
+            return {kind: 'imported', index: null, character: v}
         } finally {
             importer.abandon()
         }
     }
 
     if(!f.name.endsWith('png')){
-        alertError(language.errors.noData)
-        return
+        return refusedOutcome(language.importNotCardFile)
     }
     
 
@@ -180,12 +355,10 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     //Counts the assets and checks that no chunk body (nor the CRC of a chunk other than tEXt) is cut short before anything is saved, so such a card saves nothing.
     const scan = await PngChunk.scanCard(pngData)
     if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
-        alertError(language.cardFileIncomplete)
-        return
+        return refusedOutcome(language.cardFileIncomplete)
     }
     if(!scan.hasCardData){
-        alertError(language.errors.noData)
-        return
+        return refusedOutcome(language.errors.noData)
     }
     const pngChunks = scan.assetCount
 
@@ -236,8 +409,7 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     }
 
     if(!readedChara && !readedCCv3){
-        alertError(language.errors.noData)
-        return
+        return refusedOutcome(language.errors.noData)
     }
 
     if(readedCCv3){
@@ -245,62 +417,47 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     }
 
     if(!img){
-        alertError(language.errors.noData)
-        return
+        return refusedOutcome(language.errors.noData)
     }
 
     if(readedChara.startsWith('rcc||')){
         const parts = readedChara.split('||')
         const type = parts[1]
-        if(type === 'rccv1'){
-            if(parts.length !== 5){
-                alertError(language.errors.noData)
-                return
-            }
-            const encrypted = Buffer.from(parts[2], 'base64')
-            const hashed = await hasher(encrypted)
-            if(hashed !== parts[3]){
-                alertError(language.errors.noData)
-                return
-            }
-            const metaData:RccCardMetaData = JSON.parse(Buffer.from(parts[4], 'base64').toString('utf-8'))
-            if(metaData.usePassword){
-                const password = await alertInput(language.inputCardPassword)
-                if(!password){
-                    return
-                }
-                else{
-                    try {
-                        const decrypted = await decryptBuffer(encrypted, password)         
-                        const charaData:CharacterCardV2Risu = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
-                        if(await importCharacterCardSpec(charaData, img, "normal", assets)){
-                            let db = getDatabase()
-                            return db.characters.length - 1
-                        }
-                        else{
-                            throw new Error('Error while importing')
-                        }
-                    } catch (error) {
-                        alertError(language.errors.wrongPassword)
-                        return
-                    }
-                }
-            }
-            else{
-                const decrypted = await decryptBuffer(encrypted, 'RISU_NONE')
-                try {
-                    const charaData:CharacterCardV2Risu = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
-                    if(await importCharacterCardSpec(charaData, img, "normal", assets)){
-                        let db = getDatabase()
-                        return db.characters.length - 1
-                    }   
-                } catch (error) {
-                    alertError(language.errors.noData)
-                    return
-                }
-            }
-
+        if(type !== 'rccv1'){
+            return refusedOutcome(language.errors.noData)
         }
+        if(parts.length !== 5){
+            return refusedOutcome(language.errors.noData)
+        }
+        const encrypted = Buffer.from(parts[2], 'base64')
+        const hashed = await hasher(encrypted)
+        if(hashed !== parts[3]){
+            return refusedOutcome(language.errors.noData)
+        }
+        const metaData:RccCardMetaData = JSON.parse(Buffer.from(parts[4], 'base64').toString('utf-8'))
+        if(metaData.usePassword){
+            const password = await alertInput(language.inputCardPassword)
+            if(!password){
+                return {kind: 'declined'}
+            }
+            //Only reading the card with this password can mean the password is wrong; a failure of the import itself keeps its own reason.
+            let charaData:CharacterCardV2Risu
+            try {
+                const decrypted = await decryptBuffer(encrypted, password)
+                charaData = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
+            } catch (error) {
+                return refusedOutcome(language.errors.wrongPassword)
+            }
+            return await importRccCard(charaData, img, assets, language.errors.wrongPassword)
+        }
+        const decrypted = await decryptBuffer(encrypted, 'RISU_NONE')
+        let charaData:CharacterCardV2Risu
+        try {
+            charaData = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
+        } catch (error) {
+            return refusedOutcome(language.errors.noData)
+        }
+        return await importRccCard(charaData, img, assets, language.errors.noData)
     }
     const parsed = JSON.parse(Buffer.from(readedChara, 'base64').toString('utf-8'))
     //fix readedChara version pointing number instead of string because of previous version
@@ -313,12 +470,24 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
         const imgp = await saveAsset(img)
         DBState.db.characters.push(convertOffSpecCards(charaData, imgp))
         alertNormal(language.importedCharacter)
-        return DBState.db.characters.length - 1
+        return {kind: 'imported', index: DBState.db.characters.length - 1}
     }
-    await importCharacterCardSpec(parsed, img, "normal", assets)
-    
-    return DBState.db.characters.length - 1
-    
+    const result = await importCharacterCardSpec(parsed, img, "normal", assets)
+    return cardSpecOutcome(result, DBState.db.characters.length - 1)
+}
+
+//The outcome of `importCharacterCardSpec` for a card that was added: `false` is a declined prompt, `null` a card of no known spec.
+function cardSpecOutcome(result:boolean|null, index:number, notACard:string = language.errors.noData):ImportOutcome {
+    if(result === null){
+        return refusedOutcome(notACard)
+    }
+    return result ? {kind: 'imported', index} : {kind: 'declined'}
+}
+
+//A card inside a password-protected or plain rcc image: `notACard` is the reason when its content is not a card.
+async function importRccCard(charaData:CharacterCardV2Risu, img:Uint8Array, assets:{[key:string]:string}, notACard:string):Promise<ImportOutcome> {
+    const result = await importCharacterCardSpec(charaData, img, "normal", assets)
+    return cardSpecOutcome(result, getDatabase().characters.length - 1, notACard)
 }
 
 // The last `?realm=` path seen without acceptance, drained by
@@ -442,18 +611,18 @@ export async function characterURLImport() {
             })
             if(!chara.ok){
                 alertError(language.errors.noData)
-                return null
             }
-            //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-            await importCharacterProcess({
-                name: 'charahub.png',
-                data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'})
-            })
-            checkCharOrder()
+            else{
+                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                await importCharacterProcess({
+                    name: 'charahub.png',
+                    data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'})
+                })
+                checkCharOrder()
+            }
         }
     } catch (error) {
         alertError(language.errors.noData)
-        return null
     }
 
 
@@ -467,45 +636,47 @@ export async function characterURLImport() {
             })
             if(!res.ok){
                 alertError(language.errors.noData)
-                return null
             }
-            const fileName = getFileName(res)
-            //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-            const blob = await res.blob()
-            await importFile(fileName, new File([blob], fileName, {type: blob.type}))
-            checkCharOrder()
+            else{
+                const fileName = getFileName(res)
+                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                const blob = await res.blob()
+                await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}))])
+            }
         } catch (error) {
             alertError(language.errors.noData)
-            return null
         }
     }
+    //No outcome of the Chub, #import=, #import_module= or #import_preset= links ends the start-up work below.
     if(hash.startsWith('#import_module=')){
-        const data = hash.replace('#import_module=', '')
-        const importData = JSON.parse(Buffer.from(decodeURIComponent(data), 'base64').toString('utf-8'))
-        importData.id = v4()
+        try {
+            const data = hash.replace('#import_module=', '')
+            const importData = JSON.parse(Buffer.from(decodeURIComponent(data), 'base64').toString('utf-8'))
+            importData.id = v4()
 
-        if(importData.lowLevelAccess){
-            const conf = await alertConfirm(language.lowLevelAccessConfirm)
-            if(!conf){
-                return false
+            if(!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm)){
+                DBState.db.modules.push(importData)
+                alertNormal(language.successImport)
+                SettingsMenuIndex.set(14)
+                settingsOpen.set(true)
             }
+        } catch (error) {
+            alertError(error)
         }
-        DBState.db.modules.push(importData)
-        alertNormal(language.successImport)
-        SettingsMenuIndex.set(14)
-        settingsOpen.set(true)
-        return
     }
-    if(hash.startsWith('#import_preset=')){
-        const data = hash.replace('#import_preset=', '')
-        const importData =Buffer.from(decodeURIComponent(data), 'base64')
-        await importPreset({
-            name: 'imported.risupreset',
-            data: importData
-        })
-        SettingsMenuIndex.set(1)
-        settingsOpen.set(true)
-        return
+    else if(hash.startsWith('#import_preset=')){
+        try {
+            const data = hash.replace('#import_preset=', '')
+            const importData =Buffer.from(decodeURIComponent(data), 'base64')
+            await importPreset({
+                name: 'imported.risupreset',
+                data: importData
+            })
+            SettingsMenuIndex.set(1)
+            settingsOpen.set(true)
+        } catch (error) {
+            alertError(error)
+        }
     }
     //A failure while receiving a share never stops the rest of the start-up work below.
     const shareId = /^#share=([0-9]+-[0-9a-f-]+)$/i.exec(hash)?.[1]
@@ -517,17 +688,15 @@ export async function characterURLImport() {
         }
     }
     if ("launchQueue" in window) {
-        const handleFiles = async (files:FileSystemFileHandle[]) => {
-            for(const f of files){
-                const file = await f.getFile()
-                await importFile(f.name, file);
-            }
-        }
+        //Every file is attempted; what did not import is shown once at the end. The consumer hands back the promise of that work.
+        const handleFiles = (files:FileSystemFileHandle[]) => importFiles(
+            files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile()))
+        ).catch((error) => alertError(error))
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
         window.launchQueue.setConsumer((launchParams) => {
             if (launchParams.files && launchParams.files.length) {
                 const files = launchParams.files as FileSystemFileHandle[]
-                handleFiles(files)
+                return handleFiles(files)
             }
         });
     }
@@ -535,11 +704,12 @@ export async function characterURLImport() {
     if("tauriOpenedFiles" in window){
         //@ts-expect-error tauriOpenedFiles is custom Tauri property, not defined in Window interface
         const files:string[] = window.tauriOpenedFiles
-        if(files){
-            for(const file of files){
-                const data = await readFile(file)
-                await importFile(file, data)
+        try {
+            if(files){
+                await importFiles(files.map((file) => classifiedImport(file.split(/[\\/]/).pop() || file, file, '', () => readFile(file))))
             }
+        } catch (error) {
+            alertError(error)
         }
     }
     
@@ -556,41 +726,6 @@ export async function characterURLImport() {
                 }
             }
         })
-    }
-
-    async function importFile(name:string, data:Uint8Array|File) {
-        const kind = classifyImportFile(name, '')
-        if(kind){
-            await importClassified(kind, data)
-        }
-    }
-
-    //Cards are handed on as they are (a File is read in pieces); presets and modules are read whole, as the file picker does.
-    async function importClassified(file:ClassifiedImport, data:Uint8Array|File) {
-        if(file.kind === 'card'){
-            await importCharacterProcess({
-                name: file.name,
-                data: data
-            })
-            return
-        }
-        const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : data
-        if(file.kind === 'preset'){
-            await importPreset({
-                name: file.name,
-                data: bytes
-            })
-            SettingsMenuIndex.set(1)
-            settingsOpen.set(true)
-            alertNormal(language.successImport)
-            return
-        }
-        const md = await readModule(Buffer.from(bytes))
-        md.id = v4()
-        DBState.db.modules.push(md)
-        alertNormal(language.successImport)
-        SettingsMenuIndex.set(14)
-        settingsOpen.set(true)
     }
 
     function clearShareHash() {
@@ -628,32 +763,14 @@ export async function characterURLImport() {
                 alertError(language.shareInvalid)
                 return
             }
-            const notImported:string[] = []
-            for(const entry of entries){
-                const kind = classifyImportFile(entry.name, entry.type)
-                if(!kind){
-                    notImported.push(entry.name)
-                    continue
+            await importFiles(entries.map((entry) => classifiedImport(entry.name, entry.name, entry.type, async (kind) => {
+                const res = await fetch(entry.key)
+                if(!res.ok){
+                    return null
                 }
-                try {
-                    const res = await fetch(entry.key)
-                    if(!res.ok){
-                        notImported.push(entry.name)
-                        continue
-                    }
-                    //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                    await importClassified(kind, new File([await res.blob()], kind.name, {type: entry.type}))
-                    if(kind.kind === 'card'){
-                        checkCharOrder()
-                    }
-                } catch (error) {
-                    alertError(error)
-                    notImported.push(entry.name)
-                }
-            }
-            if(notImported.length > 0){
-                alertError(language.shareFilesNotImported(notImported.join(', ')))
-            }
+                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                return new File([await res.blob()], kind.name, {type: entry.type})
+            })))
         } finally {
             try {
                 await fetch(base, {method: 'DELETE'})
@@ -810,9 +927,10 @@ export async function openRealmUpload(target: string): Promise<void> {
 }
 
 
-async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T):Promise<T extends true ? character|false : boolean>{
+//Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
+async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T):Promise<T extends true ? character|false|null : boolean|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
-        return false
+        return null
     }
 
     console.log(`Importing ${card.spec}, mode is ${mode}`)
@@ -1913,19 +2031,24 @@ export async function downloadRisuHub(id:string, arg:{
         }
 
         if(res.headers.get('content-type') === 'image/png' || res.headers.get('content-type') === 'application/zip' || res.headers.get('content-type') === 'application/charx'){
+            let imported:number|null
             if(res.headers.get('content-type') === 'application/zip' || res.headers.get('content-type') === 'application/charx'){
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                await importCharacterProcess({
+                imported = await importCharacterProcess({
                     name: 'realm.charx',
                     data: new File([await res.blob()], 'realm.charx', {type: res.headers.get('content-type')}),
                 })
             }
             else{
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                await importCharacterProcess({
+                imported = await importCharacterProcess({
                     name: 'realm.png',
                     data: new File([await res.blob()], 'realm.png', {type: res.headers.get('content-type')}),
                 })
+            }
+            //A file that was declined, refused or failed has shown its own message and leaves the library as it was.
+            if(typeof imported !== 'number'){
+                return
             }
             checkCharOrder()
             const db = getDatabase()
@@ -1942,7 +2065,14 @@ export async function downloadRisuHub(id:string, arg:{
 
         data.data.extensions.risuRealmImportId = id
     
-        await importCharacterCardSpec(data, await getHubResources(img), 'hub')
+        const added = await importCharacterCardSpec(data, await getHubResources(img), 'hub')
+        if(added === null){
+            alertError(language.errors.noData)
+            return
+        }
+        if(!added){
+            return
+        }
         checkCharOrder()
         let db = getDatabase()
         if(db.characters[db.characters.length-1] && (db.goCharacterOnImport || arg.forceRedirect)){

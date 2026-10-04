@@ -1738,5 +1738,8 @@ export const languageGerman = {
     "shareEmpty": "Die Freigabe enthielt keine Dateien, daher wurde nichts importiert.",
     "shareNotFound": "Diese Freigabe wurde nicht gefunden. Möglicherweise wurde sie bereits importiert oder ist abgelaufen. Versuchen Sie, die Dateien erneut zu teilen.",
     "shareInvalid": "Die geteilten Dateien konnten nicht gelesen werden, daher wurde nichts importiert. Versuchen Sie, sie erneut zu teilen.",
-    "shareFilesNotImported": (fileNames: string) => `Diese Dateien konnten nicht importiert werden: ${fileNames}`,
+    "importFilesNotImported": (notImported: number, total: number, details: string) => `Nicht importierte Dateien (${notImported} von ${total}):\n${details}`,
+    "importUnsupportedFile": "Dieser Dateityp kann nicht importiert werden.",
+    "importNotCardFile": "Dies ist keine Charakterkarten-Datei.",
+    "importFileNotReceived": "Die Datei konnte nicht empfangen werden.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

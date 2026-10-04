@@ -1882,7 +1882,10 @@ export const languageEnglish = {
     shareEmpty: "The share contained no files, so nothing was imported.",
     shareNotFound: "This share was not found. It may already have been imported, or it may have expired. Try sharing the files again.",
     shareInvalid: "The shared files could not be read, so nothing was imported. Try sharing them again.",
-    shareFilesNotImported: (fileNames: string) => `These files could not be imported: ${fileNames}`,
+    importFilesNotImported: (notImported: number, total: number, details: string) => `Files not imported (${notImported} of ${total}):\n${details}`,
+    importUnsupportedFile: "This file type cannot be imported.",
+    importNotCardFile: "This is not a character card file.",
+    importFileNotReceived: "The file could not be received.",
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

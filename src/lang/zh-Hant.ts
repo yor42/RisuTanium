@@ -1784,5 +1784,8 @@ export const languageChineseTraditional = {
     "shareEmpty": "此次分享不包含任何檔案，因此未匯入任何內容。",
     "shareNotFound": "找不到此次分享。它可能已被匯入，或已過期。請嘗試重新分享檔案。",
     "shareInvalid": "無法讀取分享的檔案，因此未匯入任何內容。請嘗試重新分享。",
-    "shareFilesNotImported": (fileNames: string) => `無法匯入以下檔案：${fileNames}`,
+    "importFilesNotImported": (notImported: number, total: number, details: string) => `未能匯入的檔案（${total} 個中的 ${notImported} 個）：\n${details}`,
+    "importUnsupportedFile": "無法匯入此檔案類型。",
+    "importNotCardFile": "這不是角色卡檔案。",
+    "importFileNotReceived": "未能接收到該檔案。",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

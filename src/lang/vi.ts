@@ -1738,5 +1738,8 @@ export const languageVietnamese = {
     shareEmpty: "Lượt chia sẻ không chứa tệp nào nên không có gì được nhập.",
     shareNotFound: "Không tìm thấy lượt chia sẻ này. Có thể nó đã được nhập hoặc đã hết hạn. Hãy thử chia sẻ lại các tệp.",
     shareInvalid: "Không thể đọc các tệp được chia sẻ nên không có gì được nhập. Hãy thử chia sẻ lại.",
-    shareFilesNotImported: (fileNames: string) => `Không thể nhập các tệp sau: ${fileNames}`,
+    importFilesNotImported: (notImported: number, total: number, details: string) => `Các tệp chưa được nhập (${notImported}/${total}):\n${details}`,
+    importUnsupportedFile: "Không thể nhập loại tệp này.",
+    importNotCardFile: "Đây không phải là tệp thẻ nhân vật.",
+    importFileNotReceived: "Không thể nhận được tệp.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;
