@@ -2,6 +2,8 @@ import { AppendableBuffer, saveAsset, type LocalWriter, type VirtualWriter } fro
 import * as fflate from "fflate";
 import { asBuffer, Semaphore, sleep } from "../util";
 import { alertStore } from "../alert";
+import { language } from "src/lang";
+import { fillLang } from "src/lang/fill";
 
 const MIB = 1024 * 1024;
 const CHUNK_SIZE_BYTES = MIB; // 1MB
@@ -57,7 +59,7 @@ export async function processZip(dataArray: Uint8Array): Promise<string> {
         });
         return base64;
     } else {
-        throw new Error("No image found in ZIP file");
+        throw new Error(language.errors.noImageInZip);
     }
 }
 
@@ -420,7 +422,7 @@ export class CharXImporter{
             if(this.alertInfo && !this.#failure && !this.#abandoned){
                 alertStore.set({
                     type: 'wait',
-                    msg: `Loading... (Saving Assets ${done}/${total})`
+                    msg: fillLang(language.alerts.savingAssets, { done: String(done), total: String(total) })
                 })
             }
         }
@@ -592,7 +594,7 @@ export class CharXImporter{
             if (this.errors.length > 0) {
                 const error = this.errors.length === 1
                     ? this.errors[0]
-                    : new AggregateError(this.errors, `Failed to save ${this.errors.length} assets`)
+                    : new AggregateError(this.errors, fillLang(language.errors.moduleAssetsSaveFailed, { count: String(this.errors.length) }))
                 this.completionRejecter?.(error)
                 return
             }

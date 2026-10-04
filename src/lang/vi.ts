@@ -169,7 +169,9 @@ export const languageVietnamese = {
         "localSidecarNotStarted": "Lỗi khi lấy khóa cục bộ: không thể khởi động sidecar suy luận cục bộ",
         "jsonSchemaSyntaxError": "Phát hiện SyntaxError",
         "jsonSchemaUnsupportedType": "Phát hiện kiểu không được hỗ trợ",
-        "pluginNameChangeBlocked": "Khi cập nhật plugin \"{original}\", không thể đổi tên plugin thành \"{new}\". Vui lòng giữ nguyên tên gốc để cập nhật."
+        "pluginNameChangeBlocked": "Khi cập nhật plugin \"{original}\", không thể đổi tên plugin thành \"{new}\". Vui lòng giữ nguyên tên gốc để cập nhật.",
+        "importAssetNotFound": "Lỗi khi nhập, không tìm thấy tài sản {key}",
+        "noImageInZip": "Không tìm thấy hình ảnh trong tệp ZIP"
     },
     "alerts": {
         "screenshotTaking": "Đang chụp ảnh màn hình...",
@@ -213,7 +215,17 @@ export const languageVietnamese = {
         "writingExif": "Đang tải... (Đang ghi Exif)",
         "writingPng": "Đang tải... (Đang ghi)",
         "presetConverted": "Đã chuyển đổi cài đặt trước thành công. Bạn có thể tìm thấy nó trong các cài đặt trước của cài đặt bot",
-        "presetNotFound": "Không tìm thấy cài đặt trước: {name}"
+        "presetNotFound": "Không tìm thấy cài đặt trước: {name}",
+        "readingCard": "Đang tải... (Đang đọc)",
+        "loadingAssets": "Đang tải... (Đang tải tài sản)",
+        "loadingEmotions": "Đang tải... (Đang tải hình ảnh cảm xúc)",
+        "loadingVits": "Đang tải... (Đang tải VITS)",
+        "addingEmotions": "Đang tải... (Đang thêm hình ảnh cảm xúc)",
+        "addingAdditionalAssets": "Đang tải... (Đang thêm tài sản bổ sung)",
+        "addingVits": "Đang tải... (Đang thêm VITS)",
+        "addingCardAssets": "Đang tải... (Đang thêm tài sản)",
+        "downloading": "Đang tải xuống...",
+        "savingAssets": "Đang tải... (Đang lưu tài sản {done}/{total})"
     },
     "loadingEllipsis": "Đang tải...",
     "slashCommandHelp":
@@ -1149,8 +1161,6 @@ export const languageVietnamese = {
     "ttsElevenLabsKeyHint": "Hãy đặt khóa API ElevenLabs trong Cài đặt → Bot khác → TTS → ElevenLabs API key.",
     "askRemoval": "Yêu cầu xóa",
     "replaceGlobalNote": "Thay thế ghi chú toàn cầu",
-    "globalLoreBook": "Sách truyền thuyết toàn cầu",
-    "globalRegexScript": "Regex toàn cầu",
     "accessibility": "Khả năng tiếp cận",
     "sendWithEnter": "Gửi bằng phím Enter(Shift + Enter chuyển sang gửi tin nhắn khi không kiểm tra.)",
     "fixedChatTextarea": "Cố định ở dưới khung chat",

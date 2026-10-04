@@ -169,7 +169,9 @@ export const languageSpanish = {
         "localSidecarNotStarted": "Error al obtener la clave local: no se pudo iniciar el sidecar de inferencia local",
         "jsonSchemaSyntaxError": "Se encontró un SyntaxError",
         "jsonSchemaUnsupportedType": "Se detectó un tipo no compatible",
-        "pluginNameChangeBlocked": "Al actualizar el plugin \"{original}\", el nombre del plugin no se puede cambiar a \"{new}\". Mantén el nombre original para actualizar."
+        "pluginNameChangeBlocked": "Al actualizar el plugin \"{original}\", el nombre del plugin no se puede cambiar a \"{new}\". Mantén el nombre original para actualizar.",
+        "importAssetNotFound": "Error al importar: no se encontró el activo {key}",
+        "noImageInZip": "No se encontró ninguna imagen en el archivo ZIP"
     },
     "alerts": {
         "screenshotTaking": "Tomando captura de pantalla...",
@@ -213,7 +215,17 @@ export const languageSpanish = {
         "writingExif": "Cargando... (Escribiendo Exif)",
         "writingPng": "Cargando... (Escribiendo)",
         "presetConverted": "Preset convertido correctamente. Puedes encontrarlo en los presets de la configuración del bot",
-        "presetNotFound": "No se encontró el preset: {name}"
+        "presetNotFound": "No se encontró el preset: {name}",
+        "readingCard": "Cargando... (Leyendo)",
+        "loadingAssets": "Cargando... (Cargando activos)",
+        "loadingEmotions": "Cargando... (Cargando imágenes de emoción)",
+        "loadingVits": "Cargando... (Cargando VITS)",
+        "addingEmotions": "Cargando... (Añadiendo imágenes de emoción)",
+        "addingAdditionalAssets": "Cargando... (Añadiendo activos adicionales)",
+        "addingVits": "Cargando... (Añadiendo VITS)",
+        "addingCardAssets": "Cargando... (Añadiendo activos)",
+        "downloading": "Descargando...",
+        "savingAssets": "Cargando... (Guardando activos {done}/{total})"
     },
     "loadingEllipsis": "Cargando...",
     "slashCommandHelp":
@@ -1149,8 +1161,6 @@ export const languageSpanish = {
     "ttsElevenLabsKeyHint": "Configura la clave de API de ElevenLabs en Configuración → Otros Bots → TTS → ElevenLabs API key.",
     "askRemoval": "Pedir Confirmación de Eliminación",
     "replaceGlobalNote": "Reemplazo de Nota Global",
-    "globalLoreBook": "Libro de Lore Global",
-    "globalRegexScript": "Regex Global",
     "accessibility": "Accesibilidad",
     "sendWithEnter": "Enviar con la Tecla Enter(Al desactivar la verificación, Shift + Enter cambia a Transmisión de Mensajes.)",
     "fixedChatTextarea": "Fijación en la parte inferior de la ventana de chat",
