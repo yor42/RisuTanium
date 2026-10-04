@@ -15,6 +15,8 @@ import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset } from '../p
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { safeStructuredClone } from '../polyfill';
+import { hasEnabledV21Plugin } from '../plugins/v21Plugins';
+import { AssetList, toAssetList } from './assetList';
 import {
     DEFAULT_CHAT_LOAD_ADDITIONAL_PAGES,
     DEFAULT_CHAT_LOAD_INITIAL_PAGES,
@@ -729,7 +731,31 @@ export function setDatabase(data:Database){
     setDatabaseLite(data)
 }
 
+/**
+ * Holds each module's asset list as an `AssetList` so the list stays out of the
+ * reactive graph. Idempotent: a list that is already an `AssetList` is not
+ * written, so installing the live database again re-runs no module effect.
+ * Nothing is wrapped while an enabled V2.1 plugin is present, because such a
+ * plugin mutates the live lists in place and that would go untracked.
+ */
+function wrapModuleAssets(data:Database){
+    if(!Array.isArray(data.modules) || hasEnabledV21Plugin(data.plugins)){
+        return
+    }
+    // When `data` is the live database every list is read through a proxy, so
+    // the tuples must come from a snapshot; a raw tree needs no copy.
+    const live = data === DBState.db
+    for(const mod of data.modules){
+        const assets = mod?.assets
+        if(!Array.isArray(assets) || assets instanceof AssetList){
+            continue
+        }
+        mod.assets = toAssetList(live ? $state.snapshot(assets) : assets)
+    }
+}
+
 export function setDatabaseLite(data:Database){
+    wrapModuleAssets(data)
     DBState.db = data
 }
 

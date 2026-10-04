@@ -15,6 +15,7 @@ import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { hasEnabledV21Plugin } from "./v21Plugins";
+import { AssetList, toPlainAssetArray } from "../storage/assetList";
 import {
     apiVersionRefusal,
     applyPluginChanges,
@@ -270,8 +271,14 @@ export async function loadPlugins() {
     // start whose installed database has none enabled.
     if (hasEnabledV21Plugin(db.plugins)) {
         if ((DBState.db?.characters ?? []).some((cha) => cha?.coldstorage) && readRestoreAllStrikes() >= 2) {
+            // V2.1 is switched off here, so no V2.1 code runs and the module
+            // asset lists may stay `AssetList`s.
             await switchOffV21PluginsAfterRestoreStrikes(db.plugins)
         } else {
+            // A V2.1 plugin mutates the live module asset lists in place, which an
+            // `AssetList` does not track. Unwrap first, so the conversion never
+            // depends on the restore's outcome.
+            unwrapModuleAssets()
             await restoreAllForV21Plugins()
         }
     }
@@ -295,6 +302,16 @@ export async function togglePluginEnabled(plugin: RisuPlugin): Promise<void> {
         clearRestoreAllStrikes()
     }
     return loadPlugins()
+}
+
+/** Replaces every live module's `AssetList` with a plain array, one assignment per module. */
+function unwrapModuleAssets() {
+    for (const mod of DBState.db?.modules ?? []) {
+        const assets = mod?.assets
+        if (assets instanceof AssetList) {
+            mod.assets = toPlainAssetArray(assets)
+        }
+    }
 }
 
 async function switchOffV21PluginsAfterRestoreStrikes(plugins: RisuPlugin[]) {

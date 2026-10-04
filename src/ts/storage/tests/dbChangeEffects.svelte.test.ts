@@ -7,6 +7,7 @@ import type { DbChangeEffectOptions } from '../dbChangeEffects.svelte'
 import type { RisuModule } from '../../process/modules'
 import type { toSaveType } from '../risuSave'
 import { coldStorageHeader } from '../../process/coldstorageData'
+import { toAssetList } from '../assetList'
 
 // Guards for registerDbChangeEffects()'s preset effect
 // (src/ts/storage/dbChangeEffects.svelte.ts): it must deep-read via
@@ -386,6 +387,12 @@ function makeModule(seed: string): RisuModule {
     }
 }
 
+function moduleWithAssetList(seed: string): RisuModule {
+    const mod = makeModule(seed)
+    mod.assets = toAssetList(mod.assets!)
+    return mod
+}
+
 // installDb() (above) sets `modules: []`, which the count-based first-run
 // test above requires (see the CRITICAL CONSTRAINT note below). Populate
 // modules separately, after installDb(), rather than changing its default.
@@ -478,7 +485,10 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
         expect(tracker.modules).toBe(true)
     })
 
-    test('nested leaf write on modules[k].assets[i][0] marks dirty', () => {
+    // Holds for a plain list: a module added to the live database at runtime, or
+    // any module while an enabled V2.1 plugin keeps the lists plain. An installed
+    // `AssetList` is not tracked this way (see the two tests below).
+    test('nested leaf write on a plain modules[k].assets[i][0] marks dirty', () => {
         installDbWithModules([makeModule('a'), makeModule('b')])
         const { tracker, markChanged } = freshTrackerAndMarker()
 
@@ -492,6 +502,40 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
         flushSync()
 
         expect(tracker.modules).toBe(true)
+    })
+
+    test('guard: replacing an installed AssetList marks the modules block dirty', () => {
+        installDbWithModules([moduleWithAssetList('a'), moduleWithAssetList('b')])
+        const { tracker, markChanged } = freshTrackerAndMarker()
+
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+        tracker.modules = false
+
+        DBState.db.modules[0].assets = toAssetList([['changed-asset-name', 'asset-path-a', 'asset-ext-a']])
+        flushSync()
+
+        expect(tracker.modules).toBe(true)
+    })
+
+    // Documents why every editor change replaces the list: a leaf write on an
+    // installed `AssetList` reaches no effect, so nothing is scheduled to save.
+    test('guard: a leaf write on an installed AssetList is not tracked', () => {
+        installDbWithModules([moduleWithAssetList('a'), moduleWithAssetList('b')])
+        const { tracker, markChanged } = freshTrackerAndMarker()
+
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+        tracker.modules = false
+
+        DBState.db.modules[0].assets[0][0] = 'changed-asset-name'
+        flushSync()
+
+        expect(tracker.modules).toBe(false)
     })
 
     test('element replacement modules[k] = {...} marks dirty', () => {

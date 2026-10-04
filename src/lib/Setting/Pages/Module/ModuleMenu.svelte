@@ -18,6 +18,9 @@
     import { selectMultipleFile } from "src/ts/util";
     
     import { DBState } from 'src/ts/stores.svelte';
+    import { hasEnabledV21Plugin } from "src/ts/plugins/v21Plugins";
+    import { AssetList, toAssetList, toPlainAssetArray, type AssetTuple } from "src/ts/storage/assetList";
+    import { untrack } from "svelte";
   import { v4 } from "uuid";
 
     let submenu = $state(0)
@@ -29,21 +32,63 @@
     let assetFileExtensions:string[] = $state([])
     let assetFilePath:string[] = $state([])
 
+    // The previews depend on the asset paths and extensions only, so a rename
+    // (which replaces the list but keeps every path) does not reload them.
+    const assetPreviewKey = $derived.by(() => {
+        if(!DBState.db.useAdditionalAssetsPreview || !currentModule?.assets){
+            return null
+        }
+        return currentModule.assets.map((asset) => `${asset[1]}\u0000${asset[2] ?? ''}`).join('\u0001')
+    })
+
     $effect.pre(() => {
-        if(DBState.db.useAdditionalAssetsPreview){
+        if(assetPreviewKey === null){
+            return
+        }
+        untrack(() => {
             if(currentModule?.assets){
                 for(let i = 0; i < currentModule.assets.length; i++){
                     if(currentModule.assets[i].length > 2 && currentModule.assets[i][2]) {
                         assetFileExtensions[i] = currentModule.assets[i][2]
-                    } else 
+                    } else
                         assetFileExtensions[i] = currentModule.assets[i][1].split('.').pop()
                         getFileSrc(currentModule.assets[i][1]).then((filePath) => {
                         assetFilePath[i] = filePath
                     })
                 }
             }
-        }
+        })
     });
+
+    // A module's asset list is replaced, never edited in place: an installed
+    // `AssetList` is not reactive, so only an assignment re-renders and schedules
+    // a save. While an enabled V2.1 plugin is present the list stays a plain
+    // array, because that plugin edits it in place.
+    function currentAssetTuples(): AssetTuple[] {
+        const list = currentModule.assets ?? []
+        return list instanceof AssetList ? toPlainAssetArray(list) : $state.snapshot(list)
+    }
+
+    function commitAssets(next: AssetTuple[]){
+        currentModule.assets = hasEnabledV21Plugin(DBState.db.plugins) ? next : toAssetList(next)
+    }
+
+    function renameAsset(index: number, name: string){
+        const next = currentAssetTuples()
+        if(!next[index]){
+            return
+        }
+        const row = [...next[index]] as AssetTuple
+        row[0] = name
+        next[index] = row
+        commitAssets(next)
+    }
+
+    function removeAsset(index: number){
+        const next = currentAssetTuples()
+        next.splice(index, 1)
+        commitAssets(next)
+    }
 
     function addLorebook(){
         if(Array.isArray(currentModule.lorebook)){
@@ -188,7 +233,9 @@
         <span>{language.triggerScript}</span>
     </button>
     <button onclick={() => {
-        currentModule.assets ??= []
+        if(!currentModule.assets){
+            commitAssets([])
+        }
         submenu = 5
     }} class="p-2 flex-1" class:bg-darkbutton={submenu === 5}>
         <span>{language.additionalAssets}</span>
@@ -253,7 +300,6 @@
                 <th class="font-medium cursor-pointer w-10">
                     <button class="hover:text-green-500" onclick={async () => {
                         const da = await selectMultipleFile(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
-                        currentModule.assets = currentModule.assets ?? []
                         if(!da){
                             return
                         }
@@ -264,8 +310,9 @@
                                 const name = f.name
                                 const extension = name.split('.').pop().toLowerCase()
                                 const imgp = await saveAsset(img,'', extension)
-                                currentModule.assets.push([name, imgp, extension])
-                                currentModule.assets = currentModule.assets
+                                // The list is read again after the await, so an asset
+                                // added while this one was uploading is kept.
+                                commitAssets([...currentAssetTuples(), [name, imgp, extension]])
                             }
                         } finally {
                             busy.end()
@@ -293,14 +340,12 @@
                                     <img src={assetFilePath[i]} class="w-16 h-16 m-1 rounded-md" alt={assets[0]}/>
                                 {/if}
                             {/if}
-                            <TextInput fullwidth size="sm" marginBottom bind:value={currentModule.assets[i][0]} placeholder="..." />
+                            <TextInput fullwidth size="sm" marginBottom bind:value={() => assets[0], (name) => renameAsset(i, name)} placeholder="..." />
                         </td>
                         
                         <th class="font-medium cursor-pointer w-10">
                             <button class="hover:text-green-500" onclick={() => {
-                                let additionalAssets = currentModule.assets
-                                additionalAssets.splice(i, 1)
-                                currentModule.assets = additionalAssets
+                                removeAsset(i)
                             }}>
                                 <TrashIcon />
                             </button>
