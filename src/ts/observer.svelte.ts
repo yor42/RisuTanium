@@ -4,6 +4,11 @@ import { globalFetch } from "./globalApi.svelte";
 let bgmElement:HTMLAudioElement|null = null;
 let bgmSrc:string|null = null;
 
+/** True while the chat's background music is playing. */
+export function isBgmPlaying(): boolean {
+    return bgmElement !== null && !bgmElement.paused && !bgmElement.ended;
+}
+
 function playBgm(src:string, volume:number){
     // Captured locally rather than read from the mutable `bgmElement` global inside
     // the closure: if this track is swapped out before it ends, a still-queued

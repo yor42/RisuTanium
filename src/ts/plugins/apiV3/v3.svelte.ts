@@ -39,6 +39,7 @@ import { getModelInfo } from "src/ts/model/modellist";
 import type { ModelModeExtended } from "src/ts/process/request/shared";
 import { requestChatDataMain } from "src/ts/process/request/request";
 import { getModuleLorebooks } from "src/ts/process/modules";
+import { markPluginPanelHidden, markPluginPanelShown } from "src/ts/process/memory/busyActions";
 import {
     registerTTSPreprocessor,
     unregisterTTSPreprocessor,
@@ -1110,7 +1111,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             type: 'fullscreen' = 'fullscreen'
         ) => {
             iframe.style.display = "block";
-            
+            markPluginPanelShown(iframe);
+
             switch(type) {
                 case 'fullscreen': {
                     //move iframe to body if not already there
@@ -1135,6 +1137,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         },
         hideContainer: () => {
             iframe.style.display = "none";
+            markPluginPanelHidden(iframe);
         },
         getRootDocument: async () => {
             const conf = await getPermission('mainDom');

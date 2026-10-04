@@ -72,6 +72,15 @@ const records = new SvelteMap<string, ComposerDraftRecord>()
 // shared owner.
 const COMPOSER_DRAFT_RECORD_LIMIT = 200
 
+// Counts every change to the stored records (each write, which covers take,
+// putBack and eviction, and each restore). A caller that must know whether the
+// records changed between two moments compares two readings.
+let version = 0
+
+export function composerDraftsVersion(): number {
+    return version
+}
+
 // The key currently shown by the one live composer instance, so eviction
 // never drops the record on screen. Sourced from `setOnScreenKey`, which the
 // component calls from a plain bookkeeping effect -- it touches no record,
@@ -121,6 +130,7 @@ export function peek(key: ComposerDraftKey | null): ComposerDraftRecord {
  * outlives the write that emptied it.
  */
 export function write(key: ComposerDraftKey, updater: (record: ComposerDraftRecord) => void): ComposerDraftRecord {
+    version += 1
     const k = keyString(key)
     const record = records.get(k) ?? createRecord()
     updater(record)
@@ -168,6 +178,52 @@ export function putBack(key: ComposerDraftKey, taken: ComposerDraftSnapshot): vo
     })
 }
 
+/** A stored record with the key string it is stored under, as it is carried across a page reload. */
+export interface ComposerDraftCarry extends ComposerDraftSnapshot {
+    key: string
+}
+
+/** Every non-empty record, oldest write first, as detached copies. */
+export function exportRecords(): ComposerDraftCarry[] {
+    const carried: ComposerDraftCarry[] = []
+    for (const [key, record] of records) {
+        if (!isEmptyRecord(record)) {
+            carried.push({
+                key,
+                messageInput: record.messageInput,
+                messageInputTranslate: record.messageInputTranslate,
+                fileInput: [...record.fileInput],
+            })
+        }
+    }
+    return carried
+}
+
+/**
+ * Puts a carried record back under its own key, only when that key holds no
+ * text: whatever is there is newer than the carried copy and stays. Returns
+ * whether the record was stored. Callers restore oldest first; the store's own
+ * cap evicts from the oldest end.
+ */
+export function restoreRecord(carried: ComposerDraftCarry): boolean {
+    const existing = records.get(carried.key)
+    if (existing && !isEmptyRecord(existing)) {
+        return false
+    }
+    const record = createRecord()
+    record.messageInput = carried.messageInput
+    record.messageInputTranslate = carried.messageInputTranslate
+    record.fileInput = [...carried.fileInput]
+    if (isEmptyRecord(record)) {
+        return false
+    }
+    version += 1
+    records.delete(carried.key)
+    records.set(carried.key, record)
+    evictIfOverCap()
+    return true
+}
+
 /**
  * Test-only reset: drops every stored record and the on-screen key. Never
  * called from production code.
@@ -175,4 +231,5 @@ export function putBack(key: ComposerDraftKey, taken: ComposerDraftSnapshot): vo
 export function resetComposerDraftsForTests(): void {
     records.clear()
     onScreenKeyString = null
+    version = 0
 }

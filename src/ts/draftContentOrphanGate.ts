@@ -54,6 +54,11 @@ export interface OrphanRegisteringDraftStore extends DraftContentStore {
      */
     set(identity: DraftIdentity, text: string, baseData: string, now?: number): void
     /**
+     * Files a carried record as `DraftContentStore.restore` does and, when it
+     * was filed, registers its orphan the way `set` does.
+     */
+    restore(key: string, record: DraftRecord & { index?: number }, now?: number): boolean
+    /**
      * Releases every registration whose stamp is at least `capMs` old, as of
      * `now`. Meant to be called from the caller's own ~500ms save loop
      * (§6) rather than driven by a per-record timer, so there is no timer to
@@ -135,6 +140,23 @@ export function createOrphanRegisteringDraftStore(
         return store.size()
     }
 
+    function entries(): { key: string, record: DraftRecord }[] {
+        return store.entries()
+    }
+
+    function restore(key: string, record: DraftRecord & { index?: number }, now: number = Date.now()): boolean {
+        const filed = store.restore(key, record)
+        if (filed) {
+            registerDraft(key, DRAFT_CONTENT_ORPHAN_KIND)
+            stamps.set(key, now)
+        }
+        return filed
+    }
+
+    function version(): number {
+        return store.version()
+    }
+
     function sweepExpiredRegistrations(now: number): void {
         for (const [key, stampedAt] of stamps) {
             if (now - stampedAt >= deps.capMs) {
@@ -146,7 +168,7 @@ export function createOrphanRegisteringDraftStore(
         }
     }
 
-    return { set, get, delete: del, clear, size, sweepExpiredRegistrations }
+    return { set, get, delete: del, clear, size, entries, restore, version, sweepExpiredRegistrations }
 }
 
 // Production singleton: every input-event capture function depends on this.

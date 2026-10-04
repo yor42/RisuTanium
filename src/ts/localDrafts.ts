@@ -75,6 +75,19 @@ export function hasMessageEditorDrafts(): boolean {
     return false
 }
 
+// True while a registration of exactly `kind` exists. The idle reload reads the
+// kinds that must block it (`'message'`: open editors; `'composer'`: the chat on
+// screen) and leaves `'other'` out, because that kind also holds the short-lived
+// registrations of the leftovers of closed editors, whose text is carried across.
+export function hasDraftOfKind(kind: DraftKind): boolean {
+    for (const registered of localDrafts.values()) {
+        if (registered === kind) {
+            return true
+        }
+    }
+    return false
+}
+
 // Subscribes to changes in the draft set (a registration or unregistration
 // that actually changed something). Returns an unsubscribe function.
 export function onDraftsChanged(listener: () => void): () => void {

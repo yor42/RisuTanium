@@ -92,6 +92,33 @@ export function getLastPluginActivityAt(): number {
     return lastPluginActivityAt
 }
 
+/** What a plugin's visible panel is: the iframe element, whose own state says whether it is still shown. */
+export interface PluginPanelHandle {
+    readonly isConnected: boolean
+    readonly style: { readonly display: string }
+}
+
+const shownPluginPanels = new Set<PluginPanelHandle>()
+
+/** Records that a plugin's panel was shown, until `markPluginPanelHidden` or the panel leaves the page. */
+export function markPluginPanelShown(panel: PluginPanelHandle): void {
+    shownPluginPanels.add(panel)
+}
+
+export function markPluginPanelHidden(panel: PluginPanelHandle): void {
+    shownPluginPanels.delete(panel)
+}
+
+/** True while any plugin panel is shown. A panel removed from the page, or hidden by its own style, does not count. */
+export function isPluginPanelOpen(): boolean {
+    for (const panel of shownPluginPanels) {
+        if (!panel.isConnected || panel.style.display === 'none') {
+            shownPluginPanels.delete(panel)
+        }
+    }
+    return shownPluginPanels.size > 0
+}
+
 let pluginDevModeStarted = false
 
 /** Set once the plugin dev-mode poll starts; it never ends within a page life. */
@@ -111,4 +138,5 @@ export function resetBusyActionsForTest(): void {
     inFlightByPoint.pluginBridge = 0
     lastPluginActivityAt = 0
     pluginDevModeStarted = false
+    shownPluginPanels.clear()
 }

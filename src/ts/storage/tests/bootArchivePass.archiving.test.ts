@@ -168,6 +168,7 @@ describe('boot archive pass: archiving eligible characters', () => {
         const committed = await decodeRisuSave(world.mainWrites[0], { strict: true })
         expect(jsonOf(committed.characters)).toEqual(jsonOf(installed.characters))
         expect(boot.outcome.kind === 'install' && bytesEqual(boot.outcome.noteBytes, world.mainWrites[0])).toBe(true)
+        expect(boot.outcome.kind === 'install' && boot.outcome.committed).toBe(true)
         expect(bytesEqual(world.currentMain(), world.mainWrites[0])).toBe(true)
     })
 

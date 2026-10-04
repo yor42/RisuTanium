@@ -22,7 +22,10 @@ import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
 import { startObserveDom } from "./observer.svelte";
 import { updateGuisize } from "./gui/guisize";
-import { updateLorebooks } from "./characters";
+import { selectCharacterByChaId, updateLorebooks } from "./characters";
+import { applyHandoff, readHandoff, type HandoffMedium, type ReadHandoff } from "./process/memory/idleHandoff";
+import { createHandoffMedium, startIdleReload } from "./process/memory/idleReloadHost";
+import { markBootedByIdleReload, noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/idleReloadBootState";
 import { initMobileGesture } from "./hotkey";
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
@@ -50,7 +53,8 @@ import {
     wasAssetWrittenThisPage,
     listAssetsWrittenThisPage,
     setUsingSw,
-    checkCharOrder
+    checkCharOrder,
+    afterNextSaveCommit
 } from "./globalApi.svelte";
 import { isTauri } from "./platform";
 import { registerModelDynamic } from "./model/modellist";
@@ -88,6 +92,23 @@ export async function loadData() {
         // Posted right after the install, once the language is set, and each
         // awaited until dismissed.
         let archiveNotices: BootArchiveNotice[] = []
+        // What an idle reload of the previous page left for this one. Read before
+        // the archive pass, whose keep-inline set it supplies, and applied once
+        // the database is installed.
+        let handoffMedium: HandoffMedium | null = null
+        let handoff: ReadHandoff = { selection: null, drafts: null }
+        try {
+            handoffMedium = createHandoffMedium()
+            if (handoffMedium) {
+                handoff = await readHandoff(handoffMedium, Date.now())
+                if (handoff.selection) {
+                    markBootedByIdleReload()
+                }
+            }
+        } catch (error) {
+            console.error(error)
+        }
+        const keepInline = handoff.selection ? new Set(handoff.selection.keepInline) : undefined
         try {
             if (isTauri) {
                 LoadingStatusState.text = "Checking Files..."
@@ -127,6 +148,7 @@ export async function loadData() {
                 // one.
                 await sweepAtomicWriteTemps('assets')
                 archiveSession = await openBootArchiveSession('tauri')
+                noteBootArchiveSession(archiveSession.canArchive)
                 let outcome: BootArchiveOutcome | null = null
                 // Only an absent main file starts a first launch. A read that
                 // fails for any other reason leaves the file as it is and takes
@@ -153,7 +175,7 @@ export async function loadData() {
                         Promise.resolve(getDbBackups()).catch((error) => console.error(error))
                         LoadingStatusState.text = "Decoding Save File..."
                         const decoded = await decodeMainFile(readed)
-                        outcome = await resolveArchiveOutcome(archiveSession, decoded, readed)
+                        outcome = await resolveArchiveOutcome(archiveSession, decoded, readed, keepInline)
                     } catch (error) {
                         outcome = null
                     }
@@ -173,6 +195,7 @@ export async function loadData() {
                         outcome = null
                     }
                 }
+                noteBootPassCommitted(outcome?.kind === 'install' && outcome.committed === true)
                 await archiveSession.release()
                 if (outcome?.kind !== 'install') {
                     LoadingStatusState.text = "Reading Backup Files..."
@@ -213,6 +236,7 @@ export async function loadData() {
                     throw error
                 }
                 archiveSession = await openBootArchiveSession('web')
+                noteBootArchiveSession(archiveSession.canArchive)
                 if (archiveSession.reloading) {
                     // The hold was refused because this page is reloading; the
                     // reload discards this boot.
@@ -251,7 +275,7 @@ export async function loadData() {
                         // keeps its own reference only until it has hashed them.
                         gotStorage = null
                         console.log(decoded.tree)
-                        outcome = await resolveArchiveOutcome(archiveSession, decoded)
+                        outcome = await resolveArchiveOutcome(archiveSession, decoded, undefined, keepInline)
                     } catch (error) {
                         console.error(error)
                         outcome = null
@@ -272,6 +296,7 @@ export async function loadData() {
                         outcome = null
                     }
                 }
+                noteBootPassCommitted(outcome?.kind === 'install' && outcome.committed === true)
                 await archiveSession.release()
                 // The OPFS leftovers of a completed copy back are deleted only
                 // after a boot that read an existing main file from the page's
@@ -451,6 +476,16 @@ export async function loadData() {
             selectedCharID.set(-1)
             startObserveDom()
             assignIds()
+            if (handoffMedium && (handoff.selection || handoff.drafts)) {
+                // The drafts are put back now and their part is deleted once this page's
+                // first save has committed; the reselect settles in the background.
+                void applyHandoff(handoff, handoffMedium, selectCharacterByChaId, afterNextSaveCommit)
+            }
+            try {
+                startIdleReload()
+            } catch (error) {
+                console.error(error)
+            }
             registerModelDynamic()
             saveDb()
             moduleUpdate()
@@ -517,6 +552,7 @@ async function resolveArchiveOutcome(
     session: BootArchiveSession,
     decoded: { tree: Database, strict: boolean },
     prePassBytes?: Uint8Array,
+    keepInline?: ReadonlySet<string>,
 ): Promise<BootArchiveOutcome> {
     if (decoded.tree.archiveCharacters === false) {
         clearArchiveMemo()
@@ -526,7 +562,7 @@ async function resolveArchiveOutcome(
         return { kind: 'install', tree: decoded.tree, noteBytes: null, notices: [] }
     }
     try {
-        return await session.run({ tree: decoded.tree, prePassBytes })
+        return await session.run({ tree: decoded.tree, prePassBytes, keepInline })
     } catch (error) {
         console.error(error)
         return { kind: 'install', tree: decoded.tree, noteBytes: null, notices: [] }

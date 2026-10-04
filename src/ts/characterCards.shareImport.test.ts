@@ -710,6 +710,46 @@ describe('#share= hash', () => {
 
 type LaunchParams = { files: Array<{ name: string, getFile: () => Promise<File> }> }
 
+describe('launchQueue after an idle reload', () => {
+    afterEach(async () => {
+        const { resetIdleReloadBootStateForTest } = await import('src/ts/process/memory/idleReloadBootState')
+        resetIdleReloadBootStateForTest()
+    })
+
+    async function launchOneFile(): Promise<void> {
+        let consumer: ((params: LaunchParams) => void) | null = null
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => void) => { consumer = fn } }
+        await characterURLImport()
+        expect(consumer).not.toBeNull()
+        const file = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
+        consumer!({ files: [{ name: 'q.charx', getFile: async () => file }] })
+        await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+
+    test('files the browser hands over again on the boot an idle reload started import nothing and show nothing', async () => {
+        const { markBootedByIdleReload } = await import('src/ts/process/memory/idleReloadBootState')
+        markBootedByIdleReload()
+        await launchOneFile()
+        expect(h.characters).toEqual([])
+        expect(h.errors).toEqual([])
+        expect(h.events).toEqual([])
+    })
+
+    test('guard: on an ordinary boot the same launch imports the file', async () => {
+        await launchOneFile()
+        expect(h.characters).toHaveLength(1)
+        expect(charName(0)).toBe('Queued')
+    })
+
+    test('guard: a boot after the one an idle reload started, which finds no record, imports a launched file as before', async () => {
+        const state = await import('src/ts/process/memory/idleReloadBootState')
+        state.markBootedByIdleReload()
+        state.resetIdleReloadBootStateForTest()
+        await launchOneFile()
+        expect(h.characters).toHaveLength(1)
+    })
+})
+
 describe('launchQueue', () => {
     test('a file handed over by the file handler reaches the card parser as a File', async () => {
         let consumer: ((params: LaunchParams) => void) | null = null

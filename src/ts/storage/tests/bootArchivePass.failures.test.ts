@@ -221,6 +221,7 @@ describe('boot archive pass: the commit on the Node server', () => {
         expect(charactersOf(installedTree(result.outcome)).some((c) => !!c.coldstorage)).toBe(false)
         expect(bytesEqual(world.currentMain(), peerBytes)).toBe(true)
         expect(result.outcome.kind === 'install' && bytesEqual(result.outcome.noteBytes, peerBytes)).toBe(true)
+        expect(result.outcome.kind === 'install' && result.outcome.committed).toBeUndefined()
         expect((await world.units.keys()).length).toBe(3)
         await expect((world.nodeStorage as NonNullable<World['nodeStorage']>).setItem(MAIN_KEY, peerBytes)).resolves.toBeUndefined()
     })

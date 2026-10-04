@@ -151,7 +151,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
-import { changeChar, characterFormatUpdate } from './characters'
+import { changeChar, characterFormatUpdate, selectCharacterByChaId } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
 
 //#region fixtures
@@ -271,5 +271,63 @@ describe('opening or restoring an archived character is an interaction', () => {
         expect(restored).toBe(true)
         expect((DBState.db.characters[1] as unknown as character).coldstorage).toBeUndefined()
         expect(lastInteractionOf(1)).toBeGreaterThanOrEqual(before)
+    })
+})
+
+describe('selecting a character by its id after an idle reload', () => {
+    test('selects the inline holder of the id and leaves its lastInteraction as it was', async () => {
+        installDb([fullCharacter('other') as unknown as CharacterFixture, fullCharacter('hero') as unknown as CharacterFixture])
+
+        expect(await selectCharacterByChaId('hero')).toBe(true)
+
+        expect(get(selectedCharID)).toBe(1)
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+    })
+
+    test('restores an archived holder and selects it without changing its lastInteraction', async () => {
+        const stub = buildColdStub(fullCharacter('member'), 'unit-member', []) as unknown as CharacterFixture
+        installDb([fullCharacter('before') as unknown as CharacterFixture, stub])
+        readColdStorageItemMock.mockResolvedValue({ status: 'ok', value: { character: fullCharacter('member') } })
+
+        expect(await selectCharacterByChaId('member')).toBe(true)
+
+        expect((DBState.db.characters[1] as unknown as character).coldstorage).toBeUndefined()
+        expect(get(selectedCharID)).toBe(1)
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+    })
+
+    test('selects nothing when no character holds the id', async () => {
+        installDb([fullCharacter('hero') as unknown as CharacterFixture])
+
+        expect(await selectCharacterByChaId('missing')).toBe(false)
+
+        expect(get(selectedCharID)).toBe(-1)
+    })
+
+    test('selects nothing when several characters hold the id', async () => {
+        installDb([fullCharacter('twin') as unknown as CharacterFixture, fullCharacter('twin') as unknown as CharacterFixture])
+
+        expect(await selectCharacterByChaId('twin')).toBe(false)
+
+        expect(get(selectedCharID)).toBe(-1)
+        expect(lastInteractionOf(0)).toBe(LONG_AGO)
+    })
+
+    test('reports false when the selection did not happen because a chat is generating', async () => {
+        installDb([fullCharacter('hero') as unknown as CharacterFixture])
+        doingChat.set(true)
+
+        expect(await selectCharacterByChaId('hero')).toBe(false)
+
+        expect(get(selectedCharID)).toBe(-1)
+    })
+
+    test('guard: changeChar without the option still sets lastInteraction to now on an inline character', async () => {
+        installDb([fullCharacter('hero') as unknown as CharacterFixture])
+        const before = Date.now()
+
+        await changeChar(0)
+
+        expect(lastInteractionOf(0)).toBeGreaterThanOrEqual(before)
     })
 })

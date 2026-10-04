@@ -107,6 +107,17 @@ export interface DraftContentStore {
     clear(): void
     /** The number of records currently held. */
     size(): number
+    /** Every record with its key, least recently used first. */
+    entries(): { key: string, record: DraftRecord }[]
+    /**
+     * Files a carried record under its stored key. A record already held under
+     * that key stays when it is as new or newer by `updatedAt`; otherwise the
+     * carried one replaces it, keeping its own `updatedAt`. Returns whether the
+     * record was filed.
+     */
+    restore(key: string, record: DraftRecord & { index?: number }): boolean
+    /** Counts every change to the held records, including a read that deletes one. */
+    version(): number
 }
 
 // Strips `index` (internal-only, kept on `StoredRecord` for introspection --
@@ -128,6 +139,7 @@ export function createDraftContentStore(deps: { maxRecords: number; now?: () => 
     // delete-then-set, in `touch`) moves it to the end, so the map's
     // iteration order is oldest-first -- exactly what LRU eviction needs.
     const records = new Map<string, StoredRecord>()
+    let changes = 0
 
     function touch(key: string, value: StoredRecord): void {
         records.delete(key)
@@ -141,6 +153,7 @@ export function createDraftContentStore(deps: { maxRecords: number; now?: () => 
                 break
             }
             records.delete(oldestKey)
+            changes += 1
         }
     }
 
@@ -151,6 +164,7 @@ export function createDraftContentStore(deps: { maxRecords: number; now?: () => 
         if (record !== undefined) {
             if (record.baseData !== currentBaseData) {
                 records.delete(key)
+                changes += 1
                 return undefined
             }
             // A hit renews recency but must never itself clear the record --
@@ -162,7 +176,9 @@ export function createDraftContentStore(deps: { maxRecords: number; now?: () => 
 
         if (identity.kind === 'msg' && identity.chatId !== undefined) {
             const staleKey = orphanIndexKey(identity)
-            records.delete(staleKey)
+            if (records.delete(staleKey)) {
+                changes += 1
+            }
         }
         return undefined
     }
@@ -176,14 +192,20 @@ export function createDraftContentStore(deps: { maxRecords: number; now?: () => 
             index: identity.kind === 'msg' ? identity.index : undefined,
         }
         touch(key, stored)
+        changes += 1
         evictIfOverBound()
     }
 
     function del(identity: DraftIdentity): void {
-        records.delete(draftIdentityKey(identity))
+        if (records.delete(draftIdentityKey(identity))) {
+            changes += 1
+        }
     }
 
     function clear(): void {
+        if (records.size > 0) {
+            changes += 1
+        }
         records.clear()
     }
 
@@ -191,7 +213,26 @@ export function createDraftContentStore(deps: { maxRecords: number; now?: () => 
         return records.size
     }
 
-    return { get, set, delete: del, clear, size }
+    function entries(): { key: string, record: DraftRecord }[] {
+        return [...records].map(([key, record]) => ({ key, record: toPublicRecord(record) }))
+    }
+
+    function restore(key: string, record: DraftRecord & { index?: number }): boolean {
+        const existing = records.get(key)
+        if (existing !== undefined && existing.updatedAt >= record.updatedAt) {
+            return false
+        }
+        touch(key, { text: record.text, baseData: record.baseData, updatedAt: record.updatedAt, index: record.index })
+        changes += 1
+        evictIfOverBound()
+        return true
+    }
+
+    function version(): number {
+        return changes
+    }
+
+    return { get, set, delete: del, clear, size, entries, restore, version }
 }
 
 // Drafts are short strings, so a generous bound costs little and makes

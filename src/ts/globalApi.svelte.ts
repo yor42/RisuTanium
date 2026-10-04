@@ -645,6 +645,18 @@ let snapshotMarkCount = 0
 let lastIterationCommitted = false
 let saveLoopPending: (() => boolean) | null = null
 
+const nextCommitCallbacks = new Set<() => void>()
+
+/** Calls `callback` once, when the next save iteration's main-file write lands. */
+export function afterNextSaveCommit(callback: () => void): void {
+    nextCommitCallbacks.add(callback)
+}
+
+/** How many saves have been requested on this page; it only grows, so a change that is later undone still shows. */
+export function getSaveMarkCount(): number {
+    return saveMarkCount
+}
+
 /**
  * True only when everything marked so far is in the main file: the last
  * iteration committed, no mark has arrived since its snapshot, and no save is
@@ -1498,6 +1510,14 @@ export async function saveDb() {
             // able to resurrect and re-commit this payload — see the catch below.
             primaryCommitted = true
             lastIterationCommitted = true
+            for (const callback of [...nextCommitCallbacks]) {
+                nextCommitCallbacks.delete(callback)
+                try {
+                    callback()
+                } catch (error) {
+                    console.error(error)
+                }
+            }
             if (channel) {
                 try {
                     channel.postMessage(sessionID)

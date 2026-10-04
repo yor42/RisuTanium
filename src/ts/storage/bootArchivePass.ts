@@ -182,9 +182,11 @@ export type BootArchiveOutcome =
      * Install `tree`. `noteBytes` are the bytes to give `noteMainFileBytes`
      * (the committed bytes, or the re-read bytes), or `null` when the main
      * file was neither written nor re-read and the boot's own record stands.
-     * `notices` are in the order they are posted.
+     * `notices` are in the order they are posted. `committed` is present, and
+     * true, only when the pass itself wrote the main file: `noteBytes` is also
+     * non-null for the re-read after a failed pass, which committed nothing.
      */
-    | { kind: 'install', tree: Database, noteBytes: Uint8Array | null, notices: BootArchiveNotice[] }
+    | { kind: 'install', tree: Database, noteBytes: Uint8Array | null, notices: BootArchiveNotice[], committed?: true }
     /** The re-read returned bytes that do not decode (web), or Tauri's re-read still did not after the write-back: the caller takes its existing backup-fallback path. */
     | { kind: 'backup-fallback' }
     /** Web (LocalForage, OPFS and Node alike): the re-read threw or returned nothing. The caller stops the boot with `error` shown; nothing is written and no backup is read. */
@@ -839,7 +841,7 @@ async function archiveAndCommit(
     if (!succeeded && attempt.reachedTwo) {
         notices.push({ kind: 'archive-paused' })
     }
-    return { kind: 'install', tree, noteBytes: bytes, notices }
+    return { kind: 'install', tree, noteBytes: bytes, notices, committed: true }
 }
 
 /**

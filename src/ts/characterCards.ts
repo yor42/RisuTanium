@@ -22,6 +22,7 @@ import { ModuleRefusal } from "./process/moduleRefusal"
 import { readFile } from "@tauri-apps/plugin-fs"
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { beginBusy, withBusy } from "./process/memory/busyActions"
+import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -715,6 +716,10 @@ export async function characterURLImport() {
         ).catch((error) => alertError(error))
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
         window.launchQueue.setConsumer((launchParams) => {
+            //The page before an idle reload has already imported whatever launched it; a browser that hands those files to the new page must not import them twice.
+            if (wasBootedByIdleReload()) {
+                return
+            }
             if (launchParams.files && launchParams.files.length) {
                 const files = launchParams.files as FileSystemFileHandle[]
                 return handleFiles(files)

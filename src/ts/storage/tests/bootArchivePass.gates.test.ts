@@ -146,6 +146,7 @@ function expectNothingDone(world: World, result: BootResult, expectedIds: string
     if (result.outcome.kind === 'install') {
         expect(result.outcome.notices).toEqual([])
         expect(result.outcome.noteBytes).toBeNull()
+        expect(result.outcome.committed).toBeUndefined()
     }
     const tree = installedTree(result.outcome)
     expect(chaIdsOf(tree)).toEqual(expectedIds)

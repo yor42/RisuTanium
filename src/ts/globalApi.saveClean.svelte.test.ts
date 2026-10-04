@@ -227,7 +227,7 @@ vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     resetMainFileRecordForTests: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/mainFileRecord'))
 
-import { forageStorage, isSaveClean, requiresFullEncoderReload, saveAsset, saveDb } from 'src/ts/globalApi.svelte'
+import { afterNextSaveCommit, forageStorage, isSaveClean, requiresFullEncoderReload, saveAsset, saveDb } from 'src/ts/globalApi.svelte'
 import { chokePointInFlight } from 'src/ts/process/memory/busyActions'
 import { frozenSaveKeysStore, savingStoppedReason } from 'src/ts/stores.svelte'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
@@ -317,6 +317,26 @@ describe('isSaveClean', () => {
         markCharacterForSave(CHA_ID)
         expect(isSaveClean()).toBe(false)
         await becomesClean()
+    })
+
+    test('a callback registered for the next commit is not called by a failed save and is called once by the save that commits', async () => {
+        const callback = vi.fn()
+        const attemptsBefore = h.mainWriteAttempts
+        h.failMainWrite = true
+        afterNextSaveCommit(callback)
+        h.db!.mainPrompt = 'fails again'
+        markCharacterForSave(CHA_ID)
+        await vi.waitFor(() => {
+            expect(h.mainWriteAttempts - attemptsBefore).toBeGreaterThanOrEqual(2)
+        }, { timeout: 8000, interval: 10 })
+        expect(callback).not.toHaveBeenCalled()
+        h.failMainWrite = false
+        await becomesClean()
+        expect(callback).toHaveBeenCalledTimes(1)
+        h.db!.mainPrompt = 'third'
+        markCharacterForSave(CHA_ID)
+        await becomesClean()
+        expect(callback).toHaveBeenCalledTimes(1)
     })
 
     test('a change followed by a change back is not clean until a later save commits', async () => {
