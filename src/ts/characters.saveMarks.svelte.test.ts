@@ -173,7 +173,9 @@ import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
 import { registerDbChangeEffects } from './storage/dbChangeEffects.svelte'
 import { RisuSaveEncoder, decodeRisuSave } from './storage/risuSave'
-import { restoreCharacterFromTrash, removeChar } from './characters'
+import { restoreCharacterFromTrash, removeChar, addCharEmotion } from './characters'
+import { selectMultipleFile } from 'src/ts/util'
+import { saveImage } from 'src/ts/storage/database.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from './storage/characterSaveMarks'
 
 //#region fixture helpers
@@ -276,6 +278,75 @@ describe('restoreCharacterFromTrash on a non-selected character', () => {
         expect(decodedA).toBeTruthy() // char-A (selected, unrelated) survives untouched
 
         cleanup()
+        resetCharacterSaveMarksForTest()
+    })
+})
+
+describe('removeChar with nothing selected requests a save', () => {
+    function watchSaveRequests() {
+        installDb()
+        // A trashed character is not listed in the order, as `checkCharOrder` leaves it.
+        DBState.db.characterOrder = ['char-A']
+        selectedCharID.set(-1)
+        requiresFullEncoderReloadMock.state = false
+        const tracker = makeTracker()
+        const markChanged = vi.fn()
+        const schedule = vi.fn()
+        const cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+        installCharacterSaveMarks({ tracker, schedule })
+        markChanged.mockClear()
+        schedule.mockClear()
+        return {
+            requests: () => markChanged.mock.calls.length + schedule.mock.calls.length,
+            stop: () => {
+                cleanup()
+                resetCharacterSaveMarksForTest()
+            },
+        }
+    }
+
+    test('a permanent delete of an already-trashed character is scheduled for saving', async () => {
+        const watch = watchSaveRequests()
+
+        await removeChar('char-B', 'Character B', 'permanentForce')
+        flushSync()
+
+        expect(DBState.db.characters.find((c: { chaId: string }) => c.chaId === 'char-B')).toBeUndefined()
+        expect(watch.requests()).toBeGreaterThan(0)
+        watch.stop()
+    })
+
+    test('guard: moving a non-selected character to the trash is scheduled for saving', async () => {
+        const watch = watchSaveRequests()
+
+        await removeChar('char-A', 'Character A', 'normal')
+        flushSync()
+
+        expect(DBState.db.characters[0].trashTime).toBeTypeOf('number')
+        expect(watch.requests()).toBeGreaterThan(0)
+        watch.stop()
+    })
+})
+
+describe('addCharEmotion on a character that is not selected when its files land', () => {
+    test('marks that character for saving', async () => {
+        installDb()
+        ;(DBState.db.characters[0] as unknown as { emotionImages: unknown[] }).emotionImages = []
+        selectedCharID.set(1)
+        vi.mocked(selectMultipleFile).mockResolvedValueOnce([{ name: 'smile.png', data: new Uint8Array([1]) }])
+        vi.mocked(saveImage).mockResolvedValueOnce('assets/smile.png')
+        const tracker = makeTracker()
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        await addCharEmotion(0)
+
+        expect((DBState.db.characters[0] as unknown as { emotionImages: unknown[] }).emotionImages).toEqual([['smile', 'assets/smile.png']])
+        expect(tracker.character).toContain('char-A')
+        expect(schedule).toHaveBeenCalled()
         resetCharacterSaveMarksForTest()
     })
 })

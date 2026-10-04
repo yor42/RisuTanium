@@ -6,6 +6,7 @@ import { getUncleanablesSync } from "../globalApi.svelte"
 import { scanAssetCacheIntegrity, evictAssetCacheEntries } from "./assetIntegrity"
 import { DBState } from "../stores.svelte"
 import { language } from "src/lang"
+import { withBusy } from "../process/memory/busyActions"
 
 /**
  * The assets the current database references, plus those of every archived
@@ -51,7 +52,11 @@ async function collectIntegrityTargets(): Promise<{ targets: string[], unchecked
  * are read as copies (see `collectIntegrityTargets`); the report names those
  * that could not be.
  */
-export async function verifyAssetIntegrity(): Promise<void> {
+export function verifyAssetIntegrity(): Promise<void> {
+    return withBusy('integrityCheck', scanAndReportIntegrity)
+}
+
+async function scanAndReportIntegrity(): Promise<void> {
     const { targets, unchecked } = await collectIntegrityTargets()
     const uncheckedLine = unchecked.length > 0
         ? language.assetIntegrityReportArchivedNotChecked(unchecked.join(', '))

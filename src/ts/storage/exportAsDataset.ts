@@ -3,6 +3,7 @@ import { downloadFile } from "../globalApi.svelte";
 import { alertNormal } from "../alert";
 import { language } from "src/lang";
 import { readColdCharacterCopy } from "../process/coldCharacterRestore";
+import { withBusy } from "../process/memory/busyActions";
 
 /**
  * Downloads one dataset row per chat of every character. An archived
@@ -13,7 +14,11 @@ import { readColdCharacterCopy } from "../process/coldCharacterRestore";
  * unit that reads fine but holds a group yields no rows, like any group, and is
  * not named.
  */
-export async function exportAsDataset(){
+export function exportAsDataset(){
+    return withBusy('export', writeDataset)
+}
+
+async function writeDataset(){
     const db = getDatabase()
 
     let dataset = []

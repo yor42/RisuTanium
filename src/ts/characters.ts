@@ -17,6 +17,7 @@ import { findChaIdHolders, restoreColdCharacter } from "./process/coldCharacterR
 import { getAvatarThumbSrc, isThumbEligible } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
+import { beginBusy } from "./process/memory/busyActions";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -134,45 +135,51 @@ export async function selectCharImg(charIndex:number) {
     if(!selected){
         return
     }
-    const img = selected.data
-    let db = DBState.db
-
-    const type = getImageType(img)
-
+    const busy = beginBusy('charImage')
     try {
-        if(type === 'PNG' && db.characters[charIndex].type === 'character'){
-            const gen = PngChunk.readGenerator(img)
-            const allowedChunk = [
-                'parameters', 'Comment', 'Title', 'Description', 'Author', 'Software', 'Source', 'Disclaimer', 'Warning', 'Copyright',
-            ]
-            for await (const chunk of gen){
-                if(chunk instanceof AppendableBuffer){
-                    continue
+        const img = selected.data
+        let db = DBState.db
+
+        const type = getImageType(img)
+
+        try {
+            if(type === 'PNG' && db.characters[charIndex].type === 'character'){
+                const gen = PngChunk.readGenerator(img)
+                const allowedChunk = [
+                    'parameters', 'Comment', 'Title', 'Description', 'Author', 'Software', 'Source', 'Disclaimer', 'Warning', 'Copyright',
+                ]
+                for await (const chunk of gen){
+                    if(chunk instanceof AppendableBuffer){
+                        continue
+                    }
+                    if(!chunk){
+                        continue
+                    }
+                    if(chunk.value.length > 20_000){
+                        continue
+                    }
+                    if(allowedChunk.includes(chunk.key)){
+                        console.log(chunk.key, chunk.value)
+                        db.characters[charIndex].extentions ??= {}
+                        db.characters[charIndex].extentions.pngExif ??= {}
+                        db.characters[charIndex].extentions.pngExif[chunk.key] = chunk.value
+                    }
                 }
-                if(!chunk){
-                    continue
-                }
-                if(chunk.value.length > 20_000){
-                    continue
-                }
-                if(allowedChunk.includes(chunk.key)){
-                    console.log(chunk.key, chunk.value)
-                    db.characters[charIndex].extentions ??= {}
-                    db.characters[charIndex].extentions.pngExif ??= {}
-                    db.characters[charIndex].extentions.pngExif[chunk.key] = chunk.value
-                }
+                console.log(db.characters[charIndex].extentions)
             }
-            console.log(db.characters[charIndex].extentions)
-        }   
-    } catch (error) {
-        console.error(error)
+        } catch (error) {
+            console.error(error)
+        }
+
+
+
+        const imgp = await saveImage(img)
+        dumpCharImage(charIndex)
+        DBState.db.characters[charIndex].image = imgp
+        markCharacterForSave(DBState.db.characters[charIndex].chaId)
+    } finally {
+        busy.end()
     }
-
-
-
-    const imgp = await saveImage(img)
-    dumpCharImage(charIndex)
-    DBState.db.characters[charIndex].image = imgp
 }
 
 export function dumpCharImage(charIndex:number) {
@@ -210,16 +217,22 @@ export async function addCharEmotion(charId:number) {
         addingEmotion.set(false)
         return
     }
-    let db = DBState.db
-    for(const f of selected){
-        const img = f.data
-        const imgp = await saveImage(img)
-        const name = f.name.replace('.png','').replace('.webp','')
-        let dbChar = db.characters[charId]
-        if(dbChar.type !== 'group'){
-            dbChar.emotionImages.push([name,imgp])
-            DBState.db.characters[charId] = dbChar
+    const busy = beginBusy('charEmotion')
+    try {
+        let db = DBState.db
+        for(const f of selected){
+            const img = f.data
+            const imgp = await saveImage(img)
+            const name = f.name.replace('.png','').replace('.webp','')
+            let dbChar = db.characters[charId]
+            if(dbChar.type !== 'group'){
+                dbChar.emotionImages.push([name,imgp])
+                DBState.db.characters[charId] = dbChar
+                markCharacterForSave(dbChar.chaId)
+            }
         }
+    } finally {
+        busy.end()
     }
     addingEmotion.set(false)
 }
@@ -783,6 +796,7 @@ export function createBlankChar():character{
 
 
 export async function makeGroupImage() {
+    const busy = beginBusy('groupImage')
     try {
         alertStore.set({
             type: 'wait',
@@ -851,12 +865,15 @@ export async function makeGroupImage() {
         const uri = canvas.toDataURL()
         canvas.remove()
         db.characters[charID].image = await saveImage(dataURLtoBuffer(uri));
+        markCharacterForSave(db.characters[charID].chaId)
         alertStore.set({
             type: 'none',
             msg: ''
         })
     } catch (error) {
         alertError(error)
+    } finally {
+        busy.end()
     }
 }
 
@@ -916,8 +933,9 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     // this same synchronous stretch, whether or not the confirmation warned.
     // A trashed character stays where it is, so a write that still lands goes
     // into it; a removed one drops the write silently.
-    if (chars[index].chaId) {
-        stopWorkIn({ chaId: chars[index].chaId })
+    const removedChaId = chars[index].chaId
+    if (removedChaId) {
+        stopWorkIn({ chaId: removedChaId })
     }
     if(type === 'normal'){
         chars[index].trashTime = Date.now()
@@ -928,6 +946,11 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     checkCharOrder()
     DBState.db.characters = chars
     requiresFullEncoderReload.state = true
+    // The reload flag alone schedules nothing. A save is otherwise requested only
+    // through `characterOrder` (edited by `checkCharOrder` when the character was
+    // listed) or the selected-character effects, so removing a character that is
+    // not listed (an already-trashed one) with nothing selected needs this mark.
+    markCharacterForSave(removedChaId)
     selectedCharID.set(-1)
 }
 

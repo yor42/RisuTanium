@@ -4,6 +4,7 @@ import { getImageType } from "src/ts/media";
 import { getDatabase } from "../../storage/database.svelte";
 import { getModelInfo, LLMFlags, LLMFormat } from "src/ts/model/modellist";
 import { asBuffer } from "../../util";
+import { beginChokePoint } from "../memory/busyActions";
 
 export type InlayAsset = {
     data: string | Blob
@@ -32,6 +33,25 @@ const inlayStorage = localforage.createInstance({
     storeName: 'inlay'
 })
 
+/** Every write to the inlay store counts as in flight, so the page is not reloaded under it. */
+async function writeInlayStore<T>(id: string, value: T) {
+    const endInFlight = beginChokePoint('inlay')
+    try {
+        await inlayStorage.setItem(id, value)
+    } finally {
+        endInFlight()
+    }
+}
+
+async function removeInlayStore(id: string) {
+    const endInFlight = beginChokePoint('inlay')
+    try {
+        await inlayStorage.removeItem(id)
+    } finally {
+        endInFlight()
+    }
+}
+
 export async function postInlayAsset(img:{
     name:string,
     data:Uint8Array
@@ -53,7 +73,7 @@ export async function postInlayAsset(img:{
         const audioBlob = new Blob([asBuffer(img.data)], {type: `audio/${extention}`})
         const imgid = v4()
 
-        await inlayStorage.setItem(imgid, {
+        await writeInlayStore(imgid, {
             name: img.name,
             data: audioBlob,
             ext: extention,
@@ -67,7 +87,7 @@ export async function postInlayAsset(img:{
         const videoBlob = new Blob([asBuffer(img.data)], {type: `video/${extention}`})
         const imgid = v4()
 
-        await inlayStorage.setItem(imgid, {
+        await writeInlayStore(imgid, {
             name: img.name,
             data: videoBlob,
             ext: extention,
@@ -112,7 +132,7 @@ export async function writeInlayImage(imgObj:HTMLImageElement, arg:{name?:string
 
     const imgid = arg.id ?? v4()
 
-    await inlayStorage.setItem(imgid, {
+    await writeInlayStore(imgid, {
         name: arg.name ?? imgid,
         data: imageBlob,
         ext: 'png',
@@ -134,7 +154,7 @@ export type InlaySignature = {
 }
 
 export async function saveInlayedSignature(sigid:string,signature:InlaySignature){
-    await inlayStorage.setItem(sigid, {
+    await writeInlayStore(sigid, {
         name: sigid,
         data: JSON.stringify(signature),
         ext: 'json',
@@ -215,11 +235,11 @@ export async function listInlayAssets(): Promise<[id: string, InlayAsset][]> {
 }
 
 export async function setInlayAsset(id: string, img: InlayAsset){
-    await inlayStorage.setItem(id, img)
+    await writeInlayStore(id, img)
 }
 
 export async function removeInlayAsset(id: string){
-    await inlayStorage.removeItem(id)
+    await removeInlayStore(id)
 }
 
 export function supportsInlayImage(){

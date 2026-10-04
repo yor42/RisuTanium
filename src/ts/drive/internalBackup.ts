@@ -11,6 +11,7 @@ import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
+import { beginBusy } from "../process/memory/busyActions";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
 
 const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
@@ -216,6 +217,16 @@ export async function loadInternalBackup() {
         return
     }
 
+    // Registered once a snapshot is chosen, and ended however the load leaves.
+    const busy = beginBusy('backupLoad')
+    try {
+        await loadSelectedBackup(selectedBackup)
+    } finally {
+        busy.end()
+    }
+}
+
+async function loadSelectedBackup(selectedBackup: string) {
     if (refuseBackupLoadWhileBusy()) {
         return
     }

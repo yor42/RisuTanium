@@ -45,6 +45,7 @@
     import { getCharacterIndexObject, selectSingleFile } from "src/ts/util";
     import { v4 } from "uuid";
     import { checkCharOrder, getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
+    import { beginBusy } from "src/ts/process/memory/busyActions";
     import { alertInput, alertSelect } from "src/ts/alert";
   import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
     import SideChatList from "./SideChatList.svelte";
@@ -683,11 +684,16 @@
                         return
                       }
 
-                      const folderImageData = await saveAsset(folderImage.data)
+                      const busy = beginBusy('imageAdd')
+                      try {
+                        const folderImageData = await saveAsset(folderImage.data)
 
-                      oder.imgFile = folderImageData
-                      oder.img = await getFileSrc(folderImageData)
-                      db.characterOrder[ind] = oder
+                        oder.imgFile = folderImageData
+                        oder.img = await getFileSrc(folderImageData)
+                        db.characterOrder[ind] = oder
+                      } finally {
+                        busy.end()
+                      }
                       break;
                   }
                 }

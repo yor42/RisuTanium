@@ -12,6 +12,7 @@
     import { alertNormal, showHypaV2Alert } from "../../ts/alert";
     import BarIcon from "./BarIcon.svelte";
     import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFile, selectSingleFile } from "../../ts/util";
+    import { beginBusy } from "../../ts/process/memory/busyActions";
     import Help from "../Others/Help.svelte";
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
     import { getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
@@ -600,13 +601,18 @@
                                     if(!da){
                                         return
                                     }
-                                    for(const f of da){
-                                        const img = f.data
-                                        const name = f.name
-                                        const extension = name.split('.').pop().toLowerCase()
-                                        const imgp = await saveAsset(img,'', extension)
-                                        DBState.db.characters[$selectedCharID].additionalAssets.push([name, imgp, extension])
-                                        DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets
+                                    const busy = beginBusy('assetAdd')
+                                    try {
+                                        for(const f of da){
+                                            const img = f.data
+                                            const name = f.name
+                                            const extension = name.split('.').pop().toLowerCase()
+                                            const imgp = await saveAsset(img,'', extension)
+                                            DBState.db.characters[$selectedCharID].additionalAssets.push([name, imgp, extension])
+                                            DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets
+                                        }
+                                    } finally {
+                                        busy.end()
                                     }
                                 }
                             }}>

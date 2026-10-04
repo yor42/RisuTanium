@@ -6,12 +6,17 @@ import { readModule } from "./process/modules"
 import { importErrorMessage } from "./process/moduleRefusal"
 import { DBState } from "./stores.svelte"
 import { importPreset } from "./storage/database.svelte"
+import { withBusy } from "./process/memory/busyActions"
 
 /**
  * Imports the one file dropped on the app, by its name: a preset, a module, or otherwise a character card.
  * A failure shows its reason and never rejects, so a drop has no unhandled rejection.
  */
-export async function importDroppedFile(file:File){
+export function importDroppedFile(file:File){
+    return withBusy('import', () => importDropped(file))
+}
+
+async function importDropped(file:File){
     const name = file.name.toLowerCase()
 
     try {

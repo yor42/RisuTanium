@@ -3,6 +3,7 @@
     import { type character, type groupChat } from "src/ts/storage/database.svelte";
     import { getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
     import { selectMultipleFile } from "src/ts/util";
+    import { beginBusy } from "src/ts/process/memory/busyActions";
     interface Props {
         currentCharacter: character|groupChat;
         onSelect: (additionalAsset:[string,string,string])=>void;
@@ -39,13 +40,18 @@
             if(!da){
                 return
             }
-            for(const f of da){
-                console.log(f)
-                const img = f.data
-                const name = f.name
-                const extension = name.split('.').pop().toLowerCase()
-                const imgp = await saveAsset(img,'',extension)
-                currentCharacter.additionalAssets.push([name, imgp, extension])
+            const busy = beginBusy('assetAdd')
+            try {
+                for(const f of da){
+                    console.log(f)
+                    const img = f.data
+                    const name = f.name
+                    const extension = name.split('.').pop().toLowerCase()
+                    const imgp = await saveAsset(img,'',extension)
+                    currentCharacter.additionalAssets.push([name, imgp, extension])
+                }
+            } finally {
+                busy.end()
             }
         }
     }}>

@@ -510,6 +510,7 @@ interface Ctx {
     stores: typeof import('src/ts/stores.svelte')
     globalApi: typeof import('src/ts/globalApi.svelte')
     chatOrigin: typeof import('src/ts/process/chatOrigin')
+    busy: typeof import('src/ts/process/memory/busyActions')
     generation: typeof import('src/ts/process/generationOwnership.svelte')
     risuSave: typeof import('src/ts/storage/risuSave')
     nodeMod: typeof import('src/ts/storage/nodeStorage')
@@ -573,6 +574,7 @@ async function setup(options: { platform?: Platform, locks?: 'single' | 'none' }
         mainRec: await import('src/ts/storage/mainFileRecord'),
         stores: await import('src/ts/stores.svelte'),
         chatOrigin: await import('src/ts/process/chatOrigin'),
+        busy: await import('src/ts/process/memory/busyActions'),
         generation: await import('src/ts/process/generationOwnership.svelte'),
         risuSave: await import('src/ts/storage/risuSave'),
         nodeMod: await import('src/ts/storage/nodeStorage'),
@@ -1544,6 +1546,7 @@ describe('busy: the run refuses while anything else is working', () => {
     test.each([
         ['work is in progress', () => { ctx.chatOrigin.registerWork({ chaId: 'busy-cha', chatId: 'busy-chat' }) }],
         ['the composer window is open', () => { ctx.generation.setComposerWindow(true) }],
+        ['an import is registered as busy', () => { ctx.busy.beginBusy('import') }],
         ['saving has been stopped', () => { ctx.stores.savingStoppedReason.set('stay') }],
     ])('refuses and deletes nothing while %s', async (_label, makeBusy) => {
         await setup()
@@ -1556,6 +1559,61 @@ describe('busy: the run refuses while anything else is working', () => {
 
         expect(await units()).toContain('unreferenced-unit')
         expect(errorMessages().length).toBeGreaterThan(0)
+    })
+
+    test('a run with only its own registry entry deletes its batches, and its entry ends with the run', async () => {
+        await setup()
+        for (let i = 0; i < 250; i++) {
+            seedUnit(`unit-${i}`)
+        }
+        setLive(makeDb([]))
+        await prime()
+        let keptWhileDeleting: string[] = []
+        h.forageHooks.afterRemove = () => {
+            keptWhileDeleting = ctx.busy.busyKinds()
+        }
+
+        await run()
+
+        expect(await units()).toEqual([])
+        expect(keptWhileDeleting).toEqual(['cleanup'])
+        expect(ctx.busy.isBusy()).toBe(false)
+    })
+
+    test('a run refused because an action is registered leaves no entry of its own behind', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime()
+        const other = ctx.busy.beginBusy('import')
+
+        await run()
+
+        expect(await units()).toContain('unreferenced-unit')
+        expect(ctx.busy.busyKinds()).toEqual(['import'])
+        other.end()
+    })
+
+    test('stops partway when an action is registered after the first deletions', async () => {
+        await setup()
+        for (let i = 0; i < 250; i++) {
+            seedUnit(`unit-${i}`)
+        }
+        setLive(makeDb([]))
+        await prime()
+        let removed = 0
+        h.forageHooks.afterRemove = () => {
+            removed++
+            if (removed === 100) {
+                ctx.busy.beginBusy('import')
+            }
+        }
+
+        await run()
+
+        const left = (await units()).length
+        expect(left).toBeGreaterThan(0)
+        expect(left).toBeLessThan(250)
     })
 
     test('deletes nothing when work starts after the run began but before the first deletion', async () => {

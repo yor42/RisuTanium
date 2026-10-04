@@ -14,6 +14,9 @@ const h = vi.hoisted(() => ({
     modules: [] as unknown[],
     file: { name: 'm.risum', data: new Uint8Array() } as { name: string, data: Uint8Array },
     saveFails: false,
+    /** the registry's kinds seen at each asset save */
+    busyAtSave: [] as string[][],
+    busyKinds: (() => []) as () => string[],
 }))
 
 vi.mock('uuid', () => ({ v4: () => 'uuid' }))
@@ -47,6 +50,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {},
     readImage: vi.fn(),
     saveAsset: vi.fn(async () => {
+        h.busyAtSave.push(h.busyKinds())
         if (h.saveFails) throw new Error('storage full')
         return 'saved-asset'
     }),
@@ -91,6 +95,7 @@ vi.mock(import('src/ts/characterCards'), () => ({
 
 import { importModule } from 'src/ts/process/modules'
 import { language } from 'src/lang'
+import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
 
 /** magic, version, length-prefixed main block, then the given tail (asset marks, then 0 for the end) */
 function risum(opts: { magic?: number, version?: number, type?: string, assets?: number, tail?: number[] } = {}): Uint8Array {
@@ -122,6 +127,8 @@ beforeEach(() => {
     h.last = 'none'
     h.modules = []
     h.saveFails = false
+    h.busyAtSave = []
+    h.busyKinds = busyKinds
     h.file = { name: 'm.risum', data: risum() }
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -166,6 +173,24 @@ describe('importModule with a .risum file', () => {
         expect(h.modules).toEqual([])
         expect(h.last).toBe('error:Failed to save 2 assets')
         expect(h.log).toEqual(['error:Failed to save 2 assets'])
+    })
+
+    test('the import is registered as busy during the asset saves and its entry ends after, also when the module is refused', async () => {
+        h.file = { name: 'm.risum', data: risum({ assets: 2 }) }
+        await importModule()
+        expect(h.busyAtSave).toEqual([['import'], ['import']])
+        expect(isBusy()).toBe(false)
+
+        h.saveFails = true
+        h.busyAtSave = []
+        await importModule()
+        expect(h.busyAtSave.length).toBeGreaterThan(0)
+        expect(h.busyAtSave.every((kinds) => kinds.length === 1 && kinds[0] === 'import')).toBe(true)
+        expect(isBusy()).toBe(false)
+
+        h.file = { name: 'm.risum', data: risum({ magic: 0 }) }
+        await importModule()
+        expect(isBusy()).toBe(false)
     })
 
     test('a file that is not a module at all shows one error and adds nothing (compatibility guard)', async () => {

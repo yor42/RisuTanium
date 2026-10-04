@@ -1011,6 +1011,44 @@ describe('loadInternalBackup writes the chosen snapshot', () => {
     })
 })
 
+describe('loadInternalBackup is registered as busy from the chosen snapshot', () => {
+    test('the load is registered when it reloads the page, and its entry ends when it settles', async () => {
+        const { world } = await worldWithSnapshot()
+        const busy = await import('../../process/memory/busyActions')
+        let during: string[] = []
+        navBox.reloadImpl = () => { during = busy.busyKinds() }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect(during).toEqual(['backupLoad'])
+        expect(busy.isBusy()).toBe(false)
+    })
+
+    test('a load refused because work started during the choice leaves no entry behind', async () => {
+        const { world } = await worldWithSnapshot()
+        const busy = await import('../../process/memory/busyActions')
+        alertBox.onSelect = () => { workBox.busy = true }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('backupLoadWorkInProgress'))
+        expect(busy.isBusy()).toBe(false)
+    })
+
+    test('a load whose snapshot cannot be read leaves no entry behind', async () => {
+        const { world, key } = await worldWithSnapshot()
+        const busy = await import('../../process/memory/busyActions')
+        alertBox.onSelect = () => { removeSnapshot(world, key) }
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect(busy.isBusy()).toBe(false)
+    })
+})
+
 describe('loadInternalBackup refuses while another tab is open', () => {
     test('another tab holding presence: shows the other-tab message, writes nothing and reloads nothing', async () => {
         const { world } = await worldWithSnapshot()

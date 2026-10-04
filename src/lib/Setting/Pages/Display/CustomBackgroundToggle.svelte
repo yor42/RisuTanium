@@ -4,6 +4,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { selectSingleFile } from 'src/ts/util';
     import Check from 'src/lib/UI/GUI/CheckInput.svelte';
+    import { beginBusy } from 'src/ts/process/memory/busyActions';
 </script>
 
 <div class="flex items-center mt-2">
@@ -17,8 +18,13 @@
                     DBState.db.customBackground = '';
                     return;
                 }
-                const img = await saveImage(d.data);
-                DBState.db.customBackground = img;
+                const busy = beginBusy('imageAdd');
+                try {
+                    const img = await saveImage(d.data);
+                    DBState.db.customBackground = img;
+                } finally {
+                    busy.end();
+                }
             } else {
                 DBState.db.customBackground = '';
             }

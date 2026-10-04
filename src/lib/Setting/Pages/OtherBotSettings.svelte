@@ -6,6 +6,7 @@
     import { selectSingleFile } from "src/ts/util";
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
     import { saveAsset, downloadFile, globalFetch } from "src/ts/globalApi.svelte";
+    import { beginBusy } from "src/ts/process/memory/busyActions";
     import { isTauri } from "src/ts/platform"
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
@@ -521,8 +522,13 @@
                         const imageData = img.data;
                         
                         DBState.db.NAIImgConfig.character_base64image = Buffer.from(imageData).toString('base64');
-                        const saveId = await saveAsset(imageData)
-                        DBState.db.NAIImgConfig.character_image = saveId
+                        const busy = beginBusy('imageAdd')
+                        try {
+                            const saveId = await saveAsset(imageData)
+                            DBState.db.NAIImgConfig.character_image = saveId
+                        } finally {
+                            busy.end()
+                        }
                         console.log('Character image set:', DBState.db.NAIImgConfig.character_image)
                     }}>
                         {#if !DBState.db.NAIImgConfig.character_image || DBState.db.NAIImgConfig.character_image === ''}
@@ -601,8 +607,13 @@
                             return null
                         }
                         DBState.db.NAIImgConfig.base64image = Buffer.from(img.data).toString('base64');
-                        const saveId = await saveAsset(img.data)
-                        DBState.db.NAIImgConfig.image = saveId
+                        const busy = beginBusy('imageAdd')
+                        try {
+                            const saveId = await saveAsset(img.data)
+                            DBState.db.NAIImgConfig.image = saveId
+                        } finally {
+                            busy.end()
+                        }
                     }}>
                         {#if !DBState.db.NAIImgConfig.image || DBState.db.NAIImgConfig.image === ''}
                             <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
@@ -903,8 +914,13 @@
                             const imageData = img.data;
 
                             DBState.db.wavespeedImage.reference_base64image = Buffer.from(imageData).toString('base64');
-                            const saveId = await saveAsset(imageData)
-                            DBState.db.wavespeedImage.reference_image = saveId
+                            const busy = beginBusy('imageAdd')
+                            try {
+                                const saveId = await saveAsset(imageData)
+                                DBState.db.wavespeedImage.reference_image = saveId
+                            } finally {
+                                busy.end()
+                            }
                             console.log('Character image set:', DBState.db.wavespeedImage.reference_image)
                         }}>
                             {#if !DBState.db.wavespeedImage.reference_image || DBState.db.wavespeedImage.reference_image === ''}

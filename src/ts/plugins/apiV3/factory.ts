@@ -1,3 +1,5 @@
+import { beginChokePoint, stampPluginActivity } from "src/ts/process/memory/busyActions";
+
 type MsgType =
     | 'CALL_ROOT'
     | 'CALL_INSTANCE'
@@ -837,6 +839,8 @@ export class SandboxHost {
                     streamCleanups = [];
                 };
 
+                stampPluginActivity();
+                const endInFlight = beginChokePoint('pluginBridge');
                 try {
 
                     const args = this.deserializeArgs(data.args || [], usedAbortIds);
@@ -866,6 +870,7 @@ export class SandboxHost {
                     delete response.result;
                     response.error = err?.message || String(err || "Host execution error");
                 } finally {
+                    endInFlight();
                     for (const id of usedAbortIds) this.abortControllers.delete(id);
                 }
 

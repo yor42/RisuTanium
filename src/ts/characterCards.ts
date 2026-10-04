@@ -21,6 +21,7 @@ import { exportModuleLegacy, readModule, type RisuModule } from "./process/modul
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { readFile } from "@tauri-apps/plugin-fs"
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
+import { beginBusy, withBusy } from "./process/memory/busyActions"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -83,7 +84,11 @@ function showOutcome(outcome:ImportOutcome) {
  * action had a single file with a message of its own, otherwise a summary naming each file and its reason. Nothing is
  * shown after it. When nothing was refused or failed, the alerts of the last file stay as they are.
  */
-async function importFiles(items:ImportItem[]):Promise<void> {
+function importFiles(items:ImportItem[]):Promise<void> {
+    return withBusy('import', () => importEachFile(items))
+}
+
+async function importEachFile(items:ImportItem[]):Promise<void> {
     const results:ImportOutcome[] = []
     for(const item of items){
         let outcome:ImportOutcome
@@ -615,11 +620,16 @@ export async function characterURLImport() {
             }
             else{
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                await importCharacterProcess({
-                    name: 'charahub.png',
-                    data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'})
-                })
-                checkCharOrder()
+                const busy = beginBusy('import')
+                try {
+                    await importCharacterProcess({
+                        name: 'charahub.png',
+                        data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'})
+                    })
+                    checkCharOrder()
+                } finally {
+                    busy.end()
+                }
             }
         }
     } catch (error) {
@@ -631,6 +641,7 @@ export async function characterURLImport() {
     if(hash.startsWith('#import=')){
         location.hash = ''
         const url = hash.replace('#import=', '')
+        const busy = beginBusy('import')
         try {
             const res = await fetch(url, {
                 method: 'GET',
@@ -646,9 +657,15 @@ export async function characterURLImport() {
             }
         } catch (error) {
             alertError(language.errors.noData)
+        } finally {
+            busy.end()
         }
     }
     //No outcome of the Chub, #import=, #import_module= or #import_preset= links ends the start-up work below.
+    //The inline links are cleared once read, so a reload that keeps the fragment does not import them again.
+    if(hash.startsWith('#import_module=') || hash.startsWith('#import_preset=')){
+        window.history.replaceState(null, '', location.pathname + location.search)
+    }
     if(hash.startsWith('#import_module=')){
         try {
             const data = hash.replace('#import_module=', '')
@@ -666,6 +683,7 @@ export async function characterURLImport() {
         }
     }
     else if(hash.startsWith('#import_preset=')){
+        const busy = beginBusy('import')
         try {
             const data = hash.replace('#import_preset=', '')
             const importData =Buffer.from(decodeURIComponent(data), 'base64')
@@ -677,6 +695,8 @@ export async function characterURLImport() {
             settingsOpen.set(true)
         } catch (error) {
             alertError(error)
+        } finally {
+            busy.end()
         }
     }
     //A failure while receiving a share never stops the rest of the start-up work below.
@@ -1455,11 +1475,19 @@ function createBaseV2(char:character) {
 }
 
 
-export async function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'charxJpeg' = 'png', arg:{
+export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'charxJpeg' = 'png', arg:{
     password?:string
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
 } = {}) {
+    return withBusy('export', () => writeCharacterCard(char, type, arg))
+}
+
+async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'charxJpeg', arg:{
+    password?:string
+    writer?:LocalWriter|VirtualWriter,
+    spec?:'v2'|'v3'
+}) {
     let img = await readImage(char.image)
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     try{
@@ -2008,9 +2036,15 @@ export async function getRisuHub(arg:{
     }
 }
 
-export async function downloadRisuHub(id:string, arg:{
+export function downloadRisuHub(id:string, arg:{
     forceRedirect?: boolean
 } = {}) {
+    return withBusy('import', () => downloadRealmCard(id, arg))
+}
+
+async function downloadRealmCard(id:string, arg:{
+    forceRedirect?: boolean
+}) {
     try {
         if(!(await askUpstreamAgreement())){
             return

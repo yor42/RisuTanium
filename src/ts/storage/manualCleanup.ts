@@ -11,6 +11,7 @@ import {
 import { isNodeServer, isTauri } from "../platform"
 import { DBState, frozenSaveKeysStore, savingStoppedReason } from "../stores.svelte"
 import { isWorkInProgress } from "../process/chatOrigin"
+import { beginBusy, isBusy, type BusyHandle } from "../process/memory/busyActions"
 import { deleteColdStorageUnits, readColdStorageItem, type ColdStorageReadResult } from "../process/coldstorage.svelte"
 import { isSafeColdStorageKey } from "../process/coldStorageKey"
 import { listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, listRecoverableErrorKeysFromDb } from "../process/coldstorageData"
@@ -296,7 +297,8 @@ interface Refusal {
     partway: string
 }
 
-function currentRefusal(): Refusal | null {
+/** own is this run's own registry entry, which is not a reason to refuse. */
+function currentRefusal(own?: BusyHandle): Refusal | null {
     if (get(frozenSaveKeysStore).length > 0) {
         const groups = frozenGroups()
         return {
@@ -304,7 +306,7 @@ function currentRefusal(): Refusal | null {
             partway: language.errors.coldStorageCleanupStoppedFrozen(groups),
         }
     }
-    if (isWorkInProgress()) {
+    if (isWorkInProgress() || isBusy({ except: own })) {
         return {
             atStart: language.errors.coldStorageCleanupBusy,
             partway: language.errors.coldStorageCleanupStoppedBusy,
@@ -343,6 +345,7 @@ function showRemoving(done: number, total: number): void {
  * delete.
  */
 async function deleteInBatches(
+    own: BusyHandle,
     candidates: string[],
     decide: (batch: string[]) => string[],
     removeBatch: (keys: string[], done: number, total: number) => Promise<number>,
@@ -350,7 +353,7 @@ async function deleteInBatches(
     let deleted = 0
     let failed = 0
     for (let start = 0; start < candidates.length; start += DELETE_BATCH_SIZE) {
-        const refusal = currentRefusal()
+        const refusal = currentRefusal(own)
         if (refusal) {
             return { deleted, failed, stoppedBecause: refusal }
         }
@@ -443,8 +446,8 @@ function liveUnitReferences(): Set<string> {
 
 //#endregion
 
-async function cleanExclusively(): Promise<void> {
-    const refusal = currentRefusal()
+async function cleanExclusively(own: BusyHandle): Promise<void> {
+    const refusal = currentRefusal(own)
     if (refusal) {
         throw new CleanupStop(refusal.atStart)
     }
@@ -480,6 +483,7 @@ async function cleanExclusively(): Promise<void> {
     const assetCandidates = [...loadListing.assets].filter((key) => startListing.assets.has(key) && isAssetCandidateKey(key) && !keptAssetNames.has(assetCompareName(getBasename(key))))
 
     const units = await deleteInBatches(
+        own,
         unitCandidates,
         (batch) => {
             const live = liveUnitReferences()
@@ -492,6 +496,7 @@ async function cleanExclusively(): Promise<void> {
     let stoppedBecause = units.stoppedBecause
     if (!stoppedBecause) {
         const assets = await deleteInBatches(
+            own,
             assetCandidates,
             (batch) => {
                 const live = new Set(Array.from(getUncleanablesSync(DBState.db), assetCompareName))
@@ -531,6 +536,15 @@ export async function runManualCleanup(): Promise<void> {
         alertError(language.errors.coldStorageCleanupNoListing)
         return
     }
+    const own = beginBusy('cleanup')
+    try {
+        await runRegisteredCleanup(own)
+    } finally {
+        own.end()
+    }
+}
+
+async function runRegisteredCleanup(own: BusyHandle): Promise<void> {
     const webLocks = !isTauri && locksSupported !== false && !!navigator.locks
     if (!isTauri && !webLocks) {
         if (!await alertConfirm(language.coldStorageCleanupNoLockConfirm)) {
@@ -559,7 +573,7 @@ export async function runManualCleanup(): Promise<void> {
     }
 
     try {
-        await cleanExclusively()
+        await cleanExclusively(own)
     } catch (error) {
         alertClear()
         if (error instanceof CleanupStop) {

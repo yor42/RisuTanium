@@ -13,6 +13,8 @@ import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHe
 import { doingChat } from "./index.svelte"
 import { isSafeColdStorageKey } from "./coldStorageKey"
 import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./coldUnitLocation"
+import { beginChokePoint } from "./memory/busyActions"
+import { noteReadSize, noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 
 export {
     coldStorageHeader,
@@ -230,7 +232,9 @@ async function decodeColdStorageValue(bytes: Uint8Array): Promise<ColdStorageRea
         return kind ? { status: 'error', error: decompressError, kind } : { status: 'error', error: decompressError }
     }
     try {
-        return { status: 'ok', value: JSON.parse(new TextDecoder().decode(decompressed)) }
+        const result: ColdStorageReadResult = { status: 'ok', value: JSON.parse(new TextDecoder().decode(decompressed)) }
+        noteReadSize(result, decompressed.length)
+        return result
     } catch (parseError) {
         const kind = classifyColdDecodeFailure(parseError)
         return kind ? { status: 'error', error: parseError, kind } : { status: 'error', error: parseError }
@@ -297,36 +301,41 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
     // logged object reachable for as long as it is open.
     console.log("setting cold storage item", key)
 
-    const compressed = await compressColdStorageValue(value)
-    if(!compressed){
-        return false
-    }
-
-    // Only the page's store is written, never a legacy OPFS file. On a store that
-    // enforces versions the write presents the version this page last saw for
-    // the unit, so a unit another device wrote in between is not overwritten.
+    const endInFlight = beginChokePoint('coldStorage')
     try {
-        const store = await getAppStore()
-        const known = unitVersions.get(key)
-        const condition: StoreCondition = store.capabilities.conditionalWrites && known !== undefined
-            ? { ifVersion: known }
-            : 'unconditional'
-        const { version } = await store.write(coldUnitStoreKey(key), compressed, condition)
-        if (version === null) {
-            unitVersions.delete(key)
-        } else {
-            unitVersions.set(key, version)
+        const compressed = await compressColdStorageValue(value)
+        if(!compressed){
+            return false
         }
-        return true
-    } catch (error) {
-        if (error instanceof StoreVersionConflictError) {
-            console.error('Cold storage write refused: the unit was changed by another writer since this page read it.')
-        } else if (error instanceof StoreInvalidKeyError) {
-            console.error('Cold storage write refused: the page store cannot hold this archive key.')
-        } else {
-            console.error('Cold storage write failed:', error)
+
+        // Only the page's store is written, never a legacy OPFS file. On a store that
+        // enforces versions the write presents the version this page last saw for
+        // the unit, so a unit another device wrote in between is not overwritten.
+        try {
+            const store = await getAppStore()
+            const known = unitVersions.get(key)
+            const condition: StoreCondition = store.capabilities.conditionalWrites && known !== undefined
+                ? { ifVersion: known }
+                : 'unconditional'
+            const { version } = await store.write(coldUnitStoreKey(key), compressed, condition)
+            if (version === null) {
+                unitVersions.delete(key)
+            } else {
+                unitVersions.set(key, version)
+            }
+            return true
+        } catch (error) {
+            if (error instanceof StoreVersionConflictError) {
+                console.error('Cold storage write refused: the unit was changed by another writer since this page read it.')
+            } else if (error instanceof StoreInvalidKeyError) {
+                console.error('Cold storage write refused: the page store cannot hold this archive key.')
+            } else {
+                console.error('Cold storage write failed:', error)
+            }
+            return false
         }
-        return false
+    } finally {
+        endInFlight()
     }
 }
 
@@ -758,6 +767,7 @@ export async function preLoadChat(characterIndex:number, chatIndex:number): Prom
         chat.localLore = blob.localLore
     }
     chat.lastDate = Date.now()
+    noteRestoredBytes(chaId, readSizeOf(result))
 
     return 'ok'
 }

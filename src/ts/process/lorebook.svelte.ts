@@ -15,6 +15,7 @@ import { v4 } from "uuid";
 import type { OriginContext, RunSubject } from "./chatOrigin";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import type { PromptView } from "../cbs";
+import { beginBusy } from "./memory/busyActions";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -809,6 +810,7 @@ export function convertExternalLorebook(entries:{[key:string]:CCLorebook}){
 }
 
 export async function exportLoreBook(mode:'global'|'local'){
+    const busy = beginBusy('export')
     try {
         const selectedID = get(selectedCharID)
         const page = DBState.db.characters[selectedID].chatPage
@@ -826,5 +828,7 @@ export async function exportLoreBook(mode:'global'|'local'){
         alertNormal(language.successExport)
     } catch (error) {
         alertError(error)
+    } finally {
+        busy.end()
     }
 }

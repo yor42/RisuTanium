@@ -553,6 +553,7 @@ import { setDatabase } from 'src/ts/storage/database.svelte'
 import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { isWriting } from 'src/ts/process/chatOrigin'
+import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
 
 //#region fixtures
 
@@ -1008,6 +1009,42 @@ async function startHeldSendBk(): Promise<{ running: Promise<boolean> }> {
 }
 
 //#endregion
+
+describe('LoadLocalBackup is registered as busy once its file is chosen', () => {
+    test('LoadLocalBackup is registered while it runs and the entry ends when it stops early', async () => {
+        installWorld()
+        let during: string[] = []
+        alertErrorMock.mockImplementation(() => { during = busyKinds() })
+
+        await loadBackupBytes(new Uint8Array([0, 0, 0, 0])).catch(() => {})
+
+        expect(alertErrorMock).toHaveBeenCalled()
+        expect(during).toEqual(['backupLoad'])
+        expect(isBusy()).toBe(false)
+    })
+
+    test('LoadLocalBackup leaves no entry when the picker delivers no file', async () => {
+        installWorld()
+        const realCreateElement = document.createElement.bind(document)
+        const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+            const el = realCreateElement(tag)
+            if (tag === 'input') {
+                capturedInput = el as HTMLInputElement
+            }
+            return el
+        })
+        try {
+            LoadLocalBackup()
+            const input = capturedInput as HTMLInputElement | null
+            Object.defineProperty(input, 'files', { value: [], configurable: true })
+            await (input!.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
+        } finally {
+            spy.mockRestore()
+        }
+
+        expect(isBusy()).toBe(false)
+    })
+})
 
 describe('LoadLocalBackup waits for work', () => {
     test('a send streaming: LoadLocalBackup is refused before database.bin is written and DBState.db is the same object', async () => {

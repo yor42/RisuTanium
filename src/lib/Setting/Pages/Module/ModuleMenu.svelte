@@ -5,6 +5,7 @@
     import LoreBookList from "src/lib/SideBars/LoreBook/LoreBookList.svelte";
     import { type CCLorebook, convertExternalLorebook } from "src/ts/process/lorebook.svelte";
     import type { RisuModule } from "src/ts/process/modules";
+    import { beginBusy } from "src/ts/process/memory/busyActions";
     import { DownloadIcon, FolderPlusIcon, HardDriveUploadIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
     import RegexList from "src/lib/SideBars/Scripts/RegexList.svelte";
     import TriggerList from "src/lib/SideBars/Scripts/TriggerList.svelte";
@@ -256,13 +257,18 @@
                         if(!da){
                             return
                         }
-                        for(const f of da){
-                            const img = f.data
-                            const name = f.name
-                            const extension = name.split('.').pop().toLowerCase()
-                            const imgp = await saveAsset(img,'', extension)
-                            currentModule.assets.push([name, imgp, extension])
-                            currentModule.assets = currentModule.assets
+                        const busy = beginBusy('assetAdd')
+                        try {
+                            for(const f of da){
+                                const img = f.data
+                                const name = f.name
+                                const extension = name.split('.').pop().toLowerCase()
+                                const imgp = await saveAsset(img,'', extension)
+                                currentModule.assets.push([name, imgp, extension])
+                                currentModule.assets = currentModule.assets
+                            }
+                        } finally {
+                            busy.end()
                         }
                     }}>
                         <PlusIcon />

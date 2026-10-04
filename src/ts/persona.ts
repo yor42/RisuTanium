@@ -7,22 +7,28 @@ import { reencodeImage } from "./process/files/inlays"
 import { PngChunk } from "./pngChunk"
 import { v4 } from "uuid"
 import { DBState } from "./stores.svelte"
+import { beginBusy, type BusyHandle } from "./process/memory/busyActions"
 
 export async function selectUserImg() {
     const selected = await selectSingleFile(['png'])
     if (!selected) {
         return
     }
-    const img = selected.data
-    const imgp = await saveImage(img)
-    DBState.db.userIcon = imgp
-    DBState.db.personas[DBState.db.selectedPersona] = {
-        ...DBState.db.personas[DBState.db.selectedPersona],
-        name: DBState.db.username,
-        icon: DBState.db.userIcon,
-        personaPrompt: DBState.db.personaPrompt,
-        note: DBState.db.userNote,
-        id: v4()
+    const busy = beginBusy('imageAdd')
+    try {
+        const img = selected.data
+        const imgp = await saveImage(img)
+        DBState.db.userIcon = imgp
+        DBState.db.personas[DBState.db.selectedPersona] = {
+            ...DBState.db.personas[DBState.db.selectedPersona],
+            name: DBState.db.username,
+            icon: DBState.db.userIcon,
+            personaPrompt: DBState.db.personaPrompt,
+            note: DBState.db.userNote,
+            id: v4()
+        }
+    } finally {
+        busy.end()
     }
 }
 
@@ -102,11 +108,13 @@ export async function exportUserPersona() {
 }
 
 export async function importUserPersona() {
+    let busy: BusyHandle | null = null
     try {
         const v = await selectSingleFile(['png'])
         if (!v) {
             return
         }
+        busy = beginBusy('import')
         const readGenerator = PngChunk.readGenerator(v.data)
         let decoded: string | undefined;
 
@@ -137,5 +145,7 @@ export async function importUserPersona() {
     } catch (error) {
         alertError(error)
         return
+    } finally {
+        busy?.end()
     }
 }

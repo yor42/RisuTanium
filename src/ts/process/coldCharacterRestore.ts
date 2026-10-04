@@ -4,6 +4,7 @@ import { language } from "../../lang"
 import type { character, groupChat } from "../storage/database.svelte"
 import { readColdStorageItem, type ColdReadErrorKind, type ColdStorageReadResult } from "./coldstorage.svelte"
 import { applyStubStateOnRestore } from "./coldCharacter"
+import { noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 
 /**
  * Reading an archived character's unit back and installing it in place of its
@@ -245,6 +246,7 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
     }
 
     characters[index] = applyStubStateOnRestore(target, unit.character)
+    noteRestoredBytes(chaId, readSizeOf(result))
     return { status: 'restored', character: characters[index], installedHere: true }
 }
 

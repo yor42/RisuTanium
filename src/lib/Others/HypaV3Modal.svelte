@@ -11,6 +11,7 @@
   import { fillLang } from "src/lang/fill";
   import { translateHTML } from "src/ts/translator/translator";
   import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
+  import { beginBusy } from "src/ts/process/memory/busyActions";
   import { alertConfirmTwice } from "./HypaV3Modal/utils";
   import ModalHeader from "./HypaV3Modal/modal-header.svelte";
   import ModalSummaryItem from "./HypaV3Modal/modal-summary-item.svelte";
@@ -234,6 +235,7 @@
     }
 
     const run = ++bulkRunToken;
+    const busy = beginBusy('hypaBulk');
 
     try {
       bulkResummaryState = {
@@ -277,6 +279,8 @@
       console.error('Re-summarize Failed:', error);
       bulkResummaryState = null;
       await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeFailed, { reason: `${error.message || error}` }));
+    } finally {
+      busy.end();
     }
   }
 
@@ -319,6 +323,7 @@
     
     const selectedSummaries = bulkResummaryState.heldSummaries;
     const run = ++bulkRunToken;
+    const busy = beginBusy('hypaBulk');
 
     try {
       bulkResummaryState = {
@@ -353,6 +358,8 @@
       console.error('Re-summarize Retry Failed:', error);
       bulkResummaryState = null;
       await alertNormalWait(fillLang(language.hypaV3Modal.reSummarizeRetryFailed, { reason: `${error.message || error}` }));
+    } finally {
+      busy.end();
     }
   }
 

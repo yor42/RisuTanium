@@ -14,6 +14,7 @@ import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, importCharacterProcess } from "../characterCards"
 import { ModuleRefusal, importErrorMessage } from "./moduleRefusal"
+import { withBusy } from "./memory/busyActions"
 
 export interface MCPModule{
     url: string
@@ -37,9 +38,15 @@ export interface RisuModule{
     icon?:string
 }
 
-export async function exportModule(module:RisuModule, arg:{
+export function exportModule(module:RisuModule, arg:{
     alertEnd?:boolean
 } = {}){
+    return withBusy('export', () => writeModuleCard(module, arg))
+}
+
+async function writeModuleCard(module:RisuModule, arg:{
+    alertEnd?:boolean
+}){
     const alertEnd = arg.alertEnd ?? true
 
     const char = convertModuleToCharacter(module)
@@ -267,11 +274,11 @@ export async function importModule(){
     if(f.name.endsWith('.charx')){
         try {
             const buf = Buffer.from(fileData)
-            const char = await importCharacterProcess({
+            const char = await withBusy('import', () => importCharacterProcess({
                 name: f.name,
                 data: buf,
                 returnCharacter: true
-            })
+            }))
             //A refusal has shown its own message and a declined low-level-access prompt shows none (it returns false, a type the declared return leaves out); neither is followed by another message.
             if(!char || typeof char === 'number'){
                 return
@@ -289,7 +296,7 @@ export async function importModule(){
     if(f.name.endsWith('.risum')){
         try {
             const buf = Buffer.from(fileData)
-            const module = await readModule(buf)
+            const module = await withBusy('import', () => readModule(buf))
             DBState.db.modules.push(module)
         } catch (error) {
             console.error(error)

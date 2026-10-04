@@ -50,6 +50,7 @@ import { decodeProxyJobWsChunk, formatProxyStreamErrorMessage, parseProxyJobWsEv
 import { getNodeServerProxyAuth } from "./storage/nodeStorage";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
+import { beginChokePoint } from "./process/memory/busyActions";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
 
 export const forageStorage = new AutoStorage()
@@ -533,37 +534,42 @@ export async function readImage(data: string) {
  */
 export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView, customId: string = '', fileName: string = '') {
     const bytes = assetBytesOf(data)
-    let id = ''
-    if (customId !== '') {
-        id = customId
-    }
-    else {
-        try {
-            id = await hasher(bytes)
-        } catch (error) {
-            id = uuidv4()
+    const endInFlight = beginChokePoint('asset')
+    try {
+        let id = ''
+        if (customId !== '') {
+            id = customId
         }
-    }
-    let fileExtension: string = 'png'
-    if (fileName) {
-        const candidate = fileName.split('.').pop() ?? ''
-        if (ASSET_EXTENSION.test(candidate)) {
-            fileExtension = candidate
+        else {
+            try {
+                id = await hasher(bytes)
+            } catch (error) {
+                id = uuidv4()
+            }
         }
-    }
-    const key = `assets/${id}.${fileExtension}`
-    // Before any I/O, so a sweep that runs while this save is in flight, or
-    // after it failed, still leaves the key alone.
-    noteAssetWrittenThisPage(key)
-    const store = await getAppStore()
-    // A name is a content hash (or a fresh UUID), so an existing file holds
-    // these bytes already. Replacing it would rename over a file the web view
-    // may hold open. Only the desktop store checks a key without a scan.
-    if (isTauri && await store.has(key)) {
+        let fileExtension: string = 'png'
+        if (fileName) {
+            const candidate = fileName.split('.').pop() ?? ''
+            if (ASSET_EXTENSION.test(candidate)) {
+                fileExtension = candidate
+            }
+        }
+        const key = `assets/${id}.${fileExtension}`
+        // Before any I/O, so a sweep that runs while this save is in flight, or
+        // after it failed, still leaves the key alone.
+        noteAssetWrittenThisPage(key)
+        const store = await getAppStore()
+        // A name is a content hash (or a fresh UUID), so an existing file holds
+        // these bytes already. Replacing it would rename over a file the web view
+        // may hold open. Only the desktop store checks a key without a scan.
+        if (isTauri && await store.has(key)) {
+            return key
+        }
+        await store.write(key, bytes, 'unconditional')
         return key
+    } finally {
+        endInFlight()
     }
-    await store.write(key, bytes, 'unconditional')
-    return key
 }
 
 /** What follows the last dot of an asset's file name: short and plain, so the key stays one path segment on every platform. */
@@ -623,6 +629,38 @@ function isQuotaExceededError(error: unknown): boolean {
 export let requiresFullEncoderReload = $state({
     state: false
 })
+
+/**
+ * Observation seam over `saveDb()`'s loop; it changes nothing the loop does.
+ * `saveMarkCount` counts every request for a save (each mark and each direct
+ * `changed = true`), so a change followed by a change back is still a change
+ * until a later iteration's snapshot covers it. `snapshotMarkCount` is the count
+ * at the latest iteration's snapshot, and `lastIterationCommitted` is true only
+ * after that iteration's main-file write landed. `saveLoopPending` reads the
+ * loop's own closure state (a debounce running, `changed`, an unsaved
+ * iteration) and is null until `saveDb()` starts.
+ */
+let saveMarkCount = 0
+let snapshotMarkCount = 0
+let lastIterationCommitted = false
+let saveLoopPending: (() => boolean) | null = null
+
+/**
+ * True only when everything marked so far is in the main file: the last
+ * iteration committed, no mark has arrived since its snapshot, and no save is
+ * running, debounced, queued, stopped or held back by a frozen chaId.
+ */
+export function isSaveClean(): boolean {
+    if (!saveLoopPending || !lastIterationCommitted) {
+        return false
+    }
+    return saveMarkCount === snapshotMarkCount
+        && !saving.state
+        && !requiresFullEncoderReload.state
+        && !saveLoopPending()
+        && !get(savingStoppedReason)
+        && get(frozenSaveKeysStore).length === 0
+}
 /**
  * A minimal async mutex serializing writes to the shared `database/database.bin`
  * key between saveDb()'s autosave loop and any other direct writer (currently
@@ -1147,14 +1185,20 @@ export async function saveDb() {
     const debounceTime = 500; // 500 milliseconds
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    let debouncePending = false
+    saveLoopPending = () => changed || debouncePending || dirtySinceLastSave
+
     function saveTimeoutExecute(markDirty = true) {
+        saveMarkCount += 1
         if (markDirty) {
             dirtySinceLastSave = true
         }
         if (saveTimeout) {
             clearTimeout(saveTimeout);
         }
+        debouncePending = true
         saveTimeout = setTimeout(() => {
+            debouncePending = false
             changed = true;
         }, debounceTime);
     }
@@ -1329,6 +1373,7 @@ export async function saveDb() {
                         // own write and gain nothing, while a reload here would risk
                         // destroying edits landing during the write window instead.
                         // Just let the normal save loop pick this up and stay put.
+                        saveMarkCount += 1
                         changed = true
                     }
                 }
@@ -1348,6 +1393,7 @@ export async function saveDb() {
                 console.error('Frozen-key resolution check failed:', error)
             }
             if (resolvedDuplicate) {
+                saveMarkCount += 1
                 changed = true
             } else {
                 await sleep(500)
@@ -1357,6 +1403,7 @@ export async function saveDb() {
 
         saving.state = true
         changed = false
+        lastIterationCommitted = false
         // Declared outside the try block (and left null until actually assigned) so the
         // catch handler can safely check whether a snapshot was taken this iteration
         // before attempting to merge it back — an error thrown before that assignment
@@ -1383,7 +1430,10 @@ export async function saveDb() {
                     return freshEncoder
                 },
                 getDatabase,
-                onSnapshotTaken: () => { dirtySinceLastSave = false },
+                onSnapshotTaken: () => {
+                    dirtySinceLastSave = false
+                    snapshotMarkCount = saveMarkCount
+                },
                 // A failed reload already gets its snapshot folded back into
                 // the live tracker (nothing is lost), but that alone doesn't
                 // tell this outer scope the attempt failed -- without this,
@@ -1447,6 +1497,7 @@ export async function saveDb() {
             // (backup write, getDbBackups) is best-effort and must never be
             // able to resurrect and re-commit this payload — see the catch below.
             primaryCommitted = true
+            lastIterationCommitted = true
             if (channel) {
                 try {
                     channel.postMessage(sessionID)
@@ -1512,6 +1563,7 @@ export async function saveDb() {
                     mergeUnsavedChanges(changeTracker, toSave)
                 }
                 dirtySinceLastSave = true
+                saveMarkCount += 1
                 changed = true
             } else {
                 // Primary write already succeeded and was already broadcast; only

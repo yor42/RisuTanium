@@ -15,6 +15,7 @@ import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, decodeEntryName, findEncryptionMarkerEntry, parseBackupEntryHeader, type BackupEntryHeader } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
+import { beginBusy, withBusy } from "../process/memory/busyActions";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -57,7 +58,11 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
     return message
 }
 
-export async function SaveLocalBackup(){
+export function SaveLocalBackup(){
+    return withBusy('backupSave', writeLocalBackup)
+}
+
+async function writeLocalBackup(){
     alertWait("Saving local backup...")
     const db = getDatabase()
     const coldStoragePayloads = await collectColdStorageBackupPayloads(db)
@@ -214,6 +219,10 @@ export async function SavePartialLocalBackup(){
         return
     }
     
+    return withBusy('backupSave', writePartialLocalBackup)
+}
+
+async function writePartialLocalBackup(){
     alertWait("Saving partial local backup...")
     const db = getDatabase()
     const coldStoragePayloads = await collectColdStorageBackupPayloads(db)
@@ -398,7 +407,7 @@ export function LoadLocalBackup(){
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.bin';
-        input.onchange = async () => {
+        const restoreSelectedFile = async () => {
             if (!input.files || input.files.length === 0) {
                 input.remove();
                 return;
@@ -738,6 +747,15 @@ export function LoadLocalBackup(){
                         await releaseExclusiveHold();
                     }
                 }
+            }
+        };
+        // Registered on the picker's change event (never at picker open, which a cancelled pick never resolves), and ended however the restore leaves.
+        input.onchange = async () => {
+            const busy = beginBusy('backupLoad');
+            try {
+                await restoreSelectedFile();
+            } finally {
+                busy.end();
             }
         };
 

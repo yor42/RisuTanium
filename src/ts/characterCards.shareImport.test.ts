@@ -188,6 +188,7 @@ import { PngChunk } from 'src/ts/pngChunk'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import type { VirtualWriter } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
+import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic cards (no real images, no user data)
@@ -820,6 +821,82 @@ describe('#import_module= and #import_preset= links', () => {
         await characterURLImport()
         expect(setConsumer).toHaveBeenCalledTimes(1)
         expect(h.last.startsWith(lastStart)).toBe(true)
+    })
+})
+
+describe('imports are registered as busy while they run', () => {
+    test('a file handed over by the file handler is registered while it is read and imported, and the entry ends after', async () => {
+        let during: string[] = []
+        let consumer: ((params: LaunchParams) => Promise<void>) | null = null
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
+        await characterURLImport()
+        const file = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
+
+        await consumer!({ files: [{ name: 'q.charx', getFile: async () => { during = busyKinds(); return file } }] })
+
+        expect(during).toEqual(['import'])
+        expect(isBusy()).toBe(false)
+    })
+
+    test('an import that fails still ends its entry', async () => {
+        let consumer: ((params: LaunchParams) => Promise<void>) | null = null
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
+        await characterURLImport()
+
+        await consumer!({ files: [{ name: 'broken.charx', getFile: async () => { throw new Error('read failed') } }] })
+
+        expect(isBusy()).toBe(false)
+    })
+
+    test('a #import= download is registered from its fetch onward and the entry ends after', async () => {
+        let during: string[] = []
+        routes.set('https://files.test/dl', () => {
+            during = busyKinds()
+            return new Response(JSON.stringify({ name: 'FromLink' }), { headers: { 'content-disposition': 'attachment; filename="c.json"' } })
+        })
+        setUrl('/#import=https://files.test/dl')
+
+        await characterURLImport()
+
+        expect(during).toEqual(['import'])
+        expect(isBusy()).toBe(false)
+    })
+})
+
+describe('a reload that keeps the fragment of an inline link', () => {
+    test('a #import_module= link imports once and a second run with the same fragment imports nothing', async () => {
+        setUrl('/#import_module=' + encodeURIComponent(Buffer.from(JSON.stringify({ name: 'once' })).toString('base64')))
+        await characterURLImport()
+        expect(h.modules).toHaveLength(1)
+        const hashAfterFirstRun = window.location.hash
+
+        await characterURLImport()
+        expect(h.modules).toHaveLength(1)
+        expect(hashAfterFirstRun).toBe('')
+    })
+
+    test('a #import_preset= link imports once and a second run with the same fragment imports nothing', async () => {
+        setUrl('/#import_preset=' + encodeURIComponent(Buffer.from('{"name":"once"}').toString('base64')))
+        await characterURLImport()
+        expect(h.presets).toHaveLength(1)
+        const hashAfterFirstRun = window.location.hash
+
+        await characterURLImport()
+        expect(h.presets).toHaveLength(1)
+        expect(hashAfterFirstRun).toBe('')
+    })
+
+    test('a link that fails to import is also cleared from the URL', async () => {
+        setUrl('/#import_module=' + encodeURIComponent(Buffer.from('not json').toString('base64')))
+        await characterURLImport()
+        expect(window.location.hash).toBe('')
+    })
+
+    test('the query string stays when the fragment is cleared', async () => {
+        setUrl('/?mainpage=1#import_preset=' + encodeURIComponent(Buffer.from('{"name":"q"}').toString('base64')))
+        await characterURLImport()
+        expect(window.location.search).toBe('?mainpage=1')
+        expect(window.location.hash).toBe('')
     })
 })
 

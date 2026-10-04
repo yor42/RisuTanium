@@ -5,6 +5,7 @@ import { ChatHandler } from './chats'
 import { ModuleHandler } from './modules'
 import { markCharacterForSave } from '../../../storage/characterSaveMarks'
 import type { RunSubject } from '../../chatOrigin'
+import { beginBusy } from '../../memory/busyActions'
 
 export class RisuAccessClient extends MCPClientLike {
   private handlers: MCPToolHandler[]
@@ -92,6 +93,7 @@ backgroundEmbedding is an HTML string mainly for custom styling. It can, and mos
     // save could otherwise encode the pre-mutation state and the trim would
     // then drop the id.
     const ctx: MCPToolCallContext = { touched: new Set(), subject: callCtx?.subject }
+    const busy = beginBusy('mcpWrite')
     try {
       for (const handler of this.handlers) {
         const result = await handler.handle(toolName, args, ctx)
@@ -110,6 +112,7 @@ backgroundEmbedding is an HTML string mainly for custom styling. It can, and mos
       for (const chaId of ctx.touched) {
         markCharacterForSave(chaId)
       }
+      busy.end()
     }
 
     return [

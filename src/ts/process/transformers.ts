@@ -4,6 +4,7 @@ import { loadAsset, saveAsset } from 'src/ts/globalApi.svelte';
 import { selectSingleFile, asBuffer  } from 'src/ts/util';
 import { v4 } from 'uuid';
 import { beginClip, currentTTSSignal, releaseClip, startClip } from './ttsPlayback';
+import { beginBusy } from './memory/busyActions';
 let tfCache: Cache = null
 let tfLoaded = false
 let tfMap: { [key: string]: string } = {}
@@ -164,41 +165,46 @@ export const registerOnnxModel = async (): Promise<OnnxModelFiles> => {
         return
     }
 
-    const unziped = await new Promise((res, rej) => {
-        unzip(modelFile.data, {
-            filter: (file) => {
-                return file.name.endsWith('.onnx') || file.size < 10_000_000 || file.name.includes('.git')
-            }
-        }, (err, unzipped) => {
-            if (err) {
-                rej(err)
-            }
-            else {
-                res(unzipped)
-            }
+    const busy = beginBusy('assetAdd')
+    try {
+        const unziped = await new Promise((res, rej) => {
+            unzip(modelFile.data, {
+                filter: (file) => {
+                    return file.name.endsWith('.onnx') || file.size < 10_000_000 || file.name.includes('.git')
+                }
+            }, (err, unzipped) => {
+                if (err) {
+                    rej(err)
+                }
+                else {
+                    res(unzipped)
+                }
+            })
         })
-    })
 
-    console.log(unziped)
+        console.log(unziped)
 
-    let fileIdMapped: { [key: string]: string } = {}
+        let fileIdMapped: { [key: string]: string } = {}
 
-    const keys = Object.keys(unziped)
-    for (let i = 0; i < keys.length; i++) {
-        const key = keys[i]
-        const file = unziped[key]
-        const fid = await saveAsset(file)
-        let url = key
-        if (url.startsWith('/')) {
-            url = url.substring(1)
+        const keys = Object.keys(unziped)
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i]
+            const file = unziped[key]
+            const fid = await saveAsset(file)
+            let url = key
+            if (url.startsWith('/')) {
+                url = url.substring(1)
+            }
+            fileIdMapped[url] = fid
         }
-        fileIdMapped[url] = fid
-    }
 
-    return {
-        files: fileIdMapped,
-        name: modelFile.name,
-        id: id,
+        return {
+            files: fileIdMapped,
+            name: modelFile.name,
+            id: id,
+        }
+    } finally {
+        busy.end()
     }
 
 }
