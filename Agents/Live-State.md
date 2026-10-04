@@ -11,7 +11,7 @@ treat it as a log or history.
 
 ## Session date
 
-2026-10-03 (the session began on 2026-10-02).
+2026-10-04 (the session began on 2026-10-02).
 
 ## Branch and commit state
 
@@ -179,6 +179,7 @@ The commits below were local when they were listed, and were pushed with it:
 - `f8f16c0d`: CHORE-77 Stage C2, files shared to the installed web app are imported, and `#import=` and Chub downloads are read from a Blob (the 37th: `git rev-list --count 1ce8abff..HEAD` gave 36 on 2026-10-04 at `b2406e0e`, before this commit; `MC-187`, `MC-188`, `MC-189`; ledger rows 793 to 799 and 1001). Local, not pushed. `a4cef56c` (the CHORE-77 C2 records) is the 38th and `89993b28` (`MC-190`, `MC-191`, CHORE-80) the 39th.
 - `ae8636a2`: CHORE-79 (stage 1 of 2 of CHORE-78/79), a module import shows success only when a module was added, and a `.risum` that is not a module is refused (the 40th: `git rev-list --count 1ce8abff..HEAD` gave 41 on 2026-10-04 at `bab2af36`; `MC-192` D2 and D3; ledger rows 1002 to 1009 and 1016). Local, not pushed.
 - `bab2af36`: CHORE-78 (stage 2 of 2), every file of a multi-file import is attempted and the files that did not import are listed in one message (the 41st; `MC-192` D1; ledger rows 1010 to 1015). Local, not pushed. The records commit that carries this line (`MC-192`, the Roadmap blocks, ledger rows 1002 to 1016) follows it and is the 42nd.
+- `c9c57c9e`: the merge of `feat/ui-batch` (UI session, tip `cc30ebc0`) into this branch, committed 2026-10-04 at the maintainer's "go ahead and commit the merge." (`MC-179` 4; ledger row 1017). Parents `d15149d8` (ours, the 42nd) and `cc30ebc0`. `git rev-list --count --first-parent 1ce8abff..HEAD` printed 43 on 2026-10-04, so it is the 43rd on this branch's own line; plain `git rev-list --count 1ce8abff..HEAD` printed 73, because it also counts the 30 merged `feat/ui-batch` commits. Local, not pushed.
 
 The commits since `1ce8abff` (`d013e7cf`, `5a1fbf52`, `7ca8f2a9`, `94fbdfd5`, `71e75d9d`, `67e0aa31`, `59881788`, `cc3ef365`,
 `d0decfb6`, `79658498`, `d95b07da`, `bced04b1`, `a29335f7`, `67ae5b18`, `cbaeddd6`, `f2a490b2`, `2d83a492`, `57e7be63`,
@@ -273,6 +274,11 @@ Several sessions work **in this same checkout**:
   suite and `pnpm build` on the merged tree, and record the result in the post-merge checks, as for `cfa4dfa0`.
 - **Expected conflicts:** appends in `Agents/Investigation-Ledger.md` and `src/lang/*.ts` (keep both sides); the two
   Live-State blocks (keep both).
+- **Done 2026-10-04: the merge is `c9c57c9e`** (ledger row 1017). Post-merge checks, on an exported copy of the merged tree
+  in scratch: `pnpm test` 408 files, 7995 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` succeeded.
+  Ten files had one conflict hunk each (the seven `src/lang/*.ts`, the Ledger, Maintainer-Context, Roadmap), resolved by
+  keeping both sides; Live-State merged without conflict. Four OPFS keys were dropped (`MC-180`). The precondition for
+  memory step 6 is met.
 
 ### Shared resources (`MC-179` 5)
 
@@ -469,7 +475,7 @@ Several sessions work **in this same checkout**:
 
 (Main Campaign rows continue at 1001; `MC-179` amendment of 2026-10-04)
 
-Next free within the Main Campaign's ranges: `MC-193` (`MC-192` is the latest used; it records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1017 (rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
+Next free within the Main Campaign's ranges: `MC-193` (`MC-192` is the latest used; it records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1018 (row 1017 is the `feat/ui-batch` merge, `c9c57c9e`; rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
 work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
@@ -951,7 +957,8 @@ them.
       during import (CHORE-77; the maintainer chose a browser Blob ("Browser blob, all", `MC-186` 1; read as web and Tauri alike), not a temporary file). They go
       ahead of steps 6 and 7 while `feat/ui-batch` is unmerged;
    7. then steps 6 and 7 (they are built on the storage interface once it exists, `MC-167` 4). **Step 6 waits for the
-      `feat/ui-batch` merge** (`MC-179` 4);
+      `feat/ui-batch` merge** (`MC-179` 4). **The merge is done (`c9c57c9e`) and steps 6 and 7 started on 2026-10-04:** the
+      step 6 audit, and the step 7 measurements that do not depend on step 6;
    8. then **CHORE-62** (on a Node server, another device's save makes this device stop saving until it reloads, and
       its edits since its last save are lost; `MC-159` 1 and 3). The option text the maintainer selected says only
       "placed later in the work order"; the position after steps 6 and 7 was the Orchestrator's, and **the maintainer
