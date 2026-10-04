@@ -496,11 +496,11 @@ Several sessions work **in this same checkout**:
 - **Closed without code (`MC-219` 1):** CHORE-43 and CHORE-54 (`71e75d9d`), CHORE-40 (`d013e7cf`), CHORE-16 (`08e43e65` and
   `0d41f06a`), CHORE-24 (`2af8d4fe`). **Closed with code since:** CHORE-88 (`54b1a819`), CHORE-81 (`04484500`) and CHORE-80
   (`7aeabdf9`, `aa6e442a`, `f38b503c`).
-- **Still open in the side lane:** CHORE-41 (skipped by the maintainer's choice, `MC-219` 3), CHORE-97 (needs a Hugging Face
-  key), and CHORE-68 and CHORE-92 (locked).
+- **Still open in the side lane:** CHORE-41 (skipped by the maintainer's choice, `MC-219` 3), CHORE-97 (deferred by the
+  maintainer: no working Hugging Face key, `MC-221`), and CHORE-68 and CHORE-92 (locked).
 - **Lane notes (against the hand-off's lanes):** the follow-ups edited `bootstrap.ts` and `characterCards.ts` for CHORE-81, inside the Main Campaign's
   grant of 2026-10-04 (the launch-input handling in `loadData` and `characterURLImport`, nothing else in `bootstrap.ts`; the
-  `desktopLaunchImport()` call is that handling; `MC-220`). The `bootstrap.ts` edit is inside the grant. The `characterCards.ts` edit is partly outside its literal text (`04484500` also adds the exported `importOpenedFiles()` and drops the `onOpenUrl` import); the Orchestrator reads these as the launch-input handling, and the Main Campaign is asked to confirm in the merge report. The CHORE-80 request, TTS, image, translator, tokenizer and
+  `desktopLaunchImport()` call is that handling; `MC-220`). The `bootstrap.ts` edit is inside the grant. The `characterCards.ts` edit is partly outside its literal text (`04484500` also adds the exported `importOpenedFiles()` and drops the `onOpenUrl` import); the Main Campaign confirmed these as the same launch-input handling, with no rework needed (`MC-220`). The CHORE-80 request, TTS, image, translator, tokenizer and
   model-list files are the side session's own lane or unowned, not Main Campaign files. Outside the hand-off's literal side-lane list: `index.svelte.ts`, edited for CHORE-96 and for CHORE-99, which the
   maintainer included (`MC-219` 6; the side session messaged the Main Campaign about it on 2026-10-04); the new
   `src/ts/warnOnReject.ts` (with its test) and `src/ts/process/ttsDefaults.ts`; and `src/lang` (shared): one key,
@@ -510,7 +510,7 @@ Several sessions work **in this same checkout**:
   CHORE-81, and the key reads in `src/ts/process/memory/**` for stage 2 (the Main Campaign granted it and it closed with
   `aa6e442a`). Scope amendments (`MC-091`): CHORE-88 widened to `CharConfig`, `SideChatList` and `PersonaSettings`, and
   `hypav2.ts` returns `retryable:false` for an unresolvable reference.
-- **Next free numbers (side session, `MC-219` 2):** `MC-221`; ledger row 1179; CHORE-101; Report 70. These ranges
+- **Next free numbers (side session, `MC-219` 2):** `MC-222`; ledger row 1179; CHORE-101; Report 70. These ranges
   (`MC-219` to `MC-239`, rows 1101 to 1200, CHORE-100 to CHORE-119, Reports 70 to 79) overlap the UI session's reserved `MC`,
   CHORE and Report ranges, whose tail the side session took over because the UI lane is finished.
 - **Merging:** not this session's. The maintainer will instruct the Main Campaign session to queue the merge of

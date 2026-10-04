@@ -7780,8 +7780,10 @@ applies the edited text.
   the grant against the commit message). The same message asked the side session to add a Roadmap entry for CHORE-88, which
   the Main Campaign lists as handed to the side session. The `characterCards.ts` edit is partly outside that literal text:
   besides removing the dead blocks in `characterURLImport`, `04484500` adds the exported `importOpenedFiles()` and drops the
-  `onOpenUrl` import. The Orchestrator reads these as the grant's launch-input handling; the Main Campaign is asked to confirm
-  in the merge report.
+  `onOpenUrl` import. The Orchestrator reads these as the grant's launch-input handling. **The Main Campaign confirmed it**
+  (2026-10-04, after the merge report): `importOpenedFiles(paths)` and the dropped import are "the same launch-input handling
+  as the characterURLImport cleanup", `characterCards.ts` is not one of its lane files ("ours is characters.ts"), and no
+  rework is needed. The same reply kept the two new test files in `src/ts/storage/tests/` where they are.
 - **Not Main Campaign files:** the request, TTS, image, translator, tokenizer and model-list files that CHORE-80 touches, and
   `src/lib`, are in the side session's own lane or unowned: the hand-off gives the side lane `src/lib/**` and `tts.ts`, and
   does not list the others as Main Campaign files. `src/lang` is shared.
@@ -7814,3 +7816,18 @@ applies the edited text.
   escalation threshold (ledger rows 1129, 1132, 1133). No dispatch escalated.
 - **A reviewer claim not propagated.** The stage 3 commit message fact-check (ledger row 1170) said the trailer should read
   Sonnet 5.5. The session's attribution is Opus 5.5, as on the earlier commits; the claim was rejected.
+
+### MC-221 — CHORE-97 (the Hugging Face TTS live check) is deferred: there is no working Hugging Face key
+
+- **Tag:** decision
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, typed in the side session: "we do not have working HF key, so defer chore 97 similar to native
+  speaker check."
+- **Reasoning:** the maintainer's own: no working Hugging Face key, and the check needs one.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-204`, `MC-212`, `MC-218`; CHORE-97, CHORE-15.
+
+**What was decided:** CHORE-97 is deferred, as the native-speaker review was (`MC-212`): it stays open and is not scheduled,
+and it is not a task for the side session. It is picked up when a working Hugging Face key is available. Until then, the
+browser CORS behaviour of the Hugging Face router, and whether a real model answers with audio, remain untested.
