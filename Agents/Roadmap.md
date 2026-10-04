@@ -550,8 +550,8 @@ changing anything on `ReloadGUIPointer`.
 
 ### CHORE-05 — Translation coverage: much of the UI is English-only
 
-**Status (2026-10-03, UI session, translation batch 1): DONE in `39f00517`; the ticket stays
-open for the later batches** (ledger rows 878 to 886). Product choices in `MC-209`. The investigator (row 878) refuted the
+**Status (2026-10-04): UI-lane work done through batch 5e; open only for the native-speaker review, LOW PRIORITY, owned by
+the Main Campaign session (`MC-212`, `MC-218`).** Batch 1 (2026-10-03, UI session): DONE in `39f00517` (ledger rows 878 to 886). Product choices in `MC-209`. The investigator (row 878) refuted the
 ticket's key-drift premise, and the stale sections below are marked as superseded; they are kept as written.
 - **Key drift is zero.** Before batch 1 all six locales had the same 1668 keys as `en.ts` (1801 after it) (`131fdcd5`, 2026-09-23, filled 510 keys), and the
   seven plugin consent keys are translated. The Orchestrator re-ran the drift script. This supersedes the "Next priority"
@@ -872,9 +872,8 @@ keys, `{name}` placeholders filled by `fillLang`.
   `instruction`, "cache point", "custom voice seed" and the "Trộn …" labels, de "Eigener Stimm-Seed", "Cache-Punkt" and
   "Nicht-Text-Inhalt(e)", es "Instrucción", "guion" and "cadena").
 - **Remaining for CHORE-05:**
-  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and
-    `globalRegexScript` if those pages go.
-  - **Native-speaker review:** deferred by the maintainer (`MC-212`).
+  - **The `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and `globalRegexScript`:** done in batch 5e (below).
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`); now low priority, for the Main Campaign session (`MC-218`).
   - **Known leftovers:** `hanuraiMemory.ts` "Required Tokens" (out of bounds); the `globalApi` toasts and `getRequestLog`
     (out of bounds); the `botpreset.svelte` "string" placeholder; `PlaygroundImageTrans` "fontSize"; `ToolConversion`
     "NOTSUPPORTED"; the ko `noBias` wording ("Bias 없음" beside `bias` "편향").
@@ -917,11 +916,27 @@ keys, `{name}` placeholders filled by `fillLang`.
 - **Translator low-confidence items, for the deferred native-speaker review (`MC-212`):** vi `noBias` (follows the locale's unusual "Độ lệch"),
   vi `notSupported`, de `writingPng` "(Wird geschrieben)", es `notSupported` "No compatible".
 - **Remaining for CHORE-05 (status after 5d):**
-  - **After the Main Campaign merge:** the `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and
-    `globalRegexScript` if those pages go; re-check every batch's overlap with Main at merge time.
-  - **Native-speaker review:** deferred by the maintainer (`MC-212`).
+  - **The `characterCards.ts` and `processzip.ts` strings, and deleting `globalLoreBook` and `globalRegexScript`:** done in batch 5e (below).
+  - **Native-speaker review:** deferred by the maintainer (`MC-212`); now low priority, for the Main Campaign session (`MC-218`).
   - **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`; `hanuraiMemory.ts` "Required Tokens"; `Legal.svelte`.
   - The batch 5c "known leftovers" (the `botpreset.svelte` placeholder, "fontSize", "NOTSUPPORTED", the ko `noBias` wording) are done in this batch.
+
+**Status (2026-10-04, UI session, translation batch 5e: the import and export texts and the two retired page keys): implemented, Gate 2 `[APPROVE]`; committed on the maintainer's word; code commit `b85ee71d`; not pushed. The UI-lane work on CHORE-05 is done. The ticket stays open for one item: the native-speaker review, LOW PRIORITY, owned by the Main Campaign session (`MC-212`, `MC-218`).** Ledger rows 929 to 931. The three rulings and the review hand-off are the maintainer's (`MC-218`); the option text of each question was the Orchestrator's; the dispositions in `MC-218` are the Orchestrator's.
+- **Base:** `feat/ui-batch` was fast-forwarded (`git merge --ff-only`) from `cc30ebc0` to the Main Campaign's tip `7ff0d092` on the maintainer's word (`MC-218`), after the Main Campaign session confirmed that parallel work was fine. Main merged `feat/ui-batch` as `c9c57c9e` and then committed `cd26764d`, `cdf700f3` and `7ff0d092`. Main's 6a and 6b commits touched `characterCards.ts` but not `processzip.ts` or `src/lang`.
+- **Done in batch 5e:**
+  - 12 new keys in `en.ts`, contiguous at the end of `errors` (`importAssetNotFound`, `noImageInZip`) and `alerts` (`readingCard`, `loadingAssets`, `loadingEmotions`, `loadingVits`, `addingEmotions`, `addingAdditionalAssets`, `addingVits`, `addingCardAssets`, `downloading`, `savingAssets`), translated into the six other locales. Reused keys: `alerts.writingPng` (the card export's "Loading... (Writing)") and `errors.moduleAssetsSaveFailed` (the CharX import's "Failed to save N assets").
+  - `characterCards.ts`: 19 sites now use `language.*` or `fillLang`. `processzip.ts`: `noImageInZip`, `savingAssets` and `moduleAssetsSaveFailed` (through `fillLang`).
+  - **`globalLoreBook` and `globalRegexScript` deleted** from all seven language files (the pages were retired in `408c32dd`; no reader of either key in `src`, row 929).
+  - **Two English text changes** (disclosed in `MC-218`): the export label "CharX Embeded Jpeg" is now "CharX Embedded Jpeg" (this changes the default web download filename of CharX JPEG exports; the `embeded://` scheme is untouched), and the V3 import's last progress text "Loading... (Assets)" is now "Loading... (Loading Assets)", the same key as the PNG import. The other export file-type labels stay English.
+- **Kept English (`MC-218`):** stored defaults ("Chat 1", "unknown name", "Imported VITS", "... Module", `asset_N`), the server `res.text()` pass-through, caught errors, console text, and the `processzip.ts` "size" cause (never displayed).
+- **Tests (1 new file, 30 tests):** `characterCards.localizedTexts.test.ts`. With `HEAD`'s `characterCards.ts` and `processzip.ts`, 15 reproducers fail on assertions and 15 guards pass (rows 930 and 931). Not covered: `addingEmotions` and `addingAdditionalAssets` (`createBaseV2` never fills emotions or additional assets, so the public export cannot reach them), the non-ko locales, and the native dialog.
+- **Checks:** `pnpm check` 0/0; `pnpm vitest run` 419 files, 8257 passed, 4 skipped; `pnpm build` ok (row 930). Gate 1 skipped; Gate 2 ended `[APPROVE]` and judged the skip justified (row 931). Not run in a browser.
+- **Merge note:** Main will change the value of `backupLoadWorkInProgress` in all seven locales (CHORE-82); that key is not adjacent to this batch's locale hunks (the Orchestrator checked). Main's next work (module archiving) will add one contiguous key block to `src/lang`, and this batch keeps its keys contiguous for that reason.
+- **Translator low-confidence items, for the native-speaker review (`MC-212`):** ko 다운로드하는 중... and "추가 에셋 추가 중"; cn and zh-Hant 导入 / 匯入 phrasing in `importAssetNotFound`; vi "Đang tải xuống..."; de "Medium {key}" and "Medien werden gespeichert"; es "imágenes de emoción".
+- **Remaining for CHORE-05 (status after 5e):**
+  - **Native-speaker review (`MC-212`): LOW PRIORITY.** The maintainer said to write it down as low priority and do it later in the Main Campaign session; Main agreed. The Roadmap entry stays here; the UI lane does not run it.
+  - **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`; `hanuraiMemory.ts` "Required Tokens"; `Legal.svelte`.
+  - Nothing else in the UI lane.
 
 **Status (2026-09-22):** the 9 save-conflict keys below are translated into all six locales
 (`0291ea36`; `ko` reviewed by the maintainer, the other five are model translations). The table

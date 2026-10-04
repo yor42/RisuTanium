@@ -7593,3 +7593,46 @@ applies the edited text.
   locale files (`botpreset.svelte`, `PlaygroundImageTrans.svelte`, `ToolConversion.svelte`, `CharConfig.svelte`,
   `languageSettingsData.svelte.ts`, `MobileCharacters.svelte`, `characters.ts`, `persona.ts`, `modules.ts`,
   `WelcomeRisu.svelte`), 9 new test files and 3 tests added to `CharConfig.ttsLabels.svelte.test.ts`, ledger rows 924 to 928.
+
+### MC-218 — Translation batch 5e: the import and export texts, `globalLoreBook` and `globalRegexScript` removed, and the native-speaker review handed to the Main Campaign session (CHORE-05)
+
+- **Tag:** decision (the three rulings, the hand-off of the review); the dispositions below are the Orchestrator's, not the maintainer's
+- **Date:** 2026-10-04
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer, in chat: "check into main session if leftover can run in parallel with main session. if it can, we
+  can bring our branch up to date with main, then finish all leftover except native speaker check here. and write down native
+  speaker check as low priority and do it later in main session." Then three answers to one question round. The option text was
+  written by the Orchestrator. Key reuse: "Reuse both (Recommended)" (not chosen: "New keys"). Export labels: "Fix typo only"
+  (not chosen: "Keep English (Recommended)", "Translate them"). Assets text: "Merge (Recommended)" (not chosen: "Keep
+  separate").
+- **Reasoning:** none stated beyond the quote.
+- **Alternatives rejected:** the not-chosen options above.
+- **Related:** `MC-179`, `MC-206`, `MC-209`, `MC-211`, `MC-212`, `MC-217`; CHORE-05; ledger rows 929 to 931.
+
+**What was decided (the maintainer's):**
+1. **Reuse both existing keys.** "Loading... (Writing)" in the card export reuses `alerts.writingPng` (the persona export's key),
+   and "Failed to save N assets" in the CharX import reuses `errors.moduleAssetsSaveFailed` (the module import's key).
+2. **Export file-type labels stay English; only the typo is fixed.** "Embeded" becomes "Embedded" in "CharX Embedded Jpeg". This
+   changes the default web download filename of CharX JPEG exports. The label is not translated.
+3. **The V3 import uses the `loadingAssets` text.** It shows "Loading... (Loading Assets)", the same key as the PNG import,
+   instead of "Loading... (Assets)".
+4. **The native-speaker review (`MC-212`) is low priority and will be done later in the Main Campaign session.** The maintainer's
+   words: "finish all leftover except native speaker check here. and write down native speaker check as low priority and do it
+   later in main session." This session does not run it.
+
+**Disclosures:**
+- **(a) Two English text changes** (answers 2 and 3): "CharX Embeded Jpeg" is now "CharX Embedded Jpeg", and the V3 import's
+  final progress text "Loading... (Assets)" is now "Loading... (Loading Assets)".
+- **(b) The `embeded://` URI scheme is untouched.** It is a stored value, not a label.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Reuse classification:** answer 1 is a further extension of `MC-217`'s same-feature exception to `MC-211`'s reuse rule.
+- **`globalLoreBook` and `globalRegexScript` deleted** from all seven language files, as part of the maintainer's "finish all
+  leftover". The condition was that nothing reads them: their settings pages were retired in `408c32dd` (`MC-206`).
+- **Kept English:** stored defaults ("Chat 1", "unknown name", "Imported VITS", "... Module", `asset_N`), server text passed
+  through, caught errors, console text, and the export file-type labels other than the typo fix (answer 2).
+- **The Main Campaign session agreed to take the native-speaker review** ("Record it on your side; we'll pick it up from
+  there"; a peer message, not maintainer authority). The translator's low-confidence items are listed in the Roadmap's CHORE-05
+  batch 5e block.
+- **Out of bounds, not done:** the `globalApi` toasts and `getRequestLog`, the `hanuraiMemory.ts` "Required Tokens", and
+  `Legal.svelte`.

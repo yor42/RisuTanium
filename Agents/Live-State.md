@@ -292,8 +292,8 @@ Several sessions work **in this same checkout**:
 
 ### UI session (feat/ui-batch)
 
-- **Branch:** `feat/ui-batch`, from `57e7be63`; one commit, `e9a80ec5` (local, not pushed; `MC-202`). Work order:
-  `MC-200` 1.
+- **Branch:** `feat/ui-batch`, from `57e7be63` (local, not pushed; `MC-202`). Merged into Main as `c9c57c9e`, then
+  fast-forwarded to Main's `7ff0d092` (see "Branch state" below). Work order: `MC-200` 1.
 - **Done (in `e9a80ec5`):** CHORE-11 CD-3, CHORE-19, CHORE-20 and CHORE-56 (the mobile batch; ledger rows 803 to 813). Closed
   without code: CHORE-44 (ledger row 802). Already fixed earlier: CD-4 (`910b07de`).
 - **Mobile batch records:** committed in `1c187d3f`. `.claude/launch.json` (a new `risuai-ui-scratch` entry) stays
@@ -403,9 +403,8 @@ Several sessions work **in this same checkout**:
   Checks: `pnpm check` 0/0; `pnpm test` 370 files, 7218 passed, 4 skipped; build ok. 5 new test files (56 tests); at HEAD 13
   tests fail, 7 of them reproducers. Not run in a browser. Commit drafts: `commit-msg-21.txt` (code) and `commit-msg-22.txt`
   (records) in the scratchpad.
-- **CHORE-05 status:** translation batches 1 to 4 and 5a, 5b and 5c done and committed (5c code `1ad02c3f`); batch 5d (the leftovers and Spanish as a UI language) committed (code `c81ad3e8`). The native-speaker review is deferred by the maintainer (`MC-212`);
-  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). Remaining follow-ups: delete `globalLoreBook` and `globalRegexScript`
-  after the merge if the pages go; the `characterCards.ts` and `processzip.ts` strings after the merge; re-check every batch's overlap with Main at merge time; the deferred items listed in the batch 3 block and the out-of-bounds items in the Roadmap's batch 5d block.
+- **CHORE-05 status:** translation batches 1 to 4 and 5a, 5b and 5c done and committed (5c code `1ad02c3f`); batch 5d (the leftovers and Spanish as a UI language) committed (code `c81ad3e8`); batch 5e (the import and export texts) committed (code `b85ee71d`). The native-speaker review is deferred by the maintainer (`MC-212`), and is now a LOW PRIORITY item for the Main Campaign session (`MC-218`);
+  the maintainer said the Korean and English translations look good (batches 1 to 3, the Orchestrator's reading). The UI-lane work on CHORE-05 is done with 5e. Remaining: the native-speaker review (Main's session); the out-of-bounds items in the Roadmap's batch 5e block.
 - **Translation batch 5b (CHORE-05: user-visible error and request-failure strings): committed as `edc8c8b6`
   (code) on the maintainer's word "commit and start 5c"; not pushed.** `MC-215` (the "go ahead with 5b." and the three answers are the maintainer's; the
   dispositions are the Orchestrator's); ledger rows 914 to 918. 36 new `errors.*` keys in all seven languages plus two reused
@@ -421,8 +420,7 @@ Several sessions work **in this same checkout**:
   and 12 guards pass. Not run in a browser. Commit drafts: `commit-msg-27.txt` (code) and `commit-msg-28.txt` (records) in the
   scratchpad. The records are committed as `a5dfc611`.
 - **Translation batch 5d (CHORE-05: the in-bounds leftovers and Spanish as a selectable UI language): committed as
-  `c81ad3e8` (code); not pushed.** Next: the merge into the Main Campaign branch, which the Main Campaign session
-  resolves; this session checks its resolved `src/lang` and Agents diffs before the maintainer commits. `MC-217` (the request and the five answers in two question rounds are the maintainer's;
+  `c81ad3e8` (code); not pushed.** Merged by the Main Campaign session as `c9c57c9e`. `MC-217` (the request and the five answers in two question rounds are the maintainer's;
   the option text and the dispositions are the Orchestrator's); ledger rows 924 to 928. 4 new keys in all seven languages, all six
   `noBias` values replaced, 10 production files besides the locale files. Four English text changes and the `CharConfig` Style
   label's theme colour are disclosed in `MC-217`. Spanish is now selectable in the Language setting and on the welcome screen
@@ -432,7 +430,16 @@ Several sessions work **in this same checkout**:
   added to `CharConfig.ttsLabels.svelte.test.ts` (29 tests). Not run in a browser; the first-setup translator case for `es` is
   untested. Main Campaign tip `d15149d8` (2026-10-04); no overlap found with this batch's `modules.ts` hunk. Commit drafts:
   `commit-msg-29.txt` (code) and `commit-msg-30.txt` (records) in the scratchpad.
-- **Next free numbers in the UI ranges:** `MC-218`; ledger row 929; CHORE-100; Report 65.
+- **Branch state (2026-10-04):** `feat/ui-batch` was fast-forwarded from `cc30ebc0` to the Main Campaign's tip `7ff0d092` (Main merged it as `c9c57c9e`, then committed `cd26764d`, `cdf700f3` and `7ff0d092`).
+- **Translation batch 5e (CHORE-05: the import and export texts, and the two retired page keys): Gate 2 `[APPROVE]`; committed on the maintainer's word (code `b85ee71d`); not pushed.**
+  `MC-218` (the request, the three rulings and the hand-off of the native-speaker review are the maintainer's; the option text and the
+  dispositions are the Orchestrator's); ledger rows 929 to 931. 12 new keys in all seven languages, 2 keys (`globalLoreBook`, `globalRegexScript`) deleted,
+  across `characterCards.ts` (19 sites) and `processzip.ts`. Two English text changes ("CharX Embeded Jpeg" to "CharX Embedded Jpeg", which changes the default
+  web download filename of CharX JPEG exports; the V3 import's "Loading... (Assets)" to "Loading... (Loading Assets)"). Gate 1 skipped; Gate 2 `[APPROVE]`.
+  Checks on the final tree: `pnpm check` 0/0; `pnpm vitest run` 419 files, 8257 passed, 4 skipped; `pnpm build` ok. 1 new test file (30 tests); at
+  `7ff0d092` 15 fail on assertions and 15 guards pass. Not run in a browser. Commit drafts: `commit-msg-31.txt` (code) and `commit-msg-32.txt` (records) in the scratchpad.
+  **Next:** nothing in the UI lane except handing the native-speaker review (`MC-212`, low priority) to the Main Campaign session, which agreed to pick it up.
+- **Next free numbers in the UI ranges:** `MC-219`; ledger row 932; CHORE-100; Report 65.
 - **Flagged to the maintainer, not ticketed:** Mobile Chat has no delete, copy, reroll or TTS buttons. `prose-invert` on
   the default theme under a light colour scheme is a latent readability issue. Rebranding leftovers: the sidebar's
   "RisuTanium에 오신 것을 환영해요!" and the beta header's "Risuai".
