@@ -65,7 +65,44 @@ Set it on the machine that runs the server or the desktop app.
 - **Node server:** in the shell that starts it, or in the environment of the service or container that runs it.
 - **Desktop app:** in the operating system environment of your user. An app started from a menu, dock or shortcut may not see a variable that you only exported in a terminal.
 
-<!-- TODO(evidence): per-OS steps for setting an environment variable (not in the evidence) -->
+**Restart after you set or change it.** A program gets its environment when it starts. A variable you set or change afterwards is not seen by a server or app that is already running. Restart the Node server, or fully quit and reopen the desktop app. After a server restart, an open page can still use the old value for a few minutes; see [How long a change takes](#how-long-a-change-takes).
+
+The server does not read a `.env` file. Set a real environment variable.
+
+Examples use `RISU_OPENAI_KEY` and the placeholder value `sk-...`.
+
+### Windows
+
+- **Settings:** search for "Edit environment variables for your account", choose **New** under User variables, and enter the name and value.
+- **Terminal:** `setx RISU_OPENAI_KEY "sk-..."`. This affects programs started afterwards, not the terminal you typed it in.
+- **One run of the Node server (PowerShell):** `$env:RISU_OPENAI_KEY = "sk-..."`, then start the server in that same window.
+- If the desktop app still does not see the variable, sign out and back in.
+
+### macOS
+
+- **Node server:** `export RISU_OPENAI_KEY="sk-..."` in the terminal, then start the server from it. Add the line to `~/.zshrc` to keep it for new terminals.
+- **Desktop app:** the RisuAI app opened from Finder or the Dock does not read `~/.zshrc`. Run `launchctl setenv RISU_OPENAI_KEY "sk-..."`, then reopen the app. This lasts until you restart or log out. Or start the app's executable from a terminal where you exported the variable.
+
+### Linux
+
+- **Shell:** `export RISU_OPENAI_KEY="sk-..."`, or add the line to `~/.profile`. An app started from the desktop may need you to log out and back in.
+- **Desktop session:** put `RISU_OPENAI_KEY=sk-...` in a file such as `~/.config/environment.d/risu.conf`, then log out and back in.
+- **Node server as a systemd service:** add `Environment=RISU_OPENAI_KEY=sk-...` (or `EnvironmentFile=`) to the unit, then run `systemctl daemon-reload` and restart the service.
+
+### Docker
+
+Add an `environment:` entry to the `risutanium` service in `docker-compose.yml`:
+
+```yaml
+services:
+  risutanium:
+    environment:
+      RISU_OPENAI_KEY: ${RISU_OPENAI_KEY}
+```
+
+Docker Compose fills in `${RISU_OPENAI_KEY}` from your shell, or from a `.env` file next to `docker-compose.yml`. That `.env` is read by Compose, not by RisuAI. You can also write the value directly instead of `${...}`. Then run `docker compose up -d` to recreate the container. With `docker run`, pass `-e RISU_OPENAI_KEY=sk-...`.
+
+A variable set at user level can be read by every program that user runs. That is the normal trade-off.
 
 ## Rules for the value
 
@@ -85,6 +122,7 @@ A Vertex AI private key (PEM) normally has several lines, so it needs special ca
 
 - RisuAI remembers a resolved value for **5 minutes** per variable. A changed variable can take up to 5 minutes to apply. A failed lookup is not remembered.
 - For Vertex AI, the access token made from your key is kept in memory for about **1 hour** (3500 seconds). Changing the variable does not replace the token until it expires or the page reloads.
+- A running server or desktop app does not see a variable changed after it started. Restart it first (see [Setting the variable](#setting-the-variable)). The 5 minutes are kept by the page, not the server, so after a server restart an open page can use the old value until its 5 minutes run out. Reopening the desktop app starts fresh.
 - **Reloading the page clears both, and also drops the copy of the value that the page keeps in memory.** Reload if you do not want to wait.
 
 ## Hide API Keys and the Bot Settings note
