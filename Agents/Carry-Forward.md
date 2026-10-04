@@ -145,6 +145,228 @@ STATUS block and its ledger rows.
   - The translator flagged the three new strings in `ko.ts` as literal; the maintainer may reword
     them.
 
+## After Stage A and Stage 0 (the save layer's first steps; for Stage 1 and Stage 2)
+
+Checked against the three commit messages, `MC-194` (items 5, 11, 12, 15, 16 and the Orchestrator
+dispositions), the Roadmap's save-layer track and CHORE-83, and the stage scratch records, at HEAD
+`82809af2` (2026-10-04). Source was not re-opened for this section. Every performance figure below was
+measured on one i9-13900K-class machine, mostly in headless Chrome on synthetic data: best-case
+hardware (`MC-003`, `MC-010`, `MC-131`). No phone or Pi figure exists for any of them.
+
+- **Done:** Stage A `b1d2804b` (memory only), Stage 0 (ii) `2aa55398` (Node revision log), Stage 0
+  (i)+(iii) `f04068f1` (no-op main-file skip and backup freshness). Next is Stage 1 (the stable-keyed
+  block store), then Stage 2 (per-module blocks). No Stage 1 plan or gate is recorded yet.
+  TODO(evidence): the Stage 1 pre-measurements the Roadmap says are pending are named in the notes
+  without a list of what they measure.
+
+### What Stage 1 must state and keep
+
+- **The advisor's ten invariants** (`senior-advisor` dossier, ledger row 1053; scratchpad
+  `stage1/advisor-save-layer.md`) go into the Stage 1 plan, each with its test. Short form, in the
+  advisor's numbering: (1) one function commits whole state, and the whole-state writers call it;
+  (2) the root's directory is authoritative, and a listed block that is missing, empty or fails its
+  CRC is an omitted entity, never empty content; (3) the loader tolerates any block version against
+  any root version, adds and deletes commit with the root, a delete writes the root first and the
+  block delete after, and cross-block references (enabled modules, module order, selected
+  character) tolerate an absent target; (4) the encoder records a block only
+  after the store acknowledged it; (5) commit means the root write resolved, and everything derived
+  from "committed" keys off it; (6) snapshots are self-contained full copies, and the `.bin` import
+  goes through the whole-state commit, while the `.bin` export is built from memory and reads no
+  storage; (7) per-save allocation is O(changed blocks); (8) on Node a
+  deleted key's revision is a tombstone, so stable names are never reused for a different entity
+  (check that a module id qualifies); (9) a size guard applies to each store write; (10) every
+  equality-based skip comes with its return-to-origin scenario.
+- **The advisor counted six whole-state writers and did not re-count them** ("counted by the
+  packet, not re-counted"). The Stage 1 plan's grep must confirm the list before its gate. For
+  comparison, `f04068f1`'s message lists the main-file writers in the tab as the save loop, the
+  bootstrap seeding writes, `bootArchivePass`, the `backuplocal.ts` restore and `internalBackup.ts`
+  `loadSelectedBackup`, all through `writeMainFile`. `opfsCopyBack` writes IndexedDB directly,
+  before the boot read. The two lists differ (the advisor's six omit the save loop and include a
+  Tauri write-back), and at `82809af2` the non-test `writeMainFile` callers are two in
+  `bootstrap.ts`, the save loop, `internalBackup.ts`, `backuplocal.ts` and two in
+  `bootArchivePass.ts` through its injected dependency; six is not confirmed either way.
+- **Keep `mainFileOutcome.ts`'s bracket around every main-file write, or its replacement.**
+  `appStore.writeMainFile` reports "begin" synchronously just before `store.write` and "confirm"
+  just after it returned. `beginMainFileWrite` runs synchronously immediately before `store.write`,
+  so the restores' rule of no await between the busy check and the write still holds. A write that
+  throws leaves the outcome unknown (on Node a write can land and then throw) until a confirmed
+  write or a recorded read. The skip in the save loop relies on this property and on the committed
+  layout moving only after a write returned (the encoder rule of advisor invariant 4); the first
+  iteration also needs the `matchesMainFileRecord` comparison. Advisor invariant 4 states the
+  acknowledged-bytes rule for the encoder's record; the "lands, then throws" case is the part
+  `f04068f1` added, so the single commit owner must carry it explicitly rather than assume
+  invariant 4 covers it (inferred: invariant 4 covers per-block records, not a cross-writer
+  baseline).
+- **A skip is a commit.** `f04068f1` makes a skipped iteration clean the tab, fire the commit
+  callbacks once, reset `savetrys` and `conflictAlertShown`, and count as `primaryCommitted` for
+  error classification. It makes no broadcast and does not call `noteMainFileBytes`. Advisor
+  invariant 5 ("commit means the root write resolved") has to say what a skip is under the block
+  store. Save mine (`flush`) forces the next main write, and the force clears only on a confirmed
+  loop write.
+- **The encoder's committed layout** (block references, or equal block bytes, in the same key order)
+  moves only when the loop confirms a write or refreshes on a skip. Stage 1 changes what "written"
+  means per block, so this comparison has to be re-expressed against per-key acknowledgements
+  (inferred from the two designs; not planned).
+- **The nine `globalApi.*.svelte.test.ts` files that mock `mainFileRecord`** gained
+  `matchesMainFileRecord`, `getMainFileRecordDigest` and `digestMainFileBytes`, answering
+  "different" or null so they keep always-write behaviour: `saveClean`, `saveDbMainFileRecord`,
+  `nodeSave`, `nodeSizeGuard`, `nodeSizeGuard413`, `nodeSizeGuardScope`, `nonNodeSizeGuard`,
+  `nodeBackups`, `saveDbTauriAtomic`. A change to those exports or to the main-file path touches all
+  nine mocks.
+- **`risuSaveCache` is retired in Stage 1** (the advisor's recommendation; adopted with the
+  direction, `MC-194` 11). The block-cache puts, about 507 entries and 49 MB at every boot on the
+  measured profile, were not part of Stage 0 (CHORE-83; the Stage 0 investigation recommended leaving
+  them alone). They end when the cache does. Not re-measured since `f04068f1`: TODO(evidence).
+- **Maintainer answers that bind Stage 1** (`MC-194` 10, 11): the platforms are Tauri and Node ("data
+  in the browser is the one that is least utilized"), SQLite on Node is permitted but not in
+  Stage 1; a save that commits partly when two Node devices write is "Acceptable"; forcing a Tauri
+  directory write to disk is "Yes, in Stage 1" and needs a Rust command. The direction does not
+  make Remote Saving the default. The advisor still recommends the web share the layout (its Q2).
+- **The Hono server has no write or revision route** (the advisor, verified by grep at the time).
+  It is not a target; do not mirror routes into it.
+
+### The backup fingerprint record (`database/backupfingerprint`)
+
+- **Fork-only, and it must never enter a `.bin` export or import** (`MC-175`, `MC-194` 12). Stage 1
+  and Stage 2 export paths must keep it out.
+- **What it is:** UTF-8 text `sha256:<length>:<hex>`, where the hex is the SHA-256 of
+  `"<length>:<comma-joined per-4 MiB slice SHA-256 hex>"`, built from `mainFileRecord`'s slice
+  fingerprint. It is not a whole-file hash.
+- **Rules:** written only after a numbered backup's write returned, and only for exactly those
+  bytes; never written in a non-secure context or for a sampled fingerprint; read once, at the
+  page's first committing save iteration, and only if that iteration skips. A boot that skips takes
+  a backup unless the record names the main file.
+- **Its key** lies outside `database/dbbackup-`, `assets/`, `remotes/` and `coldstorage/`, and is
+  creatable under the Tauri, Node and IndexedDB key rules (the `f04068f1` message). The Stage 0
+  Gate 1 review checked these enumerations for it: `getDbBackups`, the `loadInternalBackup` listing, `manualCleanup`,
+  `writeLocalBackup`/`writePartialLocalBackup`, the bootstrap remote and asset sweeps,
+  `loadTimeListing`, `createStoredRemoteNames`, `AutoStorage.keys` (no production caller) and the
+  Node `/api/list` (it returns the key, like any hex-named key; its consumers pass a prefix). Stage 1's per-entity keys need the same
+  enumeration check, and must not fall under a prefix a sweep deletes.
+- **Under Stage 1 the main file is written only on the backup cadence** (the advisor's shape), so
+  what `matchesMainFileRecord` compares against at boot, and what the backup record names, need
+  re-deciding. Inferred from the two designs; not examined.
+
+### Residuals `f04068f1` accepted (Stage 1 inherits them unless it changes the mechanism)
+
+- A tab that returns to exactly its own committed bytes after a peer saved skips and leaves the
+  peer's file. Save mine is the deliberate overwrite.
+- Node: a no-op iteration no longer gets an early 409. A write with an unknown outcome still writes
+  and still gets it.
+- A skip's backup copies the bytes this tab committed, which after a foreign peer write is not what
+  storage holds. It is never worse than the old boot backup.
+- Pruning (by timestamp in the name) or clock skew can remove the recorded backup while the record
+  still names it, for example after about 19 loads of one snapshot. A boot can then skip with no
+  kept backup holding main. The old boot backup was pruned the same way.
+- Backups written without a record update can push the recorded backup out of the 20 kept: a
+  plain-HTTP session on the same profile writes a backup at boot and every 5 minutes and never a
+  record, and a record write can fail. If main later returns to the recorded bytes, a secure boot
+  skips with no kept backup holding them. The main file itself stays intact.
+- The first boot after the upgrade has no record and takes one backup.
+- On plain HTTP (`MC-143`) there is no `crypto.subtle`: the first iteration writes main and a backup
+  as before, and no record is written. Steady-state skips work everywhere.
+- Not claimed: a whole-file hash; the record being read at every boot; power-loss behaviour of the
+  record write (not examined). The cost of the record write on weaker hardware is not measured (one
+  SHA-256 pass over each numbered backup, at most every 5 minutes; fingerprinting 43 MiB took 27.3 ms
+  in the planning measurement).
+- Gate 2 judged four mutant survivors equivalent: a steady baseline ignoring "known", the record path
+  ignoring the epoch, a boot check on every skip, and no key-order check. If the design changes, those
+  judgements need re-checking.
+
+### The Node revision log (Stage 0 (ii), `2aa55398`)
+
+- **Invariants Stage 1 builds on:** acknowledged revisions never go down; a bump is appended before
+  the content write and the response; recovery is the maximum over the snapshot and every valid log
+  record; a torn or garbage log line is skipped; compaction (snapshot written to a temp file,
+  fsynced, renamed, then the log deleted) at runtime runs only inside `withRevisionTransaction`,
+  never alongside a bump; startup compaction (`compactRevisionsSync`) is synchronous and runs
+  before the server listens. The compaction threshold is 20000 records (`RISU_REVISION_LOG_COMPACT_AT`
+  overrides it for tests).
+- **Trap: compaction outside the queue.** One mutant survived Gate 2 round 2: running compaction
+  outside the global queue. The reviewer judged a test unnecessary because the only scheduling call
+  site is `scheduleRevisionCompaction` through `withRevisionTransaction`, plus the startup
+  compaction before listening. A new route or timer that compacts or bumps revisions must go through
+  the same queue; nothing tests that.
+- **Trap: hidden names.** `__revisions.log` and the snapshot temp files use `__`-prefixed names that
+  `isHex` rejects for read, write and remove, and `/api/list` returns only whole, even-length hex
+  names. A new server-side bookkeeping file needs the same.
+- **Fails closed.** If `__revisions.log` exists at startup and cannot be read, the server logs the
+  file and error code and exits with code 1 before listening, leaving the log untouched. A readable
+  but torn or garbage log still starts. This was the Orchestrator's choice after Gate 2 round 1
+  (`MC-194`, dispositions).
+- **Stage 1 raises the key count and the writes per save.** Entries in the revision map are never
+  deleted, and a full snapshot is written at each compaction (about 54 MB at 350,350 keys). Stable
+  names per entity bound the key count by the entity count (advisor, Q1), which is why they matter
+  here. The 15.5 ms p50 per write at 350,350 keys is the cost of the request itself; the revision map
+  no longer adds to it.
+- **Not claimed:** power loss. The snapshot is fsynced before the rename, but log appends are not
+  fsynced and there is no directory fsync; "crash-safe" means a process crash. A second server
+  process on the same data directory stays unsupported.
+- **Unsupported:** moving a data directory back to a build from before this change (`MC-011`). Such a
+  build ignores the log and reads the lower snapshot revisions, so a device holding a revision equal
+  to that value could pass the equality check in `/api/write` and overwrite newer content. No such
+  fork build shipped, and upstream has no revision check.
+- **P9, an unnumbered candidate, not a ticket.** An unparseable or non-object `__revisions.json`
+  still starts as if the snapshot were empty (the log is still replayed), and the next compaction
+  overwrites it. Possible fixes named in the commit: rename the bad file aside and seed a high
+  revision floor so stale devices get 409. Nobody owns it yet.
+- **Test fixture:** `nodeServerFixture.ts` gained `halt('graceful' | 'hard')`, `restart(options)`
+  (per-field merge of `env` and `nodeArgs`) and `RISU_NODE_SERVER_SCRIPT`, which points the fixture
+  at another `server.cjs` and warns when set. Stage 1's Node tests can reuse them.
+- **Hand-off already used:** the side session's CHORE-80 server hunks waited for this commit
+  (`MC-194` 13).
+
+### Module asset lists (Stage A, `b1d2804b`; for Stage 2 and any code touching `modules`)
+
+- **Invariant: replace the list, never mutate it.** Each module's `assets` is an `AssetList` (an
+  Array subclass, `src/ts/storage/assetList.ts`) once the database is installed. Svelte 5.56.8
+  proxies only values whose prototype is `Object.prototype` or `Array.prototype`, so the list and its
+  tuples sit outside Svelte's reactive graph. An in-place write on an installed `AssetList` (a tuple
+  field, `push`, `splice`) re-renders nothing and marks no block dirty, so no save is scheduled. Every
+  writer assigns a new list to `module.assets` (`commitAssets` in `ModuleMenu.svelte`). A guard test
+  pins the untracked behaviour as the reason. A new writer of a live module's assets, including
+  Stage 2's, must replace.
+- **The earlier "gap" is closed for in-fork writers.** The moduleHeap measurement patch (install
+  only, no replace) left the module editor's in-place edits untracked until another change. Stage A
+  moved the editor's rename, add, delete and first-open default to replacing writes, with tests that
+  are red against that patch. The implementer's search found no other in-fork writer of a live
+  module's `assets` (`exportModuleLegacy` and `readModule` act on a clone or an uninstalled module).
+  What can still go untracked is G2-4 below (a suspicion, not reproduced). The V2.1 case and the
+  not-wrapped items stay plain arrays: they are tracked and cost memory only.
+- **A V2.1 plugin enabled means plain arrays.** V2.1 plugins can edit module lists in place (`MC-132`,
+  `MC-146`: they get plain data). While one is enabled the install wraps nothing, `commitAssets`
+  assigns a plain array, and `loadPlugins` calls `unwrapModuleAssets` before
+  `restoreAllForV21Plugins`. This is a deviation from "always assign a new AssetList", required by
+  I6. The unwrap's order against the restore is not test-enforced (the mutant survives; judged
+  equivalent because the restore catches its own errors).
+- **G2-4, suspicion only, not reproduced.** A resident V2.1 plugin that switches itself off through
+  the plugin API's `setDatabase` would let the real `setDatabase` wrap while its code still runs, and
+  a later in-place push by it would go untracked. Gate 1 had a similar suspicion for a disabled
+  plugin's lingering timer. No such upstream plugin is known.
+- **Not wrapped, memory only:** modules added to the live database after the install (import, drop,
+  MCP, convert) stay plain until the next install; the plugin API's own `setDatabaseLite` assigns
+  `DBState.db` directly; `personas[].embeddedModule.assets` is read-only. The first-boot pass (the
+  163 MB decode) is not helped; its peak was not re-measured for this tree.
+- **Serialisation is unchanged.** The modules block is byte-identical, and the `.bin` and V3 snapshot
+  decode to equal content (`MC-175`). `convertModuleToCharacter` must keep its final
+  `safeStructuredClone`, or a character's `additionalAssets` becomes an `AssetList` (two guards fail
+  without it). Stage 2's per-module blocks should not need a new rule here, but any code that stores
+  or hands off a module's `assets` must give a plain array.
+- **What is left in the module tree.** The advisor's finding was that most of the module heap is
+  Svelte's wrapping of the asset lists. Out of scope for Stage A and still open: lorebook, regex and
+  trigger proxies (about 12.5k proxies left per the plan), asset path strings, the first-boot import
+  peak, and the save file's size.
+- **Module archiving is shelved, not cancelled** (`MC-194` 5). The maintainer chose "Stage A now,
+  decide archiving later". The `MC-193` 5 order (modules first) therefore has no scheduled first step,
+  and whether the gated in-session unload (`MC-194` 1) moves up is the maintainer's to place. Stage 2
+  (per-module blocks) needs the same two decisions the archiving plan did (the module identity key
+  and the order held in the root); the advisor wants Stage 2 decided together with the archiving
+  question.
+- **Related, closed:** opening the module editor marked the modules block dirty through the `hideIcon`
+  checkbox binding. That is CHORE-88 (closed, `54b1a819`). Since `54b1a819` the Stage A editor
+  test's helper clears the flag after the tracker registers and before the editor mounts, and a test
+  asserts that opening the editor leaves the modules block clean.
+
 ## Wiki batch (owned by the Wiki session; W2 is done)
 
 - The composer and send wiki batch is unblocked: on 2026-09-30 the Wiki session was told that W2 and
