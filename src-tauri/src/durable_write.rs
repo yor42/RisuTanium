@@ -122,6 +122,13 @@ pub fn resolve_key(base: &Path, key: &str) -> Result<PathBuf, String> {
 pub trait FileOps {
     /// Creates `temp` (it must not exist), writes `bytes` and flushes the file.
     fn create_synced(&self, temp: &Path, bytes: &[u8]) -> io::Result<()>;
+    /// Creates `temp` (it must not exist) and leaves it empty.
+    fn create_empty(&self, temp: &Path) -> io::Result<()>;
+    /// Appends `bytes` to `temp` and closes it. `temp` must hold exactly `offset`
+    /// bytes already; any other length is an error and nothing is written.
+    fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()>;
+    /// Flushes the data of the file at `path` to the file system.
+    fn sync_file(&self, path: &Path) -> io::Result<()>;
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn sync_dir(&self, dir: &Path) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
@@ -136,6 +143,26 @@ impl FileOps for RealOps {
         let mut file = OpenOptions::new().write(true).create_new(true).open(temp)?;
         file.write_all(bytes)?;
         file.sync_all()
+    }
+
+    fn create_empty(&self, temp: &Path) -> io::Result<()> {
+        OpenOptions::new().write(true).create_new(true).open(temp).map(|_| ())
+    }
+
+    fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()> {
+        let mut file = OpenOptions::new().append(true).open(temp)?;
+        let length = file.metadata()?.len();
+        if length != offset {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("the chunk starts at {} but the temp file holds {} bytes", offset, length),
+            ));
+        }
+        file.write_all(bytes)
+    }
+
+    fn sync_file(&self, path: &Path) -> io::Result<()> {
+        OpenOptions::new().write(true).open(path)?.sync_all()
     }
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
@@ -179,7 +206,7 @@ fn is_retryable_rename_error(error: &io::Error) -> bool {
             .map_or(false, |code| RETRYABLE_RENAME_ERRORS.contains(&code))
 }
 
-fn rename_with_retry<O: FileOps>(ops: &O, from: &Path, to: &Path) -> io::Result<()> {
+pub(crate) fn rename_with_retry<O: FileOps>(ops: &O, from: &Path, to: &Path) -> io::Result<()> {
     let mut attempt = 0;
     loop {
         match ops.rename(from, to) {
@@ -240,8 +267,8 @@ pub fn write_durable_with<O: FileOps>(ops: &O, target: &Path, bytes: &[u8]) -> R
 }
 
 /// The bytes of a request body. A raw body is the bytes. A JSON body must be an
-/// array of integers 0 to 255, which is how the postMessage fallback and
-/// Android send a `Uint8Array`. Anything else is rejected before any disk access.
+/// array of integers 0 to 255, which is how the postMessage fallback sends a
+/// `Uint8Array`. Anything else is rejected before any disk access.
 pub fn decode_body(body: &tauri::ipc::InvokeBody) -> Result<Vec<u8>, String> {
     match body {
         tauri::ipc::InvokeBody::Raw(bytes) => Ok(bytes.clone()),
@@ -311,6 +338,18 @@ mod tests {
                 return Err(io::Error::new(io::ErrorKind::Other, "disk full"));
             }
             RealOps.create_synced(temp, bytes)
+        }
+        fn create_empty(&self, temp: &Path) -> io::Result<()> {
+            self.steps.borrow_mut().push("create_empty");
+            RealOps.create_empty(temp)
+        }
+        fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()> {
+            self.steps.borrow_mut().push("append");
+            RealOps.append(temp, offset, bytes)
+        }
+        fn sync_file(&self, path: &Path) -> io::Result<()> {
+            self.steps.borrow_mut().push("sync_file");
+            RealOps.sync_file(path)
         }
         fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
             self.steps.borrow_mut().push("rename");
