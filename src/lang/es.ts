@@ -1053,6 +1053,8 @@ export const languageSpanish = {
     "removeGroup": "Eliminar Grupo",
     "exportCharacter": "Exportar Personaje",
     "successExport": "Exportado y descargado exitosamente en tu directorio de descargas",
+    "exportHeldInMemory": "Este navegador no puede guardar la exportación a medida que se genera, por lo que se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
+    "exportHelperNotResponding": "El asistente de descarga no respondió, por lo que la exportación se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
     "successImport": "Importado exitosamente",
     "importedCharacter": "Personaje Importado",
     "alwaysActive": "Siempre Activo",
@@ -1841,7 +1843,14 @@ export const languageSpanish = {
     "restoreSavedReloadOrRestart": "Tu copia de seguridad se restauró y guardó, pero la aplicación no pudo recargarse automáticamente. Recarga la página (o reinicia la aplicación) para finalizar.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `La copia de seguridad se restauró, excepto ${count} archivo(s) de recursos cuyos nombres esta aplicación no puede guardar. Un personaje que use alguno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
-    "internalBackupUnreadable": "Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
+    "backupFileChangedWhileReading": "El archivo de copia de seguridad cambió mientras se leía, por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.",
+    "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
+        `${count} archivo(s) de recursos de esta copia de seguridad superan los ${Math.floor(limitBytes / (1024 * 1024))} MB que este servidor acepta en una sola solicitud, por lo que no se pueden restaurar aquí. Un personaje que use alguno de ellos lo mostrará como faltante. ¿Continuar sin ellos?\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `La copia de seguridad se restauró, excepto ${count} archivo(s) de recursos que superan los ${Math.floor(limitBytes / (1024 * 1024))} MB que este servidor acepta en una sola solicitud. Un personaje que use alguno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "restoreAssetRefusedTooLarge": (name: string) =>
+        `El servidor, o un proxy delante de él, rechazó el recurso "${name}" por ser demasiado grande, por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.`,
+    "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
     "internalBackupWriteFailed": "No se pudo guardar la copia de seguridad. Tus datos actuales no se modificaron.",
     "internalBackupListFailed": "No se pudo leer la lista de copias de seguridad. No se modificó nada.",
     "internalBackupWaitingForCleanup": "Finalizando la limpieza de inicio antes de cargar la copia de seguridad...",

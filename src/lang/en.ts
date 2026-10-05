@@ -1181,6 +1181,8 @@ export const languageEnglish = {
     removeGroup: "Remove Group",
     exportCharacter: "Export Character",
     successExport: "Successfuly exported and downloaded to your download directory",
+    exportHeldInMemory: "This browser cannot save the export as it is made, so it is held in memory until it is finished and then downloaded. A very large export may fail.",
+    exportHelperNotResponding: "The download helper did not respond, so the export is held in memory until it is finished and then downloaded. A very large export may fail.",
     successImport: "Successfuly imported",
     importedCharacter: "Imported Character",
     alwaysActive: "Always Active",
@@ -1974,6 +1976,13 @@ export const languageEnglish = {
     restoreSavedReloadOrRestart: "Your backup was restored and saved, but the app could not reload automatically. Please reload the page (or restart the app) to finish.",
     restoreAssetsSkipped: (count: number, names: string[]) =>
         `The backup was restored, except for ${count} asset file(s) whose names this app cannot store. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupFileChangedWhileReading: "The backup file changed while it was being read, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.",
+    restoreOversizedAssetsConfirm: (count: number, names: string[], limitBytes: number) =>
+        `${count} asset file(s) in this backup are larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request, so they cannot be restored here. A character that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreAssetsSkippedTooLarge: (count: number, names: string[], limitBytes: number) =>
+        `The backup was restored, except for ${count} asset file(s) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreAssetRefusedTooLarge: (name: string) =>
+        `The server, or a proxy in front of it, refused the asset "${name}" as too large, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.`,
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
     internalBackupWriteFailed: "The backup could not be saved. Your current data was not changed.",
     internalBackupListFailed: "The backup list could not be read. Nothing was changed.",

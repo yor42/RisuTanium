@@ -14,8 +14,9 @@
  * (captured off `document.createElement`, since happy-dom has no real file
  * picker) feeds it a real happy-dom `File`, built over a hand-built backup
  * byte stream holding a single `database.risudat` chunk, and read through
- * the file's own real `stream().getReader()` -- exactly the shape
- * `LoadLocalBackup`'s own chunked reader expects.
+ * the file's own real `.size` and `.slice()` (`slice().arrayBuffer()`: the
+ * entry walk, then one read per entry) -- exactly the shape
+ * `LoadLocalBackup`'s own reader expects.
  * `decodeRisuSave`/`encodeRisuSaveLegacy` are the REAL `src/ts/storage/risuSave.ts`
  * functions, so the backup bytes this test builds and decodes are genuine.
  */
@@ -166,7 +167,7 @@ function asBlobPart(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
     return bytes as unknown as Uint8Array<ArrayBuffer>
 }
 
-/** A real happy-dom `File` over `bytes`: LoadLocalBackup reads it through `.size`, `.slice()` (the marker walk) and `.stream()`. */
+/** A real happy-dom `File` over `bytes`: LoadLocalBackup reads it only through `.size` and `.slice()` (`slice().arrayBuffer()`: the entry walk, then one read per entry). */
 function makeFakeFile(bytes: Uint8Array): File {
     return new File([asBlobPart(bytes)], 'backup.bin')
 }

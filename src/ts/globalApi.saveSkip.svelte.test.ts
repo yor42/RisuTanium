@@ -112,8 +112,19 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
     open: vi.fn(async () => {}),
 }))
 
-vi.mock('streamsaver', () => ({
-    default: {},
+vi.mock('src/ts/vendor/streamSaver', () => ({
+    default: {
+        useBlobFallback: false,
+        createWriteStream: () => ({
+            ready: Promise.resolve(),
+            writable: {
+                getWriter: () => ({
+                    write: async () => { },
+                    close: async () => { },
+                }),
+            },
+        }),
+    },
 }))
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({

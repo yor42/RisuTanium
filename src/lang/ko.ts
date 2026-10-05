@@ -1053,6 +1053,8 @@ export const languageKorean = {
     "removeGroup": "그룹 삭제",
     "exportCharacter": "캐릭터 엑스포트",
     "successExport": "성공적으로 엑스포트하여 다운로드 경로에 다운로드했습니다.",
+    "exportHeldInMemory": "이 브라우저는 엑스포트를 만드는 도중에 저장할 수 없어서, 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 엑스포트는 실패할 수 있습니다.",
+    "exportHelperNotResponding": "다운로드 도우미가 응답하지 않아, 엑스포트를 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 엑스포트는 실패할 수 있습니다.",
     "successImport": "성공적으로 임포트했습니다.",
     "importedCharacter": "성공적으로 임포트 됨.",
     "alwaysActive": "언제나 활성화",
@@ -1840,7 +1842,14 @@ export const languageKorean = {
     "restoreSavedReloadOrRestart": "백업이 복원되어 저장되었지만, 앱을 자동으로 새로고침할 수 없었습니다. 완료하려면 페이지를 새로고침하거나(또는 앱을 재시작)해 주세요.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `백업을 복원했지만, 이 앱에서 저장할 수 없는 이름의 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
-    "internalBackupUnreadable": "이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
+    "backupFileChangedWhileReading": "백업 파일을 읽는 도중 파일이 변경되어 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.",
+    "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
+        `이 백업의 에셋 파일 ${count}개가 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 커서 여기에서는 복원할 수 없습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 이 파일들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `백업을 복원했지만, 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreAssetRefusedTooLarge": (name: string) =>
+        `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
+    "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupWriteFailed": "백업을 저장할 수 없었습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupListFailed": "백업 목록을 읽을 수 없었습니다. 아무것도 변경되지 않았습니다.",
     "internalBackupWaitingForCleanup": "백업을 불러오기 전에 시작 시 정리 작업을 마무리하는 중입니다...",

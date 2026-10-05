@@ -112,7 +112,20 @@ vi.mock('@tauri-apps/api/path', () => ({ ...fakePaths.pathModule, basename: vi.f
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
 vi.mock('@tauri-apps/plugin-os', () => ({ type: () => h.os }))
 vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(async () => { }) }))
-vi.mock('streamsaver', () => ({ default: {} }))
+vi.mock('src/ts/vendor/streamSaver', () => ({
+    default: {
+        useBlobFallback: false,
+        createWriteStream: () => ({
+            ready: Promise.resolve(),
+            writable: {
+                getWriter: () => ({
+                    write: async () => { },
+                    close: async () => { },
+                }),
+            },
+        }),
+    },
+}))
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
     getCurrentWebviewWindow: vi.fn(() => ({ listen: vi.fn(), setTitle: vi.fn() })),
 }))
