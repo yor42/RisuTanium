@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
 /**
- * `LoadLocalBackup` with no work in progress writes `database/database.bin` and
- * installs the restored database.
+ * `LoadLocalBackup` with no work in progress commits the restored database as a
+ * block generation and installs it.
  *
  * Drives the real `LoadLocalBackup` (`src/ts/drive/backuplocal.ts`) with the
  * real `globalApi.svelte.ts`. A restore that reaches its write keeps
@@ -548,7 +548,7 @@ import { makeRisuaiAPIV3 } from 'src/ts/plugins/apiV3/v3.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { requiresFullEncoderReload, forageStorage } from 'src/ts/globalApi.svelte'
-import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { committedTree, injectRestoreStore } from './restoreSupport'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { loadInternalBackup } from 'src/ts/drive/internalBackup'
 import { setDatabase } from 'src/ts/storage/database.svelte'
@@ -870,7 +870,7 @@ beforeEach(() => {
     downloadFileMock.mockClear()
     platformBox.isTauri = false
     // The restore and the internal-backup load go through the page's byte store; here it is the storage-object model.
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
+    injectRestoreStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     for (const key of Object.keys(triggerHandlers)) {
         delete triggerHandlers[key]
     }
@@ -936,7 +936,7 @@ function backupDb(characters: CharacterFixtureBk[], extra: Record<string, unknow
 /** Stores an internal backup of one character `char-A` where `loadInternalBackup` lists backups. */
 async function seedInternalBackup(): Promise<void> {
     const encoder = new RisuSaveEncoder()
-    await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false, skipRemoteSavingOnCharacters: false })
+    await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false })
     forageMemStore.set('database/dbbackup-1700000000.bin', new Uint8Array(encoder.encode()!))
 }
 
@@ -1014,14 +1014,15 @@ async function startHeldSendBk(): Promise<{ running: Promise<boolean> }> {
 //#endregion
 
 describe('LoadLocalBackup with no work', () => {
-    test('guard: no work: LoadLocalBackup writes database.bin and installs the database', async () => {
+    test('guard: no work: LoadLocalBackup commits the restored profile as a block generation, writes no database.bin, and installs the database', async () => {
         installWorld()
-        const { fixture, dbBytes } = localBackupBytes('restored-marker-b5')
+        const { fixture } = localBackupBytes('restored-marker-b5')
 
         await loadBackupBytes(fixture).catch(() => {})
-        const written = forageMemStore.get('database/database.bin') as Uint8Array | undefined
+        const restored = await committedTree()
 
-        expect.soft(written !== undefined && written.length === dbBytes.length && written.every((b, i) => b === dbBytes[i]), 'database.bin holds the restored bytes').toBe(true)
+        expect.soft(restored?.mainPrompt, 'the head names a generation holding the restored database').toBe('restored-marker-b5')
+        expect.soft(forageMemStore.has('database/database.bin'), 'database.bin was written').toBe(false)
         expect.soft(vi.mocked(setDatabase)).toHaveBeenCalledTimes(1)
         expect.soft(requiresFullEncoderReload.state).toBe(true)
     })

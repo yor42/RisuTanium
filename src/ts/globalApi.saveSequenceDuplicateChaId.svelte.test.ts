@@ -317,7 +317,7 @@ describe('the v2.1 in-place duplicate route (MC-078)', () => {
         ;(globalThis as unknown as { __testDB: unknown }).__testDB = DBState.db
 
         const encoder = new RisuSaveEncoder()
-        await encoder.init(snapshotDb(DBState.db), { compression: false, skipRemoteSavingOnCharacters: false })
+        await encoder.init(snapshotDb(DBState.db), { compression: false })
 
         // The v2.1 live-proxy idiom: a plugin reads getDatabase(), mutates the
         // live array in place (inserting a copy of char-0 sharing its chaId,

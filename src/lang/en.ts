@@ -1528,8 +1528,6 @@ export const languageEnglish = {
     otherTabSavedConflictStay: "Stay here for now (this tab will stop trying to save; your changes won't be saved until you reload)",
     savingStoppedStayMessage: "This tab has stopped saving. You chose to stay after another tab saved changes, so this tab's copy of the data is out of date and can no longer be saved. Changes made from now on will not be kept. Reloading will fetch the current data — any unsaved local changes will be lost.",
     savingStoppedNodeConflictMessage: "This tab has stopped saving. Your local data conflicted with a newer version on the self-hosted server, so this tab has permanently stopped trying to save. Changes made from now on will not be kept. Reload the app to get the current data — any unsynced local changes will be lost.",
-    savingStoppedTooLargeMessage: (limitBytes: number) =>
-        `This tab has stopped saving: your data is larger than the self-hosted server accepts in one save (${limitBytes / (1024 * 1024)} MiB, or less if a proxy in front of the server sets a lower limit). Changes since the last successful save will be lost when you reload. After a reload, startup can move characters into archive storage to make the save smaller, but only when character archiving is on and able to run. If saving stops again, make your data smaller, for example by deleting chats or characters you no longer need.`,
     duplicateChaIdSavePausedMessage: (characterGroups: string) =>
         `The following character(s) share an internal id with another character, so the save file can only keep one from each shared id: ${characterGroups || "two characters"}. It keeps whichever one was saved most recently before this started, or, if neither had ever been saved, whichever one was written first. Saving is paused for all of them while this continues. Saving resumes once only one character holds each id -- for example, by permanently deleting the extra ones (move them to the trash, then delete them from the trash).`,
     maxSupaChunkSize: "Max SupaMemory Chunk Size",
@@ -2016,7 +2014,6 @@ export const languageEnglish = {
         save: "Save",
         cancel: "Cancel",
     },
-    enableRemoteSaving: "Enable Remote Saving",
     blockquoteStyling: "Blockquote Styling",
     dynamicModelRegistry: "Dynamic Model Registry",
     confirmInstallPluginViaPlugin: "Plugin {source} is trying to install the plugin {plugin}. This can be dangerous if the source plugin is not trustworthy. Do you want to continue?",
@@ -2197,6 +2194,17 @@ export const languageEnglish = {
     saveConversionFailedAlert:"Moving your data to the new save format did not succeed after several tries. Nothing was changed in your saved data, and this tab has stopped saving. Reload the page to try again.",
     saveSnapshotSkippedTooLarge: "Your data is larger than the self-hosted server accepts in one file, so automatic backup copies are skipped. Saving is not affected. To keep a backup, export a .bin file with \"Save Backup Locally\" under \"Backup & Files\" in the settings.",
     saveSnapshotSkippedMemory: "This device could not set aside enough memory for an automatic backup copy of your data, so it was skipped. Saving is not affected.",
+    restoreLeftOutConfirm: (items: string) =>
+        `This backup file is partly damaged. Only the parts that are still intact can be restored, and the following will be left out:\n\n${items}\n\nYour current data will be replaced by the intact parts. Restore them?`,
+    restoreNotHappenedNotice: "Your saved data was changed by another tab or device while the backup was being loaded, so the backup was not loaded and nothing was changed. Reload the page and try again.",
+    restoreTooLargeBlock: (what: string, limitBytes: number) =>
+        `This backup could not be loaded: the self-hosted server accepts at most ${limitBytes / (1024 * 1024)} MiB in one request (less if a proxy in front of the server sets a lower limit), and ${what ? `this part of your data is over that: ${what}` : 'part of your data is over that'}. Nothing was changed.`,
+    restoreNoUndoCopyConfirm: (reason: 'damaged' | 'absent' | 'too-large') =>
+        (reason === 'damaged' ? 'Your current saved data could not be read, so it cannot be kept as a backup copy before this load. '
+            : reason === 'too-large' ? 'Your current data is larger than the self-hosted server accepts as one backup copy, so it cannot be kept as a backup before this load. '
+            : 'No current saved data was found to keep as a backup copy before this load. ')
+        + 'If you continue, you cannot go back to what is saved now from the backup list. Continue without a backup copy?',
+    internalBackupLoadedNoCopy: "The backup was loaded. Refreshing your app.",
     backupAndFiles: "Backup & Files",
     assetIntegrityHeading: "Asset Cache Integrity",
     assetIntegrityDescription: "Checks cached images/assets against their own content hash to detect corruption, without re-downloading anything from storage. Read-only unless you choose to remove a corrupted entry.",

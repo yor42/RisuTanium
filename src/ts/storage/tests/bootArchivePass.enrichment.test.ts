@@ -133,6 +133,8 @@ vi.mock(import('src/ts/alert'), () => ({
 }) as unknown as typeof import('src/ts/alert'))
 
 import { RisuSaveEncoder, decodeRisuSave, hashRemoteBlockContent } from 'src/ts/storage/risuSave'
+import { getAppStore } from 'src/ts/storage/store/appStore'
+import { withRemoteCharacters } from './remoteFileFixture'
 import { NodeStorage } from 'src/ts/storage/nodeStorage'
 import { openBootArchiveSession } from 'src/ts/storage/bootArchivePass'
 
@@ -1042,9 +1044,10 @@ describe('boot archive pass: enriched stubs and remote saving', () => {
         const stub = { ...upstreamStub(stubId, 'Remote Stub', LEGACY_UNIT), image: 'stub-image.png' }
         const tree = baseTree([stub, fullCharacter(fullId, 'Remote Full')], { archiveCharacters: archive, enableRemoteSaving: true })
         const world = await setupWorld(kit, host, null)
+        // The legacy main file of a profile that had Remote Saving on: its characters are remote pointers.
+        const store = await getAppStore()
+        world.seedMain(await withRemoteCharacters(await encodeAsSaveDb(RisuSaveEncoder, tree), [stubId, fullId], async (key, bytes) => { await store.write(key, bytes, 'unconditional') }))
         h.db = { enableRemoteSaving: true }
-        world.seedMain(await encodeAsSaveDb(RisuSaveEncoder, tree))
-        h.db = {}
         await world.seedUnit(LEGACY_UNIT, unitValue(groupCharacter(stubId, 'Remote Group', MEMBERS)))
         return { world, stubId, fullId }
     }

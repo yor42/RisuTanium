@@ -1400,8 +1400,6 @@ export const languageVietnamese = {
     "otherTabSavedConflictStay": "Ở lại đây tạm thời (tab này sẽ ngừng cố lưu; thay đổi của bạn sẽ không được lưu cho đến khi bạn tải lại)",
     "savingStoppedStayMessage": "Tab này đã ngừng lưu. Bạn đã chọn ở lại sau khi một tab khác lưu thay đổi, vì vậy bản sao dữ liệu của tab này đã lỗi thời và không thể lưu được nữa. Các thay đổi thực hiện từ bây giờ sẽ không được giữ lại. Tải lại sẽ lấy dữ liệu hiện tại — mọi thay đổi cục bộ chưa lưu sẽ bị mất.",
     "savingStoppedNodeConflictMessage": "Tab này đã ngừng lưu. Dữ liệu cục bộ của bạn xung đột với một phiên bản mới hơn trên máy chủ tự lưu trữ, vì vậy tab này đã vĩnh viễn ngừng cố lưu. Các thay đổi thực hiện từ bây giờ sẽ không được giữ lại. Hãy tải lại ứng dụng để lấy dữ liệu hiện tại — mọi thay đổi cục bộ chưa đồng bộ sẽ bị mất.",
-    "savingStoppedTooLargeMessage": (limitBytes: number) =>
-        `Tab này đã ngừng lưu: dữ liệu của bạn lớn hơn mức máy chủ tự lưu trữ chấp nhận trong một lần lưu (${limitBytes / (1024 * 1024)} MiB, hoặc thấp hơn nếu proxy đặt trước máy chủ đặt giới hạn thấp hơn). Các thay đổi kể từ lần lưu thành công gần nhất sẽ bị mất khi bạn tải lại. Sau khi tải lại, khi khởi động có thể chuyển các nhân vật vào kho lưu trữ để làm bản lưu nhỏ hơn, nhưng chỉ khi tính năng lưu trữ nhân vật đang bật và có thể chạy. Nếu việc lưu lại dừng, hãy giảm dung lượng dữ liệu, ví dụ bằng cách xóa các cuộc trò chuyện hoặc nhân vật bạn không còn cần.`,
     "duplicateChaIdSavePausedMessage": (characterGroups: string) =>
         `Nhân vật sau đây dùng chung ID nội bộ với một nhân vật khác, nên tệp lưu chỉ có thể giữ lại một nhân vật cho mỗi ID dùng chung: ${characterGroups || "hai nhân vật"}. Nó sẽ giữ lại nhân vật được lưu gần đây nhất trước khi việc này bắt đầu, hoặc nếu cả hai chưa từng được lưu, thì giữ lại nhân vật được ghi trước. Việc lưu bị tạm dừng cho tất cả chúng trong khi tình trạng này còn tiếp diễn. Việc lưu sẽ tiếp tục khi chỉ còn một nhân vật giữ mỗi ID — ví dụ, bằng cách xóa vĩnh viễn các nhân vật thừa (chuyển chúng vào thùng rác, sau đó xóa khỏi thùng rác).`,
     "maxSupaChunkSize": "Kích thước SupaMemory Chunk tối đa",
@@ -1883,7 +1881,6 @@ export const languageVietnamese = {
         "save": "Lưu",
         "cancel": "Hủy"
     },
-    "enableRemoteSaving": "Bật Lưu từ xa",
     "blockquoteStyling": "Kiểu Blockquote",
     "dynamicModelRegistry": "Danh mục Mô hình Động",
     "confirmInstallPluginViaPlugin": "Plugin {source} đang cố cài đặt plugin {plugin}. Điều này có thể nguy hiểm nếu plugin nguồn không đáng tin cậy. Bạn có muốn tiếp tục không?",
@@ -2061,6 +2058,17 @@ export const languageVietnamese = {
     saveConversionFailedAlert: "Việc chuyển dữ liệu của bạn sang định dạng lưu mới không thành công sau nhiều lần thử. Không có gì trong dữ liệu đã lưu của bạn bị thay đổi, và tab này đã ngừng lưu. Hãy tải lại trang để thử lại.",
     saveSnapshotSkippedTooLarge: "Dữ liệu của bạn lớn hơn mức máy chủ tự lưu trữ chấp nhận trong một tệp, nên các bản sao lưu tự động bị bỏ qua. Việc lưu không bị ảnh hưởng. Để giữ một bản sao lưu, hãy xuất tệp .bin bằng \"Lưu sao lưu cục bộ\" trong mục \"Sao lưu & Tệp\" ở phần cài đặt.",
     saveSnapshotSkippedMemory: "Thiết bị này không thể dành đủ bộ nhớ cho một bản sao lưu tự động của dữ liệu của bạn, nên bản đó đã bị bỏ qua. Việc lưu không bị ảnh hưởng.",
+    restoreLeftOutConfirm: (items: string) =>
+        `Tệp sao lưu này bị hỏng một phần. Chỉ những phần còn nguyên vẹn mới có thể được khôi phục, và những mục sau sẽ bị bỏ qua:\n\n${items}\n\nDữ liệu hiện tại của bạn sẽ bị thay thế bằng các phần còn nguyên vẹn. Bạn có muốn khôi phục không?`,
+    restoreNotHappenedNotice: "Dữ liệu đã lưu của bạn đã bị một tab hoặc thiết bị khác thay đổi trong lúc bản sao lưu đang được tải, nên bản sao lưu đã không được tải và không có gì bị thay đổi. Hãy tải lại trang và thử lại.",
+    restoreTooLargeBlock: (what: string, limitBytes: number) =>
+        `Không thể tải bản sao lưu này: máy chủ tự lưu trữ chỉ chấp nhận tối đa ${limitBytes / (1024 * 1024)} MiB trong một yêu cầu (ít hơn nếu proxy đặt trước máy chủ đặt giới hạn thấp hơn), và ${what ? `phần dữ liệu này của bạn vượt quá giới hạn đó: ${what}` : 'một phần dữ liệu của bạn vượt quá giới hạn đó'}. Không có gì bị thay đổi.`,
+    restoreNoUndoCopyConfirm: (reason: 'damaged' | 'absent' | 'too-large') =>
+        (reason === 'damaged' ? 'Không thể đọc dữ liệu đã lưu hiện tại của bạn, nên không thể giữ lại làm bản sao lưu trước lần tải này. '
+            : reason === 'too-large' ? 'Dữ liệu hiện tại của bạn lớn hơn mức máy chủ tự lưu trữ chấp nhận cho một bản sao lưu, nên không thể giữ lại làm bản sao lưu trước lần tải này. '
+            : 'Không tìm thấy dữ liệu đã lưu hiện tại để giữ lại làm bản sao lưu trước lần tải này. ')
+        + 'Nếu tiếp tục, bạn sẽ không thể quay lại trạng thái đang được lưu hiện giờ từ danh sách sao lưu. Tiếp tục mà không có bản sao lưu?',
+    internalBackupLoadedNoCopy: "Đã tải bản sao lưu. Đang làm mới ứng dụng.",
     backupAndFiles: "Sao lưu & Tệp",
     assetIntegrityHeading: "Tính toàn vẹn Bộ nhớ đệm Tài sản",
     assetIntegrityDescription: "Đối chiếu hình ảnh/tài sản đã lưu trong bộ nhớ đệm với mã băm nội dung của chính chúng để phát hiện hỏng dữ liệu, mà không cần tải lại bất kỳ thứ gì từ bộ nhớ lưu trữ. Đây là thao tác chỉ đọc, trừ khi bạn chọn xóa một mục bị hỏng.",

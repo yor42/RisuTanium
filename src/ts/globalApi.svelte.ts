@@ -1085,8 +1085,6 @@ export async function reloadSaveEncoder(previousEncoder: RisuSaveEncoder, db: Da
     const freshEncoder = new RisuSaveEncoder()
     await freshEncoder.init(db, {
         compression: opts.compression,
-        skipRemoteSavingOnCharacters: false,
-        enableRemoteSaving: false,
         previous: previousEncoder
     })
     return freshEncoder
@@ -1259,7 +1257,7 @@ function parseSaveBroadcast(data: unknown): SaveBroadcast | null {
 const CONVERSION_ATTEMPTS = 3
 
 /** What a block is called to a person: its character's name when it is a character's block, otherwise plain words for the kind of data. An internal block name is never shown. */
-function describeBlockForPerson(blockName: string): string {
+export function describeBlockForPerson(blockName: string): string {
     const character = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId) === blockName)
     return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
 }
@@ -1353,8 +1351,7 @@ export async function saveDb() {
         tracker: changeTracker,
         installMarks: installCharacterSaveMarks,
         init: () => encoder.init(getDatabase(), {
-            compression: false,
-            enableRemoteSaving: false
+            compression: false
         }),
         createRealScheduler: () => saveTimeoutExecute
     })

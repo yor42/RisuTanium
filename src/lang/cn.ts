@@ -1400,8 +1400,6 @@ export const languageChinese = {
     "otherTabSavedConflictStay": "暂时留在这里（此标签页将停止尝试保存；在您重新加载之前，您的更改不会被保存）",
     "savingStoppedStayMessage": "此标签页已停止保存。由于另一个标签页保存了更改后您选择留下，此标签页的数据副本已过期，无法再保存。从现在起所做的更改将不会被保留。重新加载会获取当前的数据 — 任何未保存的本地更改都将丢失。",
     "savingStoppedNodeConflictMessage": "此标签页已停止保存。您的本地数据与自托管服务器上较新的版本发生冲突，因此此标签页已永久停止尝试保存。从现在起所做的更改将不会被保留。请重新加载应用程序以获取当前的数据 — 任何未同步的本地更改都将丢失。",
-    "savingStoppedTooLargeMessage": (limitBytes: number) =>
-        `此标签页已停止保存：您的数据超过了自托管服务器单次保存所能接受的大小（${limitBytes / (1024 * 1024)} MiB；如果服务器前的代理设置了更低的限制，则以更低的为准）。自上次成功保存以来的更改将在重新加载时丢失。重新加载后，启动时可以将角色移入归档存储以减小保存体积，但仅限于角色归档已开启且能够运行的情况。如果保存再次停止，请缩减数据，例如删除不再需要的聊天或角色。`,
     "duplicateChaIdSavePausedMessage": (characterGroups: string) =>
         `以下角色与另一个角色共享内部 ID，因此保存文件对每个共享 ID 只能保留一个：${characterGroups || "两个角色"}。系统会保留在此问题出现之前最近一次保存过的角色；如果两者都从未保存过，则保留最先写入的角色。在此问题持续期间，它们的保存都会暂停。当每个 ID 只由一个角色持有时，保存才会恢复——例如，永久删除多余的角色（先将其移至垃圾桶，再从垃圾桶中删除）。`,
     "maxSupaChunkSize": "最大 SupaMemory Chunk 大小",
@@ -1883,7 +1881,6 @@ export const languageChinese = {
         "save": "保存",
         "cancel": "取消"
     },
-    "enableRemoteSaving": "启用远程保存",
     "blockquoteStyling": "引用块样式",
     "dynamicModelRegistry": "动态模型注册表",
     "confirmInstallPluginViaPlugin": "插件 {source} 正在尝试安装插件 {plugin}。如果来源插件不可信，这可能带来风险。是否继续？",
@@ -2061,6 +2058,17 @@ export const languageChinese = {
     "saveConversionFailedAlert": "将您的数据迁移到新的保存格式在多次尝试后仍未成功。已保存的数据没有任何更改，且此标签页已停止保存。请重新加载页面以重试。",
     "saveSnapshotSkippedTooLarge": "您的数据超过了自托管服务器单个文件所能接受的大小，因此自动备份副本已被跳过。保存不受影响。若要保留备份，请在设置的“备份 & 文件”下使用“本地保存备份”导出 .bin 文件。",
     "saveSnapshotSkippedMemory": "此设备无法为您数据的自动备份副本预留足够的内存，因此已跳过。保存不受影响。",
+    "restoreLeftOutConfirm": (items: string) =>
+        `此备份文件已部分损坏。只能恢复仍然完好的部分，以下内容将被排除：\n\n${items}\n\n您当前的数据将被这些完好的部分替换。要恢复吗？`,
+    "restoreNotHappenedNotice": "在读取备份期间，您已保存的数据被其他标签页或设备更改，因此未读取该备份，也没有更改任何内容。请重新加载页面后再试。",
+    "restoreTooLargeBlock": (what: string, limitBytes: number) =>
+        `无法读取此备份：自托管服务器单次请求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果服务器前的代理设置了更低的限制，则以更低的为准），而${what ? `您的这部分数据超出了该限制：${what}` : '您的部分数据超出了该限制'}。没有更改任何内容。`,
+    "restoreNoUndoCopyConfirm": (reason: 'damaged' | 'absent' | 'too-large') =>
+        (reason === 'damaged' ? '无法读取您当前已保存的数据，因此在本次读取之前无法将其保留为备份副本。'
+            : reason === 'too-large' ? '您当前的数据超过了自托管服务器作为单个备份副本所能接受的大小，因此在本次读取之前无法将其保留为备份。'
+            : '未找到可在本次读取之前保留为备份副本的当前已保存数据。')
+        + '如果继续，您将无法从备份列表中回到当前已保存的状态。要在没有备份副本的情况下继续吗？',
+    "internalBackupLoadedNoCopy": "备份已读取。正在刷新应用。",
     "backupAndFiles": "备份 & 文件",
     "assetIntegrityHeading": "资源缓存完整性",
     "assetIntegrityDescription": "将缓存的图片/资源与其自身的内容哈希进行比对以检测损坏，无需从存储中重新下载任何内容。除非您选择移除已损坏的条目，否则此操作为只读。",

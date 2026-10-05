@@ -21,18 +21,20 @@
  * A "save cycle" is modeled directly here, not driven through the real (and
  * for this file, unrelated) `saveDb()` encoder pipeline: it acquires
  * `dbWriteLock`, writes through `forageStorage.setItem`, and releases,
- * exactly the shape `saveDb()`'s own write does. The race under test is
- * about which write commits last on the shared write mutex, not about the
- * encoder that produces the bytes, so a lighter stand-in for the write
- * itself keeps the test focused on I10 without pulling in the whole encoder.
+ * exactly the shape `saveDb()`'s own commit does around its writes. The race
+ * under test is about which write lands last on the shared write mutex, not
+ * about the encoder that produces the bytes, so a lighter stand-in for the
+ * write itself keeps the test focused on I10 without pulling in the whole
+ * encoder.
  *
  * `forageStorage.setItem` (the real `AutoStorage` instance's mocked method,
  * from the `storage/autoStorage` mock below) is a single controllable seam:
- * a write whose bytes match the save cycle's own payload is held back until
- * the test explicitly releases it, and only commits into the in-memory
- * store at that point; every other write commits immediately. This models
- * an async storage write whose actual completion time -- not its call
- * order -- decides which write's bytes remain in the store afterward.
+ * the save cycle's write is held back until the test explicitly releases it,
+ * and only lands in the in-memory store at that point; every other write
+ * lands immediately. The restore writes its profile as a block generation
+ * whose head is the last key written. This models an async storage write
+ * whose actual completion time -- not its call order -- decides which write
+ * remains last.
  *
  * `globalApi.svelte.ts` reads `navigator.locks` once, at module-evaluation
  * time, to build its `dbWriteLock` singleton, and I10's own successful-restore
@@ -70,6 +72,8 @@ vi.mock(import('../../platform'), () => ({
 }) as unknown as typeof import('../../platform'))
 
 const setDatabaseMock = vi.hoisted(() => vi.fn())
+/** What the web storage object holds. */
+const webFiles = vi.hoisted(() => new Map<string, Uint8Array>())
 
 vi.mock(import('../../storage/database.svelte'), () => ({
     getDatabase: vi.fn(() => {
@@ -198,10 +202,10 @@ vi.mock(import('../../storage/dbChangeEffects.svelte'), () => ({
 
 vi.mock(import('../../storage/autoStorage'), () => ({
     AutoStorage: class {
-        getItem = vi.fn(async (_key: string) => null as unknown)
-        setItem = vi.fn(async () => null)
-        keys = vi.fn(async () => [] as string[])
-        removeItem = vi.fn(async () => { })
+        getItem = vi.fn(async (key: string) => (webFiles.get(key) ?? null) as unknown)
+        setItem = vi.fn(async (key: string, value: Uint8Array) => { webFiles.set(key, value); return null })
+        keys = vi.fn(async () => Array.from(webFiles.keys()))
+        removeItem = vi.fn(async (key: string) => { webFiles.delete(key) })
     },
 }) as unknown as typeof import('../../storage/autoStorage'))
 
@@ -381,12 +385,14 @@ class FakeSingleTabLockManager {
 let globalApi: typeof import('../../globalApi.svelte')
 let loadLocalBackup: typeof import('../backuplocal')['LoadLocalBackup']
 let encodeRisuSaveLegacy: typeof import('../../storage/risuSave')['encodeRisuSaveLegacy']
+let committedMainPrompt: () => Promise<unknown>
 
 beforeEach(async () => {
     // See the file header: every test gets its own module graph, built on its
     // own fresh lock manager, so a lock one test's own successful-restore
     // scenario deliberately never releases can never block a later test.
     vi.resetModules()
+    webFiles.clear()
     // globalApi.svelte.ts reads navigator.locks once, at module-evaluation
     // time -- this must be set before the dynamic import below, not after.
     Object.defineProperty(window.navigator, 'locks', {
@@ -394,48 +400,59 @@ beforeEach(async () => {
         configurable: true,
     })
     globalApi = await import('../../globalApi.svelte')
-    // The restore writes the main file through the page's byte store; here it is the storage-object model.
+    // The restore writes a block generation through the page's byte store; here it is the storage-object model, on a desktop-kind page.
     const { injectAppStore } = await import('../../storage/store/appStore')
-    injectAppStore(createForageBackedStore(globalApi.forageStorage as unknown as ForageLike))
+    injectAppStore(createForageBackedStore(globalApi.forageStorage as unknown as ForageLike), 'tauri')
     const backuplocal = await import('../backuplocal')
     loadLocalBackup = backuplocal.LoadLocalBackup
     const risuSave = await import('../../storage/risuSave')
     encodeRisuSaveLegacy = risuSave.encodeRisuSaveLegacy
+    const pageOwner = await import('../../storage/pageBlockOwner')
+    const profileValidate = await import('../../storage/blockProfileValidate')
+    committedMainPrompt = async () => {
+        const owner = await pageOwner.getPageBlockOwner()
+        const committed = await owner!.readCommitted({ validate: profileValidate.validateLoadedBlocks })
+        return committed.kind === 'loaded' ? (committed.tree as unknown as { mainPrompt?: unknown }).mainPrompt : null
+    }
 })
+
+/** The key a modeled save cycle writes: outside `blocks/`, so a write of the restored profile is told apart from it. */
+const SAVE_CYCLE_KEY = 'probe/save-cycle'
 
 /**
  * Models "a save cycle": acquires the real `dbWriteLock`, writes through the
  * real `forageStorage.setItem`, and releases -- exactly the shape `saveDb()`'s
- * own write takes around the same key.
+ * own commit takes around its writes.
  */
 async function runSaveCycle(payload: Uint8Array): Promise<void> {
     const release = await globalApi.dbWriteLock.acquire()
     try {
-        await globalApi.forageStorage.setItem('database/database.bin', payload)
+        await globalApi.forageStorage.setItem(SAVE_CYCLE_KEY, payload)
     } finally {
         release()
     }
 }
 
 /**
- * Routes `forageStorage.setItem` for `database/database.bin`: the call whose
- * bytes match `gatedBytes` resolves, and commits into `store`, only once the
- * returned `release()` is called; every other call commits immediately.
+ * Routes `forageStorage.setItem`: the save cycle's write resolves, and lands in
+ * the store, only once the returned `release()` is called; every other call
+ * lands at once. The keys written are recorded in the order they landed. This
+ * models an async storage write whose actual completion time -- not its call
+ * order -- decides which write remains last.
  */
-function armGatedSetItem(gatedBytes: Uint8Array, store: Map<string, Uint8Array>): { release: () => void } {
+function armGatedSetItem(): { release: () => void, landed: string[] } {
     let resolveGate: () => void = () => { }
     const gate = new Promise<void>((resolve) => { resolveGate = resolve })
+    const landed: string[] = []
     vi.mocked(globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, data: unknown) => {
-        const bytes = data as Uint8Array
-        if (key === 'database/database.bin' && bytesEqual(bytes, gatedBytes)) {
+        if (key === SAVE_CYCLE_KEY) {
             await gate
-            store.set(key as string, bytes)
-            return null
         }
-        store.set(key as string, bytes)
+        webFiles.set(key as string, data as Uint8Array)
+        landed.push(key as string)
         return null
     })
-    return { release: () => resolveGate() }
+    return { release: () => resolveGate(), landed }
 }
 
 describe('LoadLocalBackup(): a failed restore write never leaves dbWriteLock held (guard)', () => {
@@ -445,7 +462,7 @@ describe('LoadLocalBackup(): a failed restore write never leaves dbWriteLock hel
         const fixtureBytes = buildChunk('database.risudat', restoreBytes)
 
         vi.mocked(globalApi.forageStorage.setItem).mockImplementation(async (key: unknown) => {
-            if (key === 'database/database.bin') {
+            if (typeof key === 'string' && key.startsWith('blocks/')) {
                 throw new Error('scratch: restore write failed')
             }
             return null
@@ -459,61 +476,57 @@ describe('LoadLocalBackup(): a failed restore write never leaves dbWriteLock hel
     })
 })
 
-describe('LoadLocalBackup() and a save cycle that already holds dbWriteLock race the same database.bin write (I10)', () => {
-    test('a save cycle that already holds dbWriteLock, and completes its write late, never leaves its pre-restore payload as the last write', async () => {
-        const store = new Map<string, Uint8Array>()
-        const preRestoreDb = { characters: [], mainPrompt: 'pre-restore-marker' } as unknown as Database
+describe('LoadLocalBackup() and a save cycle that already holds dbWriteLock race the restored generation (I10)', () => {
+    test('a save cycle that already holds dbWriteLock, and completes its write late, never lands after the restored head or into the restored generation', async () => {
+        const preRestoreBytes = new TextEncoder().encode('pre-restore save cycle payload')
         const restoreDb = { characters: [], mainPrompt: 'restored-marker' } as unknown as Database
-        const preRestoreBytes = encodeRisuSaveLegacy(preRestoreDb, 'noCompression')
         const restoreBytes = encodeRisuSaveLegacy(restoreDb, 'noCompression')
         const fixtureBytes = buildChunk('database.risudat', restoreBytes)
 
-        const gate = armGatedSetItem(preRestoreBytes, store)
+        const gate = armGatedSetItem()
 
         const saveCyclePromise = runSaveCycle(preRestoreBytes)
         const restorePromise = loadBackupBytes(fixtureBytes)
 
-        // Gives the restore -- unlocked at HEAD -- room to attempt, and (at
-        // HEAD) complete, its own write before the save cycle's held-back
-        // write is allowed to land.
+        // Gives the restore room to attempt, and (were it not behind the
+        // save cycle's lock) complete, its own replace before the save
+        // cycle's held-back write is allowed to land.
         await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(gate.landed.filter((key) => key.startsWith('blocks/')), 'a block of the restored profile landed while the save cycle held the lock').toEqual([])
 
         gate.release()
         await saveCyclePromise
         await restorePromise
 
-        const lastWritten = store.get('database/database.bin')
-        expect(lastWritten).toBeDefined()
-        expect(bytesEqual(lastWritten!, restoreBytes)).toBe(true)
+        expect(gate.landed[0]).toBe(SAVE_CYCLE_KEY)
+        expect(gate.landed[gate.landed.length - 1]).toBe('blocks/head')
+        expect(await committedMainPrompt()).toBe('restored-marker')
     })
 })
 
-describe('LoadLocalBackup() and a save cycle that asks for dbWriteLock only after the restore write races the same database.bin write (I10)', () => {
-    test('a save cycle carrying pre-restore bytes never lands once it asks for the lock after the restore has already written', async () => {
-        const store = new Map<string, Uint8Array>()
-        const preRestoreDb = { characters: [], mainPrompt: 'pre-restore-marker-late' } as unknown as Database
+describe('LoadLocalBackup() and a save cycle that asks for dbWriteLock only after the restore wrote race the restored generation (I10)', () => {
+    test('a save cycle carrying pre-restore bytes never lands once it asks for the lock after the restore has already committed', async () => {
+        const preRestoreBytes = new TextEncoder().encode('late pre-restore save cycle payload')
         const restoreDb = { characters: [], mainPrompt: 'restored-marker-late' } as unknown as Database
-        const preRestoreBytes = encodeRisuSaveLegacy(preRestoreDb, 'noCompression')
         const restoreBytes = encodeRisuSaveLegacy(restoreDb, 'noCompression')
         const fixtureBytes = buildChunk('database.risudat', restoreBytes)
 
-        vi.mocked(globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, data: unknown) => {
-            store.set(key as string, data as Uint8Array)
-            return null
-        })
+        const gate = armGatedSetItem()
+        gate.release()
 
         // The restore runs to completion, unblocked, before the save cycle
-        // -- which had already encoded preRestoreBytes, the way saveDb()
+        // -- which had already encoded its payload, the way saveDb()
         // encodes before it ever asks for the lock -- makes its own first
         // request for dbWriteLock.
         await loadBackupBytes(fixtureBytes)
-        expect(bytesEqual(store.get('database/database.bin')!, restoreBytes)).toBe(true)
+        expect(await committedMainPrompt()).toBe('restored-marker-late')
 
         let landed = false
         void runSaveCycle(preRestoreBytes).then(() => { landed = true })
         await new Promise((resolve) => setTimeout(resolve, 50))
 
         expect(landed).toBe(false)
-        expect(bytesEqual(store.get('database/database.bin')!, restoreBytes)).toBe(true)
+        expect(gate.landed).not.toContain(SAVE_CYCLE_KEY)
+        expect(await committedMainPrompt()).toBe('restored-marker-late')
     })
 })

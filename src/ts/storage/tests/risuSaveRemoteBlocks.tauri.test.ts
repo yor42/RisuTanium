@@ -1,22 +1,19 @@
 /**
  * Remote character blocks on the desktop build (`remotes/<chaId>.<hash>.bin`
- * under AppData): how `RisuSaveEncoder` writes and skips them and how
- * `decodeRisuSave` reads them, at the plugin file-system boundary.
+ * under AppData): the encoder writes nothing for them, and `decodeRisuSave`
+ * still reads the ones a legacy save points at, at the plugin file-system
+ * boundary.
  *
- * The file system is the strict in-memory `createFakeTauriFs`, whose
- * `writeFile` truncates and leaves a partial body behind when it fails, as the
- * real plugin's does; the same assertions therefore hold whichever write path
- * the encoder takes. Nothing here says anything about the native file API.
- * `risuSave.ts` is real; the database, platform and the rest of the app are
- * mocked. Each test loads a fresh module graph, which is a fresh page load for
- * the encoder's memory of the blocks it has already written.
+ * The file system is the strict in-memory `createFakeTauriFs`. Nothing here
+ * says anything about the native file API. `risuSave.ts` is real; the
+ * database, platform and the rest of the app are mocked. Each test loads a
+ * fresh module graph.
  *
- * Tests titled `guard:` assert behaviour that must be preserved and pass before
- * and after the remote blocks moved behind the byte store. The others assert
- * behaviour only the store-based encoder has.
+ * Tests titled `guard:` assert behaviour that must be preserved.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { BLOCK, composeSave } from './manualCleanupHarness'
+import { parseBlocks } from './risuSaveBlockFile'
 import type { Database } from '../database.svelte'
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
@@ -94,24 +91,8 @@ async function loadRisuSave() {
     return await import('src/ts/storage/risuSave')
 }
 
-/** The key the encoder stores `character` under: the hash is of the character's own JSON. */
-async function remoteKeyOf(character: TestCharacter): Promise<string> {
-    const { hashRemoteBlockContent } = await loadRisuSave()
-    return `remotes/${character.chaId}.${await hashRemoteBlockContent(new TextEncoder().encode(JSON.stringify(character)))}.bin`
-}
-
 function bytesOf(character: TestCharacter): Uint8Array {
     return new TextEncoder().encode(JSON.stringify(character))
-}
-
-/** A path as the plugin was given it, relative to AppData: the byte store passes `./`-prefixed paths. */
-function relative(path: string): string {
-    return path.replace(/^\.\//, '')
-}
-
-/** Every write into `remotes/`, the temp file of an atomic write included, whatever the path's spelling. */
-function remoteWrites() {
-    return fakeFs.writeLog.filter((entry) => relative(entry.path).startsWith('remotes/'))
 }
 
 beforeEach(() => {
@@ -119,91 +100,19 @@ beforeEach(() => {
     vi.resetModules()
 })
 
-describe('writing a remote block on the desktop build', () => {
-    test('a write that fails part-way leaves no remote file and no temp file, and the encode fails', async () => {
-        const character = characterOf('s15-first', 'S15 first-write marker')
-        const key = await remoteKeyOf(character)
-        const fault = fakeFs.failWritesOf((body) => new TextDecoder().decode(body).includes('S15 first-write marker'))
-        const { RisuSaveEncoder } = await loadRisuSave()
+describe('the encoder on the desktop build', () => {
+    test('with Remote Saving on in the live database, init and set write nothing under remotes/ or anywhere else and keep every character inline', async () => {
+        const characters = [characterOf('s15-first', 'first marker'), characterOf('s15-second', 'second marker')]
+        const { RisuSaveEncoder, RisuSaveType } = await loadRisuSave()
+        const encoder = new RisuSaveEncoder()
 
-        await expect(new RisuSaveEncoder().init(dbOf(character), { skipRemoteSavingOnCharacters: false })).rejects.toBeDefined()
+        await encoder.init(dbOf(...characters), { compression: false })
+        await encoder.set(dbOf(...characters), { character: ['s15-second'], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
 
-        expect(fault.fired).toBe(1)
-        expect(fakeFs.files.has(key)).toBe(false)
-        expect(fakeFs.listing('remotes')).toEqual([])
-    })
-
-    test('a rewrite that fails part-way keeps the file that was there', async () => {
-        const character = characterOf('s15-rewrite', 'S15 rewrite marker')
-        const key = await remoteKeyOf(character)
-        const earlier = new Uint8Array([1, 2, 3, 4])
-        fakeFs.plant(key, earlier)
-        const fault = fakeFs.failWritesOf((body) => new TextDecoder().decode(body).includes('S15 rewrite marker'))
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await expect(new RisuSaveEncoder().init(dbOf(character), { skipRemoteSavingOnCharacters: false })).rejects.toBeDefined()
-
-        expect(fault.fired).toBe(1)
-        expect(Array.from(fakeFs.files.get(key) ?? [])).toEqual(Array.from(earlier))
-        expect(fakeFs.listing('remotes')).toEqual([key.slice('remotes/'.length)])
-    })
-
-    test('guard: the first write creates remotes/ and leaves exactly the block, byte for byte, with no temp file', async () => {
-        const character = characterOf('s15-parents', 'S15 parents marker')
-        const key = await remoteKeyOf(character)
+        expect(fakeFs.writeLog).toEqual([])
         expect(fakeFs.directories.has('remotes')).toBe(false)
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(character), { skipRemoteSavingOnCharacters: false })
-
-        expect(Array.from(fakeFs.files.get(key) ?? [])).toEqual(Array.from(bytesOf(character)))
-        expect(fakeFs.listing('remotes')).toEqual([key.slice('remotes/'.length)])
-    })
-})
-
-describe('the existence skip on the desktop build', () => {
-    test('guard: a block that is already stored is not rewritten by init', async () => {
-        const character = characterOf('skip-stored', 'skip stored marker')
-        const key = await remoteKeyOf(character)
-        const stored = bytesOf(character)
-        fakeFs.plant(key, stored)
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(character))
-
-        expect(remoteWrites()).toEqual([])
-        expect(Array.from(fakeFs.files.get(key) ?? [])).toEqual(Array.from(stored))
-    })
-
-    test('guard: a block that is not stored is written by init while a stored one is not', async () => {
-        const stored = characterOf('skip-mixed-stored', 'mixed stored marker')
-        const missing = characterOf('skip-mixed-missing', 'mixed missing marker')
-        fakeFs.plant(await remoteKeyOf(stored), bytesOf(stored))
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(stored, missing))
-
-        expect(Array.from(fakeFs.files.get(await remoteKeyOf(missing)) ?? [])).toEqual(Array.from(bytesOf(missing)))
-        const bodiesWritten = remoteWrites().map((entry) => new TextDecoder().decode(entry.data))
-        expect(bodiesWritten).toEqual([JSON.stringify(missing)])
-    })
-
-    test.each([true, false])('guard: a block written, changed and changed back within one page load is written once per content (skip flag %s)', async (skip) => {
-        const first = characterOf('s16-origin', 'origin content A')
-        const changed = characterOf('s16-origin', 'origin content B')
-        const keyA = await remoteKeyOf(first)
-        const keyB = await remoteKeyOf(changed)
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(first), { skipRemoteSavingOnCharacters: skip })
-        await new RisuSaveEncoder().init(dbOf(changed), { skipRemoteSavingOnCharacters: skip })
-        expect(remoteWrites().length).toBeGreaterThanOrEqual(2)
-        const writesBeforeReturn = remoteWrites().length
-        await new RisuSaveEncoder().init(dbOf(characterOf('s16-origin', 'origin content A')), { skipRemoteSavingOnCharacters: skip })
-
-        expect(remoteWrites().length).toBe(writesBeforeReturn)
-        expect(Array.from(fakeFs.files.get(keyA) ?? [])).toEqual(Array.from(bytesOf(first)))
-        expect(Array.from(fakeFs.files.get(keyB) ?? [])).toEqual(Array.from(bytesOf(changed)))
+        const types = parseBlocks(new Uint8Array(encoder.encode()!)).filter((block) => characters.some((c) => c.chaId === block.name)).map((block) => block.type)
+        expect(types).toEqual([RisuSaveType.CHARACTER_WITH_CHAT, RisuSaveType.CHARACTER_WITH_CHAT])
     })
 })
 

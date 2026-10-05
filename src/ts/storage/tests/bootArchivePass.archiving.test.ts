@@ -110,6 +110,8 @@ vi.mock(import('src/ts/alert'), () => ({
 }) as unknown as typeof import('src/ts/alert'))
 
 import { RisuSaveEncoder, decodeRisuSave, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
+import { getAppStore } from 'src/ts/storage/store/appStore'
+import { withRemoteCharacters } from './remoteFileFixture'
 import { NodeStorage } from 'src/ts/storage/nodeStorage'
 import { openBootArchiveSession } from 'src/ts/storage/bootArchivePass'
 
@@ -422,8 +424,9 @@ describe('boot archive pass: committed character blocks follow remote saving', (
         const ids = [uid('remote-a'), uid('remote-b')]
         const tree = baseTree(ids.map((id) => fullCharacter(id, `Name ${id}`)), { enableRemoteSaving: true })
         const world = await setupWorld(kit, 'node', null)
-        h.db = { enableRemoteSaving: true }
-        world.seedMain(await encodeAsSaveDb(RisuSaveEncoder, tree))
+        // The legacy main file of a profile that had Remote Saving on: its characters are remote pointers.
+        const store = await getAppStore()
+        world.seedMain(await withRemoteCharacters(await encodeAsSaveDb(RisuSaveEncoder, tree), ids, async (key, bytes) => { await store.write(key, bytes, 'unconditional') }))
         h.db = { enableRemoteSaving: true }
         const remotesBefore = (world.server as NonNullable<World['server']>).keysWithPrefix('remotes/').sort()
         expect(remotesBefore.length, 'the fixture holds remote files for the pass to resolve').toBe(2)

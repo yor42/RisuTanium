@@ -64,8 +64,11 @@ vi.mock(import('../../storage/dbChangeEffects.svelte'), () => ({
 
 /** Stable across every `vi.resetModules()` re-import in this file (`vi.hoisted()`'s whole point) -- J6 inspects this directly to tell "installed" from "not yet installed", instead of a real `DBState.db` this mock never touches. */
 const setDatabaseMock = vi.hoisted(() => vi.fn())
-/** The Tauri file system stand-in: written, renamed and removed files, keyed by AppData-relative path. */
-const tauriFiles = vi.hoisted(() => new Map<string, Uint8Array>())
+/** The Tauri file system stand-in the desktop store runs over, and the durable-write command it answers. */
+const fakeFsReady = vi.hoisted(() => import('src/ts/storage/tests/tauriFsFake').then((module) => module.createFakeTauriFs({ strict: false })))
+let fakeFs: Awaited<typeof fakeFsReady>
+/** What the web storage object holds, keyed as the page's store keys it. */
+const webFiles = vi.hoisted(() => new Map<string, Uint8Array>())
 
 vi.mock(import('../../storage/database.svelte'), () => ({
     getDatabase: vi.fn(() => {
@@ -119,9 +122,9 @@ vi.mock(import('../../util'), () => ({
     sleepForever: vi.fn(async () => { }),
 }) as unknown as typeof import('../../util'))
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('@tauri-apps/api/core', async () => ({
     convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
+    invoke: (await fakeFsReady).invoke,
 }))
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -145,23 +148,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
     })),
 }))
 
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0, Download: 1 },
-    writeFile: vi.fn(async (path: string, data: Uint8Array) => { tauriFiles.set(path, data.slice()) }),
-    readFile: vi.fn(async () => new Uint8Array()),
-    exists: vi.fn(async () => false),
-    mkdir: vi.fn(async () => { }),
-    readDir: vi.fn(async () => []),
-    remove: vi.fn(async (path: string) => { tauriFiles.delete(path) }),
-    rename: vi.fn(async (from: string, to: string) => {
-        const found = tauriFiles.get(from)
-        if (!found) {
-            throw `no such file ${from} (os error 2)`
-        }
-        tauriFiles.set(to, found)
-        tauriFiles.delete(from)
-    }),
-}))
+vi.mock('@tauri-apps/plugin-fs', async () => (await fakeFsReady).module)
 
 vi.mock('@tauri-apps/plugin-process', () => ({
     relaunch: vi.fn(async () => { }),
@@ -198,10 +185,10 @@ vi.mock(import('../../characterCards'), () => ({
 
 vi.mock(import('../../storage/autoStorage'), () => ({
     AutoStorage: class {
-        getItem = vi.fn(async (_key: string) => null as unknown)
-        setItem = vi.fn(async () => null)
-        keys = vi.fn(async () => [] as string[])
-        removeItem = vi.fn(async () => { })
+        getItem = vi.fn(async (key: string) => (webFiles.get(key) ?? null) as unknown)
+        setItem = vi.fn(async (key: string, value: Uint8Array) => { webFiles.set(key, value); return null })
+        keys = vi.fn(async () => Array.from(webFiles.keys()))
+        removeItem = vi.fn(async (key: string) => { webFiles.delete(key) })
     },
 }) as unknown as typeof import('../../storage/autoStorage'))
 
@@ -388,13 +375,14 @@ async function bootTabA(locksValue: LockManager | undefined): Promise<BootedTabA
         configurable: true,
     })
     const globalApi = await import('../../globalApi.svelte')
-    // The restore writes the main file through the page's byte store: the
+    // The restore commits a block generation through the page's byte store: the
     // storage-object model on the web, the desktop store on Tauri.
     const platform = await import('../../platform')
     const { injectAppStore } = await import('../../storage/store/appStore')
     const webStore = createForageBackedStore(globalApi.forageStorage as unknown as ForageLike)
     const tauriStore = createTauriFilesStore({ platform: 'posix' })
-    injectAppStore(createSwitchedStore(() => platform.isTauri ? tauriStore : webStore))
+    // Both stores are written as a block store on a desktop-kind page: the owner's swap and lock do not depend on the store behind them.
+    injectAppStore(createSwitchedStore(() => platform.isTauri ? tauriStore : webStore), 'tauri')
     const backuplocal = await import('../backuplocal')
     const risuSave = await import('../../storage/risuSave')
     const alertModule = await import('../../alert')
@@ -422,6 +410,9 @@ let tabA: BootedTabA
 beforeEach(async () => {
     setDatabaseMock.mockClear()
     core = new FakeLockManagerCore()
+    webFiles.clear()
+    fakeFs = await fakeFsReady
+    fakeFs.reset()
     tabA = await bootTabA(new FakeTabLockManagerView(core, 'A') as unknown as LockManager)
     // A static `vi.mock(...)` factory (unlike a `vi.hoisted()` binding) runs
     // once for the whole file, not once per `vi.resetModules()` re-import --
@@ -483,7 +474,7 @@ describe('J2: no Web Locks on a web build', () => {
         const fixture = buildValidFixture('restored-no-locks-continue', tabA.encodeRisuSaveLegacy)
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
-        expect(tabA.globalApi.forageStorage.setItem).toHaveBeenCalledWith('database/database.bin', expect.any(Uint8Array))
+        expect(tabA.globalApi.forageStorage.setItem).toHaveBeenCalledWith('blocks/head', expect.any(Uint8Array))
     })
 
     test('compatibility guard: Tauri never shows the no-Web-Locks warning', async () => {
@@ -505,10 +496,11 @@ describe('J3: a mid-restore blocks a new tab from booting until it releases', ()
     test('a new tab\'s presence lock stays ungranted while a restore is mid-way, and grants once it releases', async () => {
         let resolveGate: () => void = () => { }
         const gate = new Promise<void>((resolve) => { resolveGate = resolve })
-        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown) => {
-            if (key === 'database/database.bin') {
+        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, value: unknown) => {
+            if (key === 'blocks/head') {
                 await gate
             }
+            webFiles.set(key as string, value as Uint8Array)
             return null
         })
 
@@ -618,10 +610,11 @@ describe('J5: every early exit leaves this page, and the origin, still usable (g
     })
 
     test('guard: a rejecting database write leaves this page usable', async () => {
-        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown) => {
-            if (key === 'database/database.bin') {
+        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, value: unknown) => {
+            if (typeof key === 'string' && key.startsWith('blocks/') && key !== 'blocks/head') {
                 throw new Error('scratch: restore write failed')
             }
+            webFiles.set(key as string, value as Uint8Array)
             return null
         })
         const fixture = buildValidFixture('write-failed-j5', tabA.encodeRisuSaveLegacy)
@@ -637,10 +630,11 @@ describe('J6: exactly one message on failure, never an unhandled rejection', () 
         // A plain rejecting function, not vi.fn() -- a vi.fn()-produced
         // rejection already looks handled to Node's unhandledRejection
         // detector regardless of what the code under test does with it.
-        tabA.globalApi.forageStorage.setItem = ((key: string) => {
-            if (key === 'database/database.bin') {
+        tabA.globalApi.forageStorage.setItem = ((key: string, value: Uint8Array) => {
+            if (key.startsWith('blocks/') && key !== 'blocks/head') {
                 return Promise.reject(new Error('scratch: restore write failed'))
             }
+            webFiles.set(key, value)
             return Promise.resolve(null)
         }) as typeof tabA.globalApi.forageStorage.setItem
 

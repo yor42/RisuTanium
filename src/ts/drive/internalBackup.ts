@@ -1,12 +1,16 @@
-import { alertClear, alertConfirm, alertError, alertSelect, alertWait } from "../alert";
+import { alertClear, alertConfirm, alertError, alertSelect, alertStore, alertWait } from "../alert";
 import { dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
-import { decodeRisuSave, salvageRisuSave, RisuSaveEncoder, type SalvageOmittedBlock, type toSaveType } from "../storage/risuSave";
+import { decodeRisuSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
 import type { Database } from "../storage/database.svelte";
-import { DBState } from "../stores.svelte";
-import { noteMainFileBytes } from "../storage/mainFileRecord";
-import { getAppStore, writeMainFile, MAIN_FILE_KEY } from "../storage/store/appStore";
+import { repairBotPresetsId } from "../storage/botPresetRepair";
+import { assembleLegacyFile, type BlockSetInput } from "../storage/blockStore";
+import { describeOmitted, layoutFileBytes } from "../storage/bootBlockLoad";
+import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { getPageBlockOwner } from "../storage/pageBlockOwner";
+import { treeToBlockSet } from "../storage/treeToBlockSet";
+import { getAppStore, MAIN_FILE_KEY } from "../storage/store/appStore";
 import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
@@ -14,12 +18,14 @@ import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, type BusyHandle } from "../process/memory/busyActions";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
+import { completeRestoredTree, currentCharacterNames, replaceWithRestoredSet } from "./restoreReplace";
+import { describeBlockForPerson } from "../globalApi.svelte";
 
 const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
 
-/** What the snapshot yields: its exact bytes, or the intact part of it to be rebuilt into a main file. */
+/** What the snapshot yields: its decoded tree, whole, or the intact part of it and the blocks left out. */
 type SnapshotReading =
-    | { kind: 'complete', bytes: Uint8Array }
+    | { kind: 'complete', tree: Database }
     | { kind: 'partial', tree: Database, omitted: Map<string, SalvageOmittedBlock> }
 
 function isDatabaseObject(value: unknown): value is Database {
@@ -27,19 +33,19 @@ function isDatabaseObject(value: unknown): value is Database {
 }
 
 /**
- * Reads the snapshot. A snapshot that decodes strictly is `complete` and is
- * written as the bytes stored. One that does not is read by `salvageRisuSave`,
- * which takes nothing from the block cache: framing, version and root damage
- * still throw, so such a snapshot is refused whole, and any other damage comes
- * back as the intact tree plus the blocks left out.
+ * Reads the snapshot. A snapshot that decodes strictly is `complete`. One that
+ * does not is read by `salvageRisuSave`, which takes nothing from the block
+ * cache: framing, version and root damage still throw, so such a snapshot is
+ * refused whole, and any other damage comes back as the intact tree plus the
+ * blocks left out.
  */
 async function readSnapshot(snapshotKey: string): Promise<SnapshotReading> {
     const { bytes: stored } = await (await getAppStore()).read(snapshotKey)
     if (!stored) {
         throw new Error(`The backup ${snapshotKey} is not in storage`)
     }
-    // A store may hand back a Buffer (a Uint8Array subclass); the copy keeps
-    // the same bytes and makes the value written a plain Uint8Array.
+    // A store may hand back a Buffer (a Uint8Array subclass); the copy makes
+    // the value decoded a plain Uint8Array.
     const bytes: Uint8Array = Object.getPrototypeOf(stored) === Uint8Array.prototype ? stored : new Uint8Array(stored)
 
     try {
@@ -47,7 +53,7 @@ async function readSnapshot(snapshotKey: string): Promise<SnapshotReading> {
         if (!isDatabaseObject(decoded)) {
             throw new Error(`The backup ${snapshotKey} does not hold a database`)
         }
-        return { kind: 'complete', bytes }
+        return { kind: 'complete', tree: decoded }
     } catch (strictError) {
         console.error(strictError)
     }
@@ -56,40 +62,6 @@ async function readSnapshot(snapshotKey: string): Promise<SnapshotReading> {
         throw new Error(`The backup ${snapshotKey} does not hold a database`)
     }
     return { kind: 'partial', tree: db, omitted }
-}
-
-/** The lines of the confirm: every kind or character the intact tree lacks. Empty when nothing the user cares about was left out. */
-function describeLeftOut(omitted: Map<string, SalvageOmittedBlock>): string[] {
-    const names = new Map<string, string>()
-    for (const character of DBState.db?.characters ?? []) {
-        if (character?.chaId !== undefined && typeof character.name === 'string' && character.name !== '') {
-            names.set(String(character.chaId), character.name)
-        }
-    }
-    const lines: string[] = []
-    const kinds = new Set<string>()
-    let unreadable = 0
-    for (const [blockName, block] of omitted) {
-        switch (block.kind) {
-            case 'character':
-                lines.push(names.get(blockName) ?? blockName)
-                break
-            case 'other':
-                unreadable++
-                break
-            case 'ignored':
-                break
-            default:
-                kinds.add(block.kind)
-        }
-    }
-    if (kinds.has('presets')) lines.push(language.internalBackupLeftOutPresets)
-    if (kinds.has('modules')) lines.push(language.internalBackupLeftOutModules)
-    if (kinds.has('loadouts')) lines.push(language.internalBackupLeftOutLoadouts)
-    if (kinds.has('plugins')) lines.push(language.internalBackupLeftOutPlugins)
-    if (kinds.has('pluginStorage')) lines.push(language.internalBackupLeftOutPluginData)
-    if (unreadable > 0) lines.push(`${unreadable} ${language.internalBackupLeftOutUnreadable}`)
-    return lines
 }
 
 const KIND_FIELDS = ['characters', 'botPresets', 'modules', 'loadouts', 'plugins', 'pluginCustomStorage']
@@ -122,34 +94,22 @@ export function setRebuiltBytesTamperForTests(tamper: ((bytes: Uint8Array) => Ui
     rebuiltBytesTamper = tamper
 }
 
-function emptyToSave(): toSaveType {
-    return { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
-}
-
 /**
- * Encodes the intact tree into a main file the way a save does, with no block
- * cache writes, then strictly decodes the bytes (no cache) and compares an
- * identity summary with the tree's: the ordered chaIds, each kind's presence and
- * size, and the root keys. Structural loss is refused; content fidelity comes
- * from the encoder serialising the same objects, not from this check. Throws
- * when the encode, a remote-file write, the decode or the comparison fails; the
- * caller has written no main file yet.
+ * The tree as the block set the restore writes: a fresh encoder frames every
+ * block (nothing is read from or written to storage), then the framed file is
+ * strictly decoded and an identity summary compared with the tree's: the
+ * ordered chaIds, each kind's presence and size, and the root keys. Structural
+ * loss is refused; content fidelity comes from the encoder serialising the
+ * same objects, not from this check. A tree that names no preset keeps its
+ * working settings as a new one. Throws when the encode, the decode or the
+ * comparison fails; nothing has been written yet.
  */
-async function rebuildMainFile(tree: Database): Promise<Uint8Array> {
-    // The live database holds an empty list for each of these when it has none.
-    tree.characters ??= []
-    tree.modules ??= []
-    tree.loadouts ??= []
-    tree.plugins ??= []
+async function rebuildBlockSet(tree: Database): Promise<BlockSetInput> {
+    completeRestoredTree(tree)
+    repairBotPresetsId(tree)
 
-    const encoder = new RisuSaveEncoder()
-    await encoder.init(tree, { compression: false, enableRemoteSaving: !!tree.enableRemoteSaving, writeBlockCache: false })
-    await encoder.set(tree, emptyToSave())
-    const encoded = encoder.encode()
-    if (!encoded) {
-        throw new Error('The encoder produced no file.')
-    }
-    let bytes: Uint8Array = new Uint8Array(encoded)
+    const set = await treeToBlockSet(tree)
+    let bytes: Uint8Array = layoutFileBytes(set.layout)
     if (rebuiltBytesTamper) {
         bytes = rebuiltBytesTamper(bytes)
     }
@@ -157,22 +117,46 @@ async function rebuildMainFile(tree: Database): Promise<Uint8Array> {
     const expected = identitySummary(tree)
     const rebuilt = await decodeRisuSave(bytes, { strict: true })
     if (!isDatabaseObject(rebuilt) || identitySummary(rebuilt) !== expected) {
-        throw new Error('The rebuilt main file does not match the intact part of the backup.')
+        throw new Error('The rebuilt save does not match the intact part of the backup.')
     }
-    return bytes
+    return set
 }
 
+/** Whether the current state was kept as a numbered backup, and when it was not, why there was nothing to keep. */
+type UndoCopy =
+    | { kind: 'kept' }
+    | { kind: 'nothing', reason: 'damaged' | 'absent' | 'too-large' }
+
 /**
- * Stores the main file as it is on disk as a new numbered backup, so the load
- * can be undone from the same list. Reads through the store itself, not
- * `readMainFile`, so the version the page last saw of the main file does not
- * move. An absent main file has nothing to keep. The key is one no backup uses.
+ * Stores the profile's current state as a new numbered backup, so the load can
+ * be undone from the same list. A page with a block head keeps the committed
+ * state, assembled as the main file a legacy reader would read; a page with no
+ * head keeps its main file as it is, read through the store itself. Damaged
+ * committed state, no state at all, or a copy the Node server would refuse
+ * leave nothing to keep, and the caller asks the person before going on. The
+ * key is one no backup uses.
  */
-async function keepCurrentMainFile(): Promise<void> {
+async function keepCurrentState(): Promise<UndoCopy> {
     const store = await getAppStore()
-    const { bytes } = await store.read(MAIN_FILE_KEY)
+    const owner = await getPageBlockOwner()
+    if (owner === null) {
+        throw new Error('This page has no block store to restore into.')
+    }
+    const current = await owner.readCommitted()
+    if (current.kind === 'damaged') {
+        return { kind: 'nothing', reason: 'damaged' }
+    }
+    let bytes: Uint8Array | null
+    if (current.kind === 'loaded') {
+        bytes = assembleLegacyFile(current.loaded)
+    } else {
+        bytes = (await store.read(MAIN_FILE_KEY)).bytes
+    }
     if (!bytes) {
-        return
+        return { kind: 'nothing', reason: 'absent' }
+    }
+    if (store.capabilities.conditionalWrites && bytes.length > NODE_BODY_LIMIT_BYTES) {
+        return { kind: 'nothing', reason: 'too-large' }
     }
     let number = Number((Date.now() / 100).toFixed())
     let key = `${SNAPSHOT_KEY_PREFIX}${number}.bin`
@@ -181,6 +165,7 @@ async function keepCurrentMainFile(): Promise<void> {
         key = `${SNAPSHOT_KEY_PREFIX}${number}.bin`
     }
     await store.write(key, bytes, 'unconditional')
+    return { kind: 'kept' }
 }
 
 export async function loadInternalBackup() {
@@ -283,15 +268,16 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         }
     }
 
-    // Every exit that never lands the write shows one message and then
-    // releases what was taken above. An exit after the write landed keeps the
-    // write lock closed: the main file now holds the snapshot, and a save from
-    // this page's pre-load state must never overwrite it.
+    // Every exit that never lands the restored state shows one message and
+    // then releases what was taken above. An exit after it landed, or after its
+    // outcome could not be confirmed, keeps the write lock closed: a save from
+    // this page's pre-load state must never overwrite the restored profile.
     let releaseDbWriteLock: (() => void) | null = null
-    let writeAttempted = false
-    let writeLanded = false
-    // Which step a failure belongs to, for the message shown. The write itself
-    // is told apart by `writeAttempted`.
+    let replaceStarted = false
+    let restoreLanded = false
+    let writeLockStaysClosed = false
+    // Which step a failure belongs to, for the message shown. The replace itself
+    // is told apart by `replaceStarted`.
     let stage: 'read' | 'rebuild' | 'keep' = 'read'
     try {
         if (!releaseExclusiveHold) {
@@ -301,17 +287,13 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         alertWait('Loading backup...')
         const reading = await readSnapshot(selectedBackup)
 
-        let bytes: Uint8Array
-        if (reading.kind === 'complete') {
-            bytes = reading.bytes
-        } else {
+        if (reading.kind === 'partial') {
             // Nothing has been written. The locks stay held across the confirm,
             // so no other page of this app on this browser origin (or, on Tauri,
-            // this instance) changes the main file, the numbered backups or the
-            // remote files between validation and the write. Another device on a
-            // Node server can still save; the conditional main-file write refuses
-            // the load then.
-            const leftOut = describeLeftOut(reading.omitted)
+            // this instance) changes the profile between validation and the
+            // replace. Another device on a Node server can still save; the
+            // replace then ends without winning and the load does not happen.
+            const leftOut = describeOmitted(reading.omitted, currentCharacterNames())
             if (leftOut.length > 0) {
                 const question = `${language.internalBackupPartialConfirm}\n\n${leftOut.map((item) => `- ${item}`).join('\n')}\n\n${language.internalBackupPartialConfirmKeep}`
                 if (!await alertConfirm(question)) {
@@ -323,24 +305,52 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
                     return
                 }
             }
-            stage = 'rebuild'
-            bytes = await rebuildMainFile(reading.tree)
         }
+        stage = 'rebuild'
+        const restoredSet = await rebuildBlockSet(reading.tree)
 
         stage = 'keep'
-        await keepCurrentMainFile()
+        const undoCopy = await keepCurrentState()
+        if (undoCopy.kind === 'nothing') {
+            // The load is never silent about having no way back.
+            if (!await alertConfirm(language.restoreNoUndoCopyConfirm(undoCopy.reason))) {
+                return
+            }
+            alertWait('Loading backup...')
+        }
 
-        // No await between this check and the write.
+        // The same busy check is asked again at the flip, inside the replace.
         if (refuseBackupLoadWhileBusy(busy)) {
             return
         }
 
-        writeAttempted = true
-        await writeMainFile(bytes)
-        writeLanded = true
-        noteMainFileBytes(bytes)
+        replaceStarted = true
+        const written = await replaceWithRestoredSet(restoredSet, () => !refuseBackupLoadWhileBusy(busy))
+        if (written.kind === 'not-happened') {
+            // The busy guard has already said why when it was the one that refused.
+            if (!written.aborted) {
+                alertError(language.restoreNotHappenedNotice)
+            }
+            return
+        }
+        if (written.kind === 'too-large') {
+            alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit))
+            return
+        }
+        if (written.kind === 'unconfirmed') {
+            // Which state is current is unknown: nothing may save from this
+            // page until a reload shows it.
+            writeLockStaysClosed = true
+            alertStore.set({ type: 'wait', msg: language.saveDamagedUnconfirmed })
+            if (releaseExclusiveHold) {
+                await releaseExclusiveHold(true)
+            }
+            return
+        }
+        restoreLanded = true
+        writeLockStaysClosed = true
 
-        alertWait(language.internalBackupLoaded)
+        alertWait(undoCopy.kind === 'kept' ? language.internalBackupLoaded : language.internalBackupLoadedNoCopy)
         // The hold's Web Lock part is released first so other tabs can
         // proceed, and before the reload is marked app-initiated: the release
         // can queue behind another tab's exclusive request for longer than the
@@ -360,9 +370,9 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         }
     } catch (error) {
         console.error(error)
-        if (writeLanded) {
+        if (restoreLanded) {
             alertWait(language.restoreSavedReloadOrRestart)
-        } else if (writeAttempted) {
+        } else if (replaceStarted) {
             alertError(language.internalBackupWriteFailed)
         } else if (stage === 'rebuild') {
             alertError(language.internalBackupNotRebuilt)
@@ -372,7 +382,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             alertError(language.internalBackupUnreadable)
         }
     } finally {
-        if (!writeLanded) {
+        if (!writeLockStaysClosed) {
             if (releaseDbWriteLock) {
                 releaseDbWriteLock()
             }

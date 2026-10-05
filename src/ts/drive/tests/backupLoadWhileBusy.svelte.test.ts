@@ -11,8 +11,8 @@
  * checks before its picker opens, after the file is chosen and before its
  * write. A refusal writes nothing, reloads nothing and leaves no entry of the
  * load behind. The backup buttons in `UserSettings.svelte` refuse before either of
- * their confirmations is asked. With no work in progress it writes the chosen
- * snapshot as the main file and reloads, and installs nothing in the page.
+ * their confirmations is asked. With no work in progress it commits the chosen
+ * snapshot as a block generation and reloads, and installs nothing in the page.
  *
  * Drives the real `globalApi.svelte.ts`, `sendChat`, the composer and the
  * mounted `UserSettings.svelte`; storage, the provider, the trigger engine and
@@ -562,7 +562,7 @@ import { makeRisuaiAPIV3 } from 'src/ts/plugins/apiV3/v3.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { requiresFullEncoderReload, forageStorage } from 'src/ts/globalApi.svelte'
-import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { injectRestoreStore } from './restoreSupport'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { loadInternalBackup } from 'src/ts/drive/internalBackup'
 import { setDatabase } from 'src/ts/storage/database.svelte'
@@ -884,7 +884,7 @@ beforeEach(() => {
     downloadFileMock.mockClear()
     platformBox.isTauri = false
     // The restore and the internal-backup load go through the page's byte store; here it is the storage-object model.
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
+    injectRestoreStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     for (const key of Object.keys(triggerHandlers)) {
         delete triggerHandlers[key]
     }
@@ -933,13 +933,21 @@ async function importIsolatedLoad() {
         const internal = await import('src/ts/drive/internalBackup')
         const api = await import('src/ts/globalApi.svelte')
         const isolatedAppStore = await import('src/ts/storage/store/appStore')
-        isolatedAppStore.injectAppStore(createForageBackedStore(api.forageStorage as unknown as ForageLike))
+        isolatedAppStore.injectAppStore(createForageBackedStore(api.forageStorage as unknown as ForageLike), 'tauri')
+        const pageOwner = await import('src/ts/storage/pageBlockOwner')
+        const profileValidate = await import('src/ts/storage/blockProfileValidate')
         const stores = await import('src/ts/stores.svelte')
         const database = await import('src/ts/storage/database.svelte')
         const local = await import('src/ts/drive/backuplocal')
         const busy = await import('src/ts/process/memory/busyActions')
         await api.tabPresenceLockAcquired
-        return { load: internal.loadInternalBackup, loadLocal: local.LoadLocalBackup, busy, requiresFullEncoderReload: api.requiresFullEncoderReload, stores, database }
+        /** The ids of the characters in the profile the isolated page's head names, or `null` when it names none. */
+        const committedCharacterIds = async (): Promise<string[] | null> => {
+            const owner = await pageOwner.getPageBlockOwner()
+            const committed = await owner!.readCommitted({ validate: profileValidate.validateLoadedBlocks })
+            return committed.kind === 'loaded' ? (committed.tree.characters ?? []).map((character) => String(character.chaId)) : null
+        }
+        return { load: internal.loadInternalBackup, loadLocal: local.LoadLocalBackup, busy, requiresFullEncoderReload: api.requiresFullEncoderReload, stores, database, committedCharacterIds }
     } finally {
         if (originalLocks) {
             Object.defineProperty(window.navigator, 'locks', originalLocks)
@@ -983,15 +991,20 @@ function backupDb(characters: CharacterFixtureBk[], extra: Record<string, unknow
 /** Stores an internal backup of one character `char-A` where `loadInternalBackup` lists backups, and returns its bytes. */
 async function seedInternalBackup(): Promise<Uint8Array> {
     const encoder = new RisuSaveEncoder()
-    await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false, skipRemoteSavingOnCharacters: false })
+    await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false })
     const bytes = new Uint8Array(encoder.encode()!)
     forageMemStore.set('database/dbbackup-1700000000.bin', bytes)
     return bytes
 }
 
-/** What a refused or failed load must leave alone: no main-file write, no reload, no install. */
+/** Whether the main file or any block of a profile has been written. */
+function profileWritten(): boolean {
+    return Array.from(forageMemStore.keys()).some((key) => key === 'database/database.bin' || key.startsWith('blocks/'))
+}
+
+/** What a refused or failed load must leave alone: no profile write, no reload, no install. */
 function expectNoWriteAndNoReload(): void {
-    expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(false)
+    expect.soft(profileWritten(), 'the main file or a block was written').toBe(false)
     expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
 }
 
@@ -1126,7 +1139,7 @@ describe('loadInternalBackup waits for work', () => {
         expectNoWriteAndNoReload()
     })
 
-    test('no work: loadInternalBackup writes the chosen backup to the main file and reloads, without installing it', async () => {
+    test('no work: loadInternalBackup commits the chosen backup as a block generation and reloads, without installing it', async () => {
         installWorld()
         const bytes = await seedInternalBackup()
         const isolated = await importIsolatedLoad()
@@ -1135,7 +1148,8 @@ describe('loadInternalBackup waits for work', () => {
 
         await isolated.load()
 
-        expect.soft(forageMemStore.get('database/database.bin'), 'the main file holds the backup bytes').toEqual(bytes)
+        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual(['char-A'])
+        expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(false)
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
         expect.soft(vi.mocked(isolated.database.setDatabase), 'setDatabase calls').not.toHaveBeenCalled()
         expect.soft(isolated.stores.DBState.db === dbBefore, 'DBState.db is the same object').toBe(true)
@@ -1364,16 +1378,16 @@ describe('a backup load is refused while other work is registered or writing', (
         const point = isolated.busy.beginChokePoint('asset')
 
         await isolated.load()
-        const refusedWrite = forageMemStore.has('database/database.bin')
-        expect(refusedWrite, 'the first load was refused: the main file was not written').toBe(false)
+        const refusedWrite = profileWritten()
+        expect(refusedWrite, 'the first load was refused: nothing was written').toBe(false)
         other.end()
         point()
         alertErrorMock.mockClear()
         await isolated.load()
 
-        expect.soft(refusedWrite, 'the main file was written while work was registered').toBe(false)
+        expect.soft(refusedWrite, 'something was written while work was registered').toBe(false)
         expect.soft(alertErrorMock, 'an error shown on the retry').not.toHaveBeenCalled()
-        expect.soft(forageMemStore.get('database/database.bin'), 'the main file holds the backup bytes').toEqual(bytes)
+        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual(['char-A'])
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
     })
 
@@ -1386,7 +1400,7 @@ describe('a backup load is refused while other work is registered or writing', (
 
         expect.soft(during, 'registered entries at the reload').toEqual(['backupLoad'])
         expect.soft(isolated.busy.isBusy(), 'an entry left behind').toBe(false)
-        expect.soft(forageMemStore.get('database/database.bin'), 'the main file holds the backup bytes').toEqual(bytes)
+        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual(['char-A'])
     })
 
     test('guard: LoadLocalBackup with nothing else registered is not refused by its own entry', async () => {
@@ -1396,7 +1410,8 @@ describe('a backup load is refused while other work is registered or writing', (
         await pickBackupBytes(isolated.loadLocal, fixture, () => {})
 
         expect.soft(alertErrorMock, 'the work-in-progress message').not.toHaveBeenCalledWith(language.backupLoadWorkInProgress)
-        expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(true)
+        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual([])
+        expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(false)
         expect.soft(isolated.busy.isBusy(), 'an entry left behind').toBe(false)
     })
 })

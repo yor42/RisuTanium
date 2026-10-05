@@ -1400,8 +1400,6 @@ export const languageSpanish = {
     "otherTabSavedConflictStay": "Quedarme aquí por ahora (esta pestaña dejará de intentar guardar; tus cambios no se guardarán hasta que recargues)",
     "savingStoppedStayMessage": "Esta pestaña ha dejado de guardar. Elegiste quedarte después de que otra pestaña guardó cambios, por lo que la copia de los datos de esta pestaña está desactualizada y ya no se puede guardar. Los cambios que hagas a partir de ahora no se conservarán. Recargar obtendrá los datos actuales — cualquier cambio local no guardado se perderá.",
     "savingStoppedNodeConflictMessage": "Esta pestaña ha dejado de guardar. Tus datos locales entraron en conflicto con una versión más reciente en el servidor autoalojado, por lo que esta pestaña ha dejado de intentar guardar de forma permanente. Los cambios que hagas a partir de ahora no se conservarán. Recarga la aplicación para obtener los datos actuales — cualquier cambio local no sincronizado se perderá.",
-    "savingStoppedTooLargeMessage": (limitBytes: number) =>
-        `Esta pestaña ha dejado de guardar: tus datos son más grandes de lo que el servidor autoalojado acepta en un solo guardado (${limitBytes / (1024 * 1024)} MiB, o menos si un proxy situado delante del servidor establece un límite más bajo). Los cambios desde el último guardado correcto se perderán al recargar. Tras recargar, al iniciar se pueden mover personajes al almacenamiento de archivo para reducir el guardado, pero solo si el archivado de personajes está activado y puede ejecutarse. Si el guardado se detiene de nuevo, reduce tus datos, por ejemplo eliminando chats o personajes que ya no necesites.`,
     "duplicateChaIdSavePausedMessage": (characterGroups: string) =>
         `Los siguientes personajes comparten un ID interno con otro personaje, por lo que el archivo de guardado solo puede conservar uno de cada ID compartido: ${characterGroups || "dos personajes"}. Se conserva el que se guardó más recientemente antes de que esto comenzara, o, si ninguno se había guardado nunca, el que se escribió primero. El guardado está en pausa para todos ellos mientras esto continúe. El guardado se reanudará cuando solo un personaje tenga cada ID — por ejemplo, eliminando permanentemente los personajes sobrantes (muévelos a la papelera y luego elimínalos de la papelera).`,
     "maxSupaChunkSize": "Tamaño Máximo del Chunk de SupaMemoria",
@@ -1883,7 +1881,6 @@ export const languageSpanish = {
         "save": "Guardar",
         "cancel": "Cancelar"
     },
-    "enableRemoteSaving": "Activar Guardado Remoto",
     "blockquoteStyling": "Estilo de Cita en Bloque",
     "dynamicModelRegistry": "Registro Dinámico de Modelos",
     "confirmInstallPluginViaPlugin": "El plugin {source} está intentando instalar el plugin {plugin}. Esto puede ser peligroso si el plugin de origen no es confiable. ¿Quieres continuar?",
@@ -2061,6 +2058,17 @@ export const languageSpanish = {
     saveConversionFailedAlert: "Pasar tus datos al nuevo formato de guardado no tuvo éxito tras varios intentos. No se cambió nada en tus datos guardados, y esta pestaña ha dejado de guardar. Recarga la página para intentarlo de nuevo.",
     saveSnapshotSkippedTooLarge: "Tus datos son más grandes de lo que el servidor autoalojado acepta en un solo archivo, por lo que se omiten las copias de respaldo automáticas. El guardado no se ve afectado. Para conservar un respaldo, exporta un archivo .bin con \"Guardar Respaldo Localmente\" en \"Respaldo y Archivos\", dentro de los ajustes.",
     saveSnapshotSkippedMemory: "Este dispositivo no pudo reservar suficiente memoria para una copia de respaldo automática de tus datos, por lo que se omitió. El guardado no se ve afectado.",
+    restoreLeftOutConfirm: (items: string) =>
+        `Este archivo de respaldo está parcialmente dañado. Solo se pueden restaurar las partes que siguen intactas, y se omitirá lo siguiente:\n\n${items}\n\nTus datos actuales serán reemplazados por las partes intactas. ¿Quieres restaurarlas?`,
+    restoreNotHappenedNotice: "Otra pestaña o dispositivo modificó tus datos guardados mientras se cargaba el respaldo, por lo que el respaldo no se cargó y no se cambió nada. Recarga la página e inténtalo de nuevo.",
+    restoreTooLargeBlock: (what: string, limitBytes: number) =>
+        `No se pudo cargar este respaldo: el servidor autoalojado acepta como máximo ${limitBytes / (1024 * 1024)} MiB en una sola solicitud (menos si un proxy delante del servidor establece un límite más bajo), y ${what ? `esta parte de tus datos lo supera: ${what}` : 'una parte de tus datos lo supera'}. No se cambió nada.`,
+    restoreNoUndoCopyConfirm: (reason: 'damaged' | 'absent' | 'too-large') =>
+        (reason === 'damaged' ? 'No se pudieron leer tus datos guardados actuales, por lo que no se pueden conservar como copia de respaldo antes de esta carga. '
+            : reason === 'too-large' ? 'Tus datos actuales son más grandes de lo que el servidor autoalojado acepta como una copia de respaldo, por lo que no se pueden conservar como respaldo antes de esta carga. '
+            : 'No se encontraron datos guardados actuales para conservar como copia de respaldo antes de esta carga. ')
+        + 'Si continúas, no podrás volver desde la lista de respaldos a lo que está guardado ahora. ¿Continuar sin copia de respaldo?',
+    internalBackupLoadedNoCopy: "Se cargó el respaldo. Actualizando la aplicación.",
     backupAndFiles: "Respaldo y Archivos",
     assetIntegrityHeading: "Integridad de la Caché de Activos",
     assetIntegrityDescription: "Comprueba las imágenes/activos en caché contra su propio hash de contenido para detectar corrupción, sin volver a descargar nada del almacenamiento. Es de solo lectura, salvo que elijas eliminar una entrada dañada.",

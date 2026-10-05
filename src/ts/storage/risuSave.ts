@@ -1,8 +1,7 @@
 import { Packr, Unpackr, decode } from "msgpackr/index-no-eval";
 import * as fflate from "fflate";
-import { getDatabase, presetTemplate, type Database } from "./database.svelte";
+import { presetTemplate, type Database } from "./database.svelte";
 import localforage from "localforage";
-import { isNodeServer, isTauri } from "src/ts/platform"
 import { createYieldBudget } from "./saveYield"
 import { getAppStore } from "./store/appStore"
 
@@ -15,28 +14,10 @@ const unpackr = new Unpackr({
     useRecords:false
 })
 
-const disableRemoteSaving = () => {
-    try {
-        const db = getDatabase()
-        return !db.enableRemoteSaving
-    } catch (error) {
-        return true
-    }
-}
-// CHORE-17: remote file names this page load has
-// written successfully or confirmed to exist. `encodeRemoteBlock` skips a
-// rewrite whenever a name is already in here. Module-level (not per-encoder), so
-// this also applies after `reinitEncoder()` reloads. Upstream commit
-// f484ed72 makes a full reload pass `skipRemoteSavingOnCharacters: false`,
-// which on its own rewrites every character's remote file unconditionally;
-// this set skips a file already written this page load regardless. Safe
-// because remote file names are content-addressed and nothing in this build
-// deletes them; a `cleanChunks` bug in older clients sharing
-// the same Node server can still delete a hash-named file after 7 days.
-const checkedRemoteExistence = new Set<string>();
-
 /**
- * Content-addressing hash for remote character blocks.
+ * Content-addressing hash of a remote character block, as the name of the
+ * `remotes/` file a v2 pointer names. The application writes no remote block;
+ * the hash is what a reader checks a pointer's file against.
  * Truncated to 16 hex chars (64 bits) — ample collision resistance for a
  * per-character, per-user keyspace, keeps filenames short. Deliberately a
  * small local helper rather than reusing `hasher()` from
@@ -225,47 +206,11 @@ export enum RisuSaveType {
     PLUGIN_STORAGE = 11,
 }
 
-/** The keys of the remote blocks the store holds, as one listing. */
-type StoredRemoteNames = () => Promise<ReadonlySet<string>>
-
 type EncodeBlockArg = {
     compression:boolean
     data:string
     type:RisuSaveType
     name:string
-    cache?:boolean
-    skipRemoteSaving?:boolean
-    /**
-     * Where an existence check for a remote block gets its answer. One `init`
-     * pass hands every character the same function, so the store is listed
-     * once for the pass and not once per character. Absent: the check lists
-     * the store itself.
-     */
-    storedRemoteNames?:StoredRemoteNames
-}
-
-/** The prefix every remote block's key starts with. */
-const REMOTE_BLOCK_PREFIX = 'remotes/'
-
-/**
- * A function that lists the remote blocks in the store the first time it is
- * called and answers every later call from that listing. A listing that fails
- * is not kept: the failure reaches the caller, and the next call lists again.
- * The listing is a snapshot, so a name written after it was taken is known to
- * the caller through `checkedRemoteExistence`, not through here.
- */
-function createStoredRemoteNames():StoredRemoteNames {
-    let listing: ReadonlySet<string> | null = null;
-    return async () => {
-        if(listing === null){
-            listing = new Set(await (await getAppStore()).list(REMOTE_BLOCK_PREFIX));
-        }
-        return listing;
-    };
-}
-
-type EncodeBlockOption = {
-    remote: 'none'|'prefer'|'force'
 }
 
 const risuSaveCacheForage = localforage.createInstance({
@@ -315,21 +260,6 @@ export class RisuSaveEncoder {
     // below. Recomputed from scratch every pass; a key leaves this set the
     // moment a pass sees it with fewer than two holders.
     private frozenKeys = new Set<string>();
-    // The `enableRemoteSaving` input of the last `init()`. When defined it
-    // decides, in `init()` and in every later `set()`, whether character
-    // blocks may be written remote, in place of the live database's own flag
-    // (which holds nothing before the boot has installed a database). Undefined
-    // when `init()` was given none.
-    private enableRemoteSaving: boolean | undefined = undefined;
-    // The `writeBlockCache` input of the last `init()`. `encodeRawBlock` never
-    // writes the block cache whatever this holds.
-    private writeBlockCache = true;
-
-    private remoteSavingDisabled(): boolean {
-        return this.enableRemoteSaving === undefined
-            ? disableRemoteSaving()
-            : !this.enableRemoteSaving;
-    }
 
     /** A snapshot of the chaId keys currently frozen against a rewrite. */
     getFrozenKeys(): Set<string> {
@@ -399,7 +329,6 @@ export class RisuSaveEncoder {
 
     async init(data:Database,arg:{
         compression?: boolean,
-        skipRemoteSavingOnCharacters?: boolean,
         /**
          * The encoder this fresh one is replacing on a full reload. Consulted
          * only for a key that this pass's own snapshot finds duplicated and
@@ -410,29 +339,13 @@ export class RisuSaveEncoder {
          * through to a first-holder write. `previous` itself is never
          * written to.
          */
-        previous?: RisuSaveEncoder,
-        /**
-         * Whether character blocks are written remote, for the encoder's
-         * whole life: used by this `init()` and by every later `set()`. When
-         * absent the live database's `enableRemoteSaving` decides at the time
-         * each block is encoded, as it always has. Remote blocks are still
-         * only ever written on Tauri and on the Node server.
-         */
-        enableRemoteSaving?: boolean,
-        /**
-         * Accepted so existing callers keep compiling. The encoder writes no
-         * block cache entry (`risuSaveCache`) whatever this holds.
-         */
-        writeBlockCache?: boolean
+        previous?: RisuSaveEncoder
     } = {}){
         const {
             compression = false,
-            skipRemoteSavingOnCharacters = true,
             previous
         } = arg;
         this.compression = compression;
-        this.enableRemoteSaving = arg.enableRemoteSaving;
-        this.writeBlockCache = arg.writeBlockCache ?? true;
         this.encodedCharacterProxies = new Set();
         let obj:Record<any,any> = {}
         let keys = Object.keys(data)
@@ -502,9 +415,6 @@ export class RisuSaveEncoder {
 
         const encodedThisPass = new Set<string>();
         const newFrozenKeys = new Set<string>();
-        // One listing of the stored remote blocks for this whole pass, taken
-        // when the first character needs an existence check.
-        const storedRemoteNames = createStoredRemoteNames();
         for (let i = 0; i < snapshot.length; i++) {
             const character = snapshot[i];
             const key = holderKeys[i];
@@ -534,11 +444,7 @@ export class RisuSaveEncoder {
                     compression,
                     data: JSON.stringify(character),
                     type: RisuSaveType.CHARACTER_WITH_CHAT,
-                    name: rawKey,
-                    skipRemoteSaving: skipRemoteSavingOnCharacters,
-                    storedRemoteNames
-                }, {
-                    remote: 'prefer'
+                    name: rawKey
                 });
                 this.encodedCharacterProxies.add(character);
                 newFrozenKeys.add(key);
@@ -548,11 +454,7 @@ export class RisuSaveEncoder {
                 compression,
                 data: JSON.stringify(character),
                 type: RisuSaveType.CHARACTER_WITH_CHAT,
-                name: rawKey,
-                skipRemoteSaving: skipRemoteSavingOnCharacters,
-                storedRemoteNames
-            }, {
-                remote: 'prefer'
+                name: rawKey
             });
             this.encodedCharacterProxies.add(character);
         }
@@ -664,8 +566,6 @@ export class RisuSaveEncoder {
                     data: JSON.stringify(character),
                     type: RisuSaveType.CHARACTER_WITH_CHAT,
                     name: rawKey
-                }, {
-                    remote: 'prefer'
                 });
                 savedId.add(key);
                 newFrozenKeys.add(key);
@@ -685,8 +585,6 @@ export class RisuSaveEncoder {
                     data: JSON.stringify(character),
                     type: RisuSaveType.CHARACTER_WITH_CHAT,
                     name: rawKey
-                }, {
-                    remote: 'prefer'
                 });
                 savedId.add(key);
                 if (markIndex !== -1) {
@@ -785,26 +683,12 @@ export class RisuSaveEncoder {
         return arrayBuf;
     }
 
-    async encodeBlock(arg:EncodeBlockArg, option:EncodeBlockOption = { remote: 'none' }){
-        if(
-            option.remote === 'force' ||
-            (
-                option.remote === 'prefer' &&
-                (
-                    isTauri ||
-                    isNodeServer
-                )
-            ) &&
-            !this.remoteSavingDisabled()
-        ){
-            return await this.encodeRemoteBlock(arg);
-        }
+    async encodeBlock(arg:EncodeBlockArg){
         return await this.encodeRawBlock(arg);
     }
 
     async encodeRawBlock(arg:EncodeBlockArg){
         let databuf: Uint8Array;
-        const cacheBlock = arg.cache ?? true;
         if(arg.compression){
             await checkCompressionStreams();
             const cs = new CompressionStream('gzip');
@@ -859,83 +743,11 @@ export class RisuSaveEncoder {
         buf.set(databuf, headerBytes.length + 4);
         buf.set(new Uint8Array(dataChecksumBuf), headerBytes.length + 4 + databuf.length);
 
-        // This path writes nothing to storage: the local block cache is read
-        // only by the legacy decoder. (`encodeRemoteBlock` writes `remotes/`
-        // files before it gets here, when remote saving is on.) Nothing on
-        // this path awaits storage, so there is no macrotask boundary of its
-        // own; the yield budget supplies one, or a run of blocks becomes one
-        // long task.
+        // This path writes nothing to storage, and awaits none, so it crosses no
+        // macrotask boundary of its own: the yield budget supplies one, or a
+        // run of blocks becomes one long task.
         await this.yieldBudget.maybeYield();
         return buf;
-    }
-
-    async encodeRemoteBlock(arg:EncodeBlockArg){
-        console.log(`Encoding remote block: ${arg.name}`);
-        const encoded = new TextEncoder().encode(arg.data);
-        // Content-addressed naming: the filename is a function of content,
-        // not a stable per-character name, so a write is always a fresh,
-        // never-again-mutated object (or a true no-op if identical content
-        // was already written under this exact hash). This is what makes a
-        // rejected root write's earlier remote writes harmless garbage
-        // instead of silently-visible corruption. Older `v:1`/bare-name
-        // pointers are still fully supported for reading — see
-        // RisuSaveDecoder's REMOTE case below — this only changes what NEW
-        // writes produce.
-        const hash = await hashRemoteBlockContent(encoded);
-        const fileName = `remotes/${arg.name}.${hash}.bin`
-
-        // The store creates `remotes/` on the first write. The write needs no
-        // condition: the name is a function of the content, so two writers of
-        // one name write the same bytes and neither can lose anything, while a
-        // write made conditional on a version read earlier would refuse a
-        // peer's identical write.
-        const writeRemoteFile = async () => {
-            await (await getAppStore()).write(fileName, encoded, 'unconditional');
-        };
-
-        // CHORE-17: `checkedRemoteExistence` holds
-        // "this page load wrote or confirmed this exact file exists", so
-        // a hit skips the write outright, whether or not the caller
-        // passed `skipRemoteSaving`. Safe because the name contains a
-        // 64-bit SHA-256 prefix of the content (hashRemoteBlockContent
-        // above) -- a collision is negligible, but on a hit the existing
-        // file is kept rather than overwritten -- and nothing in this
-        // build deletes a hash-named file within a page load.
-        let shouldWrite = true;
-        if(checkedRemoteExistence.has(fileName)){
-            shouldWrite = false;
-        }
-        else if(arg.skipRemoteSaving){
-            // A listing that fails fails the encode: nothing is recorded as
-            // present, and the block is neither skipped nor written on a
-            // guess.
-            const stored = await (arg.storedRemoteNames ?? createStoredRemoteNames())();
-            if(stored.has(fileName)){
-                // Recorded only once the existence check has confirmed
-                // the file; a name is never recorded before a write
-                // whose outcome is unknown.
-                checkedRemoteExistence.add(fileName);
-                shouldWrite = false;
-            }
-        }
-        if(shouldWrite){
-            await writeRemoteFile();
-            // Recorded only after the write has resolved, so a throwing
-            // write leaves the name out and the next save retries it.
-            checkedRemoteExistence.add(fileName);
-        }
-
-        return await this.encodeBlock({
-            compression: false,
-            data: JSON.stringify({
-                v: 2,
-                type: arg.type,
-                name: arg.name,
-                hash,
-            }),
-            type: RisuSaveType.REMOTE,
-            name: arg.name
-        });
     }
 }
 
@@ -1414,6 +1226,15 @@ export class RisuSaveDecoder {
         console.log('Decoded RisuSave data', db);
         return db;
     }
+}
+
+/**
+ * Whether `data` is a block-format save (the `RISUSAVE` header), the only
+ * format `salvageRisuSave` reads. The older msgpack formats have no blocks to
+ * leave out and no block cache to fall back on.
+ */
+export function isBlockFormatSave(data: Uint8Array): boolean {
+    return checkHeader(data) === 'risusave';
 }
 
 /**

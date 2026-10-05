@@ -104,7 +104,7 @@ function buildDb(characters: CharacterFixture[]): Database {
 async function encoderFor(characters: CharacterFixture[]): Promise<{ encoder: RisuSaveEncoder, input: BlockSetInput }> {
     const db = buildDb(characters)
     const encoder = new RisuSaveEncoder()
-    await encoder.init(db, { compression: false, writeBlockCache: false })
+    await encoder.init(db, { compression: false })
     await encoder.set(db, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
     const layout = encoder.snapshotLayout()
     if (layout === null) {

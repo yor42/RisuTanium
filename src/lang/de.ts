@@ -1400,8 +1400,6 @@ export const languageGerman = {
     "otherTabSavedConflictStay": "Vorerst hierbleiben (dieser Tab wird das Speichern nicht mehr versuchen; Ihre Änderungen werden bis zum Neuladen nicht gespeichert)",
     "savingStoppedStayMessage": "Dieser Tab hat das Speichern eingestellt. Sie haben sich entschieden zu bleiben, nachdem ein anderer Tab Änderungen gespeichert hat, sodass die Kopie der Daten dieses Tabs veraltet ist und nicht mehr gespeichert werden kann. Ab jetzt vorgenommene Änderungen werden nicht beibehalten. Ein Neuladen ruft die aktuellen Daten ab — alle ungespeicherten lokalen Änderungen gehen verloren.",
     "savingStoppedNodeConflictMessage": "Dieser Tab hat das Speichern eingestellt. Ihre lokalen Daten standen im Konflikt mit einer neueren Version auf dem selbst gehosteten Server, sodass dieser Tab dauerhaft aufgehört hat, das Speichern zu versuchen. Ab jetzt vorgenommene Änderungen werden nicht beibehalten. Laden Sie die App neu, um die aktuellen Daten zu erhalten — alle nicht synchronisierten lokalen Änderungen gehen verloren.",
-    "savingStoppedTooLargeMessage": (limitBytes: number) =>
-        `Dieser Tab hat das Speichern eingestellt: Ihre Daten sind größer, als der selbst gehostete Server in einem einzelnen Speichervorgang akzeptiert (${limitBytes / (1024 * 1024)} MiB, oder weniger, wenn ein dem Server vorgeschalteter Proxy ein niedrigeres Limit setzt). Änderungen seit dem letzten erfolgreichen Speichern gehen beim Neuladen verloren. Nach dem Neuladen kann der Start Charaktere in den Archivspeicher verschieben, um den Speicherstand zu verkleinern, aber nur, wenn die Charakterarchivierung aktiviert ist und ausgeführt werden kann. Wenn das Speichern erneut eingestellt wird, verkleinern Sie Ihre Daten, zum Beispiel indem Sie Chats oder Charaktere löschen, die Sie nicht mehr benötigen.`,
     "duplicateChaIdSavePausedMessage": (characterGroups: string) =>
         `Die folgenden Charaktere teilen sich eine interne ID mit einem anderen Charakter, sodass die Speicherdatei für jede gemeinsam genutzte ID nur einen behalten kann: ${characterGroups || "zwei Charaktere"}. Es wird derjenige behalten, der vor Beginn dieses Problems zuletzt gespeichert wurde, oder, falls keiner von beiden jemals gespeichert wurde, derjenige, der zuerst geschrieben wurde. Das Speichern ist für alle betroffenen Charaktere pausiert, solange dies andauert. Das Speichern wird fortgesetzt, sobald jede ID nur noch einem Charakter gehört — zum Beispiel, indem Sie die überzähligen Charaktere dauerhaft löschen (verschieben Sie sie in den Papierkorb und löschen Sie sie dann aus dem Papierkorb).`,
     "maxSupaChunkSize": "Maximale SupaMemory-Chunk-Größe",
@@ -1883,7 +1881,6 @@ export const languageGerman = {
         "save": "Speichern",
         "cancel": "Abbrechen"
     },
-    "enableRemoteSaving": "Remote-Speicherung aktivieren",
     "blockquoteStyling": "Blockzitat-Formatierung",
     "dynamicModelRegistry": "Dynamische Modellregistrierung",
     "confirmInstallPluginViaPlugin": "Das Plugin {source} versucht, das Plugin {plugin} zu installieren. Dies kann gefährlich sein, wenn das Quell-Plugin nicht vertrauenswürdig ist. Möchten Sie fortfahren?",
@@ -2061,6 +2058,17 @@ export const languageGerman = {
     "saveConversionFailedAlert": "Das Überführen Ihrer Daten in das neue Speicherformat ist nach mehreren Versuchen nicht gelungen. An Ihren gespeicherten Daten wurde nichts geändert, und dieser Tab hat das Speichern eingestellt. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "saveSnapshotSkippedTooLarge": "Ihre Daten sind größer, als der selbst gehostete Server in einer Datei akzeptiert, daher werden automatische Backup-Kopien übersprungen. Das Speichern ist davon nicht betroffen. Um ein Backup zu behalten, exportieren Sie in den Einstellungen unter \"Backup & Dateien\" mit \"Backup lokal speichern\" eine .bin-Datei.",
     "saveSnapshotSkippedMemory": "Dieses Gerät konnte nicht genug Speicher für eine automatische Backup-Kopie Ihrer Daten bereitstellen, daher wurde sie übersprungen. Das Speichern ist davon nicht betroffen.",
+    "restoreLeftOutConfirm": (items: string) =>
+        `Diese Backup-Datei ist teilweise beschädigt. Nur die noch intakten Teile können wiederhergestellt werden, und Folgendes wird ausgelassen:\n\n${items}\n\nIhre aktuellen Daten werden durch die intakten Teile ersetzt. Möchten Sie sie wiederherstellen?`,
+    "restoreNotHappenedNotice": "Ihre gespeicherten Daten wurden von einem anderen Tab oder Gerät geändert, während das Backup geladen wurde. Daher wurde das Backup nicht geladen und es wurde nichts geändert. Laden Sie die Seite neu und versuchen Sie es erneut.",
+    "restoreTooLargeBlock": (what: string, limitBytes: number) =>
+        `Dieses Backup konnte nicht geladen werden: Der selbst gehostete Server akzeptiert in einer Anfrage höchstens ${limitBytes / (1024 * 1024)} MiB (weniger, wenn ein Proxy vor dem Server ein niedrigeres Limit setzt), und ${what ? `dieser Teil Ihrer Daten überschreitet das: ${what}` : 'ein Teil Ihrer Daten überschreitet das'}. Es wurde nichts geändert.`,
+    "restoreNoUndoCopyConfirm": (reason: 'damaged' | 'absent' | 'too-large') =>
+        (reason === 'damaged' ? 'Ihre aktuell gespeicherten Daten konnten nicht gelesen werden und können daher vor diesem Laden nicht als Backup-Kopie aufbewahrt werden. '
+            : reason === 'too-large' ? 'Ihre aktuellen Daten sind größer, als der selbst gehostete Server als eine Backup-Kopie akzeptiert, und können daher vor diesem Laden nicht als Backup aufbewahrt werden. '
+            : 'Es wurden keine aktuell gespeicherten Daten gefunden, die vor diesem Laden als Backup-Kopie aufbewahrt werden könnten. ')
+        + 'Wenn Sie fortfahren, können Sie aus der Backup-Liste nicht mehr zum jetzt gespeicherten Stand zurückkehren. Ohne Backup-Kopie fortfahren?',
+    "internalBackupLoadedNoCopy": "Das Backup wurde geladen. Die App wird neu geladen.",
     "backupAndFiles": "Backup & Dateien",
     "assetIntegrityHeading": "Asset-Cache-Integrität",
     "assetIntegrityDescription": "Vergleicht zwischengespeicherte Bilder/Assets mit ihrem eigenen Inhalts-Hash, um Beschädigungen zu erkennen, ohne etwas erneut aus dem Speicher herunterzuladen. Der Vorgang ist schreibgeschützt, es sei denn, Sie entscheiden sich, einen beschädigten Eintrag zu entfernen.",

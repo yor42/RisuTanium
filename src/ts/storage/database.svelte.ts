@@ -2072,15 +2072,10 @@ export const defaultSdDataFunc = () =>{
     return safeStructuredClone(defaultSdData)
 }
 
-export function saveCurrentPreset(){
-    let db = DBState.db
-    let pres = db.botPresets
-
-    if(db.botPresetsId === -1){
-        return
-    }
-    const savedPreset:botPreset =  {
-        name: pres[db.botPresetsId].name,
+/** A preset holding the working settings of `db` under `name`, in the shape `saveCurrentPreset` stores. */
+export function presetFromWorkingSettings(db:Database, name:string, image:string):botPreset{
+    return {
+        name,
         apiType: db.apiType,
         openAIKey: db.openAIKey,
         localNetworkMode: db.localNetworkMode,
@@ -2143,7 +2138,7 @@ export function saveCurrentPreset(){
         customFlags: safeStructuredClone(db.customFlags),
         enableCustomFlags: db.enableCustomFlags,
         regex: db.presetRegex,
-        image: pres?.[db.botPresetsId]?.image ?? '',
+        image,
         reasonEffort: db.reasoningEffort ?? 0,
         thinkingTokens: db.thinkingTokens ?? null,
         thinkingType: db.thinkingType ?? 'budget',
@@ -2159,7 +2154,17 @@ export function saveCurrentPreset(){
         verbosity: db.verbosity ?? 1,
         dynamicOutput: db.dynamicOutput ?? null
     }
-    
+}
+
+export function saveCurrentPreset(){
+    let db = DBState.db
+    let pres = db.botPresets
+
+    if(db.botPresetsId === -1){
+        return
+    }
+    const savedPreset:botPreset = presetFromWorkingSettings(db, pres[db.botPresetsId].name, pres?.[db.botPresetsId]?.image ?? '')
+
     if(!Array.isArray(pres)){
         pres = []
     }
@@ -2172,6 +2177,7 @@ export function saveCurrentPreset(){
     }
     db.botPresets = pres
 }
+
 
 export function copyPreset(id:number){
     saveCurrentPreset()

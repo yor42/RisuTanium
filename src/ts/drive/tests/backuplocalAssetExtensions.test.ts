@@ -48,6 +48,8 @@ const bare = vi.hoisted(() => (path: string): string => path.replace(/^\.\//, ''
 const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
 const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
 const forageSetItemMock = vi.hoisted(() => vi.fn(async (_key: string, _data: Uint8Array): Promise<void> => {}))
+/** What the web storage object holds. */
+const webFiles = vi.hoisted(() => new Map<string, Uint8Array>())
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
 const setColdStorageItemMock = vi.hoisted(() => vi.fn(async () => true))
 const alertErrorMock = vi.hoisted(() => vi.fn())
@@ -164,7 +166,7 @@ vi.mock(import('src/ts/util'), () => ({
 
 vi.mock('@tauri-apps/api/core', () => ({
     convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
+    invoke: fakeFs.invoke,
 }))
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -273,7 +275,7 @@ import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts
 import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { alertStore } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
-import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { createForageBackedStore, createSwitchedStore } from 'src/ts/storage/tests/forageBackedStore'
 
@@ -471,9 +473,11 @@ beforeEach(() => {
     alertNormalMock.mockClear()
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
     reloadMark.marked = false
-    forageKeysMock.mockImplementation(async () => [])
-    forageGetItemMock.mockImplementation(async () => null)
-    // The main file's byte store follows the platform model of each test: the
+    webFiles.clear()
+    forageKeysMock.mockImplementation(async () => Array.from(webFiles.keys()))
+    forageGetItemMock.mockImplementation(async (key) => webFiles.get(key) ?? null)
+    forageSetItemMock.mockImplementation(async (key, data) => { webFiles.set(key, data) })
+    // The page's byte store follows the platform model of each test: the
     // storage-object model on the web, the desktop store over the file model on Tauri.
     const webStore = createForageBackedStore({
         getItem: forageGetItemMock,
@@ -482,7 +486,7 @@ beforeEach(() => {
         removeItem: async () => { },
     })
     const tauriStore = createTauriFilesStore({ platform: 'posix' })
-    injectAppStore(createSwitchedStore(() => platformBox.isTauri ? tauriStore : webStore))
+    injectRestoreStore(createSwitchedStore(() => platformBox.isTauri ? tauriStore : webStore))
     getDatabaseMock.mockImplementation(() => databaseWith({}))
 
     // A successful restore keeps the database write lock closed for the rest
@@ -812,8 +816,9 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        const databaseWrites = forageSetItemMock.mock.calls.filter((c) => c[0] === 'database/database.bin')
-        expect(databaseWrites).toHaveLength(1)
+        // The database is committed as a block generation whose head is written once; no main file is written.
+        expect(forageSetItemMock.mock.calls.filter((c) => c[0] === 'blocks/head')).toHaveLength(1)
+        expect(forageSetItemMock.mock.calls.filter((c) => c[0] === 'database/database.bin')).toHaveLength(0)
     })
 
     test('guard: Tauri writes x.mp3, y.mp4, z.webp and w.jpg to assets/<name>, not as cold storage', async () => {
@@ -823,11 +828,11 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        // The database entry reaches the main path by a rename over it, once, and no write opens the main path.
-        const databaseRenames = fakeFs.renameLog.filter((entry) => bare(entry.to) === 'database/database.bin')
-        expect(databaseRenames).toHaveLength(1)
-        expect(fakeFs.writeLog.filter((entry) => bare(entry.path) === 'database/database.bin')).toHaveLength(0)
-        expect(fakeFs.files.has('database/database.bin')).toBe(true)
+        // The database is committed as a block generation whose head is replaced durably, once; no main file is written.
+        expect(fakeFs.durableLog.filter((key) => key === 'blocks/head')).toHaveLength(1)
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expect(fakeFs.files.has('database/database.bin')).toBe(false)
+        expect(fakeFs.renameLog.filter((entry) => bare(entry.to) === 'database/database.bin')).toHaveLength(0)
     })
 })
 
@@ -876,6 +881,7 @@ describe('restoring a backup onto the desktop store', () => {
         expect(fakeFs.listing('assets')).toEqual(['x.mp3'])
         expect(alertErrorMock).toHaveBeenCalled()
         expect(fakeFs.files.has('database/database.bin')).toBe(false)
+        expect(fakeFs.files.has('blocks/head')).toBe(false)
     })
 
     test('guard: a write error other than a refused name aborts the restore before the database is written', async () => {
@@ -885,6 +891,7 @@ describe('restoring a backup onto the desktop store', () => {
 
         expect(alertErrorMock).toHaveBeenCalled()
         expect(fakeFs.files.has('database/database.bin')).toBe(false)
+        expect(fakeFs.files.has('blocks/head')).toBe(false)
         expect(fakeFs.files.has('assets/later.png')).toBe(false)
         expect(alertNormalWaitMock).not.toHaveBeenCalled()
     })
@@ -895,7 +902,7 @@ describe('restoring a backup onto the desktop store', () => {
         await loadBackupBytes(backupOf(entriesOf([KEPT[0], ...REFUSED, KEPT[1]])))
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(KEPT))))
-        expect(fakeFs.files.has('database/database.bin')).toBe(true)
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
         const notice = alertNormalWaitMock.mock.calls[0][0]
@@ -938,7 +945,7 @@ describe('restoring a backup onto the desktop store', () => {
         let databaseWrittenWhenShown: boolean | null = null
         alertNormalWaitMock.mockImplementation(() => {
             markedWhenShown = reloadMark.marked
-            databaseWrittenWhenShown = fakeFs.files.has('database/database.bin')
+            databaseWrittenWhenShown = fakeFs.files.has('blocks/head')
             return new Promise<void>((resolve) => { releaseNotice = resolve })
         })
         const seen = recordAlertStore()

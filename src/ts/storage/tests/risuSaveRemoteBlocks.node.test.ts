@@ -1,22 +1,20 @@
 /**
  * Remote character blocks on the self-hosted Node server (`remotes/<chaId>.<hash>.bin`):
- * how `RisuSaveEncoder` checks for, writes and skips them and how `decodeRisuSave`
- * reads them, at the `fetch` boundary.
+ * the encoder sends no request for them, and `decodeRisuSave` still reads the
+ * ones a legacy save points at, at the `fetch` boundary.
  *
  * The server is the `FakeNodeServer` stand-in behind the real `NodeStorage`
  * (what the storage object holds), so the same assertions hold whichever client
  * class the encoder and decoder go through. A pass here is about the request
  * sequence; it says nothing about the real server. `risuSave.ts` is real; the
  * database, platform and the rest of the app are mocked. Each test loads a fresh
- * module graph, which is a fresh page load for the encoder's memory of the
- * blocks it has already written.
+ * module graph.
  *
- * Tests titled `guard:` assert behaviour that must be preserved and pass before
- * and after the remote blocks moved behind the byte store. The others assert
- * behaviour only the store-based encoder has.
+ * Tests titled `guard:` assert behaviour that must be preserved.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { BLOCK, FakeNodeServer, composeSave } from './manualCleanupHarness'
+import { parseBlocks } from './risuSaveBlockFile'
 import type { Database } from '../database.svelte'
 
 const world = vi.hoisted(() => ({
@@ -130,11 +128,6 @@ function bytesOf(character: TestCharacter): Uint8Array {
     return new TextEncoder().encode(JSON.stringify(character))
 }
 
-async function remoteKeyOf(character: TestCharacter): Promise<string> {
-    const { hashRemoteBlockContent } = await loadRisuSave()
-    return `remotes/${character.chaId}.${await hashRemoteBlockContent(bytesOf(character))}.bin`
-}
-
 /** A save whose character `b` is only a REMOTE pointer, as `pointer` says. */
 async function saveWithPointer(pointer: Record<string, unknown>): Promise<Uint8Array> {
     const { RisuSaveEncoder } = await loadRisuSave()
@@ -150,14 +143,6 @@ async function saveWithPointer(pointer: Record<string, unknown>): Promise<Uint8A
     return save.bytes
 }
 
-function keyOfRequest(request: { headers: Record<string, string> }): string {
-    return Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8')
-}
-
-function remoteWriteRequests() {
-    return server.requestsTo('/api/write').filter((request) => keyOfRequest(request).startsWith('remotes/'))
-}
-
 beforeEach(async () => {
     world.keyPair = null
     server = new FakeNodeServer()
@@ -171,88 +156,19 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-describe('the existence skip on the Node server', () => {
-    const many = ['alpha', 'bravo', 'charlie', 'delta', 'echo'].map((id) => characterOf(`s16-${id}`, `${id} content`))
-
-    test('init asks the server which remote blocks are stored once, not once per character, and rewrites none of them', async () => {
-        for (const character of many) {
-            server.seed(await remoteKeyOf(character), bytesOf(character))
-        }
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(...many))
-
-        expect(remoteWriteRequests()).toEqual([])
-        expect(server.requestsTo('/api/list').length).toBeLessThanOrEqual(1)
-    })
-
-    test('a block that is not stored is written and the stored ones are not, with one listing for the whole pass', async () => {
-        const [stored, alsoStored, ...missing] = many
-        server.seed(await remoteKeyOf(stored), bytesOf(stored))
-        server.seed(await remoteKeyOf(alsoStored), bytesOf(alsoStored))
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(...many))
-
-        expect(remoteWriteRequests().map(keyOfRequest).sort()).toEqual((await Promise.all(missing.map(remoteKeyOf))).sort())
-        for (const character of missing) {
-            expect(Array.from(server.files.get(await remoteKeyOf(character))?.bytes ?? [])).toEqual(Array.from(bytesOf(character)))
-        }
-        expect(server.requestsTo('/api/list').length).toBeLessThanOrEqual(1)
-    })
-
-    test('guard: a listing that fails fails the encode, writes nothing, and a later pass still writes the missing block', async () => {
-        const character = many[0]
-        const { RisuSaveEncoder } = await loadRisuSave()
+describe('the encoder on the Node server', () => {
+    test('with Remote Saving on in the live database, init and set send no write and no listing request and keep every character inline', async () => {
+        const characters = ['alpha', 'bravo', 'charlie'].map((id) => characterOf(`s16-${id}`, `${id} content`))
+        const { RisuSaveEncoder, RisuSaveType } = await loadRisuSave()
         const encoder = new RisuSaveEncoder()
-        server.beforeRequest = (path) => {
-            if (path === '/api/list') {
-                throw new Error('the network is down')
-            }
-        }
 
-        await expect(encoder.init(dbOf(character))).rejects.toBeDefined()
-        expect(remoteWriteRequests()).toEqual([])
+        await encoder.init(dbOf(...characters), { compression: false })
+        await encoder.set(dbOf(...characters), { character: ['s16-bravo'], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
 
-        server.beforeRequest = undefined
-        await encoder.init(dbOf(character))
-        expect(remoteWriteRequests().map(keyOfRequest)).toEqual([await remoteKeyOf(character)])
-    })
-
-    test.each([true, false])('guard: a block written, changed and changed back within one page load is written once per content (skip flag %s)', async (skip) => {
-        const first = characterOf('s16-origin', 'origin content A')
-        const changed = characterOf('s16-origin', 'origin content B')
-        const { RisuSaveEncoder } = await loadRisuSave()
-
-        await new RisuSaveEncoder().init(dbOf(first), { skipRemoteSavingOnCharacters: skip })
-        await new RisuSaveEncoder().init(dbOf(changed), { skipRemoteSavingOnCharacters: skip })
-        expect(remoteWriteRequests().length).toBe(2)
-        await new RisuSaveEncoder().init(dbOf(characterOf('s16-origin', 'origin content A')), { skipRemoteSavingOnCharacters: skip })
-
-        expect(remoteWriteRequests().length).toBe(2)
-        expect(Array.from(server.files.get(await remoteKeyOf(first))?.bytes ?? [])).toEqual(Array.from(bytesOf(first)))
-        expect(Array.from(server.files.get(await remoteKeyOf(changed))?.bytes ?? [])).toEqual(Array.from(bytesOf(changed)))
-    })
-})
-
-describe('writing a remote block on the Node server', () => {
-    test('a content-addressed write is not refused because a peer touched the same block after this page read it', async () => {
-        const character = characterOf('b', 'peer touched content')
-        const key = await remoteKeyOf(character)
-        server.seed(key, bytesOf(character))
-        const { decodeRisuSave, hashRemoteBlockContent, RisuSaveEncoder } = await loadRisuSave()
-        const hash = await hashRemoteBlockContent(bytesOf(character))
-        const decoded = await decodeRisuSave(await saveWithPointer({ v: 2, type: BLOCK.CHARACTER_WITH_CHAT, name: 'b', hash }), { strict: true })
-        expect((decoded.characters as { chaId: string }[]).map((c) => c.chaId).sort()).toEqual(['a', 'b'])
-        // The same bytes under the same name: a second writer's idempotent write.
-        server.peerWrite(key, bytesOf(character))
-
-        await new RisuSaveEncoder().init(dbOf(character), { skipRemoteSavingOnCharacters: false })
-
-        const writes = remoteWriteRequests().filter((request) => keyOfRequest(request) === key)
-        expect(writes).toHaveLength(1)
-        expect(writes[0].headers['if-match-revision']).toBeUndefined()
-        expect(Array.from(server.files.get(key)?.bytes ?? [])).toEqual(Array.from(bytesOf(character)))
+        expect(server.requestsTo('/api/write')).toEqual([])
+        expect(server.requestsTo('/api/list')).toEqual([])
+        const types = parseBlocks(new Uint8Array(encoder.encode()!)).filter((block) => characters.some((c) => c.chaId === block.name)).map((block) => block.type)
+        expect(types).toEqual([RisuSaveType.CHARACTER_WITH_CHAT, RisuSaveType.CHARACTER_WITH_CHAT, RisuSaveType.CHARACTER_WITH_CHAT])
     })
 })
 

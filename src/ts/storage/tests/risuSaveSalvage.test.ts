@@ -17,18 +17,15 @@ import {
 // block name. The default and strict decoders are untouched by it.
 //
 // Platform boundaries mocked here: the IndexedDB block cache (localforage), the
-// shared storage the remote blocks live in (`forageStorage`), the live database
-// flag that enables remote saving, and the platform flags. Tests titled `guard:`
-// pin behaviour that must be preserved and pass before and after the change. A
-// test of `salvageRisuSave` exercises an API that did not exist before. A test
-// of the encoder's cache option exercises an option that did not exist before,
-// so the encoder ignores it in an earlier build.
+// shared storage the remote blocks live in (`forageStorage`), and the platform
+// flags. Tests titled `guard:` pin behaviour that must be preserved. A file
+// whose characters live in remote blocks is built by `withRemoteCharacters`:
+// the encoder writes none.
 
-const { cacheStore, cacheWrites, remoteStore, remoteFlag } = vi.hoisted(() => ({
+const { cacheStore, cacheWrites, remoteStore } = vi.hoisted(() => ({
     cacheStore: new Map<string, unknown>(),
     cacheWrites: [] as string[],
     remoteStore: new Map<string, Uint8Array>(),
-    remoteFlag: { enabled: false },
 }))
 
 vi.mock('localforage', () => ({
@@ -74,7 +71,7 @@ vi.mock(
     import('src/ts/storage/database.svelte'),
     () =>
         ({
-            getDatabase: vi.fn(() => ({ enableRemoteSaving: remoteFlag.enabled })),
+            getDatabase: vi.fn(() => ({})),
             presetTemplate: { name: 'test-preset' },
         }) as unknown as typeof import('src/ts/storage/database.svelte'),
 )
@@ -92,16 +89,16 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
 }))
 
-import { RisuSaveEncoder, decodeRisuSave, salvageRisuSave, RisuSaveType } from '../risuSave'
+import { RisuSaveEncoder, decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, RisuSaveType } from '../risuSave'
 import type { toSaveType, SalvageOmittedKind } from '../risuSave'
 import type { Database } from '../database.svelte'
 import { cacheEntriesOf } from './risuSaveCacheFixture'
+import { withRemoteCharacters } from './remoteFileFixture'
 
 beforeEach(() => {
     cacheStore.clear()
     cacheWrites.length = 0
     remoteStore.clear()
-    remoteFlag.enabled = false
 })
 
 //#region fixtures
@@ -150,14 +147,15 @@ async function buildFile(options: FixtureOptions = {}): Promise<Fixture> {
         characters: ids.map((chaId, index) => ({ chaId, type: 'character', name: `Character ${n}-${index}`, chats: [] })),
     } as unknown as Database
 
-    remoteFlag.enabled = options.remote === true
     const encoder = new RisuSaveEncoder()
-    await encoder.init(db, { compression: false, skipRemoteSavingOnCharacters: false })
+    await encoder.init(db, { compression: false })
     await encoder.set(db, makeToSave())
-    remoteFlag.enabled = false
     const encoded = encoder.encode()
     expect(encoded).not.toBeNull()
-    const file = new Uint8Array(encoded!)
+    let file: Uint8Array = new Uint8Array(encoded!)
+    if (options.remote === true) {
+        file = await withRemoteCharacters(file, ids, (key, bytes) => { remoteStore.set(key, bytes) })
+    }
     // The encoder writes no block cache entry; the profile of an earlier build holds one per block.
     for (const [key, entry] of cacheEntriesOf(file)) {
         cacheStore.set(key, entry)
@@ -178,6 +176,17 @@ function text(value: string): Uint8Array {
 }
 
 //#endregion
+
+describe('isBlockFormatSave', () => {
+    test('is true for a block-format file and false for the msgpack formats salvage does not read', async () => {
+        const { file } = await buildFile()
+
+        expect(isBlockFormatSave(file)).toBe(true)
+        expect(isBlockFormatSave(encodeRisuSaveLegacy({ characters: [] }, 'noCompression'))).toBe(false)
+        expect(isBlockFormatSave(encodeRisuSaveLegacy({ characters: [] }, 'compression'))).toBe(false)
+        expect(isBlockFormatSave(new Uint8Array([1, 2, 3]))).toBe(false)
+    })
+})
 
 describe('salvageRisuSave on an intact file', () => {
     test('lists nothing and reads what the strict decoder reads', async () => {
@@ -250,7 +259,7 @@ describe('salvageRisuSave leaves out one damaged character and keeps the rest', 
             characters: ids.map((chaId) => ({ chaId, type: 'character', name: `Character ${chaId}`, chats: [] })),
         } as unknown as Database
         const encoder = new RisuSaveEncoder()
-        await encoder.init(db, { compression: false, skipRemoteSavingOnCharacters: false, writeBlockCache: false })
+        await encoder.init(db, { compression: false })
         const file = new Uint8Array(encoder.encode()!)
         expect(directoryOf(file)).toEqual([])
 
@@ -565,8 +574,8 @@ describe('the strict and default decoders are unchanged', () => {
     })
 })
 
-describe('the encoder option that writes no block cache', () => {
-    async function encodeWith(writeBlockCache: boolean | undefined) {
+describe('the encoder writes no block cache', () => {
+    async function encodeFile() {
         const n = ++fixtureCounter
         const db = {
             formatversion: 5,
@@ -579,7 +588,7 @@ describe('the encoder option that writes no block cache', () => {
             characters: [{ chaId: `nocache-${n}`, type: 'character', name: `Character ${n}`, chats: [] }],
         } as unknown as Database
         const encoder = new RisuSaveEncoder()
-        await encoder.init(db, { compression: false, skipRemoteSavingOnCharacters: false, ...(writeBlockCache === undefined ? {} : { writeBlockCache }) })
+        await encoder.init(db, { compression: false })
         await encoder.set(db, makeToSave())
         return { bytes: new Uint8Array(encoder.encode()!), id: `nocache-${n}` }
     }
@@ -589,31 +598,26 @@ describe('the encoder option that writes no block cache', () => {
         const before = snapshotOf(cacheStore)
         cacheWrites.length = 0
 
-        await encodeWith(false)
+        await encodeFile()
 
         expect(cacheWrites).toEqual([])
         expect(snapshotOf(cacheStore)).toEqual(before)
     })
 
-    test('guard: the file it produces decodes strictly and has the blocks the default setting produces', async () => {
-        const without = await encodeWith(false)
-        const withCache = await encodeWith(true)
-
-        const strictWithout = await decodeRisuSave(without.bytes, { strict: true })
-        const strictWith = await decodeRisuSave(withCache.bytes, { strict: true })
-
-        expect(characterIds(strictWithout)).toEqual([without.id])
-        expect(strictWithout.botPresets?.length).toBe(strictWith.botPresets?.length)
-        expect(parseBlocks(without.bytes).map((block) => block.name).filter((name) => name !== without.id))
-            .toEqual(parseBlocks(withCache.bytes).map((block) => block.name).filter((name) => name !== withCache.id))
-    })
-
-    test('by default the encoder writes no block cache entry either', async () => {
-        cacheWrites.length = 0
-
-        await encodeWith(undefined)
+    test('writes no cache entry into an empty cache', async () => {
+        await encodeFile()
 
         expect(cacheWrites).toEqual([])
         expect(cacheStore.size).toBe(0)
+    })
+
+    test('guard: the file it produces decodes strictly and holds the fixed blocks and its character', async () => {
+        const file = await encodeFile()
+
+        const strict = await decodeRisuSave(file.bytes, { strict: true })
+
+        expect(characterIds(strict)).toEqual([file.id])
+        expect(parseBlocks(file.bytes).map((block) => block.name).filter((name) => name !== file.id))
+            .toEqual(['root', 'preset', 'modules', 'loadouts', 'plugins', 'pluginStorage', 'config'])
     })
 })

@@ -8,13 +8,13 @@ import type { ForageLike } from './forageBackedStore'
 // format. The default decode stays lenient for every other caller.
 //
 // Platform boundaries mocked here: the IndexedDB block cache (localforage),
-// the shared storage the remote blocks live in (`forageStorage`), the live
-// database flag that enables remote saving, and the platform flags.
+// the shared storage the remote blocks live in (`forageStorage`), and the
+// platform flags. A file whose characters live in remote blocks is built by
+// `withRemoteCharacters`: the encoder writes none.
 
-const { cacheStore, remoteStore, remoteFlag } = vi.hoisted(() => ({
+const { cacheStore, remoteStore } = vi.hoisted(() => ({
     cacheStore: new Map<string, unknown>(),
     remoteStore: new Map<string, Uint8Array>(),
-    remoteFlag: { enabled: false },
 }))
 
 vi.mock('localforage', () => ({
@@ -59,7 +59,7 @@ vi.mock(
     import('src/ts/storage/database.svelte'),
     () =>
         ({
-            getDatabase: vi.fn(() => ({ enableRemoteSaving: remoteFlag.enabled })),
+            getDatabase: vi.fn(() => ({})),
             presetTemplate: { name: 'test-preset' },
         }) as unknown as typeof import('src/ts/storage/database.svelte'),
 )
@@ -81,11 +81,11 @@ import { RisuSaveEncoder, decodeRisuSave } from '../risuSave'
 import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
 import { cacheEntriesOf } from './risuSaveCacheFixture'
+import { withRemoteCharacters } from './remoteFileFixture'
 
 beforeEach(() => {
     cacheStore.clear()
     remoteStore.clear()
-    remoteFlag.enabled = false
 })
 
 //#region file-level helpers: parse, rewrite and reassemble the block container
@@ -275,8 +275,7 @@ interface FixtureOptions {
 
 /**
  * Encodes a two-character database. The remote-block store keys embed a hash
- * of the content, and the encoder remembers which remote files this page load
- * already wrote, so every fixture uses ids and content no other fixture in
+ * of the content, so every fixture uses ids and content no other fixture in
  * this file has used.
  */
 async function buildFixture(options: FixtureOptions = {}): Promise<Fixture> {
@@ -299,21 +298,21 @@ async function buildFixture(options: FixtureOptions = {}): Promise<Fixture> {
         db.pluginCustomStorage = options.pluginCustomStorage ?? {}
     }
 
-    remoteFlag.enabled = options.remote === true
     const encoder = new RisuSaveEncoder()
     await encoder.init(db, {
         compression: options.compression ?? false,
-        skipRemoteSavingOnCharacters: false,
     })
     // set() is what writes the root block's block directory.
     const passes = options.passes ?? 'set'
     if (passes !== 'init') {
         await encoder.set(db, { ...makeToSave(), pluginCustomStorage: passes === 'set-marked' })
     }
-    remoteFlag.enabled = false
     const encoded = encoder.encode()
     expect(encoded).not.toBeNull()
-    const file = new Uint8Array(encoded!)
+    let file: Uint8Array = new Uint8Array(encoded!)
+    if (options.remote === true) {
+        file = await withRemoteCharacters(file, [firstId, secondId], (key, bytes) => { remoteStore.set(key, bytes) })
+    }
     // The encoder writes no block cache entry; the profile of an earlier build holds one per block.
     if (!options.compression) {
         for (const [key, entry] of cacheEntriesOf(file)) {
@@ -563,7 +562,7 @@ describe('plugin storage that is written, removed and written again', () => {
             characters: [{ chaId: `strict-origin-${n}`, type: 'character', name: `Origin ${n}`, chats: [] }],
         } as unknown as Database
         const encoder = new RisuSaveEncoder()
-        await encoder.init(db, { compression: false, skipRemoteSavingOnCharacters: false })
+        await encoder.init(db, { compression: false })
         await encoder.set(db, makeToSave())
         const snapshot = () => new Uint8Array(encoder.encode()!)
 

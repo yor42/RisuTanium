@@ -933,7 +933,7 @@ function backupDb(characters: CharacterFixtureBk[], extra: Record<string, unknow
 /** Stores an internal backup of one character `char-A` where `loadInternalBackup` lists backups. */
 async function seedInternalBackup(): Promise<void> {
     const encoder = new RisuSaveEncoder()
-    await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false, skipRemoteSavingOnCharacters: false })
+    await encoder.init(backupDb([backupCharacter('char-A', 'A from backup')]), { compression: false })
     forageMemStore.set('dbbackup-1700000000', new Uint8Array(encoder.encode()!))
 }
 
@@ -1047,7 +1047,7 @@ describe('LoadLocalBackup is registered as busy once its file is chosen', () => 
 })
 
 describe('LoadLocalBackup waits for work', () => {
-    test('a send streaming: LoadLocalBackup is refused before database.bin is written and DBState.db is the same object', async () => {
+    test('a send streaming: LoadLocalBackup is refused before the restored profile is written and DBState.db is the same object', async () => {
         installWorld()
         const { running } = await startHeldSendBk()
         const dbBefore = DBState.db
@@ -1055,12 +1055,12 @@ describe('LoadLocalBackup waits for work', () => {
 
         await loadBackupBytes(fixture).catch(() => {})
         const dbAfter = DBState.db
-        const written = forageMemStore.has('database/database.bin')
+        const written = Array.from(forageMemStore.keys()).some((key) => key === 'database/database.bin' || key.startsWith('blocks/'))
         const installed = vi.mocked(setDatabase).mock.calls.length
         const reloadFlag = requiresFullEncoderReload.state
         await drain(running)
 
-        expect.soft(written, 'database/database.bin was written').toBe(false)
+        expect.soft(written, 'the main file or a block of the restored profile was written').toBe(false)
         expect.soft(installed, 'setDatabase calls').toBe(0)
         expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
         expect.soft(reloadFlag, 'requiresFullEncoderReload').toBe(false)

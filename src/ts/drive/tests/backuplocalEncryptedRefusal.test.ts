@@ -6,7 +6,7 @@
  * `encryption.risudat` -- wherever that entry sits in the file, whatever its
  * content, and whether or not its declared data length fits -- before
  * performing any write: no asset write (`forageStorage.setItem('assets/...')`
- * or Tauri `writeFile`), no `setColdStorageItem`, no `database.bin` write,
+ * or Tauri `writeFile`), no `setColdStorageItem`, no database write,
  * no `setDatabase`, no `localStorage` write and no `fetch`. Any exception
  * encountered while looking for the marker also aborts the import before any
  * write, with its own message, distinct from the refusal. Without such an
@@ -79,15 +79,17 @@ vi.mock(import('../../storage/database.svelte'), () => ({
 }) as unknown as typeof import('../../storage/database.svelte'))
 
 const requiresFullEncoderReloadMock = vi.hoisted(() => ({ state: false }))
-const forageSetItemMock = vi.hoisted(() => vi.fn(async (_key: string, _data: Uint8Array) => {}))
+const forageFiles = vi.hoisted(() => new Map<string, Uint8Array>())
+const forageSetItemMock = vi.hoisted(() => vi.fn(async (key: string, data: Uint8Array) => { forageFiles.set(key, data) }))
 const acquireExclusiveStorageMigrationLockMock = vi.hoisted(() => vi.fn(async () => (async () => {})))
 
 vi.mock(import('../../globalApi.svelte'), () => ({
     LocalWriter: class {},
     forageStorage: {
-        keys: vi.fn(async () => []),
-        getItem: vi.fn(async () => null),
+        keys: vi.fn(async () => Array.from(forageFiles.keys())),
+        getItem: vi.fn(async (key: string) => forageFiles.get(key) ?? null),
         setItem: forageSetItemMock,
+        removeItem: vi.fn(async (key: string) => { forageFiles.delete(key) }),
     },
     requiresFullEncoderReload: requiresFullEncoderReloadMock,
     noteAssetWrittenThisPage: vi.fn(),
@@ -159,7 +161,7 @@ import { LoadLocalBackup } from '../backuplocal'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { isAppInitiatedReload } from '../../reloadGuard'
 import { forageStorage } from '../../globalApi.svelte'
-import { injectAppStore } from '../../storage/store/appStore'
+import { injectRestoreStore } from './restoreSupport'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 
 /** Narrows a `Uint8Array<ArrayBufferLike>` to the `Uint8Array<ArrayBuffer>` shape `BlobPart` requires; mirrors `asBuffer` in `src/ts/util.ts`. */
@@ -432,8 +434,9 @@ const fetchMock = vi.hoisted(() => vi.fn())
 beforeEach(() => {
     setDatabaseMock.mockClear()
     forageSetItemMock.mockClear()
-    // The restore writes the main file through the page's byte store; here it is the storage-object model above.
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
+    forageFiles.clear()
+    // The restore writes a block generation through the page's byte store; here it is the storage-object model above, on a desktop-kind page.
+    injectRestoreStore(createForageBackedStore(forageStorage as unknown as ForageLike))
     tauriWriteFileMock.mockClear()
     tauriRenameMock.mockClear()
     tauriRemoveMock.mockClear()
@@ -705,6 +708,7 @@ describe('the import loop guards independently of a pre-read view that missed th
 
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(forageSetItemMock).not.toHaveBeenCalledWith('database/database.bin', expect.anything())
+        expect(forageSetItemMock).not.toHaveBeenCalledWith('blocks/head', expect.anything())
         expectLoopGuardShown()
     })
 })
@@ -748,12 +752,16 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
 
         await loadBackupWithFile(file)
 
-        expect(forageSetItemMock.mock.calls.map((call) => call[0])).toEqual([
+        // The assets are written in file order, then the database as a block generation whose head is the last key written.
+        const writtenKeys = forageSetItemMock.mock.calls.map((call) => call[0])
+        expect(writtenKeys.slice(0, 3)).toEqual([
             'assets/asset1.png',
             'assets/asset2.png',
             'assets/asset3.png',
-            'database/database.bin',
         ])
+        expect(writtenKeys.slice(3).every((key) => key.startsWith('blocks/'))).toBe(true)
+        expect(writtenKeys[writtenKeys.length - 1]).toBe('blocks/head')
+        expect(writtenKeys).not.toContain('database/database.bin')
         expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
         expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
@@ -774,6 +782,7 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(forageSetItemMock).not.toHaveBeenCalledWith('database/database.bin', expect.anything())
+        expect(forageSetItemMock).not.toHaveBeenCalledWith('blocks/head', expect.anything())
         expect(fetchMock).not.toHaveBeenCalled()
         expect(alertMocks.alertError).toHaveBeenCalledWith('Failed, Is file corrupted?')
     })

@@ -5,7 +5,7 @@
  * not run) is read-only for its session. `LoadLocalBackup`
  * (`src/ts/drive/backuplocal.ts`) refuses the `.bin` restore there once the
  * file is picked and before it streams or writes anything: no asset write, no
- * cold-storage write, no main-file write, no `setDatabase`, no cross-tab lock,
+ * cold-storage write, no write of the restored profile, no `setDatabase`, no cross-tab lock,
  * and the read-only notice is shown. The same restore on any other page goes
  * on to write.
  *
@@ -180,7 +180,7 @@ async function restore(bytes: Uint8Array): Promise<void> {
 }
 
 describe('the .bin restore on a page that runs from OPFS this time', () => {
-    test('is refused with the read-only notice before it takes a lock or writes an asset, a unit, the main file or the page', async () => {
+    test('is refused with the read-only notice before it takes a lock or writes an asset, a unit, the restored profile or the page', async () => {
         injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'opfs-transitional')
 
         await restore(backupBytes())
@@ -192,7 +192,7 @@ describe('the .bin restore on a page that runs from OPFS this time', () => {
         expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 
-    test('guard: the same restore on any other page goes on to write the asset and the main file', async () => {
+    test('guard: the same restore on any other page goes on to write the asset', async () => {
         injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'indexeddb')
 
         await restore(backupBytes())

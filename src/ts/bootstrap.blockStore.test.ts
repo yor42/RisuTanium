@@ -94,6 +94,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     setDatabase: setDatabaseMock,
     defaultSdDataFunc: vi.fn(() => ({})),
     presetTemplate: { name: 'test-preset' },
+    presetFromWorkingSettings: (db: { mainPrompt?: string }, name: string, image: string) => ({ name, image, mainPrompt: db.mainPrompt }),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock(import('src/ts/update'), () => ({
@@ -383,6 +384,31 @@ describe('loadData() on the Node server with a block profile', () => {
         expect(installedCharacterIds()[0]).toEqual(['stored'])
         expect(server.requestsTo('/api/write')).toEqual([])
         expect(server.requestsTo('/api/remove')).toEqual([])
+    })
+
+    test('a stored profile whose preset id is past the end of the list boots with the working settings appended as a new preset the id points at, and no stored preset is changed', async () => {
+        await putProfile(baseDb({ botPresets: [{ name: 'Stored one', mainPrompt: 'stored prompt' }], botPresetsId: 4 }))
+        const { boot } = await freshLoadData()
+
+        const { loaded } = await boot()
+
+        expect(loaded).toBe(true)
+        const booted = dbState.current as { botPresets: Array<{ name: string, mainPrompt?: string }>, botPresetsId: number }
+        expect(booted.botPresets).toHaveLength(2)
+        expect(booted.botPresets[0]).toMatchObject({ name: 'Stored one', mainPrompt: 'stored prompt' })
+        expect(booted.botPresets[1]).toMatchObject({ name: 'New Preset', mainPrompt: 'fixture-main-prompt' })
+        expect(booted.botPresetsId).toBe(1)
+    })
+
+    test('guard: a stored profile whose preset id is -1 boots with the presets and the id as they were', async () => {
+        await putProfile(baseDb({ botPresets: [{ name: 'Stored one' }], botPresetsId: -1 }))
+        const { boot } = await freshLoadData()
+
+        await boot()
+
+        const booted = dbState.current as { botPresets: unknown[], botPresetsId: number }
+        expect(booted.botPresets).toHaveLength(1)
+        expect(booted.botPresetsId).toBe(-1)
     })
 
     test('a kept generation on disk holds the startup asset sweep off, and an ordinary profile does not', async () => {

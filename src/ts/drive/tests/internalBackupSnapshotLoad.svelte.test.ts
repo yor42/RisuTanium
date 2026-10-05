@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 
 /**
- * `loadInternalBackup()` (`src/ts/drive/internalBackup.ts`) writes the chosen
- * snapshot's bytes to the main database file and reloads; it never installs a
+ * `loadInternalBackup()` (`src/ts/drive/internalBackup.ts`) commits the chosen
+ * snapshot as a new block generation through the page's one block-store owner
+ * and reloads; it never writes the main database file and never installs a
  * database into the running page.
  *
  * Drives the REAL `globalApi.svelte.ts` (its `dbWriteLock`, its storage tab
  * locks and the exclusive hold built on them), the real `risuSave` codec, the
- * real main-file record and the real `loadInternalBackup` together, so the
+ * real block-store owner and the real `loadInternalBackup` together, so the
  * write mutex and the Web Locks the load takes are the ones production shares
  * with `saveDb()`. A fake Web Locks manager stands in for `navigator.locks`
  * (one browser origin, several simulated tabs). Storage, the Tauri file
@@ -22,13 +23,15 @@
  * graph, so every test boots a fresh module graph (`vi.resetModules()` and a
  * re-import), a fresh lock manager and fresh storage.
  *
- * Tests titled `guard:` pin behaviour that must be preserved and pass before
- * and after the change; every other test is a regression test for the
- * behaviour it names. The partial-load and pre-load-copy tests at the end
- * exercise behaviour that did not exist before. The reproducers fail on an
- * assertion in the old build, where it refused or wrote no copy. The tests of
- * the tamper seam are new-behaviour tests: they fail in the old build because
- * the seam does not exist.
+ * Tests titled `guard:` pin behaviour that must be preserved; every other
+ * test is a regression test for the behaviour it names. The world is a page
+ * that booted on a profile with no block head: the page storage mode is
+ * `legacy`, carrying the fingerprint of the main file boot read (none when
+ * there is no main file). A load on such a page converts it: the head names
+ * the main file's fingerprint and a conversion time, and the main file is
+ * moved to a pre-blocks copy. Snapshots on the desktop and the Node server hold their
+ * characters as remote blocks, as an earlier build wrote them, so the load of
+ * such a snapshot is shown to store them inline.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../storage/database.svelte'
@@ -42,6 +45,9 @@ import { createNodeHttpStore } from '../../storage/store/nodeHttpStore'
 import { FakeNodeServer } from '../../storage/tests/manualCleanupHarness'
 import { breakDataChecksum, directoryOf, removeBlockAndDirectoryEntry, replacePayload, retypeBlock } from '../../storage/tests/risuSaveBlockFile'
 import { cacheEntriesOf } from '../../storage/tests/risuSaveCacheFixture'
+import { withRemoteCharacters } from '../../storage/tests/remoteFileFixture'
+import { encodeHead, parseHead } from '../../storage/headSwap'
+import { fingerprintMainFile } from '../../storage/mainFileFingerprint'
 
 //#region shared observation state (hoisted so every mock factory and test sees the same objects)
 
@@ -150,9 +156,17 @@ vi.mock(import('../../platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('../../platform'))
 
+/** The keys of the language table that are functions: each answers its marker whatever it is called with. */
+const FUNCTION_KEYS = new Set(['restoreNoUndoCopyConfirm', 'restoreTooLargeBlock', 'restoreLeftOutConfirm'])
+
 vi.mock(import('../../../lang'), () => ({
     language: new Proxy({}, {
-        get: (_target, key) => (typeof key === 'string' ? `[[${key}]]` : undefined),
+        get: (_target, key) => {
+            if (typeof key !== 'string') {
+                return undefined
+            }
+            return FUNCTION_KEYS.has(key) ? () => `[[${key}]]` : `[[${key}]]`
+        },
     }),
     changeLanguage: vi.fn(),
 }) as unknown as typeof import('../../../lang'))
@@ -167,6 +181,7 @@ vi.mock(import('../../storage/database.svelte'), async () => {
         getDatabase: vi.fn(() => stores.DBState.db),
         setDatabase: setDatabaseMock,
         presetTemplate: { name: 'test-preset' },
+        presetFromWorkingSettings: (_db: unknown, name: string, image: string) => ({ name, image }),
         defaultSdDataFunc: vi.fn(() => ({})),
         appVer: 'test',
         appSubVer: 'test',
@@ -351,6 +366,10 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         if (tauriFs.readDirError) {
             throw tauriFs.readDirError
         }
+        // A path that holds a file is not a directory: the store tells a value from a directory by listing it.
+        if (tauriFs.files.has(givenDir.replace(/^\.\//, ''))) {
+            throw new Error(`scratch: not a directory ${givenDir} (os error 20)`)
+        }
         const prefix = `${givenDir.replace(/^\.\//, '')}/`
         return Array.from(tauriFs.files.keys())
             .filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
@@ -470,6 +489,7 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
 //#region world: one fresh module graph, lock manager and live database per test
 
 const MAIN = 'database/database.bin'
+const HEAD = 'blocks/head'
 const LIVE_MAIN_BYTES = new TextEncoder().encode('live-main-file-bytes')
 /** Delay after which a lock acquisition that has not resolved counts as "never resolves". */
 const PROBE_MS = 40
@@ -502,8 +522,10 @@ interface World {
     internal: typeof import('../internalBackup')
     load: () => Promise<void>
     risuSave: typeof import('../../storage/risuSave')
-    mainFileRecord: typeof import('../../storage/mainFileRecord')
     startupCleanup: typeof import('../../storage/startupCleanupState')
+    pageMode: typeof import('../../storage/pageStorageMode')
+    /** The profile the block store's head names, strictly decoded as boot decodes it; `null` when there is no head or it does not load. */
+    committed: () => Promise<Database | null>
     stores: typeof import('../../stores.svelte')
     core: FakeLockManagerCore
     liveDb: Database
@@ -528,23 +550,33 @@ async function boot(options: BootOptions = {}): Promise<World> {
     const { injectAppStore } = await import('../../storage/store/appStore')
     const webStore = createForageBackedStore(api.forageStorage as unknown as ForageLike)
     const tauriStore = createTauriFilesStore({ platform: 'posix' })
-    injectAppStore(platform === 'tauri' ? tauriStore : webStore)
+    // Both models are written as a block store on a desktop-kind page: the owner's swap and lock do not depend on the store behind them.
+    injectAppStore(platform === 'tauri' ? tauriStore : webStore, 'tauri')
     const internal = await import('../internalBackup')
     const risuSave = await import('../../storage/risuSave')
-    const mainFileRecord = await import('../../storage/mainFileRecord')
+    const pageMode = await import('../../storage/pageStorageMode')
+    const pageOwner = await import('../../storage/pageBlockOwner')
+    const profileValidate = await import('../../storage/blockProfileValidate')
+    const committed = async (): Promise<Database | null> => {
+        const owner = await pageOwner.getPageBlockOwner()
+        const read = await owner!.readCommitted({ validate: profileValidate.validateLoadedBlocks })
+        return read.kind === 'loaded' ? read.tree : null
+    }
     const startupCleanup = await import('../../storage/startupCleanupState')
+    // A boot that finds no block head and no main file leaves the page in the legacy mode with nothing to fingerprint;
+    // `putMain` gives it the main file's fingerprint, as a boot that read one does.
+    pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: null })
     const stores = await import('../../stores.svelte')
     startupCleanup.resetStartupCleanupForTests()
     await api.tabPresenceLockAcquired
 
     const liveDb = {
         formatversion: 5,
-        enableRemoteSaving: platform !== 'web',
         characters: [fixtureCharacter('live-char', 'Live character')],
     } as unknown as Database
     stores.DBState.db = liveDb
     const liveBefore = stores.DBState.db
-    return { platform, api, internal, load: internal.loadInternalBackup, risuSave, mainFileRecord, startupCleanup, stores, core, liveDb, liveBefore }
+    return { platform, api, internal, load: internal.loadInternalBackup, risuSave, startupCleanup, pageMode, committed, stores, core, liveDb, liveBefore }
 }
 
 //#endregion
@@ -575,10 +607,22 @@ function snapshotDb(characters: Database['characters'], extra: Record<string, un
     } as unknown as Database
 }
 
+/** Rewrites `bytes`'s characters as remote blocks, with their files in this world's store, as an earlier build wrote them on the desktop and the server. */
+async function asRemoteSnapshot(world: World, bytes: Uint8Array, ids: string[]): Promise<Uint8Array> {
+    return await withRemoteCharacters(bytes, ids, (key, data) => {
+        if (world.platform === 'tauri') {
+            tauriFs.files.set(key, data)
+        } else {
+            storage.items.set(key, data)
+        }
+    })
+}
+
 async function encodeSnapshot(world: World, characters: Database['characters']): Promise<Uint8Array> {
     const encoder = new world.risuSave.RisuSaveEncoder()
-    await encoder.init(snapshotDb(characters), { compression: false, skipRemoteSavingOnCharacters: false })
-    return new Uint8Array(encoder.encode()!)
+    await encoder.init(snapshotDb(characters), { compression: false })
+    const bytes = new Uint8Array(encoder.encode()!)
+    return world.platform === 'web' ? bytes : await asRemoteSnapshot(world, bytes, characters.map((character) => String(character.chaId)))
 }
 
 function snapshotKey(n = 17000000000): string {
@@ -605,6 +649,7 @@ function removeSnapshot(world: World, key: string): void {
 }
 
 function putMain(world: World): void {
+    world.pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(LIVE_MAIN_BYTES) })
     if (world.platform === 'tauri') {
         tauriFs.files.set(MAIN, LIVE_MAIN_BYTES)
     } else {
@@ -614,6 +659,33 @@ function putMain(world: World): void {
 
 function mainBytes(world: World): Uint8Array | undefined {
     return world.platform === 'tauri' ? tauriFs.files.get(MAIN) : storage.items.get(MAIN)
+}
+
+function storedFiles(world: World): Map<string, Uint8Array> {
+    return world.platform === 'tauri' ? tauriFs.files : storage.items
+}
+
+/** A load on a page that boot left with no head converts it: the main file is moved to a pre-blocks copy and the head names the file it came from. */
+function expectConverted(world: World): void {
+    expect.soft(mainBytes(world), 'the main file was moved aside').toBeUndefined()
+    const copies = Array.from(storedFiles(world).keys()).filter((key) => key.startsWith('database/database.pre-blocks'))
+    expect.soft(copies, 'pre-conversion copies').toHaveLength(1)
+    expect.soft(storedFiles(world).get(copies[0] ?? ''), 'the pre-conversion copy holds the main file').toEqual(LIVE_MAIN_BYTES)
+    const head = storedFiles(world).get(HEAD)
+    const record = head === undefined ? null : parseHead(head)
+    expect.soft(record?.status === 'ok' ? record.record.convertedFrom : undefined, 'the head names the main file boot read').toBe(fingerprintMainFile(LIVE_MAIN_BYTES))
+    expect.soft(typeof (record?.status === 'ok' ? record.record.convertedAt : undefined), 'the head carries the conversion time').toBe('number')
+    expect.soft(world.pageMode.getPageStorageMode().kind, 'the page is a block page').toBe('block')
+}
+
+/** The keys of the block store's head the load wrote: one for a load that committed, none for a load that did not. */
+function headWrites(world: World): number {
+    return writtenKeysInOrder(world).filter((key) => key === HEAD).length
+}
+
+/** Whether any key of the block store, the head included, has been written. */
+function blocksWritten(world: World): boolean {
+    return writtenKeysInOrder(world).some((key) => key.startsWith('blocks/'))
 }
 
 /**
@@ -629,10 +701,10 @@ function mainWrites(world: World): Uint8Array[] {
     return storage.setLog.filter((entry) => entry.key === MAIN).map((entry) => entry.value as Uint8Array)
 }
 
-/** The names in `database/` that are neither the main file nor a numbered snapshot. */
+/** The names in `database/` that are neither the main file, a numbered snapshot nor the pre-conversion copy of the main file. */
 function strayDatabaseFiles(): string[] {
     return Array.from(tauriFs.files.keys())
-        .filter((key) => key.startsWith('database/') && key !== MAIN && !key.startsWith('database/dbbackup-'))
+        .filter((key) => key.startsWith('database/') && key !== MAIN && !key.startsWith('database/dbbackup-') && !key.startsWith('database/database.pre-blocks'))
 }
 
 function snapshotWasRead(world: World, key: string): boolean {
@@ -787,6 +859,18 @@ function expectNoRejection(outcome: Error | undefined): void {
     expect.soft(outcome?.message, 'the load rejected').toBeUndefined()
 }
 
+/** Moves the remote files a snapshot fixture wrote into the storage-object model onto the server the page's store talks to. */
+function seedRemoteFilesOnServer(world: World, server: FakeNodeServer): void {
+    for (const key of remoteKeys(world)) {
+        server.seed(key, storage.items.get(key)!)
+    }
+}
+
+/** A key of a block generation, which is written before the head: the head itself is not one. */
+function isGenerationKey(key: string): boolean {
+    return key.startsWith('blocks/') && key !== HEAD
+}
+
 /** True when a `dbWriteLock` acquisition resolves; a pending one is left queued. */
 async function writeLockIsFree(world: World): Promise<boolean> {
     let release: (() => void) | undefined
@@ -813,6 +897,7 @@ async function exclusiveHoldState(world: World): Promise<'granted' | 'refused' |
 function expectNothingChanged(world: World): void {
     expect.soft(mainBytes(world), 'the main file').toEqual(LIVE_MAIN_BYTES)
     expect.soft(mainWrites(world).length, 'writes to the main file').toBe(0)
+    expect.soft(blocksWritten(world), 'a block of the block store was written').toBe(false)
     expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
     expect.soft(relaunchBox.calls, 'relaunch calls').toBe(0)
     expect.soft(setDatabaseMock, 'setDatabase calls').not.toHaveBeenCalled()
@@ -889,17 +974,17 @@ afterEach(() => {
 
 //#endregion
 
-describe('loadInternalBackup writes the chosen snapshot', () => {
-    test('writes the snapshot bytes verbatim to the main file, records them, reloads, and leaves the live database object untouched', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+describe('loadInternalBackup commits the chosen snapshot', () => {
+    test('commits the snapshot as a block generation, writes no main file, reloads, and leaves the live database object untouched', async () => {
+        const { world } = await worldWithSnapshot()
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        const writes = mainWrites(world)
-        expect.soft(writes.length, 'writes to database/database.bin').toBe(1)
-        expect.soft(writes[0], 'the bytes written').toEqual(bytes)
-        expect.soft(await world.mainFileRecord.compareWithMainFileRecord(bytes), 'the main-file record compared with the snapshot bytes').toBe('same')
+        expect.soft(mainWrites(world).length, 'writes to database/database.bin').toBe(0)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf((await world.committed())!), 'characters in the profile the head names').toEqual(['char-A'])
+        expectConverted(world)
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
         expect.soft(setDatabaseMock, 'setDatabase calls').not.toHaveBeenCalled()
         expect.soft(world.stores.DBState.db === world.liveBefore, 'DBState.db is the same object').toBe(true)
@@ -907,35 +992,35 @@ describe('loadInternalBackup writes the chosen snapshot', () => {
     })
 
     test('keeps the write lock closed after a successful load, so a later save never writes over it', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+        const { world } = await worldWithSnapshot()
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world)[0], 'the snapshot was written').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the snapshot was committed').toEqual(['char-A'])
         expect.soft(await writeLockIsFree(world), 'a dbWriteLock acquirer queued after the load resolves').toBe(false)
     })
 
-    test('a save already holding the write lock lands first, and the snapshot is the last write and the recorded one', async () => {
-        const { world, bytes } = await worldWithSnapshot()
-        const saveBytes = new TextEncoder().encode('bytes-of-a-save-in-flight')
+    test('a save already holding the write lock lands first, and the committed snapshot is the last write', async () => {
+        const { world } = await worldWithSnapshot()
         const releaseSave = await world.api.dbWriteLock.acquire()
 
         const loading = runLoad(world)
         await ticks(20)
-        await world.api.forageStorage.setItem(MAIN, saveBytes)
+        expect.soft(blocksWritten(world), 'a block was written while the save held the lock').toBe(false)
+        await world.api.forageStorage.setItem('probe/save-in-flight', new TextEncoder().encode('bytes-of-a-save-in-flight'))
         releaseSave()
-        world.mainFileRecord.noteMainFileBytes(saveBytes)
         const outcome = await loading
 
         expectNoRejection(outcome)
-        const writes = mainWrites(world)
-        expect.soft(writes.map((w) => Array.from(w)), 'every write to the main file, in order').toEqual([Array.from(saveBytes), Array.from(bytes)])
-        expect.soft(mainBytes(world), 'the main file at the end').toEqual(bytes)
-        expect.soft(await world.mainFileRecord.compareWithMainFileRecord(bytes), 'the main-file record compared with the snapshot bytes').toBe('same')
+        const written = writtenKeysInOrder(world)
+        expect.soft(written.indexOf('probe/save-in-flight'), 'the save landed first').toBeGreaterThanOrEqual(0)
+        expect.soft(written.indexOf('probe/save-in-flight'), 'the save landed before any block').toBeLessThan(written.findIndex((key) => key.startsWith('blocks/')))
+        expect.soft(written.filter((key) => key.startsWith('blocks/')).pop(), 'the head is the last block-store key written').toBe(HEAD)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
     })
 
-    test('writes the snapshot that was chosen in the picker, not another one', async () => {
+    test('commits the snapshot that was chosen in the picker, not another one', async () => {
         const world = await boot()
         putMain(world)
         const first = await encodeSnapshot(world, [fixtureCharacter('char-first', 'First')])
@@ -948,21 +1033,21 @@ describe('loadInternalBackup writes the chosen snapshot', () => {
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(second)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf((await world.committed())!), 'characters in the profile the head names').toEqual(['char-second'])
     })
 
     test.each([
-        ['a compressed legacy snapshot', () => {
+        ['a compressed legacy snapshot', 'legacy-c', () => {
             return (world: World) => world.risuSave.encodeRisuSaveLegacy(snapshotDb([fixtureCharacter('legacy-c', 'Legacy')]), 'compression')
         }],
-        ['a raw legacy snapshot', () => {
+        ['a raw legacy snapshot', 'legacy-r', () => {
             return (world: World) => world.risuSave.encodeRisuSaveLegacy(snapshotDb([fixtureCharacter('legacy-r', 'Legacy')]), 'noCompression')
         }],
-        ['a RisuSave version-0 snapshot written by an upstream build', () => {
+        ['a RisuSave version-0 snapshot written by an upstream build', 'upstream-cha', () => {
             return () => buildVersion0Snapshot()
         }],
-    ])('loads %s: its bytes are written verbatim and the page reloads', async (_title, makeBuilder) => {
+    ])('loads %s: its characters are committed as a block generation and the page reloads', async (_title, expectedId, makeBuilder) => {
         const world = await boot()
         putMain(world)
         const bytes = makeBuilder()(world)
@@ -972,22 +1057,21 @@ describe('loadInternalBackup writes the chosen snapshot', () => {
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(0)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf((await world.committed())!), 'characters in the profile the head names').toEqual([expectedId])
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
         expectNoError()
     })
 
     test('reloads in order: the exclusive hold is released, the reload is marked app-initiated, the URL is cleaned, then the page reloads', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+        const { world } = await worldWithSnapshot()
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(storage.setLog.map((entry) => entry.key).filter((key) => key === MAIN), 'keys written to the main file').toEqual([MAIN])
-        const value = mainWrites(world)[0]
-        expect.soft(value === undefined ? undefined : Object.getPrototypeOf(value), 'the written value is a plain Uint8Array').toBe(Uint8Array.prototype)
-        expect.soft(value, 'the bytes written').toEqual(bytes)
+        expect.soft(storage.setLog.map((entry) => entry.key).filter((key) => key === MAIN), 'keys written to the main file').toEqual([])
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         const exclusiveGranted = order.lastIndexOf('lock:exclusive-granted')
         const presenceRestored = order.indexOf('lock:shared-granted', exclusiveGranted)
         const marked = order.indexOf('mark')
@@ -1012,7 +1096,7 @@ describe('loadInternalBackup writes the chosen snapshot', () => {
         expect(settled, 'the call settles').toBe('settled')
     })
 
-    test('a snapshot that storage hands back as a Node Buffer is written as a plain Uint8Array with the same bytes', async () => {
+    test('a snapshot that storage hands back as a Node Buffer is decoded and committed like any other', async () => {
         const world = await boot()
         putMain(world)
         const bytes = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
@@ -1024,11 +1108,8 @@ describe('loadInternalBackup writes the chosen snapshot', () => {
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        const writes = mainWrites(world)
-        expect.soft(writes.length, 'writes to the main file').toBe(1)
-        const value = writes[0]
-        expect.soft(value !== undefined && Object.getPrototypeOf(value) === Uint8Array.prototype, 'the written value is a plain Uint8Array').toBe(true)
-        expect.soft(value === undefined ? undefined : Array.from(value), 'the bytes written').toEqual(Array.from(bytes))
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf((await world.committed())!), 'characters in the profile the head names').toEqual(['char-A'])
     })
 })
 
@@ -1116,15 +1197,15 @@ describe('loadInternalBackup refuses while another tab is open', () => {
         expect.soft(await writeLockIsFree(world), 'dbWriteLock can be acquired again').toBe(true)
     })
 
-    test('without Web Locks: a "yes" writes the snapshot, reloads, and keeps the write lock closed', async () => {
-        const { world, bytes } = await worldWithSnapshot({ webLocks: false })
+    test('without Web Locks: a "yes" commits the snapshot, reloads, and keeps the write lock closed', async () => {
+        const { world } = await worldWithSnapshot({ webLocks: false })
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
         expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([msg('restoreNoLockWarningConfirm')])
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf((await world.committed())!), 'characters in the profile the head names').toEqual(['char-A'])
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
         expect.soft(await writeLockIsFree(world), 'a dbWriteLock acquirer queued after the load resolves').toBe(false)
     })
@@ -1151,14 +1232,14 @@ describe('loadInternalBackup refuses on a page that runs from OPFS this time', (
         expect.soft(await writeLockIsFree(world), 'dbWriteLock is free').toBe(true)
     })
 
-    test('guard: the same load on any other page still writes the snapshot', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+    test('guard: the same load on any other page still commits the snapshot', async () => {
+        const { world } = await worldWithSnapshot()
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf((await world.committed())!), 'characters in the profile the head names').toEqual(['char-A'])
     })
 })
 
@@ -1205,29 +1286,29 @@ describe('the snapshot fixtures decode under the strict decoder as the tests ass
 })
 
 describe('loadInternalBackup handles a snapshot that cannot be read completely', () => {
-    test('a remote block that is not stored (Node server): asks to confirm the left-out character, then writes a rebuilt main file', async () => {
+    test('a remote block that is not stored (Node server): asks to confirm the left-out character, then commits a rebuilt generation', async () => {
         const { world } = await worldWithMissingRemoteBlock('node')
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
         expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         expectNoError()
     })
 
-    test('a remote block file that is absent (Tauri): asks to confirm the left-out character, then writes a rebuilt main file', async () => {
+    test('a remote block file that is absent (Tauri): asks to confirm the left-out character, then commits a rebuilt generation', async () => {
         const { world } = await worldWithMissingRemoteBlock('tauri')
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
         expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         expectNoError()
     })
 
-    test('a damaged config block, whose content is never read: rebuilds the main file without a confirm', async () => {
+    test('a damaged config block, whose content is never read: commits a rebuilt generation without a confirm', async () => {
         const world = await boot()
         putMain(world)
         const good = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
@@ -1240,7 +1321,7 @@ describe('loadInternalBackup handles a snapshot that cannot be read completely',
 
         expectNoRejection(outcome)
         expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([])
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         expectNoError()
     })
 
@@ -1288,9 +1369,9 @@ describe('loadInternalBackup handles a snapshot that cannot be read completely',
 })
 
 describe('loadInternalBackup reports a failed write or reload', () => {
-    test('the main-file write rejects: shows the write-failed message, keeps the live database, and releases every lock', async () => {
+    test('a block write rejects: shows the write-failed message, keeps the live database, writes no head, and releases every lock', async () => {
         const { world } = await worldWithSnapshot()
-        storage.failSet = (key) => (key === MAIN ? new Error('scratch: write failed') : undefined)
+        storage.failSet = (key) => (isGenerationKey(key) ? new Error('scratch: write failed') : undefined)
 
         const outcome = await runLoad(world)
 
@@ -1300,9 +1381,9 @@ describe('loadInternalBackup reports a failed write or reload', () => {
         await expectLocksReleased(world)
     })
 
-    test('a main-file write refused with the Node storage conflict error: shows the write-failed message and releases every lock', async () => {
+    test('a block write refused with the Node storage conflict error: shows the write-failed message and releases every lock', async () => {
         const { world } = await worldWithSnapshot({ platform: 'node' })
-        storage.failSet = (key) => (key === MAIN ? new NodeStorageConflictError(7) : undefined)
+        storage.failSet = (key) => (isGenerationKey(key) ? new NodeStorageConflictError(7) : undefined)
 
         const outcome = await runLoad(world)
 
@@ -1312,9 +1393,9 @@ describe('loadInternalBackup reports a failed write or reload', () => {
         await expectLocksReleased(world)
     })
 
-    test('a main-file write the store refuses with a version conflict: shows the write-failed message and releases every lock', async () => {
+    test('a block write the store refuses with a version conflict: shows the write-failed message and releases every lock', async () => {
         const { world } = await worldWithSnapshot({ platform: 'node' })
-        storage.failSet = (key) => (key === MAIN ? new StoreVersionConflictError(MAIN, 7) : undefined)
+        storage.failSet = (key) => (isGenerationKey(key) ? new StoreVersionConflictError(key, 7) : undefined)
 
         const outcome = await runLoad(world)
 
@@ -1329,48 +1410,71 @@ describe('loadInternalBackup reports a failed write or reload', () => {
             const world = await boot({ platform: 'node' })
             const server = new FakeNodeServer()
             const app = await import('../../storage/store/appStore')
-            app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }))
+            app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }), 'node')
             server.seed(MAIN, LIVE_MAIN_BYTES)
-            // The page's boot read: it takes the version the load's write presents.
-            const read = await app.readMainFile()
+            world.pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(LIVE_MAIN_BYTES) })
+            // The page's boot read: it takes the version a later main-file write would present.
+            await app.readMainFile()
             server.seed(snapshotKey(), await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')]))
+            seedRemoteFilesOnServer(world, server)
             clearObservations()
-            return { world, server, readVersion: read.version }
+            return { world, server }
         }
 
-        test('the main-file write presents the version the page read and lands the snapshot', async () => {
-            const { world, server, readVersion } = await nodeWorld()
+        function requestedKey(request: { headers: Record<string, string> }): string {
+            return Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8')
+        }
+
+        test('the snapshot lands as a block generation behind a head switch against the head the page read, and no main-file write is sent', async () => {
+            const { world, server } = await nodeWorld()
 
             const outcome = await runLoad(world)
 
             expectNoRejection(outcome)
             expectNoError()
-            const mainRequests = server.requestsTo('/api/write').filter((request) => Buffer.from(request.headers['file-path'], 'hex').toString('utf-8') === MAIN)
-            expect(mainRequests).toHaveLength(1)
-            expect(mainRequests[0].headers['if-match-revision']).toBe(String(readVersion))
-            expect(server.files.get(MAIN)?.bytes).not.toEqual(LIVE_MAIN_BYTES)
+            const writtenKeys = server.requestsTo('/api/write').map(requestedKey)
+            expect(writtenKeys.filter((key) => key === MAIN)).toEqual([])
+            expect(writtenKeys.filter((key) => key === HEAD)).toHaveLength(1)
+            // The main file is moved aside by the conversion, never written.
+            expect(server.files.get(MAIN)?.bytes ?? null).toBeNull()
+            const copy = server.keysWithPrefix('database/database.pre-blocks')
+            expect(copy).toHaveLength(1)
+            expect(Array.from(server.files.get(copy[0])?.bytes ?? [])).toEqual(Array.from(LIVE_MAIN_BYTES))
             expect(reloadSpy).toHaveBeenCalledTimes(1)
         })
 
-        test('after another device saved the main file the write is refused with the write-failed message, nothing is written or reloaded, and every lock is released', async () => {
+        test('after another device switched the head first, the load does not happen: the not-happened message, nothing is reloaded, and every lock is released', async () => {
             const { world, server } = await nodeWorld()
-            const peerFile = new TextEncoder().encode('saved by another device')
-            server.peerWrite(MAIN, peerFile)
+            let peerSwitched = false
+            server.beforeRequest = (path, headers) => {
+                if (!peerSwitched && path === '/api/write' && requestedKey({ headers }).startsWith('blocks/') && requestedKey({ headers }) !== HEAD) {
+                    peerSwitched = true
+                    server.peerWrite(HEAD, encodeHead({ current: 'peer-generation' }))
+                }
+            }
 
             const outcome = await runLoad(world)
 
             expectNoRejection(outcome)
-            expectOneError(msg('internalBackupWriteFailed'))
-            expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual(Array.from(peerFile))
+            expect(peerSwitched, 'the other device switched the head during the load').toBe(true)
+            expectOneError(msg('restoreNotHappenedNotice'))
             expect(reloadSpy).not.toHaveBeenCalled()
             expect(setDatabaseMock).not.toHaveBeenCalled()
             await expectLocksReleased(world)
         })
     })
 
-    test('the Tauri main-file write rejects part-way: shows the write-failed message, leaves the main file as it was, and releases the write lock', async () => {
-        const { world, bytes } = await worldWithSnapshot({ platform: 'tauri' })
-        tauriFs.failPayload = (data) => data.length === bytes.length && data.every((value, index) => value === bytes[index])
+    test('the first durable block write of the load rejects on Tauri: shows the write-failed message, leaves the main file as it was, writes no head, and releases the write lock', async () => {
+        const { world } = await worldWithSnapshot({ platform: 'tauri' })
+        let failed = false
+        // The first value written after the copy of the main file is a block of the new generation.
+        tauriFs.failPayload = (data) => {
+            if (failed || sameBytes(data, LIVE_MAIN_BYTES)) {
+                return false
+            }
+            failed = true
+            return true
+        }
 
         const outcome = await runLoad(world)
 
@@ -1382,27 +1486,27 @@ describe('loadInternalBackup reports a failed write or reload', () => {
         await expectLocksReleased(world)
     })
 
-    test('the reload throws after the write landed: tells the user the backup is saved, and keeps the write lock closed', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+    test('the reload throws after the head switched: tells the user the backup is saved, and keeps the write lock closed', async () => {
+        const { world } = await worldWithSnapshot()
         navBox.reloadImpl = () => { throw new Error('scratch: reload failed') }
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
         expect.soft(finalAlert(), 'the alert state when the call settled').toMatchObject({ type: 'wait', msg: msg('restoreSavedReloadOrRestart') })
         expectNoError()
         expect.soft(await writeLockIsFree(world), 'a dbWriteLock acquirer queued after the load resolves').toBe(false)
     })
 
-    test('the Tauri relaunch rejects after the write landed: tells the user the backup is saved, and keeps the write lock closed', async () => {
-        const { world, bytes } = await worldWithSnapshot({ platform: 'tauri' })
+    test('the Tauri relaunch rejects after the head switched: tells the user the backup is saved, and keeps the write lock closed', async () => {
+        const { world } = await worldWithSnapshot({ platform: 'tauri' })
         relaunchBox.impl = () => { throw new Error('scratch: relaunch failed') }
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
         expect.soft(finalAlert(), 'the alert state when the call settled').toMatchObject({ type: 'wait', msg: msg('restoreSavedReloadOrRestart') })
         expectNoError()
         expect.soft(await writeLockIsFree(world), 'a dbWriteLock acquirer queued after the load resolves').toBe(false)
@@ -1410,16 +1514,17 @@ describe('loadInternalBackup reports a failed write or reload', () => {
 })
 
 describe('loadInternalBackup on Tauri', () => {
-    test('writes the snapshot to a temp file and renames it over the main file, relaunches, takes no exclusive hold, and keeps the write lock it acquired closed', async () => {
-        const { world, bytes } = await worldWithSnapshot({ platform: 'tauri' })
+    test('commits the snapshot through the durable write command, writes no main file, relaunches, takes no exclusive hold, and keeps the write lock it acquired closed', async () => {
+        const { world } = await worldWithSnapshot({ platform: 'tauri' })
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
         expect.soft(tauriFs.writeLog.filter((entry) => entry.path === MAIN), 'writes that name the main path').toEqual([])
-        expect.soft(tauriFs.renameLog.map((entry) => entry.to).filter((to) => to === MAIN), 'rename targets of the main path').toEqual([MAIN])
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
-        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expect.soft(tauriFs.landLog.filter((key) => key === MAIN), 'files that landed at the main path').toEqual([])
+        expect.soft(tauriFs.landLog.filter((key) => key === HEAD), 'head switches').toEqual([HEAD])
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
+        expectConverted(world)
         expect.soft(strayDatabaseFiles(), 'files left in database/').toEqual([])
         expect.soft(relaunchBox.calls, 'relaunch calls').toBe(1)
         expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
@@ -1443,7 +1548,7 @@ describe('loadInternalBackup on Tauri', () => {
 
 describe('loadInternalBackup waits for the startup clean-up', () => {
     test('a pending startup clean-up: the snapshot is not read until it settles, behind a cancelable wait, and then the load completes', async () => {
-        const { world, bytes, key } = await worldWithSnapshot()
+        const { world, key } = await worldWithSnapshot()
         let finishCleanup: () => void = () => { }
         world.startupCleanup.recordStartupCleanup(new Promise<void>((resolve) => { finishCleanup = resolve }))
 
@@ -1457,23 +1562,23 @@ describe('loadInternalBackup waits for the startup clean-up', () => {
         expectNoRejection(outcome)
         expect.soft(readWhilePending, 'the snapshot was read while the clean-up was pending').toBe(false)
         expect.soft(typeof cancelable?.onCancel, 'the wait message offers a cancel').toBe('function')
-        expect.soft(mainWrites(world)[0], 'the bytes written after the clean-up settled').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile committed after the clean-up settled').toEqual(['char-A'])
     })
 
-    test('a startup clean-up that rejected: the load proceeds and writes the snapshot', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+    test('a startup clean-up that rejected: the load proceeds and commits the snapshot', async () => {
+        const { world } = await worldWithSnapshot()
         world.startupCleanup.recordStartupCleanup(Promise.reject(new Error('scratch: clean-up failed')))
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
         expectNoError()
     })
 
     test('a startup clean-up that was recorded and has already settled: the load proceeds and never shows the clean-up wait', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+        const { world } = await worldWithSnapshot()
         world.startupCleanup.recordStartupCleanup((async () => { })())
         await ticks()
 
@@ -1481,7 +1586,7 @@ describe('loadInternalBackup waits for the startup clean-up', () => {
 
         expectNoRejection(outcome)
         expect.soft(alertBox.history.some((state) => state.msg === msg('internalBackupWaitingForCleanup')), 'the clean-up wait was shown').toBe(false)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
         expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
         expectNoError()
     })
@@ -1506,13 +1611,13 @@ describe('loadInternalBackup waits for the startup clean-up', () => {
     })
 
     test('no startup clean-up was ever recorded: the load proceeds and shows no clean-up wait', async () => {
-        const { world, bytes } = await worldWithSnapshot()
+        const { world } = await worldWithSnapshot()
         expect(world.startupCleanup.getStartupCleanup(), 'nothing recorded').toBeNull()
 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
         expect.soft(alertBox.history.some((state) => state.msg === msg('internalBackupWaitingForCleanup')), 'the clean-up wait was shown').toBe(false)
     })
 
@@ -1541,7 +1646,7 @@ describe('loadInternalBackup waits for the startup clean-up', () => {
     })
 
     test('Tauri: once the clean-up settles while a save holds the write lock, the cancelable clean-up wait is replaced, so no Cancel button stays up while the load waits for the lock', async () => {
-        const { world, bytes } = await worldWithSnapshot({ platform: 'tauri' })
+        const { world } = await worldWithSnapshot({ platform: 'tauri' })
         const releaseSave = await world.api.dbWriteLock.acquire()
         let finishCleanup: () => void = () => { }
         world.startupCleanup.recordStartupCleanup(new Promise<void>((resolve) => { finishCleanup = resolve }))
@@ -1555,15 +1660,15 @@ describe('loadInternalBackup waits for the startup clean-up', () => {
         finishCleanup()
         await ticks(20)
         const whileWaitingForLock = finalAlert()
-        const writtenBeforeLock = mainWrites(world).length
+        const writtenBeforeLock = writtenKeysInOrder(world).length
         releaseSave()
         const outcome = await loading
 
         expectNoRejection(outcome)
-        expect.soft(writtenBeforeLock, 'writes to the main file while the lock is still held').toBe(0)
+        expect.soft(writtenBeforeLock, 'keys written while the lock is still held').toBe(0)
         expect.soft(whileWaitingForLock?.msg, 'the alert on screen while the load waits for the lock').not.toBe(msg('internalBackupWaitingForCleanup'))
         expect.soft(whileWaitingForLock?.onCancel, 'a cancel on the alert on screen while the load waits for the lock').toBeUndefined()
-        expect.soft(mainWrites(world)[0], 'the bytes written once the lock was released').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile committed once the lock was released').toEqual(['char-A'])
     })
 })
 
@@ -1611,7 +1716,7 @@ describe('loadInternalBackup never installs a database into the running page', (
     const scenarios: Array<[string, BootOptions, Scenario]> = [
         ['a successful load (web)', {}, async () => { }],
         ['a successful load (Tauri)', { platform: 'tauri' }, async () => { }],
-        ['a write failure', {}, async () => { storage.failSet = (key) => (key === MAIN ? new Error('scratch: write failed') : undefined) }],
+        ['a write failure', {}, async () => { storage.failSet = (key) => (isGenerationKey(key) ? new Error('scratch: write failed') : undefined) }],
         ['a refused confirm without Web Locks', { webLocks: false }, async () => { alertBox.confirmAnswer = false }],
         ['a missing selected key', {}, async (world) => {
             alertBox.onSelect = () => { removeSnapshot(world, snapshotKey()) }
@@ -1747,12 +1852,12 @@ function emptyToSave(): toSaveType {
 async function buildSnapshot(world: World, options: { count?: number, extra?: Record<string, unknown> } = {}): Promise<BuiltSnapshot> {
     const ids = ['char-A', 'char-B', 'char-C', 'char-D'].slice(0, options.count ?? 3)
     const characters = ids.map((id) => fixtureCharacter(id, `${id} from snapshot`))
-    const remote = world.platform !== 'web'
-    const db = snapshotDb(characters, { ...SNAPSHOT_CONTENT, enableRemoteSaving: remote, ...options.extra })
+    const db = snapshotDb(characters, { ...SNAPSHOT_CONTENT, ...options.extra })
     const encoder = new world.risuSave.RisuSaveEncoder()
-    await encoder.init(db, { compression: false, skipRemoteSavingOnCharacters: false, enableRemoteSaving: remote })
+    await encoder.init(db, { compression: false })
     await encoder.set(db, emptyToSave())
-    return { bytes: new Uint8Array(encoder.encode()!), ids, characters }
+    const bytes = new Uint8Array(encoder.encode()!)
+    return { bytes: world.platform === 'web' ? bytes : await asRemoteSnapshot(world, bytes, ids), ids, characters }
 }
 
 interface DamagedWorld {
@@ -1855,15 +1960,16 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
     return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
+/** The profile the head names, strictly decoded as boot decodes it. */
 async function decodeMainStrictly(world: World): Promise<Database> {
-    const bytes = mainBytes(world)
-    expect(bytes, 'the main file is stored').toBeDefined()
-    const decoded = await world.risuSave.decodeRisuSave(bytes!, { strict: true })
-    return decoded as Database
+    const profile = await world.committed()
+    expect(profile, 'the head names a profile that decodes strictly').not.toBeNull()
+    return profile!
 }
 
-function characterIdsOf(db: Database): string[] {
-    return (db.characters ?? []).map((character) => String(character.chaId))
+/** The ids of the characters of `db`; none when there is no profile, so a missing profile fails the comparison and not the helper. */
+function characterIdsOf(db: Database | null): string[] {
+    return (db?.characters ?? []).map((character) => String(character.chaId))
 }
 
 function confirmText(): string {
@@ -1905,8 +2011,8 @@ describe('loadInternalBackup loads the intact part of a snapshot with one damage
         ['Tauri, a character\'s remote file does not parse as JSON', 'tauri', ({ world, built }) => { putStored(world, remoteKeyOf(world, built.ids[0]), new TextEncoder().encode('{"chaId": not json')) }],
     ]
 
-    test.each(damagedCharacterPlans)('%s: the confirm names the character from the current data, and Load writes a main file that decodes strictly to everything else', async (_title, platform, damage) => {
-        const { world, built, stored } = await worldWithDamagedSnapshot({ platform, damage })
+    test.each(damagedCharacterPlans)('%s: the confirm names the character from the current data, and Load commits a generation that decodes strictly to everything else', async (_title, platform, damage) => {
+        const { world, built } = await worldWithDamagedSnapshot({ platform, damage })
 
         const outcome = await runLoad(world)
 
@@ -1917,10 +2023,9 @@ describe('loadInternalBackup loads the intact part of a snapshot with one damage
         for (const id of built.ids.slice(1)) {
             expect.soft(confirmText(), `the confirm leaves out the intact ${id}`).not.toContain(id)
         }
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(mainBytes(world), 'the main file is a rebuilt file, not the damaged snapshot').not.toEqual(stored)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         const decoded = await decodeMainStrictly(world)
-        expect.soft(characterIdsOf(decoded), 'characters in the rebuilt file, in snapshot order').toEqual(built.ids.slice(1))
+        expect.soft(characterIdsOf(decoded), 'characters in the rebuilt profile, in snapshot order').toEqual(built.ids.slice(1))
         expect.soft(decoded.characters, 'the intact characters, unchanged').toEqual(built.characters.slice(1))
         expect.soft((decoded as unknown as { someSetting: string }).someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
         expect.soft(decoded.botPresets, 'presets').toEqual(SNAPSHOT_CONTENT.botPresets)
@@ -1949,7 +2054,7 @@ describe('loadInternalBackup loads the intact part of a snapshot with one damage
         const ids = ['char-A', 'char-B', 'char-C']
         const characters = ids.map((id) => fixtureCharacter(id, `${id} from snapshot`))
         const encoder = new world.risuSave.RisuSaveEncoder()
-        await encoder.init(snapshotDb(characters, { ...SNAPSHOT_CONTENT }), { compression: false, skipRemoteSavingOnCharacters: false })
+        await encoder.init(snapshotDb(characters, { ...SNAPSHOT_CONTENT }), { compression: false })
         const bytes = new Uint8Array(encoder.encode()!)
         expect(directoryOf(bytes), 'the snapshot has no block directory').toEqual([])
         putSnapshot(world, breakDataChecksum(bytes, ids[0]))
@@ -1961,18 +2066,19 @@ describe('loadInternalBackup loads the intact part of a snapshot with one damage
         expectNoRejection(outcome)
         expect.soft(alertBox.confirmCalls.length, 'confirms asked').toBe(1)
         expect.soft(confirmText(), 'the confirm names the left-out character').toContain(CURRENT_NAME_OF_A)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(characterIdsOf(await decodeMainStrictly(world)), 'characters in the rebuilt file').toEqual(ids.slice(1))
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
+        expect.soft(characterIdsOf(await decodeMainStrictly(world)), 'characters in the rebuilt profile').toEqual(ids.slice(1))
         expectLoaded(world)
     })
 })
 
 describe('loadInternalBackup loads a snapshot whose remote character files are missing', () => {
-    test.each(['node', 'tauri'] as const)('%s: a missing remote file is listed by its id when the current data lacks it, and the remote characters stay remote', async (platform) => {
+    test.each(['node', 'tauri'] as const)('%s: a missing remote file is listed by its id when the current data lacks it, and the remote characters are committed inline', async (platform) => {
         const { world, built } = await worldWithDamagedSnapshot({
             platform,
             damage: ({ world: seeded, built: snapshot }) => { deleteStored(seeded, remoteKeyOf(seeded, snapshot.ids[1])) },
         })
+        const remoteKeysBefore = remoteKeys(world).sort()
 
         const outcome = await runLoad(world)
 
@@ -1984,9 +2090,8 @@ describe('loadInternalBackup loads a snapshot whose remote character files are m
         const decoded = await decodeMainStrictly(world)
         expect.soft(characterIdsOf(decoded), 'characters in the rebuilt file').toEqual(['char-A', 'char-C'])
         expect.soft(decoded.characters, 'the intact characters, unchanged').toEqual([built.characters[0], built.characters[2]])
-        const blocks = world.risuSave.listEncodedBlocks(mainBytes(world)!)
-        const remotePointers = blocks.filter((block) => block.type === world.risuSave.RisuSaveType.REMOTE).map((block) => block.name)
-        expect.soft(remotePointers.sort(), 'characters kept as remote blocks').toEqual(['char-A', 'char-C'])
+        // The committed profile holds its characters itself: the load wrote no remote file and removed none.
+        expect.soft(remoteKeys(world).sort(), 'no remote file was written or removed by the load').toEqual(remoteKeysBefore)
         expectLoaded(world)
     })
 
@@ -2004,9 +2109,9 @@ describe('loadInternalBackup loads a snapshot whose remote character files are m
         for (const id of built.ids.slice(1)) {
             expect.soft(confirmText(), `the confirm lists ${id}`).toContain(id)
         }
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         const decoded = await decodeMainStrictly(world)
-        expect.soft(decoded.characters ?? [], 'characters in the rebuilt file').toEqual([])
+        expect.soft(decoded.characters ?? [], 'characters in the rebuilt profile').toEqual([])
         expect.soft((decoded as unknown as { someSetting: string }).someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
         expect.soft(decoded.botPresets, 'presets').toEqual(SNAPSHOT_CONTENT.botPresets)
         expect.soft(decoded.modules, 'modules').toEqual(SNAPSHOT_CONTENT.modules)
@@ -2073,7 +2178,7 @@ describe('loadInternalBackup loads a snapshot with a damaged kind of data', () =
     })
 
     test('a snapshot that holds no characters and whose only damage is the config block is rebuilt without a confirm', async () => {
-        const { world, stored } = await worldWithDamagedSnapshot({
+        const { world } = await worldWithDamagedSnapshot({
             count: 0,
             damage: ({ built }) => breakDataChecksum(built.bytes, 'config'),
         })
@@ -2082,8 +2187,7 @@ describe('loadInternalBackup loads a snapshot with a damaged kind of data', () =
 
         expectNoRejection(outcome)
         expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([])
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(mainBytes(world), 'the main file is a rebuilt file, not the damaged snapshot').not.toEqual(stored)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         const decoded = await decodeMainStrictly(world)
         expect.soft(decoded.characters ?? [], 'characters').toEqual([])
         expect.soft((decoded as unknown as { someSetting: string }).someSetting, 'a root setting').toBe(SNAPSHOT_CONTENT.someSetting)
@@ -2106,9 +2210,10 @@ describe('loadInternalBackup takes nothing from the block cache for a partial lo
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect(mainWrites(world).length, 'writes to the main file').toBe(1)
-        expect.soft(characterIdsOf(await decodeMainStrictly(world)), 'characters in the rebuilt file').toEqual(built.ids.slice(1))
-        expect.soft(Buffer.from(mainBytes(world)!).toString('utf-8'), 'the rebuilt file holds nothing of the cached copy').not.toContain('Newer copy from the block cache')
+        expect(headWrites(world), 'writes of the block head').toBe(1)
+        const rebuilt = await decodeMainStrictly(world)
+        expect.soft(characterIdsOf(rebuilt), 'characters in the rebuilt profile').toEqual(built.ids.slice(1))
+        expect.soft(JSON.stringify(rebuilt), 'the rebuilt profile holds nothing of the cached copy').not.toContain('Newer copy from the block cache')
         expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
     })
 
@@ -2123,7 +2228,7 @@ describe('loadInternalBackup takes nothing from the block cache for a partial lo
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(1)
         expect.soft(blockCacheWrites(), 'block cache writes').toBe(0)
         expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
     })
@@ -2145,14 +2250,14 @@ describe('loadInternalBackup takes nothing from the block cache for a partial lo
 
         expectNoRejection(outcome)
         expectOneError(msg('backupLoadWorkInProgress'))
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(0)
+        expect.soft(headWrites(world), 'writes of the block head').toBe(0)
         expect.soft(blockCacheWrites(), 'block cache writes').toBe(0)
         expect.soft(blockCacheContents(), 'the block cache').toEqual(cacheBefore)
     })
 })
 
 describe('loadInternalBackup keeps the current main file before every load', () => {
-    test.each(['web', 'node', 'tauri'] as const)('%s: a full load writes the old main bytes under a new deciseconds backup key before it writes the snapshot, and the snapshot is written verbatim', async (platform) => {
+    test.each(['web', 'node', 'tauri'] as const)('%s: a full load writes the old main bytes under a new deciseconds backup key before it commits the snapshot, and leaves the chosen snapshot as it was', async (platform) => {
         const { world, bytes, key } = await worldWithSnapshot({ platform })
         const startedAt = Date.now()
 
@@ -2168,17 +2273,17 @@ describe('loadInternalBackup keeps the current main file before every load', () 
         expect.soft(deciseconds, 'the key counts deciseconds').toBeGreaterThanOrEqual(Math.floor(startedAt / 100) - 1)
         expect.soft(deciseconds, 'the key counts deciseconds').toBeLessThanOrEqual(Math.ceil(finishedAt / 100) + 1)
         expect.soft(storedBytes(world, copies[0]), 'the copy holds the old main file').toEqual(LIVE_MAIN_BYTES)
-        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
-        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expectConverted(world)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(0)
         const written = writtenKeysInOrder(world)
         expect.soft(written.indexOf(copies[0]), 'the copy is written').toBeGreaterThanOrEqual(0)
-        expect.soft(written.indexOf(copies[0]), 'the copy is written before the main file').toBeLessThan(written.indexOf(MAIN))
+        expect.soft(written.indexOf(copies[0]), 'the copy is written before the head switches').toBeLessThan(written.indexOf(HEAD))
         expect.soft(storedBytes(world, key), 'the chosen snapshot').toEqual(bytes)
         expect.soft(finalAlert(), 'the alert state when the call settled').toMatchObject({ type: 'wait', msg: msg('internalBackupLoaded') })
         expectLoaded(world)
     })
 
-    test('a partial load keeps the current main file as a backup before it writes the rebuilt file', async () => {
+    test('a partial load keeps the current main file as a backup before it commits the rebuilt profile', async () => {
         const { world, key } = await worldWithDamagedSnapshot({ damage: ({ built }) => breakDataChecksum(built.bytes, built.ids[0]) })
 
         const outcome = await runLoad(world)
@@ -2188,7 +2293,7 @@ describe('loadInternalBackup keeps the current main file before every load', () 
         expect.soft(copies.length, 'backups other than the chosen snapshot').toBe(1)
         expect.soft(storedBytes(world, copies[0]), 'the copy holds the old main file').toEqual(LIVE_MAIN_BYTES)
         const written = writtenKeysInOrder(world)
-        expect.soft(written.indexOf(copies[0]), 'the copy is written before the main file').toBeLessThan(written.indexOf(MAIN))
+        expect.soft(written.indexOf(copies[0]), 'the copy is written before the head switches').toBeLessThan(written.indexOf(HEAD))
         expectLoaded(world)
     })
 
@@ -2206,7 +2311,7 @@ describe('loadInternalBackup keeps the current main file before every load', () 
         expect.soft(storedBytes(world, 'database/dbbackup-17000000001.bin'), 'the copy holds the old main file').toEqual(LIVE_MAIN_BYTES)
     })
 
-    test.each(['web', 'tauri'] as const)('guard: %s: a fresh profile with no main file loads the snapshot, writes no copy and shows no error', async (platform) => {
+    test.each(['web', 'tauri'] as const)('%s: a profile with no main file and no head asks before it loads with no copy, then commits the snapshot and writes no copy', async (platform) => {
         const world = await boot({ platform })
         const bytes = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
         const key = putSnapshot(world, bytes)
@@ -2215,8 +2320,10 @@ describe('loadInternalBackup keeps the current main file before every load', () 
         const outcome = await runLoad(world)
 
         expectNoRejection(outcome)
+        expect.soft(alertBox.confirmCalls, 'confirms asked').toEqual([msg('restoreNoUndoCopyConfirm')])
         expect.soft(copyKeys(world, key), 'backups other than the chosen snapshot').toEqual([])
-        expect.soft(mainBytes(world), 'the main file').toEqual(bytes)
+        expect.soft(characterIdsOf((await world.committed())!), 'the profile the head names').toEqual(['char-A'])
+        expect.soft(finalAlert(), 'the alert state when the call settled').toMatchObject({ type: 'wait', msg: msg('internalBackupLoadedNoCopy') })
         expectLoaded(world)
     })
 })
@@ -2446,12 +2553,14 @@ describe('loadInternalBackup on the Node server leaves the page\'s main-file ver
         const world = await boot({ platform: 'node' })
         const server = new FakeNodeServer()
         const app = await import('../../storage/store/appStore')
-        app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }))
+        app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }), 'node')
         server.seed(MAIN, LIVE_MAIN_BYTES)
+        world.pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(LIVE_MAIN_BYTES) })
         // The page's boot read: it takes the version the next main-file write presents.
         await app.readMainFile()
         const snapshot = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
         server.seed(snapshotKey(), snapshot)
+        seedRemoteFilesOnServer(world, server)
         clearObservations()
         return { world, server, app }
     }
@@ -2468,7 +2577,15 @@ describe('loadInternalBackup on the Node server leaves the page\'s main-file ver
                 }
             }
         }],
-        ['a main-file write refused because another device saved first', () => { }],
+        ['another device switching the head while the generation is written', (server) => {
+            let switched = false
+            server.beforeRequest = (path, headers) => {
+                if (!switched && path === '/api/write' && writtenKey(headers).startsWith('blocks/') && writtenKey(headers) !== 'blocks/head') {
+                    switched = true
+                    server.peerWrite('blocks/head', encodeHead({ current: 'peer-generation' }))
+                }
+            }
+        }],
     ]
 
     test.each(stops)('guard: after another device saved, a load stopped by %s leaves the next main-file write refused with a version conflict', async (_title, arrange) => {

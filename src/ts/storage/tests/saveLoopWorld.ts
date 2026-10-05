@@ -123,7 +123,7 @@ export function createWorldKit(env: WorldEnv) {
     /** Frames a database as the legacy main file would hold it. */
     async function encodeMainFile(world: Pick<World, 'risuSave'>, db: Record<string, unknown>): Promise<Uint8Array> {
         const encoder = new world.risuSave.RisuSaveEncoder()
-        await encoder.init(db as unknown as Database, { compression: false, enableRemoteSaving: false })
+        await encoder.init(db as unknown as Database, { compression: false })
         await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
         return new Uint8Array(encoder.encode()!)
     }

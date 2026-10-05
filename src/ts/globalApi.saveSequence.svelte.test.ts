@@ -348,7 +348,7 @@ describe('prepareSaveIteration — S11', () => {
             reloadFlag,
             reinitEncoder: async () => {
                 const fresh = new RisuSaveEncoder()
-                await fresh.init(postBackupDb, { compression: false, skipRemoteSavingOnCharacters: false })
+                await fresh.init(postBackupDb, { compression: false })
                 return fresh
             },
             getDatabase: () => postBackupDb,
@@ -396,7 +396,7 @@ describe('prepareSaveIteration — S11', () => {
             reloadFlag,
             reinitEncoder: async () => {
                 const fresh = new RisuSaveEncoder()
-                await fresh.init(postBackupDb, { compression: false, skipRemoteSavingOnCharacters: false })
+                await fresh.init(postBackupDb, { compression: false })
                 return fresh
             },
             getDatabase: () => postBackupDb,
@@ -436,7 +436,7 @@ describe('prepareSaveIteration — S11', () => {
             reloadFlag,
             reinitEncoder: async () => {
                 const fresh = new RisuSaveEncoder()
-                await fresh.init(getDatabase(), { compression: false, skipRemoteSavingOnCharacters: false })
+                await fresh.init(getDatabase(), { compression: false })
                 return fresh
             },
             getDatabase,
@@ -485,7 +485,7 @@ describe('prepareSaveIteration — S11', () => {
             makeCharacter('char-0', 'Character Zero'),
         ])
         const encoder = new RisuSaveEncoder()
-        await encoder.init(dbWithBothCharacters, { compression: false, skipRemoteSavingOnCharacters: false })
+        await encoder.init(dbWithBothCharacters, { compression: false })
         const reinitEncoder = vi.fn()
 
         const result = await prepareSaveIteration({
@@ -539,7 +539,7 @@ describe('prepareSaveIteration — S11', () => {
                 // the mark BEHIND char-B, since char-B was already in the
                 // tracker: tracker.character becomes ['char-B', 'char-A'].
                 const fresh = new RisuSaveEncoder()
-                await fresh.init(db, { compression: false, skipRemoteSavingOnCharacters: false })
+                await fresh.init(db, { compression: false })
                 charA.chats[0].message.push({ role: 'char', data: 'reply tail written during reload', chatId: 'm1' })
                 markCharacterForSave('char-A')
                 return fresh
@@ -641,7 +641,7 @@ describe('prepareSaveIteration — onSnapshotRestored and reload-flag ordering',
             reloadFlag,
             reinitEncoder: async () => {
                 const fresh = new RisuSaveEncoder()
-                await fresh.init(db, { compression: false, skipRemoteSavingOnCharacters: false })
+                await fresh.init(db, { compression: false })
                 return fresh
             },
             getDatabase: () => db,
@@ -673,7 +673,7 @@ describe('prepareSaveIteration — onSnapshotRestored and reload-flag ordering',
                 // this one finishes.
                 reloadFlag.state = true
                 const fresh = new RisuSaveEncoder()
-                await fresh.init(db, { compression: false, skipRemoteSavingOnCharacters: false })
+                await fresh.init(db, { compression: false })
                 return fresh
             },
             getDatabase: () => db,

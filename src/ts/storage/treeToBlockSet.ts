@@ -27,7 +27,7 @@ function nothingMarked(): toSaveType {
  */
 export async function treeToBlockSet(tree: Database): Promise<BlockSetInput> {
     const encoder = new RisuSaveEncoder()
-    await encoder.init(tree, { compression: false, writeBlockCache: false, enableRemoteSaving: false })
+    await encoder.init(tree, { compression: false })
     await encoder.set(tree, nothingMarked())
     const layout = encoder.snapshotLayout()
     if (layout === null) {

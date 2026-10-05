@@ -1445,8 +1445,6 @@ export const languageChineseTraditional = {
     "otherTabSavedConflictStay": "暫時留在這裡（此分頁將停止嘗試儲存；在您重新載入之前，您的變更不會被儲存）",
     "savingStoppedStayMessage": "此分頁已停止儲存。由於另一個分頁儲存了變更後您選擇留下，此分頁的資料副本已過期，無法再儲存。從現在起所做的變更將不會被保留。重新載入會取得目前的資料 — 任何未儲存的本機變更都將遺失。",
     "savingStoppedNodeConflictMessage": "此分頁已停止儲存。您的本機資料與自架伺服器上較新的版本發生衝突，因此此分頁已永久停止嘗試儲存。從現在起所做的變更將不會被保留。請重新載入應用程式以取得目前的資料 — 任何未同步的本機變更都將遺失。",
-    "savingStoppedTooLargeMessage": (limitBytes: number) =>
-        `此分頁已停止儲存：您的資料超過了自架伺服器單次儲存所能接受的大小（${limitBytes / (1024 * 1024)} MiB；如果伺服器前的代理設定了更低的限制，則以更低的為準）。自上次成功儲存以來的變更將在重新載入時遺失。重新載入後，啟動時可以將角色移入封存儲存空間以縮小儲存體積，但僅限於角色封存已開啟且能夠執行的情況。如果儲存再次停止，請縮減資料，例如刪除不再需要的聊天或角色。`,
     "duplicateChaIdSavePausedMessage": (characterGroups: string) =>
         `下列角色與另一個角色共用內部 ID，因此儲存檔對每個共用的 ID 只能保留一個：${characterGroups || "兩個角色"}。系統會保留在此問題發生之前最近一次儲存過的角色；如果兩者都從未儲存過，則保留最先寫入的角色。在此情況持續期間，這些角色的儲存都會暫停。當每個 ID 僅由一個角色持有時，儲存才會恢復——例如，永久刪除多餘的角色（先將其移至垃圾桶，再從垃圾桶中刪除）。`,
     "maxSupaChunkSize": "SupaMemory 最大區塊大小",
@@ -1928,7 +1926,6 @@ export const languageChineseTraditional = {
         "save": "儲存",
         "cancel": "取消",
     },
-    "enableRemoteSaving": "啟用遠端儲存",
     "blockquoteStyling": "引用區塊樣式",
     "dynamicModelRegistry": "動態模型註冊",
     "confirmInstallPluginViaPlugin": "外掛 {source} 正嘗試安裝外掛 {plugin}。若來源外掛不可信，可能會帶來安全風險。確定要繼續嗎？",
@@ -2106,6 +2103,17 @@ export const languageChineseTraditional = {
     "saveConversionFailedAlert": "將您的資料遷移到新的儲存格式在多次嘗試後仍未成功。已儲存的資料沒有任何變更，且此分頁已停止儲存。請重新載入頁面以重試。",
     "saveSnapshotSkippedTooLarge": "您的資料超過了自架伺服器單一檔案所能接受的大小，因此自動備份副本已被跳過。儲存不受影響。若要保留備份，請在設定的「備份 & 檔案」下使用「在本機儲存備份」匯出 .bin 檔案。",
     "saveSnapshotSkippedMemory": "此裝置無法為您資料的自動備份副本預留足夠的記憶體，因此已跳過。儲存不受影響。",
+    "restoreLeftOutConfirm": (items: string) =>
+        `此備份檔案已部分損毀。只能還原仍然完好的部分，以下內容將被排除：\n\n${items}\n\n您目前的資料將被這些完好的部分取代。要還原嗎？`,
+    "restoreNotHappenedNotice": "在載入備份期間，您已儲存的資料被其他分頁或裝置變更，因此未載入該備份，也沒有變更任何內容。請重新載入頁面後再試。",
+    "restoreTooLargeBlock": (what: string, limitBytes: number) =>
+        `無法載入此備份：自架伺服器單次請求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果伺服器前的代理設定了更低的限制，則以更低的為準），而${what ? `您的這部分資料超出了該限制：${what}` : '您的部分資料超出了該限制'}。沒有變更任何內容。`,
+    "restoreNoUndoCopyConfirm": (reason: 'damaged' | 'absent' | 'too-large') =>
+        (reason === 'damaged' ? '無法讀取您目前已儲存的資料，因此在本次載入之前無法將其保留為備份副本。'
+            : reason === 'too-large' ? '您目前的資料超過了自架伺服器作為單一備份副本所能接受的大小，因此在本次載入之前無法將其保留為備份。'
+            : '找不到可在本次載入之前保留為備份副本的目前已儲存資料。')
+        + '如果繼續，您將無法從備份清單回到目前已儲存的狀態。要在沒有備份副本的情況下繼續嗎？',
+    "internalBackupLoadedNoCopy": "備份已載入。正在重新整理應用程式。",
     "backupAndFiles": "備份 & 檔案",
     "assetIntegrityHeading": "資源快取完整性",
     "assetIntegrityDescription": "將快取的圖片/資源與其自身的內容雜湊值進行比對以偵測損毀，無需從儲存空間重新下載任何內容。除非您選擇移除已損毀的項目，否則此操作為唯讀。",

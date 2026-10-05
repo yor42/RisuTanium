@@ -1,12 +1,15 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
-import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage } from "../globalApi.svelte";
+import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
-import { decodeRisuSave, encodeRisuSaveLegacy } from "../storage/risuSave";
-import { noteMainFileBytes } from "../storage/mainFileRecord";
-import { getAppStore, writeMainFile } from "../storage/store/appStore";
+import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
+import { getAppStore } from "../storage/store/appStore";
 import { StoreInvalidKeyError } from "../storage/store/errors";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
+import { repairBotPresetsId } from "../storage/botPresetRepair";
+import { describeOmitted } from "../storage/bootBlockLoad";
+import { treeToBlockSet } from "../storage/treeToBlockSet";
+import { completeRestoredTree, currentCharacterNames, leftOutQuestion, replaceWithRestoredSet } from "./restoreReplace";
 import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { sleep } from "../util";
@@ -485,15 +488,17 @@ export function LoadLocalBackup(){
                 }
             }
 
-            // From here on, every exit that never lands the database write
+            // From here on, every exit that never lands the restored state
             // must show exactly one message, before releasing whatever hold
-            // was taken above -- and every exit that DID land it keeps that
-            // hold's write-lock portion closed forever (a reload or restart
-            // is imminent), reporting instead that the restore is saved if
-            // anything after the write fails.
+            // was taken above -- and every exit that DID land it, or could
+            // not tell whether it landed, keeps that hold's write-lock
+            // portion closed forever (a reload or restart is imminent),
+            // reporting instead that the restore is saved if anything after
+            // the replace fails.
             let releaseDbWriteLock: (() => void) | null = null;
-            let writeAttempted = false;
-            let restoreWriteSucceeded = false;
+            let replaceStarted = false;
+            let restoreInstalled = false;
+            let writeLockStaysClosed = false;
             try {
                 const reader = file.stream().getReader();
                 let bytesRead = 0;
@@ -626,8 +631,25 @@ export function LoadLocalBackup(){
                     return
                 }
 
+                // A block-format database is read by `salvageRisuSave`, which
+                // never consults the current profile's block cache: a block the
+                // file lacks is left out and reported, never filled from
+                // another save. Older msgpack formats have no blocks and no
+                // cache.
                 const db = pendingDatabase;
-                const dbData = await decodeRisuSave(db);
+                let dbData: Database;
+                let omitted: ReadonlyMap<string, SalvageOmittedBlock> = new Map();
+                if (isBlockFormatSave(db)) {
+                    const salvaged = await salvageRisuSave(db);
+                    dbData = salvaged.db;
+                    omitted = salvaged.omitted;
+                } else {
+                    dbData = await decodeRisuSave(db);
+                }
+                const leftOut = describeOmitted(omitted, currentCharacterNames());
+                if (leftOut.length > 0 && !await alertConfirm(leftOutQuestion(leftOut))) {
+                    return;
+                }
                 const missingColdStorageKeys:string[] = []
                 // A plugin storage unit is present whatever value it holds;
                 // chat and character units must also be chat or character shaped.
@@ -654,36 +676,71 @@ export function LoadLocalBackup(){
                 // page's own in-memory database for as long as this page
                 // stays open before that reload actually happens.
                 repairDatabaseIds(dbData)
+                // The restored tree becomes a new block generation: its lists
+                // are filled in first, then a database that names no preset
+                // keeps its working settings as a new preset, over none.
+                completeRestoredTree(dbData);
+                repairBotPresetsId(dbData)
+                const restoredSet = await treeToBlockSet(dbData);
 
                 // The exclusive hold taken above (when granted) already holds
                 // dbWriteLock internally for the rest of this restore --
                 // acquiring it again here would deadlock against that same
                 // hold. Only the Tauri and Web-Locks-unsupported paths, which
                 // never took it, still need it directly: the same write mutex
-                // saveDb()'s autosave loop takes around this key (see
-                // globalApi.svelte.ts's AsyncMutex/dbWriteLock).
+                // saveDb()'s autosave loop takes around its commit (see
+                // globalApi.svelte.ts's AsyncMutex/dbWriteLock). It is held
+                // across the whole replace, so no save iteration that took its
+                // layout before this restore can commit into the restored
+                // generation.
                 if (!releaseExclusiveHold) {
                     releaseDbWriteLock = await dbWriteLock.acquire();
                 }
 
-                // No await between this check and the write below: work that
-                // began during any earlier wait is seen here, and a refusal
-                // writes nothing further: the assets and cold-storage items
-                // already read from the file stay, as on the other early exits.
-                // The finally releases what was taken above.
+                // The same busy check is asked again at the flip, inside the
+                // replace, so work that began while the generation was being
+                // written is seen: a refusal then leaves the live state as it
+                // was and removes the restore's own generation. The assets and
+                // cold-storage items already read from the file stay, as on
+                // the other early exits. The finally releases what was taken
+                // above.
                 if (refuseBackupLoadWhileBusy(busy)) {
                     return;
                 }
 
-                writeAttempted = true;
-                await writeMainFile(db);
-                restoreWriteSucceeded = true;
-                noteMainFileBytes(db);
+                replaceStarted = true;
+                const written = await replaceWithRestoredSet(restoredSet, () => !refuseBackupLoadWhileBusy(busy));
+                if (written.kind === 'not-happened') {
+                    // The busy guard has already said why when it was the one that refused.
+                    if (!written.aborted) {
+                        alertError(language.restoreNotHappenedNotice);
+                    }
+                    return;
+                }
+                if (written.kind === 'too-large') {
+                    alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit));
+                    return;
+                }
+                if (written.kind === 'unconfirmed') {
+                    // Which state is current is unknown: nothing may save from
+                    // this page until a reload shows it.
+                    writeLockStaysClosed = true;
+                    alertStore.set({
+                        type: "wait",
+                        msg: language.saveDamagedUnconfirmed
+                    });
+                    if (releaseExclusiveHold) {
+                        await releaseExclusiveHold(true);
+                    }
+                    return;
+                }
+                restoreInstalled = true;
+                writeLockStaysClosed = true;
 
-                // Installed only now that the write has actually succeeded --
-                // a failed write above leaves this page on its pre-restore
-                // database, so the error shown for it can truthfully say the
-                // restore did not complete.
+                // Installed only now that the restored state is the page's
+                // head -- any other result above leaves this page on its
+                // pre-restore database, so the message shown for it can
+                // truthfully say the restore did not complete.
                 setDatabase(dbData);
                 requiresFullEncoderReload.state = true;
 
@@ -703,10 +760,10 @@ export function LoadLocalBackup(){
                 // The exclusive hold's Web Lock portion (if any) has nothing
                 // further to protect once this page's own write has landed --
                 // other tabs may now proceed. Its write-lock portion stays closed
-                // forever (`keepWriteLock`): no in-flight save cycle's bytes,
+                // forever (`keepWriteLock`): a save from this now-stale page,
                 // encoded from the pre-restore database before setDatabase()
-                // above installed the restored one, must ever write this key
-                // again from this now-stale page. Awaited before marking the
+                // above installed the restored one, would otherwise commit
+                // into the restored generation before the reload. Awaited before marking the
                 // reload as app-initiated below: this release can itself
                 // queue behind another tab's own pending exclusive request
                 // for longer than the mark's own lifetime
@@ -728,8 +785,8 @@ export function LoadLocalBackup(){
                 }
             } catch (error) {
                 console.error(error);
-                if (restoreWriteSucceeded) {
-                    // The write already landed and the in-memory database is
+                if (restoreInstalled) {
+                    // The restored head already landed and the in-memory database is
                     // installed; a reload or restart is already in flight (or
                     // was attempted). Whatever failed after that must never be
                     // reported as "nothing happened" -- the write lock stays
@@ -739,13 +796,13 @@ export function LoadLocalBackup(){
                         type: "wait",
                         msg: language.restoreSavedReloadOrRestart
                     });
-                } else if (writeAttempted) {
+                } else if (replaceStarted) {
                     alertError(language.restoreWriteFailed);
                 } else {
                     alertError('Failed, Is file corrupted?');
                 }
             } finally {
-                if (!restoreWriteSucceeded) {
+                if (!writeLockStaysClosed) {
                     if (releaseDbWriteLock) {
                         releaseDbWriteLock();
                     }

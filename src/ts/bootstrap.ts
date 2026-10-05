@@ -9,6 +9,7 @@ import localforage from "localforage"
 import { v4 as uuidv4 } from 'uuid';
 import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
+import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { MobileGUI, botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
@@ -929,6 +930,10 @@ function updateHeightMode() {
  */
 async function checkNewFormat(): Promise<void> {
     let db = getDatabase();
+
+    // A database that has just been loaded (an idle reload is a boot) may name
+    // no preset: the working settings are kept as a new one, never over another.
+    repairBotPresetsId(db);
 
     // Check data integrity
     db.characters = db.characters.map((v) => {

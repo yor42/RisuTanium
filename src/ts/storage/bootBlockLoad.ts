@@ -290,15 +290,20 @@ async function findBackup(backups: BootBackupSource): Promise<FoundBackup> {
     return { kind: 'none' }
 }
 
-/** The lines of the partial-backup confirm: every character and kind the intact tree lacks. */
-function describeOmitted(omitted: ReadonlyMap<string, SalvageOmittedBlock>): string[] {
+/**
+ * The lines of a partial-backup confirm: every character and kind the intact
+ * tree lacks. A character is named by `names` (chaId to display name) when the
+ * caller knows it, and by its block name otherwise. Empty when nothing the
+ * person cares about was left out.
+ */
+export function describeOmitted(omitted: ReadonlyMap<string, SalvageOmittedBlock>, names?: ReadonlyMap<string, string>): string[] {
     const lines: string[] = []
     const kinds = new Set<string>()
     let unreadable = 0
     for (const [blockName, block] of omitted) {
         switch (block.kind) {
             case 'character':
-                lines.push(blockName)
+                lines.push(names?.get(blockName) ?? blockName)
                 break
             case 'other':
                 unreadable++

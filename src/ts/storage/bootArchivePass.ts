@@ -870,7 +870,7 @@ async function archiveAndCommit(
     // cache, so a pass that fails before its commit has changed nothing but
     // the units it archived into.
     const encoder = deps.createEncoder?.() ?? new RisuSaveEncoder()
-    await encoder.init(tree, { compression: false, enableRemoteSaving: false })
+    await encoder.init(tree, { compression: false })
     await encoder.set(tree, emptyToSave())
     const layout = encoder.snapshotLayout()
     if (!layout) {

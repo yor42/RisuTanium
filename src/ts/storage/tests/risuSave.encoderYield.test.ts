@@ -30,7 +30,11 @@ vi.mock(
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
 
-const { storeWrites } = vi.hoisted(() => ({ storeWrites: [] as string[] }))
+const { storeWrites, platformBox, liveDb } = vi.hoisted(() => ({
+    storeWrites: [] as string[],
+    platformBox: { isTauri: false, isNodeServer: false },
+    liveDb: { value: null as Record<string, unknown> | null },
+}))
 
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({
@@ -48,12 +52,20 @@ vi.mock(
     import('src/ts/storage/database.svelte'),
     () =>
         ({
-            getDatabase: vi.fn(() => { throw new Error('no live database in tests') }),
+            getDatabase: vi.fn(() => {
+                if (liveDb.value === null) {
+                    throw new Error('no live database in tests')
+                }
+                return liveDb.value
+            }),
             presetTemplate: { name: 'test-preset' },
         }) as unknown as typeof import('src/ts/storage/database.svelte'),
 )
 
-vi.mock(import('src/ts/platform'), () => ({ isTauri: false, isNodeServer: false }))
+vi.mock(import('src/ts/platform'), () => ({
+    get isTauri() { return platformBox.isTauri },
+    get isNodeServer() { return platformBox.isNodeServer },
+}) as unknown as typeof import('src/ts/platform'))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: vi.fn(),
@@ -63,8 +75,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
 }))
 
-import { RisuSaveEncoder, type toSaveType } from '../risuSave'
+import { RisuSaveEncoder, RisuSaveType, type toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
+import { parseBlocks } from './risuSaveBlockFile'
 
 const NO_MARKS: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
 
@@ -84,6 +97,9 @@ function buildDb(count: number): Database {
 beforeEach(() => {
     cacheWrites.length = 0
     storeWrites.length = 0
+    platformBox.isTauri = false
+    platformBox.isNodeServer = false
+    liveDb.value = null
 })
 
 afterEach(() => {
@@ -102,13 +118,23 @@ describe('the encoder writes nothing to storage', () => {
         expect(encoder.snapshotLayout()?.keys.length).toBe(6 + 7)
     })
 
-    test('an encoder that was asked to keep no cache and no remote files writes nothing either', async () => {
-        const db = buildDb(3)
+    test.each([
+        ['a desktop page', { isTauri: true, isNodeServer: false }],
+        ['a self-hosted server page', { isTauri: false, isNodeServer: true }],
+    ])('on %s with Remote Saving on in the live database, init and set write no remote file and keep every character inline', async (_name, platform) => {
+        platformBox.isTauri = platform.isTauri
+        platformBox.isNodeServer = platform.isNodeServer
+        const db = { ...buildDb(3), enableRemoteSaving: true } as Database
+        liveDb.value = db as unknown as Record<string, unknown>
         const encoder = new RisuSaveEncoder()
-        await encoder.init(db, { compression: false, writeBlockCache: false, enableRemoteSaving: false })
-        await encoder.set(db, NO_MARKS)
+        await encoder.init(db, { compression: false })
+        db.characters[1].name = 'Edited'
+        await encoder.set(db, { ...NO_MARKS, character: ['cha-1'] })
         expect(cacheWrites).toEqual([])
         expect(storeWrites).toEqual([])
+        const blocks = parseBlocks(new Uint8Array(encoder.encode()!))
+        expect(blocks.filter((block) => block.type === RisuSaveType.REMOTE)).toEqual([])
+        expect(blocks.filter((block) => block.type === RisuSaveType.CHARACTER_WITH_CHAT).map((block) => block.name)).toEqual(['cha-0', 'cha-1', 'cha-2'])
     })
 })
 

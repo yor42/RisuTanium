@@ -6,6 +6,7 @@
     import Help from "src/lib/Others/Help.svelte";
     
     import { DBState } from 'src/ts/stores.svelte';
+    import { setCurrentPresetImage } from 'src/ts/storage/currentPreset';
     import { customProviderStore } from "src/ts/plugins/plugins.svelte";
     import { downloadFile } from "src/ts/globalApi.svelte";
     import { isTauri } from "src/ts/platform"
@@ -828,7 +829,7 @@
             canvas.height = 48
             ctx.drawImage(img, 0, 0, 48, 48)
             const data = canvas.toDataURL('image/jpeg', 0.7)
-            DBState.db.botPresets[DBState.db.botPresetsId].image = data //Since its small (max 2304 pixels), its okay to store it directly
+            setCurrentPresetImage(DBState.db, data) //Since its small (max 2304 pixels), its okay to store it directly
         }}>
             <UploadIcon />
         </button>
