@@ -291,9 +291,10 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
             }
             return typeof entry === 'function' ? entry() : entry
         }),
-        setItem: vi.fn(async () => { }),
-        keys: vi.fn(async (): Promise<string[]> => []),
-        removeItem: vi.fn(async () => { }),
+        // A boot that finds no save creates the first profile in the block store, which reads back what it wrote.
+        setItem: vi.fn(async (key: string, value: Uint8Array) => { forageState.items.set(key, value) }),
+        keys: vi.fn(async (): Promise<string[]> => Array.from(forageState.items.keys())),
+        removeItem: vi.fn(async (key: string) => { forageState.items.delete(key) }),
     },
     saveDb: saveDbMock,
     getDbBackups: getDbBackupsMock,
@@ -426,7 +427,7 @@ async function freshLoadData() {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -488,6 +489,21 @@ afterEach(() => {
     sharedAlertStore.set({ type: 'none', msg: STALE_ACCOUNT_NOTICE_ACK })
 })
 
+/**
+ * The only forage writes a boot makes before the stale-account notice is
+ * acknowledged: none, or, on the branch that finds no save at all, the keys
+ * of the empty profile it creates in the block store (never the main file).
+ */
+function expectOnlyTheSeed(branch: 'decode' | 'nullish' | 'backup-fallback') {
+    const written = sharedForageStorage.setItem.mock.calls.map((call) => String(call[0]))
+    if (branch === 'nullish') {
+        expect(written.length, 'keys of the empty profile').toBeGreaterThan(0)
+        expect(written.every((key) => key.startsWith('blocks/'))).toBe(true)
+    } else {
+        expect(written).toEqual([])
+    }
+}
+
 /** Configures `forageState` so `loadData()`'s non-Tauri database read reaches the named install branch, with `db` as the eventually-installed database. */
 async function armInstallBranch(branch: 'decode' | 'nullish' | 'backup-fallback', db: Record<string, unknown>) {
     if (branch === 'decode') {
@@ -535,10 +551,10 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
 
             // Nothing reaches into the storage backend while the notice is
             // pending: no forage removal at all, and (the nullish branch's
-            // own pre-install empty-database write aside) no forage write
+            // own pre-install empty-profile seed aside) no forage write
             // either.
             expect(sharedForageStorage.removeItem).not.toHaveBeenCalled()
-            expect(sharedForageStorage.setItem).toHaveBeenCalledTimes(branch === 'nullish' ? 1 : 0)
+            expectOnlyTheSeed(branch)
             assertLocalforageUntouched()
         })
     }
@@ -623,7 +639,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // The "never touched" half of the invariant holds through to
             // acknowledgement too, not just while the notice was pending.
             expect(sharedForageStorage.removeItem).not.toHaveBeenCalled()
-            expect(sharedForageStorage.setItem).toHaveBeenCalledTimes(branch === 'nullish' ? 1 : 0)
+            expectOnlyTheSeed(branch)
             assertLocalforageUntouched()
         })
     }

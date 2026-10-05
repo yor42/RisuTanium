@@ -13,11 +13,25 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { MobileGUI, botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
-import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertConfirm, alertInput, alertToast } from "./alert";
+import { alertError, alertMd, alertStaleAccountNotice, alertNormal, alertNormalWait, alertSelect, waitAlert, alertConfirm, alertInput, alertToast } from "./alert";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { decodeRisuSave, encodeRisuSaveLegacy } from "./storage/risuSave";
+import { getPageBlockOwner } from "./storage/pageBlockOwner";
+import {
+    finishBlockBoot,
+    loadBlockProfile,
+    olderMainFileCopyExists,
+    seedEmptyBlockProfile,
+    type BootBackupSource,
+    type BootLoadContext,
+    type BootLoadUi,
+    type BootNotice,
+} from "./storage/bootBlockLoad";
+import { getPageStorageMode, isAssetSweepHeld, setPageStorageMode } from "./storage/pageStorageMode";
+import { fingerprintMainFile } from "./storage/mainFileFingerprint";
+import { dropRisuSaveCache } from "./storage/risuSaveCacheDrop";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
@@ -36,7 +50,7 @@ import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from ".
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAtomicWriteTemps } from "./storage/tauriAtomicWrite";
-import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice, writeMainFile } from "./storage/store/appStore";
+import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
 import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
@@ -93,6 +107,10 @@ export async function loadData() {
         // Posted right after the install, once the language is set, and each
         // awaited until dismissed.
         let archiveNotices: BootArchiveNotice[] = []
+        // The notices of the block store (unused save data left over, an old save
+        // file that could not be moved aside, a read-only page), posted before
+        // the archive pass's, once each.
+        const bootNotices: BootNotice[] = []
         // What an idle reload of the previous page left for this one. Read before
         // the archive pass, whose keep-inline set it supplies, and applied once
         // the database is installed.
@@ -156,56 +174,78 @@ export async function loadData() {
                 archiveSession = await openBootArchiveSession('tauri')
                 noteBootArchiveSession(archiveSession.canArchive)
                 let outcome: BootArchiveOutcome | null = null
+                LoadingStatusState.text = "Reading Save File..."
+                // A head means the profile lives in the block store; only a
+                // profile with no head is read as the legacy main file below.
+                let storeBoot = await bootFromStore(archiveSession, keepInline)
                 // Only an absent main file starts a first launch. A read that
                 // fails for any other reason leaves the file as it is and takes
                 // the backup route below.
-                LoadingStatusState.text = "Reading Save File..."
                 let readed: Uint8Array | null = null
                 let mainReadable = true
-                try {
-                    readed = (await readMainFile()).bytes
-                } catch (error) {
-                    console.error(error)
-                    mainReadable = false
-                }
-                if (mainReadable && readed === null) {
-                    readed = encodeRisuSaveLegacy({})
-                    await writeMainFile(readed)
-                }
-                if (readed !== null) {
+                if (storeBoot.kind === 'legacy') {
                     try {
-                        noteMainFileBytes(readed)
-                        LoadingStatusState.text = "Cleaning Unnecessary Files..."
-                        // The listing prunes the backups; a failure here must neither
-                        // stop the boot nor go unreported.
-                        Promise.resolve(getDbBackups()).catch((error) => console.error(error))
-                        LoadingStatusState.text = "Decoding Save File..."
-                        const decoded = await decodeMainFile(readed)
-                        outcome = await resolveArchiveOutcome(archiveSession, decoded, readed, keepInline)
-                    } catch (error) {
-                        outcome = null
-                    }
-                }
-                if (outcome?.kind === 'stop') {
-                    throw outcome.error
-                }
-                if (outcome?.kind === 'install') {
-                    try {
-                        setDatabase(outcome.tree)
-                        if (outcome.noteBytes) {
-                            noteMainFileBytes(outcome.noteBytes)
-                        }
-                        archiveNotices = outcome.notices
+                        readed = (await readMainFile()).bytes
                     } catch (error) {
                         console.error(error)
-                        outcome = null
+                        mainReadable = false
+                    }
+                    if (mainReadable && readed === null && storeBoot.ctx !== null) {
+                        storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession, keepInline)
                     }
                 }
-                noteBootPassCommitted(outcome?.kind === 'install' && outcome.committed === true)
-                await archiveSession.release()
-                if (outcome?.kind !== 'install') {
+                if (storeBoot.kind === 'installed') {
+                    setDatabase(storeBoot.tree)
+                    archiveNotices = storeBoot.archiveNotices
+                    bootNotices.push(...storeBoot.notices)
+                    noteBootPassCommitted(storeBoot.committed)
+                    await archiveSession.release()
+                    // The listing prunes the backups; a failure here must neither
+                    // stop the boot nor go unreported.
+                    Promise.resolve(getDbBackups()).catch((error) => console.error(error))
+                } else {
+                    // The profile is the legacy main file until a conversion wins.
+                    if (storeBoot.ctx !== null) {
+                        setPageStorageMode({ kind: 'legacy', convertedFrom: readed === null ? null : fingerprintMainFile(readed) })
+                    }
+                    if (readed !== null) {
+                        try {
+                            noteMainFileBytes(readed)
+                            LoadingStatusState.text = "Decoding Save File..."
+                            const decoded = await decodeMainFile(readed)
+                            outcome = await resolveArchiveOutcome(archiveSession, decoded, keepInline)
+                        } catch (error) {
+                            outcome = null
+                        }
+                    }
+                    if (outcome?.kind === 'stop') {
+                        throw outcome.error
+                    }
+                    if (outcome?.kind === 'install') {
+                        try {
+                            setDatabase(outcome.tree)
+                            if (outcome.noteBytes) {
+                                noteMainFileBytes(outcome.noteBytes)
+                            }
+                            archiveNotices = outcome.notices
+                        } catch (error) {
+                            console.error(error)
+                            outcome = null
+                        }
+                    }
+                    noteBootPassCommitted(outcome?.kind === 'install' && outcome.committed === true)
+                    await archiveSession.release()
+                    if (outcome?.kind === 'install') {
+                        if (outcome.committed === true && storeBoot.ctx !== null) {
+                            // The pass converted the profile: it is a block profile now.
+                            bootNotices.push(...await settleBlockProfile(storeBoot.ctx))
+                        }
+                        Promise.resolve(getDbBackups()).catch((error) => console.error(error))
+                    }
+                }
+                if (storeBoot.kind === 'legacy' && outcome?.kind !== 'install') {
                     LoadingStatusState.text = "Reading Backup Files..."
-                    const backups = await getDbBackups()
+                    const backups = await listBackupsForBoot()
                     let backupLoaded = false
                     for (const backup of backups) {
                         if (!backupLoaded) {
@@ -225,6 +265,7 @@ export async function loadData() {
                         throw "Your save file is corrupted"
                     }
                 }
+                await postBootNotices(bootNotices)
                 await postArchiveNotices(archiveNotices)
                 LoadingStatusState.text = "Checking Update..."
                 await checkRisuUpdate()
@@ -250,68 +291,100 @@ export async function loadData() {
                 }
 
                 LoadingStatusState.text = "Loading Local Save File..."
+                // A head means the profile lives in the block store; only a
+                // profile with no head is read as the legacy main file below.
+                let storeBoot = await bootFromStore(archiveSession, keepInline)
                 // Only an absent main file is seeded. A zero-length file, or a
                 // stored value that is not bytes, is an undecodable main file and
-                // takes the backup route; it is never written over.
+                // takes the backup route; it is never written over. A page that
+                // runs from OPFS this time has no owner and writes nothing: its
+                // empty profile is only installed.
                 let gotStorage: Uint8Array | null = null
                 let mainReadable = true
                 let mainFileSeeded = false
-                try {
-                    gotStorage = (await readMainFile()).bytes
-                    if (gotStorage === null) {
-                        mainFileSeeded = true
-                        gotStorage = encodeRisuSaveLegacy({})
-                        await writeMainFile(gotStorage)
+                if (storeBoot.kind === 'legacy') {
+                    try {
+                        gotStorage = (await readMainFile()).bytes
+                        if (gotStorage === null) {
+                            mainFileSeeded = true
+                            if (storeBoot.ctx === null) {
+                                gotStorage = encodeRisuSaveLegacy({})
+                            } else {
+                                storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession, keepInline)
+                            }
+                        }
+                    } catch (error) {
+                        if (!(error instanceof StoreNotBinaryError)) {
+                            throw error
+                        }
+                        console.error(error)
+                        mainReadable = false
                     }
-                } catch (error) {
-                    if (!(error instanceof StoreNotBinaryError)) {
-                        throw error
-                    }
-                    console.error(error)
-                    mainReadable = false
                 }
                 LoadingStatusState.text = "Decoding Local Save File..."
                 let outcome: BootArchiveOutcome | null = null
-                if (mainReadable) {
-                    noteMainFileBytes(gotStorage as Uint8Array)
-                    try {
-                        const decoded = await decodeMainFile(gotStorage as Uint8Array)
-                        // The file's bytes are not kept past the decode: the pass
-                        // exists to bring memory down, and the main-file record
-                        // keeps its own reference only until it has hashed them.
-                        gotStorage = null
-                        console.log(decoded.tree)
-                        outcome = await resolveArchiveOutcome(archiveSession, decoded, undefined, keepInline)
-                    } catch (error) {
-                        console.error(error)
-                        outcome = null
+                if (storeBoot.kind === 'installed') {
+                    setDatabase(storeBoot.tree)
+                    archiveNotices = storeBoot.archiveNotices
+                    bootNotices.push(...storeBoot.notices)
+                    noteBootPassCommitted(storeBoot.committed)
+                    await archiveSession.release()
+                } else {
+                    // The profile is the legacy main file until a conversion wins.
+                    if (storeBoot.ctx !== null) {
+                        setPageStorageMode({ kind: 'legacy', convertedFrom: mainReadable && gotStorage !== null ? fingerprintMainFile(gotStorage) : null })
                     }
-                }
-                if (outcome?.kind === 'stop') {
-                    throw outcome.error
-                }
-                if (outcome?.kind === 'install') {
-                    try {
-                        setDatabase(outcome.tree)
-                        if (outcome.noteBytes) {
-                            noteMainFileBytes(outcome.noteBytes)
+                    if (mainReadable) {
+                        noteMainFileBytes(gotStorage as Uint8Array)
+                        try {
+                            const decoded = await decodeMainFile(gotStorage as Uint8Array)
+                            // The file's bytes are not kept past the decode: the pass
+                            // exists to bring memory down, and the main-file record
+                            // keeps its own reference only until it has hashed them.
+                            gotStorage = null
+                            console.log(decoded.tree)
+                            outcome = await resolveArchiveOutcome(archiveSession, decoded, keepInline)
+                        } catch (error) {
+                            console.error(error)
+                            outcome = null
                         }
-                        archiveNotices = outcome.notices
-                    } catch (error) {
-                        console.error(error)
-                        outcome = null
+                    }
+                    if (outcome?.kind === 'stop') {
+                        throw outcome.error
+                    }
+                    if (outcome?.kind === 'install') {
+                        try {
+                            setDatabase(outcome.tree)
+                            if (outcome.noteBytes) {
+                                noteMainFileBytes(outcome.noteBytes)
+                            }
+                            archiveNotices = outcome.notices
+                        } catch (error) {
+                            console.error(error)
+                            outcome = null
+                        }
+                    }
+                    noteBootPassCommitted(outcome?.kind === 'install' && outcome.committed === true)
+                    await archiveSession.release()
+                    if (outcome?.kind === 'install' && outcome.committed === true && storeBoot.ctx !== null) {
+                        // The pass converted the profile: it is a block profile now.
+                        bootNotices.push(...await settleBlockProfile(storeBoot.ctx))
                     }
                 }
-                noteBootPassCommitted(outcome?.kind === 'install' && outcome.committed === true)
-                await archiveSession.release()
+                if (storeBoot.kind === 'legacy' && storeBoot.ctx === null) {
+                    bootNotices.push({ kind: 'opfs-read-only' })
+                }
                 // The OPFS leftovers of a completed copy back are deleted only
-                // after a boot that read an existing main file from the page's
-                // own store and decoded it. A boot that created an empty main
-                // file, or fell back to a backup, leaves them: they may be the
-                // only copy of the profile.
-                const mainFileLoaded = outcome?.kind === 'install' && !mainFileSeeded
-                if (outcome?.kind !== 'install') {
-                    const backups = await getDbBackups()
+                // after a boot that read the profile from the page's own store
+                // and decoded it whole: a block profile with no damage, or an
+                // existing main file. A boot that created an empty profile, or
+                // fell back to a backup, leaves them: they may be the only copy
+                // of the profile.
+                const mainFileLoaded = storeBoot.kind === 'installed'
+                    ? storeBoot.how === 'store'
+                    : outcome?.kind === 'install' && !mainFileSeeded
+                if (storeBoot.kind === 'legacy' && outcome?.kind !== 'install') {
+                    const backups = await listBackupsForBoot()
                     let backupLoaded = false
                     for (const backup of backups) {
                         if (backupLoaded) {
@@ -349,9 +422,11 @@ export async function loadData() {
                     await waitForAlertCleared()
                 }
 
-                // The archive pass's notices follow the notice above (each is
-                // awaited, so none overwrites another in the single alert slot)
-                // and come before anything else that can post an alert.
+                // The block store's notices and then the archive pass's follow the
+                // notice above (each is awaited, so none overwrites another in the
+                // single alert slot) and come before anything else that can post
+                // an alert.
+                await postBootNotices(bootNotices)
                 await postArchiveNotices(archiveNotices)
 
                 // I6: a returning RisuAccount-sync profile (AutoStorage.Init()
@@ -417,6 +492,12 @@ export async function loadData() {
             // `storeName` makes it delete just that object store, leaving an
             // empty "risuaiAccountCached" database behind.
             localStorage.removeItem('risu_lastsaved')
+            // The legacy block cache has no reader once the profile is a block
+            // profile. Dropped here, with the other leftovers, and so never
+            // while a stale-profile notice holds the boot.
+            if (blockProfileInstalled) {
+                dropRisuSaveCache()
+            }
             if (localStorage.getItem('backup') === 'save' || localStorage.getItem('backup') === 'load') {
                 localStorage.removeItem('backup')
             }
@@ -493,7 +574,9 @@ export async function loadData() {
                 console.error(error)
             }
             registerModelDynamic()
-            saveDb()
+            if (getPageStorageMode().kind !== 'read-only') {
+                saveDb()
+            }
             moduleUpdate()
             // Recording attaches handlers to the promise, which marks a failure
             // as handled so it never reaches the `unhandledrejection` handler;
@@ -534,6 +617,161 @@ async function readBackupBytes(backup: number): Promise<Uint8Array> {
     return bytes
 }
 
+/** What the block store decided at boot (see `bootFromStore`). */
+type StoreBoot =
+    /**
+     * No head: the legacy main file follows. `ctx` is `null` on a page that
+     * runs from OPFS this time, which has no owner and writes nothing.
+     */
+    | { kind: 'legacy', ctx: BootLoadContext | null }
+    /** A block profile loaded (or seeded, or restored from a backup) and decoded whole. */
+    | { kind: 'installed', tree: Database, how: 'store' | 'backup' | 'seed', committed: boolean, archiveNotices: BootArchiveNotice[], notices: BootNotice[] }
+
+/** The prompts a boot may show before the app is up, over the alert slot. */
+const bootUi: BootLoadUi = {
+    notify: (text) => alertNormalWait(text),
+    choose: async (title, options) => parseInt(await alertSelect([...options], title)),
+    confirm: (text) => alertConfirm(text),
+}
+
+/**
+ * The numbered backups, newest first, without pruning: the damage prompt must
+ * write and delete nothing before the person chooses, and a read-only page
+ * deletes nothing at all.
+ */
+async function listBackupTimes(): Promise<number[]> {
+    const prefix = 'database/dbbackup-'
+    const times: number[] = []
+    for (const key of await (await getAppStore()).list(prefix)) {
+        const match = /^(\d+)\.bin$/.exec(key.slice(prefix.length))
+        if (match) {
+            times.push(Number(match[1]))
+        }
+    }
+    return times.sort((a, b) => b - a)
+}
+
+/** The backups listing the boot's fallback reads: pruning, except on a read-only page, which deletes nothing. */
+function listBackupsForBoot(): Promise<number[]> {
+    return getPageStorageMode().kind === 'read-only' ? listBackupTimes() : getDbBackups()
+}
+
+const bootBackups: BootBackupSource = {
+    list: listBackupTimes,
+    read: (time) => readBackupBytes(time),
+}
+
+/** The block-store owner of this page with what the boot asks of its surroundings, or `null` on a page that runs from OPFS this time. */
+async function blockBootContext(session: BootArchiveSession): Promise<BootLoadContext | null> {
+    const owner = await getPageBlockOwner()
+    if (owner === null) {
+        return null
+    }
+    return { owner, store: await getAppStore(), session, ui: bootUi, backups: bootBackups, waitForReload: sleepForever }
+}
+
+/** Whether this page's profile is a block profile, so the legacy block cache can go once boot is past the stale-profile gate. */
+let blockProfileInstalled = false
+
+/**
+ * What follows the install of a profile the block store holds: the rename
+ * finish and the generations inventory that decides whether the startup asset
+ * sweep may run.
+ */
+async function settleBlockProfile(ctx: BootLoadContext): Promise<BootNotice[]> {
+    blockProfileInstalled = true
+    return await finishBlockBoot(ctx.owner, ctx.store)
+}
+
+/**
+ * Loads the profile from the block store when it has a head. A page without
+ * an owner (it runs from OPFS this time) and a store with no head answer
+ * `legacy`. The strict decode happens inside the owner's `load()`, so a block
+ * that does not decode is damage and goes to the prompt, never into a partial
+ * install; a profile restored from a backup at that prompt is not run through
+ * the archive pass.
+ */
+async function bootFromStore(session: BootArchiveSession, keepInline: ReadonlySet<string> | undefined): Promise<StoreBoot> {
+    const ctx = await blockBootContext(session)
+    if (ctx === null) {
+        setPageStorageMode({ kind: 'read-only' })
+        return { kind: 'legacy', ctx: null }
+    }
+    const loaded = await loadBlockProfile(ctx)
+    if (loaded.kind === 'no-head') {
+        return { kind: 'legacy', ctx }
+    }
+    setPageStorageMode({ kind: 'block' })
+    let tree = loaded.tree
+    let archiveNotices: BootArchiveNotice[] = []
+    let committed = false
+    if (loaded.how === 'store') {
+        const outcome = await resolveArchiveOutcome(session, { tree, strict: true }, keepInline)
+        if (outcome.kind === 'stop') {
+            throw outcome.error
+        }
+        if (outcome.kind === 'backup-fallback') {
+            // The committed state could not be read again after the pass failed:
+            // a backup never stands in for a block profile that was readable.
+            throw language.saveReadFailed
+        }
+        tree = outcome.tree
+        archiveNotices = outcome.notices
+        committed = outcome.committed === true
+    }
+    await session.release()
+    return { kind: 'installed', tree, how: loaded.how, committed, archiveNotices, notices: await settleBlockProfile(ctx) }
+}
+
+/**
+ * Creates the first profile in the block store when there is no head and no
+ * main file. A seed that loses to another page loads that page's state.
+ */
+async function seedBootProfile(ctx: BootLoadContext, session: BootArchiveSession, keepInline: ReadonlySet<string> | undefined): Promise<StoreBoot> {
+    const seeded = await seedEmptyBlockProfile(ctx)
+    if (seeded.kind === 'load-again') {
+        const again = await bootFromStore(session, keepInline)
+        if (again.kind === 'legacy') {
+            throw language.saveSeedFailed
+        }
+        return again
+    }
+    setPageStorageMode({ kind: 'block' })
+    await session.release()
+    return {
+        kind: 'installed',
+        tree: seeded.tree,
+        how: seeded.kind === 'backup' ? 'backup' : 'seed',
+        committed: false,
+        archiveNotices: [],
+        notices: await settleBlockProfile(ctx),
+    }
+}
+
+function bootNoticeText(notice: BootNotice): string {
+    switch (notice.kind) {
+        case 'leftover-generations':
+            return language.saveLeftoverNotice
+        case 'main-file-left':
+            return language.saveMainFileLeftNotice
+        case 'opfs-read-only':
+            return language.opfsReadOnlyNotice
+    }
+}
+
+/** Posts each notice of the block store once, in order, awaiting its acknowledgement before the next. */
+async function postBootNotices(notices: readonly BootNotice[]) {
+    const posted = new Set<BootNotice['kind']>()
+    for (const notice of notices) {
+        if (posted.has(notice.kind)) {
+            continue
+        }
+        posted.add(notice.kind)
+        alertNormal(bootNoticeText(notice))
+        await waitForAlertCleared()
+    }
+}
+
 /**
  * The main file decoded for boot: strictly first, so that the boot archive
  * pass only ever works on a complete reading of the file. A strict decode that
@@ -562,7 +800,6 @@ async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, stri
 async function resolveArchiveOutcome(
     session: BootArchiveSession,
     decoded: { tree: Database, strict: boolean },
-    prePassBytes?: Uint8Array,
     keepInline?: ReadonlySet<string>,
 ): Promise<BootArchiveOutcome> {
     if (decoded.tree.archiveCharacters === false) {
@@ -573,7 +810,7 @@ async function resolveArchiveOutcome(
         return { kind: 'install', tree: decoded.tree, noteBytes: null, notices: [] }
     }
     try {
-        return await session.run({ tree: decoded.tree, prePassBytes, keepInline })
+        return await session.run({ tree: decoded.tree, keepInline })
     } catch (error) {
         console.error(error)
         return { kind: 'install', tree: decoded.tree, noteBytes: null, notices: [] }
@@ -898,12 +1135,25 @@ async function cleanChunks(options:{
         return
     }
 
+    // A read-only page performs no store writes or deletes: no asset sweep, no
+    // `.meta` write and no `remotes/` delete.
+    if (getPageStorageMode().kind === 'read-only') {
+        return
+    }
+
     // A profile with any cold-storage stub never sweeps assets at startup;
     // the manual clean-up is the only thing that deletes assets for it, after
-    // reading every blob a save can point at. This gate covers the asset sweep
-    // only: the remote-block cleanup below runs for every profile that gets
-    // past the flag check above.
+    // reading every blob a save can point at. Nor does a profile that keeps a
+    // damaged or older save generation on disk (see `isAssetSweepHeld`), nor
+    // while an older copy of the main file exists next to the block profile (a
+    // `database.pre-blocks*` copy, or the legacy `database.bin` left in
+    // place): the generation or the copy may reference assets no live
+    // character does. The sweep resumes once the copy is deleted. This gate
+    // covers the asset sweep only: the remote-block cleanup below runs for
+    // every profile that gets past the flag check above.
     const sweepAssets = !(db.characters ?? []).some((cha) => cha?.coldstorage)
+        && !isAssetSweepHeld()
+        && !(await olderMainFileCopyExists(await getAppStore()))
 
     // `keepSet.complete` is false when any cold-stored character's blob
     // failed to read, was missing, or mismatched chaId -- see

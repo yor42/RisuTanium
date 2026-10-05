@@ -20,6 +20,7 @@ import type { Database } from "./database.svelte"
 import { getLoadTimeListing, takeStorageListing } from "./loadTimeListing"
 import { compareWithMainFileRecord } from "./mainFileRecord"
 import { decodeRisuSave } from "./risuSave"
+import { refuseOnReadOnlyPage } from "./readOnlyPage"
 import { getAppStore } from "./store/appStore"
 import { StoreDeleteManyError } from "./store/errors"
 
@@ -527,6 +528,10 @@ async function cleanExclusively(own: BusyHandle): Promise<void> {
  * is checked as well: it cannot hold a lock, so it counts as no Web Locks.
  */
 export async function runManualCleanup(): Promise<void> {
+    // A page that runs from OPFS this time writes nothing: the clean-up is refused before it reads or deletes anything.
+    if (await refuseOnReadOnlyPage()) {
+        return
+    }
     const refusal = currentRefusal()
     if (refusal) {
         alertError(refusal.atStart)

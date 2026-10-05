@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { Database } from './database.svelte'
 import type { ColdStorageReadResult } from '../process/coldstorage.svelte'
+import { BlockTooLargeError, type BlockLayout, type BlockSetInput } from './blockStore'
+import { parseFramedHeader } from './blockFrame'
+import { packedNamesOf } from './packedNames'
 import {
     RisuSaveEncoder,
     RisuSaveType,
@@ -18,11 +21,13 @@ import { applyCharacterDefaults, resetChatStreamingState } from './characterDefa
 import type { ArchiveMemo, ArchiveStrikeState } from './bootArchiveMemo'
 
 /**
- * The boot archive pass: on a boot that read and strictly decoded the main
- * save file, before the database is installed, every eligible full character
+ * The boot archive pass: on a boot that read and strictly decoded the saved
+ * profile, before the database is installed, every eligible full character
  * is written to its own cold-storage unit, replaced in the decoded tree by a
- * stub, and the tree is committed as the main file, all under exclusive
- * access. The caller installs the tree this module returns.
+ * stub, and the tree is committed, all under exclusive access. A profile in
+ * the block store is committed as a save into its live generation; a legacy
+ * profile (no head yet) is converted by that same commit. The caller installs
+ * the tree this module returns.
  *
  * The same pass rewrites every stub the upstream application made (a
  * "legacy" stub: no current `coldVersion`, the type always `'character'`, no
@@ -39,19 +44,22 @@ import type { ArchiveMemo, ArchiveStrikeState } from './bootArchiveMemo'
  * enrichment attempts, which stops enrichment on this device after two failed
  * attempts in a row.
  *
- * Every effect the pass makes itself (unit writes and reads, the main-file
- * read and write, the hold, progress) arrives through `BootArchiveDeps`; the
- * production binding of those effects lives in `bootArchiveHost.ts`, which is
- * loaded only when no deps are given. The pass imports no `coldstorage.svelte`
- * and no lock binding. It does import `risuSave`, which itself reaches the
- * page's byte store (`appStore`, and through it `globalApi.svelte` and
- * `stores.svelte`) for remote character files and `database.svelte` for the
- * live remote-saving flag; a test of this module therefore mocks
- * `globalApi.svelte` and `database.svelte`, and a test whose pass reads or
- * writes remote character files also mocks `appStore`. Keep the static
- * imports to `risuSave`,
+ * Every effect the pass makes itself (unit writes and reads, the commit, the
+ * re-read after a failed pass, the hold, progress) arrives through
+ * `BootArchiveDeps`; the production binding of those effects lives in
+ * `bootArchiveHost.ts`, which is loaded only when no deps are given. The pass
+ * imports no `coldstorage.svelte` and no lock binding. It does import
+ * `risuSave`, which itself reaches the page's byte store (`appStore`, and
+ * through it `globalApi.svelte` and `stores.svelte`) for remote character
+ * files it reads and `database.svelte` for the live remote-saving flag; a test
+ * of this module therefore mocks `globalApi.svelte` and `database.svelte`, and
+ * a test whose tree holds remote character blocks also mocks `appStore`. Keep
+ * the static imports to `blockStore`, `blockFrame`, `packedNames`, `risuSave`,
  * `coldCharacter`, `coldstorageData`, `chatIds`, `v21Plugins`,
  * `characterDefaults`, `uuid` and type-only imports.
+ *
+ * The pass's encoder writes nothing to storage: it frames the blocks and the
+ * commit seam stores them.
  */
 
 /** Which boot branch of `loadData` is calling. */
@@ -90,14 +98,21 @@ export interface BootArchiveDeps {
     /** `isAppInitiatedReload()`: true when a refused hold meant this page is reloading. */
     isReloading(): boolean
     /**
-     * The read the boot's main-file read would make. It never writes and never
-     * takes a first-launch branch. Used for the re-read after a failed pass;
-     * rejects when the read fails. On Node it takes the main file's current
-     * version, which a write after it presents.
+     * Commits the pass's result: a save into the live generation of a block
+     * profile, or the conversion of a legacy one. Resolves only when the commit
+     * is durable and acknowledged. Rejects on every other outcome, with
+     * `BlockTooLargeError` when a value is over the Node server's limit (the
+     * pass reports that as "too large", not as a failure). A rejected commit
+     * leaves the previous root (or the legacy main file) authoritative.
      */
-    readMainFile(): Promise<Uint8Array | null | undefined>
-    /** Writes the main file. On Node the write carries the version the last main-file read or write took; a conflict rejects. */
-    writeMainFile(bytes: Uint8Array): Promise<void>
+    commit(input: BlockSetInput): Promise<void>
+    /**
+     * What storage holds now, read again after a failed pass; never writes.
+     * `bytes` is a legacy main file (the pass decodes it as boot does), `tree` a block
+     * profile's committed state already decoded, and `damaged` a committed
+     * state that does not read cleanly. Rejects when the read fails.
+     */
+    reread(): Promise<BootReread>
     /** The `setColdStorageItem` contract: `true` when the unit was written, `false` on any failure. */
     writeUnit(key: string, value: { character: Database['characters'][number] }): Promise<boolean>
     /** The `readColdStorageItem` contract. */
@@ -149,11 +164,15 @@ export interface BootArchiveDeps {
     setProgress?(text: string): void
 }
 
+/** What `BootArchiveDeps.reread` found. */
+export type BootReread =
+    | { kind: 'bytes', bytes: Uint8Array | null | undefined }
+    | { kind: 'tree', tree: Database }
+    | { kind: 'damaged' }
+
 export interface BootArchivePassInput {
     /** The tree `decodeRisuSave(bytes, { strict: true })` returned. The pass may mutate it and return it. */
     tree: Database
-    /** The bytes `tree` was decoded from. Supplied on Tauri only (the write-back after an undecodable re-read); web callers omit it so the bytes are not kept reachable. */
-    prePassBytes?: Uint8Array
     /** `chaId`s that must stay full. The 5c boot never supplies it. */
     keepInline?: ReadonlySet<string>
 }
@@ -179,17 +198,17 @@ export type BootArchiveNotice =
 
 export type BootArchiveOutcome =
     /**
-     * Install `tree`. `noteBytes` are the bytes to give `noteMainFileBytes`
-     * (the committed bytes, or the re-read bytes), or `null` when the main
-     * file was neither written nor re-read and the boot's own record stands.
-     * `notices` are in the order they are posted. `committed` is present, and
-     * true, only when the pass itself wrote the main file: `noteBytes` is also
-     * non-null for the re-read after a failed pass, which committed nothing.
+     * Install `tree`. `noteBytes` are the legacy main-file bytes the re-read
+     * after a failed pass returned, for `noteMainFileBytes`, or `null`: a
+     * commit leaves no main file to record, and a pass that wrote nothing
+     * leaves the boot's own record standing. `notices` are in the order they
+     * are posted. `committed` is present, and true, only when the pass itself
+     * committed.
      */
     | { kind: 'install', tree: Database, noteBytes: Uint8Array | null, notices: BootArchiveNotice[], committed?: true }
-    /** The re-read returned bytes that do not decode (web), or Tauri's re-read still did not after the write-back: the caller takes its existing backup-fallback path. */
+    /** The re-read returned legacy bytes that do not decode, or the committed state does not read cleanly: the caller takes its existing fallback path. Nothing is written. */
     | { kind: 'backup-fallback' }
-    /** Web (LocalForage, OPFS and Node alike): the re-read threw or returned nothing. The caller stops the boot with `error` shown; nothing is written and no backup is read. */
+    /** Every host (desktop included): the re-read threw or returned nothing. The caller stops the boot with `error` shown; nothing is written and no backup is read. */
     | { kind: 'stop', error: unknown }
 
 export interface BootArchiveSession {
@@ -205,7 +224,22 @@ export interface BootArchiveSession {
     run(input: BootArchivePassInput): Promise<BootArchiveOutcome>
     /** Releases whatever the session still holds; idempotent. The caller invokes it on every path that does not reach `run`. */
     release(): Promise<void>
+    /**
+     * The exclusive access a whole-state replace chosen at the damage prompt
+     * needs. Taken after `release()`, because the boot hold must not stay up
+     * while a person reads a prompt, and released by the caller with the
+     * returned `release` (the write lock goes back with it).
+     */
+    acquireReplaceHold(): Promise<ReplaceHold>
 }
+
+export type ReplaceHold =
+    /** The exclusive hold is held. */
+    | { kind: 'held', release(): Promise<void> }
+    /** Another tab is alive (or this page is reloading): the replace must not proceed. */
+    | { kind: 'refused', reloading: boolean }
+    /** Nothing can be held: the desktop app is a single instance, and a browser without Web Locks cannot exclude other tabs, so the caller confirms instead. */
+    | { kind: 'unlocked', reason: 'single-instance' | 'no-web-locks' }
 
 type Slot = Database['characters'][number]
 
@@ -215,6 +249,9 @@ type Slot = Database['characters'][number]
  * boots without a pass, so a long wait would only delay it for nothing.
  */
 const HOLD_TIMEOUT_MS = 1000
+
+/** How long the hold for a replace chosen at the damage prompt waits: the person is already waiting, so longer than the boot's. */
+const REPLACE_HOLD_TIMEOUT_MS = 2000
 
 /**
  * The oldest `formatversion` the pass archives. `checkNewFormat` migrates
@@ -235,7 +272,7 @@ export function fitsNodeBodyLimit(length: number, limit: number): boolean {
     return length <= limit
 }
 
-/** The commit's encoded bytes are over the Node server's body limit; they are not sent. */
+/** A block of the commit is over the Node server's body limit; the commit is not sent. */
 class CommitTooLargeError extends Error { }
 
 /** Block names the save file keeps for itself; a character block of the same name replaces or collides with one of them. */
@@ -246,7 +283,7 @@ const MAX_BLOCK_NAME_BYTES = 255
 
 /**
  * Opens the session. Call it after `forageStorage.Init()` (web) or at the
- * start of the Tauri read, and before the main file is read: the exclusive
+ * start of the Tauri read, and before the saved profile is read: the exclusive
  * hold is taken here, on every capable boot. `deps` defaults to the
  * production binding.
  */
@@ -275,6 +312,9 @@ function disabledSession(): BootArchiveSession {
             return installUntouched(input.tree)
         },
         async release() { },
+        async acquireReplaceHold() {
+            return { kind: 'unlocked', reason: 'no-web-locks' }
+        },
     }
 }
 
@@ -324,7 +364,9 @@ async function createSession(host: BootArchiveHost, deps: BootArchiveDeps): Prom
         canArchive,
         reloading,
         async run(input) {
-            if (ran) {
+            // The pass archives and commits only under the boot hold: once the
+            // session released it (a damage prompt did), the tree installs as it is.
+            if (ran || released) {
                 return installUntouched(input.tree)
             }
             ran = true
@@ -338,6 +380,25 @@ async function createSession(host: BootArchiveHost, deps: BootArchiveDeps): Prom
             }
         },
         release,
+        async acquireReplaceHold() {
+            if (host === 'tauri') {
+                return { kind: 'unlocked', reason: 'single-instance' }
+            }
+            if (!env.locksSupported) {
+                return { kind: 'unlocked', reason: 'no-web-locks' }
+            }
+            let give: BootArchiveHoldRelease | null = null
+            try {
+                give = await deps.acquireHold(REPLACE_HOLD_TIMEOUT_MS)
+            } catch (error) {
+                console.error('The exclusive hold could not be requested:', error)
+            }
+            if (give === null) {
+                return { kind: 'refused', reloading: deps.isReloading() }
+            }
+            const held = give
+            return { kind: 'held', release: () => held() }
+        },
     }
 }
 
@@ -492,13 +553,13 @@ async function runPass(
     } catch (error) {
         // A pass that threw keeps the strike its start record made (the
         // enrichment count, on a profile with archiving off).
-        const tooLarge = error instanceof CommitTooLargeError
-        if (error instanceof CommitTooLargeError) {
-            console.warn('The boot archive pass did not send its commit; installing the main file as it is:', error.message)
+        const tooLarge = error instanceof CommitTooLargeError || error instanceof BlockTooLargeError
+        if (tooLarge) {
+            console.warn('The boot archive pass did not send its commit; installing the saved profile as it is:', error instanceof Error ? error.message : error)
         } else {
-            console.error('The boot archive pass failed; installing the main file as it is:', error)
+            console.error('The boot archive pass failed; installing the saved profile as it is:', error)
         }
-        const outcome = await installMainFileAsItIs(host, deps, input, keyAbsent)
+        const outcome = await installCommittedAsItIs(host, deps, keyAbsent)
         // A profile with archiving off is never told about archiving.
         if (outcome.kind === 'install' && !enrichOnly) {
             if (tooLarge) {
@@ -581,8 +642,8 @@ interface PassAttempt {
 
 /**
  * Rewrites the legacy stubs from their units and archives what is eligible,
- * then commits the result as the main file. Any throw is a pass failure: the
- * caller discards the tree and re-reads the file.
+ * then commits the result. Any throw is a pass failure: the caller discards
+ * the tree and reads again what storage holds.
  *
  * With `enrichOnly` (archiving is off) nothing is archived, no unit is
  * written, no archive memo or strike count is read or written and no notice is
@@ -805,16 +866,22 @@ async function archiveAndCommit(
     if (keyAbsent) {
         tree.archiveCharacters = true
     }
+    // The encoder only frames the blocks: it writes no remote file and no
+    // cache, so a pass that fails before its commit has changed nothing but
+    // the units it archived into.
     const encoder = deps.createEncoder?.() ?? new RisuSaveEncoder()
-    await encoder.init(tree, { compression: false, enableRemoteSaving: !!tree.enableRemoteSaving })
+    await encoder.init(tree, { compression: false, enableRemoteSaving: false })
     await encoder.set(tree, emptyToSave())
-    const encoded = encoder.encode()
-    if (!encoded) {
-        throw new Error('The encoder produced no file.')
+    const layout = encoder.snapshotLayout()
+    if (!layout) {
+        throw new Error('The encoder produced no layout.')
     }
-    const bytes = new Uint8Array(encoded)
-    if (nodeServer && deps.nodeBodyLimit !== undefined && !fitsNodeBodyLimit(bytes.length, deps.nodeBodyLimit)) {
-        throw new CommitTooLargeError(`the encoded save is ${bytes.length} bytes, over the server's limit of ${deps.nodeBodyLimit} bytes`)
+    if (nodeServer && deps.nodeBodyLimit !== undefined) {
+        for (let i = 0; i < layout.blocks.length; i++) {
+            if (!fitsNodeBodyLimit(layout.blocks[i].length, deps.nodeBodyLimit)) {
+                throw new CommitTooLargeError(`the block "${layout.keys[i]}" is ${layout.blocks[i].length} bytes, over the server's limit of ${deps.nodeBodyLimit} bytes`)
+            }
+        }
     }
     const expected: CommittedCharacterExpectation[] = characters.map((cha, index) => {
         const info = archivedInfo.get(index) ?? enrichedInfo.get(index)
@@ -822,11 +889,11 @@ async function archiveAndCommit(
             ? { chaId: String(cha.chaId), archivedUnitKey: info.key, stubJson: info.stubJson }
             : { chaId: String(cha.chaId), archivedUnitKey: null }
     })
-    const check = await checkCommittedBlocks(bytes, expected)
+    const check = await checkCommittedLayout(layout, expected)
     if (check.ok === false) {
         throw new Error(`The encoded save failed its block check: ${check.reason}`)
     }
-    await deps.writeMainFile(bytes)
+    await deps.commit({ layout, packed: packedNamesOf(characters, encoder.getFrozenKeys()) })
     finishAttempt()
 
     if (keyAbsent) {
@@ -841,7 +908,7 @@ async function archiveAndCommit(
     if (!succeeded && attempt.reachedTwo) {
         notices.push({ kind: 'archive-paused' })
     }
-    return { kind: 'install', tree, noteBytes: bytes, notices, committed: true }
+    return { kind: 'install', tree, noteBytes: null, notices, committed: true }
 }
 
 /**
@@ -862,58 +929,55 @@ async function decodeLikeBoot(bytes: Uint8Array): Promise<Database | null> {
 }
 
 /**
- * The outcome after a failed pass: the main file is read again under the same
- * hold and installed as it is. The read takes the main file's version again, so
- * the Node revision the failed commit may have moved is the one a later write
- * presents.
+ * The outcome after a failed pass: what storage holds is read again under the
+ * same hold and installed as it is. Nothing is written back: a pass that fails
+ * before its commit leaves the previous root (or the legacy main file)
+ * authoritative, and this reads exactly that.
  *
- * On web (LocalForage, OPFS and the Node server alike) a re-read that throws
- * or returns nothing stops the boot: the file was readable when the boot read
- * it, so a failed read says nothing about it and a backup copy must not stand
- * in for it. Only bytes that are read but do not decode take the backup path.
- * On Tauri the pre-pass bytes are written back first.
+ * On every host a re-read that throws or returns nothing stops the boot: the
+ * profile was readable when the boot read it, so a failed read says nothing
+ * about it and a backup copy must not stand in for it. Only bytes that are
+ * read but do not decode, and a committed state that does not read cleanly,
+ * take the backup path.
  */
-async function installMainFileAsItIs(
+async function installCommittedAsItIs(
     host: BootArchiveHost,
     deps: BootArchiveDeps,
-    input: BootArchivePassInput,
     keyAbsent: boolean,
 ): Promise<BootArchiveOutcome> {
-    let bytes: Uint8Array | null | undefined
+    let reread: BootReread | null = null
     let readError: unknown = undefined
     let readFailed = false
     try {
-        bytes = await deps.readMainFile()
+        reread = await deps.reread()
     } catch (error) {
         readFailed = true
         readError = error
     }
-    if (host === 'web' && (readFailed || !bytes || bytes.length === 0)) {
-        // With no reading of the file there is nothing safe to install or
-        // write; on the Node server the file is also the authority and may
-        // belong to another device.
+    let bytes: Uint8Array | null = null
+    if (reread !== null && reread.kind === 'bytes') {
+        bytes = reread.bytes ?? null
+    }
+    if (readFailed || (reread !== null && reread.kind === 'bytes' && (!bytes || bytes.length === 0))) {
+        // With no reading of the profile there is nothing safe to install; on
+        // the Node server the file is also the authority and may belong to
+        // another device. A numbered backup never stands in for a profile that
+        // was readable at this boot.
         return { kind: 'stop', error: readFailed ? readError : new Error('The main save file could not be read again after the archive pass failed: nothing was returned.') }
     }
-    let tree = bytes ? await decodeLikeBoot(bytes) : null
-    if (!tree && host === 'tauri' && input.prePassBytes) {
-        // Nothing else writes the main file at boot, so the bytes the boot
-        // read can be put back before the file is read once more.
-        try {
-            await deps.writeMainFile(input.prePassBytes)
-            bytes = await deps.readMainFile()
-            tree = bytes ? await decodeLikeBoot(bytes) : null
-        } catch (error) {
-            console.error('Writing the pre-pass save file back failed:', error)
-            tree = null
-        }
+    let tree: Database | null = null
+    if (reread !== null && reread.kind === 'tree') {
+        tree = reread.tree
+    } else if (bytes) {
+        tree = await decodeLikeBoot(bytes)
     }
-    if (!tree || !bytes) {
+    if (!tree) {
         return { kind: 'backup-fallback' }
     }
-    // Shown when the file the app now installs holds the key the boot read
+    // Shown when the profile the app now installs holds the key the boot read
     // lacked, whichever write put it there.
     const notices: BootArchiveNotice[] = keyAbsent && tree.archiveCharacters === true ? [{ kind: 'archive-enabled' }] : []
-    return { kind: 'install', tree, noteBytes: bytes, notices }
+    return { kind: 'install', tree, noteBytes: reread !== null && reread.kind === 'bytes' ? bytes : null, notices }
 }
 
 //#region block check
@@ -1012,8 +1076,8 @@ function asRemotePointer(value: unknown): RemotePointer | null {
 }
 
 /**
- * The block check made before the committed file overwrites the main file.
- * The encoded bytes must hold, in their own block order, exactly one
+ * The block check made before the commit writes anything. The encoded blocks
+ * (as one file's bytes here, as a layout in `checkCommittedLayout`) must hold, in their own block order, exactly one
  * character block (inline or a remote pointer) per entry of `expected`; each
  * archived slot's block is a stub carrying its unit key (a remote pointer is
  * compared by name and hash with `stubJson`); the root (with `__directory`),
@@ -1023,13 +1087,47 @@ function asRemotePointer(value: unknown): RemotePointer | null {
  * the small container blocks and the stubs are parsed.
  */
 export async function checkCommittedBlocks(bytes: Uint8Array, expected: readonly CommittedCharacterExpectation[]): Promise<CommitCheckResult> {
-    const fail = (reason: string): CommitCheckResult => ({ ok: false, reason })
     let blocks: EncodedBlockView[]
     try {
         blocks = listEncodedBlocks(bytes)
     } catch (error) {
-        return fail(`the encoded file cannot be walked: ${error instanceof Error ? error.message : String(error)}`)
+        return { ok: false, reason: `the encoded file cannot be walked: ${error instanceof Error ? error.message : String(error)}` }
     }
+    return await checkBlockViews(blocks, expected)
+}
+
+/**
+ * The same check over a layout of framed blocks, the form the commit takes, so
+ * a bad result is refused before the first value is written and the whole
+ * file is never assembled for it. The names the layout lists must be the names
+ * the blocks carry.
+ */
+export async function checkCommittedLayout(layout: BlockLayout, expected: readonly CommittedCharacterExpectation[]): Promise<CommitCheckResult> {
+    const blocks: EncodedBlockView[] = []
+    try {
+        if (layout.keys.length !== layout.blocks.length) {
+            return { ok: false, reason: 'the layout lists a different number of names and blocks' }
+        }
+        for (let i = 0; i < layout.blocks.length; i++) {
+            const header = parseFramedHeader(layout.blocks[i], 0)
+            if (header.name !== layout.keys[i]) {
+                return { ok: false, reason: `the layout lists "${layout.keys[i]}" for a block named "${header.name}"` }
+            }
+            blocks.push({
+                type: header.type as RisuSaveType,
+                compression: header.compression,
+                name: header.name,
+                data: layout.blocks[i].subarray(header.dataStart, header.dataEnd),
+            })
+        }
+    } catch (error) {
+        return { ok: false, reason: `the encoded blocks cannot be walked: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    return await checkBlockViews(blocks, expected)
+}
+
+async function checkBlockViews(blocks: readonly EncodedBlockView[], expected: readonly CommittedCharacterExpectation[]): Promise<CommitCheckResult> {
+    const fail = (reason: string): CommitCheckResult => ({ ok: false, reason })
 
     const byName = new Map<string, EncodedBlockView>()
     for (const block of blocks) {

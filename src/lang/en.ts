@@ -2140,6 +2140,44 @@ export const languageEnglish = {
     opfsFallbackNoticeNoIndexedDb: "Your data could not be moved to browser storage this time, because this browser cannot use IndexedDB. RisuAI is running from your existing data, and nothing was lost. It will try again the next time the app starts.",
     opfsFallbackNoticeError: (detail: string) => `Your data could not be moved to browser storage this time: ${detail}. RisuAI is running from your existing data, and nothing was lost. It will try again the next time the app starts.`,
     browserStorageUnavailable: "This browser could not open the storage RisuAI keeps your data in, so nothing was loaded and nothing was changed. Reload the page. If this message keeps appearing, this browser cannot store RisuAI's data (private browsing and very old browsers can cause this): open RisuAI in another browser, or outside private browsing.",
+    saveReadFailed: "RisuAI could not read your saved data from storage, so it opened nothing and changed nothing. Reload the page to try again. If this keeps happening, check that the disk or the server the data is on can be reached.",
+    saveDamageItem: (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? 'the pointer to your current save'
+            : part === 'root' ? 'the main part of the save (your settings)'
+            : part === 'pack' ? 'the list of archived characters'
+            : part === 'stub' ? `the archived character "${name}"`
+            : part === 'character' ? `the character "${name}"`
+            : name === 'preset' ? 'your bot presets'
+            : name === 'modules' ? 'your modules'
+            : name === 'loadouts' ? 'your loadouts'
+            : name === 'plugins' ? 'your plugins'
+            : name === 'pluginStorage' ? 'your plugin data'
+            : name === 'config' ? 'the save format record'
+            : `"${name}"`
+        const problem = kind === 'absent' ? 'is missing'
+            : kind === 'empty' ? 'is empty'
+            : kind === 'unreadable-content' ? 'cannot be read'
+            : 'is damaged'
+        return `${what} ${problem}`
+    },
+    saveDamagedNotice: (items: string) => `Your saved data is damaged, so RisuAI did not open it. Nothing has been changed.\n\nDamaged:\n${items}`,
+    saveDamagedKeepNote: "If you load a backup, the damaged save and any older copies of your data stay on disk. Clearing out unused images stays off until you delete those copies in the clean-up in the settings.",
+    saveDamagedNoBackup: "No backup could be read, so the only choice is to stop. Nothing was changed.",
+    saveDamagedChoiceTitle: "What should RisuAI do?",
+    saveDamagedLoadBackup: (date: string) => `Load the newest backup (saved ${date})`,
+    saveDamagedStop: "Stop and change nothing",
+    saveDamagedPartialConfirm: (date: string, missing: string) => `No complete backup was found. The newest backup that can be read (saved ${date}) is missing:\n\n${missing}\n\nLoad it anyway?`,
+    saveDamagedStopped: (items: string) => `RisuAI stopped without opening your saved data and changed nothing. The next start will ask again.\n\n${items}`,
+    saveDamagedChanged: "Your saved data changed while this was open, so the backup was not loaded and nothing was changed. RisuAI will check again.",
+    saveDamagedOtherTab: "Another RisuAI tab is open, so the backup cannot be loaded now. Close the other tab, then retry.",
+    saveDamagedRetry: "Retry",
+    saveDamagedUnconfirmed: "RisuAI could not confirm which save is current. Reload the page to see which one loaded.",
+    saveDamagedTooLarge: "This backup is too large to load onto this server in one piece. Nothing was changed.",
+    saveSeedBlocked: (found: string[]) => `RisuAI found no current save, but it found older data (${found.map((kind) => kind === 'head' ? 'a save pointer' : kind === 'main-file' ? 'an old save file' : kind === 'pre-blocks' ? 'a copy of an old save file' : 'backups').join(', ')}). It will not start an empty profile over that, and has changed nothing.`,
+    saveSeedFailed: "RisuAI could not create the first save, so it opened nothing and changed nothing. Reload the page to try again.",
+    saveLeftoverNotice: "RisuAI found unused save data left behind by an interrupted save or restore. It does no harm. You can remove it in the clean-up in the settings.",
+    saveMainFileLeftNotice: "Your data has moved to a new format, but the old save file is too large for this server to move aside. Another version of RisuAI opening the same data may open that old file. The clean-up in the settings keeps it safe until you delete it.",
+    opfsReadOnlyNotice: "RisuAI is running from a temporary copy of your data this time, so it will not save changes, and restoring a backup or cleaning up storage is not available. Your data is not lost. Close other tabs of this app and restart it so the data can be moved to browser storage.",
     backupAndFiles: "Backup & Files",
     assetIntegrityHeading: "Asset Cache Integrity",
     assetIntegrityDescription: "Checks cached images/assets against their own content hash to detect corruption, without re-downloading anything from storage. Read-only unless you choose to remove a corrupted entry.",

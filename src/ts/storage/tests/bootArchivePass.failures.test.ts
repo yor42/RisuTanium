@@ -1,19 +1,23 @@
 /**
  * The boot archive pass, failures and the first-run notice
  * (`src/ts/storage/bootArchivePass.ts`): a lost or rejected commit, a fault in
- * the encoded bytes, a throw inside the pass, the re-read that follows, and
+ * the encoded blocks, a throw inside the pass, the re-read that follows, and
  * the one-time `archiveCharacters` key and notice. A unit that cannot be
  * written or read back is covered by `bootArchivePass.skips.test.ts`.
  *
- * The real `RisuSaveEncoder`, `decodeRisuSave`, `NodeStorage` and
- * `createStorageTabLocks` are used; the Node server is `FakeNodeServer`, the
- * web units go to an in-memory OPFS directory and the web locks to
- * `FakeLockManagerCore` (see `bootArchivePassHarness.ts`). Faults are injected
- * at the dependency seams (unit writer, main-file writer, encoder) or at the
- * stand-in server's `fetch`. These tests exercise the pass against those
- * in-memory models; they say nothing about the Tauri file system, the real
- * Node server, or a browser's Web Locks. The Tauri tests cover the pass's own
- * seams only (the write-back of the pre-pass bytes).
+ * Every failure path leaves the previous state authoritative (the legacy main
+ * file untouched and no head, or the previous root) and writes nothing back to
+ * restore it.
+ *
+ * The real `RisuSaveEncoder`, `decodeRisuSave`, `NodeStorage`, the Node HTTP
+ * store, the block-store owner and `createStorageTabLocks` are used; the Node
+ * server is `FakeNodeServer`, the web units go to an in-memory OPFS directory
+ * and the web locks to `FakeLockManagerCore` (see `bootArchivePassHarness.ts`).
+ * Faults are injected at the dependency seams (unit writer, commit, encoder)
+ * or at the stand-in server's `fetch`. These tests exercise the pass against
+ * those in-memory models; they say nothing about the Tauri file system, the
+ * real Node server, or a browser's Web Locks. The Tauri tests cover the pass's
+ * own seams only (a failed pass writes nothing back).
  *
  * Tests titled `guard:` assert that something does not happen; they pass with
  * and without the pass and protect behaviour the pass must keep. The others
@@ -21,17 +25,15 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-    MAIN_KEY,
     baseTree,
+    blockWriteRequests,
     bootOnce,
     bytesEqual,
     chaIdsOf,
     charactersOf,
-    encodeAsSaveDb,
     fullCharacter,
     installedTree,
     jsonOf,
-    mainFileRequests,
     makeTab,
     worldFor,
     writeLockIsFree,
@@ -132,11 +134,17 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-/** The encoder whose bytes lose a character block, as an encoder fault would. */
+const HEAD_KEY = 'blocks/head'
+
+/** The encoder whose layout loses a character block, as an encoder fault would. */
 class DroppingEncoder extends RisuSaveEncoder {
-    override encode(arg: { compression?: boolean } = {}) {
-        delete (this as unknown as { blocks: Record<string, Uint8Array> }).blocks['b']
-        return super.encode(arg)
+    override snapshotLayout() {
+        const layout = super.snapshotLayout()
+        if (layout === null) {
+            return null
+        }
+        const at = layout.keys.indexOf('b')
+        return { keys: layout.keys.filter((_, i) => i !== at), blocks: layout.blocks.filter((_, i) => i !== at) }
     }
 }
 
@@ -161,24 +169,25 @@ function mainFileKey(init?: RequestInit): string {
     return Buffer.from(filePath, 'hex').toString('utf-8')
 }
 
-/** The Node server accepts the commit, then the response never reaches the client. */
-function loseCommitResponse(world: World): void {
+/** The Node server stores the head write, then the response never reaches the client. */
+function loseHeadResponse(world: World): void {
     const server = world.server as FakeNodeServer
     vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
         const response = await server.fetch(input, init)
-        if (String(input) === '/api/write' && mainFileKey(init) === MAIN_KEY) {
+        if (String(input) === '/api/write' && mainFileKey(init) === HEAD_KEY) {
             throw new TypeError('Failed to fetch')
         }
         return response
     })
 }
 
-/** The Node server bumps the main file's revision, then fails the write with a 500. */
-function failCommitAfterRevisionBump(world: World): void {
+/** The Node server bumps the revision of the new generation's root, then fails that write with a 500. */
+function failRootWriteAfterRevisionBump(world: World): void {
     const server = world.server as FakeNodeServer
     vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
-        if (String(input) === '/api/write' && mainFileKey(init) === MAIN_KEY) {
-            server.revisions.set(MAIN_KEY, server.revisionOf(MAIN_KEY) + 1)
+        const key = mainFileKey(init)
+        if (String(input) === '/api/write' && key.startsWith('blocks/') && key.endsWith('/root')) {
+            server.revisions.set(key, server.revisionOf(key) + 1)
             server.requests.push({ path: '/api/write', method: 'POST', headers: { 'file-path': (init?.headers as Record<string, string>)['file-path'] } })
             return new Response('write failed', { status: 500 })
         }
@@ -186,22 +195,29 @@ function failCommitAfterRevisionBump(world: World): void {
     })
 }
 
-/** Another device saves the main file while the pass is writing its units. */
-async function peerWritesDuringPass(world: World): Promise<Uint8Array> {
-    const peerBytes = await encodeAsSaveDb(RisuSaveEncoder, baseTree([fullCharacter('peer', 'Peer')], { archiveCharacters: true }))
-    world.units.failWrite = (attempt) => {
-        if (attempt === 2) {
-            ;(world.server as FakeNodeServer).peerWrite(MAIN_KEY, peerBytes)
+/** Another device converts the profile while the pass is writing its units; the profile it leaves holds `peer`. */
+function peerConvertsDuringPass(world: World): void {
+    const writeUnit = world.deps.writeUnit
+    let armed = true
+    world.deps.writeUnit = async (key, value) => {
+        if (armed && world.units.attempts === 1) {
+            armed = false
+            const { treeToBlockSet } = await import('src/ts/storage/treeToBlockSet')
+            const result = await world.anotherOwner().replaceWholeState(
+                await treeToBlockSet(baseTree([fullCharacter('peer', 'Peer')], { archiveCharacters: true })),
+                { requireAbsentHead: true },
+            )
+            expect(result.kind).toBe('won')
         }
-        return undefined
+        return writeUnit(key, value)
     }
-    return peerBytes
 }
 
-/** The main file is exactly what it was before the pass, and the installed tree holds every slot as a full character. */
+/** The main file is exactly what it was before the pass, no head was written, and the installed tree holds every slot as a full character. */
 function expectOriginalInstalled(world: World, result: BootResult, original: Uint8Array) {
     expect(world.mainWrites.length).toBe(0)
     expect(bytesEqual(world.currentMain(), original)).toBe(true)
+    expect(blockWriteRequests(world), 'writes under blocks/').toBe(0)
     expect(result.outcome.kind).toBe('install')
     const tree = installedTree(result.outcome)
     expect(chaIdsOf(tree)).toEqual(['a', 'b', 'c'])
@@ -209,37 +225,55 @@ function expectOriginalInstalled(world: World, result: BootResult, original: Uin
 }
 
 describe('boot archive pass: the commit on the Node server', () => {
-    test('C3: a peer writing the main file during the pass makes the commit conflict, and the app installs the peer file with the next write accepted', async () => {
+    test('C3: another device converting the profile during the pass makes the conversion lose: the boot stops, the main file is not touched, and the next boot loads the peer\'s profile', async () => {
         const world = await boot('node')
-        const peerBytes = await peerWritesDuringPass(world)
+        const original = world.currentMain() as Uint8Array
+        peerConvertsDuringPass(world)
 
         const result = await bootOnce(world)
 
         expect(world.units.writes.length).toBe(3)
-        expect(mainFileRequests(world.server as FakeNodeServer)).toEqual(['read', 'write', 'read'])
-        expect(chaIdsOf(installedTree(result.outcome))).toEqual(['peer'])
-        expect(charactersOf(installedTree(result.outcome)).some((c) => !!c.coldstorage)).toBe(false)
-        expect(bytesEqual(world.currentMain(), peerBytes)).toBe(true)
-        expect(result.outcome.kind === 'install' && bytesEqual(result.outcome.noteBytes, peerBytes)).toBe(true)
-        expect(result.outcome.kind === 'install' && result.outcome.committed).toBeUndefined()
+        expect(result.outcome.kind).toBe('stop')
+        expect(world.mainWrites.length).toBe(0)
+        expect(bytesEqual(world.currentMain(), original), 'the main file is not ours to move once the conversion lost').toBe(true)
         expect((await world.units.keys()).length).toBe(3)
-        await expect((world.nodeStorage as NonNullable<World['nodeStorage']>).setItem(MAIN_KEY, peerBytes)).resolves.toBeUndefined()
+        expect(world.releaseArgs).toEqual([undefined])
+
+        const next = await bootOnce(world)
+
+        expect(chaIdsOf(next.tree)).toEqual(['peer'])
     })
 
-    test('C4: a commit that fails with a 500 after the server bumped the revision is followed by a re-read, so the next write is not rejected', async () => {
+    test('C4: a root write the server fails with a 500 after it bumped the revision fails the conversion: no head, the main file untouched, the profile installs as it was', async () => {
         const world = await boot('node')
         const original = world.currentMain() as Uint8Array
-        failCommitAfterRevisionBump(world)
+        failRootWriteAfterRevisionBump(world)
 
         const result = await bootOnce(world)
 
-        expect(mainFileRequests(world.server as FakeNodeServer)).toEqual(['read', 'write', 'read'])
+        expect(result.outcome.kind).toBe('install')
+        expect(result.outcome.kind === 'install' && result.outcome.committed).toBeUndefined()
         expect(chaIdsOf(installedTree(result.outcome))).toEqual(['a', 'b', 'c'])
         expect(charactersOf(installedTree(result.outcome)).some((c) => !!c.coldstorage)).toBe(false)
         expect(bytesEqual(world.currentMain(), original)).toBe(true)
+        expect((world.server as FakeNodeServer).files.has(HEAD_KEY), 'no head names the half-written generation').toBe(false)
+        expect(world.mainWrites).toEqual([])
         vi.unstubAllGlobals()
         vi.stubGlobal('fetch', (world.server as FakeNodeServer).fetch)
-        await expect((world.nodeStorage as NonNullable<World['nodeStorage']>).setItem(MAIN_KEY, original)).resolves.toBeUndefined()
+        const retry = await bootOnce(world)
+        expect(retry.outcome.kind === 'install' && retry.outcome.committed).toBe(true)
+    })
+
+    test('C4: a head write the server stored but answered with a failure is found by the re-read of the head: the conversion won and is reported as committed', async () => {
+        const world = await boot('node')
+        loseHeadResponse(world)
+
+        const result = await bootOnce(world)
+
+        expect(result.outcome.kind === 'install' && result.outcome.committed).toBe(true)
+        expect((world.server as FakeNodeServer).files.has(HEAD_KEY)).toBe(true)
+        expect(charactersOf(installedTree(result.outcome)).map((c) => !!c.coldstorage)).toEqual([true, true, true])
+        expect(world.currentMain(), 'the converted main file is moved aside').toBeNull()
     })
 
     test('guard: a pass that throws, followed by a re-read that throws, stops the boot with the error and writes nothing', async () => {
@@ -373,7 +407,7 @@ describe('boot archive pass: a pass that cannot commit installs the main file as
 })
 
 describe('boot archive pass: Tauri seams (in-memory model, not the native file system)', () => {
-    test('writes the pre-pass bytes back when the re-read does not decode, then installs what the file holds', async () => {
+    test('guard: a re-read that does not decode takes the backup-fallback path, and nothing is written to the main file: it is as it was and no head exists', async () => {
         const world = await boot('tauri')
         const original = world.currentMain() as Uint8Array
         world.units.failWrite = (attempt) => (attempt === 2 ? 'throw' : undefined)
@@ -381,17 +415,16 @@ describe('boot archive pass: Tauri seams (in-memory model, not the native file s
 
         const result = await bootOnce(world)
 
-        expect(world.mainWrites.length).toBe(1)
-        expect(bytesEqual(world.mainWrites[0], original)).toBe(true)
-        expect(result.outcome.kind).toBe('install')
-        expect(chaIdsOf(installedTree(result.outcome))).toEqual(['a', 'b', 'c'])
-        expect(charactersOf(installedTree(result.outcome)).some((c) => !!c.coldstorage)).toBe(false)
+        expect(result.outcome.kind).toBe('backup-fallback')
+        expect(world.mainWrites.length).toBe(0)
+        expect(bytesEqual(world.currentMain(), original)).toBe(true)
+        expect(blockWriteRequests(world), 'writes under blocks/').toBe(0)
     })
 
     test.each([
         ['returns nothing', async () => null],
         ['throws', async () => { throw new Error('read failed') }],
-    ] as const)('guard: a re-read that %s is followed by the write-back of the pre-pass bytes, then the file is read once more', async (_label, answer) => {
+    ] as const)('a re-read that %s stops the boot on Tauri as on the web, and writes nothing to the main file', async (_label, answer) => {
         const world = await boot('tauri')
         const original = world.currentMain() as Uint8Array
         world.units.failWrite = (attempt) => (attempt === 2 ? 'throw' : undefined)
@@ -399,13 +432,28 @@ describe('boot archive pass: Tauri seams (in-memory model, not the native file s
 
         const result = await bootOnce(world)
 
-        expect(world.mainWrites.length).toBe(1)
-        expect(bytesEqual(world.mainWrites[0], original)).toBe(true)
-        expect(result.outcome.kind).toBe('install')
-        expect(chaIdsOf(installedTree(result.outcome))).toEqual(['a', 'b', 'c'])
+        expect(result.outcome.kind).toBe('stop')
+        expect(world.mainWrites.length).toBe(0)
+        expect(world.mainLog.filter((entry) => entry === 'reread'), 'exactly one re-read').toHaveLength(1)
+        expect(bytesEqual(world.currentMain(), original)).toBe(true)
+        expect(blockWriteRequests(world), 'writes under blocks/').toBe(0)
     })
 
-    test('takes the backup-fallback path when the re-read still does not decode after the write-back', async () => {
+    test('a failed conversion on Tauri leaves the legacy main file authoritative and writes no head: the profile installs as it was', async () => {
+        const world = await boot('tauri')
+        const original = world.currentMain() as Uint8Array
+        world.failNextMainWrite = new Error('commit rejected')
+
+        const result = await bootOnce(world)
+
+        expect(result.outcome.kind).toBe('install')
+        expect(chaIdsOf(installedTree(result.outcome))).toEqual(['a', 'b', 'c'])
+        expect(charactersOf(installedTree(result.outcome)).some((c) => !!c.coldstorage)).toBe(false)
+        expect(bytesEqual(world.currentMain(), original)).toBe(true)
+        expect(blockWriteRequests(world), 'writes under blocks/').toBe(0)
+    })
+
+    test('takes the backup-fallback path when the re-read does not decode, however many reads it takes: a second bad read is never asked for', async () => {
         const world = await boot('tauri')
         world.units.failWrite = (attempt) => (attempt === 2 ? 'throw' : undefined)
         world.readQueue.push(async () => new Uint8Array([7, 7, 7, 7]), async () => new Uint8Array([7, 7, 7, 7]))
@@ -413,6 +461,7 @@ describe('boot archive pass: Tauri seams (in-memory model, not the native file s
         const result = await bootOnce(world)
 
         expect(result.outcome.kind).toBe('backup-fallback')
+        expect(world.readQueue, 'the second queued read was never taken').toHaveLength(1)
     })
 })
 
@@ -421,12 +470,12 @@ type Arrange = (world: World) => Promise<void> | void
 const RELEASE_SCENARIOS: [string, WorldHost, Arrange][] = [
     ['a failed unit write', 'opfs', (w) => { w.units.failWrite = (n) => (n === 2 ? 'false' : undefined) }],
     ['a read-back of another chaId', 'opfs', (w) => { w.units.readOverride = async () => ({ status: 'ok', value: { character: { chaId: 'x' } } }) }],
-    ['encoded bytes that lose a block', 'opfs', (w) => { w.deps.createEncoder = () => new DroppingEncoder() }],
+    ['encoded blocks that lose a block', 'opfs', (w) => { w.deps.createEncoder = () => new DroppingEncoder() }],
     ['a throw inside the pass', 'opfs', (w) => { w.units.failWrite = (n) => (n === 2 ? 'throw' : undefined) }],
     ['a re-read that finds nothing', 'opfs', (w) => { w.units.failWrite = (n) => (n === 2 ? 'throw' : undefined); w.readQueue.push(async () => null) }],
     ['a rejected commit', 'opfs', (w) => { w.failNextMainWrite = new Error('commit rejected') }],
-    ['a peer write during the pass', 'node', async (w) => { await peerWritesDuringPass(w) }],
-    ['a failed commit on the Node server', 'node', (w) => { failCommitAfterRevisionBump(w) }],
+    ['another device converting the profile during the pass', 'node', (w) => { peerConvertsDuringPass(w) }],
+    ['a failed root write on the Node server', 'node', (w) => { failRootWriteAfterRevisionBump(w) }],
     ['a rejected commit followed by a web re-read that throws', 'opfs', (w) => { w.failNextMainWrite = new Error('commit rejected'); w.readQueue.push(async () => { throw new Error('read failed') }) }],
     ['a Node re-read that throws', 'node', (w) => { w.units.failWrite = (n) => (n === 2 ? 'throw' : undefined); w.readQueue.push(async () => { throw 'getItem Error' }) }],
 ]
@@ -496,21 +545,20 @@ describe('boot archive pass: the one-time key and notice', () => {
         expect(bytesEqual(world.currentMain(), original)).toBe(true)
     })
 
-    test('D2: a commit that landed on the Node server but whose response was lost is installed from the re-read, with the notice and the next write accepted', async () => {
+    test('D2: a conversion that landed on the Node server but whose head response was lost is reported as committed, with the notice, and the profile it left is the installed one', async () => {
         useHost('node')
         const world = await worldFor(kit, 'node', baseTree([fullCharacter('a', 'A'), fullCharacter('b', 'B')]))
-        loseCommitResponse(world)
+        loseHeadResponse(world)
 
         const result = await bootOnce(world)
 
-        expect(mainFileRequests(world.server as FakeNodeServer)).toEqual(['read', 'write', 'read'])
+        expect(result.outcome.kind === 'install' && result.outcome.committed).toBe(true)
         expect(installedTree(result.outcome).archiveCharacters).toBe(true)
         expect(charactersOf(installedTree(result.outcome)).map((c) => !!c.coldstorage)).toEqual([true, true])
         expect(result.outcome.kind === 'install' && result.outcome.notices).toEqual([{ kind: 'archive-enabled' }])
-        const landed = world.currentMain() as Uint8Array
-        expect(jsonOf(charactersOf(await decodeRisuSave(landed, { strict: true })))).toEqual(jsonOf(charactersOf(installedTree(result.outcome))))
         vi.unstubAllGlobals()
         vi.stubGlobal('fetch', (world.server as FakeNodeServer).fetch)
-        await expect((world.nodeStorage as NonNullable<World['nodeStorage']>).setItem(MAIN_KEY, landed)).resolves.toBeUndefined()
+        const landed = await decodeRisuSave(await world.committedFile() as Uint8Array, { strict: true })
+        expect(jsonOf(charactersOf(landed))).toEqual(jsonOf(charactersOf(installedTree(result.outcome))))
     })
 })

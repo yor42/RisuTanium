@@ -637,6 +637,29 @@ describe.each([{ versioned: true }, { versioned: false }])('a keep-all replace o
         expect(store.mutating()).toEqual([])
     })
 
+    test.runIf(versioned)('a rival that writes the same marker between its read and its write does not abort the replace', async () => {
+        const { store, older, newer } = await twoRootedGenerationsUnderGarbage(versioned)
+        const rivalMarker = new TextEncoder().encode('{"kept":true,"at":7}')
+        let raced = false
+        const view: FakeStore = Object.assign(Object.create(store) as FakeStore, {
+            read: async (key: string) => {
+                const result = await store.read(key)
+                if (!raced && key === keptKey(older)) {
+                    raced = true
+                    store.plant(key, rivalMarker)
+                }
+                return result
+            },
+        })
+        const { owner } = makeOwner(view)
+        const won = expectWon(await owner.replaceWholeState(NEW, { keepAll: true }))
+        expect(raced).toBe(true)
+        expect(Array.from(store.peek(keptKey(older)) ?? [])).toEqual(Array.from(rivalMarker))
+        expect(store.peek(keptKey(newer))).not.toBeNull()
+        expect(headOf(store)).toMatchObject({ record: { current: won.generation } })
+        expect((await owner.inventory()).kept).toEqual([older, newer].sort())
+    })
+
     test.runIf(versioned)('a replace refused by the size pre-flight writes no marker', async () => {
         const { store, older, newer } = await twoRootedGenerationsUnderGarbage(versioned)
         const { owner } = makeOwner(store, { nodeBodyLimit: 400 })
@@ -793,6 +816,57 @@ describe('a keep-all replace that loses to a rival', () => {
         await expectWinnerUnmarkedAndRetirable(store, winningGeneration())
     })
 
+    test('a pre-flip check that throws removes its markers from a winner that flipped meanwhile, and the error reaches the caller', async () => {
+        const { store, view, winningGeneration } = await arrange()
+        await expect(makeOwner(view).owner.replaceWholeState(NEW, {
+            keepAll: true,
+            preFlip: () => { throw new Error('the busy check failed') },
+        })).rejects.toThrow('the busy check failed')
+        await expectWinnerUnmarkedAndRetirable(store, winningGeneration())
+    })
+
+    /**
+     * The rival leaves a marker of its own on the generation it won with and
+     * none on the older ones, so the loser writes markers (on the older
+     * generations) but none on the winner.
+     */
+    function foreignMarkerOnWinnerOnly(marker: Uint8Array): (planted: FakeStore, generation: string) => void {
+        return (planted, generation) => {
+            for (const key of planted.keys('blocks/').filter((candidate) => candidate.endsWith('/kept'))) {
+                planted.unplant(key)
+            }
+            planted.plant(keptKey(generation), marker)
+        }
+    }
+
+    test('a marker that was on the winner before the replace ran stays when the replace ends on a pre-flip refusal', async () => {
+        const marker = new TextEncoder().encode('{"kept":true,"at":1}')
+        const { store, older, newer, view, winningGeneration } = await arrange(false, foreignMarkerOnWinnerOnly(marker))
+        const result = await makeOwner(view).owner.replaceWholeState(NEW, { keepAll: true, preFlip: () => false })
+        expect(result).toMatchObject({ kind: 'aborted' })
+        expect(Array.from(store.peek(keptKey(winningGeneration())) ?? [])).toEqual(Array.from(marker))
+        expect(store.peek(keptKey(older))).not.toBeNull()
+        expect(store.peek(keptKey(newer))).not.toBeNull()
+    })
+
+    test('a marker that was on the winner before the replace ran stays when the replace ends on a root that does not read back', async () => {
+        const marker = new TextEncoder().encode('{"kept":true,"at":1}')
+        const { store, older, newer, view, winningGeneration } = await arrange(false, foreignMarkerOnWinnerOnly(marker))
+        const original = view.write
+        view.write = async (key, bytes, condition) => {
+            const result = await original(key, bytes, condition)
+            if (key.endsWith('/root')) {
+                store.unplant(key)
+            }
+            return result
+        }
+        const result = await makeOwner(view).owner.replaceWholeState(NEW, { keepAll: true })
+        expect(result).toMatchObject({ kind: 'lost', reason: 'generation-damaged' })
+        expect(Array.from(store.peek(keptKey(winningGeneration())) ?? [])).toEqual(Array.from(marker))
+        expect(store.peek(keptKey(older))).not.toBeNull()
+        expect(store.peek(keptKey(newer))).not.toBeNull()
+    })
+
     test('a head re-read that fails after a lost flip is tried again before the markers are given up', async () => {
         const { store, view, winningGeneration } = await arrange()
         const real = createMutexHeadSwap(store)
@@ -868,6 +942,30 @@ describe('the generation the head names outranks a kept marker', () => {
         const { owner } = makeOwner(store)
         await owner.load()
         expect((await owner.inventory()).kept).toEqual([])
+    })
+
+    test('an owner that has not loaded takes the live generation from the head, so a marked generation the head names is not kept', async () => {
+        const store = createFakeStore({ versioned: false })
+        const live = await seedStore(store, OLD)
+        const other = await plantGeneration(store)
+        store.plant(keptKey(live), new TextEncoder().encode('{"kept":true}'))
+        store.plant(keptKey(other), new TextEncoder().encode('{"kept":true}'))
+        const { owner } = makeOwner(store)
+        expect(owner.isLive()).toBe(false)
+        const inventory = await owner.inventory()
+        expect(inventory.kept).toEqual([other])
+        expect(inventory.leftover).toEqual([])
+        expect(inventory.generations.find((info) => info.id === live)).toMatchObject({ current: true, kept: false })
+    })
+
+    test('an owner that has not loaded and finds the head unreadable lists no generation as current', async () => {
+        const store = createFakeStore({ versioned: false })
+        const live = await seedStore(store, OLD)
+        store.plant(HEAD_KEY, GARBAGE)
+        const { owner } = makeOwner(store)
+        const inventory = await owner.inventory()
+        expect(inventory.generations.find((info) => info.id === live)).toMatchObject({ current: false })
+        expect(inventory.leftover).toEqual([live])
     })
 
     test('retireGeneration deletes nothing of the generation it is told is live', async () => {

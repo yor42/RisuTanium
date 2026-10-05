@@ -8,9 +8,13 @@
  *
  * The first test is the stop itself. The others run with IndexedDB usable and
  * assert the boot's read path through the IndexedDB store: a first launch seeds
- * the main file once, a stored main file boots unwritten, and a zero-length or
- * non-binary value under the main key is never written over.
+ * the block store once (the head goes through the head swap's own transaction
+ * on `fake-indexeddb`, every other key through the LocalForage model), a
+ * stored main file boots unwritten, and a zero-length or non-binary value under
+ * the main key is never written over.
  */
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { language } from 'src/lang'
@@ -249,8 +253,17 @@ async function freshLoadData() {
     return { loadData, alertStore, loadedStore }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
     localStorage.clear()
+    // The head swap opens its own connection and never creates the database
+    // (LocalForage does, with this schema): every test starts on an empty one.
+    globalThis.indexedDB = new IDBFactory()
+    await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open('risuai')
+        request.onupgradeneeded = () => request.result.createObjectStore('keyvaluepairs')
+        request.onsuccess = () => { request.result.close(); resolve() }
+        request.onerror = () => reject(request.error)
+    })
     world.indexedDbUsable = true
     world.fallbackWrites.length = 0
     world.indexedDb.clear()
@@ -284,13 +297,16 @@ describe('loadData() on LocalForage without a usable IndexedDB', () => {
         expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 
-    test('with IndexedDB usable, a first launch seeds the main file once in IndexedDB and the boot proceeds', async () => {
+    test('with IndexedDB usable, a first launch seeds the block store once in IndexedDB, creates no main file, and the boot proceeds', async () => {
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
 
-        expect(world.indexedDbWrites).toEqual([MAIN_KEY])
-        expect(world.indexedDb.get(MAIN_KEY)).toBeInstanceOf(Uint8Array)
+        expect(world.indexedDbWrites.length, 'keys of the first profile').toBeGreaterThan(0)
+        expect(world.indexedDbWrites.every((key) => key.startsWith('blocks/') && key !== 'blocks/head')).toBe(true)
+        expect(world.indexedDb.has(MAIN_KEY)).toBe(false)
+        const { createIndexedDbHeadSwap } = await import('src/ts/storage/store/indexedDbStore')
+        expect((await createIndexedDbHeadSwap().read()).kind, 'the head is written by the head swap').toBe('bytes')
         expect(get(loadedStore)).toBe(true)
     })
 

@@ -11,6 +11,7 @@ import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
+import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, type BusyHandle } from "../process/memory/busyActions";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
 
@@ -188,6 +189,11 @@ export async function loadInternalBackup() {
     // again immediately before the write: work can start during any wait
     // between.
     if (refuseBackupLoadWhileBusy()) {
+        return
+    }
+
+    // A page that runs from OPFS this time writes nothing: the load is refused before anything is asked.
+    if (await refuseOnReadOnlyPage()) {
         return
     }
 

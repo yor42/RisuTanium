@@ -28,7 +28,6 @@ import {
     BLOCK,
     baseTree,
     blockJson,
-    bootHost,
     bootOnce,
     bytesEqual,
     characterBlocks,
@@ -46,6 +45,7 @@ import {
     plugin,
     runDirect,
     setupWorld,
+    startBoot,
     uid,
     unitValue,
     upstreamStub,
@@ -286,11 +286,9 @@ async function refuseHold(world: World): Promise<void> {
  */
 async function bootDyingAtFirstUnitRead(world: World): Promise<void> {
     world.units.readOverride = () => new Promise<never>(() => { })
-    const session = await world.kit.openBootArchiveSession(bootHost(world.host), world.deps)
-    const bytes = (await world.bootRead()) as Uint8Array
-    const tree = await world.kit.decodeRisuSave(bytes, { strict: true })
+    const { session, tree } = await startBoot(world)
     let settled = false
-    void session.run({ tree, prePassBytes: world.host === 'tauri' ? bytes : undefined }).then(() => { settled = true })
+    void session.run({ tree }).then(() => { settled = true })
     await vi.waitFor(() => {
         if (!settled && !world.order.includes('unit-read')) {
             throw new Error('the pass has neither read a unit nor settled')
@@ -300,11 +298,15 @@ async function bootDyingAtFirstUnitRead(world: World): Promise<void> {
     await session.release()
 }
 
-/** The encoder whose bytes lose a character block, as an encoder fault would. */
+/** The encoder whose layout loses a character block, as an encoder fault would. */
 class DroppingEncoder extends RisuSaveEncoder {
-    override encode(arg: { compression?: boolean } = {}) {
-        delete (this as unknown as { blocks: Record<string, Uint8Array> }).blocks['b']
-        return super.encode(arg)
+    override snapshotLayout() {
+        const layout = super.snapshotLayout()
+        if (layout === null) {
+            return null
+        }
+        const at = layout.keys.indexOf('b')
+        return { keys: layout.keys.filter((_, i) => i !== at), blocks: layout.blocks.filter((_, i) => i !== at) }
     }
 }
 
@@ -402,7 +404,7 @@ describe('boot archive pass: enriching an upstream stub on a profile with archiv
         expect(world.units.writes.length).toBe(0)
         expect(await world.units.valueOf(LEGACY_UNIT)).toEqual(jsonOf(unitValue(unitGroup())))
         expect(noticeKinds(boot.outcome)).toEqual([])
-        expect(boot.outcome.kind === 'install' && bytesEqual(boot.outcome.noteBytes, world.mainWrites[0])).toBe(true)
+        expect(boot.outcome.kind === 'install' && boot.outcome.noteBytes, 'a commit leaves no main file to record').toBeNull()
         expect(world.breaker.calls, 'the archive strike count is not used').toEqual([])
     })
 
@@ -738,7 +740,7 @@ describe('boot archive pass: enrichment failures on a profile with archiving off
         worldOptions?: WorldOptions
         /** The page is killed during the first unit read: the attempt has a start record and no end. */
         dies?: boolean
-        /** Another device replaces the main file, so the file on disk is not the one the boot read. */
+        /** Another device saves the profile, so what storage holds is not what the boot read. */
         replacesFile?: boolean
         /** Arms the failure for boot number `boot` (1-based). */
         arm?: (world: World, boot: number) => Promise<void> | void
@@ -750,20 +752,9 @@ describe('boot archive pass: enrichment failures on a profile with archiving off
 
     const KINDS: FailureKind[] = [
         {
-            label: 'a write conflict with another device',
+            label: 'a commit the Node server rejects',
             hosts: ['node'],
-            replacesFile: true,
-            arm: async (world, boot) => {
-                const peer = await encodeAsSaveDb(RisuSaveEncoder, offTree({ mainPrompt: `peer ${boot}` }))
-                let armed = true
-                world.units.readOverride = async (_key, real) => {
-                    if (armed) {
-                        armed = false
-                        ;(world.server as FakeNodeServer).peerWrite(MAIN_KEY, peer)
-                    }
-                    return real()
-                }
-            },
+            arm: (world) => { world.failNextMainWrite = new Error('the server rejected the commit') },
         },
         {
             label: 'a commit the block check refuses',
@@ -1058,21 +1049,30 @@ describe('boot archive pass: enriched stubs and remote saving', () => {
         return { world, stubId, fullId }
     }
 
-    test.each(REMOTE_HOSTS.flatMap((host) => [[host, true], [host, false]] as [WorldHost, boolean][]))('%s, archive %s: the enriched stub passes the block check as a remote pointer that names its stub, and the commit is written', async (host, archive) => {
+    /** The remote character files the page's store holds: the Tauri model's files on a desktop boot, the storage object's otherwise. */
+    async function remoteKeys(host: WorldHost): Promise<string[]> {
+        const keys = host === 'tauri' ? Array.from(h.tauriFiles.keys()) : await (h.remote as RemoteLike).keys()
+        return keys.filter((key) => key.replace(/^\.\//, '').startsWith('remotes/'))
+    }
+
+    test.each(REMOTE_HOSTS.flatMap((host) => [[host, true], [host, false]] as [WorldHost, boolean][]))('%s, archive %s: the enriched stub passes the block check as an inline stub, the commit is written and no remote file is', async (host, archive) => {
         const { world, stubId, fullId } = await remoteWorld(host, archive)
+        const remotesBefore = (await remoteKeys(host)).sort()
+        expect(remotesBefore.length, 'the fixture holds remote files for the pass to resolve').toBe(2)
 
         const boot = await bootOnce(world)
 
         expect(world.mainWrites.length).toBe(1)
         const blocks = characterBlocks(world.mainWrites[0])
         expect(blocks.map((b) => b.name)).toEqual([stubId, fullId])
-        expect(blocks.every((b) => b.type === BLOCK.REMOTE)).toBe(true)
+        expect(blocks.every((b) => b.type === BLOCK.CHARACTER_WITH_CHAT)).toBe(true)
         const installed = installedTree(boot.outcome)
         const slot = slotOf(installed, stubId)
         expect(slot.coldVersion).toBe(2)
         expect(slot.type).toBe('group')
         expect(slot.characters).toEqual(MEMBERS)
-        expect(blockJson(blocks[0]).hash).toBe(await hashRemoteBlockContent(new TextEncoder().encode(JSON.stringify(slot))))
+        expect(blockJson(blocks[0])).toEqual(jsonOf(slot))
         expect(jsonOf(charactersOf(await decodeRisuSave(world.mainWrites[0], { strict: true })))).toEqual(jsonOf(charactersOf(installed)))
+        expect((await remoteKeys(host)).sort()).toEqual(remotesBefore)
     })
 })

@@ -15,6 +15,7 @@ import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, decodeEntryName, findEncryptionMarkerEntry, parseBackupEntryHeader, type BackupEntryHeader } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
+import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
 
 function getBasename(data:string){
@@ -414,6 +415,11 @@ export function LoadLocalBackup(){
             }
             const file = input.files[0];
             input.remove();
+
+            // A page that runs from OPFS this time writes nothing, and a restore is refused before it streams anything.
+            if (await refuseOnReadOnlyPage()) {
+                return;
+            }
 
             if (refuseBackupLoadWhileBusy(busy)) {
                 return;

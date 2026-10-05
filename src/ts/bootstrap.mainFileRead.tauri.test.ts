@@ -146,7 +146,7 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({ startAvatarThumbSweep: vi.f
 
 vi.mock(import('src/ts/model/modellist'), () => ({ registerModelDynamic: vi.fn() }) as unknown as typeof import('src/ts/model/modellist'))
 
-vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: convertFileSrcMock }))
+vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: convertFileSrcMock, invoke: fakeFs.invoke }))
 
 vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/appdata'),
@@ -326,15 +326,36 @@ describe('loadData() on Tauri: the main file and backup reads', () => {
         expect(convertFileSrcMock).not.toHaveBeenCalled()
     })
 
-    test('guard: an absent main file is seeded once and the boot proceeds on the seed', async () => {
+    test('an absent main file is seeded once as a block profile, head last, and the boot proceeds on the seed; no main file is created', async () => {
         armDirectories()
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
 
         expect(get(loadedStore)).toBe(true)
-        expect(fakeFs.files.has(MAIN)).toBe(true)
-        expect(fakeFs.renameLog.filter((entry) => entry.to.endsWith(MAIN))).toHaveLength(1)
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expect(fakeFs.durableLog.at(-1)).toBe('blocks/head')
+        expect(fakeFs.durableLog.filter((key) => key === 'blocks/head')).toHaveLength(1)
+        expect(fakeFs.files.has(MAIN)).toBe(false)
+        expect(fakeFs.renameLog.filter((entry) => entry.to.endsWith(MAIN))).toHaveLength(0)
+        expect(setDatabaseMock).toHaveBeenCalled()
+    })
+
+    test('a block profile that is already stored boots as the tree it holds and is not rewritten', async () => {
+        armDirectories()
+        const { loadData: seedBoot } = await freshLoadData()
+        await seedBoot()
+        const written = fakeFs.durableLog.length
+        setDatabaseMock.mockClear()
+        vi.resetModules()
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(fakeFs.durableLog.length, 'a second boot writes nothing').toBe(written)
+        expect(fakeFs.files.has(MAIN)).toBe(false)
     })
 
     test('guard: a zero-length main file is never written over: the newest decodable backup is installed', async () => {
@@ -367,6 +388,22 @@ describe('loadData() on Tauri: the main file and backup reads', () => {
         expect(fakeFs.renameLog.filter((entry) => entry.to.endsWith(MAIN))).toHaveLength(0)
         expect(get(loadedStore)).toBe(true)
         expect(installedCharacterIds()[0]).toEqual(['old'])
+    })
+
+    test('the numbered-backup listing, which prunes, runs only after the profile is installed', async () => {
+        armMain(encodeRisuSaveLegacy(dbWith('stored')))
+        const order: string[] = []
+        dbBackups.list = async () => { order.push('listing'); return [] }
+        setDatabaseMock.mockImplementation((data: Record<string, unknown>) => {
+            order.push('install')
+            dbState.current = { ...dbState.baseline(), ...data }
+        })
+        const { loadData } = await freshLoadData()
+
+        await loadData()
+
+        expect(order.indexOf('listing')).toBeGreaterThan(order.indexOf('install'))
+        expect(order.indexOf('install')).toBeGreaterThan(-1)
     })
 
     test('a numbered-backup listing that fails during the boot read does not become an unhandled rejection', async () => {

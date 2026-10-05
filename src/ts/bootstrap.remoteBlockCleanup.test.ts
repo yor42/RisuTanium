@@ -651,14 +651,15 @@ describe('the Tauri boot removes the leftover temp files of interrupted durable 
         fakeFs.plant(NESTED, new Uint8Array([1, 2, 3]))
         fakeFs.plant(TOP, new Uint8Array([4, 5, 6]))
         fakeFs.plant('blocks/gen1/c/6162', new Uint8Array([7]))
-        fakeFs.plant('blocks/head', new Uint8Array([8]))
+        // A block-store key that is no head: a head holding these bytes would be a damaged profile, which the boot asks about.
+        fakeFs.plant('blocks/gen1/f/config', new Uint8Array([8]))
         const { boot } = await freshLoadData()
 
         await boot()
 
         expect(Array.from(fakeFs.files.keys()).filter((path) => path.startsWith('blocks/')).sort()).toEqual([
             'blocks/gen1/c/6162',
-            'blocks/head',
+            'blocks/gen1/f/config',
         ])
         const mainRead = fakeFs.calls.findIndex((call) => call.op === 'readFile' && relative(call.path) === MAIN_KEY)
         const removed = [NESTED, TOP].map((path) => fakeFs.calls.findIndex((call) => call.op === 'remove' && relative(call.path) === path))

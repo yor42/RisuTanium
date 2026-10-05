@@ -219,7 +219,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     mkdir: vi.fn(async () => { }),
     readFile: vi.fn(async (path: string) => {
         if (!fsStore.has(bare(path))) {
-            throw new Error(`ENOENT (mock): ${path}`)
+            throw new Error(`ENOENT (mock): ${path} (os error 2)`)
         }
         return fsStore.get(bare(path))!
     }),

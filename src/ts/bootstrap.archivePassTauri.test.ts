@@ -36,7 +36,7 @@ const world = vi.hoisted(() => ({
     reads: [] as string[],
 }))
 
-interface RunInput { tree: Record<string, unknown>, prePassBytes?: Uint8Array }
+interface RunInput { tree: Record<string, unknown> }
 
 const pass = vi.hoisted(() => ({
     opened: [] as string[],
@@ -164,7 +164,16 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({ startAvatarThumbSweep: vi.f
 
 vi.mock(import('src/ts/model/modellist'), () => ({ registerModelDynamic: vi.fn() }) as unknown as typeof import('src/ts/model/modellist'))
 
-vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((p: string) => p) }))
+vi.mock('@tauri-apps/api/core', () => ({
+    convertFileSrc: vi.fn((p: string) => p),
+    // The block store's durable writes: a boot that creates the first profile writes through this.
+    invoke: vi.fn(async (command: string, args?: unknown, options?: { headers?: Record<string, string> }) => {
+        if (command === 'write_durable') {
+            world.events.push(`durable:${decodeURIComponent(options?.headers?.['x-risu-key'] ?? '')}`)
+        }
+        return fakeFs.invoke(command, args, options)
+    }),
+}))
 
 vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/appdata'),
@@ -340,8 +349,8 @@ afterEach(() => {
 })
 
 describe('loadData() Tauri: the pass runs on a strictly decoded main file', () => {
-    test('G1: opens the session before the main file is read, then runs the pass on the decoded tree, with the pre-pass bytes, before installing it', async () => {
-        const bytes = armLegacy()
+    test('G1: opens the session before the main file is read, then runs the pass on the decoded tree before installing it', async () => {
+        armLegacy()
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
@@ -350,7 +359,6 @@ describe('loadData() Tauri: the pass runs on a strictly decoded main file', () =
         expect(pass.runInputs.length).toBe(1)
         const input = pass.runInputs[0] as RunInput
         expect(characterIds(input.tree)).toEqual(['a'])
-        expect(Array.from(input.prePassBytes ?? [])).toEqual(Array.from(bytes))
         const order = world.events.filter((e) => ['open:tauri', 'read-main', 'run', 'setDatabase'].includes(e))
         // Up to and including the first install; the boot re-installs the live database later, which is not constrained here.
         expect(order.slice(0, order.indexOf('setDatabase') + 1)).toEqual(['open:tauri', 'read-main', 'run', 'setDatabase'])
@@ -667,8 +675,9 @@ describe('loadData() Tauri: the pass\'s device memo (new behaviour of the skip a
     })
 })
 
-describe('loadData() Tauri: the first-launch main file is written atomically', () => {
+describe('loadData() Tauri: the first launch seeds the block store', () => {
     const MAIN = 'database/database.bin'
+    const HEAD = 'blocks/head'
 
     /** The directories the boot checks, and no main file. */
     function armFirstLaunch(): void {
@@ -677,16 +686,17 @@ describe('loadData() Tauri: the first-launch main file is written atomically', (
         world.files.set('assets', new Uint8Array())
     }
 
-    test('a first-launch write that fails part-way leaves no main file, stops the boot and shows the error', async () => {
+    test('a first-launch seed whose first write fails leaves no head and no main file, stops the boot and shows the error', async () => {
         armFirstLaunch()
-        const fault = fakeFs.failWritesOf(() => true)
+        const fault = fakeFs.failDurableWrites('disk full')
         const { loadData, alertStore, loadedStore } = await freshLoadData()
         const alerts = recordAlerts(alertStore)
 
         await loadData()
         alerts.stop()
 
-        expect(fault.fired).toBe(1)
+        expect(fault.fired).toBeGreaterThan(0)
+        expect(world.files.has(HEAD)).toBe(false)
         expect(world.files.has(MAIN)).toBe(false)
         expect(fakeFs.listing('database')).toEqual([])
         expect(alerts.seen.map((a) => a.type)).toEqual(['error'])
@@ -694,15 +704,19 @@ describe('loadData() Tauri: the first-launch main file is written atomically', (
         expect(get(loadedStore)).toBe(false)
     })
 
-    test('a successful first-launch write leaves the empty save at the main path, no temp file, and never opens the main path for writing', async () => {
+    test('a successful first-launch seed writes the head last, creates no main file, leaves no temp file, and never opens the main path for writing', async () => {
         armFirstLaunch()
-        const { loadData } = await freshLoadData()
+        const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
 
-        expect(Array.from(world.files.get(MAIN) ?? [])).toEqual(Array.from(encodeRisuSaveLegacy({})))
-        expect(fakeFs.listing('database')).toEqual(['database.bin'])
+        expect(get(loadedStore)).toBe(true)
+        expect(world.files.has(HEAD)).toBe(true)
+        expect(world.files.has(MAIN)).toBe(false)
+        expect(fakeFs.durableLog.at(-1)).toBe(HEAD)
+        expect(fakeFs.listing('database')).toEqual([])
         expect(fakeFs.writesTo(MAIN)).toHaveLength(0)
+        expect(installedTrees().length).toBeGreaterThan(0)
     })
 })
 
@@ -742,7 +756,7 @@ describe('loadData() Tauri: the boot removes the leftover temp files of interrup
         expect(world.events.indexOf(removes[1])).toBeLessThan(world.events.indexOf('open:tauri'))
     })
 
-    test('removes a leftover before the first-launch write when the main file is absent', async () => {
+    test('removes a leftover before the first-launch seed when the main file is absent', async () => {
         world.files.set('', new Uint8Array())
         world.files.set('database', new Uint8Array())
         world.files.set('assets', new Uint8Array())
@@ -751,11 +765,11 @@ describe('loadData() Tauri: the boot removes the leftover temp files of interrup
 
         await loadData()
 
-        const firstWrite = world.events.findIndex((e) => e.startsWith('write:'))
+        const firstWrite = world.events.findIndex((e) => e.startsWith('durable:'))
         expect(firstWrite).toBeGreaterThan(-1)
         expect(world.events.indexOf(`remove:${LEFTOVER}`)).toBeGreaterThan(-1)
         expect(world.events.indexOf(`remove:${LEFTOVER}`)).toBeLessThan(firstWrite)
-        expect(fakeFs.listing('database')).toEqual(['database.bin'])
+        expect(fakeFs.listing('database')).toEqual([])
     })
 
     test('a directory listing that fails does not stop the boot', async () => {

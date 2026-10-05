@@ -122,6 +122,31 @@ describe('scenario 3, 4 and 10: the flag with nothing to copy', () => {
         expect(await indexedDbKeys()).toEqual([MAIN])
     })
 
+    test('a converted profile (a head and no main file in IndexedDB, no marker): the flag is cleared, IndexedDB is used and no OPFS file is copied over it', async () => {
+        await seedOpfsMainProfile(world, { staleIndexedDbMain: false, marker: false })
+        await profile.setItem('blocks/head', bytes('head of the converted profile'))
+        await profile.setItem('blocks/aaaaaaaaaaaa-00000001/root', bytes('root'))
+        const writes = watchOpfsWrites()
+
+        const result = await resolveWebStore(makeEnv({ world }).env)
+
+        expectIndexedDb(result, false)
+        expect(localStorage.getItem(OPFS_FLAG_KEY)).toBeNull()
+        expect(await indexedDbKeys()).toEqual(['blocks/aaaaaaaaaaaa-00000001/root', 'blocks/head'])
+        expect(await indexedDbText('blocks/head')).toBe('head of the converted profile')
+        expect(writes.creates).toEqual([])
+    })
+
+    test('guard: a head does not outrank the completion marker: with the marker present OPFS is current and is copied back', async () => {
+        await seedOpfsMainProfile(world, { staleIndexedDbMain: false, marker: true })
+        await profile.setItem('blocks/head', bytes('head'))
+
+        const result = await resolveWebStore(makeEnv({ world }).env)
+
+        expectIndexedDb(result, true)
+        expect(await indexedDbText(MAIN)).toBe('current main file')
+    })
+
     test('new behaviour: a browser that cannot write OPFS files had IndexedDB current, so the flag is cleared and nothing is copied', async () => {
         await seedOpfsMainProfile(world)
 
@@ -651,6 +676,51 @@ describe('scenarios 22 to 24: the clean-up of OPFS leftovers', () => {
         expect(outcome).toBe('done')
         expect(world.root.files.has(hexName('assets/only-in-opfs.png'))).toBe(true)
         expect(await indexedDbText('assets/only-in-opfs.png')).toBeNull()
+    })
+
+    test('a copied-back main file that was converted since is deleted with the other leftovers: IndexedDB holds the head and no main file', async () => {
+        const files = await afterCopyBack()
+        await profile.removeItem(MAIN)
+        await profile.setItem('blocks/head', bytes('head of the converted profile'))
+
+        const outcome = await runLeftoverCleanup(makeEnv({ world }).env)
+
+        expect(outcome).toBe('done')
+        expect(world.root.files.has(hexName(MAIN)), 'the stale pre-conversion save').toBe(false)
+        for (const key of Object.keys(files)) {
+            expect(world.root.files.has(hexName(key))).toBe(false)
+        }
+        expect(localStorage.getItem(COPYBACK_CLEANUP_KEY)).toBeNull()
+    })
+
+    test('guard: with no main file and no head in IndexedDB the OPFS main file is kept: it may be the only copy', async () => {
+        await afterCopyBack()
+        await profile.removeItem(MAIN)
+
+        const outcome = await runLeftoverCleanup(makeEnv({ world }).env)
+
+        expect(outcome).toBe('done')
+        expect(world.root.files.has(hexName(MAIN))).toBe(true)
+        expect(await indexedDbText(MAIN)).toBeNull()
+    })
+
+    test('a head presence check that cannot be made keeps the OPFS main file and the marker', async () => {
+        await afterCopyBack()
+        await profile.removeItem(MAIN)
+        await profile.setItem('blocks/head', bytes('head'))
+        const { env } = makeEnv({ world })
+
+        const outcome = await runLeftoverCleanup({
+            ...env,
+            createProbe: () => {
+                const probe = env.createProbe()
+                return { exists: async (key: string) => (key === 'blocks/head' ? null : probe.exists(key)), close: () => probe.close() }
+            },
+        })
+
+        expect(outcome).toBe('pending')
+        expect(world.root.files.has(hexName(MAIN))).toBe(true)
+        expect(localStorage.getItem(COPYBACK_CLEANUP_KEY)).toBe('pending')
     })
 
     test('new behaviour (23): legacy coldstorage_<key>.json unit files are left alone', async () => {

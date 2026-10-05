@@ -2004,6 +2004,44 @@ export const languageKorean = {
     opfsFallbackNoticeNoIndexedDb: "이번에는 이 브라우저에서 IndexedDB를 사용할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuAI는 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.",
     opfsFallbackNoticeError: (detail: string) => `이번에는 데이터를 브라우저 저장소로 옮기지 못했습니다: ${detail}. RisuAI는 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.`,
     browserStorageUnavailable: "이 브라우저가 RisuAI가 데이터를 보관하는 저장소를 열지 못해 아무것도 불러오지 못했고, 아무것도 변경되지 않았습니다. 페이지를 새로고침하세요. 이 메시지가 계속 나타난다면 이 브라우저는 RisuAI의 데이터를 저장할 수 없는 환경입니다 (시크릿 모드나 매우 오래된 브라우저가 원인일 수 있습니다). 다른 브라우저에서 RisuAI를 열거나, 시크릿 모드가 아닌 창에서 여세요.",
+    saveReadFailed: "RisuAI가 저장소에서 저장된 데이터를 읽지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요. 계속 이런 일이 발생하면 데이터가 있는 디스크나 서버에 접근할 수 있는지 확인하세요.",
+    saveDamageItem: (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? '현재 저장본을 가리키는 포인터'
+            : part === 'root' ? '저장본의 주요 부분 (설정)'
+            : part === 'pack' ? '보관된 캐릭터 목록'
+            : part === 'stub' ? `보관된 캐릭터 "${name}"`
+            : part === 'character' ? `캐릭터 "${name}"`
+            : name === 'preset' ? '봇 프리셋'
+            : name === 'modules' ? '모듈'
+            : name === 'loadouts' ? '로드아웃'
+            : name === 'plugins' ? '플러그인'
+            : name === 'pluginStorage' ? '플러그인 데이터'
+            : name === 'config' ? '저장 형식 기록'
+            : `"${name}"`
+        const problem = kind === 'absent' ? '누락됨'
+            : kind === 'empty' ? '비어 있음'
+            : kind === 'unreadable-content' ? '읽을 수 없음'
+            : '손상됨'
+        return `${what}: ${problem}`
+    },
+    saveDamagedNotice: (items: string) => `저장된 데이터가 손상되어 RisuAI가 열지 않았습니다. 변경된 것은 없습니다.\n\n손상된 항목:\n${items}`,
+    saveDamagedKeepNote: "백업을 불러와도 손상된 저장본과 이전 데이터 사본은 디스크에 그대로 남습니다. 사용하지 않는 이미지 정리는 설정의 정리에서 해당 사본을 삭제하기 전까지 꺼진 상태로 유지됩니다.",
+    saveDamagedNoBackup: "읽을 수 있는 백업이 없어 중지하는 것 외에 선택지가 없습니다. 변경된 것은 없습니다.",
+    saveDamagedChoiceTitle: "RisuAI가 어떻게 해야 하나요?",
+    saveDamagedLoadBackup: (date: string) => `가장 최근 백업 불러오기 (${date}에 저장됨)`,
+    saveDamagedStop: "중지하고 아무것도 변경하지 않기",
+    saveDamagedPartialConfirm: (date: string, missing: string) => `완전한 백업을 찾지 못했습니다. 읽을 수 있는 가장 최근 백업(${date}에 저장됨)에는 다음이 누락되어 있습니다:\n\n${missing}\n\n그래도 불러오시겠습니까?`,
+    saveDamagedStopped: (items: string) => `RisuAI는 저장된 데이터를 열지 않고 중지했으며 아무것도 변경하지 않았습니다. 다음 시작 때 다시 물어봅니다.\n\n${items}`,
+    saveDamagedChanged: "열려 있는 동안 저장된 데이터가 변경되어 백업을 불러오지 않았고 아무것도 변경하지 않았습니다. RisuAI가 다시 확인합니다.",
+    saveDamagedOtherTab: "다른 RisuAI 탭이 열려 있어 지금은 백업을 불러올 수 없습니다. 다른 탭을 닫은 뒤 다시 시도하세요.",
+    saveDamagedRetry: "다시 시도",
+    saveDamagedUnconfirmed: "RisuAI가 어느 저장본이 현재 것인지 확인하지 못했습니다. 페이지를 새로고침하여 어느 것이 불러와졌는지 확인하세요.",
+    saveDamagedTooLarge: "이 백업은 너무 커서 이 서버에 한 번에 불러올 수 없습니다. 변경된 것은 없습니다.",
+    saveSeedBlocked: (found: string[]) => `RisuAI가 현재 저장본을 찾지 못했지만 이전 데이터(${found.map((kind) => kind === 'head' ? '저장 포인터' : kind === 'main-file' ? '이전 저장 파일' : kind === 'pre-blocks' ? '이전 저장 파일의 사본' : '백업').join(', ')})를 찾았습니다. 그 위에 빈 프로필을 새로 시작하지 않으며, 아무것도 변경하지 않았습니다.`,
+    saveSeedFailed: "RisuAI가 첫 저장본을 만들지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요.",
+    saveLeftoverNotice: "RisuAI가 중단된 저장 또는 복원 작업으로 남겨진, 사용하지 않는 저장 데이터를 발견했습니다. 해롭지 않으며, 설정의 정리에서 제거할 수 있습니다.",
+    saveMainFileLeftNotice: "데이터가 새 형식으로 이동했지만, 이전 저장 파일이 너무 커서 이 서버가 옆으로 옮기지 못했습니다. 같은 데이터를 여는 다른 버전의 RisuAI가 그 이전 파일을 열 수 있습니다. 설정의 정리는 삭제하기 전까지 그 파일을 안전하게 보관합니다.",
+    opfsReadOnlyNotice: "RisuAI가 이번에는 데이터의 임시 사본으로 실행 중이므로 변경 사항을 저장하지 않으며, 백업 복원이나 저장소 정리도 사용할 수 없습니다. 데이터는 사라지지 않았습니다. 이 앱의 다른 탭을 닫고 다시 시작하면 데이터를 브라우저 저장소로 옮길 수 있습니다.",
     backupAndFiles: "백업 & 파일",
     assetIntegrityHeading: "에셋 캐시 무결성",
     assetIntegrityDescription: "캐시된 이미지/에셋을 자체 콘텐츠 해시와 대조해 손상 여부를 확인하며, 저장소에서 다시 다운로드하지는 않습니다. 손상된 항목을 제거하도록 선택하지 않는 한 읽기 전용입니다.",

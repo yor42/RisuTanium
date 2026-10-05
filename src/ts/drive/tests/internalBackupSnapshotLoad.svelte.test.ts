@@ -1130,6 +1130,38 @@ describe('loadInternalBackup refuses while another tab is open', () => {
     })
 })
 
+describe('loadInternalBackup refuses on a page that runs from OPFS this time', () => {
+    /** The store the world was built on, now selected as the transitional OPFS store. */
+    async function asReadOnlyPage(): Promise<void> {
+        const { injectAppStore, getAppStore } = await import('../../storage/store/appStore')
+        injectAppStore(await getAppStore(), 'opfs-transitional')
+    }
+
+    test('shows the read-only notice before it lists or asks anything, and writes, locks and reloads nothing', async () => {
+        const { world } = await worldWithSnapshot()
+        await asReadOnlyPage()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expectOneError(msg('opfsReadOnlyNotice'))
+        expectNothingChanged(world)
+        expect.soft(alertBox.history.some((state) => state.type === 'select'), 'no snapshot was offered').toBe(false)
+        expect.soft(alertBox.history.some((state) => state.type === 'wait'), 'nothing was waited on').toBe(false)
+        expect.soft(await writeLockIsFree(world), 'dbWriteLock is free').toBe(true)
+    })
+
+    test('guard: the same load on any other page still writes the snapshot', async () => {
+        const { world, bytes } = await worldWithSnapshot()
+
+        const outcome = await runLoad(world)
+
+        expectNoRejection(outcome)
+        expect.soft(mainWrites(world).length, 'writes to the main file').toBe(1)
+        expect.soft(mainWrites(world)[0], 'the bytes written').toEqual(bytes)
+    })
+})
+
 describe('the snapshot fixtures decode under the strict decoder as the tests assume', () => {
     test('guard: a snapshot of one character, a legacy snapshot and a version-0 snapshot each decode strictly to a database object', async () => {
         const world = await boot()

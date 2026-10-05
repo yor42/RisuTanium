@@ -1433,6 +1433,25 @@ describe('the main file must be what this tab last read or committed', () => {
     })
 })
 
+describe('a page that runs from OPFS this time', () => {
+    test('refuses the clean-up with the read-only notice before it reads or deletes anything', async () => {
+        await setup()
+        const { injectAppStore, getAppStore } = await import('src/ts/storage/store/appStore')
+        injectAppStore(await getAppStore(), 'opfs-transitional')
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime()
+        h.unitLog.reads = []
+
+        await run()
+
+        expect(await units()).toContain('unreferenced-unit')
+        expect(errorMessages()).toEqual([language.opfsReadOnlyNotice])
+        expect(h.unitLog.removed).toEqual([])
+        expect(h.unitLog.reads, 'no unit was read for the keep set').toEqual([])
+    })
+})
+
 describe('exclusivity', () => {
     test('refuses and deletes nothing while another tab of this browser is open', async () => {
         await setup()

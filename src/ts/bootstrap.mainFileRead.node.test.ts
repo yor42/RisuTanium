@@ -14,8 +14,10 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
+import { createFakeStore, makeOwner } from 'src/ts/storage/tests/blockStoreHarness'
 
 const MAIN_KEY = 'database/database.bin'
+const HEAD_KEY = 'blocks/head'
 
 const dbState = vi.hoisted(() => ({
     current: {} as Record<string, unknown>,
@@ -239,8 +241,22 @@ function dbWith(chaId: string): Record<string, unknown> {
     return baseDb({ characters: [{ chaId, name: chaId.toUpperCase(), type: 'character', chats: [] }] })
 }
 
+function keyOf(request: { headers: Record<string, string> }): string {
+    return Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8')
+}
+
 function mainWrites() {
-    return server.requestsTo('/api/write').filter((request) => Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8') === MAIN_KEY)
+    return server.requestsTo('/api/write').filter((request) => keyOf(request) === MAIN_KEY)
+}
+
+/** The files of a complete block profile holding `chaId`, as another tab's seed would leave them. */
+async function peerProfileFiles(chaId: string): Promise<Map<string, Uint8Array>> {
+    const { treeToBlockSet } = await import('src/ts/storage/treeToBlockSet')
+    const tree = { ...dbWith(chaId), loadouts: [], plugins: [], pluginCustomStorage: {} }
+    const peerStore = createFakeStore({ versioned: false })
+    const seeded = await makeOwner(peerStore).owner.replaceWholeState(await treeToBlockSet(tree as never), { requireAbsentHead: true })
+    expect(seeded.kind).toBe('won')
+    return new Map(peerStore.keys().map((key) => [key, peerStore.peek(key) as Uint8Array]))
 }
 
 async function freshLoadData() {
@@ -291,33 +307,38 @@ describe('loadData() on the Node server: the main file read', () => {
         expect(mainWrites()).toHaveLength(0)
     })
 
-    test('guard: an absent main file is seeded once, conditional on the revision the read reported, and the boot proceeds', async () => {
+    test('an absent main file is seeded once as a block profile: the head is created against "no head", and the main file is never written', async () => {
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
 
         expect(get(loadedStore)).toBe(true)
-        const writes = mainWrites()
-        expect(writes).toHaveLength(1)
-        expect(writes[0].headers['if-match-revision']).toBe('0')
-        expect(server.files.has(MAIN_KEY)).toBe(true)
+        expect(mainWrites()).toHaveLength(0)
+        expect(server.files.has(MAIN_KEY)).toBe(false)
+        const headWrites = server.requestsTo('/api/write').filter((request) => keyOf(request) === HEAD_KEY)
+        expect(headWrites).toHaveLength(1)
+        expect(headWrites[0].headers['if-match-revision']).toBe('0')
+        expect(server.files.has(HEAD_KEY)).toBe(true)
     })
 
-    test('guard: when another tab seeds first, the second tab\'s seed is refused and its boot fails with the error shown', async () => {
-        const peerFile = encodeRisuSaveLegacy(dbWith('peer'))
+    test('when another tab seeds first, the second tab\'s seed loses, writes no head, and its boot loads the other tab\'s profile', async () => {
+        const peerFiles = await peerProfileFiles('peer')
         server.beforeRequest = (path, headers) => {
-            if (path === '/api/write' && Buffer.from(headers['file-path'] ?? '', 'hex').toString('utf-8') === MAIN_KEY) {
+            if (path === '/api/write' && Buffer.from(headers['file-path'] ?? '', 'hex').toString('utf-8') === HEAD_KEY) {
                 server.beforeRequest = undefined
-                server.peerWrite(MAIN_KEY, peerFile)
+                for (const [key, bytes] of peerFiles) {
+                    server.peerWrite(key, bytes)
+                }
             }
         }
-        const { loadData, loadedStore, alertStore } = await freshLoadData()
+        const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
 
-        expect(get(loadedStore)).toBe(false)
-        expect(get(alertStore).type).toBe('error')
-        expect(Array.from(server.files.get(MAIN_KEY)?.bytes ?? [])).toEqual(Array.from(peerFile))
+        expect(get(loadedStore)).toBe(true)
+        expect(installedCharacterIds()[0]).toEqual(['peer'])
+        expect(mainWrites()).toHaveLength(0)
+        expect(Array.from(server.files.get(HEAD_KEY)?.bytes ?? [])).toEqual(Array.from(peerFiles.get(HEAD_KEY) ?? []))
     })
 
     test('a zero-length main file is never written over: the newest decodable backup is installed', async () => {

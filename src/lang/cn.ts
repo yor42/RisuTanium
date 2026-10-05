@@ -2004,6 +2004,44 @@ export const languageChinese = {
     "opfsFallbackNoticeNoIndexedDb": "本次未能将您的数据移至浏览器存储，因为此浏览器无法使用 IndexedDB。RisuAI 正在使用您现有的数据运行，没有任何数据丢失。应用下次启动时会再次尝试。",
     "opfsFallbackNoticeError": (detail: string) => `本次未能将您的数据移至浏览器存储：${detail}。RisuAI 正在使用您现有的数据运行，没有任何数据丢失。应用下次启动时会再次尝试。`,
     "browserStorageUnavailable": "此浏览器无法打开 RisuAI 用于保存您数据的存储，因此没有加载任何内容，也没有更改任何内容。请重新加载页面。如果此提示持续出现，说明此浏览器无法存储 RisuAI 的数据（无痕浏览模式和过旧的浏览器都可能导致这种情况）：请在其他浏览器中打开 RisuAI，或在非无痕浏览模式下打开。",
+    "saveReadFailed": "RisuAI 无法从存储中读取您保存的数据，因此没有打开任何内容，也没有更改任何内容。请重新加载页面后重试。如果问题持续出现，请检查数据所在的磁盘或服务器是否可以访问。",
+    "saveDamageItem": (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? '指向当前存档的指针'
+            : part === 'root' ? '存档的主要部分（您的设置）'
+            : part === 'pack' ? '已归档角色列表'
+            : part === 'stub' ? `已归档角色“${name}”`
+            : part === 'character' ? `角色“${name}”`
+            : name === 'preset' ? '您的机器人预设'
+            : name === 'modules' ? '您的模块'
+            : name === 'loadouts' ? '您的配置组包'
+            : name === 'plugins' ? '您的插件'
+            : name === 'pluginStorage' ? '您的插件数据'
+            : name === 'config' ? '存档格式记录'
+            : `“${name}”`
+        const problem = kind === 'absent' ? '缺失'
+            : kind === 'empty' ? '为空'
+            : kind === 'unreadable-content' ? '无法读取'
+            : '已损坏'
+        return `${what}${problem}`
+    },
+    "saveDamagedNotice": (items: string) => `您保存的数据已损坏，因此 RisuAI 没有打开它。未更改任何内容。\n\n已损坏的项目：\n${items}`,
+    "saveDamagedKeepNote": "如果您加载备份，已损坏的存档以及您数据的所有旧副本都会保留在磁盘上。在您通过设置中的清理删除这些副本之前，清除未使用图片的功能将保持关闭。",
+    "saveDamagedNoBackup": "没有可以读取的备份，因此唯一的选择是停止。未更改任何内容。",
+    "saveDamagedChoiceTitle": "RisuAI 应该怎么做？",
+    "saveDamagedLoadBackup": (date: string) => `加载最新的备份（保存于 ${date}）`,
+    "saveDamagedStop": "停止，不更改任何内容",
+    "saveDamagedPartialConfirm": (date: string, missing: string) => `未找到完整的备份。可以读取的最新备份（保存于 ${date}）缺少以下内容：\n\n${missing}\n\n仍要加载吗？`,
+    "saveDamagedStopped": (items: string) => `RisuAI 已停止，没有打开您保存的数据，也没有更改任何内容。下次启动时会再次询问。\n\n${items}`,
+    "saveDamagedChanged": "在此窗口打开期间，您保存的数据发生了变化，因此没有加载备份，也没有更改任何内容。RisuAI 将重新检查。",
+    "saveDamagedOtherTab": "另一个 RisuAI 标签页已打开，因此现在无法加载备份。请关闭其他标签页，然后重试。",
+    "saveDamagedRetry": "重试",
+    "saveDamagedUnconfirmed": "RisuAI 无法确认哪个存档是当前存档。请重新加载页面，查看加载的是哪一个。",
+    "saveDamagedTooLarge": "此备份过大，无法一次性加载到此服务器上。未更改任何内容。",
+    "saveSeedBlocked": (found: string[]) => `RisuAI 没有找到当前存档，但找到了较旧的数据（${found.map((kind) => kind === 'head' ? '存档指针' : kind === 'main-file' ? '旧存档文件' : kind === 'pre-blocks' ? '旧存档文件的副本' : '备份').join('、')}）。它不会在这些数据之上启动一个空白配置，并且没有更改任何内容。`,
+    "saveSeedFailed": "RisuAI 无法创建第一个存档，因此没有打开任何内容，也没有更改任何内容。请重新加载页面后重试。",
+    "saveLeftoverNotice": "RisuAI 发现了因保存或恢复被中断而遗留的未使用存档数据。这些数据无害，您可以在设置中的清理里将其删除。",
+    "saveMainFileLeftNotice": "您的数据已迁移到新格式，但旧的存档文件过大，此服务器无法将其移开。打开同一份数据的其他版本 RisuAI 可能会打开那个旧文件。在您将其删除之前，设置中的清理会妥善保留它。",
+    "opfsReadOnlyNotice": "RisuAI 这次是在您数据的临时副本上运行，因此不会保存更改，也无法恢复备份或清理存储。您的数据没有丢失。请关闭此应用的其他标签页并重新启动，以便将数据迁移到浏览器存储。",
     "backupAndFiles": "备份 & 文件",
     "assetIntegrityHeading": "资源缓存完整性",
     "assetIntegrityDescription": "将缓存的图片/资源与其自身的内容哈希进行比对以检测损坏，无需从存储中重新下载任何内容。除非您选择移除已损坏的条目，否则此操作为只读。",

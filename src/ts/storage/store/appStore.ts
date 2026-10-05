@@ -177,6 +177,17 @@ export async function pageStoreIsIndexedDb(): Promise<boolean> {
 }
 
 /**
+ * Whether the page runs from the transitional OPFS store: such a page is
+ * read-only for its session. Unlike `getAppStoreKind` it answers `false`, not
+ * an error, for a store injected without a kind. Rejects with the selection's
+ * own failure.
+ */
+export async function pageStoreIsOpfsTransitional(): Promise<boolean> {
+    await getAppStore()
+    return selectedKind === 'opfs-transitional'
+}
+
+/**
  * The kind of store the page's selection chose. Read-only: the kind is fixed
  * by the selection, which runs once per page load. Rejects with the
  * selection's own failure, and for a store injected without a kind.

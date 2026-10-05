@@ -243,9 +243,10 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
             }
             return typeof entry === 'function' ? entry() : entry
         }),
-        setItem: vi.fn(async () => { }),
-        keys: vi.fn(async (): Promise<string[]> => []),
-        removeItem: vi.fn(async () => { }),
+        // A boot that finds no save creates the first profile in the block store, which reads back what it wrote.
+        setItem: vi.fn(async (key: string, value: Uint8Array) => { forageState.items.set(key, value) }),
+        keys: vi.fn(async (): Promise<string[]> => Array.from(forageState.items.keys())),
+        removeItem: vi.fn(async (key: string) => { forageState.items.delete(key) }),
     },
     saveDb: saveDbMock,
     getDbBackups: getDbBackupsMock,
@@ -301,7 +302,7 @@ async function freshLoadData() {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
+    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -509,5 +510,100 @@ describe('loadData(): the OPFS leftovers clean-up is started only after the main
 
         expect(get(loadedStore)).toBe(true)
         expect(cleanUpMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('loadData(): a page that runs from OPFS this time is read-only (new-behaviour test)', () => {
+    /** The page's store becomes the transitional OPFS store, whatever it was injected as. */
+    async function asOpfsPage(): Promise<{ writes: ReturnType<typeof vi.fn> }> {
+        const { injectAppStore } = await import('src/ts/storage/store/appStore')
+        const { forageStorage } = await import('src/ts/globalApi.svelte')
+        injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'opfs-transitional')
+        return { writes: forageStorage.setItem as unknown as ReturnType<typeof vi.fn> }
+    }
+
+    /** Acknowledges every notice the boot posts and returns their texts, in order. */
+    function acknowledgeNotices(alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>): string[] {
+        const seen: string[] = []
+        alertStore.subscribe((value) => {
+            if (value.type === 'normal') {
+                seen.push(value.msg)
+                queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
+            }
+        })
+        return seen
+    }
+
+    test('an existing main file boots as it did, shows the read-only notice after the fallback notice, and writes nothing', async () => {
+        const { language } = await import('src/lang')
+        armDecode(baseDb())
+        forageState.fallbackNotice = { reason: 'tab' }
+        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        const { writes } = await asOpfsPage()
+        const seen = acknowledgeNotices(alertStore)
+        writes.mockClear()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(seen).toEqual([language.opfsFallbackNoticeTab, language.opfsReadOnlyNotice])
+        expect(writes).not.toHaveBeenCalled()
+    })
+
+    test('a missing main file installs an empty profile without writing it', async () => {
+        forageState.fallbackNotice = { reason: 'tab' }
+        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        const { writes } = await asOpfsPage()
+        acknowledgeNotices(alertStore)
+        writes.mockClear()
+
+        await loadData()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(writes, 'no seed is written into OPFS').not.toHaveBeenCalled()
+        expect(forageState.items.has('database/database.bin')).toBe(false)
+        expect(forageState.items.has('blocks/head')).toBe(false)
+    })
+
+    test('the whole boot, with its startup clean-up, the first save and the backup fallback, performs no store write or delete', async () => {
+        const { forageStorage } = await import('src/ts/globalApi.svelte')
+        forageState.items.set('database/database.bin', new Uint8Array([9, 9, 9]))
+        forageState.items.set('database/dbbackup-100.bin', encodeRisuSaveLegacy(baseDb()))
+        forageState.items.set('assets/orphan.png', new Uint8Array([1]))
+        forageState.items.set('remotes/gone.local.bin', new Uint8Array([1]))
+        forageState.fallbackNotice = { reason: 'tab' }
+        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        await asOpfsPage()
+        acknowledgeNotices(alertStore)
+        const removes = forageStorage.removeItem as unknown as ReturnType<typeof vi.fn>
+        const sets = forageStorage.setItem as unknown as ReturnType<typeof vi.fn>
+        removes.mockClear()
+        sets.mockClear()
+
+        await loadData()
+        const { getStartupCleanup } = await import('src/ts/storage/startupCleanupState')
+        await (getStartupCleanup() ?? Promise.resolve())
+
+        expect(get(loadedStore)).toBe(true)
+        expect(sets, 'no write').not.toHaveBeenCalled()
+        expect(removes, 'no delete').not.toHaveBeenCalled()
+        expect(buildAssetKeepSetMock, 'no asset sweep').not.toHaveBeenCalled()
+        expect(saveDbMock, 'no first save').not.toHaveBeenCalled()
+        expect(getDbBackupsMock, 'the pruning backup listing is not used').not.toHaveBeenCalled()
+        expect(forageState.items.has('database/dbbackup-100.bin')).toBe(true)
+    })
+
+    test('the boot never builds a block-store owner for the page', async () => {
+        armDecode(baseDb())
+        forageState.fallbackNotice = { reason: 'space' }
+        const { loadData, alertStore } = await freshLoadData()
+        await asOpfsPage()
+        acknowledgeNotices(alertStore)
+
+        await loadData()
+
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only' })
     })
 })

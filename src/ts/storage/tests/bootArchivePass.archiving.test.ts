@@ -38,6 +38,7 @@ import {
     blockJson,
     type Json,
     type RemoteLike,
+    type World,
     type WorldKit,
 } from './bootArchivePassHarness'
 import type { ForageLike } from './forageBackedStore'
@@ -167,9 +168,11 @@ describe('boot archive pass: archiving eligible characters', () => {
         expect(world.mainWrites.length).toBe(1)
         const committed = await decodeRisuSave(world.mainWrites[0], { strict: true })
         expect(jsonOf(committed.characters)).toEqual(jsonOf(installed.characters))
-        expect(boot.outcome.kind === 'install' && bytesEqual(boot.outcome.noteBytes, world.mainWrites[0])).toBe(true)
+        expect(boot.outcome.kind === 'install' && boot.outcome.noteBytes, 'a commit leaves no main file to record').toBeNull()
         expect(boot.outcome.kind === 'install' && boot.outcome.committed).toBe(true)
-        expect(bytesEqual(world.currentMain(), world.mainWrites[0])).toBe(true)
+        expect(world.currentMain(), 'the converted main file is moved aside').toBeNull()
+        const stored = await decodeRisuSave(await world.committedFile() as Uint8Array, { strict: true })
+        expect(jsonOf(stored.characters)).toEqual(jsonOf(installed.characters))
     })
 
     test('reports English progress that carries the count while archiving', async () => {
@@ -414,14 +417,16 @@ describe('boot archive pass: what the committed and installed tree hold besides 
 })
 
 describe('boot archive pass: committed character blocks follow remote saving', () => {
-    test('E1: with remote saving on, the committed character blocks are remote pointers, as a save would write them', async () => {
+    test('E1: with remote saving on, the committed character blocks are inline and the pass writes no remote file', async () => {
         useHost('node')
         const ids = [uid('remote-a'), uid('remote-b')]
         const tree = baseTree(ids.map((id) => fullCharacter(id, `Name ${id}`)), { enableRemoteSaving: true })
         const world = await setupWorld(kit, 'node', null)
         h.db = { enableRemoteSaving: true }
         world.seedMain(await encodeAsSaveDb(RisuSaveEncoder, tree))
-        h.db = {}
+        h.db = { enableRemoteSaving: true }
+        const remotesBefore = (world.server as NonNullable<World['server']>).keysWithPrefix('remotes/').sort()
+        expect(remotesBefore.length, 'the fixture holds remote files for the pass to resolve').toBe(2)
 
         const boot = await bootOnce(world)
 
@@ -429,9 +434,9 @@ describe('boot archive pass: committed character blocks follow remote saving', (
         expect(world.mainWrites.length).toBe(1)
         const blocks = characterBlocks(world.mainWrites[0])
         expect(blocks.map((b) => b.name)).toEqual(ids)
-        expect(blocks.every((b) => b.type === BLOCK.REMOTE)).toBe(true)
-        expect(blocks.every((b) => blockJson(b).name === b.name && typeof blockJson(b).hash === 'string')).toBe(true)
-        const committed = await decodeRisuSave(world.mainWrites[0], { strict: true })
+        expect(blocks.every((b) => b.type === BLOCK.CHARACTER_WITH_CHAT)).toBe(true)
+        expect((world.server as NonNullable<World['server']>).keysWithPrefix('remotes/').sort()).toEqual(remotesBefore)
+        const committed = await decodeRisuSave(await world.committedFile() as Uint8Array, { strict: true })
         expect(chaIdsOf(committed)).toEqual(ids)
     })
 

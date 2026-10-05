@@ -22,11 +22,13 @@ import {
     applyNoticeMemo,
     archiveMemoKeysWritten,
     baseTree,
+    blockWriteRequests,
     bootOnce,
     bytesEqual,
     charactersOf,
     fullCharacter,
     installedTree,
+    largestStoredBlock,
     mainFileRequests,
     noticeKinds,
     worldFor,
@@ -211,13 +213,13 @@ describe('boot archive pass: the size rule on the Node server', () => {
         expect(world.memo.tooLarge).toBe(false)
     })
 
-    test('a commit of exactly the limit is sent and one byte over is not', async () => {
+    test('a commit whose largest block is exactly the limit is sent and one byte over is not', async () => {
         useHost('node')
         const small = baseTree([fullCharacter('a', 'A'), fullCharacter('b', 'B')], { archiveCharacters: true })
         const probe = await worldFor(kit, 'node', small)
         await bootOnce(probe)
         expect(probe.mainWrites.length).toBe(1)
-        const size = probe.mainWrites[0].length
+        const size = largestStoredBlock(probe)
 
         const atLimit = await worldFor(kit, 'node', small, { nodeBodyLimit: size })
         const fitted = await bootOnce(atLimit)
@@ -229,9 +231,43 @@ describe('boot archive pass: the size rule on the Node server', () => {
         const overLimit = await worldFor(kit, 'node', small, { nodeBodyLimit: size - 1 })
         const refused = await bootOnce(overLimit)
 
-        expect(overLimit.mainLog.filter((e) => e === 'write')).toEqual([])
+        expect(overLimit.mainWrites, 'commits that landed').toEqual([])
         expect(mainWriteRequests(overLimit)).toBe(0)
+        expect(blockWriteRequests(overLimit), 'writes under blocks/ for a commit that is never sent').toBe(0)
         expect(noticeKinds(refused.outcome)).toEqual(['archive-too-large'])
+    })
+
+    test('the limit applies per block: a profile whose whole save is over it but no block is commits, and the too-large notice is not raised', async () => {
+        useHost('node')
+        // Trashed characters are never archived, so the commit carries all three in full.
+        const characters = ['a', 'b', 'c'].map((id) => fullCharacter(id, id.toUpperCase(), { desc: 'd'.repeat(9_000), trashTime: 1 }))
+        const world = await worldFor(kit, 'node', baseTree(characters), { nodeBodyLimit: TEST_LIMIT })
+
+        const result = await bootOnce(world)
+
+        expect(world.mainWrites.length).toBe(1)
+        expect(world.mainWrites[0].length, 'the whole commit is over the limit').toBeGreaterThan(TEST_LIMIT)
+        expect(largestStoredBlock(world), 'and no block is').toBeLessThanOrEqual(TEST_LIMIT)
+        expect(noticeKinds(result.outcome)).not.toContain('archive-too-large')
+        expect(world.server?.files.has('blocks/head')).toBe(true)
+    })
+
+    test('a value the owner refuses as over the limit is reported as too large, not as a failure: the notice is raised, nothing is written and the profile installs as it was', async () => {
+        useHost('node')
+        const world = await worldFor(kit, 'node', bigProfile(), { nodeBodyLimit: TEST_LIMIT })
+        // The pass is told no limit, so only the owner's own pre-flight can refuse.
+        world.deps.nodeBodyLimit = undefined
+        const original = world.currentMain() as Uint8Array
+
+        const result = await bootOnce(world)
+
+        expect(world.commitCalls.length, 'the commit was attempted').toBe(1)
+        expect(noticeKinds(result.outcome)).toEqual(['archive-too-large'])
+        expect(result.outcome.kind === 'install' && result.outcome.committed).toBeUndefined()
+        expect(archivedFlags(installedTree(result.outcome))).toEqual([false, false])
+        expect(world.mainWrites).toEqual([])
+        expect(blockWriteRequests(world), 'writes under blocks/').toBe(0)
+        expect(bytesEqual(world.currentMain(), original)).toBe(true)
     })
 
     test('guard: a commit under the limit on the Node server is sent as before', async () => {
@@ -241,7 +277,8 @@ describe('boot archive pass: the size rule on the Node server', () => {
         const result = await bootOnce(world)
 
         expect(world.mainWrites.length).toBe(1)
-        expect(mainWriteRequests(world)).toBe(1)
+        expect(mainWriteRequests(world), 'the pass never writes the main file').toBe(0)
+        expect(world.server?.files.has('blocks/head')).toBe(true)
         expect(archivedFlags(installedTree(result.outcome))).toEqual([true, true])
         expect(noticeKinds(result.outcome)).toEqual(['archive-enabled'])
     })

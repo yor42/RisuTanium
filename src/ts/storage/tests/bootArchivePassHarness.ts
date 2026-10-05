@@ -2,20 +2,32 @@
  * Test-only builders for the boot archive pass suites: character and tree
  * fixtures, save-file builders that use the real `RisuSaveEncoder`, a block
  * lister, an in-memory OPFS directory, a unit store with fault injection, and
- * a "world" that wires every `BootArchiveDeps` effect to the Node-server
- * stand-in (`FakeNodeServer` behind the real `NodeStorage`) or to an in-memory
- * LocalForage-like main file with an in-memory OPFS directory for the units.
+ * a "world" that wires every `BootArchiveDeps` effect over a block store and
+ * its owner: the real Node HTTP store over the Node-server stand-in
+ * (`FakeNodeServer` behind the real `NodeStorage`), or an in-memory unversioned
+ * store with an in-memory OPFS directory for the units.
  *
- * Nothing here imports application modules at runtime: the encoder class, the
- * decoder, the storage client and the module under test are passed in by the
- * caller (`WorldKit`) so they come from the same module graph as the code
- * under test. Nothing here says anything about Tauri or about the native
- * backends; every effect is an in-memory model.
+ * A world starts as a legacy profile (the main file at `database/database.bin`,
+ * no head) or, with `blockWorldFor`, as a block profile. `bootOnce` is one page
+ * load: a fresh owner, the owner's `load()`, then the pass over the tree it
+ * decoded. The pass's commit lands in the store through the production seams
+ * (`bootPassSeams.ts`), so a conversion or a save is what the store holds
+ * afterwards; `mainWrites` records the file image of each commit that landed.
+ *
+ * Nothing here imports application modules that the code under test may have
+ * mocked at load time: the encoder class, the decoder, the storage client and
+ * the module under test are passed in by the caller (`WorldKit`), and the
+ * block-store modules are imported when a world is set up, so they come from
+ * the same module graph as the code under test. Nothing here says anything
+ * about Tauri or about the native backends; every effect is an in-memory
+ * model.
  */
 import { vi } from 'vitest'
 import { BLOCK, FakeNodeServer, composeSave } from './manualCleanupHarness'
 import { FakeAsyncMutex, FakeLockManagerCore, FakeTabLockManagerView } from './fakeWebLocks'
+import { createFakeStore, makeOwner, passthroughLock, type FakeStore } from './blockStoreHarness'
 import { createStorageTabLocks, type StorageTabLocks } from '../storageTabLocks'
+import type { BlockSetInput, BlockStoreOwner } from '../blockStore'
 import type {
     BootArchiveDeps,
     BootArchiveEnvironment,
@@ -23,9 +35,12 @@ import type {
     BootArchiveHost,
     BootArchiveOutcome,
     BootArchiveSession,
+    BootReread,
 } from '../bootArchivePass'
+import type { BootPassSeams } from '../bootPassSeams'
 import type { RisuSaveEncoder } from '../risuSave'
 import type { Database } from '../database.svelte'
+import type { ByteStore } from '../store/contract'
 
 export { BLOCK }
 
@@ -407,6 +422,7 @@ function opfsUnitBackend(dir: FakeOpfsDirectory): UnitBackend {
 /** The part of the real `NodeStorage` the node world uses. */
 export interface NodeStorageLike extends RemoteLike {
     getItem(key: string): Promise<Uint8Array | null>
+    authHeader(): Promise<string>
 }
 
 function nodeUnitBackend(storage: NodeStorageLike, server: FakeNodeServer): UnitBackend {
@@ -471,11 +487,18 @@ export interface WorldOptions {
     createEncoder?: () => RisuSaveEncoder
     core?: FakeLockManagerCore
     /**
-     * The limit the pass is told (`BootArchiveDeps.nodeBodyLimit`). On the Node
-     * world the fake server also refuses a larger write body with a 413, as the
-     * real server does; on the other worlds it is only told to the pass.
+     * The limit the pass is told (`BootArchiveDeps.nodeBodyLimit`) and the owner
+     * enforces on a store that enforces versions. On the Node world the fake
+     * server also refuses a larger write body with a 413, as the real server
+     * does; on the other worlds it is only told to the pass.
      */
     nodeBodyLimit?: number
+    /**
+     * The owner's commit lock: `process` (the desktop app's in-process lock, the
+     * default on the Tauri world), `web` (a lock that is available, the default
+     * elsewhere) or `none` (a page without Web Locks, off Node).
+     */
+    commitLock?: 'process' | 'web' | 'none'
 }
 
 /**
@@ -545,16 +568,34 @@ export interface World {
     holdRequests: number[]
     /** The argument of each release call, in order (`undefined` for no argument). */
     releaseArgs: (boolean | undefined)[]
-    /** Every main-file read and write, in order: the boot read, a re-read by the pass, a write by the pass. */
+    /** Every read and commit, in order: the boot's read of the legacy main file, a re-read by the pass, a commit by the pass. */
     mainLog: ('boot-read' | 'reread' | 'write')[]
-    /** Bytes of each main-file write the pass made. */
+    /** The file image (header plus blocks) of each commit the pass made that landed. */
     mainWrites: Uint8Array[]
-    /** Answers the next re-reads (`readMainFile` calls) from this queue before reading for real. */
+    /** What the pass handed to each commit, whether or not it landed. */
+    commitCalls: BlockSetInput[]
+    /** Answers the next re-reads from this queue (as legacy main-file bytes) before reading for real. */
     readQueue: (() => Promise<Uint8Array | null | undefined>)[]
     /** What `isReloading()` answers: true models a refused hold on a page that is reloading. */
     reloading: boolean
-    /** Makes the next `writeMainFile` call fail with this error before anything is written. */
+    /** Makes the next commit fail with this error before anything is written. */
     failNextMainWrite?: unknown
+    /** The page's byte store the owner works on. */
+    store: ByteStore
+    /** The in-memory store behind the owner on the worlds that are not the Node server's; `null` on the Node world. */
+    fake: FakeStore | null
+    /** The page's owner: a new one for every `bootOnce`, as a reload makes. */
+    owner: BlockStoreOwner
+    /** The commit and re-read the pass uses, bound to the current owner. */
+    seams: BootPassSeams
+    /** Starts a new page: a new owner and seams over the same store. */
+    newPage(): void
+    /** Replaces the block profile in the store by `tree` (a restore from another page), leaving the old generation retired. */
+    replaceProfile(tree: Database): Promise<void>
+    /** An owner of another page or device over the same store, for a peer that saves while the pass runs. */
+    anotherOwner(): BlockStoreOwner
+    /** The body limit the owners made from now on enforce (a store that enforces versions only); `undefined` for the server's own. */
+    setOwnerBodyLimit(limit: number | undefined): void
     progressTexts: string[]
     /** What `readArchiveMemo` answers. Tests set it to model a memo that bootstrap wrote on an earlier boot. */
     memo: WorldMemo
@@ -572,9 +613,11 @@ export interface World {
     /** How many encoders the pass created: one per commit it encodes. */
     encoderCalls: number
     opfs: FakeOpfsDirectory | null
-    /** The main file's current bytes, as the storage holds them. */
+    /** The legacy main file's current bytes (`database/database.bin`), or `null` once it is absent: a conversion that won renames it away. */
     currentMain(): Uint8Array | null
-    /** The read the boot makes before the pass runs. */
+    /** The block profile the store holds now, as one file image (the root carries its bookkeeping), or `null` with no head. */
+    committedFile(): Promise<Uint8Array | null>
+    /** The legacy read the boot makes before the pass runs. */
     bootRead(): Promise<Uint8Array | null>
     /** Places `bytes` as the main file, as another writer's save would. */
     seedMain(bytes: Uint8Array): void
@@ -598,19 +641,34 @@ export function bootHost(host: WorldHost): BootArchiveHost {
     return host === 'tauri' ? 'tauri' : 'web'
 }
 
-/** Wires every `BootArchiveDeps` effect for `host` over a main file that starts as `main`. */
+/** The file image of a layout: the block-format header followed by every block, as `encode()` writes it. */
+export function layoutFile(layout: { readonly blocks: readonly Uint8Array[] }): Uint8Array {
+    const header = new TextEncoder().encode('RISUSAVE\x01')
+    const out = new Uint8Array(header.length + layout.blocks.reduce((sum, block) => sum + block.length, 0))
+    out.set(header, 0)
+    let offset = header.length
+    for (const block of layout.blocks) {
+        out.set(block, offset)
+        offset += block.length
+    }
+    return out
+}
+
+/** Wires every `BootArchiveDeps` effect for `host` over a legacy main file that starts as `main` (no head). */
 export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Array | null, options: WorldOptions = {}): Promise<World> {
     const mainLog: World['mainLog'] = []
     const mainWrites: Uint8Array[] = []
     const core = options.core ?? new FakeLockManagerCore()
-    let localMain: Uint8Array | null = main
     const opfs = host === 'node' ? null : new FakeOpfsDirectory()
+    const { createBootPassSeams } = await import('../bootPassSeams')
+    const { createNodeHttpStore } = await import('../store/nodeHttpStore')
+    const { createProcessCommitLock } = await import('../blockStore')
 
     let server: FakeNodeServer | null = null
     let nodeStorage: NodeStorageLike | null = null
     let units: UnitStore
-    let readReal: () => Promise<Uint8Array | null>
-    let writeReal: (bytes: Uint8Array) => Promise<void>
+    let store: ByteStore
+    let fake: FakeStore | null = null
     if (host === 'node') {
         server = new FakeNodeServer()
         vi.stubGlobal('fetch', server.fetch)
@@ -624,16 +682,15 @@ export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Arra
             server.seed(MAIN_KEY, main)
         }
         units = new UnitStore(nodeUnitBackend(storage, server))
-        readReal = async () => {
-            const bytes = await storage.getItem(MAIN_KEY)
-            return bytes ? new Uint8Array(bytes) : null
-        }
-        writeReal = (bytes) => storage.setItem(MAIN_KEY, bytes)
+        store = createNodeHttpStore({ authHeader: () => storage.authHeader() })
     } else {
         kit.setRemote(memoryRemote())
         units = new UnitStore(opfsUnitBackend(opfs as FakeOpfsDirectory))
-        readReal = async () => localMain
-        writeReal = async (bytes) => { localMain = bytes.slice() }
+        fake = createFakeStore({ versioned: false })
+        if (main) {
+            fake.plant(MAIN_KEY, main)
+        }
+        store = fake
     }
 
     const tab = host === 'tauri' ? null : makeTab(core, 'A')
@@ -641,6 +698,14 @@ export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Arra
         await tab.locks.tabPresenceLockAcquired
         tab.locks.recordStorageEpoch()
     }
+
+    const lockKind = options.commitLock ?? (host === 'tauri' ? 'process' : 'web')
+    let ownerBodyLimit = options.nodeBodyLimit
+    const newOwner = (): BlockStoreOwner => makeOwner(store, {
+        commitLock: lockKind === 'process' ? createProcessCommitLock(store) : passthroughLock(lockKind === 'web'),
+        ...(ownerBodyLimit !== undefined ? { nodeBodyLimit: ownerBodyLimit } : {}),
+    }).owner
+    const readLegacyMain = async (): Promise<Uint8Array | null> => (await store.read(MAIN_KEY)).bytes
 
     const world: World = {
         host,
@@ -655,6 +720,7 @@ export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Arra
         releaseArgs: [],
         mainLog,
         mainWrites,
+        commitCalls: [],
         readQueue: [],
         reloading: false,
         progressTexts: [],
@@ -664,26 +730,54 @@ export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Arra
         order: [],
         encoderCalls: 0,
         opfs,
+        store,
+        fake,
+        owner: undefined as unknown as BlockStoreOwner,
+        seams: undefined as unknown as BootPassSeams,
+        newPage: () => {
+            world.owner = newOwner()
+            world.seams = createBootPassSeams({ owner: world.owner, store, readMainFile: readLegacyMain, nodeBodyLimit: options.nodeBodyLimit })
+        },
+        anotherOwner: newOwner,
+        setOwnerBodyLimit: (limit) => { ownerBodyLimit = limit },
+        replaceProfile: async (tree) => {
+            const { treeToBlockSet } = await import('../treeToBlockSet')
+            const owner = newOwner()
+            const loaded = await owner.load()
+            if (loaded.kind !== 'loaded') {
+                throw new Error(`there is no block profile to replace: ${loaded.kind}`)
+            }
+            const result = await owner.replaceWholeState(await treeToBlockSet(tree))
+            if (result.kind !== 'won') {
+                throw new Error(`the profile could not be replaced: ${result.kind}`)
+            }
+        },
         currentMain: () => {
             if (server) {
                 const file = server.files.get(MAIN_KEY)
                 return file ? file.bytes : null
             }
-            return localMain
+            return (fake as FakeStore).peek(MAIN_KEY)
+        },
+        committedFile: async () => {
+            const { assembleLegacyFile } = await import('../blockStore')
+            const read = await newOwner().readCommitted()
+            return read.kind === 'loaded' ? assembleLegacyFile(read.loaded) : null
         },
         bootRead: async () => {
             mainLog.push('boot-read')
-            return readReal()
+            return readLegacyMain()
         },
         seedMain: (bytes) => {
             if (server) {
                 server.seed(MAIN_KEY, bytes)
             } else {
-                localMain = bytes.slice()
+                (fake as FakeStore).plant(MAIN_KEY, bytes)
             }
         },
         seedUnit: (key, value) => units.seed(key, value),
     }
+    world.newPage()
 
     world.deps = {
         env: () => hostEnvironment(host, options.env),
@@ -699,12 +793,16 @@ export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Arra
             }
         },
         isReloading: () => world.reloading,
-        readMainFile: async () => {
+        reread: async (): Promise<BootReread> => {
             mainLog.push('reread')
             const queued = world.readQueue.shift()
-            return queued ? queued() : readReal()
+            if (queued) {
+                return { kind: 'bytes', bytes: await queued() }
+            }
+            return world.seams.reread()
         },
-        writeMainFile: async (bytes: Uint8Array) => {
+        commit: async (input) => {
+            world.commitCalls.push(input)
             mainLog.push('write')
             world.order.push('main-write')
             if (world.failNextMainWrite !== undefined) {
@@ -712,8 +810,8 @@ export async function setupWorld(kit: WorldKit, host: WorldHost, main: Uint8Arra
                 world.failNextMainWrite = undefined
                 throw error
             }
-            mainWrites.push(bytes.slice())
-            await writeReal(bytes)
+            await world.seams.commit(input)
+            mainWrites.push(layoutFile(input.layout))
         },
         writeUnit: (key, value) => {
             world.order.push('unit-write')
@@ -820,8 +918,16 @@ export async function directWorld(kit: WorldKit, host: WorldHost, options: World
     return world
 }
 
-/** Opens a session and runs the pass over `tree` as given, with no encode or decode of it first. */
+/**
+ * Opens a session and runs the pass over `tree` as given, with no encode or
+ * decode of it first. The page is a legacy page over the world's main file.
+ */
 export async function runDirect(world: World, tree: Database): Promise<BootArchiveOutcome> {
+    const { setPageStorageMode } = await import('../pageStorageMode')
+    const { fingerprintMainFile } = await import('../mainFileFingerprint')
+    world.newPage()
+    const main = world.currentMain()
+    setPageStorageMode({ kind: 'legacy', convertedFrom: main === null ? null : fingerprintMainFile(main) })
     const session = await world.kit.openBootArchiveSession(bootHost(world.host), world.deps)
     return session.run({ tree })
 }
@@ -899,24 +1005,93 @@ export async function worldFor(
     return world
 }
 
+/**
+ * A world that is a block profile: the store holds `tree` as the live
+ * generation of a head, as a conversion or a restore leaves it, and no main
+ * file. `bootOnce` loads it.
+ */
+export async function blockWorldFor(
+    kit: WorldKit,
+    host: WorldHost,
+    tree: Database,
+    options: WorldOptions = {},
+): Promise<World> {
+    const world = await setupWorld(kit, host, null, options)
+    const { treeToBlockSet } = await import('../treeToBlockSet')
+    const result = await world.owner.replaceWholeState(await treeToBlockSet(tree), { requireAbsentHead: true })
+    if (result.kind !== 'won') {
+        throw new Error(`the block profile could not be seeded: ${result.kind}`)
+    }
+    world.newPage()
+    return world
+}
+
 export interface BootResult {
     session: BootArchiveSession
-    /** The bytes the boot read. */
+    /** The legacy main file's bytes the boot read, or the committed state as one file image on a block profile. */
     bytes: Uint8Array
     /** The strictly decoded tree handed to the pass. */
     tree: Database
     outcome: BootArchiveOutcome
 }
 
+export interface BootStart {
+    session: BootArchiveSession
+    bytes: Uint8Array
+    tree: Database
+}
+
 /**
- * One boot as `loadData` makes it: open the session, read the main file,
- * decode it strictly, run the pass. Tauri also hands over the pre-pass bytes.
+ * A boot up to the point where the pass would run, on a new page: open the
+ * session, load the profile (the block store's `load()` and its strict decode,
+ * or the legacy main file when there is no head).
  */
-export async function bootOnce(world: World): Promise<BootResult> {
+export async function startBoot(world: World): Promise<BootStart> {
+    const { validateLoadedBlocks } = await import('../blockProfileValidate')
+    const { setPageStorageMode } = await import('../pageStorageMode')
+    const { fingerprintMainFile } = await import('../mainFileFingerprint')
+    const { assembleLegacyFile } = await import('../blockStore')
+    world.newPage()
     const session = await world.kit.openBootArchiveSession(bootHost(world.host), world.deps)
-    const bytes = (await world.bootRead()) as Uint8Array
-    const tree = await world.kit.decodeRisuSave(bytes, { strict: true })
-    const outcome = await session.run({ tree, prePassBytes: world.host === 'tauri' ? bytes : undefined })
+    const loaded = await world.owner.load({ validate: validateLoadedBlocks })
+    let bytes: Uint8Array
+    let tree: Database
+    if (loaded.kind === 'loaded') {
+        setPageStorageMode({ kind: 'block' })
+        bytes = assembleLegacyFile(loaded.loaded)
+        tree = loaded.tree
+    } else if (loaded.kind === 'no-head') {
+        bytes = (await world.bootRead()) as Uint8Array
+        setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(bytes) })
+        tree = await world.kit.decodeRisuSave(bytes, { strict: true })
+    } else {
+        throw new Error(`the profile is damaged: ${loaded.damage.map((item) => `${item.name} ${item.kind}`).join(', ')}`)
+    }
+    return { session, bytes, tree }
+}
+
+/**
+ * Another page or device saves `tree` into the block profile: a peer commit
+ * that moves the root, so an owner holding the older root meets a conflict (on
+ * the Node server) or a stop (elsewhere) at its own next commit.
+ */
+export async function peerCommits(world: World, tree: Database): Promise<void> {
+    const { treeToBlockSet } = await import('../treeToBlockSet')
+    const peer = world.anotherOwner()
+    const loaded = await peer.load()
+    if (loaded.kind !== 'loaded') {
+        throw new Error(`the peer found no block profile: ${loaded.kind}`)
+    }
+    const result = await peer.commitSave(await treeToBlockSet(tree))
+    if (result.kind !== 'committed') {
+        throw new Error(`the peer's commit did not happen: ${result.kind}`)
+    }
+}
+
+/** One boot as `loadData` makes it, on a new page: `startBoot`, then the pass. */
+export async function bootOnce(world: World): Promise<BootResult> {
+    const { session, bytes, tree } = await startBoot(world)
+    const outcome = await session.run({ tree })
     return { session, bytes, tree, outcome }
 }
 
@@ -928,7 +1103,37 @@ export function mainFileRequests(server: FakeNodeServer): ('read' | 'write')[] {
         .map((r) => (r.path === '/api/read' ? 'read' : 'write'))
 }
 
+/** How many writes under `blocks/` the store saw (values, roots, pack, markers and the head). */
+export function blockWriteRequests(world: World): number {
+    if (world.server) {
+        return world.server.requestsTo('/api/write')
+            .filter((request) => Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8').startsWith('blocks/')).length
+    }
+    return (world.fake as FakeStore).ops.filter((op) => op.kind === 'write' && op.key.startsWith('blocks/')).length
+}
+
+/** The size of the biggest value the store holds under a generation of `blocks/` (the head excluded). */
+export function largestStoredBlock(world: World): number {
+    const sizes: number[] = []
+    if (world.server) {
+        for (const [key, file] of world.server.files) {
+            if (key.startsWith('blocks/') && key !== 'blocks/head') {
+                sizes.push(file.bytes.length)
+            }
+        }
+    } else {
+        const fake = world.fake as FakeStore
+        for (const key of fake.keys('blocks/')) {
+            if (key !== 'blocks/head') {
+                sizes.push((fake.peek(key) as Uint8Array).length)
+            }
+        }
+    }
+    return Math.max(0, ...sizes)
+}
+
 /** The tree an `install` outcome carries; fails the test with the outcome kind otherwise. */
+
 export function installedTree(outcome: BootArchiveOutcome): Database {
     if (outcome.kind !== 'install') {
         throw new Error(`expected an install outcome, got ${outcome.kind}`)

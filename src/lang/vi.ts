@@ -2004,6 +2004,44 @@ export const languageVietnamese = {
     opfsFallbackNoticeNoIndexedDb: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì trình duyệt này không thể sử dụng IndexedDB. RisuAI đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
     opfsFallbackNoticeError: (detail: string) => `Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt: ${detail}. RisuAI đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.`,
     browserStorageUnavailable: "Trình duyệt này không thể mở nơi lưu trữ mà RisuAI dùng để giữ dữ liệu của bạn, nên chưa có gì được tải và không có gì bị thay đổi. Hãy tải lại trang. Nếu thông báo này tiếp tục xuất hiện, trình duyệt này không thể lưu trữ dữ liệu của RisuAI (chế độ duyệt web riêng tư và các trình duyệt quá cũ có thể gây ra điều này): hãy mở RisuAI trong trình duyệt khác, hoặc bên ngoài chế độ duyệt web riêng tư.",
+    saveReadFailed: "RisuAI không thể đọc dữ liệu đã lưu của bạn từ bộ nhớ, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại. Nếu sự cố này tiếp tục xảy ra, hãy kiểm tra xem có thể truy cập được ổ đĩa hoặc máy chủ chứa dữ liệu hay không.",
+    saveDamageItem: (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? 'con trỏ tới bản lưu hiện tại của bạn'
+            : part === 'root' ? 'phần chính của bản lưu (các cài đặt của bạn)'
+            : part === 'pack' ? 'danh sách các nhân vật đã lưu trữ'
+            : part === 'stub' ? `nhân vật đã lưu trữ "${name}"`
+            : part === 'character' ? `nhân vật "${name}"`
+            : name === 'preset' ? 'các cài đặt trước của bot của bạn'
+            : name === 'modules' ? 'các mô-đun của bạn'
+            : name === 'loadouts' ? 'các Loadout của bạn'
+            : name === 'plugins' ? 'các plugin của bạn'
+            : name === 'pluginStorage' ? 'dữ liệu plugin của bạn'
+            : name === 'config' ? 'bản ghi định dạng lưu'
+            : `"${name}"`
+        const problem = kind === 'absent' ? 'bị thiếu'
+            : kind === 'empty' ? 'đang trống'
+            : kind === 'unreadable-content' ? 'không thể đọc được'
+            : 'bị hỏng'
+        return `${what} ${problem}`
+    },
+    saveDamagedNotice: (items: string) => `Dữ liệu đã lưu của bạn bị hỏng, nên RisuAI đã không mở nó. Không có gì bị thay đổi.\n\nBị hỏng:\n${items}`,
+    saveDamagedKeepNote: "Nếu bạn tải một bản sao lưu, bản lưu bị hỏng và mọi bản sao cũ của dữ liệu của bạn vẫn được giữ lại trên ổ đĩa. Việc dọn các hình ảnh không dùng sẽ vẫn bị tắt cho đến khi bạn xóa các bản sao đó trong phần dọn dẹp ở cài đặt.",
+    saveDamagedNoBackup: "Không đọc được bản sao lưu nào, nên lựa chọn duy nhất là dừng lại. Không có gì bị thay đổi.",
+    saveDamagedChoiceTitle: "RisuAI nên làm gì?",
+    saveDamagedLoadBackup: (date: string) => `Tải bản sao lưu mới nhất (đã lưu ${date})`,
+    saveDamagedStop: "Dừng lại và không thay đổi gì",
+    saveDamagedPartialConfirm: (date: string, missing: string) => `Không tìm thấy bản sao lưu đầy đủ nào. Bản sao lưu mới nhất có thể đọc được (đã lưu ${date}) bị thiếu:\n\n${missing}\n\nVẫn tải nó chứ?`,
+    saveDamagedStopped: (items: string) => `RisuAI đã dừng mà không mở dữ liệu đã lưu của bạn và không thay đổi gì. Lần khởi động tiếp theo sẽ hỏi lại.\n\n${items}`,
+    saveDamagedChanged: "Dữ liệu đã lưu của bạn đã thay đổi trong lúc cửa sổ này đang mở, nên bản sao lưu chưa được tải và không có gì bị thay đổi. RisuAI sẽ kiểm tra lại.",
+    saveDamagedOtherTab: "Một tab RisuAI khác đang mở, nên hiện không thể tải bản sao lưu. Hãy đóng tab kia, rồi thử lại.",
+    saveDamagedRetry: "Thử lại",
+    saveDamagedUnconfirmed: "RisuAI không thể xác nhận bản lưu nào là bản hiện tại. Hãy tải lại trang để xem bản nào đã được tải.",
+    saveDamagedTooLarge: "Bản sao lưu này quá lớn để tải lên máy chủ này trong một lần. Không có gì bị thay đổi.",
+    saveSeedBlocked: (found: string[]) => `RisuAI không tìm thấy bản lưu hiện tại nào, nhưng tìm thấy dữ liệu cũ hơn (${found.map((kind) => kind === 'head' ? 'một con trỏ bản lưu' : kind === 'main-file' ? 'một tệp lưu cũ' : kind === 'pre-blocks' ? 'một bản sao của tệp lưu cũ' : 'các bản sao lưu').join(', ')}). Nó sẽ không khởi tạo một hồ sơ trống đè lên dữ liệu đó và không thay đổi gì.`,
+    saveSeedFailed: "RisuAI không thể tạo bản lưu đầu tiên, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại.",
+    saveLeftoverNotice: "RisuAI đã tìm thấy dữ liệu lưu không dùng đến bị bỏ lại bởi một lần lưu hoặc khôi phục bị gián đoạn. Dữ liệu này không gây hại. Bạn có thể xóa nó trong phần dọn dẹp ở cài đặt.",
+    saveMainFileLeftNotice: "Dữ liệu của bạn đã được chuyển sang định dạng mới, nhưng tệp lưu cũ quá lớn để máy chủ này dời sang một bên. Một phiên bản RisuAI khác mở cùng dữ liệu có thể mở tệp cũ đó. Phần dọn dẹp ở cài đặt sẽ giữ nó an toàn cho đến khi bạn xóa nó.",
+    opfsReadOnlyNotice: "Lần này RisuAI đang chạy từ một bản sao tạm thời của dữ liệu của bạn, nên sẽ không lưu các thay đổi, và việc khôi phục bản sao lưu hoặc dọn dẹp bộ nhớ không khả dụng. Dữ liệu của bạn không bị mất. Hãy đóng các tab khác của ứng dụng này và khởi động lại để dữ liệu có thể được chuyển sang bộ nhớ trình duyệt.",
     backupAndFiles: "Sao lưu & Tệp",
     assetIntegrityHeading: "Tính toàn vẹn Bộ nhớ đệm Tài sản",
     assetIntegrityDescription: "Đối chiếu hình ảnh/tài sản đã lưu trong bộ nhớ đệm với mã băm nội dung của chính chúng để phát hiện hỏng dữ liệu, mà không cần tải lại bất kỳ thứ gì từ bộ nhớ lưu trữ. Đây là thao tác chỉ đọc, trừ khi bạn chọn xóa một mục bị hỏng.",

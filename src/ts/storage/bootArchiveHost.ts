@@ -14,14 +14,16 @@ import {
     resetArchiveStrikes,
 } from './bootArchiveMemo'
 import type { BootArchiveDeps, BootArchiveEnvironment, BootArchiveHost } from './bootArchivePass'
+import type { BootPassSeams } from './bootPassSeams'
 import { NODE_BODY_LIMIT_BYTES } from './nodeBodyLimit'
-import { pageStoreIsIndexedDb, readMainFile as readMainFileFromStore, writeMainFile as writeMainFileToStore } from './store/appStore'
+import { getAppStore, pageStoreIsIndexedDb, readMainFile as readMainFileFromStore } from './store/appStore'
 
 /**
  * The production binding of the boot archive pass's effects: the lock binding,
- * the cold-storage unit reader and writer, the main file's reader and writer,
- * the progress text. Kept apart from `bootArchivePass.ts`, which `bootstrap.ts` imports, so
- * that module takes every effect through `BootArchiveDeps` and does not itself
+ * the cold-storage unit reader and writer, the commit and the re-read (which
+ * follow the page's storage mode, `bootPassSeams.ts`), the progress text. Kept
+ * apart from `bootArchivePass.ts`, which `bootstrap.ts` imports, so that
+ * module takes every effect through `BootArchiveDeps` and does not itself
  * import them; it is loaded on demand when a session is opened without
  * injected deps.
  */
@@ -58,6 +60,26 @@ async function webPageStoreIsIndexedDb(host: BootArchiveHost): Promise<boolean> 
 
 export async function createProductionBootArchiveDeps(host: BootArchiveHost): Promise<BootArchiveDeps> {
     const indexedDbStore = await webPageStoreIsIndexedDb(host)
+    // The page's one owner, found when the first commit or re-read needs it.
+    // The block-store modules are loaded then too: a pass that archives nothing
+    // never reaches them.
+    let seams: Promise<BootPassSeams> | null = null
+    const bootSeams = (): Promise<BootPassSeams> => {
+        seams ??= (async () => {
+            const [{ getPageBlockOwner }, { createBootPassSeams }] = await Promise.all([import('./pageBlockOwner'), import('./bootPassSeams')])
+            const owner = await getPageBlockOwner()
+            if (owner === null) {
+                throw new Error('This page has no block-store owner, so there is nothing to commit to.')
+            }
+            return createBootPassSeams({
+                owner,
+                store: await getAppStore(),
+                // The page's own main-file reader, the one boot reads the legacy file with.
+                readMainFile: async () => (await readMainFileFromStore()).bytes,
+            })
+        })()
+        return seams
+    }
     return {
         env: (): BootArchiveEnvironment => ({
             host,
@@ -69,10 +91,8 @@ export async function createProductionBootArchiveDeps(host: BootArchiveHost): Pr
         }),
         acquireHold: (timeoutMs) => acquireExclusiveStorageMigrationLock(timeoutMs),
         isReloading: () => isAppInitiatedReload(),
-        // Both go through the page's main-file reader and writer, so a read here
-        // takes the version a write after it presents.
-        readMainFile: async () => (await readMainFileFromStore()).bytes,
-        writeMainFile: (bytes) => writeMainFileToStore(bytes),
+        commit: async (input) => (await bootSeams()).commit(input),
+        reread: async () => (await bootSeams()).reread(),
         writeUnit: (key, value) => setColdStorageItem(key, value),
         readUnit: (key) => readColdStorageItem(key),
         readArchiveMemo,

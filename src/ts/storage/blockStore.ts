@@ -1645,7 +1645,12 @@ export class BlockStoreOwner {
         }
     }
 
-    /** Writes the `kept` marker of `generation` unless one exists. Whether this call wrote it. */
+    /**
+     * Writes the `kept` marker of `generation` unless one exists. Whether this
+     * call wrote it. On the Node server a rival that writes the same marker
+     * between this read and this write makes the write a version conflict: the
+     * generation is marked either way, and the marker is not this call's.
+     */
     private async writeKeptMarker(generation: string): Promise<boolean> {
         const key = keptKey(generation)
         const current = await this.readWithRetry(key)
@@ -1653,7 +1658,14 @@ export class BlockStoreOwner {
             return false
         }
         const marker = new TextEncoder().encode(JSON.stringify({ kept: true, at: this.generationIds.now() }))
-        await this.put(key, marker, this.versioned ? this.conditionFor(current.version) : 'unconditional')
+        try {
+            await this.put(key, marker, this.versioned ? this.conditionFor(current.version) : 'unconditional')
+        } catch (error) {
+            if (error instanceof StoreVersionConflictError) {
+                return false
+            }
+            throw error
+        }
         return true
     }
 
@@ -1729,9 +1741,20 @@ export class BlockStoreOwner {
         return { kind: 'replaced', result, leftoverGenerations: inventory.generations.map((info) => info.id) }
     }
 
-    /** The generations in the store, with the live one told apart from leftovers and kept ones. Reads only. */
+    /**
+     * The generations in the store, with the live one told apart from leftovers
+     * and kept ones. Reads only. An owner that holds no generation (not loaded,
+     * or closed) takes the live one from the head, so a marked generation the
+     * head names is not listed as kept there either; a head that cannot be read
+     * names none.
+     */
     async inventory(): Promise<GenerationInventory> {
-        return await inspectGenerations(this.store, this.state === 'live' && this.live !== null ? this.live.generation : null)
+        if (this.state === 'live' && this.live !== null) {
+            return await inspectGenerations(this.store, this.live.generation)
+        }
+        const head = await this.readHeadWithRetry()
+        const parsed = head.kind === 'bytes' ? parseHead(head.bytes) : null
+        return await inspectGenerations(this.store, parsed !== null && parsed.status === 'ok' ? parsed.record.current : null)
     }
 }
 

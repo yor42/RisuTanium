@@ -1,3 +1,4 @@
+import { HEAD_KEY } from './blockKeys'
 import type { EntryProbe } from './store/indexedDbStore'
 
 /**
@@ -12,14 +13,18 @@ import type { EntryProbe } from './store/indexedDbStore'
  * only in a browser that can read and write OPFS files.
  * - flag unset: the profile is not OPFS-main; IndexedDB is current and nothing
  *   in OPFS is copied.
- * - flag set, IndexedDB holds the main file and no `migrated` marker: the move
- *   to OPFS never completed, so IndexedDB is current; the flag is cleared.
- * - flag set otherwise (no main file in IndexedDB, or the marker is present):
- *   OPFS is current, and it is copied back.
+ * - flag set, IndexedDB holds the main file or the block store's head and no
+ *   `migrated` marker: the move to OPFS never completed, so IndexedDB is
+ *   current; the flag is cleared. A converted profile has a head and no main
+ *   file in IndexedDB.
+ * - flag set otherwise (neither a main file nor a head in IndexedDB, or the
+ *   marker is present): OPFS is current, and it is copied back.
  *
  * The invariant behind every branch: a page never serves IndexedDB for a
  * profile whose current data is in OPFS until a verified copy has completed,
- * and nothing in OPFS is deleted unless IndexedDB holds the same key. The copy
+ * and nothing in OPFS is deleted unless IndexedDB holds the same key (the one
+ * exception is the OPFS main file, which is also deleted when IndexedDB holds
+ * the block store's head instead: see `runLeftoverCleanup`). The copy
  * runs only under the exclusive storage-migration lock. The flag is removed
  * only after every OPFS file is in IndexedDB and the main file's bytes read
  * back from IndexedDB hash the same as the OPFS file's, and the page uses
@@ -30,7 +35,9 @@ import type { EntryProbe } from './store/indexedDbStore'
  *
  * After a copy-back the OPFS copies stay in place for one start. At a later
  * start that loaded normally from IndexedDB, `runLeftoverCleanup` deletes the
- * hex-named OPFS files whose key IndexedDB holds.
+ * hex-named OPFS files whose key IndexedDB holds, and the OPFS main file of a
+ * profile that has since been converted (IndexedDB holds its head and no main
+ * file: the main file moved aside).
  */
 
 /** The `localStorage` flag that marks a profile as OPFS-main. */
@@ -186,8 +193,10 @@ async function classify(env: CopyBackEnvironment, indexedDb: IndexedDbHandle, pr
         return 'indexeddb-current'
     }
     const mainPresent = await entryPresent(probe, indexedDb, MAIN_FILE_KEY)
+    // A converted profile holds a head and no main file.
+    const headPresent = await entryPresent(probe, indexedDb, HEAD_KEY)
     const moveComplete = await entryPresent(probe, indexedDb, MOVE_COMPLETE_KEY)
-    if (mainPresent && !moveComplete) {
+    if ((mainPresent || headPresent) && !moveComplete) {
         clearFlag(env)
         return 'indexeddb-current'
     }
@@ -379,7 +388,8 @@ async function copyBack(env: CopyBackEnvironment, indexedDb: IndexedDbHandle): P
  * unset and the clean-up marker is pending, and the caller guarantees this page
  * loaded its main file from IndexedDB in this page load and did not do the copy
  * itself. A file is deleted only when it is a file, its name is the hex of a key,
- * and IndexedDB holds that key; every other entry is left, and
+ * and IndexedDB holds that key (for the main file, or the block store's head,
+ * which replaces it once the profile is converted); every other entry is left, and
  * `coldstorage_<key>.json` unit files are never touched. The marker is removed
  * only when no deletion failed and no presence check was inconclusive.
  */
@@ -408,7 +418,12 @@ export async function runLeftoverCleanup(env: CopyBackEnvironment): Promise<'ski
             }
         }
         for (const { name, key } of names) {
-            const present = await probe.exists(key)
+            let present = await probe.exists(key)
+            if (present === false && key === MAIN_FILE_KEY) {
+                // The copied-back main file was converted since: IndexedDB holds the head and no main file, and the
+                // OPFS copy is the stale pre-conversion save.
+                present = await probe.exists(HEAD_KEY)
+            }
             if (present === null) {
                 unresolved++
                 continue

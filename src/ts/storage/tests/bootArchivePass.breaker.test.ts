@@ -25,6 +25,7 @@ import {
     MAIN_KEY,
     applyNoticeMemo,
     baseTree,
+    blockWorldFor,
     bootHost,
     bootOnce,
     charactersOf,
@@ -34,8 +35,10 @@ import {
     fullCharacter,
     installedTree,
     noticeKinds,
+    peerCommits,
     plugin,
     runDirect,
+    startBoot,
     worldFor,
     writeLockIsFree,
     type RemoteLike,
@@ -147,9 +150,11 @@ function profile(ids: string[], extra: Record<string, unknown> = {}) {
     return baseTree(ids.map((id) => fullCharacter(id, id.toUpperCase())), { archiveCharacters: true, ...extra })
 }
 
-async function bootProfile(host: WorldHost, ids: string[], extra: Record<string, unknown> = {}, strikes = 0): Promise<World> {
+async function bootProfile(host: WorldHost, ids: string[], extra: Record<string, unknown> = {}, strikes = 0, kind: 'legacy' | 'block' = 'legacy'): Promise<World> {
     useHost(host)
-    const world = await worldFor(kit, host, profile(ids, extra))
+    const world = kind === 'block'
+        ? await blockWorldFor(kit, host, profile(ids, extra))
+        : await worldFor(kit, host, profile(ids, extra))
     world.breaker.strikes = strikes
     return world
 }
@@ -180,37 +185,41 @@ function expectNothingWritten(world: World, outcome: Awaited<ReturnType<typeof b
     }
 }
 
-/** The encoder whose bytes lose a character block, as an encoder fault would. */
+/** The encoder whose layout loses a character block, as an encoder fault would. */
 class DroppingEncoder extends RisuSaveEncoder {
-    override encode(arg: { compression?: boolean } = {}) {
-        delete (this as unknown as { blocks: Record<string, Uint8Array> }).blocks['b']
-        return super.encode(arg)
+    override snapshotLayout() {
+        const layout = super.snapshotLayout()
+        if (layout === null) {
+            return null
+        }
+        const at = layout.keys.indexOf('b')
+        return { keys: layout.keys.filter((_, i) => i !== at), blocks: layout.blocks.filter((_, i) => i !== at) }
     }
 }
 
-/** Another device saves the main file when the pass writes its first unit; the peer's file holds `ids`. */
-async function peerWritesAtFirstUnit(world: World, ids: string[]): Promise<void> {
-    const peerBytes = await encodeAsSaveDb(RisuSaveEncoder, profile(ids))
+/** Another device saves the profile when the pass writes its first unit; the peer's save holds `ids`. The profile is a block profile. */
+function peerCommitsAtFirstUnit(world: World, ids: string[]): void {
     let armed = true
-    world.units.failWrite = () => {
+    const writeUnit = world.deps.writeUnit
+    world.deps.writeUnit = async (key, value) => {
         if (armed) {
             armed = false
-            ;(world.server as FakeNodeServer).peerWrite(MAIN_KEY, peerBytes)
+            await peerCommits(world, profile(ids))
         }
-        return undefined
+        return writeUnit(key, value)
     }
 }
 
 type Arrange = (world: World) => Promise<void> | void
 
 /** Ways a pass that started ends without reaching success. Each leaves the original profile installed or the peer's. */
-const FAILURES: [label: string, host: WorldHost, arrange: Arrange][] = [
+const FAILURES: [label: string, host: WorldHost, arrange: Arrange, kind?: 'legacy' | 'block'][] = [
     ['a rejected commit', 'opfs', (w) => { w.failNextMainWrite = new Error('commit rejected') }],
     ['a rejected commit on Tauri', 'tauri', (w) => { w.failNextMainWrite = new Error('commit rejected') }],
     ['a unit write that throws', 'opfs', (w) => { w.units.failWrite = (n) => (n === 2 ? 'throw' : undefined) }],
     ['an encoder that throws', 'opfs', (w) => { w.deps.createEncoder = () => { throw new Error('encoder failed') } }],
-    ['encoded bytes that lose a block', 'opfs', (w) => { w.deps.createEncoder = () => new DroppingEncoder() }],
-    ['a peer write during the pass on the Node server', 'node', async (w) => { await peerWritesAtFirstUnit(w, ['p1', 'p2']) }],
+    ['encoded blocks that lose a block', 'opfs', (w) => { w.deps.createEncoder = () => new DroppingEncoder() }],
+    ['a peer commit during the pass on the Node server', 'node', (w) => { peerCommitsAtFirstUnit(w, ['p1', 'p2']) }, 'block'],
 ]
 
 describe('boot archive pass breaker: a pass that succeeds', () => {
@@ -346,8 +355,8 @@ describe('boot archive pass breaker: a stop that archived nothing is a strike', 
 })
 
 describe('boot archive pass breaker: a failed pass keeps its strike', () => {
-    test.each(FAILURES)('%s: counts a strike, installs without a paused notice at the first', async (_label, host, arrange) => {
-        const world = await bootProfile(host, ['a', 'b', 'c'])
+    test.each(FAILURES)('%s: counts a strike, installs without a paused notice at the first', async (_label, host, arrange, kind) => {
+        const world = await bootProfile(host, ['a', 'b', 'c'], {}, 0, kind)
         await arrange(world)
 
         const result = await bootOnce(world)
@@ -359,8 +368,8 @@ describe('boot archive pass breaker: a failed pass keeps its strike', () => {
         expect(noticeKinds(result.outcome)).toEqual([])
     })
 
-    test.each(FAILURES)('%s: with one earlier strike the second counts and the boot ends with the paused notice', async (_label, host, arrange) => {
-        const world = await bootProfile(host, ['a', 'b', 'c'], {}, 1)
+    test.each(FAILURES)('%s: with one earlier strike the second counts and the boot ends with the paused notice', async (_label, host, arrange, kind) => {
+        const world = await bootProfile(host, ['a', 'b', 'c'], {}, 1, kind)
         await arrange(world)
 
         const result = await bootOnce(world)
@@ -381,7 +390,8 @@ describe('boot archive pass breaker: a failed pass keeps its strike', () => {
         expect(archivedFlags(installedTree(succeeded.outcome))).toEqual([true, true, true])
         expect(world.breaker.strikes).toBe(0)
 
-        world.seedMain(await encodeAsSaveDb(RisuSaveEncoder, profile(['d', 'e'])))
+        // The profile is a block profile now; another page restores a different one with characters to archive.
+        await world.replaceProfile(profile(['d', 'e']))
         world.failNextMainWrite = new Error('commit rejected')
         const failedAgain = await bootOnce(world)
 
@@ -418,15 +428,15 @@ describe('boot archive pass breaker: a failed pass keeps its strike', () => {
         expect(archivedFlags(installedTree(third.outcome))).toEqual([false, false, false])
     })
 
-    test('two peer writes during the pass on two boots pause the Node server device the same way', async () => {
-        const world = await bootProfile('node', ['a', 'b', 'c'])
-        await peerWritesAtFirstUnit(world, ['p1', 'p2'])
+    test('two peer commits during the pass on two boots pause the Node server device the same way', async () => {
+        const world = await bootProfile('node', ['a', 'b', 'c'], {}, 0, 'block')
+        peerCommitsAtFirstUnit(world, ['p1', 'p2'])
         const first = await bootOnce(world)
         expect(first.outcome.kind).toBe('install')
         expect(world.breaker.strikes).toBe(1)
         expect(noticeKinds(first.outcome)).toEqual([])
 
-        await peerWritesAtFirstUnit(world, ['q1', 'q2'])
+        peerCommitsAtFirstUnit(world, ['q1', 'q2'])
         const second = await bootOnce(world)
         expect(world.breaker.strikes).toBe(2)
         expect(noticeKinds(second.outcome)).toEqual(['archive-paused'])
@@ -474,10 +484,8 @@ describe('boot archive pass breaker: an interrupted pass keeps its strike', () =
             world.order.push('unit-write')
             return new Promise<boolean>(() => { })
         }
-        const session = await world.kit.openBootArchiveSession(bootHost(world.host), world.deps)
-        const bytes = (await world.bootRead()) as Uint8Array
-        const tree = await world.kit.decodeRisuSave(bytes, { strict: true })
-        void session.run({ tree, prePassBytes: bytes })
+        const { session, tree } = await startBoot(world)
+        void session.run({ tree })
         await vi.waitFor(() => { expect(world.order).toContain('start') }, { timeout: 500, interval: 5 })
         await vi.waitFor(() => { expect(world.order).toContain('unit-write') }, { timeout: 500, interval: 5 })
         world.deps.writeUnit = realWrite

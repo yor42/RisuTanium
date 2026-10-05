@@ -2004,6 +2004,44 @@ export const languageGerman = {
     "opfsFallbackNoticeNoIndexedDb": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil dieser Browser IndexedDB nicht verwenden kann. RisuAI läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Beim nächsten Start der App wird es erneut versucht.",
     "opfsFallbackNoticeError": (detail: string) => `Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden: ${detail}. RisuAI läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Beim nächsten Start der App wird es erneut versucht.`,
     "browserStorageUnavailable": "Dieser Browser konnte den Speicher, in dem RisuAI Ihre Daten ablegt, nicht öffnen. Deshalb wurde nichts geladen und nichts verändert. Laden Sie die Seite neu. Wenn diese Meldung weiterhin erscheint, kann dieser Browser die Daten von RisuAI nicht speichern (der private Modus und sehr alte Browser können die Ursache sein): Öffnen Sie RisuAI in einem anderen Browser oder außerhalb des privaten Modus.",
+    "saveReadFailed": "RisuAI konnte Ihre gespeicherten Daten nicht aus dem Speicher lesen und hat deshalb nichts geöffnet und nichts verändert. Laden Sie die Seite neu, um es erneut zu versuchen. Wenn das weiterhin passiert, prüfen Sie, ob der Datenträger oder der Server, auf dem die Daten liegen, erreichbar ist.",
+    "saveDamageItem": (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? 'der Zeiger auf Ihren aktuellen Speicherstand'
+            : part === 'root' ? 'der Hauptteil des Speicherstands (Ihre Einstellungen)'
+            : part === 'pack' ? 'die Liste der archivierten Charaktere'
+            : part === 'stub' ? `der archivierte Charakter „${name}“`
+            : part === 'character' ? `der Charakter „${name}“`
+            : name === 'preset' ? 'Ihre Bot-Voreinstellungen'
+            : name === 'modules' ? 'Ihre Module'
+            : name === 'loadouts' ? 'Ihre Loadouts'
+            : name === 'plugins' ? 'Ihre Plugins'
+            : name === 'pluginStorage' ? 'Ihre Plugin-Daten'
+            : name === 'config' ? 'der Eintrag zum Speicherformat'
+            : `„${name}“`
+        const problem = kind === 'absent' ? 'nicht vorhanden'
+            : kind === 'empty' ? 'leer'
+            : kind === 'unreadable-content' ? 'nicht lesbar'
+            : 'beschädigt'
+        return `${what}: ${problem}`
+    },
+    "saveDamagedNotice": (items: string) => `Ihre gespeicherten Daten sind beschädigt, deshalb hat RisuAI sie nicht geöffnet. Es wurde nichts verändert.\n\nBeschädigt:\n${items}`,
+    "saveDamagedKeepNote": "Wenn Sie ein Backup laden, bleiben der beschädigte Speicherstand und alle älteren Kopien Ihrer Daten auf dem Datenträger erhalten. Das Entfernen nicht verwendeter Bilder bleibt ausgeschaltet, bis Sie diese Kopien in der Bereinigung in den Einstellungen löschen.",
+    "saveDamagedNoBackup": "Es konnte kein Backup gelesen werden, deshalb bleibt nur, anzuhalten. Es wurde nichts verändert.",
+    "saveDamagedChoiceTitle": "Was soll RisuAI tun?",
+    "saveDamagedLoadBackup": (date: string) => `Das neueste Backup laden (gespeichert ${date})`,
+    "saveDamagedStop": "Anhalten und nichts verändern",
+    "saveDamagedPartialConfirm": (date: string, missing: string) => `Es wurde kein vollständiges Backup gefunden. Im neuesten lesbaren Backup (gespeichert ${date}) fehlt Folgendes:\n\n${missing}\n\nTrotzdem laden?`,
+    "saveDamagedStopped": (items: string) => `RisuAI hat angehalten, ohne Ihre gespeicherten Daten zu öffnen, und nichts verändert. Beim nächsten Start wird erneut gefragt.\n\n${items}`,
+    "saveDamagedChanged": "Ihre gespeicherten Daten haben sich geändert, während dies geöffnet war. Deshalb wurde das Backup nicht geladen und nichts verändert. RisuAI prüft erneut.",
+    "saveDamagedOtherTab": "Ein anderer RisuAI-Tab ist geöffnet, deshalb kann das Backup jetzt nicht geladen werden. Schließen Sie den anderen Tab und versuchen Sie es dann erneut.",
+    "saveDamagedRetry": "Erneut versuchen",
+    "saveDamagedUnconfirmed": "RisuAI konnte nicht bestätigen, welcher Speicherstand der aktuelle ist. Laden Sie die Seite neu, um zu sehen, welcher geladen wurde.",
+    "saveDamagedTooLarge": "Dieses Backup ist zu groß, um es in einem Stück auf diesen Server zu laden. Es wurde nichts verändert.",
+    "saveSeedBlocked": (found: string[]) => `RisuAI hat keinen aktuellen Speicherstand gefunden, aber ältere Daten (${found.map((kind) => kind === 'head' ? 'einen Speicherzeiger' : kind === 'main-file' ? 'eine alte Speicherdatei' : kind === 'pre-blocks' ? 'eine Kopie einer alten Speicherdatei' : 'Backups').join(', ')}). Es legt darüber kein leeres Profil an und hat nichts verändert.`,
+    "saveSeedFailed": "RisuAI konnte den ersten Speicherstand nicht anlegen und hat deshalb nichts geöffnet und nichts verändert. Laden Sie die Seite neu, um es erneut zu versuchen.",
+    "saveLeftoverNotice": "RisuAI hat nicht verwendete Speicherdaten gefunden, die ein unterbrochenes Speichern oder Wiederherstellen zurückgelassen hat. Sie schaden nicht. Sie können sie in der Bereinigung in den Einstellungen entfernen.",
+    "saveMainFileLeftNotice": "Ihre Daten wurden in ein neues Format überführt, aber die alte Speicherdatei ist zu groß, als dass dieser Server sie beiseiteschieben könnte. Eine andere Version von RisuAI, die dieselben Daten öffnet, könnte diese alte Datei öffnen. Die Bereinigung in den Einstellungen bewahrt sie sicher auf, bis Sie sie löschen.",
+    "opfsReadOnlyNotice": "RisuAI läuft diesmal mit einer temporären Kopie Ihrer Daten und speichert deshalb keine Änderungen; das Wiederherstellen eines Backups oder das Bereinigen des Speichers ist nicht verfügbar. Ihre Daten sind nicht verloren. Schließen Sie andere Tabs dieser App und starten Sie sie neu, damit die Daten in den Browser-Speicher überführt werden können.",
     "backupAndFiles": "Backup & Dateien",
     "assetIntegrityHeading": "Asset-Cache-Integrität",
     "assetIntegrityDescription": "Vergleicht zwischengespeicherte Bilder/Assets mit ihrem eigenen Inhalts-Hash, um Beschädigungen zu erkennen, ohne etwas erneut aus dem Speicher herunterzuladen. Der Vorgang ist schreibgeschützt, es sei denn, Sie entscheiden sich, einen beschädigten Eintrag zu entfernen.",

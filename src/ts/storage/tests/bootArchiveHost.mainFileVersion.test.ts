@@ -1,19 +1,22 @@
 // @vitest-environment node
 /**
- * The production binding of the boot archive pass's main-file effects
- * (`src/ts/storage/bootArchiveHost.ts`) on the Node server: the commit presents
- * the version the boot read took, and after a refused commit the re-read takes
- * the file's current version, so the next save neither conflicts for no reason
- * nor misses a later save by another device.
+ * The production binding of the boot archive pass's commit and re-read
+ * (`src/ts/storage/bootArchiveHost.ts`) on the Node server, for a legacy
+ * profile: the re-read of the main file answers what the file holds, and the
+ * conversion never touches the main file, so a save another device makes there
+ * neither conflicts with the conversion nor is renamed away as if it were the
+ * converted one.
  *
  * The Node server is the `FakeNodeServer` stand-in at the `fetch` boundary; the
- * real app store and Node client run. A passing test says nothing about the
- * real server.
+ * real app store, Node client and block-store owner run. A passing test says
+ * nothing about the real server.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { FakeNodeServer } from './manualCleanupHarness'
+import { makeSet } from './blockStoreHarness'
 
 const MAIN = 'database/database.bin'
+const PRE_BLOCKS = 'database/database.pre-blocks.bin'
 
 const h = vi.hoisted(() => ({
     forage: { staleAccountProfile: false, Init: async (): Promise<void> => { }, realStorage: undefined as unknown },
@@ -32,6 +35,11 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     get forageStorage() { return h.forage },
     locksSupported: true,
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+vi.mock(import('src/ts/storage/database.svelte'), () => ({
+    getDatabase: vi.fn(() => ({})),
+    presetTemplate: { name: 'test-preset' },
+}) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: vi.fn(),
@@ -70,15 +78,19 @@ vi.mock('src/ts/alert', () => ({
 
 let server: FakeNodeServer
 let deps: Awaited<ReturnType<typeof import('src/ts/storage/bootArchiveHost')['createProductionBootArchiveDeps']>>
-let app: typeof import('src/ts/storage/store/appStore')
-let conflictError: typeof import('src/ts/storage/store/errors').StoreVersionConflictError
+let fingerprintMainFile: typeof import('src/ts/storage/mainFileFingerprint')['fingerprintMainFile']
+let setPageStorageMode: typeof import('src/ts/storage/pageStorageMode')['setPageStorageMode']
 
 function bytes(...values: number[]): Uint8Array {
     return Uint8Array.from(values)
 }
 
-function stored(): number[] {
-    return Array.from(server.files.get(MAIN)?.bytes ?? [])
+function stored(key: string): number[] {
+    return Array.from(server.files.get(key)?.bytes ?? [])
+}
+
+function writesToMain(): number {
+    return server.requestsTo('/api/write').filter((request) => Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8') === MAIN).length
 }
 
 beforeEach(async () => {
@@ -87,44 +99,55 @@ beforeEach(async () => {
     vi.resetModules()
     const { NodeStorage } = await import('src/ts/storage/nodeStorage')
     h.forage.realStorage = new NodeStorage()
-    app = await import('src/ts/storage/store/appStore')
-    conflictError = (await import('src/ts/storage/store/errors')).StoreVersionConflictError
+    fingerprintMainFile = (await import('src/ts/storage/mainFileFingerprint')).fingerprintMainFile
+    setPageStorageMode = (await import('src/ts/storage/pageStorageMode')).setPageStorageMode
     const host = await import('src/ts/storage/bootArchiveHost')
     deps = await host.createProductionBootArchiveDeps('web')
 })
 
 describe('the boot archive pass\'s main-file effects on the Node server', () => {
-    test('the commit presents the version the boot read took', async () => {
+    test('the conversion never writes the main file, and moves the converted one aside', async () => {
         server.seed(MAIN, bytes(1))
-        const read = await app.readMainFile()
+        setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(bytes(1)) })
 
-        await deps.writeMainFile(bytes(2))
+        await deps.commit(makeSet({ characters: [{ chaId: 'a' }] }))
 
-        expect(server.requestsTo('/api/write')[0].headers['if-match-revision']).toBe(String(read.version))
-        expect(stored()).toEqual([2])
+        expect(writesToMain()).toBe(0)
+        expect(server.files.has(MAIN)).toBe(false)
+        expect(stored(PRE_BLOCKS)).toEqual([1])
+        expect(server.files.has('blocks/head')).toBe(true)
     })
 
-    test('after a refused commit the re-read\'s version is the one the next save presents, and a later save by another device is still caught', async () => {
+    test('a save another device makes to the main file during the conversion does not conflict with it, and is left where it is', async () => {
         server.seed(MAIN, bytes(1))
-        await app.readMainFile()
+        setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(bytes(1)) })
         server.peerWrite(MAIN, bytes(5))
-        await expect(deps.writeMainFile(bytes(2))).rejects.toBeInstanceOf(conflictError)
 
-        const reread = await deps.readMainFile()
-        expect(Array.from(reread ?? [])).toEqual([5])
-        await app.writeMainFile(bytes(6))
-        expect(stored()).toEqual([6])
+        await deps.commit(makeSet({ characters: [{ chaId: 'a' }] }))
 
-        server.peerWrite(MAIN, bytes(8))
-        await expect(app.writeMainFile(bytes(7))).rejects.toBeInstanceOf(conflictError)
-        expect(stored()).toEqual([8])
+        expect(server.files.has('blocks/head')).toBe(true)
+        expect(stored(MAIN)).toEqual([5])
+        expect(server.files.has(PRE_BLOCKS)).toBe(false)
+    })
+
+    test('the re-read of a legacy profile answers the main file as it stands and writes nothing', async () => {
+        server.seed(MAIN, bytes(1))
+        setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(bytes(1)) })
+        server.peerWrite(MAIN, bytes(5))
+
+        const reread = await deps.reread()
+
+        expect(reread.kind === 'bytes' && Array.from(reread.bytes ?? [])).toEqual([5])
+        expect(writesToMain()).toBe(0)
     })
 
     test('a re-read of an absent main file answers null and a zero-length one answers its empty bytes', async () => {
-        expect(await deps.readMainFile()).toBeNull()
+        setPageStorageMode({ kind: 'legacy', convertedFrom: null })
+        expect(await deps.reread()).toEqual({ kind: 'bytes', bytes: null })
 
         server.seed(MAIN, new Uint8Array(0))
 
-        expect((await deps.readMainFile())?.length).toBe(0)
+        const second = await deps.reread()
+        expect(second.kind === 'bytes' && second.bytes?.length).toBe(0)
     })
 })

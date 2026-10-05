@@ -2004,6 +2004,44 @@ export const languageSpanish = {
     opfsFallbackNoticeNoIndexedDb: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque este navegador no puede usar IndexedDB. RisuAI se está ejecutando con tus datos existentes y no se ha perdido nada. Se volverá a intentar la próxima vez que se inicie la aplicación.",
     opfsFallbackNoticeError: (detail: string) => `Esta vez no se pudieron mover tus datos al almacenamiento del navegador: ${detail}. RisuAI se está ejecutando con tus datos existentes y no se ha perdido nada. Se volverá a intentar la próxima vez que se inicie la aplicación.`,
     browserStorageUnavailable: "Este navegador no pudo abrir el almacenamiento donde RisuAI guarda tus datos, así que no se cargó nada y no se cambió nada. Recarga la página. Si este mensaje sigue apareciendo, este navegador no puede almacenar los datos de RisuAI (la navegación privada y los navegadores muy antiguos pueden causar esto): abre RisuAI en otro navegador o fuera de la navegación privada.",
+    saveReadFailed: "RisuAI no pudo leer tus datos guardados desde el almacenamiento, así que no abrió nada y no cambió nada. Recarga la página para intentarlo de nuevo. Si esto sigue ocurriendo, comprueba que se pueda acceder al disco o al servidor donde están los datos.",
+    saveDamageItem: (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? 'el puntero a tu guardado actual'
+            : part === 'root' ? 'la parte principal del guardado (tus ajustes)'
+            : part === 'pack' ? 'la lista de personajes archivados'
+            : part === 'stub' ? `el personaje archivado "${name}"`
+            : part === 'character' ? `el personaje "${name}"`
+            : name === 'preset' ? 'tus presets de bot'
+            : name === 'modules' ? 'tus módulos'
+            : name === 'loadouts' ? 'tus loadouts'
+            : name === 'plugins' ? 'tus plugins'
+            : name === 'pluginStorage' ? 'los datos de tus plugins'
+            : name === 'config' ? 'el registro del formato de guardado'
+            : `"${name}"`
+        const problem = kind === 'absent' ? 'falta'
+            : kind === 'empty' ? 'no tiene contenido'
+            : kind === 'unreadable-content' ? 'no se puede leer'
+            : 'presenta daños'
+        return `${what}: ${problem}`
+    },
+    saveDamagedNotice: (items: string) => `Tus datos guardados están dañados, así que RisuAI no los abrió. No se ha cambiado nada.\n\nDañado:\n${items}`,
+    saveDamagedKeepNote: "Si cargas un respaldo, el guardado dañado y cualquier copia anterior de tus datos permanecen en el disco. La eliminación de imágenes sin usar sigue desactivada hasta que borres esas copias en la limpieza de los ajustes.",
+    saveDamagedNoBackup: "No se pudo leer ningún respaldo, así que la única opción es detenerse. No se cambió nada.",
+    saveDamagedChoiceTitle: "¿Qué debe hacer RisuAI?",
+    saveDamagedLoadBackup: (date: string) => `Cargar el respaldo más reciente (guardado ${date})`,
+    saveDamagedStop: "Detenerse y no cambiar nada",
+    saveDamagedPartialConfirm: (date: string, missing: string) => `No se encontró ningún respaldo completo. Al respaldo más reciente que se puede leer (guardado ${date}) le falta:\n\n${missing}\n\n¿Cargarlo de todos modos?`,
+    saveDamagedStopped: (items: string) => `RisuAI se detuvo sin abrir tus datos guardados y no cambió nada. El próximo inicio volverá a preguntar.\n\n${items}`,
+    saveDamagedChanged: "Tus datos guardados cambiaron mientras esto estaba abierto, así que el respaldo no se cargó y no se cambió nada. RisuAI volverá a comprobarlo.",
+    saveDamagedOtherTab: "Hay otra pestaña de RisuAI abierta, así que ahora no se puede cargar el respaldo. Cierra la otra pestaña y vuelve a intentarlo.",
+    saveDamagedRetry: "Reintentar",
+    saveDamagedUnconfirmed: "RisuAI no pudo confirmar cuál es el guardado actual. Recarga la página para ver cuál se cargó.",
+    saveDamagedTooLarge: "Este respaldo es demasiado grande para cargarlo de una sola vez en este servidor. No se cambió nada.",
+    saveSeedBlocked: (found: string[]) => `RisuAI no encontró ningún guardado actual, pero sí datos más antiguos (${found.map((kind) => kind === 'head' ? 'un puntero de guardado' : kind === 'main-file' ? 'un archivo de guardado antiguo' : kind === 'pre-blocks' ? 'una copia de un archivo de guardado antiguo' : 'respaldos').join(', ')}). No iniciará un perfil vacío sobre ellos y no ha cambiado nada.`,
+    saveSeedFailed: "RisuAI no pudo crear el primer guardado, así que no abrió nada y no cambió nada. Recarga la página para intentarlo de nuevo.",
+    saveLeftoverNotice: "RisuAI encontró datos de guardado sin usar que dejó un guardado o una restauración interrumpidos. No causan ningún daño. Puedes eliminarlos en la limpieza de los ajustes.",
+    saveMainFileLeftNotice: "Tus datos pasaron a un formato nuevo, pero el archivo de guardado antiguo es demasiado grande para que este servidor lo aparte. Otra versión de RisuAI que abra los mismos datos podría abrir ese archivo antiguo. La limpieza de los ajustes lo mantiene a salvo hasta que lo borres.",
+    opfsReadOnlyNotice: "Esta vez RisuAI se está ejecutando desde una copia temporal de tus datos, así que no guardará los cambios, y restaurar un respaldo o limpiar el almacenamiento no está disponible. Tus datos no se han perdido. Cierra las demás pestañas de esta aplicación y reiníciala para que los datos se puedan pasar al almacenamiento del navegador.",
     backupAndFiles: "Respaldo y Archivos",
     assetIntegrityHeading: "Integridad de la Caché de Activos",
     assetIntegrityDescription: "Comprueba las imágenes/activos en caché contra su propio hash de contenido para detectar corrupción, sin volver a descargar nada del almacenamiento. Es de solo lectura, salvo que elijas eliminar una entrada dañada.",

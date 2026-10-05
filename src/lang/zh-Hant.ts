@@ -2049,6 +2049,44 @@ export const languageChineseTraditional = {
     "opfsFallbackNoticeNoIndexedDb": "本次未能將您的資料移至瀏覽器儲存空間，因為此瀏覽器無法使用 IndexedDB。RisuAI 正在使用您現有的資料執行，沒有任何資料遺失。應用程式下次啟動時會再次嘗試。",
     "opfsFallbackNoticeError": (detail: string) => `本次未能將您的資料移至瀏覽器儲存空間：${detail}。RisuAI 正在使用您現有的資料執行，沒有任何資料遺失。應用程式下次啟動時會再次嘗試。`,
     "browserStorageUnavailable": "此瀏覽器無法開啟 RisuAI 用來保存您資料的儲存空間，因此沒有載入任何內容，也沒有變更任何內容。請重新載入頁面。若此訊息持續出現，表示此瀏覽器無法儲存 RisuAI 的資料（無痕模式或私密瀏覽，以及過舊的瀏覽器，都可能造成這種情況）：請改用其他瀏覽器開啟 RisuAI，或在非無痕／非私密瀏覽的視窗中開啟。",
+    "saveReadFailed": "RisuAI 無法從儲存空間讀取您儲存的資料，因此沒有開啟任何內容，也沒有變更任何內容。請重新載入頁面後再試一次。若問題持續發生，請檢查資料所在的磁碟或伺服器是否可以連線。",
+    "saveDamageItem": (part: string, name: string, kind: string) => {
+        const what = part === 'head' ? '指向目前存檔的指標'
+            : part === 'root' ? '存檔的主要部分（您的設定）'
+            : part === 'pack' ? '已封存的角色清單'
+            : part === 'stub' ? `已封存的角色「${name}」`
+            : part === 'character' ? `角色「${name}」`
+            : name === 'preset' ? '您的機器人預設集'
+            : name === 'modules' ? '您的模組'
+            : name === 'loadouts' ? '您的設定組合'
+            : name === 'plugins' ? '您的外掛'
+            : name === 'pluginStorage' ? '您的外掛資料'
+            : name === 'config' ? '存檔格式記錄'
+            : `「${name}」`
+        const problem = kind === 'absent' ? '遺失'
+            : kind === 'empty' ? '為空'
+            : kind === 'unreadable-content' ? '無法讀取'
+            : '已損毀'
+        return `${what}${problem}`
+    },
+    "saveDamagedNotice": (items: string) => `您儲存的資料已損毀，因此 RisuAI 沒有開啟它。未變更任何內容。\n\n已損毀的項目：\n${items}`,
+    "saveDamagedKeepNote": "若您載入備份，已損毀的存檔以及您資料的所有舊副本都會保留在磁碟上。在您透過設定中的清理刪除這些副本之前，清除未使用圖片的功能會維持關閉。",
+    "saveDamagedNoBackup": "沒有可以讀取的備份，因此唯一的選擇是停止。未變更任何內容。",
+    "saveDamagedChoiceTitle": "RisuAI 應該怎麼做？",
+    "saveDamagedLoadBackup": (date: string) => `載入最新的備份（儲存於 ${date}）`,
+    "saveDamagedStop": "停止，不變更任何內容",
+    "saveDamagedPartialConfirm": (date: string, missing: string) => `找不到完整的備份。可以讀取的最新備份（儲存於 ${date}）缺少以下內容：\n\n${missing}\n\n仍要載入嗎？`,
+    "saveDamagedStopped": (items: string) => `RisuAI 已停止，沒有開啟您儲存的資料，也沒有變更任何內容。下次啟動時會再次詢問。\n\n${items}`,
+    "saveDamagedChanged": "在此視窗開啟期間，您儲存的資料發生了變化，因此沒有載入備份，也沒有變更任何內容。RisuAI 將重新檢查。",
+    "saveDamagedOtherTab": "另一個 RisuAI 分頁已開啟，因此現在無法載入備份。請關閉其他分頁，然後再試一次。",
+    "saveDamagedRetry": "重試",
+    "saveDamagedUnconfirmed": "RisuAI 無法確認哪一個存檔是目前的存檔。請重新載入頁面，查看載入的是哪一個。",
+    "saveDamagedTooLarge": "此備份過大，無法一次性載入到此伺服器上。未變更任何內容。",
+    "saveSeedBlocked": (found: string[]) => `RisuAI 沒有找到目前的存檔，但找到了較舊的資料（${found.map((kind) => kind === 'head' ? '存檔指標' : kind === 'main-file' ? '舊存檔檔案' : kind === 'pre-blocks' ? '舊存檔檔案的副本' : '備份').join('、')}）。它不會在這些資料之上啟動一個空白設定檔，並且沒有變更任何內容。`,
+    "saveSeedFailed": "RisuAI 無法建立第一個存檔，因此沒有開啟任何內容，也沒有變更任何內容。請重新載入頁面後再試一次。",
+    "saveLeftoverNotice": "RisuAI 發現了因儲存或還原被中斷而遺留的未使用存檔資料。這些資料無害，您可以在設定中的清理裡將其移除。",
+    "saveMainFileLeftNotice": "您的資料已遷移到新格式，但舊的存檔檔案過大，此伺服器無法將其移開。開啟同一份資料的其他版本 RisuAI 可能會開啟那個舊檔案。在您將其刪除之前，設定中的清理會妥善保留它。",
+    "opfsReadOnlyNotice": "RisuAI 這次是在您資料的暫時副本上執行，因此不會儲存變更，也無法還原備份或清理儲存空間。您的資料沒有遺失。請關閉此應用程式的其他分頁並重新啟動，以便將資料遷移到瀏覽器儲存空間。",
     "backupAndFiles": "備份 & 檔案",
     "assetIntegrityHeading": "資源快取完整性",
     "assetIntegrityDescription": "將快取的圖片/資源與其自身的內容雜湊值進行比對以偵測損毀，無需從儲存空間重新下載任何內容。除非您選擇移除已損毀的項目，否則此操作為唯讀。",
