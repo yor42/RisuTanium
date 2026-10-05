@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import {
     HEAD_KEY,
     characterBlockKey,
@@ -36,6 +36,37 @@ function awkwardChaIds(): string[] {
     }
     return ids
 }
+
+describe('k(chaId), memoised per chaId', () => {
+    test('a name already seen is not encoded or hashed again, and the segment is the same string', () => {
+        const long = `memo-${'q'.repeat(90)}`
+        const first = characterKeySegment(long)
+        const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+        try {
+            expect(characterKeySegment(long)).toBe(first)
+            expect(characterKeySegment('memo-short')).toBe(characterKeySegment('memo-short'))
+            expect(encode).toHaveBeenCalledTimes(1)
+        } finally {
+            encode.mockRestore()
+        }
+    })
+
+    test('the memoised segment is the hex of the name, or h plus its SHA-256, exactly as an uncached computation gives', () => {
+        for (const id of ['', 'a', 'Z', 'x'.repeat(40), 'x'.repeat(41), '가'.repeat(30), '가'.repeat(31), '__proto__', 'constructor']) {
+            const bytes = new TextEncoder().encode(id)
+            const expected = bytes.length > 0 && bytes.length * 2 <= 80
+                ? Buffer.from(bytes).toString('hex')
+                : `h${createHash('sha256').update(bytes).digest('hex')}`
+            expect(characterKeySegment(id)).toBe(expected)
+            expect(characterKeySegment(id)).toBe(expected)
+        }
+    })
+
+    test('two names never share a memoised segment', () => {
+        expect(characterKeySegment('A')).not.toBe(characterKeySegment('a'))
+        expect(characterKeySegment('__proto__')).not.toBe(characterKeySegment('constructor'))
+    })
+})
 
 describe('k(chaId), invariant K', () => {
     const ids = Array.from(new Set(awkwardChaIds()))

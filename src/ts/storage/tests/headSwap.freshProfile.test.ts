@@ -15,7 +15,7 @@ import { BlockStoreReadError } from 'src/ts/storage/blockStore'
 import { encodeHead } from 'src/ts/storage/headSwap'
 import { createIndexedDbHeadSwap, createIndexedDbStore } from 'src/ts/storage/store/indexedDbStore'
 import { StoreError } from 'src/ts/storage/store/errors'
-import { makeOwner, makeSet } from './blockStoreHarness'
+import { characterBlock, makeOwner, makeSet, withBlock } from './blockStoreHarness'
 
 const A = encodeHead({ current: '000000000001-0000000a' })
 
@@ -54,13 +54,13 @@ afterEach(() => {
 describe('a profile without the risuai database', () => {
     test('reads an absent head and creates nothing', async () => {
         const swap = createIndexedDbHeadSwap()
-        expect(await swap.read()).toEqual({ bytes: null, version: null })
+        expect(await swap.read()).toEqual({ kind: 'absent', version: null })
         expect(await databaseNames()).toEqual([])
     })
 
     test('a swap rejects as an unknown outcome and creates no database', async () => {
         const swap = createIndexedDbHeadSwap()
-        await expect(swap.swap({ bytes: null, version: null }, A)).rejects.toBeInstanceOf(StoreError)
+        await expect(swap.swap({ kind: 'absent', version: null }, A)).rejects.toBeInstanceOf(StoreError)
         expect(await databaseNames()).toEqual([])
     })
 
@@ -72,7 +72,7 @@ describe('a profile without the risuai database', () => {
             request.onerror = () => reject(request.error)
         })
         const swap = createIndexedDbHeadSwap()
-        expect(await swap.read()).toEqual({ bytes: null, version: null })
+        expect(await swap.read()).toEqual({ kind: 'absent', version: null })
         const names = await new Promise<string[]>((resolve, reject) => {
             const request = indexedDB.open('risuai')
             request.onsuccess = () => {
@@ -87,12 +87,12 @@ describe('a profile without the risuai database', () => {
 
     test('a head read picks up the database once LocalForage has created it', async () => {
         const swap = createIndexedDbHeadSwap()
-        expect((await swap.read()).bytes).toBeNull()
+        expect((await swap.read()).kind).toBe('absent')
         const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
         await forage.setItem('unrelated', new Uint8Array([1]))
-        expect(await swap.read()).toEqual({ bytes: null, version: null })
+        expect(await swap.read()).toEqual({ kind: 'absent', version: null })
         expect(await swap.swap(await swap.read(), A)).toBe('won')
-        expect((await swap.read()).bytes).toEqual(A)
+        expect(await swap.read()).toEqual({ kind: 'bytes', bytes: A, version: null })
     })
 
     test('an open that throws rejects the read and the swap instead of reading as absent', async () => {
@@ -101,7 +101,7 @@ describe('a profile without the risuai database', () => {
         })
         const swap = createIndexedDbHeadSwap()
         await expect(swap.read()).rejects.toBeInstanceOf(StoreError)
-        await expect(swap.swap({ bytes: null, version: null }, A)).rejects.toBeInstanceOf(StoreError)
+        await expect(swap.swap({ kind: 'absent', version: null }, A)).rejects.toBeInstanceOf(StoreError)
     })
 
     test('an open that fails with an error event rejects the read instead of reading as absent', async () => {
@@ -158,5 +158,48 @@ describe('a head that is not binary data on IndexedDB', () => {
         expect(result.kind === 'damaged' && result.damage.map((item) => item.kind)).toEqual(['bad-head'])
         expect(await owner.findSeedBlockers()).toEqual([{ kind: 'head', keys: [HEAD_KEY] }])
         expect(await forage.getItem(HEAD_KEY)).toBe('a string')
+    })
+
+    test('a whole-state replace over it wins and the new head is bytes', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, 'a string')
+        const { owner } = makeOwner(createIndexedDbStore(), { headSwap: createIndexedDbHeadSwap() })
+        const result = await owner.replaceWholeState(makeSet({ characters: [{ chaId: 'alice' }] }))
+        expect(result.kind).toBe('won')
+        const loaded = await makeOwner(createIndexedDbStore(), { headSwap: createIndexedDbHeadSwap() }).owner.load()
+        expect(loaded.kind === 'loaded' && loaded.loaded.directory.includes('alice')).toBe(true)
+    })
+
+    test('a conversion or seed, which needs an absent head, loses against it and writes nothing', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, 'a string')
+        const { owner } = makeOwner(createIndexedDbStore(), { headSwap: createIndexedDbHeadSwap() })
+        const before = (await forage.keys()).slice().sort()
+        const result = await owner.replaceWholeState(makeSet(), { requireAbsentHead: true })
+        expect(result).toMatchObject({ kind: 'lost', reason: 'head-exists' })
+        expect((await forage.keys()).slice().sort()).toEqual(before)
+        expect(await forage.getItem(HEAD_KEY)).toBe('a string')
+    })
+
+    test('a head entry stored as null blocks a conversion or seed like any other head', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, null)
+        const { owner } = makeOwner(createIndexedDbStore(), { headSwap: createIndexedDbHeadSwap() })
+        const before = (await forage.keys()).slice().sort()
+        expect(await owner.load()).toMatchObject({ kind: 'damaged', generation: null })
+        expect(await owner.replaceWholeState(makeSet(), { requireAbsentHead: true })).toMatchObject({ kind: 'lost', reason: 'head-exists' })
+        expect(await owner.seedEmptyProfile(makeSet())).toMatchObject({ kind: 'blocked' })
+        expect((await forage.keys()).slice().sort()).toEqual(before)
+    })
+
+    test('a commit on a live owner whose head turned non-binary stops with head-moved', async () => {
+        const store = createIndexedDbStore()
+        const { owner } = makeOwner(store, { headSwap: createIndexedDbHeadSwap() })
+        const input = makeSet({ characters: [{ chaId: 'alice' }] })
+        expect((await owner.seedEmptyProfile(input)).kind).toBe('replaced')
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, 'a string')
+        const changed = withBlock(input, 'alice', characterBlock('alice', '{"chaId":"alice","v":2}'))
+        expect(await owner.commitSave(changed)).toMatchObject({ kind: 'stopped', reason: 'head-moved' })
     })
 })

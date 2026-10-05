@@ -283,7 +283,15 @@ export function createIndexedDbStore(): ByteStore {
     }
 }
 
-/** The bytes of a stored value when they can be had without waiting, `undefined` when the value is not binary data or needs an asynchronous read. */
+function isBlob(value: unknown): boolean {
+    return Object.prototype.toString.call(value) === '[object Blob]'
+}
+
+/**
+ * The bytes of a stored value when they can be had without waiting, `null`
+ * for no entry, and `undefined` when the value is not binary data or needs an
+ * asynchronous read (a Blob; see `isBlob`).
+ */
 function syncBytesOfStoredValue(value: unknown): Uint8Array | null | undefined {
     if (value === undefined) {
         return null
@@ -314,10 +322,16 @@ function syncBytesOfStoredValue(value: unknown): Uint8Array | null | undefined {
  * A compare that fails aborts the transaction and is the definite `'lost'`;
  * any other abort or failure rejects, which is an unknown outcome.
  *
+ * An entry that is not binary data, a value stored as `null` or `undefined`
+ * included, reads as `not-binary`; only a missing key reads as absent. A swap overwrites
+ * such an entry only when the caller's read was `not-binary` and the entry
+ * still is not binary; against any other expectation it is `'lost'` and the
+ * entry is left alone.
+ *
  * The swap never creates the database or its object store: those are created
  * by LocalForage, with the schema upstream uses. While the database or its
  * object store does not exist, `read` reports an absent head
- * (`bytes: null`), and `swap` rejects (an unknown outcome) because there is
+ * (`kind: 'absent'`), and `swap` rejects (an unknown outcome) because there is
  * nowhere to put the head yet; a replace writes its values through the store
  * first, which creates the database, before it flips the head. An open that
  * fails for any other reason rejects from both.
@@ -373,22 +387,26 @@ export function createIndexedDbHeadSwap(): HeadSwap {
 
     return {
         read: async () => (await withConnection(async (database) => {
-            const value = await new Promise<unknown>((resolve, reject) => {
+            const { value, present } = await new Promise<{ value: unknown, present: boolean }>((resolve, reject) => {
                 const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
-                const request = transaction.objectStore(OBJECT_STORE_NAME).get(HEAD_KEY)
-                request.onsuccess = () => resolve(request.result)
+                const objects = transaction.objectStore(OBJECT_STORE_NAME)
+                const request = objects.get(HEAD_KEY)
+                // `get` answers `undefined` both for no entry and for an entry stored as `undefined`; the count tells them apart.
+                const counted = objects.count(HEAD_KEY)
+                counted.onsuccess = () => resolve({ value: request.result, present: counted.result > 0 })
                 request.onerror = () => reject(request.error)
+                counted.onerror = () => reject(counted.error)
                 transaction.onabort = () => reject(transaction.error)
             })
-            if (value === undefined) {
-                return { bytes: null, version: null } satisfies HeadRead
+            if (value === undefined && !present) {
+                return { kind: 'absent', version: null } satisfies HeadRead
             }
             const bytes = await bytesOfStoredValue(value)
             if (bytes === null) {
-                throw new StoreNotBinaryError(HEAD_KEY)
+                return { kind: 'not-binary' } satisfies HeadRead
             }
-            return { bytes, version: null } satisfies HeadRead
-        })) ?? { bytes: null, version: null },
+            return { kind: 'bytes', bytes, version: null } satisfies HeadRead
+        })) ?? { kind: 'absent', version: null } satisfies HeadRead,
 
         swap: async (expected, next) => {
             const swapped = await withConnection((database) => new Promise<SwapOutcome>((resolve, reject) => {
@@ -396,14 +414,25 @@ export function createIndexedDbHeadSwap(): HeadSwap {
                 const objects = transaction.objectStore(OBJECT_STORE_NAME)
                 let outcome: SwapOutcome | 'unreadable' | undefined
                 const request = objects.get(HEAD_KEY)
-                request.onsuccess = () => {
-                    const current = syncBytesOfStoredValue(request.result)
-                    if (current === undefined) {
+                // `get` answers `undefined` both for no entry and for an entry stored as `undefined`; the count tells them apart.
+                const counted = objects.count(HEAD_KEY)
+                counted.onsuccess = () => {
+                    const current = request.result === undefined && counted.result > 0
+                        ? undefined
+                        : syncBytesOfStoredValue(request.result)
+                    if (current === undefined && isBlob(request.result)) {
+                        // A Blob needs an asynchronous read, which this transaction cannot wait for.
                         outcome = 'unreadable'
                         transaction.abort()
                         return
                     }
-                    if (!sameHeadBytes(current, expected.bytes)) {
+                    // Only a head that was read as not binary and still is may be overwritten when it is not bytes.
+                    const matches = current === undefined
+                        ? expected.kind === 'not-binary'
+                        : current === null
+                            ? expected.kind === 'absent'
+                            : expected.kind === 'bytes' && sameHeadBytes(current, expected.bytes)
+                    if (!matches) {
                         outcome = 'lost'
                         transaction.abort()
                         return

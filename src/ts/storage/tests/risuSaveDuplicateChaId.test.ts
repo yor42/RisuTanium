@@ -84,6 +84,20 @@ beforeEach(() => {
 
 type CharacterFixture = Database['characters'][number]
 
+/**
+ * Runs `after` with the block's name each time `encoder` finishes encoding a
+ * block, before the pass that asked for it continues: the point at which the
+ * live character array can change under a pass that is awaiting a block.
+ */
+function afterEachBlock(encoder: RisuSaveEncoder, after: (name: string) => void): void {
+    const encodeRawBlock = encoder.encodeRawBlock.bind(encoder)
+    encoder.encodeRawBlock = async (arg) => {
+        const encoded = await encodeRawBlock(arg)
+        after(arg.name)
+        return encoded
+    }
+}
+
 function makeCharacter(chaId: string, name: string): CharacterFixture {
     return {
         chaId,
@@ -403,20 +417,17 @@ describe('RisuSaveEncoder.init() -- a copy pushed onto the live array partway th
         const db = buildDb(characters)
         let copyAppended = false
 
-        // `init()`'s only await between one character's block write completing
-        // and the next character being read is the cache `setItem()` call
-        // inside `encodeRawBlock` -- this pushes the copy onto the SAME live
-        // array `init()` is iterating, right after the original's write has
-        // already resolved, without adding any hook to non-test source.
-        cacheSetItem.mockImplementation(async (key: string, value: unknown) => {
-            store.set(key, value)
-            if (key === `risuSaveBlock_${chaId}` && !copyAppended) {
+        // `init()` awaits each block's encoding (`encodeRawBlock`) before it
+        // reads the next character -- this pushes the copy onto the SAME live
+        // array `init()` is iterating, right after the original's block has
+        // been encoded, without adding any hook to non-test source.
+        const encoder = new RisuSaveEncoder()
+        afterEachBlock(encoder, (name) => {
+            if (name === chaId && !copyAppended) {
                 copyAppended = true
                 characters.push(makeCharacter(chaId, 'Copy'))
             }
         })
-
-        const encoder = new RisuSaveEncoder()
         await encoder.init(db)
 
         const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
@@ -448,14 +459,11 @@ describe('RisuSaveEncoder.set() -- a copy inserted onto the live array partway t
         const characters = [editedOriginal]
         let copyInserted = false
 
-        // set()'s only await between the edited original's block write
-        // resolving and the pass ending is the same cache setItem() call,
-        // this time triggered by content that genuinely differs from the
-        // last-cached bytes (an unchanged write is skipped without an await
-        // at all -- see encodeRawBlock's rawBlockBytesEqual short-circuit).
-        cacheSetItem.mockImplementation(async (key: string, value: unknown) => {
-            store.set(key, value)
-            if (key === `risuSaveBlock_${chaId}` && !copyInserted) {
+        // set() awaits the edited original's block encoding (`encodeRawBlock`)
+        // before the pass ends -- this pushes the copy onto the live array
+        // right after that block has been encoded.
+        afterEachBlock(encoder, (name) => {
+            if (name === chaId && !copyInserted) {
                 copyInserted = true
                 characters.push(makeCharacter(chaId, 'Copy'))
             }
@@ -490,14 +498,12 @@ describe('RisuSaveEncoder.set() -- a character spliced from the live array durin
         await encoder.init(buildDb([]))
         let zRemoved = false
 
-        // set()'s only await between one holder's block write completing and
-        // the next holder being read is the cache setItem() call inside
-        // encodeRawBlock -- this splices Z out of the SAME live array set()
-        // is iterating, during Z's own write, without adding any hook to
-        // non-test source.
-        cacheSetItem.mockImplementation(async (key: string, value: unknown) => {
-            store.set(key, value)
-            if (key === `risuSaveBlock_${zId}` && !zRemoved) {
+        // set() awaits each holder's block encoding (`encodeRawBlock`) before
+        // the next holder is read -- this splices Z out of the SAME live array
+        // set() is iterating, during Z's own encoding, without adding any
+        // hook to non-test source.
+        afterEachBlock(encoder, (name) => {
+            if (name === zId && !zRemoved) {
                 zRemoved = true
                 const idx = characters.indexOf(z)
                 if (idx !== -1) {
@@ -544,9 +550,8 @@ describe('RisuSaveEncoder.set() -- a chaId edited mid-pass still encodes and fre
         await encoder.init(buildDb([]))
         let idChanged = false
 
-        cacheSetItem.mockImplementation(async (key: string, value: unknown) => {
-            store.set(key, value)
-            if (key === `risuSaveBlock_${otherId}` && !idChanged) {
+        afterEachBlock(encoder, (name) => {
+            if (name === otherId && !idChanged) {
                 idChanged = true
                 ;(holder1 as unknown as { chaId: string }).chaId = changedId
             }
@@ -592,9 +597,8 @@ describe('RisuSaveEncoder.init() -- a chaId renamed mid-pass still encodes and f
         const encoder = new RisuSaveEncoder()
         let idChanged = false
 
-        cacheSetItem.mockImplementation(async (key: string, value: unknown) => {
-            store.set(key, value)
-            if (key === `risuSaveBlock_${otherId}` && !idChanged) {
+        afterEachBlock(encoder, (name) => {
+            if (name === otherId && !idChanged) {
                 idChanged = true
                 ;(holder1 as unknown as { chaId: string }).chaId = changedId
             }

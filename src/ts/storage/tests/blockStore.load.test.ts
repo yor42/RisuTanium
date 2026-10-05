@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
-import { checkSingleBlock, frameBlock, frameJsonBlock, BLOCK_TYPE_ROOT, readPack } from 'src/ts/storage/blockFrame'
-import { characterBlockKey, fixedBlockKey, keptKey, rootKey, stubsKey, HEAD_KEY } from 'src/ts/storage/blockKeys'
-import { BlockOwnerStateError, BlockStoreReadError, assembleLegacyFile, type LoadResult, type ReplaceResult } from 'src/ts/storage/blockStore'
+import { checkSingleBlock, frameBlock, frameJsonBlock, parseFramedBlock, BLOCK_TYPE_ROOT, readPack } from 'src/ts/storage/blockFrame'
+import { characterBlockKey, fixedBlockKey, isFixedBlockName, keptKey, rootKey, stubsKey, HEAD_KEY } from 'src/ts/storage/blockKeys'
+import { BlockOwnerStateError, BlockStoreReadError, assembleLegacyFile, type DamagedItem, type LoadedBlocks, type LoadResult, type ReplaceResult } from 'src/ts/storage/blockStore'
 import { encodeHead } from 'src/ts/storage/headSwap'
 import { directoryOf, parseBlocks } from './risuSaveBlockFile'
 import {
@@ -323,4 +323,163 @@ function breakDataChecksumOf(block: Uint8Array): Uint8Array {
     copy[copy.length - 1] ^= 0xff
     return copy
 }
+
+// ---------------------------------------------------------------------------
+// The pre-install validation hook
+// ---------------------------------------------------------------------------
+
+interface DecodedTree {
+    names: string[]
+}
+
+/** A hook that decodes every character block's payload as JSON: a block with a valid frame and checksum but invalid JSON is damage. */
+function jsonValidator(calls: LoadedBlocks[] = []) {
+    return async (loaded: LoadedBlocks): Promise<DecodedTree | DamagedItem[]> => {
+        calls.push(loaded)
+        const damage: DamagedItem[] = []
+        for (const name of loaded.directory) {
+            if (isFixedBlockName(name)) {
+                continue
+            }
+            const block = loaded.blocks.get(name) as Uint8Array
+            try {
+                JSON.parse(new TextDecoder().decode(parseFramedBlock(block, 0).payload))
+            } catch {
+                damage.push({ part: loaded.packed.includes(name) ? 'stub' : 'character', name, key: characterBlockKey(loaded.generation, name), kind: 'unreadable-content', detail: 'The content is not valid JSON.' })
+            }
+        }
+        return damage.length > 0 ? damage : { names: Array.from(loaded.directory) }
+    }
+}
+
+const BAD_CONTENT = makeSet({ characters: [{ chaId: 'alice' }, { chaId: 'bob', data: 'this is not json' }] })
+const GOOD_CONTENT = makeSet({ characters: [{ chaId: 'alice' }, { chaId: 'carol' }] })
+
+describe.each([{ versioned: true }, { versioned: false }])('load() with a validation hook, versioned=$versioned', ({ versioned }) => {
+    test('hands the loaded blocks to the hook, installs the generation and returns what the hook decoded', async () => {
+        const { store, generation } = await seeded(versioned)
+        const { owner } = makeOwner(store)
+        const calls: LoadedBlocks[] = []
+        const result = await owner.load({ validate: jsonValidator(calls) })
+        expect(result.kind).toBe('loaded')
+        if (result.kind !== 'loaded') {
+            return
+        }
+        expect(result.tree).toEqual({ names: Array.from(result.loaded.directory) })
+        expect(calls).toHaveLength(1)
+        expect(calls[0]).toBe(result.loaded)
+        expect(owner.isLive()).toBe(true)
+        expect(owner.committedState()?.generation).toBe(generation)
+    })
+
+    test('damage from the hook is reported as damaged with the hook\'s items, installs nothing and writes nothing', async () => {
+        const store = createFakeStore({ versioned })
+        const generation = await seedStore(store, BAD_CONTENT)
+        const before = store.mutating().length
+        const { owner } = makeOwner(store)
+        const result = await owner.load({ validate: jsonValidator() })
+        expect(result).toMatchObject({ kind: 'damaged', generation })
+        if (result.kind !== 'damaged') {
+            return
+        }
+        expect(result.damage.map((item) => ({ name: item.name, kind: item.kind }))).toEqual([{ name: 'bob', kind: 'unreadable-content' }])
+        expect(result.directory).toContain('alice')
+        expect(result.rootFields).not.toBeNull()
+        expect(owner.isLive()).toBe(false)
+        expect(store.mutating().length).toBe(before)
+        await expect(owner.commitSave(BAD_CONTENT)).rejects.toBeInstanceOf(BlockOwnerStateError)
+    })
+
+    test('after damage from the hook a later load is legal, and succeeds once another writer replaced the state', async () => {
+        const store = createFakeStore({ versioned })
+        const damaged = await seedStore(store, BAD_CONTENT)
+        const loser = makeOwner(store)
+        expect((await loser.owner.load({ validate: jsonValidator() })).kind).toBe('damaged')
+        expect((await loser.owner.load({ validate: jsonValidator() })).kind).toBe('damaged')
+
+        const winner = makeOwner(store)
+        const won = await winner.owner.replaceWholeState(GOOD_CONTENT, { keepDamaged: damaged })
+        expect(won.kind).toBe('won')
+
+        const again = await loser.owner.load({ validate: jsonValidator() })
+        expect(again.kind).toBe('loaded')
+        expect(again.kind === 'loaded' && again.loaded.directory).toContain('carol')
+        expect(loser.owner.isLive()).toBe(true)
+    })
+
+    test('a hook that throws installs nothing, and a later load is legal', async () => {
+        const { store } = await seeded(versioned)
+        const { owner } = makeOwner(store)
+        await expect(owner.load({ validate: async () => { throw new Error('decoder crashed') } })).rejects.toThrow('decoder crashed')
+        expect(owner.isLive()).toBe(false)
+        expect((await owner.load()).kind).toBe('loaded')
+    })
+
+    test('a hook that returns an empty damage list is a programming error, not a clean load', async () => {
+        const { store } = await seeded(versioned)
+        const { owner } = makeOwner(store)
+        await expect(owner.load({ validate: async () => [] })).rejects.toBeInstanceOf(TypeError)
+        expect(owner.isLive()).toBe(false)
+    })
+
+    test('a replace on the same owner that lands while the hook runs makes the load fail instead of installing over it', async () => {
+        const { store } = await seeded(versioned)
+        const { owner } = makeOwner(store)
+        let replaced: ReplaceResult | null = null
+        await expect(owner.load({
+            validate: async (loaded) => {
+                replaced = await owner.replaceWholeState(GOOD_CONTENT)
+                return { names: Array.from(loaded.directory) }
+            },
+        })).rejects.toBeInstanceOf(BlockOwnerStateError)
+        expect(replaced).toMatchObject({ kind: 'won' })
+        expect(owner.committedState()?.generation).toBe((replaced as unknown as { generation: string }).generation)
+    })
+
+    test('the hook is not consulted when there is no head or the stored state is damaged already', async () => {
+        const empty = createFakeStore({ versioned })
+        const calls: LoadedBlocks[] = []
+        expect(await makeOwner(empty).owner.load({ validate: jsonValidator(calls) })).toEqual({ kind: 'no-head' })
+        const { store, generation } = await seeded(versioned)
+        store.unplant(characterBlockKey(generation, 'alice'))
+        expect((await makeOwner(store).owner.load({ validate: jsonValidator(calls) })).kind).toBe('damaged')
+        expect(calls).toEqual([])
+    })
+})
+
+describe.each([{ versioned: true }, { versioned: false }])('readCommitted() with a validation hook, versioned=$versioned', ({ versioned }) => {
+    test('returns the decoded tree and changes nothing about the owner', async () => {
+        const { store } = await seeded(versioned)
+        const { owner } = makeOwner(store)
+        await owner.load()
+        const before = owner.committedState()
+        const result = await owner.readCommitted({ validate: jsonValidator() })
+        expect(result.kind === 'loaded' && result.tree).toEqual({ names: expect.any(Array) })
+        expect(owner.committedState()?.generation).toBe(before?.generation)
+        expect(owner.committedState()?.seq).toBe(before?.seq)
+    })
+
+    test('reports the hook\'s damage as damaged, on an owner that is live and on one that never loaded', async () => {
+        const store = createFakeStore({ versioned })
+        const generation = await seedStore(store, BAD_CONTENT)
+        const idle = makeOwner(store)
+        const idleResult = await idle.owner.readCommitted({ validate: jsonValidator() })
+        expect(idleResult).toMatchObject({ kind: 'damaged', generation })
+        expect(idle.owner.isLive()).toBe(false)
+
+        const live = makeOwner(store)
+        await live.owner.load()
+        expect(live.owner.isLive()).toBe(true)
+        const liveResult = await live.owner.readCommitted({ validate: jsonValidator() })
+        expect(liveResult.kind).toBe('damaged')
+        expect(live.owner.isLive()).toBe(true)
+    })
+
+    test('without a hook it still returns the loaded blocks only', async () => {
+        const { store } = await seeded(versioned)
+        const result = await makeOwner(store).owner.readCommitted()
+        expect(result.kind).toBe('loaded')
+        expect(result).not.toHaveProperty('tree')
+    })
+})
 

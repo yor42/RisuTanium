@@ -147,6 +147,28 @@ describe('the store each platform gets', () => {
         expect(Array.from((await profile.getItem<Uint8Array>(MAIN)) ?? [])).toEqual([4])
     })
 
+    test('the selected kind is readable: Tauri, Node and IndexedDB each report their own', async () => {
+        platform('tauri')
+        expect(await app.getAppStoreKind()).toBe('tauri')
+
+        await nodeWorld()
+        app.injectAppStore(null)
+        expect(await app.getAppStoreKind()).toBe('node')
+
+        platform('web')
+        h.forage.realStorage = undefined
+        app.injectAppStore(null)
+        expect(await app.getAppStoreKind()).toBe('indexeddb')
+    })
+
+    test('the kind of a store injected without one is not guessed', async () => {
+        const injected = { capabilities: { conditionalWrites: false } } as unknown as Awaited<ReturnType<AppStoreModule['getAppStore']>>
+        app.injectAppStore(injected)
+        await expect(app.getAppStoreKind()).rejects.toBeDefined()
+        app.injectAppStore(injected, 'tauri')
+        expect(await app.getAppStoreKind()).toBe('tauri')
+    })
+
     test('a selection that failed because the storage object could not be initialised stands for the page: every call gets the same rejection and Init is not run again', async () => {
         let attempts = 0
         h.forage.Init = async () => {

@@ -11,8 +11,7 @@ import 'fake-indexeddb/auto'
 import localforage from 'localforage'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { HEAD_KEY } from 'src/ts/storage/blockKeys'
-import { createMutexHeadSwap, createNodeHeadSwap, encodeHead, parseHead, sameHeadBytes, type HeadSwap } from 'src/ts/storage/headSwap'
-import { StoreNotBinaryError } from 'src/ts/storage/store/errors'
+import { createMutexHeadSwap, createNodeHeadSwap, encodeHead, parseHead, sameHeadBytes, sameHeadRead, type HeadRead, type HeadSwap } from 'src/ts/storage/headSwap'
 import { createIndexedDbHeadSwap, createIndexedDbStore } from 'src/ts/storage/store/indexedDbStore'
 import { createFakeStore, makeOwner, makeSet, seedStore } from './blockStoreHarness'
 
@@ -20,13 +19,35 @@ const A = encodeHead({ current: '000000000001-0000000a' })
 const B = encodeHead({ current: '000000000002-0000000b' })
 const C = encodeHead({ current: '000000000003-0000000c' })
 
+const ABSENT: HeadRead = { kind: 'absent', version: null }
+const NOT_BINARY: HeadRead = { kind: 'not-binary' }
+
+function bytesRead(bytes: Uint8Array): HeadRead {
+    return { kind: 'bytes', bytes, version: null }
+}
+
 describe('head records', () => {
     test('a head encodes and parses back, with and without a fingerprint', () => {
         expect(parseHead(encodeHead({ current: '000000000001-0000000a' }))).toEqual({ status: 'ok', record: { current: '000000000001-0000000a' } })
         expect(parseHead(encodeHead({ current: '000000000001-0000000a', convertedFrom: 'x' }))).toEqual({ status: 'ok', record: { current: '000000000001-0000000a', convertedFrom: 'x' } })
     })
 
-    test.each(['', 'nope', '[]', '{"current":1}', '{"current":"not-a-generation"}', '{"current":"000000000001-0000000a","convertedFrom":3}'])('%j is not a head', (text) => {
+    test('a head carries the conversion time beside the fingerprint and parses it back', () => {
+        const record = { current: '000000000001-0000000a', convertedFrom: 'x', convertedAt: 1_700_000_000_123 }
+        expect(parseHead(encodeHead(record))).toEqual({ status: 'ok', record })
+        expect(new TextDecoder().decode(encodeHead({ current: '000000000001-0000000a' }))).toBe('{"current":"000000000001-0000000a"}')
+    })
+
+    test.each([
+        '',
+        'nope',
+        '[]',
+        '{"current":1}',
+        '{"current":"not-a-generation"}',
+        '{"current":"000000000001-0000000a","convertedFrom":3}',
+        '{"current":"000000000001-0000000a","convertedAt":"yesterday"}',
+        '{"current":"000000000001-0000000a","convertedAt":-1}',
+    ])('%j is not a head', (text) => {
         expect(parseHead(new TextEncoder().encode(text)).status).toBe('invalid')
     })
 
@@ -35,6 +56,16 @@ describe('head records', () => {
         expect(sameHeadBytes(null, A)).toBe(false)
         expect(sameHeadBytes(A, A.slice())).toBe(true)
         expect(sameHeadBytes(A, B)).toBe(false)
+    })
+
+    test('sameHeadRead tells absent, bytes and not-binary apart, and compares bytes by content', () => {
+        expect(sameHeadRead(ABSENT, ABSENT)).toBe(true)
+        expect(sameHeadRead(NOT_BINARY, NOT_BINARY)).toBe(true)
+        expect(sameHeadRead(bytesRead(A), bytesRead(A.slice()))).toBe(true)
+        expect(sameHeadRead(bytesRead(A), bytesRead(B))).toBe(false)
+        expect(sameHeadRead(ABSENT, NOT_BINARY)).toBe(false)
+        expect(sameHeadRead(ABSENT, bytesRead(new Uint8Array(0)))).toBe(false)
+        expect(sameHeadRead(NOT_BINARY, bytesRead(new Uint8Array(0)))).toBe(false)
     })
 })
 
@@ -57,7 +88,7 @@ describe('the in-process mutex swap (desktop files)', () => {
         const store = createFakeStore({ versioned: false })
         const swap = createMutexHeadSwap(store)
         expect(await swap.swap(await swap.read(), A)).toBe('won')
-        const stale = { bytes: null, version: null }
+        const stale = ABSENT
         expect(await swap.swap(stale, B)).toBe('lost')
         expect(store.peek(HEAD_KEY)).toEqual(A)
         expect(await swap.swap(await swap.read(), C)).toBe('won')
@@ -84,7 +115,7 @@ describe('the Node swap (revision)', () => {
 
     test('a swap needs the revision the read reported', async () => {
         const store = createFakeStore({ versioned: true })
-        await expect(createNodeHeadSwap(store).swap({ bytes: null, version: null }, A)).rejects.toBeInstanceOf(TypeError)
+        await expect(createNodeHeadSwap(store).swap(ABSENT, A)).rejects.toBeInstanceOf(TypeError)
     })
 
     test('an absent head that was written and deleted still swaps on the tombstone\'s revision', async () => {
@@ -93,8 +124,8 @@ describe('the Node swap (revision)', () => {
         await store.write(HEAD_KEY, A, 'unconditional')
         await store.delete(HEAD_KEY, 'unconditional')
         const read = await swap.read()
-        expect(read.bytes).toBeNull()
-        expect(read.version).toBeGreaterThan(0)
+        expect(read.kind).toBe('absent')
+        expect(read.kind === 'absent' && read.version).toBeGreaterThan(0)
         expect(await swap.swap(read, B)).toBe('won')
     })
 })
@@ -114,9 +145,9 @@ describe('the IndexedDB swap on the raw connection', () => {
     test('reads an absent head, swaps against it, and the store reads the value back in its own form', async () => {
         const swap = createIndexedDbHeadSwap()
         const first = await swap.read()
-        expect(first).toEqual({ bytes: null, version: null })
+        expect(first).toEqual(ABSENT)
         expect(await swap.swap(first, A)).toBe('won')
-        expect(await swap.read()).toEqual({ bytes: A, version: null })
+        expect(await swap.read()).toEqual(bytesRead(A))
         const viaStore = await createIndexedDbStore().read(HEAD_KEY)
         expect(viaStore.bytes).toEqual(A)
     })
@@ -142,7 +173,7 @@ describe('the IndexedDB swap on the raw connection', () => {
         const stale = await swap.read()
         expect(await other.swap(await other.read(), B)).toBe('won')
         expect(await swap.swap(stale, A)).toBe('lost')
-        expect((await swap.read()).bytes).toEqual(B)
+        expect(await swap.read()).toEqual(bytesRead(B))
     })
 
     test('a transaction that aborts for another reason is an unknown outcome (a rejection)', async () => {
@@ -153,7 +184,7 @@ describe('the IndexedDB swap on the raw connection', () => {
         })
         await expect(swap.swap(read, A)).rejects.toBeDefined()
         vi.restoreAllMocks()
-        expect((await swap.read()).bytes).toBeNull()
+        expect(await swap.read()).toEqual(ABSENT)
     })
 
     test('a connection the browser closed is replaced once', async () => {
@@ -170,13 +201,65 @@ describe('the IndexedDB swap on the raw connection', () => {
         expect(await swap.swap(read, A)).toBe('won')
     })
 
-    test('a head stored as something that is not bytes is reported, not overwritten', async () => {
+    test('a head stored as something that is not bytes reads as not-binary, and a swap against any other expectation leaves it alone', async () => {
         const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
         await forage.setItem(HEAD_KEY, 'a string')
         const swap = createIndexedDbHeadSwap()
-        await expect(swap.read()).rejects.toBeInstanceOf(StoreNotBinaryError)
-        await expect(swap.swap({ bytes: null, version: null }, A)).rejects.toBeInstanceOf(StoreNotBinaryError)
+        expect(await swap.read()).toEqual(NOT_BINARY)
+        expect(await swap.swap(ABSENT, A)).toBe('lost')
+        expect(await swap.swap(bytesRead(B), A)).toBe('lost')
         expect(await forage.getItem(HEAD_KEY)).toBe('a string')
+    })
+
+    test('a swap that expects a not-binary head replaces it', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, 'a string')
+        const swap = createIndexedDbHeadSwap()
+        const read = await swap.read()
+        expect(await swap.swap(read, A)).toBe('won')
+        expect(await swap.read()).toEqual(bytesRead(A))
+    })
+
+    test('a stored number, boolean or object is a not-binary head as well', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        const swap = createIndexedDbHeadSwap()
+        for (const value of [7, true, { current: 'x' }]) {
+            await forage.setItem(HEAD_KEY, value)
+            expect(await swap.read()).toEqual(NOT_BINARY)
+        }
+    })
+
+    test.each([null, undefined])('a head entry stored as %s is a not-binary head, never an absent one', async (value) => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, value)
+        expect(await forage.keys()).toContain(HEAD_KEY)
+        const swap = createIndexedDbHeadSwap()
+        expect(await swap.read()).toEqual(NOT_BINARY)
+        expect(await swap.swap(ABSENT, A)).toBe('lost')
+        expect(await forage.keys()).toContain(HEAD_KEY)
+        expect(await swap.read()).toEqual(NOT_BINARY)
+        expect(await swap.swap(NOT_BINARY, A)).toBe('won')
+        expect(await swap.read()).toEqual(bytesRead(A))
+    })
+
+    test('a swap that expects a not-binary head loses once the head holds bytes', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, 'a string')
+        const swap = createIndexedDbHeadSwap()
+        const read = await swap.read()
+        await forage.setItem(HEAD_KEY, B)
+        expect(await swap.swap(read, A)).toBe('lost')
+        expect(await swap.read()).toEqual(bytesRead(B))
+    })
+
+    test('a swap that expects a not-binary head loses once the head is gone', async () => {
+        const forage = localforage.createInstance({ name: 'risuai', driver: localforage.INDEXEDDB })
+        await forage.setItem(HEAD_KEY, 'a string')
+        const swap = createIndexedDbHeadSwap()
+        const read = await swap.read()
+        await forage.removeItem(HEAD_KEY)
+        expect(await swap.swap(read, A)).toBe('lost')
+        expect(await swap.read()).toEqual(ABSENT)
     })
 
     test('two owners on two connections: one converts, the other loses', async () => {
@@ -231,6 +314,6 @@ describe('the head has one writer (invariant H)', () => {
         const store = createFakeStore({ versioned: false })
         await seedStore(store, makeSet())
         const read = await createMutexHeadSwap(store).read()
-        expect(read.bytes).not.toBeNull()
+        expect(read.kind).toBe('bytes')
     })
 })

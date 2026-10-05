@@ -68,11 +68,14 @@ export class AppStoreUnavailableError extends Error {
     }
 }
 
+/** Which kind of store the page runs on. */
+export type AppStoreKind = 'tauri' | 'node' | 'opfs-transitional' | 'indexeddb'
+
 let injected: ByteStore | null = null
 let selection: Promise<ByteStore> | null = null
 let mainFileVersion: number | null = null
 /** Which store the last selection chose; `null` until a selection finished. */
-let selectedKind: 'tauri' | 'node' | 'opfs-transitional' | 'indexeddb' | null = null
+let selectedKind: AppStoreKind | null = null
 /** Why the page runs from OPFS, until the boot shows it. */
 let fallbackNotice: FallbackNotice | null = null
 /** Whether this page load did the copy from OPFS into IndexedDB. */
@@ -173,6 +176,19 @@ export async function pageStoreIsIndexedDb(): Promise<boolean> {
     return selectedKind === 'indexeddb'
 }
 
+/**
+ * The kind of store the page's selection chose. Read-only: the kind is fixed
+ * by the selection, which runs once per page load. Rejects with the
+ * selection's own failure, and for a store injected without a kind.
+ */
+export async function getAppStoreKind(): Promise<AppStoreKind> {
+    await getAppStore()
+    if (selectedKind === null) {
+        throw new StoreError('The page\'s store was injected without a kind.')
+    }
+    return selectedKind
+}
+
 /** The reason the page runs from OPFS this load, once; `null` when it does not or the notice was already taken. */
 export function takeStorageFallbackNotice(): FallbackNotice | null {
     const notice = fallbackNotice
@@ -244,13 +260,17 @@ export async function writeMainFile(bytes: Uint8Array): Promise<void> {
     confirmMainFileWrite(attempt)
 }
 
-/** Test seam: makes `store` the page's store and forgets the main file's version and the outcome of earlier main-file writes. `null` restores the real selection. */
-export function injectAppStore(store: ByteStore | null): void {
+/**
+ * Test seam: makes `store` the page's store (of the given `kind`, which
+ * `getAppStoreKind` reports) and forgets the main file's version and the
+ * outcome of earlier main-file writes. `null` restores the real selection.
+ */
+export function injectAppStore(store: ByteStore | null, kind: AppStoreKind | null = null): void {
     injected = store
     selection = null
     mainFileVersion = null
     resetMainFileOutcomeForTests()
-    selectedKind = null
+    selectedKind = store === null ? null : kind
     fallbackNotice = null
     copiedBackThisPage = false
 }

@@ -62,14 +62,33 @@ function hexOf(bytes: Uint8Array): string {
  * on a plain-HTTP page.
  */
 export function characterKeySegment(chaId: string): string {
-    const bytes = textEncoder.encode(chaId)
-    if (bytes.length > 0 && bytes.length * 2 <= MAX_HEX_CHARS) {
-        return hexOf(bytes)
+    const known = segmentCache.get(chaId)
+    if (known !== undefined) {
+        return known
     }
-    const hash = new Sha256()
-    hash.update(bytes)
-    return HASHED_PREFIX + hexOf(hash.digestSync())
+    const bytes = textEncoder.encode(chaId)
+    let segment: string
+    if (bytes.length > 0 && bytes.length * 2 <= MAX_HEX_CHARS) {
+        segment = hexOf(bytes)
+    } else {
+        const hash = new Sha256()
+        hash.update(bytes)
+        segment = HASHED_PREFIX + hexOf(hash.digestSync())
+    }
+    if (segmentCache.size >= SEGMENT_CACHE_LIMIT) {
+        segmentCache.clear()
+    }
+    segmentCache.set(chaId, segment)
+    return segment
 }
+
+/**
+ * The segment depends on the name only, and a commit asks for it once per
+ * character, so a name is worked out once. The cache is emptied when it
+ * outgrows any real profile, so it cannot grow without bound.
+ */
+const SEGMENT_CACHE_LIMIT = 50_000
+const segmentCache = new Map<string, string>()
 
 /** A generation id: twelve hex digits of the creation time in milliseconds, then eight random hex digits. Ids sort by age. */
 const GENERATION_PATTERN = /^[0-9a-f]{12}-[0-9a-f]{8}$/

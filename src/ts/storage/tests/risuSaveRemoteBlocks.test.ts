@@ -230,6 +230,7 @@ describe('RisuSaveEncoder — CHORE-17, the remote file skip and existence-check
         ).length
 
         expect(countAfterSecondSet).toBe(countAfterFirstSet)
+        expect(countAfterSecondSet).toBe(0)
     })
 
     test('B1 (red): an unchanged character across two set() calls does not rewrite its content-addressed remote file', async () => {
@@ -312,20 +313,21 @@ describe('RisuSaveEncoder — CHORE-17, the remote file skip and existence-check
         expect(cha?.data).toBe('B4 content B')
     })
 
-    test('B4b (guard, equal length): a content change that keeps the same byte length still writes a new hash file and rewrites the local pointer', async () => {
+    test('B4b (guard, equal length): a content change that keeps the same byte length still writes a new hash file and changes the pointer block in the layout', async () => {
         const db = buildFixtureDb('B4b content one')
         const encoder = new RisuSaveEncoder()
         await encoder.init(db, { skipRemoteSavingOnCharacters: false })
         const keyAfterInit = Array.from(remoteStore.keys())[0]
-        localCacheSetItem.mockClear()
+        const layoutBefore = encoder.snapshotLayout()!
+        encoder.markLayoutCommitted(layoutBefore)
 
         // Same length as 'B4b content one' -- pins that neither the remote
-        // hash-file write nor the local pointer-block skip is fooled by a
-        // content change that happens to keep the same byte length. The
-        // pointer JSON in particular (`{v,type,name,hash}`) is the same
-        // length on every write regardless of what changed, since the hash
-        // is always a fixed-length hex string -- a length-only comparator
-        // would always wrongly treat the pointer as unchanged.
+        // hash-file write nor the comparison of the local pointer block is
+        // fooled by a content change that happens to keep the same byte
+        // length. The pointer JSON in particular (`{v,type,name,hash}`) is
+        // the same length on every write regardless of what changed, since
+        // the hash is always a fixed-length hex string -- a length-only
+        // comparator would always wrongly treat the pointer as unchanged.
         ;(db.characters[0] as any).data = 'B4b content two'
         await encoder.set(db, makeToSave(['char-remote-1']))
 
@@ -333,10 +335,10 @@ describe('RisuSaveEncoder — CHORE-17, the remote file skip and existence-check
         expect(keys).toContain(keyAfterInit)
         expect(keys.length).toBe(2)
 
-        const pointerWrites = localCacheSetItem.mock.calls.filter(
-            (args) => args[0] === 'risuSaveBlock_char-remote-1',
-        )
-        expect(pointerWrites.length).toBeGreaterThan(0)
+        const layoutAfter = encoder.snapshotLayout()!
+        expect(layoutAfter.blocks[layoutAfter.keys.indexOf('char-remote-1')])
+            .not.toEqual(layoutBefore.blocks[layoutBefore.keys.indexOf('char-remote-1')])
+        expect(encoder.layoutEqualsCommitted(layoutAfter)).toBe(false)
 
         const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
         const cha = decoded.characters?.find((c: any) => c.chaId === 'char-remote-1') as any
@@ -357,7 +359,7 @@ describe('RisuSaveEncoder — CHORE-17, the remote file skip and existence-check
         return (2 + 1 + nameBufLen + 4) + 4 + databufLen + 4
     }
 
-    test('B4c (guard, word-aligned): a changed character still rewrites the local pointer when the pointer block length is a multiple of 4', async () => {
+    test('B4c (guard, word-aligned): a changed character still changes the pointer block in the layout when the pointer block length is a multiple of 4', async () => {
         // Guards specifically against the word check: without a multiple-of-4
         // block length, a trailing byte the tail loop checks on its own could
         // happen to be a CRC32 checksum byte that differs whenever the
@@ -389,15 +391,18 @@ describe('RisuSaveEncoder — CHORE-17, the remote file skip and existence-check
         } as unknown as Database
         const encoder = new RisuSaveEncoder()
         await encoder.init(db, { skipRemoteSavingOnCharacters: false })
-        localCacheSetItem.mockClear()
+        const layoutBefore = encoder.snapshotLayout()!
+        encoder.markLayoutCommitted(layoutBefore)
 
         ;(db.characters[0] as any).data = 'B4c content two'
         await encoder.set(db, makeToSave([chaId]))
 
-        const pointerWrites = localCacheSetItem.mock.calls.filter(
-            (args) => args[0] === `risuSaveBlock_${chaId}`,
-        )
-        expect(pointerWrites.length).toBeGreaterThan(0)
+        const layoutAfter = encoder.snapshotLayout()!
+        const pointerBefore = layoutBefore.blocks[layoutBefore.keys.indexOf(chaId)]
+        const pointerAfter = layoutAfter.blocks[layoutAfter.keys.indexOf(chaId)]
+        expect(pointerAfter.length).toBe(pointerBefore.length)
+        expect(pointerAfter).not.toEqual(pointerBefore)
+        expect(encoder.layoutEqualsCommitted(layoutAfter)).toBe(false)
     })
 
     test('B7 (guard): a boot init() whose existence check confirms the file records it, and an unchanged set() then does not rewrite', async () => {

@@ -98,14 +98,13 @@ function readUint32LE(data: Uint8Array, offset: number): number {
 }
 
 /**
- * CHORE-17: compares two block buffers for the
- * encodeRawBlock skip. Both sides are always fresh `ArrayBuffer`s allocated
- * at `byteOffset` 0 (see encodeRawBlock's `arrayBuf`/`buf`), so the common
- * case can compare 4 bytes at a time via `Uint32Array` instead of one byte at
- * a time. The `byteOffset` check is a defensive guard, not something either
- * operand hits -- both `a` and `b` are always fresh buffers at `byteOffset`
- * 0. If it ever fails anyway, falling back to a plain byte loop keeps this
- * correct instead of misreading unaligned words.
+ * Compares two block buffers for `layoutEqualsCommitted`, its only caller.
+ * Blocks the encoder produces are fresh `ArrayBuffer`s allocated at
+ * `byteOffset` 0 (see encodeRawBlock's `arrayBuf`/`buf`), so the common case
+ * can compare 4 bytes at a time via `Uint32Array` instead of one byte at a
+ * time. The `byteOffset` check is a defensive guard, not something either
+ * operand hits. If it ever fails anyway, falling back to a plain byte loop
+ * keeps this correct instead of misreading unaligned words.
  */
 function rawBlockBytesEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a.length !== b.length) return false
@@ -303,12 +302,11 @@ export class RisuSaveEncoder {
     // `opts.seed`) -- so together, nothing here keeps a boot-time character
     // object reachable for this encoder's whole lifetime.
     private encodedCharacterProxies = new Set<Database['characters'][number]>();
-    // CHORE-17: one budget per encoder instance, since each instance has its
-    // own `setItem` yield history.
-    // `encodeRawBlock` calls `noteYielded()` after a real write resolves and
-    // awaits `maybeYield()` after a skipped one. A skipped write crosses no
-    // macrotask boundary, so this is what keeps a run of skips yielding
-    // periodically instead of running as one long task.
+    // One yield budget per encoder instance, each with its own clock.
+    // `encodeRawBlock` awaits `maybeYield()` after every block. Encoding a
+    // block crosses no macrotask boundary by itself, so this is what keeps a
+    // long run of blocks yielding periodically instead of running as one
+    // long task.
     private yieldBudget = createYieldBudget();
     // chaId keys currently held by two or more characters in the last pass
     // (`init` or `set`) this encoder ran. While a key is here, its block is
@@ -323,8 +321,8 @@ export class RisuSaveEncoder {
     // (which holds nothing before the boot has installed a database). Undefined
     // when `init()` was given none.
     private enableRemoteSaving: boolean | undefined = undefined;
-    // Whether `encodeRawBlock` records each block it writes in the block cache.
-    // Set by `init()`; true unless that call asked for none.
+    // The `writeBlockCache` input of the last `init()`. `encodeRawBlock` never
+    // writes the block cache whatever this holds.
     private writeBlockCache = true;
 
     private remoteSavingDisabled(): boolean {
@@ -422,13 +420,8 @@ export class RisuSaveEncoder {
          */
         enableRemoteSaving?: boolean,
         /**
-         * Whether this encoder records the blocks it writes in the block cache
-         * (`risuSaveCache`), for its whole life: used by this `init()` and by
-         * every later `set()`. Defaults to true. With false no block cache
-         * entry is written or changed. Such an encoder's `blocks` were never
-         * cached, so it must never be passed as `previous` to another
-         * encoder: a duplicated key carried from it would be skipped by the
-         * cache-write check as already cached when it is not.
+         * Accepted so existing callers keep compiling. The encoder writes no
+         * block cache entry (`risuSaveCache`) whatever this holds.
          */
         writeBlockCache?: boolean
     } = {}){
@@ -866,41 +859,13 @@ export class RisuSaveEncoder {
         buf.set(databuf, headerBytes.length + 4);
         buf.set(new Uint8Array(dataChecksumBuf), headerBytes.length + 4 + databuf.length);
 
-        // CHORE-17: skip the cache write when
-        // these bytes are already what `this.blocks[arg.name]` holds. Safe
-        // because every assignment to `this.blocks[k]` comes from a
-        // previously *committed* `encodeRawBlock` call under that same key --
-        // on this instance, or, for a key duplicated across a full reload
-        // (`init`'s `previous` option), on the instance being replaced.
-        // Either way, nothing writes that cache key while the key stays
-        // duplicated, so equal bytes here still mean these exact bytes were
-        // already written under this cache key -- and since `arg.data` is
-        // always `JSON.stringify` output (well-formed, no lone surrogates),
-        // `TextEncoder` is injective on it, so equal encoded bytes also mean
-        // equal source data. The block type byte is part of the compared
-        // bytes, so two block kinds sharing a name can't false-match.
-        const existing = this.blocks[arg.name];
-        if (existing && rawBlockBytesEqual(buf, existing)) {
-            // No `setItem` this time, which was the save loop's only
-            // macrotask boundary on this path -- yield instead so a run of
-            // skips doesn't turn into one long task.
-            await this.yieldBudget.maybeYield();
-            return buf;
-        }
-
-        if (!this.writeBlockCache) {
-            // Same reasoning as the skip above: no `setItem` means no
-            // macrotask boundary, so yield instead.
-            await this.yieldBudget.maybeYield();
-            return buf;
-        }
-
-        await risuSaveCacheForage.setItem(`risuSaveBlock_${arg.name}`, {
-            type: arg.type,
-            data: arg.data,
-            name: arg.name,
-        });
-        this.yieldBudget.noteYielded();
+        // This path writes nothing to storage: the local block cache is read
+        // only by the legacy decoder. (`encodeRemoteBlock` writes `remotes/`
+        // files before it gets here, when remote saving is on.) Nothing on
+        // this path awaits storage, so there is no macrotask boundary of its
+        // own; the yield budget supplies one, or a run of blocks becomes one
+        // long task.
+        await this.yieldBudget.maybeYield();
         return buf;
     }
 

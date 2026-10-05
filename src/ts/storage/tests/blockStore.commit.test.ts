@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import { parseJsonObjectBlock } from 'src/ts/storage/blockFrame'
 import { HEAD_KEY, characterBlockKey, rootKey, stubsKey } from 'src/ts/storage/blockKeys'
-import { BlockSetInvalidError, BlockTooLargeError, createWebCommitLock, CommitLockTimeoutError, type CommitResult } from 'src/ts/storage/blockStore'
+import { BlockSetInvalidError, BlockTooLargeError, createProcessCommitLock, createWebCommitLock, CommitLockTimeoutError, type CommitResult } from 'src/ts/storage/blockStore'
 import {
     InjectedFault,
     Interleaver,
@@ -643,5 +643,113 @@ describe('the commit lock', () => {
     test('a granted lock runs the work and passes its result', async () => {
         const manager = { request: async <T>(_name: string, _options: unknown, callback: (lock: unknown) => Promise<T>) => await callback({}) }
         expect(await createWebCommitLock(manager).run(async () => 9)).toBe(9)
+    })
+})
+
+describe('the in-process commit lock', () => {
+    function gate() {
+        let open!: () => void
+        const opened = new Promise<void>((resolve) => { open = resolve })
+        return { open, opened }
+    }
+
+    test('is available, and passes the work\'s result and its failure through', async () => {
+        const store = createFakeStore({ versioned: false })
+        const lock = createProcessCommitLock(store)
+        expect(lock.available).toBe(true)
+        expect(await lock.run(async () => 4)).toBe(4)
+        await expect(lock.run(async () => { throw new Error('boom') })).rejects.toThrow('boom')
+        expect(await lock.run(async () => 5)).toBe(5)
+    })
+
+    test('two acquisitions on one store run one after the other, in the order they asked', async () => {
+        const store = createFakeStore({ versioned: false })
+        const first = createProcessCommitLock(store)
+        const second = createProcessCommitLock(store)
+        const events: string[] = []
+        const hold = gate()
+        const a = first.run(async () => { events.push('a in'); await hold.opened; events.push('a out') })
+        const b = second.run(async () => { events.push('b in'); events.push('b out') })
+        for (let i = 0; i < 10; i++) {
+            await Promise.resolve()
+        }
+        expect(events).toEqual(['a in'])
+        hold.open()
+        await Promise.all([a, b])
+        expect(events).toEqual(['a in', 'a out', 'b in', 'b out'])
+    })
+
+    test('a failing holder still lets the next one in', async () => {
+        const store = createFakeStore({ versioned: false })
+        const lock = createProcessCommitLock(store)
+        const failing = lock.run(async () => { throw new Error('boom') })
+        const next = lock.run(async () => 'ran')
+        await expect(failing).rejects.toThrow('boom')
+        expect(await next).toBe('ran')
+    })
+
+    test('stores do not wait for each other', async () => {
+        const hold = gate()
+        const one = createProcessCommitLock(createFakeStore({ versioned: false }))
+        const two = createProcessCommitLock(createFakeStore({ versioned: false }))
+        const events: string[] = []
+        const a = one.run(async () => { events.push('a in'); await hold.opened })
+        await two.run(async () => { events.push('b ran') })
+        expect(events).toEqual(['a in', 'b ran'])
+        hold.open()
+        await a
+    })
+
+    test('a request that waits longer than the timeout rejects as live-holder timeout and leaves the queue intact', async () => {
+        const store = createFakeStore({ versioned: false })
+        const lock = createProcessCommitLock(store, { timeoutMs: 5 })
+        const hold = gate()
+        const holder = lock.run(async () => { await hold.opened })
+        const error = await lock.run(async () => 'never').then(() => null, (thrown: unknown) => thrown)
+        expect(error).toBeInstanceOf(CommitLockTimeoutError)
+        expect((error as CommitLockTimeoutError).holderLive).toBe(true)
+        hold.open()
+        await holder
+        expect(await lock.run(async () => 'after')).toBe('after')
+    })
+
+    test('an owner that commits with it takes it once per commit and the commits of two owners on one store do not overlap', async () => {
+        const store = createFakeStore({ versioned: false })
+        await seedStore(store, BASE)
+        let inside = 0
+        let acquisitions = 0
+        let overlapped = false
+        const counted = (lock: ReturnType<typeof createProcessCommitLock>) => ({
+            available: lock.available,
+            run: <T,>(work: () => Promise<T>) => lock.run(async () => {
+                acquisitions++
+                inside++
+                overlapped ||= inside > 1
+                try {
+                    return await work()
+                } finally {
+                    inside--
+                }
+            }),
+        })
+        const a = makeOwner(store, { commitLock: counted(createProcessCommitLock(store)) })
+        const b = makeOwner(store, { commitLock: counted(createProcessCommitLock(store)) })
+        await a.owner.load()
+        await b.owner.load()
+        await Promise.all([
+            a.owner.commitSave(withBlock(BASE, 'bob', characterBlock('bob', '{"chaId":"bob","v":2}'))),
+            b.owner.commitSave(withBlock(BASE, 'bob', characterBlock('bob', '{"chaId":"bob","v":3}'))),
+        ])
+        expect(overlapped).toBe(false)
+        expect(acquisitions).toBe(2)
+    })
+
+    test('an owner on it deletes the keys that left its directory after a commit, because the lock is available', async () => {
+        const store = createFakeStore({ versioned: false })
+        await seedStore(store, BASE)
+        const { owner } = makeOwner(store, { commitLock: createProcessCommitLock(store) })
+        await owner.load()
+        const result = await owner.commitSave(withoutBlock(BASE, 'bob'))
+        expect(result).toMatchObject({ kind: 'committed', wrote: true, cleanup: { skipped: false } })
     })
 })

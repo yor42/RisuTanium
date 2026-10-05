@@ -95,6 +95,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 import { RisuSaveEncoder, decodeRisuSave, salvageRisuSave, RisuSaveType } from '../risuSave'
 import type { toSaveType, SalvageOmittedKind } from '../risuSave'
 import type { Database } from '../database.svelte'
+import { cacheEntriesOf } from './risuSaveCacheFixture'
 
 beforeEach(() => {
     cacheStore.clear()
@@ -156,7 +157,12 @@ async function buildFile(options: FixtureOptions = {}): Promise<Fixture> {
     remoteFlag.enabled = false
     const encoded = encoder.encode()
     expect(encoded).not.toBeNull()
-    return { file: new Uint8Array(encoded!), ids }
+    const file = new Uint8Array(encoded!)
+    // The encoder writes no block cache entry; the profile of an earlier build holds one per block.
+    for (const [key, entry] of cacheEntriesOf(file)) {
+        cacheStore.set(key, entry)
+    }
+    return { file, ids }
 }
 
 function characterIds(db: Database): string[] {
@@ -602,13 +608,12 @@ describe('the encoder option that writes no block cache', () => {
             .toEqual(parseBlocks(withCache.bytes).map((block) => block.name).filter((name) => name !== withCache.id))
     })
 
-    test('guard: by default the encoder records every block it writes in the block cache', async () => {
+    test('by default the encoder writes no block cache entry either', async () => {
         cacheWrites.length = 0
 
-        const { id } = await encodeWith(undefined)
+        await encodeWith(undefined)
 
-        expect(cacheWrites).toContain(`risuSaveBlock_${id}`)
-        expect(cacheWrites).toContain('risuSaveBlock_root')
-        expect(cacheWrites).toContain('risuSaveBlock_modules')
+        expect(cacheWrites).toEqual([])
+        expect(cacheStore.size).toBe(0)
     })
 })

@@ -103,6 +103,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 import { RisuSaveEncoder, RisuSaveDecoder, decodeRisuSave } from '../risuSave'
 import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
+import { cacheEntriesOf } from './risuSaveCacheFixture'
 
 // CHORE-17: the cache `store` and its spies are shared
 // module-level state across every test in this file, so each test starts
@@ -450,22 +451,21 @@ describe('RisuSaveEncoder.takeEncodedCharacterProxies() — consume-once proxy r
     })
 })
 
-// CHORE-17. A block's local
-// cache write is skipped when its freshly-encoded bytes are already equal to
-// the encoder's own last-written bytes for that key (`this.blocks[name]`).
-// A1 pins the skip itself. A2c additionally pins that an equal-length
-// change is still caught -- by choosing a name whose block length lands on
-// a multiple of 4, so the whole comparison runs through the word loop, with
-// no tail bytes left for a coincidental checksum difference to catch the
-// change on the word loop's behalf (see A2c's own comment for why that
-// distinction matters). A2 through A6 pin the behaviour the skip must not
-// disturb -- a changed character still writes, a failed write is still
-// retried, a round trip through encode/decode still matches, a corrupted
-// block still recovers from the cache, and a fresh encoder still writes
-// every block. A9 pins that a run of skips still yields to the event loop,
-// awaiting each yield before encoding the next block; A10 pins that a real
-// (non-skipped) write still resets the yield budget via `noteYielded`.
-describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
+// The encoder writes no local block cache entry. A1 pins that an unchanged
+// character causes no cache write. A2c additionally pins that an equal-length
+// change is still caught by the layout comparison -- by choosing a name whose
+// block length lands on a multiple of 4, so the whole comparison runs through
+// the word loop, with no tail bytes left for a coincidental checksum
+// difference to catch the change on the word loop's behalf (see A2c's own
+// comment for why that distinction matters). A2 through A6 pin the behaviour
+// that must hold without the cache write -- a changed character is encoded, a
+// failing cache never fails a save, a round trip through encode/decode still
+// matches, a corrupted block still recovers from a cache a profile already
+// holds, and a fresh encoder still encodes every block. A9 pins that every
+// encoded block yields to the event loop when the budget is due, awaiting each
+// yield before encoding the next block; A10 pins that a changed block does the
+// same.
+describe('RisuSaveEncoder — the encoder writes no local block cache and still yields', () => {
     function buildOneCharacterDb(name = 'Test Character'): Database {
         return {
             formatversion: 5,
@@ -505,9 +505,10 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         const countAfterSecondSet = callsForKey(cacheSetItem, 'risuSaveBlock_char1')
 
         expect(countAfterSecondSet).toBe(countAfterFirstSet)
+        expect(countAfterSecondSet).toBe(0)
     })
 
-    test('A2 (guard): a changed character is written, and its cache entry holds the new data', async () => {
+    test('A2 (reproducer): a changed character is encoded, the file decodes to the new data, and the cache is not written', async () => {
         const db = buildOneCharacterDb()
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
@@ -515,25 +516,29 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         db.characters[0].name = 'Changed Name'
         await encoder.set(db, makeToSave(['char1']))
 
-        const cached = store.get('risuSaveBlock_char1') as { data: string }
-        expect(JSON.parse(cached.data).name).toBe('Changed Name')
+        const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
+        expect(decoded.characters?.[0]?.name).toBe('Changed Name')
+        expect(cacheSetItem).not.toHaveBeenCalled()
     })
 
-    test('A2b (guard, equal length): a character change that keeps the same byte length is still written', async () => {
+    test('A2b (guard, equal length): a character change that keeps the same byte length is still seen as a change', async () => {
         const db = buildOneCharacterDb('Test Character')
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
-        cacheSetItem.mockClear()
+        const before = encoder.snapshotLayout()!
+        encoder.markLayoutCommitted(before)
 
-        // Same length as 'Test Character' -- pins that the skip compares
-        // content, not just length. A comparator that only checked
+        // Same length as 'Test Character' -- pins that the layout comparison
+        // compares content, not just length. A comparator that only checked
         // `a.length === b.length` would wrongly treat this as unchanged.
         db.characters[0].name = 'Test CharacteR'
         await encoder.set(db, makeToSave(['char1']))
 
-        const call = cacheSetItem.mock.calls.find((args) => args[0] === 'risuSaveBlock_char1')
-        expect(call).toBeTruthy()
-        expect(JSON.parse((call![1] as { data: string }).data).name).toBe('Test CharacteR')
+        const after = encoder.snapshotLayout()!
+        expect(after.blocks[after.keys.indexOf('char1')].length).toBe(before.blocks[before.keys.indexOf('char1')].length)
+        expect(encoder.layoutEqualsCommitted(after)).toBe(false)
+        const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
+        expect(decoded.characters?.[0]?.name).toBe('Test CharacteR')
     })
 
     /**
@@ -548,7 +553,7 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         return (2 + 1 + nameBufLen + 4) + 4 + databufLen + 4
     }
 
-    test('A2c (guard, word-aligned): an equal-length change is still written when the block length is a multiple of 4', async () => {
+    test('A2c (guard, word-aligned): an equal-length change is still seen as a change when the block length is a multiple of 4', async () => {
         // Guards specifically against the `aWords[i] !== bWords[i]` word
         // check: a block with trailing bytes could still catch a content
         // difference via the tail-byte comparison instead (coincidentally
@@ -565,34 +570,44 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
 
         const encoder = new RisuSaveEncoder()
         await encoder.init(before)
-        cacheSetItem.mockClear()
+        const layoutBefore = encoder.snapshotLayout()!
+        encoder.markLayoutCommitted(layoutBefore)
 
         await encoder.set(after, makeToSave(['char1']))
 
-        const call = cacheSetItem.mock.calls.find((args) => args[0] === 'risuSaveBlock_char1')
-        expect(call).toBeTruthy()
-        expect(JSON.parse((call![1] as { data: string }).data).name).toBe('Multiple4LengtH')
+        const layoutAfter = encoder.snapshotLayout()!
+        expect(layoutAfter.blocks[layoutAfter.keys.indexOf('char1')].length % 4).toBe(0)
+        expect(encoder.layoutEqualsCommitted(layoutAfter)).toBe(false)
+        const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
+        expect(decoded.characters?.[0]?.name).toBe('Multiple4LengtH')
     })
 
-    test('A3 (guard): after a change, a set() whose cache write throws is retried by the next set() and ends up with the new data', async () => {
+    test('A3 (reproducer): a block cache that cannot be written never fails a save', async () => {
         const db = buildOneCharacterDb()
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
 
-        db.characters[0].name = 'First Change'
-        cacheSetItem.mockImplementationOnce(async () => {
+        cacheSetItem.mockImplementation(async () => {
             throw new Error('write failed')
         })
-        await expect(encoder.set(db, makeToSave(['char1']))).rejects.toThrow('write failed')
+        try {
+            db.characters[0].name = 'First Change'
+            await encoder.set(db, makeToSave(['char1']))
+            db.characters[0].name = 'Second Change'
+            await encoder.set(db, makeToSave(['char1']))
 
-        db.characters[0].name = 'Second Change'
-        await encoder.set(db, makeToSave(['char1']))
-
-        const cached = store.get('risuSaveBlock_char1') as { data: string }
-        expect(JSON.parse(cached.data).name).toBe('Second Change')
+            const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
+            expect(decoded.characters?.[0]?.name).toBe('Second Change')
+            expect(cacheSetItem).not.toHaveBeenCalled()
+        } finally {
+            cacheSetItem.mockReset()
+            cacheSetItem.mockImplementation(async (key: string, value: unknown) => {
+                store.set(key, value)
+            })
+        }
     })
 
-    test('A4 (guard): a round trip through encode and decode still yields identical data after skip-worthy repeated set() calls', async () => {
+    test('A4 (guard): a round trip through encode and decode still yields identical data after repeated set() calls that change nothing', async () => {
         const db = buildOneCharacterDb()
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
@@ -618,6 +633,10 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         await encoder.set(db, makeToSave(['char1']))
 
         const encoded = new Uint8Array(encoder.encode()!)
+        // The encoder writes no cache entry; the cache of a profile written by an earlier build holds one per block.
+        for (const [key, entry] of cacheEntriesOf(encoded)) {
+            store.set(key, entry)
+        }
         const marker = '"chaId":"char1"'
         const offset = findByteOffset(encoded, marker)
         expect(offset).toBeGreaterThan(-1)
@@ -634,25 +653,25 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         expect(recovered!.name).toBe('Test Character')
     })
 
-    test('A6 (guard): after a fresh encoder\'s init(), every block is written', async () => {
+    test('A6 (reproducer): after a fresh encoder\'s init(), every block is in the layout and none was written to the cache', async () => {
         const db = buildOneCharacterDb()
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
 
-        const writtenKeys = cacheSetItem.mock.calls.map((args) => args[0]).sort()
-        expect(writtenKeys).toEqual([
-            'risuSaveBlock_char1',
-            'risuSaveBlock_config',
-            'risuSaveBlock_loadouts',
-            'risuSaveBlock_modules',
-            'risuSaveBlock_pluginStorage',
-            'risuSaveBlock_plugins',
-            'risuSaveBlock_preset',
-            'risuSaveBlock_root',
+        expect(cacheSetItem).not.toHaveBeenCalled()
+        expect([...encoder.snapshotLayout()!.keys].sort()).toEqual([
+            'char1',
+            'config',
+            'loadouts',
+            'modules',
+            'pluginStorage',
+            'plugins',
+            'preset',
+            'root',
         ])
     })
 
-    test('A9: calls maybeYield once per skipped write', async () => {
+    test('A9: calls maybeYield once per encoded block, the root included', async () => {
         const characterCount = 5
         // toJSON hooks the one `JSON.stringify(character)` call set() makes
         // per character, so `order` records exactly when each character's
@@ -680,6 +699,7 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
         order.length = 0 // init() also encodes every character; only set()'s order matters here
+        maybeYieldSpy.mockClear()
 
         // Holds the first maybeYield() call pending, so the test can tell
         // whether set() actually awaits it before moving on to the next
@@ -692,8 +712,7 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
             await firstYield
         })
 
-        // Every character is marked but none of them changed since init(), so
-        // every one of these writes is skip-worthy.
+        // Every character is marked but none of them changed since init().
         const setPromise = encoder.set(db, makeToSave(db.characters.map((c) => c.chaId)))
 
         // Flush several microtask turns while the first maybeYield() call
@@ -711,18 +730,21 @@ describe('RisuSaveEncoder — CHORE-17, the local cache skip', () => {
         await setPromise
 
         expect(order).toEqual(db.characters.map((c) => c.chaId))
-        expect(maybeYieldSpy).toHaveBeenCalledTimes(characterCount)
+        // One per character block, and one for the root block set() ends with.
+        expect(maybeYieldSpy).toHaveBeenCalledTimes(characterCount + 1)
     })
 
-    test('A10 (guard): a real (non-skipped) write calls noteYielded', async () => {
+    test('A10 (reproducer): a changed block is followed by maybeYield like any other, and the encoder never calls noteYielded', async () => {
         const db = buildOneCharacterDb()
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
-        noteYieldedSpy.mockClear()
+        maybeYieldSpy.mockClear()
 
-        db.characters[0].name = 'Changed For NoteYielded'
+        db.characters[0].name = 'Changed For Yield'
         await encoder.set(db, makeToSave(['char1']))
 
-        expect(noteYieldedSpy).toHaveBeenCalled()
+        // The changed character block and the root block.
+        expect(maybeYieldSpy).toHaveBeenCalledTimes(2)
+        expect(noteYieldedSpy).not.toHaveBeenCalled()
     })
 })

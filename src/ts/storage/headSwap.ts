@@ -1,7 +1,7 @@
 import { bytesEqual } from './blockFrame'
 import { HEAD_KEY, isGenerationId } from './blockKeys'
 import type { ByteStore } from './store/contract'
-import { StoreVersionConflictError } from './store/errors'
+import { StoreNotBinaryError, StoreVersionConflictError } from './store/errors'
 
 /**
  * The head pointer and its compare-and-swap, per adapter.
@@ -24,8 +24,10 @@ import { StoreVersionConflictError } from './store/errors'
 export interface HeadRecord {
     /** The live generation. */
     current: string
-    /** Set once, when the head is created by a conversion: the fingerprint of the main file that conversion read. */
+    /** Set when the head is created by a conversion: the fingerprint of the main file that conversion read. Every later head carries it on. */
     convertedFrom?: string
+    /** Set beside `convertedFrom`: the time of the conversion, in milliseconds since the epoch. */
+    convertedAt?: number
 }
 
 export type HeadParse =
@@ -33,16 +35,20 @@ export type HeadParse =
     | { status: 'invalid', detail: string }
 
 export function encodeHead(record: HeadRecord): Uint8Array {
-    const body: HeadRecord = record.convertedFrom === undefined
-        ? { current: record.current }
-        : { current: record.current, convertedFrom: record.convertedFrom }
+    const body: HeadRecord = { current: record.current }
+    if (record.convertedFrom !== undefined) {
+        body.convertedFrom = record.convertedFrom
+    }
+    if (record.convertedAt !== undefined) {
+        body.convertedAt = record.convertedAt
+    }
     return new TextEncoder().encode(JSON.stringify(body))
 }
 
 export function parseHead(bytes: Uint8Array): HeadParse {
-    let parsed: { current?: unknown, convertedFrom?: unknown } | null
+    let parsed: { current?: unknown, convertedFrom?: unknown, convertedAt?: unknown } | null
     try {
-        parsed = JSON.parse(new TextDecoder().decode(bytes)) as { current?: unknown, convertedFrom?: unknown } | null
+        parsed = JSON.parse(new TextDecoder().decode(bytes)) as { current?: unknown, convertedFrom?: unknown, convertedAt?: unknown } | null
     } catch {
         return { status: 'invalid', detail: 'The head is not JSON.' }
     }
@@ -55,18 +61,30 @@ export function parseHead(bytes: Uint8Array): HeadParse {
     if (parsed.convertedFrom !== undefined && typeof parsed.convertedFrom !== 'string') {
         return { status: 'invalid', detail: 'The head\'s convertedFrom is not a string.' }
     }
-    const convertedFrom = parsed.convertedFrom
-    return {
-        status: 'ok',
-        record: typeof convertedFrom === 'string' ? { current: parsed.current, convertedFrom } : { current: parsed.current },
+    if (parsed.convertedAt !== undefined && (typeof parsed.convertedAt !== 'number' || !Number.isFinite(parsed.convertedAt) || parsed.convertedAt < 0)) {
+        return { status: 'invalid', detail: 'The head\'s convertedAt is not a time.' }
     }
+    const record: HeadRecord = { current: parsed.current }
+    if (typeof parsed.convertedFrom === 'string') {
+        record.convertedFrom = parsed.convertedFrom
+    }
+    if (typeof parsed.convertedAt === 'number') {
+        record.convertedAt = parsed.convertedAt
+    }
+    return { status: 'ok', record }
 }
 
-/** Exactly what a head read saw: its bytes (`null` when absent) and, on a versioned store, the key's revision. */
-export interface HeadRead {
-    bytes: Uint8Array | null
-    version: number | null
-}
+/**
+ * Exactly what a head read saw. `absent`: no entry (with the key's revision on
+ * a versioned store). `bytes`: the entry's bytes. `not-binary`: an entry that
+ * holds something that is not bytes (possible on IndexedDB only); it is a
+ * present head that names no generation (a value stored as `null` or
+ * `undefined` included), and it is never read as absent.
+ */
+export type HeadRead =
+    | { kind: 'absent', version: number | null }
+    | { kind: 'bytes', bytes: Uint8Array, version: number | null }
+    | { kind: 'not-binary' }
 
 export function sameHeadBytes(a: Uint8Array | null, b: Uint8Array | null): boolean {
     if (a === null || b === null) {
@@ -75,10 +93,33 @@ export function sameHeadBytes(a: Uint8Array | null, b: Uint8Array | null): boole
     return bytesEqual(a, b)
 }
 
+/** Whether two head reads saw the same entry: both absent, both not binary, or both the same bytes. Revisions are not compared. */
+export function sameHeadRead(a: HeadRead, b: HeadRead): boolean {
+    if (a.kind === 'bytes' && b.kind === 'bytes') {
+        return bytesEqual(a.bytes, b.bytes)
+    }
+    return a.kind === b.kind
+}
+
+/** The head read of a store `read` of the head key; an entry that is not binary data is a `not-binary` read, not a failure. */
+async function readHeadOf(store: ByteStore): Promise<HeadRead> {
+    try {
+        const result = await store.read(HEAD_KEY)
+        return result.bytes === null
+            ? { kind: 'absent', version: result.version }
+            : { kind: 'bytes', bytes: result.bytes, version: result.version }
+    } catch (error) {
+        if (error instanceof StoreNotBinaryError) {
+            return { kind: 'not-binary' }
+        }
+        throw error
+    }
+}
+
 export type SwapOutcome = 'won' | 'lost'
 
 export interface HeadSwap {
-    /** Reads the head. Rejects when it cannot be read; an absent head is `bytes: null`. */
+    /** Reads the head. Rejects when it cannot be read; an absent head is `kind: 'absent'` and one that is not binary data is `kind: 'not-binary'`. */
     read(): Promise<HeadRead>
     /**
      * Replaces the head with `next` only while it is still exactly `expected`.
@@ -92,12 +133,9 @@ export interface HeadSwap {
 /** Node: the head's revision is the condition. An absent head presents the revision `read` reported for it. */
 export function createNodeHeadSwap(store: ByteStore): HeadSwap {
     return {
-        read: async () => {
-            const result = await store.read(HEAD_KEY)
-            return { bytes: result.bytes, version: result.version }
-        },
+        read: () => readHeadOf(store),
         swap: async (expected, next) => {
-            if (expected.version === null) {
+            if (expected.kind === 'not-binary' || expected.version === null) {
                 throw new TypeError('A Node head swap needs the revision the head read reported.')
             }
             try {
@@ -123,10 +161,7 @@ const mutexChains = new WeakMap<object, Promise<void>>()
  */
 export function createMutexHeadSwap(store: ByteStore): HeadSwap {
     return {
-        read: async () => {
-            const result = await store.read(HEAD_KEY)
-            return { bytes: result.bytes, version: result.version }
-        },
+        read: () => readHeadOf(store),
         swap: async (expected, next) => {
             const previous = mutexChains.get(store) ?? Promise.resolve()
             let release!: () => void
@@ -134,8 +169,7 @@ export function createMutexHeadSwap(store: ByteStore): HeadSwap {
             mutexChains.set(store, previous.then(() => mine))
             await previous
             try {
-                const current = await store.read(HEAD_KEY)
-                if (!sameHeadBytes(current.bytes, expected.bytes)) {
+                if (!sameHeadRead(await readHeadOf(store), expected)) {
                     return 'lost'
                 }
                 await store.write(HEAD_KEY, next, 'unconditional')

@@ -80,6 +80,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 import { RisuSaveEncoder, decodeRisuSave } from '../risuSave'
 import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
+import { cacheEntriesOf } from './risuSaveCacheFixture'
 
 beforeEach(() => {
     cacheStore.clear()
@@ -312,7 +313,14 @@ async function buildFixture(options: FixtureOptions = {}): Promise<Fixture> {
     remoteFlag.enabled = false
     const encoded = encoder.encode()
     expect(encoded).not.toBeNull()
-    return { file: new Uint8Array(encoded!), firstId, secondId }
+    const file = new Uint8Array(encoded!)
+    // The encoder writes no block cache entry; the profile of an earlier build holds one per block.
+    if (!options.compression) {
+        for (const [key, entry] of cacheEntriesOf(file)) {
+            cacheStore.set(key, entry)
+        }
+    }
+    return { file, firstId, secondId }
 }
 
 /** The four ways a file can be short of what it promises; each yields bytes and the id of the affected character. */

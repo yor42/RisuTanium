@@ -28,7 +28,7 @@ import {
     stubsKey,
     type GenerationIdSource,
 } from './blockKeys'
-import { encodeHead, parseHead, sameHeadBytes, type HeadRead, type HeadSwap } from './headSwap'
+import { encodeHead, parseHead, sameHeadBytes, sameHeadRead, type HeadParse, type HeadRead, type HeadRecord, type HeadSwap } from './headSwap'
 import { NODE_BODY_LIMIT_BYTES } from './nodeBodyLimit'
 import type { ByteStore, StoreCondition } from './store/contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, StoreNotBinaryError, StoreVersionConflictError } from './store/errors'
@@ -137,6 +137,50 @@ export interface LockManagerLike {
 
 export const DEFAULT_COMMIT_LOCK_TIMEOUT_MS = 30_000
 
+const processLockChains = new WeakMap<object, Promise<void>>()
+
+/**
+ * The commit lock of a page that has no Web Locks to rely on but is the only
+ * writer of its store: an in-process queue, one per store object, so two
+ * acquisitions on one store run one after the other in the order they asked.
+ * It is `available`, which lets the post-commit deletes and the pack trim run.
+ * It is never correct where several pages share a store: it excludes nothing
+ * outside this page, which is what the desktop app's single-instance rule
+ * stands in for, as it does for the mutex head swap.
+ *
+ * A request that waits longer than `timeoutMs` rejects with
+ * `CommitLockTimeoutError` (a live holder exists) and takes nothing from the
+ * queue.
+ */
+export function createProcessCommitLock(store: object, options: { timeoutMs?: number } = {}): CommitLock {
+    const timeoutMs = options.timeoutMs ?? DEFAULT_COMMIT_LOCK_TIMEOUT_MS
+    return {
+        available: true,
+        async run<T>(work: () => Promise<T>): Promise<T> {
+            const previous = processLockChains.get(store) ?? Promise.resolve()
+            let release!: () => void
+            const mine = new Promise<void>((resolve) => { release = resolve })
+            processLockChains.set(store, previous.then(() => mine))
+            let timer: ReturnType<typeof setTimeout> | undefined
+            const granted = await Promise.race([
+                previous.then(() => true),
+                new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs) }),
+            ])
+            clearTimeout(timer)
+            if (!granted) {
+                // The queue behind this request still waits for the holder; this slot passes straight through.
+                release()
+                throw new CommitLockTimeoutError(true)
+            }
+            try {
+                return await work()
+            } finally {
+                release()
+            }
+        },
+    }
+}
+
 /**
  * The exclusive cross-tab commit lock over Web Locks. A request that is not
  * granted within `timeoutMs` rejects with `CommitLockTimeoutError`. Without a
@@ -186,7 +230,10 @@ export function createWebCommitLock(
 // Results
 // ---------------------------------------------------------------------------
 
-export type DamageKind = 'absent' | 'empty' | 'framing' | 'crc' | 'wrong-name' | 'trailing-bytes' | 'bad-root' | 'bad-head'
+export type DamageKind =
+    | 'absent' | 'empty' | 'framing' | 'crc' | 'wrong-name' | 'trailing-bytes' | 'bad-root' | 'bad-head'
+    /** A block whose frame and checksum are valid but whose content does not decode. Only a validation hook reports it. */
+    | 'unreadable-content'
 
 export interface DamagedItem {
     /** What kind of value is damaged. */
@@ -203,6 +250,8 @@ export interface LoadedBlocks {
     seq: number
     /** The conversion fingerprint the head carries, if any. */
     convertedFrom: string | null
+    /** The conversion time (milliseconds since the epoch) the head carries, if any. */
+    convertedAt: number | null
     /** The root's directory: block names in order, `root` excluded. */
     directory: readonly string[]
     /** The directory names whose block lived in the stubs pack. */
@@ -215,19 +264,44 @@ export interface LoadedBlocks {
     blocks: ReadonlyMap<string, Uint8Array>
 }
 
+export interface DamagedResult {
+    kind: 'damaged'
+    /** The generation the head named, or `null` when the head itself is damaged. */
+    generation: string | null
+    damage: readonly DamagedItem[]
+    /** The root's fields where the root was readable, for the wording of the prompt. */
+    rootFields: JsonObject | null
+    /** The directory names where the root was readable. */
+    directory: readonly string[] | null
+}
+
 export type LoadResult =
     | { kind: 'no-head' }
     | { kind: 'loaded', loaded: LoadedBlocks }
-    | {
-        kind: 'damaged'
-        /** The generation the head named, or `null` when the head itself is damaged. */
-        generation: string | null
-        damage: readonly DamagedItem[]
-        /** The root's fields where the root was readable, for the wording of the prompt. */
-        rootFields: JsonObject | null
-        /** The directory names where the root was readable. */
-        directory: readonly string[] | null
-    }
+    | DamagedResult
+
+/**
+ * What a validation hook returns: the decoded tree, or the damage it found. A
+ * list is damage and must not be empty; anything else is the tree.
+ */
+export type ValidationVerdict<T> = T | readonly DamagedItem[]
+
+export interface ValidateOptions<T> {
+    /**
+     * Runs once on a load that found nothing wrong with the blocks' frames,
+     * checksums and bookkeeping, before the result is reported (and, for
+     * `load()`, before anything is installed). It decodes the loaded blocks
+     * the way the application will and returns either the decoded tree or the
+     * damage it found, so a caller that needs the tree does not decode twice.
+     */
+    validate: (loaded: LoadedBlocks) => Promise<ValidationVerdict<T>>
+}
+
+/** A load that ran a validation hook: a clean result carries what the hook decoded. */
+export type ValidatedLoadResult<T> =
+    | { kind: 'no-head' }
+    | { kind: 'loaded', loaded: LoadedBlocks, tree: T }
+    | DamagedResult
 
 export type StopReason =
     /** Another writer committed since this one's last acknowledged root. */
@@ -257,12 +331,37 @@ export interface CommitOptions {
 }
 
 export interface ReplaceOptions {
-    /** The replace is a conversion or a seed: it only proceeds while there is no head. A conversion also records its fingerprint. */
+    /** The replace is a conversion or a seed: it only proceeds while there is no head (a head that is not binary data is a head). A conversion also records its fingerprint. */
     requireAbsentHead?: boolean
-    /** Set for a conversion: written once into the new head. */
+    /**
+     * Set for a conversion: written into the new head with `convertedAt`.
+     * Without it the new head carries the `convertedFrom` and `convertedAt` of
+     * the head this replace read, when that head has them.
+     */
     convertedFrom?: string
+    /** The conversion time, milliseconds since the epoch. A conversion that passes none is stamped with the owner's clock. */
+    convertedAt?: number
     /** The damaged generation a replace chosen at the damage prompt keeps: a `kept` marker is written into it first. */
     keepDamaged?: string
+    /**
+     * Only for a head that cannot be read (bytes that are not a head, or an
+     * entry that is not binary data): before anything of the new generation is
+     * written, every generation that has a root is marked kept, and the flip
+     * is against exactly the unreadable value read. The new head carries
+     * neither a fingerprint nor a conversion time unless the caller passes
+     * them. Against a readable or absent head the replace loses and writes
+     * nothing. A replace that ends without winning (other than `unconfirmed`)
+     * deletes the markers it wrote on the generation the head then names.
+     */
+    keepAll?: true
+    /**
+     * Runs synchronously immediately before the flip, once the new generation
+     * is written and its root reads back. Return `false` to refuse: the flip
+     * does not happen, the new generation is deleted and the result is
+     * `aborted`. The owner's live state is untouched either way until a flip
+     * wins.
+     */
+    preFlip?: () => boolean
 }
 
 export type PreviousGeneration =
@@ -283,6 +382,8 @@ export type ReplaceResult =
         generation: string | null
         ownGenerationDeleted: boolean
     }
+    /** The `preFlip` check refused. The head did not move; `ownGenerationDeleted` is whether the new generation was removed. */
+    | { kind: 'aborted', ownGenerationDeleted: boolean }
     /** The outcome could not be established. Nothing was deleted and the owner is closed: the page must reload. */
     | { kind: 'unconfirmed', reason: 'unchanged' | 'unreadable', generation: string }
     /** A value is over the Node server's body limit; nothing was written. */
@@ -301,6 +402,7 @@ export interface CommittedStateView {
     generation: string
     seq: number
     convertedFrom: string | null
+    convertedAt: number | null
     directory: readonly string[]
     packed: readonly string[]
     /** The acknowledged bytes of `key`, or `null` when none are acknowledged. */
@@ -312,7 +414,10 @@ export interface CommittedStateView {
 export interface GenerationInfo {
     id: string
     hasRoot: boolean
+    /** Carries a `kept` marker and is not the live generation: the live one is only ever reported as `current`. */
     kept: boolean
+    /** The generation the head names. */
+    current: boolean
     keyCount: number
 }
 
@@ -320,6 +425,7 @@ export interface GenerationInventory {
     generations: readonly GenerationInfo[]
     /** Neither the live generation nor kept: an interrupted build or deletion, or a losing replace. */
     leftover: readonly string[]
+    /** Kept and not live. Never contains the live generation, whatever markers it carries. */
     kept: readonly string[]
 }
 
@@ -336,6 +442,7 @@ interface KeyAck {
 interface LiveState {
     generation: string
     convertedFrom: string | null
+    convertedAt: number | null
     seq: number
     rootBytes: Uint8Array
     rootVersion: number | null
@@ -465,8 +572,11 @@ export function assembleLegacyFile(loaded: LoadedBlocks): Uint8Array {
 
 /**
  * Lists the generations in the store without reading or writing any value.
- * `current` is the live generation (or `null`); every generation that is
- * neither live nor kept is leftover.
+ * `current` is the live generation (or `null`). The live generation is
+ * reported only as current, whatever markers it carries: `kept` never contains
+ * it. A marker that stays on it keeps the generation after a later replace
+ * supersedes it, until clean-up deletes it. Every other generation that is not kept is
+ * leftover.
  */
 export async function inspectGenerations(store: ByteStore, current: string | null): Promise<GenerationInventory> {
     const keys = await store.list(BLOCKS_PREFIX)
@@ -476,12 +586,12 @@ export async function inspectGenerations(store: ByteStore, current: string | nul
         if (id === null) {
             continue
         }
-        const info = byId.get(id) ?? { id, hasRoot: false, kept: false, keyCount: 0 }
+        const info = byId.get(id) ?? { id, hasRoot: false, kept: false, current: id === current, keyCount: 0 }
         info.keyCount++
         if (key === rootKey(id)) {
             info.hasRoot = true
         }
-        if (key === keptKey(id)) {
+        if (key === keptKey(id) && id !== current) {
             info.kept = true
         }
         byId.set(id, info)
@@ -489,17 +599,21 @@ export async function inspectGenerations(store: ByteStore, current: string | nul
     const generations = Array.from(byId.values()).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     return {
         generations,
-        leftover: generations.filter((info) => info.id !== current && !info.kept).map((info) => info.id),
+        leftover: generations.filter((info) => !info.current && !info.kept).map((info) => info.id),
         kept: generations.filter((info) => info.kept).map((info) => info.id),
     }
 }
 
 /**
  * Deletes every key of `generation`, its root first so a half-deleted
- * generation never looks whole, unless it carries a `kept` marker. Returns what
+ * generation never looks whole, unless it carries a `kept` marker or is
+ * `live`, the generation the head names, which is never touched. Returns what
  * became of it.
  */
-export async function retireGeneration(store: ByteStore, generation: string): Promise<'deleted' | 'kept' | 'failed'> {
+export async function retireGeneration(store: ByteStore, generation: string, live: string | null = null): Promise<'deleted' | 'kept' | 'failed'> {
+    if (generation === live) {
+        return 'kept'
+    }
     try {
         const keys = await store.list(generationPrefix(generation))
         if (keys.includes(keptKey(generation))) {
@@ -569,6 +683,7 @@ export class BlockStoreOwner {
             generation: live.generation,
             seq: live.seq,
             convertedFrom: live.convertedFrom,
+            convertedAt: live.convertedAt,
             directory: live.directory.slice(),
             packed: live.packed.slice(),
             bytesOf: (key) => live.keys.get(key)?.bytes ?? null,
@@ -614,10 +729,7 @@ export class BlockStoreOwner {
             try {
                 return await this.headSwap.read()
             } catch (error) {
-                if (error instanceof StoreNotBinaryError) {
-                    throw error
-                }
-                if (attempt >=this.readRetryDelays.length) {
+                if (attempt >= this.readRetryDelays.length) {
                     throw new BlockStoreReadError(HEAD_KEY, error)
                 }
                 await this.sleep(this.readRetryDelays[attempt])
@@ -641,17 +753,38 @@ export class BlockStoreOwner {
      * reported the head and root are read again, and a generation or root that
      * changed since starts the load over (at most three loads in all), so a
      * boot racing a writer does not report damage.
+     *
+     * With `validate`, a load that found the blocks sound runs the hook before
+     * anything is installed. Damage from the hook is reported as `damaged` and
+     * nothing is installed, so the owner stays unloaded and a later `load()` is
+     * legal; the decoded tree comes back in the `loaded` result otherwise. The
+     * owner is checked again after the hook: a replace of this owner that
+     * landed while the hook ran makes the load throw `BlockOwnerStateError`
+     * instead of installing over it.
      */
-    async load(): Promise<LoadResult> {
+    async load(): Promise<LoadResult>
+    async load<T>(options: ValidateOptions<T>): Promise<ValidatedLoadResult<T>>
+    async load<T>(options?: ValidateOptions<T>): Promise<LoadResult | ValidatedLoadResult<T>> {
         this.requireUnloaded()
         const current = await this.readStable()
         // A replace on this owner that finished while the read ran has made the owner live already.
         this.requireUnloaded()
-        if (current.result.kind === 'loaded' && current.live !== null) {
+        if (current.result.kind !== 'loaded' || current.live === null) {
+            return current.result
+        }
+        if (options === undefined) {
             this.live = current.live
             this.state = 'live'
+            return current.result
         }
-        return current.result
+        const verdict = await this.validateLoaded(current.result.loaded, options)
+        this.requireUnloaded()
+        if (verdict.kind === 'damaged') {
+            return verdict
+        }
+        this.live = current.live
+        this.state = 'live'
+        return { kind: 'loaded', loaded: current.result.loaded, tree: verdict.tree }
     }
 
     /**
@@ -659,9 +792,30 @@ export class BlockStoreOwner {
      * in any state: it reports what the store holds now, for a reader (the
      * clean-up's keep set) that compares it with `committedState()`. It does
      * not touch the owner's acknowledged record, sequence number or stop.
+     * With `validate` it classifies damage exactly as `load()` does.
      */
-    async readCommitted(): Promise<LoadResult> {
-        return (await this.readStable()).result
+    async readCommitted(): Promise<LoadResult>
+    async readCommitted<T>(options: ValidateOptions<T>): Promise<ValidatedLoadResult<T>>
+    async readCommitted<T>(options?: ValidateOptions<T>): Promise<LoadResult | ValidatedLoadResult<T>> {
+        const current = await this.readStable()
+        if (options === undefined || current.result.kind !== 'loaded') {
+            return current.result
+        }
+        const verdict = await this.validateLoaded(current.result.loaded, options)
+        return verdict.kind === 'damaged' ? verdict : { kind: 'loaded', loaded: current.result.loaded, tree: verdict.tree }
+    }
+
+    /** Runs the hook and sorts its answer into the tree or a damage result. */
+    private async validateLoaded<T>(loaded: LoadedBlocks, options: ValidateOptions<T>): Promise<DamagedResult | { kind: 'tree', tree: T }> {
+        const verdict = await options.validate(loaded)
+        if (Array.isArray(verdict)) {
+            const damage = verdict as readonly DamagedItem[]
+            if (damage.length === 0) {
+                throw new TypeError('A validation hook that reports damage must name at least one damaged item.')
+            }
+            return { kind: 'damaged', generation: loaded.generation, damage, rootFields: loaded.rootFields, directory: loaded.directory }
+        }
+        return { kind: 'tree', tree: verdict as T }
     }
 
     private requireUnloaded(): void {
@@ -690,17 +844,7 @@ export class BlockStoreOwner {
 
     /** Whether the head or the root differs from what the attempt saw. A read that keeps failing throws `BlockStoreReadError`: it is never taken for a change or for no change. */
     private async changedSince(attempt: LoadAttempt): Promise<boolean> {
-        let headBytes: Uint8Array | null = null
-        let headNotBinary = false
-        try {
-            headBytes = (await this.readHeadWithRetry()).bytes
-        } catch (error) {
-            if (!(error instanceof StoreNotBinaryError)) {
-                throw error
-            }
-            headNotBinary = true
-        }
-        if (headNotBinary !== (attempt.headNotBinary === true) || (!headNotBinary && !sameHeadBytes(headBytes, attempt.headBytes))) {
+        if (!sameHeadRead(await this.readHeadWithRetry(), attempt.head)) {
             return true
         }
         if (attempt.generation === null) {
@@ -718,13 +862,11 @@ export class BlockStoreOwner {
     }
 
     private async loadOnce(): Promise<LoadAttempt> {
-        let head: HeadRead
-        try {
-            head = await this.readHeadWithRetry()
-        } catch (error) {
-            if (!(error instanceof StoreNotBinaryError)) {
-                throw error
-            }
+        const head = await this.readHeadWithRetry()
+        if (head.kind === 'absent') {
+            return { result: { kind: 'no-head' }, live: null, head, generation: null, rootBytes: null }
+        }
+        if (head.kind === 'not-binary') {
             return {
                 result: {
                     kind: 'damaged',
@@ -734,14 +876,10 @@ export class BlockStoreOwner {
                     directory: null,
                 },
                 live: null,
-                headBytes: null,
-                headNotBinary: true,
+                head,
                 generation: null,
                 rootBytes: null,
             }
-        }
-        if (head.bytes === null) {
-            return { result: { kind: 'no-head' }, live: null, headBytes: null, generation: null, rootBytes: null }
         }
         const parsed = parseHead(head.bytes)
         if (parsed.status !== 'ok') {
@@ -754,7 +892,7 @@ export class BlockStoreOwner {
                     directory: null,
                 },
                 live: null,
-                headBytes: head.bytes,
+                head,
                 generation: null,
                 rootBytes: null,
             }
@@ -765,7 +903,7 @@ export class BlockStoreOwner {
             return {
                 result: { kind: 'damaged', generation, damage: [root.damage], rootFields: null, directory: null },
                 live: null,
-                headBytes: head.bytes,
+                head,
                 generation,
                 rootBytes: root.bytes,
             }
@@ -855,7 +993,7 @@ export class BlockStoreOwner {
             return {
                 result: { kind: 'damaged', generation, damage, rootFields: root.fields, directory: root.directory },
                 live: null,
-                headBytes: head.bytes,
+                head,
                 generation,
                 rootBytes: root.bytes,
             }
@@ -864,6 +1002,7 @@ export class BlockStoreOwner {
         const live: LiveState = {
             generation,
             convertedFrom: parsed.record.convertedFrom ?? null,
+            convertedAt: parsed.record.convertedAt ?? null,
             seq: root.seq,
             rootBytes: root.bytes,
             rootVersion: root.version,
@@ -880,13 +1019,14 @@ export class BlockStoreOwner {
             generation,
             seq: root.seq,
             convertedFrom: live.convertedFrom,
+            convertedAt: live.convertedAt,
             directory: root.directory,
             packed: root.packed,
             root: root.bytes,
             rootFields: root.fields,
             blocks,
         }
-        return { result: { kind: 'loaded', loaded }, live, headBytes: head.bytes, generation, rootBytes: root.bytes }
+        return { result: { kind: 'loaded', loaded }, live, head, generation, rootBytes: root.bytes }
     }
 
     private async readRoot(generation: string): Promise<
@@ -1202,17 +1342,12 @@ export class BlockStoreOwner {
         try {
             head = await this.readHeadWithRetry()
         } catch (error) {
-            if (error instanceof StoreNotBinaryError) {
-                // A head that is not bytes names no generation.
-                live.headCheckPending = false
-                live.stopped = 'head-moved'
-                return true
-            }
             live.headCheckPending = true
             throw error
         }
         live.headCheckPending = false
-        const parsed = head.bytes === null ? null : parseHead(head.bytes)
+        // An absent head, a head that is not bytes and one that is not a pointer name no generation.
+        const parsed = head.kind === 'bytes' ? parseHead(head.bytes) : null
         if (parsed !== null && parsed.status === 'ok' && parsed.record.current === live.generation) {
             return false
         }
@@ -1308,6 +1443,17 @@ export class BlockStoreOwner {
      *   generation, so it never retires another one.
      * - `unconfirmed`: the swap's outcome could not be established. Nothing is
      *   deleted and the owner is closed; the page reloads.
+     * - `aborted`: the `preFlip` check refused. The head did not move.
+     *
+     * With `keepAll` (an unreadable head) every generation that has a root is
+     * marked kept before anything new is written; a replace of that kind that
+     * ends without winning removes the markers it wrote on the generation the
+     * head then names, whether it was lost, aborted or found its root damaged.
+     * An `unconfirmed` one leaves them.
+     *
+     * Every head written here carries the `convertedFrom` and `convertedAt` of
+     * the head that was read, unless the caller passes new ones; a commit never
+     * writes the head.
      *
      * The caller holds whatever excludes other writers of its kind (the
      * exclusive storage hold for a restore); this takes no lock.
@@ -1318,11 +1464,12 @@ export class BlockStoreOwner {
         }
         const set = describeBlockSet(input)
 
-        // 1. What the head is now.
+        // 1. What the head is now. A head that is not binary data is a present head that names no generation.
         const headRead = await this.readHeadWithRetry()
-        const previousParsed = headRead.bytes === null ? null : parseHead(headRead.bytes)
-        const previousGeneration = previousParsed !== null && previousParsed.status === 'ok' ? previousParsed.record.current : null
-        if (options.requireAbsentHead === true && headRead.bytes !== null) {
+        const previousParsed: HeadParse | null = headRead.kind === 'bytes' ? parseHead(headRead.bytes) : null
+        const previousRecord: HeadRecord | null = previousParsed !== null && previousParsed.status === 'ok' ? previousParsed.record : null
+        const previousGeneration = previousRecord === null ? null : previousRecord.current
+        if (options.requireAbsentHead === true && headRead.kind !== 'absent') {
             return { kind: 'lost', reason: 'head-exists', generation: null, ownGenerationDeleted: false }
         }
         // A replace that keeps a damaged generation only proceeds while the head still names it: step 6 retires
@@ -1330,6 +1477,14 @@ export class BlockStoreOwner {
         if (options.keepDamaged !== undefined && previousGeneration !== options.keepDamaged) {
             return { kind: 'lost', reason: 'head-moved', generation: null, ownGenerationDeleted: false }
         }
+        // A keep-all replace only proceeds while the head is still the unreadable value the caller saw.
+        if (options.keepAll === true && (headRead.kind === 'absent' || previousRecord !== null)) {
+            return { kind: 'lost', reason: 'head-moved', generation: null, ownGenerationDeleted: false }
+        }
+        // Every head this replace writes carries the conversion fields of the head it read, unless the caller names new ones.
+        const converted = options.convertedFrom !== undefined
+            ? { convertedFrom: options.convertedFrom, convertedAt: options.convertedAt ?? this.generationIds.now() }
+            : { convertedFrom: previousRecord?.convertedFrom, convertedAt: options.convertedAt ?? previousRecord?.convertedAt }
 
         // 2. Pre-flight: every value encoded and size-checked before anything is written.
         const generation = newGenerationId(this.generationIds)
@@ -1360,9 +1515,19 @@ export class BlockStoreOwner {
             }
         }
 
-        // 3. Write the new generation, root last. The damage prompt's replace first marks the damaged generation kept.
+        // 3. Write the new generation, root last. The damage prompt's replace first marks the damaged generation
+        // kept, or, over an unreadable head, every generation that has a root.
         if (options.keepDamaged !== undefined) {
             await this.writeKeptMarker(options.keepDamaged)
+        }
+        const markersWritten = new Set<string>()
+        if (options.keepAll === true) {
+            const inventory = await inspectGenerations(this.store, null)
+            for (const info of inventory.generations) {
+                if (info.hasRoot && await this.writeKeptMarker(info.id)) {
+                    markersWritten.add(info.id)
+                }
+            }
         }
         const acknowledged = new Map<string, KeyAck>()
         for (const value of values) {
@@ -1374,13 +1539,27 @@ export class BlockStoreOwner {
         // 4. The new root must read back as written.
         const readBack = await this.readWithRetry(rootKey(generation))
         if (readBack.bytes === null || !bytesEqual(readBack.bytes, root)) {
+            await this.removeMarkersAfterLoss(markersWritten)
             return { kind: 'lost', reason: 'generation-damaged', generation, ownGenerationDeleted: false }
         }
 
-        // 5. The flip.
-        const next = encodeHead(options.convertedFrom === undefined
-            ? { current: generation }
-            : { current: generation, convertedFrom: options.convertedFrom })
+        // 5. The flip, unless the caller's last check refuses it.
+        if (options.preFlip !== undefined) {
+            let proceed: boolean
+            try {
+                proceed = options.preFlip()
+            } catch (error) {
+                await retireGeneration(this.store, generation)
+                await this.removeMarkersAfterLoss(markersWritten)
+                throw error
+            }
+            if (!proceed) {
+                const deleted = (await retireGeneration(this.store, generation)) === 'deleted'
+                await this.removeMarkersAfterLoss(markersWritten)
+                return { kind: 'aborted', ownGenerationDeleted: deleted }
+            }
+        }
+        const next = encodeHead({ current: generation, ...converted })
         let outcome = await this.flipHead(headRead, next)
         if (outcome === 'unknown') {
             let reread: HeadRead | null = null
@@ -1393,13 +1572,14 @@ export class BlockStoreOwner {
                 this.state = 'closed'
                 return { kind: 'unconfirmed', reason: 'unreadable', generation }
             }
-            const parsed = reread.bytes === null ? null : parseHead(reread.bytes)
-            if (parsed !== null && parsed.status === 'ok' && parsed.record.current === generation) {
+            const rereadParsed = reread.kind === 'bytes' ? parseHead(reread.bytes) : null
+            if (rereadParsed !== null && rereadParsed.status === 'ok' && rereadParsed.record.current === generation) {
                 outcome = 'won'
-            } else if (sameHeadBytes(reread.bytes, headRead.bytes)) {
+            } else if (sameHeadRead(reread, headRead)) {
                 this.state = 'closed'
                 return { kind: 'unconfirmed', reason: 'unchanged', generation }
             } else {
+                await this.removeMarkersOnWinner(markersWritten, rereadParsed)
                 return { kind: 'lost', reason: 'head-moved', generation, ownGenerationDeleted: false }
             }
         }
@@ -1407,15 +1587,17 @@ export class BlockStoreOwner {
             let deletedOwn = false
             try {
                 const reread = await this.headSwap.read()
-                const parsed = reread.bytes === null ? null : parseHead(reread.bytes)
+                const parsed = reread.kind === 'bytes' ? parseHead(reread.bytes) : null
                 if (parsed !== null && parsed.status === 'ok' && parsed.record.current === generation) {
                     // The first copy of a replayed swap landed: the head names this replace's generation.
                     outcome = 'won'
                 } else if (parsed !== null && parsed.status === 'ok' && parsed.record.current !== previousGeneration) {
-                    deletedOwn = (await retireGeneration(this.store, generation)) === 'deleted'
+                    deletedOwn = (await retireGeneration(this.store, generation, parsed.record.current)) === 'deleted'
+                    await this.removeMarkersOnWinner(markersWritten, parsed)
                 }
             } catch {
                 deletedOwn = false
+                await this.removeMarkersAfterLoss(markersWritten)
             }
             if (outcome === 'lost') {
                 return { kind: 'lost', reason: 'head-mismatch', generation, ownGenerationDeleted: deletedOwn }
@@ -1426,7 +1608,8 @@ export class BlockStoreOwner {
         const keys = acknowledged
         this.live = {
             generation,
-            convertedFrom: options.convertedFrom ?? null,
+            convertedFrom: converted.convertedFrom ?? null,
+            convertedAt: converted.convertedAt ?? null,
             seq: 0,
             rootBytes: root,
             rootVersion: rootResult.version,
@@ -1444,7 +1627,7 @@ export class BlockStoreOwner {
         // 6. The previous generation goes, root first, unless it is kept. No head write follows.
         let previous: PreviousGeneration = { state: 'none' }
         if (previousGeneration !== null && previousGeneration !== generation) {
-            const retired = await retireGeneration(this.store, previousGeneration)
+            const retired = await retireGeneration(this.store, previousGeneration, generation)
             previous = { state: retired, generation: previousGeneration }
         }
         return { kind: 'won', generation, previous }
@@ -1462,14 +1645,47 @@ export class BlockStoreOwner {
         }
     }
 
-    private async writeKeptMarker(generation: string): Promise<void> {
+    /** Writes the `kept` marker of `generation` unless one exists. Whether this call wrote it. */
+    private async writeKeptMarker(generation: string): Promise<boolean> {
         const key = keptKey(generation)
         const current = await this.readWithRetry(key)
         if (current.bytes !== null && current.bytes.length > 0) {
-            return
+            return false
         }
         const marker = new TextEncoder().encode(JSON.stringify({ kept: true, at: this.generationIds.now() }))
         await this.put(key, marker, this.versioned ? this.conditionFor(current.version) : 'unconditional')
+        return true
+    }
+
+    /**
+     * A replace that did not win removes the markers it wrote itself from the
+     * generation the head now names, so a rival that won is not left marked
+     * kept by it. Best effort. While that generation is live it is reported
+     * only as current, marker or not; a marker that stays on it would keep the
+     * generation once a later replace supersedes it, until clean-up deletes it.
+     */
+    private async removeMarkersOnWinner(written: ReadonlySet<string>, head: HeadParse | null): Promise<void> {
+        if (head === null || head.status !== 'ok' || !written.has(head.record.current)) {
+            return
+        }
+        try {
+            await this.store.delete(keptKey(head.record.current), 'unconditional')
+        } catch {
+            // The marker stays; see above for what that costs.
+        }
+    }
+
+    /** `removeMarkersOnWinner` for an exit that has not re-read the head: reads it once, best effort. */
+    private async removeMarkersAfterLoss(written: ReadonlySet<string>): Promise<void> {
+        if (written.size === 0) {
+            return
+        }
+        try {
+            const head = await this.headSwap.read()
+            await this.removeMarkersOnWinner(written, head.kind === 'bytes' ? parseHead(head.bytes) : null)
+        } catch {
+            // The head cannot be read now; the markers stay.
+        }
     }
 
     // -- seeding -------------------------------------------------------------------
@@ -1481,16 +1697,8 @@ export class BlockStoreOwner {
      */
     async findSeedBlockers(): Promise<SeedBlocker[]> {
         const found: SeedBlocker[] = []
-        let headPresent: boolean
-        try {
-            headPresent = (await this.readHeadWithRetry()).bytes !== null
-        } catch (error) {
-            if (!(error instanceof StoreNotBinaryError)) {
-                throw error
-            }
-            headPresent = true
-        }
-        if (headPresent) {
+        // A head that is not binary data is present: it is not an empty profile.
+        if ((await this.readHeadWithRetry()).kind !== 'absent') {
             found.push({ kind: 'head', keys: [HEAD_KEY] })
         }
         if (await this.store.has(LEGACY_MAIN_FILE_KEY)) {
@@ -1530,9 +1738,8 @@ export class BlockStoreOwner {
 interface LoadAttempt {
     result: LoadResult
     live: LiveState | null
-    headBytes: Uint8Array | null
-    /** The head's entry holds something that is not binary data. */
-    headNotBinary?: true
+    /** The head as this attempt read it. */
+    head: HeadRead
     generation: string | null
     rootBytes: Uint8Array | null
 }

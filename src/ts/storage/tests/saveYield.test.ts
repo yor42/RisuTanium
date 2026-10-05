@@ -2,10 +2,8 @@ import { describe, test, expect, vi, afterEach } from 'vitest'
 
 import { createYieldBudget, yieldToEventLoop } from '../saveYield'
 
-// CHORE-17: `RisuSaveEncoder` holds one
-// budget per instance, calls `noteYielded()` after each resolved cache
-// `setItem`, and awaits `maybeYield()` after each skipped cache write. These
-// tests exercise `createYieldBudget` on its own, with a fake clock and a spy
+// `RisuSaveEncoder` holds one budget per instance and awaits `maybeYield()`
+// after every block it encodes. These tests exercise `createYieldBudget` on its own, with a fake clock and a spy
 // yield function, independent of `RisuSaveEncoder`.
 describe('createYieldBudget', () => {
     function makeClock(start = 0) {

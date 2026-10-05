@@ -150,6 +150,7 @@ describe('an OPFS-main profile at startup', () => {
 
         const store = await app.getAppStore()
         expect(await app.pageStoreIsIndexedDb()).toBe(false)
+        expect(await app.getAppStoreKind()).toBe('opfs-transitional')
         expect(app.takeStorageFallbackNotice()).toEqual({ reason: 'tab' })
         expect(app.takeStorageFallbackNotice()).toBeNull()
         const idbRead = vi.spyOn(IDBObjectStore.prototype, 'get')

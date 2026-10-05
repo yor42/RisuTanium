@@ -41,6 +41,7 @@ import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
 import { createNodeHttpStore } from '../../storage/store/nodeHttpStore'
 import { FakeNodeServer } from '../../storage/tests/manualCleanupHarness'
 import { breakDataChecksum, directoryOf, removeBlockAndDirectoryEntry, replacePayload, retypeBlock } from '../../storage/tests/risuSaveBlockFile'
+import { cacheEntriesOf } from '../../storage/tests/risuSaveCacheFixture'
 
 //#region shared observation state (hoisted so every mock factory and test sees the same objects)
 
@@ -1789,6 +1790,16 @@ function blockCache(): Map<string, unknown> {
     return forageBox.stores.get('risuSaveCache') ?? new Map<string, unknown>()
 }
 
+/** Gives the block cache the entries of a profile written by an earlier encoder, one per block of `file`: the encoder in this repository caches nothing. */
+function plantBlockCacheOf(file: Uint8Array): Map<string, unknown> {
+    const cache = forageBox.stores.get('risuSaveCache') ?? new Map<string, unknown>()
+    forageBox.stores.set('risuSaveCache', cache)
+    for (const [key, entry] of cacheEntriesOf(file)) {
+        cache.set(key, entry)
+    }
+    return cache
+}
+
 function blockCacheContents(): Array<[string, unknown]> {
     return Array.from(blockCache().entries()).map(([key, value]): [string, unknown] => [key, structuredClone(value)])
 }
@@ -2057,7 +2068,7 @@ describe('loadInternalBackup takes nothing from the block cache for a partial lo
             name: built.ids[0],
             data: JSON.stringify({ ...built.characters[0], name: 'Newer copy from the block cache' }),
         }
-        forageBox.stores.get('risuSaveCache')?.set(`risuSaveBlock_${built.ids[0]}`, newer)
+        plantBlockCacheOf(built.bytes).set(`risuSaveBlock_${built.ids[0]}`, newer)
         const cacheBefore = blockCacheContents()
 
         const outcome = await runLoad(world)
@@ -2071,7 +2082,7 @@ describe('loadInternalBackup takes nothing from the block cache for a partial lo
 
     test('writes no block cache entry and changes none after a partial load', async () => {
         const { world, built } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, snapshot.ids[0]) })
-        const cache = forageBox.stores.get('risuSaveCache')!
+        const cache = plantBlockCacheOf(built.bytes)
         cache.set(`risuSaveBlock_${built.ids[1]}`, { type: 2, name: built.ids[1], data: 'STALE' })
         cache.set('risuSaveBlock_modules', { type: 5, name: 'modules', data: 'STALE' })
         const cacheBefore = blockCacheContents()
@@ -2087,7 +2098,7 @@ describe('loadInternalBackup takes nothing from the block cache for a partial lo
 
     test('writes no block cache entry and changes none when the load stops after the encode', async () => {
         const { world, built, key } = await worldWithDamagedSnapshot({ damage: ({ built: snapshot }) => breakDataChecksum(snapshot.bytes, snapshot.ids[0]) })
-        const cache = forageBox.stores.get('risuSaveCache')!
+        const cache = plantBlockCacheOf(built.bytes)
         cache.set(`risuSaveBlock_${built.ids[1]}`, { type: 2, name: built.ids[1], data: 'STALE' })
         const cacheBefore = blockCacheContents()
         // The copy is written after the encode; work starting while it is written ends the load there.

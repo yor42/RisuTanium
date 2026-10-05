@@ -1,14 +1,13 @@
 /**
- * CHORE-17: `RisuSaveEncoder.encodeRawBlock` skips its cache write when a
- * block's bytes are unchanged. A resolved `risuSaveCacheForage.setItem` is a
- * macrotask boundary; a skipped write is not. Without something taking its
- * place, a `set()` call whose characters are all unchanged would run as a
- * single long task instead of yielding once per block. `createYieldBudget`
- * gives each `RisuSaveEncoder` instance a small, independently-testable
- * budget: yield to the event loop only after roughly `budgetMs` has elapsed
- * since the last yield (or the last real `setItem`, via `noteYielded`), so a
- * run of skips still yields periodically without paying a yield's cost on
- * every single skip.
+ * `RisuSaveEncoder.encodeRawBlock` awaits `maybeYield()` after every block it
+ * encodes. Encoding a block crosses no macrotask boundary by itself, so
+ * without a yield a `set()` or `init()` over many blocks would run as a single
+ * long task. `createYieldBudget` gives each `RisuSaveEncoder` instance a
+ * small, independently-testable budget: `maybeYield` yields to the event loop
+ * only after roughly `budgetMs` has elapsed since the last yield, so a run of
+ * blocks yields periodically without paying a yield's cost on every block.
+ * `noteYielded` resets the clock for a caller that has just crossed a
+ * macrotask boundary itself.
  */
 
 export type YieldBudgetOptions = {
