@@ -18,6 +18,7 @@ use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 
+mod durable_write;
 mod env_secret;
 mod launch_inputs;
 use launch_inputs::LaunchInputs;
@@ -60,6 +61,26 @@ fn queue_launch_inputs(app: &AppHandle, inputs: LaunchInputs) {
 #[tauri::command]
 fn read_env_secret(name: String) -> Result<String, String> {
     env_secret::resolve_env_secret(&name, |key| std::env::var_os(key))
+}
+
+/// Writes one file under the app data directory durably: the key travels in the
+/// `x-risu-key` header (percent-encoded). The bytes are the raw request body on
+/// the custom-protocol IPC; a JSON array of byte values is also accepted, which is
+/// what the postMessage fallback and Android send. Any other body is rejected before
+/// the disk is touched. The file work runs on a blocking worker thread.
+#[tauri::command]
+async fn write_durable(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let raw_key = request
+        .headers()
+        .get(durable_write::KEY_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "missing key header".to_string())?;
+    let key = durable_write::decode_key_header(raw_key)?;
+    let bytes = durable_write::decode_body(request.body())?;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || durable_write::write_key_durable(&base, &key, &bytes))
+        .await
+        .map_err(|e| format!("the write task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -780,6 +801,7 @@ fn main() {
             greet,
             take_launch_inputs,
             read_env_secret,
+            write_durable,
             native_request,
             check_auth,
             check_requirements_local,

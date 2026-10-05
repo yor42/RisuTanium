@@ -113,13 +113,23 @@ export async function writeFileAtomic(path: string, bytes: Uint8Array): Promise<
 /**
  * Removes the leftover temp files of interrupted `writeFileAtomic` calls from
  * `directory`. Only names matching `ATOMIC_TEMP_NAME_PATTERN` are removed. Call
- * it only where no `writeFileAtomic` into `directory` can be in flight. Never
+ * it only where no `writeFileAtomic` and no durable write (`tauriDurableWrite.ts`)
+ * into `directory` can be in flight. Never
  * rejects: a failure is logged and the files stay for the next boot.
+ *
+ * With `recursive`, every directory below `directory` is swept too; this is how
+ * the block store's nested directories are covered, and the temp files of the
+ * durable write (`tauriDurableWrite.ts`) match the same pattern. A symbolic link
+ * is never entered. A directory that cannot be listed is logged and skipped.
  */
-export async function sweepAtomicWriteTemps(directory: string): Promise<void> {
+export async function sweepAtomicWriteTemps(directory: string, options: { recursive?: boolean } = {}): Promise<void> {
     try {
         const entries = await readDir(directory, { baseDir: BaseDirectory.AppData })
         for (const entry of entries) {
+            if (options.recursive === true && entry.isDirectory) {
+                await sweepAtomicWriteTemps(joinPath(directory, entry.name), options)
+                continue
+            }
             if (!ATOMIC_TEMP_NAME_PATTERN.test(entry.name)) {
                 continue
             }

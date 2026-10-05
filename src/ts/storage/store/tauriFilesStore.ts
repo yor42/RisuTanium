@@ -2,6 +2,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { BaseDirectory, exists, mkdir, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
+import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
@@ -17,7 +18,9 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * leave AppData. With the `./` prefix no key parses as a URL.
  *
  * Writes go through `writeFileAtomic`, so a failed write keeps the old file.
- * The granted file system surface has no `stat` and no exclusive rename, so
+ * Block-store keys (`blocks/`), numbered backups and cold-storage units go
+ * through `writeFileDurable` instead, which also flushes the bytes to the file
+ * system before it resolves. The granted file system surface has no `stat` and no exclusive rename, so
  * this store cannot enforce `ifVersion` and reports `conditionalWrites: false`.
  *
  * It is the one store that offers `urlFor`: the web view loads a file from the
@@ -157,6 +160,11 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             checkCreatable(key)
             checkCondition(condition, false)
             checkBytes(bytes)
+            if (isDurableKey(key)) {
+                // The command creates the directories itself.
+                await writeFileDurable(key, bytes)
+                return { version: null }
+            }
             const directory = parentDirectory(key)
             if (directory !== '') {
                 await mkdir(pluginPath(directory), { ...APP_DATA, recursive: true })

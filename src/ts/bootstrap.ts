@@ -140,6 +140,11 @@ export async function loadData() {
                 if (await exists('coldstorage', { baseDir: BaseDirectory.AppData })) {
                     await sweepAtomicWriteTemps('coldstorage')
                 }
+                // Block-store keys are written durably into nested
+                // directories (`blocks/<gen>/c/`), so the sweep descends.
+                if (await exists('blocks', { baseDir: BaseDirectory.AppData })) {
+                    await sweepAtomicWriteTemps('blocks', { recursive: true })
+                }
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
                 }

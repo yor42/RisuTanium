@@ -2,8 +2,12 @@
  * `saveDb()` on Tauri replaces `database/database.bin` and writes its numbered
  * backups atomically: a write that fails part-way leaves the main file
  * byte-identical to what it was (and the save is retried, not recorded as
- * committed), a backup write that fails part-way leaves no partial backup, and
- * a save never removes a temp file that is not a numbered backup.
+ * committed), a backup write the durable command rejects leaves the committed
+ * main file complete and the earlier backup untouched, and a save never removes
+ * a temp file that is not a numbered backup. That a rejected durable write
+ * leaves no partial file is owned by the Rust tests in
+ * `src-tauri/src/durable_write.rs`; the test double here rejects without
+ * storing anything.
  *
  * This file drives the REAL, unmocked `saveDb()` loop and `RisuSaveEncoder`
  * against the in-memory Tauri file system in `storage/tests/tauriFsFake.ts`;
@@ -92,9 +96,9 @@ vi.mock(import('src/ts/util'), () => ({
     sleepForever: vi.fn(() => new Promise<void>(() => {})),
 }) as unknown as typeof import('src/ts/util'))
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('@tauri-apps/api/core', async () => ({
     convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
+    invoke: (await fakeFsPromise).invoke,
 }))
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -277,10 +281,11 @@ afterAll(() => {
 })
 
 describe('saveDb on Tauri: the numbered backup is written atomically', () => {
-    test('a backup write that fails part-way leaves no partial backup and the committed main file complete', async () => {
+    test('a backup write the durable command rejects leaves the committed main file complete and the earlier backup untouched', async () => {
         fakeFs.files.set('database/dbbackup-1.bin', new Uint8Array([1, 2, 3]))
-        // The first write of the cycle is the main file; the second is the backup.
-        const fault = fakeFs.failWritesOf(() => true, 1, 1)
+        // The main file goes through the plugin's atomic write; the backup goes
+        // through the durable command, which fails here.
+        const fault = fakeFs.failDurableWrites('There is not enough space on the disk. (os error 112)', undefined, 1)
 
         requestSave('second')
         await vi.waitFor(() => { expect(fault.fired).toBe(1) }, { timeout: 8000, interval: 10 })
@@ -294,8 +299,9 @@ describe('saveDb on Tauri: the numbered backup is written atomically', () => {
         expect(fakeFs.listing('database').filter((name) => ATOMIC_TEMP_NAME_PATTERN.test(name))).toEqual([])
     })
 
-    test('a successful save leaves the new main file and a complete backup, no temp file, and writes only to temp names', async () => {
+    test('a successful save leaves the new main file and a complete backup, no temp file; the main file is written only to temp names and the backup through the durable command', async () => {
         fakeFs.writeLog.length = 0
+        fakeFs.durableLog.length = 0
         const notedBefore = noted().length
 
         requestSave('third')
@@ -309,7 +315,8 @@ describe('saveDb on Tauri: the numbered backup is written atomically', () => {
         expect(newBackup).toMatch(/^dbbackup-\d+\.bin$/)
         expect(hex(fakeFs.files.get(`database/${newBackup}`))).toBe(hex(mainBytes))
         expect(fakeFs.listing('database').filter((name) => ATOMIC_TEMP_NAME_PATTERN.test(name))).toEqual([])
-        expect(fakeFs.writeLog.length).toBeGreaterThanOrEqual(2)
+        expect(fakeFs.durableLog).toEqual([`database/${newBackup}`])
+        expect(fakeFs.writeLog.length).toBeGreaterThanOrEqual(1)
         for (const write of fakeFs.writeLog) {
             const path = bare(write.path)
             const slash = path.lastIndexOf('/')

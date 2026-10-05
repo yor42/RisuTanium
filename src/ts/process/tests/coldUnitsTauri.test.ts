@@ -3,13 +3,17 @@
  * `readColdStorageItem`, `setColdStorageItem`, `deleteColdStorageUnits` and
  * `listColdStorageItems` run over the real desktop files store with the
  * in-memory `tauriFsFake` (strict mode) behind `@tauri-apps/plugin-fs`. A pass
- * here says nothing about the native plugin or a real file system.
+ * here says nothing about the native plugin or a real file system. A unit write
+ * goes to the `write_durable` command, which `tauriFsFake` answers by putting
+ * the bytes at the key in one step; the Rust command's own steps are tested in
+ * `src-tauri/src/durable_write.rs`.
  *
  * Every test is labelled in its title:
- * - "regression reproducer": fails against the code that wrote a unit with a
- *   plain `writeFile` on its final path, on the assertion;
- * - "guard": holds before and after and protects behaviour that must stay (the
- *   file layout `coldstorage/<key>.json`, the missing-file rule);
+ * - "guard": protects behaviour that must stay (the file layout
+ *   `coldstorage/<key>.json`, the missing-file rule, the caller's handling of a
+ *   rejected durable write). The test double rejects a durable write all at
+ *   once and changes nothing, so the part-way atomicity of a write is owned by
+ *   the Rust tests in `src-tauri/src/durable_write.rs`, not by this file;
  * - "new behaviour": asserts what only units-through-the-store does.
  */
 import { compressSync } from 'fflate'
@@ -70,7 +74,7 @@ vi.mock('@tauri-apps/api/path', () => ({
     join: vi.fn(async (...paths: string[]) => paths.join('/')),
 }))
 
-vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((path: string) => path) }))
+vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((path: string) => path), invoke: fakeFs.invoke }))
 
 type ColdModule = typeof import('src/ts/process/coldstorage.svelte')
 
@@ -103,9 +107,9 @@ afterEach(() => {
 })
 
 describe('writing a unit is atomic', () => {
-    test('regression reproducer: a write that fails part-way returns false and leaves the earlier unit readable and no temp file behind', async () => {
+    test('guard: a unit write the durable command rejects returns false and leaves the earlier unit readable', async () => {
         fakeFs.plant(unitPath(UUID), encodeUnit({ n: 'earlier' }))
-        const fault = fakeFs.failWritesOf(() => true)
+        const fault = fakeFs.failDurableWrites('There is not enough space on the disk. (os error 112)')
 
         const written = await cold.setColdStorageItem(UUID, { n: 'later' })
         fakeFs.clearFaults()
@@ -116,11 +120,12 @@ describe('writing a unit is atomic', () => {
         expect(fakeFs.listing('coldstorage')).toEqual([`${UUID}.json`])
     })
 
-    test('regression reproducer: a successful write never opens the unit path itself: it renames a temp file over it', async () => {
+    test('new behaviour: a successful write goes through the durable command and never opens the unit path with the plugin', async () => {
         expect(await cold.setColdStorageItem(UUID, VALUE)).toBe(true)
 
-        expect(fakeFs.writesTo(`./${unitPath(UUID)}`)).toHaveLength(0)
-        expect(fakeFs.renameLog.map((entry) => entry.to.replace(/^\.\//, ''))).toEqual([unitPath(UUID)])
+        expect(fakeFs.durableLog).toEqual([unitPath(UUID)])
+        expect(fakeFs.writeLog).toEqual([])
+        expect(fakeFs.renameLog).toEqual([])
         expect(fakeFs.listing('coldstorage')).toEqual([`${UUID}.json`])
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: VALUE })
     })

@@ -637,6 +637,46 @@ describe('the Tauri boot removes the leftover temp files of interrupted writes f
     })
 })
 
+describe('the Tauri boot removes the leftover temp files of interrupted durable writes from blocks/ and every directory below it', () => {
+    const NESTED = 'blocks/gen1/c/risu-write-0123456789abcdef.tmp'
+    const TOP = 'blocks/risu-write-fedcba9876543210.tmp'
+
+    beforeEach(() => {
+        platformState.isTauri = true
+        platformState.isNodeServer = false
+        tauriBackend().seedMain(mainFileOf('kept'))
+    })
+
+    test('removes only the temp names, at every depth, before the boot reads the main file', async () => {
+        fakeFs.plant(NESTED, new Uint8Array([1, 2, 3]))
+        fakeFs.plant(TOP, new Uint8Array([4, 5, 6]))
+        fakeFs.plant('blocks/gen1/c/6162', new Uint8Array([7]))
+        fakeFs.plant('blocks/head', new Uint8Array([8]))
+        const { boot } = await freshLoadData()
+
+        await boot()
+
+        expect(Array.from(fakeFs.files.keys()).filter((path) => path.startsWith('blocks/')).sort()).toEqual([
+            'blocks/gen1/c/6162',
+            'blocks/head',
+        ])
+        const mainRead = fakeFs.calls.findIndex((call) => call.op === 'readFile' && relative(call.path) === MAIN_KEY)
+        const removed = [NESTED, TOP].map((path) => fakeFs.calls.findIndex((call) => call.op === 'remove' && relative(call.path) === path))
+        expect(mainRead).toBeGreaterThan(-1)
+        expect(Math.min(...removed)).toBeGreaterThan(-1)
+        expect(Math.max(...removed)).toBeLessThan(mainRead)
+    })
+
+    test('a boot with no blocks/ directory loads and never lists it', async () => {
+        const { boot } = await freshLoadData()
+
+        const { loaded } = await boot()
+
+        expect(loaded).toBe(true)
+        expect(fakeFs.readDirLog.map(relative)).not.toContain('blocks')
+    })
+})
+
 describe('the Tauri boot removes the leftover temp files of interrupted writes from coldstorage/', () => {
     const LEFTOVER = 'coldstorage/risu-write-0123456789abcdef.tmp'
     const OTHER_LEFTOVER = 'coldstorage/risu-write-fedcba9876543210.tmp'

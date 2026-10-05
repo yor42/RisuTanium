@@ -170,10 +170,14 @@ vi.mock(import('src/ts/util'), () => ({
     sleepForever: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
-vi.mock('@tauri-apps/api/core', () => ({
-    convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
-}))
+// `write_durable` puts the whole body at the key in one step, as the Rust command does when it succeeds.
+vi.mock('@tauri-apps/api/core', async () => {
+    const { createDurableInvoke } = await import('src/ts/storage/tests/tauriFsFake')
+    return {
+        convertFileSrc: vi.fn((p: string) => p),
+        invoke: createDurableInvoke((key, data) => { fsStore.set(key, data) }),
+    }
+})
 
 vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/appdata'),

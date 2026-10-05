@@ -90,7 +90,13 @@ const tauriFs = vi.hoisted(() => ({
     writeLog: [] as Array<{ path: string, data: Uint8Array }>,
     readLog: [] as string[],
     renameLog: [] as Array<{ from: string, to: string }>,
-    /** Writes whose body satisfies this reject after storing a partial body at the path they were given. */
+    /** Every key a whole file landed at, in order: a rename target or a durable-command key. */
+    landLog: [] as string[],
+    /**
+     * Writes whose body satisfies this reject. A plugin write stores a partial
+     * body at the path it was given first; a durable-command write rejects and
+     * stores nothing.
+     */
     failPayload: undefined as undefined | ((data: Uint8Array) => boolean),
     /** How many writes `failPayload` made reject. */
     faultsFired: 0,
@@ -256,10 +262,21 @@ vi.mock(import('../../util'), () => ({
     sleepForever: vi.fn(async () => { }),
 }) as unknown as typeof import('../../util'))
 
-vi.mock('@tauri-apps/api/core', () => ({
-    convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
-}))
+// `write_durable` puts the whole body at the key in one step, as the Rust command does when it succeeds.
+vi.mock('@tauri-apps/api/core', async () => {
+    const { createDurableInvoke } = await import('src/ts/storage/tests/tauriFsFake')
+    return {
+        convertFileSrc: vi.fn((p: string) => p),
+        invoke: createDurableInvoke((key, data) => {
+            if (tauriFs.failPayload?.(data)) {
+                tauriFs.faultsFired++
+                throw `scratch: write failed (os error 112)`
+            }
+            tauriFs.landLog.push(key)
+            tauriFs.files.set(key, data)
+        }),
+    }
+})
 
 vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/appdata'),
@@ -306,6 +323,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
             throw `scratch: no such file ${from} (os error 2)`
         }
         tauriFs.renameLog.push({ from, to })
+        tauriFs.landLog.push(to)
         tauriFs.files.set(to, found)
         tauriFs.files.delete(from)
     },
@@ -646,6 +664,7 @@ function clearObservations(): void {
     tauriFs.writeLog.length = 0
     tauriFs.readLog.length = 0
     tauriFs.renameLog.length = 0
+    tauriFs.landLog.length = 0
     relaunchBox.calls = 0
     forageBox.setLog.length = 0
     setDatabaseMock.mockClear()
@@ -840,6 +859,7 @@ beforeEach(() => {
     tauriFs.writeLog.length = 0
     tauriFs.readLog.length = 0
     tauriFs.renameLog.length = 0
+    tauriFs.landLog.length = 0
     tauriFs.failPayload = undefined
     tauriFs.faultsFired = 0
     tauriFs.readDirError = undefined
@@ -1785,7 +1805,7 @@ function copyKeys(world: World, snapshot: string): string[] {
 
 /** The keys written to the byte store, in write order. */
 function writtenKeysInOrder(world: World): string[] {
-    return world.platform === 'tauri' ? tauriFs.renameLog.map((entry) => entry.to) : storage.setLog.map((entry) => entry.key)
+    return world.platform === 'tauri' ? tauriFs.landLog.slice() : storage.setLog.map((entry) => entry.key)
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

@@ -94,6 +94,30 @@ function partialOf(data: Uint8Array): Uint8Array {
     return data.slice(0, Math.max(1, Math.floor(data.length / 2)))
 }
 
+export interface DurableInvokeOptions {
+    headers?: Record<string, string>
+}
+
+/**
+ * A stand-in for `invoke` from `@tauri-apps/api/core` that answers the
+ * `write_durable` command the way the Rust command does when it succeeds: the
+ * bytes land at the key (decoded from the `x-risu-key` header) in one step.
+ * Every other command resolves to `undefined`. `write` receives the key, relative
+ * to AppData, and the raw body.
+ */
+export function createDurableInvoke(write: (key: string, bytes: Uint8Array) => void | Promise<void>) {
+    return async (command: string, args?: unknown, options?: DurableInvokeOptions): Promise<undefined> => {
+        if (command === 'write_durable') {
+            const header = options?.headers?.['x-risu-key']
+            if (typeof header !== 'string' || !(args instanceof Uint8Array)) {
+                throw new Error('write_durable needs a key header and a raw body')
+            }
+            await write(decodeURIComponent(header), args.slice())
+        }
+        return undefined
+    }
+}
+
 export function createFakeTauriFs(options: FakeFsOptions = {}) {
     const strict = options.strict === true
     const initialPlatform: FakeFsPlatform = options.platform ?? 'posix'
@@ -351,10 +375,36 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
         ]
     }
 
+    /** Every key the durable command was asked to write, in order. */
+    const durableLog: string[] = []
+    let durableFault: { error: string, matches: ((key: string) => boolean) | undefined, remaining: number, handle: FakeFsFault } | undefined
+
+    /** The durable command: no temp file is visible, and a fault leaves the old file as it was. */
+    const invoke = createDurableInvoke((key, bytes) => {
+        durableLog.push(key)
+        if (durableFault && durableFault.remaining > 0 && (durableFault.matches === undefined || durableFault.matches(key))) {
+            durableFault.remaining--
+            durableFault.handle.fired++
+            throw durableFault.error
+        }
+        files.set(key, bytes)
+        registerAncestors(parentOf(key))
+    })
+
     return {
         files,
         directories,
         writeLog,
+        durableLog,
+        /** The `invoke` a `vi.mock('@tauri-apps/api/core', ...)` factory returns. */
+        invoke,
+
+        /** Every durable write (or, with `matches`, every one of a key it accepts) rejects with `error` and changes nothing. */
+        failDurableWrites(error: string, matches?: (key: string) => boolean, times = Infinity): FakeFsFault {
+            const handle: FakeFsFault = { fired: 0 }
+            durableFault = { error, matches, remaining: times, handle }
+            return handle
+        },
         renameLog,
         removeLog,
         readDirLog,
@@ -449,9 +499,12 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
             readDirFault = undefined
             readFileFault = undefined
             existsOverride = undefined
+            durableFault = undefined
         },
 
         reset(): void {
+            durableLog.length = 0
+            durableFault = undefined
             files.clear()
             directories.clear()
             symlinks.clear()
