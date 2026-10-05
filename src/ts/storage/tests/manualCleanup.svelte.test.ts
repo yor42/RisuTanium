@@ -21,6 +21,16 @@
  * stored, or is stored but damaged, is the one thing it can read around: the
  * chat is kept by name and followed no further.
  *
+ * A profile with a block head keeps what the committed generation reaches
+ * instead of the main file, and only while this page's record of that
+ * generation still holds. It also decides about the older saves the profile may
+ * hold: kept generations (the run does not go on unless the user deletes
+ * them), leftover generations (deleted behind a confirm), and every older copy
+ * of the main file (kept with its assets, or deleted after a dated confirm).
+ * The page's block-store owner is replaced by one built over the same store.
+ *
+ * The Tauri file system stand-in rejects a readDir of a file path, as the
+ * plugin does, because the Tauri store answers has() through it.
  * The real `cleanColdStorage`, `globalApi.svelte.ts`, `RisuSaveEncoder`,
  * `NodeStorage`, `storageTabLocks` and `chatOrigin` are driven; only platform
  * boundaries are replaced: the `isTauri`/`isNodeServer` flags, an OPFS
@@ -109,6 +119,10 @@ const h = vi.hoisted(() => {
         risuCache: new Map<string, unknown>(),
         keyPair: undefined as undefined | CryptoKeyPair,
         dbHolder: { state: undefined as undefined | { db: unknown } },
+        /** The page's block-store owner, as getPageBlockOwner answers it. */
+        blockOwner: { current: null as unknown },
+        /** Decides a confirm by its message; unset, every confirm answers hub.confirmAnswer. */
+        confirmHook: undefined as undefined | ((message: string) => boolean | Promise<boolean>),
     }
 })
 
@@ -169,13 +183,18 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
+vi.mock(import('src/ts/storage/pageBlockOwner'), () => ({
+    getPageBlockOwner: async () => h.blockOwner.current,
+    resetPageBlockOwnerForTests: () => { h.blockOwner.current = null },
+}) as unknown as typeof import('src/ts/storage/pageBlockOwner'))
+
 vi.mock(import('src/ts/process/index.svelte'), () => ({
     doingChat: writable(false),
 }) as unknown as typeof import('src/ts/process/index.svelte'))
 
 vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(() => { h.hub.set({ type: 'none', msg: '' }) }),
-    alertConfirm: vi.fn(async (_msg: string) => h.hub.confirmAnswer),
+    alertConfirm: vi.fn(async (msg: string) => h.confirmHook ? await h.confirmHook(String(msg)) : h.hub.confirmAnswer),
     alertError: vi.fn((msg: string) => { h.hub.set({ type: 'error', msg: String(msg) }) }),
     alertWait: vi.fn((msg: string) => {
         const data = { type: 'wait', msg }
@@ -372,7 +391,11 @@ function normalizeFsPath(path: string): string {
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
+    // The plugin's readDir rejects for a file path (os error 20 or 267); tauriFilesStore.has() relies on it.
     readDir: vi.fn(async (dir: string) => {
+        if (h.fs.has(normalizeFsPath(dir).replace(/\/$/, ''))) {
+            throw 'failed to read directory at path: ' + dir + ' with error: Not a directory (os error 20)'
+        }
         const prefix = normalizeFsPath(dir).replace(/\/$/, '') + '/'
         const names = new Set<string>()
         for (const key of h.fs.keys()) {
@@ -552,6 +575,8 @@ function resetWorld(): void {
     h.fsHidden.clear()
     h.fsExistsError.clear()
     h.risuCache.clear()
+    h.blockOwner.current = null
+    h.confirmHook = undefined
 }
 
 /**
@@ -1791,41 +1816,6 @@ describe('Node server: bounded batches, reported failures, revisions', () => {
         expect(new Set(seenDuringDelete)).toEqual(new Set(['wait']))
         expect(seenDuringDelete.length).toBeGreaterThanOrEqual(2)
     })
-
-    test('guard: the next main-file save after a run that read the main file still carries the earlier revision, so a peer save is a conflict', async () => {
-        await setup({ platform: 'node' })
-        seedUnit('unreferenced-unit')
-        setLive(makeDb([]))
-        const committed = await prime()
-        expect(server.revisionOf('database/database.bin')).toBe(1)
-        server.peerWrite('database/database.bin', committed)
-
-        await run()
-
-        expect(await units()).not.toContain('unreferenced-unit')
-        const next = await encodeTree(makeDb([], { mainPrompt: 'edited after the clean-up' }))
-        const app = await import('src/ts/storage/store/appStore')
-        const errors = await import('src/ts/storage/store/errors')
-        await expect(app.writeMainFile(next)).rejects.toBeInstanceOf(errors.StoreVersionConflictError)
-        const lastWrite = server.requestsTo('/api/write').at(-1)
-        expect(lastWrite?.headers['if-match-revision']).toBe('1')
-    })
-
-    test('guard: the next main-file save after a refused run still carries the earlier revision, so a peer save is a conflict', async () => {
-        await setup({ platform: 'node' })
-        seedUnit('unreferenced-unit')
-        setLive(makeDb([]))
-        await prime()
-        server.peerWrite('database/database.bin', await encodeTree(makeDb([], { mainPrompt: 'saved by another device' })))
-
-        await run()
-
-        const next = await encodeTree(makeDb([], { mainPrompt: 'edited after the clean-up' }))
-        const app = await import('src/ts/storage/store/appStore')
-        const errors = await import('src/ts/storage/store/errors')
-        await expect(app.writeMainFile(next)).rejects.toBeInstanceOf(errors.StoreVersionConflictError)
-        expect(server.requestsTo('/api/write').at(-1)?.headers['if-match-revision']).toBe('1')
-    })
 })
 
 describe('failed deletes and the completion notice on the other backends', () => {
@@ -2805,5 +2795,1095 @@ describe('archived chats: the clean-up follows what they refer to', () => {
         const after = await units()
         expect(after).toEqual(expect.arrayContaining(['unit-u1', 'unit-u2', 'unit-v']))
         expect(after).not.toContain('orphan-o')
+    })
+})
+
+//#region the block profile: world builders
+
+type OwnerOf = import('src/ts/storage/blockStore').BlockStoreOwner
+type ReplaceOptionsOf = import('src/ts/storage/blockStore').ReplaceOptions
+
+const CONVERTED_AT = 1_650_000_000_000
+const START_TIME = 1_700_000_000_000
+let randomCounter = 0
+
+function dateOf(ms: number): string {
+    return new Date(ms).toLocaleString()
+}
+
+async function pageStore(): Promise<import('src/ts/storage/store/contract').ByteStore> {
+    return (await import('src/ts/storage/store/appStore')).getAppStore()
+}
+
+async function newOwner(clock: { now: number } = { now: START_TIME }): Promise<OwnerOf> {
+    const bs = await import('src/ts/storage/blockStore')
+    const hs = await import('src/ts/storage/headSwap')
+    const store = await pageStore()
+    return new bs.BlockStoreOwner({
+        store,
+        headSwap: store.capabilities.conditionalWrites ? hs.createNodeHeadSwap(store) : hs.createMutexHeadSwap(store),
+        commitLock: { available: true, run: (work) => work() },
+        sleep: async () => {},
+        generationIds: {
+            now: () => clock.now,
+            randomBytes: (length) => {
+                const out = new Uint8Array(length)
+                new DataView(out.buffer).setUint32(0, ++randomCounter, false)
+                return out
+            },
+        },
+    })
+}
+
+async function blockSet(db: Database) {
+    return (await import('src/ts/storage/treeToBlockSet')).treeToBlockSet(db)
+}
+
+/** Makes the page a block page: the tree is written as a generation and the owner the clean-up asks for is the one that wrote it. */
+async function startBlockProfile(db: Database, options: ReplaceOptionsOf = {}, clock?: { now: number }): Promise<OwnerOf> {
+    const owner = await newOwner(clock)
+    const result = await owner.replaceWholeState(await blockSet(db), { requireAbsentHead: true, ...options })
+    expect(result.kind).toBe('won')
+    h.blockOwner.current = owner
+    return owner
+}
+
+function storeFile(key: string, bytes: Uint8Array): void {
+    if (platform === 'node') {
+        server.seed(key, bytes)
+    } else if (platform === 'tauri') {
+        h.fs.set(key, bytes)
+    } else {
+        h.forage.set(key, bytes)
+    }
+}
+
+function fileBytes(key: string): Uint8Array | null {
+    if (platform === 'node') {
+        return server.files.get(key)?.bytes ?? null
+    }
+    return (platform === 'tauri' ? h.fs.get(key) : h.forage.get(key)) ?? null
+}
+
+function fileKeys(prefix: string): string[] {
+    const keys = platform === 'node'
+        ? Array.from(server.files.keys())
+        : platform === 'tauri' ? Array.from(h.fs.keys()) : Array.from(h.forage.keys())
+    return keys.filter((key) => key.startsWith(prefix))
+}
+
+/** Every stored key with its bytes, for an exact before and after comparison of a run that must change nothing. */
+function wholeStore(): string[] {
+    const entries: [string, Uint8Array][] = platform === 'node'
+        ? Array.from(server.files.entries()).map(([key, file]) => [key, file.bytes] as [string, Uint8Array])
+        : Array.from((platform === 'tauri' ? h.fs : h.forage).entries())
+    return entries.map(([key, bytes]) => `${key}:${bytes.length}:${Array.from(bytes).join(',')}`).sort()
+}
+
+const COPY_CONFIRM = /Delete this copy\?/
+const KEPT_CONFIRM = /older saved copies of your data were set aside/
+const LEFTOVER_CONFIRM = /left over from interrupted saves/
+
+function confirmMessages(): string[] {
+    return vi.mocked(ctx.alert.alertConfirm).mock.calls.map((call) => String(call[0]))
+}
+
+/** Answers the clean-up's own prompts by `decide`; the platform confirms every run opens with are accepted. */
+function answerConfirms(decide: (message: string) => boolean | Promise<boolean>): void {
+    h.confirmHook = (message) => (message === language.coldStorageCleanupNoLockConfirm || message === language.coldStorageCleanupNodeConfirm)
+        ? true
+        : decide(message)
+}
+
+const OLD_DB = () => makeDb([fullCharacter('old-cha', 'Old', { image: 'assets/old-only.png', chats: [coldChat('old-chat', 'old-unit')] })])
+const NEW_DB = () => makeDb([fullCharacter('new-cha', 'New', { image: 'assets/new.png' })])
+
+/**
+ * A profile converted from the main file `OLD_DB` encodes to, now holding
+ * `NEW_DB` as blocks. `copyKey` is where the old main file still sits.
+ */
+async function convertedProfile(copyKey: string | null, options: { convertedFrom?: string, copyBytes?: Uint8Array } = {}) {
+    await putUnit('old-unit')
+    seedUnit('unreferenced-unit')
+    seedAsset('old-only.png')
+    seedAsset('new.png')
+    seedAsset('orphan.png')
+    const oldBytes = options.copyBytes ?? await encodeTree(OLD_DB())
+    if (copyKey !== null) {
+        storeFile(copyKey, oldBytes)
+    }
+    const { fingerprintMainFile } = await import('src/ts/storage/mainFileFingerprint')
+    setLive(NEW_DB())
+    const owner = await startBlockProfile(NEW_DB(), { convertedFrom: options.convertedFrom ?? fingerprintMainFile(oldBytes), convertedAt: CONVERTED_AT })
+    await ctx.listing.recordLoadTimeListing()
+    return { owner, oldBytes }
+}
+
+const PRE_BLOCKS = 'database/database.pre-blocks.bin'
+const MAIN = 'database/database.bin'
+
+//#endregion
+
+describe('block profile: what the clean-up keeps', () => {
+    test('keeps the units and assets the committed generation reaches and deletes the unreferenced ones, with no main-file record', async () => {
+        await setup()
+        await putUnit('committed-unit')
+        seedUnit('unreferenced-unit')
+        seedAsset('committed-avatar.png')
+        seedAsset('orphan.png')
+        setLive(makeDb([]))
+        await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice', { image: 'assets/committed-avatar.png', chats: [coldChat('chat-1', 'committed-unit')] })]))
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(await units()).toContain('committed-unit')
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/committed-avatar.png')
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+        expect(errorMessages()).toEqual([])
+        expect(confirmMessages()).toEqual([])
+    })
+
+    test('keeps a unit and an asset reached only through the blob of a stub in the committed generation', async () => {
+        await setup()
+        await putBlob('stub-blob', fullCharacter('stub-cha', 'Stubby', { additionalAssets: [['bg', 'assets/blob-only.png', '']], chats: [coldChat('blob-chat', 'blob-unit')] }))
+        await putUnit('blob-unit')
+        seedUnit('unreferenced-unit')
+        seedAsset('blob-only.png')
+        seedAsset('orphan.png')
+        setLive(makeDb([]))
+        await startBlockProfile(makeDb([stubCharacter('stub-cha', 'Stubby', 'stub-blob')]))
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(await units()).toEqual(expect.arrayContaining(['stub-blob', 'blob-unit']))
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/blob-only.png')
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+    })
+
+    test('keeps what a committed generation reaches after a commit rewrote the stubs pack', async () => {
+        await setup()
+        await putBlob('stub-blob', fullCharacter('stub-cha', 'Stubby', { additionalAssets: [['bg', 'assets/blob-only.png', '']] }))
+        seedUnit('unreferenced-unit')
+        seedAsset('blob-only.png')
+        setLive(makeDb([]))
+        const before = makeDb([stubCharacter('stub-cha', 'Stubby', 'stub-blob')])
+        const owner = await startBlockProfile(before)
+        const after = makeDb([stubCharacter('stub-cha', 'Stubby', 'stub-blob')], { mainPrompt: 'edited after the conversion' })
+        const committed = await owner.commitSave(await blockSet(after))
+        expect(committed.kind).toBe('committed')
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(errorMessages()).toEqual([])
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/blob-only.png')
+    })
+
+    test('stops with nothing deleted when another owner committed since this page last committed or loaded', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        seedAsset('orphan.png')
+        setLive(makeDb([]))
+        await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        const peer = await newOwner()
+        expect((await peer.load()).kind).toBe('loaded')
+        expect((await peer.commitSave(await blockSet(makeDb([fullCharacter('char-a', 'Alice', { name: 'Alice edited' })])))).kind).toBe('committed')
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedChanged])
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/orphan.png')
+    })
+
+    test('stops with nothing deleted when a block holds other valid bytes than this page acknowledged at the same sequence number', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        const owner = await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        const state = owner.committedState()!
+        const { ownBlockKey } = await import('src/ts/storage/blockKeys')
+        const other = await blockSet(makeDb([fullCharacter('char-a', 'Somebody else')]))
+        const index = other.layout.keys.indexOf('char-a')
+        h.forage.set(ownBlockKey(state.generation, 'char-a'), other.layout.blocks[index])
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedChanged])
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    test('stops with nothing deleted when a committed block fails its checksum', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        const owner = await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        const { ownBlockKey } = await import('src/ts/storage/blockKeys')
+        const key = ownBlockKey(owner.committedState()!.generation, 'char-a')
+        const damaged = h.forage.get(key)!.slice()
+        damaged[damaged.length - 1] ^= 0xff
+        h.forage.set(key, damaged)
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSaveUnreadable(language.errors.coldStorageCleanupSourceCommitted)])
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    test('stops with nothing deleted when a committed block has a valid frame but content that does not decode', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        const owner = await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        const { ownBlockKey } = await import('src/ts/storage/blockKeys')
+        const { frameBlock, BLOCK_TYPE_CHARACTER_WITH_CHAT } = await import('src/ts/storage/blockFrame')
+        h.forage.set(ownBlockKey(owner.committedState()!.generation, 'char-a'), frameBlock(BLOCK_TYPE_CHARACTER_WITH_CHAT, 'char-a', new TextEncoder().encode('{"chaId": "char-a", "chats": [')))
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSaveUnreadable(language.errors.coldStorageCleanupSourceCommitted)])
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    test('stops with nothing deleted when a committed block cannot be read', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        const owner = await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        const { ownBlockKey } = await import('src/ts/storage/blockKeys')
+        const key = ownBlockKey(owner.committedState()!.generation, 'char-a')
+        await ctx.listing.recordLoadTimeListing()
+        h.forageHooks.onGetItem = (read) => {
+            if (read === key) {
+                throw new Error('simulated read failure')
+            }
+        }
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSaveUnreadable(language.errors.coldStorageCleanupSourceCommitted)])
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    test('stops with nothing deleted when the store holds a head but this page has no live generation', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        h.blockOwner.current = await newOwner()
+        await ctx.listing.recordLoadTimeListing()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedUnknown])
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    /** Rewrites the committed root with `change` applied to its fields; every other key stays as the owner acknowledged it. */
+    async function tamperRoot(owner: OwnerOf, change: (fields: Record<string, unknown>) => void): Promise<void> {
+        const { parseJsonObjectBlock, frameJsonBlock } = await import('src/ts/storage/blockFrame')
+        const { rootKey, ROOT_BLOCK_NAME } = await import('src/ts/storage/blockKeys')
+        const key = rootKey(owner.committedState()!.generation)
+        const { type, fields } = parseJsonObjectBlock(h.forage.get(key)!, ROOT_BLOCK_NAME)
+        change(fields)
+        h.forage.set(key, frameJsonBlock(type, ROOT_BLOCK_NAME, fields as Parameters<typeof frameJsonBlock>[2]))
+    }
+
+    test.each([
+        ['the sequence number', (fields: Record<string, unknown>) => { fields.__seq = (fields.__seq as number) + 1 }],
+        ['the order of the directory', (fields: Record<string, unknown>) => { (fields.__directory as string[]).reverse() }],
+        ['the order of the packed names', (fields: Record<string, unknown>) => { (fields.__packed as string[]).reverse() }],
+    ])('stops with nothing deleted when only %s of the root differs from what this page acknowledged', async (_title, change) => {
+        await setup()
+        await putBlob('blob-1', fullCharacter('stub-1', 'One'))
+        await putBlob('blob-2', fullCharacter('stub-2', 'Two'))
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        const owner = await startBlockProfile(makeDb([stubCharacter('stub-1', 'One', 'blob-1'), stubCharacter('stub-2', 'Two', 'blob-2')]))
+        expect(owner.committedState()!.packed).toHaveLength(2)
+        await tamperRoot(owner, change)
+        await ctx.listing.recordLoadTimeListing()
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedChanged])
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('stops with nothing deleted when the stubs pack holds other valid bytes than this page acknowledged', async () => {
+        await setup()
+        await putBlob('stub-blob', fullCharacter('stub-cha', 'Stubby'))
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        const { stubsKey } = await import('src/ts/storage/blockKeys')
+        // A pack another profile wrote, taken from a scratch generation that is then removed.
+        const scratch = await newOwner()
+        const other = await scratch.replaceWholeState(await blockSet(makeDb([stubCharacter('stub-cha', 'Renamed', 'stub-blob')])), { requireAbsentHead: true })
+        expect(other.kind).toBe('won')
+        const foreign = h.forage.get(stubsKey((other as { generation: string }).generation))!.slice()
+        for (const key of Array.from(h.forage.keys()).filter((name) => name.startsWith('blocks/'))) {
+            h.forage.delete(key)
+        }
+        const owner = await startBlockProfile(makeDb([stubCharacter('stub-cha', 'Stubby', 'stub-blob')]))
+        h.forage.set(stubsKey(owner.committedState()!.generation), foreign)
+        await ctx.listing.recordLoadTimeListing()
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedChanged])
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('guard: a profile with no head still keeps the committed main file and refuses when it changed', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime()
+        storeMain(await encodeTree(makeDb([], { mainPrompt: 'saved by another tab' })))
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupMainChanged])
+        expect(await units()).toContain('unreferenced-unit')
+    })
+})
+
+describe('block profile: older copies of the main file', () => {
+    test('an asset and a unit only the pre-conversion copy reaches survive while the copy is kept, and the confirm names the conversion date', async () => {
+        await setup()
+        await convertedProfile(PRE_BLOCKS)
+        answerConfirms(() => false)
+
+        await run()
+
+        expect(confirmMessages().filter((message) => COPY_CONFIRM.test(message))).toEqual([
+            language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourcePreConversion, dateOf(CONVERTED_AT), true),
+        ])
+        expect(assetKeys()).toEqual(expect.arrayContaining(['assets/old-only.png', 'assets/new.png']))
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+        expect(await units()).toContain('old-unit')
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(fileBytes(PRE_BLOCKS)).not.toBeNull()
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('after the dated delete the asset and the unit only the copy reached are cleaned in the same run, and the startup asset sweep is not held by it', async () => {
+        await setup()
+        const { owner } = await convertedProfile(PRE_BLOCKS)
+        const { olderMainFileCopyExists } = await import('src/ts/storage/bootBlockLoad')
+        const store = await pageStore()
+        expect(await olderMainFileCopyExists(store)).toBe(true)
+        answerConfirms(() => true)
+
+        await run()
+
+        expect(fileBytes(PRE_BLOCKS)).toBeNull()
+        expect(assetKeys()).not.toContain('assets/old-only.png')
+        expect(assetKeys()).toContain('assets/new.png')
+        expect(await units()).not.toContain('old-unit')
+        expect(await olderMainFileCopyExists(store)).toBe(false)
+        expect(owner.committedState()).not.toBeNull()
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('a database.bin that is the converted file is called the pre-conversion copy and carries the conversion date', async () => {
+        await setup()
+        await convertedProfile(MAIN)
+        answerConfirms(() => false)
+
+        await run()
+
+        expect(confirmMessages().filter((message) => COPY_CONFIRM.test(message))).toEqual([
+            language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourcePreConversion, dateOf(CONVERTED_AT), true),
+        ])
+        expect(assetKeys()).toContain('assets/old-only.png')
+    })
+
+    test('a database.bin that is not the converted file is another main save file of unknown date, never the pre-conversion copy, and still protects its assets', async () => {
+        await setup()
+        await convertedProfile(MAIN, { convertedFrom: 'c1:1:00000000' })
+        answerConfirms(() => false)
+
+        await run()
+
+        const asked = confirmMessages().filter((message) => COPY_CONFIRM.test(message))
+        expect(asked).toEqual([
+            language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourceOlderMain, language.coldStorageCleanupDateUnknown, true),
+        ])
+        expect(asked[0]).not.toContain(language.errors.coldStorageCleanupSourcePreConversion)
+        expect(asked[0]).not.toContain(dateOf(CONVERTED_AT))
+        // The age is unknown, so the label claims none, and the unknown date is stated once.
+        expect(asked[0]).not.toMatch(/older/i)
+        expect(asked[0].split(language.coldStorageCleanupDateUnknown)).toHaveLength(2)
+        expect(assetKeys()).toContain('assets/old-only.png')
+        expect(await units()).toContain('old-unit')
+    })
+
+    test('a pre-blocks copy that is not the head\'s converted file says date unknown but is still the pre-conversion copy', async () => {
+        await setup()
+        await convertedProfile(PRE_BLOCKS, { convertedFrom: 'c1:1:00000000' })
+        answerConfirms(() => false)
+
+        await run()
+
+        expect(confirmMessages().filter((message) => COPY_CONFIRM.test(message))).toEqual([
+            language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourcePreConversion, language.coldStorageCleanupDateUnknown, true),
+        ])
+        expect(assetKeys()).toContain('assets/old-only.png')
+    })
+
+    test('an older main file that is deleted is not a keep source, and a numbered pre-blocks copy next to it is still kept when declined', async () => {
+        await setup()
+        await convertedProfile(MAIN)
+        storeFile('database/database.pre-blocks-1.bin', await encodeTree(makeDb([fullCharacter('second-cha', 'Second', { image: 'assets/second.png' })])))
+        seedAsset('second.png')
+        await ctx.listing.recordLoadTimeListing()
+        answerConfirms((message) => message.includes(dateOf(CONVERTED_AT)))
+
+        await run()
+
+        // The converted database.bin was offered with its date and deleted; the numbered copy (date unknown) was declined and kept.
+        expect(fileBytes(MAIN)).toBeNull()
+        expect(fileBytes('database/database.pre-blocks-1.bin')).not.toBeNull()
+        expect(assetKeys()).toContain('assets/second.png')
+        expect(assetKeys()).not.toContain('assets/old-only.png')
+    })
+
+    test('a copy that does not decode stops the run naming it, deletes nothing, and its delete is offered again on the next run', async () => {
+        await setup()
+        await convertedProfile(PRE_BLOCKS, { copyBytes: Uint8Array.from([1, 2, 3, 4]) })
+        answerConfirms(() => false)
+
+        await run()
+
+        const asked = confirmMessages().filter((message) => COPY_CONFIRM.test(message))
+        expect(asked).toEqual([language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourcePreConversion, dateOf(CONVERTED_AT), false)])
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCopyUnreadable(language.errors.coldStorageCleanupSourcePreConversion)])
+        expect(fileBytes(PRE_BLOCKS)).not.toBeNull()
+        expect(await units()).toContain('unreferenced-unit')
+
+        vi.mocked(ctx.alert.alertConfirm).mockClear()
+        await run()
+        expect(confirmMessages().filter((message) => COPY_CONFIRM.test(message))).toHaveLength(1)
+    })
+
+    test('deleting a copy that does not decode lets the run go on and clean up', async () => {
+        await setup()
+        await convertedProfile(PRE_BLOCKS, { copyBytes: Uint8Array.from([1, 2, 3, 4]) })
+        answerConfirms(() => true)
+
+        await run()
+
+        expect(fileBytes(PRE_BLOCKS)).toBeNull()
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('each source is decoded once in a run: the committed generation once, the copy once', async () => {
+        await setup()
+        await convertedProfile(PRE_BLOCKS)
+        answerConfirms(() => false)
+        const spy = vi.spyOn(ctx.risuSave, 'decodeRisuSave')
+
+        await run()
+
+        expect(spy).toHaveBeenCalledTimes(2)
+    })
+
+    test.each([['already moved aside', true], ['still in place', false]])('convert, delete the character, then clean up in the same session: the deleted character\'s asset survives (the old main file %s)', async (_title, renamed) => {
+        await setup()
+        const { owner, oldBytes } = await convertedProfile(MAIN)
+        if (renamed) {
+            const { finishMainFileRename } = await import('src/ts/storage/mainFileRename')
+            const result = await finishMainFileRename(await pageStore(), owner.committedState()!.convertedFrom)
+            expect(result.kind).toBe('renamed')
+            expect(fileBytes(PRE_BLOCKS)).toEqual(oldBytes)
+        }
+        const without = makeDb([], {})
+        setLive(without)
+        expect((await owner.commitSave(await blockSet(without))).kind).toBe('committed')
+        answerConfirms(() => false)
+
+        await run()
+
+        expect(assetKeys()).toContain('assets/old-only.png')
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+    })
+
+    test('a copy refuses to be deleted when it changed while the confirm was open, and nothing else is deleted', async () => {
+        await setup({ platform: 'node' })
+        await convertedProfile(MAIN)
+        answerConfirms(() => {
+            server.peerWrite(MAIN, Uint8Array.from([7, 7, 7]))
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(fileBytes(MAIN)).toEqual(Uint8Array.from([7, 7, 7]))
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    test.each(['web', 'tauri'] as const)('guard: %s: a copy that changed while its confirm was open is not deleted, and nothing else is', async (which) => {
+        await setup({ platform: which })
+        await convertedProfile(MAIN)
+        answerConfirms(() => {
+            storeFile(MAIN, Uint8Array.from([7, 7, 7]))
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(fileBytes(MAIN)).toEqual(Uint8Array.from([7, 7, 7]))
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/old-only.png')
+    })
+
+    test('guard: a copy that changes by one byte while its confirm is open is not deleted', async () => {
+        await setup()
+        const { oldBytes } = await convertedProfile(MAIN)
+        const changed = oldBytes.slice()
+        changed[changed.length - 1] ^= 1
+        answerConfirms(() => {
+            storeFile(MAIN, changed)
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(fileBytes(MAIN)).toEqual(changed)
+    })
+
+    test('Node: a main file left in place over the body limit protects its assets, also after a later restore and commit, and every head still carries the conversion record', async () => {
+        await setup({ platform: 'node' })
+        const { owner } = await convertedProfile(MAIN)
+        const { finishMainFileRename } = await import('src/ts/storage/mainFileRename')
+        expect((await finishMainFileRename(await pageStore(), owner.committedState()!.convertedFrom, { nodeBodyLimit: 10 })).kind).toBe('left-over-limit')
+        const fromBefore = owner.committedState()!.convertedFrom
+
+        const restored = makeDb([fullCharacter('restored-cha', 'Restored', { image: 'assets/new.png' })])
+        expect((await owner.replaceWholeState(await blockSet(restored))).kind).toBe('won')
+        const edited = makeDb([fullCharacter('restored-cha', 'Restored', { image: 'assets/new.png' })], { mainPrompt: 'edited after the restore' })
+        expect((await owner.commitSave(await blockSet(edited))).kind).toBe('committed')
+        setLive(edited)
+        const state = owner.committedState()!
+        expect(state.convertedFrom).toBe(fromBefore)
+        expect(state.convertedAt).toBe(CONVERTED_AT)
+        const { parseHead } = await import('src/ts/storage/headSwap')
+        const head = parseHead(fileBytes('blocks/head')!)
+        expect(head.status === 'ok' && head.record.convertedFrom === fromBefore && head.record.convertedAt === CONVERTED_AT).toBe(true)
+        answerConfirms(() => false)
+
+        await run()
+
+        expect(assetKeys()).toContain('assets/old-only.png')
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+        expect(confirmMessages().filter((message) => COPY_CONFIRM.test(message))).toEqual([
+            language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourcePreConversion, dateOf(CONVERTED_AT), true),
+        ])
+    })
+})
+
+//#region kept and leftover generations
+
+interface KeptWorld {
+    owner: OwnerOf
+    clock: { now: number }
+    generations: { first: string, second: string, third: string }
+}
+
+const FIRST_GENERATION_TIME = START_TIME + 10 * 3_600_000
+const SECOND_GENERATION_TIME = START_TIME + 20 * 3_600_000
+const THIRD_GENERATION_TIME = START_TIME + 30 * 3_600_000
+
+/**
+ * Two rooted generations, a head that cannot be read, and a page that chose
+ * "load the newest backup" at the damage prompt: both older generations are
+ * kept and a third one is live.
+ */
+async function keptWorld(garbage: 'binary' | 'not-binary'): Promise<KeptWorld> {
+    const { generationPrefix } = await import('src/ts/storage/blockKeys')
+    const { HEAD_KEY } = await import('src/ts/storage/blockKeys')
+    const clock = { now: FIRST_GENERATION_TIME }
+    const writer = await newOwner(clock)
+    const first = await writer.replaceWholeState(await blockSet(makeDb([fullCharacter('char-a', 'Alice', { image: 'assets/first-only.png' })])), { requireAbsentHead: true })
+    if (first.kind !== 'won') {
+        throw new Error('the first generation was not written')
+    }
+    const firstKeys = Array.from(h.forage.entries()).filter(([key]) => key.startsWith(generationPrefix(first.generation)))
+    clock.now = SECOND_GENERATION_TIME
+    const second = await writer.replaceWholeState(await blockSet(makeDb([fullCharacter('char-a', 'Alice', { image: 'assets/second-only.png' })])))
+    if (second.kind !== 'won') {
+        throw new Error('the second generation was not written')
+    }
+    for (const [key, bytes] of firstKeys) {
+        h.forage.set(key, bytes)
+    }
+    let readsAsNotBinary = garbage === 'not-binary'
+    if (garbage === 'binary') {
+        h.forage.set(HEAD_KEY, Uint8Array.from([1, 2, 3]))
+    }
+    const hs = await import('src/ts/storage/headSwap')
+    const store = await pageStore()
+    const inner = hs.createMutexHeadSwap(store)
+    const wrapped = new (await import('src/ts/storage/blockStore')).BlockStoreOwner({
+        store,
+        headSwap: {
+            read: async () => readsAsNotBinary ? { kind: 'not-binary' as const } : inner.read(),
+            swap: async (expected, next) => {
+                if (expected.kind === 'not-binary') {
+                    await store.write(HEAD_KEY, next, 'unconditional')
+                    readsAsNotBinary = false
+                    return 'won'
+                }
+                return inner.swap(expected, next)
+            },
+        },
+        commitLock: { available: true, run: (work) => work() },
+        sleep: async () => {},
+        generationIds: { now: () => clock.now, randomBytes: (length) => { const out = new Uint8Array(length); new DataView(out.buffer).setUint32(0, ++randomCounter, false); return out } },
+    })
+    const damaged = await wrapped.load()
+    if (damaged.kind !== 'damaged') {
+        throw new Error(`the head did not read as damaged: ${damaged.kind}`)
+    }
+    clock.now = THIRD_GENERATION_TIME
+    const chosen = await wrapped.replaceWholeState(await blockSet(makeDb([fullCharacter('char-a', 'Alice', { image: 'assets/third.png' })])), { keepAll: true })
+    if (chosen.kind !== 'won') {
+        throw new Error(`the backup was not chosen: ${chosen.kind}`)
+    }
+    h.blockOwner.current = wrapped
+    return { owner: wrapped, clock, generations: { first: first.generation, second: second.generation, third: chosen.generation } }
+}
+
+async function startupAssetSweepHeld(owner: OwnerOf): Promise<boolean> {
+    const mode = await import('src/ts/storage/pageStorageMode')
+    mode.resetPageStorageModeForTests()
+    const { finishBlockBoot } = await import('src/ts/storage/bootBlockLoad')
+    await finishBlockBoot(owner, await pageStore())
+    return mode.isAssetSweepHeld()
+}
+
+describe.each([['binary', 'binary' as const], ['non-binary', 'not-binary' as const]])('block profile: kept generations after an unreadable head (%s)', (_title, garbage) => {
+    async function arrange(): Promise<KeptWorld> {
+        await setup()
+        seedUnit('unreferenced-unit')
+        seedAsset('first-only.png')
+        seedAsset('second-only.png')
+        seedAsset('third.png')
+        seedAsset('orphan.png')
+        setLive(makeDb([fullCharacter('char-a', 'Alice', { image: 'assets/third.png' })]))
+        const world = await keptWorld(garbage)
+        await ctx.listing.recordLoadTimeListing()
+        return world
+    }
+
+    test('guard: both older rooted generations are kept, never the live one, and hold the startup asset sweep off', async () => {
+        const world = await arrange()
+        const inventory = await world.owner.inventory()
+
+        expect(inventory.kept).toEqual([world.generations.first, world.generations.second].sort())
+        expect(inventory.leftover).toEqual([])
+        expect(inventory.generations.find((info) => info.current)?.id).toBe(world.generations.third)
+        expect(await startupAssetSweepHeld(world.owner)).toBe(true)
+    })
+
+    test('keeping them: the confirm names their dates, nothing runs, nothing is deleted, and the message says why', async () => {
+        const world = await arrange()
+        answerConfirms(() => false)
+        const before = Array.from(h.forage.keys()).sort()
+
+        await run()
+
+        const asked = confirmMessages().filter((message) => KEPT_CONFIRM.test(message))
+        expect(asked).toEqual([language.coldStorageCleanupKeptConfirm([dateOf(FIRST_GENERATION_TIME), dateOf(SECOND_GENERATION_TIME)].join(', '))])
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupKeptKept])
+        expect(Array.from(h.forage.keys()).sort()).toEqual(before)
+        expect(world.owner.committedState()).not.toBeNull()
+    })
+
+    test('deleting them: each root goes first and its marker last, the live generation is untouched, the run then cleans up, and the asset sweep is not held', async () => {
+        const world = await arrange()
+        answerConfirms(() => true)
+        const removed: string[] = []
+        h.forageHooks.onRemove = (key) => removed.push(key)
+        const { generationPrefix, rootKey, keptKey } = await import('src/ts/storage/blockKeys')
+        const liveKeys = Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(world.generations.third)))
+
+        await run()
+
+        for (const generation of [world.generations.first, world.generations.second]) {
+            const mine = removed.filter((key) => key.startsWith(generationPrefix(generation)))
+            expect(mine[0]).toBe(rootKey(generation))
+            expect(mine.at(-1)).toBe(keptKey(generation))
+            expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(generation)))).toEqual([])
+        }
+        expect(removed.filter((key) => key.startsWith(generationPrefix(world.generations.third)))).toEqual([])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(world.generations.third)))).toEqual(liveKeys)
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/third.png')
+        expect(assetKeys()).not.toEqual(expect.arrayContaining(['assets/first-only.png']))
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+        expect(errorMessages()).toEqual([])
+        expect((await world.owner.inventory()).kept).toEqual([])
+        expect(await startupAssetSweepHeld(world.owner)).toBe(false)
+    })
+
+    test('a kept marker the live generation carries is never offered for deletion, whatever it says, and the real kept ones still are', async () => {
+        const world = await arrange()
+        const { keptKey, generationPrefix } = await import('src/ts/storage/blockKeys')
+        h.forage.set(keptKey(world.generations.third), new TextEncoder().encode(JSON.stringify({ kept: true, at: 1 })))
+        expect((await world.owner.inventory()).kept).toEqual([world.generations.first, world.generations.second].sort())
+        answerConfirms(() => true)
+
+        await run()
+
+        const asked = confirmMessages().filter((message) => KEPT_CONFIRM.test(message))
+        expect(asked).toEqual([language.coldStorageCleanupKeptConfirm([dateOf(FIRST_GENERATION_TIME), dateOf(SECOND_GENERATION_TIME)].join(', '))])
+        expect(asked[0]).not.toContain(dateOf(THIRD_GENERATION_TIME))
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(world.generations.third))).length).toBeGreaterThan(0)
+        expect(h.forage.has(keptKey(world.generations.third))).toBe(true)
+        expect(errorMessages()).toEqual([])
+        expect(await startupAssetSweepHeld(world.owner)).toBe(false)
+    })
+
+    test('a generation that became the live one while the confirm was open is not deleted, and the run stops', async () => {
+        const world = await arrange()
+        const { encodeHead } = await import('src/ts/storage/headSwap')
+        const { HEAD_KEY, generationPrefix } = await import('src/ts/storage/blockKeys')
+        answerConfirms(() => {
+            h.forage.set(HEAD_KEY, encodeHead({ current: world.generations.first }))
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedChanged])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(world.generations.first))).length).toBeGreaterThan(0)
+        expect(await units()).toContain('unreferenced-unit')
+    })
+})
+
+describe('block profile: leftover generations', () => {
+    /** A generation neither live nor kept: the keys of an earlier generation, planted again after a replace deleted it. */
+    async function leftoverWorld() {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([fullCharacter('char-a', 'Alice')]))
+        const { generationPrefix } = await import('src/ts/storage/blockKeys')
+        const clock = { now: FIRST_GENERATION_TIME }
+        const owner = await newOwner(clock)
+        const first = await owner.replaceWholeState(await blockSet(makeDb([fullCharacter('char-a', 'Alice')])), { requireAbsentHead: true })
+        if (first.kind !== 'won') {
+            throw new Error('the first generation was not written')
+        }
+        const firstKeys = Array.from(h.forage.entries()).filter(([key]) => key.startsWith(generationPrefix(first.generation)))
+        clock.now = SECOND_GENERATION_TIME
+        const second = await owner.replaceWholeState(await blockSet(makeDb([fullCharacter('char-a', 'Alice')])))
+        if (second.kind !== 'won') {
+            throw new Error('the second generation was not written')
+        }
+        for (const [key, bytes] of firstKeys) {
+            h.forage.set(key, bytes)
+        }
+        h.blockOwner.current = owner
+        await ctx.listing.recordLoadTimeListing()
+        return { owner, leftover: first.generation, live: second.generation, generationPrefix }
+    }
+
+    test('declining keeps them and the run goes on', async () => {
+        const world = await leftoverWorld()
+        answerConfirms(() => false)
+
+        await run()
+
+        expect(confirmMessages().filter((message) => LEFTOVER_CONFIRM.test(message))).toEqual([
+            language.coldStorageCleanupLeftoverConfirm(1, dateOf(FIRST_GENERATION_TIME)),
+        ])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.leftover))).length).toBeGreaterThan(0)
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('accepting deletes each root first, then the rest, and the live generation is untouched', async () => {
+        const world = await leftoverWorld()
+        answerConfirms(() => true)
+        const removed: string[] = []
+        h.forageHooks.onRemove = (key) => removed.push(key)
+        const { rootKey } = await import('src/ts/storage/blockKeys')
+        const liveKeys = Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.live)))
+
+        await run()
+
+        const mine = removed.filter((key) => key.startsWith(world.generationPrefix(world.leftover)))
+        expect(mine[0]).toBe(rootKey(world.leftover))
+        expect(mine.length).toBeGreaterThan(1)
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.leftover)))).toEqual([])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.live)))).toEqual(liveKeys)
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('guard: a leftover generation that was marked kept while the confirm was open is not deleted', async () => {
+        const world = await leftoverWorld()
+        const { keptKey } = await import('src/ts/storage/blockKeys')
+        answerConfirms(() => {
+            h.forage.set(keptKey(world.leftover), new TextEncoder().encode(JSON.stringify({ kept: true, at: 1 })))
+            return true
+        })
+
+        await run()
+
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.leftover))).length).toBeGreaterThan(1)
+    })
+
+    test('a generation that became the live one while the confirm was open is not deleted, and the run stops', async () => {
+        const world = await leftoverWorld()
+        const { encodeHead } = await import('src/ts/storage/headSwap')
+        answerConfirms(() => {
+            h.forage.set('blocks/head', encodeHead({ current: world.leftover }))
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCommittedChanged])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.leftover))).length).toBeGreaterThan(1)
+        expect(await units()).toContain('unreferenced-unit')
+    })
+
+    test('accepting, then an archived chat that cannot be read: the store is exactly as it was', async () => {
+        const world = await leftoverWorld()
+        setLive(makeDb([fullCharacter('char-a', 'Alice', { chats: [coldChat('chat-1', 'unit-u')] })]))
+        h.forageReadFail.add('coldstorage/unit-u')
+        answerConfirms(() => true)
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupChatUnreadable('Alice', language.errors.coldStorageCleanupSourceLive)])
+        expect(wholeStore()).toEqual(before)
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(world.generationPrefix(world.leftover))).length).toBeGreaterThan(1)
+    })
+
+    test('guard: a refusal raised while the confirm is open stops the run with the store exactly as it was', async () => {
+        await leftoverWorld()
+        answerConfirms(() => {
+            ctx.stores.savingStoppedReason.set('stay')
+            return true
+        })
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSavingStopped])
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('a leftover generation whose delete reports failure stops the run: no unit or asset is deleted, and the confirmed copy is untouched', async () => {
+        const world = await leftoverWorld()
+        const { rootKey } = await import('src/ts/storage/blockKeys')
+        seedAsset('orphan.png')
+        storeFile(PRE_BLOCKS, await encodeTree(makeDb([fullCharacter('copy-cha', 'Copy')])))
+        await ctx.listing.recordLoadTimeListing()
+        answerConfirms(() => true)
+        h.forageFail.add(rootKey(world.leftover))
+        const copyBefore = fileBytes(PRE_BLOCKS)
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(copyBefore).not.toBeNull()
+        expect(fileBytes(PRE_BLOCKS)).toEqual(copyBefore)
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/orphan.png')
+    })
+})
+
+describe('block profile: what the user confirmed is deleted only after every stop check has passed', () => {
+    const COPY_TREE = () => makeDb([fullCharacter('copy-cha', 'Copy', { image: 'assets/copy-only.png' })])
+
+    async function arrange(copy: Uint8Array | null): Promise<KeptWorld> {
+        await setup()
+        seedUnit('unreferenced-unit')
+        for (const name of ['first-only.png', 'second-only.png', 'third.png', 'copy-only.png', 'orphan.png']) {
+            seedAsset(name)
+        }
+        setLive(makeDb([fullCharacter('char-a', 'Alice', { image: 'assets/third.png' })]))
+        const world = await keptWorld('binary')
+        if (copy !== null) {
+            storeFile(PRE_BLOCKS, copy)
+        }
+        await ctx.listing.recordLoadTimeListing()
+        return world
+    }
+
+    test('kept generations accepted and an undecodable copy declined: the store is exactly as it was, and the message says to delete the copy', async () => {
+        await arrange(Uint8Array.from([1, 2, 3, 4]))
+        answerConfirms((message) => KEPT_CONFIRM.test(message))
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCopyUnreadable(language.errors.coldStorageCleanupSourcePreConversion)])
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('guard: kept generations and a readable copy accepted: the generations go first, then the copy, then the units and assets only they reached', async () => {
+        const world = await arrange(await encodeTree(COPY_TREE()))
+        const { generationPrefix } = await import('src/ts/storage/blockKeys')
+        answerConfirms(() => true)
+        const removed: string[] = []
+        h.forageHooks.onRemove = (key) => removed.push(key)
+
+        await run()
+
+        const generationAt = removed
+            .map((key, index) => [world.generations.first, world.generations.second].some((generation) => key.startsWith(generationPrefix(generation))) ? index : -1)
+        const lastGeneration = Math.max(...generationAt)
+        const copyAt = removed.indexOf(PRE_BLOCKS)
+        const firstAsset = Math.min(...['assets/first-only.png', 'assets/second-only.png', 'assets/copy-only.png', 'assets/orphan.png', 'coldstorage/unreferenced-unit'].map((key) => removed.indexOf(key)))
+        expect(copyAt).toBeGreaterThan(lastGeneration)
+        expect(firstAsset).toBeGreaterThan(copyAt)
+        expect(removed.indexOf('assets/copy-only.png')).toBeGreaterThan(copyAt)
+        expect(removed.indexOf('assets/first-only.png')).toBeGreaterThan(copyAt)
+        expect(assetKeys()).toEqual(['assets/third.png'])
+        expect(fileBytes(PRE_BLOCKS)).toBeNull()
+        expect(errorMessages()).toEqual([])
+    })
+
+    test.each([
+        ['guard: a refusal raised while the kept confirm is open stops the run with the store exactly as it was', KEPT_CONFIRM],
+        ['a refusal raised while the copy confirm is open stops the run with the store exactly as it was', COPY_CONFIRM],
+    ])('%s', async (_title, open) => {
+        await arrange(await encodeTree(COPY_TREE()))
+        answerConfirms((message) => {
+            if (open.test(message)) {
+                ctx.stores.savingStoppedReason.set('stay')
+            }
+            return true
+        })
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSavingStopped])
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('a refusal that arises after the last confirm still stops the run before the first delete', async () => {
+        await arrange(await encodeTree(COPY_TREE()))
+        answerConfirms(() => true)
+        h.forageHooks.afterUnitListing = () => {
+            h.forageHooks.afterUnitListing = undefined
+            ctx.stores.savingStoppedReason.set('stay')
+        }
+        const before = wholeStore()
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSavingStopped])
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('a head that changes after the first generation was deleted stops the run before any unit or asset is deleted, and says a copy was deleted', async () => {
+        const world = await arrange(await encodeTree(COPY_TREE()))
+        const { encodeHead } = await import('src/ts/storage/headSwap')
+        const { HEAD_KEY, keptKey, generationPrefix } = await import('src/ts/storage/blockKeys')
+        answerConfirms(() => true)
+        const firstMarker = keptKey(world.generations.first)
+        h.forageHooks.onRemove = (key) => {
+            if (key === firstMarker) {
+                h.forage.set(HEAD_KEY, encodeHead({ current: world.generations.first }))
+            }
+        }
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(world.generations.first)))).toEqual([])
+        expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(world.generations.second))).length).toBeGreaterThan(0)
+        expect(fileBytes(PRE_BLOCKS)).not.toBeNull()
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys().sort()).toEqual(['assets/copy-only.png', 'assets/first-only.png', 'assets/orphan.png', 'assets/second-only.png', 'assets/third.png'])
+    })
+
+    test('a kept generation whose delete throws stops the run: no unit or asset is deleted, and the confirmed copy is untouched', async () => {
+        const world = await arrange(await encodeTree(COPY_TREE()))
+        const { rootKey } = await import('src/ts/storage/blockKeys')
+        answerConfirms(() => true)
+        h.forageFail.add(rootKey(world.generations.first))
+        const copyBefore = fileBytes(PRE_BLOCKS)
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(fileBytes(PRE_BLOCKS)).toEqual(copyBefore)
+        expect(copyBefore).not.toBeNull()
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys().sort()).toEqual(['assets/copy-only.png', 'assets/first-only.png', 'assets/orphan.png', 'assets/second-only.png', 'assets/third.png'])
+    })
+
+    test('guard: a copy that changed while its confirm was open is not deleted: the generations already deleted stay deleted, and no unit or asset is', async () => {
+        const world = await arrange(await encodeTree(COPY_TREE()))
+        const { generationPrefix } = await import('src/ts/storage/blockKeys')
+        answerConfirms((message) => {
+            if (COPY_CONFIRM.test(message)) {
+                storeFile(PRE_BLOCKS, Uint8Array.from([7, 7, 7]))
+            }
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(fileBytes(PRE_BLOCKS)).toEqual(Uint8Array.from([7, 7, 7]))
+        for (const generation of [world.generations.first, world.generations.second]) {
+            expect(Array.from(h.forage.keys()).filter((key) => key.startsWith(generationPrefix(generation)))).toEqual([])
+        }
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys()).toHaveLength(5)
+    })
+})
+
+//#endregion
+
+describe('a block page that runs from OPFS this time', () => {
+    test('guard: the clean-up writes and deletes nothing and shows the read-only notice, with a head and a leftover generation in the store', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([fullCharacter('char-a', 'Alice')]))
+        const owner = await startBlockProfile(makeDb([fullCharacter('char-a', 'Alice')]))
+        const { generationPrefix } = await import('src/ts/storage/blockKeys')
+        h.forage.set(generationPrefix('0000000000aa-000000bb') + 'root', Uint8Array.from([1]))
+        h.blockOwner.current = null
+        const { injectAppStore } = await import('src/ts/storage/store/appStore')
+        injectAppStore(await pageStore(), 'opfs-transitional')
+        await ctx.listing.recordLoadTimeListing()
+        const before = Array.from(h.forage.entries()).map(([key, value]) => `${key}:${value.length}`).sort()
+        const removed: string[] = []
+        h.forageHooks.onRemove = (key) => removed.push(key)
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.opfsReadOnlyNotice])
+        expect(removed).toEqual([])
+        expect(confirmMessages()).toEqual([])
+        expect(Array.from(h.forage.entries()).map(([key, value]) => `${key}:${value.length}`).sort()).toEqual(before)
+        expect(owner.committedState()).not.toBeNull()
     })
 })

@@ -67,6 +67,15 @@ export const languageEnglish = {
         coldStorageCleanupOtherTab: "Cold storage cleanup was not started because another tab of this app appears to be open. Close every other tab of this app, then try again. Nothing was deleted.",
         coldStorageCleanupMainChanged: "Cold storage cleanup was not started because the saved data changed since this page last read or saved it. Another tab or device may have saved. Reload the page, then try again. Nothing was deleted.",
         coldStorageCleanupMainUnknown: "Cold storage cleanup was not started because this page has no usable record of the main data file: it has not read or saved it yet, or the record could not be computed. Wait for the page to finish saving, or reload the page, then try again. Nothing was deleted.",
+        coldStorageCleanupCommittedChanged: "Cold storage cleanup was not started because the saved data changed since this page last loaded or saved it. Another tab or device may have saved. Reload the page, then try again. Nothing was deleted.",
+        coldStorageCleanupCommittedUnknown: "Cold storage cleanup was not started because this page has no usable record of the saved data: it has not loaded it, or another tab or device changed how the data is stored since. Reload the page, then try again. Nothing was deleted.",
+        coldStorageCleanupSourceCommitted: "the saved data",
+        coldStorageCleanupSourcePreConversion: "the copy of your data from before it moved to the new save format",
+        coldStorageCleanupSourceOlderMain: "another main save file named database.bin",
+        coldStorageCleanupKeptKept: "Cold storage cleanup was not run. The older saved copies of your data are kept, and images and archived data that only they use cannot be told apart from unused ones, so nothing was deleted. Run the cleanup again from Settings (Clean Unused Archived Data and Assets) and choose to delete them once you do not need them any more.",
+        coldStorageCleanupCopyUnreadable: (source: string) =>
+            `Cold storage cleanup was stopped because ${source} could not be read completely, so nothing was deleted. Run the cleanup again and choose to delete that copy if you do not need it. Until it is deleted or can be read, cleanup will keep stopping here.`,
+        coldStorageCleanupDeleteFailed: "Cold storage cleanup was stopped because a saved copy of your data could not be deleted completely, or changed while it was being deleted. Saved data deleted before it stays deleted, and no unused images or archived data were deleted. Reload the page and try again.",
         coldStorageCleanupStoppedBusy: "Cold storage cleanup stopped because a chat started generating or something else started writing.",
         coldStorageCleanupStoppedSavingStopped: "Cold storage cleanup stopped because saving was stopped for this page.",
         coldStorageCleanupStoppedFrozen: (characterGroups: string) =>
@@ -2205,6 +2214,13 @@ export const languageEnglish = {
             : 'No current saved data was found to keep as a backup copy before this load. ')
         + 'If you continue, you cannot go back to what is saved now from the backup list. Continue without a backup copy?',
     internalBackupLoadedNoCopy: "The backup was loaded. Refreshing your app.",
+    coldStorageCleanupDateUnknown: "date unknown",
+    coldStorageCleanupKeptConfirm: (dates: string) =>
+        `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,
+    coldStorageCleanupLeftoverConfirm: (count: number, dates: string) =>
+        `${count} piece(s) of unused saved data left over from interrupted saves were found (${dates}). Delete them? Do not do this while another device or browser is saving to the same server: a save in progress there can be lost. Choose Cancel to keep them; the cleanup then continues without them.`,
+    coldStorageCleanupCopyConfirm: (name: string, date: string, readable: boolean) =>
+        `${name.charAt(0).toUpperCase()}${name.slice(1)} (${date}) is still in your storage, and the images and archived data it uses are being kept for it.${readable ? '' : ' It could not be read, so the cleanup cannot run while it exists.'}\n\nDelete this copy? It cannot be recovered, and anything only it uses will then be cleaned up. Choose Cancel to keep it${readable ? '; the cleanup then continues and keeps what it uses.' : '; the cleanup then does not run.'}`,
     backupAndFiles: "Backup & Files",
     assetIntegrityHeading: "Asset Cache Integrity",
     assetIntegrityDescription: "Checks cached images/assets against their own content hash to detect corruption, without re-downloading anything from storage. Read-only unless you choose to remove a corrupted entry.",

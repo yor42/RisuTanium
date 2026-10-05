@@ -62,6 +62,15 @@ export const languageSpanish = {
         "coldStorageCleanupOtherTab": "La limpieza del almacenamiento frío no se inició porque parece que hay otra pestaña de esta aplicación abierta. Cierra todas las demás pestañas de esta aplicación y vuelve a intentarlo. No se eliminó nada.",
         "coldStorageCleanupMainChanged": "La limpieza del almacenamiento frío no se inició porque los datos guardados han cambiado desde la última vez que esta página los leyó o guardó. Es posible que otra pestaña o dispositivo haya guardado. Recarga la página y vuelve a intentarlo. No se eliminó nada.",
         "coldStorageCleanupMainUnknown": "La limpieza del almacenamiento frío no se inició porque esta página no tiene un registro utilizable del archivo principal de datos: todavía no lo ha leído ni guardado, o no se pudo calcular el registro. Espera a que la página termine de guardar o recarga la página y vuelve a intentarlo. No se eliminó nada.",
+        "coldStorageCleanupCommittedChanged": "La limpieza del almacenamiento frío no se inició porque los datos guardados han cambiado desde la última vez que esta página los cargó o guardó. Es posible que otra pestaña o dispositivo haya guardado. Recarga la página y vuelve a intentarlo. No se eliminó nada.",
+        "coldStorageCleanupCommittedUnknown": "La limpieza del almacenamiento frío no se inició porque esta página no tiene un registro utilizable de los datos guardados: todavía no los ha cargado, o desde entonces otra pestaña o dispositivo cambió la forma en que se almacenan los datos. Recarga la página y vuelve a intentarlo. No se eliminó nada.",
+        "coldStorageCleanupSourceCommitted": "el conjunto de datos guardado",
+        "coldStorageCleanupSourcePreConversion": "la copia de tus datos anterior al paso al nuevo formato de guardado",
+        "coldStorageCleanupSourceOlderMain": "otra copia del archivo principal de guardado llamada database.bin",
+        "coldStorageCleanupKeptKept": "La limpieza del almacenamiento frío no se ejecutó. Se conservan las copias guardadas más antiguas de tus datos, y las imágenes y los datos archivados que solo ellas usan no se pueden distinguir de los no utilizados, por lo que no se eliminó nada. Ejecuta la limpieza de nuevo desde Configuración (Limpiar Datos Archivados y Activos No Utilizados) y elige eliminarlas cuando ya no las necesites.",
+        "coldStorageCleanupCopyUnreadable": (source: string) =>
+            `La limpieza del almacenamiento frío se detuvo porque ${source} no se pudo leer por completo, por lo que no se eliminó nada. Ejecuta la limpieza de nuevo y elige eliminar esa copia si no la necesitas. Hasta que se elimine o se pueda leer, la limpieza seguirá deteniéndose aquí.`,
+        "coldStorageCleanupDeleteFailed": "La limpieza del almacenamiento frío se detuvo porque una copia guardada de tus datos no se pudo eliminar por completo, o cambió mientras se eliminaba. Los datos guardados eliminados antes siguen eliminados, y no se eliminó ninguna imagen ni dato archivado sin usar. Recarga la página e inténtalo de nuevo.",
         "coldStorageCleanupStoppedBusy": "La limpieza del almacenamiento frío se detuvo porque un chat empezó a generar o algo más empezó a escribir.",
         "coldStorageCleanupStoppedSavingStopped": "La limpieza del almacenamiento frío se detuvo porque el guardado se detuvo para esta página.",
         "coldStorageCleanupStoppedFrozen": (characterGroups: string) =>
@@ -2069,6 +2078,13 @@ export const languageSpanish = {
             : 'No se encontraron datos guardados actuales para conservar como copia de respaldo antes de esta carga. ')
         + 'Si continúas, no podrás volver desde la lista de respaldos a lo que está guardado ahora. ¿Continuar sin copia de respaldo?',
     internalBackupLoadedNoCopy: "Se cargó el respaldo. Actualizando la aplicación.",
+    coldStorageCleanupDateUnknown: "fecha desconocida",
+    coldStorageCleanupKeptConfirm: (dates: string) =>
+        `Cuando se reemplazó un guardado dañado desde un respaldo, las copias guardadas más antiguas de tus datos se apartaron en lugar de eliminarse (creadas: ${dates}). Las imágenes y los datos archivados que solo ellas usan siguen protegidos, por lo que la limpieza no se puede ejecutar mientras existan.\n\n¿Eliminar estas copias antiguas y luego limpiar? No se pueden recuperar. Elige Cancelar para conservarlas; la limpieza entonces no se ejecuta.`,
+    coldStorageCleanupLeftoverConfirm: (count: number, dates: string) =>
+        `Se encontraron ${count} fragmento(s) de datos guardados sin usar que quedaron de guardados interrumpidos (${dates}). ¿Eliminarlos? No lo hagas mientras otro dispositivo o navegador esté guardando en el mismo servidor: un guardado en curso allí puede perderse. Elige Cancelar para conservarlos; la limpieza continúa entonces sin ellos.`,
+    coldStorageCleanupCopyConfirm: (name: string, date: string, readable: boolean) =>
+        `${name.charAt(0).toUpperCase()}${name.slice(1)} (${date}) sigue en tu almacenamiento, y las imágenes y los datos archivados que usa se conservan por ello.${readable ? '' : ' No se pudo leer, por lo que la limpieza no se puede ejecutar mientras exista.'}\n\n¿Eliminar esta copia? No se puede recuperar, y lo que solo ella use se limpiará después. Elige Cancelar para conservarla${readable ? '; la limpieza continúa entonces y conserva lo que usa.' : '; la limpieza entonces no se ejecuta.'}`,
     backupAndFiles: "Respaldo y Archivos",
     assetIntegrityHeading: "Integridad de la Caché de Activos",
     assetIntegrityDescription: "Comprueba las imágenes/activos en caché contra su propio hash de contenido para detectar corrupción, sin volver a descargar nada del almacenamiento. Es de solo lectura, salvo que elijas eliminar una entrada dañada.",

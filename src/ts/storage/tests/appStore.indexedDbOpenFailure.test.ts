@@ -78,7 +78,7 @@ describe('a one-off refused open of a healthy IndexedDB profile', () => {
         })
 
         await expect(app.getAppStore()).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
-        await expect(app.writeMainFile(Uint8Array.from([9]))).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
+        await expect(app.readMainFile()).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
 
         expect(put).not.toHaveBeenCalled()
         expect(remove).not.toHaveBeenCalled()

@@ -1,11 +1,9 @@
 // @vitest-environment node
 /**
- * The page's byte store and the main file's version cell
- * (`src/ts/storage/store/appStore.ts`): which store each platform gets, that an
- * OPFS-main profile never reads or writes the IndexedDB copy of its keys, that a
- * browser without usable IndexedDB gets no store and nothing is written, and
- * that on the Node server every main-file write is conditional on the version
- * this page last read or wrote.
+ * The page's byte store (`src/ts/storage/store/appStore.ts`): which store each
+ * platform gets, that an OPFS-main profile never reads or writes the IndexedDB
+ * copy of its keys, that a browser without usable IndexedDB gets no store and
+ * nothing is written, and how the main file reads on the Node server.
  *
  * The Node server is the `FakeNodeServer` stand-in at the `fetch` boundary, the
  * Tauri file system and the OPFS root are in-memory models, and IndexedDB is
@@ -67,8 +65,7 @@ vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
 type AppStoreModule = typeof import('src/ts/storage/store/appStore')
 
 let app: AppStoreModule
-/** The conflict class of the module graph `app` was loaded in: each test loads a fresh graph. */
-let StoreVersionConflictError: typeof import('src/ts/storage/store/errors').StoreVersionConflictError
+
 let server: FakeNodeServer
 
 /** The `risuai` LocalForage database the IndexedDB store and upstream's own code share. */
@@ -99,7 +96,6 @@ beforeEach(async () => {
     fakeFs.reset()
     vi.resetModules()
     app = await import('src/ts/storage/store/appStore')
-    StoreVersionConflictError = (await import('src/ts/storage/store/errors')).StoreVersionConflictError
 })
 
 afterEach(() => {
@@ -108,18 +104,16 @@ afterEach(() => {
 })
 
 describe('the store each platform gets', () => {
-    test('Tauri: the desktop files store; the main file is read, then replaced without a condition', async () => {
+    test('Tauri: the desktop files store; the main file is read', async () => {
         platform('tauri')
         fakeFs.plant(MAIN, bytes(1, 2, 3))
 
         const store = await app.getAppStore()
         const read = await app.readMainFile()
-        await app.writeMainFile(bytes(4, 5))
 
         expect(store.capabilities.conditionalWrites).toBe(false)
         expect(Array.from(read.bytes ?? [])).toEqual([1, 2, 3])
         expect(read.version).toBeNull()
-        expect(Array.from(fakeFs.files.get(MAIN) ?? [])).toEqual([4, 5])
     })
 
     test('Node: the Node HTTP store, authenticated through the storage object\'s own Node client', async () => {
@@ -140,11 +134,9 @@ describe('the store each platform gets', () => {
 
         const store = await app.getAppStore()
         const read = await app.readMainFile()
-        await app.writeMainFile(bytes(4))
 
         expect(store.capabilities.conditionalWrites).toBe(false)
         expect(Array.from(read.bytes ?? [])).toEqual([3, 3, 3])
-        expect(Array.from((await profile.getItem<Uint8Array>(MAIN)) ?? [])).toEqual([4])
     })
 
     test('the selected kind is readable: Tauri, Node and IndexedDB each report their own', async () => {
@@ -200,35 +192,11 @@ describe('the main file on the Node server', () => {
         await nodeWorld()
     })
 
-    test('a write with no version is refused and sends nothing: a conditional store never gets an unconditional main-file write', async () => {
-        server.seed(MAIN, bytes(1))
-
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeDefined()
-
-        expect(server.requestsTo('/api/write')).toHaveLength(0)
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([1])
-    })
-
-    test('a write presents the version of the last read, and each successful write advances it', async () => {
-        server.seed(MAIN, bytes(1))
+    test('an absent main file reads as absent at its create version', async () => {
         const read = await app.readMainFile()
-
-        await app.writeMainFile(bytes(2))
-        await app.writeMainFile(bytes(3))
-
-        const writes = server.requestsTo('/api/write')
-        expect(writes.map((request) => request.headers['if-match-revision'])).toEqual([String(read.version), String((read.version ?? 0) + 1)])
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([3])
-    })
-
-    test('an absent main file reads at its create version and takes the seed once', async () => {
-        const read = await app.readMainFile()
-        await app.writeMainFile(bytes(1))
 
         expect(read.bytes).toBeNull()
         expect(read.version).toBe(0)
-        expect(server.requestsTo('/api/write')[0].headers['if-match-revision']).toBe('0')
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([1])
     })
 
     test('a zero-length main file is a value, distinct from an absent one', async () => {
@@ -238,60 +206,6 @@ describe('the main file on the Node server', () => {
 
         expect(read.bytes).not.toBeNull()
         expect(read.bytes?.length).toBe(0)
-    })
-
-    test('another writer\'s save refuses the next write with the store\'s conflict, and the refusal does not move the version: only a fresh read does', async () => {
-        server.seed(MAIN, bytes(1))
-        await app.readMainFile()
-        server.peerWrite(MAIN, bytes(9))
-
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeInstanceOf(StoreVersionConflictError)
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeInstanceOf(StoreVersionConflictError)
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([9])
-
-        await app.readMainFile()
-        await app.writeMainFile(bytes(2))
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([2])
-    })
-
-    test('a read made through the store itself, as the manual clean-up makes it, leaves the version alone', async () => {
-        server.seed(MAIN, bytes(1))
-        await app.readMainFile()
-        server.peerWrite(MAIN, bytes(9))
-
-        const store = await app.getAppStore()
-        const peeked = await store.read(MAIN)
-
-        expect(Array.from(peeked.bytes ?? [])).toEqual([9])
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeInstanceOf(StoreVersionConflictError)
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([9])
-    })
-
-    test('after a refused commit the re-read\'s version is the one the next write presents: no spurious conflict, and a later peer save is still caught', async () => {
-        server.seed(MAIN, bytes(1))
-        await app.readMainFile()
-        server.peerWrite(MAIN, bytes(5))
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeInstanceOf(StoreVersionConflictError)
-
-        const reread = await app.readMainFile()
-        expect(Array.from(reread.bytes ?? [])).toEqual([5])
-        await app.writeMainFile(bytes(6))
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([6])
-
-        server.peerWrite(MAIN, bytes(8))
-        await expect(app.writeMainFile(bytes(7))).rejects.toBeInstanceOf(StoreVersionConflictError)
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([8])
-    })
-
-    test('two first-launch pages: the second page\'s seed is refused', async () => {
-        const first = await app.readMainFile()
-        const second = await app.readMainFile()
-        expect(first.version).toBe(0)
-        expect(second.version).toBe(0)
-        server.peerWrite(MAIN, bytes(1))
-
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeInstanceOf(StoreVersionConflictError)
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual([1])
     })
 })
 
@@ -304,7 +218,6 @@ describe('a browser without usable IndexedDB', () => {
 
         await expect(app.getAppStore()).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
         await expect(app.readMainFile()).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
-        await expect(app.writeMainFile(bytes(2))).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
 
         expect(idbWrite).not.toHaveBeenCalled()
     })

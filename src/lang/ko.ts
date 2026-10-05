@@ -62,6 +62,15 @@ export const languageKorean = {
         "coldStorageCleanupOtherTab": "이 앱의 다른 탭이 열려 있는 것으로 보여 콜드 스토리지 정리를 시작하지 않았습니다. 이 앱의 다른 탭을 모두 닫은 뒤 다시 시도하세요. 삭제된 항목은 없습니다.",
         "coldStorageCleanupMainChanged": "이 페이지가 마지막으로 읽거나 저장한 이후 저장된 데이터가 변경되어 콜드 스토리지 정리를 시작하지 않았습니다. 다른 탭이나 기기에서 저장했을 수 있습니다. 페이지를 새로고침한 뒤 다시 시도하세요. 삭제된 항목은 없습니다.",
         "coldStorageCleanupMainUnknown": "이 페이지에 메인 데이터 파일에 대한 사용 가능한 기록이 없어 콜드 스토리지 정리를 시작하지 않았습니다. 아직 파일을 읽거나 저장하지 않았거나, 기록을 계산하지 못했습니다. 페이지의 저장이 끝날 때까지 기다리거나 페이지를 새로고침한 뒤 다시 시도하세요. 삭제된 항목은 없습니다.",
+        "coldStorageCleanupCommittedChanged": "이 페이지가 마지막으로 불러오거나 저장한 이후 저장된 데이터가 변경되어 콜드 스토리지 정리를 시작하지 않았습니다. 다른 탭이나 기기에서 저장했을 수 있습니다. 페이지를 새로고침한 뒤 다시 시도하세요. 삭제된 항목은 없습니다.",
+        "coldStorageCleanupCommittedUnknown": "이 페이지에 저장된 데이터에 대한 사용 가능한 기록이 없어 콜드 스토리지 정리를 시작하지 않았습니다. 데이터를 아직 불러오지 않았거나, 그 이후 다른 탭이나 기기에서 데이터가 저장되는 방식을 변경했습니다. 페이지를 새로고침한 뒤 다시 시도하세요. 삭제된 항목은 없습니다.",
+        "coldStorageCleanupSourceCommitted": "저장된 데이터",
+        "coldStorageCleanupSourcePreConversion": "새 저장 형식으로 옮기기 전의 데이터 사본",
+        "coldStorageCleanupSourceOlderMain": "database.bin이라는 다른 메인 저장 파일",
+        "coldStorageCleanupKeptKept": "콜드 스토리지 정리를 실행하지 않았습니다. 이전에 저장된 데이터 사본이 남아 있고, 그 사본만 사용하는 이미지와 보관된 데이터는 사용하지 않는 항목과 구분할 수 없으므로 삭제된 항목은 없습니다. 설정(사용하지 않는 보관 데이터 및 에셋 정리)에서 정리를 다시 실행하고, 사본이 더 이상 필요하지 않을 때 삭제하도록 선택하세요.",
+        "coldStorageCleanupCopyUnreadable": (source: string) =>
+            `${source}을(를) 완전히 읽을 수 없어 콜드 스토리지 정리가 중단되었으며, 삭제된 항목은 없습니다. 정리를 다시 실행하고, 그 사본이 필요하지 않다면 삭제하도록 선택하세요. 삭제하거나 읽을 수 있게 될 때까지 정리는 여기서 계속 중단됩니다.`,
+        "coldStorageCleanupDeleteFailed": "저장된 데이터 사본을 완전히 삭제하지 못했거나 삭제하는 도중 변경되어 콜드 스토리지 정리가 중단되었습니다. 그보다 먼저 삭제된 저장 데이터는 삭제된 상태로 유지되며, 사용하지 않는 이미지와 보관된 데이터는 삭제되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
         "coldStorageCleanupStoppedBusy": "채팅 생성이 시작되었거나 다른 작업이 쓰기를 시작하여 콜드 스토리지 정리가 중지되었습니다.",
         "coldStorageCleanupStoppedSavingStopped": "이 페이지의 저장이 중지되어 콜드 스토리지 정리가 중지되었습니다.",
         "coldStorageCleanupStoppedFrozen": (characterGroups: string) =>
@@ -2069,6 +2078,13 @@ export const languageKorean = {
             : '이번에 불러오기 전에 백업 사본으로 보관할 현재 저장된 데이터를 찾을 수 없습니다. ')
         + '계속하면 백업 목록에서 지금 저장된 상태로 되돌릴 수 없습니다. 백업 사본 없이 계속하시겠습니까?',
     internalBackupLoadedNoCopy: "백업을 불러왔습니다. 앱을 새로 고치는 중입니다.",
+    coldStorageCleanupDateUnknown: "날짜 알 수 없음",
+    coldStorageCleanupKeptConfirm: (dates: string) =>
+        `손상된 저장 데이터를 백업으로 교체할 때, 이전에 저장된 데이터 사본이 삭제되지 않고 따로 보관되었습니다(생성: ${dates}). 이 사본만 사용하는 이미지와 보관된 데이터는 계속 보호되므로, 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.\n\n이 이전 사본을 삭제한 뒤 정리하시겠습니까? 삭제한 사본은 복구할 수 없습니다. 취소를 선택하면 사본을 유지하며, 이 경우 정리는 실행되지 않습니다.`,
+    coldStorageCleanupLeftoverConfirm: (count: number, dates: string) =>
+        `중단된 저장 작업에서 남은 사용하지 않는 저장 데이터 ${count}개가 발견되었습니다(${dates}). 삭제하시겠습니까? 같은 서버에 다른 기기나 브라우저가 저장 중일 때는 삭제하지 마세요. 그쪽에서 진행 중인 저장이 손실될 수 있습니다. 취소를 선택하면 유지하며, 이 경우 정리는 이 항목 없이 계속됩니다.`,
+    coldStorageCleanupCopyConfirm: (name: string, date: string, readable: boolean) =>
+        `${name}(${date})은(는) 아직 저장소에 남아 있으며, 이 사본이 사용하는 이미지와 보관된 데이터는 이 사본을 위해 유지되고 있습니다.${readable ? '' : ' 이 사본을 읽을 수 없으므로 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.'}\n\n이 사본을 삭제하시겠습니까? 삭제한 사본은 복구할 수 없으며, 이 사본만 사용하던 항목은 이후 정리됩니다. 취소를 선택하면 사본을 유지합니다${readable ? '. 이 경우 정리는 계속되며 사본이 사용하는 항목은 유지됩니다.' : '. 이 경우 정리는 실행되지 않습니다.'}`,
     backupAndFiles: "백업 & 파일",
     assetIntegrityHeading: "에셋 캐시 무결성",
     assetIntegrityDescription: "캐시된 이미지/에셋을 자체 콘텐츠 해시와 대조해 손상 여부를 확인하며, 저장소에서 다시 다운로드하지는 않습니다. 손상된 항목을 제거하도록 선택하지 않는 한 읽기 전용입니다.",

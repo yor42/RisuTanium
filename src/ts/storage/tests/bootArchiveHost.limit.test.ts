@@ -15,7 +15,6 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: vi.fn(() => 'windows') }))
 
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     readMainFile: vi.fn(),
-    writeMainFile: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({

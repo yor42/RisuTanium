@@ -62,6 +62,15 @@ export const languageChineseTraditional = {
         "coldStorageCleanupOtherTab": "由於似乎已開啟此應用程式的其他分頁，冷儲存清理未開始。請關閉此應用程式的所有其他分頁，然後再試一次。未刪除任何內容。",
         "coldStorageCleanupMainChanged": "由於自此頁面上次讀取或儲存以來，已儲存的資料發生了變化，冷儲存清理未開始。可能是其他分頁或裝置進行了儲存。請重新載入頁面，然後再試一次。未刪除任何內容。",
         "coldStorageCleanupMainUnknown": "由於此頁面沒有可用的主資料檔案記錄（尚未讀取或儲存過該檔案，或無法計算該記錄），冷儲存清理未開始。請等待頁面完成儲存，或重新載入頁面，然後再試一次。未刪除任何內容。",
+        "coldStorageCleanupCommittedChanged": "由於自此頁面上次載入或儲存以來，已儲存的資料發生了變化，冷儲存清理未開始。可能是其他分頁或裝置進行了儲存。請重新載入頁面，然後再試一次。未刪除任何內容。",
+        "coldStorageCleanupCommittedUnknown": "由於此頁面沒有可用的已儲存資料記錄（尚未載入過這些資料，或此後其他分頁或裝置更改了資料的儲存方式），冷儲存清理未開始。請重新載入頁面，然後再試一次。未刪除任何內容。",
+        "coldStorageCleanupSourceCommitted": "已儲存的資料",
+        "coldStorageCleanupSourcePreConversion": "遷移到新儲存格式之前的資料副本",
+        "coldStorageCleanupSourceOlderMain": "另一個名為 database.bin 的主儲存檔案",
+        "coldStorageCleanupKeptKept": "冷儲存清理未執行。資料的較舊已儲存副本仍被保留，僅被它們使用的圖片和封存資料無法與未使用的項目區分開，因此未刪除任何內容。請在設定（清理未使用的封存資料與資源）中再次執行清理，並在不再需要這些副本時選擇刪除它們。",
+        "coldStorageCleanupCopyUnreadable": (source: string) =>
+            `由於無法完整讀取${source}，冷儲存清理已停止，未刪除任何內容。請再次執行清理，並在不需要該副本時選擇刪除它。在它被刪除或可以讀取之前，清理會一直在此處停止。`,
+        "coldStorageCleanupDeleteFailed": "由於某個已儲存的資料副本無法被完全刪除，或在刪除過程中發生了變化，冷儲存清理已停止。此前已刪除的已儲存資料仍保持刪除狀態，未刪除任何未使用的圖片和封存資料。請重新載入頁面後再試一次。",
         "coldStorageCleanupStoppedBusy": "由於有對話開始產生，或有其他內容開始寫入，冷儲存清理已停止。",
         "coldStorageCleanupStoppedSavingStopped": "由於此頁面的儲存已停止，冷儲存清理已停止。",
         "coldStorageCleanupStoppedFrozen": (characterGroups: string) =>
@@ -2114,6 +2123,13 @@ export const languageChineseTraditional = {
             : '找不到可在本次載入之前保留為備份副本的目前已儲存資料。')
         + '如果繼續，您將無法從備份清單回到目前已儲存的狀態。要在沒有備份副本的情況下繼續嗎？',
     "internalBackupLoadedNoCopy": "備份已載入。正在重新整理應用程式。",
+    "coldStorageCleanupDateUnknown": "日期未知",
+    "coldStorageCleanupKeptConfirm": (dates: string) =>
+        `在用備份取代已損毀的已儲存資料時，資料的較舊已儲存副本被保留下來，而沒有被刪除（建立於 ${dates}）。僅被它們使用的圖片和封存資料仍受保護，因此只要這些副本存在，就無法執行清理。\n\n是否刪除這些較舊的副本，然後進行清理？刪除後無法復原。選擇「取消」則保留它們，此時不會執行清理。`,
+    "coldStorageCleanupLeftoverConfirm": (count: number, dates: string) =>
+        `發現 ${count} 份因儲存中斷而遺留的未使用已儲存資料（${dates}）。是否刪除？當另一台裝置或瀏覽器正在向同一個伺服器儲存時，請勿執行此操作：那裡正在進行的儲存可能會遺失。選擇「取消」則保留它們，清理將在不處理它們的情況下繼續。`,
+    "coldStorageCleanupCopyConfirm": (name: string, date: string, readable: boolean) =>
+        `${name}（${date}）仍保留在儲存空間中，它所使用的圖片和封存資料也正為其保留。${readable ? '' : '該副本無法讀取，因此只要它存在，就無法執行清理。'}\n\n是否刪除此副本？刪除後無法復原，且僅被它使用的內容隨後將被清理。選擇「取消」則保留它${readable ? '；清理將繼續，並保留它所使用的內容。' : '；此時不會執行清理。'}`,
     "backupAndFiles": "備份 & 檔案",
     "assetIntegrityHeading": "資源快取完整性",
     "assetIntegrityDescription": "將快取的圖片/資源與其自身的內容雜湊值進行比對以偵測損毀，無需從儲存空間重新下載任何內容。除非您選擇移除已損毀的項目，否則此操作為唯讀。",

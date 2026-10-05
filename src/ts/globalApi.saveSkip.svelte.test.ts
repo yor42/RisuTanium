@@ -850,26 +850,6 @@ describe('backup freshness across sessions', () => {
     })
 })
 
-describe('writeMainFile adds no task boundary', () => {
-    test('26 (G): no macrotask runs between a caller entering writeMainFile and the store write starting', async () => {
-        const w = await startWorld({ startLoop: false })
-        let timerFired = false
-        let firedAtWrite: boolean | null = null
-        const inner = w.store.write.bind(w.store)
-        w.appStore.injectAppStore({
-            ...w.store,
-            write: async (key, bytes, condition) => {
-                firedAtWrite = timerFired
-                return inner(key, bytes, condition)
-            },
-        })
-        await w.appStore.getAppStore()
-        setTimeout(() => { timerFired = true }, 0)
-        await w.appStore.writeMainFile(new Uint8Array([1, 2, 3]))
-        expect(firedAtWrite).toBe(false)
-    })
-})
-
 describe('the legacy main file is never written', () => {
     test('35 (R): editing, committing, taking a backup and idling mutate no key of the legacy main file', async () => {
         const w = await startWorld()

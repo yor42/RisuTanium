@@ -6,14 +6,14 @@ import { NodeStorage } from '../nodeStorage'
 import { isAppInitiatedReload } from '../../reloadGuard'
 import { OpfsStorage } from '../opfsStorage'
 import { resolveWebStore, runLeftoverCleanup, type CopyBackEnvironment, type FallbackNotice } from '../opfsCopyBack'
-import type { ByteStore, ReadResult, StoreCondition } from './contract'
+import type { ByteStore, ReadResult } from './contract'
 import { StoreError } from './errors'
 import { createEntryProbe, createIndexedDbStore } from './indexedDbStore'
 import type { FilePlatform } from './keyRules'
 import { createNodeHttpStore } from './nodeHttpStore'
 import { createOpfsTransitionalStore } from './opfsTransitionalStore'
 import { createTauriFilesStore } from './tauriFilesStore'
-import { beginMainFileWrite, confirmMainFileWrite, noteMainFileRead, resetMainFileOutcomeForTests } from '../mainFileOutcome'
+import { noteMainFileRead, resetMainFileOutcomeForTests } from '../mainFileOutcome'
 
 /**
  * The one byte store the app's main file, numbered backups, snapshots and
@@ -39,23 +39,15 @@ import { beginMainFileWrite, confirmMainFileWrite, noteMainFileRead, resetMainFi
  *
  * A caller gets the store from `getAppStore`; none builds its own.
  *
- * The main file's version is the Node server's revision of `database/database.bin`
- * as this page last read or wrote it, and `null` on a store without conditional
- * writes. Every main-file write goes through `writeMainFile`, which presents
- * that version as the write's condition on a store that enforces one and never
- * falls back to an unconditional write there. A main-file read that must set the
- * version goes through `readMainFile`; a read that must leave it alone (the
- * manual clean-up's) uses the store's own `read` and must keep doing so, or the
- * next save would overwrite another device's newer save instead of being refused.
- * A refused write never moves the version: only a fresh `readMainFile` does, so
- * a stale writer keeps being refused.
- *
- * Both calls also report to `mainFileOutcome.ts`, synchronously and without any
- * I/O: a write is reported as begun just before the store's write and as
- * confirmed only when that write returns, and a read is reported when it
- * returns. A write that throws is therefore never a confirmed one. The report
- * adds no await, so a caller that checks the page is idle and then writes has
- * no new task boundary between the two.
+ * The save of a profile is the block store, and the application's saves never
+ * write `database/database.bin`. The one writer of that key is the copy-back in
+ * `opfsCopyBack.ts`, which puts an OPFS main file into IndexedDB when the
+ * `migrated` marker exists, whether or not the profile holds a block head. Everything else
+ * only reads the main file (the boot of a profile with no head, and the
+ * older-copy sources of the manual clean-up), moves it aside or deletes it. A
+ * main-file read at boot goes through `readMainFile`, which reports to
+ * `mainFileOutcome.ts` synchronously and without any I/O when it returns; the
+ * manual clean-up uses the store's own `read`, which does not report.
  */
 
 export const MAIN_FILE_KEY = 'database/database.bin'
@@ -73,7 +65,6 @@ export type AppStoreKind = 'tauri' | 'node' | 'opfs-transitional' | 'indexeddb'
 
 let injected: ByteStore | null = null
 let selection: Promise<ByteStore> | null = null
-let mainFileVersion: number | null = null
 /** Which store the last selection chose; `null` until a selection finished. */
 let selectedKind: AppStoreKind | null = null
 /** Why the page runs from OPFS, until the boot shows it. */
@@ -239,47 +230,23 @@ export function getAppStore(): Promise<ByteStore> {
 }
 
 /**
- * Reads the main file and takes the version it reports as the one the next
- * main-file write presents. `bytes` is `null` only for an absent file; a
- * zero-length file is a value.
+ * Reads the main file. `bytes` is `null` only for an absent file; a zero-length
+ * file is a value.
  */
 export async function readMainFile(): Promise<ReadResult> {
     const result = await (await getAppStore()).read(MAIN_FILE_KEY)
-    mainFileVersion = result.version
     noteMainFileRead()
     return result
 }
 
 /**
- * Replaces the main file. On a store with conditional writes the write is
- * conditional on the version this page last read or wrote, and rejects when
- * there is none; on any other store it is unconditional. A rejected write
- * leaves the version as it was.
- */
-export async function writeMainFile(bytes: Uint8Array): Promise<void> {
-    const store = await getAppStore()
-    let condition: StoreCondition = 'unconditional'
-    if (store.capabilities.conditionalWrites) {
-        if (mainFileVersion === null) {
-            throw new StoreError('The main file was not read in this page load, so a conditional write has no version to present.')
-        }
-        condition = { ifVersion: mainFileVersion }
-    }
-    const attempt = beginMainFileWrite()
-    const { version } = await store.write(MAIN_FILE_KEY, bytes, condition)
-    mainFileVersion = version
-    confirmMainFileWrite(attempt)
-}
-
-/**
  * Test seam: makes `store` the page's store (of the given `kind`, which
- * `getAppStoreKind` reports) and forgets the main file's version and the
- * outcome of earlier main-file writes. `null` restores the real selection.
+ * `getAppStoreKind` reports) and forgets the outcome of earlier main-file
+ * reads. `null` restores the real selection.
  */
 export function injectAppStore(store: ByteStore | null, kind: AppStoreKind | null = null): void {
     injected = store
     selection = null
-    mainFileVersion = null
     resetMainFileOutcomeForTests()
     selectedKind = store === null ? null : kind
     fallbackNotice = null

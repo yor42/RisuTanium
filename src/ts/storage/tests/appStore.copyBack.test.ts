@@ -157,7 +157,7 @@ describe('an OPFS-main profile at startup', () => {
         const idbWrite = vi.spyOn(IDBObjectStore.prototype, 'put')
 
         const read = await app.readMainFile()
-        await app.writeMainFile(bytes(2, 2))
+        await store.write('database/database.bin', bytes(2, 2), 'unconditional')
         await store.write('database/dbbackup-6.bin', bytes(6), 'unconditional')
         const backups = await store.list('database/dbbackup-')
 

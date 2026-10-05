@@ -113,12 +113,11 @@ export function resolvePromptChoice(raw: string): MultiTabPromptChoice {
 }
 
 // On a revision-aware backend (the self-hosted Node server), a peer tab's save
-// is exactly what makes THIS tab's known revision stale — the main file's version
-// is held by the cell in appStore.ts and is never refreshed from a refused write, so a
-// "save mine" choice here is guaranteed to 409 again on write, pre-commit, every
-// single time. Offering it would promise something the optimistic-concurrency guard
-// exists to prevent. So this predicate exists to gate which prompt shape the caller
-// shows: a revision-aware backend only ever gets reload/stay, never a save-mine option.
+// is exactly what makes THIS tab's known revision stale, so a "save mine" choice
+// here is a write the server's optimistic-concurrency guard exists to refuse.
+// Offering it would promise something that guard prevents. So this predicate
+// exists to gate which prompt shape the caller shows: a revision-aware backend
+// only ever gets reload/stay, never a save-mine option.
 export function isRevisionAwareBackend(arg: { isNodeServer: boolean }): boolean {
     return arg.isNodeServer
 }

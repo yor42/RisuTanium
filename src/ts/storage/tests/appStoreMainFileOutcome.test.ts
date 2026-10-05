@@ -1,6 +1,6 @@
 /**
- * `readMainFile` and `writeMainFile` report to the main-file outcome tracking
- * synchronously around the store call, and `injectAppStore` starts it clean.
+ * `readMainFile` reports to the main-file outcome tracking when the store call
+ * returns, and `injectAppStore` starts it clean.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ByteStore } from '../store/contract'
@@ -28,8 +28,8 @@ vi.mock('src/ts/alert', () => ({
     waitAlert: vi.fn(async () => { }),
 }))
 
-import { injectAppStore, readMainFile, writeMainFile } from '../store/appStore'
-import { getMainFileEpoch, isMainFileOutcomeKnown, noteMainFileRecorded } from '../mainFileOutcome'
+import { injectAppStore, readMainFile } from '../store/appStore'
+import { isMainFileOutcomeKnown, noteMainFileRecorded } from '../mainFileOutcome'
 
 function storeWith(overrides: Partial<ByteStore>): ByteStore {
     return {
@@ -48,52 +48,6 @@ beforeEach(() => {
     injectAppStore(storeWith({}))
 })
 
-describe('writeMainFile reports its outcome', () => {
-    test('is unknown while the store write is pending and known once it returns', async () => {
-        let finish: () => void = () => {}
-        injectAppStore(storeWith({ write: () => new Promise((resolve) => { finish = () => resolve({ version: null }) }) }))
-        const pending = writeMainFile(new Uint8Array([1]))
-        await Promise.resolve()
-        await Promise.resolve()
-        expect(isMainFileOutcomeKnown()).toBe(false)
-        finish()
-        await pending
-        expect(isMainFileOutcomeKnown()).toBe(true)
-    })
-
-    test('a write that throws leaves the outcome unknown', async () => {
-        injectAppStore(storeWith({ write: async () => { throw new Error('lost reply') } }))
-        await expect(writeMainFile(new Uint8Array([1]))).rejects.toThrow('lost reply')
-        expect(isMainFileOutcomeKnown()).toBe(false)
-    })
-
-    test('a later write that returns makes it known again', async () => {
-        let fail = true
-        injectAppStore(storeWith({ write: async () => { if (fail) throw new Error('lost reply'); return { version: null } } }))
-        await expect(writeMainFile(new Uint8Array([1]))).rejects.toThrow()
-        fail = false
-        await writeMainFile(new Uint8Array([2]))
-        expect(isMainFileOutcomeKnown()).toBe(true)
-    })
-
-    test('a write refused before it is sent is not an attempt', async () => {
-        injectAppStore(storeWith({ capabilities: { conditionalWrites: true } }))
-        const epoch = getMainFileEpoch()
-        await expect(writeMainFile(new Uint8Array([1]))).rejects.toThrow()
-        expect(getMainFileEpoch()).toBe(epoch)
-        expect(isMainFileOutcomeKnown()).toBe(true)
-    })
-
-    test('the store write starts before any other task can run', async () => {
-        let timerFired = false
-        let firedAtWrite: boolean | null = null
-        injectAppStore(storeWith({ write: async () => { firedAtWrite = timerFired; return { version: null } } }))
-        setTimeout(() => { timerFired = true }, 0)
-        await writeMainFile(new Uint8Array([1]))
-        expect(firedAtWrite).toBe(false)
-    })
-})
-
 describe('readMainFile reports its outcome', () => {
     test('a read is known once its bytes are recorded, and a failed read changes nothing', async () => {
         await readMainFile()
@@ -106,9 +60,9 @@ describe('readMainFile reports its outcome', () => {
         expect(isMainFileOutcomeKnown()).toBe(true)
     })
 
-    test('injecting a store forgets earlier attempts', async () => {
-        injectAppStore(storeWith({ write: async () => { throw new Error('lost reply') } }))
-        await expect(writeMainFile(new Uint8Array([1]))).rejects.toThrow()
+    test('injecting a store forgets an earlier unrecorded read', async () => {
+        await readMainFile()
+        expect(isMainFileOutcomeKnown()).toBe(false)
         injectAppStore(storeWith({}))
         expect(isMainFileOutcomeKnown()).toBe(true)
     })

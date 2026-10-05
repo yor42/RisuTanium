@@ -62,6 +62,15 @@ export const languageVietnamese = {
         "coldStorageCleanupOtherTab": "Việc dọn dẹp bộ nhớ lạnh chưa được bắt đầu vì dường như có một tab khác của ứng dụng này đang mở. Hãy đóng mọi tab khác của ứng dụng này, rồi thử lại. Không có gì bị xóa.",
         "coldStorageCleanupMainChanged": "Việc dọn dẹp bộ nhớ lạnh chưa được bắt đầu vì dữ liệu đã lưu đã thay đổi kể từ lần trang này đọc hoặc lưu gần nhất. Có thể một tab hoặc thiết bị khác đã lưu. Hãy tải lại trang, rồi thử lại. Không có gì bị xóa.",
         "coldStorageCleanupMainUnknown": "Việc dọn dẹp bộ nhớ lạnh chưa được bắt đầu vì trang này không có bản ghi khả dụng nào về tệp dữ liệu chính: nó chưa đọc hoặc lưu tệp này, hoặc không thể tính toán bản ghi. Hãy đợi trang lưu xong hoặc tải lại trang, rồi thử lại. Không có gì bị xóa.",
+        "coldStorageCleanupCommittedChanged": "Việc dọn dẹp bộ nhớ lạnh chưa được bắt đầu vì dữ liệu đã lưu đã thay đổi kể từ lần trang này tải hoặc lưu gần nhất. Có thể một tab hoặc thiết bị khác đã lưu. Hãy tải lại trang, rồi thử lại. Không có gì bị xóa.",
+        "coldStorageCleanupCommittedUnknown": "Việc dọn dẹp bộ nhớ lạnh chưa được bắt đầu vì trang này không có bản ghi khả dụng nào về dữ liệu đã lưu: trang chưa tải dữ liệu này, hoặc một tab hay thiết bị khác đã thay đổi cách lưu trữ dữ liệu kể từ đó. Hãy tải lại trang, rồi thử lại. Không có gì bị xóa.",
+        "coldStorageCleanupSourceCommitted": "dữ liệu đã lưu",
+        "coldStorageCleanupSourcePreConversion": "bản sao dữ liệu của bạn từ trước khi chuyển sang định dạng lưu mới",
+        "coldStorageCleanupSourceOlderMain": "một tệp lưu chính khác có tên database.bin",
+        "coldStorageCleanupKeptKept": "Việc dọn dẹp bộ nhớ lạnh chưa được chạy. Các bản sao dữ liệu đã lưu cũ hơn vẫn được giữ lại, và những hình ảnh cùng dữ liệu lưu trữ chỉ chúng sử dụng không thể phân biệt với phần không sử dụng, nên không có gì bị xóa. Hãy chạy lại việc dọn dẹp từ Cài đặt (Dọn dẹp Dữ liệu Lưu trữ và Tệp Tài sản Không sử dụng) và chọn xóa chúng khi bạn không còn cần đến nữa.",
+        "coldStorageCleanupCopyUnreadable": (source: string) =>
+            `Việc dọn dẹp bộ nhớ lạnh đã bị dừng vì không thể đọc hoàn chỉnh ${source}, nên không có gì bị xóa. Hãy chạy lại việc dọn dẹp và chọn xóa bản sao đó nếu bạn không cần đến nó. Cho đến khi nó bị xóa hoặc có thể đọc được, việc dọn dẹp sẽ tiếp tục dừng lại ở đây.`,
+        "coldStorageCleanupDeleteFailed": "Việc dọn dẹp bộ nhớ lạnh đã bị dừng vì một bản sao dữ liệu đã lưu không thể xóa hoàn toàn, hoặc đã thay đổi trong lúc đang xóa. Dữ liệu đã lưu đã xóa trước đó vẫn ở trạng thái đã xóa, và không có hình ảnh hay dữ liệu lưu trữ không sử dụng nào bị xóa. Hãy tải lại trang và thử lại.",
         "coldStorageCleanupStoppedBusy": "Việc dọn dẹp bộ nhớ lạnh đã dừng vì một cuộc trò chuyện bắt đầu tạo phản hồi hoặc có thứ khác bắt đầu ghi dữ liệu.",
         "coldStorageCleanupStoppedSavingStopped": "Việc dọn dẹp bộ nhớ lạnh đã dừng vì việc lưu đã bị dừng cho trang này.",
         "coldStorageCleanupStoppedFrozen": (characterGroups: string) =>
@@ -2069,6 +2078,13 @@ export const languageVietnamese = {
             : 'Không tìm thấy dữ liệu đã lưu hiện tại để giữ lại làm bản sao lưu trước lần tải này. ')
         + 'Nếu tiếp tục, bạn sẽ không thể quay lại trạng thái đang được lưu hiện giờ từ danh sách sao lưu. Tiếp tục mà không có bản sao lưu?',
     internalBackupLoadedNoCopy: "Đã tải bản sao lưu. Đang làm mới ứng dụng.",
+    coldStorageCleanupDateUnknown: "không rõ ngày",
+    coldStorageCleanupKeptConfirm: (dates: string) =>
+        `Khi một bản lưu bị hỏng được thay thế từ bản sao lưu, các bản sao dữ liệu đã lưu cũ hơn được để riêng ra thay vì bị xóa (được tạo ${dates}). Hình ảnh và dữ liệu lưu trữ chỉ chúng sử dụng vẫn được bảo vệ, nên việc dọn dẹp không thể chạy khi chúng còn tồn tại.\n\nXóa các bản sao cũ này rồi dọn dẹp? Không thể khôi phục chúng. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ không chạy.`,
+    coldStorageCleanupLeftoverConfirm: (count: number, dates: string) =>
+        `Tìm thấy ${count} phần dữ liệu đã lưu không sử dụng còn sót lại từ các lần lưu bị gián đoạn (${dates}). Xóa chúng? Đừng làm điều này khi một thiết bị hoặc trình duyệt khác đang lưu vào cùng máy chủ: một lần lưu đang diễn ra ở đó có thể bị mất. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ tiếp tục mà không có chúng.`,
+    coldStorageCleanupCopyConfirm: (name: string, date: string, readable: boolean) =>
+        `${name.charAt(0).toUpperCase()}${name.slice(1)} (${date}) vẫn còn trong bộ lưu trữ của bạn, và các hình ảnh cùng dữ liệu lưu trữ mà nó sử dụng đang được giữ lại cho nó.${readable ? '' : ' Không thể đọc nó, nên việc dọn dẹp không thể chạy khi nó còn tồn tại.'}\n\nXóa bản sao này? Không thể khôi phục, và mọi thứ chỉ nó sử dụng sau đó sẽ bị dọn dẹp. Chọn Hủy để giữ lại${readable ? '; khi đó việc dọn dẹp sẽ tiếp tục và giữ lại những gì nó sử dụng.' : '; khi đó việc dọn dẹp sẽ không chạy.'}`,
     backupAndFiles: "Sao lưu & Tệp",
     assetIntegrityHeading: "Tính toàn vẹn Bộ nhớ đệm Tài sản",
     assetIntegrityDescription: "Đối chiếu hình ảnh/tài sản đã lưu trong bộ nhớ đệm với mã băm nội dung của chính chúng để phát hiện hỏng dữ liệu, mà không cần tải lại bất kỳ thứ gì từ bộ nhớ lưu trữ. Đây là thao tác chỉ đọc, trừ khi bạn chọn xóa một mục bị hỏng.",

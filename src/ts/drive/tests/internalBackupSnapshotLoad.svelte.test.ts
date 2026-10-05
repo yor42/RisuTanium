@@ -1413,7 +1413,7 @@ describe('loadInternalBackup reports a failed write or reload', () => {
             app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }), 'node')
             server.seed(MAIN, LIVE_MAIN_BYTES)
             world.pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(LIVE_MAIN_BYTES) })
-            // The page's boot read: it takes the version a later main-file write would present.
+            // The page's boot read of the main file, as a page that booted a profile with no head has done.
             await app.readMainFile()
             server.seed(snapshotKey(), await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')]))
             seedRemoteFilesOnServer(world, server)
@@ -2548,7 +2548,7 @@ describe('loadInternalBackup checks the rebuilt file before it keeps a copy or w
     })
 })
 
-describe('loadInternalBackup on the Node server leaves the page\'s main-file version alone until it writes', () => {
+describe('loadInternalBackup on the Node server keeps another device\'s save in its backup copy', () => {
     async function nodeWorld() {
         const world = await boot({ platform: 'node' })
         const server = new FakeNodeServer()
@@ -2556,7 +2556,6 @@ describe('loadInternalBackup on the Node server leaves the page\'s main-file ver
         app.injectAppStore(createNodeHttpStore({ authHeader: async () => 'token', fetch: server.fetch }), 'node')
         server.seed(MAIN, LIVE_MAIN_BYTES)
         world.pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(LIVE_MAIN_BYTES) })
-        // The page's boot read: it takes the version the next main-file write presents.
         await app.readMainFile()
         const snapshot = await encodeSnapshot(world, [fixtureCharacter('char-A', 'A from snapshot')])
         server.seed(snapshotKey(), snapshot)
@@ -2564,41 +2563,6 @@ describe('loadInternalBackup on the Node server leaves the page\'s main-file ver
         clearObservations()
         return { world, server, app }
     }
-
-    function writtenKey(headers: Record<string, string>): string {
-        return Buffer.from(headers['file-path'] ?? '', 'hex').toString('utf-8')
-    }
-
-    const stops: Array<[string, (server: FakeNodeServer) => void]> = [
-        ['work starting while the backup copy is written', (server) => {
-            server.beforeRequest = (path, headers) => {
-                if (path === '/api/write' && writtenKey(headers).startsWith('database/dbbackup-') && writtenKey(headers) !== snapshotKey()) {
-                    workBox.busy = true
-                }
-            }
-        }],
-        ['another device switching the head while the generation is written', (server) => {
-            let switched = false
-            server.beforeRequest = (path, headers) => {
-                if (!switched && path === '/api/write' && writtenKey(headers).startsWith('blocks/') && writtenKey(headers) !== 'blocks/head') {
-                    switched = true
-                    server.peerWrite('blocks/head', encodeHead({ current: 'peer-generation' }))
-                }
-            }
-        }],
-    ]
-
-    test.each(stops)('guard: after another device saved, a load stopped by %s leaves the next main-file write refused with a version conflict', async (_title, arrange) => {
-        const { world, server, app } = await nodeWorld()
-        server.peerWrite(MAIN, new TextEncoder().encode('saved by another device'))
-        arrange(server)
-
-        const outcome = await runLoad(world)
-
-        expectNoRejection(outcome)
-        expect.soft(reloadSpy, 'location.reload calls').not.toHaveBeenCalled()
-        await expect(app.writeMainFile(new TextEncoder().encode('the page saves'))).rejects.toBeInstanceOf(StoreVersionConflictError)
-    })
 
     test('the copy of the main file holds the bytes the server holds, including another device\'s save', async () => {
         const { world, server } = await nodeWorld()
