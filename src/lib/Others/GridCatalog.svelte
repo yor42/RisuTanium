@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { changeChar, getCharImage, removeChar, restoreCharacterFromTrash } from "../../ts/characters";
+    import { changeChar, getCharImage, removeChar, removeTrashedCharacters, restoreCharacterFromTrash } from "../../ts/characters";
     import { type Database } from "../../ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import BarIcon from "../SideBars/BarIcon.svelte";
@@ -159,8 +159,19 @@
                 </div>
             {/each}
         {:else if selected === 2}
-            <span class="text-textcolor2 text-sm mb-2">{language.trashDesc}</span>
-            {#each formatChars(search, DBState.db, true) as char (char.index)}
+            {@const trashList = formatChars(search, DBState.db, true)}
+            {@const searching = search.replace(/ /g,"") !== ''}
+            <div class="flex items-start gap-2 mb-2">
+                <span class="text-textcolor2 text-sm grow">{language.trashDesc}</span>
+                {#if trashList.length > 0}
+                    <Button styled="danger" size="sm" className="shrink-0" onclick={() => {
+                        removeTrashedCharacters(trashList.map((c) => c.charRef), { matching: searching })
+                    }}>
+                        {searching ? language.emptyTrashMatching(trashList.length) : language.emptyTrash}
+                    </Button>
+                {/if}
+            </div>
+            {#each trashList as char (char.index)}
                 {@const imgPath = char.image}
                 {@const isVisible = visibleIndices.has(char.index)}
                 {@const avatarStyle = isVisible ? getCharImage(imgPath, 'thumbcss') : ''}
