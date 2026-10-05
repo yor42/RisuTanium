@@ -113,12 +113,16 @@ describe('the Tauri commit of the boot archive pass on a legacy profile (the con
         expect(fakeFs.writesTo(MAIN)).toHaveLength(0)
     })
 
-    test('a conversion that wins writes the head last, never opens the main path for writing, and moves the main file aside', async () => {
+    test('a conversion that wins writes the head after every other block key, then the pre-conversion copy durably, never opens the main path for writing, and moves the main file aside', async () => {
         const deps = await createProductionBootArchiveDeps('tauri')
 
         await deps.commit(SET)
 
-        expect(fakeFs.durableLog.at(-1)).toBe(HEAD)
+        const log = fakeFs.durableLog
+        const headIndex = log.indexOf(HEAD)
+        expect(headIndex).toBeGreaterThan(-1)
+        expect(log.slice(headIndex + 1), 'only the pre-conversion copy follows the head').toEqual([preBlocksKey(0)])
+        expect(log.slice(0, headIndex).every((key) => key.startsWith('blocks/') && key !== HEAD), 'every earlier durable write is a block key').toBe(true)
         expect(fakeFs.writesTo(MAIN)).toHaveLength(0)
         expect(fakeFs.files.has(MAIN)).toBe(false)
         expect(text(fakeFs.files.get(preBlocksKey(0)))).toBe(text(OLD_MAIN))

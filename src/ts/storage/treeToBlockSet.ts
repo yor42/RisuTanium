@@ -1,7 +1,25 @@
 import { BlockSetInvalidError, type BlockSetInput } from './blockStore'
-import type { Database } from './database.svelte'
+import { presetTemplate, type Database } from './database.svelte'
 import { packedNamesOf } from './packedNames'
 import { RisuSaveEncoder, type toSaveType } from './risuSave'
+
+/**
+ * Gives a decoded backup the containers the encoder reads, so every block of
+ * the generation it becomes is readable: a backup from an older build may lack
+ * a list, and a missing preset list would be written as an empty block, which
+ * the strict decode at the next start reports as damage. A missing preset list
+ * becomes the default preset, as `setDatabase` makes it. Every whole-state
+ * write of a tree decoded from a backup calls this first.
+ */
+export function completeRestoredTree(tree: Database): void {
+    tree.characters ??= []
+    tree.modules ??= []
+    tree.loadouts ??= []
+    tree.plugins ??= []
+    if (!Array.isArray(tree.botPresets)) {
+        tree.botPresets = [{ ...JSON.parse(JSON.stringify(presetTemplate)), name: 'Default' }]
+    }
+}
 
 /** `set` consumes the list of marked characters, so each call needs its own. */
 function nothingMarked(): toSaveType {

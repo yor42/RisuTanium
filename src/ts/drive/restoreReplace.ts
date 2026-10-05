@@ -1,6 +1,6 @@
 import { language } from "src/lang";
 import { retireGeneration, type BlockSetInput } from "../storage/blockStore";
-import { presetTemplate, type Database } from "../storage/database.svelte";
+import type { Database } from "../storage/database.svelte";
 import { finishMainFileRename } from "../storage/mainFileRename";
 import { getPageBlockOwner } from "../storage/pageBlockOwner";
 import { getPageStorageMode, pendingConvertedFrom, setPageStorageMode } from "../storage/pageStorageMode";
@@ -84,22 +84,7 @@ export async function replaceWithRestoredSet(set: BlockSetInput, busyAtFlip: () 
     }
 }
 
-/**
- * Gives a decoded backup the containers the encoder reads, so every block of
- * the generation it becomes is readable: a backup from an older build may lack
- * a list, and a missing preset list would be written as an empty block, which
- * the strict decode at the next start reports as damage. A missing preset list
- * becomes the default preset, as `setDatabase` makes it.
- */
-export function completeRestoredTree(tree: Database): void {
-    tree.characters ??= []
-    tree.modules ??= []
-    tree.loadouts ??= []
-    tree.plugins ??= []
-    if (!Array.isArray(tree.botPresets)) {
-        tree.botPresets = [{ ...JSON.parse(JSON.stringify(presetTemplate)), name: 'Default' }]
-    }
-}
+export { completeRestoredTree } from "../storage/treeToBlockSet";
 
 /** The display names of the live profile's characters by chaId, for naming what a restore leaves out. */
 export function currentCharacterNames(): Map<string, string> {

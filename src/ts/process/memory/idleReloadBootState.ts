@@ -1,7 +1,7 @@
 /**
  * What this page's boot recorded for the idle reload: whether it was started
  * by one, whether its archive session could archive, and whether its archive
- * pass wrote the main file. Kept apart from the reload itself so the code that
+ * pass committed. Kept apart from the reload itself so the code that
  * imports files at start-up can read it without pulling the reload in. Nothing
  * here is persisted; a page load starts empty.
  */
@@ -28,7 +28,7 @@ export function canBootArchive(): boolean {
     return sessionCanArchive
 }
 
-/** Whether this boot's archive pass wrote the main file. */
+/** Whether this boot's archive pass committed. */
 export function noteBootPassCommitted(committed: boolean): void {
     passCommitted = committed
 }

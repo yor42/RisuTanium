@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { tauriAddressableViolation, tauriCreatableViolation } from './store/keyRules'
 import { StoreInvalidKeyError } from './store/errors'
+import { isPreBlocksKey } from './mainFileFingerprint'
 
 /**
  * Durable file replacement on the Tauri file system, for keys under the AppData
@@ -30,12 +31,14 @@ export const DURABLE_KEY_HEADER = 'x-risu-key'
 const NUMBERED_BACKUP_KEY = /^database\/dbbackup-\d+\.bin$/
 
 /**
- * The kinds of key written durably: block-store keys, numbered backups and
- * cold-storage units. Assets, the main file and every other key keep the plain
- * atomic write.
+ * The kinds of key written durably: block-store keys, numbered backups,
+ * cold-storage units and the pre-conversion copies of the main file (the main
+ * file is deleted once such a copy holds its bytes, so the copy must be on
+ * disk first). Assets, the main file and every other key keep the plain atomic
+ * write.
  */
 export function isDurableKey(key: string): boolean {
-    return key.startsWith('blocks/') || key.startsWith('coldstorage/') || NUMBERED_BACKUP_KEY.test(key)
+    return key.startsWith('blocks/') || key.startsWith('coldstorage/') || NUMBERED_BACKUP_KEY.test(key) || isPreBlocksKey(key)
 }
 
 /** The key rules of the strictest platform; the same set the command applies. */

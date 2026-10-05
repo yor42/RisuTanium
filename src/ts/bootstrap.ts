@@ -145,11 +145,11 @@ export async function loadData() {
                 // write of an earlier page load or an exiting process, whose
                 // loss never affects the target.
                 await sweepAtomicWriteTemps('database')
-                // The same holds for `remotes/`: the encoder, the boot archive
-                // pass and the clean-up all write there later in this page
-                // load. The directory is created by the first remote write, so
-                // it may not exist yet, and listing a missing directory is an
-                // error the sweep would only log.
+                // The same holds for `remotes/`: the startup clean-up writes
+                // `.meta` files there later in this page load. The directory
+                // is created by the first remote write, so it may not exist
+                // yet, and listing a missing directory is an error the sweep
+                // would only log.
                 if (await exists('remotes', { baseDir: BaseDirectory.AppData })) {
                     await sweepAtomicWriteTemps('remotes')
                 }

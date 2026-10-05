@@ -3369,6 +3369,89 @@ describe('block profile: older copies of the main file', () => {
         expect(fileBytes(MAIN)).toEqual(changed)
     })
 
+    /**
+     * The IndexedDB store reports an entry whose stored value is not bytes as
+     * present and rejects its read with `StoreNotBinaryError`; the forage-backed
+     * stand-in cannot hold such a value, so `MAIN` is made one here.
+     */
+    async function holdNonBinaryMain(): Promise<{ state: { present: boolean }, store: import('src/ts/storage/store/contract').ByteStore }> {
+        const { injectAppStore, getAppStore } = await import('src/ts/storage/store/appStore')
+        const { StoreNotBinaryError } = await import('src/ts/storage/store/errors')
+        const base = await getAppStore()
+        const state = { present: true }
+        const store = {
+            ...base,
+            has: async (key: string) => key === MAIN ? state.present || await base.has(key) : base.has(key),
+            read: async (key: string) => {
+                if (key === MAIN && state.present) {
+                    throw new StoreNotBinaryError(key)
+                }
+                return base.read(key)
+            },
+            delete: async (...args: Parameters<typeof base.delete>) => {
+                if (args[0] === MAIN) {
+                    state.present = false
+                }
+                return base.delete(...args)
+            },
+        }
+        injectAppStore(store)
+        return { state, store }
+    }
+
+    test('a database.bin whose stored value is not bytes is offered for deletion as an unreadable copy of unknown date; declining stops the run with nothing deleted', async () => {
+        await setup()
+        await convertedProfile(null)
+        const { state } = await holdNonBinaryMain()
+        answerConfirms(() => false)
+        const before = wholeStore()
+
+        await run()
+
+        expect(confirmMessages().filter((message) => COPY_CONFIRM.test(message))).toEqual([
+            language.coldStorageCleanupCopyConfirm(language.errors.coldStorageCleanupSourceOlderMain, language.coldStorageCleanupDateUnknown, false),
+        ])
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupCopyUnreadable(language.errors.coldStorageCleanupSourceOlderMain)])
+        expect(state.present).toBe(true)
+        expect(wholeStore()).toEqual(before)
+    })
+
+    test('deleting a database.bin whose stored value is not bytes lets the run clean up, and the startup asset sweep is released', async () => {
+        await setup()
+        await convertedProfile(null)
+        const { state, store } = await holdNonBinaryMain()
+        const { olderMainFileCopyExists } = await import('src/ts/storage/bootBlockLoad')
+        expect(await olderMainFileCopyExists(store)).toBe(true)
+        answerConfirms(() => true)
+
+        await run()
+
+        expect(state.present).toBe(false)
+        expect(await olderMainFileCopyExists(store)).toBe(false)
+        expect(await units()).not.toContain('unreferenced-unit')
+        expect(assetKeys()).not.toContain('assets/orphan.png')
+        expect(assetKeys()).toContain('assets/new.png')
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('a database.bin whose stored value was not bytes when confirmed is not deleted once real bytes replace it, and nothing else is', async () => {
+        await setup()
+        await convertedProfile(null)
+        const { state } = await holdNonBinaryMain()
+        answerConfirms(() => {
+            state.present = false
+            storeFile(MAIN, Uint8Array.from([7, 7, 7]))
+            return true
+        })
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupDeleteFailed])
+        expect(fileBytes(MAIN)).toEqual(Uint8Array.from([7, 7, 7]))
+        expect(await units()).toContain('unreferenced-unit')
+        expect(assetKeys()).toContain('assets/orphan.png')
+    })
+
     test('Node: a main file left in place over the body limit protects its assets, also after a later restore and commit, and every head still carries the conversion record', async () => {
         await setup({ platform: 'node' })
         const { owner } = await convertedProfile(MAIN)

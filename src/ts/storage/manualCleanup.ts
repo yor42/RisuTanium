@@ -30,7 +30,7 @@ import { decodeRisuSave } from "./risuSave"
 import { refuseOnReadOnlyPage } from "./readOnlyPage"
 import { getAppStore } from "./store/appStore"
 import type { ByteStore } from "./store/contract"
-import { StoreDeleteManyError, StoreVersionConflictError } from "./store/errors"
+import { StoreDeleteManyError, StoreNotBinaryError, StoreVersionConflictError } from "./store/errors"
 
 /**
  * The manual cold-storage clean-up: one exclusive, strictly-read pass that
@@ -461,6 +461,12 @@ interface OlderCopyDelete {
      * while other prompts and decodes run.
      */
     content: { length: number, crc: number } | null
+    /**
+     * The entry held a value that is not bytes when it was confirmed. It has no
+     * version and no content to compare, so the delete re-checks only that it
+     * is still such a value.
+     */
+    notBinary?: boolean
 }
 
 /**
@@ -508,11 +514,28 @@ function stopIfRefused(own: BusyHandle): void {
  * store with versions deletes against the version of that read; any other
  * re-reads and compares the length and the whole-file CRC-32 recorded at the
  * confirm right before the delete. A change that keeps both is not detected;
- * that is the trade for not holding the copy's bytes.
+ * that is the trade for not holding the copy's bytes. An entry confirmed as a
+ * value that is not bytes is deleted only while it is still absent or still
+ * such a value; a replacement by another non-byte value is not detected.
  */
 async function deleteOlderCopy(store: ByteStore, copy: OlderCopyDelete): Promise<void> {
     const { key, version, content } = copy
     try {
+        if (copy.notBinary === true) {
+            if (!await store.has(key)) {
+                return
+            }
+            try {
+                await store.read(key)
+            } catch (error) {
+                if (!(error instanceof StoreNotBinaryError)) {
+                    throw error
+                }
+                await store.delete(key, 'unconditional')
+                return
+            }
+            throw new CleanupStop(language.errors.coldStorageCleanupDeleteFailed)
+        }
         if (store.capabilities.conditionalWrites && version !== null) {
             await store.delete(key, { ifVersion: version })
             return
@@ -548,7 +571,8 @@ async function deleteOlderCopy(store: ByteStore, copy: OlderCopyDelete): Promise
  * may be a newer save. A copy that does not decode stops the run unless the user
  * confirms deleting it, so the run is never blocked for good. A copy the user
  * confirms is not a keep source and is returned for `deleteConfirmed`; nothing
- * is deleted here.
+ * is deleted here. An entry whose stored value is not bytes is offered like a
+ * copy that does not decode; any other read error stops the run.
  */
 async function keepFromOlderCopies(keep: KeepSet, store: ByteStore, state: CommittedStateView, own: BusyHandle): Promise<OlderCopyDelete[]> {
     const confirmed: OlderCopyDelete[] = []
@@ -557,24 +581,41 @@ async function keepFromOlderCopies(keep: KeepSet, store: ByteStore, state: Commi
         keys.push(LEGACY_MAIN_FILE_KEY)
     }
     for (const key of keys) {
-        const read = await store.read(key)
-        if (read.bytes === null) {
+        let read: { bytes: Uint8Array | null, version: number | null }
+        let notBinary = false
+        try {
+            read = await store.read(key)
+        } catch (error) {
+            if (!(error instanceof StoreNotBinaryError)) {
+                throw error
+            }
+            console.error(`Cold storage cleanup: ${key} holds a value that is not bytes:`, error)
+            notBinary = true
+            read = { bytes: null, version: null }
+        }
+        if (read.bytes === null && !notBinary) {
             continue
         }
-        const fingerprint = fingerprintMainFile(read.bytes)
-        const isConverted = state.convertedFrom !== null && fingerprint === state.convertedFrom
+        const fingerprint = read.bytes === null ? null : fingerprintMainFile(read.bytes)
+        const isConverted = fingerprint !== null && state.convertedFrom !== null && fingerprint === state.convertedFrom
         const name = key === LEGACY_MAIN_FILE_KEY && !isConverted
             ? language.errors.coldStorageCleanupSourceOlderMain
             : language.errors.coldStorageCleanupSourcePreConversion
         const date = isConverted && state.convertedAt !== null ? new Date(state.convertedAt).toLocaleString() : language.coldStorageCleanupDateUnknown
         let tree: KeepTree | null = null
-        try {
-            tree = await decodeRisuSave(read.bytes, { strict: true })
-        } catch (error) {
-            console.error(`Cold storage cleanup: ${key} did not decode strictly:`, error)
+        if (read.bytes !== null) {
+            try {
+                tree = await decodeRisuSave(read.bytes, { strict: true })
+            } catch (error) {
+                console.error(`Cold storage cleanup: ${key} did not decode strictly:`, error)
+            }
         }
         if (await alertConfirm(language.coldStorageCleanupCopyConfirm(name, date, tree !== null))) {
             stopIfRefused(own)
+            if (read.bytes === null) {
+                confirmed.push({ key, version: null, content: null, notBinary: true })
+                continue
+            }
             const byVersion = store.capabilities.conditionalWrites && read.version !== null
             confirmed.push({ key, version: read.version, content: byVersion ? null : { length: read.bytes.length, crc: crc32(read.bytes) } })
             continue

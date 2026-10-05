@@ -20,7 +20,7 @@ import { holdAssetSweep, takeMainFileLeftOverLimit } from './pageStorageMode'
 import { decodeRisuSave, salvageRisuSave, type SalvageOmittedBlock } from './risuSave'
 import type { ByteStore } from './store/contract'
 import { StoreNotBinaryError } from './store/errors'
-import { treeToBlockSet } from './treeToBlockSet'
+import { completeRestoredTree, treeToBlockSet } from './treeToBlockSet'
 
 /**
  * The boot side of the block store: loading the profile through the page's
@@ -177,6 +177,7 @@ async function offerBackup(ctx: BootLoadContext, scenario: Scenario): Promise<Re
 
     const tree = found.tree
     repairDatabaseIds(tree)
+    completeRestoredTree(tree)
     const set = await treeToBlockSet(tree)
 
     const release = await takeHold(ctx, scenario.stopped)

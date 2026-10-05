@@ -32,7 +32,8 @@
  * The call graph of every other storage write and delete in production
  * (`store.write`, `store.delete`, `deleteMany`, `forageStorage.setItem`) was
  * read: they take `blocks/`, `assets/`, `coldstorage/`, `remotes/`,
- * `database/dbbackup-` or `database/database.pre-blocks` keys.
+ * `database/dbbackup-`, `database/backupfingerprint` (written by
+ * `writeBackupFingerprint`) or `database/database.pre-blocks` keys.
  *
  * Mocked: the platform (a desktop page), the alert surface, the app modules the
  * restores import, the IndexedDB block cache. The store is a stand-in: nothing

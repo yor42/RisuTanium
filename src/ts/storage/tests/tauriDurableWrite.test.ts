@@ -101,10 +101,10 @@ describe('key rules', () => {
 })
 
 describe('routing in the Tauri files store', () => {
-    const DURABLE = ['blocks/head', 'blocks/gen/root', 'blocks/gen/c/6162', 'database/dbbackup-17909517188.bin', 'coldstorage/unit-1']
+    const DURABLE = ['blocks/head', 'blocks/gen/root', 'blocks/gen/c/6162', 'database/dbbackup-17909517188.bin', 'coldstorage/unit-1', 'database/database.pre-blocks.bin', 'database/database.pre-blocks-2.bin']
     const PLAIN = [
         'database/database.bin', 'assets/abc123', 'remotes/x', 'database/dbbackup-x.bin',
-        'database/dbbackup-1.bin.old', 'blocksx/y', 'coldstorage_unit.json', 'other/file',
+        'database/dbbackup-1.bin.old', 'database/database.pre-blocks.txt', 'blocksx/y', 'coldstorage_unit.json', 'other/file',
     ]
 
     test.each(DURABLE)('%s goes to the durable command and not to the plain file write', async (key) => {
@@ -128,7 +128,7 @@ describe('routing in the Tauri files store', () => {
         expect(Array.from(fakeFs.files.get(key) ?? [])).toEqual(Array.from(BYTES))
     })
 
-    test('isDurableKey picks exactly the three kinds', () => {
+    test('isDurableKey picks exactly the four kinds', () => {
         for (const key of DURABLE) {
             expect(isDurableKey(key)).toBe(true)
         }

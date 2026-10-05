@@ -520,6 +520,42 @@ describe('the backup the prompt offers is the newest complete one', () => {
     })
 })
 
+// -- a chosen backup that lacks a list leaves a profile the next start loads (1c-16) ----------------
+
+describe('a chosen backup whose list block cannot be read', () => {
+    test.each(['modules', 'loadouts', 'plugins'])('damage path, %s: the next start loads the profile with no damage prompt', async (list) => {
+        const store = createFakeStore({ versioned: false })
+        const generation = await seed(store, tree([character('a'), character('b')]))
+        breakContent(store, generation, 'b')
+        const first = harness({ store, backups: [[100, await partialBackupBytes(tree([character('from-backup')]), list)]] })
+
+        const chosen = await loadBlockProfile(first.ctx)
+
+        expect(chosen.kind === 'loaded' && chosen.how).toBe('backup')
+        expect(first.confirms.length, 'the partial backup was confirmed once').toBe(1)
+        const second = harness({ store })
+        const reloaded = await loadBlockProfile(second.ctx)
+        expect(second.notices, 'the next start shows no damage prompt').toEqual([])
+        expect(reloaded.kind === 'loaded' && reloaded.how).toBe('store')
+        expect(reloaded.kind === 'loaded' && chaIdsOf(reloaded.tree)).toEqual(['from-backup'])
+    })
+
+    test.each(['modules', 'loadouts', 'plugins'])('blocked seed, %s: the backup the seed offers loads on the next start with no damage prompt', async (list) => {
+        const store = createFakeStore({ versioned: false })
+        store.plant('database/dbbackup-100.bin', new Uint8Array([1]))
+        const first = harness({ store, backups: [[100, await partialBackupBytes(tree([character('from-backup')]), list)]] })
+
+        const seeded = await seedEmptyBlockProfile(first.ctx)
+
+        expect(seeded.kind).toBe('backup')
+        const second = harness({ store })
+        const reloaded = await loadBlockProfile(second.ctx)
+        expect(second.notices, 'the next start shows no damage prompt').toEqual([])
+        expect(reloaded.kind === 'loaded' && reloaded.how).toBe('store')
+        expect(reloaded.kind === 'loaded' && chaIdsOf(reloaded.tree)).toEqual(['from-backup'])
+    })
+})
+
 // -- an unreadable head keeps every older generation (D1) --------------------------------------------
 
 describe('an unreadable head', () => {
