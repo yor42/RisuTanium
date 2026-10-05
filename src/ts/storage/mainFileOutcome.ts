@@ -4,9 +4,10 @@
  * bookkeeping with no I/O and no await, so a writer can call it between its busy
  * check and its store write without opening a gap for another task.
  *
- * The save loop skips a main-file write only while the main file is known to
- * hold exactly the bytes it compares against. This module says whether that is
- * known:
+ * A writer of the legacy main file skips or refuses a write only while the main
+ * file is known to hold exactly the bytes it compares against; the save loop
+ * writes the block store and never this file, so it does not use this module.
+ * This module says whether that is known:
  * - A write attempt that has begun and has not returned makes the file's
  *   content unknown. A throw is not a confirmed success, because on the Node
  *   server a write can land and then throw.

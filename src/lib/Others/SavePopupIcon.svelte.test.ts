@@ -9,21 +9,29 @@
  * Mount pattern follows `GridCatalog.duplicateChaId.svelte.test.ts` (same
  * directory).
  *
- * MOCKED: `src/ts/globalApi.svelte` (`saving` alone) and a reactive
- * `stores.svelte` stand-in. `src/lang` is real (a plain data module, no side
- * effects).
+ * It also says, in its own words for each reason the save loop can stop for,
+ * why saving stopped, and says that a page which runs from OPFS this time
+ * does not save at all.
+ *
+ * MOCKED: `src/ts/globalApi.svelte` (`saving` and the stop detail) and a
+ * reactive `stores.svelte` stand-in. `src/lang` is real (a plain data module,
+ * no side effects).
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { FrozenSaveKeyInfo } from '../../ts/stores.svelte'
+import { NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 
 //#region module mocks
 
+const stopDetail = vi.hoisted(() => ({ value: '' }))
+
 vi.mock(import('src/ts/globalApi.svelte'), () => {
     const saving = $state({ state: false })
-    return { saving } as unknown as typeof import('src/ts/globalApi.svelte')
+    return { saving, getSavingStoppedDetail: () => stopDetail.value } as unknown as typeof import('src/ts/globalApi.svelte')
 })
 
 vi.mock(import('../../ts/stores.svelte'), () => {
@@ -75,6 +83,8 @@ beforeEach(() => {
     DBState.db = {} as unknown as Database
     alertMdSpy.mockReset()
     alertNormalSpy.mockReset()
+    stopDetail.value = ''
+    resetPageStorageModeForTests()
 })
 
 describe('SavePopupIcon shows nothing when nothing is wrong', () => {
@@ -83,6 +93,115 @@ describe('SavePopupIcon shows nothing when nothing is wrong', () => {
         flushSync()
         expect(target.querySelector('button')).toBeNull()
         await teardown(target, app)
+    })
+})
+
+describe('SavePopupIcon -- the read-only page and the stop reasons of the block store', () => {
+    test('a page that runs from OPFS this time shows a button that says it does not save', async () => {
+        setPageStorageMode({ kind: 'read-only' })
+        const { target, app } = mountIcon()
+        flushSync()
+
+        const button = target.querySelector('button')
+        expect(button).not.toBeNull()
+        button!.click()
+        flushSync()
+
+        expect(alertNormalSpy).toHaveBeenCalledTimes(1)
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.opfsReadOnlyNotice)
+
+        await teardown(target, app)
+    })
+
+    test('a page whose mode becomes read-only after the icon was created shows the button then', async () => {
+        const { target, app } = mountIcon()
+        flushSync()
+        expect(target.querySelector('button')).toBeNull()
+
+        setPageStorageMode({ kind: 'read-only' })
+        flushSync()
+
+        const button = target.querySelector('button')
+        expect(button).not.toBeNull()
+        button!.click()
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.opfsReadOnlyNotice)
+
+        await teardown(target, app)
+    })
+
+    test.each([
+        ['node-conflict', () => language.savingStoppedNodeConflictMessage],
+        ['stay', () => language.savingStoppedStayMessage],
+        ['replaced', () => language.savingStoppedReplacedMessage],
+        ['conversion-failed', () => language.savingStoppedConversionFailedMessage],
+        ['unconfirmed', () => language.savingStoppedUnconfirmedMessage],
+    ])('says its own words for the stop reason %s', async (reason, expected) => {
+        setPageStorageMode({ kind: 'block' })
+        savingStoppedReasonStore.set(reason)
+        const { target, app } = mountIcon()
+        flushSync()
+
+        target.querySelector('button')!.click()
+        flushSync()
+
+        expect(alertNormalSpy).toHaveBeenCalledTimes(1)
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(expected())
+
+        await teardown(target, app)
+    })
+
+    test('names the part of the data that was too large when saving stopped for size, and does not advise archiving', async () => {
+        setPageStorageMode({ kind: 'block' })
+        stopDetail.value = '"Alice"'
+        savingStoppedReasonStore.set('too-large')
+        const { target, app } = mountIcon()
+        flushSync()
+
+        target.querySelector('button')!.click()
+        flushSync()
+
+        const message = alertNormalSpy.mock.calls[0][0] as string
+        expect(message).toBe(language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES))
+        expect(message).toContain('"Alice"')
+        expect(message).not.toMatch(/archiv/i)
+
+        await teardown(target, app)
+    })
+
+    test('an internal block name is never shown: each is put into plain words', () => {
+        for (const name of ['root', 'preset', 'modules', 'loadouts', 'plugins', 'pluginStorage', 'config', 'stubs']) {
+            const words = language.saveBlockLabel(name)
+            expect(words, name).not.toBe(name)
+            expect(words, name).not.toContain(`"${name}"`)
+            expect(words.startsWith('"'), name).toBe(false)
+        }
+    })
+
+    test('the too-large message reads grammatically for a plural label and for a character\'s name', () => {
+        const plural = language.savingStoppedTooLargeBlockMessage(language.saveBlockLabel('preset'), NODE_BODY_LIMIT_BYTES)
+        expect(plural).toContain('this part of your data is over that: your bot presets.')
+        expect(plural).not.toContain('presets is')
+        const character = language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES)
+        expect(character).toContain('this part of your data is over that: "Alice".')
+        expect(language.savingStoppedTooLargeBlockMessage('', NODE_BODY_LIMIT_BYTES)).toContain('and part of your data is over that; the server did not say which part.')
+    })
+
+    test('the snapshot-skipped notice advises exporting a .bin by the label the person sees', () => {
+        expect(language.saveSnapshotSkippedTooLarge).toContain('.bin')
+        expect(language.saveSnapshotSkippedTooLarge).toContain(language.saveBackupLocal)
+        expect(language.saveSnapshotSkippedTooLarge).toContain(language.backupAndFiles)
+    })
+
+    test('every stop reason has words of its own', () => {
+        const texts = [
+            language.savingStoppedNodeConflictMessage,
+            language.savingStoppedStayMessage,
+            language.savingStoppedReplacedMessage,
+            language.savingStoppedConversionFailedMessage,
+            language.savingStoppedUnconfirmedMessage,
+            language.savingStoppedTooLargeBlockMessage('x', NODE_BODY_LIMIT_BYTES),
+        ]
+        expect(new Set(texts).size).toBe(texts.length)
     })
 })
 

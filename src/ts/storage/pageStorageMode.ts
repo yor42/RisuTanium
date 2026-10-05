@@ -1,3 +1,5 @@
+import { writable } from 'svelte/store'
+
 /**
  * What the page's persistence is, as boot found it and as it has moved since.
  * One value per page load; `bootstrap.ts` sets it, the boot archive pass's
@@ -24,12 +26,19 @@ export type PageStorageMode =
 
 let mode: PageStorageMode = { kind: 'unset' }
 
+/**
+ * The same mode as a store, for a component that is created before boot has
+ * decided it (the app is mounted before the profile loads) and must follow it.
+ */
+export const pageStorageModeStore = writable<PageStorageMode>(mode)
+
 export function getPageStorageMode(): PageStorageMode {
     return mode
 }
 
 export function setPageStorageMode(next: PageStorageMode): void {
     mode = next
+    pageStorageModeStore.set(next)
 }
 
 /**
@@ -82,6 +91,7 @@ export function takeMainFileLeftOverLimit(): boolean {
 
 export function resetPageStorageModeForTests(): void {
     mode = { kind: 'unset' }
+    pageStorageModeStore.set(mode)
     assetSweepHeld = false
     mainFileLeftOverLimit = false
 }

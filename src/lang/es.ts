@@ -2042,6 +2042,25 @@ export const languageSpanish = {
     saveLeftoverNotice: "RisuAI encontró datos de guardado sin usar que dejó un guardado o una restauración interrumpidos. No causan ningún daño. Puedes eliminarlos en la limpieza de los ajustes.",
     saveMainFileLeftNotice: "Tus datos pasaron a un formato nuevo, pero el archivo de guardado antiguo es demasiado grande para que este servidor lo aparte. Otra versión de RisuAI que abra los mismos datos podría abrir ese archivo antiguo. La limpieza de los ajustes lo mantiene a salvo hasta que lo borres.",
     opfsReadOnlyNotice: "Esta vez RisuAI se está ejecutando desde una copia temporal de tus datos, así que no guardará los cambios, y restaurar un respaldo o limpiar el almacenamiento no está disponible. Tus datos no se han perdido. Cierra las demás pestañas de esta aplicación y reiníciala para que los datos se puedan pasar al almacenamiento del navegador.",
+    otherTabSavedReloadTitle: "Otra pestaña o dispositivo cambió cómo o qué se guarda, por lo que la copia de tus datos en esta pestaña está desactualizada y sus cambios no se pueden guardar desde esta pestaña. Recargar te devuelve a un estado funcional en el que se puede guardar, pero cualquier cambio sin guardar en esta pestaña se perderá.",
+    savingStoppedReplacedMessage: "Esta pestaña ha dejado de guardar. Otra pestaña o dispositivo reemplazó los datos guardados (se cargó un respaldo o los datos se pasaron a un formato nuevo), por lo que la copia de esta pestaña está desactualizada y no se puede guardar desde ella. Los cambios que hagas a partir de ahora no se conservarán. Recargar obtendrá los datos actuales, y cualquier cambio sin guardar en esta pestaña se perderá.",
+    savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number) =>
+        `Esta pestaña ha dejado de guardar. El servidor autoalojado acepta como máximo ${limitBytes / (1024 * 1024)} MiB en una sola solicitud (menos si un proxy delante del servidor establece un límite más bajo), y ${what ? `esta parte de tus datos lo supera: ${what}` : 'una parte de tus datos lo supera; el servidor no indicó cuál'}. Los cambios desde el último guardado correcto se perderán al recargar. Reduce el tamaño de esa parte, por ejemplo eliminando chats o contenido de ella.`,
+    savingStoppedConversionFailedMessage: "Esta pestaña ha dejado de guardar. Pasar tus datos al nuevo formato de guardado no tuvo éxito tras varios intentos, y no se cambió nada en tus datos guardados. Los cambios desde el último guardado correcto se perderán al recargar. Recarga la página para intentarlo de nuevo.",
+    savingStoppedUnconfirmedMessage: "Esta pestaña ha dejado de guardar. RisuAI no pudo confirmar cuál es el guardado actual. Recarga la página para ver cuál se cargó; los cambios hechos en esta pestaña desde el último guardado correcto podrían perderse.",
+    saveBlockLabel: (blockName: string): string =>
+        blockName === 'root' ? 'tus ajustes generales'
+        : blockName === 'preset' ? 'tus presets de bot'
+        : blockName === 'modules' ? 'tus módulos'
+        : blockName === 'loadouts' ? 'tus loadouts'
+        : blockName === 'plugins' ? 'tus plugins'
+        : blockName === 'pluginStorage' ? 'los datos de tus plugins'
+        : blockName === 'config' ? 'el registro del formato de guardado'
+        : blockName === 'stubs' ? 'tus personajes archivados'
+        : `"${blockName}"`,
+    saveConversionFailedAlert: "Pasar tus datos al nuevo formato de guardado no tuvo éxito tras varios intentos. No se cambió nada en tus datos guardados, y esta pestaña ha dejado de guardar. Recarga la página para intentarlo de nuevo.",
+    saveSnapshotSkippedTooLarge: "Tus datos son más grandes de lo que el servidor autoalojado acepta en un solo archivo, por lo que se omiten las copias de respaldo automáticas. El guardado no se ve afectado. Para conservar un respaldo, exporta un archivo .bin con \"Guardar Respaldo Localmente\" en \"Respaldo y Archivos\", dentro de los ajustes.",
+    saveSnapshotSkippedMemory: "Este dispositivo no pudo reservar suficiente memoria para una copia de respaldo automática de tus datos, por lo que se omitió. El guardado no se ve afectado.",
     backupAndFiles: "Respaldo y Archivos",
     assetIntegrityHeading: "Integridad de la Caché de Activos",
     assetIntegrityDescription: "Comprueba las imágenes/activos en caché contra su propio hash de contenido para detectar corrupción, sin volver a descargar nada del almacenamiento. Es de solo lectura, salvo que elijas eliminar una entrada dañada.",

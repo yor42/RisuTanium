@@ -119,6 +119,22 @@ describe.each([{ versioned: true }, { versioned: false }])('commitSave with vers
         expect(seqOf(store, generation)).toBe(1)
     })
 
+    test('a root write that landed and then threw is not taken for a save with nothing to write when the next save equals the acknowledged state (return to origin, invariant 10)', async () => {
+        const { store, generation, owner } = await booted(versioned)
+        store.faults.push({ match: (op) => op.kind === 'write' && op.key === rootKey(generation), mode: 'after' })
+        await expect(owner.commitSave(withRootFields(BASE, { lang: 'ko' }))).rejects.toBeInstanceOf(InjectedFault)
+        expect(parseJsonObjectBlock(store.peek(rootKey(generation)) as Uint8Array, 'root').fields.lang).toBe('ko')
+        // The caller goes back to the state it last had acknowledged; the store holds the other one.
+        const result = await owner.commitSave(BASE)
+        expect(result).not.toMatchObject({ kind: 'committed', wrote: false })
+        if (versioned) {
+            expect(result).toMatchObject({ kind: 'conflict', key: rootKey(generation) })
+        } else {
+            expect(result).toMatchObject({ kind: 'stopped', reason: 'peer-commit', peerSeq: 1 })
+        }
+        expect(parseJsonObjectBlock(store.peek(rootKey(generation)) as Uint8Array, 'root').fields.lang).toBe('ko')
+    })
+
     test('adding a character writes its key then the root; deleting one removes it only after the root commits', async () => {
         const { store, generation, owner } = await booted(versioned)
         let start = store.ops.length

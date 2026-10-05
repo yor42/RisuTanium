@@ -2087,6 +2087,25 @@ export const languageChineseTraditional = {
     "saveLeftoverNotice": "RisuAI 發現了因儲存或還原被中斷而遺留的未使用存檔資料。這些資料無害，您可以在設定中的清理裡將其移除。",
     "saveMainFileLeftNotice": "您的資料已遷移到新格式，但舊的存檔檔案過大，此伺服器無法將其移開。開啟同一份資料的其他版本 RisuAI 可能會開啟那個舊檔案。在您將其刪除之前，設定中的清理會妥善保留它。",
     "opfsReadOnlyNotice": "RisuAI 這次是在您資料的暫時副本上執行，因此不會儲存變更，也無法還原備份或清理儲存空間。您的資料沒有遺失。請關閉此應用程式的其他分頁並重新啟動，以便將資料遷移到瀏覽器儲存空間。",
+    "otherTabSavedReloadTitle": "另一個分頁或裝置變更了儲存方式或儲存內容，因此此分頁的資料副本已過期，其變更無法從此分頁儲存。重新載入可恢復到能正常儲存的狀態，但此分頁中任何未儲存的變更都將遺失。",
+    "savingStoppedReplacedMessage": "此分頁已停止儲存。另一個分頁或裝置取代了已儲存的資料（載入了備份，或資料已遷移到新格式），因此此分頁的副本已過期，無法從此分頁儲存。從現在起所做的變更將不會被保留。重新載入會取得目前的資料，此分頁中任何未儲存的變更都將遺失。",
+    "savingStoppedTooLargeBlockMessage": (what: string, limitBytes: number) =>
+        `此分頁已停止儲存。自架伺服器單次請求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果伺服器前的代理設定了更低的限制，則以更低的為準），而${what ? `您的這部分資料超出了該限制：${what}` : '您的部分資料超出了該限制；伺服器沒有說明是哪一部分'}。自上次成功儲存以來的變更將在重新載入時遺失。請縮減該部分的大小，例如刪除其中的聊天或內容。`,
+    "savingStoppedConversionFailedMessage": "此分頁已停止儲存。將您的資料遷移到新的儲存格式在多次嘗試後仍未成功，且已儲存的資料沒有任何變更。自上次成功儲存以來的變更將在重新載入時遺失。請重新載入頁面以重試。",
+    "savingStoppedUnconfirmedMessage": "此分頁已停止儲存。RisuAI 無法確認哪一份儲存是目前的。請重新載入頁面，查看載入的是哪一份；此分頁中自上次成功儲存以來所做的變更可能已遺失。",
+    "saveBlockLabel": (blockName: string): string =>
+        blockName === 'root' ? '您的一般設定'
+        : blockName === 'preset' ? '您的機器人預設集'
+        : blockName === 'modules' ? '您的模組'
+        : blockName === 'loadouts' ? '您的設定組合'
+        : blockName === 'plugins' ? '您的外掛'
+        : blockName === 'pluginStorage' ? '您的外掛資料'
+        : blockName === 'config' ? '儲存格式記錄'
+        : blockName === 'stubs' ? '您已封存的角色'
+        : `"${blockName}"`,
+    "saveConversionFailedAlert": "將您的資料遷移到新的儲存格式在多次嘗試後仍未成功。已儲存的資料沒有任何變更，且此分頁已停止儲存。請重新載入頁面以重試。",
+    "saveSnapshotSkippedTooLarge": "您的資料超過了自架伺服器單一檔案所能接受的大小，因此自動備份副本已被跳過。儲存不受影響。若要保留備份，請在設定的「備份 & 檔案」下使用「在本機儲存備份」匯出 .bin 檔案。",
+    "saveSnapshotSkippedMemory": "此裝置無法為您資料的自動備份副本預留足夠的記憶體，因此已跳過。儲存不受影響。",
     "backupAndFiles": "備份 & 檔案",
     "assetIntegrityHeading": "資源快取完整性",
     "assetIntegrityDescription": "將快取的圖片/資源與其自身的內容雜湊值進行比對以偵測損毀，無需從儲存空間重新下載任何內容。除非您選擇移除已損毀的項目，否則此操作為唯讀。",

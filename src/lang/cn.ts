@@ -2042,6 +2042,25 @@ export const languageChinese = {
     "saveLeftoverNotice": "RisuAI 发现了因保存或恢复被中断而遗留的未使用存档数据。这些数据无害，您可以在设置中的清理里将其删除。",
     "saveMainFileLeftNotice": "您的数据已迁移到新格式，但旧的存档文件过大，此服务器无法将其移开。打开同一份数据的其他版本 RisuAI 可能会打开那个旧文件。在您将其删除之前，设置中的清理会妥善保留它。",
     "opfsReadOnlyNotice": "RisuAI 这次是在您数据的临时副本上运行，因此不会保存更改，也无法恢复备份或清理存储。您的数据没有丢失。请关闭此应用的其他标签页并重新启动，以便将数据迁移到浏览器存储。",
+    "otherTabSavedReloadTitle": "另一个标签页或设备更改了保存方式或保存内容，因此此标签页的数据副本已过期，其更改无法从此标签页保存。重新加载可恢复到可正常保存的状态，但此标签页中任何未保存的更改都将丢失。",
+    "savingStoppedReplacedMessage": "此标签页已停止保存。另一个标签页或设备替换了已保存的数据（加载了备份，或数据已迁移到新格式），因此此标签页的副本已过期，无法从此标签页保存。从现在起所做的更改将不会被保留。重新加载会获取当前的数据，此标签页中任何未保存的更改都将丢失。",
+    "savingStoppedTooLargeBlockMessage": (what: string, limitBytes: number) =>
+        `此标签页已停止保存。自托管服务器单次请求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果服务器前的代理设置了更低的限制，则以更低的为准），而${what ? `您的这部分数据超出了该限制：${what}` : '您的部分数据超出了该限制；服务器没有说明是哪一部分'}。自上次成功保存以来的更改将在重新加载时丢失。请缩减该部分的大小，例如删除其中的聊天或内容。`,
+    "savingStoppedConversionFailedMessage": "此标签页已停止保存。将您的数据迁移到新的保存格式在多次尝试后仍未成功，且已保存的数据没有任何更改。自上次成功保存以来的更改将在重新加载时丢失。请重新加载页面以重试。",
+    "savingStoppedUnconfirmedMessage": "此标签页已停止保存。RisuAI 无法确认哪一份保存是当前的。请重新加载页面，查看加载的是哪一份；此标签页中自上次成功保存以来所做的更改可能已丢失。",
+    "saveBlockLabel": (blockName: string): string =>
+        blockName === 'root' ? '您的通用设置'
+        : blockName === 'preset' ? '您的机器人预设'
+        : blockName === 'modules' ? '您的模块'
+        : blockName === 'loadouts' ? '您的配置组包'
+        : blockName === 'plugins' ? '您的插件'
+        : blockName === 'pluginStorage' ? '您的插件数据'
+        : blockName === 'config' ? '保存格式记录'
+        : blockName === 'stubs' ? '您已归档的角色'
+        : `"${blockName}"`,
+    "saveConversionFailedAlert": "将您的数据迁移到新的保存格式在多次尝试后仍未成功。已保存的数据没有任何更改，且此标签页已停止保存。请重新加载页面以重试。",
+    "saveSnapshotSkippedTooLarge": "您的数据超过了自托管服务器单个文件所能接受的大小，因此自动备份副本已被跳过。保存不受影响。若要保留备份，请在设置的“备份 & 文件”下使用“本地保存备份”导出 .bin 文件。",
+    "saveSnapshotSkippedMemory": "此设备无法为您数据的自动备份副本预留足够的内存，因此已跳过。保存不受影响。",
     "backupAndFiles": "备份 & 文件",
     "assetIntegrityHeading": "资源缓存完整性",
     "assetIntegrityDescription": "将缓存的图片/资源与其自身的内容哈希进行比对以检测损坏，无需从存储中重新下载任何内容。除非您选择移除已损坏的条目，否则此操作为只读。",

@@ -1,32 +1,27 @@
 /**
- * `saveDb()` on the self-hosted Node server: the main-file write is conditional
- * on the version this page last read or wrote, numbered backups are written
- * without a condition, and another device's save stops saving with the
- * conflict message instead of overwriting it. The real `globalApi.svelte.ts`
- * and `RisuSaveEncoder` run over the real Node client and Node store against the
- * `FakeNodeServer` stand-in at the `fetch` boundary. One save loop runs for the
- * whole file (it never returns); the test that parks it is the last one.
- * A passing test here says nothing about the real server.
+ * `saveDb()` on the self-hosted Node server: a commit's writes are conditional
+ * on the revision this page last read or wrote for each key, numbered backups
+ * are written without a condition, and another device's save stops saving with
+ * the conflict message instead of overwriting it. The real `globalApi.svelte.ts`,
+ * `RisuSaveEncoder` and block-store owner run over an in-memory store that keeps
+ * revisions and answers a stale write with a conflict, as the Node server does.
+ * One save loop runs for the whole file (it never returns); the test that parks
+ * it is the last one. A passing test here says nothing about the real server.
  */
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
-import { get, writable } from 'svelte/store'
-import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
-
-const h = vi.hoisted(() => ({
-    parked: false,
-    db: undefined as undefined | Record<string, unknown>,
-    keyPair: null as CryptoKeyPair | null,
-}))
-
-vi.mock('localforage', () => ({
-    default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => {}),
-            removeItem: vi.fn(async () => {}),
-        }),
-    },
-}))
+import { get } from 'svelte/store'
+import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
+import { StoreVersionConflictError } from 'src/ts/storage/store/errors'
+import {
+    BACKUP_PREFIX,
+    backupWrites,
+    conditionOf,
+    isBackupKey,
+    makeDb,
+    mainFileMutations,
+    rootWrites,
+} from 'src/ts/storage/tests/saveLoopSupport'
+import { createWorldKit, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -34,379 +29,162 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock(import('src/ts/storage/database.svelte'), () => ({
-    getDatabase: vi.fn(() => h.db),
-    setDatabase: vi.fn(),
-    presetTemplate: { name: 'test-preset' },
-    defaultSdDataFunc: vi.fn(() => ({})),
-    appVer: 'test',
-    appSubVer: 'test',
-    getCurrentCharacter: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/database.svelte'))
-
-vi.mock(import('src/ts/stores.svelte'), () => {
-    const state = $state({ db: {} as unknown as Record<string, unknown> })
-    return {
-        DBState: state,
-        selectedCharID: writable(-1),
-        selIdState: { selId: -1 },
-        alertStore: writable({ type: 'none', msg: '' }),
-        MobileGUI: writable(false),
-        botMakerMode: writable(false),
-        loadedStore: writable(false),
-        LoadingStatusState: { text: '' },
-        ReloadGUIPointer: writable(0),
-        bodyIntercepterStore: writable(null),
-        savingStoppedReason: writable(null),
-        frozenSaveKeysStore: writable([]),
-    } as unknown as typeof import('src/ts/stores.svelte')
-})
-
-vi.mock(import('src/ts/alert'), () => ({
-    alertClear: vi.fn(),
-    alertConfirm: vi.fn(async () => true),
-    alertError: vi.fn(),
-    alertWait: vi.fn(),
-    alertMd: vi.fn(),
-    alertNormal: vi.fn(),
-    alertSelect: vi.fn(),
-    alertToast: vi.fn(),
-    alertInput: vi.fn(),
-    alertNormalWait: vi.fn(),
-    alertAddCharacter: vi.fn(),
-    alertStore: writable({ type: 'none', msg: '' }),
-    waitAlert: vi.fn(async () => {}),
-}))
-
 vi.mock(import('src/ts/util'), () => ({
     changeFullscreen: vi.fn(),
     checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
-    sleep: vi.fn((ms: number) => h.parked
+    sleep: vi.fn((ms: number) => h.parkedAll
         ? new Promise<void>(() => {})
         : new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 5)))),
     sleepForever: vi.fn(() => new Promise<void>(() => {})),
-    base64url: (source: Uint8Array | ArrayBuffer) => Buffer.from(source as Uint8Array).toString('base64url'),
-    getKeypairStore: vi.fn(async () => {
-        h.keyPair ??= await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])
-        return h.keyPair
-    }),
-    saveKeypairStore: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
-vi.mock('@tauri-apps/api/core', () => ({
-    convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
-}))
-
-vi.mock('@tauri-apps/api/path', () => ({
-    appDataDir: vi.fn(async () => '/appdata'),
-    join: vi.fn(async (...p: string[]) => p.join('/')),
-    basename: vi.fn(async (p: string) => p.split('/').pop()),
-}))
-
-vi.mock('@tauri-apps/plugin-shell', () => ({
-    open: vi.fn(async () => {}),
-}))
-
-vi.mock('streamsaver', () => ({
-    default: {},
-}))
-
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-    getCurrentWebviewWindow: vi.fn(() => ({
-        listen: vi.fn(),
-        setTitle: vi.fn(),
-    })),
-}))
-
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0 },
-    exists: vi.fn(async () => false),
-    mkdir: vi.fn(async () => {}),
-    readFile: vi.fn(async () => { throw new Error('no file system on the Node server') }),
-    writeFile: vi.fn(async () => {}),
-    readDir: vi.fn(async () => []),
-    remove: vi.fn(async () => {}),
-}))
-
-vi.mock('@tauri-apps/plugin-http', () => ({
-    fetch: vi.fn(async () => new Response(null, { status: 404 })),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-    save: vi.fn(async () => null),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-    listen: vi.fn(async () => vi.fn()),
-}))
-
-vi.mock(import('src/ts/update'), () => ({
-    checkRisuUpdate: vi.fn(async () => {}),
-}))
-
-vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
-    loadPlugins: vi.fn(async () => {}),
-}) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
-
-vi.mock(import('src/ts/parser/parser.svelte'), () => ({
-    hasher: vi.fn((s: string) => s),
-}) as unknown as typeof import('src/ts/parser/parser.svelte'))
-
-vi.mock(import('src/ts/characterCards'), () => ({
-    characterURLImport: vi.fn(),
-    hubURL: 'https://example.invalid',
-}) as unknown as typeof import('src/ts/characterCards'))
-
-vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
-    registerDbChangeEffects: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
-
-// The storage object over the real Node client, as `AutoStorage` builds it on a Node server.
-vi.mock(import('src/ts/storage/autoStorage'), async () => {
-    const { NodeStorage } = await import('src/ts/storage/nodeStorage')
-    class FakeAutoStorage {
-        realStorage = new NodeStorage()
-        async Init() {}
-        async getItem(key: string) { return await this.realStorage.getItem(key) }
-        async setItem(key: string, value: Uint8Array) { await this.realStorage.setItem(key, value) }
-        async keys() { return await this.realStorage.keys() }
-        async removeItem(key: string) { return await this.realStorage.removeItem(key) }
-    }
-    return { AutoStorage: FakeAutoStorage } as unknown as typeof import('src/ts/storage/autoStorage')
-})
-
-vi.mock(import('src/ts/gui/animation'), () => ({
-    updateAnimationSpeed: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/animation'))
-
-vi.mock(import('src/ts/gui/colorscheme'), () => ({
-    updateColorScheme: vi.fn(),
-    updateTextThemeAndCSS: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/colorscheme'))
-
-vi.mock(import('src/ts/observer.svelte'), () => ({
-    startObserveDom: vi.fn(),
-}) as unknown as typeof import('src/ts/observer.svelte'))
-
-vi.mock(import('src/ts/gui/guisize'), () => ({
-    updateGuisize: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/guisize'))
-
-vi.mock(import('src/ts/characters'), () => ({
-    updateLorebooks: vi.fn((v: unknown) => v),
-}) as unknown as typeof import('src/ts/characters'))
-
-vi.mock(import('src/ts/hotkey'), () => ({
-    initMobileGesture: vi.fn(),
-}) as unknown as typeof import('src/ts/hotkey'))
-
-vi.mock(import('src/ts/process/modules'), () => ({
-    moduleUpdate: vi.fn(async () => {}),
-}) as unknown as typeof import('src/ts/process/modules'))
-
-vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
-    getColdStorageItem: vi.fn(),
-}) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
-
-vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
-    noteMainFileBytes: vi.fn(),
-    resetMainFileRecordForTests: vi.fn(),
-    matchesMainFileRecord: vi.fn(async () => false),
-    getMainFileRecordDigest: vi.fn(async () => null),
-    digestMainFileBytes: vi.fn(async () => null),
-}) as unknown as typeof import('src/ts/storage/mainFileRecord'))
-
-import { saveDb } from 'src/ts/globalApi.svelte'
 import { alertError, alertToast } from 'src/ts/alert'
-import { noteMainFileBytes } from 'src/ts/storage/mainFileRecord'
-import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
-import { readMainFile } from 'src/ts/storage/store/appStore'
 import { savingStoppedReason } from 'src/ts/stores.svelte'
 
 const CHA_ID = 'saved-cha'
-const MAIN = 'database/database.bin'
-const BACKUP_PREFIX = 'database/dbbackup-'
+const kit = createWorldKit({
+    parked: h.parked,
+    getDb: () => h.db,
+    setDb: (db) => { h.db = db },
+    nextId: () => ++h.worldCount,
+})
 
-const server = new FakeNodeServer()
-
-function makeDb(prompt: string): Record<string, unknown> {
-    return {
-        formatversion: 5,
-        botPresetsId: 0,
-        botPresets: [],
-        modules: [],
-        loadouts: [],
-        plugins: [],
-        pluginCustomStorage: {},
-        mainPrompt: prompt,
-        characters: [{
-            chaId: CHA_ID,
-            name: 'Saved',
-            type: 'character',
-            chatPage: 0,
-            chats: [{ id: 'saved-chat', message: [], note: '', name: '', localLore: [] }],
-        }],
-    }
-}
-
-function settle(ms = 80): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
-}
+let w: World
 
 function requestSave(prompt: string): void {
     h.db!.mainPrompt = prompt
-    markCharacterForSave(CHA_ID)
+    w.marks.markCharacterForSave(CHA_ID)
 }
 
-function pathOf(request: { headers: Record<string, string> }): string {
-    return Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8')
-}
-
-function writesTo(predicate: (key: string) => boolean) {
-    return server.requestsTo('/api/write').filter((request) => predicate(pathOf(request)))
-}
-
-function mainWrites() {
-    return writesTo((key) => key === MAIN)
-}
-
-function backupWrites() {
-    return writesTo((key) => key.startsWith(BACKUP_PREFIX))
-}
-
-function notedCount(): number {
-    return vi.mocked(noteMainFileBytes).mock.calls.length
-}
+const rootKeyOfLiveGeneration = () => `blocks/${w.owner.committedState()!.generation}/root`
 
 beforeAll(async () => {
-    vi.stubGlobal('fetch', server.fetch)
-    h.db = makeDb('first')
-    // The page's boot read: it takes the version every later main-file write presents.
-    server.seed(MAIN, Uint8Array.from([1, 2, 3]))
-    await readMainFile()
-    // The save loop never returns; it is only awaited far enough to be running.
-    void saveDb()
-    await settle(100)
+    h.db = makeDb('first', [CHA_ID])
+    w = await kit.startWorld({ kind: 'node', isolate: false, startLoop: false })
+    w.start()
+    await sleepReal(100)
 })
 
 afterAll(() => {
-    h.parked = true
-    vi.unstubAllGlobals()
+    h.parkedAll = true
 })
 
 describe('saveDb on the Node server', () => {
-    test('the first save presents the version the page read, writes its numbered backup without a condition, and shows nothing', async () => {
-        const readVersion = String(server.revisionOf(MAIN))
+    test('the first commit presents the revision it read, writes its numbered backup without a condition, and shows nothing', async () => {
+        const root = rootKeyOfLiveGeneration()
+        const readVersion = w.store.revisionOf(root)
 
         requestSave('second')
-        await vi.waitFor(() => { expect(notedCount()).toBe(1) }, { timeout: 8000, interval: 10 })
-        await vi.waitFor(() => { expect(backupWrites()).toHaveLength(1) }, { timeout: 8000, interval: 10 })
+        await until(() => rootWrites(w.store).length === 1, 'the commit')
+        await until(() => backupWrites(w.store).length === 1, 'the backup')
         // The prune that follows the backup write is still in flight when the backup request is seen.
-        await settle()
+        await sleepReal(80)
 
-        expect(mainWrites()).toHaveLength(1)
-        expect(mainWrites()[0].headers['if-match-revision']).toBe(readVersion)
-        expect(backupWrites()[0].headers['if-match-revision']).toBeUndefined()
+        expect(conditionOf(rootWrites(w.store)[0])).toEqual({ ifVersion: readVersion })
+        expect(conditionOf(backupWrites(w.store)[0])).toBe('unconditional')
         expect(alertToast).not.toHaveBeenCalled()
         expect(alertError).not.toHaveBeenCalled()
         expect(get(savingStoppedReason)).toBeNull()
+        expect(mainFileMutations(w.store)).toHaveLength(0)
     })
 
-    test('the next save presents the revision the previous save left, with no backup due and so no listing of the backups', async () => {
-        server.requests.length = 0
-        const notedBefore = notedCount()
-        const expected = String(server.revisionOf(MAIN))
+    test('the next commit presents the revision the previous commit left, with no backup due and so no listing of the backups', async () => {
+        w.store.ops.length = 0
+        const expected = w.store.revisionOf(rootKeyOfLiveGeneration())
 
         requestSave('third')
-        await vi.waitFor(() => { expect(notedCount()).toBe(notedBefore + 1) }, { timeout: 8000, interval: 10 })
-        await settle()
+        await until(() => rootWrites(w.store).length === 1, 'the commit')
+        await sleepReal(80)
 
-        expect(mainWrites()).toHaveLength(1)
-        expect(mainWrites()[0].headers['if-match-revision']).toBe(expected)
-        expect(backupWrites()).toHaveLength(0)
-        expect(server.requestsTo('/api/list')).toHaveLength(0)
-        expect(server.requestsTo('/api/remove')).toHaveLength(0)
+        expect(conditionOf(rootWrites(w.store)[0])).toEqual({ ifVersion: expected })
+        expect(backupWrites(w.store)).toHaveLength(0)
+        expect(w.store.ops.filter((op) => op.kind === 'list')).toHaveLength(0)
+        expect(w.store.ops.filter((op) => op.kind === 'delete')).toHaveLength(0)
         expect(alertToast).not.toHaveBeenCalled()
     })
 
     test('a save whose backup prune races another tab\'s prune of the same oldest backup shows no conflict and keeps saving', async () => {
-        server.requests.length = 0
+        w.store.ops.length = 0
         const oldest = `${BACKUP_PREFIX}100.bin`
         for (let n = 100; n < 121; n++) {
-            server.seed(`${BACKUP_PREFIX}${n}.bin`, Uint8Array.from([n]))
+            w.store.plant(`${BACKUP_PREFIX}${n}.bin`, Uint8Array.from([n]))
         }
         let peerRemoved = false
-        server.afterRequest = (path) => {
-            if (path === '/api/list' && !peerRemoved) {
-                peerRemoved = true
-                server.peerRemove(oldest)
-            }
-        }
+        w.store.faults.push({
+            match: (op) => {
+                if (op.kind === 'list' && op.key === BACKUP_PREFIX && !peerRemoved) {
+                    peerRemoved = true
+                    w.store.unplant(oldest)
+                }
+                return false
+            },
+            mode: 'after',
+            times: Number.MAX_SAFE_INTEGER,
+        })
         // The minimum interval between backups has passed, so this save writes one and prunes.
         vi.useFakeTimers({ toFake: ['Date'] })
         vi.setSystemTime(Date.now() + 6 * 60 * 1000)
-        const notedBefore = notedCount()
         try {
             requestSave('with a backup')
-            await vi.waitFor(() => { expect(notedCount()).toBe(notedBefore + 1) }, { timeout: 8000, interval: 10 })
-            await vi.waitFor(() => { expect(peerRemoved).toBe(true) }, { timeout: 8000, interval: 10 })
+            await until(() => rootWrites(w.store).length === 1, 'the commit')
+            await until(() => peerRemoved, 'the prune')
         } finally {
             vi.useRealTimers()
         }
-        await settle()
-        server.afterRequest = undefined
+        await sleepReal(80)
 
-        expect(server.files.has(oldest)).toBe(false)
+        expect(w.store.peek(oldest)).toBeNull()
         expect(alertToast).not.toHaveBeenCalled()
         expect(alertError).not.toHaveBeenCalled()
         expect(get(savingStoppedReason)).toBeNull()
-        const notedAfterBackupSave = notedCount()
+        const commits = rootWrites(w.store).length
         requestSave('after the race')
-        await vi.waitFor(() => { expect(notedCount()).toBe(notedAfterBackupSave + 1) }, { timeout: 8000, interval: 10 })
+        await until(() => rootWrites(w.store).length === commits + 1, 'the next commit')
     })
 
-    test('guard: an injected conflict on the numbered backup after the main file was saved shows the saved-anyway notice, does not stop saving, and the next save goes through', async () => {
-        server.requests.length = 0
-        server.writeOverride = (key) => key.startsWith(BACKUP_PREFIX)
-            ? new Response(JSON.stringify({ error: 'Revision conflict', currentRevision: 7 }), { status: 409, headers: { 'content-type': 'application/json' } })
-            : undefined
+    test('an injected conflict on the numbered backup after the commit landed shows the saved-anyway notice, does not stop saving, and the next save goes through', async () => {
+        w.store.ops.length = 0
+        w.store.faults.length = 0
+        w.store.faults.push({
+            match: (op) => op.kind === 'write' && isBackupKey(op.key),
+            mode: 'before',
+            times: 1,
+            error: new StoreVersionConflictError(`${BACKUP_PREFIX}1.bin`, 7),
+        })
         vi.mocked(alertToast).mockClear()
         // A backup is due: the clock is a month past whenever the last backup
         // was written, whichever test that was.
         vi.useFakeTimers({ toFake: ['Date'] })
         vi.setSystemTime(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        const notedBefore = notedCount()
         try {
             requestSave('conflicting backup')
-            await vi.waitFor(() => { expect(notedCount()).toBe(notedBefore + 1) }, { timeout: 8000, interval: 10 })
+            await until(() => rootWrites(w.store).length === 1, 'the commit')
             await vi.waitFor(() => { expect(vi.mocked(alertToast)).toHaveBeenCalledTimes(1) }, { timeout: 8000, interval: 10 })
         } finally {
             vi.useRealTimers()
-            server.writeOverride = undefined
         }
 
         expect(String(vi.mocked(alertToast).mock.calls[0][0])).toContain('Your latest changes were saved')
         expect(get(savingStoppedReason)).toBeNull()
-        const notedAfterBackupSave = notedCount()
         requestSave('after the refused backup')
-        await vi.waitFor(() => { expect(notedCount()).toBe(notedAfterBackupSave + 1) }, { timeout: 8000, interval: 10 })
+        await until(() => rootWrites(w.store).length === 2, 'the next commit')
         expect(get(savingStoppedReason)).toBeNull()
         vi.mocked(alertToast).mockClear()
     })
 
-    test('a save after another device saved is refused, saving stops with the node-conflict message, and the other device\'s file is untouched', async () => {
-        server.requests.length = 0
-        const peerFile = Uint8Array.from([9, 9, 9, 9])
-        server.peerWrite(MAIN, peerFile)
+    test('a save after another device saved is refused, saving stops with the node-conflict message, and the other device\'s data is untouched', async () => {
+        w.store.ops.length = 0
+        const root = rootKeyOfLiveGeneration()
+        const peerRoot = Uint8Array.from([9, 9, 9, 9])
+        w.store.plant(root, peerRoot)
 
         requestSave('fourth')
-        await vi.waitFor(() => { expect(get(savingStoppedReason)).toBe('node-conflict') }, { timeout: 8000, interval: 10 })
-        await settle(150)
+        await until(() => get(savingStoppedReason) === 'node-conflict', 'the page to stop')
+        await sleepReal(150)
 
-        expect(mainWrites()).toHaveLength(1)
-        expect(Array.from(server.files.get(MAIN)?.bytes ?? [])).toEqual(Array.from(peerFile))
-        expect(backupWrites()).toHaveLength(0)
+        expect(rootWrites(w.store)).toHaveLength(1)
+        expect(Array.from(w.store.peek(root) ?? [])).toEqual(Array.from(peerRoot))
+        expect(backupWrites(w.store)).toHaveLength(0)
         expect(vi.mocked(alertToast).mock.calls.map((call) => String(call[0]))).toEqual([
             expect.stringContaining('conflicts with a newer version'),
         ])

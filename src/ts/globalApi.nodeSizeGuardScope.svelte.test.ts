@@ -1,34 +1,18 @@
 /**
- * Which Node 413s park the save loop. A 413 on a Remote Saving character block,
- * which is written before the main file commits, parks it with the `too-large`
- * reason. A 413 on the numbered backup, which is written after the main file
- * committed, does not: that save is already stored, so the post-commit handling
- * keeps the reason empty and the next change is saved. The real
- * `globalApi.svelte.ts` and `RisuSaveEncoder` run over the real Node client and
- * Node store against the `FakeNodeServer` stand-in, whose `writeOverride`
- * refuses the chosen keys. One save loop runs for the whole file (it never
- * returns) and the parking test runs last. A passing test here says nothing
- * about the real server.
+ * Which 413s from the Node server park the save loop. A 413 to a write that is
+ * part of the commit (a block, the root) comes before the commit lands, so the
+ * changes are still unsaved and the loop parks. A 413 to the numbered backup
+ * comes after the commit landed: it parks nothing, and the next change is
+ * saved. The real `globalApi.svelte.ts`, `RisuSaveEncoder` and block-store
+ * owner run over an in-memory store that answers 413 to chosen writes. One save
+ * loop runs for the whole file (it never returns); the test that parks it is
+ * the last one. A passing test here says nothing about the real server.
  */
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
-import { get, writable } from 'svelte/store'
-import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
-
-const h = vi.hoisted(() => ({
-    parked: false,
-    db: undefined as undefined | Record<string, unknown>,
-    keyPair: null as CryptoKeyPair | null,
-}))
-
-vi.mock('localforage', () => ({
-    default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => {}),
-            removeItem: vi.fn(async () => {}),
-        }),
-    },
-}))
+import { get } from 'svelte/store'
+import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
+import { backupWrites, isBackupKey, isRootKey, makeDb, rootWrites } from 'src/ts/storage/tests/saveLoopSupport'
+import { createWorldKit, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -36,322 +20,85 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock(import('src/ts/storage/database.svelte'), () => ({
-    getDatabase: vi.fn(() => h.db),
-    setDatabase: vi.fn(),
-    presetTemplate: { name: 'test-preset' },
-    defaultSdDataFunc: vi.fn(() => ({})),
-    appVer: 'test',
-    appSubVer: 'test',
-    getCurrentCharacter: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/database.svelte'))
-
-vi.mock(import('src/ts/stores.svelte'), () => {
-    const state = $state({ db: {} as unknown as Record<string, unknown> })
-    return {
-        DBState: state,
-        selectedCharID: writable(-1),
-        selIdState: { selId: -1 },
-        alertStore: writable({ type: 'none', msg: '' }),
-        MobileGUI: writable(false),
-        botMakerMode: writable(false),
-        loadedStore: writable(false),
-        LoadingStatusState: { text: '' },
-        ReloadGUIPointer: writable(0),
-        bodyIntercepterStore: writable(null),
-        savingStoppedReason: writable(''),
-        frozenSaveKeysStore: writable([]),
-    } as unknown as typeof import('src/ts/stores.svelte')
-})
-
-vi.mock(import('src/ts/alert'), () => ({
-    alertClear: vi.fn(),
-    alertConfirm: vi.fn(async () => true),
-    alertError: vi.fn(),
-    alertWait: vi.fn(),
-    alertMd: vi.fn(),
-    alertNormal: vi.fn(),
-    alertSelect: vi.fn(),
-    alertToast: vi.fn(),
-    alertInput: vi.fn(),
-    alertNormalWait: vi.fn(),
-    alertAddCharacter: vi.fn(),
-    alertStore: writable({ type: 'none', msg: '' }),
-    waitAlert: vi.fn(async () => {}),
-}))
-
 vi.mock(import('src/ts/util'), () => ({
     changeFullscreen: vi.fn(),
     checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
-    sleep: vi.fn((ms: number) => h.parked
+    sleep: vi.fn((ms: number) => h.parkedAll
         ? new Promise<void>(() => {})
         : new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 5)))),
     sleepForever: vi.fn(() => new Promise<void>(() => {})),
-    base64url: (source: Uint8Array | ArrayBuffer) => Buffer.from(source as Uint8Array).toString('base64url'),
-    getKeypairStore: vi.fn(async () => {
-        h.keyPair ??= await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])
-        return h.keyPair
-    }),
-    saveKeypairStore: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
-vi.mock('@tauri-apps/api/core', () => ({
-    convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
-}))
-
-vi.mock('@tauri-apps/api/path', () => ({
-    appDataDir: vi.fn(async () => '/appdata'),
-    join: vi.fn(async (...p: string[]) => p.join('/')),
-    basename: vi.fn(async (p: string) => p.split('/').pop()),
-}))
-
-vi.mock('@tauri-apps/plugin-shell', () => ({
-    open: vi.fn(async () => {}),
-}))
-
-vi.mock('streamsaver', () => ({
-    default: {},
-}))
-
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-    getCurrentWebviewWindow: vi.fn(() => ({
-        listen: vi.fn(),
-        setTitle: vi.fn(),
-    })),
-}))
-
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0 },
-    exists: vi.fn(async () => false),
-    mkdir: vi.fn(async () => {}),
-    readFile: vi.fn(async () => { throw new Error('no file system on the Node server') }),
-    writeFile: vi.fn(async () => {}),
-    readDir: vi.fn(async () => []),
-    remove: vi.fn(async () => {}),
-}))
-
-vi.mock('@tauri-apps/plugin-http', () => ({
-    fetch: vi.fn(async () => new Response(null, { status: 404 })),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-    save: vi.fn(async () => null),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-    listen: vi.fn(async () => vi.fn()),
-}))
-
-vi.mock(import('src/ts/update'), () => ({
-    checkRisuUpdate: vi.fn(async () => {}),
-}))
-
-vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
-    loadPlugins: vi.fn(async () => {}),
-}) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
-
-vi.mock(import('src/ts/parser/parser.svelte'), () => ({
-    hasher: vi.fn((s: string) => s),
-}) as unknown as typeof import('src/ts/parser/parser.svelte'))
-
-vi.mock(import('src/ts/characterCards'), () => ({
-    characterURLImport: vi.fn(),
-    hubURL: 'https://example.invalid',
-}) as unknown as typeof import('src/ts/characterCards'))
-
-vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
-    registerDbChangeEffects: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
-
-// The storage object over the real Node client, as `AutoStorage` builds it on a Node server.
-vi.mock(import('src/ts/storage/autoStorage'), async () => {
-    const { NodeStorage } = await import('src/ts/storage/nodeStorage')
-    class FakeAutoStorage {
-        realStorage = new NodeStorage()
-        async Init() {}
-        async getItem(key: string) { return await this.realStorage.getItem(key) }
-        async setItem(key: string, value: Uint8Array) { await this.realStorage.setItem(key, value) }
-        async keys() { return await this.realStorage.keys() }
-        async removeItem(key: string) { return await this.realStorage.removeItem(key) }
-    }
-    return { AutoStorage: FakeAutoStorage } as unknown as typeof import('src/ts/storage/autoStorage')
-})
-
-vi.mock(import('src/ts/gui/animation'), () => ({
-    updateAnimationSpeed: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/animation'))
-
-vi.mock(import('src/ts/gui/colorscheme'), () => ({
-    updateColorScheme: vi.fn(),
-    updateTextThemeAndCSS: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/colorscheme'))
-
-vi.mock(import('src/ts/observer.svelte'), () => ({
-    startObserveDom: vi.fn(),
-}) as unknown as typeof import('src/ts/observer.svelte'))
-
-vi.mock(import('src/ts/gui/guisize'), () => ({
-    updateGuisize: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/guisize'))
-
-vi.mock(import('src/ts/characters'), () => ({
-    updateLorebooks: vi.fn((v: unknown) => v),
-}) as unknown as typeof import('src/ts/characters'))
-
-vi.mock(import('src/ts/hotkey'), () => ({
-    initMobileGesture: vi.fn(),
-}) as unknown as typeof import('src/ts/hotkey'))
-
-vi.mock(import('src/ts/process/modules'), () => ({
-    moduleUpdate: vi.fn(async () => {}),
-}) as unknown as typeof import('src/ts/process/modules'))
-
-vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
-    getColdStorageItem: vi.fn(),
-}) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
-
-vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
-    noteMainFileBytes: vi.fn(),
-    resetMainFileRecordForTests: vi.fn(),
-    matchesMainFileRecord: vi.fn(async () => false),
-    getMainFileRecordDigest: vi.fn(async () => null),
-    digestMainFileBytes: vi.fn(async () => null),
-}) as unknown as typeof import('src/ts/storage/mainFileRecord'))
-
-import { afterNextSaveCommit, isSaveClean, saveDb } from 'src/ts/globalApi.svelte'
 import { alertError, alertToast } from 'src/ts/alert'
-import { noteMainFileBytes } from 'src/ts/storage/mainFileRecord'
-import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
-import { readMainFile } from 'src/ts/storage/store/appStore'
 import { savingStoppedReason } from 'src/ts/stores.svelte'
+import { NodeHttpError } from 'src/ts/storage/store/nodeHttpStore'
 
 const CHA_ID = 'sized-cha'
-const MAIN = 'database/database.bin'
-const BACKUP_PREFIX = 'database/dbbackup-'
-const REMOTE_PREFIX = 'remotes/'
+const kit = createWorldKit({
+    parked: h.parked,
+    getDb: () => h.db,
+    setDb: (db) => { h.db = db },
+    nextId: () => ++h.worldCount,
+})
 
-const server = new FakeNodeServer()
-
-function makeDb(prompt: string): Record<string, unknown> {
-    return {
-        formatversion: 5,
-        botPresetsId: 0,
-        botPresets: [],
-        modules: [],
-        loadouts: [],
-        plugins: [],
-        pluginCustomStorage: {},
-        mainPrompt: prompt,
-        enableRemoteSaving: true,
-        characters: [{
-            chaId: CHA_ID,
-            name: 'Sized',
-            type: 'character',
-            chatPage: 0,
-            chats: [{ id: 'sized-chat', message: [], note: '', name: '', localLore: [] }],
-        }],
-    }
-}
-
-function settle(ms = 80): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
-}
+let w: World
 
 function requestSave(prompt: string): void {
     h.db!.mainPrompt = prompt
-    markCharacterForSave(CHA_ID)
-}
-
-function pathOf(request: { headers: Record<string, string> }): string {
-    return Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8')
-}
-
-function writesTo(predicate: (key: string) => boolean) {
-    return server.requestsTo('/api/write').filter((request) => predicate(pathOf(request)))
-}
-
-function mainWrites() {
-    return writesTo((key) => key === MAIN)
-}
-
-function backupWrites() {
-    return writesTo((key) => key.startsWith(BACKUP_PREFIX))
-}
-
-function notedCount(): number {
-    return vi.mocked(noteMainFileBytes).mock.calls.length
+    w.marks.markCharacterForSave(CHA_ID)
 }
 
 beforeAll(async () => {
-    vi.stubGlobal('fetch', server.fetch)
-    h.db = makeDb('first')
-    server.seed(MAIN, Uint8Array.from([1, 2, 3]))
-    await readMainFile()
-    // The save loop never returns; it is only awaited far enough to be running.
-    void saveDb()
-    await settle(100)
+    h.db = makeDb('first', [CHA_ID])
+    w = await kit.startWorld({ kind: 'node', isolate: false })
 })
 
 afterAll(() => {
-    h.parked = true
-    vi.unstubAllGlobals()
+    h.parkedAll = true
 })
 
-function requestCharacterSave(name: string): void {
-    const characters = h.db!.characters as { name: string }[]
-    characters[0].name = name
-    markCharacterForSave(CHA_ID)
-}
+describe('saveDb on a Node server that answers 413 outside the commit', () => {
+    test('a 413 on the numbered backup, after the commit landed, does not park and the next change is saved', async () => {
+        w.store.faults.push({
+            match: (op) => op.kind === 'write' && isBackupKey(op.key),
+            mode: 'before',
+            times: 1,
+            error: new NodeHttpError(413, 'write'),
+        })
+        requestSave('with a refused backup')
+        await until(() => rootWrites(w.store).length === 1, 'the commit')
+        await until(() => backupWrites(w.store).length === 1, 'the refused backup')
+        await sleepReal(150)
+        expect(get(savingStoppedReason)).toBeNull()
+        expect(vi.mocked(alertToast)).not.toHaveBeenCalled()
 
-describe('saveDb on a Node server that answers 413 outside the main-file write', () => {
-    test('guard: a 413 on the numbered backup, after the main file committed, does not park and the next change is saved', async () => {
-        server.writeOverride = (key) => key.startsWith(BACKUP_PREFIX)
-            ? new Response('Payload Too Large', { status: 413 })
-            : undefined
+        requestSave('after the refused backup')
+        await until(() => rootWrites(w.store).length === 2, 'the next commit')
+        await until(() => w.api.isSaveClean(), 'the loop to go clean')
+        expect(get(savingStoppedReason)).toBeNull()
+    })
 
-        requestSave('first change')
-        await vi.waitFor(() => { expect(notedCount()).toBe(1) }, { timeout: 8000, interval: 10 })
-        await vi.waitFor(() => { expect(backupWrites()).toHaveLength(1) }, { timeout: 8000, interval: 10 })
-        await settle(100)
-
-        expect(get(savingStoppedReason)).toBe('')
-
-        requestSave('second change')
-        await vi.waitFor(() => { expect(notedCount()).toBe(2) }, { timeout: 8000, interval: 10 })
-
-        expect(mainWrites()).toHaveLength(2)
-        expect(get(savingStoppedReason)).toBe('')
-        expect(vi.mocked(alertToast).mock.calls.some((call) => String(call[0]).includes('stopped saving'))).toBe(false)
-        server.writeOverride = undefined
-    }, 20000)
-
-    test('a 413 on a Remote Saving character block, before the main file commits, parks the loop and leaves the changes unsaved', async () => {
-        server.writeOverride = (key) => key.startsWith(REMOTE_PREFIX)
-            ? new Response('Payload Too Large', { status: 413 })
-            : undefined
-        vi.mocked(alertToast).mockClear()
-        const mainBefore = mainWrites().length
-        const notedBefore = notedCount()
+    test('a 413 on the root write, before the commit lands, parks the loop and leaves the changes unsaved', async () => {
+        w.store.faults.push({
+            match: (op) => op.kind === 'write' && isRootKey(op.key),
+            mode: 'before',
+            times: 1000,
+            error: new NodeHttpError(413, 'write'),
+        })
+        const commits = rootWrites(w.store).length
         const committed = vi.fn()
-        afterNextSaveCommit(committed)
+        w.api.afterNextSaveCommit(committed)
 
-        requestCharacterSave('Renamed')
-        await vi.waitFor(() => { expect(get(savingStoppedReason)).toBe('too-large') }, { timeout: 8000, interval: 10 })
+        requestSave('refused root')
+        await until(() => get(savingStoppedReason) === 'too-large', 'the loop to park')
+        await sleepReal(300)
+        const ops = w.store.ops.length
+        await sleepReal(300)
 
-        // A retry loop would send again within a few of the (shortened) sleeps.
-        await settle(300)
-        const requestsAfterPark = server.requests.length
-        await settle(300)
-        requestCharacterSave('Renamed again')
-        await settle(300)
-
-        expect(server.requests.length).toBe(requestsAfterPark)
-        expect(server.requestsTo('/api/write').some((request) => pathOf(request).startsWith(REMOTE_PREFIX))).toBe(true)
-        expect(mainWrites()).toHaveLength(mainBefore)
-        expect(notedCount()).toBe(notedBefore)
+        expect(w.store.ops.length).toBe(ops)
+        expect(rootWrites(w.store)).toHaveLength(commits + 1)
         expect(committed).not.toHaveBeenCalled()
-        expect(isSaveClean()).toBe(false)
+        expect(w.api.isSaveClean()).toBe(false)
         expect(alertError).not.toHaveBeenCalled()
         expect(vi.mocked(alertToast).mock.calls).toHaveLength(1)
         expect(String(vi.mocked(alertToast).mock.calls[0][0])).toContain('stopped saving')

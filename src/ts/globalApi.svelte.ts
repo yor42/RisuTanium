@@ -23,15 +23,19 @@ import { alertConfirm, alertError, alertMd, alertSelect, alertToast, waitAlert }
 import { hasher } from "./parser/parser.svelte";
 import { characterURLImport, hubURL } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
-import { encodeRisuSaveLegacy, RisuSaveEncoder, type toSaveType } from "./storage/risuSave";
+import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
 import { installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
-import { digestMainFileBytes, getMainFileRecordDigest, matchesMainFileRecord, noteMainFileBytes } from "./storage/mainFileRecord";
-import { getMainFileEpoch, isMainFileOutcomeKnown } from "./storage/mainFileOutcome";
+import { digestMainFileBytes } from "./storage/mainFileRecord";
 import { didBootPassCommit } from "./process/memory/idleReloadBootState";
-import { getAppStore, writeMainFile } from "./storage/store/appStore";
+import { getAppStore } from "./storage/store/appStore";
+import { BlockTooLargeError } from "./storage/blockStore";
+import { FILE_HEADER_V1 } from "./storage/blockFrame";
+import { getPageBlockOwner } from "./storage/pageBlockOwner";
+import { getPageStorageMode } from "./storage/pageStorageMode";
+import { packedForLayout, performSaveStep, type SaveStep } from "./storage/saveStep";
 import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "./storage/nodeBodyLimit";
@@ -611,45 +615,37 @@ export async function loadAsset(id: string) {
 
 let lastSave = ''
 let lastBackupWriteTime = 0
-// Every autosave writes the full database again anyway; writing a full extra
-// numbered backup copy on every single cycle too (autosave debounces at
-// 500ms) accelerates quota exhaustion on web for little added safety-net
-// value over a much lower write rate. This only throttles how often a NEW
-// backup snapshot is taken — the primary database.bin write is unaffected.
+// A numbered backup is a full copy of the profile; writing one on every
+// single cycle (autosave debounces at 500ms) accelerates quota exhaustion on
+// web for little added safety-net value over a much lower write rate. This
+// only throttles how often a NEW backup snapshot is taken — the commit of
+// the changed blocks is unaffected.
 const DB_BACKUP_MIN_INTERVAL_MS = 5 * 60 * 1000
 const DB_BACKUP_KEY_PREFIX = 'database/dbbackup-'
 /**
  * Fork-only record of which bytes the newest numbered backup this fork wrote
  * holds: the persisted name `digestMainFileBytes` gives them, as text. It is
  * written only after that backup's write has returned, and read only by the
- * page's first committing save iteration, and only when that iteration skips the
- * main-file write, to decide whether the backups already hold the main file.
- * Its key is outside `database/dbbackup-`, `assets/`, `remotes/` and
- * `coldstorage/`, so no backup listing, pruning, export or asset, remote-block
- * or cold-storage enumeration sees it, and nothing exports it.
+ * page's first save iteration that commits nothing, to decide whether the
+ * backups already hold the state the page snapshots. Its key is outside
+ * `database/dbbackup-`, `assets/`, `remotes/` and `coldstorage/`, so no backup
+ * listing, pruning, export or asset, remote-block or cold-storage enumeration
+ * sees it, and nothing exports it.
  */
 const BACKUP_FINGERPRINT_KEY = 'database/backupfingerprint'
 
-/** Whether the stored backup fingerprint names the bytes the main-file record holds. Any failure answers no, which takes a backup. */
-async function storedBackupFingerprintNamesMain(): Promise<boolean> {
+/** Whether the stored backup fingerprint is `name`. Any failure answers no, which takes a backup. */
+async function storedBackupFingerprintIs(name: string): Promise<boolean> {
     try {
-        const current = await getMainFileRecordDigest()
-        if (current === null) {
-            return false
-        }
         const stored = (await (await getAppStore()).read(BACKUP_FINGERPRINT_KEY)).bytes
-        return stored !== null && new TextDecoder().decode(stored) === current
+        return stored !== null && new TextDecoder().decode(stored) === name
     } catch (error) {
         return false
     }
 }
 
-/** Records that the newest numbered backup holds `backupBytes`. Writes nothing when they cannot be named. */
-async function writeBackupFingerprint(backupBytes: Uint8Array): Promise<void> {
-    const name = await digestMainFileBytes(backupBytes)
-    if (name === null) {
-        return
-    }
+/** Records that the newest numbered backup holds the bytes `name` names. */
+async function writeBackupFingerprint(name: string): Promise<void> {
     await (await getAppStore()).write(BACKUP_FINGERPRINT_KEY, new TextEncoder().encode(name), 'unconditional')
 }
 
@@ -677,8 +673,8 @@ export let requiresFullEncoderReload = $state({
  * `changed = true`), so a change followed by a change back is still a change
  * until a later iteration's snapshot covers it. `snapshotMarkCount` is the count
  * at the latest iteration's snapshot, and `lastIterationCommitted` is true only
- * after that iteration's main-file write landed or the iteration found storage
- * already holding the same bytes and skipped the write. `saveLoopPending` reads the
+ * after that iteration's commit landed or the iteration found the store
+ * already holding the same blocks and wrote nothing. `saveLoopPending` reads the
  * loop's own closure state (a debounce running, `changed`, an unsaved
  * iteration) and is null until `saveDb()` starts.
  */
@@ -701,7 +697,7 @@ function fireNextCommitCallbacks(): void {
     }
 }
 
-/** Calls `callback` once, when the next save iteration commits: its main-file write lands or it is skipped because storage already holds the same bytes. */
+/** Calls `callback` once, when the next save iteration commits: its commit lands or it writes nothing because the store already holds the same blocks. */
 export function afterNextSaveCommit(callback: () => void): void {
     nextCommitCallbacks.add(callback)
 }
@@ -712,7 +708,7 @@ export function getSaveMarkCount(): number {
 }
 
 /**
- * True only when everything marked so far is in the main file: the last
+ * True only when everything marked so far is in the store: the last
  * iteration committed, no mark has arrived since its snapshot, and no save is
  * running, debounced, queued, stopped or held back by a frozen chaId.
  */
@@ -728,31 +724,31 @@ export function isSaveClean(): boolean {
         && get(frozenSaveKeysStore).length === 0
 }
 
-/** The encoded main file is over the Node server's body limit, so it is not sent. */
-class MainFileTooLargeError extends Error {
-    constructor(public readonly length: number) {
-        super(`The encoded main file is ${length} bytes, over the ${NODE_BODY_LIMIT_BYTES} bytes the Node server accepts in one request.`)
-        this.name = 'MainFileTooLargeError'
-    }
+/**
+ * The Node server's own refusal of a write for size: a 413 to a write the
+ * client's per-block check let through, which a server with a limit smaller than
+ * the one this client knows gives. Callers must also require that the commit
+ * has not landed.
+ */
+function isNodeBodyRefusal(error: unknown): boolean {
+    return isNodeServer && error instanceof NodeHttpError && error.status === 413 && error.operation === 'write'
 }
 
 /**
- * True for the client's own refusal to send an oversized main file and for a
- * Node server's 413 to any write made before the main file commits: the main
- * file, a Remote Saving character block written in `encoder.set()` or the
- * encoder reload. That covers a server whose limit is smaller than the one
- * this client knows. Callers must also require that the main file has not
- * committed.
+ * What a parked save loop names, besides its reason: the part of the data that
+ * was too large to save. Read by the save indicator once the reason is set.
  */
-function isMainFileTooLarge(error: unknown): boolean {
-    return error instanceof MainFileTooLargeError
-        || (isNodeServer && error instanceof NodeHttpError && error.status === 413 && error.operation === 'write')
+let savingStoppedDetail = ''
+
+export function getSavingStoppedDetail(): string {
+    return savingStoppedDetail
 }
+
 /**
- * A minimal async mutex serializing writes to the shared `database/database.bin`
- * key between saveDb()'s autosave loop and any other direct writer (currently
- * LoadLocalBackup()'s restore write, `loadInternalBackup` (drive/internalBackup.ts)'s
- * snapshot write, and the exclusive storage-migration lock's holders below,
+ * A minimal async mutex serializing the save loop's commits and conversion
+ * with any other whole-state writer (currently LoadLocalBackup()'s restore,
+ * `loadInternalBackup` (drive/internalBackup.ts)'s snapshot load, and the
+ * exclusive storage-migration lock's holders below,
  * such as the copy back from OPFS at startup). LoadLocalBackup()'s
  * restore write and the internal-backup load's write acquire this directly only
  * on Tauri or when Web Locks aren't supported; on an ordinary web build their
@@ -1090,6 +1086,7 @@ export async function reloadSaveEncoder(previousEncoder: RisuSaveEncoder, db: Da
     await freshEncoder.init(db, {
         compression: opts.compression,
         skipRemoteSavingOnCharacters: false,
+        enableRemoteSaving: false,
         previous: previousEncoder
     })
     return freshEncoder
@@ -1234,11 +1231,61 @@ export function sweepDraftRegistrations(now: number = Date.now()): void {
     draftContentOrphanGate.sweepExpiredRegistrations(now)
 }
 
+/**
+ * What a commit's broadcast carries: the sender's session and the sequence
+ * number it committed, so a peer holding a live generation can offer "Save
+ * mine" without having to be refused first. A bare session id is what a sender
+ * without a sequence number posts.
+ */
+interface SaveBroadcast {
+    sessionID: string
+    seq: number | null
+}
+
+function parseSaveBroadcast(data: unknown): SaveBroadcast | null {
+    if (typeof data === 'string') {
+        return { sessionID: data, seq: null }
+    }
+    if (typeof data === 'object' && data !== null) {
+        const { sessionID, seq } = data as { sessionID?: unknown, seq?: unknown }
+        if (typeof sessionID === 'string') {
+            return { sessionID, seq: typeof seq === 'number' && Number.isSafeInteger(seq) && seq >= 0 ? seq : null }
+        }
+    }
+    return null
+}
+
+/** A conversion whose new generation does not read back is tried at most this many times per page before the save loop parks. */
+const CONVERSION_ATTEMPTS = 3
+
+/** What a block is called to a person: its character's name when it is a character's block, otherwise plain words for the kind of data. An internal block name is never shown. */
+function describeBlockForPerson(blockName: string): string {
+    const character = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId) === blockName)
+    return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
+}
+
 export async function saveDb() {
+    // A page that runs from OPFS this time saves nothing. This check and the
+    // character-save-mark install below happen before the first await.
+    if (getPageStorageMode().kind === 'read-only') {
+        return
+    }
     let changed = false
     let otherTabSaved = false
     let dirtySinceLastSave = false
     let lastPromptAt: number | null = null
+    // The sequence number a peer's commit is known to have reached: from a
+    // broadcast or from a refused commit. "Save mine" is offered only with one,
+    // and it stays until a save of this page succeeds.
+    let peerSeq: number | null = null
+    // Set once another writer has replaced the generation (or the profile) this
+    // page saves into. From then on this page cannot save into it: only a reload helps.
+    let replacedByPeer = false
+    // A refused save the page has to put to the person before it saves again.
+    let staleCopyPending = false
+    // "Save mine" was chosen: the next commit overwrites the peer's, from this sequence number.
+    let saveMineFrom: number | null = null
+    let conversionAttempts = 0
     const multiTabStorage = (() => {
         try { return window.sessionStorage } catch { return null }
     })()
@@ -1250,10 +1297,14 @@ export async function saveDb() {
     }
     if (channel) {
         channel.onmessage = (ev) => {
-            if (ev.data === sessionID) {
+            const message = parseSaveBroadcast(ev.data)
+            if (message === null || message.sessionID === sessionID) {
                 return
             }
             otherTabSaved = true
+            if (message.seq !== null) {
+                peerSeq = message.seq
+            }
         }
     }
 
@@ -1302,7 +1353,8 @@ export async function saveDb() {
         tracker: changeTracker,
         installMarks: installCharacterSaveMarks,
         init: () => encoder.init(getDatabase(), {
-            compression: false
+            compression: false,
+            enableRemoteSaving: false
         }),
         createRealScheduler: () => saveTimeoutExecute
     })
@@ -1332,8 +1384,15 @@ export async function saveDb() {
         })
     })
 
+    // The owner is the page's one; the store is the one it writes through.
+    // Neither is needed before the loop starts, which keeps everything above
+    // free of awaits that a mark could race.
+    const owner = await getPageBlockOwner()
+    if (owner === null) {
+        return
+    }
+    const store = await getAppStore()
     let savetrys = 0
-    let lastDbData = new Uint8Array(0)
     let quotaWarningShown = false
     // Shown once per ongoing conflict episode, not once per retry — a
     // version conflict keeps recurring every attempt until the user
@@ -1364,42 +1423,115 @@ export async function saveDb() {
             alertError(error instanceof Error ? error : String(error))
         }
     }
-    // The main-file write is skipped only when the bytes to write equal bytes
-    // storage is known to hold: the encoder's committed layout while nothing
-    // else has touched the main file since this loop confirmed it
-    // (`baselineStamp` is the outcome epoch right after that). Whenever there
-    // is no such steady baseline -- the encoder has no committed layout, the
-    // epoch moved because another writer acted on the main file, or an earlier
-    // main write's outcome is unknown -- the main-file record decides instead,
-    // but it can permit a skip only when every earlier main write's outcome is
-    // known; with an unknown outcome the iteration writes. A write whose outcome
-    // is unknown, in this loop or in any other writer, ends the steady baseline.
-    let baselineStamp = -1
-    // "Save mine" must write even bytes equal to the baseline; the force
-    // survives a failed attempt and clears only on a confirmed main write.
-    let forceMainWrite = false
-    // True while this page has committed main-file bytes that no numbered
-    // backup holds. A page whose boot pass wrote the main file starts true.
+    // True while this page has committed state that no numbered backup holds.
+    // A page whose boot pass committed starts true.
     let backupBehind = didBootPassCommit()
-    // Whether the page's first commit, if it is a skip, still has to check the
-    // persisted backup fingerprint against the main-file record. The check runs
-    // once, only when that first commit is a skip. A first commit that writes the
-    // main file drops it without reading the record, because a write already
-    // marks the backups as behind.
+    // Whether the page's first iteration that commits nothing still has to
+    // compare the snapshot with the persisted backup fingerprint. The check runs
+    // once. A first iteration that does commit drops it without reading the
+    // record, because a commit already marks the backups as behind.
     let bootBackupCheckPending = true
-    // Writes the numbered backup of `bytes`, then the fingerprint record naming
-    // them, then prunes. The record is written only after the backup's write has
-    // returned, and a failure of it still lets the prune run before it is
-    // rethrown.
-    async function writeNumberedBackup(bytes: Uint8Array) {
+    // The two reasons a snapshot is skipped are each noticed once per page.
+    let snapshotLimitNoticeShown = false
+    let snapshotMemoryNoticeShown = false
+    // The snapshot of the state `layout` names, as the file the numbered backups
+    // hold, or null when it is skipped: over the Node server's body limit (found
+    // from the block lengths, before anything is allocated) or too large to
+    // allocate. A skip tells the person once and is not a failure.
+    function takeSnapshot(layout: SaveLayout): Uint8Array | null {
+        if (isNodeServer) {
+            let total = FILE_HEADER_V1.length
+            for (const block of layout.blocks) {
+                total += block.length
+            }
+            if (!fitsNodeBodyLimit(total, NODE_BODY_LIMIT_BYTES)) {
+                if (!snapshotLimitNoticeShown) {
+                    snapshotLimitNoticeShown = true
+                    alertToast(language.saveSnapshotSkippedTooLarge)
+                }
+                return null
+            }
+        }
+        try {
+            const encoded = encoder.encode()
+            if (!encoded) {
+                throw new Error('The encoder produced no file.')
+            }
+            return new Uint8Array(encoded)
+        } catch (error) {
+            if (error instanceof RangeError) {
+                // The attempt counts toward the backup interval: a device that
+                // cannot allocate the profile does not retry the allocation on
+                // every save.
+                lastBackupWriteTime = Date.now()
+                if (!snapshotMemoryNoticeShown) {
+                    snapshotMemoryNoticeShown = true
+                    alertToast(language.saveSnapshotSkippedMemory)
+                }
+                return null
+            }
+            throw error
+        }
+    }
+    // Best-effort, non-blocking heads-up before storage actually fills up --
+    // browser storage has no other quota signal until a write starts failing.
+    async function warnIfStorageIsLow(byteLength: number) {
+        if (isTauri || quotaWarningShown || !navigator.storage?.estimate) {
+            return
+        }
+        try {
+            const { quota, usage } = await navigator.storage.estimate()
+            if (quota && (quota - (usage ?? 0)) < byteLength * 2) {
+                quotaWarningShown = true
+                alertToast('Your browser storage is running low — saves may start failing soon. Consider freeing up space (delete old chats/characters or old backups).')
+            }
+        } catch (error) {
+            // estimate() is best-effort only; a failure here must not block saving.
+        }
+    }
+    // Keeps the numbered backups fresh after an iteration that committed, under
+    // the page's write lock. `wrote` is whether the commit changed the store.
+    // A backup is taken when the state may not be in the backups and the
+    // interval is due; the snapshot is then the file the encoder's blocks make,
+    // named by a digest that is compared with the persisted record. Answers
+    // `false` when the snapshot was skipped: that is neither a success nor a
+    // failure of the backup step, so it must not reset the failure streak.
+    async function keepBackupsFresh(layout: SaveLayout, wrote: boolean): Promise<boolean> {
+        if (wrote) {
+            bootBackupCheckPending = false
+            backupBehind = true
+        }
+        const due = (Date.now() - lastBackupWriteTime) > DB_BACKUP_MIN_INTERVAL_MS
+        if (!due || !(backupBehind || bootBackupCheckPending)) {
+            return true
+        }
+        const snapshot = takeSnapshot(layout)
+        if (snapshot === null) {
+            return false
+        }
+        const name = await digestMainFileBytes(snapshot)
+        if (bootBackupCheckPending) {
+            bootBackupCheckPending = false
+            if (name === null || !await storedBackupFingerprintIs(name)) {
+                backupBehind = true
+            }
+        }
+        if (!backupBehind) {
+            return true
+        }
+        await warnIfStorageIsLow(snapshot.byteLength)
         // A new name per write, so nothing can be overwritten and the
         // write needs no condition.
-        await (await getAppStore()).write(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, bytes, 'unconditional')
+        await store.write(`database/dbbackup-${(Date.now() / 100).toFixed()}.bin`, snapshot, 'unconditional')
         lastBackupWriteTime = Date.now()
         backupBehind = false
+        // The record is written only after the backup's write has returned, and
+        // a failure of it still lets the prune run before it is rethrown.
         let recordFailure: { error: unknown } | null = null
         try {
-            await writeBackupFingerprint(bytes)
+            if (name !== null) {
+                await writeBackupFingerprint(name)
+            }
         } catch (error) {
             recordFailure = { error }
         }
@@ -1409,6 +1541,73 @@ export async function saveDb() {
         if (recordFailure) {
             throw recordFailure.error
         }
+        return true
+    }
+    // Puts the iteration's snapshot back into the live tracker and marks the
+    // page dirty, so a peer's broadcast never reloads this page out from under
+    // edits that are not saved.
+    let toSave: toSaveType | null = null
+    function foldBackUnsaved() {
+        if (toSave) {
+            mergeUnsavedChanges(changeTracker, toSave)
+        }
+        dirtySinceLastSave = true
+        saveMarkCount += 1
+        changed = true
+    }
+    // Stops this page's saving for good: only a reload ends it.
+    async function parkSaving(reason: string, detail = ''): Promise<never> {
+        savingStoppedDetail = detail
+        saving.state = false
+        savingStoppedReason.set(reason)
+        return await sleepForever()
+    }
+    // What the person is asked when this page's copy of the saved data is
+    // stale. "Save mine" needs a live generation and a known peer sequence
+    // number, and is never offered once the generation was replaced or on the
+    // Node server, where a stale write is refused anyway; otherwise the choice
+    // is to reload or to stay and stop saving. The peer sequence number the
+    // question is about is fixed when it opens: "Save mine" is consent to
+    // overwrite that peer commit only.
+    let askedSeq: number | null = null
+    async function askAboutStaleCopy(): Promise<'reload' | 'flush' | 'stay'> {
+        askedSeq = peerSeq
+        if (isRevisionAwareBackend({ isNodeServer })) {
+            return resolveRevisionAwarePromptChoice(await alertSelect(
+                [language.otherTabSavedConflictReload, language.otherTabSavedConflictStay],
+                language.otherTabSavedConflictTitle
+            ))
+        }
+        if (!replacedByPeer && peerSeq !== null && owner.isLive()) {
+            return resolvePromptChoice(await alertSelect(
+                [language.otherTabSavedSaveMine, language.otherTabSavedDiscardMine],
+                language.otherTabSavedTitle
+            ))
+        }
+        return resolveRevisionAwarePromptChoice(await alertSelect(
+            [language.otherTabSavedConflictReload, language.otherTabSavedConflictStay],
+            language.otherTabSavedReloadTitle
+        ))
+    }
+    // Applies the answer: reload, stop saving, or (Save mine) make the next
+    // commit overwrite the peer commit that was asked about. A peer commit made
+    // after the question opened is not covered: the commit is refused again and
+    // that commit is asked about, once.
+    async function applyStaleCopyChoice(choice: 'reload' | 'flush' | 'stay') {
+        if (choice === 'reload') {
+            markAppInitiatedReload()
+            location.reload()
+            await sleepForever()
+        }
+        if (choice === 'stay') {
+            await parkSaving(replacedByPeer ? 'replaced' : 'stay')
+        }
+        // "Save mine": once this commit lands, this tab's data IS the newest
+        // committed state -- reloading would just re-read its own write and
+        // gain nothing. The loop picks this up and stays put.
+        saveMineFrom = askedSeq
+        saveMarkCount += 1
+        changed = true
     }
     await sleep(1000)
     while (true) {
@@ -1421,6 +1620,20 @@ export async function saveDb() {
         // Extracted to `sweepDraftRegistrations` (see its own comment) so
         // this call is a named seam rather than dead-looking code.
         sweepDraftRegistrations()
+        if (staleCopyPending) {
+            // A refused save cannot be retried until the person has chosen, so
+            // it is never throttled the way a peer broadcast's prompt is.
+            staleCopyPending = false
+            saving.state = false
+            // Each peer commit is asked about once, and only the one asked
+            // about can be overwritten. A broadcast already received reports the
+            // commit this question is about; one that arrives while it is open
+            // may report a newer commit, which falls inside the re-notify window
+            // here and is asked about when the next commit is refused.
+            otherTabSaved = false
+            lastPromptAt = Date.now()
+            await applyStaleCopyChoice(await askAboutStaleCopy())
+        }
         if (otherTabSaved) {
             // Consumed, never latched: a later foreign save is always re-evaluated.
             // A message arriving while the modal below is awaited simply sets this
@@ -1460,57 +1673,15 @@ export async function saveDb() {
             if (action === 'prompt') {
                 lastPromptAt = now
                 saving.state = false
-                if (isRevisionAwareBackend({ isNodeServer })) {
-                    // On the self-hosted Node server, this tab's
-                    // known revision is now stale precisely because the other tab's
-                    // save just landed -- and that revision is deliberately never
-                    // refreshed by a refused write (see appStore.ts). So a "save mine"
-                    // option here is not a real choice: it would 409 pre-commit on
-                    // every single retry. Only offer what can actually happen --
-                    // reload to pick up the current server data, or stay and park this
-                    // tab (it stops trying to save, and those edits stay unsaved until
-                    // it reloads).
-                    const choice = resolveRevisionAwarePromptChoice(await alertSelect(
-                        [language.otherTabSavedConflictReload, language.otherTabSavedConflictStay],
-                        language.otherTabSavedConflictTitle
-                    ))
-                    if (choice === 'reload') {
-                        markAppInitiatedReload()
-                        location.reload()
-                        await sleepForever()
-                    }
-                    // choice === 'stay': there is no save-mine path on this backend, so
-                    // falling through to the normal save loop would immediately retry with
-                    // the now-stale `if-match-revision`, 409 pre-commit, and surface a
-                    // second, differently-worded conflict alert before parking anyway (see
-                    // the pre-commit version-conflict handling below). Instead, park
-                    // this tab right here, quietly: stop attempting to save and never
-                    // re-prompt on this page load. The user's edits stay on screen, untouched
-                    // and unsaved, until they reload -- exactly what "stay" told them.
-                    // (`saving.state` is already `false` from above this if-block.)
-                    savingStoppedReason.set('stay')
-                    await sleepForever()
-                } else {
-                    const choice = resolvePromptChoice(await alertSelect(
-                        [language.otherTabSavedSaveMine, language.otherTabSavedDiscardMine],
-                        language.otherTabSavedTitle
-                    ))
-                    if (choice === 'reload') {
-                        markAppInitiatedReload()
-                        location.reload()
-                        await sleepForever()
-                    }
-                    if (choice === 'flush') {
-                        // "Save mine": once this write lands, this tab's data IS the
-                        // newest committed state -- reloading would just re-read its
-                        // own write and gain nothing, while a reload here would risk
-                        // destroying edits landing during the write window instead.
-                        // Just let the normal save loop pick this up and stay put.
-                        saveMarkCount += 1
-                        changed = true
-                        forceMainWrite = true
-                    }
-                }
+                // On the self-hosted Node server this tab's known revision is
+                // stale precisely because the other tab's save just landed, so a
+                // "save mine" option is not a real choice there: only reload
+                // or stay (which parks quietly, so a refused write is never
+                // retried). On other stores "Save mine" needs a live generation
+                // and a known peer sequence number; a page that has neither
+                // (it has not converted yet, or only heard a bare session id)
+                // gets reload-or-stay as well.
+                await applyStaleCopyChoice(await askAboutStaleCopy())
             }
         }
         if (!changed) {
@@ -1538,11 +1709,11 @@ export async function saveDb() {
         saving.state = true
         changed = false
         lastIterationCommitted = false
-        // Declared outside the try block (and left null until actually assigned) so the
-        // catch handler can safely check whether a snapshot was taken this iteration
-        // before attempting to merge it back — an error thrown before that assignment
-        // (e.g. during encoder re-init) must not itself throw inside the catch.
-        let toSave: toSaveType | null = null
+        // Left null until actually assigned, so the catch handler can safely check
+        // whether a snapshot was taken this iteration before attempting to merge it
+        // back — an error thrown before that assignment (e.g. during encoder
+        // re-init) must not itself throw inside the catch.
+        toSave = null
         let primaryCommitted = false
         try {
 
@@ -1602,163 +1773,106 @@ export async function saveDb() {
                 await sleep(1000)
                 continue
             }
-            // A skip is decided only by an exact comparison against bytes known
-            // to be in storage. An unknown outcome, a different layout, the
-            // sampled record form and any comparison failure all write.
-            const baselineHolds = () => baselineStamp === getMainFileEpoch() && isMainFileOutcomeKnown()
-            let steadyBaseline = false
-            let skipMain = false
+            // The names whose block lives in the stubs pack, taken in the same
+            // synchronous step as the layout so the two agree.
+            const packed = packedForLayout(layout, db.characters, encoder.getFrozenKeys())
+            // Held through the commit (or the conversion) and the snapshot, and
+            // taken even by an iteration that turns out to write nothing, so a
+            // restore's whole-state replace can never interleave with a save
+            // built on the state it replaces (see AsyncMutex/dbWriteLock above).
+            // An unconfirmed switch leaves it closed for good: nothing from this
+            // page may write again.
+            const releaseWriteLock = await dbWriteLock.acquire()
+            let keepWriteLockClosed = false
+            let step: SaveStep
             try {
-                steadyBaseline = encoder.hasCommittedLayout() && baselineHolds()
-                skipMain = steadyBaseline && !forceMainWrite && encoder.layoutEqualsCommitted(layout)
-            } catch (error) {
-                // A comparison never fails the iteration; it writes.
-                console.error(error)
-                steadyBaseline = false
-                skipMain = false
-            }
-            // The encoding to write. Null only for an iteration that is skipped on
-            // the strength of the committed layout alone.
-            let dbData: Uint8Array | null = null
-            const encodeForWrite = async (): Promise<Uint8Array> => {
-                const encoded = encoder.encode()
-                if (!encoded) {
-                    throw new Error('The encoder produced no file.')
+                if (!owner.isLive()) {
+                    await warnIfStorageIsLow(layout.blocks.reduce((sum, block) => sum + block.length, 0))
                 }
-                const bytes = new Uint8Array(encoded)
-                // The Node server refuses a body over its limit before any route runs,
-                // so sending one only re-uploads the whole file to a refusal. It is not
-                // sent; the catch below parks the loop.
-                if (isNodeServer && !fitsNodeBodyLimit(bytes.length, NODE_BODY_LIMIT_BYTES)) {
-                    throw new MainFileTooLargeError(bytes.length)
-                }
-                // Best-effort, non-blocking heads-up before storage actually fills up —
-                // browser storage has no other quota signal until a write starts failing.
-                if (!isTauri && !quotaWarningShown && navigator.storage?.estimate) {
-                    try {
-                        const { quota, usage } = await navigator.storage.estimate()
-                        if (quota && (quota - (usage ?? 0)) < bytes.byteLength * 2) {
-                            quotaWarningShown = true
-                            alertToast('Your browser storage is running low — saves may start failing soon. Consider freeing up space (delete old chats/characters or old backups).')
-                        }
-                    } catch (error) {
-                        // estimate() is best-effort only; a failure here must not block saving.
-                    }
-                }
-                return bytes
-            }
-            if (!skipMain) {
-                dbData = await encodeForWrite()
-            }
-            const shouldWriteBackup = (Date.now() - lastBackupWriteTime) > DB_BACKUP_MIN_INTERVAL_MS
-            // A skipped iteration commits like a write: the tab is clean, the
-            // commit callbacks fire and the retry counters reset. It sends no
-            // broadcast (no peer has anything new to load) and records no bytes
-            // (storage was not written). The committed layout is refreshed so
-            // it holds the newest blocks.
-            const commitSkippedIteration = () => {
-                primaryCommitted = true
-                lastIterationCommitted = true
-                encoder.markLayoutCommitted(layout)
-                baselineStamp = getMainFileEpoch()
-                savetrys = 0
-                conflictAlertShown = false
-                fireNextCommitCallbacks()
-            }
-            // After a skip: the persisted backup fingerprint is checked once, when
-            // the page's first commit is a skip, and a numbered backup is written
-            // when the backups may not hold the committed bytes and the interval
-            // is due.
-            const keepBackupsFreshAfterSkip = async () => {
-                if (bootBackupCheckPending) {
-                    bootBackupCheckPending = false
-                    if (!await storedBackupFingerprintNamesMain()) {
-                        backupBehind = true
-                    }
-                }
-                if (backupBehind && shouldWriteBackup) {
-                    // The committed bytes: this iteration's encoding when it made
-                    // one, otherwise the blocks, which equal them.
-                    await writeNumberedBackup(dbData ?? new Uint8Array(encoder.encode()!))
-                    postCommitFailStreak = 0
-                }
-            }
-            let skippedIteration = false
-            if (skipMain && !bootBackupCheckPending && !(backupBehind && shouldWriteBackup)) {
-                // Nothing to write and no backup due: no lock is needed.
-                skippedIteration = true
-                commitSkippedIteration()
-            } else {
-                // Acquired before the write and held through it (not just checked-then-acted
-                // on) so a concurrent direct writer to this same key (LoadLocalBackup()'s
-                // restore write, the internal-backup load's write) can never interleave with this write — see AsyncMutex/dbWriteLock above.
-                // A skipped iteration's backup, record write and prune run under the same hold.
-                const releaseWriteLock = await dbWriteLock.acquire()
-                try {
-                    if (skipMain && !baselineHolds()) {
-                        // Another writer acted on the main file while this
-                        // iteration waited for the lock: the layout does not
-                        // name what storage holds.
-                        skipMain = false
-                        steadyBaseline = false
-                        dbData = await encodeForWrite()
-                    }
-                    if (!skipMain && dbData && !forceMainWrite && !steadyBaseline) {
-                        // No steady baseline to compare with: the main-file record
-                        // decides, and only when the outcome of every earlier main
-                        // write is known and nothing wrote or recorded during the
-                        // comparison.
-                        const epochBefore = getMainFileEpoch()
-                        if (isMainFileOutcomeKnown() && await matchesMainFileRecord(dbData) && isMainFileOutcomeKnown() && getMainFileEpoch() === epochBefore) {
-                            skipMain = true
+                step = await performSaveStep(
+                    { owner, store },
+                    {
+                        input: { layout, packed },
+                        saveMine: saveMineFrom === null || isNodeServer ? undefined : { peerSeq: saveMineFrom },
+                    },
+                )
+                keepWriteLockClosed = step.kind === 'unconfirmed'
+                if (step.kind === 'saved') {
+                    // The state is in the store. Everything after this point
+                    // (backup write, getDbBackups) is best-effort and must never be
+                    // able to resurrect and re-commit this payload — see the catch below.
+                    primaryCommitted = true
+                    lastIterationCommitted = true
+                    saveMineFrom = null
+                    peerSeq = null
+                    conversionAttempts = 0
+                    savetrys = 0
+                    conflictAlertShown = false
+                    fireNextCommitCallbacks()
+                    // Only a commit that changed the store has anything for a peer to load.
+                    if (channel && step.wrote) {
+                        try {
+                            channel.postMessage({ sessionID, seq: step.seq } satisfies SaveBroadcast)
+                        } catch (error) {
+                            // A failed notification must never fail a save that succeeded.
+                            console.error(error)
                         }
                     }
-                    if (skipMain) {
-                        skippedIteration = true
-                        commitSkippedIteration()
-                        await keepBackupsFreshAfterSkip()
-                    } else {
-                        await writeMainFile(dbData!)
+                    if (step.mainFileLeftInPlace) {
+                        alertToast(language.saveMainFileLeftNotice)
                     }
-                } finally {
+                    // A full iteration -- commit, backup write, and getDbBackups
+                    // (the steps that can actually throw) -- completed without
+                    // error, so this is a genuinely clean cycle: reset the consecutive
+                    // post-commit failure streak. A skipped snapshot is neither
+                    // a failure nor a clean cycle and leaves the streak as it is.
+                    if (await keepBackupsFresh(layout, step.wrote)) {
+                        postCommitFailStreak = 0
+                    }
+                }
+            } finally {
+                if (!keepWriteLockClosed) {
                     releaseWriteLock()
                 }
             }
-            if (!skippedIteration) {
-                // Reached only when the write above did not throw, so the record
-                // never claims bytes storage does not hold.
-                noteMainFileBytes(dbData!)
-                encoder.markLayoutCommitted(layout)
-                baselineStamp = getMainFileEpoch()
-                forceMainWrite = false
-                bootBackupCheckPending = false
-                // Cleared when a numbered backup of these bytes lands.
-                backupBehind = true
-                // The primary database write has landed. Everything after this point
-                // (backup write, getDbBackups) is best-effort and must never be
-                // able to resurrect and re-commit this payload — see the catch below.
-                primaryCommitted = true
-                lastIterationCommitted = true
-                fireNextCommitCallbacks()
-                if (channel) {
-                    try {
-                        channel.postMessage(sessionID)
-                    } catch (error) {
-                        // A failed notification must never fail a save that succeeded.
-                        console.error(error)
-                    }
+            if (step.kind !== 'saved') {
+                // Nothing was saved: the snapshot goes back into the live tracker
+                // and the page stays dirty, so a peer's broadcast never reloads it
+                // out from under these edits.
+                foldBackUnsaved()
+                switch (step.kind) {
+                    case 'lock-timeout':
+                        // The lock holder is slow, not wrong: the next iteration asks again.
+                        await sleep(1000)
+                        break
+                    case 'stopped':
+                        if (step.peerSeq !== null) {
+                            peerSeq = step.peerSeq
+                        }
+                        if (step.reason !== 'peer-commit') {
+                            replacedByPeer = true
+                        }
+                        // The loop asks the person before it saves again.
+                        staleCopyPending = true
+                        break
+                    case 'conflict':
+                        // Handled with the other refused writes below.
+                        throw new StoreVersionConflictError(step.key, null)
+                    case 'too-large':
+                        throw new BlockTooLargeError(step.blockName, step.length, step.limit)
+                    case 'conversion-damaged':
+                        conversionAttempts += 1
+                        if (conversionAttempts >= CONVERSION_ATTEMPTS) {
+                            alertError(language.saveConversionFailedAlert)
+                            await parkSaving('conversion-failed')
+                        }
+                        await sleep(1000)
+                        break
+                    case 'unconfirmed':
+                        alertError(language.saveDamagedUnconfirmed)
+                        await parkSaving('unconfirmed')
+                        break
                 }
-                if (shouldWriteBackup) {
-                    await writeNumberedBackup(dbData!)
-                }
-
-                savetrys = 0
-                conflictAlertShown = false
-                // A full iteration -- primary write, backup write, and getDbBackups
-                // (the steps above that can actually throw) -- completed without
-                // error, so this is a genuinely clean cycle: reset the consecutive
-                // post-commit failure streak.
-                postCommitFailStreak = 0
             }
             await sleep(500)
         } catch (error) {
@@ -1809,8 +1923,9 @@ export async function saveDb() {
                 // reasoning above.
                 savetrys = 0
             }
-            // Only the main-file write can raise the store's conflict: it is the one
-            // conditional write here. Remote character blocks, the numbered backup
+            // Only a block commit can raise the store's conflict: it is the one
+            // conditional write here (the step reports it as a value and the
+            // loop raises it again to reach this branch). The numbered backup
             // and the prune are unconditional, and nothing else in this try goes
             // through the Node client.
             if (error instanceof StoreVersionConflictError) {
@@ -1867,19 +1982,18 @@ export async function saveDb() {
                     await sleepForever()
                 }
             }
-            else if (!primaryCommitted && isMainFileTooLarge(error)) {
-                // A retry of the same body cannot get accepted, so the loop
+            else if (!primaryCommitted && (error instanceof BlockTooLargeError || isNodeBodyRefusal(error))) {
+                // A retry of the same block cannot get accepted, so the loop
                 // stops for this page load instead of resending it. The unsaved
                 // changes were folded back into the tracker above and the
                 // iteration is not marked committed, so the page stays unclean
-                // and the idle reload does not fire. A reload loads the last
-                // saved file; the boot archive pass shrinks it only when that
-                // pass can run, so parking must not depend on a reload helping.
+                // and the idle reload does not fire. The block is named so the
+                // person knows what to make smaller; a server that refused for a
+                // limit this client does not know names nothing.
                 console.error(error)
-                alertToast(language.savingStoppedTooLargeMessage(NODE_BODY_LIMIT_BYTES))
-                saving.state = false
-                savingStoppedReason.set('too-large')
-                await sleepForever()
+                const what = error instanceof BlockTooLargeError ? describeBlockForPerson(error.blockName) : ''
+                alertToast(language.savingStoppedTooLargeBlockMessage(what, NODE_BODY_LIMIT_BYTES))
+                await parkSaving('too-large', what)
             }
             else if (isQuotaExceededError(error)) {
                 // A distinct, actionable message instead of the generic retry path —

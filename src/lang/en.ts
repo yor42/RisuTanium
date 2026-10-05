@@ -2178,6 +2178,25 @@ export const languageEnglish = {
     saveLeftoverNotice: "RisuAI found unused save data left behind by an interrupted save or restore. It does no harm. You can remove it in the clean-up in the settings.",
     saveMainFileLeftNotice: "Your data has moved to a new format, but the old save file is too large for this server to move aside. Another version of RisuAI opening the same data may open that old file. The clean-up in the settings keeps it safe until you delete it.",
     opfsReadOnlyNotice: "RisuAI is running from a temporary copy of your data this time, so it will not save changes, and restoring a backup or cleaning up storage is not available. Your data is not lost. Close other tabs of this app and restart it so the data can be moved to browser storage.",
+    otherTabSavedReloadTitle: "Another tab or device changed how or what is saved, so this tab's copy of your data is out of date and its changes cannot be saved from this tab. Reloading gets a working, saveable state again, but any unsaved changes in this tab will be lost.",
+    savingStoppedReplacedMessage: "This tab has stopped saving. Another tab or device replaced the saved data (a backup was loaded or the data was moved to a new format), so this tab's copy is out of date and cannot be saved from this tab. Changes made from now on will not be kept. Reloading will fetch the current data, and any unsaved changes in this tab will be lost.",
+    savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number) =>
+        `This tab has stopped saving. The self-hosted server accepts at most ${limitBytes / (1024 * 1024)} MiB in one request (less if a proxy in front of the server sets a lower limit), and ${what ? `this part of your data is over that: ${what}` : 'part of your data is over that; the server did not say which part'}. Changes since the last successful save will be lost when you reload. Make that part smaller, for example by deleting chats or content from it.`,
+    savingStoppedConversionFailedMessage: "This tab has stopped saving. Moving your data to the new save format did not succeed after several tries, and nothing was changed in your saved data. Changes since the last successful save will be lost when you reload. Reload the page to try again.",
+    savingStoppedUnconfirmedMessage: "This tab has stopped saving. RisuAI could not confirm which save is current. Reload the page to see which one loaded; changes made in this tab since the last successful save may be lost.",
+    saveBlockLabel: (blockName: string): string =>
+        blockName === 'root' ? 'your general settings'
+        : blockName === 'preset' ? 'your bot presets'
+        : blockName === 'modules' ? 'your modules'
+        : blockName === 'loadouts' ? 'your loadouts'
+        : blockName === 'plugins' ? 'your plugins'
+        : blockName === 'pluginStorage' ? 'your plugin data'
+        : blockName === 'config' ? 'the save format record'
+        : blockName === 'stubs' ? 'your archived characters'
+        : `"${blockName}"`,
+    saveConversionFailedAlert:"Moving your data to the new save format did not succeed after several tries. Nothing was changed in your saved data, and this tab has stopped saving. Reload the page to try again.",
+    saveSnapshotSkippedTooLarge: "Your data is larger than the self-hosted server accepts in one file, so automatic backup copies are skipped. Saving is not affected. To keep a backup, export a .bin file with \"Save Backup Locally\" under \"Backup & Files\" in the settings.",
+    saveSnapshotSkippedMemory: "This device could not set aside enough memory for an automatic backup copy of your data, so it was skipped. Saving is not affected.",
     backupAndFiles: "Backup & Files",
     assetIntegrityHeading: "Asset Cache Integrity",
     assetIntegrityDescription: "Checks cached images/assets against their own content hash to detect corruption, without re-downloading anything from storage. Read-only unless you choose to remove a corrupted entry.",

@@ -1242,6 +1242,10 @@ export class BlockStoreOwner {
                 rootResult = await this.put(rootKey(live.generation), root, rootCondition)
             } catch (error) {
                 live.rootInput = null
+                // A root write that threw may have landed: the stored root is then not
+                // the acknowledged one, and a later save of exactly the acknowledged
+                // state must not be taken for a save that has nothing to write.
+                live.rootOwed = true
                 if (error instanceof StoreVersionConflictError) {
                     return { kind: 'conflict', key: rootKey(live.generation) } as const
                 }

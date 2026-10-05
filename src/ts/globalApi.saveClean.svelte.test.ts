@@ -1,26 +1,27 @@
 /**
  * `isSaveClean()` (globalApi.svelte.ts) is true only when everything marked so
- * far is in the main file: the last save iteration committed its main-file
- * write, no save has been requested since that iteration's snapshot, and
- * nothing is running, debounced, stopped or frozen.
+ * far is in the store: the last save iteration committed, no save has been
+ * requested since that iteration's snapshot, and nothing is running, debounced,
+ * stopped or frozen.
  *
- * This file drives the REAL, unmocked `saveDb()` loop and `RisuSaveEncoder`
- * against a key/value stand-in for `forageStorage` (the harness of
- * `globalApi.saveDbMainFileRecord.svelte.test.ts`). One save loop runs for the
- * whole file and is parked when the file ends. A mocked success here is not
- * evidence of native backend behaviour.
+ * This file drives the REAL, unmocked `saveDb()` loop, `RisuSaveEncoder` and the
+ * page's block-store owner against an in-memory byte store (see
+ * `saveLoopWorld.ts`). One save loop runs for the whole file and is parked when
+ * the file ends. A mocked success here is not evidence of native backend
+ * behaviour.
  */
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
+import { isBackupKey, isRootKey, makeDb, rootWrites } from 'src/ts/storage/tests/saveLoopSupport'
+import { createWorldKit, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
 
 const h = vi.hoisted(() => ({
-    parked: false,
-    failMainWrite: false,
-    failBackupWrite: false,
-    holdMainWrite: null as null | Promise<void>,
+    worldCount: 0,
+    parked: new Set<number>(),
+    holdRoot: null as null | Promise<void>,
+    rootHeld: false,
     holdAssetWrite: null as null | Promise<void>,
-    mainWriteAttempts: 0,
-    mainWritesDone: 0,
+    rootAttempts: 0,
     db: undefined as undefined | Record<string, unknown>,
 }))
 
@@ -83,15 +84,6 @@ vi.mock(import('src/ts/alert'), () => ({
     alertStore: writable({ type: 'none', msg: '' }),
     waitAlert: vi.fn(async () => {}),
 }))
-
-vi.mock(import('src/ts/util'), () => ({
-    changeFullscreen: vi.fn(),
-    checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
-    sleep: vi.fn((ms: number) => h.parked
-        ? new Promise<void>(() => {})
-        : new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 5)))),
-    sleepForever: vi.fn(() => new Promise<void>(() => {})),
-}) as unknown as typeof import('src/ts/util'))
 
 vi.mock('@tauri-apps/api/core', () => ({
     convertFileSrc: vi.fn((p: string) => p),
@@ -165,24 +157,10 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
 vi.mock(import('src/ts/storage/autoStorage'), () => ({
     AutoStorage: class {
         async getItem(_key: string) { return null }
-        async setItem(key: string, value: Uint8Array) {
-            if (key === 'database/database.bin') {
-                h.mainWriteAttempts++
-                if (h.holdMainWrite) {
-                    await h.holdMainWrite
-                }
-                if (h.failMainWrite) {
-                    throw new Error('simulated storage write failure')
-                }
-                h.mainWritesDone++
-            }
-            else if (key.startsWith('database/dbbackup-') && h.failBackupWrite) {
-                throw new Error('simulated backup write failure')
-            }
-            else if (key.startsWith('assets/') && h.holdAssetWrite) {
+        async setItem(key: string, _value: Uint8Array) {
+            if (key.startsWith('assets/') && h.holdAssetWrite) {
                 await h.holdAssetWrite
             }
-            void value
         }
         async keys() { return [] as string[] }
         async removeItem(_key: string) {}
@@ -222,69 +200,64 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     getColdStorageItem: vi.fn(),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
-    noteMainFileBytes: vi.fn(),
-    resetMainFileRecordForTests: vi.fn(),
-    matchesMainFileRecord: vi.fn(async () => false),
-    getMainFileRecordDigest: vi.fn(async () => null),
-    digestMainFileBytes: vi.fn(async () => null),
-}) as unknown as typeof import('src/ts/storage/mainFileRecord'))
+const kit = createWorldKit({
+    parked: h.parked,
+    getDb: () => h.db,
+    setDb: (db) => { h.db = db },
+    nextId: () => ++h.worldCount,
+})
 
-import { afterNextSaveCommit, forageStorage, isSaveClean, requiresFullEncoderReload, saveAsset, saveDb } from 'src/ts/globalApi.svelte'
-import { chokePointInFlight } from 'src/ts/process/memory/busyActions'
-import { frozenSaveKeysStore, savingStoppedReason } from 'src/ts/stores.svelte'
-import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
-import { injectAppStore } from 'src/ts/storage/store/appStore'
-import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+const CHA_ID = 'skip-cha'
 
-const CHA_ID = 'clean-cha'
-
-function makeDb(prompt: string): Record<string, unknown> {
-    return {
-        formatversion: 5,
-        botPresetsId: 0,
-        botPresets: [],
-        modules: [],
-        loadouts: [],
-        plugins: [],
-        pluginCustomStorage: {},
-        mainPrompt: prompt,
-        characters: [{
-            chaId: CHA_ID,
-            name: 'Clean',
-            type: 'character',
-            chatPage: 0,
-            chats: [{ id: 'clean-chat', message: [], note: '', name: '', localLore: [] }],
-        }],
-    }
-}
-
-const sleepReal = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+let w: World
+let startedBeforeLoop = false
 
 const becomesClean = () => vi.waitFor(() => {
-    expect(isSaveClean()).toBe(true)
+    expect(w.api.isSaveClean()).toBe(true)
 }, { timeout: 8000, interval: 10 })
 
-let startedBeforeLoop = false
+const commits = () => rootWrites(w.store).length
+
+/** Counts every attempt at the commit's last write, landed or refused. */
+function watchRootAttempts() {
+    w.store.faults.push({
+        match: (op) => {
+            if (op.kind === 'write' && isRootKey(op.key)) {
+                h.rootAttempts++
+            }
+            return false
+        },
+        mode: 'before',
+        times: Number.MAX_SAFE_INTEGER,
+    })
+}
 
 beforeAll(async () => {
     h.db = makeDb('first')
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
-    startedBeforeLoop = isSaveClean()
-    void saveDb()
+    w = await kit.startWorld({ startLoop: false })
+    startedBeforeLoop = w.api.isSaveClean()
+    watchRootAttempts()
+    w.store.gate = async (key) => {
+        if (isRootKey(key) && h.holdRoot) {
+            h.rootHeld = true
+            await h.holdRoot
+        }
+    }
+    w.start()
     await sleepReal(100)
 })
 
 afterAll(() => {
-    h.parked = true
+    kit.parkAll()
 })
 
 describe('saveAsset', () => {
     test('counts as a write in flight until its store write settles, and again as none after', async () => {
+        const { chokePointInFlight } = await import('src/ts/process/memory/busyActions')
         let release: () => void = () => {}
         h.holdAssetWrite = new Promise<void>((resolve) => { release = resolve })
 
-        const pending = saveAsset(new Uint8Array([1, 2, 3]), 'in-flight-asset', 'png')
+        const pending = w.api.saveAsset(new Uint8Array([1, 2, 3]), 'in-flight-asset', 'png')
         await vi.waitFor(() => {
             expect(chokePointInFlight('asset')).toBe(1)
         }, { timeout: 2000, interval: 5 })
@@ -296,7 +269,8 @@ describe('saveAsset', () => {
     })
 
     test('a value that is not bytes is refused without leaving a count behind', async () => {
-        await expect(saveAsset('not bytes' as unknown as Uint8Array)).rejects.toThrow(TypeError)
+        const { chokePointInFlight } = await import('src/ts/process/memory/busyActions')
+        await expect(w.api.saveAsset('not bytes' as unknown as Uint8Array)).rejects.toThrow(TypeError)
         expect(chokePointInFlight('asset')).toBe(0)
     })
 })
@@ -304,128 +278,129 @@ describe('saveAsset', () => {
 describe('isSaveClean', () => {
     test('is false before the save loop has committed anything', () => {
         expect(startedBeforeLoop).toBe(false)
-        expect(isSaveClean()).toBe(false)
+        expect(w.api.isSaveClean()).toBe(false)
     })
 
-    test('is clean after a save whose backup write fails, because the main file already holds the data', async () => {
-        h.failBackupWrite = true
+    test('is clean after a save whose backup write fails, because the commit already holds the data', async () => {
+        w.store.faults.push({ match: (op) => op.kind === 'write' && isBackupKey(op.key), mode: 'before', times: 1 })
         h.db!.mainPrompt = 'second'
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await becomesClean()
-        h.failBackupWrite = false
     })
 
     test('is not clean right after a mark, and clean again once the save commits', async () => {
         h.db!.mainPrompt = 'third'
-        markCharacterForSave(CHA_ID)
-        expect(isSaveClean()).toBe(false)
+        w.marks.markCharacterForSave(CHA_ID)
+        expect(w.api.isSaveClean()).toBe(false)
         await becomesClean()
     })
 
     test('a callback registered for the next commit is not called by a failed save and is called once by the save that commits', async () => {
         const callback = vi.fn()
-        const attemptsBefore = h.mainWriteAttempts
-        h.failMainWrite = true
-        afterNextSaveCommit(callback)
+        const attemptsBefore = h.rootAttempts
+        const failing = { match: (op: { kind: string, key: string }) => op.kind === 'write' && isRootKey(op.key), mode: 'before' as const, times: 1000 }
+        w.store.faults.push(failing)
+        w.api.afterNextSaveCommit(callback)
         h.db!.mainPrompt = 'fails again'
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await vi.waitFor(() => {
-            expect(h.mainWriteAttempts - attemptsBefore).toBeGreaterThanOrEqual(2)
+            expect(h.rootAttempts - attemptsBefore).toBeGreaterThanOrEqual(2)
         }, { timeout: 8000, interval: 10 })
         expect(callback).not.toHaveBeenCalled()
-        h.failMainWrite = false
+        failing.times = 0
         await becomesClean()
         expect(callback).toHaveBeenCalledTimes(1)
         h.db!.mainPrompt = 'third'
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await becomesClean()
         expect(callback).toHaveBeenCalledTimes(1)
     })
 
-    test('a change followed by a change back is not clean until a later save commits, and that save writes no main file', async () => {
-        const doneBefore = h.mainWritesDone
+    test('a change followed by a change back is not clean until a later save commits, and that save commits nothing', async () => {
+        const before = commits()
         h.db!.mainPrompt = 'changed'
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         h.db!.mainPrompt = 'third'
-        markCharacterForSave(CHA_ID)
-        expect(isSaveClean()).toBe(false)
+        w.marks.markCharacterForSave(CHA_ID)
+        expect(w.api.isSaveClean()).toBe(false)
         await becomesClean()
-        expect(h.mainWritesDone).toBe(doneBefore)
+        expect(commits()).toBe(before)
     })
 
     test('an edit marked while a save is in flight is not clean when that save commits, only after the next one', async () => {
         let release: () => void = () => {}
-        h.holdMainWrite = new Promise<void>((resolve) => { release = resolve })
-        const attemptsBefore = h.mainWriteAttempts
-        const doneBefore = h.mainWritesDone
+        h.holdRoot = new Promise<void>((resolve) => { release = resolve })
+        const before = commits()
         h.db!.mainPrompt = 'in flight'
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await vi.waitFor(() => {
-            expect(h.mainWriteAttempts).toBeGreaterThan(attemptsBefore)
+            expect(h.rootHeld).toBe(true)
         }, { timeout: 4000, interval: 10 })
 
         h.db!.mainPrompt = 'edited during the save'
-        markCharacterForSave(CHA_ID)
-        h.holdMainWrite = null
+        w.marks.markCharacterForSave(CHA_ID)
+        h.holdRoot = null
         release()
 
         let cleanBeforeSecondCommit = false
         const sampler = setInterval(() => {
-            if (isSaveClean() && h.mainWritesDone < doneBefore + 2) {
+            if (w.api.isSaveClean() && commits() < before + 2) {
                 cleanBeforeSecondCommit = true
             }
         }, 1)
         await becomesClean()
         clearInterval(sampler)
         expect(cleanBeforeSecondCommit).toBe(false)
-        expect(h.mainWritesDone).toBeGreaterThanOrEqual(doneBefore + 2)
+        expect(commits()).toBeGreaterThanOrEqual(before + 2)
     })
 
     test('is not clean after a failed save, and clean once a retry commits', async () => {
-        const attemptsBefore = h.mainWriteAttempts
-        h.failMainWrite = true
+        const attemptsBefore = h.rootAttempts
+        const failing = { match: (op: { kind: string, key: string }) => op.kind === 'write' && isRootKey(op.key), mode: 'before' as const, times: 1000 }
+        w.store.faults.push(failing)
         h.db!.mainPrompt = 'fails'
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await vi.waitFor(() => {
-            expect(h.mainWriteAttempts - attemptsBefore).toBeGreaterThanOrEqual(2)
+            expect(h.rootAttempts - attemptsBefore).toBeGreaterThanOrEqual(2)
         }, { timeout: 8000, interval: 10 })
-        expect(isSaveClean()).toBe(false)
-        h.failMainWrite = false
+        expect(w.api.isSaveClean()).toBe(false)
+        failing.times = 0
         await becomesClean()
     })
 
-    test('an iteration that bails out before writing is not committed, so the tab is not clean', async () => {
+    test('an iteration that bails out before committing is not committed, so the tab is not clean', async () => {
         const characters = h.db!.characters
-        const attemptsBefore = h.mainWriteAttempts
+        const attemptsBefore = h.rootAttempts
         h.db!.characters = undefined
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await sleepReal(150)
-        expect(h.mainWriteAttempts).toBe(attemptsBefore)
-        expect(isSaveClean()).toBe(false)
+        expect(h.rootAttempts).toBe(attemptsBefore)
+        expect(w.api.isSaveClean()).toBe(false)
 
         h.db!.characters = characters
-        markCharacterForSave(CHA_ID)
+        w.marks.markCharacterForSave(CHA_ID)
         await becomesClean()
     })
 
     test('is not clean while a full encoder reload is requested', async () => {
         await becomesClean()
-        requiresFullEncoderReload.state = true
-        expect(isSaveClean()).toBe(false)
-        requiresFullEncoderReload.state = false
-        expect(isSaveClean()).toBe(true)
+        w.api.requiresFullEncoderReload.state = true
+        expect(w.api.isSaveClean()).toBe(false)
+        w.api.requiresFullEncoderReload.state = false
+        expect(w.api.isSaveClean()).toBe(true)
     })
 
     test('is not clean while saving is stopped or a chaId is frozen', async () => {
+        const stores = await import('src/ts/stores.svelte')
         await becomesClean()
-        savingStoppedReason.set('stay')
-        expect(isSaveClean()).toBe(false)
-        savingStoppedReason.set(null)
-        expect(isSaveClean()).toBe(true)
+        stores.savingStoppedReason.set('stay')
+        expect(w.api.isSaveClean()).toBe(false)
+        stores.savingStoppedReason.set(null)
+        expect(w.api.isSaveClean()).toBe(true)
 
-        frozenSaveKeysStore.set([{ chaId: CHA_ID } as never])
-        expect(isSaveClean()).toBe(false)
-        frozenSaveKeysStore.set([])
-        expect(isSaveClean()).toBe(true)
+        stores.frozenSaveKeysStore.set([{ chaId: CHA_ID } as never])
+        expect(w.api.isSaveClean()).toBe(false)
+        stores.frozenSaveKeysStore.set([])
+        expect(w.api.isSaveClean()).toBe(true)
     })
 })

@@ -1,26 +1,22 @@
 /**
- * The record of the main file (`noteMainFileBytes`) always names bytes that
- * storage really holds: `saveDb()` records exactly the bytes it wrote after
- * the write to `database/database.bin` succeeded, and records nothing while
- * that write fails.
- *
- * This file drives the REAL, unmocked `saveDb()` loop and `RisuSaveEncoder`
- * against a key/value stand-in for `forageStorage`; `noteMainFileBytes` is the
- * observed boundary. One save loop runs for the whole file (it never returns),
- * and it is parked when the file ends. The stand-in `sleep` is a short real
- * timer so the loop yields to the event loop. A mocked success here is not
- * evidence of native backend behaviour.
+ * `saveDb()` on the self-hosted Node server through the real Node client and
+ * the real Node store: the commit's writes go over the wire with the revision
+ * this page holds, and another device's change to the root answers a stale
+ * write with a 409, which parks the loop with the conflict message. The real
+ * `globalApi.svelte.ts`, `RisuSaveEncoder`, block-store owner, `NodeStorage` and
+ * Node HTTP store run against the `FakeNodeServer` stand-in at the `fetch`
+ * boundary. One save loop runs for the whole file (it never returns); the test
+ * that parks it is the last one. A passing test here says nothing about the
+ * real server.
  */
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
+import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
 
 const h = vi.hoisted(() => ({
     parked: false,
-    failMainWrite: false,
-    writes: [] as Array<{ key: string, value: Uint8Array }>,
-    mainWriteAttempts: 0,
     db: undefined as undefined | Record<string, unknown>,
-    note: undefined as undefined | ((bytes: Uint8Array) => void),
+    keyPair: null as CryptoKeyPair | null,
 }))
 
 vi.mock('localforage', () => ({
@@ -35,7 +31,7 @@ vi.mock('localforage', () => ({
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
-    isNodeServer: false,
+    isNodeServer: true,
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
@@ -90,6 +86,12 @@ vi.mock(import('src/ts/util'), () => ({
         ? new Promise<void>(() => {})
         : new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 5)))),
     sleepForever: vi.fn(() => new Promise<void>(() => {})),
+    base64url: (source: Uint8Array | ArrayBuffer) => Buffer.from(source as Uint8Array).toString('base64url'),
+    getKeypairStore: vi.fn(async () => {
+        h.keyPair ??= await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])
+        return h.keyPair
+    }),
+    saveKeypairStore: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -119,11 +121,11 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0, Download: 1 },
-    writeFile: vi.fn(async () => {}),
-    readFile: vi.fn(async () => new Uint8Array()),
+    BaseDirectory: { AppData: 0 },
     exists: vi.fn(async () => false),
     mkdir: vi.fn(async () => {}),
+    readFile: vi.fn(async () => { throw new Error('no file system on the Node server') }),
+    writeFile: vi.fn(async () => {}),
     readDir: vi.fn(async () => []),
     remove: vi.fn(async () => {}),
 }))
@@ -161,22 +163,19 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
     registerDbChangeEffects: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
 
-vi.mock(import('src/ts/storage/autoStorage'), () => ({
-    AutoStorage: class {
-        async getItem(_key: string) { return null }
-        async setItem(key: string, value: Uint8Array) {
-            if (key === 'database/database.bin') {
-                h.mainWriteAttempts++
-                if (h.failMainWrite) {
-                    throw new Error('simulated storage write failure')
-                }
-            }
-            h.writes.push({ key, value })
-        }
-        async keys() { return [] as string[] }
-        async removeItem(_key: string) {}
-    },
-}) as unknown as typeof import('src/ts/storage/autoStorage'))
+// The storage object over the real Node client, as `AutoStorage` builds it on a Node server.
+vi.mock(import('src/ts/storage/autoStorage'), async () => {
+    const { NodeStorage } = await import('src/ts/storage/nodeStorage')
+    class FakeAutoStorage {
+        realStorage = new NodeStorage()
+        async Init() {}
+        async getItem(key: string) { return await this.realStorage.getItem(key) }
+        async setItem(key: string, value: Uint8Array) { await this.realStorage.setItem(key, value) }
+        async keys() { return await this.realStorage.keys() }
+        async removeItem(key: string) { return await this.realStorage.removeItem(key) }
+    }
+    return { AutoStorage: FakeAutoStorage } as unknown as typeof import('src/ts/storage/autoStorage')
+})
 
 vi.mock(import('src/ts/gui/animation'), () => ({
     updateAnimationSpeed: vi.fn(),
@@ -211,95 +210,85 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     getColdStorageItem: vi.fn(),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-// The observed boundary: what the save loop tells the main-file record.
-vi.mock(import('src/ts/storage/mainFileRecord'), () => {
-    const note = vi.fn((bytes: Uint8Array) => { h.note?.(bytes) })
-    return {
-        noteMainFileBytes: note,
-        resetMainFileRecordForTests: vi.fn(),
-        matchesMainFileRecord: vi.fn(async () => false),
-        getMainFileRecordDigest: vi.fn(async () => null),
-        digestMainFileBytes: vi.fn(async () => null),
-    } as unknown as typeof import('src/ts/storage/mainFileRecord')
-})
-
-import { forageStorage, saveDb } from 'src/ts/globalApi.svelte'
-import { noteMainFileBytes } from 'src/ts/storage/mainFileRecord'
+import { saveDb } from 'src/ts/globalApi.svelte'
+import { alertToast } from 'src/ts/alert'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
-import { injectAppStore } from 'src/ts/storage/store/appStore'
-import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { getPageBlockOwner } from 'src/ts/storage/pageBlockOwner'
+import { setPageStorageMode } from 'src/ts/storage/pageStorageMode'
+import { treeToBlockSet } from 'src/ts/storage/treeToBlockSet'
+import { savingStoppedReason } from 'src/ts/stores.svelte'
+import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
+import type { Database } from 'src/ts/storage/database.svelte'
+import type { BlockStoreOwner } from 'src/ts/storage/blockStore'
 
 const CHA_ID = 'saved-cha'
+const server = new FakeNodeServer()
+let owner: BlockStoreOwner
 
-function makeDb(prompt: string): Record<string, unknown> {
-    return {
-        formatversion: 5,
-        botPresetsId: 0,
-        botPresets: [],
-        modules: [],
-        loadouts: [],
-        plugins: [],
-        pluginCustomStorage: {},
-        mainPrompt: prompt,
-        characters: [{
-            chaId: CHA_ID,
-            name: 'Saved',
-            type: 'character',
-            chatPage: 0,
-            chats: [{ id: 'saved-chat', message: [], note: '', name: '', localLore: [] }],
-        }],
-    }
+function settle(ms = 80): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** Marks the character changed and waits for the save loop to attempt the main file write. */
-async function requestSave(attemptsBefore: number, attemptsWanted: number): Promise<void> {
+function requestSave(prompt: string): void {
+    h.db!.mainPrompt = prompt
     markCharacterForSave(CHA_ID)
-    await vi.waitFor(() => {
-        expect(h.mainWriteAttempts - attemptsBefore).toBeGreaterThanOrEqual(attemptsWanted)
-    }, { timeout: 8000, interval: 20 })
 }
 
-function mainWrites(): Uint8Array[] {
-    return h.writes.filter((w) => w.key === 'database/database.bin').map((w) => w.value)
+function pathOf(request: { headers: Record<string, string> }): string {
+    return Buffer.from(request.headers['file-path'] ?? '', 'hex').toString('utf-8')
 }
+
+function rootWrites() {
+    return server.requestsTo('/api/write').filter((request) => /^blocks\/[^/]+\/root$/.test(pathOf(request)))
+}
+
+const rootKey = () => `blocks/${owner.committedState()!.generation}/root`
 
 beforeAll(async () => {
-    h.db = makeDb('first')
-    // The save loop writes through the page's byte store; here it is the key/value stand-in above.
-    injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike))
-    // The save loop never returns; it is only awaited far enough to be running.
+    vi.stubGlobal('fetch', server.fetch)
+    // A page without Web Locks has no `navigator.locks` at all; the test environment answers null.
+    Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
+    h.db = makeDb('first', [CHA_ID])
+    owner = (await getPageBlockOwner())!
+    const seeded = await owner.replaceWholeState(await treeToBlockSet(structuredClone(h.db) as unknown as Database), { requireAbsentHead: true })
+    expect(seeded.kind).toBe('won')
+    setPageStorageMode({ kind: 'block' })
     void saveDb()
-    // Let the boot encode and the loop's first idle pass happen.
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await settle(100)
 })
 
 afterAll(() => {
     h.parked = true
+    vi.unstubAllGlobals()
 })
 
-describe('the main-file record after saveDb writes the main file', () => {
-    test('records exactly the bytes that were written once the write succeeded', async () => {
-        vi.mocked(noteMainFileBytes).mockClear()
-        h.db!.mainPrompt = 'second'
-        await requestSave(h.mainWriteAttempts, 1)
-        await vi.waitFor(() => {
-            expect(vi.mocked(noteMainFileBytes)).toHaveBeenCalled()
-        }, { timeout: 4000, interval: 20 })
+describe('saveDb on the Node server through the real client', () => {
+    test('a commit presents the revision of the root this page holds and lands over the wire', async () => {
+        const expected = String(server.revisionOf(rootKey()))
+        server.requests.length = 0
 
-        const written = mainWrites().at(-1)!
-        const noted = vi.mocked(noteMainFileBytes).mock.calls.at(-1)![0]
-        expect(Array.from(noted)).toEqual(Array.from(written))
+        requestSave('second')
+        await vi.waitFor(() => { expect(rootWrites()).toHaveLength(1) }, { timeout: 8000, interval: 10 })
+        await settle()
+
+        expect(rootWrites()[0].headers['if-match-revision']).toBe(expected)
+        expect(get(savingStoppedReason)).toBeNull()
+        expect(alertToast).not.toHaveBeenCalled()
     })
 
-    test('guard: records nothing while the main file write fails', async () => {
-        vi.mocked(noteMainFileBytes).mockClear()
-        h.failMainWrite = true
-        h.db!.mainPrompt = 'third'
-        const attemptsBefore = h.mainWriteAttempts
-        await requestSave(attemptsBefore, 2)
-        h.failMainWrite = false
+    test('a save after another device changed the root is answered with a 409, saving stops with the node-conflict message, and the other device\'s root is untouched', async () => {
+        const peerRoot = Uint8Array.from([9, 9, 9, 9])
+        server.peerWrite(rootKey(), peerRoot)
+        server.requests.length = 0
 
-        expect(mainWrites().length).toBeGreaterThan(0)
-        expect(vi.mocked(noteMainFileBytes)).not.toHaveBeenCalled()
+        requestSave('third')
+        await vi.waitFor(() => { expect(get(savingStoppedReason)).toBe('node-conflict') }, { timeout: 8000, interval: 10 })
+        await settle(150)
+
+        expect(rootWrites()).toHaveLength(1)
+        expect(Array.from(server.files.get(rootKey())?.bytes ?? [])).toEqual(Array.from(peerRoot))
+        expect(vi.mocked(alertToast).mock.calls.map((call) => String(call[0]))).toEqual([
+            expect.stringContaining('conflicts with a newer version'),
+        ])
     })
 })

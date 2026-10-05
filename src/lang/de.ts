@@ -2042,6 +2042,25 @@ export const languageGerman = {
     "saveLeftoverNotice": "RisuAI hat nicht verwendete Speicherdaten gefunden, die ein unterbrochenes Speichern oder Wiederherstellen zurückgelassen hat. Sie schaden nicht. Sie können sie in der Bereinigung in den Einstellungen entfernen.",
     "saveMainFileLeftNotice": "Ihre Daten wurden in ein neues Format überführt, aber die alte Speicherdatei ist zu groß, als dass dieser Server sie beiseiteschieben könnte. Eine andere Version von RisuAI, die dieselben Daten öffnet, könnte diese alte Datei öffnen. Die Bereinigung in den Einstellungen bewahrt sie sicher auf, bis Sie sie löschen.",
     "opfsReadOnlyNotice": "RisuAI läuft diesmal mit einer temporären Kopie Ihrer Daten und speichert deshalb keine Änderungen; das Wiederherstellen eines Backups oder das Bereinigen des Speichers ist nicht verfügbar. Ihre Daten sind nicht verloren. Schließen Sie andere Tabs dieser App und starten Sie sie neu, damit die Daten in den Browser-Speicher überführt werden können.",
+    "otherTabSavedReloadTitle": "Ein anderer Tab oder ein anderes Gerät hat geändert, wie oder was gespeichert wird, daher ist die Kopie Ihrer Daten in diesem Tab veraltet und ihre Änderungen können von diesem Tab aus nicht gespeichert werden. Durch Neuladen erhalten Sie wieder einen funktionierenden, speicherbaren Zustand, aber alle nicht gespeicherten Änderungen in diesem Tab gehen verloren.",
+    "savingStoppedReplacedMessage": "Dieser Tab hat das Speichern eingestellt. Ein anderer Tab oder ein anderes Gerät hat die gespeicherten Daten ersetzt (ein Backup wurde geladen oder die Daten wurden in ein neues Format überführt), daher ist die Kopie dieses Tabs veraltet und kann von diesem Tab aus nicht gespeichert werden. Ab jetzt vorgenommene Änderungen werden nicht beibehalten. Ein Neuladen ruft die aktuellen Daten ab, und alle nicht gespeicherten Änderungen in diesem Tab gehen verloren.",
+    "savingStoppedTooLargeBlockMessage": (what: string, limitBytes: number) =>
+        `Dieser Tab hat das Speichern eingestellt. Der selbst gehostete Server akzeptiert in einer Anfrage höchstens ${limitBytes / (1024 * 1024)} MiB (weniger, wenn ein vorgeschalteter Proxy ein niedrigeres Limit setzt), und ${what ? `dieser Teil Ihrer Daten überschreitet das: ${what}` : 'ein Teil Ihrer Daten überschreitet das; der Server hat nicht angegeben, welcher Teil'}. Änderungen seit dem letzten erfolgreichen Speichern gehen beim Neuladen verloren. Verkleinern Sie diesen Teil, zum Beispiel indem Sie Chats oder Inhalte daraus löschen.`,
+    "savingStoppedConversionFailedMessage": "Dieser Tab hat das Speichern eingestellt. Das Überführen Ihrer Daten in das neue Speicherformat ist nach mehreren Versuchen nicht gelungen, und an Ihren gespeicherten Daten wurde nichts geändert. Änderungen seit dem letzten erfolgreichen Speichern gehen beim Neuladen verloren. Laden Sie die Seite neu, um es erneut zu versuchen.",
+    "savingStoppedUnconfirmedMessage": "Dieser Tab hat das Speichern eingestellt. RisuAI konnte nicht bestätigen, welcher Speicherstand aktuell ist. Laden Sie die Seite neu, um zu sehen, welcher geladen wurde; in diesem Tab seit dem letzten erfolgreichen Speichern vorgenommene Änderungen können verloren gehen.",
+    "saveBlockLabel": (blockName: string): string =>
+        blockName === 'root' ? 'Ihre allgemeinen Einstellungen'
+        : blockName === 'preset' ? 'Ihre Bot-Voreinstellungen'
+        : blockName === 'modules' ? 'Ihre Module'
+        : blockName === 'loadouts' ? 'Ihre Loadouts'
+        : blockName === 'plugins' ? 'Ihre Plugins'
+        : blockName === 'pluginStorage' ? 'Ihre Plugin-Daten'
+        : blockName === 'config' ? 'den Eintrag zum Speicherformat'
+        : blockName === 'stubs' ? 'Ihre archivierten Charaktere'
+        : `"${blockName}"`,
+    "saveConversionFailedAlert": "Das Überführen Ihrer Daten in das neue Speicherformat ist nach mehreren Versuchen nicht gelungen. An Ihren gespeicherten Daten wurde nichts geändert, und dieser Tab hat das Speichern eingestellt. Laden Sie die Seite neu, um es erneut zu versuchen.",
+    "saveSnapshotSkippedTooLarge": "Ihre Daten sind größer, als der selbst gehostete Server in einer Datei akzeptiert, daher werden automatische Backup-Kopien übersprungen. Das Speichern ist davon nicht betroffen. Um ein Backup zu behalten, exportieren Sie in den Einstellungen unter \"Backup & Dateien\" mit \"Backup lokal speichern\" eine .bin-Datei.",
+    "saveSnapshotSkippedMemory": "Dieses Gerät konnte nicht genug Speicher für eine automatische Backup-Kopie Ihrer Daten bereitstellen, daher wurde sie übersprungen. Das Speichern ist davon nicht betroffen.",
     "backupAndFiles": "Backup & Dateien",
     "assetIntegrityHeading": "Asset-Cache-Integrität",
     "assetIntegrityDescription": "Vergleicht zwischengespeicherte Bilder/Assets mit ihrem eigenen Inhalts-Hash, um Beschädigungen zu erkennen, ohne etwas erneut aus dem Speicher herunterzuladen. Der Vorgang ist schreibgeschützt, es sei denn, Sie entscheiden sich, einen beschädigten Eintrag zu entfernen.",

@@ -1,24 +1,43 @@
 <script lang="ts">
   import { OctagonAlert, SaveIcon } from "@lucide/svelte";
   import { alertNormal } from "src/ts/alert";
-  import { saving } from "src/ts/globalApi.svelte";
+  import { getSavingStoppedDetail, saving } from "src/ts/globalApi.svelte";
   import { DBState, savingStoppedReason, frozenSaveKeysStore } from "src/ts/stores.svelte";
   import { language } from "src/lang";
   import { NODE_BODY_LIMIT_BYTES } from "src/ts/storage/nodeBodyLimit";
+  import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
+
+  // A page that runs from OPFS this time never starts the save loop, so its
+  // state comes from the page's storage mode. The component is created before
+  // boot decides the mode, so it follows the store, not a value read once.
+  const readOnlyPage = $derived($pageStorageModeStore.kind === 'read-only')
 
   function savingStoppedMessage(reason: string){
-    if(reason === 'node-conflict'){
-      return language.savingStoppedNodeConflictMessage
+    switch(reason){
+      case 'node-conflict':
+        return language.savingStoppedNodeConflictMessage
+      case 'too-large':
+        return language.savingStoppedTooLargeBlockMessage(getSavingStoppedDetail(), NODE_BODY_LIMIT_BYTES)
+      case 'replaced':
+        return language.savingStoppedReplacedMessage
+      case 'conversion-failed':
+        return language.savingStoppedConversionFailedMessage
+      case 'unconfirmed':
+        return language.savingStoppedUnconfirmedMessage
+      default:
+        return language.savingStoppedStayMessage
     }
-    if(reason === 'too-large'){
-      return language.savingStoppedTooLargeMessage(NODE_BODY_LIMIT_BYTES)
-    }
-    return language.savingStoppedStayMessage
   }
 
 </script>
 
-{#if $savingStoppedReason}
+{#if readOnlyPage}
+  <button class="absolute top-3 right-3 z-10 text-white bg-red-800 hover:bg-red-600 p-2 rounded-sm" onclick={() =>{
+      alertNormal(language.opfsReadOnlyNotice)
+  }}>
+      <OctagonAlert size={24} />
+  </button>
+{:else if $savingStoppedReason}
   <button class="absolute top-3 right-3 z-10 text-white bg-red-800 hover:bg-red-600 p-2 rounded-sm" onclick={() =>{
       alertNormal(savingStoppedMessage($savingStoppedReason))
   }}>

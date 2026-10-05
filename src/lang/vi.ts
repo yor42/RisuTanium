@@ -2042,6 +2042,25 @@ export const languageVietnamese = {
     saveLeftoverNotice: "RisuAI đã tìm thấy dữ liệu lưu không dùng đến bị bỏ lại bởi một lần lưu hoặc khôi phục bị gián đoạn. Dữ liệu này không gây hại. Bạn có thể xóa nó trong phần dọn dẹp ở cài đặt.",
     saveMainFileLeftNotice: "Dữ liệu của bạn đã được chuyển sang định dạng mới, nhưng tệp lưu cũ quá lớn để máy chủ này dời sang một bên. Một phiên bản RisuAI khác mở cùng dữ liệu có thể mở tệp cũ đó. Phần dọn dẹp ở cài đặt sẽ giữ nó an toàn cho đến khi bạn xóa nó.",
     opfsReadOnlyNotice: "Lần này RisuAI đang chạy từ một bản sao tạm thời của dữ liệu của bạn, nên sẽ không lưu các thay đổi, và việc khôi phục bản sao lưu hoặc dọn dẹp bộ nhớ không khả dụng. Dữ liệu của bạn không bị mất. Hãy đóng các tab khác của ứng dụng này và khởi động lại để dữ liệu có thể được chuyển sang bộ nhớ trình duyệt.",
+    otherTabSavedReloadTitle: "Một tab hoặc thiết bị khác đã thay đổi cách hoặc nội dung được lưu, nên bản sao dữ liệu của tab này đã lỗi thời và các thay đổi của nó không thể được lưu từ tab này. Tải lại sẽ đưa về trạng thái hoạt động và có thể lưu được, nhưng mọi thay đổi chưa lưu trong tab này sẽ bị mất.",
+    savingStoppedReplacedMessage: "Tab này đã ngừng lưu. Một tab hoặc thiết bị khác đã thay thế dữ liệu đã lưu (một bản sao lưu đã được tải hoặc dữ liệu đã được chuyển sang định dạng mới), nên bản sao của tab này đã lỗi thời và không thể lưu từ tab này. Các thay đổi thực hiện từ bây giờ sẽ không được giữ lại. Tải lại sẽ lấy dữ liệu hiện tại, và mọi thay đổi chưa lưu trong tab này sẽ bị mất.",
+    savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number) =>
+        `Tab này đã ngừng lưu. Máy chủ tự lưu trữ chỉ chấp nhận tối đa ${limitBytes / (1024 * 1024)} MiB trong một yêu cầu (ít hơn nếu proxy phía trước máy chủ đặt giới hạn thấp hơn), và ${what ? `phần dữ liệu này của bạn vượt quá giới hạn đó: ${what}` : 'một phần dữ liệu của bạn vượt quá giới hạn đó; máy chủ không cho biết đó là phần nào'}. Các thay đổi kể từ lần lưu thành công gần nhất sẽ bị mất khi bạn tải lại. Hãy làm cho phần đó nhỏ hơn, ví dụ bằng cách xóa các cuộc trò chuyện hoặc nội dung trong đó.`,
+    savingStoppedConversionFailedMessage: "Tab này đã ngừng lưu. Việc chuyển dữ liệu của bạn sang định dạng lưu mới không thành công sau nhiều lần thử, và không có gì trong dữ liệu đã lưu của bạn bị thay đổi. Các thay đổi kể từ lần lưu thành công gần nhất sẽ bị mất khi bạn tải lại. Hãy tải lại trang để thử lại.",
+    savingStoppedUnconfirmedMessage: "Tab này đã ngừng lưu. RisuAI không thể xác nhận bản lưu nào là bản hiện tại. Hãy tải lại trang để xem bản nào đã được tải; các thay đổi thực hiện trong tab này kể từ lần lưu thành công gần nhất có thể đã bị mất.",
+    saveBlockLabel: (blockName: string): string =>
+        blockName === 'root' ? 'cài đặt chung của bạn'
+        : blockName === 'preset' ? 'các cài đặt trước của bot của bạn'
+        : blockName === 'modules' ? 'các mô-đun của bạn'
+        : blockName === 'loadouts' ? 'các loadout của bạn'
+        : blockName === 'plugins' ? 'các plugin của bạn'
+        : blockName === 'pluginStorage' ? 'dữ liệu plugin của bạn'
+        : blockName === 'config' ? 'bản ghi định dạng lưu'
+        : blockName === 'stubs' ? 'các nhân vật đã lưu trữ của bạn'
+        : `"${blockName}"`,
+    saveConversionFailedAlert: "Việc chuyển dữ liệu của bạn sang định dạng lưu mới không thành công sau nhiều lần thử. Không có gì trong dữ liệu đã lưu của bạn bị thay đổi, và tab này đã ngừng lưu. Hãy tải lại trang để thử lại.",
+    saveSnapshotSkippedTooLarge: "Dữ liệu của bạn lớn hơn mức máy chủ tự lưu trữ chấp nhận trong một tệp, nên các bản sao lưu tự động bị bỏ qua. Việc lưu không bị ảnh hưởng. Để giữ một bản sao lưu, hãy xuất tệp .bin bằng \"Lưu sao lưu cục bộ\" trong mục \"Sao lưu & Tệp\" ở phần cài đặt.",
+    saveSnapshotSkippedMemory: "Thiết bị này không thể dành đủ bộ nhớ cho một bản sao lưu tự động của dữ liệu của bạn, nên bản đó đã bị bỏ qua. Việc lưu không bị ảnh hưởng.",
     backupAndFiles: "Sao lưu & Tệp",
     assetIntegrityHeading: "Tính toàn vẹn Bộ nhớ đệm Tài sản",
     assetIntegrityDescription: "Đối chiếu hình ảnh/tài sản đã lưu trong bộ nhớ đệm với mã băm nội dung của chính chúng để phát hiện hỏng dữ liệu, mà không cần tải lại bất kỳ thứ gì từ bộ nhớ lưu trữ. Đây là thao tác chỉ đọc, trừ khi bạn chọn xóa một mục bị hỏng.",
