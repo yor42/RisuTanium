@@ -154,10 +154,30 @@ measured on one i9-13900K-class machine, mostly in headless Chrome on synthetic 
 hardware (`MC-003`, `MC-010`, `MC-131`). No phone or Pi figure exists for any of them.
 
 - **Done:** Stage A `b1d2804b` (memory only), Stage 0 (ii) `2aa55398` (Node revision log), Stage 0
-  (i)+(iii) `f04068f1` (no-op main-file skip and backup freshness). Next is Stage 1 (the stable-keyed
-  block store), then Stage 2 (per-module blocks). No Stage 1 plan or gate is recorded yet.
-  TODO(evidence): the Stage 1 pre-measurements the Roadmap says are pending are named in the notes
-  without a list of what they measure.
+  (i)+(iii) `f04068f1` (no-op main-file skip and backup freshness). Stage 1 (the stable-keyed block
+  store) has an accepted plan (Report 57, 2026-10-05). Its stages 1a (the durable Tauri write) and 1b
+  (the block-store core, no callers) passed Gate 2 on 2026-10-05 (committed as `a7c0ef06` and
+  `15f01783`; gate record Report 58). **Stage 1c (everything wired) is next, then Stage 2
+  (per-module blocks).** The Stage 1 pre-measurements are in Report 57 section 14.
+
+### What Stage 1a and 1b leave for Stage 1c (full list: Report 58 section 9)
+
+- Choose the head swap by store kind explicitly. The factory that chose it was removed in 1b, and
+  `createIndexedDbHeadSwap` is the IndexedDB one.
+- A non-binary `blocks/head` on IndexedDB loads as damage (`bad-head`) and stops a live owner in
+  `checkHead`, but no test covers the `checkHead` case, and `replaceWholeState` over such a head throws,
+  so a damage prompt can offer only "stop" there. 1c adds the test and decides what the prompt offers.
+- A damaged-head backup replace keeps no generation (a plan gap): manual clean-up could delete the last
+  good one. The reviewer suggests keeping the newest generation that has a root.
+- `readPack` copies each stub while the owner also retains the whole pack (a minor memory cost).
+- 1a: the failed-directory-flush log goes to `eprintln!`, invisible in a Windows GUI release build; and
+  the raw body is copied once in `decode_body`, an extra 1 to 2 GB transient for a modules block of that
+  size until Stage 2 splits it.
+- `load()` refuses on a live owner (`BlockOwnerStateError`); clean-up and the keep set are to read through
+  `readCommitted()` or a second owner (1c). Live state changes only through the owner's own commit or replace.
+- Not verified natively: a Tauri webview run of `write_durable`, Unix directory flush, power loss,
+  IndexedDB atomicity outside `fake-indexeddb`, a tab closed mid-transaction. Everything else 1c has to
+  wire is the 1b implementer's "Left for 1c" list in Report 58 section 9.
 
 ### What Stage 1 must state and keep
 

@@ -6920,7 +6920,7 @@ cost: text the user cleared can come back after such a crash.
 
 ### MC-195 — Main Campaign, 2026-10-05 after `d9adf375`: Stage 1 of the save layer starts and CHORE-121 is fixed beside it, CHORE-121's scope, the choices on a damaged save, the old main file and a Node snapshot over the limit, the choices after the round 3 escalation, and the commit and next-step words
 
-- **Tag:** decisions (chosen from options put by the Orchestrator through multiple-choice questions, and three messages the maintainer typed, items 1, 7 and 8; each item says which). The Orchestrator's own dispositions are listed apart at the end.
+- **Tag:** decisions (chosen from options put by the Orchestrator through multiple-choice questions, and four messages the maintainer typed, items 1, 7, 8 and 9; each item says which). The Orchestrator's own dispositions are listed apart at the end.
 - **Date:** 2026-10-05
 - **Sweep ref:** none (stated directly this session)
 - **Source:** the maintainer's answers in the Main Campaign session after the records commit `7ae0485d` (`MC-194`) and the Carry-Forward commit `d9adf375`, while the Stage 1 boot-read measurement, CHORE-121 and the Stage 1 plan and its Gate 1 were run. Where an answer was a choice from options, the chosen option's label is quoted; a typed message is quoted as typed, with its typo. The text of each question is given in short; the full option text was kept only where an item says so (as for `MC-194`).
@@ -6945,6 +6945,7 @@ cost: text the user cleared can come back after such a crash.
    - The plain-HTTP static IndexedDB page: "Support if it can be safe". By the notes: keep that page on the new layout if a browser test shows that IndexedDB's own transactions can stand in for the lock; otherwise keep it on today's single-file save. The test was run (ledger row 1083): on a non-secure origin with no Web Locks, one read-write transaction lost no updates, and a flip race had exactly one winner in 500 of 500 trials, in Chrome 154, Edge 154 and Firefox 157 with 2 and 4 tabs, on one Windows i9. Safari and Android Chrome were not run. On that evidence the plan keeps the page on the new layout (the Orchestrator's reading of the condition, not a further maintainer answer).
 7. **CHORE-121's commit word**, typed: "commit chore 121". The commit is `71100280` (local, not pushed).
 8. **Order of the next work**, typed: "start records batch first, then 1a and 1b in parallel." The records batch is this entry's batch. Stage 1a is the durable Tauri write and 1b the core with no callers (Report 57 section 10).
+9. **Commit word for Stage 1a and 1b**, typed on 2026-10-05, after both stages passed their Gate 2: "start records batch, then commit 1a and 1b". The records batch is Report 58 and its companions; 1a is committed as `a7c0ef06` and 1b as `15f01783` (local, not pushed; the Orchestrator's record of the hashes).
 
 **Disclosures:**
 - **(a)** Every performance figure here and in the entries it cites was measured on one i9-13900K-class machine (best-case hardware, `MC-003`, `MC-010`), mostly in headless browsers on synthetic data (`MC-131`); the Android figures are an x86_64 emulator on that host. No phone or Pi figure exists.
