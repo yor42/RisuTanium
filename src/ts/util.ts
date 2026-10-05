@@ -8,10 +8,11 @@ import { basename } from "@tauri-apps/api/path"
 import { createBlankChar, getCharImage } from "./characters"
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isIOS, isTauri } from "src/ts/platform"
+import { isTauriDesktop } from "src/ts/tauriDesktop"
 import type { Attachment } from "svelte/attachments"
 import { mount, unmount, type Snippet } from "svelte"
 import PopupList from "src/lib/UI/PopupList.svelte"
-const appWindow = isTauri ? getCurrentWebviewWindow() : null
+const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 export interface Messagec extends Message{
     index: number
