@@ -138,6 +138,27 @@ vi.mock(import('../../util'), () => ({
     sleep: vi.fn(async () => {}),
 }) as unknown as typeof import('../../util'))
 
+const yieldToEventLoopMock = vi.hoisted(() => vi.fn(async () => {}))
+
+vi.mock(import('../../storage/saveYield'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    yieldToEventLoop: yieldToEventLoopMock,
+}))
+
+/** What `decodeRisuSave` was handed, in call order. */
+const decodeCapture = vi.hoisted(() => ({ inputs: [] as Uint8Array[] }))
+
+vi.mock(import('../../storage/risuSave'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+        ...actual,
+        decodeRisuSave: async (...args: Parameters<typeof actual.decodeRisuSave>) => {
+            decodeCapture.inputs.push(args[0])
+            return actual.decodeRisuSave(...args)
+        },
+    }
+})
+
 const setColdStorageItemMock = vi.hoisted(() => vi.fn(async () => true))
 
 vi.mock(import('../../process/coldstorage.svelte'), () => ({
@@ -162,7 +183,9 @@ import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { isAppInitiatedReload } from '../../reloadGuard'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
+import { StoreInvalidKeyError } from '../../storage/store/errors'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
+import { sleep } from '../../util'
 
 /** Narrows a `Uint8Array<ArrayBufferLike>` to the `Uint8Array<ArrayBuffer>` shape `BlobPart` requires; mirrors `asBuffer` in `src/ts/util.ts`. */
 function asBlobPart(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
@@ -233,61 +256,57 @@ function markerEntry(body: Uint8Array): Uint8Array {
 
 //#region File wrappers over real happy-dom File/Blob instances
 
-type ChunkSizes = number | number[]
-
-function readableStreamFromBytes(bytes: Uint8Array, chunkSizes: ChunkSizes): ReadableStream<Uint8Array> {
-    let offset = 0
-    let sizeIndex = 0
-    return new ReadableStream<Uint8Array>({
-        pull(controller) {
-            if (offset >= bytes.length) {
-                controller.close()
-                return
-            }
-            const size = Array.isArray(chunkSizes)
-                ? chunkSizes[Math.min(sizeIndex, chunkSizes.length - 1)]
-                : chunkSizes
-            sizeIndex += 1
-            const end = Math.min(offset + Math.max(1, size), bytes.length)
-            controller.enqueue(bytes.slice(offset, end))
-            offset = end
-        },
-    })
-}
-
-/** A real File whose `stream()` yields the given chunk size(s) over `bytes`, instead of the engine's own chunking. */
-function fileWithChunkedStream(bytes: Uint8Array, chunkSizes: ChunkSizes, name = 'backup.bin'): File {
-    const base = new File([asBlobPart(bytes)], name)
-    return new Proxy(base, {
-        get(target, prop, receiver) {
-            if (prop === 'stream') {
-                return () => readableStreamFromBytes(bytes, chunkSizes)
-            }
-            return Reflect.get(target, prop, receiver)
-        },
-    })
+/** What a file's `slice()` read, so a test can see how the restore reached the bytes. */
+interface SliceReads {
+    /** Every `slice(start, end)` request, in order. `end` is clamped to the file's size. */
+    ranges: { start: number; end: number }[]
+    /** Every `ArrayBuffer` a `slice().arrayBuffer()` handed out, in order. */
+    buffers: ArrayBuffer[]
+    /** How many times `stream()` was called. */
+    streamCalls: number
 }
 
 /**
- * A real File whose `stream()` reads `streamBytes` -- what the streaming
- * import loop actually sees -- while `slice()` reads a differently-shaped
- * `sliceBytes` -- what a pre-read header walk would see. Models a
- * `File`/`Blob` whose two read paths disagree, so a guard that only
- * consults one of them can be evaded.
+ * A real File whose `slice()` reads `walkBytes` for its first `walkSliceCalls`
+ * calls -- what the pre-read walk sees -- and `restoreBytes` afterwards -- what
+ * the restore pass sees. Models a file that changes between the two passes.
+ * `size` stays the size of `walkBytes`, as the browser reports it for the file
+ * the user picked. `stream()` counts its calls and serves `walkBytes`.
  */
-function fileWithDivergentViews(streamBytes: Uint8Array, sliceBytes: Uint8Array, name = 'backup.bin', streamChunkSizes: ChunkSizes = 65536): File {
-    const base = new File([asBlobPart(streamBytes)], name)
-    return new Proxy(base, {
+function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, walkSliceCalls: number, name = 'backup.bin'): { file: File; reads: SliceReads } {
+    const base = new File([asBlobPart(walkBytes)], name)
+    const reads: SliceReads = { ranges: [], buffers: [], streamCalls: 0 }
+    const file = new Proxy(base, {
         get(target, prop, receiver) {
             if (prop === 'stream') {
-                return () => readableStreamFromBytes(streamBytes, streamChunkSizes)
+                return () => {
+                    reads.streamCalls += 1
+                    return target.stream()
+                }
             }
             if (prop === 'slice') {
-                return (start = 0, end = sliceBytes.length) => new Blob([asBlobPart(sliceBytes.slice(start, end))])
+                return (start = 0, end = walkBytes.length) => {
+                    const source = reads.ranges.length < walkSliceCalls ? walkBytes : restoreBytes
+                    reads.ranges.push({ start, end: Math.min(end, walkBytes.length) })
+                    const bytes = source.slice(start, end)
+                    return {
+                        arrayBuffer: async () => {
+                            const buffer = bytes.buffer as ArrayBuffer
+                            reads.buffers.push(buffer)
+                            return buffer
+                        },
+                    } as unknown as Blob
+                }
             }
             return Reflect.get(target, prop, receiver)
         },
     })
+    return { file, reads }
+}
+
+/** A file whose bytes never change, with the same read record as `fileWithTimeDivergentSlice`. */
+function fileRecordingReads(bytes: Uint8Array, name = 'backup.bin'): { file: File; reads: SliceReads } {
+    return fileWithTimeDivergentSlice(bytes, bytes, Number.POSITIVE_INFINITY, name)
 }
 
 /** A real File whose `slice(...).arrayBuffer()` rejects from the `rejectFromCall`-th `slice()` call onward. */
@@ -378,20 +397,34 @@ function truncatedMarkerDataLengthFixture(): Uint8Array {
     return concatChunks([assetEntry(), coldEntry(), header, shortTrailingData])
 }
 
-function divergentStreamBytes(): Uint8Array {
-    return concatChunks([assetEntry(), markerEntry(wellFormedMarkerBody()), databaseEntry()])
+/** A marker header whose declared data length (5000) runs past the end of the bytes given. */
+function markerHeaderWithDataLengthPastEnd(): Uint8Array {
+    const nameBytes = new TextEncoder().encode(MARKER_NAME)
+    return concatChunks([u32le(nameBytes.length), nameBytes, u32le(5000)])
 }
 
-/** The database entry resolves out of an earlier stream batch than the marker, unlike divergentStreamBytes above where the marker precedes the database. */
-function divergentStreamBytesDatabaseBeforeMarker(): Uint8Array {
-    return concatChunks([assetEntry(), databaseEntry(), markerEntry(wellFormedMarkerBody())])
+/** A marker whose name is complete but whose own 4-byte data-length field is cut off after 2 bytes. */
+function markerHeaderWithDataLengthFieldCutOff(): Uint8Array {
+    const nameBytes = new TextEncoder().encode(MARKER_NAME)
+    return concatChunks([u32le(nameBytes.length), nameBytes, new Uint8Array([1, 2])])
 }
 
-function divergentSliceBytes(): Uint8Array {
-    // A self-consistent backup with no marker at all -- what a pre-read
-    // header walk alone would conclude if it trusted only this view.
-    return concatChunks([assetEntry(), databaseEntry()])
+/**
+ * What the pre-read walk sees in the time-divergence cases: a self-consistent
+ * backup with no marker at all, `[asset1, asset2, database]`. The restore pass
+ * is handed bytes with the same offsets in which one entry has changed.
+ */
+function walkViewBytes(): Uint8Array {
+    return concatChunks([assetEntry(16, 'asset1.png'), assetEntry(16, 'asset2.png'), databaseEntry()])
 }
+
+/** `walkViewBytes()` with its second entry's place taken by `replacement`; everything before it is unchanged. */
+function restoreViewWithSecondEntryReplaced(replacement: Uint8Array): Uint8Array {
+    return concatChunks([assetEntry(16, 'asset1.png'), replacement])
+}
+
+/** The number of `slice()` calls the walk makes over `walkViewBytes()`: one header window per entry. */
+const WALK_VIEW_SLICE_CALLS = 3
 
 /** The marker's name is complete, but its own 4-byte data-length field is itself cut off by the end of the file (not merely a body or a data length that runs past it). */
 function markerNameCompleteDataLengthFieldCutOffFixture(): Uint8Array {
@@ -435,8 +468,22 @@ beforeEach(() => {
     setDatabaseMock.mockClear()
     forageSetItemMock.mockClear()
     forageFiles.clear()
+    decodeCapture.inputs.length = 0
+    yieldToEventLoopMock.mockReset()
+    yieldToEventLoopMock.mockImplementation(async () => {})
+    vi.mocked(sleep).mockClear()
     // The restore writes a block generation through the page's byte store; here it is the storage-object model above, on a desktop-kind page.
-    injectRestoreStore(createForageBackedStore(forageStorage as unknown as ForageLike))
+    // Like the real stores, it refuses an asset key with a leading dot.
+    const forageBackedStore = createForageBackedStore(forageStorage as unknown as ForageLike)
+    injectRestoreStore({
+        ...forageBackedStore,
+        write: async (key, bytes, condition) => {
+            if (key.startsWith('assets/.')) {
+                throw new StoreInvalidKeyError(key, 'leading dot')
+            }
+            return forageBackedStore.write(key, bytes, condition)
+        },
+    })
     tauriWriteFileMock.mockClear()
     tauriRenameMock.mockClear()
     tauriRemoveMock.mockClear()
@@ -658,58 +705,133 @@ describe('the refusal fires before any write, wherever the marker sits and whate
     })
 })
 
-describe('the import loop guards independently of a pre-read view that missed the marker (I3, defense in depth)', () => {
-    test('aborts mid-loop when the marker is absent from the slice() view but present in the streamed bytes right after one asset', async () => {
-        const file = fileWithDivergentViews(divergentStreamBytes(), divergentSliceBytes())
+/** Only the entries before the divergence were written; nothing after it, no database install, no cold unit, no network. */
+function expectWritesStoppedAfter(writtenKeys: string[]): void {
+    expect(forageSetItemMock.mock.calls.map((call) => call[0])).toEqual(writtenKeys)
+    expect(tauriWriteFileMock).not.toHaveBeenCalled()
+    expect(setColdStorageItemMock).not.toHaveBeenCalled()
+    expect(setDatabaseMock).not.toHaveBeenCalled()
+    expect(localStorageSetItemSpy).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+}
+
+describe('the restore pass guards independently of a walk that missed the marker (I3, defense in depth, slice view that changes between the passes)', () => {
+    test('stops when the marker appears at an indexed offset right after one asset, writing nothing after it', async () => {
+        const { file, reads } = fileWithTimeDivergentSlice(
+            walkViewBytes(),
+            restoreViewWithSecondEntryReplaced(markerEntry(wellFormedMarkerBody())),
+            WALK_VIEW_SLICE_CALLS,
+        )
 
         await loadBackupWithFile(file)
 
-        expectNoWritesNoInstallNoNetwork()
+        expect(reads.ranges.length).toBeGreaterThan(WALK_VIEW_SLICE_CALLS)
+        expectWritesStoppedAfter(['assets/asset1.png'])
         expectLoopGuardShown()
+        expectMessageNotShown(language.backupFileChangedWhileReading)
     })
 
-    test('aborts before writing anything when the marker declares a data length that runs past the end of a one-chunk streamed batch, even though the slice() view shows no marker', async () => {
-        const nameBytes = new TextEncoder().encode(MARKER_NAME)
-        const declaredDataLength = 5000
-        const header = new Uint8Array(4 + nameBytes.length + 4)
-        let offset = 0
-        header.set(u32le(nameBytes.length), offset); offset += 4
-        header.set(nameBytes, offset); offset += nameBytes.length
-        header.set(u32le(declaredDataLength), offset)
-        const streamBytes = concatChunks([assetEntry(), header])
-        const file = fileWithDivergentViews(streamBytes, divergentSliceBytes())
+    test('stops when the marker at an indexed offset declares a data length that runs past the end of the file', async () => {
+        const { file } = fileWithTimeDivergentSlice(
+            walkViewBytes(),
+            restoreViewWithSecondEntryReplaced(markerHeaderWithDataLengthPastEnd()),
+            WALK_VIEW_SLICE_CALLS,
+        )
 
         await loadBackupWithFile(file)
 
-        expectNoWritesNoInstallNoNetwork()
+        expectWritesStoppedAfter(['assets/asset1.png'])
         expectLoopGuardShown()
+        expectMessageNotShown(language.backupFileChangedWhileReading)
     })
 
-    test('aborts before writing anything when a complete marker name is followed by a data-length field cut off at the end of a one-chunk streamed batch, even though the slice() view shows no marker', async () => {
-        const nameBytes = new TextEncoder().encode(MARKER_NAME)
-        const header = concatChunks([u32le(nameBytes.length), nameBytes, new Uint8Array([1, 2])])
-        const streamBytes = concatChunks([assetEntry(), header])
-        const file = fileWithDivergentViews(streamBytes, divergentSliceBytes())
+    test('stops with the marker message, not the changed-file message, when a complete marker name is followed by a data-length field cut off at the end of the file', async () => {
+        const { file } = fileWithTimeDivergentSlice(
+            walkViewBytes(),
+            restoreViewWithSecondEntryReplaced(markerHeaderWithDataLengthFieldCutOff()),
+            WALK_VIEW_SLICE_CALLS,
+        )
 
         await loadBackupWithFile(file)
 
-        expectNoWritesNoInstallNoNetwork()
+        expectWritesStoppedAfter(['assets/asset1.png'])
         expectLoopGuardShown()
+        expectMessageNotShown(language.backupFileChangedWhileReading)
     })
 
-    test('never installs a database resolved out of an earlier stream batch once a later batch reveals the marker, even though the slice() view shows no marker', async () => {
-        // 7-byte chunks force the database entry to finish resolving, in its
-        // own batch, well before the marker's batch: the guard must still
-        // stop the whole import, not just decline to write the marker's own
-        // batch, or a database resolved earlier would reach setDatabase.
-        const file = fileWithDivergentViews(divergentStreamBytesDatabaseBeforeMarker(), divergentSliceBytes(), 'backup.bin', 7)
+    test('never installs a database that was already read once the marker shows up at a later indexed offset', async () => {
+        const walkBytes = concatChunks([assetEntry(16, 'asset1.png'), databaseEntry(), assetEntry(16, 'asset2.png')])
+        const restoreBytes = concatChunks([assetEntry(16, 'asset1.png'), databaseEntry(), markerEntry(wellFormedMarkerBody())])
+        const { file } = fileWithTimeDivergentSlice(walkBytes, restoreBytes, 3)
 
         await loadBackupWithFile(file)
 
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectWritesStoppedAfter(['assets/asset1.png'])
         expect(forageSetItemMock).not.toHaveBeenCalledWith('database/database.bin', expect.anything())
         expect(forageSetItemMock).not.toHaveBeenCalledWith('blocks/head', expect.anything())
         expectLoopGuardShown()
+    })
+})
+
+describe('the restore pass stops when the file differs from what the walk indexed (changed file)', () => {
+    function expectChangedFileStop(): void {
+        expectMessageShown(language.backupFileChangedWhileReading)
+        expectMessageNotShown(language.encryptedBackupImportStopped)
+        expectMessageNotShown(language.encryptedBackupRefused)
+        // The message must not tell the user that nothing was imported: earlier entries were written.
+        expect(language.backupFileChangedWhileReading).toContain('may already have been added')
+        expect(language.backupFileChangedWhileReading).not.toContain('Nothing was imported')
+    }
+
+    test('stops when an indexed entry now has a name of a different length', async () => {
+        const { file } = fileWithTimeDivergentSlice(
+            walkViewBytes(),
+            restoreViewWithSecondEntryReplaced(assetEntry(16, 'asset2-renamed.png')),
+            WALK_VIEW_SLICE_CALLS,
+        )
+
+        await loadBackupWithFile(file)
+
+        expectWritesStoppedAfter(['assets/asset1.png'])
+        expectChangedFileStop()
+    })
+
+    test('stops when an indexed entry now declares a different data length', async () => {
+        const { file } = fileWithTimeDivergentSlice(
+            walkViewBytes(),
+            restoreViewWithSecondEntryReplaced(assetEntry(17, 'asset2.png')),
+            WALK_VIEW_SLICE_CALLS,
+        )
+
+        await loadBackupWithFile(file)
+
+        expectWritesStoppedAfter(['assets/asset1.png'])
+        expectChangedFileStop()
+    })
+
+    test('stops when the bytes of an indexed entry have fewer bytes than its header declares', async () => {
+        const shortAsset = assetEntry(16, 'asset2.png').slice(0, -5)
+        const { file } = fileWithTimeDivergentSlice(
+            walkViewBytes(),
+            restoreViewWithSecondEntryReplaced(shortAsset),
+            WALK_VIEW_SLICE_CALLS,
+        )
+
+        await loadBackupWithFile(file)
+
+        expectWritesStoppedAfter(['assets/asset1.png'])
+        expectChangedFileStop()
+    })
+
+    test('stops, with the changed-file message and not the walk-error message, when reading an indexed entry throws', async () => {
+        // Calls 1-3 are the walk; call 4 reads asset1, call 5 reads asset2 and rejects.
+        const file = fileWithRejectingSlice(walkViewBytes(), 5)
+
+        await loadBackupWithFile(file)
+
+        expectWritesStoppedAfter(['assets/asset1.png'])
+        expectChangedFileStop()
+        expectMessageNotShown(language.backupFileUnreadable)
     })
 })
 
@@ -736,21 +858,16 @@ describe('an unreadable header region aborts with the walk-error message, never 
 })
 
 describe('a backup with no encryption.risudat entry anywhere restores every entry, in file order (I2)', () => {
-    test('writes three assets, a cold entry and the database exactly once each, in file order, even when two entries resolve out of the same stream batch', async () => {
+    test('guard: writes three assets, a cold entry, an entry the store cannot hold and the database exactly once each, in file order, with the bytes of each entry', async () => {
         const asset1 = assetEntry(16, 'asset1.png')
-        const asset2 = assetEntry(16, 'asset2.png')
-        const asset3 = assetEntry(16, 'asset3.png')
+        const asset2 = assetEntry(20, 'asset2.png')
+        const rejectedName = assetEntry(8, '.hidden.png')
+        const asset3 = assetEntry(7, 'asset3.png')
         const cold = coldEntry()
         const db = databaseEntry()
-        const bytes = concatChunks([asset1, asset2, asset3, cold, db])
-        // The first stream chunk covers asset1 and asset2 exactly, so both
-        // resolve together out of one batch; every later chunk is 7 bytes,
-        // so each remaining entry resolves out of a batch of its own. A
-        // batch written out of order, or re-written on a later batch because
-        // the consumed bytes were never trimmed, would show up in this list.
-        const file = fileWithChunkedStream(bytes, [asset1.length + asset2.length, 7])
+        const bytes = concatChunks([asset1, asset2, rejectedName, asset3, cold, db])
 
-        await loadBackupWithFile(file)
+        await loadBackupBytes(bytes)
 
         // The assets are written in file order, then the database as a block generation whose head is the last key written.
         const writtenKeys = forageSetItemMock.mock.calls.map((call) => call[0])
@@ -762,17 +879,136 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(writtenKeys.slice(3).every((key) => key.startsWith('blocks/'))).toBe(true)
         expect(writtenKeys[writtenKeys.length - 1]).toBe('blocks/head')
         expect(writtenKeys).not.toContain('database/database.bin')
+        const expectedAssetBytes = (size: number): Uint8Array => Uint8Array.from({ length: size }, (_, i) => i % 256)
+        expect(Array.from(forageSetItemMock.mock.calls[0][1])).toEqual(Array.from(expectedAssetBytes(16)))
+        expect(Array.from(forageSetItemMock.mock.calls[1][1])).toEqual(Array.from(expectedAssetBytes(20)))
+        expect(Array.from(forageSetItemMock.mock.calls[2][1])).toEqual(Array.from(expectedAssetBytes(7)))
         expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
         expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
         const installed = setDatabaseMock.mock.calls[0][0] as Database
         expect(installed.characters).toEqual([])
         expect(fetchMock).not.toHaveBeenCalled()
+        // The one name the store cannot hold is reported after the database is written.
+        expect(alertMocks.alertNormalWait).toHaveBeenCalledTimes(1)
+        expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.hidden.png']))
         // A successful restore reloads instead of showing a "Success" alert,
         // and marks that reload app-initiated so the app's own "Leave site?"
         // guard lets it through.
         expect(alertMocks.alertNormal).not.toHaveBeenCalledWith('Success')
         expect(isAppInitiatedReload()).toBe(true)
+    })
+
+    test('reads one entry at a time through slice(), never calls stream(), and hands the database to the decoder as a view over the bytes read for it', async () => {
+        // Every entry is at least as large as the walk's 4096-byte header
+        // window, so a slice that stays inside one entry is one header plus
+        // one body at most.
+        const entries = [
+            assetEntry(5000, 'big1.png'),
+            assetEntry(6000, 'big2.png'),
+            buildChunk(COLD_NAME, new TextEncoder().encode(JSON.stringify({ message: [], padding: 'x'.repeat(5000) }))),
+            buildChunk(DATABASE_NAME, encodeRisuSaveLegacy({ characters: [], padding: Array.from({ length: 800 }, (_, i) => `padding-${i}`) } as unknown as Database, 'noCompression')),
+        ]
+        const bytes = concatChunks(entries)
+        const { file, reads } = fileRecordingReads(bytes)
+
+        await loadBackupWithFile(file)
+
+        expect(reads.streamCalls).toBe(0)
+        const bounds: { start: number; end: number }[] = []
+        let offset = 0
+        for (const entry of entries) {
+            bounds.push({ start: offset, end: offset + entry.length })
+            offset += entry.length
+        }
+        for (const range of reads.ranges) {
+            expect(bounds.some((entryBounds) => range.start >= entryBounds.start && range.end <= entryBounds.end)).toBe(true)
+        }
+        // The database's own slice is requested for the whole entry, not in parts.
+        expect(reads.ranges.some((range) => range.start === bounds[3].start && range.end === bounds[3].end)).toBe(true)
+
+        expect(decodeCapture.inputs).toHaveLength(1)
+        const decoded = decodeCapture.inputs[0]
+        expect(reads.buffers).toContain(decoded.buffer)
+        const databaseHeaderLength = 4 + DATABASE_NAME.length + 4
+        expect(decoded.byteOffset).toBe(databaseHeaderLength)
+        expect(decoded.byteLength).toBe(entries[3].length - databaseHeaderLength)
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('never sleeps per entry, and yields to the event loop at least once per interval of a slow store', async () => {
+        const entryCount = 10
+        const bytes = concatChunks([
+            ...Array.from({ length: entryCount }, (_, i) => assetEntry(16, `slow${i}.png`)),
+            databaseEntry(),
+        ])
+        let clock = 0
+        const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+        const yieldedAt: number[] = []
+        yieldToEventLoopMock.mockImplementation(async () => { yieldedAt.push(clock) })
+        forageSetItemMock.mockImplementation(async () => { clock += 30 })
+
+        try {
+            await loadBackupBytes(bytes)
+        } finally {
+            nowSpy.mockRestore()
+            forageSetItemMock.mockImplementation(async () => {})
+        }
+
+        expect(sleep).not.toHaveBeenCalled()
+        expect(yieldedAt.length).toBeGreaterThanOrEqual(4)
+        // Never more than the 50 ms interval plus one entry's own 30 ms between yields.
+        let previous = 0
+        for (const at of yieldedAt) {
+            expect(at - previous).toBeLessThanOrEqual(80)
+            previous = at
+        }
+    })
+
+    test('does not yield when the store answers instantly', async () => {
+        const bytes = concatChunks([assetEntry(16, 'fast1.png'), assetEntry(16, 'fast2.png'), databaseEntry()])
+        const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => 0)
+
+        try {
+            await loadBackupBytes(bytes)
+        } finally {
+            nowSpy.mockRestore()
+        }
+
+        expect(yieldToEventLoopMock).not.toHaveBeenCalled()
+        expect(sleep).not.toHaveBeenCalled()
+    })
+
+    test('updates the progress text only when the shown percentage changes', async () => {
+        // The three small entries in front of the large one each end below
+        // 0.01% of the file, so they show the same percentage; so do the
+        // large entry and the database behind it, which end within 0.01% of
+        // the file's end.
+        const entries = [
+            assetEntry(1, 't0.png'),
+            assetEntry(1, 't1.png'),
+            assetEntry(1, 't2.png'),
+            buildChunk('huge.png', new Uint8Array(2 * 1024 * 1024)),
+            databaseEntry(),
+        ]
+        const bytes = concatChunks(entries)
+        const expectedTexts: string[] = []
+        let end = 0
+        for (const entry of entries) {
+            end += entry.length
+            const text = `Loading local Backup... (${((end / bytes.length) * 100).toFixed(2)}%)`
+            if (expectedTexts[expectedTexts.length - 1] !== text) {
+                expectedTexts.push(text)
+            }
+        }
+
+        await loadBackupBytes(bytes)
+
+        const loadingTexts = alertMocks.alertWait.mock.calls
+            .map((call) => String(call[0]))
+            .filter((text) => text.startsWith('Loading local Backup...'))
+        expect(expectedTexts).toEqual(['Loading local Backup... (0.00%)', 'Loading local Backup... (100.00%)'])
+        expect(loadingTexts).toEqual(expectedTexts)
     })
 
     test('imports the entries before a truncated final database entry and reports file corruption', async () => {

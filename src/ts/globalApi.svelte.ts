@@ -13,7 +13,7 @@ import { v4 as uuidv4, v4 } from 'uuid';
 import { get } from "svelte/store";
 import { flushSync } from "svelte";
 import { open } from '@tauri-apps/plugin-shell'
-import streamSaver from 'streamsaver';
+import { TauriWriter, openWebExportWriter, writeBackupEntry, type ExportByteWriter } from "./exportWriters";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
@@ -2793,48 +2793,13 @@ function formDataToString(formData: FormData): string {
     return params.join('&');
 }
 
-/**
- * A writer class for Tauri environment.
- */
-export class TauriWriter {
-    path: string
-    firstWrite: boolean = true
-
-    /**
-     * Creates an instance of TauriWriter.
-     * 
-     * @param {string} path - The file path to write to.
-     */
-    constructor(path: string) {
-        this.path = path
-    }
-
-    /**
-     * Writes data to the file.
-     * 
-     * @param {Uint8Array} data - The data to write.
-     */
-    async write(data: Uint8Array) {
-        await writeFile(this.path, data, {
-            append: !this.firstWrite
-        })
-        this.firstWrite = false
-    }
-
-    /**
-     * Closes the writer. (No operation for TauriWriter)
-     */
-    async close() {
-        // do nothing
-    }
-}
-
+export { TauriWriter }
 
 /**
  * Class representing a local writer.
  */
 export class LocalWriter {
-    writer: WritableStreamDefaultWriter | TauriWriter
+    writer: ExportByteWriter
 
     /**
      * Initializes the writer.
@@ -2857,8 +2822,7 @@ export class LocalWriter {
             this.writer = new TauriWriter(filePath)
             return true
         }
-        const writableStream = streamSaver.createWriteStream(name + '.' + ext[0])
-        this.writer = writableStream.getWriter()
+        this.writer = await openWebExportWriter(name + '.' + ext[0])
         return true
     }
 
@@ -2875,12 +2839,7 @@ export class LocalWriter {
         if (encodedName.byteLength > 0xFFFFFFFF || data.byteLength > 0xFFFFFFFF) {
             throw new Error(`Backup entry "${name}" is too large to store (a single backup entry is limited to 4 GiB).`)
         }
-        const nameLength = new Uint32Array([encodedName.byteLength])
-        await this.writer.write(new Uint8Array(nameLength.buffer))
-        await this.writer.write(encodedName)
-        const dataLength = new Uint32Array([data.byteLength])
-        await this.writer.write(new Uint8Array(dataLength.buffer))
-        await this.writer.write(data)
+        await writeBackupEntry(this.writer, encodedName, data)
     }
 
     /**

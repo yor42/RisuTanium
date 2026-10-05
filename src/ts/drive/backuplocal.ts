@@ -1,10 +1,13 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
 import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
-import { isTauri } from "src/ts/platform"
+import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
 import { getAppStore } from "../storage/store/appStore";
 import { StoreInvalidKeyError } from "../storage/store/errors";
+import { NodeHttpError } from "../storage/store/nodeHttpStore";
+import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { repairBotPresetsId } from "../storage/botPresetRepair";
 import { describeOmitted } from "../storage/bootBlockLoad";
@@ -12,11 +15,10 @@ import { treeToBlockSet } from "../storage/treeToBlockSet";
 import { completeRestoredTree, currentCharacterNames, leftOutQuestion, replaceWithRestoredSet } from "./restoreReplace";
 import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { sleep } from "../util";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
-import { BACKUP_ENCRYPTION_MARKER_NAME, decodeEntryName, findEncryptionMarkerEntry, parseBackupEntryHeader, type BackupEntryHeader } from "./backupContainer";
+import { BACKUP_ENCRYPTION_MARKER_NAME, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
@@ -399,6 +401,78 @@ export const RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS = 2000;
 const SKIPPED_ASSET_NAMES_SHOWN = 20;
 const SKIPPED_ASSET_NAME_CHARS_SHOWN = 100;
 
+/** The restore pass yields to the event loop once this much time has passed since its last yield. */
+const RESTORE_YIELD_INTERVAL_MS = 50;
+
+/** Entry names longer than this can be neither `database.risudat` nor a cold-storage unit, so the oversized-asset scan reads no more of them. */
+const OVERSIZED_NAME_READ_BYTES = 1024;
+
+/** Why a restore left an asset out: the store cannot hold its name, or the Node server cannot take a body that large. */
+type SkippedAssetReason = 'invalidName' | 'tooLarge';
+interface SkippedAsset { name: string; reason: SkippedAssetReason }
+
+type IndexedEntryCheck =
+    | { kind: 'ok'; header: BackupEntryHeader }
+    | { kind: 'marker' }
+    | { kind: 'changed' };
+
+/**
+ * Parses the bytes read for one indexed entry. A complete name that decodes to
+ * the marker counts as the marker whether or not its data-length field or
+ * body is present (the binding rule in backupContainer.ts), and is decided
+ * before any comparison with the index. Otherwise the header must carry the
+ * very lengths the walk indexed and `bytes` must be exactly `expectedLength`
+ * long, or the file is not what the walk saw.
+ */
+function checkIndexedEntry(bytes: Uint8Array, entry: BackupIndexEntry, expectedLength: number): IndexedEntryCheck {
+    const result = parseBackupEntryHeader(bytes);
+    if (result.status !== 'ok') {
+        if (result.stage === 'dataLength' && !result.nameSkipped
+                && decodeEntryName(bytes, result.nameLength) === BACKUP_ENCRYPTION_MARKER_NAME) {
+            return { kind: 'marker' };
+        }
+        return { kind: 'changed' };
+    }
+    const header = result.header;
+    if (header.name === BACKUP_ENCRYPTION_MARKER_NAME) {
+        return { kind: 'marker' };
+    }
+    if (header.nameLength !== entry.nameLength
+            || header.dataLength !== entry.dataLength
+            || header.headerLength !== entry.headerLength
+            || bytes.length !== expectedLength) {
+        return { kind: 'changed' };
+    }
+    return { kind: 'ok', header };
+}
+
+/**
+ * The asset entries whose body is over what the Node server takes in one
+ * request, with their names. Judged from the walk's index alone: a cold-storage
+ * unit is stored compressed, so its length in the backup says nothing about
+ * what is written, and the database is not an asset.
+ */
+async function listOversizedAssets(file: Blob, entries: readonly BackupIndexEntry[]): Promise<{ entry: BackupIndexEntry; name: string }[]> {
+    const found: { entry: BackupIndexEntry; name: string }[] = [];
+    for (const entry of entries) {
+        if (entry.dataLength <= NODE_BODY_LIMIT_BYTES) {
+            continue;
+        }
+        const nameStart = entry.headerOffset + 4;
+        const nameBytes = new Uint8Array(await file.slice(nameStart, nameStart + Math.min(entry.nameLength, OVERSIZED_NAME_READ_BYTES)).arrayBuffer());
+        const name = new TextDecoder().decode(nameBytes);
+        if (entry.nameLength <= OVERSIZED_NAME_READ_BYTES && (name === 'database.risudat' || getColdStorageBackupKey(name))) {
+            continue;
+        }
+        found.push({ entry, name });
+    }
+    return found;
+}
+
+function shownSkippedNames(names: readonly string[]): string[] {
+    return names.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name);
+}
+
 export function LoadLocalBackup(){
     // A restore replaces the database under any work still writing into it.
     // It is refused before the picker opens, again when the picker returns,
@@ -419,7 +493,7 @@ export function LoadLocalBackup(){
             const file = input.files[0];
             input.remove();
 
-            // A page that runs from OPFS this time writes nothing, and a restore is refused before it streams anything.
+            // A page that runs from OPFS this time writes nothing, and a restore is refused before it reads or writes anything.
             if (await refuseOnReadOnlyPage()) {
                 return;
             }
@@ -435,9 +509,10 @@ export function LoadLocalBackup(){
             // the same as finding the marker: nothing is written. This scan
             // takes no lock and runs before the cross-tab guard below.
             let hasEncryptionMarker: boolean;
+            let backupEntries: BackupIndexEntry[];
             try {
                 let lastWalkProgressText: string | null = null;
-                hasEncryptionMarker = await findEncryptionMarkerEntry(file, {
+                const walk = await indexBackupEntries(file, {
                     onProgress: (scanned, total) => {
                         const progress = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
                         const progressText = `Checking local backup... (${progress}%)`;
@@ -447,6 +522,8 @@ export function LoadLocalBackup(){
                         }
                     }
                 });
+                hasEncryptionMarker = walk.hasMarker;
+                backupEntries = walk.entries;
             } catch (e) {
                 console.error(e);
                 alertError(language.backupFileUnreadable);
@@ -455,6 +532,28 @@ export function LoadLocalBackup(){
             if (hasEncryptionMarker) {
                 alertError(language.encryptedBackupRefused);
                 return;
+            }
+
+            // On a Node server a body over the server's request limit can never
+            // be stored. Those assets are named before anything is written, and
+            // the restore goes on without them only if the user agrees.
+            const oversizedAssetNames = new Map<number, string>();
+            if (isNodeServer) {
+                try {
+                    for (const { entry, name } of await listOversizedAssets(file, backupEntries)) {
+                        oversizedAssetNames.set(entry.headerOffset, name);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alertError(language.backupFileUnreadable);
+                    return;
+                }
+                if (oversizedAssetNames.size > 0) {
+                    const names = Array.from(oversizedAssetNames.values());
+                    if (!await alertConfirm(language.restoreOversizedAssetsConfirm(names.length, shownSkippedNames(names), NODE_BODY_LIMIT_BYTES))) {
+                        return;
+                    }
+                }
             }
 
             // Nothing else on this browser origin may write the database, or
@@ -500,130 +599,117 @@ export function LoadLocalBackup(){
             let restoreInstalled = false;
             let writeLockStaysClosed = false;
             try {
-                const reader = file.stream().getReader();
-                let bytesRead = 0;
-                let remainingBuffer = new Uint8Array();
                 let pendingDatabase: Uint8Array | null = null;
                 const restoredColdStorageKeys = new Set<string>();
-                const skippedAssetNames: string[] = [];
+                const skippedAssets: SkippedAsset[] = [];
+                const yieldBudget = createYieldBudget({ budgetMs: RESTORE_YIELD_INTERVAL_MS, yieldFn: yieldToEventLoop });
+                let lastProgressText: string | null = null;
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) {
-                        break;
+                // One indexed entry per read. The walk above cleared the file, but
+                // the file can still change under this pass, so every entry's
+                // header is checked again before anything of it is written: a
+                // marker stops the restore, and so does any header that differs
+                // from the index or a body that cannot be read.
+                for (const entry of backupEntries) {
+                    const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
+                    const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
+                    if (progressText !== lastProgressText) {
+                        lastProgressText = progressText;
+                        alertWait(progressText);
                     }
 
-                    bytesRead += value.length;
-                    const progress = ((bytesRead / file.size) * 100).toFixed(2);
-                    alertWait(`Loading local Backup... (${progress}%)`);
-
-                    const newBuffer = new Uint8Array(remainingBuffer.length + value.length);
-                    newBuffer.set(remainingBuffer);
-                    newBuffer.set(value, remainingBuffer.length);
-                    remainingBuffer = newBuffer;
-
-                    // Resolve every entry currently complete in remainingBuffer
-                    // before writing any of them: a stream this walk already
-                    // cleared can still disagree with the walk if the File's
-                    // slice() and stream() views diverge, so this loop must
-                    // independently refuse to write anything from a batch that
-                    // itself contains the marker, including entries that sit
-                    // before it in file order. A complete marker name counts as
-                    // a match whether or not its data-length field or body fits
-                    // in the batch, so the name is always checked before either
-                    // of those is checked.
-                    const resolvedEntries: { header: BackupEntryHeader; dataStart: number }[] = [];
-                    let scanOffset = 0;
-                    let markerInBatch = false;
-                    while (true) {
-                        const entryBuffer = remainingBuffer.subarray(scanOffset);
-                        const result = parseBackupEntryHeader(entryBuffer);
-                        if (result.status === 'ok') {
-                            if (result.header.name === BACKUP_ENCRYPTION_MARKER_NAME) {
-                                markerInBatch = true;
-                                break;
-                            }
-                            const dataStart = scanOffset + result.header.headerLength;
-                            const bodyEnd = dataStart + result.header.dataLength;
-                            if (bodyEnd > remainingBuffer.length) {
-                                break;
-                            }
-                            resolvedEntries.push({ header: result.header, dataStart });
-                            scanOffset = bodyEnd;
-                            continue;
-                        }
-                        if (result.stage === 'dataLength' && !result.nameSkipped
-                                && decodeEntryName(entryBuffer, result.nameLength) === BACKUP_ENCRYPTION_MARKER_NAME) {
-                            markerInBatch = true;
-                        }
-                        break;
-                    }
-
-                    if (markerInBatch) {
-                        alertError(language.encryptedBackupImportStopped);
+                    // An asset left out for its size is not read; its header still is.
+                    const isSkippedForSize = oversizedAssetNames.has(entry.headerOffset);
+                    const readEnd = isSkippedForSize ? entry.headerOffset + entry.headerLength : entryEnd;
+                    let entryBytes: Uint8Array;
+                    try {
+                        entryBytes = new Uint8Array(await file.slice(entry.headerOffset, readEnd).arrayBuffer());
+                    } catch (error) {
+                        console.error(error);
+                        alertError(language.backupFileChangedWhileReading);
                         return;
                     }
 
-                    for (const { header, dataStart } of resolvedEntries) {
-                        const name = header.name;
-                        if (name === undefined) {
-                            // parseBackupEntryHeader is called above with no name-length
-                            // limit, so every entry name here is always decoded; this
-                            // only narrows the type.
-                            continue;
-                        }
-                        const data = remainingBuffer.slice(dataStart, dataStart + header.dataLength);
-
-                        if (name === 'database.risudat') {
-                            pendingDatabase = new Uint8Array(data);
-                        }
-
-                        else {
-                            const coldStorageKey = getColdStorageBackupKey(name)
-                            let handledAsColdStorage = false
-
-                            if (coldStorageKey) {
-                                handledAsColdStorage = true
-                                try {
-                                    const text = new TextDecoder().decode(data)
-                                    const jsonData = JSON.parse(text)
-
-                                    if (isAcceptedColdStorageBackupEntry(name, jsonData)) {
-                                        if(await setColdStorageItem(coldStorageKey, jsonData)){
-                                            restoredColdStorageKeys.add(coldStorageKey)
-                                        } else {
-                                            console.error(`Failed to restore cold storage item ${coldStorageKey}`)
-                                        }
-                                    } else {
-                                        console.warn(`Skipping invalid cold storage backup item ${name}`)
-                                    }
-                                } catch (e) {
-                                    console.error(`Failed to parse cold storage item ${coldStorageKey}:`, e)
-                                }
-                            }
-
-                            if (!handledAsColdStorage) {
-                                // The entry name comes from the file. A name the store
-                                // cannot hold (a leading dot, a character the desktop
-                                // file system forbids, a reserved temp name) skips that
-                                // entry and is reported after the database is written;
-                                // any other failure aborts the restore.
-                                const assetKey = 'assets/' + name
-                                noteAssetWrittenThisPage(assetKey)
-                                try {
-                                    await (await getAppStore()).write(assetKey, data, 'unconditional')
-                                } catch (error) {
-                                    if (!(error instanceof StoreInvalidKeyError)) {
-                                        throw error
-                                    }
-                                    console.error(error)
-                                    skippedAssetNames.push(name)
-                                }
-                            }
-                        }
-                        await sleep(10);
+                    const checked = checkIndexedEntry(entryBytes, entry, readEnd - entry.headerOffset);
+                    if (checked.kind === 'marker') {
+                        alertError(language.encryptedBackupImportStopped);
+                        return;
                     }
-                    remainingBuffer = remainingBuffer.slice(scanOffset);
+                    if (checked.kind === 'changed') {
+                        alertError(language.backupFileChangedWhileReading);
+                        return;
+                    }
+                    const name = checked.header.name;
+                    if (name === undefined) {
+                        // parseBackupEntryHeader is called with no name-length
+                        // limit, so every entry name here is always decoded; this
+                        // only narrows the type.
+                        continue;
+                    }
+                    if (isSkippedForSize) {
+                        skippedAssets.push({ name, reason: 'tooLarge' });
+                        await yieldBudget.maybeYield();
+                        continue;
+                    }
+                    // A view over the bytes just read: nothing of the entry is copied.
+                    const data = entryBytes.subarray(checked.header.headerLength);
+
+                    if (name === 'database.risudat') {
+                        pendingDatabase = data;
+                    }
+
+                    else {
+                        const coldStorageKey = getColdStorageBackupKey(name)
+                        let handledAsColdStorage = false
+
+                        if (coldStorageKey) {
+                            handledAsColdStorage = true
+                            try {
+                                const text = new TextDecoder().decode(data)
+                                const jsonData = JSON.parse(text)
+
+                                if (isAcceptedColdStorageBackupEntry(name, jsonData)) {
+                                    if(await setColdStorageItem(coldStorageKey, jsonData)){
+                                        restoredColdStorageKeys.add(coldStorageKey)
+                                    } else {
+                                        console.error(`Failed to restore cold storage item ${coldStorageKey}`)
+                                    }
+                                } else {
+                                    console.warn(`Skipping invalid cold storage backup item ${name}`)
+                                }
+                            } catch (e) {
+                                console.error(`Failed to parse cold storage item ${coldStorageKey}:`, e)
+                            }
+                        }
+
+                        if (!handledAsColdStorage) {
+                            // The entry name comes from the file. A name the store
+                            // cannot hold (a leading dot, a character the desktop
+                            // file system forbids, a reserved temp name) skips that
+                            // entry and is reported after the database is written;
+                            // a 413 for a body under the Node server's own limit
+                            // means a proxy or the server refused the size, and the
+                            // restore stops saying so; any other failure aborts the
+                            // restore.
+                            const assetKey = 'assets/' + name
+                            noteAssetWrittenThisPage(assetKey)
+                            try {
+                                await (await getAppStore()).write(assetKey, data, 'unconditional')
+                            } catch (error) {
+                                if (error instanceof NodeHttpError && error.status === 413 && error.operation === 'write') {
+                                    console.error(error)
+                                    alertError(language.restoreAssetRefusedTooLarge(name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name))
+                                    return
+                                }
+                                if (!(error instanceof StoreInvalidKeyError)) {
+                                    throw error
+                                }
+                                console.error(error)
+                                skippedAssets.push({ name, reason: 'invalidName' })
+                            }
+                        }
+                    }
+                    await yieldBudget.maybeYield();
                 }
 
                 if(!pendingDatabase){
@@ -746,11 +832,13 @@ export function LoadLocalBackup(){
 
                 // Awaited here, before the wait notice below and the reload that
                 // would hide it. Plain text: the names come from the file.
-                if (skippedAssetNames.length > 0) {
-                    await alertNormalWait(language.restoreAssetsSkipped(
-                        skippedAssetNames.length,
-                        skippedAssetNames.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name),
-                    ));
+                const skippedInvalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
+                const skippedTooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
+                if (skippedInvalidNames.length > 0) {
+                    await alertNormalWait(language.restoreAssetsSkipped(skippedInvalidNames.length, shownSkippedNames(skippedInvalidNames)));
+                }
+                if (skippedTooLargeNames.length > 0) {
+                    await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), NODE_BODY_LIMIT_BYTES));
                 }
 
                 alertStore.set({

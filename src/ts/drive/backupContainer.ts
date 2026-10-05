@@ -8,13 +8,12 @@
  * decode to the same string.
  *
  * `LoadLocalBackup`'s pre-read walk (over `Blob.slice()`, see
- * `findEncryptionMarkerEntry`) and its streaming loop (over the buffer it
- * accumulates from `File.stream()`) both resolve every header through
+ * `indexBackupEntries`) and its restore pass (which re-reads each indexed
+ * entry through `Blob.slice()`) both resolve every header through
  * `parseBackupEntryHeader`, which parses any given bytes the same way for
  * either caller: given the same bytes, the two agree on where one entry
- * ends and the next begins, and on what an entry is named. What each caller
- * sees can still diverge if `Blob.slice()` and `File.stream()` disagree
- * about the file's contents.
+ * ends and the next begins, and on what an entry is named. What each pass
+ * sees can still diverge if the file changes between the two reads.
  *
  * Binding rule: whenever a COMPLETE entry name decodes to exactly
  * `BACKUP_ENCRYPTION_MARKER_NAME`, that counts as the marker, whatever
@@ -25,8 +24,8 @@
  * name that resolved but whose data-length field did not must decode that
  * name itself with `decodeEntryName`, using the `nameLength` an
  * `'incomplete'`, `stage:'dataLength'`, `nameSkipped:false` result already
- * carries; both `findEncryptionMarkerEntry` and `LoadLocalBackup`'s
- * streaming loop do exactly that.
+ * carries; both `indexBackupEntries` and `LoadLocalBackup`'s restore pass do
+ * exactly that.
  *
  * This module has no side effects and imports nothing from the app: it
  * only reads the bytes it is given, or the bytes a `Blob` it is given
@@ -48,7 +47,7 @@ export const BACKUP_ENCRYPTION_MARKER_NAME = 'encryption.risudat'
 export const MAX_MARKER_NAME_BYTES = 21
 
 /**
- * Default window size, in bytes, `findEncryptionMarkerEntry` reads at a
+ * Default window size, in bytes, `indexBackupEntries` reads at a
  * time. A window only ever has to hold a length field or a short candidate
  * name to resolve a header -- for a small entry, the same window can also
  * include that entry's body and the start of the entries that follow -- so
@@ -146,6 +145,25 @@ export interface BackupWalkOptions {
 }
 
 /**
+ * Where one complete entry sits in the file, as the walk saw it. A restore
+ * reads `[headerOffset, headerOffset + headerLength + dataLength)` to get the
+ * entry and compares what it parses there with these figures.
+ */
+export interface BackupIndexEntry {
+    headerOffset: number
+    nameLength: number
+    dataLength: number
+    headerLength: number
+}
+
+export interface BackupWalkResult {
+    /** `true` as soon as a complete entry name decodes to `BACKUP_ENCRYPTION_MARKER_NAME`; `entries` is then empty. */
+    hasMarker: boolean
+    /** Every entry whose header and whole body fit in the file, in file order. A truncated trailing entry is not listed. */
+    entries: BackupIndexEntry[]
+}
+
+/**
  * Scans `file`'s entry headers for `BACKUP_ENCRYPTION_MARKER_NAME`, reading
  * through `Blob.slice()` in bounded windows: one `DEFAULT_BACKUP_WALK_WINDOW_BYTES`
  * window at each entry header, plus a 4-byte read for a long name's
@@ -161,18 +179,22 @@ export interface BackupWalkOptions {
  * past the file's end -- ends the walk and resolves `false`, unless the
  * entry's name is itself complete and is the marker: a truncated trailing
  * entry resolves `false` unless its complete name is the marker, so
- * nothing further to scan remains. This matches `LoadLocalBackup`'s own
- * streaming loop, which silently drops a truncated trailing entry rather
- * than treating it as corruption.
+ * nothing further to scan remains. A truncated trailing entry is not in the
+ * index, so `LoadLocalBackup` silently drops it rather than treating it as
+ * corruption.
  *
  * Any exception `file.slice(...).arrayBuffer()` throws propagates to the
  * caller uncaught: a walk that could not finish reading the file must never
  * resolve `false`, since that would be read as "no marker" and let the
  * import proceed.
+ *
+ * The walk also records each entry it steps over (`BackupIndexEntry`), so a
+ * restore can read one entry at a time without scanning the file again.
  */
-export async function findEncryptionMarkerEntry(file: Blob, options: BackupWalkOptions = {}): Promise<boolean> {
+export async function indexBackupEntries(file: Blob, options: BackupWalkOptions = {}): Promise<BackupWalkResult> {
     const totalBytes = file.size
     const initialWindowBytes = Math.max(4, options.windowBytes ?? DEFAULT_BACKUP_WALK_WINDOW_BYTES)
+    const entries: BackupIndexEntry[] = []
     let pos = 0
 
     while (pos < totalBytes) {
@@ -186,12 +208,18 @@ export async function findEncryptionMarkerEntry(file: Blob, options: BackupWalkO
 
             if (result.status === 'ok') {
                 if (result.header.name === BACKUP_ENCRYPTION_MARKER_NAME) {
-                    return true
+                    return { hasMarker: true, entries: [] }
                 }
                 const bodyEnd = pos + result.header.headerLength + result.header.dataLength
                 if (bodyEnd > totalBytes) {
-                    return false
+                    return { hasMarker: false, entries }
                 }
+                entries.push({
+                    headerOffset: pos,
+                    nameLength: result.header.nameLength,
+                    dataLength: result.header.dataLength,
+                    headerLength: result.header.headerLength,
+                })
                 pos = bodyEnd
                 options.onProgress?.(pos, totalBytes)
                 break
@@ -201,14 +229,15 @@ export async function findEncryptionMarkerEntry(file: Blob, options: BackupWalkO
                 const fieldStart = pos + 4 + result.nameLength
                 const fieldEnd = fieldStart + 4
                 if (fieldEnd > totalBytes) {
-                    return false
+                    return { hasMarker: false, entries }
                 }
                 const fieldBuffer = new Uint8Array(await file.slice(fieldStart, fieldEnd).arrayBuffer())
                 const dataLength = readUint32LE(fieldBuffer, 0)
                 const bodyEnd = fieldEnd + dataLength
                 if (bodyEnd > totalBytes) {
-                    return false
+                    return { hasMarker: false, entries }
                 }
+                entries.push({ headerOffset: pos, nameLength: result.nameLength, dataLength, headerLength: 4 + result.nameLength + 4 })
                 pos = bodyEnd
                 options.onProgress?.(pos, totalBytes)
                 break
@@ -219,16 +248,21 @@ export async function findEncryptionMarkerEntry(file: Blob, options: BackupWalkO
                 // The name is complete and is the marker: it counts as a
                 // match whether or not the data-length field that follows
                 // it fits in the file.
-                return true
+                return { hasMarker: true, entries: [] }
             }
 
             const moreAvailableBeyondWindow = windowLength < remaining
             if (!moreAvailableBeyondWindow) {
-                return false
+                return { hasMarker: false, entries }
             }
             windowBytes = Math.max(windowBytes * 2, result.need)
         }
     }
 
-    return false
+    return { hasMarker: false, entries }
+}
+
+/** `true` when `file` carries an entry whose complete name is `BACKUP_ENCRYPTION_MARKER_NAME`; see `indexBackupEntries` for the walk's rules. */
+export async function findEncryptionMarkerEntry(file: Blob, options: BackupWalkOptions = {}): Promise<boolean> {
+    return (await indexBackupEntries(file, options)).hasMarker
 }

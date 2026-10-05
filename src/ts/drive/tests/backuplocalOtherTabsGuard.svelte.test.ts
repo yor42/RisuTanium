@@ -137,8 +137,19 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
     open: vi.fn(async () => { }),
 }))
 
-vi.mock('streamsaver', () => ({
-    default: {},
+vi.mock('src/ts/vendor/streamSaver', () => ({
+    default: {
+        useBlobFallback: false,
+        createWriteStream: () => ({
+            ready: Promise.resolve(),
+            writable: {
+                getWriter: () => ({
+                    write: async () => { },
+                    close: async () => { },
+                }),
+            },
+        }),
+    },
 }))
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
@@ -271,21 +282,18 @@ function makeFakeFile(bytes: Uint8Array): File {
     return new File([asBlobPart(bytes)], 'backup.bin')
 }
 
-/** A real File whose `stream()` reads `streamBytes` while `slice()` reads a differently-shaped `sliceBytes` -- models a `File`/`Blob` whose two read paths disagree, matching `backuplocalEncryptedRefusal.test.ts`'s own harness for the same reason. */
-function fileWithDivergentViews(streamBytes: Uint8Array, sliceBytes: Uint8Array, name = 'backup.bin'): File {
-    const base = new File([asBlobPart(streamBytes)], name)
+/** A real File whose `slice()` reads `walkBytes` for its first `walkSliceCalls` calls (the pre-read walk) and `restoreBytes` afterwards (the restore pass) -- models a file that changes between the two, matching `backuplocalEncryptedRefusal.test.ts`'s own harness for the same reason. */
+function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, walkSliceCalls: number, name = 'backup.bin'): File {
+    const base = new File([asBlobPart(walkBytes)], name)
+    let sliceCalls = 0
     return new Proxy(base, {
         get(target, prop, receiver) {
-            if (prop === 'stream') {
-                return () => new ReadableStream<Uint8Array>({
-                    start(controller) {
-                        controller.enqueue(streamBytes)
-                        controller.close()
-                    },
-                })
-            }
             if (prop === 'slice') {
-                return (start = 0, end = sliceBytes.length) => new Blob([asBlobPart(sliceBytes.slice(start, end))])
+                return (start = 0, end = walkBytes.length) => {
+                    const source = sliceCalls < walkSliceCalls ? walkBytes : restoreBytes
+                    sliceCalls += 1
+                    return new Blob([asBlobPart(source.slice(start, end))])
+                }
             }
             return Reflect.get(target, prop, receiver)
         },
@@ -581,19 +589,20 @@ describe('J5: every early exit leaves this page, and the origin, still usable (g
     test('guard: a marker caught by the import loop\'s own independent guard leaves this page usable', async () => {
         const db = { characters: [] } as unknown as Database
         const dbBytes = tabA.encodeRisuSaveLegacy(db, 'noCompression')
-        const streamBytes = concatChunks([
+        // The upfront walk (its first three slice() calls) sees no marker; the
+        // restore pass then reads a marker at the second entry's offset, so
+        // only the restore pass's own independent guard (I3, defense in depth)
+        // can catch it here.
+        const walkBytes = concatChunks([
+            buildChunk('asset.png', new Uint8Array(16)),
+            buildChunk('asset2.png', new Uint8Array(16)),
+            buildChunk('database.risudat', dbBytes),
+        ])
+        const restoreBytes = concatChunks([
             buildChunk('asset.png', new Uint8Array(16)),
             buildChunk('encryption.risudat', new TextEncoder().encode(JSON.stringify({ type: 'account', time: Date.now() }))),
-            buildChunk('database.risudat', dbBytes),
         ])
-        // The upfront walk's own slice() view never sees the marker, so only
-        // the streaming loop's independent guard (I3, defense in depth) can
-        // catch it here.
-        const sliceBytes = concatChunks([
-            buildChunk('asset.png', new Uint8Array(16)),
-            buildChunk('database.risudat', dbBytes),
-        ])
-        const file = fileWithDivergentViews(streamBytes, sliceBytes)
+        const file = fileWithTimeDivergentSlice(walkBytes, restoreBytes, 3)
 
         await loadBackupFile(tabA.loadLocalBackup, file)
 

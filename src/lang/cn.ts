@@ -1062,6 +1062,8 @@ export const languageChinese = {
     "removeGroup": "删除群组",
     "exportCharacter": "导出角色",
     "successExport": "已成功导出并保存至你的下载数据夹",
+    "exportHeldInMemory": "此浏览器无法在导出的同时边生成边保存，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
+    "exportHelperNotResponding": "下载辅助程序没有响应，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
     "successImport": "成功导入",
     "importedCharacter": "导入角色",
     "alwaysActive": "始终激活",
@@ -1848,7 +1850,14 @@ export const languageChinese = {
     "restoreSavedReloadOrRestart": "备份已恢复并保存，但应用无法自动重新加载。请重新加载页面（或重启应用）以完成操作。",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `备份已恢复，但有 ${count} 个资源文件因其名称无法被本应用保存而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
-    "internalBackupUnreadable": "此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
+    "backupFileChangedWhileReading": "备份文件在读取过程中发生了变化，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。",
+    "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
+        `此备份中有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色会将其显示为缺失。是否在不包含它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `备份已恢复，但有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreAssetRefusedTooLarge": (name: string) =>
+        `服务器或其前端的代理以资源文件“${name}”过大为由拒绝了它，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
+    "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
     "internalBackupWriteFailed": "无法保存该备份。当前数据未被更改。",
     "internalBackupListFailed": "无法读取备份列表。未更改任何内容。",
     "internalBackupWaitingForCleanup": "正在完成启动清理，之后将读取备份...",

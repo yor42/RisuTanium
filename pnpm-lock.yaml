@@ -179,9 +179,6 @@ importers:
       sortablejs:
         specifier: ^1.15.6
         version: 1.15.6
-      streamsaver:
-        specifier: ^2.0.6
-        version: 2.0.6
       sucrase:
         specifier: ^3.35.1
         version: 3.35.1
@@ -252,9 +249,6 @@ importers:
       '@types/sortablejs':
         specifier: ^1.15.9
         version: 1.15.9
-      '@types/streamsaver':
-        specifier: ^2.0.5
-        version: 2.0.5
       '@types/three':
         specifier: ^0.154.0
         version: 0.154.0
@@ -1523,9 +1517,6 @@ packages:
   '@types/stats.js@0.17.4':
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
 
-  '@types/streamsaver@2.0.5':
-    resolution: {integrity: sha512-93o0zjV8swEhR2YI57h/2ytbJF8bJh7sI9GNB02TLJHdM4fWDxZuChwfWhyD8vt2ub4kw4rsfZ0C0yAUX+3gcg==}
-
   '@types/three@0.154.0':
     resolution: {integrity: sha512-IioqpGhch6FdLDh4zazRn3rXHj6Vn2nVOziJdXVbJFi9CaI65LtP9qqUtpzbsHK2Ezlox8NtsLNHSw3AQzucjA==}
 
@@ -2561,9 +2552,6 @@ packages:
 
   std-env@4.0.0:
     resolution: {integrity: sha512-zUMPtQ/HBY3/50VbpkupYHbRroTRZJPRLvreamgErJVys0ceuzMkD44J/QjqhHjOzK42GQ3QZIeFG1OYfOtKqQ==}
-
-  streamsaver@2.0.6:
-    resolution: {integrity: sha512-LK4e7TfCV8HzuM0PKXuVUfKyCB1FtT9L0EGxsFk5Up8njj0bXK8pJM9+Wq2Nya7/jslmCQwRK39LFm55h7NBTw==}
 
   strip-final-newline@2.0.0:
     resolution: {integrity: sha512-BrpvfNAE3dcvq7ll3xVumzjKjZQ5tI1sEUIKr3Uoks0XUl45St3FlatVqef9prk4jRDzhW6WZg+3bk93y6pLjA==}
@@ -3734,8 +3722,6 @@ snapshots:
 
   '@types/stats.js@0.17.4': {}
 
-  '@types/streamsaver@2.0.5': {}
-
   '@types/three@0.154.0':
     dependencies:
       '@tweenjs/tween.js': 18.6.4
@@ -4839,8 +4825,6 @@ snapshots:
   statuses@2.0.2: {}
 
   std-env@4.0.0: {}
-
-  streamsaver@2.0.6: {}
 
   strip-final-newline@2.0.0: {}
 

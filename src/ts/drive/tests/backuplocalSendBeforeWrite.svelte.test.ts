@@ -454,8 +454,19 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
     open: vi.fn(async () => {}),
 }))
 
-vi.mock('streamsaver', () => ({
-    default: {},
+vi.mock('src/ts/vendor/streamSaver', () => ({
+    default: {
+        useBlobFallback: false,
+        createWriteStream: () => ({
+            ready: Promise.resolve(),
+            writable: {
+                getWriter: () => ({
+                    write: async () => { },
+                    close: async () => { },
+                }),
+            },
+        }),
+    },
 }))
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
@@ -553,6 +564,8 @@ import { loadInternalBackup } from 'src/ts/drive/internalBackup'
 import { setDatabase } from 'src/ts/storage/database.svelte'
 import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
+import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { isWriting } from 'src/ts/process/chatOrigin'
 
 //#region fixtures
@@ -989,6 +1002,14 @@ async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
 beforeEach(() => {
     forageMemStore.clear()
     forageHooks.onGetItem = undefined
+    // The restore writes its assets and then a block generation through the page's byte store; here it is the in-memory model above.
+    // The page is a desktop-kind one with a fresh block owner and page mode, so a restore that reaches its commit can commit.
+    injectRestoreStore(createForageBackedStore({
+        getItem: async (key) => forageMemStore.get(key) ?? null,
+        setItem: async (key, value) => { forageMemStore.set(key, value) },
+        keys: async () => Array.from(forageMemStore.keys()),
+        removeItem: async (key) => { forageMemStore.delete(key) },
+    }))
     decodeHooks.onDecode = undefined
     coldHooks.onConfirmIncomplete = undefined
     requiresFullEncoderReload.state = false
@@ -1032,9 +1053,22 @@ describe('LoadLocalBackup and a send that starts before the database write', () 
         await drain(running as Promise<boolean>)
 
         expect(sendStarted, 'the send started before the database write').toBe(true)
-        expect.soft(written, 'the main file or a block of the restored profile was written').toBe(false)
+        expect.soft(written, 'a block of the restored profile was written').toBe(false)
         expect.soft(installed, 'setDatabase calls').toBe(0)
         expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
         expect.soft(reloadFlag, 'requiresFullEncoderReload').toBe(false)
+    })
+
+    // A restore that commits keeps dbWriteLock closed for the life of the module instance, so this control stays the last test of the file.
+    test('control: the same restore with no send commits its block generation, so the refusal above is the busy guard and not a broken setup', async () => {
+        installWorld()
+        const { fixture } = localBackupBytes('restored-marker-before-write-control')
+
+        await loadBackupBytes(fixture).catch(() => {})
+
+        const keys = Array.from(forageMemStore.keys())
+        expect(keys).toContain('blocks/head')
+        expect(keys).not.toContain('database/database.bin')
+        expect(vi.mocked(setDatabase).mock.calls.length).toBeGreaterThan(0)
     })
 })

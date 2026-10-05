@@ -1107,6 +1107,8 @@ export const languageChineseTraditional = {
     "removeGroup": "刪除群組",
     "exportCharacter": "匯出角色",
     "successExport": "匯出成功，檔案已下載至您的下載資料夾",
+    "exportHeldInMemory": "此瀏覽器無法在匯出的同時邊產生邊儲存，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
+    "exportHelperNotResponding": "下載輔助程式沒有回應，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
     "successImport": "匯入成功",
     "importedCharacter": "已匯入角色",
     "alwaysActive": "一律啟用",
@@ -1893,7 +1895,14 @@ export const languageChineseTraditional = {
     "restoreSavedReloadOrRestart": "備份已復原並儲存，但應用程式無法自動重新載入。請重新載入頁面（或重新啟動應用程式）以完成。",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `備份已復原，但有 ${count} 個資源檔案因其名稱無法被本應用程式儲存而未能復原。使用這些檔案的角色會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
-    "internalBackupUnreadable": "此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
+    "backupFileChangedWhileReading": "備份檔案在讀取過程中發生了變化，因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。",
+    "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
+        `此備份中有 ${count} 個資源檔案超過了此伺服器單次請求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此無法在此處復原。使用這些檔案的角色會將其顯示為遺失。是否在不包含它們的情況下繼續？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `備份已復原，但有 ${count} 個資源檔案超過了此伺服器單次請求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能復原。使用這些檔案的角色會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreAssetRefusedTooLarge": (name: string) =>
+        `伺服器或其前端的代理以資源檔案「${name}」過大為由拒絕了它，因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。`,
+    "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
     "internalBackupWriteFailed": "無法儲存此備份。目前的資料未被變更。",
     "internalBackupListFailed": "無法讀取備份清單。未變更任何內容。",
     "internalBackupWaitingForCleanup": "正在完成啟動清理作業，之後將載入備份...",

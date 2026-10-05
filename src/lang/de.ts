@@ -1062,6 +1062,8 @@ export const languageGerman = {
     "removeGroup": "Gruppe entfernen",
     "exportCharacter": "Charakter exportieren",
     "successExport": "Erfolgreich exportiert und in Ihrem Download-Verzeichnis gespeichert",
+    "exportHeldInMemory": "Dieser Browser kann den Export nicht schon während der Erstellung speichern. Er wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
+    "exportHelperNotResponding": "Der Download-Helfer hat nicht geantwortet. Der Export wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
     "successImport": "Erfolgreich importiert",
     "importedCharacter": "Importierter Charakter",
     "alwaysActive": "Immer aktiv",
@@ -1848,7 +1850,14 @@ export const languageGerman = {
     "restoreSavedReloadOrRestart": "Ihr Backup wurde wiederhergestellt und gespeichert, aber die App konnte nicht automatisch neu geladen werden. Bitte laden Sie die Seite neu (oder starten Sie die App neu), um den Vorgang abzuschließen.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Asset-Datei(en), deren Namen diese App nicht speichern kann. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
-    "internalBackupUnreadable": "Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
+    "backupFileChangedWhileReading": "Die Backup-Datei hat sich während des Lesens geändert, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.",
+    "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
+        `${count} Asset-Datei(en) in diesem Backup sind größer als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert, und können daher hier nicht wiederhergestellt werden. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Ohne diese Dateien fortfahren?\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Asset-Datei(en), die größer sind als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreAssetRefusedTooLarge": (name: string) =>
+        `Der Server oder ein vorgeschalteter Proxy hat das Asset "${name}" als zu groß abgelehnt, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
+    "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupWriteFailed": "Das Backup konnte nicht gespeichert werden. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupListFailed": "Die Backup-Liste konnte nicht gelesen werden. Es wurde nichts verändert.",
     "internalBackupWaitingForCleanup": "Die Bereinigung beim Start wird abgeschlossen, bevor das Backup geladen wird...",

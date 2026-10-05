@@ -1062,6 +1062,8 @@ export const languageVietnamese = {
     "removeGroup": "Xóa nhóm",
     "exportCharacter": "Xuất ký tự",
     "successExport": "Đã xuất thành công và tải xuống thư mục tải xuống của bạn",
+    "exportHeldInMemory": "Trình duyệt này không thể lưu bản xuất ngay trong khi tạo, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
+    "exportHelperNotResponding": "Trình hỗ trợ tải xuống không phản hồi, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
     "successImport": "Đã nhập thành công",
     "importedCharacter": "Ký tự đã nhập",
     "alwaysActive": "Luôn luôn hoạt động",
@@ -1848,7 +1850,14 @@ export const languageVietnamese = {
     "restoreSavedReloadOrRestart": "Bản sao lưu của bạn đã được khôi phục và lưu, nhưng ứng dụng không thể tự động tải lại. Vui lòng tải lại trang (hoặc khởi động lại ứng dụng) để hoàn tất.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) có tên mà ứng dụng này không thể lưu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
-    "internalBackupUnreadable": "Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    "backupFileChangedWhileReading": "Tệp sao lưu đã thay đổi trong khi đang được đọc nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.",
+    "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
+        `${count} tệp tài nguyên (asset) trong bản sao lưu này lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu, nên không thể khôi phục tại đây. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Tiếp tục mà không có các tệp này?\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
+    "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
+    "restoreAssetRefusedTooLarge": (name: string) =>
+        `Máy chủ, hoặc proxy đặt trước nó, đã từ chối tệp tài nguyên (asset) "${name}" vì quá lớn nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
+    "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",
     "internalBackupWaitingForCleanup": "Đang hoàn tất dọn dẹp khi khởi động trước khi tải bản sao lưu...",

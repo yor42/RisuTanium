@@ -80,13 +80,17 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
     save: vi.fn(async () => 'backup-output.bin'),
 }))
 
-vi.mock('streamsaver', () => ({
+vi.mock('src/ts/vendor/streamSaver', () => ({
     default: {
+        useBlobFallback: false,
         createWriteStream: () => ({
-            getWriter: () => ({
-                write: async (chunk: Uint8Array) => { backupSink.writes.push(chunk.slice()) },
-                close: async () => { },
-            }),
+            ready: Promise.resolve(),
+            writable: {
+                getWriter: () => ({
+                    write: async (chunk: Uint8Array) => { backupSink.writes.push(chunk.slice()) },
+                    close: async () => { },
+                }),
+            },
         }),
     },
 }))

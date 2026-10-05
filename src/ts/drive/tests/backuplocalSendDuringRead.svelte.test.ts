@@ -5,8 +5,8 @@
  * backup file is being read.
  *
  * Drives the real `LoadLocalBackup` (`src/ts/drive/backuplocal.ts`) with the
- * real `globalApi.svelte.ts`; the file read is parked on the wait it makes after
- * each entry, and a real `sendChat` starts there. A restore that reaches its
+ * real `globalApi.svelte.ts`; the file read is parked on the store write of the
+ * first asset, and a real `sendChat` starts there. A restore that reaches its
  * write keeps `dbWriteLock` closed for the life of the module instance, so each
  * `LoadLocalBackup` scenario has a file of its own. Storage, the provider and the
  * modules they import are mocked; nothing here proves native (Tauri) file behaviour.
@@ -48,12 +48,14 @@ const downloadFileMock = vi.hoisted(() => vi.fn(async () => {}))
 const platformBox = vi.hoisted(() => ({ isTauri: false }))
 const isLastCharPunctuationMock = vi.hoisted(() => vi.fn())
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: ChatOutputArg) => unknown>())
-const interceptedSleeps = vi.hoisted(() => new Map<number, { gate: Promise<void>, markReached: () => void }>())
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_msg: string) => true))
 const alertSelectMock = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => '1'))
 const alertNormalMock = vi.hoisted(() => vi.fn())
 const forageMemStore = vi.hoisted(() => new Map<string, unknown>())
-const forageHooks = vi.hoisted(() => ({ onGetItem: undefined as undefined | ((key: string) => Promise<void> | void) }))
+const forageHooks = vi.hoisted(() => ({
+    onGetItem: undefined as undefined | ((key: string) => Promise<void> | void),
+    onSetItem: undefined as undefined | ((key: string) => Promise<void> | void),
+}))
 const decodeHooks = vi.hoisted(() => ({ onDecode: undefined as undefined | (() => Promise<void> | void) }))
 const coldHooks = vi.hoisted(() => ({ onConfirmIncomplete: undefined as undefined | (() => Promise<void> | void) }))
 
@@ -262,17 +264,7 @@ vi.mock(import('src/ts/util'), async () => {
         trimUntilPunctuation: vi.fn((s: string) => s),
         parseToggleSyntax: vi.fn(() => []),
         prebuiltAssetCommand: vi.fn(() => ''),
-        // `ms === 10` is the composer's own wait after it appends the message;
-        // a test parks it with `interceptedSleeps`. Any other duration is a
-        // real timer.
-        sleep: vi.fn((ms: number) => {
-            const intercepted = interceptedSleeps.get(ms)
-            if (intercepted) {
-                intercepted.markReached()
-                return intercepted.gate
-            }
-            return new Promise<void>((res) => setTimeout(res, ms))
-        }),
+        sleep: vi.fn((ms: number) => new Promise<void>((res) => setTimeout(res, ms))),
     } as unknown as typeof import('src/ts/util')
 })
 
@@ -454,8 +446,19 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
     open: vi.fn(async () => {}),
 }))
 
-vi.mock('streamsaver', () => ({
-    default: {},
+vi.mock('src/ts/vendor/streamSaver', () => ({
+    default: {
+        useBlobFallback: false,
+        createWriteStream: () => ({
+            ready: Promise.resolve(),
+            writable: {
+                getWriter: () => ({
+                    write: async () => { },
+                    close: async () => { },
+                }),
+            },
+        }),
+    },
 }))
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
@@ -551,6 +554,8 @@ import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
 import { loadInternalBackup } from 'src/ts/drive/internalBackup'
 import { setDatabase } from 'src/ts/storage/database.svelte'
+import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
+import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { isWriting } from 'src/ts/process/chatOrigin'
@@ -876,7 +881,6 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
-    interceptedSleeps.clear()
     held.length = 0
     resetLocalDraftsForTest()
     doingChat.set(false)
@@ -989,6 +993,18 @@ async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
 beforeEach(() => {
     forageMemStore.clear()
     forageHooks.onGetItem = undefined
+    forageHooks.onSetItem = undefined
+    // The restore writes its assets and then a block generation through the page's byte store; here it is the in-memory model above, with a hook on each write.
+    // The page is a desktop-kind one with a fresh block owner and page mode, so a restore that reaches its commit can commit.
+    injectRestoreStore(createForageBackedStore({
+        getItem: async (key) => forageMemStore.get(key) ?? null,
+        setItem: async (key, value) => {
+            await forageHooks.onSetItem?.(key)
+            forageMemStore.set(key, value)
+        },
+        keys: async () => Array.from(forageMemStore.keys()),
+        removeItem: async (key) => { forageMemStore.delete(key) },
+    }))
     decodeHooks.onDecode = undefined
     coldHooks.onConfirmIncomplete = undefined
     requiresFullEncoderReload.state = false
@@ -1013,14 +1029,23 @@ async function startHeldSendBk(): Promise<{ running: Promise<boolean> }> {
 describe('LoadLocalBackup and a send that starts during the file read', () => {
     test('no work when LoadLocalBackup starts, a send starts during the file read: the database write does not happen', async () => {
         installWorld()
-        const { fixture } = localBackupBytes('restored-marker-b7')
+        const { fixture: databaseFixture } = localBackupBytes('restored-marker-b7')
+        const assetFixture = buildChunk('asset-b7.png', new Uint8Array(16))
+        const fixture = new Uint8Array(assetFixture.length + databaseFixture.length)
+        fixture.set(assetFixture, 0)
+        fixture.set(databaseFixture, assetFixture.length)
         const parked = makeLatch()
-        interceptedSleeps.set(10, { gate: parked.gate, markReached: parked.markReached })
+        forageHooks.onSetItem = async (key) => {
+            if (key === 'assets/asset-b7.png') {
+                parked.markReached()
+                await parked.gate
+            }
+        }
         const dbBefore = DBState.db
 
         const loading = loadBackupBytes(fixture).catch(() => {})
         await parked.reached
-        interceptedSleeps.delete(10)
+        forageHooks.onSetItem = undefined
         holdEveryRequest()
         const running = sendChat()
         await requestHeld(1)
@@ -1032,9 +1057,38 @@ describe('LoadLocalBackup and a send that starts during the file read', () => {
         const reloadFlag = requiresFullEncoderReload.state
         await drain(running)
 
-        expect.soft(written, 'the main file or a block of the restored profile was written').toBe(false)
+        expect.soft(written, 'a block of the restored profile was written').toBe(false)
         expect.soft(installed, 'setDatabase calls').toBe(0)
         expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
         expect.soft(reloadFlag, 'requiresFullEncoderReload').toBe(false)
+    })
+
+    // A restore that commits keeps dbWriteLock closed for the life of the module instance, so this control stays the last test of the file.
+    test('control: the same restore with the same parked write and no send commits its block generation, so the refusal above is the busy guard and not a broken setup', async () => {
+        installWorld()
+        const { fixture: databaseFixture } = localBackupBytes('restored-marker-b7-control')
+        const assetFixture = buildChunk('asset-b7.png', new Uint8Array(16))
+        const fixture = new Uint8Array(assetFixture.length + databaseFixture.length)
+        fixture.set(assetFixture, 0)
+        fixture.set(databaseFixture, assetFixture.length)
+        const parked = makeLatch()
+        forageHooks.onSetItem = async (key) => {
+            if (key === 'assets/asset-b7.png') {
+                parked.markReached()
+                await parked.gate
+            }
+        }
+
+        const loading = loadBackupBytes(fixture).catch(() => {})
+        await parked.reached
+        forageHooks.onSetItem = undefined
+        parked.release()
+        await loading
+
+        const keys = Array.from(forageMemStore.keys())
+        expect(keys).toContain('assets/asset-b7.png')
+        expect(keys).toContain('blocks/head')
+        expect(keys).not.toContain('database/database.bin')
+        expect(vi.mocked(setDatabase).mock.calls.length).toBeGreaterThan(0)
     })
 })

@@ -18,7 +18,9 @@
 import { describe, test, expect } from 'vitest'
 import {
     findEncryptionMarkerEntry,
+    indexBackupEntries,
     parseBackupEntryHeader,
+    type BackupIndexEntry,
     BACKUP_ENCRYPTION_MARKER_NAME,
     DEFAULT_BACKUP_WALK_WINDOW_BYTES,
     MAX_MARKER_NAME_BYTES,
@@ -323,6 +325,59 @@ test('onProgress reports non-decreasing scanned bytes ending at the file size fo
     const [lastScanned, lastTotal] = progressCalls[progressCalls.length - 1]
     expect(lastScanned).toBe(bytes.length)
     expect(lastTotal).toBe(bytes.length)
+})
+
+describe('indexBackupEntries returns where every complete entry sits', () => {
+    test('lists each entry with its offset, name length, data length and header length, at every window size', async () => {
+        const entries = [assetEntry(16, 'a.png'), coldEntry(), assetEntry(300, 'bb.png'), databaseEntry()]
+        const bytes = concatChunks(entries)
+        const expected: BackupIndexEntry[] = []
+        let offset = 0
+        for (const entry of entries) {
+            const nameLength = new DataView(entry.buffer, entry.byteOffset, 4).getUint32(0, true)
+            const dataLength = entry.length - 8 - nameLength
+            expected.push({ headerOffset: offset, nameLength, dataLength, headerLength: 8 + nameLength })
+            offset += entry.length
+        }
+
+        for (const windowBytes of WINDOWS) {
+            const result = await indexBackupEntries(fileOf(bytes), { windowBytes })
+            expect(result.hasMarker).toBe(false)
+            expect(result.entries).toEqual(expected)
+        }
+    })
+
+    test('indexes an entry whose name is longer than the marker bound without decoding it', async () => {
+        const hugeName = 'y'.repeat(1000)
+        const bytes = concatChunks([assetEntry(), buildChunk(hugeName, new Uint8Array(7)), databaseEntry()])
+
+        const result = await indexBackupEntries(fileOf(bytes))
+
+        expect(result.entries).toHaveLength(3)
+        expect(result.entries[1]).toEqual({
+            headerOffset: assetEntry().length,
+            nameLength: 1000,
+            dataLength: 7,
+            headerLength: 8 + 1000,
+        })
+    })
+
+    test('stops at a truncated trailing entry, which is not listed', async () => {
+        const bytes = concatChunks([assetEntry(), databaseEntry()]).slice(0, -3)
+
+        const result = await indexBackupEntries(fileOf(bytes))
+
+        expect(result.hasMarker).toBe(false)
+        expect(result.entries).toHaveLength(1)
+    })
+
+    test('lists nothing when a marker is found', async () => {
+        const bytes = concatChunks([assetEntry(), markerEntry(), databaseEntry()])
+
+        const result = await indexBackupEntries(fileOf(bytes))
+
+        expect(result).toEqual({ hasMarker: true, entries: [] })
+    })
 })
 
 describe('parseBackupEntryHeader', () => {
