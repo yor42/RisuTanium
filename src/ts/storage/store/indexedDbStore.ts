@@ -1,6 +1,8 @@
 import localforage from 'localforage'
+import { HEAD_KEY } from '../blockKeys'
+import { sameHeadBytes, type HeadRead, type HeadSwap, type SwapOutcome } from '../headSwap'
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
-import { StoreDeleteManyError, StoreInvalidKeyError, StoreNotBinaryError, type DeleteReportEntry } from './errors'
+import { StoreDeleteManyError, StoreError, StoreInvalidKeyError, StoreNotBinaryError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
 import { indexedDbAddressableViolation, indexedDbCreatableViolation } from './keyRules'
 
@@ -279,4 +281,210 @@ export function createIndexedDbStore(): ByteStore {
             return (await forage().keys()).includes(key)
         },
     }
+}
+
+/** The bytes of a stored value when they can be had without waiting, `undefined` when the value is not binary data or needs an asynchronous read. */
+function syncBytesOfStoredValue(value: unknown): Uint8Array | null | undefined {
+    if (value === undefined) {
+        return null
+    }
+    if (value instanceof Uint8Array) {
+        return value
+    }
+    if (ArrayBuffer.isView(value)) {
+        return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    }
+    if (Object.prototype.toString.call(value) === '[object ArrayBuffer]') {
+        return new Uint8Array(value as ArrayBuffer)
+    }
+    return undefined
+}
+
+/**
+ * The head's compare-and-swap on IndexedDB: one read-write transaction on a
+ * raw connection to the shared database reads the head, compares it with what
+ * the caller read, and puts the new value, with nothing but IndexedDB requests
+ * awaited in between. Read-write transactions on one object store serialise
+ * across connections and tabs, so exactly one of two racing swaps sees the old
+ * value; this does not need Web Locks.
+ *
+ * The head is stored in the form `write` stores and `read` returns (a plain
+ * `Uint8Array` under the key). The connection reopens once after a
+ * `versionchange` close or an `InvalidStateError`, as the entry probe's does.
+ * A compare that fails aborts the transaction and is the definite `'lost'`;
+ * any other abort or failure rejects, which is an unknown outcome.
+ *
+ * The swap never creates the database or its object store: those are created
+ * by LocalForage, with the schema upstream uses. While the database or its
+ * object store does not exist, `read` reports an absent head
+ * (`bytes: null`), and `swap` rejects (an unknown outcome) because there is
+ * nowhere to put the head yet; a replace writes its values through the store
+ * first, which creates the database, before it flips the head. An open that
+ * fails for any other reason rejects from both.
+ */
+export function createIndexedDbHeadSwap(): HeadSwap {
+    let connection: IDBDatabase | undefined
+    let opening: Promise<HeadOpen> | undefined
+
+    function connect(): Promise<HeadOpen> {
+        if (connection !== undefined) {
+            return Promise.resolve<HeadOpen>({ kind: 'open', database: connection })
+        }
+        opening ??= openDatabaseForHead((closed) => {
+            if (connection === closed) {
+                connection = undefined
+            }
+        }).then((opened) => {
+            connection = opened.kind === 'open' ? opened.database : undefined
+            opening = undefined
+            return opened
+        })
+        return opening
+    }
+
+    /** `null` when the database or its object store does not exist yet. */
+    async function withConnection<T>(run: (database: IDBDatabase) => Promise<T>): Promise<T | null> {
+        for (let attempt = 0; ; attempt++) {
+            const opened = await connect()
+            if (opened.kind === 'missing') {
+                return null
+            }
+            if (opened.kind === 'failed') {
+                throw new StoreError('The IndexedDB database could not be opened for the head.')
+            }
+            const database = opened.database
+            try {
+                return await run(database)
+            } catch (error) {
+                if (attempt > 0 || !isInvalidStateError(error)) {
+                    throw error
+                }
+                if (connection === database) {
+                    connection = undefined
+                }
+                try {
+                    database.close()
+                } catch {
+                    // Already closed.
+                }
+            }
+        }
+    }
+
+    return {
+        read: async () => (await withConnection(async (database) => {
+            const value = await new Promise<unknown>((resolve, reject) => {
+                const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
+                const request = transaction.objectStore(OBJECT_STORE_NAME).get(HEAD_KEY)
+                request.onsuccess = () => resolve(request.result)
+                request.onerror = () => reject(request.error)
+                transaction.onabort = () => reject(transaction.error)
+            })
+            if (value === undefined) {
+                return { bytes: null, version: null } satisfies HeadRead
+            }
+            const bytes = await bytesOfStoredValue(value)
+            if (bytes === null) {
+                throw new StoreNotBinaryError(HEAD_KEY)
+            }
+            return { bytes, version: null } satisfies HeadRead
+        })) ?? { bytes: null, version: null },
+
+        swap: async (expected, next) => {
+            const swapped = await withConnection((database) => new Promise<SwapOutcome>((resolve, reject) => {
+                const transaction = database.transaction(OBJECT_STORE_NAME, 'readwrite')
+                const objects = transaction.objectStore(OBJECT_STORE_NAME)
+                let outcome: SwapOutcome | 'unreadable' | undefined
+                const request = objects.get(HEAD_KEY)
+                request.onsuccess = () => {
+                    const current = syncBytesOfStoredValue(request.result)
+                    if (current === undefined) {
+                        outcome = 'unreadable'
+                        transaction.abort()
+                        return
+                    }
+                    if (!sameHeadBytes(current, expected.bytes)) {
+                        outcome = 'lost'
+                        transaction.abort()
+                        return
+                    }
+                    objects.put(ownBytes(next), HEAD_KEY)
+                    outcome = 'won'
+                }
+                transaction.oncomplete = () => {
+                    if (outcome === 'won') {
+                        resolve('won')
+                    } else {
+                        reject(new StoreError('The head transaction completed without a decision.'))
+                    }
+                }
+                transaction.onabort = () => {
+                    if (outcome === 'lost') {
+                        resolve('lost')
+                    } else if (outcome === 'unreadable') {
+                        reject(new StoreNotBinaryError(HEAD_KEY))
+                    } else {
+                        reject(transaction.error ?? new StoreError('The head transaction was aborted.'))
+                    }
+                }
+            }))
+            if (swapped === null) {
+                throw new StoreError('The IndexedDB database does not exist yet, so the head cannot be swapped.')
+            }
+            return swapped
+        },
+    }
+}
+
+type HeadOpen =
+    | { kind: 'open', database: IDBDatabase }
+    /** The database, or its object store, does not exist. Nothing was created. */
+    | { kind: 'missing' }
+    /** The open itself failed or could not be made. */
+    | { kind: 'failed' }
+
+/**
+ * Opens the existing database for the head swap, like `openExistingDatabase`
+ * but telling a database that does not exist (an open that has to upgrade, or
+ * a database without the object store) apart from an open that failed. It
+ * creates nothing: the upgrade an open of a missing database starts is
+ * aborted.
+ */
+function openDatabaseForHead(onClosed: (database: IDBDatabase) => void): Promise<HeadOpen> {
+    return new Promise((resolve) => {
+        let request: IDBOpenDBRequest
+        try {
+            request = indexedDB.open(DATABASE_NAME)
+        } catch {
+            resolve({ kind: 'failed' })
+            return
+        }
+        let missing = false
+        request.onupgradeneeded = () => {
+            missing = true
+            try {
+                request.transaction?.abort()
+            } catch {
+                // The open then fails or succeeds on its own below.
+            }
+        }
+        request.onerror = (event) => {
+            event.preventDefault()
+            resolve(missing ? { kind: 'missing' } : { kind: 'failed' })
+        }
+        request.onsuccess = () => {
+            const database = request.result
+            if (!database.objectStoreNames.contains(OBJECT_STORE_NAME)) {
+                database.close()
+                resolve({ kind: 'missing' })
+                return
+            }
+            database.onversionchange = () => {
+                database.close()
+                onClosed(database)
+            }
+            database.onclose = () => onClosed(database)
+            resolve({ kind: 'open', database })
+        }
+    })
 }
