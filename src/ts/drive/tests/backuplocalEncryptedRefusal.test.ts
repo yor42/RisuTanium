@@ -841,8 +841,8 @@ describe('the restore pass stops when the file differs from what the walk indexe
     })
 
     test('stops, with the changed-file message and not the walk-error message, when reading an indexed entry throws', async () => {
-        // Calls 1-3 are the walk; call 4 reads asset1, call 5 reads asset2 and rejects.
-        const file = fileWithRejectingSlice(walkViewBytes(), 5)
+        // Calls 1-3 are the walk; calls 4 and 5 read the header and the data of asset1, call 6 reads the header of asset2 and rejects.
+        const file = fileWithRejectingSlice(walkViewBytes(), 6)
 
         await loadBackupWithFile(file)
 
@@ -941,15 +941,16 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         for (const range of reads.ranges) {
             expect(bounds.some((entryBounds) => range.start >= entryBounds.start && range.end <= entryBounds.end)).toBe(true)
         }
-        // The database's own slice is requested for the whole entry, not in parts.
-        expect(reads.ranges.some((range) => range.start === bounds[3].start && range.end === bounds[3].end)).toBe(true)
+        // The database's data is requested as one slice from the end of its header to the end of the entry, not in parts.
+        const databaseHeaderLength = 4 + DATABASE_NAME.length + 4
+        expect(reads.ranges.some((range) => range.start === bounds[3].start + databaseHeaderLength && range.end === bounds[3].end)).toBe(true)
 
         expect(decodeCapture.inputs).toHaveLength(1)
         const decoded = decodeCapture.inputs[0]
         expect(reads.buffers).toContain(decoded.buffer)
-        const databaseHeaderLength = 4 + DATABASE_NAME.length + 4
-        expect(decoded.byteOffset).toBe(databaseHeaderLength)
+        expect(decoded.byteOffset).toBe(0)
         expect(decoded.byteLength).toBe(entries[3].length - databaseHeaderLength)
+        expect(decoded.byteLength).toBe(decoded.buffer.byteLength)
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
     })
 

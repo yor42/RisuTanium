@@ -37,6 +37,7 @@ const dbState = vi.hoisted(() => ({
 }))
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs, { probeReads: true }))
 
 /** What the mocked `globalApi.svelte` answers the sweep with. */
 const world = vi.hoisted(() => ({
@@ -170,7 +171,7 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({ startAvatarThumbSweep: vi.f
 
 vi.mock(import('src/ts/model/modellist'), () => ({ registerModelDynamic: vi.fn() }) as unknown as typeof import('src/ts/model/modellist'))
 
-vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((p: string) => p) }))
+vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((p: string) => p), invoke: desktop.invoke }))
 
 vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/appdata'),

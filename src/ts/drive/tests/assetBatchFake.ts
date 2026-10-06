@@ -23,9 +23,14 @@ export type FakeReadResult =
     | { status: 'missing' }
     | { status: 'invalid'; reason: string }
     | { status: 'error'; message: string }
+    | { status: 'large' }
+    | { status: 'deferred' }
+
+/** The most one batched read answers for one file; a larger file answers `large`, as the command does. */
+const FAKE_FILE_MAX = 4 * 1024 * 1024
 
 export interface FakeCall {
-    kind: 'batch' | 'single' | 'read'
+    kind: 'batch' | 'read'
     keys: string[]
     /** Calls of any kind that were in flight when this one started, not counting itself. */
     inFlightAtStart: number
@@ -51,6 +56,14 @@ export function createAssetBatchFake() {
         erroredReads: new Set<string>(),
         /** Make `listAssetsSized` reject. */
         failListing: false,
+        /** Answers a key with `large` whatever its size. */
+        largeReads: new Set<string>(),
+        /** Answers a key with `deferred` the first time it is asked for, and with its bytes after. */
+        deferOnce: new Set<string>(),
+        /** Replaces the sizes `listAssetsSized` reports, for keys that name one. */
+        listedSizes: new Map<string, number>(),
+        /** Where `listAssetsSized` takes a size from instead of reading the file through the store, as the command reads metadata. */
+        sizeOf: null as ((key: string) => number | undefined) | null,
     }
 
     function store(): Promise<ByteStore> {
@@ -100,7 +113,6 @@ export function createAssetBatchFake() {
             }
             return results
         }),
-        writeAssetSingle: (entry: FakePutEntry) => track('single', [entry.key], 'beforeWrite', () => writeOne(entry)),
         readAssetBatch: (keys: readonly string[]) => track('read', [...keys], 'beforeRead', async () => {
             const results: FakeReadResult[] = []
             for (const key of keys) {
@@ -112,9 +124,20 @@ export function createAssetBatchFake() {
                     results.push({ status: 'error', message: 'failed in the fake' })
                     continue
                 }
+                if (ctl.deferOnce.has(key)) {
+                    ctl.deferOnce.delete(key)
+                    results.push({ status: 'deferred' })
+                    continue
+                }
                 try {
                     const read = await (await store()).read(key)
-                    results.push(read.bytes === null ? { status: 'missing' } : { status: 'ok', bytes: read.bytes })
+                    if (read.bytes === null) {
+                        results.push({ status: 'missing' })
+                    } else if (read.bytes.length > FAKE_FILE_MAX || ctl.largeReads.has(key)) {
+                        results.push({ status: 'large' })
+                    } else {
+                        results.push({ status: 'ok', bytes: read.bytes })
+                    }
                 } catch (error) {
                     results.push(error instanceof StoreInvalidKeyError
                         ? { status: 'invalid', reason: error.message }
@@ -133,7 +156,7 @@ export function createAssetBatchFake() {
             for (const key of keys) {
                 let size = 0
                 try {
-                    size = (await current.read(key)).bytes?.length ?? 0
+                    size = ctl.listedSizes.get(key) ?? ctl.sizeOf?.(key) ?? (await current.read(key)).bytes?.length ?? 0
                 } catch {
                     size = 0
                 }
@@ -160,6 +183,10 @@ export function createAssetBatchFake() {
             ctl.invalidReads.clear()
             ctl.erroredReads.clear()
             ctl.failListing = false
+            ctl.largeReads.clear()
+            ctl.deferOnce.clear()
+            ctl.listedSizes.clear()
+            ctl.sizeOf = null
         },
     }
 }

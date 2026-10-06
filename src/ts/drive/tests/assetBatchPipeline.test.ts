@@ -8,11 +8,15 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AssetPutEntry, AssetPutResult, AssetReadResult } from 'src/ts/storage/tauriAssetBatch'
+import { StoreInvalidKeyError } from 'src/ts/storage/store/errors'
+import { CHUNK_MAX, type ChunkedWriter } from 'src/ts/storage/tauriByteTransport'
 import {
     ExportAssetReader,
     RestoreAssetPipeline,
     foldAssetKey,
+    streamAssetEntry,
     type RestoreAssetEntry,
+    type StreamedAssetEntry,
 } from '../assetBatchPipeline'
 
 vi.mock('src/ts/platform', () => ({ isTauri: true }))
@@ -22,7 +26,7 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'linux' }))
 const LIMITS = { batchBytes: 10, budgetBytes: 40, maxEntries: 100, maxFlights: 4 }
 
 interface PendingCall<T> {
-    kind: 'batch' | 'single' | 'entry' | 'read'
+    kind: 'batch' | 'entry' | 'read'
     keys: string[]
     settle(value: T): void
     fail(error: unknown): void
@@ -44,10 +48,94 @@ function okFor(entries: readonly AssetPutEntry[]): AssetPutResult[] {
     return entries.map(() => OK)
 }
 
+interface StreamRecord {
+    key: string
+    chunks: number[]
+    finished: boolean
+    aborted: boolean
+}
+
+/** Chunked writers that record what they were given, with faults and a hold the test controls. */
+function fakeStreams() {
+    const ctl = {
+        /** The chunk index whose write rejects; -1 for none. */
+        failWriteAt: -1,
+        failFinish: false,
+        refuseOpen: false,
+        /** Chunk 0 is refused with the store's key error, as a refused name on the first call would be. */
+        refuseAtChunk0: false,
+        /** Every write waits for this promise. */
+        hold: null as Promise<void> | null,
+        /** An abort takes until this promise settles. */
+        abortDelay: null as Promise<void> | null,
+    }
+    const opened: StreamRecord[] = []
+    const events: string[] = []
+    const openStream = (key: string): ChunkedWriter => {
+        if (ctl.refuseOpen) {
+            throw new StoreInvalidKeyError(key, 'refused')
+        }
+        const record: StreamRecord = { key, chunks: [], finished: false, aborted: false }
+        opened.push(record)
+        events.push(`open ${key}`)
+        return {
+            async write(data: Uint8Array): Promise<void> {
+                if (ctl.hold) {
+                    await ctl.hold
+                }
+                if (ctl.refuseAtChunk0 && record.chunks.length === 0) {
+                    throw new StoreInvalidKeyError(key, 'refused')
+                }
+                if (record.chunks.length === ctl.failWriteAt) {
+                    throw new Error('disk full')
+                }
+                record.chunks.push(data.length)
+            },
+            async finish(): Promise<void> {
+                if (ctl.failFinish) {
+                    throw new Error('rename failed')
+                }
+                record.finished = true
+                events.push(`finish ${key}`)
+            },
+            async abort(): Promise<void> {
+                if (ctl.abortDelay) {
+                    await ctl.abortDelay
+                }
+                record.aborted = true
+                events.push(`abort ${key}`)
+            },
+        }
+    }
+    return { ctl, opened, events, openStream }
+}
+
+/** An entry whose body is read in slices; `failAtSlice` rejects that slice, `shortAtSlice` answers it one byte short. */
+function streamedEntry(name: string, size: number, options: { failAtSlice?: number, shortAtSlice?: number } = {}) {
+    nextIndex += 1
+    const slices: [number, number][] = []
+    const item: StreamedAssetEntry = {
+        key: `assets/${name}`,
+        name,
+        index: nextIndex,
+        size,
+        readSlice: async (start, end) => {
+            const position = slices.length
+            slices.push([start, end])
+            if (position === options.failAtSlice) {
+                throw new Error('the file is gone')
+            }
+            return bytesOf(position === options.shortAtSlice ? end - start - 1 : end - start, 7)
+        },
+    }
+    return { item, slices }
+}
+
 /** A restore transport whose calls wait until the test settles them. */
 function manualWriter() {
     const calls: PendingCall<AssetPutResult[]>[] = []
     const written: string[] = []
+    const streams = fakeStreams()
     const deps = {
         writeBatch: (entries: readonly AssetPutEntry[]) => new Promise<AssetPutResult[]>((resolve, reject) => {
             calls.push({
@@ -57,20 +145,13 @@ function manualWriter() {
                 fail: reject,
             })
         }),
-        writeSingle: (item: AssetPutEntry) => new Promise<AssetPutResult>((resolve, reject) => {
-            calls.push({
-                kind: 'single',
-                keys: [item.key],
-                settle: (value) => { written.push(item.key); resolve(value[0]) },
-                fail: reject,
-            })
-        }),
         writeEntry: vi.fn(async (item: AssetPutEntry): Promise<AssetPutResult> => {
             written.push(item.key)
             return OK
         }),
+        openStream: streams.openStream,
     }
-    return { calls, written, deps }
+    return { calls, written, deps, streams }
 }
 
 /** Lets every promise that can run, run. */
@@ -236,48 +317,229 @@ describe('restore pipeline: the skip report', () => {
     })
 })
 
-describe('restore pipeline: an entry too large for the budget', () => {
-    test('is written alone: nothing else is in flight before it and nothing starts until it settles', async () => {
+const MIB = 1024 * 1024
+
+function gate() {
+    let release: () => void = () => { }
+    const promise = new Promise<void>((resolve) => { release = resolve })
+    return { promise, release }
+}
+
+describe('restore pipeline: an entry too large for a batch', () => {
+    test('add refuses an entry above the batch size and sends nothing', async () => {
         const writer = manualWriter()
         const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
 
-        await pipeline.add(entry('small', 4))
-        const addingBig = pipeline.add(entry('big', 41))
-        await flushMicrotasks()
-        // The small entry's batch was sent; the big one waits for it.
-        expect(writer.calls.map((call) => [call.kind, call.keys])).toEqual([['batch', ['assets/small']]])
+        await expect(pipeline.add(entry('big', 11))).rejects.toBeInstanceOf(RangeError)
 
-        writer.calls[0].settle([OK])
-        await flushMicrotasks()
-        expect(writer.calls.map((call) => call.kind)).toEqual(['batch', 'single'])
-        expect(await isPending(addingBig)).toBe(true)
-
-        const addingNext = pipeline.add(entry('next', 4))
-        const drained = addingNext.then(() => pipeline.drain())
-        await flushMicrotasks()
-        expect(writer.calls).toHaveLength(2)
-
-        writer.calls[1].settle([OK])
-        await addingBig
-        await flushMicrotasks()
-        writer.calls[2].settle([OK])
-        await drained
-
-        expect(writer.calls.map((call) => call.kind)).toEqual(['batch', 'single', 'batch'])
+        expect(writer.calls).toHaveLength(0)
         expect(pipeline.failure).toBeNull()
     })
 
-    test('an entry exactly the size of the budget shares a batch with nothing and still goes in a batch', async () => {
+    test('an entry exactly the batch size is an ordinary batch of its own', async () => {
         const writer = manualWriter()
         const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
 
-        await pipeline.add(entry('edge', 40))
+        await pipeline.add(entry('edge', 10))
         const drained = pipeline.drain()
         await flushMicrotasks()
 
-        expect(writer.calls.map((call) => call.kind)).toEqual(['batch'])
+        expect(writer.calls.map((call) => call.keys)).toEqual([['assets/edge']])
         writer.calls[0].settle([OK])
         await drained
+    })
+
+    test('a streamed entry waits for the batch being assembled and every call in flight, runs alone, and is written in slices of at most CHUNK_MAX', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+        const big = streamedEntry('big', 9 * MIB)
+        const hold = gate()
+        writer.streams.ctl.hold = hold.promise
+
+        await pipeline.add(entry('small', 4))
+        const streaming = pipeline.addStreamed(big.item)
+        await flushMicrotasks()
+        // The assembled batch was sent; the stream has not opened while it is in flight.
+        expect(writer.calls.map((call) => call.keys)).toEqual([['assets/small']])
+        expect(writer.streams.opened).toHaveLength(0)
+
+        writer.calls[0].settle([OK])
+        await flushMicrotasks()
+        expect(writer.streams.opened.map((record) => record.key)).toEqual(['assets/big'])
+        expect(await isPending(streaming)).toBe(true)
+        hold.release()
+        expect(await streaming).toBe(false)
+        await pipeline.add(entry('next', 4))
+        const drained = pipeline.drain()
+        await flushMicrotasks()
+        expect(writer.calls.map((call) => call.keys)).toEqual([['assets/small'], ['assets/next']])
+        writer.calls[1].settle([OK])
+        await drained
+
+        expect(big.slices).toEqual([[0, CHUNK_MAX], [CHUNK_MAX, 2 * CHUNK_MAX], [2 * CHUNK_MAX, 9 * MIB]])
+        expect(writer.streams.opened[0].chunks).toEqual([CHUNK_MAX, CHUNK_MAX, MIB])
+        expect(writer.streams.opened[0].finished).toBe(true)
+        expect(pipeline.failure).toBeNull()
+    })
+
+    test('a streamed entry whose key folds to the key of a call in flight waits for that call', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+
+        await pipeline.add(entry('Pic.PNG', 4))
+        const streaming = pipeline.addStreamed(streamedEntry('pic.png', 5 * MIB).item)
+        await flushMicrotasks()
+        expect(await isPending(streaming)).toBe(true)
+        expect(writer.streams.opened).toHaveLength(0)
+
+        writer.calls[0].settle([OK])
+        await streaming
+
+        expect(writer.streams.opened).toHaveLength(1)
+        expect(writer.written).toEqual(['assets/Pic.PNG'])
+    })
+
+    test('a name the store refuses, at open or on the first chunk, is skipped and reported in file order with the refusals of batches', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+
+        await pipeline.add(entry('a', 4))
+        writer.streams.ctl.refuseOpen = true
+        const refusedAtOpen = pipeline.addStreamed(streamedEntry('bigOpen', 5 * MIB).item)
+        await flushMicrotasks()
+        writer.calls[0].settle([{ k: 'invalid', reason: 'x' }])
+        expect(await refusedAtOpen).toBe(false)
+        writer.streams.ctl.refuseOpen = false
+        writer.streams.ctl.refuseAtChunk0 = true
+        expect(await pipeline.addStreamed(streamedEntry('bigChunk', 5 * MIB).item)).toBe(false)
+        await pipeline.add(entry('b', 4))
+        const drained = pipeline.drain()
+        await flushMicrotasks()
+        writer.calls[1].settle([{ k: 'invalid', reason: 'y' }])
+        await drained
+
+        expect(pipeline.failure).toBeNull()
+        expect(pipeline.invalidAssets().map((item) => item.name)).toEqual(['a', 'bigOpen', 'bigChunk', 'b'])
+        expect(writer.streams.opened.every((record) => record.aborted && !record.finished)).toBe(true)
+    })
+
+    test('a write that fails at a chunk is the failure of the restore, and the write is aborted before addStreamed resolves', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+        const big = streamedEntry('big', 9 * MIB)
+        const abortGate = gate()
+        writer.streams.ctl.failWriteAt = 1
+        writer.streams.ctl.abortDelay = abortGate.promise
+
+        const streaming = pipeline.addStreamed(big.item)
+        await flushMicrotasks()
+        expect(await isPending(streaming)).toBe(true)
+        expect(writer.streams.opened[0].aborted).toBe(false)
+        abortGate.release()
+        expect(await streaming).toBe(false)
+
+        expect(writer.streams.opened[0].aborted).toBe(true)
+        expect((pipeline.failure?.error as Error).message).toBe('disk full')
+        // The third slice is never read once the write has failed.
+        expect(big.slices).toHaveLength(2)
+    })
+
+    test('a write that fails when it is finished is a failure and is aborted', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+        writer.streams.ctl.failFinish = true
+
+        await pipeline.addStreamed(streamedEntry('big', 5 * MIB).item)
+
+        expect((pipeline.failure?.error as Error).message).toBe('rename failed')
+        expect(writer.streams.opened[0].aborted).toBe(true)
+    })
+
+    test('after a failure nothing more is opened, read or sent', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+        writer.streams.ctl.failWriteAt = 0
+        await pipeline.addStreamed(streamedEntry('first', 5 * MIB).item)
+        const later = streamedEntry('later', 5 * MIB)
+
+        expect(await pipeline.addStreamed(later.item)).toBe(false)
+        await pipeline.add(entry('small', 4))
+        await pipeline.drain()
+
+        expect(writer.streams.opened).toHaveLength(1)
+        expect(later.slices).toEqual([])
+        expect(writer.calls).toHaveLength(0)
+    })
+
+    test.each([
+        ['cannot be read', { failAtSlice: 1 }],
+        ['comes back short', { shortAtSlice: 1 }],
+    ])('a slice that %s ends the write as a source failure: aborted before addStreamed resolves, not a failure of the pipeline', async (_title, options) => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+        const abortGate = gate()
+        writer.streams.ctl.abortDelay = abortGate.promise
+
+        const streaming = pipeline.addStreamed(streamedEntry('big', 9 * MIB, options).item)
+        await flushMicrotasks()
+        expect(await isPending(streaming)).toBe(true)
+        abortGate.release()
+
+        expect(await streaming).toBe(true)
+        expect(writer.streams.opened[0].aborted).toBe(true)
+        expect(writer.streams.opened[0].finished).toBe(false)
+        expect(pipeline.failure).toBeNull()
+        expect(pipeline.invalidAssets()).toEqual([])
+    })
+
+    test('keeps streaming once a batch was refused for a body that is not raw', async () => {
+        const writer = manualWriter()
+        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
+
+        await pipeline.add(entry('a', 5))
+        await pipeline.add(entry('b', 5))
+        await flushMicrotasks()
+        writer.calls[0].fail('not-raw: the body arrived as text')
+        await flushMicrotasks()
+        await pipeline.addStreamed(streamedEntry('big', 5 * MIB).item)
+        await pipeline.add(entry('c', 5))
+        await pipeline.drain()
+
+        expect(pipeline.failure).toBeNull()
+        expect(writer.streams.opened[0].finished).toBe(true)
+        expect(writer.written).toEqual(['assets/a', 'assets/b', 'assets/c'])
+        expect(writer.calls).toHaveLength(1)
+    })
+})
+
+describe('streaming one entry', () => {
+    test('reads and writes slices of at most the slice size, one after another, and finishes the write', async () => {
+        const log: string[] = []
+        const writer = {
+            async write(data: Uint8Array) { log.push(`write ${data.length}`) },
+            async finish() { log.push('finish') },
+            async abort() { log.push('abort') },
+        }
+        const item: StreamedAssetEntry = {
+            key: 'assets/x',
+            name: 'x',
+            index: 1,
+            size: 10,
+            readSlice: async (start, end) => { log.push(`read ${start}-${end}`); return bytesOf(end - start) },
+        }
+
+        const outcome = await streamAssetEntry(item, () => writer, 4)
+
+        expect(outcome).toEqual({ k: 'ok' })
+        expect(log).toEqual(['read 0-4', 'write 4', 'read 4-8', 'write 4', 'read 8-10', 'write 2', 'finish'])
+    })
+
+    test('a failing open that is not a refused name is a sink failure', async () => {
+        const item = streamedEntry('x', 5).item
+
+        const outcome = await streamAssetEntry(item, () => { throw new RangeError('no') })
+
+        expect(outcome.k).toBe('sink')
     })
 })
 
@@ -464,19 +726,6 @@ describe('restore pipeline: a command that refuses a body that is not raw', () =
         expect(writer.written).toEqual(['assets/a', 'assets/b', 'assets/c', 'assets/d'])
     })
 
-    test('an oversized entry refused the same way is written through the per-entry writer too', async () => {
-        const writer = manualWriter()
-        const pipeline = new RestoreAssetPipeline(writer.deps, LIMITS)
-
-        const adding = pipeline.add(entry('big', 50))
-        await flushMicrotasks()
-        writer.calls[0].fail(new Error('not-raw: missing header'))
-        await adding
-
-        expect(pipeline.failure).toBeNull()
-        expect(writer.written).toEqual(['assets/big'])
-    })
-
     test('a name the per-entry writer refuses is still reported in the skip list', async () => {
         const writer = manualWriter()
         writer.deps.writeEntry.mockImplementation(async (item) => item.key === 'assets/.bad' ? { k: 'invalid', reason: 'dot' } : OK)
@@ -583,34 +832,118 @@ describe('export reader', () => {
         expect(unhandled).toEqual([])
     })
 
-    test('reads ahead only within the byte budget, and an entry larger than the budget is read alone', async () => {
+    test('reads ahead only within the byte budget', async () => {
         const reader = manualReader()
-        const exporter = new ExportAssetReader(reader.deps, sized(10, 10, 10, 10, 41, 2), { ...LIMITS, budgetBytes: 40 })
+        const exporter = new ExportAssetReader(reader.deps, sized(10, 10, 10, 10, 10, 2), { ...LIMITS, budgetBytes: 40 })
         await flushMicrotasks()
 
-        // 40 bytes in flight; the oversized entry and the one behind it wait.
+        // 40 bytes in flight; the fifth entry waits.
         expect(reader.calls.map((call) => call.keys)).toEqual([['assets/k0'], ['assets/k1'], ['assets/k2'], ['assets/k3']])
         for (const call of reader.calls) {
             call.settle(found(1))
         }
-        for (let i = 0; i < 3; i++) {
-            await exporter.take(i)
-        }
+        // Nothing has been handed out, so every byte read is still held.
         await flushMicrotasks()
-        // Entry 3 is still held, so the oversized entry has not started.
         expect(reader.calls).toHaveLength(4)
 
-        await exporter.take(3)
+        await exporter.take(0)
         await flushMicrotasks()
         expect(reader.calls.map((call) => call.keys)).toEqual([['assets/k0'], ['assets/k1'], ['assets/k2'], ['assets/k3'], ['assets/k4']])
 
         reader.calls[4].settle(found(9))
-        await exporter.take(4)
+        await exporter.take(1)
         await flushMicrotasks()
         expect(reader.calls).toHaveLength(6)
         reader.calls[5].settle(found(8))
-        await exporter.take(5)
+        for (let i = 2; i < 6; i++) {
+            await exporter.take(i)
+        }
         await exporter.close()
+    })
+
+    test('a listed size above the batch size is never requested in a batch: the key comes out as a fallback with the keys around it still read', async () => {
+        const reader = manualReader()
+        const exporter = new ExportAssetReader(reader.deps, sized(2, 11, 2), LIMITS)
+        await flushMicrotasks()
+
+        expect(reader.calls.map((call) => call.keys)).toEqual([['assets/k0'], ['assets/k2']])
+        reader.calls[0].settle(found(1))
+        reader.calls[1].settle(found(3))
+        const kinds = []
+        for (let i = 0; i < 3; i++) {
+            kinds.push((await exporter.take(i)).kind)
+        }
+        await exporter.close()
+
+        expect(kinds).toEqual(['bytes', 'fallback', 'bytes'])
+    })
+
+    test('a key answered large comes out as a fallback', async () => {
+        const reader = manualReader()
+        const exporter = new ExportAssetReader(reader.deps, sized(3, 3), LIMITS)
+        await flushMicrotasks()
+        reader.calls[0].settle([{ status: 'ok', bytes: bytesOf(2) }, { status: 'large' }])
+
+        const kinds = [(await exporter.take(0)).kind, (await exporter.take(1)).kind]
+        await exporter.close()
+
+        expect(kinds).toEqual(['bytes', 'fallback'])
+    })
+
+    test('keys answered deferred are asked for again in a later call, and every key comes out with its own bytes', async () => {
+        const reader = manualReader()
+        const exporter = new ExportAssetReader(reader.deps, sized(3, 3, 3), LIMITS)
+        await flushMicrotasks()
+        expect(reader.calls.map((call) => call.keys)).toEqual([['assets/k0', 'assets/k1', 'assets/k2']])
+        reader.calls[0].settle([{ status: 'ok', bytes: bytesOf(2, 1) }, { status: 'deferred' }, { status: 'deferred' }])
+        await flushMicrotasks()
+        expect(reader.calls.map((call) => call.keys)).toEqual([['assets/k0', 'assets/k1', 'assets/k2'], ['assets/k1', 'assets/k2']])
+        reader.calls[1].settle([{ status: 'ok', bytes: bytesOf(2, 2) }, { status: 'deferred' }])
+        await flushMicrotasks()
+        expect(reader.calls[2].keys).toEqual(['assets/k2'])
+        reader.calls[2].settle([{ status: 'ok', bytes: bytesOf(2, 3) }])
+
+        const taken = []
+        for (let i = 0; i < 3; i++) {
+            taken.push(await exporter.take(i))
+        }
+        await exporter.close()
+
+        expect(taken.map((item) => item.kind === 'bytes' ? item.bytes[0] : item.kind)).toEqual([1, 2, 3])
+    })
+
+    test('a call that delivers nothing but deferred answers is not repeated: those keys come out as fallbacks', async () => {
+        const reader = manualReader()
+        const exporter = new ExportAssetReader(reader.deps, sized(3, 3, 3), LIMITS)
+        await flushMicrotasks()
+        reader.calls[0].settle([{ status: 'ok', bytes: bytesOf(2) }, { status: 'deferred' }, { status: 'deferred' }])
+        await flushMicrotasks()
+        reader.calls[1].settle([{ status: 'deferred' }, { status: 'deferred' }])
+
+        const kinds = []
+        for (let i = 0; i < 3; i++) {
+            kinds.push((await exporter.take(i)).kind)
+        }
+        await exporter.close()
+
+        expect(kinds).toEqual(['bytes', 'fallback', 'fallback'])
+        expect(reader.calls).toHaveLength(2)
+    })
+
+    test('a repeated call that rejects keeps what the earlier call delivered and leaves the rest as fallbacks', async () => {
+        const reader = manualReader()
+        const exporter = new ExportAssetReader(reader.deps, sized(3, 3), LIMITS)
+        await flushMicrotasks()
+        reader.calls[0].settle([{ status: 'ok', bytes: bytesOf(2, 5) }, { status: 'deferred' }])
+        await flushMicrotasks()
+        reader.calls[1].fail(new Error('transport went away'))
+
+        const taken = [await exporter.take(0), await exporter.take(1)]
+        await exporter.close()
+        await flushMicrotasks()
+
+        expect(taken.map((item) => item.kind === 'bytes' ? item.bytes[0] : item.kind)).toEqual([5, 'fallback'])
+        expect(unhandled).toEqual([])
     })
 
     test('close waits for a read still outstanding and starts no further read', async () => {

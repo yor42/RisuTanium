@@ -1,5 +1,5 @@
-import { BaseDirectory, readDir, remove, rename, writeFile } from '@tauri-apps/plugin-fs'
-import { isAndroidTransport, writeChunked } from './tauriByteTransport'
+import { BaseDirectory, exists, readDir, remove, rename, writeFile } from '@tauri-apps/plugin-fs'
+import { shouldChunkWrite, writeChunked } from './tauriByteTransport'
 
 /**
  * Atomic file replacement on the Tauri file system, for paths under the
@@ -16,10 +16,10 @@ import { isAndroidTransport, writeChunked } from './tauriByteTransport'
  * flush to disk, so it protects against a failed or interrupted write, not
  * against power loss.
  *
- * On Android the plugin call cannot carry a large body, so the same replacement
- * runs as base64 chunks into a temp file of the same name pattern and a rename
- * on the last chunk (`writeChunked` in `tauriByteTransport.ts`), again without
- * a flush.
+ * A body the platform's IPC cannot carry in one call (every body on Android,
+ * a body above `CHUNK_MAX` on desktop) goes as chunks into a temp file of the
+ * same name pattern and a rename on the last chunk (`writeChunked` in
+ * `tauriByteTransport.ts`), again without a flush.
  */
 
 /**
@@ -99,7 +99,7 @@ async function renameOverTarget(from: string, to: string): Promise<void> {
  * target holds `bytes`.
  */
 export async function writeFileAtomic(path: string, bytes: Uint8Array): Promise<void> {
-    if (isAndroidTransport()) {
+    if (shouldChunkWrite(bytes.length)) {
         // The chunk command takes the bare key; the plugin's `./` prefix is not part of it.
         await writeChunked(path.startsWith('./') ? path.slice(2) : path, bytes, false)
         return
@@ -135,7 +135,7 @@ export async function writeFileAtomic(path: string, bytes: Uint8Array): Promise<
  */
 export async function sweepAtomicWriteTemps(directory: string, options: { recursive?: boolean } = {}): Promise<void> {
     try {
-        const entries = await readDir(directory, { baseDir: BaseDirectory.AppData })
+        const entries = await readDir(directory === '' ? '.' : directory, { baseDir: BaseDirectory.AppData })
         for (const entry of entries) {
             if (options.recursive === true && entry.isDirectory) {
                 await sweepAtomicWriteTemps(joinPath(directory, entry.name), options)
@@ -152,5 +152,34 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
         }
     } catch (error) {
         console.error(error)
+    }
+}
+
+/**
+ * Every AppData directory a store write can put a temp file into, each swept
+ * below recursively because keys under it may nest: `database/` (the main
+ * file, numbered backups, the backup fingerprint, pre-conversion copies),
+ * `remotes/`, `coldstorage/`, `blocks/` (generations nest) and `assets/`.
+ * A key without a slash lands in the AppData root itself, which is swept
+ * without descending: the other directories are listed here, and nothing else
+ * under the root holds store keys.
+ */
+export const WRITE_TEMP_DIRECTORIES: readonly string[] = ['database', 'remotes', 'coldstorage', 'blocks', 'assets']
+
+/**
+ * Sweeps the leftover write temps of every location in `WRITE_TEMP_DIRECTORIES`
+ * and of the AppData root. A directory that does not exist yet is skipped
+ * quietly; the same call rules as `sweepAtomicWriteTemps` apply. Never rejects.
+ */
+export async function sweepAllWriteTemps(): Promise<void> {
+    await sweepAtomicWriteTemps('')
+    for (const directory of WRITE_TEMP_DIRECTORIES) {
+        try {
+            if (await exists(directory, { baseDir: BaseDirectory.AppData })) {
+                await sweepAtomicWriteTemps(directory, { recursive: true })
+            }
+        } catch (error) {
+            console.error(error)
+        }
     }
 }

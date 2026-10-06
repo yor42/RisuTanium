@@ -1862,6 +1862,14 @@ export const languageVietnamese = {
         `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `Máy chủ, hoặc proxy đặt trước nó, đã từ chối tệp tài nguyên (asset) "${name}" vì quá lớn nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
+    "backupFailedFileDeleted": (asset: string | null) =>
+        `${asset === null ? 'Sao lưu không thành công.' : `Quá trình sao lưu đã dừng vì ${asset} đã thay đổi hoặc không thể đọc được trong lúc đang được lưu.`} Tệp sao lưu không đầy đủ nên đã bị xóa. Hãy chạy lại sao lưu.`,
+    "backupFailedFileKept": (asset: string | null) =>
+        `${asset === null ? 'Sao lưu không thành công.' : `Quá trình sao lưu đã dừng vì ${asset} đã thay đổi hoặc không thể đọc được trong lúc đang được lưu.`} Tệp sao lưu không đầy đủ và ứng dụng không thể xóa nó. Không dùng tệp này: hãy tự xóa nó, rồi chạy lại sao lưu.`,
+    "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
+        `Quá trình sao lưu đã dừng vì ${asset} quá lớn so với một mục sao lưu (giới hạn khoảng 4,29 GB) nên không thể lưu. ${file === 'untouched' ? 'Không có gì được ghi vào tệp.' : file === 'deleted' ? 'Tệp sao lưu không đầy đủ nên đã bị xóa.' : 'Tệp sao lưu không đầy đủ và ứng dụng không thể xóa nó. Không dùng tệp này: hãy tự xóa nó.'} Bản sao lưu không thể bao gồm tài nguyên (asset) đó cho đến khi nó được gỡ bỏ hoặc thu nhỏ, và chạy lại sao lưu sẽ thất bại theo cách tương tự.`,
+    "backupFailedNothingWritten": () =>
+        "Sao lưu không thành công trước khi có bất kỳ gì được ghi vào tệp. Hãy chạy lại sao lưu.",
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",

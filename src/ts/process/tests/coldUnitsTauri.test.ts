@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
 }))
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs, { probeReads: true }))
 
 vi.mock(import('src/ts/platform'), () => ({
     get isTauri() { return h.platform.isTauri },
@@ -74,7 +75,7 @@ vi.mock('@tauri-apps/api/path', () => ({
     join: vi.fn(async (...paths: string[]) => paths.join('/')),
 }))
 
-vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((path: string) => path), invoke: fakeFs.invoke }))
+vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((path: string) => path), invoke: desktop.invoke }))
 
 type ColdModule = typeof import('src/ts/process/coldstorage.svelte')
 

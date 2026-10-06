@@ -50,7 +50,7 @@ import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/
 import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from "./storage/assetSweep";
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
-import { sweepAtomicWriteTemps } from "./storage/tauriAtomicWrite";
+import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
@@ -140,39 +140,20 @@ export async function loadData() {
                 if (!await exists('database', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('database', { baseDir: BaseDirectory.AppData })
                 }
-                // Must stay before the first write to `database/` in this
-                // page load: a temp file found here is not from a write of
-                // this page load. It is a leftover, or at worst the orphaned
-                // write of an earlier page load or an exiting process, whose
-                // loss never affects the target.
-                await sweepAtomicWriteTemps('database')
-                // The same holds for `remotes/`: the startup clean-up writes
-                // `.meta` files there later in this page load. The directory
-                // is created by the first remote write, so it may not exist
-                // yet, and listing a missing directory is an error the sweep
-                // would only log.
-                if (await exists('remotes', { baseDir: BaseDirectory.AppData })) {
-                    await sweepAtomicWriteTemps('remotes')
-                }
-                // Units are written atomically too, by the boot archive pass,
-                // restores and plugins later in this page load, and the folder
-                // is created by the first unit write.
-                if (await exists('coldstorage', { baseDir: BaseDirectory.AppData })) {
-                    await sweepAtomicWriteTemps('coldstorage')
-                }
-                // Block-store keys are written durably into nested
-                // directories (`blocks/<gen>/c/`), so the sweep descends.
-                if (await exists('blocks', { baseDir: BaseDirectory.AppData })) {
-                    await sweepAtomicWriteTemps('blocks', { recursive: true })
-                }
                 if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('assets', { baseDir: BaseDirectory.AppData })
                 }
-                // `assets/` is written by imports and restores later in this
-                // page load, so a temp found here is a leftover. The directory
-                // exists by now, which keeps the sweep from listing a missing
-                // one.
-                await sweepAtomicWriteTemps('assets')
+                // Must stay before the first write to any store key in this
+                // page load: a temp file found here is not from a write of
+                // this page load. It is a leftover, or at worst the orphaned
+                // write of an earlier page load or an exiting process, whose
+                // loss never affects the target. Atomic and chunked writes
+                // alike leave `risu-write-<id>.tmp` next to their key, so every
+                // directory a key can live in is swept, nested ones included
+                // (`blocks/<gen>/c/`, `assets/` subfolders), and the AppData
+                // root itself (a key without a slash). A directory a write has
+                // not created yet is skipped.
+                await sweepAllWriteTemps()
                 archiveSession = await openBootArchiveSession('tauri')
                 noteBootArchiveSession(archiveSession.canArchive)
                 let outcome: BootArchiveOutcome | null = null

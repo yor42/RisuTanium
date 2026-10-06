@@ -11,9 +11,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { PngChunk } from 'src/ts/pngChunk'
 import {
+    BlobDownloadWriter,
     BACKUP_ENTRY_COALESCE_BYTES,
     TAURI_WRITE_CHUNK_BYTES,
     TauriWriter,
+    encodeBackupEntryHeader,
     writeBackupEntry,
     type ByteWriter,
 } from 'src/ts/exportWriters'
@@ -130,6 +132,17 @@ describe('writeBackupEntry', () => {
     })
 })
 
+describe('encodeBackupEntryHeader', () => {
+    test.each(['entry', 'assets/éあ', ''])('(G) the header of %j followed by the body is the entry writeBackupEntry writes', async (name) => {
+        const data = body(BACKUP_ENTRY_COALESCE_BYTES + 3, 11)
+        const encoded = new TextEncoder().encode(name)
+        const { writer, writes } = recordingWriter()
+        await writeBackupEntry(writer, encoded, data)
+
+        expectBytes(concat([encodeBackupEntryHeader(encoded, data.byteLength), data]), concat(writes))
+    })
+})
+
 describe('TauriWriter', () => {
     test('(R) holds small writes until close and then writes them in one call that creates the file', async () => {
         const writer = new TauriWriter(PATH)
@@ -154,32 +167,71 @@ describe('TauriWriter', () => {
         expectBytes(fs.files.get(PATH)!, concat([body(half, 1), body(half, 2), body(7, 3)]))
     })
 
-    test('(G) writes a body larger than the chunk size right after the collected bytes, as its own call', async () => {
+    test('(R) per-call bound: a body larger than the chunk size goes out right after the collected bytes in calls of at most the chunk size', async () => {
         const writer = new TauriWriter(PATH)
         const big = body(TAURI_WRITE_CHUNK_BYTES + 1, 9)
         await writer.write(body(10, 1))
         await writer.write(big)
         expect(fs.calls).toEqual([
             { path: PATH, length: 10, append: false },
-            { path: PATH, length: big.byteLength, append: true },
+            { path: PATH, length: TAURI_WRITE_CHUNK_BYTES, append: true },
+            { path: PATH, length: 1, append: true },
         ])
         await writer.write(body(5, 2))
         await writer.close()
         expectBytes(fs.files.get(PATH)!, concat([body(10, 1), big, body(5, 2)]))
     })
 
-    test('(G) the first call of a body larger than the chunk size creates the file', async () => {
+    test('(R) per-call bound: a body of several chunks never makes a call above the chunk size, and the bytes arrive in order', async () => {
+        const writer = new TauriWriter(PATH)
+        const big = body(TAURI_WRITE_CHUNK_BYTES * 2 + 123, 10)
+        await writer.write(big)
+        await writer.close()
+        expect(fs.calls.map((call) => call.length)).toEqual([TAURI_WRITE_CHUNK_BYTES, TAURI_WRITE_CHUNK_BYTES, 123])
+        expect(fs.calls.map((call) => call.append)).toEqual([false, true, true])
+        expectBytes(fs.files.get(PATH)!, big)
+    })
+
+    test('(R) a body of exactly the chunk size is one call, and one byte more is two', async () => {
+        const writer = new TauriWriter(PATH)
+        await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 9))
+        await writer.close()
+        expect(fs.calls.map((call) => call.length)).toEqual([TAURI_WRITE_CHUNK_BYTES])
+        fs.calls.length = 0
+        const second = new TauriWriter('synthetic/two.bin')
+        await second.write(body(TAURI_WRITE_CHUNK_BYTES + 1, 9))
+        await second.close()
+        expect(fs.calls.map((call) => call.length)).toEqual([TAURI_WRITE_CHUNK_BYTES, 1])
+    })
+
+    test('(R) the first call of a body larger than the chunk size creates the file', async () => {
         const writer = new TauriWriter(PATH)
         await writer.write(body(TAURI_WRITE_CHUNK_BYTES + 1, 9))
-        expect(fs.calls).toEqual([{ path: PATH, length: TAURI_WRITE_CHUNK_BYTES + 1, append: false }])
+        expect(fs.calls).toEqual([
+            { path: PATH, length: TAURI_WRITE_CHUNK_BYTES, append: false },
+            { path: PATH, length: 1, append: true },
+        ])
         await writer.close()
-        expect(fs.calls).toHaveLength(1)
+        expect(fs.calls).toHaveLength(2)
     })
 
     test('(G) an export with no bytes does not touch the file system', async () => {
         const writer = new TauriWriter(PATH)
         await writer.close()
         expect(fs.calls).toEqual([])
+    })
+
+    test('(R) touchedFile is false while writes are only held, and true once a call that may create the file was made, even when it failed', async () => {
+        const held = new TauriWriter(PATH)
+        await held.write(body(100, 1))
+        expect(held.touchedFile).toBe(false)
+        await held.close()
+        expect(held.touchedFile).toBe(true)
+
+        const failing = new TauriWriter(PATH)
+        fs.failCall = () => true
+        await expect(failing.write(body(TAURI_WRITE_CHUNK_BYTES + 1, 2))).rejects.toThrow('synthetic write failure')
+        expect(failing.touchedFile).toBe(true)
     })
 
     test('(R) close rejects when the final flush fails', async () => {
@@ -225,6 +277,30 @@ describe('TauriWriter', () => {
         expectBytes(fs.files.get(PATH)!, expected)
         expect(fs.calls[0].append).toBe(false)
         expect(fs.calls.slice(1).every((call) => call.append)).toBe(true)
+    })
+})
+
+describe('BlobDownloadWriter', () => {
+    test('(R) holds the export in memory until close, and abort drops what it held without producing a download', async () => {
+        const createUrl = vi.fn(() => 'blob:synthetic')
+        const revoke = vi.fn()
+        vi.spyOn(URL, 'createObjectURL').mockImplementation(createUrl)
+        vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revoke)
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => { })
+
+        const aborted = new BlobDownloadWriter('out.bin')
+        await aborted.write(body(10, 1))
+        expect(aborted.heldInMemory).toBe(true)
+        await aborted.abort()
+        expect(aborted.heldInMemory).toBe(true)
+        expect(createUrl).not.toHaveBeenCalled()
+
+        const closed = new BlobDownloadWriter('out.bin')
+        await closed.write(body(10, 2))
+        await closed.close()
+        expect(closed.heldInMemory).toBe(false)
+        expect(click).toHaveBeenCalledTimes(1)
+        vi.restoreAllMocks()
     })
 })
 

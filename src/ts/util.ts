@@ -3,7 +3,7 @@ import type { Chat, Database, Message, RisuPersona } from "./storage/database.sv
 import { getDatabase } from "./storage/database.svelte"
 import { DBState, selectedCharID } from "./stores.svelte"
 import {open} from '@tauri-apps/plugin-dialog'
-import { readFile } from "@tauri-apps/plugin-fs"
+import { readUserFile } from "./storage/tauriUserFile"
 import { basename } from "@tauri-apps/api/path"
 import { createBlankChar, getCharImage } from "./characters"
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -75,7 +75,7 @@ export async function selectSingleFile(ext:string[]){
     } else if (selected === null) {
         return null
     } else {
-        return {name: await basename(selected),data:await readFile(selected)}
+        return {name: await basename(selected),data:await readUserFile(selected)}
     }
 }
 
@@ -99,13 +99,13 @@ export async function selectMultipleFile(ext:string[]){
     if (Array.isArray(selected)) {
         let arr:{name:string, data:Uint8Array}[] = []
         for(const file of selected){
-            arr.push({name: await basename(file),data:await readFile(file)})
+            arr.push({name: await basename(file),data:await readUserFile(file)})
         }
         return arr
     } else if (selected === null) {
         return null
     } else {
-        return [{name: await basename(selected),data:await readFile(selected)}]
+        return [{name: await basename(selected),data:await readUserFile(selected)}]
     }
 }
 

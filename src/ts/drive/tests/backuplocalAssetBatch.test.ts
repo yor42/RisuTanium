@@ -13,8 +13,11 @@
  * after a failure was seen; the skip report is in file order whatever order the
  * batches settle in; the last of two entries with the same key wins; a command
  * that refuses raw bodies moves the rest of the restore to the per-entry path;
- * a partial backup never uses the commands. A mocked command is not evidence
- * about the native backend.
+ * a partial backup never uses the batch commands. An asset above `CHUNK_MAX`
+ * travels only in calls of at most `CHUNK_MAX` bytes in both directions, on the
+ * desktop transport of `tauriDesktopFake.ts` with a per-call cap; a restore
+ * entry is read from the file in header-first slices. A mocked command is not
+ * evidence about the native backend.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
@@ -29,8 +32,21 @@ const platformBox = vi.hoisted(() => {
 })
 const BACKUP_PATH = vi.hoisted(() => 'backup-output.bin')
 
-const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[], failWrites: false, failedWrites: 0 }))
+const backupSink = vi.hoisted(() => ({
+    writes: [] as Uint8Array[],
+    failWrites: false,
+    failedWrites: 0,
+    /** Paths the page asked the plugin to remove. */
+    removed: [] as string[],
+    failRemove: false,
+}))
+const osBox = vi.hoisted(() => ({ os: 'windows' }))
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs, { cap: 4 * 1024 * 1024 }))
+/** What the page called and showed, in order, for tests of the order of an abort and a message. */
+const eventLog = vi.hoisted(() => ({ events: [] as string[], holdAbort: null as Promise<void> | null, rawInFlight: [] as number[] }))
+/** A size the trailer of every `read_range` of a key reports instead of the file's own, for keys larger than any file the test can hold. */
+const reportedTotals = vi.hoisted(() => new Map<string, number>())
 const batchFake = await vi.hoisted(async () => (await import('./assetBatchFake')).createAssetBatchFake())
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
 const setDatabaseMock = vi.hoisted(() => vi.fn())
@@ -62,8 +78,20 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
+vi.mock('@tauri-apps/plugin-os', () => ({ type: () => osBox.os }))
+
 vi.mock('@tauri-apps/plugin-fs', () => ({
     ...fakeFs.module,
+    remove: async (path: string, options?: unknown) => {
+        if (path === BACKUP_PATH) {
+            if (backupSink.failRemove) {
+                throw new Error('scratch: the backup file cannot be removed')
+            }
+            backupSink.removed.push(path)
+            return
+        }
+        await (fakeFs.module.remove as (path: string, options?: unknown) => Promise<void>)(path, options)
+    },
     writeFile: async (path: string, data: Uint8Array, options?: { createNew?: boolean, baseDir?: number }) => {
         if (path === BACKUP_PATH) {
             if (backupSink.failWrites) {
@@ -117,7 +145,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
     alertConfirm: vi.fn(async () => true),
-    alertError: alertErrorMock,
+    alertError: (...args: unknown[]) => { eventLog.events.push('alertError'); return alertErrorMock(...args) },
     alertWait: vi.fn(),
     alertMd: alertMdMock,
     alertNormal: alertNormalMock,
@@ -139,7 +167,25 @@ vi.mock(import('src/ts/util'), () => ({
 
 vi.mock('@tauri-apps/api/core', () => ({
     convertFileSrc: vi.fn((p: string) => p),
-    invoke: fakeFs.invoke,
+    invoke: async (command: string, args?: unknown, options?: unknown) => {
+        eventLog.events.push(command)
+        if (command === 'write_chunk_raw' || command === 'write_chunk') {
+            eventLog.rawInFlight.push(batchFake.ctl.inFlight)
+        }
+        if (command === 'abort_chunked' && eventLog.holdAbort) {
+            await eventLog.holdAbort
+        }
+        const reply = await (desktop.invoke as (command: string, args?: unknown, options?: unknown) => Promise<unknown>)(command, args, options)
+        if (command === 'abort_chunked') {
+            eventLog.events.push('abort_chunked done')
+        }
+        const reported = command === 'read_range' ? reportedTotals.get((args as { key: string }).key) : undefined
+        if (reported !== undefined && reply instanceof ArrayBuffer) {
+            // The trailer is the last 56 bytes; its first word is the file size.
+            new DataView(reply, reply.byteLength - 56).setBigUint64(0, BigInt(reported), true)
+        }
+        return reply
+    },
 }))
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -243,13 +289,16 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
-import { dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { BlobDownloadWriter, type ExportByteWriter, type TauriWriter } from 'src/ts/exportWriters'
 import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { getAppStore } from 'src/ts/storage/store/appStore'
+import { CHUNK_MAX, resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
+import { collectColdStorageBackupPayloads } from 'src/ts/process/coldstorage.svelte'
 
 //#region helpers
 
@@ -414,6 +463,58 @@ function fileWithRejectingSlice(bytes: Uint8Array, rejectFromCall: number): File
     })
 }
 
+function patterned(size: number, seed: number): Uint8Array {
+    const out = new Uint8Array(size)
+    for (let i = 0; i < size; i++) {
+        out[i] = (i * 13 + seed) % 251
+    }
+    return out
+}
+
+function same(actual: Uint8Array | null | undefined, expected: Uint8Array): boolean {
+    return actual !== null && actual !== undefined && Buffer.compare(Buffer.from(actual), Buffer.from(expected)) === 0
+}
+
+/** A file whose every slice call is recorded by its size, over the bytes it holds. */
+function recordingFile(bytes: Uint8Array): { file: File, sizes: number[] } {
+    const base = new File([asBlobPart(bytes)], 'backup.bin')
+    const sizes: number[] = []
+    const file = new Proxy(base, {
+        get(target, prop, receiver) {
+            if (prop === 'slice') {
+                return (start = 0, end = target.size) => {
+                    sizes.push(end - start)
+                    return target.slice(start, end)
+                }
+            }
+            return Reflect.get(target, prop, receiver)
+        },
+    })
+    return { file, sizes }
+}
+
+/** A file whose slice of `size` bytes rejects when `fails(size, n)` holds for the `n`-th (from 0) slice of that size. */
+function fileWithFailingSlice(bytes: Uint8Array, fails: (size: number, nth: number) => boolean): File {
+    const base = new File([asBlobPart(bytes)], 'backup.bin')
+    const seen = new Map<number, number>()
+    return new Proxy(base, {
+        get(target, prop, receiver) {
+            if (prop === 'slice') {
+                return (start = 0, end = target.size) => {
+                    const size = end - start
+                    const nth = seen.get(size) ?? 0
+                    seen.set(size, nth + 1)
+                    if (fails(size, nth)) {
+                        return { arrayBuffer: () => Promise.reject(new Error('scratch: unreadable region')) } as unknown as Blob
+                    }
+                    return target.slice(start, end)
+                }
+            }
+            return Reflect.get(target, prop, receiver)
+        },
+    })
+}
+
 async function outcomeOf(run: () => Promise<void>): Promise<unknown> {
     return run().then(() => null, (error: unknown) => error)
 }
@@ -436,6 +537,15 @@ beforeEach(() => {
     backupSink.writes.length = 0
     backupSink.failWrites = false
     backupSink.failedWrites = 0
+    backupSink.removed.length = 0
+    backupSink.failRemove = false
+    osBox.os = 'windows'
+    desktop.reset()
+    eventLog.events.length = 0
+    eventLog.rawInFlight.length = 0
+    eventLog.holdAbort = null
+    reportedTotals.clear()
+    resetByteTransportForTests()
     fakeFs.reset()
     fakeFs.directories.add('assets')
     batchFake.reset()
@@ -670,8 +780,8 @@ describe('a restore that stops early while a batch is being written', () => {
         let settledAtMessage: boolean | null = null
         alertErrorMock.mockImplementation(() => { settledAtMessage = allCallsSettled() })
 
-        // Calls 1-3 are the walk, call 4 reads the first asset, call 5 rejects.
-        const restoring = startRestore(fileWithRejectingSlice(walkView(), 5))
+        // Calls 1-3 are the walk, calls 4 and 5 read the header and the data of the first asset, call 6 rejects.
+        const restoring = startRestore(fileWithRejectingSlice(walkView(), 6))
         await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
@@ -752,21 +862,214 @@ describe('two entries with the same key in one backup', () => {
     })
 })
 
-describe('an entry larger than the byte budget', () => {
-    test('is written alone through the single-entry command, with nothing else in flight before, during or until it settles', async () => {
-        const big = filled(17 * MIB, 7)
+describe('a restore of an asset above CHUNK_MAX', () => {
+    function tempFiles(): string[] {
+        return [...fakeFs.files.keys()].filter((path) => path.includes('risu-write'))
+    }
+
+    test('is streamed alone in chunks of at most CHUNK_MAX, durably, while the batches around it carry only the small assets', async () => {
+        const big = patterned(17 * MIB, 3)
+        batchFake.ctl.beforeWrite = (call) => { eventLog.events.push(`batch ${call.keys.join()}`) }
 
         await restoreBytes(backupOf([['before.png', filled(8, 1)], ['huge.bin', big], ['after.png', filled(8, 2)]]))
 
         expect(batchFake.ctl.calls.map((call) => [call.kind, call.keys])).toEqual([
             ['batch', ['assets/before.png']],
-            ['single', ['assets/huge.bin']],
             ['batch', ['assets/after.png']],
         ])
-        expect(batchFake.ctl.calls.map((call) => call.inFlightAtStart)).toEqual([0, 0, 0])
-        expect(storedBytes('huge.bin')?.length).toBe(big.length)
-        expect(storedBytes('huge.bin')?.[0]).toBe(7)
+        expect(batchFake.ctl.calls.map((call) => call.inFlightAtStart)).toEqual([0, 0])
+        expect(eventLog.events.filter((event) => event.startsWith('batch') || event === 'write_chunk_raw')).toEqual([
+            'batch assets/before.png',
+            'write_chunk_raw', 'write_chunk_raw', 'write_chunk_raw', 'write_chunk_raw', 'write_chunk_raw',
+            'batch assets/after.png',
+        ])
+        expect(eventLog.rawInFlight).toEqual([0, 0, 0, 0, 0])
+        expect(desktop.rawCalls.map((call) => [call.key, call.offset, call.size, call.last, call.durable])).toEqual([
+            ['assets/huge.bin', 0, CHUNK_MAX, false, true],
+            ['assets/huge.bin', CHUNK_MAX, CHUNK_MAX, false, true],
+            ['assets/huge.bin', 2 * CHUNK_MAX, CHUNK_MAX, false, true],
+            ['assets/huge.bin', 3 * CHUNK_MAX, CHUNK_MAX, false, true],
+            ['assets/huge.bin', 4 * CHUNK_MAX, MIB, true, true],
+        ])
+        expect(same(storedBytes('huge.bin'), big)).toBe(true)
+        expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
+        expect(tempFiles()).toEqual([])
+        expect(wasAssetWrittenThisPage('assets/huge.bin')).toBe(true)
         expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('reads each entry header first and an asset in slices of at most CHUNK_MAX: no slice of the backup above CHUNK_MAX', async () => {
+        const recorded = recordingFile(backupOf([['small.png', filled(100, 1)], ['huge.bin', patterned(9 * MIB, 5)]]))
+
+        await startRestore(recorded.file)
+
+        expect(Math.max(...recorded.sizes)).toBeLessThanOrEqual(CHUNK_MAX)
+        expect(recorded.sizes.filter((size) => size === CHUNK_MAX)).toHaveLength(2)
+        expect(storedBytes('huge.bin')?.length).toBe(9 * MIB)
+    })
+
+    test('an entry whose header changed since the walk has its data left unread', async () => {
+        const walkView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(16, 2)), databaseChunk()])
+        const passView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(17, 2))])
+        const recorded = recordingFile(walkView)
+        const changing = fileThatChanges(walkView, passView, 3)
+        const file = new Proxy(changing, {
+            get(target, prop, receiver) {
+                if (prop === 'slice') {
+                    return (start: number, end: number) => {
+                        recorded.sizes.push(end - start)
+                        return (target.slice as (start: number, end: number) => Blob)(start, end)
+                    }
+                }
+                return Reflect.get(target, prop, receiver)
+            },
+        })
+
+        await startRestore(file)
+
+        // Three slices walk the file; then the first entry's header and data, and only the second entry's header.
+        expect(recorded.sizes).toHaveLength(3 + 3)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+    })
+
+    test('the last entry of a key is what the store holds whether it was streamed or batched, and a streamed entry waits for the batch in flight that holds its key', async () => {
+        const gates = holdWrites([0])
+        const lastBig = patterned(5 * MIB, 9)
+
+        const restoring = restoreBytes(backupOf([
+            ['dup.png', patterned(5 * MIB, 1)],
+            ['dup.png', filled(8, 2)],
+            ['dup.png', lastBig],
+        ]))
+        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await settleTimers()
+        // The first streamed write is complete (two chunks); the second must not start while the batch is in flight.
+        expect(desktop.rawCalls).toHaveLength(2)
+        gates.get(0)?.release()
+        await restoring
+
+        expect(desktop.rawCalls).toHaveLength(4)
+        expect(same(storedBytes('dup.png'), lastBig)).toBe(true)
+    })
+
+    test.each(['bad:name.png', 'bad.'])('an entry named %s that the store refuses is skipped before any call and reported, and the restore goes on', async (badName) => {
+        const good = patterned(5 * MIB, 4)
+
+        await restoreBytes(backupOf([[badName, patterned(5 * MIB, 1)], ['good.png', good]]))
+
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, [badName]))
+        expect(desktop.rawCalls.every((call) => call.key === 'assets/good.png')).toBe(true)
+        expect(same(storedBytes('good.png'), good)).toBe(true)
+        expect(storedBytes(badName)).toBeUndefined()
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('a refused name is skipped and reported the same way once raw chunk bodies were refused and chunks travel as base64', async () => {
+        desktop.refuseRawBodies()
+        const good = patterned(5 * MIB, 4)
+
+        await restoreBytes(backupOf([['first.png', patterned(5 * MIB, 2)], ['bad:name.png', patterned(5 * MIB, 1)], ['good.png', good]]))
+
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['bad:name.png']))
+        expect(desktop.chunk.callsOf('write_chunk').every((call) => call.args.key !== 'assets/bad:name.png')).toBe(true)
+        expect(same(storedBytes('good.png'), good)).toBe(true)
+        expect(storedBytes('first.png')?.length).toBe(5 * MIB)
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('when raw chunk bodies are refused the chunks continue as base64, each within the bound, and the file is complete', async () => {
+        desktop.refuseRawBodies()
+        const big = patterned(9 * MIB, 6)
+
+        await restoreBytes(backupOf([['huge.bin', big]]))
+
+        expect(desktop.chunk.chunkSizes).toEqual([CHUNK_MAX, CHUNK_MAX, MIB])
+        expect(desktop.rawCalls).toEqual([])
+        expect(same(storedBytes('huge.bin'), big)).toBe(true)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('with the batch commands off for the page a large asset is still streamed, and the small ones are written one at a time', async () => {
+        batchFake.ctl.available = false
+        const big = patterned(9 * MIB, 8)
+
+        await restoreBytes(backupOf([['small.png', filled(8, 1)], ['huge.bin', big]]))
+
+        expect(batchFake.ctl.calls).toHaveLength(0)
+        expect(desktop.rawCalls.map((call) => call.size)).toEqual([CHUNK_MAX, CHUNK_MAX, MIB])
+        expect(same(storedBytes('huge.bin'), big)).toBe(true)
+        expect(storedBytes('small.png')?.length).toBe(8)
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
+    })
+
+    test('a slice of the backup that cannot be read stops the restore with the changed-file message, the write is aborted before that message, and no later entry is written', async () => {
+        const bytes = backupOf([['huge.bin', patterned(13 * MIB, 3)], ['after.png', filled(8, 2)]])
+        // The third slice of CHUNK_MAX bytes: the first chunk has been sent by then.
+        const file = fileWithFailingSlice(bytes, (size, nth) => size === CHUNK_MAX && nth === 2)
+
+        await startRestore(file)
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(desktop.count('abort_chunked')).toBe(1)
+        expect(eventLog.events.indexOf('abort_chunked done')).toBeGreaterThan(-1)
+        expect(eventLog.events.indexOf('abort_chunked done')).toBeLessThan(eventLog.events.indexOf('alertError'))
+        expect(tempFiles()).toEqual([])
+        expect(storedBytes('huge.bin')).toBeUndefined()
+        expect(storedBytes('after.png')).toBeUndefined()
+        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+    })
+
+    test('the message of a stopped restore waits for the abort of the write to finish', async () => {
+        const abortGate = gate()
+        eventLog.holdAbort = abortGate.promise
+        const file = fileWithFailingSlice(backupOf([['huge.bin', patterned(13 * MIB, 3)]]), (size, nth) => size === CHUNK_MAX && nth === 2)
+
+        const restoring = startRestore(file)
+        await vi.waitFor(() => { expect(eventLog.events).toContain('abort_chunked') })
+        await settleTimers()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        abortGate.release()
+        await restoring
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(tempFiles()).toEqual([])
+    })
+
+    test.each([
+        ['the second chunk', ({ offset }: { offset: number }) => offset === CHUNK_MAX],
+        ['the last chunk', ({ last }: { last: boolean }) => last],
+    ])('a write that fails at %s leaves the key as it was, removes the temp file, stops the restore on the failure path and writes no later entry', async (_title, failsAt) => {
+        const previous = filled(12, 5)
+        fakeFs.plant('assets/huge.bin', previous)
+        desktop.chunk.failWrites((call) => failsAt(call) ? 'scratch: the disk is full' : undefined)
+
+        await restoreBytes(backupOf([['huge.bin', patterned(9 * MIB, 3)], ['after.png', filled(8, 2)]]))
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expect(same(storedBytes('huge.bin'), previous)).toBe(true)
+        expect(tempFiles()).toEqual([])
+        expect(storedBytes('after.png')).toBeUndefined()
+        expect(batchFake.ctl.calls.flatMap((call) => call.keys)).not.toContain('assets/after.png')
+        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(unhandled).toEqual([])
+    })
+
+    test('a failure of the first chunk leaves no file and no temp file', async () => {
+        desktop.chunk.failWrites(({ offset }) => offset === 0 ? 'scratch: the disk is full' : undefined)
+
+        await restoreBytes(backupOf([['huge.bin', patterned(9 * MIB, 3)]]))
+
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expect(storedBytes('huge.bin')).toBeUndefined()
+        expect(tempFiles()).toEqual([])
     })
 })
 
@@ -844,7 +1147,7 @@ describe('an export through the batch commands', () => {
         expect(alertMdMock.mock.calls.map((call) => String(call[0])).join('\n')).toContain('assets/b.mp3')
     })
 
-    test('a key the batch answers with invalid or error is read through the store and exported, and the export goes on', async () => {
+    test('a key the batch answers with invalid or error is read with the ranged reader and exported, and the export goes on', async () => {
         plant(NAMES)
         batchFake.ctl.invalidReads.add('assets/a.png')
         batchFake.ctl.erroredReads.add('assets/c.webp')
@@ -855,7 +1158,7 @@ describe('an export through the batch commands', () => {
         expect(alertNormalMock).toHaveBeenCalledWith('Success')
     })
 
-    test('a read call that rejects leaves every key of its batch to be read through the store, and the export completes', async () => {
+    test('a read call that rejects leaves every key of its batch to be read with the ranged reader, and the export completes', async () => {
         plant(NAMES)
         batchFake.ctl.beforeRead = () => { throw new Error('scratch: transport went away') }
 
@@ -874,7 +1177,7 @@ describe('an export through the batch commands', () => {
         expect(exportedAssets()).toEqual(expectedExport(NAMES))
     })
 
-    test('a writer that fails leaves the export rejected only after every read in flight has settled', async () => {
+    test('a writer that fails ends the export with the failed-and-deleted message only after every read in flight has settled', async () => {
         for (const index of [0, 1, 2, 3]) {
             fakeFs.plant(`assets/big${index}.bin`, filled(3 * MIB, index + 1))
         }
@@ -891,16 +1194,363 @@ describe('an export through the batch commands', () => {
         expect(allCallsSettled()).toBe(false)
         gates.get(2)?.release()
         gates.get(3)?.release()
-        const outcome = await exporting
+        expect(await exporting).toBeNull()
 
-        expect(outcome).toBeInstanceOf(Error)
         expect(allCallsSettled()).toBe(true)
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(null))
+        expect(backupSink.removed).toEqual([BACKUP_PATH])
+        expect(alertNormalMock).not.toHaveBeenCalled()
         expect(unhandled).toEqual([])
     })
 })
 
+/** The entries of the export written to the sink, in order, with the database entry last. */
+function exportedEntries(): { name: string, data: Uint8Array }[] {
+    const bytes = concat(backupSink.writes)
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    const out: { name: string, data: Uint8Array }[] = []
+    let offset = 0
+    while (offset + 4 <= bytes.length) {
+        const nameLength = view.getUint32(offset, true)
+        offset += 4
+        const name = new TextDecoder().decode(bytes.subarray(offset, offset + nameLength))
+        offset += nameLength
+        const dataLength = view.getUint32(offset, true)
+        offset += 4
+        out.push({ name, data: bytes.subarray(offset, offset + dataLength) })
+        offset += dataLength
+    }
+    return out
+}
+
+function exportedHasName(name: string): boolean {
+    return Buffer.from(concat(backupSink.writes)).includes(name)
+}
+
+describe('an export of assets above CHUNK_MAX', () => {
+    const BIG = 9 * MIB
+
+    beforeEach(() => {
+        // The listing reads sizes from metadata, not from the file, as the command does.
+        batchFake.ctl.sizeOf = (key) => fakeFs.files.get(key)?.length
+    })
+
+    function plantBig(): Uint8Array {
+        const data = patterned(BIG, 21)
+        fakeFs.plant('assets/big.bin', data)
+        return data
+    }
+
+    /** The asset entries as the container writes them: what a whole-asset export of these files produces. */
+    function wholeExport(): Uint8Array {
+        return concat(fakeFs.listing('assets').map((name) => buildChunk(name, fakeFs.files.get(`assets/${name}`) ?? new Uint8Array(0))))
+    }
+
+    test('a large asset is exported from the ranged reader in pieces of at most CHUNK_MAX, and every entry equals what a whole-asset export writes', async () => {
+        fakeFs.plant('assets/a.png', filled(32, 1))
+        plantBig()
+        fakeFs.plant('assets/c.webp', patterned(CHUNK_MAX, 3))
+        fakeFs.plant('assets/empty.bin', new Uint8Array(0))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        const expected = wholeExport()
+        const written = concat(backupSink.writes)
+        expect(same(written.subarray(0, expected.length), expected)).toBe(true)
+        expect(exportedEntries().at(-1)?.name).toBe('database.risudat')
+        // The large key is never part of a batched read; the pieces come from read_range.
+        expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').flatMap((call) => call.keys)).not.toContain('assets/big.bin')
+        expect(desktop.chunk.callsOf('read_range').filter((call) => call.args.key === 'assets/big.bin').map((call) => call.args.offset)).toEqual([0, CHUNK_MAX, 2 * CHUNK_MAX])
+        expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
+        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+    })
+
+    test('a file that grew past the listed size is answered large by the batch and exported from the ranged reader', async () => {
+        const data = plantBig()
+        batchFake.ctl.listedSizes.set('assets/big.bin', 100)
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').flatMap((call) => call.keys)).toContain('assets/big.bin')
+        expect(same(exportedEntries()[0].data, data)).toBe(true)
+        expect(alertMdMock).not.toHaveBeenCalled()
+        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+    })
+
+    test('a key the batch defers is asked for again in a later batch and exported whole', async () => {
+        fakeFs.plant('assets/a.png', filled(32, 1))
+        fakeFs.plant('assets/b.png', filled(32, 2))
+        batchFake.ctl.deferOnce.add('assets/b.png')
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').map((call) => call.keys)).toEqual([['assets/a.png', 'assets/b.png'], ['assets/b.png']])
+        expect(same(concat(backupSink.writes).subarray(0, wholeExport().length), wholeExport())).toBe(true)
+    })
+
+    test('with the listing command failed every asset is exported from the ranged reader, none is reported missing, and the large one is whole', async () => {
+        fakeFs.plant('assets/a.png', filled(32, 1))
+        const data = plantBig()
+        batchFake.ctl.failListing = true
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(batchFake.ctl.calls.filter((call) => call.kind === 'read')).toHaveLength(0)
+        const names = exportedEntries().map((entry) => entry.name)
+        expect(names).toEqual(['a.png', 'big.bin', 'database.risudat'])
+        expect(same(exportedEntries()[1].data, data)).toBe(true)
+        expect(alertMdMock).not.toHaveBeenCalled()
+        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+    })
+
+    test('an asset absent when the ranged reader asks for it is reported as missing and the export goes on', async () => {
+        fakeFs.plant('assets/a.png', filled(32, 1))
+        fakeFs.plant('assets/gone.png', filled(32, 2))
+        batchFake.ctl.failListing = true
+        desktop.chunk.hooks.before = ({ key }) => { fakeFs.files.delete(key === 'assets/gone.png' ? key : '') }
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(exportedEntries().map((entry) => entry.name)).toEqual(['a.png', 'database.risudat'])
+        expect(alertMdMock.mock.calls.map((call) => String(call[0])).join('\n')).toContain('assets/gone.png')
+    })
+
+    function replaceBigBetweenPieces(): void {
+        desktop.chunk.hooks.before = ({ key, offset }) => {
+            if (key === 'assets/big.bin' && offset > 0) {
+                fakeFs.files.set(key, patterned(BIG, 99))
+            }
+        }
+    }
+
+    test('an asset that changes between pieces stops the export: the file is deleted, the message names the asset, and nothing says the backup succeeded', async () => {
+        getDatabaseMock.mockImplementation(() => databaseWith({ userIcon: 'assets/big.bin' }))
+        fakeFs.plant('assets/a.png', filled(32, 1))
+        plantBig()
+        replaceBigBetweenPieces()
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(`'User Icon' from User Settings`))
+        expect(backupSink.removed).toEqual([BACKUP_PATH])
+        expect(alertNormalMock).not.toHaveBeenCalled()
+        expect(alertMdMock).not.toHaveBeenCalled()
+        // Nothing follows the changed asset: the database entry is never written.
+        expect(exportedHasName('database.risudat')).toBe(false)
+    })
+
+    test('when the incomplete file cannot be deleted the message says so and says not to use it', async () => {
+        plantBig()
+        replaceBigBetweenPieces()
+        backupSink.failRemove = true
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+console.log('DBG', desktop.commands.slice(-12), eventLog.events.slice(-12));
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(`'assets/big.bin'`))
+        expect(backupSink.removed).toEqual([])
+        expect(alertNormalMock).not.toHaveBeenCalled()
+    })
+
+    test('an asset that vanishes between pieces stops the export the same way', async () => {
+        plantBig()
+        desktop.chunk.hooks.before = ({ key, offset }) => {
+            if (key === 'assets/big.bin' && offset > 0) {
+                fakeFs.files.delete(key)
+            }
+        }
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(`'assets/big.bin'`))
+        expect(backupSink.removed).toEqual([BACKUP_PATH])
+    })
+
+    test('a failure before the output file is touched says nothing was written and deletes nothing', async () => {
+        vi.mocked(collectColdStorageBackupPayloads).mockRejectedValueOnce(new Error('scratch: cold storage cannot be read'))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedNothingWritten())
+        expect(backupSink.removed).toEqual([])
+        expect(alertNormalMock).not.toHaveBeenCalled()
+    })
+
+    test('a failure after the writer is initialised and before any byte reached the file keeps the existing file and says nothing was written', async () => {
+        // The late cold-storage collection runs after init and before the first write of a small profile.
+        const empty = { payloads: [], missingKeys: [], invalidKeys: [] }
+        vi.mocked(collectColdStorageBackupPayloads)
+            .mockResolvedValueOnce(empty as unknown as Awaited<ReturnType<typeof collectColdStorageBackupPayloads>>)
+            .mockRejectedValueOnce(new Error('scratch: late cold storage cannot be read'))
+        fakeFs.plant('assets/a.png', filled(32, 1))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedNothingWritten())
+        expect(backupSink.writes).toEqual([])
+        expect(backupSink.removed).toEqual([])
+        expect(alertNormalMock).not.toHaveBeenCalled()
+    })
+
+    describe('an asset larger than a backup entry can hold', () => {
+        const TOO_BIG = 2 ** 32 + 5
+
+        /** A 5 MiB asset first, so the writer has passed bytes to the file before the oversized one is reached. */
+        function plantWrittenThenTooBig(): void {
+            fakeFs.plant('assets/a.bin', patterned(5 * MIB, 4))
+            plantBig()
+            reportedTotals.set('assets/big.bin', TOO_BIG)
+        }
+
+        test('a first read_range trailer above 4 GiB ends the export on the failure path: the file is deleted, the message names the asset, and no entry of it, the database or a success is written', async () => {
+            plantWrittenThenTooBig()
+
+            expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+            expect(backupSink.writes.length).toBeGreaterThan(0)
+            expect(alertErrorMock).toHaveBeenCalledTimes(1)
+            expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'deleted'))
+            expect(backupSink.removed).toEqual([BACKUP_PATH])
+            expect(alertNormalMock).not.toHaveBeenCalled()
+            expect(alertMdMock).not.toHaveBeenCalled()
+            expect(exportedHasName('big.bin')).toBe(false)
+            expect(exportedHasName('database.risudat')).toBe(false)
+            // Only the first piece was asked for: nothing is read on after the size is known to be too large.
+            expect(desktop.chunk.callsOf('read_range').filter((call) => call.args.key === 'assets/big.bin')).toHaveLength(1)
+        })
+
+        test('the message says the asset is too large for an entry and does not tell the person to run the backup again', async () => {
+            plantWrittenThenTooBig()
+
+            expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+            const message = language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'deleted')
+            expect(message).toContain("'assets/big.bin'")
+            expect(message).toContain('too large for a backup entry')
+            expect(message).toContain('about 4.29 GB')
+            expect(message).not.toMatch(/run the backup again/i)
+            expect(alertErrorMock).toHaveBeenCalledWith(message)
+        })
+
+        test('when nothing reached the file the message says so and nothing is deleted', async () => {
+            plantBig()
+            reportedTotals.set('assets/big.bin', TOO_BIG)
+
+            expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+            expect(alertErrorMock).toHaveBeenCalledTimes(1)
+            expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'untouched'))
+            expect(backupSink.removed).toEqual([])
+        })
+
+        test('when the incomplete file cannot be deleted the message says not to use it', async () => {
+            plantWrittenThenTooBig()
+            backupSink.failRemove = true
+
+            expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+            expect(alertErrorMock).toHaveBeenCalledTimes(1)
+            expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'kept'))
+            expect(backupSink.removed).toEqual([])
+        })
+    })
+    test('the busy marker of the export ends however the export ends', async () => {
+        plantBig()
+        replaceBigBetweenPieces()
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        // A second export is accepted: nothing is left marked as running.
+        fakeFs.files.delete('assets/big.bin')
+        backupSink.writes.length = 0
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+    })
+})
+
+describe('LocalWriter.writeBackupHeader', () => {
+    test('rejects a body of 4 GiB or more and writes nothing, and accepts the largest length the container can state', async () => {
+        const writer = new LocalWriter()
+        expect(await writer.init()).toBe(true)
+
+        await expect(writer.writeBackupHeader('assets/huge.bin', 2 ** 32)).rejects.toThrow('too large')
+        await writer.close()
+        expect(backupSink.writes).toEqual([])
+        expect((writer.writer as TauriWriter).touchedFile).toBe(false)
+
+        const second = new LocalWriter()
+        expect(await second.init()).toBe(true)
+        await expect(second.writeBackupHeader('assets/ok.bin', 0xFFFFFFFF)).resolves.toBeUndefined()
+        await second.close()
+        const header = concat(backupSink.writes)
+        expect(new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(header.length - 4, true)).toBe(0xFFFFFFFF)
+    })
+})
+
+describe('a failed export on a page that is not the desktop app', () => {
+    /** Runs a full export on `target` that fails after the writer is initialised, from the late cold-storage collection. */
+    async function failExportOn(target: ExportByteWriter): Promise<void> {
+        vi.spyOn(LocalWriter.prototype, 'init').mockImplementation(async function (this: LocalWriter) {
+            this.writer = target
+            return true
+        })
+        const empty = { payloads: [], missingKeys: [], invalidKeys: [] }
+        vi.mocked(collectColdStorageBackupPayloads)
+            .mockResolvedValueOnce(empty as unknown as Awaited<ReturnType<typeof collectColdStorageBackupPayloads>>)
+            .mockRejectedValueOnce(new Error('scratch: late cold storage cannot be read'))
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+    }
+
+    test('an export held in memory says nothing was written, since no download was produced, and drops what it held', async () => {
+        const target = new BlobDownloadWriter('out.bin')
+        const abort = vi.spyOn(target, 'abort')
+
+        await failExportOn(target)
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedNothingWritten())
+        expect(abort).toHaveBeenCalledTimes(1)
+        expect(target.heldInMemory).toBe(true)
+        expect(alertNormalMock).not.toHaveBeenCalled()
+    })
+
+    test('a stream that may already have reached the browser says the file is incomplete, and the stream is aborted', async () => {
+        const written: Uint8Array[] = []
+        const abort = vi.fn(async (_reason?: unknown) => { })
+        const target: ExportByteWriter = {
+            write: async (data) => { written.push(data) },
+            close: async () => { },
+            abort,
+        }
+
+        await failExportOn(target)
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(null))
+        expect(abort).toHaveBeenCalledTimes(1)
+        expect(alertNormalMock).not.toHaveBeenCalled()
+    })
+
+    test('a stream whose abort fails is still reported as incomplete', async () => {
+        const target: ExportByteWriter = {
+            write: async () => { },
+            close: async () => { },
+            abort: async () => { throw new Error('scratch: the stream cannot be aborted') },
+        }
+
+        await failExportOn(target)
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(null))
+    })
+})
+
 describe('a partial backup', () => {
-    test('reads its assets one at a time through the store and makes no batch call', async () => {
+    test('reads its assets from the ranged reader and makes no batch call', async () => {
         getDatabaseMock.mockImplementation(() => databaseWith({ customBackground: 'assets/bg.webp' }))
         fakeFs.plant('assets/bg.webp', filled(16, 9))
 
@@ -908,5 +1558,49 @@ describe('a partial backup', () => {
 
         expect(batchFake.ctl.calls).toHaveLength(0)
         expect(concat(backupSink.writes).length).toBeGreaterThan(16)
+        expect(desktop.count('read_range')).toBe(1)
+    })
+
+    test('a large profile image is exported in pieces of at most CHUNK_MAX and equals the file', async () => {
+        const data = patterned(9 * MIB, 17)
+        getDatabaseMock.mockImplementation(() => databaseWith({ customBackground: 'assets/bg.webp', userIcon: 'assets/icon.png' }))
+        fakeFs.plant('assets/bg.webp', data)
+        fakeFs.plant('assets/icon.png', filled(10, 2))
+
+        expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
+
+        const entries = exportedEntries()
+        expect(entries.map((entry) => entry.name)).toEqual(['icon.png', 'bg.webp', 'database.risudat'])
+        expect(same(entries[1].data, data)).toBe(true)
+        expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
+        expect(batchFake.ctl.calls).toHaveLength(0)
+    })
+
+    test('an asset that changes between pieces stops the partial backup: the file is deleted and the message names the asset', async () => {
+        getDatabaseMock.mockImplementation(() => databaseWith({ customBackground: 'assets/bg.webp' }))
+        fakeFs.plant('assets/bg.webp', patterned(9 * MIB, 17))
+        desktop.chunk.hooks.before = ({ key, offset }) => {
+            if (key === 'assets/bg.webp' && offset > 0) {
+                fakeFs.files.set(key, patterned(9 * MIB, 18))
+            }
+        }
+
+        expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(`'Custom Background' from User Settings`))
+        expect(backupSink.removed).toEqual([BACKUP_PATH])
+        expect(alertNormalMock).not.toHaveBeenCalled()
+        expect(exportedHasName('database.risudat')).toBe(false)
+    })
+
+    test('a writer that fails ends the partial backup with the failed-and-deleted message', async () => {
+        getDatabaseMock.mockImplementation(() => databaseWith({ customBackground: 'assets/bg.webp' }))
+        fakeFs.plant('assets/bg.webp', filled(16, 9))
+        backupSink.failWrites = true
+
+        expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(null))
+        expect(backupSink.removed).toEqual([BACKUP_PATH])
     })
 })

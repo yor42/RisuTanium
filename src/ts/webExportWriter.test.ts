@@ -357,4 +357,25 @@ describe('openWebExportWriter chooses the helper page and the memory path', () =
         expect(writer).toBeDefined()
         expect(events).toEqual(['notice:' + language.exportHeldInMemory, 'create:' + SELF_HOSTED])
     })
+
+    test("(R) streamsaver's own memory path reports that it holds the export until it is closed, and can be aborted before", async () => {
+        const { sut } = await loadWithFakeStreamSaver({ secure: true, useBlobFallback: true })
+        const writer = await sut.openWebExportWriter('out.bin')
+        await writer.write(new Uint8Array([1, 2, 3]))
+        expect(writer.heldInMemory).toBe(true)
+        await writer.abort?.(new Error('synthetic failure'))
+        expect(writer.heldInMemory).toBe(true)
+
+        const closing = await sut.openWebExportWriter('out.bin')
+        await closing.close()
+        expect(closing.heldInMemory).toBe(false)
+    })
+
+    test('(G) a live stream reports no in-memory hold, so a failed export is treated as possibly partial', async () => {
+        const { sut, fake } = await loadWithFakeStreamSaver({ secure: true, useBlobFallback: false })
+        fake.createWriteStream.mockImplementation(() => ({ writable: new WritableStream<Uint8Array>(), ready: Promise.resolve() }))
+        const writer = await sut.openWebExportWriter('out.bin')
+        expect(writer.heldInMemory).not.toBe(true)
+        expect(typeof writer.abort).toBe('function')
+    })
 })

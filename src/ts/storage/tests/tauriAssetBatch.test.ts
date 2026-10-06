@@ -42,7 +42,6 @@ import {
     readAssetBatch,
     resetAssetBatchAvailabilityForTests,
     writeAssetBatch,
-    writeAssetSingle,
 } from '../tauriAssetBatch'
 
 const encoder = new TextEncoder()
@@ -124,16 +123,16 @@ describe('the frames of a batch write', () => {
         expect(Array.from(h.invoke.mock.calls[0][1] as Uint8Array)).toEqual(Array.from(encodePutFrames(entries)))
     })
 
-    test('a single entry goes to put_asset_single as the raw body with its key in a header', async () => {
-        h.invoke.mockResolvedValueOnce({ k: 'ok' })
-        const data = new Uint8Array([5, 6])
+    test('entries that together exceed the cap are refused before any call, and entries at the cap are sent', async () => {
+        const entries = [{ key: 'assets/a', data: new Uint8Array(3) }, { key: 'assets/b', data: new Uint8Array(3) }]
 
-        const result = await writeAssetSingle({ key: 'assets/big file.bin', data })
+        expect(() => encodePutFrames(entries, 5)).toThrow(RangeError)
+        await expect(writeAssetBatch(entries, 5)).rejects.toBeInstanceOf(RangeError)
+        expect(h.invoke).not.toHaveBeenCalled()
 
-        expect(result).toEqual({ k: 'ok' })
-        expect(h.invoke.mock.calls[0][0]).toBe('put_asset_single')
-        expect(h.invoke.mock.calls[0][1]).toBe(data)
-        expect(h.invoke.mock.calls[0][2]).toEqual({ headers: { 'x-risu-key': encodeURIComponent('assets/big file.bin') } })
+        h.invoke.mockResolvedValueOnce([{ k: 'ok' }, { k: 'ok' }])
+        await expect(writeAssetBatch(entries, 6)).resolves.toHaveLength(2)
+        expect(h.invoke).toHaveBeenCalledTimes(1)
     })
 })
 
@@ -184,12 +183,30 @@ describe('the response of a batch read', () => {
         ])
     })
 
+    test('reads a file above the single-call size as large and a key left for a later call as deferred, each without bytes', () => {
+        const response = buffer([
+            ...frame(0, new Uint8Array([1])),
+            ...frame(4, new Uint8Array([])),
+            ...frame(5, new Uint8Array([])),
+            ...frame(5, new Uint8Array([])),
+        ])
+
+        expect(parseReadFrames(response, 4)).toEqual([
+            { status: 'ok', bytes: new Uint8Array([1]) },
+            { status: 'large' },
+            { status: 'deferred' },
+            { status: 'deferred' },
+        ])
+    })
+
     test.each([
         { title: 'a response that ends inside a frame header', bytes: [0, 1, 0], count: 1 },
+        { title: 'a large key that carries bytes', bytes: [4, ...u32le(1), 4], count: 1 },
+        { title: 'a deferred key that carries bytes', bytes: [5, ...u32le(1), 4], count: 1 },
         { title: 'a frame whose length runs past the end', bytes: [0, ...u32le(5), 1, 2], count: 1 },
         { title: 'bytes after the last frame', bytes: [...frame(0, new Uint8Array([1])), 9], count: 1 },
         { title: 'fewer frames than keys', bytes: frame(0, new Uint8Array([1])), count: 2 },
-        { title: 'an unknown status', bytes: [7, ...u32le(0)], count: 1 },
+        { title: 'an unknown status', bytes: [6, ...u32le(0)], count: 1 },
         { title: 'a missing key that carries bytes', bytes: [1, ...u32le(1), 4], count: 1 },
     ])('is refused: $title', ({ bytes, count }) => {
         expect(() => parseReadFrames(buffer(bytes), count)).toThrow()

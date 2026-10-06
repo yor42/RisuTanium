@@ -2,7 +2,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { BaseDirectory, exists, mkdir, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
-import { isAndroidTransport, MISSING_FILE_ERROR, readRanged } from '../tauriByteTransport'
+import { MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
@@ -18,9 +18,11 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * URL replaces the base directory, so a bare key such as `file:/home/u/x` would
  * leave AppData. With the `./` prefix no key parses as a URL.
  *
- * On Android a read goes through `readRanged` and a write through the chunked
- * commands (`tauriByteTransport.ts`), because the bridge cannot carry a large
- * body; the missing-file rule below applies to their errors too.
+ * On Android and desktop a read goes through `readRanged` and a write above
+ * the platform's single-call size through the chunked commands
+ * (`tauriByteTransport.ts`), because one call that moves a whole large file
+ * exhausts the web view's memory; a file of one piece or less still costs one
+ * call, and the missing-file rule below applies to their errors too.
  *
  * Writes go through `writeFileAtomic`, so a failed write keeps the old file.
  * Block-store keys (`blocks/`), numbered backups and cold-storage units go
@@ -144,8 +146,8 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             checkAddressable(key)
             const path = pluginPath(key)
             try {
-                // Android reads in bounded pieces through the app's own command, which takes the bare key.
-                const bytes = isAndroidTransport() ? await readRanged(key) : await readFile(path, APP_DATA)
+                // Android and desktop read in bounded pieces through the app's own command, which takes the bare key.
+                const bytes = transportKind() === 'other' ? await readFile(path, APP_DATA) : await readRanged(key)
                 return { bytes: ownBytes(bytes), version: null }
             } catch (error) {
                 if (await isAbsent(error, path)) {

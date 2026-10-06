@@ -1,13 +1,16 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
-import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
+import { remove } from "@tauri-apps/plugin-fs";
+import type { ExportByteWriter } from "../exportWriters";
+import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
-import { isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetSingle, type SizedAssetKey } from "../storage/tauriAssetBatch";
-import { ExportAssetReader, RestoreAssetPipeline } from "./assetBatchPipeline";
+import { isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
+import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, type RangedPiece } from "../storage/tauriByteTransport";
+import { ExportAssetReader, RestoreAssetPipeline, streamAssetEntry, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
@@ -21,7 +24,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
-import { BACKUP_ENCRYPTION_MARKER_NAME, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
+import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
@@ -88,27 +91,206 @@ async function listAssetsForBackup(store: ByteStore): Promise<{ keys: string[]; 
     return { keys: await store.list('assets/'), sized: null }
 }
 
+/**
+ * Whether this page is the desktop app on its own files store, where an asset
+ * above `CHUNK_MAX` is written and read in pieces and never as one value.
+ */
+async function desktopStreamingUsable(): Promise<boolean> {
+    if (!isDesktopTransport()) {
+        return false
+    }
+    try {
+        return await getAppStoreKind() === 'tauri'
+    } catch {
+        return false
+    }
+}
+
 /** The restore's asset writer on the desktop, or `null` where every asset goes through the store one call at a time. */
 async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
     if (!await assetBatchUsable()) {
         return null
     }
     const store = await getAppStore()
-    return new RestoreAssetPipeline({
-        writeBatch: writeAssetBatch,
-        writeSingle: writeAssetSingle,
-        writeEntry: async (entry) => {
-            try {
-                await store.write(entry.key, entry.data, 'unconditional')
-                return { k: 'ok' }
-            } catch (error) {
-                if (error instanceof StoreInvalidKeyError) {
-                    return { k: 'invalid', reason: error.message }
-                }
-                throw error
+    const writeEntry = async (entry: AssetPutEntry): Promise<AssetPutResult> => {
+        try {
+            await store.write(entry.key, entry.data, 'unconditional')
+            return { k: 'ok' }
+        } catch (error) {
+            if (error instanceof StoreInvalidKeyError) {
+                return { k: 'invalid', reason: error.message }
             }
-        },
+            throw error
+        }
+    }
+    return new RestoreAssetPipeline({
+        writeBatch: (entries) => writeAssetBatch(entries, CHUNK_MAX),
+        writeEntry,
+        openStream: openAssetStream,
     })
+}
+
+/** A durable chunked write of an asset key; throws `StoreInvalidKeyError` for a name the store refuses. */
+function openAssetStream(key: string) {
+    return createChunkedWriter(key, { durable: true })
+}
+
+/**
+ * An asset of a full or partial export could not be read to its end after its
+ * entry header was written, so the entry cannot be completed and the file
+ * being written is unusable.
+ */
+class BackupAssetChangedError extends Error {
+    constructor(public readonly key: string, cause: unknown) {
+        super(`The asset ${key} changed or could not be read while it was being saved`, { cause })
+        this.name = 'BackupAssetChangedError'
+    }
+}
+
+/**
+ * An asset is larger than a backup entry can hold: the container stores an
+ * entry's length in 32 bits, and a larger length would wrap into an entry no
+ * reader can parse. Running the export again fails the same way.
+ */
+class BackupAssetTooLargeError extends Error {
+    constructor(public readonly key: string, public readonly size: number) {
+        super(`The asset ${key} is ${size} bytes, more than a backup entry can hold`)
+        this.name = 'BackupAssetTooLargeError'
+    }
+}
+
+/** The most bytes the 32-bit length field of a backup entry can state. */
+const MAX_BACKUP_ENTRY_BYTES = 0xFFFFFFFF
+
+/**
+ * Writes one asset entry from the ranged reader, piece by piece: the entry
+ * header carries the size the first piece reported, and the pieces follow in
+ * order. Nothing of the asset is held beyond the piece being written.
+ * Resolves `missing` when the first piece cannot be read (the key is absent or
+ * unreadable), with nothing written. A size above `MAX_BACKUP_ENTRY_BYTES`
+ * throws `BackupAssetTooLargeError` before anything of the entry is written.
+ * Once the header is out, a read that fails, or a file that changed size or
+ * identity, throws `BackupAssetChangedError`; a failing writer throws its own
+ * error.
+ */
+async function writeAssetStreamed(writer: LocalWriter, key: string): Promise<'written' | 'missing'> {
+    const pieces = readRangedPieces(key)
+    try {
+        let first: IteratorResult<RangedPiece, void>
+        try {
+            first = await pieces.next()
+        } catch (error) {
+            console.error(error)
+            return 'missing'
+        }
+        if (first.done === true) {
+            return 'missing'
+        }
+        const total = first.value.total
+        if (total > MAX_BACKUP_ENTRY_BYTES) {
+            throw new BackupAssetTooLargeError(key, total)
+        }
+        await writer.writeBackupHeader(key, total)
+        await writer.write(first.value.bytes)
+        let written = first.value.bytes.length
+        for (;;) {
+            let next: IteratorResult<RangedPiece, void>
+            try {
+                next = await pieces.next()
+            } catch (error) {
+                throw new BackupAssetChangedError(key, error)
+            }
+            if (next.done === true) {
+                break
+            }
+            await writer.write(next.value.bytes)
+            written += next.value.bytes.length
+        }
+        if (written !== total) {
+            throw new BackupAssetChangedError(key, new Error(`${written} of ${total} bytes were read`))
+        }
+        return 'written'
+    } finally {
+        await pieces.return(undefined)
+    }
+}
+
+/** What a failed export needs to say: the file being written, and a way to name an asset. */
+interface ExportSession {
+    writer: LocalWriter | null
+    describeAsset: (key: string) => string
+}
+
+/**
+ * Runs a full or partial export so that no failure of it ends unreported: the
+ * person is told that the backup failed, whether the output file is gone, and
+ * that it must not be used if it is not. The output file is removed only when
+ * this export wrote to a desktop file; a desktop file this export did not
+ * touch is left as it was. A web or Node stream is aborted, not removed.
+ */
+async function runExport(body: (session: ExportSession) => Promise<void>): Promise<void> {
+    const session: ExportSession = { writer: null, describeAsset: (key) => `'${key}'` }
+    try {
+        await body(session)
+    } catch (error) {
+        console.error(error)
+        await reportFailedExport(session, error)
+    }
+}
+
+/**
+ * Gives up the file of a failed export and says what is left of it: `untouched`
+ * when no file was produced (a desktop file the export never wrote to, or a web
+ * writer that holds everything in memory), `deleted` when the incomplete desktop
+ * file was removed, and `kept` when an incomplete file may remain: a desktop
+ * file that could not be removed, or a download stream that may already have
+ * reached the browser.
+ */
+async function discardFailedExportFile(target: ExportByteWriter | undefined, error: unknown): Promise<'untouched' | 'deleted' | 'kept'> {
+    if (target === undefined) {
+        return 'untouched'
+    }
+    if (target instanceof TauriWriter) {
+        if (!target.touchedFile) {
+            return 'untouched'
+        }
+        try {
+            await remove(target.path)
+        } catch (removeError) {
+            console.error(removeError)
+            return 'kept'
+        }
+        return 'deleted'
+    }
+    const heldInMemory = target.heldInMemory === true
+    try {
+        await target.abort?.(error)
+    } catch (abortError) {
+        console.error(abortError)
+    }
+    return heldInMemory ? 'untouched' : 'kept'
+}
+
+async function reportFailedExport(session: ExportSession, error: unknown): Promise<void> {
+    const file = await discardFailedExportFile(session.writer?.writer, error)
+    if (error instanceof BackupAssetTooLargeError) {
+        alertError(language.backupFailedAssetTooLarge(session.describeAsset(error.key), file))
+        return
+    }
+    const asset = error instanceof BackupAssetChangedError ? session.describeAsset(error.key) : null
+    if (file === 'untouched') {
+        alertError(language.backupFailedNothingWritten())
+    } else if (file === 'deleted') {
+        alertError(language.backupFailedFileDeleted(asset))
+    } else {
+        alertError(language.backupFailedFileKept(asset))
+    }
+}
+
+/** A person's name for an asset of a backup, as the skip report gives it. */
+function describeBackupAsset(assetMap: ReadonlyMap<string, { charName: string, assetName: string }>, key: string): string {
+    const assetInfo = assetMap.get(key)
+    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`
 }
 
 function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string {
@@ -124,10 +306,10 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
 }
 
 export function SaveLocalBackup(){
-    return withBusy('backupSave', writeLocalBackup)
+    return withBusy('backupSave', () => runExport(writeLocalBackup))
 }
 
-async function writeLocalBackup(){
+async function writeLocalBackup(session: ExportSession){
     alertWait("Saving local backup...")
     const db = getDatabase()
     const coldStoragePayloads = await collectColdStorageBackupPayloads(db)
@@ -142,13 +324,15 @@ async function writeLocalBackup(){
         alertError('Failed')
         return
     }
+    session.writer = writer
 
     const assetMap = new Map<string, { charName: string, assetName: string }>()
+    session.describeAsset = (key) => describeBackupAsset(assetMap, key)
     if (db.characters) {
         for (const char of db.characters) {
             if (!char) continue
             const charName = char.name ?? 'Unknown Character'
-            
+
             if (char.image) assetMap.set(char.image, { charName: charName, assetName: 'Main Image' })
             
             if (char.emotionImages) {
@@ -193,11 +377,14 @@ async function writeLocalBackup(){
     const store = await getAppStore()
     const listing = await listAssetsForBackup(store)
     const assetKeys = listing.keys
-    // On the desktop the assets are read ahead of the writer in batches. Every
-    // exit of the loop below, thrown or not, waits for the reads still outstanding.
+    // On the desktop the assets are read ahead of the writer in batches, and any
+    // asset a batch did not deliver whole (or every asset, when there is no
+    // batch) is written from the ranged reader. Every exit of the loop below,
+    // thrown or not, waits for the reads still outstanding.
     const assetReader = listing.sized
         ? new ExportAssetReader({ readBatch: readAssetBatch }, listing.sized)
         : null
+    const streamAssets = await desktopStreamingUsable()
     try {
         for(let i=0;i<assetKeys.length;i++){
             const key = assetKeys[i]
@@ -211,20 +398,30 @@ async function writeLocalBackup(){
             }
             alertWait(message)
 
-            let data: Uint8Array | null = null
+            let outcome: 'written' | 'missing'
             const taken = assetReader ? await assetReader.take(i) : null
             if (taken?.kind === 'bytes') {
-                data = taken.bytes
-            } else if (taken?.kind !== 'missing') {
+                await writer.writeBackup(key, taken.bytes)
+                outcome = 'written'
+            } else if (taken?.kind === 'missing') {
+                outcome = 'missing'
+            } else if (streamAssets) {
+                outcome = await writeAssetStreamed(writer, key)
+            } else {
+                let data: Uint8Array | null = null
                 try {
                     data = (await store.read(key)).bytes
                 } catch (e) {
                     console.error(e)
                 }
+                if (data) {
+                    await writer.writeBackup(key, data)
+                    outcome = 'written'
+                } else {
+                    outcome = 'missing'
+                }
             }
-            if (data) {
-                await writer.writeBackup(key, data)
-            } else {
+            if (outcome === 'missing') {
                 missingAssets.push(key)
             }
         }
@@ -299,10 +496,10 @@ export async function SavePartialLocalBackup(){
         return
     }
     
-    return withBusy('backupSave', writePartialLocalBackup)
+    return withBusy('backupSave', () => runExport(writePartialLocalBackup))
 }
 
-async function writePartialLocalBackup(){
+async function writePartialLocalBackup(session: ExportSession){
     alertWait("Saving partial local backup...")
     const db = getDatabase()
     const coldStoragePayloads = await collectColdStorageBackupPayloads(db)
@@ -317,9 +514,11 @@ async function writePartialLocalBackup(){
         alertError('Failed')
         return
     }
+    session.writer = writer
 
     const assetMap = new Map<string, { charName: string, assetName: string }>()
-    
+    session.describeAsset = (key) => describeBackupAsset(assetMap, key)
+
     // Only collect main profile images for both characters and groups
     if (db.characters) {
         for (const char of db.characters) {
@@ -378,6 +577,7 @@ async function writePartialLocalBackup(){
 
     const store = await getAppStore()
     const assetKeys = Array.from(assetMap.keys())
+    const streamAssets = await desktopStreamingUsable()
 
     for(let i=0;i<assetKeys.length;i++){
         const key = assetKeys[i]
@@ -398,6 +598,12 @@ async function writePartialLocalBackup(){
 
         // A referenced asset that is absent or cannot be read is reported
         // as missing on every platform, and the backup goes on.
+        if (streamAssets) {
+            if (await writeAssetStreamed(writer, key) === 'missing') {
+                missingAssets.push(key)
+            }
+            continue
+        }
         let data: Uint8Array | null = null
         try {
             data = (await store.read(key)).bytes
@@ -480,6 +686,9 @@ const RESTORE_YIELD_INTERVAL_MS = 50;
 
 /** Entry names longer than this can be neither `database.risudat` nor a cold-storage unit, so the oversized-asset scan reads no more of them. */
 const OVERSIZED_NAME_READ_BYTES = 1024;
+
+/** The bytes of the longest entry header whose name is the encryption marker: both length fields and the marker name with a byte-order mark. */
+const MARKER_HEADER_BYTES = 4 + MAX_MARKER_NAME_BYTES + 4;
 
 /** Why a restore left an asset out: the store cannot hold its name, or the Node server cannot take a body that large. */
 type SkippedAssetReason = 'invalidName' | 'tooLarge';
@@ -693,6 +902,7 @@ export function LoadLocalBackup(){
                 // written and nothing returns while an asset is still being
                 // written. After a batch fails no further entry is read.
                 const assetPipeline = await createRestoreAssetPipeline();
+                const streamLargeAssets = assetPipeline !== null || await desktopStreamingUsable();
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
                 try {
@@ -707,19 +917,26 @@ export function LoadLocalBackup(){
                             alertWait(progressText);
                         }
 
-                        // An asset left out for its size is not read; its header still is.
+                        // The header is read and checked first; the data follows only
+                        // for an entry that is not left out. For an asset left out for
+                        // its size, only its header is read, padded to the first 29 bytes
+                        // (MARKER_HEADER_BYTES) of the entry when the header is shorter,
+                        // and never more than the entry holds: enough to
+                        // see a whole marker header wherever the file now has one at
+                        // this position, whatever header the index holds.
                         const isSkippedForSize = oversizedAssetNames.has(entry.headerOffset);
-                        const readEnd = isSkippedForSize ? entry.headerOffset + entry.headerLength : entryEnd;
-                        let entryBytes: Uint8Array;
+                        const dataStart = entry.headerOffset + entry.headerLength;
+                        const headerReadLength = Math.min(entry.headerLength + entry.dataLength, Math.max(entry.headerLength, MARKER_HEADER_BYTES));
+                        let headerBytes: Uint8Array;
                         try {
-                            entryBytes = new Uint8Array(await file.slice(entry.headerOffset, readEnd).arrayBuffer());
+                            headerBytes = new Uint8Array(await file.slice(entry.headerOffset, entry.headerOffset + headerReadLength).arrayBuffer());
                         } catch (error) {
                             console.error(error);
                             stopMessage = language.backupFileChangedWhileReading;
                             break;
                         }
 
-                        const checked = checkIndexedEntry(entryBytes, entry, readEnd - entry.headerOffset);
+                        const checked = checkIndexedEntry(headerBytes, entry, headerReadLength);
                         if (checked.kind === 'marker') {
                             stopMessage = language.encryptedBackupImportStopped;
                             break;
@@ -740,8 +957,57 @@ export function LoadLocalBackup(){
                             await yieldBudget.maybeYield();
                             continue;
                         }
-                        // A view over the bytes just read: nothing of the entry is copied.
-                        const data = entryBytes.subarray(checked.header.headerLength);
+                        // Where streamLargeAssets holds (the desktop), an asset above
+                        // CHUNK_MAX is copied to the store in slices of at most
+                        // CHUNK_MAX and is never read whole. The database and the
+                        // cold-storage entries are decoded as a whole, and read whole.
+                        if (streamLargeAssets && entry.dataLength > CHUNK_MAX
+                                && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
+                            const assetKey = 'assets/' + name;
+                            noteAssetWrittenThisPage(assetKey);
+                            const streamed: StreamedAssetEntry = {
+                                key: assetKey,
+                                name,
+                                index: entry.headerOffset,
+                                size: entry.dataLength,
+                                readSlice: async (start, end) => new Uint8Array(await file.slice(dataStart + start, dataStart + end).arrayBuffer()),
+                            };
+                            if (assetPipeline) {
+                                if (await assetPipeline.addStreamed(streamed)) {
+                                    stopMessage = language.backupFileChangedWhileReading;
+                                    break;
+                                }
+                            } else {
+                                const outcome = await streamAssetEntry(streamed, openAssetStream);
+                                if (outcome.k === 'source') {
+                                    console.error(outcome.error);
+                                    stopMessage = language.backupFileChangedWhileReading;
+                                    break;
+                                }
+                                if (outcome.k === 'sink') {
+                                    throw outcome.error;
+                                }
+                                if (outcome.k === 'invalid') {
+                                    console.error(`asset ${assetKey} was refused: ${outcome.reason}`);
+                                    skippedAssets.push({ name, reason: 'invalidName' });
+                                }
+                            }
+                            await yieldBudget.maybeYield();
+                            continue;
+                        }
+
+                        let data: Uint8Array;
+                        try {
+                            data = new Uint8Array(await file.slice(dataStart, dataStart + entry.dataLength).arrayBuffer());
+                        } catch (error) {
+                            console.error(error);
+                            stopMessage = language.backupFileChangedWhileReading;
+                            break;
+                        }
+                        if (data.length !== entry.dataLength) {
+                            stopMessage = language.backupFileChangedWhileReading;
+                            break;
+                        }
 
                         if (name === 'database.risudat') {
                             pendingDatabase = data;

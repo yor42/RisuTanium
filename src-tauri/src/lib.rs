@@ -137,19 +137,17 @@ async fn put_assets_batch(app: AppHandle, request: tauri::ipc::Request<'_>) -> R
         .map_err(|e| format!("the write task failed: {}", e))?
 }
 
-/// Writes one asset file: the key travels in the `x-risu-key` header
-/// (percent-encoded) and the bytes are the raw body.
+/// One chunk of a file written under the app data directory, as a raw body: the
+/// chunk bytes are the body, and `x-risu-key` (percent-encoded), `x-risu-id`,
+/// `x-risu-offset`, `x-risu-last` and `x-risu-durable` carry the rest (see
+/// `asset_batch::write_chunk_raw`). The result is an outcome object; a refused
+/// key is `invalid`. A body that is not raw is refused with `not-raw:` and a bad
+/// header with `malformed:`, both before the disk is touched.
 #[tauri::command]
-async fn put_asset_single(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
-    let data = asset_batch::raw_body(request.body())?.to_vec();
-    let raw_key = request
-        .headers()
-        .get(durable_write::KEY_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| "malformed: missing key header".to_string())?;
-    let key = durable_write::decode_key_header(raw_key).map_err(|e| format!("malformed: {}", e))?;
+async fn write_chunk_raw(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
+    let (headers, bytes) = asset_batch::parse_raw_chunk(request.headers(), request.body())?;
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || asset_batch::put_asset_single(&base, &key, &data))
+    tauri::async_runtime::spawn_blocking(move || asset_batch::write_chunk_raw(&base, &headers, &bytes))
         .await
         .map_err(|e| format!("the write task failed: {}", e))
 }
@@ -896,7 +894,7 @@ pub fn run() {
             read_env_secret,
             write_durable,
             put_assets_batch,
-            put_asset_single,
+            write_chunk_raw,
             get_assets_batch,
             list_assets_sized,
             write_chunk,

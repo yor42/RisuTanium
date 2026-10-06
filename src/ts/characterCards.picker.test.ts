@@ -27,6 +27,12 @@ const h = vi.hoisted(() => ({
     saveFails: null as string | null,
     ordered: 0,
     uuid: 0,
+    /** the files a desktop open-with hands over, by path */
+    files: new Map<string, Uint8Array>(),
+    /** the buffer size of every plugin `read` */
+    readSizes: [] as number[],
+    openHandles: 0,
+    os: 'windows',
 }))
 
 vi.mock('uuid', () => ({
@@ -169,9 +175,44 @@ vi.mock(import('src/ts/interchangeability'), () => ({
     convertModuleToCharacter: vi.fn(),
 }) as unknown as typeof import('src/ts/interchangeability'))
 
+/** The largest file payload one plugin call may carry; a call above it rejects, the way the per-call bound would fail it. */
+const CALL_CAP = 4 * 1024 * 1024
+
 vi.mock('@tauri-apps/plugin-fs', () => ({
-    readFile: vi.fn(async () => new Uint8Array()),
+    readFile: vi.fn(async (path: string) => {
+        const data = h.files.get(path) ?? new Uint8Array()
+        if (data.length > CALL_CAP) {
+            throw new Error(`readFile carries ${data.length} bytes, above the per-call bound`)
+        }
+        return data
+    }),
+    open: vi.fn(async (path: string) => {
+        const data = h.files.get(path)
+        if (data === undefined) {
+            throw `failed to open ${path} (os error 2)`
+        }
+        let position = 0
+        h.openHandles++
+        return {
+            read: async (buffer: Uint8Array) => {
+                h.readSizes.push(buffer.byteLength)
+                if (buffer.byteLength > CALL_CAP) {
+                    throw new Error(`read asks for ${buffer.byteLength} bytes, above the per-call bound`)
+                }
+                if (position >= data.length) {
+                    return null
+                }
+                const count = Math.min(buffer.byteLength, data.length - position)
+                buffer.set(data.subarray(position, position + count), 0)
+                position += count
+                return count
+            },
+            close: async () => { h.openHandles-- },
+        }
+    }),
 }))
+
+vi.mock('@tauri-apps/plugin-os', () => ({ type: () => h.os }))
 
 vi.mock('@tauri-apps/plugin-deep-link', () => ({
     onOpenUrl: vi.fn(async () => vi.fn()),
@@ -179,7 +220,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { importCharacter, importCharacterProcess } from 'src/ts/characterCards'
+import { importCharacter, importCharacterProcess, importOpenedFiles } from 'src/ts/characterCards'
 import { language } from 'src/lang'
 
 // ---------------------------------------------------------------------------------------------
@@ -253,6 +294,10 @@ beforeEach(() => {
     h.saveFails = null
     h.ordered = 0
     h.uuid = 0
+    h.files.clear()
+    h.readSizes = []
+    h.openHandles = 0
+    h.os = 'windows'
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -385,5 +430,52 @@ describe('importCharacterProcess outcomes', () => {
         expect(typeof returned).toBe('object')
         expect((returned as { name?: string }).name).toBe('Good')
         expect(names()).toEqual(['Good'])
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Files the operating system hands to the desktop app: read in pieces, never in one call
+// ---------------------------------------------------------------------------------------------
+
+describe('importOpenedFiles', () => {
+    /** An archive whose one asset is `assetBytes` long, stored without compression. */
+    function bigCharx(name: string, assetBytes: number): Uint8Array {
+        const files: fflate.Zippable = {
+            'card.json': [enc.encode(v3Json(name, { assets: 1 })), { level: 0 }],
+            'assets/a0.bin': [new U8(assetBytes).fill(7), { level: 0 }],
+        }
+        return new U8(fflate.zipSync(files))
+    }
+
+    test('per-call bound: an archive above one piece imports, is read with buffers of at most 4 MiB, and its handle is closed', async () => {
+        const bytes = bigCharx('Huge', CALL_CAP + 1000)
+        h.files.set('C:\\cards\\Huge.charx', bytes)
+
+        await importOpenedFiles(['C:\\cards\\Huge.charx'])
+
+        expect(names()).toEqual(['Huge'])
+        expect(h.errors).toEqual([])
+        expect(h.readSizes.length).toBeGreaterThan(1)
+        expect(Math.max(...h.readSizes)).toBeLessThanOrEqual(CALL_CAP)
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a small archive imports through the same open and read path (guard)', async () => {
+        h.files.set('/home/u/Small.charx', new U8(await charx('Small').arrayBuffer()))
+
+        await importOpenedFiles(['/home/u/Small.charx'])
+
+        expect(names()).toEqual(['Small'])
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a path that cannot be opened is reported for that file, the others import, and no handle stays open', async () => {
+        h.files.set('/home/u/Good.charx', new U8(await charx('Good').arrayBuffer()))
+
+        await importOpenedFiles(['/home/u/Gone.charx', '/home/u/Good.charx'])
+
+        expect(names()).toEqual(['Good'])
+        expect(h.last.startsWith('error:')).toBe(true)
+        expect(h.openHandles).toBe(0)
     })
 })

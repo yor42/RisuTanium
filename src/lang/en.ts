@@ -1995,6 +1995,14 @@ export const languageEnglish = {
         `The backup was restored, except for ${count} asset file(s) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     restoreAssetRefusedTooLarge: (name: string) =>
         `The server, or a proxy in front of it, refused the asset "${name}" as too large, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.`,
+    backupFailedFileDeleted: (asset: string | null) =>
+        `${asset === null ? 'The backup failed.' : `The backup stopped because ${asset} changed or could not be read while it was being saved.`} The backup file was incomplete, so it was deleted. Run the backup again.`,
+    backupFailedFileKept: (asset: string | null) =>
+        `${asset === null ? 'The backup failed.' : `The backup stopped because ${asset} changed or could not be read while it was being saved.`} The backup file is incomplete and could not be deleted by the app. Do not use it: delete it yourself, then run the backup again.`,
+    backupFailedAssetTooLarge: (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
+        `The backup stopped because ${asset} is too large for a backup entry (the limit is about 4.29 GB), so it cannot be saved. ${file === 'untouched' ? 'Nothing was written to the file.' : file === 'deleted' ? 'The backup file was incomplete, so it was deleted.' : 'The backup file is incomplete and could not be deleted by the app. Do not use it: delete it yourself.'} The backup cannot include that asset until it is removed or made smaller, and running the backup again fails the same way.`,
+    backupFailedNothingWritten: () =>
+        "The backup failed before anything was written to the file. Run the backup again.",
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
     internalBackupWriteFailed: "The backup could not be saved. Your current data was not changed.",
     internalBackupListFailed: "The backup list could not be read. Nothing was changed.",

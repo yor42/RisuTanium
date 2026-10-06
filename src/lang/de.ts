@@ -1862,6 +1862,14 @@ export const languageGerman = {
         `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Asset-Datei(en), die größer sind als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `Der Server oder ein vorgeschalteter Proxy hat das Asset "${name}" als zu groß abgelehnt, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
+    "backupFailedFileDeleted": (asset: string | null) =>
+        `${asset === null ? 'Das Backup ist fehlgeschlagen.' : `Das Backup wurde abgebrochen, weil sich ${asset} während des Speicherns geändert hat oder nicht gelesen werden konnte.`} Die Backup-Datei war unvollständig und wurde daher gelöscht. Führen Sie das Backup erneut aus.`,
+    "backupFailedFileKept": (asset: string | null) =>
+        `${asset === null ? 'Das Backup ist fehlgeschlagen.' : `Das Backup wurde abgebrochen, weil sich ${asset} während des Speicherns geändert hat oder nicht gelesen werden konnte.`} Die Backup-Datei ist unvollständig und konnte von der App nicht gelöscht werden. Verwenden Sie sie nicht: Löschen Sie sie selbst und führen Sie das Backup dann erneut aus.`,
+    "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
+        `Das Backup wurde abgebrochen, weil ${asset} für einen Backup-Eintrag zu groß ist (das Limit liegt bei etwa 4,29 GB) und daher nicht gespeichert werden kann. ${file === 'untouched' ? 'Es wurde nichts in die Datei geschrieben.' : file === 'deleted' ? 'Die Backup-Datei war unvollständig und wurde daher gelöscht.' : 'Die Backup-Datei ist unvollständig und konnte von der App nicht gelöscht werden. Verwenden Sie sie nicht: Löschen Sie sie selbst.'} Das Backup kann dieses Asset nicht enthalten, solange es nicht entfernt oder verkleinert wird, und ein erneutes Ausführen des Backups schlägt auf dieselbe Weise fehl.`,
+    "backupFailedNothingWritten": () =>
+        "Das Backup ist fehlgeschlagen, bevor etwas in die Datei geschrieben wurde. Führen Sie das Backup erneut aus.",
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupWriteFailed": "Das Backup konnte nicht gespeichert werden. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupListFailed": "Die Backup-Liste konnte nicht gelesen werden. Es wurde nichts verändert.",

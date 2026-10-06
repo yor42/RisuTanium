@@ -1,10 +1,9 @@
 import {
-    writeFile,
     BaseDirectory,
-    readFile,
     exists,
     mkdir
 } from "@tauri-apps/plugin-fs"
+import { readUserFile, writeUserFile } from "./storage/tauriUserFile"
 import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import { openUrlOnWeb } from "./openUrlWeb"
@@ -13,7 +12,7 @@ import { v4 as uuidv4, v4 } from 'uuid';
 import { get } from "svelte/store";
 import { flushSync } from "svelte";
 import { open } from '@tauri-apps/plugin-shell'
-import { TauriWriter, openWebExportWriter, writeBackupEntry, type ExportByteWriter } from "./exportWriters";
+import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, type ExportByteWriter } from "./exportWriters";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
@@ -97,7 +96,7 @@ export async function downloadFile(name: string, dat: Uint8Array | ArrayBuffer |
     }
 
     if (isTauri) {
-        await writeFile(name, data, { baseDir: BaseDirectory.Download })
+        await writeUserFile(name, data, BaseDirectory.Download)
     }
     else {
         const blob = new Blob([data], { type: 'application/octet-stream' })
@@ -529,7 +528,7 @@ async function readAssetBytes(key: string): Promise<Uint8Array> {
 export async function readImage(data: string) {
     if (isTauri && !data.startsWith('assets')) {
         // A path the caller names, not an asset key: the store only holds keys.
-        return await readFile(data)
+        return await readUserFile(data)
     }
     return await readAssetBytes(data)
 }
@@ -2840,6 +2839,22 @@ export class LocalWriter {
             throw new Error(`Backup entry "${name}" is too large to store (a single backup entry is limited to 4 GiB).`)
         }
         await writeBackupEntry(this.writer, encodedName, data)
+    }
+
+    /**
+     * Writes the header of a backup entry whose `dataLength` bytes of body follow through `write`, with the entry name
+     * and the 32-bit length rule of `writeBackup`. The caller must write exactly `dataLength` bytes next.
+     *
+     * @param {string} name - The name of the backup.
+     * @param {number} dataLength - The size of the body that follows.
+     * @throws {Error} When the name or the length does not fit the 32-bit length fields.
+     */
+    async writeBackupHeader(name: string, dataLength: number): Promise<void> {
+        const encodedName = new TextEncoder().encode(getBasename(name))
+        if (encodedName.byteLength > 0xFFFFFFFF || dataLength > 0xFFFFFFFF) {
+            throw new Error(`Backup entry "${name}" is too large to store (a single backup entry is limited to 4 GiB).`)
+        }
+        await this.writer.write(encodeBackupEntryHeader(encodedName, dataLength))
     }
 
     /**

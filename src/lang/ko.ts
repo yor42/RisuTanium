@@ -1861,6 +1861,14 @@ export const languageKorean = {
         `백업을 복원했지만, 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
+    "backupFailedFileDeleted": (asset: string | null) =>
+        `${asset === null ? '백업에 실패했습니다.' : `${asset}이(가) 저장되는 동안 변경되었거나 읽을 수 없어 백업이 중단되었습니다.`} 백업 파일이 불완전하여 삭제했습니다. 백업을 다시 실행하세요.`,
+    "backupFailedFileKept": (asset: string | null) =>
+        `${asset === null ? '백업에 실패했습니다.' : `${asset}이(가) 저장되는 동안 변경되었거나 읽을 수 없어 백업이 중단되었습니다.`} 백업 파일이 불완전하며 앱이 삭제하지 못했습니다. 이 파일을 사용하지 말고 직접 삭제한 다음 백업을 다시 실행하세요.`,
+    "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
+        `${asset}이(가) 백업 항목 하나로 저장하기에는 너무 커서(한도는 약 4.29 GB) 저장할 수 없으므로 백업이 중단되었습니다. ${file === 'untouched' ? '파일에는 아무것도 기록되지 않았습니다.' : file === 'deleted' ? '백업 파일이 불완전하여 삭제했습니다.' : '백업 파일이 불완전하며 앱이 삭제하지 못했습니다. 이 파일을 사용하지 말고 직접 삭제하세요.'} 해당 에셋을 제거하거나 크기를 줄이기 전에는 백업에 포함할 수 없으며, 백업을 다시 실행해도 같은 방식으로 실패합니다.`,
+    "backupFailedNothingWritten": () =>
+        "파일에 아무것도 기록되기 전에 백업에 실패했습니다. 백업을 다시 실행하세요.",
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupWriteFailed": "백업을 저장할 수 없었습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupListFailed": "백업 목록을 읽을 수 없었습니다. 아무것도 변경되지 않았습니다.",

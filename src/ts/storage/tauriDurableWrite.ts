@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { tauriAddressableViolation, tauriCreatableViolation } from './store/keyRules'
 import { StoreInvalidKeyError } from './store/errors'
 import { isPreBlocksKey } from './mainFileFingerprint'
-import { isAndroidTransport, writeChunked } from './tauriByteTransport'
+import { shouldChunkWrite, writeChunked } from './tauriByteTransport'
 
 /**
  * Durable file replacement on the Tauri file system, for keys under the AppData
@@ -17,9 +17,10 @@ import { isAndroidTransport, writeChunked } from './tauriByteTransport'
  * by the command and does not reject.
  *
  * The key travels percent-encoded in a header and the bytes as the raw request
- * body: a JSON argument would serialise the bytes as a number array. On Android
- * the bridge cannot carry a large body, so the same write goes as base64 chunks
- * (`writeChunked` in `tauriByteTransport.ts`) with the same guarantees.
+ * body: a JSON argument would serialise the bytes as a number array. A body the
+ * platform's IPC cannot carry in one call (every body on Android, a body above
+ * `CHUNK_MAX` on desktop) goes as chunks instead (`writeChunked` in
+ * `tauriByteTransport.ts`) with the same guarantees.
  *
  * The command repeats the key rules, so a key refused here and a key refused
  * there are the same keys. The helper takes no lock; callers keep their own
@@ -54,7 +55,7 @@ export async function writeFileDurable(key: string, bytes: Uint8Array): Promise<
     if (reason !== null) {
         throw new StoreInvalidKeyError(key, reason)
     }
-    if (isAndroidTransport()) {
+    if (shouldChunkWrite(bytes.length)) {
         await writeChunked(key, bytes, true)
         return
     }

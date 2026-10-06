@@ -19,7 +19,7 @@ import type { OnnxModelFiles } from "./process/transformers"
 import { CharXImporter, CharXParseError, CharXWriter, hasZipEndRecord } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { ModuleRefusal } from "./process/moduleRefusal"
-import { readFile } from "@tauri-apps/plugin-fs"
+import { readUserFile } from "./storage/tauriUserFile"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
 
@@ -146,7 +146,7 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
 //Files the operating system handed to the desktop app, read through the plugin-fs scope that was widened for exactly these paths. Never rejects.
 export async function importOpenedFiles(paths:string[]):Promise<void> {
     try {
-        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => readFile(path))))
+        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => readUserFile(path))))
     } catch (error) {
         alertError(error)
     }

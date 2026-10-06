@@ -1862,6 +1862,14 @@ export const languageChinese = {
         `备份已恢复，但有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `服务器或其前端的代理以资源文件“${name}”过大为由拒绝了它，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
+    "backupFailedFileDeleted": (asset: string | null) =>
+        `${asset === null ? '备份失败。' : `备份已停止，因为 ${asset} 在保存过程中发生了变化或无法读取。`}备份文件不完整，因此已被删除。请重新运行备份。`,
+    "backupFailedFileKept": (asset: string | null) =>
+        `${asset === null ? '备份失败。' : `备份已停止，因为 ${asset} 在保存过程中发生了变化或无法读取。`}备份文件不完整，且应用无法将其删除。请勿使用该文件：请自行删除，然后重新运行备份。`,
+    "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
+        `备份已停止，因为 ${asset} 对于单个备份条目而言过大（上限约为 4.29 GB），无法保存。${file === 'untouched' ? '未向文件写入任何内容。' : file === 'deleted' ? '备份文件不完整，因此已被删除。' : '备份文件不完整，且应用无法将其删除。请勿使用该文件：请自行删除。'}在移除该资源或将其缩小之前，备份无法包含它，再次运行备份仍会以同样的方式失败。`,
+    "backupFailedNothingWritten": () =>
+        "备份在向文件写入任何内容之前就失败了。请重新运行备份。",
     "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
     "internalBackupWriteFailed": "无法保存该备份。当前数据未被更改。",
     "internalBackupListFailed": "无法读取备份列表。未更改任何内容。",

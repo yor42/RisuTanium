@@ -17,7 +17,10 @@
 //!
 //! Error text may hold absolute paths; it is for the console, not for the UI.
 
-use crate::durable_write::{is_temp_name, rename_with_retry, resolve_key, FileOps, RealOps};
+use crate::chunked_io::{temp_name_for, write_chunk_with, MAX_CHUNK_BYTES};
+use crate::durable_write::{
+    decode_key_header, is_temp_name, rename_with_retry, resolve_key, FileOps, RealOps, KEY_HEADER,
+};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -36,6 +39,20 @@ const STATUS_OK: u8 = 0;
 const STATUS_MISSING: u8 = 1;
 const STATUS_INVALID: u8 = 2;
 const STATUS_ERROR: u8 = 3;
+/// The file alone is larger than `CHUNK_MAX`; the page reads it in ranges.
+const STATUS_LARGE: u8 = 4;
+/// Admitting the file would exceed the response budget; it and every later key
+/// of the call are answered with this status and the page asks again.
+const STATUS_DEFERRED: u8 = 5;
+
+/// The most file bytes one `get_assets_batch` response admits for a single file,
+/// and the size of the pieces the page reads and writes in. It is not enforced
+/// on every command: `write_chunk_raw` accepts bodies up to 8 MiB and
+/// `read_range` up to its own cap.
+pub const CHUNK_MAX: u64 = 4 * 1024 * 1024;
+
+/// The most file bytes one `get_assets_batch` response holds.
+pub const RESPONSE_MAX: u64 = CHUNK_MAX;
 
 /// What one frame of a write call came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -362,22 +379,118 @@ pub fn put_batch_with<O: FileOps + Sync>(
     Ok(write_entries(ops, base, &entries, max_workers))
 }
 
-/// The outcome of one write.
-pub fn put_single_with<O: FileOps + Sync>(ops: &O, base: &Path, key: &str, data: &[u8]) -> Outcome {
-    let entries = [Entry { key: key.to_string(), data }];
-    write_entries(ops, base, &entries, 1)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| Outcome::Error("the entry was not processed".to_string()))
-}
-
 pub fn put_assets_batch(base: &Path, body: &[u8]) -> Result<Value, String> {
     let outcomes = put_batch_with(&RealOps, base, body, MAX_WORKERS)?;
     Ok(Value::Array(outcomes.iter().map(Outcome::to_json).collect()))
 }
 
-pub fn put_asset_single(base: &Path, key: &str, data: &[u8]) -> Value {
-    put_single_with(&RealOps, base, key, data).to_json()
+// ---------------------------------------------------------------------------
+// Chunked write with a raw body
+// ---------------------------------------------------------------------------
+
+/// The request headers of one raw chunk, parsed. The id is a valid write id.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RawChunkHeaders {
+    pub key: String,
+    pub id: String,
+    pub offset: u64,
+    pub last: bool,
+    pub durable: bool,
+}
+
+const ID_HEADER: &str = "x-risu-id";
+const OFFSET_HEADER: &str = "x-risu-offset";
+const LAST_HEADER: &str = "x-risu-last";
+const DURABLE_HEADER: &str = "x-risu-durable";
+
+fn header_text<'a>(headers: &'a tauri::http::HeaderMap, name: &str) -> Result<&'a str, String> {
+    headers
+        .get(name)
+        .ok_or_else(|| malformed(&format!("missing header {}", name)))?
+        .to_str()
+        .map_err(|_| malformed(&format!("header {} is not text", name)))
+}
+
+fn header_flag(headers: &tauri::http::HeaderMap, name: &str) -> Result<bool, String> {
+    match header_text(headers, name)? {
+        "1" => Ok(true),
+        "0" => Ok(false),
+        _ => Err(malformed(&format!("header {} is 1 or 0", name))),
+    }
+}
+
+/// The key, write id, offset and flags of a raw chunk. Any missing or malformed
+/// header is a `malformed:` error.
+pub fn parse_raw_chunk_headers(headers: &tauri::http::HeaderMap) -> Result<RawChunkHeaders, String> {
+    let key = decode_key_header(header_text(headers, KEY_HEADER)?).map_err(|e| malformed(&e))?;
+    let id = header_text(headers, ID_HEADER)?.to_string();
+    temp_name_for(&id).map_err(|e| malformed(&e))?;
+    let offset_text = header_text(headers, OFFSET_HEADER)?;
+    if offset_text.is_empty() || !offset_text.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(malformed("header x-risu-offset is a decimal number"));
+    }
+    let offset = offset_text
+        .parse::<u64>()
+        .map_err(|_| malformed("header x-risu-offset is too large"))?;
+    Ok(RawChunkHeaders {
+        key,
+        id,
+        offset,
+        last: header_flag(headers, LAST_HEADER)?,
+        durable: header_flag(headers, DURABLE_HEADER)?,
+    })
+}
+
+/// The target of a chunked write. An `assets/` key also passes the lexical guard
+/// of a batch write; any other key follows the creatable rules alone.
+fn chunk_target(base: &Path, key: &str) -> Result<PathBuf, String> {
+    if key.starts_with(ASSET_PREFIX) {
+        prepare_put(base, key)
+    } else {
+        resolve_key(base, key)
+    }
+}
+
+/// Applies one chunk. A refused key is `Invalid` and nothing is written; a chunk
+/// above `MAX_CHUNK_BYTES` or a failed disk step is `Error`, and a failed step
+/// leaves the target unchanged and removes the temp (see `write_chunk_with`).
+pub fn write_chunk_raw_with<O: FileOps>(
+    ops: &O,
+    base: &Path,
+    headers: &RawChunkHeaders,
+    bytes: &[u8],
+) -> Outcome {
+    if bytes.len() > MAX_CHUNK_BYTES {
+        return Outcome::Error("the chunk is larger than a chunk may be".to_string());
+    }
+    let target = match chunk_target(base, &headers.key) {
+        Ok(target) => target,
+        Err(reason) => return Outcome::Invalid(reason),
+    };
+    let temp_name = match temp_name_for(&headers.id) {
+        Ok(name) => name,
+        Err(message) => return Outcome::Error(message),
+    };
+    match write_chunk_with(ops, &target, &temp_name, headers.offset, bytes, headers.last, headers.durable) {
+        Ok(()) => Outcome::Ok,
+        Err(message) => Outcome::Error(message),
+    }
+}
+
+/// The chunk of a request: a non-raw body is refused with `not-raw:` and a bad
+/// header with `malformed:`, both before any disk access.
+pub fn parse_raw_chunk(
+    headers: &tauri::http::HeaderMap,
+    body: &tauri::ipc::InvokeBody,
+) -> Result<(RawChunkHeaders, Vec<u8>), String> {
+    let bytes = raw_body(body)?;
+    let parsed = parse_raw_chunk_headers(headers)?;
+    Ok((parsed, bytes.to_vec()))
+}
+
+/// The outcome of the chunk as the JSON the command returns.
+pub fn write_chunk_raw(base: &Path, headers: &RawChunkHeaders, bytes: &[u8]) -> Value {
+    write_chunk_raw_with(&RealOps, base, headers, bytes).to_json()
 }
 
 // ---------------------------------------------------------------------------
@@ -395,54 +508,103 @@ fn push_frame(out: &mut Vec<u8>, status: u8, bytes: &[u8]) {
     out.extend_from_slice(bytes);
 }
 
-/// Appends an ok frame holding the file's bytes to `out`, reading straight into
-/// it. `Ok(false)` means the file is absent and `out` is unchanged. On `Err`
-/// `out` is cut back to its length on entry. The size limit is checked against
-/// the file's metadata before any byte is read, and again against what was read.
-fn read_frame_into(out: &mut Vec<u8>, path: &Path, max_len: u64) -> Result<bool, String> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(format!("failed to open {}: {}", path.display(), error)),
-    };
-    let metadata = file
-        .metadata()
-        .map_err(|e| format!("failed to stat {}: {}", path.display(), e))?;
-    if metadata.len() > max_len {
-        return Err(match frame_length(metadata.len()) {
-            Err(message) => message,
-            Ok(_) => format!("the file is {} bytes, over the limit of {}", metadata.len(), max_len),
-        });
+/// What reading one file for a frame came to.
+#[derive(Debug, PartialEq, Eq)]
+enum FrameRead {
+    /// An ok frame holding the file was appended to the output.
+    Admitted,
+    /// The file is absent; the output is unchanged.
+    Missing,
+    /// The file alone is over the per-call limit; the output is unchanged.
+    Large,
+    /// The file does not fit the remaining response budget; the output is unchanged.
+    Deferred,
+}
+
+/// Appends an ok frame holding `reader`'s bytes to `out`, reading straight into
+/// it. `size` is the length the file reported and `limit` the most bytes this
+/// frame may hold. A `size` over `limit` is `Deferred` before any byte is read;
+/// bytes beyond `limit` that arrive anyway (the file grew) are `Deferred` when
+/// `deferrable` and an error otherwise, and never leave a frame above `limit`. On
+/// every result but `Admitted`, `out` is cut back to its length on entry.
+fn fill_frame<R: Read>(
+    out: &mut Vec<u8>,
+    reader: R,
+    size: u64,
+    limit: u64,
+    deferrable: bool,
+) -> Result<FrameRead, String> {
+    if size > limit {
+        return Ok(FrameRead::Deferred);
     }
     let start = out.len();
     out.push(STATUS_OK);
     out.extend_from_slice(&[0u8; 4]);
-    out.reserve(metadata.len() as usize);
-    let read = file.take(max_len.saturating_add(1)).read_to_end(out);
+    out.reserve(size as usize);
+    let read = reader.take(limit.saturating_add(1)).read_to_end(out);
     let length = out.len() - start - 5;
     let outcome = match read {
-        Err(error) => Err(format!("failed to read {}: {}", path.display(), error)),
-        Ok(_) => match frame_length(length as u64) {
-            Ok(frame) if length as u64 <= max_len => {
-                out[start + 1..start + 5].copy_from_slice(&frame.to_le_bytes());
-                Ok(true)
+        Err(error) => Err(format!("failed to read: {}", error)),
+        Ok(_) if length as u64 > limit => {
+            if deferrable {
+                Ok(FrameRead::Deferred)
+            } else {
+                Err(format!("the file grew to over {} bytes while it was read", limit))
             }
-            _ => Err(format!("the file grew to over {} bytes while it was read", max_len)),
+        }
+        Ok(_) => match frame_length(length as u64) {
+            Ok(frame) => {
+                out[start + 1..start + 5].copy_from_slice(&frame.to_le_bytes());
+                Ok(FrameRead::Admitted)
+            }
+            Err(message) => Err(message),
         },
     };
-    if outcome.is_err() {
+    if outcome != Ok(FrameRead::Admitted) {
         out.truncate(start);
     }
     outcome
 }
 
+/// Reads the file at `path` for one frame. `chunk_max` is the most a single file
+/// may hold, `limit` the most this frame may hold (`chunk_max` or the remaining
+/// response budget, whichever is less, except for the first file of a call, which
+/// is bound by `chunk_max` alone: `first`). The size is checked against the
+/// file's metadata before any byte is read, and the read itself is bounded by
+/// `limit`.
+fn read_frame_into(out: &mut Vec<u8>, path: &Path, chunk_max: u64, limit: u64, first: bool) -> Result<FrameRead, String> {
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(FrameRead::Missing),
+        Err(error) => return Err(format!("failed to open {}: {}", path.display(), error)),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("failed to stat {}: {}", path.display(), e))?;
+    if metadata.len() > chunk_max {
+        return Ok(FrameRead::Large);
+    }
+    fill_frame(out, file, metadata.len(), limit, !first).map_err(|message| format!("{} ({})", message, path.display()))
+}
+
 /// The response of a read call: one frame per key in key order,
-/// `[u8 status][u32 LE len][bytes]`. `max_len` is the largest file a frame may
-/// hold; the command passes `u32::MAX`.
-pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, max_len: u64) -> Vec<u8> {
-    let max_len = max_len.min(u64::from(u32::MAX));
+/// `[u8 status][u32 LE len][bytes]`. `chunk_max` is the most one file may hold
+/// (a larger file answers `large`); `response_max` is the most file bytes the
+/// whole response holds. Keys are answered in order: once a file does not fit
+/// the remaining budget, it and every later key answer `deferred` and carry no
+/// bytes. The first file of a call is bound by `chunk_max` alone, so a call
+/// always makes progress.
+pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, chunk_max: u64, response_max: u64) -> Vec<u8> {
+    let chunk_max = chunk_max.min(u64::from(u32::MAX));
     let mut out = Vec::new();
+    let mut remaining = response_max;
+    let mut admitted_any = false;
+    let mut deferred = false;
     for key in keys {
+        if deferred {
+            push_frame(&mut out, STATUS_DEFERRED, &[]);
+            continue;
+        }
         if let Some(reason) = addressable_violation(key, windows) {
             push_frame(&mut out, STATUS_INVALID, reason.as_bytes());
             continue;
@@ -454,9 +616,20 @@ pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, max_len: u64)
                 continue;
             }
         };
-        match read_frame_into(&mut out, &path, max_len) {
-            Ok(true) => {}
-            Ok(false) => push_frame(&mut out, STATUS_MISSING, &[]),
+        let first = !admitted_any;
+        let limit = if first { chunk_max } else { chunk_max.min(remaining) };
+        let before = out.len();
+        match read_frame_into(&mut out, &path, chunk_max, limit, first) {
+            Ok(FrameRead::Admitted) => {
+                admitted_any = true;
+                remaining = remaining.saturating_sub((out.len() - before - 5) as u64);
+            }
+            Ok(FrameRead::Missing) => push_frame(&mut out, STATUS_MISSING, &[]),
+            Ok(FrameRead::Large) => push_frame(&mut out, STATUS_LARGE, &[]),
+            Ok(FrameRead::Deferred) => {
+                deferred = true;
+                push_frame(&mut out, STATUS_DEFERRED, &[]);
+            }
             Err(message) => {
                 eprintln!("asset read failed for {}: {}", key, message);
                 push_frame(&mut out, STATUS_ERROR, message.as_bytes());
@@ -467,7 +640,7 @@ pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, max_len: u64)
 }
 
 pub fn get_assets_batch(base: &Path, keys: &[String]) -> Vec<u8> {
-    get_batch_with(base, keys, cfg!(windows), u64::from(u32::MAX))
+    get_batch_with(base, keys, cfg!(windows), CHUNK_MAX, RESPONSE_MAX)
 }
 
 // ---------------------------------------------------------------------------
@@ -803,7 +976,7 @@ mod tests {
         fs::write(assets.join("hash."), b"empty extension").unwrap();
         fs::write(assets.join(".hidden"), b"dot").unwrap();
         let keys = vec!["assets/hash.".to_string(), "assets/.hidden".to_string()];
-        let out = get_batch_with(&base, &keys, false, u64::from(u32::MAX));
+        let out = get_batch_with(&base, &keys, false, CHUNK_MAX, RESPONSE_MAX);
         let frames = read_frames(&out);
         assert_eq!(frames[0], (STATUS_OK, b"empty extension".to_vec()));
         assert_eq!(frames[1], (STATUS_OK, b"dot".to_vec()));
@@ -902,8 +1075,8 @@ mod tests {
             }
         }
         let base = scratch("retry");
-        let outcome = put_single_with(&Blocked(AtomicUsize::new(0)), &base, "assets/a", b"bytes");
-        assert_eq!(outcome, Outcome::Ok);
+        let outcomes = put_batch_with(&Blocked(AtomicUsize::new(0)), &base, &body(&[("assets/a", b"bytes")]), 1).unwrap();
+        assert_eq!(outcomes, vec![Outcome::Ok]);
         assert_eq!(fs::read(base.join("assets").join("a")).unwrap(), b"bytes");
         assert!(temps_in(&base).is_empty());
         fs::remove_dir_all(&base).unwrap();
@@ -1040,15 +1213,16 @@ mod tests {
     }
 
     #[test]
-    fn a_single_write_stores_the_data_and_refuses_a_bad_key() {
+    fn a_one_entry_batch_stores_the_data_and_refuses_a_bad_key() {
         let base = scratch("single");
-        assert_eq!(put_single_with(&Probe::default(), &base, "assets/n/big", &[7u8; 300_000]), Outcome::Ok);
+        let big = [7u8; 300_000];
+        assert_eq!(put(&base, &[("assets/n/big", &big)]), vec![Outcome::Ok]);
         assert_eq!(fs::read(base.join("assets").join("n").join("big")).unwrap(), vec![7u8; 300_000]);
-        assert!(matches!(put_single_with(&Probe::default(), &base, "blocks/head", b"x"), Outcome::Invalid(_)));
+        assert!(matches!(put(&base, &[("blocks/head", b"x")])[0], Outcome::Invalid(_)));
         assert!(!base.join("blocks").exists());
-        let json = put_asset_single(&base, "assets/../x", b"x");
-        assert_eq!(json["k"], "invalid");
-        assert!(json["reason"].is_string());
+        let json = put_assets_batch(&base, &body(&[("assets/../x", b"x")])).unwrap();
+        assert_eq!(json[0]["k"], "invalid");
+        assert!(json[0]["reason"].is_string());
         fs::remove_dir_all(&base).unwrap();
     }
 
@@ -1090,7 +1264,7 @@ mod tests {
             .iter()
             .map(|k| k.to_string())
             .collect();
-        let frames = read_frames(&get_batch_with(&base, &keys, false, u64::from(u32::MAX)));
+        let frames = read_frames(&get_batch_with(&base, &keys, false, CHUNK_MAX, RESPONSE_MAX));
         assert_eq!(frames.len(), keys.len());
         assert_eq!(frames[0], (STATUS_OK, b"alpha".to_vec()));
         assert_eq!(frames[1], (STATUS_MISSING, vec![]));
@@ -1126,7 +1300,7 @@ mod tests {
         .map(|k| k.to_string())
         .collect();
         for windows in [false, true] {
-            let frames = read_frames(&get_batch_with(&base, &keys, windows, u64::from(u32::MAX)));
+            let frames = read_frames(&get_batch_with(&base, &keys, windows, CHUNK_MAX, RESPONSE_MAX));
             assert_eq!(frames.len(), keys.len());
             for (index, frame) in frames.iter().enumerate() {
                 assert_eq!(frame.0, STATUS_INVALID, "{:?} (windows={})", keys[index], windows);
@@ -1142,7 +1316,7 @@ mod tests {
             .iter()
             .map(|k| k.to_string())
             .collect();
-        let frames = read_frames(&get_batch_with(&base, &keys, true, u64::from(u32::MAX)));
+        let frames = read_frames(&get_batch_with(&base, &keys, true, CHUNK_MAX, RESPONSE_MAX));
         for (index, frame) in frames.iter().enumerate() {
             assert_eq!(frame.0, STATUS_INVALID, "{:?}", keys[index]);
         }
@@ -1150,7 +1324,7 @@ mod tests {
     }
 
     #[test]
-    fn a_length_over_the_frame_limit_is_refused_and_never_truncated() {
+    fn a_file_over_the_per_call_limit_answers_large_without_its_bytes() {
         assert_eq!(frame_length(0).unwrap(), 0);
         assert_eq!(frame_length(u64::from(u32::MAX)).unwrap(), u32::MAX);
         assert!(frame_length(u64::from(u32::MAX) + 1).is_err());
@@ -1162,15 +1336,14 @@ mod tests {
         fs::write(assets.join("fits"), vec![1u8; 10]).unwrap();
         fs::write(assets.join("big"), vec![2u8; 11]).unwrap();
         let keys: Vec<String> = ["assets/fits", "assets/big"].iter().map(|k| k.to_string()).collect();
-        let frames = read_frames(&get_batch_with(&base, &keys, false, 10));
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 10, 1000));
         assert_eq!(frames[0], (STATUS_OK, vec![1u8; 10]));
-        assert_eq!(frames[1].0, STATUS_ERROR);
-        assert_ne!(frames[1].1.len(), 11, "the bytes are not sent truncated or whole");
+        assert_eq!(frames[1], (STATUS_LARGE, vec![]), "the bytes are not sent truncated or whole");
         fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]
-    fn a_refused_file_in_the_middle_leaves_the_frames_around_it_intact() {
+    fn a_large_file_in_the_middle_leaves_the_frames_around_it_intact() {
         let base = scratch("limit-middle");
         let assets = base.join("assets");
         fs::create_dir_all(&assets).unwrap();
@@ -1182,11 +1355,10 @@ mod tests {
             .iter()
             .map(|k| k.to_string())
             .collect();
-        let frames = read_frames(&get_batch_with(&base, &keys, false, 4_000_000));
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 4_000_000, 4_000_000));
         assert_eq!(frames.len(), 4);
         assert_eq!(frames[0], (STATUS_OK, first));
-        assert_eq!(frames[1].0, STATUS_ERROR);
-        assert!(frames[1].1.len() < 200, "an error frame holds a message, not the file");
+        assert_eq!(frames[1], (STATUS_LARGE, vec![]));
         assert_eq!(frames[2], (STATUS_MISSING, vec![]));
         assert_eq!(frames[3], (STATUS_OK, b"tail".to_vec()));
         fs::remove_dir_all(&base).unwrap();
@@ -1236,6 +1408,408 @@ mod tests {
         for (index, (_, data)) in entries.iter().enumerate() {
             assert_eq!(frames[index], (STATUS_OK, data.to_vec()));
         }
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // ----- read limits ------------------------------------------------------------
+
+    /// Writes `assets/<name>` files of the given sizes (filled with the size's low byte).
+    fn assets_of(base: &Path, files: &[(&str, usize)]) -> Vec<String> {
+        let assets = base.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        for (name, size) in files {
+            fs::write(assets.join(name), vec![*size as u8; *size]).unwrap();
+        }
+        files.iter().map(|(name, _)| format!("assets/{}", name)).collect()
+    }
+
+    fn statuses(frames: &[(u8, Vec<u8>)]) -> Vec<u8> {
+        frames.iter().map(|f| f.0).collect()
+    }
+
+    #[test]
+    fn the_response_budget_is_filled_to_the_byte_and_the_next_key_is_deferred() {
+        let base = scratch("budget-exact");
+        let keys = assets_of(&base, &[("a", 6), ("b", 4), ("c", 1)]);
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 10, 10));
+        assert_eq!(statuses(&frames), vec![STATUS_OK, STATUS_OK, STATUS_DEFERRED]);
+        assert_eq!(frames[0].1.len(), 6);
+        assert_eq!(frames[1].1.len(), 4);
+        assert!(frames[2].1.is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn once_a_file_is_deferred_every_later_key_is_deferred_whatever_it_is() {
+        let base = scratch("budget-defer");
+        let mut keys = assets_of(&base, &[("a", 6), ("b", 5), ("c", 1)]);
+        keys.push("assets/gone".to_string());
+        keys.push("../x".to_string());
+        keys.push("assets/c".to_string());
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 10, 10));
+        assert_eq!(
+            statuses(&frames),
+            vec![STATUS_OK, STATUS_DEFERRED, STATUS_DEFERRED, STATUS_DEFERRED, STATUS_DEFERRED, STATUS_DEFERRED]
+        );
+        assert!(frames[1..].iter().all(|f| f.1.is_empty()));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn the_first_file_is_always_admitted_up_to_the_per_call_limit() {
+        let base = scratch("first-progress");
+        let keys = assets_of(&base, &[("a", 10), ("b", 1)]);
+        // The budget is below the per-call limit; the first file still goes through.
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 10, 4));
+        assert_eq!(statuses(&frames), vec![STATUS_OK, STATUS_DEFERRED]);
+        assert_eq!(frames[0].1.len(), 10);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn an_empty_file_fits_an_exhausted_budget() {
+        let base = scratch("budget-empty");
+        let keys = assets_of(&base, &[("a", 10), ("e", 0)]);
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 10, 10));
+        assert_eq!(statuses(&frames), vec![STATUS_OK, STATUS_OK]);
+        assert!(frames[1].1.is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_large_file_is_decided_from_metadata_and_does_not_defer_the_keys_after_it() {
+        let base = scratch("large");
+        let keys = assets_of(&base, &[("a", 6), ("big", 11), ("c", 1), ("d", 3)]);
+        let frames = read_frames(&get_batch_with(&base, &keys, false, 10, 10));
+        assert_eq!(statuses(&frames), vec![STATUS_OK, STATUS_LARGE, STATUS_OK, STATUS_OK]);
+        assert!(frames[1].1.is_empty());
+        assert_eq!(frames[3].1.len(), 3);
+        // A file above the per-call limit is large even when it is also over the budget.
+        let again = read_frames(&get_batch_with(&base, &keys[1..2], false, 10, 5));
+        assert_eq!(statuses(&again), vec![STATUS_LARGE]);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn the_command_limits_are_four_mebibytes_for_a_file_and_for_a_response() {
+        assert_eq!(CHUNK_MAX, 4 * 1024 * 1024);
+        assert_eq!(RESPONSE_MAX, CHUNK_MAX);
+        let base = scratch("real-limits");
+        let assets = base.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("half"), vec![1u8; (CHUNK_MAX / 2) as usize]).unwrap();
+        fs::write(assets.join("rest"), vec![2u8; (CHUNK_MAX / 2) as usize + 1]).unwrap();
+        fs::write(assets.join("over"), vec![3u8; CHUNK_MAX as usize + 1]).unwrap();
+        fs::write(assets.join("exact"), vec![4u8; CHUNK_MAX as usize]).unwrap();
+        let keys: Vec<String> = ["half", "rest", "over", "exact"].iter().map(|n| format!("assets/{}", n)).collect();
+        let frames = read_frames(&get_assets_batch(&base, &keys));
+        assert_eq!(statuses(&frames), vec![STATUS_OK, STATUS_DEFERRED, STATUS_DEFERRED, STATUS_DEFERRED]);
+        let alone = read_frames(&get_assets_batch(&base, &keys[2..]));
+        assert_eq!(statuses(&alone), vec![STATUS_LARGE, STATUS_OK]);
+        assert_eq!(alone[1].1.len(), CHUNK_MAX as usize);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// A reader that yields `len` bytes whatever the file's reported size was.
+    fn grown(len: usize) -> io::Cursor<Vec<u8>> {
+        io::Cursor::new(vec![5u8; len])
+    }
+
+    #[test]
+    fn a_file_that_grows_past_its_limit_never_yields_a_frame_above_it() {
+        // The first file of a call: an error, and the output is cut back.
+        let mut out = vec![9u8, 9];
+        let result = fill_frame(&mut out, grown(25), 3, 10, false);
+        assert!(result.unwrap_err().contains("grew to over 10 bytes"));
+        assert_eq!(out, vec![9u8, 9]);
+        // A later file: deferred, and the output is cut back.
+        let mut out = vec![9u8, 9];
+        assert_eq!(fill_frame(&mut out, grown(25), 3, 10, true), Ok(FrameRead::Deferred));
+        assert_eq!(out, vec![9u8, 9]);
+    }
+
+    #[test]
+    fn a_file_that_reaches_exactly_its_limit_is_admitted_and_one_byte_more_is_not() {
+        let mut out = Vec::new();
+        assert_eq!(fill_frame(&mut out, grown(10), 3, 10, false), Ok(FrameRead::Admitted));
+        assert_eq!(out.len(), 5 + 10);
+        assert_eq!(out[0], STATUS_OK);
+        assert_eq!(&out[1..5], &10u32.to_le_bytes());
+        let mut out = Vec::new();
+        assert!(fill_frame(&mut out, grown(11), 3, 10, false).is_err());
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn a_size_over_the_limit_is_deferred_before_any_byte_is_read() {
+        struct Unreadable;
+        impl Read for Unreadable {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                panic!("read a file that was already over the limit");
+            }
+        }
+        let mut out = Vec::new();
+        assert_eq!(fill_frame(&mut out, Unreadable, 11, 10, true), Ok(FrameRead::Deferred));
+        assert!(out.is_empty());
+    }
+
+    // ----- raw chunk write --------------------------------------------------------
+
+    const CHUNK_ID: &str = "0123456789abcdef";
+
+    fn chunk_headers(pairs: &[(&str, &str)]) -> tauri::http::HeaderMap {
+        let mut map = tauri::http::HeaderMap::new();
+        for (name, value) in pairs {
+            map.insert(
+                tauri::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                tauri::http::HeaderValue::from_str(value).unwrap(),
+            );
+        }
+        map
+    }
+
+    fn full_headers(key: &str, offset: &str, last: &str, durable: &str) -> tauri::http::HeaderMap {
+        chunk_headers(&[
+            (KEY_HEADER, key),
+            (ID_HEADER, CHUNK_ID),
+            (OFFSET_HEADER, offset),
+            (LAST_HEADER, last),
+            (DURABLE_HEADER, durable),
+        ])
+    }
+
+    fn parsed(key: &str, offset: u64, last: bool, durable: bool) -> RawChunkHeaders {
+        RawChunkHeaders { key: key.to_string(), id: CHUNK_ID.to_string(), offset, last, durable }
+    }
+
+    #[test]
+    fn the_chunk_headers_are_parsed_and_the_key_is_percent_decoded() {
+        let headers = full_headers("assets%2Fa%20b.png", "4194304", "1", "0");
+        assert_eq!(parse_raw_chunk_headers(&headers).unwrap(), parsed("assets/a b.png", 4_194_304, true, false));
+        let headers = full_headers("blocks%2Fhead", "0", "0", "1");
+        assert_eq!(parse_raw_chunk_headers(&headers).unwrap(), parsed("blocks/head", 0, false, true));
+    }
+
+    #[test]
+    fn a_missing_or_malformed_chunk_header_is_a_malformed_error() {
+        let good = [
+            (KEY_HEADER, "blocks%2Fhead"),
+            (ID_HEADER, CHUNK_ID),
+            (OFFSET_HEADER, "0"),
+            (LAST_HEADER, "1"),
+            (DURABLE_HEADER, "1"),
+        ];
+        for missing in 0..good.len() {
+            let pairs: Vec<(&str, &str)> = good.iter().enumerate().filter(|(i, _)| *i != missing).map(|(_, p)| *p).collect();
+            let error = parse_raw_chunk_headers(&chunk_headers(&pairs)).unwrap_err();
+            assert!(error.starts_with("malformed:"), "{}", error);
+        }
+        let bad_values: [(&str, &str); 14] = [
+            (KEY_HEADER, "%zz"),
+            (KEY_HEADER, "%FF"),
+            (ID_HEADER, "0123456789ABCDEF"),
+            (ID_HEADER, "0123456789abcde"),
+            (ID_HEADER, "../0123456789abcdef"),
+            (OFFSET_HEADER, "-1"),
+            (OFFSET_HEADER, "1.5"),
+            (OFFSET_HEADER, ""),
+            (OFFSET_HEADER, "18446744073709551616"),
+            (OFFSET_HEADER, "0x10"),
+            (LAST_HEADER, "true"),
+            (LAST_HEADER, ""),
+            (DURABLE_HEADER, "2"),
+            (DURABLE_HEADER, "yes"),
+        ];
+        for (name, value) in bad_values {
+            let pairs: Vec<(&str, &str)> = good.iter().map(|(n, v)| if *n == name { (*n, value) } else { (*n, *v) }).collect();
+            let error = parse_raw_chunk_headers(&chunk_headers(&pairs)).unwrap_err();
+            assert!(error.starts_with("malformed:"), "{} {:?}: {}", name, value, error);
+        }
+    }
+
+    #[test]
+    fn a_body_that_is_not_raw_is_refused_before_the_headers_or_the_disk() {
+        let headers = full_headers("blocks%2Fhead", "0", "1", "1");
+        for body in [
+            tauri::ipc::InvokeBody::Json(json!([1, 2, 3])),
+            tauri::ipc::InvokeBody::Json(Value::Null),
+        ] {
+            let error = parse_raw_chunk(&headers, &body).unwrap_err();
+            assert!(error.starts_with("not-raw:"), "{}", error);
+        }
+        // Not-raw wins over a malformed header: the body is checked first.
+        let error = parse_raw_chunk(&chunk_headers(&[]), &tauri::ipc::InvokeBody::Json(json!([]))).unwrap_err();
+        assert!(error.starts_with("not-raw:"), "{}", error);
+        let (got, bytes) = parse_raw_chunk(&headers, &tauri::ipc::InvokeBody::Raw(vec![1, 2, 3])).unwrap();
+        assert_eq!(got, parsed("blocks/head", 0, true, true));
+        assert_eq!(bytes, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn a_refused_key_is_invalid_and_nothing_is_written() {
+        let base = scratch("chunk-refused");
+        let keys = [
+            "", "/abs", "a/", "a//b", "a/../b", "../x", ".hidden", "assets/.hidden", "assets/../x", "assets/a:b",
+            "assets/a.", "assets/a ", "blocks/risu-write-0123456789abcdef.tmp", "assets/risu-write-0123456789abcdef.tmp",
+            "C:x", "a\\b",
+        ];
+        for key in keys {
+            let outcome = write_chunk_raw_with(&RealOps, &base, &parsed(key, 0, true, true), b"data");
+            assert!(matches!(outcome, Outcome::Invalid(_)), "{:?}: {:?}", key, outcome);
+        }
+        let json = write_chunk_raw(&base, &parsed("assets/../x", 0, true, true), b"data");
+        assert_eq!(json["k"], "invalid");
+        assert!(json["reason"].is_string());
+        assert!(tree(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_chunk_over_the_limit_is_an_error_and_nothing_is_written() {
+        let base = scratch("chunk-big");
+        let bytes = vec![0u8; MAX_CHUNK_BYTES + 1];
+        let outcome = write_chunk_raw_with(&RealOps, &base, &parsed("blocks/x", 0, true, false), &bytes);
+        assert!(matches!(outcome, Outcome::Error(_)), "{:?}", outcome);
+        assert!(tree(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// The real file system with a record of steps and an optional append fault.
+    #[derive(Default)]
+    struct ChunkSteps {
+        fail_append: Option<usize>,
+        steps: std::cell::RefCell<Vec<&'static str>>,
+    }
+
+    impl ChunkSteps {
+        fn note(&self, step: &'static str) {
+            self.steps.borrow_mut().push(step);
+        }
+        fn count(&self, step: &str) -> usize {
+            self.steps.borrow().iter().filter(|s| **s == step).count()
+        }
+    }
+
+    impl FileOps for ChunkSteps {
+        fn create_synced(&self, temp: &Path, bytes: &[u8]) -> io::Result<()> {
+            RealOps.create_synced(temp, bytes)
+        }
+        fn create_empty(&self, temp: &Path) -> io::Result<()> {
+            self.note("create_empty");
+            RealOps.create_empty(temp)
+        }
+        fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()> {
+            self.note("append");
+            if self.fail_append == Some(self.count("append")) {
+                return Err(io::Error::new(io::ErrorKind::Other, "disk full"));
+            }
+            RealOps.append(temp, offset, bytes)
+        }
+        fn sync_file(&self, path: &Path) -> io::Result<()> {
+            self.note("sync_file");
+            RealOps.sync_file(path)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.note("rename");
+            RealOps.rename(from, to)
+        }
+        fn sync_dir(&self, dir: &Path) -> io::Result<()> {
+            self.note("sync_dir");
+            RealOps.sync_dir(dir)
+        }
+        fn remove(&self, path: &Path) -> io::Result<()> {
+            self.note("remove");
+            RealOps.remove(path)
+        }
+        fn sleep_ms(&self, _ms: u64) {}
+        fn temp_name(&self) -> String {
+            RealOps.temp_name()
+        }
+    }
+
+    fn send_chunks(ops: &ChunkSteps, base: &Path, key: &str, data: &[u8], size: usize, durable: bool) -> Vec<Outcome> {
+        let mut outcomes = Vec::new();
+        let mut offset = 0usize;
+        loop {
+            let end = (offset + size).min(data.len());
+            let headers = parsed(key, offset as u64, end == data.len(), durable);
+            let outcome = write_chunk_raw_with(ops, base, &headers, &data[offset..end]);
+            let stop = outcome != Outcome::Ok || end == data.len();
+            outcomes.push(outcome);
+            if stop {
+                return outcomes;
+            }
+            offset = end;
+        }
+    }
+
+    #[test]
+    fn a_chunk_sequence_lands_whole_through_one_temp_and_a_rename() {
+        let base = scratch("chunks");
+        let data: Vec<u8> = (0..=255u8).cycle().take(25).collect();
+        for key in ["blocks/gen/x", "assets/n/y"] {
+            let ops = ChunkSteps::default();
+            let outcomes = send_chunks(&ops, &base, key, &data, 10, false);
+            assert_eq!(outcomes, vec![Outcome::Ok; 3]);
+            let mut path = base.clone();
+            for segment in key.split('/') {
+                path.push(segment);
+            }
+            assert_eq!(fs::read(&path).unwrap(), data);
+            assert_eq!(*ops.steps.borrow(), vec!["create_empty", "append", "append", "append", "rename"]);
+        }
+        assert!(temps_in(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_durable_chunk_sequence_flushes_the_file_before_the_rename_and_the_directory_after() {
+        let base = scratch("chunks-durable");
+        let ops = ChunkSteps::default();
+        let outcomes = send_chunks(&ops, &base, "assets/d/z", &[1u8; 12], 5, true);
+        assert_eq!(outcomes, vec![Outcome::Ok; 3]);
+        let steps = ops.steps.borrow();
+        let at = |name: &str| steps.iter().position(|s| *s == name).unwrap();
+        let last = |name: &str| steps.iter().rposition(|s| *s == name).unwrap();
+        assert!(last("append") < at("sync_file"));
+        assert!(at("sync_file") < at("rename"));
+        assert!(at("rename") < last("sync_dir"));
+        assert_eq!(steps.last().copied(), Some("sync_dir"));
+        drop(steps);
+        assert_eq!(fs::read(base.join("assets").join("d").join("z")).unwrap(), vec![1u8; 12]);
+        assert!(temps_in(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_fault_at_any_chunk_removes_the_temp_and_keeps_the_old_file() {
+        for k in 1..=3usize {
+            let base = scratch("chunks-fault");
+            let assets = base.join("assets");
+            fs::create_dir_all(&assets).unwrap();
+            fs::write(assets.join("t"), b"old bytes").unwrap();
+            let ops = ChunkSteps { fail_append: Some(k), ..ChunkSteps::default() };
+
+            let outcomes = send_chunks(&ops, &base, "assets/t", &[7u8; 12], 5, true);
+
+            assert_eq!(outcomes.len(), k, "the sequence stops at the failed chunk");
+            assert!(matches!(outcomes.last().unwrap(), Outcome::Error(message) if message.contains("disk full")));
+            assert_eq!(fs::read(assets.join("t")).unwrap(), b"old bytes");
+            assert!(temps_in(&base).is_empty(), "chunk {}", k);
+            assert_eq!(ops.count("rename"), 0);
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_chunk_out_of_order_is_an_error_and_ends_the_write() {
+        let base = scratch("chunks-order");
+        let ops = ChunkSteps::default();
+        assert_eq!(write_chunk_raw_with(&ops, &base, &parsed("blocks/o", 0, false, false), b"abcd"), Outcome::Ok);
+        let outcome = write_chunk_raw_with(&ops, &base, &parsed("blocks/o", 8, true, false), b"efgh");
+        assert!(matches!(outcome, Outcome::Error(_)), "{:?}", outcome);
+        assert!(temps_in(&base).is_empty());
+        assert!(!base.join("blocks").join("o").exists());
         fs::remove_dir_all(&base).unwrap();
     }
 

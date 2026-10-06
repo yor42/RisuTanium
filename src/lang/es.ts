@@ -1862,6 +1862,14 @@ export const languageSpanish = {
         `La copia de seguridad se restauró, excepto ${count} archivo(s) de recursos que superan los ${Math.floor(limitBytes / (1024 * 1024))} MB que este servidor acepta en una sola solicitud. Un personaje que use alguno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `El servidor, o un proxy delante de él, rechazó el recurso "${name}" por ser demasiado grande, por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.`,
+    "backupFailedFileDeleted": (asset: string | null) =>
+        `${asset === null ? 'La copia de seguridad falló.' : `La copia de seguridad se detuvo porque ${asset} cambió o no se pudo leer mientras se guardaba.`} El archivo de la copia de seguridad estaba incompleto, por lo que se eliminó. Vuelve a ejecutar la copia de seguridad.`,
+    "backupFailedFileKept": (asset: string | null) =>
+        `${asset === null ? 'La copia de seguridad falló.' : `La copia de seguridad se detuvo porque ${asset} cambió o no se pudo leer mientras se guardaba.`} El archivo de la copia de seguridad está incompleto y la aplicación no pudo eliminarlo. No lo uses: elimínalo tú mismo y luego vuelve a ejecutar la copia de seguridad.`,
+    "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
+        `La copia de seguridad se detuvo porque ${asset} es demasiado grande para una entrada de copia de seguridad (el límite es de aproximadamente 4,29 GB), por lo que no se puede guardar. ${file === 'untouched' ? 'No se escribió nada en el archivo.' : file === 'deleted' ? 'El archivo de la copia de seguridad estaba incompleto, por lo que se eliminó.' : 'El archivo de la copia de seguridad está incompleto y la aplicación no pudo eliminarlo. No lo uses: elimínalo tú mismo.'} La copia de seguridad no puede incluir ese recurso hasta que se elimine o se reduzca su tamaño, y volver a ejecutarla falla de la misma manera.`,
+    "backupFailedNothingWritten": () =>
+        "La copia de seguridad falló antes de que se escribiera nada en el archivo. Vuelve a ejecutar la copia de seguridad.",
     "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
     "internalBackupWriteFailed": "No se pudo guardar la copia de seguridad. Tus datos actuales no se modificaron.",
     "internalBackupListFailed": "No se pudo leer la lista de copias de seguridad. No se modificó nada.",

@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
 }))
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs))
 
 vi.mock(import('src/ts/platform'), () => ({
     get isTauri() { return h.platform.isTauri },
@@ -61,6 +62,11 @@ vi.mock('src/ts/alert', () => ({
 vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'linux' }))
 
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
+
+vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@tauri-apps/api/core')>(),
+    invoke: desktop.invoke,
+}))
 
 type AppStoreModule = typeof import('src/ts/storage/store/appStore')
 

@@ -17,6 +17,7 @@ import { parseBlocks } from './risuSaveBlockFile'
 import type { Database } from '../database.svelte'
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
+const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs, { probeReads: true }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -62,6 +63,11 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'linux' }))
 
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
 
+vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@tauri-apps/api/core')>(),
+    invoke: desktop.invoke,
+}))
+
 interface TestCharacter {
     chaId: string
     type: 'character'
@@ -97,6 +103,7 @@ function bytesOf(character: TestCharacter): Uint8Array {
 
 beforeEach(() => {
     fakeFs.reset()
+    desktop.reset()
     vi.resetModules()
 })
 

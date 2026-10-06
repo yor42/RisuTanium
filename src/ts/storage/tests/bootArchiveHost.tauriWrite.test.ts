@@ -13,12 +13,13 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
 const fakePaths = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriPathFake')).createFakeTauriPaths())
+const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs))
 
 vi.mock('@tauri-apps/plugin-os', () => ({ type: vi.fn(() => 'windows') }))
 
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
 vi.mock('@tauri-apps/api/path', () => fakePaths.pathModule)
-vi.mock('@tauri-apps/api/core', () => ({ ...fakePaths.coreModule, invoke: fakeFs.invoke }))
+vi.mock('@tauri-apps/api/core', () => ({ ...fakePaths.coreModule, invoke: desktop.invoke }))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     acquireExclusiveStorageMigrationLock: vi.fn(),

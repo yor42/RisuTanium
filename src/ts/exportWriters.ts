@@ -11,6 +11,13 @@ export interface ByteWriter {
 /** A writer an export can be finished on: every byte is accepted, then `close` completes the file. */
 export interface ExportByteWriter extends ByteWriter {
     close(): Promise<void>
+    /** Gives up on the export without completing the file; a failed abort leaves whatever the writer already handed on. */
+    abort?(reason?: unknown): Promise<void>
+    /**
+     * True while the writer holds every byte in memory and has handed none to the browser, so a failed export leaves
+     * no file. Absent or false for a writer that streams to a download, where a partial file may already exist.
+     */
+    readonly heldInMemory?: boolean
 }
 
 /** A backup entry body below this size is written together with its header. */
@@ -41,13 +48,25 @@ export async function writeBackupEntry(writer: ByteWriter, encodedName: Uint8Arr
     await writer.write(data)
 }
 
-/** Bytes a `TauriWriter` collects before it hands them to the file system in one call. */
+/**
+ * The header of a backup entry whose body of `dataLength` bytes follows in later writes: `[u32 name length][name][u32 data length]`,
+ * byte for byte what `writeBackupEntry` puts before a body.
+ */
+export function encodeBackupEntryHeader(encodedName: Uint8Array, dataLength: number): Uint8Array {
+    const header = new Uint8Array(8 + encodedName.byteLength)
+    header.set(new Uint8Array(new Uint32Array([encodedName.byteLength]).buffer), 0)
+    header.set(encodedName, 4)
+    header.set(new Uint8Array(new Uint32Array([dataLength]).buffer), 4 + encodedName.byteLength)
+    return header
+}
+
+/** Bytes a `TauriWriter` collects before it hands them to the file system in one call; no call carries more. */
 export const TAURI_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 
 /**
  * A writer for the Tauri environment. Small writes are collected and written with one `writeFile` call when
  * `TAURI_WRITE_CHUNK_BYTES` have gathered, or on `close`; a write larger than that is passed on right after the
- * collected bytes. The first call that reaches the file system creates the file and every later one appends.
+ * collected bytes, as consecutive calls of at most that size. The first call that reaches the file system creates the file and every later one appends.
  *
  * Bytes handed to `write` may still be held until a later `write` or `close`, so a caller must treat a file as
  * complete only after `close` resolves. A failing file-system call rejects the `write` or `close` that made it, and
@@ -60,6 +79,7 @@ export class TauriWriter {
     private pendingLength = 0
     private failed = false
     private failure: unknown = undefined
+    private attempted = false
 
     /**
      * Creates an instance of TauriWriter.
@@ -70,7 +90,13 @@ export class TauriWriter {
         this.path = path
     }
 
+    /** Whether a call that may have created or changed the file has been made; a file at `path` is untouched until then. */
+    get touchedFile(): boolean {
+        return this.attempted
+    }
+
     private async put(data: Uint8Array) {
+        this.attempted = true
         try {
             await writeFile(this.path, data, {
                 append: !this.firstWrite
@@ -102,7 +128,9 @@ export class TauriWriter {
         }
         if (data.byteLength > TAURI_WRITE_CHUNK_BYTES) {
             await this.flush()
-            await this.put(data)
+            for (let start = 0; start < data.byteLength; start += TAURI_WRITE_CHUNK_BYTES) {
+                await this.put(data.subarray(start, Math.min(start + TAURI_WRITE_CHUNK_BYTES, data.byteLength)))
+            }
             return
         }
         if (this.pendingLength + data.byteLength > TAURI_WRITE_CHUNK_BYTES) {
@@ -133,14 +161,24 @@ export class TauriWriter {
  */
 export class BlobDownloadWriter implements ExportByteWriter {
     private chunks: Uint8Array[] = []
+    private handedOver = false
 
     constructor(private filename: string) {}
+
+    get heldInMemory(): boolean {
+        return !this.handedOver
+    }
 
     async write(data: Uint8Array) {
         this.chunks.push(data)
     }
 
+    async abort() {
+        this.chunks = []
+    }
+
     async close() {
+        this.handedOver = true
         const blob = new Blob(this.chunks as BlobPart[], { type: 'application/octet-stream' })
         this.chunks = []
         const url = URL.createObjectURL(blob)
@@ -149,6 +187,33 @@ export class BlobDownloadWriter implements ExportByteWriter {
         link.download = this.filename
         link.click()
         setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000)
+    }
+}
+
+/**
+ * A stream writer of streamsaver's own memory path: the stream keeps every chunk and hands the browser the download
+ * only when it is closed, so until `close` is called a failed export leaves no file.
+ */
+class HeldInMemoryStreamWriter implements ExportByteWriter {
+    private handedOver = false
+
+    constructor(private inner: WritableStreamDefaultWriter<Uint8Array>) {}
+
+    get heldInMemory(): boolean {
+        return !this.handedOver
+    }
+
+    write(data: Uint8Array): Promise<void> {
+        return this.inner.write(data)
+    }
+
+    abort(reason?: unknown): Promise<void> {
+        return this.inner.abort(reason)
+    }
+
+    close(): Promise<void> {
+        this.handedOver = true
+        return this.inner.close()
     }
 }
 
@@ -185,7 +250,7 @@ export async function openWebExportWriter(filename: string): Promise<ExportByteW
     }
     if (streamSaver.useBlobFallback) {
         await alertNormalWait(language.exportHeldInMemory)
-        return streamSaver.createWriteStream(filename).writable.getWriter()
+        return new HeldInMemoryStreamWriter(streamSaver.createWriteStream(filename).writable.getWriter())
     }
     const { writable, ready } = streamSaver.createWriteStream(filename)
     const writer = writable.getWriter()

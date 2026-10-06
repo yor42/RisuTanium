@@ -31,6 +31,42 @@ const h = vi.hoisted(() => ({
 
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
 const fakePaths = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriPathFake')).createFakeTauriPaths())
+const desktop = await vi.hoisted(async () => {
+    const fake = await import('src/ts/storage/tests/tauriDesktopFake')
+    const CAP = 4 * 1024 * 1024
+    const bounded = fake.createBoundedFs(fakeFs, { cap: CAP })
+    // The plugin module gains `open` (a desktop user-file read opens the file and reads it in pieces), and its
+    // whole-file `readFile` and `writeFile` refuse a payload above the per-call bound; `writeFile` also appends.
+    const readFile = fakeFs.module.readFile as (path: string, ...rest: unknown[]) => Promise<Uint8Array>
+    const writeFile = fakeFs.module.writeFile as (path: string, data: Uint8Array, options?: { append?: boolean }) => Promise<void>
+    const written: number[] = []
+    Object.assign(fakeFs.module, {
+        open: bounded.module.open,
+        readFile: async (path: string, ...rest: unknown[]) => {
+            const bytes = await readFile(path, ...rest)
+            if (bytes.length > CAP) {
+                throw new Error(`readFile carries ${bytes.length} bytes, above the per-call bound`)
+            }
+            return bytes
+        },
+        writeFile: async (path: string, data: Uint8Array, options?: { append?: boolean }) => {
+            written.push(data.length)
+            if (data.length > CAP) {
+                throw new Error(`writeFile carries ${data.length} bytes, above the per-call bound`)
+            }
+            if (options?.append === true) {
+                const held = fakeFs.files.get(path) ?? new Uint8Array(0)
+                const next = new Uint8Array(held.length + data.length)
+                next.set(held, 0)
+                next.set(data, held.length)
+                fakeFs.files.set(path, next)
+                return
+            }
+            await writeFile(path, data, options)
+        },
+    })
+    return { invoke: fake.createDesktopInvoke(fakeFs), bounded, written }
+})
 
 //#region module mocks
 
@@ -107,7 +143,7 @@ vi.mock(import('src/ts/util'), () => ({
     saveKeypairStore: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/util'))
 
-vi.mock('@tauri-apps/api/core', () => fakePaths.coreModule)
+vi.mock('@tauri-apps/api/core', () => ({ ...fakePaths.coreModule, invoke: desktop.invoke.invoke }))
 vi.mock('@tauri-apps/api/path', () => ({ ...fakePaths.pathModule, basename: vi.fn(async (p: string) => p.split('/').pop()) }))
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs.module)
 vi.mock('@tauri-apps/plugin-os', () => ({ type: () => h.os }))
@@ -256,6 +292,9 @@ beforeEach(() => {
     h.keyPair = null
     fakeFs.reset()
     fakePaths.reset()
+    desktop.invoke.reset()
+    desktop.bounded.reset()
+    desktop.written.length = 0
     localStorage.clear()
 })
 
@@ -536,13 +575,14 @@ describe('readImage and loadAsset', () => {
         expect(Buffer.isBuffer(present)).toBe(false)
     })
 
-    test('guard: readImage of a path outside assets on Tauri reads that path as given', async () => {
+    test('readImage of a path outside assets on Tauri reads that path as given', async () => {
         useTauri('linux')
         fakeFs.plant('/legacy/photo.png', OTHER)
         const { api } = await loadWorld()
 
         expect(Array.from(await api.readImage('/legacy/photo.png'))).toEqual(Array.from(OTHER))
-        expect(fakeFs.calls.filter((call) => call.op === 'readFile').map((call) => call.path)).toEqual(['/legacy/photo.png'])
+        expect(desktop.bounded.opened).toEqual(['/legacy/photo.png'])
+        expect(fakeFs.calls.filter((call) => call.op === 'readFile')).toEqual([])
     })
 })
 
@@ -674,5 +714,47 @@ describe('getFileSrc', () => {
         expect(api.isPlainHttpFileSrc(PNG_KEY)).toBe(false)
         api.setUsingSw(true)
         expect(api.isPlainHttpFileSrc(PNG_KEY)).toBe(false)
+    })
+})
+
+describe('user files above one plugin call on Tauri', () => {
+    const CAP = 4 * 1024 * 1024
+
+    function patterned(length: number): Uint8Array {
+        return Uint8Array.from({ length }, (_, i) => (i * 17 + 3) % 251)
+    }
+
+    test('per-call bound: readImage of a path outside assets reads a file of several pieces with calls of at most 4 MiB and returns every byte', async () => {
+        useTauri('linux')
+        const big = patterned(CAP * 2 + 5)
+        fakeFs.plant('/legacy/big.png', big)
+        const { api } = await loadWorld()
+
+        const read = await api.readImage('/legacy/big.png')
+
+        expect(Buffer.compare(Buffer.from(read), Buffer.from(big))).toBe(0)
+        expect(Math.max(...desktop.bounded.readSizes)).toBeLessThanOrEqual(CAP)
+        expect(desktop.bounded.openHandles()).toBe(0)
+    })
+
+    test('per-call bound: downloadFile of a body above 4 MiB writes it in calls of at most 4 MiB, in order, into Downloads', async () => {
+        useTauri('linux')
+        const big = patterned(CAP * 2 + 5)
+        const { api } = await loadWorld()
+
+        await api.downloadFile('export.bin', big)
+
+        expect(desktop.written).toEqual([CAP, CAP, 5])
+        expect(Buffer.compare(Buffer.from(fakeFs.files.get('export.bin') ?? []), Buffer.from(big))).toBe(0)
+    })
+
+    test('guard: downloadFile of a small body is one write call', async () => {
+        useTauri('linux')
+        const { api } = await loadWorld()
+
+        await api.downloadFile('small.bin', OTHER)
+
+        expect(desktop.written).toEqual([OTHER.length])
+        expect(Array.from(fakeFs.files.get('small.bin') ?? [])).toEqual(Array.from(OTHER))
     })
 })

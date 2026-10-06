@@ -4,7 +4,7 @@ import { isTauri } from '../platform'
 
 /**
  * The page's side of the desktop asset commands: `put_assets_batch`,
- * `put_asset_single`, `get_assets_batch` and `list_assets_sized`. Every key is
+ * `get_assets_batch` and `list_assets_sized`. Every key is
  * a store key (`assets/<name>`), and the commands resolve it under the app data
  * directory themselves; no path is ever sent.
  *
@@ -13,6 +13,12 @@ import { isTauri } from '../platform'
  * Wire format of a read response: one frame per requested key, in order,
  * `[u8 status][u32 LE length][bytes]`. Both parsers check every length against
  * the bytes that remain and require the whole response to be consumed.
+ *
+ * A file above `CHUNK_MAX` never travels in a batch: the read command answers
+ * it `large` (decided from its metadata) and the page reads it with the ranged
+ * reader. The read command also bounds one response to `CHUNK_MAX` of file
+ * bytes: the first key that would not fit, and every key after it, answers
+ * `deferred` and is asked for again in a later call.
  */
 
 /** What one write frame came to: written, refused by the key rules, or failed. */
@@ -27,6 +33,10 @@ export type AssetReadResult =
     | { status: 'missing' }
     | { status: 'invalid'; reason: string }
     | { status: 'error'; message: string }
+    /** The file alone exceeds `CHUNK_MAX`; no bytes came. Read it with the ranged reader. */
+    | { status: 'large' }
+    /** The response budget ran out before this key; no bytes came. Ask for it in a later call. */
+    | { status: 'deferred' }
 
 export interface AssetPutEntry {
     key: string
@@ -101,15 +111,25 @@ function rethrowCommandError(error: unknown): never {
     throw error
 }
 
-export function encodePutFrames(entries: readonly AssetPutEntry[]): Uint8Array {
+/**
+ * Builds the body of a `put_assets_batch` call. With `maxEntryBytes`, a list
+ * whose entries together hold more bytes than that rejects before anything is
+ * built, so a caller that passes `CHUNK_MAX` can never send a larger call.
+ */
+export function encodePutFrames(entries: readonly AssetPutEntry[], maxEntryBytes?: number): Uint8Array {
     const encoder = new TextEncoder()
     const keys = entries.map((entry) => encoder.encode(entry.key))
     let total = 0
+    let entryBytes = 0
     for (let i = 0; i < entries.length; i++) {
         if (keys[i].length > MAX_U32 || entries[i].data.length > MAX_U32) {
             throw new RangeError('an asset frame is limited to 4 GiB')
         }
         total += 8 + keys[i].length + entries[i].data.length
+        entryBytes += entries[i].data.length
+    }
+    if (maxEntryBytes !== undefined && entryBytes > maxEntryBytes) {
+        throw new RangeError(`an asset batch is limited to ${maxEntryBytes} bytes of entries`)
     }
     const body = new Uint8Array(total)
     const view = new DataView(body.buffer)
@@ -151,9 +171,13 @@ export function parsePutResults(value: unknown, expected: number): AssetPutResul
     return value.map(parsePutResult)
 }
 
-/** Writes the entries in one call; the result list is in entry order. */
-export async function writeAssetBatch(entries: readonly AssetPutEntry[]): Promise<AssetPutResult[]> {
-    const body = encodePutFrames(entries)
+/**
+ * Writes the entries in one call; the result list is in entry order. With
+ * `maxEntryBytes` (see `encodePutFrames`) an over-large list rejects before the
+ * call.
+ */
+export async function writeAssetBatch(entries: readonly AssetPutEntry[], maxEntryBytes?: number): Promise<AssetPutResult[]> {
+    const body = encodePutFrames(entries, maxEntryBytes)
     try {
         return parsePutResults(await invoke<unknown>('put_assets_batch', body), entries.length)
     } catch (error) {
@@ -161,19 +185,7 @@ export async function writeAssetBatch(entries: readonly AssetPutEntry[]): Promis
     }
 }
 
-/** Writes one entry whose body is sent as it is, without framing; used for an entry too large to share a batch. */
-export async function writeAssetSingle(entry: AssetPutEntry): Promise<AssetPutResult> {
-    try {
-        const result = await invoke<unknown>('put_asset_single', entry.data, {
-            headers: { 'x-risu-key': encodeURIComponent(entry.key) },
-        })
-        return parsePutResult(result)
-    } catch (error) {
-        return rethrowCommandError(error)
-    }
-}
-
-const READ_STATUSES = ['ok', 'missing', 'invalid', 'error'] as const
+const READ_STATUSES = ['ok', 'missing', 'invalid', 'error', 'large', 'deferred'] as const
 
 /** Reads a `get_assets_batch` response for `count` keys; throws unless every frame is whole and nothing is left over. */
 export function parseReadFrames(response: unknown, count: number): AssetReadResult[] {
@@ -218,6 +230,18 @@ export function parseReadFrames(response: unknown, count: number): AssetReadResu
                 break
             case 'error':
                 results.push({ status: 'error', message: new TextDecoder().decode(body) })
+                break
+            case 'large':
+                if (length !== 0) {
+                    throw new Error('get_assets_batch response gives a large key a body')
+                }
+                results.push({ status: 'large' })
+                break
+            case 'deferred':
+                if (length !== 0) {
+                    throw new Error('get_assets_batch response gives a deferred key a body')
+                }
+                results.push({ status: 'deferred' })
                 break
         }
     }
