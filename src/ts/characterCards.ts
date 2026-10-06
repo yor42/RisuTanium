@@ -7,7 +7,8 @@ import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import { v4 as uuidv4, v4 } from 'uuid';
 import { changeChar, characterFormatUpdate } from "./characters"
-import { AppendableBuffer, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, VirtualWriter } from "./globalApi.svelte"
+import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
+import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
@@ -637,8 +638,7 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource):Pro
         const pngChunks = scan.assetCount
         let readedPngChunks = 0
         const assets:{[key:string]:string} = {}
-        //An old card has no assets of its own to keep, so only its image is read.
-        const img = await walkPngCard(source, {chunks, imageBytes, stat}, plan.kind === 'spec', async (assetIndex, assetData) => {
+        const showAssetProgress = () => {
             if(pngChunks === 0){
                 alertWait(fillLang(language.alerts.loadedAssets, { count: readedPngChunks }))
             }
@@ -651,8 +651,24 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource):Pro
             }
 
             readedPngChunks++
-
+        }
+        //An old card has no assets of its own to keep, so only its image is read.
+        const img = await walkPngCard(source, {chunks, imageBytes, stat}, plan.kind === 'spec', async (assetIndex, assetData) => {
+            showAssetProgress()
             assets[assetIndex] = await saveAsset(assetData)
+        }, {
+            minBytes: ASSET_PIECE_SAVE_MIN_BYTES,
+            onAssetPieces: async (assetIndex, asset) => {
+                showAssetProgress()
+                try {
+                    assets[assetIndex] = await saveAssetFromPieces(asset.pieces, {sizeBound: asset.sizeBound, beforeFinish: asset.beforeFinish})
+                } catch (error) {
+                    if(error instanceof AssetSourceChangedError){
+                        throw new PngCardSourceChanged('the card file changed while an asset was saved', error)
+                    }
+                    throw error
+                }
+            }
         })
 
         if(plan.kind === 'tavern'){

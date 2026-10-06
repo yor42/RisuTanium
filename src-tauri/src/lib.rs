@@ -84,7 +84,9 @@ async fn write_durable(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resu
 
 /// One chunk of a file written under the app data directory: the page sends the
 /// chunks of one write in order under one write id (see `chunked_io`). `data` is
-/// the chunk's bytes as base64 text. The file work runs on a blocking worker thread.
+/// the chunk's bytes as base64 text. The last chunk may carry `final_key`, the key
+/// the finished file takes instead of `key` (see `chunked_io::write_chunk_final_with`).
+/// The file work runs on a blocking worker thread.
 #[tauri::command]
 async fn write_chunk(
     app: AppHandle,
@@ -94,9 +96,12 @@ async fn write_chunk(
     data: String,
     last: bool,
     durable: bool,
+    final_key: Option<String>,
 ) -> Result<(), String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || chunked_io::write_chunk_key(&base, &key, &id, offset, &data, last, durable))
+    tauri::async_runtime::spawn_blocking(move || {
+        chunked_io::write_chunk_key(&base, &key, &id, offset, &data, last, durable, final_key.as_deref())
+    })
         .await
         .map_err(|e| format!("the write task failed: {}", e))?
 }
@@ -139,7 +144,8 @@ async fn put_assets_batch(app: AppHandle, request: tauri::ipc::Request<'_>) -> R
 
 /// One chunk of a file written under the app data directory, as a raw body: the
 /// chunk bytes are the body, and `x-risu-key` (percent-encoded), `x-risu-id`,
-/// `x-risu-offset`, `x-risu-last` and `x-risu-durable` carry the rest (see
+/// `x-risu-offset`, `x-risu-last` and `x-risu-durable` carry the rest, and the
+/// last chunk may add `x-risu-final-key` (percent-encoded) (see
 /// `asset_batch::write_chunk_raw`). The result is an outcome object; a refused
 /// key is `invalid`. A body that is not raw is refused with `not-raw:` and a bad
 /// header with `malformed:`, both before the disk is touched.

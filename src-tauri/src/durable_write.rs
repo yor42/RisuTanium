@@ -138,6 +138,17 @@ pub trait FileOps {
     fn create_dir_all(&self, dir: &Path) -> io::Result<()> {
         fs::create_dir_all(dir)
     }
+    /// Whether `path` is a regular file (a link is followed, as the page's
+    /// `has` follows it). A directory is not a file, an absent path is `false`,
+    /// and any other metadata error is an error, never `false`. A substitute may
+    /// override it to inject a fault.
+    fn is_file(&self, path: &Path) -> io::Result<bool> {
+        match fs::metadata(path) {
+            Ok(meta) => Ok(meta.is_file()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 pub struct RealOps;

@@ -2,9 +2,9 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { BaseDirectory, exists, mkdir, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
-import { MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
+import { createChunkedWriter, MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
-import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
+import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
 import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform } from './keyRules'
@@ -32,7 +32,8 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  *
  * It is the one store that offers `urlFor`: the web view loads a file from the
  * asset protocol by its absolute path, so the URL comes from the key alone and
- * no byte is read.
+ * no byte is read. It is also the one that offers `openWriter`, a write that
+ * arrives in pieces over the chunk commands, so the caller never holds the whole file.
  */
 
 const APP_DATA = { baseDir: BaseDirectory.AppData }
@@ -209,6 +210,11 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             const keys: string[] = []
             await collect(slash < 0 ? '' : prefix.slice(0, slash), prefix.slice(slash + 1), keys)
             return keys
+        },
+
+        openWriter(key: string): PieceWriter {
+            checkCreatable(key)
+            return createChunkedWriter(key, { durable: isDurableKey(key) })
         },
 
         async has(key: string): Promise<boolean> {

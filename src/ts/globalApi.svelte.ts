@@ -19,7 +19,7 @@ import { checkRisuUpdate } from "./update";
 import { MobileGUI, botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertConfirm, alertError, alertMd, alertSelect, alertToast, waitAlert } from "./alert";
-import { hasher } from "./parser/parser.svelte";
+import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
 import { characterURLImport, hubURL } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
@@ -550,11 +550,7 @@ export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView
             id = customId
         }
         else {
-            try {
-                id = await hasher(bytes)
-            } catch (error) {
-                id = uuidv4()
-            }
+            id = await sha256Hex(bytes)
         }
         let fileExtension: string = 'png'
         if (fileName) {
@@ -568,9 +564,9 @@ export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView
         // after it failed, still leaves the key alone.
         noteAssetWrittenThisPage(key)
         const store = await getAppStore()
-        // A name is a content hash (or a fresh UUID), so an existing file holds
-        // these bytes already. Replacing it would rename over a file the web view
-        // may hold open. Only the desktop store checks a key without a scan.
+        // A name is a content hash, so an existing file holds these bytes already.
+        // Replacing it would rename over a file the web view may hold open. Only
+        // the desktop store checks a key without a scan.
         if (isTauri && await store.has(key)) {
             return key
         }
@@ -583,6 +579,139 @@ export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView
 
 /** What follows the last dot of an asset's file name: short and plain, so the key stays one path segment on every platform. */
 const ASSET_EXTENSION = /^[A-Za-z0-9]{1,16}$/
+
+/**
+ * The source of an asset being saved piece by piece changed, vanished or failed
+ * to read before the last piece was saved: a read error, a short read, a header
+ * that does not match, or a size or modification time that moved. Nothing is
+ * stored under the asset's key. The importer reports it as a changed file and
+ * does not retry the save.
+ */
+export class AssetSourceChangedError extends Error {
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options)
+        this.name = 'AssetSourceChangedError'
+    }
+}
+
+export interface AssetPieceSaveOptions {
+    /** The file name whose extension the key keeps, as `saveAsset` takes it. */
+    fileName?: string
+    /** The most bytes the pieces can total (for base64 text, `floor(length * 3 / 4)`). A smaller asset than the threshold is saved by `saveAsset`. */
+    sizeBound: number
+    /**
+     * Runs after the last piece and before the file takes its name: the importer
+     * checks that its source still has the size and time it had. A rejection
+     * ends the save as a changed source and leaves nothing under the key.
+     */
+    beforeFinish?: () => Promise<void>
+    /** Test seam: the size at which the pieces stop being collected. */
+    minPieceBytes?: number
+}
+
+function asSourceChanged(error: unknown): AssetSourceChangedError {
+    if (error instanceof AssetSourceChangedError) {
+        return error
+    }
+    const text = String((error as { message?: unknown } | null | undefined)?.message ?? error)
+    return new AssetSourceChangedError(`The source of the asset could not be read to the end: ${text}`, { cause: error })
+}
+
+function assetExtensionOf(fileName: string): string {
+    if (fileName) {
+        const candidate = fileName.split('.').pop() ?? ''
+        if (ASSET_EXTENSION.test(candidate)) {
+            return candidate
+        }
+    }
+    return 'png'
+}
+
+/**
+ * Saves an asset that arrives in pieces and returns its key, the same key
+ * `saveAsset` gives the whole bytes: `assets/<SHA-256 of the bytes>.<ext>`.
+ *
+ * On the desktop and Android app, for an asset that may be at least
+ * `ASSET_PIECE_SAVE_MIN_BYTES` large, every piece is hashed and written once. The file
+ * is built in a temporary file in `assets/`; the last chunk renames it to the key
+ * computed from the pieces, or discards it when that key already holds a file.
+ * The whole asset is never held, so the memory it needs is a few pieces. Anywhere
+ * else, and for a smaller asset, the pieces are collected and `saveAsset` saves
+ * them.
+ *
+ * The pieces are read once and written as read: a piece is never modified or
+ * reused after it is yielded, because the writer keeps the newest piece until
+ * the next call. An error thrown by the source, or by `beforeFinish`, ends the
+ * save with an `AssetSourceChangedError`; an error of the store is rethrown as
+ * it is. In both cases the temporary file is removed and the key holds nothing
+ * from this save.
+ */
+export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, options: AssetPieceSaveOptions): Promise<string> {
+    const fileName = options.fileName ?? ''
+    const store = await getAppStore()
+    const threshold = options.minPieceBytes ?? ASSET_PIECE_SAVE_MIN_BYTES
+    const iterator = pieces[Symbol.asyncIterator]()
+
+    async function next(): Promise<IteratorResult<Uint8Array>> {
+        try {
+            return await iterator.next()
+        } catch (error) {
+            throw asSourceChanged(error)
+        }
+    }
+
+    async function runBeforeFinish(): Promise<void> {
+        try {
+            await options.beforeFinish?.()
+        } catch (error) {
+            throw asSourceChanged(error)
+        }
+    }
+
+    if (!isTauri || store.openWriter === undefined || options.sizeBound < threshold) {
+        const parts: Uint8Array[] = []
+        let total = 0
+        for (let step = await next(); step.done !== true; step = await next()) {
+            parts.push(step.value)
+            total += step.value.length
+        }
+        await runBeforeFinish()
+        const whole = new Uint8Array(total)
+        let at = 0
+        for (const part of parts) {
+            whole.set(part, at)
+            at += part.length
+        }
+        return await saveAsset(whole, '', fileName)
+    }
+
+    const endInFlight = beginChokePoint('asset')
+    const writer = store.openWriter(`assets/incoming-${uuidv4()}`)
+    try {
+        const hash = new Sha256()
+        for (let step = await next(); step.done !== true; step = await next()) {
+            hash.update(step.value)
+            await writer.write(step.value)
+        }
+        const key = `assets/${hash.digestHex()}.${assetExtensionOf(fileName)}`
+        // After the digest is known and before the call that decides between the
+        // rename and the discard, so a sweep never takes the key from under it.
+        noteAssetWrittenThisPage(key)
+        await runBeforeFinish()
+        await writer.finish(key)
+        return key
+    } catch (error) {
+        await writer.abort()
+        try {
+            await iterator.return?.()
+        } catch {
+            // The source is released best-effort; the error that ended the save is the one reported.
+        }
+        throw error
+    } finally {
+        endInFlight()
+    }
+}
 
 /**
  * The bytes of a value handed to `saveAsset`: a `Uint8Array`, an `ArrayBuffer`

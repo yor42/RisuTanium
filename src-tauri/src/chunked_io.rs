@@ -65,6 +65,8 @@ fn discard_temp<O: FileOps>(ops: &O, temp: &Path) {
 /// write is over: the temp file this call owns is removed and the target is
 /// unchanged. `Ok` with `last` means the target holds every chunk. A temp file
 /// that chunk 0 found already in place is not this write's file and is left alone.
+/// The commands call `write_chunk_final_with`; this is the same write without a final key.
+#[cfg(test)]
 pub fn write_chunk_with<O: FileOps>(
     ops: &O,
     target: &Path,
@@ -74,10 +76,46 @@ pub fn write_chunk_with<O: FileOps>(
     last: bool,
     durable: bool,
 ) -> Result<(), String> {
+    write_chunk_final_with(ops, target, temp_name, offset, bytes, last, durable, None)
+}
+
+/// `write_chunk_with`, where the last chunk may name the file the temp becomes:
+/// `final_target` replaces `target` as the destination. It must sit in the same
+/// directory as `target`, so the rename stays in one directory and the abort and
+/// the boot sweep still find the temp. When `final_target` already holds a file
+/// the temp is removed and the call succeeds, so an existing file is never
+/// replaced. A `final_target` on a chunk that is not the last, or in another
+/// directory, ends the write like any other failure.
+pub fn write_chunk_final_with<O: FileOps>(
+    ops: &O,
+    target: &Path,
+    temp_name: &str,
+    offset: u64,
+    bytes: &[u8],
+    last: bool,
+    durable: bool,
+    final_target: Option<&Path>,
+) -> Result<(), String> {
     let directory = target
         .parent()
         .ok_or_else(|| "the target has no parent directory".to_string())?;
     let temp = directory.join(temp_name);
+    if let Some(final_path) = final_target {
+        let refusal = if !last {
+            Some("a final key goes with the last chunk")
+        } else if final_path.parent() != Some(directory) {
+            Some("the final key is not in the folder of the key")
+        } else {
+            None
+        };
+        if let Some(reason) = refusal {
+            // Chunk 0 has created nothing yet; a later chunk's temp is this write's.
+            if offset > 0 {
+                discard_temp(ops, &temp);
+            }
+            return Err(format!("refused final key: {}", reason));
+        }
+    }
     if offset == 0 {
         // Directories this call creates, outermost first.
         let mut created: Vec<&Path> = Vec::new();
@@ -111,15 +149,29 @@ pub fn write_chunk_with<O: FileOps>(
     if !last {
         return Ok(());
     }
+    let destination = final_target.unwrap_or(target);
+    if final_target.is_some() {
+        match ops.is_file(destination) {
+            Ok(true) => {
+                discard_temp(ops, &temp);
+                return Ok(());
+            }
+            Ok(false) => {}
+            Err(error) => {
+                discard_temp(ops, &temp);
+                return Err(format!("failed to look for {}: {}", destination.display(), error));
+            }
+        }
+    }
     if durable {
         if let Err(error) = ops.sync_file(&temp) {
             discard_temp(ops, &temp);
             return Err(format!("failed to flush {}: {}", temp.display(), error));
         }
     }
-    if let Err(error) = rename_with_retry(ops, &temp, target) {
+    if let Err(error) = rename_with_retry(ops, &temp, destination) {
         discard_temp(ops, &temp);
-        return Err(format!("failed to rename {} to {}: {}", temp.display(), target.display(), error));
+        return Err(format!("failed to rename {} to {}: {}", temp.display(), destination.display(), error));
     }
     if durable {
         if let Err(error) = ops.sync_dir(directory) {
@@ -145,7 +197,9 @@ pub fn abort_chunk_with<O: FileOps>(ops: &O, target: &Path, temp_name: &str) -> 
 
 /// The command's whole job apart from reading the request: validate the key
 /// and the id, decode the chunk, apply it. A refused key, id or chunk never
-/// reaches the disk.
+/// reaches the disk. `final_key` (last chunk only) is validated like `key` and
+/// names the file the temp becomes; a refused one removes the temp of a write
+/// that has begun, then fails.
 pub fn write_chunk_key(
     base: &Path,
     key: &str,
@@ -154,11 +208,24 @@ pub fn write_chunk_key(
     data: &str,
     last: bool,
     durable: bool,
+    final_key: Option<&str>,
 ) -> Result<(), String> {
     let target = resolve_key(base, key)?;
     let temp_name = temp_name_for(id)?;
     let bytes = decode_chunk(data)?;
-    write_chunk_with(&RealOps, &target, &temp_name, offset, &bytes, last, durable)
+    let final_target = match final_key {
+        None => None,
+        Some(name) => match resolve_key(base, name) {
+            Ok(path) => Some(path),
+            Err(reason) => {
+                if offset > 0 {
+                    abort_chunk_with(&RealOps, &target, &temp_name)?;
+                }
+                return Err(reason);
+            }
+        },
+    };
+    write_chunk_final_with(&RealOps, &target, &temp_name, offset, &bytes, last, durable, final_target.as_deref())
 }
 
 pub fn abort_chunk_key(base: &Path, key: &str, id: &str) -> Result<(), String> {
@@ -357,6 +424,12 @@ mod tests {
         fn sleep_ms(&self, _ms: u64) {}
         fn temp_name(&self) -> String {
             RealOps.temp_name()
+        }
+        fn is_file(&self, path: &Path) -> io::Result<bool> {
+            if self.hit("is_file") {
+                return Err(Self::fault());
+            }
+            RealOps.is_file(path)
         }
     }
 
@@ -596,6 +669,173 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// Like `write_in_chunks`, with the last chunk carrying `final_target`.
+    fn write_in_chunks_final<O: FileOps>(
+        ops: &O,
+        target: &Path,
+        bytes: &[u8],
+        chunk: usize,
+        durable: bool,
+        final_target: &Path,
+    ) -> Result<(), String> {
+        let mut offset = 0;
+        loop {
+            let end = (offset + chunk).min(bytes.len());
+            let last = end == bytes.len();
+            write_chunk_final_with(
+                ops,
+                target,
+                TEMP,
+                offset as u64,
+                &bytes[offset..end],
+                last,
+                durable,
+                if last { Some(final_target) } else { None },
+            )?;
+            if last {
+                return Ok(());
+            }
+            offset = end;
+        }
+    }
+
+    #[test]
+    fn the_temp_becomes_the_final_key_after_the_flush_and_the_provisional_key_never_exists() {
+        let dir = scratch("final-rename");
+        let target = dir.join("assets").join("provisional.png");
+        let final_path = dir.join("assets").join("final.png");
+        let ops = Faulty::new();
+
+        write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
+
+        assert_eq!(fs::read(&final_path).unwrap(), patterned(10));
+        assert_eq!(names_in(&dir.join("assets")), vec!["final.png"]);
+        let steps = ops.steps.borrow();
+        let tail: Vec<&str> = steps.iter().rev().take(4).rev().copied().collect();
+        assert_eq!(tail, vec!["is_file", "sync_file", "rename", "sync_dir"]);
+        drop(steps);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_existing_final_file_is_kept_and_the_temp_is_removed_with_a_success() {
+        let dir = scratch("final-exists");
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let target = assets.join("provisional.png");
+        let final_path = assets.join("final.png");
+        fs::write(&final_path, b"already here").unwrap();
+        let ops = Faulty::new();
+
+        write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
+
+        assert_eq!(fs::read(&final_path).unwrap(), b"already here");
+        assert_eq!(names_in(&assets), vec!["final.png"]);
+        assert_eq!(ops.count("rename"), 0);
+        assert_eq!(ops.count("sync_file"), 0);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_directory_at_the_final_key_is_not_an_existing_file_and_the_rename_fails_cleanly() {
+        let dir = scratch("final-directory");
+        let assets = dir.join("assets");
+        fs::create_dir_all(assets.join("final.png")).unwrap();
+        let target = assets.join("provisional.png");
+
+        let error = write_in_chunks_final(&Faulty::new(), &target, &patterned(10), 4, false, &assets.join("final.png")).unwrap_err();
+
+        assert!(error.contains("failed to rename"), "{}", error);
+        assert_eq!(names_in(&assets), vec!["final.png"]);
+        assert!(assets.join("final.png").is_dir());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_failed_existence_check_or_rename_fails_the_call_and_removes_the_temp() {
+        for (step, expect) in [("is_file", "failed to look for"), ("rename", "failed to rename"), ("sync_file", "injected fault")] {
+            let dir = scratch("final-fault");
+            let assets = dir.join("assets");
+            let target = assets.join("provisional.png");
+            let final_path = assets.join("final.png");
+            let ops = Faulty::failing(step, 1);
+
+            let error = write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap_err();
+
+            assert!(error.contains(expect), "{}: {}", step, error);
+            assert!(names_in(&assets).is_empty(), "{}", step);
+            fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_final_key_in_another_folder_or_on_an_early_chunk_is_refused_and_the_begun_temp_is_removed() {
+        let dir = scratch("final-refused");
+        let assets = dir.join("assets");
+        let target = assets.join("provisional.png");
+        let elsewhere = dir.join("blocks").join("final.png");
+
+        let error = write_in_chunks_final(&Faulty::new(), &target, &patterned(10), 4, false, &elsewhere).unwrap_err();
+        assert!(error.contains("refused final key"), "{}", error);
+        assert!(names_in(&assets).is_empty());
+        assert!(!dir.join("blocks").exists());
+
+        write_chunk_with(&RealOps, &target, TEMP, 0, b"abcd", false, false).unwrap();
+        let early = write_chunk_final_with(&RealOps, &target, TEMP, 4, b"efgh", false, false, Some(&assets.join("final.png")));
+        assert!(early.unwrap_err().contains("refused final key"));
+        assert!(names_in(&assets).is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_refused_final_key_on_chunk_zero_leaves_a_temp_that_was_not_this_writes() {
+        let dir = scratch("final-refused-zero");
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join(TEMP), b"someone else").unwrap();
+
+        let result = write_chunk_final_with(
+            &RealOps,
+            &assets.join("provisional.png"),
+            TEMP,
+            0,
+            b"abcd",
+            true,
+            false,
+            Some(&dir.join("blocks").join("final.png")),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(assets.join(TEMP)).unwrap(), b"someone else");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_base64_command_applies_the_final_key_and_refuses_a_bad_one() {
+        let base = scratch("final-key-command");
+        let encode = |bytes: &[u8]| general_purpose::STANDARD.encode(bytes);
+
+        write_chunk_key(&base, "assets/p.png", ID, 0, &encode(b"abcd"), false, false, None).unwrap();
+        write_chunk_key(&base, "assets/p.png", ID, 4, &encode(b"efgh"), true, false, Some("assets/f.png")).unwrap();
+        assert_eq!(fs::read(base.join("assets").join("f.png")).unwrap(), b"abcdefgh");
+        assert_eq!(names_in(&base.join("assets")), vec!["f.png"]);
+
+        // The final key exists now: a second write of the same name is dropped.
+        write_chunk_key(&base, "assets/p.png", ID, 0, &encode(b"zzzz"), true, false, Some("assets/f.png")).unwrap();
+        assert_eq!(fs::read(base.join("assets").join("f.png")).unwrap(), b"abcdefgh");
+        assert_eq!(names_in(&base.join("assets")), vec!["f.png"]);
+
+        write_chunk_key(&base, "assets/q.png", ID, 0, &encode(b"abcd"), false, false, None).unwrap();
+        for bad in ["assets/../x", "assets/.h", "", "assets/risu-write-0123456789abcdef.tmp"] {
+            let error = write_chunk_key(&base, "assets/q.png", ID, 4, &encode(b"efgh"), true, false, Some(bad));
+            assert!(error.is_err(), "{:?}", bad);
+            assert_eq!(names_in(&base.join("assets")), vec!["f.png"], "{:?}", bad);
+            write_chunk_key(&base, "assets/q.png", ID, 0, &encode(b"abcd"), false, false, None).unwrap();
+        }
+        abort_chunk_key(&base, "assets/q.png", ID).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
     #[test]
     fn a_leftover_temp_is_named_so_the_listing_and_the_boot_sweep_recognise_it() {
         for _ in 0..20 {
@@ -615,7 +855,7 @@ mod tests {
             "a/b.", "a/b ", "blocks/risu-write-0123456789abcdef.tmp",
         ];
         for key in keys {
-            assert!(write_chunk_key(&base, key, ID, 0, "", true, true).is_err(), "should refuse {:?}", key);
+            assert!(write_chunk_key(&base, key, ID, 0, "", true, true, None).is_err(), "should refuse {:?}", key);
             assert!(abort_chunk_key(&base, key, ID).is_err(), "should refuse {:?}", key);
         }
         let ids = [
@@ -623,11 +863,11 @@ mod tests {
             "0123456789abcdeg", "0123456789abcdef.tmp", "x/0123456789abcdef", "0123456789abcde\u{0}",
         ];
         for id in ids {
-            assert!(write_chunk_key(&base, "blocks/x", id, 0, "", true, true).is_err(), "should refuse id {:?}", id);
+            assert!(write_chunk_key(&base, "blocks/x", id, 0, "", true, true, None).is_err(), "should refuse id {:?}", id);
             assert!(abort_chunk_key(&base, "blocks/x", id).is_err(), "should refuse id {:?}", id);
         }
         let too_long = format!("a/{}", "x".repeat(256));
-        assert!(write_chunk_key(&base, &too_long, ID, 0, "", true, true).is_err());
+        assert!(write_chunk_key(&base, &too_long, ID, 0, "", true, true, None).is_err());
         assert!(names_in(&base).is_empty());
         assert_eq!(names_in(&outer), vec!["base"]);
         fs::remove_dir_all(&outer).unwrap();
@@ -637,10 +877,10 @@ mod tests {
     fn a_bad_chunk_is_refused_before_the_disk_is_touched() {
         let base = scratch("bad-chunk");
         for data in ["!!!!", "YQ=", "YQ==YQ==", "AAAA AAAA"] {
-            assert!(write_chunk_key(&base, "blocks/gen/x", ID, 0, data, true, true).is_err(), "should refuse {:?}", data);
+            assert!(write_chunk_key(&base, "blocks/gen/x", ID, 0, data, true, true, None).is_err(), "should refuse {:?}", data);
         }
         let too_big = "A".repeat(MAX_CHUNK_BYTES / 3 * 4 + 8);
-        assert!(write_chunk_key(&base, "blocks/gen/x", ID, 0, &too_big, true, true).is_err());
+        assert!(write_chunk_key(&base, "blocks/gen/x", ID, 0, &too_big, true, true, None).is_err());
         assert!(names_in(&base).is_empty());
         fs::remove_dir_all(&base).unwrap();
     }
@@ -650,8 +890,8 @@ mod tests {
         let base = scratch("key");
         let encode = |bytes: &[u8]| general_purpose::STANDARD.encode(bytes);
 
-        write_chunk_key(&base, "blocks/gen/root", ID, 0, &encode(&[0, 1, 2, 250, 251, 252, 253]), false, true).unwrap();
-        write_chunk_key(&base, "blocks/gen/root", ID, 7, &encode(&[255, 254]), true, true).unwrap();
+        write_chunk_key(&base, "blocks/gen/root", ID, 0, &encode(&[0, 1, 2, 250, 251, 252, 253]), false, true, None).unwrap();
+        write_chunk_key(&base, "blocks/gen/root", ID, 7, &encode(&[255, 254]), true, true, None).unwrap();
 
         assert_eq!(
             fs::read(base.join("blocks").join("gen").join("root")).unwrap(),
@@ -799,7 +1039,7 @@ mod tests {
         let before = trailer(&read_key_range(&base, key, 0, 10).unwrap());
 
         // Every store write replaces a file by rename, which gives it a new identity.
-        write_chunk_key(&base, key, ID, 0, &general_purpose::STANDARD.encode(b"bbbb"), true, false).unwrap();
+        write_chunk_key(&base, key, ID, 0, &general_purpose::STANDARD.encode(b"bbbb"), true, false, None).unwrap();
         let after = trailer(&read_key_range(&base, key, 0, 10).unwrap());
 
         assert_eq!(before[0], after[0]);

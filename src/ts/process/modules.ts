@@ -3,7 +3,8 @@ import { fillLang } from "src/lang/fill"
 import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getCurrentChat, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
-import { AppendableBuffer, downloadFile, forageStorage, LocalWriter, readImage, saveAsset, VirtualWriter } from "../globalApi.svelte"
+import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash"
+import { AppendableBuffer, AssetSourceChangedError, downloadFile, forageStorage, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "../globalApi.svelte"
 import { checkPersonaBinded, selectSingleFileObject, sleep } from "../util"
 import { v4 } from "uuid"
 import { convertExternalLorebook } from "./lorebook.svelte"
@@ -16,7 +17,7 @@ import { exportCharacterCard, importCharacterProcess } from "../characterCards"
 import { ModuleRefusal, importErrorMessage } from "./moduleRefusal"
 import { withBusy } from "./memory/busyActions"
 import { assetByteLimit, charxLimits } from "./processzip"
-import { WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
+import { IMPORT_PIECE_BYTES, WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
 
 export interface MCPModule{
     url: string
@@ -280,9 +281,36 @@ async function readRisumRecord(source: ImportSource, record: RisumRecord): Promi
 }
 
 /**
+ * The decoded body of one record in pieces of at most IMPORT_PIECE_BYTES, each read from the source and checked against
+ * what the first pass saw (the header first, then the length of every read). Every piece is an array of its own that
+ * the source and the pieces before it do not share, so the one that consumes it may keep it until it asks for the next.
+ * The source is read one piece at a time, only when the consumer asks, so no read overlaps another reader.
+ */
+async function* readRisumRecordPieces(source: ImportSource, record: RisumRecord): AsyncGenerator<Uint8Array, void, undefined> {
+    const bodyStart = record.start + RISUM_RECORD_HEADER_BYTES
+    const end = bodyStart + record.length
+    const header = await source.read(record.start, bodyStart)
+    if(header.length !== RISUM_RECORD_HEADER_BYTES || header[0] !== 1 || readU32(header, 1) !== record.length){
+        throw new Error('the module file does not match its first read')
+    }
+    for(let at = bodyStart; at < end; at += IMPORT_PIECE_BYTES){
+        const to = Math.min(at + IMPORT_PIECE_BYTES, end)
+        const bytes = await source.read(at, to)
+        if(bytes.length !== to - at){
+            throw new Error('the module file does not match its first read')
+        }
+        //decodeRPack returns a new array and leaves `bytes` alone, which may be a view of memory the source does not give away.
+        yield await decodeRPack(bytes)
+    }
+}
+
+/**
  * Reads a `.risum` module and saves its assets. The source is read in two passes and never as a whole: the first
- * validates the structure (see scanRisum), the second reads one record at a time, in file order, and saves it. Decoded
- * records waiting to be saved are bounded by count and, beyond the first one, by charxLimits.backlogBytes.
+ * validates the structure (see scanRisum), the second reads one record at a time, in file order, and saves it. A record
+ * below ASSET_PIECE_SAVE_MIN_BYTES is read whole; decoded records waiting to be saved are bounded by count and, beyond
+ * the first one, by charxLimits.backlogBytes. A record at or above it is read, decoded and saved in pieces while the
+ * next record waits and is not counted against the backlog: in the desktop and Android app it holds a few pieces, and
+ * elsewhere saveAssetFromPieces collects it whole.
  *
  * The magic byte, version, module type and block mark checks, a file cut short, a record count that does not match the
  * module's asset list, and an asset over the limit throw a ModuleRefusal before any asset is saved. A source that
@@ -317,16 +345,20 @@ export async function readModule(input:Uint8Array|ImportSource):Promise<RisuModu
         return new ModuleRefusal(language.moduleFileChanged)
     }
 
+    const assertSourceUnchanged = async () => {
+        const now = await source.stat()
+        if(now.size !== scan.stat.size || now.modified !== scan.stat.modified){
+            throw new Error('the module file changed')
+        }
+    }
+
     //A save failure is retried; a read that does not match the first pass is not, so it throws out of here.
     const runRecords = async (indices: number[]): Promise<number[]> => {
         if(indices.length === 0){
             return []
         }
         try {
-            const now = await source.stat()
-            if(now.size !== scan.stat.size || now.modified !== scan.stat.modified){
-                throw new Error('the module file changed')
-            }
+            await assertSourceUnchanged()
         } catch (error) {
             throw changed(error)
         }
@@ -337,6 +369,28 @@ export async function readModule(input:Uint8Array|ImportSource):Promise<RisuModu
 
         for(const index of indices){
             const record = scan.records[index]
+            if(record.length >= ASSET_PIECE_SAVE_MIN_BYTES){
+                //Saved here, not in the background: its pieces are read from the source one after another, and no other record is read meanwhile.
+                try {
+                    if (!module.assets?.[index]) {
+                        throw new Error(`Missing asset metadata for index ${index}`)
+                    }
+                    module.assets[index][1] = await saveAssetFromPieces(readRisumRecordPieces(source, record), {
+                        sizeBound: record.length,
+                        beforeFinish: assertSourceUnchanged,
+                    })
+                    completed += 1
+                } catch (error) {
+                    if(error instanceof AssetSourceChangedError){
+                        readFailure = { cause: error }
+                        break
+                    }
+                    failed.push(index)
+                } finally {
+                    alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
+                }
+                continue
+            }
             while(inFlight.size >= MAX_CONCURRENT_ASSET_SAVES || (inFlightBytes > 0 && inFlightBytes + record.length > charxLimits.backlogBytes)){
                 await Promise.race(inFlight)
             }

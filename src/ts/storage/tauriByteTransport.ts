@@ -49,6 +49,8 @@ export const CHUNK_ID_HEADER = 'x-risu-id'
 export const CHUNK_OFFSET_HEADER = 'x-risu-offset'
 export const CHUNK_LAST_HEADER = 'x-risu-last'
 export const CHUNK_DURABLE_HEADER = 'x-risu-durable'
+/** Only on the last chunk: the percent-encoded key the finished file takes instead of `x-risu-key`. */
+export const CHUNK_FINAL_KEY_HEADER = 'x-risu-final-key'
 
 /** A read is retried from the start this many times when the file changes between pieces. */
 const READ_RETRIES = 2
@@ -179,8 +181,15 @@ function settleRawOutcome(key: string, outcome: unknown): void {
 export interface ChunkedWriter {
     /** Queues the bytes. Rejects with the failure of an earlier chunk or of one sent now; the temp file is already removed then. */
     write(data: Uint8Array): Promise<void>
-    /** Sends the final chunk (an empty one when nothing was written). A resolved call means the key holds every byte written. */
-    finish(): Promise<void>
+    /**
+     * Sends the final chunk (an empty one when nothing was written). A resolved
+     * call means the key holds every byte written. With `finalKey`, a key in the
+     * folder of `key` that the final chunk carries, the temp file becomes
+     * `finalKey` instead and `key` is never created; when `finalKey` already
+     * holds a file the temp file is removed, that file is kept and the call
+     * resolves. A `finalKey` the command refuses rejects and removes the temp file.
+     */
+    finish(finalKey?: string): Promise<void>
     /** Removes the temp file of an unfinished write. Never rejects; a no-op after `finish` resolved or after a failure already did so. */
     abort(): Promise<void>
 }
@@ -224,7 +233,7 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
     let cleaned = false
     let completed = false
 
-    async function sendChunk(piece: Uint8Array, last: boolean): Promise<void> {
+    async function sendChunk(piece: Uint8Array, last: boolean, finalKey: string | undefined): Promise<void> {
         if (kind === 'desktop' && !rawChunksUnavailable) {
             let outcome: unknown
             try {
@@ -235,6 +244,7 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
                         [CHUNK_OFFSET_HEADER]: String(offset),
                         [CHUNK_LAST_HEADER]: last ? '1' : '0',
                         [CHUNK_DURABLE_HEADER]: durable ? '1' : '0',
+                        ...(last && finalKey !== undefined ? { [CHUNK_FINAL_KEY_HEADER]: encodeURIComponent(finalKey) } : {}),
                     },
                 })
             } catch (error) {
@@ -243,17 +253,20 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
                 }
                 // Refused before any disk access: the same chunk goes again as base64.
                 rawChunksUnavailable = true
-                await sendBase64(piece, last)
+                await sendBase64(piece, last, finalKey)
                 return
             }
             settleRawOutcome(key, outcome)
             return
         }
-        await sendBase64(piece, last)
+        await sendBase64(piece, last, finalKey)
     }
 
-    async function sendBase64(piece: Uint8Array, last: boolean): Promise<void> {
-        await invoke<void>(WRITE_CHUNK_COMMAND, { key, id, offset, data: bytesToBase64(piece), last, durable })
+    async function sendBase64(piece: Uint8Array, last: boolean, finalKey: string | undefined): Promise<void> {
+        await invoke<void>(WRITE_CHUNK_COMMAND, {
+            key, id, offset, data: bytesToBase64(piece), last, durable,
+            ...(last && finalKey !== undefined ? { finalKey } : {}),
+        })
     }
 
     async function removeTemp(): Promise<void> {
@@ -268,14 +281,14 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
         }
     }
 
-    async function flushPending(last: boolean): Promise<void> {
+    async function flushPending(last: boolean, finalKey?: string): Promise<void> {
         const piece = pending
         pending = null
         if (piece === null) {
             return
         }
         try {
-            await sendChunk(piece, last)
+            await sendChunk(piece, last, finalKey)
         } catch (error) {
             failure = { error }
             await removeTemp()
@@ -305,10 +318,20 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
             }
         },
 
-        async finish(): Promise<void> {
+        async finish(finalKey?: string): Promise<void> {
             assertOpen()
+            if (finalKey !== undefined && kind !== 'android') {
+                // The command applies the same rules; refusing here keeps a bad name from costing the last chunk.
+                const reason = creatableRefusal(finalKey)
+                if (reason !== null) {
+                    const error = new StoreInvalidKeyError(finalKey, reason)
+                    failure = { error }
+                    await removeTemp()
+                    throw error
+                }
+            }
             pending ??= new Uint8Array(0)
-            await flushPending(true)
+            await flushPending(true, finalKey)
             completed = true
         },
 

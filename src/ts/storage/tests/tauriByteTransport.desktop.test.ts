@@ -344,6 +344,96 @@ describe('the incremental writer', () => {
     })
 })
 
+describe('the final key of the last chunk', () => {
+    test('only the last raw chunk carries it, percent-encoded, and the file lands under it without ever creating the key', async () => {
+        const input = patterned(CHUNK_MAX * 2 + 9)
+        const writer = createChunkedWriter('assets/incoming-1', { durable: false })
+
+        await writer.write(input)
+        await writer.finish('assets/a b.png')
+
+        expect(h.desktop.rawCalls.map((call) => call.finalKey)).toEqual([undefined, undefined, 'assets/a b.png'])
+        expect(h.desktop.count('write_chunk_raw')).toBe(3)
+        expect(Buffer.compare(Buffer.from(h.fs.files.get('assets/a b.png') ?? []), Buffer.from(input))).toBe(0)
+        expect(stored('assets/incoming-1')).toBeUndefined()
+        expect(leftoverTemps()).toEqual([])
+    })
+
+    test('a write without a final key sends no final-key header and no finalKey argument', async () => {
+        await writeChunked('assets/plain', patterned(CHUNK_MAX + 1), false)
+        h.desktop.refuseRawBodies()
+        await writeChunked('assets/plain2', patterned(5), false)
+
+        expect(h.desktop.rawCalls.every((call) => call.finalKey === undefined)).toBe(true)
+        expect(h.desktop.chunk.callsOf('write_chunk').every((call) => !('finalKey' in call.args))).toBe(true)
+    })
+
+    test('a last chunk that travels as base64 after a mid-write not-raw refusal still carries it', async () => {
+        const input = patterned(14)
+        const writer = createChunkedWriter('assets/incoming-2', { durable: false, chunkBytes: 4 })
+        await writer.write(input.subarray(0, 8))
+        // The chunk at offset 0 went raw; the chunk at offset 4 is sent by the next write and is the first one the command refuses.
+        h.desktop.refuseRawBodies()
+        await writer.write(input.subarray(8, 10))
+        await writer.write(input.subarray(10))
+
+        await writer.finish('assets/final.png')
+
+        const base64 = h.desktop.chunk.callsOf('write_chunk')
+        expect(base64.at(-1)?.args.finalKey).toBe('assets/final.png')
+        expect(base64.slice(0, -1).every((call) => !('finalKey' in call.args))).toBe(true)
+        expect(stored('assets/final.png')).toEqual(Array.from(input))
+        expect(stored('assets/incoming-2')).toBeUndefined()
+        expect(leftoverTemps()).toEqual([])
+    })
+
+    test('an existing file under the final key is kept, the temp is removed and the call resolves', async () => {
+        h.fs.plant('assets/final.png', Uint8Array.from([7, 7]))
+        const writer = createChunkedWriter('assets/incoming-3', { durable: false, chunkBytes: 4 })
+        await writer.write(patterned(10))
+
+        await expect(writer.finish('assets/final.png')).resolves.toBeUndefined()
+
+        expect(stored('assets/final.png')).toEqual([7, 7])
+        expect(leftoverTemps()).toEqual([])
+        expect(stored('assets/incoming-3')).toBeUndefined()
+    })
+
+    test('a final key the rules refuse rejects with StoreInvalidKeyError, sends no last chunk and removes the temp', async () => {
+        const writer = createChunkedWriter('assets/incoming-4', { durable: false, chunkBytes: 4 })
+        await writer.write(patterned(10))
+        const sent = h.desktop.count('write_chunk_raw')
+
+        await expect(writer.finish('assets/.hidden')).rejects.toThrow(StoreInvalidKeyError)
+
+        expect(h.desktop.count('write_chunk_raw')).toBe(sent)
+        expect(leftoverTemps()).toEqual([])
+        expect(h.fs.files.has('assets/.hidden')).toBe(false)
+        await expect(writer.finish('assets/ok.png')).rejects.toThrow(StoreInvalidKeyError)
+    })
+
+    test('a final key in another folder fails the last chunk and removes the temp', async () => {
+        const writer = createChunkedWriter('assets/incoming-5', { durable: false, chunkBytes: 4 })
+        await writer.write(patterned(10))
+
+        await expect(writer.finish('blocks/other.png')).rejects.toBeDefined()
+
+        expect(leftoverTemps()).toEqual([])
+        expect(stored('blocks/other.png')).toBeUndefined()
+    })
+
+    test('on Android the last base64 chunk carries finalKey and no other chunk does', async () => {
+        h.state.os = 'android'
+        const writer = createChunkedWriter('assets/incoming-6', { durable: false })
+        await writer.write(patterned(WRITE_CHUNK_BYTES + 5))
+
+        await writer.finish('assets/final.png')
+
+        expect(h.desktop.chunk.callsOf('write_chunk').map((call) => call.args.finalKey)).toEqual([undefined, 'assets/final.png'])
+        expect(stored('assets/final.png')?.length).toBe(WRITE_CHUNK_BYTES + 5)
+    })
+})
+
 describe('Android keeps base64 chunks of one megabyte', () => {
     test('a write is chunked from the first byte, as base64, and the key is not checked page-side', async () => {
         h.state.os = 'android'

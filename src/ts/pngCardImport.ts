@@ -1,5 +1,5 @@
-import { WindowedReader, type ImportSource, type ImportSourceStat } from './importSource'
-import { decodeBase64Bytes } from './base64Bytes'
+import { IMPORT_PIECE_BYTES, WindowedReader, type ImportSource, type ImportSourceStat } from './importSource'
+import { Base64StreamDecoder, decodeBase64Bytes } from './base64Bytes'
 import {
     PNG_CHUNK_OVERHEAD_BYTES,
     PNG_SIGNATURE_BYTES,
@@ -113,6 +113,46 @@ async function readAssetChunk(chunk: PngLayoutChunk, read: (from: number, to: nu
     return decodeBase64Bytes(bytes.subarray(8 + chunk.valueStart, 8 + chunk.length))
 }
 
+/**
+ * The decoded bytes of one asset chunk in pieces: the chunk header is checked first, then the text is read piece by
+ * piece through the checked reader and decoded as a stream, which gives the bytes `readAssetChunk` gives for the same chunk.
+ */
+async function* readAssetChunkPieces(
+    chunk: PngLayoutChunk,
+    read: (from: number, to: number) => Promise<Uint8Array>,
+): AsyncGenerator<Uint8Array, void, undefined> {
+    checkTextHeader(await read(chunk.start, chunk.start + 8 + Math.min(chunk.length, PNG_TEXT_KEY_SCAN_BYTES)), chunk)
+    const decoder = new Base64StreamDecoder()
+    const textEnd = chunk.start + 8 + chunk.length
+    for (let at = chunk.start + 8 + chunk.valueStart; at < textEnd; at += IMPORT_PIECE_BYTES) {
+        const piece = decoder.push(await read(at, Math.min(at + IMPORT_PIECE_BYTES, textEnd)))
+        if (piece.length > 0) {
+            yield piece
+        }
+    }
+    const rest = decoder.finish()
+    if (rest.length > 0) {
+        yield rest
+    }
+}
+
+/** A base64 asset chunk handed over in pieces: the decoded bytes in order, and how many there can be at most. */
+export type PngAssetPieces = {
+    /** floor(text length * 3 / 4): the decoded asset is never longer than this. */
+    sizeBound: number
+    /** Every piece is an array of its own, never changed or reused after it is yielded; reads happen only when the consumer asks for the next. */
+    pieces: AsyncGenerator<Uint8Array, void, undefined>
+    /** Rejects with PngCardSourceChanged when the size or modification time of the source is not what the first pass saw. */
+    beforeFinish: () => Promise<void>
+}
+
+/** Where a walk hands an asset chunk over in pieces instead of as one decoded array. */
+export type PngPieceHandling = {
+    /** An asset chunk whose decoded size can reach this many bytes is handed over in pieces. */
+    minBytes: number
+    onAssetPieces: (index: string, asset: PngAssetPieces) => Promise<void>
+}
+
 function mismatch(what: string): PngCardSourceChanged {
     return new PngCardSourceChanged(`the card file does not match its first read: ${what}`)
 }
@@ -137,12 +177,18 @@ function checkTextHeader(bytes: Uint8Array, chunk: PngLayoutChunk) {
  * checked against the first pass (offset, length, type and key) and so is the size and modification time of the source;
  * a difference, a short read or a read error throws PngCardSourceChanged. An error thrown by `onAsset` passes through.
  * The card chunks are never read here: the card the first pass validated is the card that is imported.
+ *
+ * With `pieceHandling`, an asset chunk whose decoded size can reach `minBytes` goes to `onAssetPieces` instead: its text
+ * is read and decoded in pieces of at most IMPORT_PIECE_BYTES as the consumer asks for them, so no array holds the
+ * asset. The walk reads nothing else until `onAssetPieces` returns; a consumer that ends early must be done with the
+ * pieces. The same checks apply, and a failed one makes the pieces throw PngCardSourceChanged.
  */
 export async function walkPngCard(
     source: ImportSource,
     layout: PngCardLayout,
     wantAssets: boolean,
     onAsset: (index: string, decoded: Uint8Array) => Promise<void>,
+    pieceHandling?: PngPieceHandling,
 ): Promise<Uint8Array> {
     await assertUnchanged(source, layout.stat)
     const reader = new WindowedReader(source, layout.stat.size)
@@ -165,8 +211,18 @@ export async function walkPngCard(
     for (const chunk of layout.chunks) {
         if (chunk.type === 'tEXt') {
             if (wantAssets && chunk.key !== null && chunk.key.startsWith(ASSET_KEY_PREFIX)) {
-                const decoded = await readAssetChunk(chunk, read)
-                await onAsset(assetIndexOfKey(chunk.key), decoded)
+                const sizeBound = Math.floor(valueLength(chunk) * 3 / 4)
+                if (pieceHandling !== undefined && sizeBound >= pieceHandling.minBytes) {
+                    await pieceHandling.onAssetPieces(assetIndexOfKey(chunk.key), {
+                        sizeBound,
+                        pieces: readAssetChunkPieces(chunk, read),
+                        beforeFinish: () => assertUnchanged(source, layout.stat),
+                    })
+                }
+                else {
+                    const decoded = await readAssetChunk(chunk, read)
+                    await onAsset(assetIndexOfKey(chunk.key), decoded)
+                }
             }
             else {
                 checkTextHeader(await read(chunk.start, chunk.start + 8 + Math.min(chunk.length, PNG_TEXT_KEY_SCAN_BYTES)), chunk)

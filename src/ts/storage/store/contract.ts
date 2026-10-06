@@ -68,6 +68,26 @@ export interface DeleteEntry {
     condition: StoreCondition
 }
 
+/**
+ * A value written in pieces. Calls are awaited one at a time. The writer may
+ * keep the newest piece until the next call, so a piece handed to `write` is
+ * never changed afterwards. Nothing is visible under any key before `finish`
+ * resolves.
+ */
+export interface PieceWriter {
+    /** Queues the bytes. A rejection means the write is over and holds nothing. */
+    write(data: Uint8Array): Promise<void>
+    /**
+     * Completes the write. With `finalKey` (a key in the same folder as the key
+     * the writer was opened for) the value is stored under `finalKey` instead,
+     * unless `finalKey` already holds a value: that value is kept, the pieces are
+     * discarded and the call still resolves.
+     */
+    finish(finalKey?: string): Promise<void>
+    /** Discards an unfinished write. Never rejects; a no-op after `finish` resolved. */
+    abort(): Promise<void>
+}
+
 export interface ByteStore {
     readonly capabilities: StoreCapabilities
 
@@ -110,4 +130,13 @@ export interface ByteStore {
      * unusable key like `read`.
      */
     urlFor?(key: string): Promise<string>
+
+    /**
+     * Starts a write of one value that arrives in pieces, so the caller never
+     * holds the whole value. `key` is only the folder and the name of the
+     * temporary file: a caller that finishes with a `finalKey` never creates
+     * `key`. Refuses an unusable key like `write`. Only the desktop store
+     * offers it; every other caller writes the whole value with `write`.
+     */
+    openWriter?(key: string): PieceWriter
 }

@@ -67,3 +67,76 @@ export function decodeBase64Bytes(text: Uint8Array): Uint8Array {
     }
     return out
 }
+
+/**
+ * `decodeBase64Bytes` for text that arrives in pieces: the bytes of all `push` results followed by those of `finish`
+ * are exactly what `decodeBase64Bytes` gives for the pieces joined, wherever the text is split. A group of characters
+ * cut by a piece boundary, the number of characters in it and the point where an `=` stopped the reading are carried
+ * from one piece to the next.
+ *
+ * Every result is a new array that nothing else refers to, and the text is only read, so a piece of the text may be a
+ * view into memory the caller does not own.
+ */
+export class Base64StreamDecoder {
+    #group = 0
+    #inGroup = 0
+    #stopped = false
+
+    /** The bytes the text adds, as far as whole groups of four characters go; the rest waits for the next piece. */
+    push(text: Uint8Array): Uint8Array {
+        if (this.#stopped) {
+            return new Uint8Array(0)
+        }
+        let count = 0
+        let end = text.length
+        for (let i = 0; i < text.length; i++) {
+            const byte = text[i]
+            if (byte === EQUALS) {
+                end = i
+                break
+            }
+            if (SEXTET[byte] !== NOT_BASE64) {
+                count++
+            }
+        }
+        const out = new Uint8Array(Math.floor((this.#inGroup + count) / 4) * 3)
+        let group = this.#group
+        let inGroup = this.#inGroup
+        let at = 0
+        for (let i = 0; i < end; i++) {
+            const value = SEXTET[text[i]]
+            if (value === NOT_BASE64) {
+                continue
+            }
+            group = (group << 6) | value
+            inGroup++
+            if (inGroup === 4) {
+                out[at++] = (group >> 16) & 0xff
+                out[at++] = (group >> 8) & 0xff
+                out[at++] = group & 0xff
+                group = 0
+                inGroup = 0
+            }
+        }
+        this.#group = group
+        this.#inGroup = inGroup
+        this.#stopped = end < text.length
+        return out
+    }
+
+    /** The bytes of a last group of two or three characters; nothing for no group or a single character. */
+    finish(): Uint8Array {
+        const group = this.#group
+        const inGroup = this.#inGroup
+        this.#group = 0
+        this.#inGroup = 0
+        this.#stopped = true
+        if (inGroup === 2) {
+            return new Uint8Array([(group >> 4) & 0xff])
+        }
+        if (inGroup === 3) {
+            return new Uint8Array([(group >> 10) & 0xff, (group >> 2) & 0xff])
+        }
+        return new Uint8Array(0)
+    }
+}

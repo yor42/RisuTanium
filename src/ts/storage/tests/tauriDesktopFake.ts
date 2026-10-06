@@ -36,6 +36,8 @@ export interface RawChunkCall {
     last: boolean
     durable: boolean
     size: number
+    /** The `x-risu-final-key` header, decoded; absent when the call carried none. */
+    finalKey?: string
 }
 
 function decodedLength(text: string): number {
@@ -85,6 +87,7 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
             throw 'not-raw: the body did not arrive as raw bytes'
         }
         const headers = invokeOptions?.headers
+        const finalKeyHeader = headers?.['x-risu-final-key']
         const call: RawChunkCall = {
             key: decodeURIComponent(header(headers, 'x-risu-key')),
             id: header(headers, 'x-risu-id'),
@@ -92,6 +95,7 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
             last: header(headers, 'x-risu-last') === '1',
             durable: header(headers, 'x-risu-durable') === '1',
             size: args.length,
+            finalKey: typeof finalKeyHeader === 'string' ? decodeURIComponent(finalKeyHeader) : undefined,
         }
         rawCalls.push(call)
         try {
@@ -102,6 +106,7 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
                 data: Buffer.from(args).toString('base64'),
                 last: call.last,
                 durable: call.durable,
+                ...(call.finalKey !== undefined ? { finalKey: call.finalKey } : {}),
             })
             return { k: 'ok' }
         } catch (error) {

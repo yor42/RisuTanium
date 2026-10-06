@@ -17,7 +17,7 @@
 //!
 //! Error text may hold absolute paths; it is for the console, not for the UI.
 
-use crate::chunked_io::{temp_name_for, write_chunk_with, MAX_CHUNK_BYTES};
+use crate::chunked_io::{abort_chunk_with, temp_name_for, write_chunk_final_with, MAX_CHUNK_BYTES};
 use crate::durable_write::{
     decode_key_header, is_temp_name, rename_with_retry, resolve_key, FileOps, RealOps, KEY_HEADER,
 };
@@ -396,8 +396,11 @@ pub struct RawChunkHeaders {
     pub offset: u64,
     pub last: bool,
     pub durable: bool,
+    /// The key the finished file takes instead of `key`; only the last chunk carries one.
+    pub final_key: Option<String>,
 }
 
+const FINAL_KEY_HEADER: &str = "x-risu-final-key";
 const ID_HEADER: &str = "x-risu-id";
 const OFFSET_HEADER: &str = "x-risu-offset";
 const LAST_HEADER: &str = "x-risu-last";
@@ -432,12 +435,22 @@ pub fn parse_raw_chunk_headers(headers: &tauri::http::HeaderMap) -> Result<RawCh
     let offset = offset_text
         .parse::<u64>()
         .map_err(|_| malformed("header x-risu-offset is too large"))?;
+    let final_key = match headers.get(FINAL_KEY_HEADER) {
+        None => None,
+        Some(value) => {
+            let text = value
+                .to_str()
+                .map_err(|_| malformed(&format!("header {} is not text", FINAL_KEY_HEADER)))?;
+            Some(decode_key_header(text).map_err(|e| malformed(&e))?)
+        }
+    };
     Ok(RawChunkHeaders {
         key,
         id,
         offset,
         last: header_flag(headers, LAST_HEADER)?,
         durable: header_flag(headers, DURABLE_HEADER)?,
+        final_key,
     })
 }
 
@@ -471,7 +484,30 @@ pub fn write_chunk_raw_with<O: FileOps>(
         Ok(name) => name,
         Err(message) => return Outcome::Error(message),
     };
-    match write_chunk_with(ops, &target, &temp_name, headers.offset, bytes, headers.last, headers.durable) {
+    let final_target = match &headers.final_key {
+        None => None,
+        Some(name) => match chunk_target(base, name) {
+            Ok(path) => Some(path),
+            Err(reason) => {
+                // The temp of a write that has begun is this write's own.
+                if headers.offset > 0 {
+                    let _ = abort_chunk_with(ops, &target, &temp_name);
+                }
+                return Outcome::Invalid(reason);
+            }
+        },
+    };
+    let applied = write_chunk_final_with(
+        ops,
+        &target,
+        &temp_name,
+        headers.offset,
+        bytes,
+        headers.last,
+        headers.durable,
+        final_target.as_deref(),
+    );
+    match applied {
         Ok(()) => Outcome::Ok,
         Err(message) => Outcome::Error(message),
     }
@@ -1579,7 +1615,11 @@ mod tests {
     }
 
     fn parsed(key: &str, offset: u64, last: bool, durable: bool) -> RawChunkHeaders {
-        RawChunkHeaders { key: key.to_string(), id: CHUNK_ID.to_string(), offset, last, durable }
+        RawChunkHeaders { key: key.to_string(), id: CHUNK_ID.to_string(), offset, last, durable, final_key: None }
+    }
+
+    fn parsed_final(key: &str, offset: u64, last: bool, final_key: &str) -> RawChunkHeaders {
+        RawChunkHeaders { final_key: Some(final_key.to_string()), ..parsed(key, offset, last, false) }
     }
 
     #[test]
@@ -1810,6 +1850,157 @@ mod tests {
         assert!(matches!(outcome, Outcome::Error(_)), "{:?}", outcome);
         assert!(temps_in(&base).is_empty());
         assert!(!base.join("blocks").join("o").exists());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    const PROVISIONAL: &str = "assets/provisional.png";
+    const FINAL: &str = "assets/final.png";
+
+    /// Sends `data` in chunks of `size` under the provisional key; the last chunk carries `final_key`.
+    fn send_with_final(ops: &ChunkSteps, base: &Path, data: &[u8], size: usize, final_key: &str) -> Vec<Outcome> {
+        let mut outcomes = Vec::new();
+        let mut offset = 0usize;
+        loop {
+            let end = (offset + size).min(data.len());
+            let last = end == data.len();
+            let headers = if last { parsed_final(PROVISIONAL, offset as u64, true, final_key) } else { parsed(PROVISIONAL, offset as u64, false, false) };
+            let outcome = write_chunk_raw_with(ops, base, &headers, &data[offset..end]);
+            let stop = outcome != Outcome::Ok || last;
+            outcomes.push(outcome);
+            if stop {
+                return outcomes;
+            }
+            offset = end;
+        }
+    }
+
+    #[test]
+    fn the_final_key_header_is_optional_and_percent_decoded() {
+        let mut pairs = vec![
+            (KEY_HEADER, "assets%2Fp.png"),
+            (ID_HEADER, CHUNK_ID),
+            (OFFSET_HEADER, "0"),
+            (LAST_HEADER, "1"),
+            (DURABLE_HEADER, "0"),
+        ];
+        assert_eq!(parse_raw_chunk_headers(&chunk_headers(&pairs)).unwrap().final_key, None);
+        pairs.push((FINAL_KEY_HEADER, "assets%2Fa%20b.png"));
+        assert_eq!(parse_raw_chunk_headers(&chunk_headers(&pairs)).unwrap().final_key, Some("assets/a b.png".to_string()));
+        pairs.pop();
+        pairs.push((FINAL_KEY_HEADER, "%zz"));
+        assert!(parse_raw_chunk_headers(&chunk_headers(&pairs)).unwrap_err().starts_with("malformed:"));
+    }
+
+    #[test]
+    fn the_last_chunk_renames_the_temp_to_the_final_key_and_the_provisional_key_never_appears() {
+        let base = scratch("chunks-final");
+        let data: Vec<u8> = (0..=255u8).cycle().take(25).collect();
+        let ops = ChunkSteps::default();
+
+        let outcomes = send_with_final(&ops, &base, &data, 10, FINAL);
+
+        assert_eq!(outcomes, vec![Outcome::Ok; 3]);
+        assert_eq!(fs::read(base.join("assets").join("final.png")).unwrap(), data);
+        assert!(!base.join("assets").join("provisional.png").exists());
+        assert!(temps_in(&base).is_empty());
+        assert_eq!(*ops.steps.borrow(), vec!["create_empty", "append", "append", "append", "rename"]);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_single_chunk_write_with_a_final_key_lands_under_the_final_key() {
+        let base = scratch("chunks-final-one");
+        let outcomes = send_with_final(&ChunkSteps::default(), &base, b"abc", 10, FINAL);
+        assert_eq!(outcomes, vec![Outcome::Ok]);
+        assert_eq!(fs::read(base.join("assets").join("final.png")).unwrap(), b"abc");
+        assert!(!base.join("assets").join("provisional.png").exists());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn an_existing_final_key_is_kept_the_temp_is_removed_and_the_call_succeeds() {
+        let base = scratch("chunks-final-exists");
+        let assets = base.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("final.png"), b"already here").unwrap();
+        let ops = ChunkSteps::default();
+
+        let outcomes = send_with_final(&ops, &base, &[9u8; 25], 10, FINAL);
+
+        assert_eq!(outcomes, vec![Outcome::Ok; 3]);
+        assert_eq!(fs::read(assets.join("final.png")).unwrap(), b"already here");
+        assert_eq!(ops.count("rename"), 0);
+        assert_eq!(tree(&assets), vec!["final.png"]);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_directory_at_the_final_key_does_not_read_as_an_existing_file() {
+        let base = scratch("chunks-final-dir");
+        let assets = base.join("assets");
+        fs::create_dir_all(assets.join("final.png")).unwrap();
+
+        let outcomes = send_with_final(&ChunkSteps::default(), &base, b"abcdef", 3, FINAL);
+
+        assert!(matches!(outcomes.last().unwrap(), Outcome::Error(_)), "{:?}", outcomes);
+        assert!(assets.join("final.png").is_dir());
+        assert!(temps_in(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_refused_or_misplaced_final_key_is_refused_and_the_temp_of_a_begun_write_is_removed() {
+        for (final_key, expect_invalid) in [
+            ("assets/../x", true),
+            ("assets/.hidden", true),
+            ("assets/risu-write-0123456789abcdef.tmp", true),
+            ("blocks/x", false),
+            ("assets/sub/final.png", false),
+        ] {
+            let base = scratch("chunks-final-refused");
+            let ops = ChunkSteps::default();
+
+            let outcomes = send_with_final(&ops, &base, &[1u8; 25], 10, final_key);
+
+            let refusal = outcomes.last().unwrap();
+            if expect_invalid {
+                assert!(matches!(refusal, Outcome::Invalid(_)), "{:?}: {:?}", final_key, refusal);
+            } else {
+                assert!(matches!(refusal, Outcome::Error(_)), "{:?}: {:?}", final_key, refusal);
+            }
+            assert_eq!(outcomes.len(), 3, "{:?}", final_key);
+            assert!(temps_in(&base).is_empty(), "{:?}", final_key);
+            assert_eq!(ops.count("rename"), 0, "{:?}", final_key);
+            assert!(!base.join("assets").join("sub").join("final.png").exists());
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_final_key_on_a_chunk_that_is_not_the_last_ends_the_write() {
+        let base = scratch("chunks-final-early");
+        let ops = ChunkSteps::default();
+        assert_eq!(write_chunk_raw_with(&ops, &base, &parsed(PROVISIONAL, 0, false, false), b"abcd"), Outcome::Ok);
+
+        let outcome = write_chunk_raw_with(&ops, &base, &parsed_final(PROVISIONAL, 4, false, FINAL), b"efgh");
+
+        assert!(matches!(outcome, Outcome::Error(_)), "{:?}", outcome);
+        assert!(temps_in(&base).is_empty());
+        assert!(!base.join("assets").join("final.png").exists());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_failed_append_on_the_last_chunk_with_a_final_key_leaves_neither_key_nor_temp() {
+        let base = scratch("chunks-final-fault");
+        let ops = ChunkSteps { fail_append: Some(3), ..ChunkSteps::default() };
+
+        let outcomes = send_with_final(&ops, &base, &[7u8; 25], 10, FINAL);
+
+        assert!(matches!(outcomes.last().unwrap(), Outcome::Error(message) if message.contains("disk full")));
+        assert!(!base.join("assets").join("final.png").exists());
+        assert!(!base.join("assets").join("provisional.png").exists());
+        assert!(temps_in(&base).is_empty());
         fs::remove_dir_all(&base).unwrap();
     }
 

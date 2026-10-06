@@ -10,7 +10,10 @@
  *   `<directory>/risu-write-<id>.tmp`, and rejects when that temp exists
  *   without removing it. Any other chunk must start at the temp's length. A
  *   failure after the temp was created removes it. The last chunk renames the
- *   temp over the key.
+ *   temp over the key. A last chunk with `finalKey` (same folder as the key)
+ *   renames the temp to `finalKey` instead, never creates the key, and removes
+ *   the temp and succeeds when `finalKey` already holds a file; a `finalKey`
+ *   on another chunk or in another folder fails and removes the temp.
  * - `abort_chunked` removes the temp and accepts a missing one.
  * - `read_range` answers the piece followed by the 56-byte trailer (size, then
  *   six identity words, little-endian u64) as an `ArrayBuffer`, and rejects a
@@ -103,6 +106,7 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         const offset = numberArg(args, 'offset')
         const data = stringArg(args, 'data')
         const last = args.last === true
+        const finalKey = typeof args.finalKey === 'string' ? args.finalKey : undefined
         checkKey(key)
         const temp = tempPath(key, id)
         const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0))
@@ -129,8 +133,24 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         next.set(held, 0)
         next.set(bytes, held.length)
         fs.files.set(temp, next)
+        if (finalKey !== undefined) {
+            checkKey(finalKey)
+            if (!last || parentOf(finalKey) !== parentOf(key)) {
+                fs.files.delete(temp)
+                throw `refused final key: ${finalKey} is not on the last chunk or not in the folder of ${key}`
+            }
+        }
         if (last) {
-            fs.files.set(key, next)
+            const destination = finalKey ?? key
+            if (finalKey !== undefined && fs.files.has(finalKey)) {
+                fs.files.delete(temp)
+                return
+            }
+            if (finalKey !== undefined && fs.directories.has(destination)) {
+                fs.files.delete(temp)
+                throw `failed to rename ${temp} to ${destination}: Is a directory (os error 21)`
+            }
+            fs.files.set(destination, next)
             fs.files.delete(temp)
         }
     }

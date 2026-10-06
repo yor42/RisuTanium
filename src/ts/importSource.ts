@@ -32,6 +32,9 @@ export type ImportSourceStat = {
     modified: number | null
 }
 
+/** The most bytes an importer reads from a source in one call while it saves a big asset piece by piece. */
+export const IMPORT_PIECE_BYTES = CHUNK_MAX
+
 /** Bytes one read-ahead window holds when it is not told otherwise. */
 export const IMPORT_WINDOW_BYTES = 256 * 1024
 
