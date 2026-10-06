@@ -618,11 +618,21 @@ describe('Save mine', () => {
         const stale = await peerCommits(w, 'peer one')
         await peerCommits(w, 'peer two')
         h.selectAnswer = '0'
-        h.db!.mainPrompt = 'mine'
-        w.marks.markCharacterForSave(CHA_ID)
-        broadcastFromPeer(stale)
-        await until(() => vi.mocked(alertSelect).mock.calls.length >= 2, 'the second prompt')
-        expect(await storedPrompt(w), 'the peer\'s newest state is kept until the person chooses again').not.toBe('mine')
+        // The second prompt stays unanswered until the stored state has been read, so the read
+        // happens while the person has not chosen yet.
+        let answerSecondPrompt: (answer: string) => void = () => {}
+        const secondAnswer = new Promise<string>((resolve) => { answerSecondPrompt = resolve })
+        vi.mocked(alertSelect).mockImplementationOnce(async () => '0')
+        vi.mocked(alertSelect).mockImplementationOnce(() => secondAnswer)
+        try {
+            h.db!.mainPrompt = 'mine'
+            w.marks.markCharacterForSave(CHA_ID)
+            broadcastFromPeer(stale)
+            await until(() => vi.mocked(alertSelect).mock.calls.length >= 2, 'the second prompt')
+            expect(await storedPrompt(w), 'the peer\'s newest state is kept until the person chooses again').not.toBe('mine')
+        } finally {
+            answerSecondPrompt('0')
+        }
         await until(() => w.api.isSaveClean(), 'the second Save mine to commit')
         expect(await storedPrompt(w)).toBe('mine')
     })
