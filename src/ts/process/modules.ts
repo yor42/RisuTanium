@@ -4,7 +4,7 @@ import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, a
 import { getCurrentCharacter, getCurrentChat, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
 import { AppendableBuffer, downloadFile, forageStorage, LocalWriter, readImage, saveAsset, VirtualWriter } from "../globalApi.svelte"
-import { checkPersonaBinded, selectSingleFile, sleep } from "../util"
+import { checkPersonaBinded, selectSingleFileObject, sleep } from "../util"
 import { v4 } from "uuid"
 import { convertExternalLorebook } from "./lorebook.svelte"
 import { compressImage } from '../media'
@@ -15,6 +15,8 @@ import { convertCharacterToModule, convertModuleToCharacter } from "../interchan
 import { exportCharacterCard, importCharacterProcess } from "../characterCards"
 import { ModuleRefusal, importErrorMessage } from "./moduleRefusal"
 import { withBusy } from "./memory/busyActions"
+import { assetByteLimit, charxLimits } from "./processzip"
+import { WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
 
 export interface MCPModule{
     url: string
@@ -132,83 +134,232 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
     return apb.buffer
 }
 
+const RISUM_MAGIC = 111
+const RISUM_HEADER_BYTES = 6
+const RISUM_RECORD_HEADER_BYTES = 5
+
+// The longest string a 64-bit V8 builds. The main block is decoded as one string, so a longer block is refused up front;
+// an engine with a lower ceiling raises a RangeError at the decode, which is turned into the same refusal.
+const MAX_MAIN_BLOCK_BYTES = 0x1FFFFFE8
+
+// A module this size or larger shows that it is being read before any asset is saved.
+const SHOW_READING_ABOVE_BYTES = 8 * 1024 * 1024
+
+const MAX_CONCURRENT_ASSET_SAVES = 10
+const ASSET_SAVE_RETRY_DELAY_MS = 5000
+const MAX_ASSET_SAVE_RETRIES = 3
+
+/** One asset record of a `.risum`: where its mark byte is and how long its body is. */
+type RisumRecord = {
+    start: number
+    length: number
+}
+
+type RisumScan = {
+    module: RisuModule
+    records: RisumRecord[]
+    /** The source as the first pass saw it; the second pass reads only while the source still matches. */
+    stat: ImportSourceStat
+}
+
+const readU32 = (bytes: Uint8Array, at: number) => bytes[at] + bytes[at + 1] * 0x100 + bytes[at + 2] * 0x10000 + bytes[at + 3] * 0x1000000
+
 /**
- * Reads a `.risum` module and saves its assets. The magic byte, version, module type and block mark checks throw a
- * ModuleRefusal; any other error (a truncated file, corrupt JSON, "Failed to save n assets") passes through as it is.
- * It shows save progress and clears it before it returns or throws, and never shows an error itself: the caller
- * shows it. It never returns without a module.
+ * First pass of a `.risum` read: validates the whole structure without reading an asset body, so a file that will be
+ * refused is refused before anything is saved. The magic byte, version, module type, record marks and the record count
+ * against the module's asset list are checked, no record runs past the end, none is over the asset limit, and the
+ * terminator is present. Bytes after the terminator are ignored.
  */
-export async function readModule(buf:Buffer):Promise<RisuModule> {
-    let pos = 0
+async function scanRisum(source: ImportSource): Promise<RisumScan> {
+    const stat = await source.stat()
+    const size = stat.size
+    const reader = new WindowedReader(source, size)
+    const incomplete = () => new ModuleRefusal(language.moduleFileIncomplete)
 
-    const readLength = () => {
-        const len = buf.readUInt32LE(pos)
-        pos += 4
-        return len
-    }
-    const readByte = () => {
-        const byte = buf.readUInt8(pos)
-        pos += 1
-        return byte
-    }
-    const readData = (len:number) => {
-        const data = buf.subarray(pos, pos + len)
-        pos += len
-        return data
-    }
-
-    if(readByte() !== 111){
+    const head = await reader.read(0, RISUM_HEADER_BYTES)
+    if(head.length === 0 || head[0] !== RISUM_MAGIC){
         console.error("Invalid magic number")
         throw new ModuleRefusal(language.errors.noData)
     }
-    if(readByte() !== 0){ //Version check
+    if(head.length < 2){
+        throw incomplete()
+    }
+    if(head[1] !== 0){ //Version check
         console.error("Invalid version")
         throw new ModuleRefusal(language.errors.noData)
     }
-
-    const mainLen = readLength()
-    const mainData = readData(mainLen)
+    if(head.length < RISUM_HEADER_BYTES){
+        throw incomplete()
+    }
+    const mainLength = readU32(head, 2)
+    const mainEnd = RISUM_HEADER_BYTES + mainLength
+    if(mainEnd > size){
+        throw incomplete()
+    }
+    if(mainLength > MAX_MAIN_BLOCK_BYTES){
+        console.error("The module block is too large to read")
+        throw new ModuleRefusal(language.errors.noData)
+    }
+    const mainData = await reader.read(RISUM_HEADER_BYTES, mainEnd)
+    if(mainData.length < mainLength){
+        throw incomplete()
+    }
+    const decoded = await decodeRPack(mainData)
+    let mainText: string
+    try {
+        mainText = Buffer.from(decoded.buffer, decoded.byteOffset, decoded.byteLength).toString()
+    } catch (error) {
+        if(error instanceof RangeError){
+            console.error("The module block is too large to read", error)
+            throw new ModuleRefusal(language.errors.noData)
+        }
+        throw error
+    }
     const main:{
         type:'risuModule'
         module:RisuModule
-    } = JSON.parse(Buffer.from(await decodeRPack(mainData)).toString())
+    } = JSON.parse(mainText)
 
-    if(main.type !== 'risuModule'){
+    if(!main || main.type !== 'risuModule'){
         console.error("Invalid module type")
         throw new ModuleRefusal(language.errors.noData)
     }
-
-    let module = main.module
-
-    const maxConcurrentAssetSaves = 10
-    const retryDelayMs = 5000
-    const maxRetries = 3
-    const totalAssets = module.assets?.length ?? 0
-    let completed = 0
-
-    type AssetTask = {
-        index: number
-        data: Uint8Array
+    const module = main.module
+    if(!module || typeof module !== 'object' || (module.assets != null && !Array.isArray(module.assets))){
+        console.error("Invalid module")
+        throw new ModuleRefusal(language.errors.noData)
     }
 
-    const runAssetTasks = async (tasks: AssetTask[]) => {
-        if (tasks.length === 0) {
+    const totalAssets = module.assets?.length ?? 0
+    const limit = assetByteLimit()
+    const records: RisumRecord[] = []
+    let pos = mainEnd
+    while(true){
+        const header = await reader.read(pos, pos + RISUM_RECORD_HEADER_BYTES)
+        if(header.length === 0){
+            throw incomplete()
+        }
+        if(header[0] === 0){
+            break
+        }
+        if(header[0] !== 1){
+            throw new ModuleRefusal(language.errors.noData)
+        }
+        if(header.length < RISUM_RECORD_HEADER_BYTES){
+            throw incomplete()
+        }
+        if(records.length >= totalAssets){
+            throw new ModuleRefusal(language.errors.noData)
+        }
+        const length = readU32(header, 1)
+        if(length > limit){
+            const name = module.assets?.[records.length]?.[0] || `#${records.length + 1}`
+            throw new ModuleRefusal(language.moduleAssetTooLarge(name, Math.round(limit / (1024 * 1024))))
+        }
+        const end = pos + RISUM_RECORD_HEADER_BYTES + length
+        if(end > size){
+            throw incomplete()
+        }
+        records.push({ start: pos, length })
+        pos = end
+    }
+    if(records.length !== totalAssets){
+        throw new ModuleRefusal(language.errors.noData)
+    }
+    return { module, records, stat }
+}
+
+/** The body of one record, read from the source and checked against what the first pass saw. */
+async function readRisumRecord(source: ImportSource, record: RisumRecord): Promise<Uint8Array> {
+    const end = record.start + RISUM_RECORD_HEADER_BYTES + record.length
+    const bytes = await source.read(record.start, end)
+    if(bytes.length !== end - record.start || bytes[0] !== 1 || readU32(bytes, 1) !== record.length){
+        throw new Error('the module file does not match its first read')
+    }
+    return bytes.subarray(RISUM_RECORD_HEADER_BYTES)
+}
+
+/**
+ * Reads a `.risum` module and saves its assets. The source is read in two passes and never as a whole: the first
+ * validates the structure (see scanRisum), the second reads one record at a time, in file order, and saves it. Decoded
+ * records waiting to be saved are bounded by count and, beyond the first one, by charxLimits.backlogBytes.
+ *
+ * The magic byte, version, module type and block mark checks, a file cut short, a record count that does not match the
+ * module's asset list, and an asset over the limit throw a ModuleRefusal before any asset is saved. A source that
+ * changes between the passes or cannot be read throws a ModuleRefusal too, and is not retried. Any other error (corrupt
+ * JSON, "Failed to save n assets" after the save retries) passes through as it is; a record whose save failed is read
+ * from the source again for each retry.
+ * It shows progress and clears it before it returns or throws, and never shows an error itself: the caller shows it.
+ * It never returns without a module. It does not close the source: the caller that opened it does.
+ */
+export async function readModule(input:Uint8Array|ImportSource):Promise<RisuModule> {
+    const source = isImportSource(input) ? input : importSourceOfBytes('module.risum', input)
+    let progressShown = false
+    let scan: RisumScan
+    try {
+        if(source.size > SHOW_READING_ABOVE_BYTES){
+            progressShown = true
+            alertWait(language.alerts.readingCard)
+        }
+        scan = await scanRisum(source)
+    } catch (error) {
+        if(progressShown){
+            alertClear()
+        }
+        throw error
+    }
+    const module = scan.module
+    const totalAssets = scan.records.length
+    let completed = 0
+
+    const changed = (cause: unknown) => {
+        console.error(cause)
+        return new ModuleRefusal(language.moduleFileChanged)
+    }
+
+    //A save failure is retried; a read that does not match the first pass is not, so it throws out of here.
+    const runRecords = async (indices: number[]): Promise<number[]> => {
+        if(indices.length === 0){
             return []
         }
+        try {
+            const now = await source.stat()
+            if(now.size !== scan.stat.size || now.modified !== scan.stat.modified){
+                throw new Error('the module file changed')
+            }
+        } catch (error) {
+            throw changed(error)
+        }
         const inFlight = new Set<Promise<void>>()
-        const failed: AssetTask[] = []
-        const runTask = (task: AssetTask) => {
+        const failed: number[] = []
+        let inFlightBytes = 0
+        let readFailure: { cause: unknown } | null = null
+
+        for(const index of indices){
+            const record = scan.records[index]
+            while(inFlight.size >= MAX_CONCURRENT_ASSET_SAVES || (inFlightBytes > 0 && inFlightBytes + record.length > charxLimits.backlogBytes)){
+                await Promise.race(inFlight)
+            }
+            let body: Uint8Array
+            try {
+                body = await readRisumRecord(source, record)
+            } catch (error) {
+                readFailure = { cause: error }
+                break
+            }
+            inFlightBytes += record.length
             const promise = (async () => {
                 try {
-                    const decoded = await decodeRPack(task.data)
-                    if (!module.assets?.[task.index]) {
-                        throw new Error(`Missing asset metadata for index ${task.index}`)
+                    const decoded = await decodeRPack(body)
+                    if (!module.assets?.[index]) {
+                        throw new Error(`Missing asset metadata for index ${index}`)
                     }
-                    module.assets[task.index][1] = await saveAsset(decoded)
+                    module.assets[index][1] = await saveAsset(decoded)
                     completed += 1
                 } catch (error) {
-                    failed.push(task)
+                    failed.push(index)
                 } finally {
+                    inFlightBytes -= record.length
                     alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
                 }
             })()
@@ -216,43 +367,20 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
             promise.finally(() => inFlight.delete(promise))
         }
 
-        for (const task of tasks) {
-            while (inFlight.size >= maxConcurrentAssetSaves) {
-                await Promise.race(inFlight)
-            }
-            runTask(task)
-        }
-
         await Promise.all(inFlight)
-        return failed
-    }
-
-    const tasks: AssetTask[] = []
-    let i = 0
-    while(true){
-        const mark = readByte()
-        if(mark === 0){
-            break
+        if(readFailure){
+            throw changed(readFailure.cause)
         }
-        if(mark !== 1){
-            throw new ModuleRefusal(language.errors.noData)
-        }
-        const len = readLength()
-        const data = readData(len)
-        tasks.push({
-            index: i,
-            data
-        })
-        i++
+        return failed.sort((a, b) => a - b)
     }
 
     try {
-        let failed = await runAssetTasks(tasks)
+        let failed = await runRecords(scan.records.map((_, index) => index))
         let retryCount = 0
-        while (failed.length > 0 && retryCount < maxRetries) {
-            await sleep(retryDelayMs)
+        while (failed.length > 0 && retryCount < MAX_ASSET_SAVE_RETRIES) {
+            await sleep(ASSET_SAVE_RETRY_DELAY_MS)
             retryCount += 1
-            failed = await runAssetTasks(failed)
+            failed = await runRecords(failed)
         }
         if (failed.length > 0) {
             throw new Error(fillLang(language.errors.moduleAssetsSaveFailed, { count: `${failed.length}` }))
@@ -266,17 +394,16 @@ export async function readModule(buf:Buffer):Promise<RisuModule> {
 }
 
 export async function importModule(){
-    const f = await selectSingleFile(['json', 'lorebook', 'risum', 'charx'])
+    const f = await selectSingleFileObject(['json', 'lorebook', 'risum', 'charx'])
     if(!f){
         return
     }
-    let fileData = f.data
     if(f.name.endsWith('.charx')){
         try {
-            const buf = Buffer.from(fileData)
+            //The archive is handed over as the picked file, which is read in pieces, never as one buffer.
             const char = await withBusy('import', () => importCharacterProcess({
                 name: f.name,
-                data: buf,
+                data: f,
                 returnCharacter: true
             }))
             //A refusal has shown its own message and a declined low-level-access prompt shows none (it returns false, a type the declared return leaves out); neither is followed by another message.
@@ -294,16 +421,19 @@ export async function importModule(){
         return
     }
     if(f.name.endsWith('.risum')){
+        const source = importSourceOfFile(f)
         try {
-            const buf = Buffer.from(fileData)
-            const module = await withBusy('import', () => readModule(buf))
+            const module = await withBusy('import', () => readModule(source))
             DBState.db.modules.push(module)
         } catch (error) {
             console.error(error)
             alertError(importErrorMessage(error))
+        } finally {
+            await source.close()
         }
         return
     }
+    const fileData = new Uint8Array(await f.arrayBuffer())
     try {
         const importData = JSON.parse(Buffer.from(fileData).toString())
         if(importData.type === 'risuModule'){

@@ -14,12 +14,14 @@ import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settin
 import { hasher } from "./parser/parser.svelte"
 import { type CharacterCardV3, type LorebookEntry } from '@risuai/ccardlib'
 import { reencodeImage } from "./process/files/inlays"
-import { PngChunk } from "./pngChunk"
+import { PngChunk, type PngLayoutChunk } from "./pngChunk"
+import { ASSET_KEY_PREFIX, PngCardSourceChanged, PngCardValueTooLarge, assetIndexOfKey, isEmptyCardValue, readCardValue, selectCardChunk, walkPngCard } from "./pngCardImport"
+import { decodeBase64Bytes } from "./base64Bytes"
 import type { OnnxModelFiles } from "./process/transformers"
-import { CharXImporter, CharXParseError, CharXWriter, hasZipEndRecord } from "./process/processzip"
+import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, hasZipEndRecord } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { ModuleRefusal } from "./process/moduleRefusal"
-import { readUserFile } from "./storage/tauriUserFile"
+import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
@@ -127,7 +129,8 @@ async function importEachFile(items:ImportItem[]):Promise<void> {
 }
 
 //One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
-function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<Uint8Array|File|null>):ImportItem {
+//A source the read hands over is closed on every exit of the item, whichever way the import ends.
+function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>):ImportItem {
     return {
         name: label,
         run: async () => {
@@ -139,22 +142,28 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
             if(!data){
                 return {kind: 'refused', reason: language.importFileNotReceived, summaryOnly: true}
             }
-            return await importClassified(kind, data)
+            try {
+                return await importClassified(kind, data)
+            } finally {
+                if(isImportSource(data)){
+                    await data.close()
+                }
+            }
         }
     }
 }
 
-//Files the operating system handed to the desktop app, read through the plugin-fs scope that was widened for exactly these paths. Never rejects.
+//Files the operating system handed to the desktop app, read through the plugin-fs scope that was widened for exactly these paths. Each file is opened as a source that is read in pieces and closed when its import ends. Never rejects.
 export async function importOpenedFiles(paths:string[]):Promise<void> {
     try {
-        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => readUserFile(path))))
+        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path))))
     } catch (error) {
         alertError(error)
     }
 }
 
-//Cards are handed on as they are (a File is read in pieces); presets and modules are read whole, as the file picker does.
-async function importClassified(file:ClassifiedImport, data:Uint8Array|File):Promise<ImportOutcome> {
+//Cards and modules are handed on as the File or the source as it is, for the importer to read in pieces; a preset is read whole. The caller owns a source and closes it.
+async function importClassified(file:ClassifiedImport, data:File|ImportSource):Promise<ImportOutcome> {
     try {
         if(file.kind === 'card'){
             return await importCharacterFile({
@@ -162,8 +171,8 @@ async function importClassified(file:ClassifiedImport, data:Uint8Array|File):Pro
                 data: data
             })
         }
-        const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : data
         if(file.kind === 'preset'){
+            const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : await data.read(0, data.size)
             await importPreset({
                 name: file.name,
                 data: bytes
@@ -173,7 +182,7 @@ async function importClassified(file:ClassifiedImport, data:Uint8Array|File):Pro
             alertNormal(language.successImport)
             return {kind: 'imported', index: null}
         }
-        const md = await readModule(Buffer.from(bytes))
+        const md = await readModule(data instanceof File ? importSourceOfFile(data) : data)
         md.id = v4()
         DBState.db.modules.push(md)
         alertNormal(language.successImport)
@@ -215,7 +224,7 @@ type ImportProcessResult<T extends boolean> = T extends true ? character | numbe
  */
 export async function importCharacterProcess<T extends boolean = false>(f:{
     name: string;
-    data: Uint8Array|File|ReadableStream<Uint8Array>
+    data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:T //note That this option only works with v3 charx
 }):Promise<ImportProcessResult<T>>{
     const outcome = await importCharacterFile(f)
@@ -229,7 +238,7 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
 //Reads one character file and reports how it ended. It never rejects.
 async function importCharacterFile(f:{
     name: string;
-    data: Uint8Array|File|ReadableStream<Uint8Array>
+    data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
 }):Promise<ImportOutcome>{
     try {
@@ -242,14 +251,14 @@ async function importCharacterFile(f:{
 
 async function readCharacterFile(f:{
     name: string;
-    data: Uint8Array|File|ReadableStream<Uint8Array>
+    data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
 }):Promise<ImportOutcome>{
     if(f.name.endsWith('json')){
         if(!f.data || f.data instanceof ReadableStream){
             return refusedOutcome(language.errors.noData)
         }
-        const data = f.data instanceof Uint8Array ? f.data : new Uint8Array(await f.data.arrayBuffer())
+        const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
         const da = JSON.parse(Buffer.from(data).toString('utf-8'))
         const spec = await importCharacterCardSpec(da)
         if(spec){
@@ -282,7 +291,7 @@ async function readCharacterFile(f:{
         //The importer shows no progress after its first failure, so nothing replaces the message.
         try {
             //The end-of-archive check needs the tail of the whole input, so a stream is buffered into a Blob-backed File first.
-            const charxData:File|Uint8Array = f.data instanceof ReadableStream
+            const charxData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
                 ? new File([await new Response(f.data).blob()], f.name, {type: 'application/zip'})
                 : f.data
             //An archive without its end record was cut short. A jpg or jpeg without one is treated as a plain image (a jpg-charx cut short cannot be told apart by its tail).
@@ -356,56 +365,280 @@ async function readCharacterFile(f:{
         msg: language.alerts.readingCard
     })
     await sleep(10)
-    
-    // const readed = PngChunk.read(img, ['chara'])?.['chara']
-    let readedChara = ''
-    let readedCCv3 = ''
-    let img:Uint8Array
-    let readedPngChunks = 0
 
-    //The counting pass and the main pass both need the whole input, so a stream is buffered into a Blob-backed File first.
-    const pngData:File|Uint8Array = f.data instanceof ReadableStream
+    //A stream is buffered into a Blob-backed File first, so the card is read by offset like any other file.
+    const pngData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
         ? new File([await new Response(f.data).blob()], f.name, {type: 'image/png'})
         : f.data
+    return await importPngCard(f.name, pngData)
+}
 
-    //Counts the assets and checks that no chunk body (nor the CRC of a chunk other than tEXt) is cut short before anything is saved, so such a card saves nothing.
-    const scan = await PngChunk.scanCard(pngData)
-    if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
-        return refusedOutcome(language.cardFileIncomplete)
+//The outcome of `importCharacterCardSpec` for a card that was added: `false` is a declined prompt, `null` a card of no known spec.
+function cardSpecOutcome(result:boolean|null, index:number, notACard:string = language.errors.noData):ImportOutcome {
+    if(result === null){
+        return refusedOutcome(notACard)
     }
-    if(!scan.hasCardData){
+    return result ? {kind: 'imported', index} : {kind: 'declined'}
+}
+
+/**
+ * Where a PNG card stands after its first pass: a refusal or a declined prompt (an `ImportOutcome`), or the card to
+ * import. `spec` is a v2 or v3 card; `tavern` is a card of an older format that carries no assets.
+ */
+type PngCardPlan =
+    | ImportOutcome
+    | {kind: 'spec', card: CharacterCardV2Risu|CharacterCardV3}
+    | {kind: 'tavern', card: OldTavernChar}
+
+//A string longer than the engine builds throws a RangeError; it is the same refusal as a card value known to be too long up front.
+function guardStringLength<T>(build:() => T):T {
+    try {
+        return build()
+    } catch (error) {
+        if(error instanceof RangeError){
+            throw new PngCardValueTooLarge(error.message)
+        }
+        throw error
+    }
+}
+
+/** The message of the first asset or image over the limit, or null. An asset chunk's decoded size is at most three quarters of its base64 text. */
+function pngCardOverLimit(chunks:PngLayoutChunk[], imageBytes:number):string|null {
+    const limit = assetByteLimit()
+    const limitMiB = Math.round(limit / (1024 * 1024))
+    for(const chunk of chunks){
+        if(chunk.key !== null && chunk.key.startsWith(ASSET_KEY_PREFIX) && Math.floor((chunk.length - chunk.valueStart) * 3 / 4) > limit){
+            return language.cardFileEntryTooLarge(chunk.key, limitMiB)
+        }
+    }
+    return imageBytes > limit ? language.cardImageTooLarge(limitMiB) : null
+}
+
+/**
+ * The first reference of a v2 or v3 card that the import resolves through the asset chunks and that has no chunk, as the
+ * import itself reads them: in a v2 card the `__asset:` values of the emotions, additional assets and vits, in a v3 card
+ * the `__asset:` and `embeded://` uris of its assets. Null when every one resolves.
+ */
+function firstMissingAssetKey(card:CharacterCardV2Risu|CharacterCardV3, assetKeys:Set<string>):string|null {
+    const risuext = card.data.extensions.risuai
+    if(risuext && card.spec === 'chara_card_v2'){
+        if(risuext.emotions){
+            for(let i=0;i<risuext.emotions.length;i++){
+                if(risuext.emotions[i][1].startsWith('__asset:')){
+                    const key = risuext.emotions[i][1].replace('__asset:', '')
+                    if(!assetKeys.has(key)){
+                        return key
+                    }
+                }
+            }
+        }
+        if(risuext.additionalAssets){
+            for(let i=0;i<risuext.additionalAssets.length;i++){
+                if(risuext.additionalAssets[i][1].startsWith('__asset:')){
+                    const key = risuext.additionalAssets[i][1].replace('__asset:', '')
+                    if(!assetKeys.has(key)){
+                        return key
+                    }
+                }
+            }
+        }
+        if(risuext.vits){
+            for(const name of Object.keys(risuext.vits)){
+                if(risuext.vits[name].startsWith('__asset:')){
+                    const key = risuext.vits[name].replace('__asset:', '')
+                    if(!assetKeys.has(key)){
+                        return key
+                    }
+                }
+            }
+        }
+    }
+    if(card.spec === 'chara_card_v3'){
+        const assets = card.data.assets
+        if(assets){
+            for(let i=0;i<assets.length;i++){
+                const uri = assets[i].uri
+                const key = uri.startsWith('__asset:') ? uri.replace('__asset:', '')
+                    : uri === 'ccdefault:' ? null
+                    : uri.startsWith('embeded://') ? uri.replace('embeded://', '')
+                    : null
+                if(key !== null && !assetKeys.has(key)){
+                    return key
+                }
+            }
+        }
+    }
+    return null
+}
+
+//A v2 or v3 card whose references all resolve and whose low-level-access prompt, when it has one, was accepted. The prompt is asked here, before any asset is saved, and not again by the import.
+async function planSpecCard(card:CharacterCardV2Risu|CharacterCardV3, assetKeys:Set<string>, notACard:string):Promise<PngCardPlan> {
+    if(!card || (card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3')){
+        return refusedOutcome(notACard)
+    }
+    const missing = firstMissingAssetKey(card, assetKeys)
+    if(missing !== null){
+        return refusedOutcome(fillLang(language.errors.importAssetNotFound, { key: missing }))
+    }
+    const risuext = card.data.extensions.risuai
+    if(risuext && risuext.lowLevelAccess){
+        if(!await alertConfirm(language.lowLevelAccessConfirm)){
+            return {kind: 'declined'}
+        }
+    }
+    return {kind: 'spec', card}
+}
+
+//A card of the rcc format: its hash is checked, the password asked for and the card decrypted.
+async function planRccCard(value:string, assetKeys:Set<string>):Promise<PngCardPlan> {
+    const parts = value.split('||')
+    const type = parts[1]
+    if(type !== 'rccv1'){
         return refusedOutcome(language.errors.noData)
     }
-    const pngChunks = scan.assetCount
+    if(parts.length !== 5){
+        return refusedOutcome(language.errors.noData)
+    }
+    const encrypted = Buffer.from(parts[2], 'base64')
+    const hashed = await hasher(encrypted)
+    if(hashed !== parts[3]){
+        return refusedOutcome(language.errors.noData)
+    }
+    let metaData:RccCardMetaData
+    try {
+        metaData = JSON.parse(Buffer.from(parts[4], 'base64').toString('utf-8'))
+    } catch (error) {
+        if(error instanceof SyntaxError){
+            return refusedOutcome(language.errors.noData)
+        }
+        throw error
+    }
+    if(metaData.usePassword){
+        const password = await alertInput(language.inputCardPassword)
+        if(!password){
+            return {kind: 'declined'}
+        }
+        //Only reading the card with this password can mean the password is wrong; a failure of the import itself keeps its own reason.
+        let charaData:CharacterCardV2Risu
+        try {
+            const decrypted = await decryptBuffer(encrypted, password)
+            charaData = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
+        } catch (error) {
+            return refusedOutcome(language.errors.wrongPassword)
+        }
+        return await planSpecCard(charaData, assetKeys, language.errors.wrongPassword)
+    }
+    const decrypted = await decryptBuffer(encrypted, 'RISU_NONE')
+    let charaData:CharacterCardV2Risu
+    try {
+        charaData = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
+    } catch (error) {
+        return refusedOutcome(language.errors.noData)
+    }
+    return await planSpecCard(charaData, assetKeys, language.errors.noData)
+}
 
-    const readGenerator = PngChunk.readGenerator(pngData, {
-        returnTrimed: true
-    })
-    const assets:{[key:string]:string} = {}
-    for await (const chunk of readGenerator){
-        if(!chunk){
-            continue
+//A card that is not rcc: base64 of its JSON.
+async function planCardJson(json:string, assetKeys:Set<string>):Promise<PngCardPlan> {
+    let parsed:CharacterCardV2Risu|CharacterCardV3
+    try {
+        parsed = JSON.parse(json)
+    } catch (error) {
+        if(error instanceof SyntaxError){
+            return refusedOutcome(language.errors.noData)
         }
-        if(chunk instanceof AppendableBuffer){
-            img = chunk.buffer
-            break
+        throw error
+    }
+    //fix readedChara version pointing number instead of string because of previous version
+    if(typeof (parsed as CharacterCardV2Risu)?.data?.character_version === 'number'){
+        (parsed as CharacterCardV2Risu).data.character_version = (parsed as CharacterCardV2Risu).data.character_version.toString()
+    }
+
+    if(parsed.spec !== 'chara_card_v2' && parsed.spec !== 'chara_card_v3'){
+        const charaData:OldTavernChar = JSON.parse(json)
+        return {kind: 'tavern', card: charaData}
+    }
+    return await planSpecCard(parsed, assetKeys, language.errors.noData)
+}
+
+/**
+ * First pass over a PNG card: everything that decides whether the card is imported, before anything is saved. The card
+ * chunk is chosen (see selectCardChunk), decoded and checked (the rcc hash, password and decryption
+ * included), every asset reference of the card is looked up among the asset chunks, and the low-level-access prompt is
+ * asked.
+ */
+async function planPngCard(source:ImportSource, chunks:PngLayoutChunk[], assetKeys:Set<string>):Promise<PngCardPlan> {
+    try {
+        const ccv3 = await selectCardChunk(source, chunks, 'ccv3')
+        const chara = await selectCardChunk(source, chunks, 'chara')
+        let value:Uint8Array|null = ccv3 ? await readCardValue(source, ccv3) : null
+        if(!value || isEmptyCardValue(value)){
+            value = chara ? await readCardValue(source, chara) : null
         }
-        if(chunk.key === 'chara'){
-            //For memory reason, limit to 5MB
-            if(readedChara.length < 5 * 1024 * 1024){
-                readedChara = chunk.value
+        if(!value || isEmptyCardValue(value)){
+            return refusedOutcome(language.errors.noData)
+        }
+        if(new TextDecoder().decode(value.subarray(0, 8)).startsWith('rcc||')){
+            const rcc = guardStringLength(() => new TextDecoder().decode(value))
+            value = null
+            return await planRccCard(rcc, assetKeys)
+        }
+        const decoded = decodeBase64Bytes(value)
+        value = null
+        const json = guardStringLength(() => Buffer.from(decoded.buffer, decoded.byteOffset, decoded.byteLength).toString('utf-8'))
+        return await planCardJson(json, assetKeys)
+    } catch (error) {
+        if(error instanceof PngCardValueTooLarge || error instanceof RangeError){
+            console.error(error)
+            return refusedOutcome(language.errors.noData)
+        }
+        throw error
+    }
+}
+
+/**
+ * Imports a PNG card in two passes over the file, which is never held as a whole. The first pass walks the chunk
+ * headers and decides, before anything is saved, whether the card is imported (see planPngCard); the second reads the
+ * asset chunks one at a time, saves them and imports the card the first pass chose. A file that is not the one the
+ * first pass saw, or cannot be read, is refused and saves nothing further.
+ */
+async function importPngCard(name:string, data:File|Uint8Array|ImportSource):Promise<ImportOutcome> {
+    const source = isImportSource(data) ? data : data instanceof Uint8Array ? importSourceOfBytes(name, data) : importSourceOfFile(data)
+    try {
+        const stat = await source.stat()
+        if(stat.size !== source.size){
+            throw new PngCardSourceChanged('the card file changed')
+        }
+        //Counts the assets and checks that no chunk body (nor the CRC of a chunk other than tEXt) is cut short before anything is saved, so such a card saves nothing.
+        const scan = await PngChunk.scanCard(data, {layout: true})
+        if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
+            return refusedOutcome(language.cardFileIncomplete)
+        }
+        if(!scan.hasCardData){
+            return refusedOutcome(language.errors.noData)
+        }
+        const chunks = scan.chunks ?? []
+        const imageBytes = scan.imageBytes ?? 0
+        const overLimit = pngCardOverLimit(chunks, imageBytes)
+        if(overLimit !== null){
+            return refusedOutcome(overLimit)
+        }
+        const assetKeys = new Set<string>()
+        for(const chunk of chunks){
+            if(chunk.key !== null && chunk.key.startsWith(ASSET_KEY_PREFIX)){
+                assetKeys.add(assetIndexOfKey(chunk.key))
             }
-            continue
         }
-        if(chunk.key === 'ccv3'){
-            if(readedCCv3.length < 5 * 1024 * 1024){
-                readedCCv3 = chunk.value
-            }
-            continue
+        const plan = await planPngCard(source, chunks, assetKeys)
+        if(plan.kind !== 'spec' && plan.kind !== 'tavern'){
+            return plan
         }
-        if(chunk.key.startsWith('chara-ext-asset_')){
-            const assetIndex = chunk.key.replace('chara-ext-asset_:', '').replace('chara-ext-asset_', '')
-            const assetData = Buffer.from(chunk.value, 'base64')
+
+        const pngChunks = scan.assetCount
+        let readedPngChunks = 0
+        const assets:{[key:string]:string} = {}
+        //An old card has no assets of its own to keep, so only its image is read.
+        const img = await walkPngCard(source, {chunks, imageBytes, stat}, plan.kind === 'spec', async (assetIndex, assetData) => {
             if(pngChunks === 0){
                 alertWait(fillLang(language.alerts.loadedAssets, { count: readedPngChunks }))
             }
@@ -419,93 +652,25 @@ async function readCharacterFile(f:{
 
             readedPngChunks++
 
-            const assetId = await saveAsset(assetData)
-            assets[assetIndex] = assetId
-        }
-    }
+            assets[assetIndex] = await saveAsset(assetData)
+        })
 
-    if(!readedChara && !readedCCv3){
-        return refusedOutcome(language.errors.noData)
-    }
-
-    if(readedCCv3){
-        readedChara = readedCCv3
-    }
-
-    if(!img){
-        return refusedOutcome(language.errors.noData)
-    }
-
-    if(readedChara.startsWith('rcc||')){
-        const parts = readedChara.split('||')
-        const type = parts[1]
-        if(type !== 'rccv1'){
-            return refusedOutcome(language.errors.noData)
+        if(plan.kind === 'tavern'){
+            const imgp = await saveAsset(img)
+            DBState.db.characters.push(convertOffSpecCards(plan.card, imgp))
+            alertNormal(language.importedCharacter)
+            return {kind: 'imported', index: DBState.db.characters.length - 1}
         }
-        if(parts.length !== 5){
-            return refusedOutcome(language.errors.noData)
+        const result = await importCharacterCardSpec(plan.card, img, "normal", assets, null, false, true)
+        return cardSpecOutcome(result, DBState.db.characters.length - 1)
+    } catch (error) {
+        if(error instanceof PngCardSourceChanged){
+            console.error(error)
+            return refusedOutcome(language.cardFileChanged)
         }
-        const encrypted = Buffer.from(parts[2], 'base64')
-        const hashed = await hasher(encrypted)
-        if(hashed !== parts[3]){
-            return refusedOutcome(language.errors.noData)
-        }
-        const metaData:RccCardMetaData = JSON.parse(Buffer.from(parts[4], 'base64').toString('utf-8'))
-        if(metaData.usePassword){
-            const password = await alertInput(language.inputCardPassword)
-            if(!password){
-                return {kind: 'declined'}
-            }
-            //Only reading the card with this password can mean the password is wrong; a failure of the import itself keeps its own reason.
-            let charaData:CharacterCardV2Risu
-            try {
-                const decrypted = await decryptBuffer(encrypted, password)
-                charaData = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
-            } catch (error) {
-                return refusedOutcome(language.errors.wrongPassword)
-            }
-            return await importRccCard(charaData, img, assets, language.errors.wrongPassword)
-        }
-        const decrypted = await decryptBuffer(encrypted, 'RISU_NONE')
-        let charaData:CharacterCardV2Risu
-        try {
-            charaData = JSON.parse(Buffer.from(decrypted).toString('utf-8'))
-        } catch (error) {
-            return refusedOutcome(language.errors.noData)
-        }
-        return await importRccCard(charaData, img, assets, language.errors.noData)
+        throw error
     }
-    const parsed = JSON.parse(Buffer.from(readedChara, 'base64').toString('utf-8'))
-    //fix readedChara version pointing number instead of string because of previous version
-    if(typeof (parsed as CharacterCardV2Risu)?.data?.character_version === 'number'){
-        (parsed as CharacterCardV2Risu).data.character_version = (parsed as CharacterCardV2Risu).data.character_version.toString()
-    }
-
-    if(parsed.spec !== 'chara_card_v2' && parsed.spec !== 'chara_card_v3'){
-        const charaData:OldTavernChar = JSON.parse(Buffer.from(readedChara, 'base64').toString('utf-8'))
-        const imgp = await saveAsset(img)
-        DBState.db.characters.push(convertOffSpecCards(charaData, imgp))
-        alertNormal(language.importedCharacter)
-        return {kind: 'imported', index: DBState.db.characters.length - 1}
-    }
-    const result = await importCharacterCardSpec(parsed, img, "normal", assets)
-    return cardSpecOutcome(result, DBState.db.characters.length - 1)
 }
-
-//The outcome of `importCharacterCardSpec` for a card that was added: `false` is a declined prompt, `null` a card of no known spec.
-function cardSpecOutcome(result:boolean|null, index:number, notACard:string = language.errors.noData):ImportOutcome {
-    if(result === null){
-        return refusedOutcome(notACard)
-    }
-    return result ? {kind: 'imported', index} : {kind: 'declined'}
-}
-
-//A card inside a password-protected or plain rcc image: `notACard` is the reason when its content is not a card.
-async function importRccCard(charaData:CharacterCardV2Risu, img:Uint8Array, assets:{[key:string]:string}, notACard:string):Promise<ImportOutcome> {
-    const result = await importCharacterCardSpec(charaData, img, "normal", assets)
-    return cardSpecOutcome(result, getDatabase().characters.length - 1, notACard)
-}
-
 // The last `?realm=` path seen without acceptance, drained by
 // handlePendingRealmLink() once boot reaches loadedStore.
 let pendingRealmPath: string | null = null
@@ -957,7 +1122,8 @@ export async function openRealmUpload(target: string): Promise<void> {
 
 
 //Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
-async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T):Promise<T extends true ? character|false|null : boolean|null>{
+//A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
+async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false):Promise<T extends true ? character|false|null : boolean|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
         return null
     }
@@ -1152,7 +1318,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         }
     }
 
-    if(risuext && risuext?.lowLevelAccess){
+    if(risuext && risuext?.lowLevelAccess && !lowLevelAccessAsked){
         const conf = await alertConfirm(language.lowLevelAccessConfirm)
         if(!conf){
             return false

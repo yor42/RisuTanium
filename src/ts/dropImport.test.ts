@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
     presets: [] as string[],
     ordered: 0,
     readModule: null as null | (() => Promise<unknown>),
+    /** what the module reader was handed */
+    moduleInput: undefined as unknown,
     importCard: null as null | (() => Promise<unknown>),
     importPreset: null as null | (() => Promise<unknown>),
 }))
@@ -33,7 +35,10 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/process/modules'), () => ({
-    readModule: vi.fn(async () => h.readModule?.()),
+    readModule: vi.fn(async (input: unknown) => {
+        h.moduleInput = input
+        return h.readModule?.()
+    }),
 }) as unknown as typeof import('src/ts/process/modules'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
@@ -117,5 +122,18 @@ describe('a dropped file that imports (compatibility guard)', () => {
         await importDroppedFile(file('c.charx'))
         expect(h.ordered).toBe(1)
         expect(h.log).toEqual([])
+    })
+})
+
+describe('a dropped module file (regression reproducer)', () => {
+    test('is handed to the reader as a source over the dropped file, not as one buffer', async () => {
+        const dropped = new File([new Uint8Array([1, 2, 3, 4, 5])], 'm.risum')
+
+        await importDroppedFile(dropped)
+
+        expect(h.moduleInput).not.toBeInstanceOf(Uint8Array)
+        const source = h.moduleInput as { size: number, read: (start: number, end: number) => Promise<Uint8Array> }
+        expect(source.size).toBe(5)
+        expect(Array.from(await source.read(1, 3))).toEqual([2, 3])
     })
 })

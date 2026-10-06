@@ -159,8 +159,8 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
 
 vi.mock(import('src/ts/process/modules'), () => ({
     exportModuleLegacy: vi.fn(),
-    readModule: vi.fn(async (data: Uint8Array) => {
-        h.moduleReads.push(data)
+    readModule: vi.fn(async (data: Uint8Array | { size: number, read: (start: number, end: number) => Promise<Uint8Array> }) => {
+        h.moduleReads.push(data instanceof Uint8Array ? data : await data.read(0, data.size))
         h.events.push('module')
         if (h.moduleFails) throw new ModuleRefusal(h.moduleFails)
         return { name: 'synthetic module', lorebook: [], trigger: [], regex: [] }
@@ -168,10 +168,28 @@ vi.mock(import('src/ts/process/modules'), () => ({
 }) as unknown as typeof import('src/ts/process/modules'))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
+    SeekMode: { Start: 0, Current: 1, End: 2 },
     readFile: vi.fn(async (path: string) => {
         const answer = h.tauriFiles[path] ?? new Uint8Array()
         if (answer instanceof Error) throw answer
         return answer
+    }),
+    open: vi.fn(async (path: string) => {
+        const answer = h.tauriFiles[path] ?? new Uint8Array()
+        if (answer instanceof Error) throw answer
+        let position = 0
+        return {
+            read: async (buffer: Uint8Array) => {
+                if (position >= answer.length) return null
+                const count = Math.min(buffer.byteLength, answer.length - position)
+                buffer.set(answer.subarray(position, position + count), 0)
+                position += count
+                return count
+            },
+            seek: async (offset: number) => { position = offset; return position },
+            stat: async () => ({ size: answer.length, mtime: null }),
+            close: async () => {},
+        }
     }),
 }))
 
@@ -321,6 +339,7 @@ const setUrl = (pathAndQuery: string) => window.history.replaceState(null, '', p
 
 type ParseArg = Parameters<CharXImporter['parse']>[0]
 type ScanArg = Parameters<typeof PngChunk.scanCard>[0]
+type ScanOptions = Parameters<typeof PngChunk.scanCard>[1]
 let parseArgs: ParseArg[] = []
 let scanArgs: ScanArg[] = []
 
@@ -356,10 +375,10 @@ beforeEach(() => {
         h.events.push('parse:' + (data instanceof File ? data.name : 'bytes'))
         return realParse.call(this, data)
     })
-    vi.spyOn(PngChunk, 'scanCard').mockImplementation((data: ScanArg) => {
+    vi.spyOn(PngChunk, 'scanCard').mockImplementation((data: ScanArg, arg?: ScanOptions) => {
         scanArgs.push(data)
         h.events.push('scan:' + (data instanceof File ? data.name : 'bytes'))
-        return realScan.call(PngChunk, data)
+        return realScan.call(PngChunk, data, arg)
     })
     vi.stubGlobal('fetch', fakeFetch)
     vi.spyOn(console, 'log').mockImplementation(() => {})

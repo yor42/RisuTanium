@@ -9,9 +9,11 @@
  * an 'ask' value and leaves the slot at 'none' once answered, as the real prompt does.
  */
 
+import { createHash } from 'node:crypto'
 import crc32 from 'crc/crc32'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as fflate from 'fflate'
+import { patterned, risumBytes } from 'src/ts/process/tests/risumFixtures'
 
 //#region module mocks
 
@@ -32,6 +34,10 @@ const h = vi.hoisted(() => ({
     /** the buffer size of every plugin `read` */
     readSizes: [] as number[],
     openHandles: 0,
+    /** the bytes every plugin `read` has handed out */
+    bytesRead: 0,
+    /** every asset save: a hash of the asset and the bytes the open files had handed out at that moment */
+    saves: [] as { hash: string, bytesRead: number }[],
     os: 'windows',
 }))
 
@@ -130,6 +136,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         openURL: vi.fn(),
         readImage: vi.fn(async (d: unknown) => d),
         saveAsset: vi.fn(async (data: Uint8Array) => {
+            h.saves.push({ hash: createHash('sha256').update(data).digest('hex'), bytesRead: h.bytesRead })
             if (h.saveFails !== null) throw new Error(h.saveFails)
             return `asset-${data[0]}-${data.length}`
         }),
@@ -179,6 +186,7 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 const CALL_CAP = 4 * 1024 * 1024
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
+    SeekMode: { Start: 0, Current: 1, End: 2 },
     readFile: vi.fn(async (path: string) => {
         const data = h.files.get(path) ?? new Uint8Array()
         if (data.length > CALL_CAP) {
@@ -205,8 +213,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
                 const count = Math.min(buffer.byteLength, data.length - position)
                 buffer.set(data.subarray(position, position + count), 0)
                 position += count
+                h.bytesRead += count
                 return count
             },
+            seek: async (offset: number) => {
+                position = offset
+                return position
+            },
+            stat: async () => ({ size: data.length, mtime: null }),
             close: async () => { h.openHandles-- },
         }
     }),
@@ -221,6 +235,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { importCharacter, importCharacterProcess, importOpenedFiles } from 'src/ts/characterCards'
+import { charxLimits } from 'src/ts/process/processzip'
 import { language } from 'src/lang'
 
 // ---------------------------------------------------------------------------------------------
@@ -297,6 +312,8 @@ beforeEach(() => {
     h.files.clear()
     h.readSizes = []
     h.openHandles = 0
+    h.bytesRead = 0
+    h.saves = []
     h.os = 'windows'
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -476,6 +493,132 @@ describe('importOpenedFiles', () => {
 
         expect(names()).toEqual(['Good'])
         expect(h.last.startsWith('error:')).toBe(true)
+        expect(h.openHandles).toBe(0)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// A module the operating system hands to the desktop app: read in pieces through one shared handle
+// ---------------------------------------------------------------------------------------------
+
+describe('importOpenedFiles with a .risum module', () => {
+    const KIB = 1024
+    /** The read-ahead window of the importer's first pass. */
+    const WINDOW = 256 * KIB
+    const hashOf = (data: Uint8Array) => createHash('sha256').update(data).digest('hex')
+    const backlog = charxLimits.backlogBytes
+
+    afterEach(() => {
+        charxLimits.backlogBytes = backlog
+    })
+
+    test('per-call bound: a module above one piece imports, no read asks for more than 4 MiB, the file is never read whole before its first asset is saved, every record comes back from its own place, and the handle is closed', async () => {
+        const records = Array.from({ length: 6 }, (_, i) => patterned(900 * KIB, i + 1))
+        const bytes = risumBytes({ records })
+        expect(bytes.length).toBeGreaterThan(CALL_CAP)
+        h.files.set('C:\\mods\\Big.risum', bytes)
+        //One record in flight at a time, so the reader cannot run ahead of the saves.
+        charxLimits.backlogBytes = 1
+
+        await importOpenedFiles(['C:\\mods\\Big.risum'])
+
+        expect(h.errors).toEqual([])
+        expect(h.saves.map((save) => save.hash)).toEqual(records.map(hashOf))
+        expect(h.saves[0].bytesRead).toBeLessThanOrEqual(WINDOW + 900 * KIB + 16 * KIB)
+        expect(Math.max(...h.readSizes)).toBeLessThanOrEqual(CALL_CAP)
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a module whose record count does not match its asset list is refused before any asset is saved, and its handle is closed', async () => {
+        h.files.set('/mods/Mismatch.risum', risumBytes({ records: [patterned(500, 1), patterned(500, 2)], listed: 3 }))
+
+        await importOpenedFiles(['/mods/Mismatch.risum'])
+
+        expect(h.saves).toEqual([])
+        expect(h.last).toBe('error:' + language.errors.noData)
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a module cut short is refused before any asset is saved, and its handle is closed', async () => {
+        const full = risumBytes({ records: [patterned(500, 1), patterned(500, 2)] })
+        h.files.set('/mods/Cut.risum', full.slice(0, full.length - 300))
+
+        await importOpenedFiles(['/mods/Cut.risum'])
+
+        expect(h.saves).toEqual([])
+        expect(h.last).toBe('error:' + language.moduleFileIncomplete)
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a module whose assets cannot be saved fails with the save count, and its handle is closed', async () => {
+        h.files.set('/mods/Failing.risum', risumBytes({ records: [patterned(500, 1), patterned(500, 2)] }))
+        h.saveFails = 'storage full'
+
+        await importOpenedFiles(['/mods/Failing.risum'])
+
+        expect(h.last).toBe('error:Failed to save 2 assets')
+        expect(h.openHandles).toBe(0)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// A card image the operating system hands to the desktop app: read in pieces through one shared handle
+// ---------------------------------------------------------------------------------------------
+
+describe('importOpenedFiles with a PNG card', () => {
+    const KIB = 1024
+    /** The read-ahead window of one pass over the card. */
+    const WINDOW = 256 * KIB
+    const hashOf = (data: Uint8Array) => createHash('sha256').update(data).digest('hex')
+
+    function cardWithAssets(name: string, assets: Uint8Array[]): Uint8Array {
+        const card = JSON.stringify({
+            spec: 'chara_card_v2',
+            spec_version: '2.0',
+            data: {
+                name, description: 'd', first_mes: 'hi', character_version: '1',
+                extensions: { risuai: { additionalAssets: assets.map((_, i) => [`a${i}`, `__asset:${i}`, 'bin']) } },
+            },
+        })
+        const text = (key: string, value: string) => pngChunk('tEXt', new U8([...enc.encode(key), 0, ...enc.encode(value)]))
+        const parts = [
+            new U8([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            pngChunk('IHDR', new U8(13).fill(1)),
+            pngChunk('IDAT', new U8(20).fill(2)),
+            ...assets.map((asset, i) => text(`chara-ext-asset_:${i}`, Buffer.from(asset).toString('base64'))),
+            text('chara', Buffer.from(card).toString('base64')),
+            pngChunk('IEND', new U8(0)),
+        ]
+        const out = new U8(parts.reduce((n, p) => n + p.length, 0))
+        let at = 0
+        for (const p of parts) { out.set(p, at); at += p.length }
+        return out
+    }
+
+    test('per-call bound: a card above one piece imports, no read asks for more than 4 MiB, the file is not read whole before its first asset is saved, every asset comes back from its own place, and the handle is closed', async () => {
+        const assets = Array.from({ length: 6 }, (_, i) => patterned(900 * KIB, i + 1))
+        const bytes = cardWithAssets('BigCard', assets)
+        expect(bytes.length).toBeGreaterThan(CALL_CAP)
+        h.files.set('C:\\cards\\BigCard.png', bytes)
+
+        await importOpenedFiles(['C:\\cards\\BigCard.png'])
+
+        expect(h.errors).toEqual([])
+        expect(names()).toEqual(['BigCard'])
+        expect(h.saves.slice(0, 6).map((save) => save.hash)).toEqual(assets.map(hashOf))
+        expect(h.saves[0].bytesRead).toBeLessThanOrEqual(2 * WINDOW + Math.ceil(900 * KIB / 3) * 4 + 16 * KIB)
+        expect(Math.max(...h.readSizes)).toBeLessThanOrEqual(CALL_CAP)
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a card cut inside an asset is refused before any asset is saved, and its handle is closed', async () => {
+        const bytes = cardWithAssets('Cut', [patterned(500, 1), patterned(500, 2)])
+        h.files.set('/cards/Cut.png', bytes.slice(0, 120))
+
+        await importOpenedFiles(['/cards/Cut.png'])
+
+        expect(h.saves).toEqual([])
+        expect(h.last).toBe('error:' + language.cardFileIncomplete)
         expect(h.openHandles).toBe(0)
     })
 })

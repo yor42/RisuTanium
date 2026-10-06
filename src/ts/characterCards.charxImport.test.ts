@@ -42,6 +42,8 @@ const h = vi.hoisted(() => {
         latePushThrow: false,
         /** the most bytes any one importer buffer received since the last reset of the append statistics */
         maxEntryBytes: 0,
+        /** whether the page runs on the self-hosted Node server */
+        node: false,
     }
 })
 
@@ -51,7 +53,7 @@ vi.mock('uuid', () => ({
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
-    isNodeServer: false,
+    get isNodeServer() { return h.node },
 }) as unknown as typeof import('src/ts/platform'))
 
 vi.mock(import('src/ts/upstreamAgreement'), () => ({
@@ -226,6 +228,7 @@ import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
 import { CharXImporter, CharXWriter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
 import { checkCharOrder, type VirtualWriter } from 'src/ts/globalApi.svelte'
 import { changeChar } from 'src/ts/characters'
+import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
 import { language } from 'src/lang'
 
 // ---------------------------------------------------------------------------------------------
@@ -383,7 +386,7 @@ const tick = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 // Running an import and describing what it did
 // ---------------------------------------------------------------------------------------------
 
-type Input = 'file' | 'chunked-file' | 'uint8array' | 'buffer' | 'stream'
+type Input = 'file' | 'chunked-file' | 'uint8array' | 'buffer' | 'stream' | 'source'
 type Outcome = {
     returned: number | null | undefined
     characters: Array<Record<string, unknown>>
@@ -414,18 +417,20 @@ function reset() {
     h.lateOndataError = false
     h.latePushThrow = false
     h.maxEntryBytes = 0
+    h.node = false
     vi.mocked(changeChar).mockClear()
     vi.mocked(checkCharOrder).mockClear()
     Object.assign(charxLimits, defaultLimits)
 }
 
-function dataFor(bytes: Uint8Array, name: string, input: Input): File | Uint8Array | ReadableStream<Uint8Array> {
+function dataFor(bytes: Uint8Array, name: string, input: Input): File | Uint8Array | ImportSource | ReadableStream<Uint8Array> {
     switch (input) {
         case 'file': return fileOf(bytes, name)
         case 'chunked-file': return chunkedFile(bytes, name)
         case 'uint8array': return new U8(bytes)
         case 'buffer': return Buffer.from(bytes)
         case 'stream': return chunkedStream(bytes, 997)
+        case 'source': return importSourceOfBytes(name, bytes)
     }
 }
 
@@ -1175,7 +1180,7 @@ describe('charx size limits: refusal before anything is saved', () => {
     test('the size refusal comes from the Uint8Array and stream inputs as well, never as an incomplete file', async () => {
         charxLimits.assetBytes = 2 * MIB
         const z = await writerArchive(replaceAsset(cardEntries(), 'assets/b.bin', zeros(3 * MIB)), 6)
-        for (const input of ['uint8array', 'buffer', 'stream', 'chunked-file'] as const) {
+        for (const input of ['uint8array', 'buffer', 'stream', 'chunked-file', 'source'] as const) {
             reset()
             charxLimits.assetBytes = 2 * MIB
             const out = await runImport(z, 'card.charx', input)
@@ -1183,6 +1188,48 @@ describe('charx size limits: refusal before anything is saved', () => {
             expect(out.errors, input).toEqual([sizeMessage('assets/b.bin', 2)])
             expect(out.characters, input).toEqual([])
         }
+    })
+})
+
+describe('charx size limits on the Node server', () => {
+    test('an asset the directory declares over the 100 MiB write limit is refused with a message naming the limit before anything is saved', async () => {
+        h.node = true
+        const z = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 101 * MIB)
+        expectRefusedBeforeSaving(await runImport(z, 'card.charx', 'file'), 'declared 101 MiB on Node', sizeMessage('assets/a.bin', 100))
+    })
+
+    test('the same archive is not refused for its size off the Node server, where 200 MiB is the limit (guard)', async () => {
+        const z = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 101 * MIB)
+        const out = await runImport(z, 'card.charx', 'file')
+        expect(out.errors).toEqual([])
+        expect(out.characters).toHaveLength(1)
+    })
+
+    test('the card.json and module.risum limit stays 50 MiB on the Node server (guard)', async () => {
+        h.node = true
+        const z = await writerArchive([...cardEntries().filter(([k]) => k !== 'card.json'), ['card.json', paddedCard(51 * MIB)]], 6)
+        expectRefusedBeforeSaving(await runImport(z, 'card.charx', 'file'), 'card.json 51 MiB on Node', sizeMessage('card.json', 50))
+    }, 240000)
+})
+
+describe('a charx read through an import source', () => {
+    test('imports the same character and assets as the File it was read from', async () => {
+        const z = await writerArchive(cardEntries(), 6)
+        const fromFile = await runImport(z, 'card.charx', 'file')
+        reset()
+        const fromSource = await runImport(z, 'card.charx', 'source')
+
+        expect(fromSource.errors).toEqual([])
+        expect(fromSource.thrown).toBeNull()
+        expect(fromSource.savedIds).toEqual(fromFile.savedIds)
+        expect(fromSource.characters).toEqual(fromFile.characters)
+    })
+
+    test('a cut archive is refused as incomplete and nothing is saved', async () => {
+        const z = await writerArchive(cardEntries(), 6)
+        const out = await runImport(z.subarray(0, z.length - 40), 'card.charx', 'source')
+        expect(out.saveCalls).toBe(0)
+        expect(out.errors).toEqual([language.cardFileIncomplete])
     })
 })
 

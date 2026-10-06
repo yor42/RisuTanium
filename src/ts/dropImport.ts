@@ -7,6 +7,7 @@ import { importErrorMessage } from "./process/moduleRefusal"
 import { DBState } from "./stores.svelte"
 import { importPreset } from "./storage/database.svelte"
 import { withBusy } from "./process/memory/busyActions"
+import { importSourceOfFile } from "./importSource"
 
 /**
  * Imports the one file dropped on the app, by its name: a preset, a module, or otherwise a character card.
@@ -25,9 +26,13 @@ async function importDropped(file:File){
             await importPreset({ name: file.name, data })
             alertNormal(language.successImport)
         } else if (name.endsWith('.risum')) {
-            const data = new Uint8Array(await file.arrayBuffer())
-            const module = await readModule(Buffer.from(data))
-            DBState.db.modules.push(module)
+            const source = importSourceOfFile(file)
+            try {
+                const module = await readModule(source)
+                DBState.db.modules.push(module)
+            } finally {
+                await source.close()
+            }
             alertNormal(language.successImport)
         } else {
             await importCharacterProcess({

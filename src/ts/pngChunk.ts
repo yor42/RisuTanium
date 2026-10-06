@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 import crc32 from 'crc/crc32';
 import { AppendableBuffer, VirtualWriter, blobToUint8Array } from './byteBuffer';
 import type { LocalWriter } from './globalApi.svelte';
+import { WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource } from './importSource';
 
 class StreamChunkWriter{
     constructor(private data:Uint8Array, private writer:LocalWriter|WritableStreamDefaultWriter<Uint8Array>|VirtualWriter){
@@ -173,32 +174,33 @@ export type PngCardScan = {
     iendReached: boolean
     /** a tEXt chunk keyed `chara` or `ccv3` was seen */
     hasCardData: boolean
+    /** every chunk up to and including IEND, in file order; only with the `layout` option */
+    chunks?: PngLayoutChunk[]
+    /** the bytes of the signature and of every chunk that is not tEXt, which are the card's image; only with the `layout` option */
+    imageBytes?: number
 }
 
-type ByteSource = {
-    size: number
-    read: (start:number, end:number) => Promise<Uint8Array>
+/** Where one chunk of a PNG stands, as the first pass saw it. */
+export type PngLayoutChunk = {
+    /** offset of the chunk's length field */
+    start: number
+    /** length of the chunk's body */
+    length: number
+    /** the four type bytes, decoded */
+    type: string
+    /** the key of a tEXt chunk whose body holds a NUL within its first 70 bytes, otherwise null */
+    key: string | null
+    /** offset inside the body where the value of a keyed tEXt chunk starts, otherwise 0 */
+    valueStart: number
 }
 
-/** `read` must stay inside [0, size]. The returned view is only valid until the next `read`. */
-function byteSourceOf(data:File|Uint8Array, windowSize:number):ByteSource{
-    if(data instanceof Uint8Array){
-        return {size: data.length, read: async (start, end) => data.subarray(start, end)}
-    }
-    let windowStart = 0
-    let windowBytes = new Uint8Array(0)
-    return {
-        size: data.size,
-        read: async (start, end) => {
-            if(start < windowStart || end > windowStart + windowBytes.length){
-                const to = Math.min(data.size, start + Math.max(windowSize, end - start))
-                windowBytes = new Uint8Array(await data.slice(start, to).arrayBuffer())
-                windowStart = start
-            }
-            return windowBytes.subarray(start - windowStart, end - windowStart)
-        }
-    }
-}
+export const PNG_SIGNATURE_BYTES = 8
+export const PNG_CHUNK_OVERHEAD_BYTES = 12
+export const PNG_TEXT_KEY_SCAN_BYTES = TEXT_KEY_SCAN_LIMIT
+
+const sourceOfPngData = (data:File|Uint8Array|ImportSource):ImportSource => isImportSource(data)
+    ? data
+    : data instanceof Uint8Array ? importSourceOfBytes('card.png', data) : importSourceOfFile(data)
 
 export const PngChunk = {
     /**
@@ -208,17 +210,23 @@ export const PngChunk = {
      * its CRC too. With 1 to 7 bytes left at a chunk boundary the file is complete only if they begin an IEND header.
      * IEND ends the walk and bytes after it are ignored. The asset count is the number of asset chunks that
      * readGenerator yields for the same input, whether or not the file is cut.
-     * A File is read through windows of `windowSize` bytes; a read that leaves the window loads a new one.
+     * The walk reads through a read-ahead window of `windowSize` bytes; a header that follows a long skip is read on
+     * its own, so a chunk body is not loaded because the walk passed it.
+     * With `layout` it also reports every chunk it walked and the size of the image, for a second pass that reads the
+     * chunks it needs by offset.
      */
-    scanCard: async (data:File|Uint8Array, arg:{windowSize?:number} = {}):Promise<PngCardScan> => {
-        const source = byteSourceOf(data, Math.max(1, arg.windowSize ?? DEFAULT_SCAN_WINDOW))
+    scanCard: async (data:File|Uint8Array|ImportSource, arg:{windowSize?:number, layout?:boolean} = {}):Promise<PngCardScan> => {
+        const source = sourceOfPngData(data)
         const size = source.size
+        const reader = new WindowedReader(source, size, Math.max(1, arg.windowSize ?? DEFAULT_SCAN_WINDOW))
         const result:PngCardScan = {assetCount: 0, cut: false, iendReached: false, hasCardData: false}
-        let pos = 8
+        const chunks:PngLayoutChunk[] = []
+        let imageBytes = PNG_SIGNATURE_BYTES
+        let pos = PNG_SIGNATURE_BYTES
         while(size - pos > 0){
             const left = size - pos
             if(left < 8){
-                const rest = await source.read(pos, size)
+                const rest = await reader.read(pos, size)
                 for(let i=0;i<rest.length;i++){
                     if(rest[i] !== IEND_HEADER[i]){
                         result.cut = true
@@ -227,18 +235,22 @@ export const PngChunk = {
                 }
                 break
             }
-            const header = await source.read(pos, pos + 8)
-            const len = readUint32(header, 0)
-            if(new TextDecoder().decode(header.subarray(4, 8)) === 'IEND'){
+            //The header and the start of a tEXt body come in one read, so a long skip costs one small read, not a window.
+            const head = await reader.read(pos, Math.min(size, pos + 8 + TEXT_KEY_SCAN_LIMIT))
+            const len = readUint32(head, 0)
+            const type = new TextDecoder().decode(head.subarray(4, 8))
+            if(type === 'IEND'){
                 result.iendReached = true
+                chunks.push({start: pos, length: len, type, key: null, valueStart: 0})
+                imageBytes += Math.min(left, PNG_CHUNK_OVERHEAD_BYTES + len)
                 break
             }
-            if(header[4] === 0x74 && header[5] === 0x45 && header[6] === 0x58 && header[7] === 0x74){ //tEXt
+            if(type === 'tEXt'){
                 if(len > left - 8){
                     result.cut = true
                     break
                 }
-                const found = readTextChunkKey(await source.read(pos + 8, pos + 8 + Math.min(len, TEXT_KEY_SCAN_LIMIT)))
+                const found = readTextChunkKey(head.subarray(8, 8 + Math.min(len, TEXT_KEY_SCAN_LIMIT)))
                 if(found){
                     if(found.key === 'chara' || found.key === 'ccv3'){
                         result.hasCardData = true
@@ -247,16 +259,24 @@ export const PngChunk = {
                         result.assetCount++
                     }
                 }
+                chunks.push({start: pos, length: len, type, key: found?.key ?? null, valueStart: found?.valueStart ?? 0})
             }
-            else if(len > left - 12){
-                result.cut = true
-                break
+            else{
+                if(len > left - PNG_CHUNK_OVERHEAD_BYTES){
+                    result.cut = true
+                    break
+                }
+                chunks.push({start: pos, length: len, type, key: null, valueStart: 0})
+                imageBytes += PNG_CHUNK_OVERHEAD_BYTES + len
             }
-            pos += 12 + len
+            pos += PNG_CHUNK_OVERHEAD_BYTES + len
+        }
+        if(arg.layout){
+            result.chunks = chunks
+            result.imageBytes = imageBytes
         }
         return result
     },
-
     read: (data:Uint8Array, chunkName:string[], arg:{checkCrc?:boolean} = {}) => {
         let pos = 8
         let chunks:{[key:string]:string} = {}
@@ -294,7 +314,7 @@ export const PngChunk = {
         return chunks
     },
 
-    readGenerator: async function*(data:File|Uint8Array|ReadableStream<Uint8Array>, arg:{checkCrc?:boolean,returnTrimed?:boolean} = {}):AsyncGenerator<
+    readGenerator: async function*(data:File|Uint8Array|ImportSource|ReadableStream<Uint8Array>, arg:{checkCrc?:boolean,returnTrimed?:boolean} = {}):AsyncGenerator<
         {key:string,value:string}|AppendableBuffer,null
     >{
         if (data instanceof File) {
@@ -303,6 +323,8 @@ export const PngChunk = {
             } else {
                 data = await blobToUint8Array(data);
             }
+        } else if (isImportSource(data)) {
+            data = data.stream();
         }
         const reader = data instanceof ReadableStream ? new StreamWindow(data.getReader()) : null
         const trimedData = new AppendableBuffer()

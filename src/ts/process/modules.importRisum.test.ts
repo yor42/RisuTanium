@@ -58,7 +58,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     checkPersonaBinded: vi.fn(),
-    selectSingleFile: vi.fn(async () => h.file),
+    selectSingleFileObject: vi.fn(async () => new File([new Uint8Array(h.file.data)], h.file.name)),
     sleep: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 

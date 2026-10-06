@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
     log: [] as string[],
     modules: [] as unknown[],
     imported: undefined as unknown,
-    importer: null as null | ((arg: { name: string, data: Uint8Array, returnCharacter?: boolean }) => Promise<unknown>),
+    importer: null as null | ((arg: { name: string, data: File, returnCharacter?: boolean }) => Promise<unknown>),
     /** what the single alert slot holds: every alert function replaces it */
     last: 'none' as string,
 }))
@@ -51,7 +51,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     checkPersonaBinded: vi.fn(),
-    selectSingleFile: vi.fn(async () => ({ name: 'card.charx', data: new Uint8Array([1, 2, 3]) })),
+    selectSingleFileObject: vi.fn(async () => new File([new Uint8Array([1, 2, 3])], 'card.charx')),
     sleep: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
@@ -82,7 +82,7 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 
 vi.mock(import('src/ts/characterCards'), () => ({
     exportCharacterCard: vi.fn(),
-    importCharacterProcess: vi.fn(async (arg: { name: string, data: Uint8Array, returnCharacter?: boolean }) => h.importer?.(arg)),
+    importCharacterProcess: vi.fn(async (arg: { name: string, data: File, returnCharacter?: boolean }) => h.importer?.(arg)),
 }) as unknown as typeof import('src/ts/characterCards'))
 
 import { importModule } from 'src/ts/process/modules'

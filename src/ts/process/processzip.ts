@@ -4,6 +4,9 @@ import { asBuffer, Semaphore, sleep } from "../util";
 import { alertStore } from "../alert";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
+import { isNodeServer } from "../platform";
+import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { isImportSource, type ImportSource } from "../importSource";
 
 const MIB = 1024 * 1024;
 const CHUNK_SIZE_BYTES = MIB; // 1MB
@@ -21,8 +24,17 @@ export const charxLimits = {
     backlogBytes: 32 * MIB,
 };
 
+/**
+ * The largest asset an import takes: the asset limit, and never more than one write to the store accepts. The
+ * self-hosted Node server refuses a request body above NODE_BODY_LIMIT_BYTES, so an asset above it can never be saved
+ * there and is refused before anything is saved instead of failing in the middle of the import.
+ */
+export function assetByteLimit(): number {
+    return isNodeServer ? Math.min(charxLimits.assetBytes, NODE_BODY_LIMIT_BYTES) : charxLimits.assetBytes;
+}
+
 function entryLimit(name: string): number {
-    return name === 'card.json' || name === 'module.risum' ? charxLimits.metadataBytes : charxLimits.assetBytes;
+    return name === 'card.json' || name === 'module.risum' ? charxLimits.metadataBytes : assetByteLimit();
 }
 
 // JSON other than card.json is not used by the import.
@@ -210,19 +222,21 @@ const ZIP_MAX_COMMENT_SIZE = 0xFFFF
  *
  * Rejects with a `CharXParseError` of origin 'input' when the tail cannot be read.
  */
-export async function hasZipEndRecord(data: Uint8Array | File): Promise<boolean> {
+export async function hasZipEndRecord(data: Uint8Array | File | ImportSource): Promise<boolean> {
     const { tail } = await readZipTail(data)
     return findEndRecord(tail) >= 0
 }
 
 /** The last bytes of the input that can hold an end record, and where they start in the input. */
-async function readZipTail(data: Uint8Array | File): Promise<{ tail: Uint8Array, start: number }> {
+async function readZipTail(data: Uint8Array | File | ImportSource): Promise<{ tail: Uint8Array, start: number }> {
     try {
-        const size = data instanceof File ? data.size : data.byteLength
+        const size = data instanceof File || isImportSource(data) ? data.size : data.byteLength
         const start = Math.max(0, size - (ZIP_END_RECORD_SIZE + ZIP_MAX_COMMENT_SIZE))
-        const tail = data instanceof File
-            ? new Uint8Array(await data.slice(start).arrayBuffer())
-            : data.subarray(start)
+        const tail = isImportSource(data)
+            ? await data.read(start, size)
+            : data instanceof File
+                ? new Uint8Array(await data.slice(start).arrayBuffer())
+                : data.subarray(start)
         return { tail, start }
     } catch (error) {
         throw new CharXParseError('input', error)
@@ -256,7 +270,7 @@ const ZIP_CENTRAL_RECORD_SIZE = 46
  *
  * Rejects with a `CharXParseError` of origin 'input' when bytes cannot be read.
  */
-async function readZipDirectory(data: Uint8Array | File): Promise<Array<{ name: string, size: number }> | null> {
+async function readZipDirectory(data: Uint8Array | File | ImportSource): Promise<Array<{ name: string, size: number }> | null> {
     const { tail, start } = await readZipTail(data)
     const end = findEndRecord(tail)
     if (end < 0) {
@@ -279,9 +293,11 @@ async function readZipDirectory(data: Uint8Array | File): Promise<Array<{ name: 
     }
     let directory: Uint8Array
     try {
-        directory = data instanceof File
-            ? new Uint8Array(await data.slice(directoryStart, directoryEnd).arrayBuffer())
-            : data.subarray(directoryStart, directoryEnd)
+        directory = isImportSource(data)
+            ? await data.read(directoryStart, directoryEnd)
+            : data instanceof File
+                ? new Uint8Array(await data.slice(directoryStart, directoryEnd).arrayBuffer())
+                : data.subarray(directoryStart, directoryEnd)
     } catch (error) {
         throw new CharXParseError('input', error)
     }
@@ -431,10 +447,11 @@ export class CharXImporter{
     /**
      * High-level method to parse ZIP data from various sources.
      *
-     * Handles three input types:
+     * Handles four input types:
      * - ReadableStream: Streams data chunks as they arrive
      * - Uint8Array: Automatically converted to stream
      * - File: Uses built-in stream() method
+     * - ImportSource: Uses its stream() method; its directory is read by range like a File's
      *
      * parse() rejects with a CharXParseError whose origin says where the first failure came from. Nothing is
      * started, queued or shown after that failure, and the completion promise is never settled.
@@ -457,7 +474,7 @@ export class CharXImporter{
      * await saveCharacter(card, importer.assets)
      * ```
      */
-    async parse(data:Uint8Array|File|ReadableStream<Uint8Array>){
+    async parse(data:Uint8Array|File|ImportSource|ReadableStream<Uint8Array>){
         // Create completion promise at the start of parsing
         this.completionPromise = this.#awaitCompletion()
 
@@ -605,10 +622,15 @@ export class CharXImporter{
     /**
      * Converts various data types to ReadableStream for uniform processing.
      */
-    #toStream(data: Uint8Array|File|ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+    #toStream(data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
         // Already a stream - return as-is
         if(data instanceof ReadableStream){
             return data
+        }
+
+        // An import source streams itself, reading in bounded pieces
+        if(isImportSource(data)){
+            return data.stream()
         }
 
         // File has built-in stream() method

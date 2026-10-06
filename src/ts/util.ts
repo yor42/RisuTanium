@@ -79,6 +79,15 @@ export async function selectSingleFile(ext:string[]){
     }
 }
 
+/**
+ * Lets the user pick one file and hands back the `File` itself, not its bytes, for an import that reads a big file in
+ * pieces. Null when nothing was picked. `selectSingleFile` stays for callers that want the whole file as an array.
+ */
+export async function selectSingleFileObject(ext:string[]):Promise<File|null>{
+    const picked = await selectFileByDom(ext, 'single')
+    return picked?.[0] ?? null
+}
+
 export async function selectMultipleFile(ext:string[]){
     if(!isTauri){
         const v = await selectFileByDom(ext, 'multiple')

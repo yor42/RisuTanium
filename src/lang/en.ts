@@ -2259,6 +2259,13 @@ export const languageEnglish = {
     cardFileIncomplete: "This card file is incomplete or damaged, so it was not imported.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) =>
         `The file "${fileName}" inside this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
+    cardFileChanged: "The card file changed or could not be read while it was being imported, so it was not imported. Try importing it again.",
+    cardImageTooLarge: (limitMiB: number) =>
+        `The image of this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
+    moduleFileIncomplete: "This module file is incomplete or damaged, so it was not imported.",
+    moduleAssetTooLarge: (assetName: string, limitMiB: number) =>
+        `The asset "${assetName}" in this module is larger than the ${limitMiB} MB limit, so the module was not imported.`,
+    moduleFileChanged: "The module file changed or could not be read while it was being imported, so it was not imported. Try importing it again.",
     shareFailed: "The shared files could not be received, so nothing was imported. Try sharing them again.",
     shareEmpty: "The share contained no files, so nothing was imported.",
     shareNotFound: "This share was not found. It may already have been imported, or it may have expired. Try sharing the files again.",

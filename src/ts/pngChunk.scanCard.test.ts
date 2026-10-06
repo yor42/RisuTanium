@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import crc32 from 'crc/crc32'
 import { PngChunk, readTextChunkKey, type PngCardScan } from './pngChunk'
 import { AppendableBuffer } from './byteBuffer'
+import { importSourceOfBytes } from './importSource'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic PNG builder (no real images, no user data)
@@ -227,5 +228,30 @@ describe('PngChunk.scanCard completeness', () => {
         expect(scan).toMatchObject({ assetCount: 50, cut: false, iendReached: true, hasCardData: true })
         expect(bytes.length).toBeGreaterThan(900_000)
         expect(loaded, 'bytes loaded through windows').toBeLessThan(bytes.length / 10)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// An import source stands in for a File (a card opened from the operating system on the desktop)
+// ---------------------------------------------------------------------------------------------
+
+describe('a card read through an import source', () => {
+    async function generated(data: Uint8Array | File | ReturnType<typeof importSourceOfBytes>) {
+        const out: Array<{ key: string, value: string } | number> = []
+        for await (const part of PngChunk.readGenerator(data, { returnTrimed: true })) {
+            out.push(part instanceof AppendableBuffer ? part.buffer.length : part)
+        }
+        return out
+    }
+
+    it.each(cards)('scans %s like the bytes it holds', async (_name, bytes) => {
+        const expected = await PngChunk.scanCard(bytes)
+        for (const windowSize of [undefined, 7, 64]) {
+            expect(await PngChunk.scanCard(importSourceOfBytes('c.png', bytes), { windowSize })).toEqual(expected)
+        }
+    })
+
+    it.each(cards)('yields %s chunk by chunk like the File it was read from', async (_name, bytes) => {
+        expect(await generated(importSourceOfBytes('c.png', bytes))).toEqual(await generated(new File([new U8(bytes)], 'c.png')))
     })
 })

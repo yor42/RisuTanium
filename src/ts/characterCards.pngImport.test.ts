@@ -29,6 +29,8 @@ const h = vi.hoisted(() => {
         password: '',
         /** makes the decryption fail, as it does for a wrong password */
         decryptFails: false,
+        /** the largest asset, and the largest image, an import takes */
+        assetLimit: 200 * 1024 * 1024,
     }
 })
 
@@ -133,6 +135,7 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
 vi.mock(import('src/ts/process/processzip'), () => ({
     CharXImporter: class {},
     CharXWriter: class {},
+    assetByteLimit: () => h.assetLimit,
 }) as unknown as typeof import('src/ts/process/processzip'))
 
 vi.mock(import('src/ts/process/modules'), () => ({
@@ -294,6 +297,7 @@ function reset() {
     h.confirm = true
     h.password = ''
     h.decryptFails = false
+    h.assetLimit = 200 * 1024 * 1024
 }
 
 function describeOutcome(returned: number | null | undefined, thrown: string | null): Outcome {
