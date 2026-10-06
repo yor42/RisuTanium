@@ -37,7 +37,7 @@ jobs:
     name: Sync wiki
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.repository_owner == 'yor42' && github.ref_name == (github.event.repository.default_branch || 'fix/persistence-conflict-platform-hardening')
+    if: github.repository_owner == 'yor42' && github.ref_name == (github.event.repository.default_branch || 'main')
     permissions:
       contents: write
 
