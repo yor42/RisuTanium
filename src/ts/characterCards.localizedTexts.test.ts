@@ -584,7 +584,7 @@ describe('Realm download wait text', () => {
 
     test('guard: English Realm download shows "Downloading..." before the request', async () => {
         failingDownload()
-        await downloadRisuHub('some-id')
+        await downloadRisuHub('some-id', { creator: 'some-creator' })
         expect(h.shown).toEqual(['Downloading...'])
         expect(h.errors).toEqual(['unavailable'])
     })
@@ -593,13 +593,13 @@ describe('Realm download wait text', () => {
         const expected = koAlert('downloading')
         changeLanguage('ko')
         failingDownload()
-        await downloadRisuHub('some-id')
+        await downloadRisuHub('some-id', { creator: 'some-creator' })
         expect(h.shown).toEqual([expected])
     })
 
     test('guard: a forced-redirect Realm download shows no wait text', async () => {
         failingDownload()
-        await downloadRisuHub('some-id', { forceRedirect: true })
+        await downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' })
         expect(h.shown).toEqual([])
     })
 })

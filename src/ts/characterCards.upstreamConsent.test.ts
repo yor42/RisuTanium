@@ -128,7 +128,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { downloadRisuHub, getRealmInfo, handlePendingRealmLink } from 'src/ts/characterCards'
-import { alertStore } from 'src/ts/stores.svelte'
+import { DBState, alertStore } from 'src/ts/stores.svelte'
 import {
     UPSTREAM_AGREEMENT_ACCEPT,
     UPSTREAM_AGREEMENT_DECLINE,
@@ -317,5 +317,102 @@ describe('downloadRisuHub, on Decline', () => {
         await pending
 
         expect(fetch).not.toHaveBeenCalled()
+    })
+
+    // Guard: without a creator in hand, the realm info lookup that resolves it is a network
+    // request too, so it must wait for the answer to the agreement prompt.
+    test('without a creator: the creator lookup is not sent while the prompt is open', async () => {
+        const pending = downloadRisuHub('some-id')
+        await waitFor(() => get(alertStore).type === 'tos', 'downloadRisuHub to post the agreement prompt')
+
+        expect(fetch).not.toHaveBeenCalled()
+
+        alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_DECLINE })
+        await pending
+        expect(fetch).not.toHaveBeenCalled()
+    })
+})
+
+describe('downloadRisuHub, on Accept, without a creator from the caller', () => {
+    const downloadUrl = 'https://realm.risuai.net/api/v1/download/dynamic/some-id?cors=true'
+
+    afterEach(() => {
+        DBState.db.blockedRealmCreators = []
+    })
+
+    async function acceptPrompt(pending: Promise<unknown>): Promise<void> {
+        await waitFor(() => get(alertStore).type === 'tos', 'downloadRisuHub to post the agreement prompt')
+        alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT })
+        await pending
+    }
+
+    // A creator that the info lookup resolves and that is not blocked leaves the download
+    // to proceed; the download request is the second request, after the info request.
+    test('an unblocked creator resolved from the realm info proceeds to the download request', async () => {
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+        vi.mocked(fetch)
+            .mockResolvedValueOnce(jsonResponse(200, { creator: 'creator-b' }))
+            .mockResolvedValueOnce(jsonResponse(500, 'download refused'))
+
+        await acceptPrompt(downloadRisuHub('some-id'))
+
+        expect(fetch).toHaveBeenCalledTimes(2)
+        expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/hub/info/some-id')
+        expect(String(vi.mocked(fetch).mock.calls[1][0])).toBe(downloadUrl)
+        // The download response is consumed: a refusal reaches the user.
+        expect(alertErrorMock).toHaveBeenCalledWith(JSON.stringify('download refused'))
+    })
+
+    test('realm info without a creator field proceeds to the download request', async () => {
+        vi.mocked(fetch)
+            .mockResolvedValueOnce(jsonResponse(200, {}))
+            .mockResolvedValueOnce(jsonResponse(500, 'download refused'))
+
+        await acceptPrompt(downloadRisuHub('some-id'))
+
+        expect(fetch).toHaveBeenCalledTimes(2)
+        expect(String(vi.mocked(fetch).mock.calls[1][0])).toBe(downloadUrl)
+        expect(alertErrorMock).toHaveBeenCalledWith(JSON.stringify('download refused'))
+    })
+
+    test('a failed realm info request shows the error and sends no download request', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(500, 'info unavailable'))
+
+        await acceptPrompt(downloadRisuHub('some-id'))
+
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/hub/info/some-id')
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(String(alertErrorMock.mock.calls[0][0])).toContain('info unavailable')
+    })
+})
+
+describe('downloadRisuHub, on Accept, with a blocked creator', () => {
+    afterEach(() => {
+        DBState.db.blockedRealmCreators = []
+    })
+
+    test('a creator passed by the caller that is blocked sends nothing', async () => {
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+
+        const pending = downloadRisuHub('some-id', { creator: 'creator-a' })
+        await waitFor(() => get(alertStore).type === 'tos', 'downloadRisuHub to post the agreement prompt')
+        alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT })
+        await pending
+
+        expect(fetch).not.toHaveBeenCalled()
+    })
+
+    test('a creator resolved from the realm info that is blocked stops after the info request', async () => {
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+        vi.mocked(fetch).mockResolvedValue(jsonResponse(200, { creator: 'creator-a' }))
+
+        const pending = downloadRisuHub('some-id')
+        await waitFor(() => get(alertStore).type === 'tos', 'downloadRisuHub to post the agreement prompt')
+        alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT })
+        await pending
+
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/hub/info/some-id')
     })
 })

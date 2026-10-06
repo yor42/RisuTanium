@@ -613,6 +613,7 @@ export function setDatabase(data:Database){
     data.showDeprecatedTriggerV2 ??= false
     data.returnCSSError ??= true
     data.realmDirectOpen ??= false
+    data.blockedRealmCreators ??= []
     data.checkCorruption ??= false
     data.toggleConfirmRecommendedPreset ??= false
     data.useExperimentalGoogleTranslator ??= false
@@ -834,6 +835,11 @@ export interface RisuPersona {
     embeddedModule?:RisuModule
 }
 
+export type BlockedRealmCreator = {
+    id: string
+    name: string
+}
+
 export interface Database{
     characters: (character|groupChat)[],
     apiType: string
@@ -983,6 +989,7 @@ export interface Database{
     botSettingAtStart:false
     NAIsettings:NAISettings
     hideRealm:boolean
+    blockedRealmCreators:BlockedRealmCreator[]
     colorScheme:ColorScheme
     colorSchemeName:string
     customColorScheme:ColorScheme

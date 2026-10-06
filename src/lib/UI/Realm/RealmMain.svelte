@@ -8,6 +8,7 @@
     import RisuHubIcon from "./RealmHubIcon.svelte";
     import { MobileGUI, RealmInitialOpenChar } from "src/ts/stores.svelte";
     import RealmPopUp from "./RealmPopUp.svelte";
+    import RealmBlockedCreators from "./RealmBlockedCreators.svelte";
     import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
 
     // Whether the upstream-services agreement still needs confirming is read
@@ -26,6 +27,7 @@
 
     let search = $state('')
     let menuOpen = $state(false)
+    let blockedCreatorsOpen = $state(false)
     let nsfw = $state(false)
 
     // Monotonic generation counter: getHub() has roughly eight independent
@@ -282,7 +284,18 @@
 {/if}
 
 {#if openedData}
-    <RealmPopUp bind:openedData={openedData} />
+    <RealmPopUp bind:openedData={openedData} onBlock={(creatorId) => {
+        charas = charas.filter((card) => card.creator !== creatorId)
+        if(charas.length === 0 && hubStatus === 'populated'){
+            hubStatus = 'empty'
+        }
+    }} />
+{/if}
+
+{#if blockedCreatorsOpen}
+    <RealmBlockedCreators onClose={() => {
+        blockedCreatorsOpen = false
+    }} onUnblock={getHub} />
 {/if}
 
 
@@ -301,6 +314,11 @@
                 </button>
             </h1>
             <div class=" mt-2 w-full border-t-2 border-t-bgcolor"></div>
+            <button class="w-full hover:bg-selected p-4" onclick={(e) => {
+                e.stopPropagation()
+                menuOpen = false
+                blockedCreatorsOpen = true
+            }}>{language.manageBlockedRealmCreators}</button>
             <button class="w-full hover:bg-selected p-4" onclick={(async (e) => {
                 e.stopPropagation()
                 menuOpen = false

@@ -22,6 +22,7 @@ import { ModuleRefusal } from "./process/moduleRefusal"
 import { readUserFile } from "./storage/tauriUserFile"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
+import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -509,6 +510,24 @@ async function importRccCard(charaData:CharacterCardV2Risu, img:Uint8Array, asse
 // handlePendingRealmLink() once boot reaches loadedStore.
 let pendingRealmPath: string | null = null
 
+async function fetchRealmInfo(realmPath: string): Promise<hubType> {
+    const res = await fetch(`${hubURL}/hub/info/${realmPath}`)
+    if(res.status !== 200){
+        throw new Error(await res.text())
+    }
+
+    return await res.json()
+}
+
+function canAccessRealmCreator(creator?: string): boolean {
+    if(isRealmCreatorBlocked(DBState.db.blockedRealmCreators ?? [], creator)){
+        alertNormal(language.realmCreatorBlocked)
+        return false
+    }
+
+    return true
+}
+
 export const getRealmInfo = async (realmPath:string): Promise<'consent'|void> => {
     const url = new URL(location.href);
     url.searchParams.delete('realm');
@@ -524,12 +543,15 @@ export const getRealmInfo = async (realmPath:string): Promise<'consent'|void> =>
         return 'consent'
     }
 
-    const res = await fetch(`${hubURL}/hub/info/${realmPath}`)
-    if(res.status !== 200){
-        alertError(await res.text())
-        return
+    try {
+        const realmInfo = await fetchRealmInfo(realmPath)
+        if(!canAccessRealmCreator(realmInfo.creator)){
+            return
+        }
+        showRealmInfoStore.set(realmInfo)
+    } catch (error) {
+        alertError(error)
     }
-    showRealmInfoStore.set(await res.json())
 }
 
 /**
@@ -2005,11 +2027,12 @@ export async function getRisuHub(arg:{
         // realm payload gets misdiagnosed as malformed JSON when it was never read at all.
         try {
             const jso = await da.json()
+            const blocked = DBState.db.blockedRealmCreators ?? []
             if(Array.isArray(jso)){
-                return { ok: true, cards: jso, additionalHTML: '' }
+                return { ok: true, cards: filterBlockedRealmCards(jso, blocked), additionalHTML: '' }
             }
             if(jso && Array.isArray(jso.cards)){
-                return { ok: true, cards: jso.cards, additionalHTML: jso.additionalHTML || '' }
+                return { ok: true, cards: filterBlockedRealmCards(jso.cards, blocked), additionalHTML: jso.additionalHTML || '' }
             }
             return { ok: false, reason: 'malformed' }
         } catch {
@@ -2024,17 +2047,33 @@ export async function getRisuHub(arg:{
 
 export function downloadRisuHub(id:string, arg:{
     forceRedirect?: boolean
+    creator?: string
 } = {}) {
     return withBusy('import', () => downloadRealmCard(id, arg))
 }
 
 async function downloadRealmCard(id:string, arg:{
     forceRedirect?: boolean
+    creator?: string
 }) {
     try {
         if(!(await askUpstreamAgreement())){
             return
         }
+        let creator = arg.creator
+        if(!creator){
+            try {
+                const realmInfo = await fetchRealmInfo(id)
+                creator = realmInfo.creator
+            } catch (error) {
+                alertError(error)
+                return
+            }
+        }
+        if(!canAccessRealmCreator(creator)){
+            return
+        }
+
         if(!arg.forceRedirect){
             alertStore.set({
                 type: "wait",

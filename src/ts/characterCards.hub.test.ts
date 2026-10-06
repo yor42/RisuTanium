@@ -128,6 +128,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { getRisuHub, hubURL } from 'src/ts/characterCards'
+import { DBState } from 'src/ts/stores.svelte'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests, upstreamAccepted } from 'src/ts/upstreamAgreement'
 
 /** A `hubType`-shaped card, minimal but valid for the tests below. */
@@ -220,6 +221,36 @@ describe('getRisuHub -- success shapes', () => {
         const result = await getRisuHub(arg)
 
         expect(result).toEqual({ ok: true, cards, additionalHTML: '<p>hello</p>' })
+    })
+})
+
+describe('getRisuHub -- blocked creators', () => {
+    afterEach(() => {
+        DBState.db.blockedRealmCreators = []
+    })
+
+    const blockedCard = { ...makeCard('blocked'), creator: 'creator-a' }
+    const otherCard = { ...makeCard('other'), creator: 'creator-b' }
+    const anonymousCard = makeCard('anonymous')
+
+    test('a bare array body drops cards of blocked creators and keeps the rest', async () => {
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+        vi.mocked(fetch).mockResolvedValue(jsonResponse(200, [blockedCard, otherCard, anonymousCard]))
+
+        const result = await getRisuHub(arg)
+
+        expect(result).toEqual({ ok: true, cards: [otherCard, anonymousCard], additionalHTML: '' })
+    })
+
+    test('a { cards } body drops cards of blocked creators and keeps the rest', async () => {
+        DBState.db.blockedRealmCreators = [{ id: 'creator-a', name: 'A' }]
+        vi.mocked(fetch).mockResolvedValue(
+            jsonResponse(200, { cards: [blockedCard, otherCard, anonymousCard], additionalHTML: '<p>hi</p>' })
+        )
+
+        const result = await getRisuHub(arg)
+
+        expect(result).toEqual({ ok: true, cards: [otherCard, anonymousCard], additionalHTML: '<p>hi</p>' })
     })
 })
 
