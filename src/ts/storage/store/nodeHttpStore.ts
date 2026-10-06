@@ -1,7 +1,7 @@
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreError, StoreInvalidKeyError, StoreVersionConflictError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, versionOf } from './guards'
-import { nodeAddressableViolation, nodeCreatableViolation } from './keyRules'
+import { nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolation } from './keyRules'
 
 /**
  * The byte store on the self-hosted Node server (`server/node/server.cjs`). The
@@ -13,6 +13,9 @@ import { nodeAddressableViolation, nodeCreatableViolation } from './keyRules'
  * - `/api/write` replaces the file through a temp file and a rename, and answers
  *   the new revision; `if-match-revision` makes it conditional.
  * - `/api/remove` takes `$$`-joined hex keys and positionally aligned revisions.
+ * - `/api/asset/<hex>` serves an `assets/` key to a web view that cannot send a
+ *   header: the token rides in the query, so `urlFor` builds the whole URL from
+ *   the key alone and reads nothing.
  * - `/api/list` answers the decoded names of the files whose names are whole,
  *   even-length hex (case-insensitive). Write temps, the revision file and the
  *   server's other files are not in it. Two files whose hex differs only in
@@ -39,6 +42,11 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 export interface NodeHttpStoreOptions {
     /** The value of the `risu-auth` header, produced fresh for each request. May reject; the request is then not sent. */
     authHeader: () => Promise<string>
+    /**
+     * The asset-read token that goes in the query of an asset URL. The store
+     * offers `urlFor` only when this is given; without it a caller reads bytes.
+     */
+    assetToken?: () => Promise<string>
     /** Defaults to the global `fetch`, looked up per call. */
     fetch?: FetchLike
     /** Prepended to every endpoint path; defaults to the page's own origin. */
@@ -256,7 +264,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         return { key: entry.key, hex: hexOf(entry.key), version: versionOf(entry.condition) }
     }
 
-    return {
+    const store: ByteStore = {
         capabilities: { conditionalWrites: true },
 
         async read(key: string): Promise<ReadResult> {
@@ -371,4 +379,17 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             return (await readState(key, 'HEAD')).exists
         },
     }
+
+    const assetToken = options.assetToken
+    if (assetToken !== undefined) {
+        store.urlFor = async (key: string): Promise<string> => {
+            checkAddressable(key)
+            const reason = nodeAssetRouteViolation(key)
+            if (reason !== null) {
+                throw new StoreInvalidKeyError(key, reason)
+            }
+            return `${baseUrl}/api/asset/${hexOf(key)}?risu-auth=${encodeURIComponent(await assetToken())}`
+        }
+    }
+    return store
 }

@@ -144,6 +144,30 @@ export function nodeAddressableViolation(key: string): string | null {
     return null
 }
 
+/**
+ * The reason the Node server's asset route (`GET /api/asset/<hex>`) refuses
+ * `key`, or `null` when it serves it. The server holds the same rule in
+ * `server/node/assetRoute.cjs` (`isRouteServedKey`); the route and `urlFor`
+ * must agree on every key, and one table test runs both.
+ */
+export function nodeAssetRouteViolation(key: string): string | null {
+    if (typeof key !== 'string' || !key.startsWith('assets/')) {
+        return 'the asset route serves only keys under assets/'
+    }
+    if (!isWellFormedUtf16(key)) {
+        return 'a key is well-formed UTF-16'
+    }
+    if (key.includes('\\')) {
+        return 'a key holds no backslash'
+    }
+    for (const segment of key.split('/')) {
+        if (segment === '' || segment === '.' || segment === '..') {
+            return 'a key has no empty, . or .. segment'
+        }
+    }
+    return null
+}
+
 /** Keys IndexedDB can address: any non-empty string. */
 export function indexedDbAddressableViolation(key: string): string | null {
     if (typeof key !== 'string' || key.length === 0) {

@@ -30,9 +30,10 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * system before it resolves. The granted file system surface has no `stat` and no exclusive rename, so
  * this store cannot enforce `ifVersion` and reports `conditionalWrites: false`.
  *
- * It is the one store that offers `urlFor`: the web view loads a file from the
- * asset protocol by its absolute path, so the URL comes from the key alone and
- * no byte is read. It is also the one that offers `openWriter`, a write that
+ * It offers `urlFor`: the web view loads a file from the asset protocol by its
+ * absolute path, so the URL comes from the key alone and no byte is read (the
+ * Node store offers one too, for the keys its asset route serves). It is the
+ * only store that offers `openWriter`, a write that
  * arrives in pieces over the chunk commands, so the caller never holds the whole file.
  */
 

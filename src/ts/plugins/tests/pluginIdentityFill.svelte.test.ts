@@ -79,7 +79,6 @@ vi.mock(import('../../globalApi.svelte'), () => ({
         getItem: vi.fn(async () => null),
         setItem: vi.fn(async () => {}),
     },
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../globalApi.svelte'))
 
 vi.mock(import('../../stores.svelte'), () => {

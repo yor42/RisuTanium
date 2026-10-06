@@ -50,7 +50,6 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     aiLawApplies: vi.fn(() => false),
     aiWatermarkingLawApplies: vi.fn(() => false),
-    isPlainHttpFileSrc: vi.fn(() => false),
     changeChatTo: vi.fn(),
     foldChatToMessage: vi.fn(),
     getFileSrc: vi.fn(async () => ''),

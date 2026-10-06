@@ -109,7 +109,10 @@ async function selectStore(): Promise<ByteStore> {
             throw new StoreError('The Node server is in use but the storage object is not the Node client.')
         }
         selectedKind = 'node'
-        return createNodeHttpStore({ authHeader: () => backend.authHeader() })
+        return createNodeHttpStore({
+            authHeader: () => backend.authHeader(),
+            assetToken: () => backend.assetReadToken(),
+        })
     }
     const authority = await resolveWebStore(browserCopyBackEnvironment())
     if (authority.kind === 'stopped') {

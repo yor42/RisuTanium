@@ -34,7 +34,6 @@ vi.mock(
                 setItem: vi.fn(async (key: string) => { h.storeWrites.push(key) }),
                 removeItem: vi.fn(async (key: string) => { h.storeWrites.push(key) }),
             },
-            isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
 

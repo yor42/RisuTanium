@@ -110,7 +110,6 @@ vi.mock(import('../../../globalApi.svelte'), () => ({
     checkCharOrder: vi.fn(),
     forageStorage: forageStorageMock,
     getFetchLogs: vi.fn(),
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../../globalApi.svelte'))
 
 vi.mock(import('../../../gui/colorscheme'), () => ({

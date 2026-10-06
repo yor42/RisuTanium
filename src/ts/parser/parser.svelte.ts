@@ -3,7 +3,7 @@ import markdownit from 'markdown-it'
 import { replaceThoughtsBlocks } from './thoughts';
 import { appVer, getCurrentCharacter, getDatabase, type Database, type character, type customscript, type groupChat, type triggerscript } from '../storage/database.svelte';
 import { DBState, selIdState } from '../stores.svelte';
-import { aiWatermarkingLawApplies, getFileSrc, isPlainHttpFileSrc } from '../globalApi.svelte';
+import { aiWatermarkingLawApplies, getFileSrc } from '../globalApi.svelte';
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getChatVar, setChatVar, getGlobalChatVar } from './chatVar.svelte';
 import { processScriptFull } from '../process/scripts';
@@ -430,30 +430,33 @@ function getEmoSrc(emoArr: string[][], emoPaths: AssetPaths) {
     }
 }
 
-// AV-3 (Report 15 §2.2): only Tauri/service-worker results (short URLs, not
-// full `data:` strings) accumulate here. Plain-HTTP getFileSrc results are
-// deliberately never added -- they already go through getFileSrc's own
-// budgeted cache in globalApi.svelte.ts, so pinning a second permanent copy
-// here would make this Map unbounded. getFileSrcCached below skips this Map
-// entirely for that branch.
+// Only short URLs (a file or asset-protocol URL, a service-worker URL, an
+// asset-route URL) accumulate here. A `data:` result is never added, whichever
+// branch of getFileSrc made it: it already sits in getFileSrc's own budgeted
+// cache in globalApi.svelte.ts, so pinning a second permanent copy here would
+// make this Map unbounded. An empty result (no URL could be made) is not kept
+// either, so the next call asks again.
 const fileSrcCache = new Map<string, string>()
 
 async function getFileSrcCached(path:string){
-    // AV-3 (Report 15 §2.2): on plain HTTP, getFileSrc's own cache already
-    // dedupes reads and encodes, so don't also pin a permanent copy here.
-    // isPlainHttpFileSrc must be called in the same tick as getFileSrc, with
-    // no await in between, because getFileSrc picks its branch synchronously
-    // and usingSw can only change once, at boot.
-    if(isPlainHttpFileSrc(path)){
-        return await getFileSrc(path)
-    }
-    let cached = fileSrcCache.get(path)
+    const cached = fileSrcCache.get(path)
     if(cached){
         return cached
     }
     const src = await getFileSrc(path)
-    fileSrcCache.set(path, src)
+    if(src && !src.startsWith('data:')){
+        fileSrcCache.set(path, src)
+    }
     return src
+}
+
+/** Escapes text for use inside a double-quoted HTML attribute. */
+function escapeAttribute(text:string){
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
 }
 
 type AssetPaths = {[key:string]:{
@@ -537,7 +540,7 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
             if(!path){
                 return ''
             }
-            return `<img src="${path}" alt="${path}" style="${assetWidthString} "/>`
+            return `<img src="${path}" alt="${escapeAttribute(name)}" style="${assetWidthString} "/>`
         }
 
         if(type === 'source'){
@@ -585,9 +588,9 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
             case 'path':
                 return p
             case 'img':
-                return `<img src="${p}" alt="${p}" style="${assetWidthString} "/>`
+                return `<img src="${p}" alt="${escapeAttribute(name)}" style="${assetWidthString} "/>`
             case 'image':
-                return `<div class="risu-inlay-image"><img src="${p}" alt="${p}" style="${assetWidthString}"/></div>\n`
+                return `<div class="risu-inlay-image"><img src="${p}" alt="${escapeAttribute(name)}" style="${assetWidthString}"/></div>\n`
             case 'video':
                 return `<video controls autoplay loop><source src="${p}" type="video/mp4"></video>\n`
             case 'video-img':
@@ -603,7 +606,7 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
                 if(match.ext && videoExtensions.includes(match.ext)){
                     return `<video autoplay muted loop><source src="${p}" type="video/mp4"></video>\n`
                 }
-                return `<img src="${p}" alt="${p}" style="${assetWidthString} "/>\n`
+                return `<img src="${p}" alt="${escapeAttribute(name)}" style="${assetWidthString} "/>\n`
             }
             case 'bgm':
                 return `<div risu-ctrl="bgm___auto___${p}" style="display:none;"></div>\n`

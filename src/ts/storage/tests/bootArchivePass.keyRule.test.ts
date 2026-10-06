@@ -60,7 +60,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         keys: () => (h.remote as RemoteLike).keys(),
         realStorage: undefined,
     },
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({

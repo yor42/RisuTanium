@@ -177,7 +177,6 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     toGetter: vi.fn((obj: unknown) => obj),
     requiresFullEncoderReload: { state: false },
     forageStorage: {},
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../globalApi.svelte'))
 
 // The page's byte store, over the in-memory map; every read records the count.

@@ -58,7 +58,6 @@ vi.mock(import('../../alert'), () => ({
 
 vi.mock(import('../../globalApi.svelte'), () => ({
     readImage: vi.fn(async () => undefined),
-    isPlainHttpFileSrc: vi.fn(() => false),
     aiWatermarkingLawApplies: vi.fn(() => false),
     getFileSrc: vi.fn(async () => ''),
     AppendableBuffer: class {},

@@ -45,7 +45,6 @@ vi.mock(
                     remoteStore.delete(key)
                 }),
             },
-            isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
 

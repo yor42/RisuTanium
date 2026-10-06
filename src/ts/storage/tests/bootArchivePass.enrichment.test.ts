@@ -97,7 +97,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         setItem: (key: string, value: Uint8Array) => (h.remote as RemoteLike).setItem(key, value),
         keys: () => (h.remote as RemoteLike).keys(),
     },
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 // Remote character files go through the page's byte store: the Tauri model's

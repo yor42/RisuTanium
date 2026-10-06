@@ -690,30 +690,31 @@ describe('getFileSrc', () => {
         expect(await api.getFileSrc('')).toBe('data:image/png;base64,')
     })
 
-    test('guard: on the Node server without a service worker the data URL is the same string as on the web', async () => {
+    test('on the Node server without a service worker an assets key gets the asset route URL and no byte is read', async () => {
         useNode()
         const server = new FakeNodeServer()
         vi.stubGlobal('fetch', server.fetch)
         server.seed(PNG_KEY, PNG)
         const { api } = await loadWorld()
 
-        expect(await api.getFileSrc(PNG_KEY)).toBe(`data:image/png;base64,${Buffer.from(PNG).toString('base64')}`)
-        expect(server.requestsTo('/api/read')).toHaveLength(1)
+        const src = await api.getFileSrc(PNG_KEY)
+        const url = new URL(src, 'http://localhost')
+
+        expect(url.pathname).toBe(`/api/asset/${Buffer.from(PNG_KEY, 'utf-8').toString('hex')}`)
+        expect(url.searchParams.get('risu-auth')).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/)
+        expect(await api.getFileSrc(PNG_KEY)).toBe(src)
+        expect(server.requestsTo('/api/read')).toHaveLength(0)
     })
 
-    test('guard: the plain-HTTP predicate follows the branch getFileSrc takes on every platform and service worker state', async () => {
+    test('guard: on the Node server a location outside assets still gets the data URL from the bytes', async () => {
+        useNode()
+        const server = new FakeNodeServer()
+        vi.stubGlobal('fetch', server.fetch)
+        server.seed('legacy/pic.png', PNG)
         const { api } = await loadWorld()
 
-        h.platform.isTauri = false
-        api.setUsingSw(false)
-        expect(api.isPlainHttpFileSrc(PNG_KEY)).toBe(true)
-        api.setUsingSw(true)
-        expect(api.isPlainHttpFileSrc(PNG_KEY)).toBe(false)
-        h.platform.isTauri = true
-        api.setUsingSw(false)
-        expect(api.isPlainHttpFileSrc(PNG_KEY)).toBe(false)
-        api.setUsingSw(true)
-        expect(api.isPlainHttpFileSrc(PNG_KEY)).toBe(false)
+        expect(await api.getFileSrc('legacy/pic.png')).toBe(`data:image/png;base64,${Buffer.from(PNG).toString('base64')}`)
+        expect(server.requestsTo('/api/read')).toHaveLength(1)
     })
 })
 

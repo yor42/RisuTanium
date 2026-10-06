@@ -57,7 +57,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => {
         downloadFile: vi.fn(),
         fetchNative: vi.fn(),
         readImage: vi.fn(),
-        isPlainHttpFileSrc: vi.fn(() => false),
         // Only the real (unstubbed) `AssetInput.svelte` needs these: it
         // calls `getFileSrc` for every additionalAsset's own preview and
         // `saveAsset` from its own "+" button, which this harness's sticker

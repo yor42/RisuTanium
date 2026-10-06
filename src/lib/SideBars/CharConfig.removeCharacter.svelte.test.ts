@@ -318,7 +318,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     readImage: vi.fn(),
-    isPlainHttpFileSrc: vi.fn(() => false),
     fetchNative: vi.fn(),
     downloadFile: downloadFileMock,
     checkCharOrder: vi.fn(),

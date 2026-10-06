@@ -46,7 +46,6 @@ vi.mock('src/ts/globalApi.svelte', () => ({
     globalFetch: mocks.globalFetch,
     textifyReadableStream: vi.fn(),
     // AV-3: getFileSrcCached calls this predicate.
-    isPlainHttpFileSrc: vi.fn(() => false),
 }))
 
 vi.mock('src/lang', () => ({

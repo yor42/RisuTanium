@@ -84,7 +84,6 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     toGetter: vi.fn((obj: unknown) => obj),
     requiresFullEncoderReload: { state: false },
     forageStorage: { realStorage: { setItem: vi.fn(), getItem: vi.fn(async () => null), keys: vi.fn(async () => []) } },
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../globalApi.svelte'))
 
 vi.mock(import('../pluginSafety'), () => ({

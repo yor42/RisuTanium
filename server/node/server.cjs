@@ -13,6 +13,7 @@ const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
 const { NODE_BODY_LIMIT_BYTES } = require('./bodyLimit.cjs');
+const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 app.use(express.json({ limit: NODE_BODY_LIMIT_BYTES }));
 app.use(express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }));
@@ -341,6 +342,15 @@ const storageRouteLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Too many requests. Please retry shortly.' }
 });
+// A page loads many assets at once and a media element issues one request per
+// range, so the asset route draws on a bucket apart from the storage routes'.
+const assetRouteLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please retry shortly.' }
+});
 const authRouteLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 2000,
@@ -377,42 +387,61 @@ function normalizeAuthHeader(authHeader) {
     return typeof authHeader === 'string' ? authHeader : '';
 }
 
-async function isAuthorizedJwtHeader(authHeader) {
+// The one parse-and-verify of a `risu-auth` token, shared by every route that
+// takes one. Answers `{ ok: true }`, or `{ ok: false, status, error, log }` with
+// the refusal the HTTP routes send.
+//
+// Without `audience` the token is an ordinary storage token: it carries no
+// `aud` claim and a numeric `exp` that has not passed, so a token that never
+// expires, or one minted for another purpose, opens none of the storage, proxy
+// or websocket routes. With `audience` the token must carry exactly that `aud`;
+// its `exp` may be absent, but a present one must be numeric and not passed.
+async function verifyJwt(authHeader, audience) {
     try {
-        const normalized = normalizeAuthHeader(authHeader);
-        if (!normalized) {
-            return false;
-        }
-
         const [
             jsonHeaderB64,
             jsonPayloadB64,
             signatureB64,
-        ] = normalized.split('.');
+        ] = authHeader.split('.');
 
-        if (!jsonHeaderB64 || !jsonPayloadB64 || !signatureB64) {
-            return false;
-        }
-
+        //alg, typ
         const jsonHeader = JSON.parse(Buffer.from(jsonHeaderB64, 'base64url').toString('utf-8'));
+
+        //iat, exp, pub, aud
         const jsonPayload = JSON.parse(Buffer.from(jsonPayloadB64, 'base64url').toString('utf-8'));
+
+        //signature
         const signature = Buffer.from(signatureB64, 'base64url');
 
-        const now = Math.floor(Date.now() / 1000);
-        if (jsonPayload.exp < now) {
-            return false;
+        const hasAudience = Object.prototype.hasOwnProperty.call(jsonPayload, 'aud');
+        const hasExpiry = Object.prototype.hasOwnProperty.call(jsonPayload, 'exp');
+        const refuseToken = { ok: false, status: 400, error: 'Invalid Token', log: 'Invalid token' };
+
+        if (audience === undefined ? hasAudience : jsonPayload.aud !== audience) {
+            return refuseToken;
+        }
+        if (hasExpiry || audience === undefined) {
+            if (typeof jsonPayload.exp !== 'number' || !Number.isFinite(jsonPayload.exp)) {
+                return refuseToken;
+            }
+            const now = Math.floor(Date.now() / 1000);
+            if (jsonPayload.exp < now) {
+                return { ok: false, status: 400, error: 'Token Expired', log: 'Token expired' };
+            }
         }
 
+        //check if public key is known
         const pubKeyHash = await hashJSON(jsonPayload.pub);
         if (!knownPublicKeysHashes.includes(pubKeyHash)) {
-            return false;
+            return { ok: false, status: 400, error: 'Unknown Public Key', log: 'Unknown public key' };
         }
 
+        //only support ECDSA for now
         if (jsonHeader.alg !== 'ES256') {
-            return false;
+            return { ok: false, status: 400, error: 'Unsupported Algorithm', log: 'Unsupported algorithm' };
         }
 
-        return await crypto.subtle.verify(
+        const isValid = await crypto.subtle.verify(
             {
                 name: 'ECDSA',
                 hash: { name: 'SHA-256' },
@@ -430,9 +459,22 @@ async function isAuthorizedJwtHeader(authHeader) {
             signature,
             Buffer.from(`${jsonHeaderB64}.${jsonPayloadB64}`)
         );
-    } catch {
+
+        if (!isValid) {
+            return { ok: false, status: 400, error: 'Invalid Signature', log: 'Invalid signature' };
+        }
+        return { ok: true };
+    } catch (error) {
+        return { ok: false, status: 500, error: 'Internal Server Error', log: error };
+    }
+}
+
+async function isAuthorizedJwtHeader(authHeader) {
+    const normalized = normalizeAuthHeader(authHeader);
+    if (!normalized) {
         return false;
     }
+    return (await verifyJwt(normalized)).ok;
 }
 
 async function isAuthorizedProxyRequest(req) {
@@ -915,118 +957,27 @@ app.get('/', async (req, res, next) => {
 })
 
 async function checkAuth(req, res, returnOnlyStatus = false){
-    try {
-        const authHeader = normalizeAuthHeader(req.headers['risu-auth']);
+    const authHeader = normalizeAuthHeader(req.headers['risu-auth']);
 
-        if(!authHeader){
-            console.log('No auth header')
-            if(returnOnlyStatus){
-                return false;
-            }
-            res.status(400).send({
-                error:'No auth header'
-            });
-            return false
-        }
-
-
-        //jwt token
-        const [
-            jsonHeaderB64,
-            jsonPayloadB64,
-            signatureB64,
-        ] = authHeader.split('.');
-
-        //alg, typ
-        const jsonHeader = JSON.parse(Buffer.from(jsonHeaderB64, 'base64url').toString('utf-8'));
-
-        //iat, exp, pub
-        const jsonPayload = JSON.parse(Buffer.from(jsonPayloadB64, 'base64url').toString('utf-8'));
-
-        //signature
-        const signature = Buffer.from(signatureB64, 'base64url');
-
-        
-        //check expiration
-        const now = Math.floor(Date.now() / 1000);
-        if(jsonPayload.exp < now){
-            console.log('Token expired')
-            if(returnOnlyStatus){
-                return false;
-            }
-            res.status(400).send({
-                error:'Token Expired'
-            });
-            return false
-        }
-
-        //check if public key is known
-        const pubKeyHash = await hashJSON(jsonPayload.pub)
-        if(!knownPublicKeysHashes.includes(pubKeyHash)){
-            console.log('Unknown public key')
-            if(returnOnlyStatus){
-                return false;
-            }
-            res.status(400).send({
-                error:'Unknown Public Key'
-            });
-            return false
-        }
-
-        //check signature
-        if(jsonHeader.alg !== "ES256"){
-            //only support ECDSA for now
-            console.log('Unsupported algorithm')
-            if(returnOnlyStatus){
-                return false;
-            }
-            res.status(400).send({
-                error:'Unsupported Algorithm'
-            });
-            return false
-        }
-
-        const isValid = await crypto.subtle.verify(
-            {
-                name: 'ECDSA',
-                hash: {name: 'SHA-256'},
-            },
-            await crypto.subtle.importKey(
-                'jwk',
-                jsonPayload.pub,
-                {
-                    name: 'ECDSA',
-                    namedCurve: 'P-256',
-                },
-                false,
-                ['verify']
-            ),
-            signature,
-            Buffer.from(`${jsonHeaderB64}.${jsonPayloadB64}`)
-        );
-
-        if(!isValid){
-            console.log('Invalid signature')
-            if(returnOnlyStatus){
-                return false;
-            }
-            res.status(400).send({
-                error:'Invalid Signature'
-            });
-            return false
-        }
-        
-        return true   
-    } catch (error) {
-        console.log(error)
-        if(returnOnlyStatus){
-            return false;
-        }
-        res.status(500).send({
-            error:'Internal Server Error'
-        });
-        return false
+    let refusal;
+    if(!authHeader){
+        refusal = { status: 400, error: 'No auth header', log: 'No auth header' };
     }
+    else{
+        const verdict = await verifyJwt(authHeader);
+        if(verdict.ok){
+            return true
+        }
+        refusal = verdict;
+    }
+    console.log(refusal.log)
+    if(returnOnlyStatus){
+        return false;
+    }
+    res.status(refusal.status).send({
+        error: refusal.error
+    });
+    return false
 }
 
 const reverseProxyFunc = async (req, res, next) => {
@@ -1481,6 +1432,67 @@ app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+});
+
+// Reads the first bytes of a file for content-type sniffing; null when it cannot.
+async function readFileHead(fullPath, length) {
+    let handle;
+    try {
+        handle = await fs.open(fullPath, 'r');
+        const buffer = Buffer.alloc(length);
+        const { bytesRead } = await handle.read(buffer, 0, length, 0);
+        return buffer.subarray(0, bytesRead);
+    } catch {
+        return null;
+    } finally {
+        await handle?.close().catch(() => {});
+    }
+}
+
+// A stored asset by URL, for an <img>, <video> or <audio> that cannot send a
+// header. The token rides in the query and must carry the asset-read audience;
+// the key must be one `isRouteServedKey` allows. The file streams from disk
+// with range support and is read under none of the per-key write locks, so a
+// client that stops reading never holds a write or remove of that key.
+app.get('/api/asset/:hex', assetRouteLimiter, async (req, res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', 'sandbox');
+    const refuse = (status, error) => {
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(status).send({ error });
+    };
+
+    const token = req.query['risu-auth'];
+    if (typeof token !== 'string' || token === '' || !(await verifyJwt(token, ASSET_READ_AUDIENCE)).ok) {
+        refuse(401, 'Unauthorized');
+        return;
+    }
+    const key = assetKeyFromHex(req.params.hex);
+    if (key === null) {
+        refuse(400, 'Invalid Path');
+        return;
+    }
+    const fileName = req.params.hex.toLowerCase();
+    const fullPath = path.join(savePath, fileName);
+    const stat = await fs.stat(fullPath).catch(() => null);
+    if (stat === null || !stat.isFile()) {
+        refuse(404, 'Not Found');
+        return;
+    }
+
+    let contentType = contentTypeForKey(key);
+    if (contentType === null) {
+        contentType = sniffContentType(await readFileHead(fullPath, 16)) ?? 'application/octet-stream';
+    }
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', cacheControlForKey(key));
+    res.sendFile(fileName, { root: savePath, cacheControl: false, dotfiles: 'allow' }, (error) => {
+        if (error && !res.headersSent) {
+            res.removeHeader('Content-Type');
+            const missing = error.status === 404 || error.code === 'ENOENT';
+            refuse(missing ? 404 : 500, missing ? 'Not Found' : 'Internal Server Error');
+        }
+    });
 });
 
 app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {

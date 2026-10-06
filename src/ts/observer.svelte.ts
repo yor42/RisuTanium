@@ -1,5 +1,6 @@
 import { sleep } from "./util";
 import { globalFetch } from "./globalApi.svelte";
+import { parseBgmControl } from "./bgmControl";
 
 let bgmElement:HTMLAudioElement|null = null;
 let bgmSrc:string|null = null;
@@ -79,29 +80,25 @@ function nodeObserve(node:HTMLElement){
     }
 
     if(ctrlName){
-        const split = ctrlName.split('___');
+        const bgm = parseBgmControl(ctrlName);
 
-        switch(split[0]){
-            case 'bgm':{
-                const volume = split[1] === 'auto' ? 0.5 : parseFloat(split[1]);
-                const src = split[2];
-                if(!bgmElement){
-                    playBgm(src, volume);
-                }
-                else if(bgmSrc !== src){
-                    // A newly-rendered bgm reference points at a different track than
-                    // what's currently playing (e.g. the user switched chat/character) —
-                    // swap to it instead of silently ignoring the change and letting the
-                    // previous track keep playing.
-                    bgmElement.pause();
-                    bgmElement.remove();
-                    playBgm(src, volume);
-                }
-                else{
-                    // Same track already playing — keep volume in sync in case it changed.
-                    bgmElement.volume = volume;
-                }
-                break
+        if(bgm){
+            const { volume, src } = bgm;
+            if(!bgmElement){
+                playBgm(src, volume);
+            }
+            else if(bgmSrc !== src){
+                // A newly-rendered bgm reference points at a different track than
+                // what's currently playing (e.g. the user switched chat/character) —
+                // swap to it instead of silently ignoring the change and letting the
+                // previous track keep playing.
+                bgmElement.pause();
+                bgmElement.remove();
+                playBgm(src, volume);
+            }
+            else{
+                // Same track already playing — keep volume in sync in case it changed.
+                bgmElement.volume = volume;
             }
         }
     }

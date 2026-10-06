@@ -10,6 +10,7 @@
     import { getModuleAssets } from "src/ts/process/modules";
     import { getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { getFileSrc } from "src/ts/globalApi.svelte";
+    import { UNRESOLVED_IMAGE_SELECTOR } from "./imageRepairSelector";
 
     interface Props {
         character?: simpleCharacterArgument|string|null
@@ -184,7 +185,7 @@
         if(!DBState.db.newImageHandlingBeta || !bodyRoot){
             return
         }
-        const imgs = bodyRoot.querySelectorAll('img:not([src^="data:"]):not([src^="http:"]):not([src^="https:"]):not([src^="blob:"]):not([src^="file:"]):not([src^="tauri:"]):not([src^="/sw/img/"]):not([noimage])') as NodeListOf<HTMLImageElement>
+        const imgs = bodyRoot.querySelectorAll(UNRESOLVED_IMAGE_SELECTOR) as NodeListOf<HTMLImageElement>
         
         if (imgs.length > 0) {
             const currentCharacter = getCurrentCharacter()

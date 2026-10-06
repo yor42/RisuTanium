@@ -44,7 +44,8 @@
     import BaseRoundedButton from "../UI/BaseRoundedButton.svelte";
     import { getCharacterIndexObject, selectSingleFile } from "src/ts/util";
     import { v4 } from "uuid";
-    import { checkCharOrder, getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
+    import { checkCharOrder, saveAsset } from "src/ts/globalApi.svelte";
+    import { applyFolderImage } from "./folderImage";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { alertInput, alertSelect } from "src/ts/alert";
   import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
@@ -669,8 +670,7 @@
 
                   switch (sel) {
                     case 0:
-                      oder.imgFile = null
-                      oder.img = ''
+                      applyFolderImage(oder, null)
                       break;
                   
                     case 1:
@@ -688,8 +688,7 @@
                       try {
                         const folderImageData = await saveAsset(folderImage.data)
 
-                        oder.imgFile = folderImageData
-                        oder.img = await getFileSrc(folderImageData)
+                        applyFolderImage(oder, folderImageData)
                         db.characterOrder[ind] = oder
                       } finally {
                         busy.end()

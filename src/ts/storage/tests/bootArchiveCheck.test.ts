@@ -64,7 +64,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         setItem: (key: string, value: Uint8Array) => (h.remote as RemoteLike).setItem(key, value),
         keys: () => (h.remote as RemoteLike).keys(),
     },
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/storage/store/appStore'), async () => {

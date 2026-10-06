@@ -141,7 +141,6 @@ vi.mock(import('../../../globalApi.svelte'), () => ({
     // a denied one (null) by its return value, not only by whether
     // `alertConfirm` fired.
     getFetchLogs: vi.fn(() => []),
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../../globalApi.svelte'))
 
 vi.mock(import('../../../gui/colorscheme'), () => ({

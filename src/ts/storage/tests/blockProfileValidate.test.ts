@@ -24,7 +24,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         setItem: vi.fn(async () => { }),
         removeItem: vi.fn(async () => { }),
     },
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/storage/store/appStore'), () => ({

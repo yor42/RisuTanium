@@ -139,7 +139,6 @@ vi.mock(import('../../../globalApi.svelte'), () => ({
         setItem: vi.fn(async () => {}),
     },
     getFetchLogs: vi.fn(),
-    isPlainHttpFileSrc: vi.fn(() => false),
     fetchNative: vi.fn(),
     globalFetch: vi.fn(),
     readImage: vi.fn(),

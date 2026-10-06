@@ -46,6 +46,7 @@ import { initMobileGesture } from "./hotkey";
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { verifyAssetCacheEntry } from "./storage/assetIntegrity";
+import { cleanRouteServedCacheOnce } from "./storage/routeCacheCleanup";
 import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/remoteSaveCleanup";
 import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from "./storage/assetSweep";
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
@@ -445,6 +446,8 @@ export async function loadData() {
                 else {
                     setUsingSw(false)
                 }
+                // Never awaited: the clean-up must not delay the app.
+                void cleanRouteServedCacheOnce(typeof localStorage === 'undefined' ? null : localStorage)
                 if (getDatabase().didFirstSetup) {
                     characterURLImport()
                 }

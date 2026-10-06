@@ -61,7 +61,6 @@ vi.mock(
             usingSw: false,
             getFetchLogs: vi.fn(() => []),
             getFetchData: vi.fn(() => ({})),
-            isPlainHttpFileSrc: vi.fn(() => false),
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
 

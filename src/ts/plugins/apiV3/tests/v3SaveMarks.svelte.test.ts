@@ -125,7 +125,6 @@ vi.mock(import('../../../globalApi.svelte'), () => ({
         setItem: vi.fn(async () => {}),
     },
     getFetchLogs: vi.fn(),
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../../globalApi.svelte'))
 
 vi.mock(import('../../../gui/colorscheme'), () => ({

@@ -28,6 +28,12 @@ export interface NodeServerFixture {
     saveDir: string
     /** A fresh `risu-auth` header value for the logged-in key pair. */
     authHeader(): Promise<string>
+    /**
+     * A token signed by the logged-in key pair over exactly `claims` (its public
+     * key is added as `pub` unless `claims` carries one): the way to make a token
+     * with an audience, with no expiry or with a past one.
+     */
+    signToken(claims: Record<string, unknown>): Promise<string>
     /** Removes every stored key. The server's own files (names starting with `__`) stay. */
     clearKeys(): Promise<void>
     /**
@@ -165,6 +171,13 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
             return `${head}.${payload}.${Buffer.from(signature).toString('base64url')}`
         }
 
+        const signToken = async (claims: Record<string, unknown>): Promise<string> => {
+            const head = base64url({ alg: 'ES256', typ: 'JWT' })
+            const payload = base64url({ pub: publicJwk, ...claims })
+            const signature = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, Buffer.from(`${head}.${payload}`))
+            return `${head}.${payload}.${Buffer.from(signature).toString('base64url')}`
+        }
+
         // A fresh server has no password: set one, then register this key pair.
         // The login limiter allows only a few logins per window, so this runs
         // once per fixture.
@@ -187,6 +200,7 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
             baseUrl,
             saveDir,
             authHeader,
+            signToken,
             async clearKeys() {
                 for (const name of await readdir(saveDir)) {
                     if (!name.startsWith('__')) {

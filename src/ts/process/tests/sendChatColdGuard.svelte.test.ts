@@ -160,7 +160,6 @@ vi.mock(import('../modules'), () => ({
 vi.mock(import('../../globalApi.svelte'), () => ({
     readImage: vi.fn(),
     // AV-3: getFileSrcCached calls this predicate.
-    isPlainHttpFileSrc: vi.fn(() => false),
 }) as unknown as typeof import('../../globalApi.svelte'))
 
 vi.mock(import('../../plugins/plugins.svelte'), () => ({

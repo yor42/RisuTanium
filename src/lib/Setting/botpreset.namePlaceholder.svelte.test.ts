@@ -36,7 +36,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         AppendableBuffer: class {}, VirtualWriter: class {}, LocalWriter: class {}, BlankWriter: class {},
         downloadFile: vi.fn(), saveAsset: vi.fn(), readImage: vi.fn(), toGetter: vi.fn((o: unknown) => o),
         aiWatermarkingLawApplies: vi.fn(() => false), aiLawApplies: vi.fn(() => false),
-        hubURL: '', usingSw: false, isPlainHttpFileSrc: vi.fn(() => false),
+        hubURL: '', usingSw: false,
     }
     return new Proxy(stub, {
         get: (t, k) => (k in t ? t[k as string] : k === 'then' ? undefined : vi.fn()),

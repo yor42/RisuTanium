@@ -84,7 +84,7 @@ vi.mock('../../globalApi.svelte', () => ({
         return { ok: false, data: {} }
     }),
     addFetchLog: vi.fn(), textifyReadableStream: vi.fn(async () => ''),
-    readImage: vi.fn(), isPlainHttpFileSrc: vi.fn(() => false), aiWatermarkingLawApplies: vi.fn(() => false), getFileSrc: vi.fn(async () => ''),
+    readImage: vi.fn(), aiWatermarkingLawApplies: vi.fn(() => false), getFileSrc: vi.fn(async () => ''),
     forageStorage: { keys: vi.fn(async () => []), getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) },
     AppendableBuffer: class {}, LocalWriter: class {}, VirtualWriter: class {}, downloadFile: vi.fn(), saveAsset: vi.fn(async () => ''),
 }))

@@ -31,7 +31,13 @@ const recordingFetch: FetchLike = (url, init) => {
 }
 
 function makeStore(extra: { requestKeyBytes?: number } = {}) {
-    return createNodeHttpStore({ baseUrl: fixture.baseUrl, authHeader: () => fixture.authHeader(), fetch: recordingFetch, ...extra })
+    return createNodeHttpStore({
+        baseUrl: fixture.baseUrl,
+        authHeader: () => fixture.authHeader(),
+        assetToken: async () => 'test.asset.token',
+        fetch: recordingFetch,
+        ...extra,
+    })
 }
 
 function bytes(...values: number[]): Uint8Array {
@@ -91,6 +97,7 @@ describeByteStoreConformance({
     invalidPrefixes: ['', 'a\uD800'],
     writeOnlyInvalid: [`k/${'x'.repeat(116)}`],
     oddKeys: ['assets/x.v2\\smile', 'assets/x.jpg\u0001'],
+    offersUrlFor: true,
 })
 
 describe('Node HTTP store against the real server', () => {
@@ -126,6 +133,42 @@ describe('Node HTTP store against the real server', () => {
             'POST /api/write', 'POST /api/write', 'GET /api/read', 'HEAD /api/read', 'GET /api/list', 'GET /api/remove', 'GET /api/remove',
         ])
         expect(requests.map((request) => request.cache)).toEqual(Array(7).fill('no-store'))
+    })
+
+    describe('urlFor', () => {
+        test('answers the asset route URL with the hex of the key and the token in the query', async () => {
+            const url = await makeStore().urlFor?.('assets/a b.png')
+            expect(url).toBe(`${fixture.baseUrl}/api/asset/${hexOfKey('assets/a b.png')}?risu-auth=test.asset.token`)
+        })
+
+        test('percent-encodes a token that holds characters a query cannot carry', async () => {
+            const store = createNodeHttpStore({ baseUrl: fixture.baseUrl, authHeader: () => fixture.authHeader(), assetToken: async () => 'a+b/c=d' })
+            const url = await store.urlFor?.('assets/x.png')
+            expect(new URL(url ?? '').searchParams.get('risu-auth')).toBe('a+b/c=d')
+        })
+
+        test.each(['database/database.bin', '__password', 'assets/../database/database.bin', 'assets/a\\b.png', 'coldstorage/unit'])('refuses %s, which the route does not serve', async (key) => {
+            await expect(makeStore().urlFor?.(key)).rejects.toBeInstanceOf(StoreInvalidKeyError)
+        })
+
+        test('the store has no urlFor when it is given no way to mint a token', () => {
+            const store = createNodeHttpStore({ baseUrl: fixture.baseUrl, authHeader: () => fixture.authHeader() })
+            expect(store.urlFor).toBeUndefined()
+        })
+
+        test('a URL from the store with a real asset token loads the bytes the store wrote', async () => {
+            const iat = Math.floor(Date.now() / 1000)
+            const store = createNodeHttpStore({
+                baseUrl: fixture.baseUrl,
+                authHeader: () => fixture.authHeader(),
+                assetToken: () => fixture.signToken({ iat, aud: 'asset-read' }),
+            })
+            const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+            await store.write('assets/viaurl.png', png, 'unconditional')
+            const response = await fetch(await store.urlFor?.('assets/viaurl.png') ?? '')
+            expect(response.status).toBe(200)
+            expect(new Uint8Array(await response.arrayBuffer())).toEqual(png)
+        })
     })
 
     describe('listing', () => {

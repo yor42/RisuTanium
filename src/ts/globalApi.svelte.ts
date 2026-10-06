@@ -30,6 +30,7 @@ import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { digestMainFileBytes } from "./storage/mainFileRecord";
 import { didBootPassCommit } from "./process/memory/idleReloadBootState";
 import { getAppStore } from "./storage/store/appStore";
+import { nodeAssetRouteViolation } from "./storage/store/keyRules";
 import { BlockTooLargeError } from "./storage/blockStore";
 import { FILE_HEADER_V1 } from "./storage/blockFrame";
 import { getPageBlockOwner } from "./storage/pageBlockOwner";
@@ -151,7 +152,8 @@ const FILE_CACHE_SRC_PREFIX = 'data:image/png;base64,'
 // Bounded LRU cache, keyed by asset location. On the non-Tauri/non-service-worker
 // path this holds the already-encoded `data:` string of every asset resolved via
 // getFileSrc, bounded by both an entry-count cap and a byte budget below, so long
-// sessions can't hold an unbounded amount of encoded asset data in memory.
+// sessions can't hold an unbounded amount of encoded asset data in memory. An
+// asset a Node-hosted page gets a URL for never reaches it.
 const FILE_CACHE_DEFAULT_MAX_ENTRIES = 200
 // Mutable only so the test-only seam (__fileCacheTestHooks.setLimits) can shrink
 // it for a test and restore it afterward; production code never changes it.
@@ -329,8 +331,11 @@ async function readBytesForUrl(loc: string): Promise<Uint8Array | null> {
  * Gets the source URL of a file.
  *
  * On Tauri an asset URL comes from the store's `urlFor`, from the key alone, so
- * no byte is read; elsewhere the bytes come from the store and are handed to
- * the service worker or encoded into a data URL.
+ * no byte is read. On a Node-hosted page the same holds for an `assets/` key the
+ * server's asset route serves, with the service worker on or off; when the store
+ * cannot make that URL the call takes the path below. Elsewhere the bytes come
+ * from the store and are handed to the service worker or encoded into a data
+ * URL.
  *
  * @param {string} loc - The location of the file.
  * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made.
@@ -350,6 +355,16 @@ export async function getFileSrc(loc: string) {
             }
         }
         return convertFileSrc(loc)
+    }
+    if (isNodeServer && nodeAssetRouteViolation(loc) === null) {
+        try {
+            const store = await getAppStore()
+            if (store.urlFor !== undefined) {
+                return await store.urlFor(loc)
+            }
+        } catch (error) {
+            console.error(error)
+        }
     }
     try {
         if (usingSw) {
@@ -2195,19 +2210,6 @@ let usingSw = false
 
 export function setUsingSw(value: boolean) {
     usingSw = value
-}
-
-/**
- * Reports whether `getFileSrc(loc)` would take the plain-HTTP branch (the one
- * that reads+encodes through `fileCache` above) right now, without calling it.
- * Must mirror getFileSrc's own branch conditions exactly — this is a
- * synchronous snapshot of the same two checks getFileSrc makes before its
- * first await, so a caller (parser.svelte.ts's getFileSrcCached) can decide,
- * in the same tick, whether to route through its own permanent cache or
- * call getFileSrc directly every time.
- */
-export function isPlainHttpFileSrc(loc: string): boolean {
-    return !isTauri && !usingSw
 }
 
 /**

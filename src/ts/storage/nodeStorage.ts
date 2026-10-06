@@ -1,6 +1,7 @@
 import { language } from "src/lang"
 import { alertError, alertInput, waitAlert } from "../alert"
 import { base64url, getKeypairStore, saveKeypairStore } from "../util"
+import { createAssetTokenSource } from "./nodeAssetToken"
 
 /**
  * Thrown by NodeStorage.setItem() when the self-hosted Node server rejects a
@@ -91,6 +92,22 @@ export class NodeStorage{
     async authHeader() {
         await this.checkAuth()
         return await this.createAuth()
+    }
+
+    private assetTokenSource: (() => Promise<string>) | null = null
+
+    /**
+     * The token an asset URL carries, after the page's auth check has settled
+     * (the server knows the key pair only from a login). The same token on every
+     * call and, through `localStorage`, on every page load for this key pair.
+     */
+    async assetReadToken(): Promise<string> {
+        await this.checkAuth()
+        this.assetTokenSource ??= createAssetTokenSource({
+            getKeyPair: () => this.getKeyPair(),
+            storage: typeof localStorage === 'undefined' ? null : localStorage,
+        })
+        return await this.assetTokenSource()
     }
 
     async getKeyPair():Promise<CryptoKeyPair>{

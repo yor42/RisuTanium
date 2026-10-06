@@ -1,5 +1,5 @@
 /**
- * AV-3: tests T1-T8, T11-T13 for `getFileSrc`'s plain-HTTP branch and its
+ * AV-3: tests T1-T8, T12-T13 for `getFileSrc`'s plain-HTTP branch and its
  * `fileCache` (see the `fileCache`/`touchFileCache`/`getFileSrc`/
  * `__fileCacheTestHooks` definitions in `src/ts/globalApi.svelte.ts`, real,
  * unmocked -- these tests drive the actual cache/eviction logic through the
@@ -249,7 +249,6 @@ import {
     getFileSrc,
     forageStorage,
     setUsingSw,
-    isPlainHttpFileSrc,
     __fileCacheTestHooks,
 } from 'src/ts/globalApi.svelte'
 
@@ -444,50 +443,6 @@ describe('AV-3 plain-HTTP getFileSrc cache', () => {
         vi.mocked(forageStorage.getItem).mockResolvedValueOnce(null as unknown as never)
         const result = await getFileSrc('t7-missing')
         expect(result).toBe('data:image/png;base64,')
-    })
-
-    test('T11: the predicate agrees with the branch getFileSrc actually takes (Tauri fixed false)', async () => {
-        const combos = [
-            { assets: false, usingSw: false },
-            { assets: false, usingSw: true },
-            { assets: true, usingSw: false },
-            { assets: true, usingSw: true },
-        ]
-
-        // Only reached by the usingSw=true combos below, via getFileSrc's
-        // service-worker branch (see the `usingSw` branch of `getFileSrc` in
-        // globalApi.svelte.ts). A fixed "no cache" response is enough here --
-        // T11 only checks which branch getFileSrc took, not the
-        // service-worker branch's own internals (covered separately by T5).
-        const fetchMock = vi.fn(async () => ({ json: async () => ({ able: false }) }) as unknown as Response)
-        vi.stubGlobal('fetch', fetchMock)
-
-        const mismatches: string[] = []
-        for (const combo of combos) {
-            setUsingSw(combo.usingSw)
-            // Reset between combos so a `fileCache` entry left over from an
-            // earlier combo (same two locs are reused across all 4 combos)
-            // can't influence a later one.
-            __fileCacheTestHooks.reset()
-            const loc = combo.assets ? 'assets/t11.png' : 'other/t11.png'
-            const expectedPlainHttp = !combo.usingSw
-            const actual = isPlainHttpFileSrc(loc)
-            if (actual !== expectedPlainHttp) {
-                mismatches.push(
-                    `assets=${combo.assets} usingSw=${combo.usingSw}: predicate expected ${expectedPlainHttp}, got ${actual}`,
-                )
-            }
-
-            const result = await getFileSrc(loc)
-            const resultIsPlainHttp = result.startsWith('data:image/png;base64,')
-            if (resultIsPlainHttp !== actual) {
-                mismatches.push(
-                    `assets=${combo.assets} usingSw=${combo.usingSw}: getFileSrc's actual branch (plain-http=${resultIsPlainHttp}) disagreed with isPlainHttpFileSrc (${actual})`,
-                )
-            }
-        }
-
-        expect(mismatches).toEqual([])
     })
 
     test('T12 (guard): an orphaned retry after a count-cap eviction does not corrupt the cache', async () => {

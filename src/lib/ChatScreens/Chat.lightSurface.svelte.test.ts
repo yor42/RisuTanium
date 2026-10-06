@@ -42,7 +42,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     changeChatTo: vi.fn(),
     foldChatToMessage: vi.fn(),
     getFileSrc: vi.fn(async () => ''),
-    isPlainHttpFileSrc: vi.fn(() => false),
     createChatCopyName: vi.fn((name: string) => `${name} Branch`),
     downloadFile: vi.fn(),
     fetchNative: vi.fn(),

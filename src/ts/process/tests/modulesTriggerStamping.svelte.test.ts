@@ -68,7 +68,6 @@ vi.mock(import('../../alert'), () => ({
 vi.mock(import('../../globalApi.svelte'), () => ({
     fetchNative: vi.fn(),
     readImage: vi.fn(),
-    isPlainHttpFileSrc: vi.fn(() => false),
     forageStorage: {
         keys: vi.fn(async () => []),
         getItem: vi.fn(async () => null),

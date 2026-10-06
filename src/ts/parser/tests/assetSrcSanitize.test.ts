@@ -17,7 +17,6 @@ vi.mock(
 vi.mock(import('../../globalApi.svelte'), () => ({
   aiWatermarkingLawApplies: () => false,
   getFileSrc: () => Promise.resolve(''),
-  isPlainHttpFileSrc: () => false,
   // avatarThumb.ts reads readImage at module load, through characters.ts.
   readImage: () => Promise.resolve(undefined),
 }))

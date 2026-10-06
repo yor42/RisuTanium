@@ -1,5 +1,7 @@
 import { hasher } from "../parser/parser.svelte"
 import { getBasename } from "../globalApi.svelte"
+import { isNodeServer } from "../platform"
+import { nodeAssetRouteViolation } from "./store/keyRules"
 
 export type AssetVerifyResult =
     | { status: 'ok' }
@@ -35,6 +37,10 @@ const CONTENT_HASH_BASENAME = /^[0-9a-f]{64}$/i
  * (Agents/Roadmap.md Phase 1 item 6), without the cost of also fetching a
  * comparison copy from local storage.
  *
+ * A key the Node server's asset route serves is shown from the server, not
+ * from the cache, so on a Node-hosted page such a key reports 'not-cached'
+ * without the cache being read: a leftover copy there is not what a page shows.
+ *
  * Read-only: reports a mismatch, does not attempt to repair one. Used both
  * by a small sampled boot-time check (see bootstrap.ts's cleanChunks()) and
  * by the explicit "verify assets" UI action (storageMaintenance.ts's
@@ -43,6 +49,9 @@ const CONTENT_HASH_BASENAME = /^[0-9a-f]{64}$/i
 export async function verifyAssetCacheEntry(loc: string): Promise<AssetVerifyResult> {
     if (typeof caches === 'undefined') {
         return { status: 'unsupported' }
+    }
+    if (isNodeServer && nodeAssetRouteViolation(loc) === null) {
+        return { status: 'not-cached' }
     }
     const basename = getBasename(loc)
     const dot = basename.lastIndexOf('.')

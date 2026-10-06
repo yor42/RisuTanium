@@ -275,7 +275,6 @@ vi.mock(import('../modules'), () => ({
 
 vi.mock(import('../../globalApi.svelte'), () => ({
     readImage: vi.fn(),
-    isPlainHttpFileSrc: vi.fn(() => false),
     aiWatermarkingLawApplies: vi.fn(() => false),
     getFileSrc: vi.fn(async () => ''),
     forageStorage: {

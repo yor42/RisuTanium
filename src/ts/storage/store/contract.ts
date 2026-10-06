@@ -125,9 +125,11 @@ export interface ByteStore {
     /**
      * A URL a web view can load `key` from, derived from the key alone: it never
      * reads, lists or checks the value, and a URL for an absent key is still a
-     * URL. Only a backend whose files the web view can reach itself offers it;
-     * on every other backend the caller reads the bytes instead. Refuses an
-     * unusable key like `read`.
+     * URL. Only a backend whose files the web view can reach itself, or whose
+     * server serves a value by URL, offers it; on every other backend the
+     * caller reads the bytes instead. Refuses an unusable key like `read`. A
+     * backend that serves only some keys by URL (the Node server serves keys
+     * under `assets/`) also refuses the others, and the caller reads those.
      */
     urlFor?(key: string): Promise<string>
 

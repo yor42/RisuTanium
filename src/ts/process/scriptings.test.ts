@@ -17,7 +17,7 @@ vi.mock('../alert', () => ({
   alertSelect: vi.fn(),
 }))
 
-vi.mock('../globalApi.svelte', () => ({ fetchNative: vi.fn(), readImage: vi.fn(), isPlainHttpFileSrc: vi.fn(() => false) }))
+vi.mock('../globalApi.svelte', () => ({ fetchNative: vi.fn(), readImage: vi.fn() }))
 vi.mock('../tokenizer', () => ({ tokenize: vi.fn() }))
 vi.mock('../util', () => ({
   asBuffer: vi.fn(),
