@@ -685,11 +685,25 @@ describe('the refusal fires before any write, wherever the marker sits and whate
         expectRefusalShown()
     })
 
-    test('refuses under Tauri without ever calling the native filesystem write', async () => {
+    test.each([
+        { label: 'per-entry path', batched: false },
+        { label: 'batch path', batched: true },
+    ])('compatibility guard, $label: refuses under Tauri without ever calling the native filesystem write or an asset batch command', async ({ batched }) => {
         vi.doMock(import('../../platform'), () => ({
             isTauri: true,
             isNodeServer: false,
         }) as unknown as typeof import('../../platform'))
+        const batchCommands = {
+            writeAssetBatch: vi.fn(async () => []),
+            writeAssetSingle: vi.fn(async () => ({ k: 'ok' })),
+            readAssetBatch: vi.fn(async () => []),
+            listAssetsSized: vi.fn(async () => []),
+        }
+        vi.doMock(import('../../storage/tauriAssetBatch'), async (importOriginal) => ({
+            ...(await importOriginal()),
+            ...batchCommands,
+            isAssetBatchAvailable: () => batched,
+        }) as unknown as typeof import('../../storage/tauriAssetBatch'))
         vi.resetModules()
 
         try {
@@ -698,8 +712,11 @@ describe('the refusal fires before any write, wherever the marker sits and whate
 
             expectNoWritesNoInstallNoNetwork()
             expectRefusalShown()
+            expect(batchCommands.writeAssetBatch).not.toHaveBeenCalled()
+            expect(batchCommands.writeAssetSingle).not.toHaveBeenCalled()
         } finally {
             vi.doUnmock(import('../../platform'))
+            vi.doUnmock(import('../../storage/tauriAssetBatch'))
             vi.resetModules()
         }
     })

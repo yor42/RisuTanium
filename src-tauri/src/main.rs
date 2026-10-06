@@ -18,6 +18,7 @@ use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 
+mod asset_batch;
 mod durable_write;
 mod env_secret;
 mod launch_inputs;
@@ -81,6 +82,58 @@ async fn write_durable(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resu
     tauri::async_runtime::spawn_blocking(move || durable_write::write_key_durable(&base, &key, &bytes))
         .await
         .map_err(|e| format!("the write task failed: {}", e))?
+}
+
+/// Writes many asset files in one call. The body is raw frames
+/// `[u32 LE keyLen][key][u32 LE dataLen][bytes]`; the result is one outcome per
+/// frame in input order. A body that is not raw or is malformed is refused
+/// before any write. The base directory is the app data directory; the page
+/// supplies no path.
+#[tauri::command]
+async fn put_assets_batch(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
+    let body = asset_batch::raw_body(request.body())?.to_vec();
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || asset_batch::put_assets_batch(&base, &body))
+        .await
+        .map_err(|e| format!("the write task failed: {}", e))?
+}
+
+/// Writes one asset file: the key travels in the `x-risu-key` header
+/// (percent-encoded) and the bytes are the raw body.
+#[tauri::command]
+async fn put_asset_single(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
+    let data = asset_batch::raw_body(request.body())?.to_vec();
+    let raw_key = request
+        .headers()
+        .get(durable_write::KEY_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "malformed: missing key header".to_string())?;
+    let key = durable_write::decode_key_header(raw_key).map_err(|e| format!("malformed: {}", e))?;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || asset_batch::put_asset_single(&base, &key, &data))
+        .await
+        .map_err(|e| format!("the write task failed: {}", e))
+}
+
+/// Reads many asset files; the response is one frame per key in key order
+/// (`[u8 status][u32 LE len][bytes]`).
+#[tauri::command]
+async fn get_assets_batch(app: AppHandle, keys: Vec<String>) -> Result<tauri::ipc::Response, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let out = tauri::async_runtime::spawn_blocking(move || asset_batch::get_assets_batch(&base, &keys))
+        .await
+        .map_err(|e| format!("the read task failed: {}", e))?;
+    Ok(tauri::ipc::Response::new(out))
+}
+
+/// Lists `assets/` as `[key, size in bytes]` pairs with the keys and order the
+/// per-directory listing of the file store gives.
+#[tauri::command]
+async fn list_assets_sized(app: AppHandle) -> Result<Vec<(String, u64)>, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || asset_batch::list_assets_sized(&base))
+        .await
+        .map_err(|e| format!("the list task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -802,6 +855,10 @@ fn main() {
             take_launch_inputs,
             read_env_secret,
             write_durable,
+            put_assets_batch,
+            put_asset_single,
+            get_assets_batch,
+            list_assets_sized,
             native_request,
             check_auth,
             check_requirements_local,

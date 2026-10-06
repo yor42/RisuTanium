@@ -3,8 +3,11 @@ import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcq
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
-import { getAppStore } from "../storage/store/appStore";
+import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
+import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
+import { isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetSingle, type SizedAssetKey } from "../storage/tauriAssetBatch";
+import { ExportAssetReader, RestoreAssetPipeline } from "./assetBatchPipeline";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
@@ -50,6 +53,62 @@ async function encodeDatabaseWithLateColdStorage(db: Database, collected: ColdSt
         settledKeys: collected.settledKeys,
     })
     return { dbData, late }
+}
+
+/**
+ * Whether asset writes and reads may bypass the store's per-key calls: the
+ * desktop commands exist and the page's store is the desktop files store they
+ * address.
+ */
+async function assetBatchUsable(): Promise<boolean> {
+    if (!isAssetBatchAvailable()) {
+        return false
+    }
+    try {
+        return await getAppStoreKind() === 'tauri'
+    } catch {
+        return false
+    }
+}
+
+/**
+ * The asset keys of a full backup and, where the desktop listing command
+ * answers, their sizes in the same order. Any failure of that command falls
+ * back to the store's own listing.
+ */
+async function listAssetsForBackup(store: ByteStore): Promise<{ keys: string[]; sized: SizedAssetKey[] | null }> {
+    if (await assetBatchUsable()) {
+        try {
+            const sized = await listAssetsSized()
+            return { keys: sized.map((item) => item.key), sized }
+        } catch (e) {
+            console.error(e)
+        }
+    }
+    return { keys: await store.list('assets/'), sized: null }
+}
+
+/** The restore's asset writer on the desktop, or `null` where every asset goes through the store one call at a time. */
+async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
+    if (!await assetBatchUsable()) {
+        return null
+    }
+    const store = await getAppStore()
+    return new RestoreAssetPipeline({
+        writeBatch: writeAssetBatch,
+        writeSingle: writeAssetSingle,
+        writeEntry: async (entry) => {
+            try {
+                await store.write(entry.key, entry.data, 'unconditional')
+                return { k: 'ok' }
+            } catch (error) {
+                if (error instanceof StoreInvalidKeyError) {
+                    return { k: 'invalid', reason: error.message }
+                }
+                throw error
+            }
+        },
+    })
 }
 
 function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string {
@@ -132,30 +191,45 @@ async function writeLocalBackup(){
     // atomic write; a dangling link is not listed. A key that reads as absent or
     // fails to read is reported as missing and the backup goes on.
     const store = await getAppStore()
-    const assetKeys = await store.list('assets/')
-    for(let i=0;i<assetKeys.length;i++){
-        const key = assetKeys[i]
-        let message = `Saving local Backup... (${i + 1} / ${assetKeys.length})`
-        if (missingAssets.length > 0) {
-            const skippedItems = missingAssets.map(key => {
-                const assetInfo = assetMap.get(key);
-                return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
-            }).join(', ');
-            message += `\n(Skipping... ${skippedItems})`;
-        }
-        alertWait(message)
+    const listing = await listAssetsForBackup(store)
+    const assetKeys = listing.keys
+    // On the desktop the assets are read ahead of the writer in batches. Every
+    // exit of the loop below, thrown or not, waits for the reads still outstanding.
+    const assetReader = listing.sized
+        ? new ExportAssetReader({ readBatch: readAssetBatch }, listing.sized)
+        : null
+    try {
+        for(let i=0;i<assetKeys.length;i++){
+            const key = assetKeys[i]
+            let message = `Saving local Backup... (${i + 1} / ${assetKeys.length})`
+            if (missingAssets.length > 0) {
+                const skippedItems = missingAssets.map(key => {
+                    const assetInfo = assetMap.get(key);
+                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+                }).join(', ');
+                message += `\n(Skipping... ${skippedItems})`;
+            }
+            alertWait(message)
 
-        let data: Uint8Array | null = null
-        try {
-            data = (await store.read(key)).bytes
-        } catch (e) {
-            console.error(e)
+            let data: Uint8Array | null = null
+            const taken = assetReader ? await assetReader.take(i) : null
+            if (taken?.kind === 'bytes') {
+                data = taken.bytes
+            } else if (taken?.kind !== 'missing') {
+                try {
+                    data = (await store.read(key)).bytes
+                } catch (e) {
+                    console.error(e)
+                }
+            }
+            if (data) {
+                await writer.writeBackup(key, data)
+            } else {
+                missingAssets.push(key)
+            }
         }
-        if (data) {
-            await writer.writeBackup(key, data)
-        } else {
-            missingAssets.push(key)
-        }
+    } finally {
+        await assetReader?.close()
     }
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
@@ -610,106 +684,147 @@ export function LoadLocalBackup(){
                 // header is checked again before anything of it is written: a
                 // marker stops the restore, and so does any header that differs
                 // from the index or a body that cannot be read.
-                for (const entry of backupEntries) {
-                    const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
-                    const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
-                    if (progressText !== lastProgressText) {
-                        lastProgressText = progressText;
-                        alertWait(progressText);
-                    }
+                //
+                // On the desktop the assets go out in byte-budgeted batches that
+                // overlap the reading of later entries. Every way out of the
+                // pass -- a stop with a message, a throw, an error answered by a
+                // batch, the end of the entries -- first waits for every batch
+                // in flight to settle, so no message is shown, no database is
+                // written and nothing returns while an asset is still being
+                // written. After a batch fails no further entry is read.
+                const assetPipeline = await createRestoreAssetPipeline();
+                let stopMessage: string | null = null;
+                let passFailure: { error: unknown } | null = null;
+                try {
+                    for (const entry of backupEntries) {
+                        if (assetPipeline?.failure) {
+                            break;
+                        }
+                        const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
+                        const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
+                        if (progressText !== lastProgressText) {
+                            lastProgressText = progressText;
+                            alertWait(progressText);
+                        }
 
-                    // An asset left out for its size is not read; its header still is.
-                    const isSkippedForSize = oversizedAssetNames.has(entry.headerOffset);
-                    const readEnd = isSkippedForSize ? entry.headerOffset + entry.headerLength : entryEnd;
-                    let entryBytes: Uint8Array;
-                    try {
-                        entryBytes = new Uint8Array(await file.slice(entry.headerOffset, readEnd).arrayBuffer());
-                    } catch (error) {
-                        console.error(error);
-                        alertError(language.backupFileChangedWhileReading);
-                        return;
-                    }
+                        // An asset left out for its size is not read; its header still is.
+                        const isSkippedForSize = oversizedAssetNames.has(entry.headerOffset);
+                        const readEnd = isSkippedForSize ? entry.headerOffset + entry.headerLength : entryEnd;
+                        let entryBytes: Uint8Array;
+                        try {
+                            entryBytes = new Uint8Array(await file.slice(entry.headerOffset, readEnd).arrayBuffer());
+                        } catch (error) {
+                            console.error(error);
+                            stopMessage = language.backupFileChangedWhileReading;
+                            break;
+                        }
 
-                    const checked = checkIndexedEntry(entryBytes, entry, readEnd - entry.headerOffset);
-                    if (checked.kind === 'marker') {
-                        alertError(language.encryptedBackupImportStopped);
-                        return;
-                    }
-                    if (checked.kind === 'changed') {
-                        alertError(language.backupFileChangedWhileReading);
-                        return;
-                    }
-                    const name = checked.header.name;
-                    if (name === undefined) {
-                        // parseBackupEntryHeader is called with no name-length
-                        // limit, so every entry name here is always decoded; this
-                        // only narrows the type.
-                        continue;
-                    }
-                    if (isSkippedForSize) {
-                        skippedAssets.push({ name, reason: 'tooLarge' });
-                        await yieldBudget.maybeYield();
-                        continue;
-                    }
-                    // A view over the bytes just read: nothing of the entry is copied.
-                    const data = entryBytes.subarray(checked.header.headerLength);
+                        const checked = checkIndexedEntry(entryBytes, entry, readEnd - entry.headerOffset);
+                        if (checked.kind === 'marker') {
+                            stopMessage = language.encryptedBackupImportStopped;
+                            break;
+                        }
+                        if (checked.kind === 'changed') {
+                            stopMessage = language.backupFileChangedWhileReading;
+                            break;
+                        }
+                        const name = checked.header.name;
+                        if (name === undefined) {
+                            // parseBackupEntryHeader is called with no name-length
+                            // limit, so every entry name here is always decoded; this
+                            // only narrows the type.
+                            continue;
+                        }
+                        if (isSkippedForSize) {
+                            skippedAssets.push({ name, reason: 'tooLarge' });
+                            await yieldBudget.maybeYield();
+                            continue;
+                        }
+                        // A view over the bytes just read: nothing of the entry is copied.
+                        const data = entryBytes.subarray(checked.header.headerLength);
 
-                    if (name === 'database.risudat') {
-                        pendingDatabase = data;
-                    }
+                        if (name === 'database.risudat') {
+                            pendingDatabase = data;
+                        }
 
-                    else {
-                        const coldStorageKey = getColdStorageBackupKey(name)
-                        let handledAsColdStorage = false
+                        else {
+                            const coldStorageKey = getColdStorageBackupKey(name)
+                            let handledAsColdStorage = false
 
-                        if (coldStorageKey) {
-                            handledAsColdStorage = true
-                            try {
-                                const text = new TextDecoder().decode(data)
-                                const jsonData = JSON.parse(text)
+                            if (coldStorageKey) {
+                                handledAsColdStorage = true
+                                try {
+                                    const text = new TextDecoder().decode(data)
+                                    const jsonData = JSON.parse(text)
 
-                                if (isAcceptedColdStorageBackupEntry(name, jsonData)) {
-                                    if(await setColdStorageItem(coldStorageKey, jsonData)){
-                                        restoredColdStorageKeys.add(coldStorageKey)
+                                    if (isAcceptedColdStorageBackupEntry(name, jsonData)) {
+                                        if(await setColdStorageItem(coldStorageKey, jsonData)){
+                                            restoredColdStorageKeys.add(coldStorageKey)
+                                        } else {
+                                            console.error(`Failed to restore cold storage item ${coldStorageKey}`)
+                                        }
                                     } else {
-                                        console.error(`Failed to restore cold storage item ${coldStorageKey}`)
+                                        console.warn(`Skipping invalid cold storage backup item ${name}`)
                                     }
-                                } else {
-                                    console.warn(`Skipping invalid cold storage backup item ${name}`)
+                                } catch (e) {
+                                    console.error(`Failed to parse cold storage item ${coldStorageKey}:`, e)
                                 }
-                            } catch (e) {
-                                console.error(`Failed to parse cold storage item ${coldStorageKey}:`, e)
                             }
-                        }
 
-                        if (!handledAsColdStorage) {
-                            // The entry name comes from the file. A name the store
-                            // cannot hold (a leading dot, a character the desktop
-                            // file system forbids, a reserved temp name) skips that
-                            // entry and is reported after the database is written;
-                            // a 413 for a body under the Node server's own limit
-                            // means a proxy or the server refused the size, and the
-                            // restore stops saying so; any other failure aborts the
-                            // restore.
-                            const assetKey = 'assets/' + name
-                            noteAssetWrittenThisPage(assetKey)
-                            try {
-                                await (await getAppStore()).write(assetKey, data, 'unconditional')
-                            } catch (error) {
-                                if (error instanceof NodeHttpError && error.status === 413 && error.operation === 'write') {
-                                    console.error(error)
-                                    alertError(language.restoreAssetRefusedTooLarge(name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name))
-                                    return
+                            if (!handledAsColdStorage) {
+                                // The entry name comes from the file. A name the store
+                                // cannot hold (a leading dot, a character the desktop
+                                // file system forbids, a reserved temp name) skips that
+                                // entry and is reported after the database is written;
+                                // a 413 for a body under the Node server's own limit
+                                // means a proxy or the server refused the size, and the
+                                // restore stops saying so; any other failure aborts the
+                                // restore.
+                                const assetKey = 'assets/' + name
+                                noteAssetWrittenThisPage(assetKey)
+                                if (assetPipeline) {
+                                    // The header offset orders the skip report by position in the file.
+                                    await assetPipeline.add({ key: assetKey, name, index: entry.headerOffset, data })
+                                } else {
+                                    try {
+                                        await (await getAppStore()).write(assetKey, data, 'unconditional')
+                                    } catch (error) {
+                                        if (error instanceof NodeHttpError && error.status === 413 && error.operation === 'write') {
+                                            console.error(error)
+                                            stopMessage = language.restoreAssetRefusedTooLarge(name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name)
+                                            break
+                                        }
+                                        if (!(error instanceof StoreInvalidKeyError)) {
+                                            throw error
+                                        }
+                                        console.error(error)
+                                        skippedAssets.push({ name, reason: 'invalidName' })
+                                    }
                                 }
-                                if (!(error instanceof StoreInvalidKeyError)) {
-                                    throw error
-                                }
-                                console.error(error)
-                                skippedAssets.push({ name, reason: 'invalidName' })
                             }
                         }
+                        await yieldBudget.maybeYield();
                     }
-                    await yieldBudget.maybeYield();
+                } catch (error) {
+                    passFailure = { error };
+                }
+                if (assetPipeline) {
+                    await assetPipeline.drain();
+                }
+                if (passFailure) {
+                    throw passFailure.error;
+                }
+                if (stopMessage !== null) {
+                    alertError(stopMessage);
+                    return;
+                }
+                if (assetPipeline) {
+                    if (assetPipeline.failure) {
+                        throw assetPipeline.failure.error;
+                    }
+                    for (const refused of assetPipeline.invalidAssets()) {
+                        skippedAssets.push({ name: refused.name, reason: 'invalidName' });
+                    }
                 }
 
                 if(!pendingDatabase){

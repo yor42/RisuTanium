@@ -127,6 +127,10 @@ pub trait FileOps {
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn sleep_ms(&self, ms: u64);
     fn temp_name(&self) -> String;
+    /// Creates `dir` and every missing ancestor. A substitute may override it to inject a fault.
+    fn create_dir_all(&self, dir: &Path) -> io::Result<()> {
+        fs::create_dir_all(dir)
+    }
 }
 
 pub struct RealOps;
@@ -179,7 +183,7 @@ fn is_retryable_rename_error(error: &io::Error) -> bool {
             .map_or(false, |code| RETRYABLE_RENAME_ERRORS.contains(&code))
 }
 
-fn rename_with_retry<O: FileOps>(ops: &O, from: &Path, to: &Path) -> io::Result<()> {
+pub(crate) fn rename_with_retry<O: FileOps>(ops: &O, from: &Path, to: &Path) -> io::Result<()> {
     let mut attempt = 0;
     loop {
         match ops.rename(from, to) {

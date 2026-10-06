@@ -39,6 +39,8 @@ const platformBox = vi.hoisted(() => {
 const BACKUP_PATH = vi.hoisted(() => 'backup-output.bin')
 
 const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
+/** The desktop asset commands, answered over the page's byte store; only used by the batch-path runs of the Tauri tests. */
+const batchFake = await vi.hoisted(async () => (await import('./assetBatchFake')).createAssetBatchFake())
 /** The Tauri file system: the desktop store runs for real over this in-memory model. */
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
 /** Paths whose read the plugin answers with no data at all. */
@@ -100,6 +102,11 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 vi.mock('@tauri-apps/plugin-process', () => ({
     relaunch: vi.fn(async () => { }),
+}))
+
+vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('src/ts/storage/tauriAssetBatch')>()),
+    ...batchFake.module,
 }))
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -282,6 +289,17 @@ import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { createForageBackedStore, createSwitchedStore } from 'src/ts/storage/tests/forageBackedStore'
+import { getAppStore } from 'src/ts/storage/store/appStore'
+
+/**
+ * The Tauri tests below run once per way the desktop reaches its assets: one
+ * store call per asset, and the batched commands (answered by the fake over the
+ * same store). The outcome a user sees must not depend on which one runs.
+ */
+const ASSET_PATHS = [
+    { label: 'per-entry path', batched: false },
+    { label: 'batch path', batched: true },
+] as const
 
 //#region helpers
 
@@ -465,6 +483,8 @@ function withPrefix(record: Record<string, string>): Record<string, string> {
 beforeEach(() => {
     platformBox.isTauri = false
     backupSink.writes.length = 0
+    batchFake.reset()
+    batchFake.useStore(getAppStore)
     fakeFs.reset()
     fakeFs.directories.add('assets')
     emptyReads.clear()
@@ -554,9 +574,18 @@ describe('a full backup on the web writes every asset key whatever its extension
     })
 })
 
-describe('a full backup on Tauri writes every file in the assets directory whatever its extension', () => {
+describe.each(ASSET_PATHS)('compatibility guard, $label: a full backup on Tauri writes every file in the assets directory whatever its extension', ({ batched }) => {
     beforeEach(() => {
         platformBox.isTauri = true
+        batchFake.ctl.available = batched
+    })
+
+    test('guard: the batch commands are used exactly when the batch path runs', async () => {
+        serveAssets(['a.png', 'b.mp3'])
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(batchFake.ctl.calls.some((call) => call.kind === 'read')).toBe(batched)
     })
 
     test('writes png, mp3, webp, jpg, mp4 and upper-case PNG files under their bare names with their own bytes', async () => {
@@ -599,7 +628,7 @@ describe('a full backup on Tauri writes every file in the assets directory whate
         expect(report).toContain('broken.mp3')
     })
 
-    test('reproducer: a dangling symlink is dropped from the backup, not reported as missing, and the other assets are still written', async () => {
+    test(`${batched ? 'guard' : 'reproducer'}: a dangling symlink is dropped from the backup, not reported as missing, and the other assets are still written`, async () => {
         serveAssets(['a.png', 'c.png'])
         fakeFs.plantSymlink('assets/dangling.mp3', { kind: 'missing' })
 
@@ -646,7 +675,7 @@ describe('a full backup on Tauri writes every file in the assets directory whate
         expect(report).toContain('empty.png')
     })
 
-    test('reproducer: the temp file of an atomic write in flight is not a backup entry', async () => {
+    test(`${batched ? 'guard' : 'reproducer'}: the temp file of an atomic write in flight is not a backup entry`, async () => {
         serveAssets(['a.png', 'c.png'])
         fakeFs.plant('assets/risu-write-0123456789abcdef.tmp', encoder.encode('half a write'))
 
@@ -789,8 +818,9 @@ describe('a backup written by SaveLocalBackup restores every asset with identica
         ))
     })
 
-    test('Tauri: assets/b.mp3 and assets/c.webp are written back to the assets directory', async () => {
+    test.each(ASSET_PATHS)('compatibility guard, $label: assets/b.mp3 and assets/c.webp are written back to the assets directory', async ({ batched }) => {
         platformBox.isTauri = true
+        batchFake.ctl.available = batched
         getDatabaseMock.mockImplementation(() => databaseWith({}))
         serveAssets(ROUND_TRIP)
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
@@ -825,10 +855,12 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
         expect(forageSetItemMock.mock.calls.filter((c) => c[0] === 'database/database.bin')).toHaveLength(0)
     })
 
-    test('guard: Tauri writes x.mp3, y.mp4, z.webp and w.jpg to assets/<name>, not as cold storage', async () => {
+    test.each(ASSET_PATHS)('compatibility guard, $label: Tauri writes x.mp3, y.mp4, z.webp and w.jpg to assets/<name>, not as cold storage', async ({ batched }) => {
         platformBox.isTauri = true
+        batchFake.ctl.available = batched
 
         await restoreHandBuiltBackup()
+        expect(batchFake.ctl.calls.some((call) => call.kind === 'batch')).toBe(batched)
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
@@ -840,7 +872,7 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
     })
 })
 
-describe('restoring a backup onto the desktop store', () => {
+describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto the desktop store', ({ batched }) => {
     const TEMP_NAME = 'risu-write-0123456789abcdef.tmp'
     const KEPT = ['good1.png', 'good2.mp3']
 
@@ -870,9 +902,10 @@ describe('restoring a backup onto the desktop store', () => {
 
     beforeEach(() => {
         platformBox.isTauri = true
+        batchFake.ctl.available = batched
     })
 
-    test('reproducer: a write that fails over an existing asset leaves the old bytes whole and no temp file', async () => {
+    test(`${batched ? 'guard' : 'reproducer'}: a write that fails over an existing asset leaves the old bytes whole and no temp file`, async () => {
         const OLD = encoder.encode('old bytes of x.mp3, kept')
         const NEW = encoder.encode('new bytes of x.mp3, restored but the write fails')
         fakeFs.plant('assets/x.mp3', OLD)
@@ -896,7 +929,10 @@ describe('restoring a backup onto the desktop store', () => {
         expect(alertErrorMock).toHaveBeenCalled()
         expect(fakeFs.files.has('database/database.bin')).toBe(false)
         expect(fakeFs.files.has('blocks/head')).toBe(false)
-        expect(fakeFs.files.has('assets/later.png')).toBe(false)
+        if (!batched) {
+            // The batch path may already have written entries that shared the failed entry's batch; only the per-entry path stops before the next entry.
+            expect(fakeFs.files.has('assets/later.png')).toBe(false)
+        }
         expect(alertNormalWaitMock).not.toHaveBeenCalled()
     })
 
