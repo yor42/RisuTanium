@@ -955,6 +955,78 @@ export async function removeChar(identifier:string|number|character|groupChat,na
 }
 
 /**
+ * Permanently removes the given trashed characters after one confirmation.
+ * `refs` are the character objects of the rows the trash list showed when the
+ * button was clicked; `matching` says that list was narrowed by a search, which
+ * the confirmation then states. A character is removed only if, once the
+ * confirmation is answered, it is still in the list and still carries the
+ * `trashTime` it had at the click, so one the user restored (even if it was
+ * trashed again) while the dialog was open stays. The count in the dialog is
+ * therefore an upper bound.
+ *
+ * Removal is by reference in one synchronous stretch: work owned by each
+ * removed character is stopped before the list changes, the reload flag is set
+ * (without it the removed blocks stay in the store), and each removed id is
+ * marked for saving. A removed character takes only its own list entry; assets,
+ * cold-storage units and numbered backups are not touched. The open chat stays
+ * open unless its character was removed.
+ */
+export async function removeTrashedCharacters(refs: (character | groupChat)[], options: { matching: boolean }){
+    const asked = new Map<character | groupChat, number | undefined>()
+    for(const ref of refs){
+        asked.set(ref, ref.trashTime)
+    }
+    if(asked.size === 0){
+        return
+    }
+    let busy = false
+    for(const ref of asked.keys()){
+        if(ref.chaId && hasWorkIn({ chaId: ref.chaId })){
+            busy = true
+            break
+        }
+    }
+    const headline = options.matching
+        ? language.emptyTrashConfirmMatching(asked.size)
+        : language.emptyTrashConfirmAll(asked.size)
+    const conf = await alertConfirm(
+        headline + '\n' + language.emptyTrashCannotUndo + (busy ? '\n' + language.removeCharacterWhileWorking : '')
+    )
+    if(!conf){
+        return
+    }
+
+    const present = new Set(DBState.db.characters)
+    const doomed = new Set<character | groupChat>()
+    for(const [ref, askedTrashTime] of asked){
+        if(present.has(ref) && !!askedTrashTime && ref.trashTime === askedTrashTime){
+            doomed.add(ref)
+        }
+    }
+    if(doomed.size === 0){
+        return
+    }
+
+    const selectedBefore = get(selectedCharID)
+    const selectedRef = selectedBefore >= 0 ? DBState.db.characters[selectedBefore] : undefined
+    for(const ref of doomed){
+        if(ref.chaId){
+            stopWorkIn({ chaId: ref.chaId })
+        }
+    }
+    const chars = DBState.db.characters.filter((c) => !doomed.has(c))
+    DBState.db.characters = chars
+    checkCharOrder()
+    requiresFullEncoderReload.state = true
+    for(const ref of doomed){
+        markCharacterForSave(ref.chaId)
+    }
+    if(selectedRef){
+        selectedCharID.set(doomed.has(selectedRef) ? -1 : DBState.db.characters.indexOf(selectedRef))
+    }
+}
+
+/**
  * A chat list's delete button. Asks for confirmation -- with a warning line
  * when something is writing into the chat -- and then deletes the chat the
  * user confirmed: it is found again in `owner.chats` by reference after the
