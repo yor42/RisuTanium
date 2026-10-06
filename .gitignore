@@ -28,6 +28,7 @@ src-others/
 *.sln
 *.sw?
 /src-tauri/target/
+/src-tauri/key.txt
 /src-tauri/gen/*
 !/src-tauri/gen/android/
 /build/
