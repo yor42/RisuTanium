@@ -46,6 +46,7 @@ is the order of authority.
 - **[`Reports/`](Reports/)** — per-investigation and per-stage detail: the actual file:line
   evidence, designs, and rationale behind Roadmap items. See the band descriptions
   below.
+- **[`Upstream-Merges.md`](Upstream-Merges.md)** — authoritative for **what each merge from `kwaroran/RisuAI` took, adapted or skipped**, the last upstream commit merged, and how to find what is new next time. Append one entry per merge.
 - **[`Maybe-Later.md`](Maybe-Later.md)** — unscheduled QOL ideas and deferred items. Nothing here is
   approved or scheduled.
 - **[`Tools/`](Tools/)** — measurement procedures and fixtures used to produce the campaign's
@@ -101,6 +102,7 @@ a given piece of work by matching its topic/phase name, not by guessing a filena
 | What was already investigated and refuted? | `Reports/21-deferral-re-review.md` (re-tested "pre-existing" deferrals), the relevant `Reports/<N>` for a specific claim, `Investigation-Ledger.md` for confirmed-vs-refuted verdicts on dispatched work |
 | How do I measure this (RAM, keystroke cost, chat-switch cost, etc.)? | `Tools/README.md` and the other files under `Tools/` |
 | What is deliberately not being done / not scheduled? | `Maybe-Later.md`; also check `Roadmap.md` for items marked reverted or deferred with a reason |
+| What came in from upstream, and what was skipped or adapted? | `Upstream-Merges.md` |
 | What was dispatched, to whom, and what did it cost? | `Investigation-Ledger.md` |
 | What did investigation rounds 1-2 originally find, before later corrections? | `Summary.md` (historical — verify against `Roadmap.md` for anything since superseded) |
 | Is a subsystem bug reference (modules, TTS, playground, etc.) real or just a hunch? | The relevant `Reports/99-*.md` — check its per-entry Status line; nothing there has necessarily been reproduced |
