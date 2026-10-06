@@ -338,15 +338,17 @@ This phase is the load-bearing one: it's what Phase 4 (Android) is gated behind,
        - **Stage 0 (ii), done: `2aa55398`.** On the Node server, revision bumps are appended to `save/__revisions.log` instead of rewriting the whole revision map per write; the map is written as a snapshot only at compaction (at startup and every 20000 records). At 350,350 keys the p50 per request fell from 192.6 to 15.5 ms and 8 writers of 25 writes each from 38.9 s to 0.22 s. A server that cannot read an existing log refuses to start. Moving a data directory back to a build from before this change is unsupported (`MC-011`). Power-loss behaviour is not claimed (process crash only). Gates: Gate 1 `[REJECT]` then `[EDITORIAL]`; Gate 2 `[REJECT]`, `[APPROVE]`, `[EDITORIAL]` (rows 1054, 1055, 1059 to 1061).
        - **Stage 0 (i)+(iii), done: `f04068f1`.** The save loop skips a main-file write when the bytes are provably equal to what storage holds, and a skipped save still keeps a numbered backup fresh: a fork-only record (`database/backupfingerprint`, never in a `.bin`) names the newest backup's bytes, so a boot that skips takes a backup only when the record does not name the main file (`MC-194` 12). A new module, `mainFileOutcome.ts`, reports every main-file write attempt (a scope amendment under `MC-091`). Residuals are listed in the commit message; among them, a no-op save from a stale Node device no longer gets an early 409, and pruning or clock skew can remove the recorded backup. The cost of the record write on weak hardware is not measured. It partly addresses CHORE-83 (below). Gates: Gate 1 `[REJECT]`, `[REJECT]`, `[EDITORIAL]`; Gate 2 `[REJECT]`, `[EDITORIAL]`, `[EDITORIAL]` (rows 1063 to 1067).
        - **CHORE-121, done: `71100280`** (2026-10-05; local, not pushed; its own entry below; ledger rows 1076 to 1078). Concurrent Node store requests no longer share Chrome's same-URL cache lock, the proxy responses carry `Cache-Control: no-store`, and the four storage routes have their own 20000-per-minute limit. It was fixed alongside Stage 1 at the maintainer's word (`MC-195` 1).
-       - **Stage 1: the plan is accepted (2026-10-05; Report 57; ledger rows 1073 to 1086; `MC-195`). Stages 1a and 1b are implemented and gated (2026-10-05; Report 58; ledger rows 1089 to 1096); 1c is next and not started.** Stage 1 is the stable-keyed block store, by the advisor's staging (`MC-194` 11); the maintainer approved forcing a Tauri directory write to disk, "Yes, in Stage 1", which needs a Rust command, and a partial commit across two Node devices, "Acceptable (Recommended)".
+       - **Stage 1: the plan is accepted (2026-10-05; Report 57; ledger rows 1073 to 1086; `MC-195`). Stages 1a and 1b are implemented and gated (2026-10-05; Report 58; ledger rows 1089 to 1096). Stage 1c is implemented, gated and merged into `main` (2026-10-05 and 2026-10-06; Report 59; ledger rows 1099, 1100 and 1179 to 1255; `MC-196`, `MC-197`).** Stage 1 is the stable-keyed block store, by the advisor's staging (`MC-194` 11); the maintainer approved forcing a Tauri directory write to disk, "Yes, in Stage 1", which needs a Rust command, and a partial commit across two Node devices, "Acceptable (Recommended)".
          - **Pre-measurement, done (row 1073).** The boot read cost with N keys was measured on an i9-13900KF and an x86_64 Android emulator on the same host (best-case hardware, `MC-003`, `MC-010`; not a phone or a Pi). Reading one key per entity (506 keys) passes desktop IndexedDB (55 ms against a 156 ms decode), fails the emulator marginally (398 to 448 ms against 327; low to moderate confidence) and fails Node at loopback (592 to 634 ms against 156). Packing the archived stubs into one value passes on every platform measured. So the plan packs archived characters into one `stubs` value and gives each loaded character one key (the Orchestrator's reading of "start stage 1 plan now", `MC-195` 1; the maintainer's answer does not name the packing). The Tauri figure is a Node `fs` stand-in, not a Tauri build, and is not established.
          - **Gate 1 closed at round 5 `[EDITORIAL]`, after rounds 1 to 4 `[REJECT]` and a `senior-advisor` escalation after round 3** (rows 1079 to 1086). The advisor's root cause was that the head record conflated a pointer with a work queue and a liveness list, written by six actors. The accepted design makes the head a pointer written only by a whole-state replace's compare-and-swap. Two more measurements fed it: an IndexedDB compare-and-swap across tabs on a non-secure origin (Chrome 154, Edge 154 and Firefox 157; Safari and Android Chrome not run; row 1083) and a fingerprint of the main-file bytes a conversion read (row 1084).
          - **The accepted plan is Report 57** (`Reports/57-save-layer-stage1-plan.md`; revision 5 of the working plan). Maintainer choices that shape it are in `MC-195` 3 to 6: a damaged save at startup gives "Backup or stop", the old main file is renamed after conversion, a Node snapshot over the body limit is skipped with a notice, and a damaged save that was kept can be deleted from manual clean-up after a dated confirmation.
          - **Implementation stages:** 1a the durable Tauri write (a Rust command); 1b the core with no callers; 1c everything wired, as one stage. Per `MC-195` 8, 1a and 1b run in parallel after the records batch. Each stage gets its own Gate 2, with `opus-reviewer`.
           - **1a and 1b: implemented and gated 2026-10-05; accepted and committed as `a7c0ef06` (1a) and `15f01783` (1b) (local, not pushed); gate record in Report 58.** 1a (the Rust command `write_durable` and the routing of `blocks/`, `coldstorage/` and numbered-backup writes on Tauri) ended `[EDITORIAL]`, twice. 1b (the block-store core, with no callers) ended `[APPROVE]` after one `[REJECT]` (a fresh IndexedDB profile could not read its head; a second `load()` on a live owner could let a stale tab overwrite a restore). Not verified natively: a Tauri webview run, Unix directory flush, power loss, and IndexedDB atomicity outside `fake-indexeddb` (Report 58 section 8).
           - **1c carry-forward (full list in Report 58 section 9):** choose `createIndexedDbHeadSwap` explicitly; a test that a non-binary head in `checkHead` stops the owner, and what the damage prompt offers over one; a damaged-head backup replace keeps no generation (a plan gap); the `readPack` stub copy; 1a's invisible `eprintln!` and the extra raw-body copy until Stage 2; and the 1b implementer's "Left for 1c" list.
+          - **1c: implemented, gated and merged (2026-10-05 and 2026-10-06; gate record in Report 59; ledger rows 1099, 1100 and 1179 to 1255; `MC-196`, `MC-197`).** Plan Gate 1: `[REJECT]`, `[REJECT]`, `[EDITORIAL]`, with no escalation. Slices, each with its own Gate 2 by `opus-reviewer`: A `04a2f9dd` (core changes and the page owner), B `69623d30` (boot, conversion and the read-only fallback page), C `420a9b7b` (the save loop, snapshots and stop reasons), D1 `7e90f83e` (restores, remote saving retired, preset repair), D2 `53c84a0e` (manual clean-up, `writeMainFile` removed), and `32f3e7e3` (the final review's fixes). It was merged with the `.bin` speed commit as `25d53bcf` and with QOL-06 as `8ca14be5`, and is on `main` since the push of 2026-10-06. The page now boots from, saves to and restores through the block store on every host; a legacy profile converts on its first committing save or in the boot archive pass, and the old main file is moved aside as `database.pre-blocks*`; a page that fell back to the OPFS store is read-only (`MC-196` 3 d). Residuals and what was not verified natively: Report 59 section 7; filed as CHORE-113.
        - **Stage 2: per-module blocks.**
      - **Merges into this branch (2026-10-04):** `feat/ui-batch` batch 5e as `3472e63a` (ledger row 1039); `feat/side-batch` at `aeedbe4d` as `32fa1184` (row 1062) and at `0023f16f` as `ddd47655` (row 1068), which brought in CHORE-80, CHORE-81 and CHORE-88 (their status lines are in their own entries). Nothing is pushed.
+     - **Large-data import and export, and Android (2026-10-05 and 2026-10-06; Report 60; ledger rows 1182 to 1209 and 1248 to 1309; `MC-197`, `MC-198`, `MC-199`, `MC-225`).** On `main`: the `.bin` restore and export speed-up and self-hosted download helper (CHORE-122, `b6d8e963`); batched Rust asset I/O, which took a 38.7 GB `.bin` from a measured 86 to 93 min restore and 66 to 74 min export to 16.1 and 10.3 min (CHORE-123, `b5a41e3d`); bounded IPC for entries of 512 MiB and above (CHORE-124, `bc631526`); the streaming `.risum` and PNG importer (CHORE-125, `64436cbd`); piece-by-piece hashing and saving on desktop and Android (CHORE-126, `1e71c45c`); and the Android build with its chunked byte transport (CHORE-127, merged as `30d3e594`; the release stays gated, `MC-198` 8). Open and queued: the native Risutanium backup format (CHORE-128), the pre-export upstream-limit check (CHORE-129), asset display without loading (CHORE-109), and CHORE-101 to CHORE-113. All figures are best-case hardware (`MC-003`, `MC-010`).
 
 9. **[added 2026-09-22, CHORE-17 measurement] Per-chat save blocks: every save re-encodes the whole selected character.**
    - Each character, with all of its chats, is one save block (`RisuSaveType.CHARACTER_WITH_CHAT` in `risuSave.ts`), and the selected character is re-encoded on every save it's marked for — it's the tracker's sticky front. So during an ordinary chat, each save re-encodes every chat that character has, not only the one that changed.
@@ -376,7 +378,9 @@ Desktop ARM targets are **not** gated behind the RAM work — they're a CI/packa
 
 ## Phase 4 — Android (explicitly gated behind Phase 2)
 
-**Do not begin implementation work in this phase until Phase 2's exit criterion is met.** Cross-compiling the current architecture to Android as-is causes OOM crashes on low-RAM devices — this is a hard prerequisite, not a preference.
+**Status (2026-10-06, `MC-198` 8, amending `MC-047`): Android is built alongside the performance work and is the low-spec benchmark platform; the release stays gated.** The build, the window-call gating and a chunked byte transport are merged (CHORE-127, `30d3e594`; Report 60 section 6); a performance item that affects memory, storage I/O or rendering also reports an Android emulator figure, and a Note 9 figure when useful. Shipping an Android build still waits until the memory and performance work makes it safe on low-RAM phones. Corrections to the items below from the scope investigation (ledger row 1197): item 2's `lib.rs` now exists (the app body moved out of `main.rs`); item 3's updater and deep-link plugins are compiled only for desktop and their permissions moved to `desktop.json`; item 1 (`tauri android init` picking up the icons) was probably false, because `tauri android build` does not copy `icons/android` and the project's launcher icons are now ours, tracked in `src-tauri/gen/android`; item 7 (an `isDesktop` flag in `platform.ts`) is partly stale, since the fork's `isTauriDesktop` (`src/ts/tauriDesktop.ts`) gates the window calls.
+
+**The sentence below is superseded for the build itself by the status above: do not begin implementation work in this phase until Phase 2's exit criterion is met.** Cross-compiling the current architecture to Android as-is causes OOM crashes on low-RAM devices — this is a hard prerequisite, not a preference.
 
 Once Phase 2 has landed:
 
@@ -2378,6 +2382,8 @@ above is the ticket as filed and is unchanged.
   the external fetches would leave CHORE-63's problems in place.
 
 ### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
+
+**Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1).** The maintainer now thinks it may not be a fault in this app: a WebView that simply stopped responding because everything else was overloading the browser on the 36 GB upstream profile. It is revisited only on their report, after the Android Tauri build works fully; no reproduction attempt is queued. Android's logcat captures the WebView console (`Tauri/Console`), which can be used if it recurs there.
 
 **Status (2026-10-04, side session): still open.** The hand-off listed it in Batch B; the maintainer chose not to take it in
 the side session ("Skip CHORE-41", `MC-219` 3). Nothing changed. It is still blocked on the console output below.
@@ -6169,9 +6175,140 @@ with index -1.
 - **Decisions:** `MC-195` 2 (scope: the proxy bug "Into CHORE-121 (Recommended)"; the limiter "Own higher limit for storage (Recommended)") and 7 (the commit word).
 - **Related:** Report 57 section 9.2 (the Stage 1 boot-cost figures for Node assume overlapping reads); ledger row 1073.
 
+### CHORE-122 — `.bin` restore was quadratic in entry size and slept after every entry, export wrote four times per entry, and web exports depended on a third-party download helper (MEASURED on an i9, synthetic data)
+
+**Status (2026-10-05): filed and DONE in `b6d8e963`** (pushed with `main`; ledger rows 1182 to 1196; `MC-197` 1 to 5; Report 60 section 2). Type: performance, plus a dependency and failure-mode fix. Opened by the maintainer's request to speed up `.bin` import and export while Stage 1c was planned.
+
+- **What was measured (row 1182):** the restore's buffer concatenation was quadratic (a 155 MB entry took 29.1 s at 64 KB chunks and 1.9 s at 1 MB); a fixed `sleep(10)` per restored entry cost about ten times the disk work; on Tauri four appends per entry took 22.65 s against 0.28 s coalesced per 20,000 x 32 KiB. Removing account sync and Drive had bought no speed. The web, Node and PWA exports went through a helper page on `jimmywarting.github.io` with no timeout (offline hang INFERRED, not run).
+- **What changed:** each restore entry is read once with `slice()` and the sleep is a yield about every 50 ms; Node restore assets over the body limit are listed and skipped after a confirm; the Node byte store retries a 429; `TauriWriter` coalesces writes into 4 MiB buffers; streamsaver 2.0.6 is vendored and its helper is served from `/streamsaver/` with a 10 s ready timeout and an in-memory fallback. The `.bin` container is unchanged (`MC-175`). 64 files.
+- **Gates:** plan Gate 1 `[REJECT]`, `[REJECT]`, `[EDITORIAL]`; Gate 2 `[EDITORIAL]` (18 of 18 mutants killed). Checks: 478 files, 9327 passed, 4 skipped; `pnpm check` 0/0; build OK.
+- **Live (a scratch Node server):** an export through the self-hosted helper, a restore of that file, and the helper-blocked fallback. The plain-HTTP popup path has no recorded live run.
+- **Residuals:** a marker in a sub-header-length entry shows the changed-file wording and still stops; `writeModuleCard` calls `successExport` after `alertError` (pre-existing); progress is static during one huge entry. `pnpm install` to prune `streamsaver` from the main checkout's `node_modules` was deferred (TODO(evidence): not recorded as done).
+
+### CHORE-123 — Desktop `.bin` restore and export made one plugin call per file step (36 GB: restore 86 to 93 min, export 66 to 74 min; MEASURED on an i9)
+
+**Status (2026-10-06): filed and DONE in `b5a41e3d`** (pushed with `main`; ledger rows 1248, 1249, 1254 and 1256 to 1265; `MC-197` 8 to 10; Report 60 sections 3 to 5). Type: performance. Opened at the maintainer's "yes. do it." after the 36 GB measurement.
+
+- **What was measured:** 91% of the restore and 99% of the export wall time was sequential `plugin:fs` IPC at about 4 ms per call (about 3 ms of it Rust kernel time); not disk, not JS.
+- **What changed:** four Rust commands (`put_assets_batch`, `put_asset_single`, `get_assets_batch`, `list_assets_sized`) and a JS pipeline (`assetBatchPipeline.ts`) with batches of about 4 MiB, at most 4 calls in flight and 16 MiB in flight; each restored file is written to a temp file, `sync_all`ed and renamed (the maintainer's per-file fsync decision, `MC-197` 9); availability is fail-closed to Tauri on Windows, Linux and macOS. No command takes a filesystem path.
+- **Live (A11, Windows, i9):** a 31,069-asset slice restored in 66 s (461 s before) and exported in 55 s (184 s before); a 38.7 GB `.bin` restored in 16.1 min and exported in 10.3 min; every asset SHA-256 identical.
+- **Gates:** plan `[REJECT]` then `[EDITORIAL]`; Gate 2 `[REJECT]` (tests only) then `[APPROVE]` (21 of 21 JS mutants killed; 4 Rust mutants on error and limit branches survive). Checks: 9886 passed, 6 skipped; `cargo test` 74.
+- **Limits:** Linux and macOS have unit coverage only; the not-raw fallback could not be forced live. `put_asset_single` was later removed by CHORE-124.
+- **Related:** CHORE-124, CHORE-110.
+
+### CHORE-124 — A `.bin` entry of 512 MiB or more killed the desktop page on restore and export, and an asset of about 1 GiB killed the app (MEASURED on an i9, WebView2 154)
+
+**Status (2026-10-06): filed and DONE in `bc631526`** (pushed with `main`; ledger rows 1266 and 1268 to 1281; `MC-197` 11 and 12; Report 60 section 7). Type: bug (found by the live check of CHORE-123, present on the build before it). Opened at the maintainer's "fix the 512MB crash next".
+
+- **Cause:** WebView2 allocates one buffer per IPC call, 4 times the request and 2 times the response, and refuses one above `0x7FE00000`, so a request tops out near 511.5 MiB and a response near 1,023 MiB.
+- **What changed:** every desktop IPC call that moves file payload is at most 4 MiB: a streamed restore of large assets (`write_chunk_raw`), a 4 MiB response limit in `get_assets_batch`, ranged export reads, 4 MiB reads and writes of user files outside the app folder. A failed export now ends with a message and deletes its incomplete file; an asset that changes during an export stops it (the maintainer accepted this, `MC-197` 12). An asset of 4 GiB or more fails the export with `backupFailedAssetTooLarge`; CHORE-129 replaces that.
+- **Live (a 5.1 GB `.bin`, a 41.4 GB `.bin`):** the 5.1 GB file restored in 69 s with every asset equal and no call above 4 MiB (the old build died at 5 s); the 41.4 GB file restored in 800 s and exported in 636.8 s. The asset phase is flat at about +110 MiB, but the whole restore peaks +1,211 MiB, in the tail that decodes the legacy database: the under-1-GB target was met for the asset phase only (CHORE-103).
+- **Gates:** plan `[REJECT]`, `[EDITORIAL]`; Gate 2 `[REJECT]` (two untested data guards), `[EDITORIAL]`. Checks: 507 files, 10255 passed, 6 skipped; `cargo test` 118.
+- **Not covered:** Linux, macOS, Android, WebKitGTK and WKWebView ceilings; a single import file above about 2,046 MiB (fixed for `.risum` and PNG by CHORE-125).
+
+### CHORE-125 — Importing a large `.risum` module or PNG card read the whole file into memory (a module with 1 to 2 GB of assets could not be imported)
+
+**Status (2026-10-06): filed and DONE in `64436cbd`** (pushed with `main`; ledger rows 1283 to 1292; `MC-225` 1 and 2; Report 60 section 8). Type: bug (memory). Queued at the maintainer's "yes, queue the streaming importer next".
+
+- **What changed:** `.risum` and PNG cards are imported in two passes (a structure check that saves nothing, then one asset at a time); every refusal happens before any save; the per-asset limit is 200 MiB (100 MiB on Node) and the file as a whole may be any size; desktop open-with reads through plugin-fs handles in at most 4 MiB calls (new `fs:allow-seek` and `fs:allow-fstat`, handle-only); a changed file stops with a message. `.json`, `.risup` and presets are still read whole.
+- **Behaviour changes:** a module whose record count differs from its asset list is refused; an old Tavern PNG no longer saves its unreferenced asset chunks; a PNG asset of exactly 200 MiB is refused.
+- **Live (MEASURED, n=1):** a 2.32 GiB `.risum` imports with +571 to +661 MiB (the old build fails on every route); a 2.9 GB PNG card +1,354 against +3,258 MiB; Chrome web +728 MiB; Node refuses a 120 MiB asset; a 626 MB `.risum` imports on the Note 9.
+- **Gates:** plan `[REJECT]`, `[EDITORIAL]`; Gate 2 `[EDITORIAL]`, `[EDITORIAL]`. Checks: 513 files, 10423 passed, 6 skipped.
+- **Related:** CHORE-101 (orphan assets), CHORE-126.
+
+### CHORE-126 — Importing a large asset held several whole copies of it: the file bytes, the decoded asset, the hash copy and a write copy
+
+**Status (2026-10-06): filed and DONE in `1e71c45c`** for desktop and Android (pushed with `main`; ledger rows 1299 to 1309; `MC-225` 5; Report 60 section 9). Type: performance (memory). The web stage is CHORE-108. Queued at the maintainer's "yes." (`MC-225` 3).
+
+- **What changed:** on the Tauri desktop and Android app an asset of 16 MiB or more is read at most 4 MiB at a time and each piece is hashed and written once, with a Rust final key on the last chunk (renamed into place, or discarded if the key exists). An incremental SHA-256 of our own replaces `@aws-crypto/sha256-js`, which gives a wrong digest at 512 MiB and above. Plain-HTTP hosts now save under the content-hash key instead of a random key. Node keeps its 100 MiB limit.
+- **Live (MEASURED, single foreground runs):** a 1.91 GB `.risum` renderer peak 244 against 1,227 MiB (67.3 against 61.5 s); a 2.79 GB PNG card 222 against 1,570 MiB (46.6 against 38.7 s); a Note 9 630 MB `.risum` 287 against 1,008 MiB RSS (126 against 208 s). Keys equal the old build's.
+- **Gates:** plan `[REJECT]`, `[EDITORIAL]`; Gate 2 accepted. Checks: 517 files, 10533 passed, 6 skipped; `cargo test --lib` 133.
+- **Related:** CHORE-102, CHORE-106, CHORE-107, CHORE-108.
+
+### CHORE-127 — Android build, window-call gating and a chunked byte transport (Phase 4 work, built alongside the performance work; release gated)
+
+**Status (2026-10-06): the build and the transport are DONE and merged as `30d3e594`** (`0c2267f5`, `397c6fc5`, `257c5a2d`; pushed with `main`; ledger rows 1197 to 1209, 1270 and 1271; `MC-198`; Report 60 section 6). Type: feature. **Shipping an Android build stays gated** until the memory and performance work makes it safe on low-RAM phones (`MC-198` 8).
+
+- **What exists:** the app body in `lib.rs` with a mobile entry point; Android-only `rustls`; desktop-only window calls gated on `isTauriDesktop`; `updater:default` and `deep-link:default` moved to `desktop.json` (which now names the `main` window); the tracked `src-tauri/gen/android` project; base64 chunk writes (`write_chunk`, `abort_chunked`) and ranged reads (`read_range`) through the Android store. On Android the boot archive pass is off.
+- **Measured (the Android 15 emulator, debug Rust; emulator ratios, not phone figures):** 50 MB writes 22 to 24 MB/s with a main-process RSS rise of at most 14.5 MB, against 3.7 MB/s and +57 MB per MB for the old array path; reads 155 to 217 MB/s. A Note 9 debug run (A1, A2, A8) passed.
+- **Gates:** transport plan `[REJECT]`, `[EDITORIAL]`; Gate 2 `[REJECT]` (a desktop permission regression), `[APPROVE]`; merge review `[APPROVE]`.
+- **Roadmap Phase 4 corrections from the scope investigation:** the two blockers it lacked (`openssl-sys` through reqwest, and the capability validation) are fixed; item 1 (`tauri android init` and icons) was probably false; item 7 (an `isDesktop` flag) is partly stale (the fork's `isTauriDesktop` is the flag in use).
+- **Open:** CHORE-112.
+
+### CHORE-128 — A faster Risutanium-to-Risutanium backup format and a sync folder (design not started)
+
+**Status (2026-10-06): open, not scheduled; design follows the Rust `.bin` path, which has landed** (CHORE-123). Type: feature. Filed from the maintainer's request (`MC-199` 2 and 3; ledger row 1267). The `.bin` stays the upstream-to-fork format.
+
+- **Direction (maintainer):** devices take turns (a restore replaces the whole state and warns if the target is newer; no merge); a sync folder that any client mirrors, no provider code in the app; both a folder and a single-file pack of the same layout; Android reaches the folder through a custom folder plugin with a once-per-install tree pick and persisted access, no all-files permission; chat media (inlay) and MCP tool-call data go in; an optional password that encrypts both the folder and the pack (plain by default; a lost password means an unreadable backup); a newer-data marker (origin and stamp in the backup, the device's last restore or save recorded, a warning on restore).
+- **Facts from the groundwork (the investigator's; the Orchestrator confirmed those marked):** block key names change at every whole-state replace, so a name-only skip is wrong across restores; no cross-device newer-data signal exists today (`saveTime` is declared and never used); the dialog plugin's folder picker returns `FolderPickerNotImplemented` on mobile (confirmed in tauri-plugin-dialog 2.7.3) and no tree grant exists; inlay media and MCP payloads are in neither the store nor the `.bin` (confirmed); assets are sha256-named and immutable on Tauri, so a skip by name is fine for them; an uncoordinated folder copy is not a consistent snapshot; API keys are plaintext in the root and config; sync clients behave differently on conflicts and temp names.
+- **Open questions:** whether the `.bin` can carry the inlay and MCP data without breaking an upstream import; the asset-fsync cost for this format; the format may exceed upstream's limits, which `MC-223` allows.
+
+### CHORE-129 — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
+
+**Status (2026-10-06): open, not scheduled.** Type: feature. Filed from the maintainer's relaxation of the compatibility invariant (`MC-223`; `AGENTS.md` carries the amendment). It replaces the whole-export failure that `bc631526` gives for an asset of 4 GiB or more (`backupFailedAssetTooLarge`).
+
+- **Behaviour the notes record:** before the export starts, name each over-limit item in a warning; on confirm export the rest and leave those items out, and repeat their names in the summary; cancel writes nothing. A hard limit (an entry over 4 GB: the container cannot hold it) and a soft limit (assets over about 500 MB: an upstream desktop restore crashes at the WebView2 per-call cap, warned as "upstream may fail to load" and still included).
+- **Not decided (TODO(evidence)):** the exact limits and wording as a design; which export entry points the check covers; how the name is shown for an asset used by several characters.
+- **Precedent:** the plugin-data warning (CHORE-74, `MC-176`).
+
+### CHORE-101 — Assets saved before a refusal, a save failure or a changed file stay behind as orphans
+
+**Status (2026-10-06): open, not scheduled.** Type: wasted disk. Filed from `64436cbd`'s message ("assets saved in pass 2 before a save failure or a file change stay behind (the orphan clean-up is a separate ticket)") and `1e71c45c`'s (assets saved earlier in the same import stay).
+
+- **What happens:** pass 1 of the streaming importer makes every refusal happen before a save, but a save failure, or a file that changes during pass 2, leaves the assets already saved. The startup sweep and manual clean-up are the existing ways to remove assets nothing references. A killed piece-by-piece import leaves a temp that the next boot removes.
+- **Not known:** whether D2's manual clean-up always removes these (TODO(evidence)).
+
+### CHORE-102 — A re-import of a large file whose assets already exist still sends every piece over IPC before discarding it
+
+**Status (2026-10-06): open, not scheduled.** Type: performance. Measured in the live check of `1e71c45c` (a re-import adds nothing and leaves no temp, but took 45.5 s because every piece was sent). How to skip before sending is not designed (TODO(evidence)).
+
+### CHORE-103 — The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail
+
+**Status (2026-10-06): open, not scheduled.** Type: memory. The live check of `bc631526` (S1) measured the whole restore peaking at +1,211 MiB in the tail that decodes the 159 MB legacy database against a flat +110 MiB asset phase (a control with 300 small entries peaked +1,131 MiB), so the under-1-GB target was not met. The records items list "legacy decode memory" as a follow-up without further detail (TODO(evidence): confirm this ticket is the one meant). Platform: Windows, i9, WebView2 154.
+
+### CHORE-104 — The "kept file" message
+
+**Status (2026-10-06): open, not scheduled.** The records items list a "kept-file message" follow-up of the importer and hashing work without detail (TODO(evidence): the intended wording and where it shows are not in the evidence). Possibly the `backupFailedFileKept` text of `bc631526`.
+
+### CHORE-105 — A Node chunked upload endpoint (optional)
+
+**Status (2026-10-06): open, optional, any time (`MC-225` 3).** Node-hosted imports keep the 100 MiB per-asset limit and have no chunk endpoint; `1e71c45c`'s message notes there is no chunk endpoint yet (CHORE-108). Whether Rust moves the bytes is decided after live numbers (`MC-225` 3).
+
+### CHORE-106 — Put `.charx` and editor uploads onto the piece save
+
+**Status (2026-10-06): open, not scheduled.** `1e71c45c` moves only the `.risum` and PNG importers onto the piece save; `.charx` asset entries and the module and character editors' uploads still save whole (the records items name the follow-up without detail; TODO(evidence)).
+
+### CHORE-107 — `openWriter` belongs inside the `try`
+
+**Status (2026-10-06): open, not scheduled.** A follow-up named in the records items as "O2 openWriter inside the try" from the piece-by-piece hashing work (TODO(evidence): the file and the failure it prevents are not in the evidence).
+
+### CHORE-108 — The web stage of piece saving
+
+**Status (2026-10-06): open, not scheduled** (`MC-225` 5: desktop and Android first, "web next stage"). On web and Node an asset is still read and saved whole (`1e71c45c`'s message: "Web and Node otherwise behave as before"); CHORE-105 is the Node endpoint.
+
+### CHORE-109 — Show assets without loading them whole
+
+**Status (2026-10-06): open, queued after the importer (`MC-225` 3).** On desktop and Android a file URL read from disk; on web a service worker over the stored files. The 200 MB per-asset policy limit (`MC-187`) can rise once this and CHORE-126 both land.
+
+### CHORE-110 — Whole-file export bytes differ from run to run
+
+**Status (2026-10-06): open, candidate investigation.** In the live check of `b5a41e3d` two exports of the same data differ byte for byte on both the old and the new build: the `database` entry's bytes vary, and the decoded database is equal (assets identical). Not diagnosed.
+
+### CHORE-111 — Native-speaker review of the Stage 1c, `.bin` and importer strings
+
+**Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`).** The translators flagged low-confidence wording in the strings added by these changes: the lists in Report 59 section 8 (Stage 1c slices, QOL-06) and the `.bin` speed change (cn and zh-Hant "saved as it is made", vi, de and es "download helper", de "Kaltlager"), the bounded-IPC messages (ko 이(가) and 에셋, es "tú mismo" gender, vi stiffness, cn and zh-Hant, de "Asset") and the importer strings (the de, vi and es asset term; ko 이(가)).
+
+### CHORE-112 — Android follow-ups
+
+**Status (2026-10-06): open, not scheduled.** From the Android work (Report 60 section 6): the back gesture left the app and a relaunch lost state (first-run state; not investigated); `relaunch()` is likely ACL-rejected on Android (INFERRED); the debug APK is 207 MiB after the window fix (107 MB before; unexplained); an Android `.bin` export (the `TauriWriter` export bypasses the transport seam and a `content://` save is unresolved; `MC-198` 5); the Android per-call limits were not changed by the bounded-IPC work and have no figure; the O1 and O3 items of the Android merge review (the `tauriFilesStore` header omits pre-conversion copies); and an `AGENTS.md` sentence ("no `.editorconfig`") made stale by the tracked `src-tauri/gen/android/.editorconfig`.
+
+### CHORE-113 — Stage 1c residuals
+
+**Status (2026-10-06): open, not scheduled.** The residual list of Report 59 section 7: the owner's extra copy of the acknowledged block bytes (unmeasured; an emulator figure is owed under `MC-198` 8); CRC-32 on the main thread for large copies; the rename finish re-reading the main file at each block boot; prompts inside the exclusive lock; the timing-sensitive `bootstrap.startupCleanup` test under full-suite load; `opfsCopyBack` writing `database.bin` beside a head when the `migrated` marker exists; `mainFileOutcome.ts` being unused in production; the D1 residuals (a null in `characters` fails at encode after assets are written; the too-large message names the current, not the restored, characters); a kept generation's date being its creation time; QOL-06's untested archived-trashed-character removal and the unchecked sweep of an orphaned cold unit.
+
 ### Candidate tickets, not yet numbered (2026-10-04)
 
-Recorded so they are not lost. No number is assigned. The next free number in the Main Campaign's range is CHORE-122.
+Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-113 are now in use (`MC-196` 2). The next free numbers in the Main Campaign's ranges are CHORE-114 to CHORE-119, then CHORE-130.
 
 - **A V2.1 plugin that switches itself off through the plugin API's `setDatabase` keeps running with wrapped module asset lists (G2-4; Stage A Gate 2 round 1, ledger row 1057; `b1d2804b`'s message).** SUSPECTED only, not reproduced. The real `setDatabase` would wrap the lists while the plugin's code is still running, and a later in-place push by that plugin would go untracked. No such upstream plugin is known.
 - **An unparseable or non-object `__revisions.json` on the Node server (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message).** Deferred. The server still starts as if the snapshot were empty (the log is replayed, and a non-object takes the same path with the error logged), and the next compaction overwrites the file. The log does not worsen this. Possible fixes named in the commit message: rename the bad file aside and seed a high revision floor so stale devices get 409.

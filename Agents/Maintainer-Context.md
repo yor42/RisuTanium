@@ -1051,6 +1051,8 @@ that the decision itself was reversed, only that the accompanying implementation
 > report treats Android strictly as a **later-phase target**, sequenced strictly *after* that
 > RAM/performance rework lands, not as a parallel or independent workstream.
 
+*Amended by `MC-198` 8 (2026-10-05): Android is no longer sequenced strictly after the RAM and performance rework. It is built alongside it and serves as the low-spec benchmark platform. Shipping an Android build stays gated until that work makes it safe on low-RAM phones.*
+
 ---
 
 ### MC-048 — Phase 2 item 3 (character lists) goes first, before the rest of Phase 2
@@ -2452,6 +2454,8 @@ included. Ledger row 202 read them as data.
   reply: no stat or affection trackers, no "Update Chat At", no Lua `reloadChat`, no buttons
   embedded in messages.
 - **The newest message is affected too,** not only older ones.
+
+*CHORE-41 deprioritised by `MC-199` 1 (2026-10-06): the maintainer thinks it may be a WebView overloaded by the 36 GB upstream profile, not a fault in this app. Low priority until the Android Tauri build works; revisited only on their report.*
 
 ---
 
@@ -6172,6 +6176,8 @@ same and stage 2 does not change the cost (ledger row 679).
    Orchestrator kept, in the same sentence, the existing requirement that upstream characters, modules, presets, plugins
    and other supported integrations continue to work on this fork.
 
+*Amended by `MC-223` (2026-10-06): for the fork-to-upstream direction, data over upstream's size limits may be left out after a warning that names it; upstream to the fork must always work.*
+
 ### MC-176 — Upstream's own `.bin` limits do not count against the round-trip invariant; the fork's export warns when the backup holds plugin data upstream will not restore (CHORE-74)
 
 - **Tag:** decision (the maintainer's answers to `AskUserQuestion`)
@@ -6962,6 +6968,137 @@ cost: text the user cleared can come back after such a crash.
 - **Stages.** 1a durable Tauri write; 1b the core with no callers; 1c everything wired, as one stage because a build with the loader but the old restores would ignore restores (round 1, B11).
 - **CHORE-121's proxy fix** is a server response header, not a client change: the Orchestrator verified in source that the proxy handlers delete the upstream's `Cache-Control` (with its CSP, `Clear-Site-Data` and `Content-Encoding` headers) but forward `Last-Modified`, `Expires` and `ETag`. The investigator's hand-back superseded two statements in its packet (the limiter claim and a note on option (a)'s 304 handling).
 - **Reviewer claims verified against source before use.** The Orchestrator checked round 1's B3 and B6, round 2's R2-1, and the advisor's premises that the archive pass needs Web Locks on the web and that `createEntryProbe` and `openExistingDatabase` exist in `indexedDbStore.ts`.
+
+---
+
+### MC-196 — Main Campaign, 2026-10-05 after `2ccf4fc2`: Stage 1c's plan starts, the four product choices for it, the number ranges and the lifted ledger-row restriction, the end of the `MC-179` lane split for three files, the legacy `database.bin` choice, and the word to build
+
+- **Tag:** decisions (the maintainer's answers to the Orchestrator's `AskUserQuestion` questions, and messages the maintainer typed; each item says which). The Orchestrator's own design calls are listed apart at the end.
+- **Date:** 2026-10-05
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers in the Main Campaign session after the records commit `2ccf4fc2` (`MC-195` 9), while the Stage 1c read-side and write-side investigations, the plan and its Gate 1 were run (ledger rows 1099, 1100 and 1179 to 1181) and during the slice builds. Where an answer was a choice from options, the chosen option's label is quoted; a typed message is quoted as typed.
+- **Reasoning:** none stated, except where a quotation carries it.
+- **Alternatives rejected:** not recorded (the other option labels were not kept).
+- **Amends:** `MC-179` (its number ranges: item 2 gives the Main Campaign the side session's unused ranges; item 5 ends its lane split for three files). Report 57 section 6.10 (item 3 d: the OPFS page is read-only; `MC-091`, an explicit maintainer decision to reduce supported complexity).
+- **Related:** `MC-091`, `MC-175`, `MC-195`, `MC-219`, `MC-220`, `MC-221`; Report 57 (`Reports/57-save-layer-stage1-plan.md`); Report 59 (`Reports/59-save-layer-stage1c-gate-record.md`); ledger rows 1099, 1100, 1179 to 1181.
+
+**What was decided:**
+1. **Stage 1c's plan starts.** The maintainer typed: "start stage 1c plan".
+2. **Number ranges, and the ledger-row restriction lifted.**
+   - The maintainer typed: "contact the side session for double check, and lift the ledger row restriction once it confirms that they are not making any further changes." The side session confirmed by a cross-session message that it had finished and would make no further commits or numbers; its last used numbers were ledger row 1178, `MC-221` and CHORE-100, with no Report; its merge `82809af2` (tip `45790ac5`) is an ancestor of `2ccf4fc2` (checked with `git branch --contains 82809af2`); `feat/side-batch` is frozen. The restriction on ledger rows is lifted.
+   - The maintainer typed: "yes, take those ranges too." The Main Campaign's numbers are therefore: `MC-196` to `MC-199`, then `MC-222` onward; ledger rows 1099 and 1100, then 1179 onward; CHORE-122 to CHORE-129, then CHORE-101 onward; Reports 59 to 64, then 70 onward. They are used in that order, without gaps.
+   - The side session's open items return to the Main Campaign's pool: CHORE-97 (deferred, `MC-221`), CHORE-41 (skipped, `MC-219` 3), CHORE-68 and CHORE-92 (locked), the `apiKeyEnvRefNote` native review (already the Main Campaign's), CHORE-81's launch inputs and CHORE-80's `read_env_secret` in a Tauri build (`MC-220` b and c).
+3. **Four product choices for 1c** (`AskUserQuestion`, 2026-10-05; the labels are quoted, the sentence after each is the Orchestrator's note of what the option means):
+   - (a) An unreadable head, then "Load the newest backup": "Keep all of them (Recommended)". Every older generation that has a root is marked kept; image clean-up stays off until the user deletes them from manual clean-up (dated, with a confirm).
+   - (b) The newest backup decodes only partially: "Skip to a complete one (Recommended)". The newest strictly complete backup is used; only if none exists is the newest partial one offered, after a confirm that lists what is missing.
+   - (c) `database.pre-blocks.bin` and clean-up: "Protect + delete option (Recommended)". Its assets and units are kept; clean-up offers a dated, confirmed "delete the pre-conversion copy".
+   - (d) The OPFS transitional page: "Read-only + notice (Recommended)". It opens, does not save, and tells the user; the next start retries the copy-back. This amends Report 57 section 6.10.
+4. **The legacy `database.bin` on a block profile (2026-10-05, `AskUserQuestion`).** Asked whether choice (c) also covers a legacy `database.bin` left on a block profile (the Node over-limit case), the maintainer chose "Yes, cover it (Recommended)": the startup asset sweep is held while such a file exists; a failed presence check counts as "exists"; non-block profiles are unaffected.
+5. **The UI session's lane for three files ends.** The maintainer: "UI session is done, you can edit those files." The files are `AlertComp.svelte`, `BotSettings.svelte` and `UserSettings.svelte`. This ends `MC-179`'s lane split for them; the plan's lane-check note was resolved.
+6. **The word to build.** The maintainer typed: "yes, start building stage 1c." Slices are committed on `feat/stage-1c`: "Yes, commit slices there (Recommended)" (`AskUserQuestion`). The later commit and merge words are in `MC-197`.
+
+**Disclosures:**
+- **(a)** The questions behind items 3 and 4 are given in short; the full option text was not kept (TODO(evidence)).
+- **(b)** The measurements cited in the entries this one touches were taken on one i9-13900KF-class machine (best-case hardware, `MC-003`, `MC-010`), mostly with synthetic data (`MC-131`).
+
+**Orchestrator dispositions (design, not product; not maintainer decisions):**
+- **`botPresetsId` out of range.** The first plan clamped it to -1 ("no current preset"; overwrites nothing), provided every reader handles -1. After Gate 1 round 1 (ledger row 1179) the plan took upstream's append rule instead, and the repair moved to slice D: the working settings are appended as a new preset and the id points at it; -1 is left as it is.
+- **Conversion stays lazy** (the first committing save, or the boot archive pass), per Report 57 section 6.4; the rename finish is keyed on `convertedFrom`, so no stale-save window exists before conversion.
+- **The D3 startup-sweep hold** (slice B's Gate 2 round 1, ledger row 1212): the startup asset sweep is held while any pre-blocks file exists, as the consequence of choice (c) that the plan had missed; item 4 then extended it to a legacy `database.bin` beside a head.
+- **Gate 1 ran three rounds** (`[REJECT]`, `[REJECT]`, `[EDITORIAL]`) with no escalation; the slice gates and the final Gate 2 are in Report 59.
+
+---
+
+### MC-197 — Main Campaign, 2026-10-05 and 2026-10-06: the `.bin` speed work and the Rust batch command, the 36 GB measurement, the commit and merge words for 1c, QOL-06, the `.bin` speed work and the Android merge, and the branch clean-ups
+
+- **Tag:** decisions and requests (typed messages and `AskUserQuestion` answers; each item says which). The Orchestrator's own dispositions are listed apart at the end.
+- **Date:** 2026-10-05 and 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session between `MC-196` and the push of 2026-10-06. Typed messages are quoted as typed, with their typos; an `AskUserQuestion` answer is quoted by its option label.
+- **Reasoning:** the maintainer's own, where a quotation carries it.
+- **Alternatives rejected:** not recorded (the other option labels were not kept), except where an item names one.
+- **Amends:** `MC-178` (item 4 extends it to real oversized assets on a Node restore). The `.bin` container and entry names are unchanged by every change recorded here (`MC-175`).
+- **Related:** `MC-003`, `MC-010`, `MC-011`, `MC-047`, `MC-175`, `MC-178`, `MC-196`, `MC-198`, `MC-199`; CHORE-122 to CHORE-124; Report 59 and Report 60; ledger rows 1182 to 1196 and 1248 to 1282.
+
+**What was decided:**
+1. **The `.bin` speed request** (typed, 2026-10-05): "while we wait for stage 1c, I think its worth to investigate if we can speed up the .bin import/export now, as we do not have past blockers now such as risuaccount sync and gdrive backups." Answers on the first investigation (ledger row 1182): the speed batch, "Yes, but after 1c"; the platform that matters most, "Tauri desktop"; a new Rust command for Tauri backup and restore, "Yes, acceptable" (if measurement shows the TypeScript fixes are not enough); self-hosting the download helper, "Check first (Recommended)".
+2. **Parallel work** (typed, 2026-10-05): "if stage 1 does not overlap with .bin fix, can we parallelize the workflow by making .bin fix to work on another separate worktree?" This replaced "after 1c". The only overlap was `LoadLocalBackup`; the `.bin` batch lands first and 1c merges it before slice D.
+3. **The download helper** (`AskUserQuestion`, after ledger row 1183): "Self-host + timeout fallback (Recommended)"; timing, "With the post-1c speed batch (Recommended)"; for LAN access, "Not sure / both". The Orchestrator read the last as: a plain-HTTP IP page and an HTTPS or localhost page are both supported, and the plain-HTTP popup path needs a live check.
+4. **After the plan's first review** (`AskUserQuestion`, 2026-10-05): a plain-HTTP export, "Outside popup, else memory (Recommended)"; Node-hosted restore assets over the server's body limit, "Warn first, then skip (Recommended)". This extends `MC-178` to real oversized assets by the maintainer's decision.
+5. **The live check, and the word to merge the `.bin` speed change** (typed, 2026-10-05): "yes, go ahead with the download and restore"; then "yes, run the fallback check too. after that you can merge the .bin speedup." The change was committed as `b6d8e963` and the branch fast-forwarded.
+6. **Stage 1c commit and merge words.** Slice commits: "Yes, commit slices there (Recommended)" (`MC-196` 6). For slice D2 the Orchestrator had the standing permission and the maintainer's "commit D2 once the review passes" (2026-10-05). On 2026-10-06, after the 36 GB report: "yes, merge 1c." The merge of the `.bin` speed commit `b6d8e963` into Stage 1c (`feat/stage-1c`) is `25d53bcf`.
+7. **QOL-06, Empty trash.** The maintainer requested it on 2026-10-05 in four points (the wording is not kept; TODO(evidence)); the Orchestrator's call on one question (keep the open chat when it is not deleted) is below. The maintainer's word committed it as `e4a060e4`; on 2026-10-06: "you can merge the QOL branch when ready." The merge is `8ca14be5`.
+8. **The 36 GB scale measurement** (the 36 GB-scale measurement; the profile is a 38.7 GB `.bin`) (typed, 2026-10-05): "you can start 36gb scale investigation whenever you are ready". The measurement is Report 60 section 4. After its report (2026-10-06), on the Rust batch command: "yes. do it. and see if something similar can be also done in tauri android." The command is approved for Tauri restore and export; Android's applicability is to be investigated.
+9. **Per-file fsync for restored assets** (2026-10-06): the maintainer decided that restored assets get a per-file `sync_all` before the rename in the Rust batch restore (estimated about +1.5 min on the 36 GB profile). The wording is the Orchestrator's record, not a quotation.
+10. **Commit and merge words for the Rust batch change** (typed, 2026-10-06): "yes, go ahead and commit once live check passes and commit messages are fact checked." Committed as `b5a41e3d`; then "let's merge into the main now."
+11. **The crash at 512 MiB and above** (typed, 2026-10-06, after the live check found it on both the old and the new build): "fix the 512MB crash next", and to investigate the Rust memory of `put_asset_single`. The diagnosis is ledger row 1266.
+12. **A failed export deletes its incomplete file; an asset changing during export aborts it** (typed, 2026-10-06): "behavior change seems reasonable as asset getting 'changed' during backup would be extremely rare edge case anyway." This accepts the bounded-IPC plan's rule that an export stops with an error when an asset changes while it is being saved.
+13. **Branch clean-ups** (typed, 2026-10-05): "delete better-load-experimental branch too - it is outdated branch unrelated to our current work." and "delete the stale branches too". The deleted branches and their commit ids were saved by the Orchestrator in its scratchpad (`worktree-prune/deleted-branches.txt`), including `feat/side-batch` and `feat/ui-batch`.
+
+**Disclosures:**
+- **(a)** Every figure behind these decisions is best-case hardware, one i9-13900KF-class machine (`MC-003`, `MC-010`), mostly synthetic data (`MC-131`); the Note 9 and the Android emulator figures are in `MC-198` and Report 60.
+- **(b)** The Rust prototype's 10 to 18 min restore and 5 to 10 min export (and the later 5 to 6.5 min and 6.5 to 12 min) were ESTIMATES until the live check of the batch change MEASURED 16.1 min restore and 10.3 min export; the 86 to 93 and 66 to 74 min baseline was MEASURED (Report 60 sections 4 and 5).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **The speed plan's mechanism was replaced at the second rejection**: the vendored, patched helper with a worker handshake instead of probing the stream handover (ledger row 1186).
+- **Rust plan E-2**: a request body that is not raw makes batching unavailable for the page (the page then uses the per-entry path).
+- **Default for a failed export** (told to the maintainer): the incomplete file is deleted.
+- **QOL-06**: keep the open chat when it is not deleted, by re-pointing the selection by reference, instead of single-delete parity.
+- **The live judgement for the Rust batch change**: no regression; the 1 GiB single-entry failure is a pre-existing limit and is disclosed in the commit message.
+
+---
+
+### MC-198 — Main Campaign, 2026-10-05 and 2026-10-06: Android is built alongside the performance work, as the low-spec benchmark; the release stays gated (amends `MC-047`)
+
+- **Tag:** decisions (the maintainer's typed messages and `AskUserQuestion` answers; each item says which)
+- **Date:** 2026-10-05 and 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session, while the Android build, the window fix, the byte transport and the Note 9 runs were done (ledger rows 1197 to 1209, 1270, 1271). A typed message is quoted as typed.
+- **Reasoning:** the maintainer's own, quoted in item 8.
+- **Alternatives rejected:** not recorded, except that item 4 replaces an earlier Orchestrator decision.
+- **Amends:** `MC-047` (item 8: Android is no longer strictly after the RAM and performance rework). Roadmap Phase 4's gate sentence ("Do not begin implementation work in this phase until Phase 2's exit criterion is met") is superseded for the build itself; the release gate below stands.
+- **Related:** `MC-003`, `MC-010`, `MC-011`, `MC-047`, `MC-089`, `MC-091`; CHORE-127; Report 60 section 6; ledger rows 1197 to 1209.
+
+**What was decided:**
+1. **An Android test build, early** (typed, 2026-10-05): "Instead of building desktop and trying to second-guess the performance outside of best case scenario, can we add android support(Phase 4) early, and test it on simulated low RAM device(AVD device with 2Gb RAM) to see how it actually works on low memory condition after the memory fix?" Answers (`AskUserQuestion`): scope, "Test build now (Recommended)" (a separate worktree, in parallel with 1c, the minimum to boot on the 2 GB AVD, a baseline now and after 1c; shipping stays gated); downloads, "Yes, download them" (the rustup Android targets and Gradle packages).
+2. **Three build choices** (`AskUserQuestion`, 2026-10-05): the Tauri CLI, "Matching CLI (Recommended)" (a one-off 2.11 CLI download, no `package.json` change); the boot archive pass, "Measure both (Recommended)" (the baseline as it is, then with the pass on; it stays off in shipped code until Phase 4 is decided); the AVD's WebView, "Sideload current (Recommended)".
+3. **The emulator image** (typed, 2026-10-05, after the maintainer enabled Windows Developer Mode themselves): "yes, download the official emulator image" (the Android 35 Google APIs x86_64 system image, 1.6 GB).
+4. **Real Android support, not a test branch.** After the window investigation the maintainer typed: "I think we need proper implementation of phase 3(bypassing json encode, plugin window, etc) to get a real benchmark. is it possible to run this in parallel after we get a investigation of plugin window?" (they mean the Roadmap's Phase 4 Android work, in parallel with 1c). Then: "yes, treat it as real Android support." The Android work is ship-quality Phase 4 work with two gates (`opus-reviewer` for the byte-transport and save path) and merges only on the maintainer's word. This supersedes the earlier Orchestrator decision that Gate 1 is skipped for a test branch.
+5. **The transport** (typed, 2026-10-05, after the Orchestrator presented the investigation, asking how it differs from a local server): "Plain text chunks seems great". Base64 text chunks of about 1 MiB were approved for planning. An Android `.bin` export is a separate follow-up.
+6. **The word to merge** (typed, 2026-10-06): "can you check if android branch can be merged?" and then "go ahead and merge android build". The trial merge, its review and the merge `30d3e594` are in Report 60 section 6.
+7. **The Note 9 device.** The maintainer keeps "Risutanium" installed on the Note 9. The maintainer restored the main checkout's `saveSkip` test file themselves after a coder's relative-path incident (ledger row 1218).
+8. **The `MC-047` amendment** (typed, 2026-10-05): "I think MC-047 needs to be tweaked a bit - I am pretty convinced that android could be a great benchmark as we improve the performance because android devices are generally lower spec. so I think it should be worked on alongside of performance work if possible." Android is therefore no longer sequenced strictly after the RAM and performance rework. It proceeds alongside it and is the low-spec benchmark platform for performance work. Answers (`AskUserQuestion`, same day): the release gate, "Keep release gated (Recommended)" (shipping an Android build still waits until the memory and performance work makes it safe on low-RAM phones); performance acceptance, "Where it applies (Recommended)" (performance items that affect memory, storage I/O or rendering also report an Android emulator figure, and a Note 9 figure when useful, beside the desktop figure; not required for desktop-only changes).
+
+**Disclosures:**
+- **(a)** Every Android figure is from an x86_64 emulator on the i9 host (debug-built Rust unless a row says otherwise) or from one Note 9 (`MC-003`, `MC-010`); no Pi figure exists. Emulator ratios are not phone figures.
+- **(b)** The Orchestrator's earlier decision that the generated Android project stays local was overtaken: commit `0c2267f5` tracks `src-tauri/gen/android`. The records items name no maintainer decision on that (TODO(evidence)).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- Android-only `rustls` (the desktop TLS backend unchanged); S, M and L size labels for the bring-up; the app exiting after a restore accepted for the test build.
+- JDK 21 for Gradle (JDK 25 is too new, per the scope investigation).
+
+---
+
+### MC-199 — Main Campaign, 2026-10-06: CHORE-41 is low priority until the Android build works; a Risutanium-to-Risutanium backup format and a sync folder are to be designed
+
+- **Tag:** decisions (a typed message and `AskUserQuestion` answers)
+- **Date:** 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session, the first after the 36 GB report and the second after the native-format investigation (ledger row 1267).
+- **Reasoning:** the maintainer's own, in item 1; and the usage pattern stated in item 2.
+- **Alternatives rejected:** not recorded.
+- **Amends:** `MC-090` and `MC-219` 3 (CHORE-41 is deprioritised; nothing else changes).
+- **Related:** `MC-090`, `MC-175`, `MC-198`; CHORE-41, CHORE-128; ledger row 1267.
+
+**What was decided:**
+1. **CHORE-41 (the edit button opens no editor) is low priority.** The maintainer typed: "I think that actually might not be a glitch on our side, instead it might be a webview simply not responding because everything else was overloading the chrome. so I think that can be a low priority for now - I will let you know if it still exists after we get android tauri version fully working." The maintainer's hypothesis is browser overload on the 36 GB upstream profile. It is revisited only on the maintainer's report after the Android Tauri build works. No reproduction attempt is queued. Android's logcat captures the WebView console (the `Tauri/Console` tag), so it can be used if the symptom recurs there.
+2. **A faster Risutanium-to-Risutanium format.** The maintainer typed: "at the same time, I think it would be a good idea to also have our own faster, optimized format for risutanium<->risutanium migration while .bin stays as upstream<->Risutanium Solution. the main usage pattern of tauri user is moving data between PC and Mobile via local backup files. and I think we should explore this pattern further with faster/lighter backup format and/or easier way to integrate 3rd party cloud sync like megasync into the cloud sync workflow." Answers to the Orchestrator's questions: devices are used in turns (one at a time; a restore replaces the whole state and warns if the target is newer; no merge); sync works through a sync folder (the app writes and reads a backup folder that any client mirrors; no provider code in the app); the shape is both (a folder for sync and incremental use, and a single-file pack of the same layout); priority is to investigate now and design and build after the Rust `.bin` path lands, reusing it. "Chunking" meant batching and multi-threading inside one `.bin`, not splitting files; the `.bin` format does not change.
+3. **Answers after the investigation packet** (2026-10-06): Android reaches the sync folder through a custom folder plugin (the user picks a tree once through the Storage Access Framework and the access is persisted; no all-files permission); chat media (the inlay store) and MCP tool-call data go into the native format, and whether the `.bin` can carry them without breaking an upstream import is a separate check; an optional backup password (plain by default; a password encrypts both the folder and the pack; a lost password means an unreadable backup); a newer-data marker (a backup carries an origin and a stamp, the device records its last restore or save, and a restore warns if the target has changes the backup lacks). The per-file asset fsync question was still pending its measurement at that point (it is settled in `MC-197` 9).
+4. **Design follows the Rust `.bin` batch plan.** The design is not started; CHORE-128 records the direction.
+
+**Disclosures:**
+- **(a)** The facts the packet reported (key names change at every whole-state replace; no cross-device newer-data signal exists; Android has no folder access with the installed plugins; inlay media and MCP payloads are in neither the store nor the `.bin`) are the investigator's, with the Orchestrator's checks named in ledger row 1267.
+- **(b)** Whether a fork-only native format may exceed upstream's `.bin` limits bears on `MC-223`.
 
 ---
 
@@ -7936,3 +8073,94 @@ applies the edited text.
 **What was decided:** CHORE-97 is deferred, as the native-speaker review was (`MC-212`): it stays open and is not scheduled,
 and it is not a task for the side session. It is picked up when a working Hugging Face key is available. Until then, the
 browser CORS behaviour of the Hugging Face router, and whether a real model answers with audio, remain untested.
+
+---
+
+### MC-222 — Main Campaign, 2026-10-06: the first push to GitHub, the working branch renamed to `main`, the Wiki and UI sessions retired, and a standing push approval
+
+- **Tag:** decisions (typed messages, quoted as typed)
+- **Date:** 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session around the bounded-IPC change (`bc631526`), the branch rename (`97e44b2b`) and the upstream merge (`534c5a66`).
+- **Reasoning:** item 1 gives the maintainer's: to back up the work on GitHub.
+- **Alternatives rejected:** none stated.
+- **Related:** `MC-011`, `MC-089`, `MC-179`.
+
+**What was decided:**
+1. **Commit, merge, then push.** The maintainer typed: "commit and merge it once the live test passes. push after this merge to backup our work on github." This applies to the bounded-IPC change (`bc631526`): commit it and fast-forward the branch after its Gate 2, translations, live test and commit-message fact-check pass, then push the branch to `origin` (`yor42/RisuTanium`). The branch was then `fix/persistence-conflict-platform-hardening`, 122 commits ahead of `origin`. The push is of the branch only, with no tags.
+2. **Rename the branch to `main`.** The maintainer typed: "yes, fold the rename into the push." After the merge: push `fix/persistence-conflict-platform-hardening` to `origin` as a fast-forward, rename it on GitHub to `main` (the branches-rename API, which keeps the default branch and redirects), delete the stale local `main` (`669b12ce`, fully contained in HEAD), rename the local branch with `git branch -m`, set its upstream to `origin/main` and fetch with prune. The wiki-sync workflow's fallback literal changes to `main` (`97e44b2b`, reviewed). Dated history that names the old branch is left as written. The rename is done: at `1e71c45c` the local branch `main` tracks `origin/main`.
+3. **The Wiki and UI sessions are retired.** The maintainer said both are stale and half-retired, with no tasks queued, and that a new session is created when wiki or parallel UI work is needed, instead of keeping them current. The Orchestrator therefore does not tell them the new branch name or sync them.
+4. **A standing push approval.** The maintainer typed: "I think we can push each time when we commit to main if there is no major blocker." After a commit, or a fast-forward, to `main`, the Orchestrator pushes with `git push origin main` unless a major blocker exists. This is approval to push only: it is not approval to commit, and the approval in item 1 for no tags still stands (a tag would need a new word).
+
+**Disclosures:**
+- **(a)** The standing approval is dated 2026-10-06 and was given while the upstream merge was landing (`MC-224`); every push since then rests on it.
+
+---
+
+### MC-223 — Main Campaign, 2026-10-06: the compatibility invariant is relaxed for fork-to-upstream data over upstream's limits; the export warns by name first (amends `MC-175`)
+
+- **Tag:** decision (a typed message), with the decisions the Orchestrator's notes list after it
+- **Date:** 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed message below, after the bounded-IPC change made an export fail outright on an asset of 4 GiB or more (`bc631526`).
+- **Reasoning:** the maintainer's own: most of the data was made for upstream, so upstream to the fork must always work, and the fork's own data may exceed what upstream can hold.
+- **Alternatives rejected:** not recorded.
+- **Amends:** `MC-175` ("with nothing lost either way": for the fork-to-upstream direction, data over upstream's limits may be left out after a named warning). Follows the precedent of `MC-176` (the plugin-data warning, CHORE-74).
+- **Related:** `MC-011`, `MC-175`, `MC-176`, `MC-199`, `MC-197`; CHORE-129; `AGENTS.md` ("AI Coding Agent Requirements": the compatibility paragraph).
+
+**What was decided:**
+1. **The maintainer typed:** "I think we can have more laxed approach on backward compatibility limit. most of the data are made for upstream. so upstream to risutanium always work. I think we can add check before upstream-compatible export to check if there are any data that exceeds the maximum size limit of upstream, and warn the user about it with name."
+2. **Upstream to the fork must always work.** The round trip in `MC-175` keeps this direction in full.
+3. **Fork to upstream may leave out over-limit data, after a named warning.** Before an upstream-compatible export starts, the app checks for data over upstream's size limits and warns the user, naming it. On confirm, the export writes the rest and leaves those items out; the summary repeats their names; cancelling writes nothing. The Orchestrator's notes record two limits: a hard limit (an entry over 4 GB: the format cannot hold it, so it is left out) and a soft limit (assets over about 500 MB: an upstream desktop restore crashes at the WebView2 per-call cap, so they are warned as "upstream may fail to load" and still included). The records items do not say which of these details were further maintainer answers and which are the Orchestrator's reading (TODO(evidence)).
+4. **A new ticket,** CHORE-129: the pre-export upstream-limit check. It replaces the bounded-IPC change's whole-export failure for an asset of 4 GiB or more (`backupFailedAssetTooLarge`).
+5. **`AGENTS.md`'s compatibility paragraph carries the amendment** (this records batch).
+
+**Disclosures:**
+- **(a)** The 500 MB figure and the crash mechanism come from the diagnosis in ledger row 1266 (a WebView2 allocation cap), measured on one Windows machine with WebView2 154 (best-case hardware, `MC-003`); other platforms' ceilings were not measured.
+- **(b)** The native Risutanium format (`MC-199`) may hold data over upstream's limits; this entry is what allows that.
+
+---
+
+### MC-224 — Main Campaign, 2026-10-06: merge upstream's new commits in parallel, take Realm creator blocking, keep the "Create module" label, and record every upstream merge in `Agents/Upstream-Merges.md`
+
+- **Tag:** decisions (typed messages and answers to the Orchestrator's questions)
+- **Date:** 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session while the upstream merge `534c5a66` was prepared and landed.
+- **Reasoning:** the maintainer's own, in item 2.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-175`, `MC-222`; `Agents/Upstream-Merges.md`; ledger rows 1293 to 1298.
+
+**What was decided:**
+1. **Merge upstream in parallel.** The maintainer typed: "upstream had some commits including some features. - see if we can merge them in parallel." The merge was tried in a separate worktree. The triage (ledger row 1293) found that 19 of the 22 upstream commits were already in the fork.
+2. **Keep a record of every upstream merge.** The maintainer typed: "I think we merged few of them previously, so I think it would be a good idea to keep the record of our upstream merging." The rule: every merge from upstream is recorded in `Agents/Upstream-Merges.md` (the fork point; for each merge the upstream range; each upstream commit's disposition, TAKEN, TAKEN-ADAPTED, SKIPPED or ALREADY IN FORK, with the fork commit; the conflicts and how they were resolved; the follow-ups), with a row in `Agents/README.md`. The first version was written by `doc-writer` and checked by `doc-verifier` (rows 1297 and 1298) and committed as `280ef17d`.
+3. **Take Realm creator blocking.** The maintainer's answer was to take upstream's creator blocking (#1544). The Orchestrator adapted it to the fork: consent before any Realm request, no account field, and the confirmation through `fillLang` with a `{creator}` placeholder; these adaptations are recorded in `Agents/Upstream-Merges.md`.
+4. **Keep "Create module".** The maintainer's answer was to keep the "Create module" label on the duplicate-module button and not take upstream's relabel.
+5. **Order.** The maintainer typed: "land the upstream merge first, then the importer". The merge landed as `534c5a66`; the streaming importer is `MC-225`.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The Gemini change `d900d6bd` (no `role: function`) was taken on upstream's own judgement; the maintainer was not asked.
+- The merge was gated by `opus-reviewer` (round 1 `[REJECT]` on a missing test, round 2 `[APPROVE]`); the details are in `Agents/Upstream-Merges.md`.
+
+---
+
+### MC-225 — Main Campaign, 2026-10-06: the streaming importer's scope, the queue behind it, and the piece-by-piece hashing answers
+
+- **Tag:** decisions (typed messages and `AskUserQuestion` answers; each item says which)
+- **Date:** 2026-10-06
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session after the bounded-IPC change and through the piece-by-piece hashing commit `1e71c45c`. Typed messages are quoted as typed.
+- **Reasoning:** none stated, except where a quotation carries it.
+- **Alternatives rejected:** not recorded (the other option labels were not kept).
+- **Related:** `MC-175`, `MC-187` (the 200 MB per-asset limit), `MC-197`, `MC-222`, `MC-224`; CHORE-125, CHORE-126, CHORE-101 to CHORE-109; Report 60 sections 8 and 9; ledger rows 1283 to 1292 and 1299 to 1309.
+
+**What was decided:**
+1. **Queue the streaming importer.** The maintainer typed: "yes, queue the streaming importer next". It is for a single import file (a card or module) above about 2 GB, which the renderer's 2046 MiB cap cannot hold, and comes after the bounded-IPC fix.
+2. **The importer's scope** (answers to four questions, 2026-10-06): the scope is `.risum` modules, the desktop "open with" path, and "Also PNG card assets" (`.json` and `.risup` stay as they are); the limit per asset is 200 MB, like `.charx` (`MC-187`), and the file as a whole may be any size; on a Node-hosted server the app pre-checks and shows a message for an asset over the server's 100 MB write limit, with no server change; the whole file's structure is validated before any asset is saved, so a refusal leaves nothing behind.
+3. **The queue behind the importer** (typed: "yes."): (1) asset display without loading the whole asset (a file URL read from disk on desktop and Android; on the web, a service worker over the stored files); (2) piece-by-piece SHA-256 with the same keys. A Node chunked upload endpoint is optional and can be done at any time. Whether Rust moves the bytes is decided after live numbers. The policy limit of 200 MB can rise once (1) and (2) land.
+4. **Worktree removals** (typed, 2026-10-06): "yes, remove the old worktree and branch. start streaming importer." (the superseded bounded-IPC worktree `RisuAI-bigentry` and `feat/bigentry`, 38 uncommitted files, `b5a41e3d` already in `main`); and: "yes, remove all three worktrees and start piece-by-piece hashing" (`RisuAI-streamimport`, `RisuAI-streamimport2`, `RisuAI-upmerge`, with their branches).
+5. **Piece-by-piece hashing** (`AskUserQuestion`, 2026-10-06): the save goes in pieces on desktop and Android first, with the web as the next stage; plain-HTTP hosts (no `crypto.subtle`) switch to content-hash keys; Node stays at its 100 MiB limit. Orchestrator's note: the policy limit stays 200 MiB; under item 3 it can rise once asset display without loading (item 3 (1)) and the piece-by-piece save both land, and the piece-by-piece save has now landed (`1e71c45c`).
+
+**Disclosures:**
+- **(a)** The labels of the answers in items 2 and 5, other than "Also PNG card assets", were not kept (TODO(evidence)).
+- **(b)** The measurements behind the answers are one i9-13900KF-class machine and one Note 9 (`MC-003`, `MC-010`); they are in Report 60.

@@ -11,11 +11,30 @@ treat it as a log or history.
 
 ## Session date
 
-2026-10-05 (the session began on 2026-10-02).
+2026-10-07 (the session began on 2026-10-02).
 
 ## Branch and commit state
 
-**Current (2026-10-05, `git status -sb`):** the branch is ahead of its remote-tracking ref (`origin/fix/persistence-conflict-platform-hardening`, `1ce8abff`) by 103 commits. HEAD is `15f01783` (Stage 1b) before the records commit (the "103 commits" count predates `80138f0d`, `a7c0ef06` and `15f01783`); this campaign's last commits are `a7c0ef06`, `15f01783`, `71100280`, the Carry-Forward commit `d9adf375`, the records commit `7ae0485d` and the merges `82809af2` and `ddd47655`. Nothing from the 2026-10-04 and 2026-10-05 batches is pushed. The paragraph below, about being pushed through `48f00223`, is the 2026-10-02 state and is superseded.
+**Current (2026-10-07, `git branch -vv` and `git worktree list`):** the working branch is **`main`**, at `1e71c45c` ("feat(import): hash and save .risum and PNG assets piece by piece"), in step with `origin/main` (`yor42/RisuTanium`). It was pushed on 2026-10-06 under the maintainer's standing push approval (`MC-222` 4). The branch was `fix/persistence-conflict-platform-hardening` until 2026-10-06; it was renamed to `main` on GitHub and locally (`MC-222` 2). Older dated paragraphs below that name the old branch, or say "not pushed", describe their own date and are history. The records batch of 2026-10-07 (`MC-196` to `MC-199` and `MC-222` to `MC-225`, Reports 59 and 60, ledger rows 1099, 1100 and 1179 to 1311, the Roadmap's CHORE-122 to CHORE-129 and CHORE-101 to CHORE-113, `AGENTS.md`'s compatibility paragraph) is committed in the records commit that follows `1e71c45c` (maintainer: "commit it once the fact-check passes").
+
+Commits on `main` since the last records commit `2ccf4fc2` (2026-10-05), in the order they landed, with the report or `MC` entry that holds each: `04a2f9dd`, `69623d30`, `420a9b7b`, `7e90f83e`, `53c84a0e`, `32f3e7e3` (Stage 1c slices A, B, C, D1, D2 and the final review's fixes; Report 59); `b6d8e963` (the `.bin` speed work, CHORE-122); the merge `25d53bcf` (that commit into Stage 1c) and QOL-06 `e4a060e4` with its merge `8ca14be5`; `b5a41e3d` (batched Rust asset I/O, CHORE-123); `0c2267f5`, `397c6fc5` and `257c5a2d` merged as `30d3e594` (Android, CHORE-127); `bc631526` (bounded IPC, CHORE-124); `97e44b2b` (the wiki workflow's default-branch literal, after the rename); `ea0871de` is upstream's, brought in by the merge `534c5a66` (Realm creator blocking; `MC-224`); `280ef17d` (`Agents/Upstream-Merges.md`); `64436cbd` (the streaming importer, CHORE-125); `1e71c45c` (piece-by-piece hashing, CHORE-126). Reports 59 and 60 hold the details.
+
+**Worktrees (`git worktree list`, 2026-10-07):** the main checkout `C:\Projects\RisuAI` (`main`) and eight more, each on a branch whose work is already on `main`: `C:\Projects\RisuAI-piecehash` (`feat/piecehash`, `1e71c45c`; clean when last checked, kept until the maintainer says remove it, per the Orchestrator's note of 2026-10-06), `RisuAI-1c` (`feat/stage-1c`, `8ca14be5`), `RisuAI-android` (`feat/android-test-build`, `257c5a2d`), `RisuAI-androidmerge` (`merge/android`, `30d3e594`), `RisuAI-bigentry2` (`feat/bigentry2`, `97e44b2b`), `RisuAI-bin` (`feat/bin-speed`, `b6d8e963`), `RisuAI-binbatch` (`feat/bin-batch`, `b5a41e3d`) and `RisuAI-qol` (`feat/qol-empty-trash`, `e4a060e4`). The records items say only that `RisuAI-piecehash` remains; the other seven were not mentioned in them, and the Orchestrator checked on 2026-10-07 with `git -C <worktree> status --short --untracked-files=all` that all eight worktrees are clean and that every tip is in `main`'s history. Removal awaits the maintainer's word. The worktrees `RisuAI-bigentry`, `RisuAI-streamimport`, `RisuAI-streamimport2` and `RisuAI-upmerge` were removed with their branches (`MC-225` 4); `node_modules` in each worktree is a junction to the main checkout and must never be recursively deleted.
+
+**Queued next, in the maintainer's order where they gave one:**
+1. Asset display without loading the whole asset (CHORE-109), queued after the importer (`MC-225` 3); the 200 MB per-asset policy limit (`MC-187`) can rise once it and piece-by-piece saving both land.
+2. The web stage of piece saving (CHORE-108) and the optional Node chunk endpoint (CHORE-105), any time.
+3. The pre-export upstream-limit check (CHORE-129; `MC-223`) and the native Risutanium backup format and sync folder (CHORE-128; `MC-199`), whose design follows the Rust `.bin` path (which has landed).
+4. The other follow-ups CHORE-101 to CHORE-113 (Roadmap), including the Android follow-ups (CHORE-112) and the Stage 1c residuals (CHORE-113).
+5. The save layer's Stage 2 (per-module blocks), not started. A shipped Android build stays gated behind the memory and performance work (`MC-198` 8).
+CHORE-41 is low priority until the Android Tauri build works (`MC-199` 1).
+
+**Open questions for the maintainer:**
+- `src-tauri/key.txt` is tracked in git (added by upstream's `a1a38d5a`, 2024-01-14, before the fork point). Whether that is intended is not known; it is not to be opened, quoted or described in any record (Report 60 section 9).
+- The Note 9: an agent ran `pm clear` on `io.github.yor42.risutanium` during the hashing live check, so the app is in first-run state with a new debug APK; the stay-awake developer setting was changed and set to 0 (its original value is unknown); an old-build relaunch hung on "Loading RisuTanium..." until the `pm clear` (unattributed). The maintainer keeps the app installed (`MC-198` 7).
+- `pnpm install` in the main checkout, to prune `streamsaver` from `node_modules` after `b6d8e963` dropped it, was deferred while `RisuAI-1c` shared the junction; it is not recorded as done.
+
+**Superseded by the 2026-10-07 paragraphs above (the 2026-10-05 state, `git status -sb`):** the branch is ahead of its remote-tracking ref (`origin/fix/persistence-conflict-platform-hardening`, `1ce8abff`) by 103 commits. HEAD is `15f01783` (Stage 1b) before the records commit (the "103 commits" count predates `80138f0d`, `a7c0ef06` and `15f01783`); this campaign's last commits are `a7c0ef06`, `15f01783`, `71100280`, the Carry-Forward commit `d9adf375`, the records commit `7ae0485d` and the merges `82809af2` and `ddd47655`. Nothing from the 2026-10-04 and 2026-10-05 batches is pushed. The paragraph below, about being pushed through `48f00223`, is the 2026-10-02 state and is superseded.
 
 The branch is `fix/persistence-conflict-platform-hardening`. **It is pushed through `48f00223`** (`git status -sb` showed
 the branch in step with its remote-tracking ref on 2026-10-02; the repository is now yor42/RisuTanium, `MC-164`).
@@ -264,6 +283,8 @@ Several sessions work **in this same checkout**:
 
 ### The UI lane and the Main Campaign's lane (`MC-179` 1, 2026-10-03)
 
+**Status, 2026-10-07: the UI session is done and the Wiki and UI sessions are retired.** The maintainer said the UI session is done and that the Main Campaign may edit `AlertComp.svelte`, `BotSettings.svelte` and `UserSettings.svelte` (`MC-196` 5); they said the Wiki and UI sessions are stale and half-retired with no tasks queued, and that a new session is created when wiki or parallel UI work is needed (`MC-222` 3). The lane lists below are the 2026-10-03 state.
+
 - **Tickets delegated to the UI session:** CHORE-11 (CD-1 to CD-5), CHORE-19, CHORE-20, CHORE-56, CHORE-69, CHORE-21,
   CHORE-44, CHORE-14 (UI-1 and UI-2), CHORE-15, CHORE-16 (PG-2 to PG-4), CHORE-12, CHORE-13, CHORE-23, CHORE-57, CHORE-05,
   CHORE-09, and the follow-up "a rejected avatar image shows no icon". **CHORE-68 and CHORE-74 also go to the UI session,
@@ -494,6 +515,8 @@ Several sessions work **in this same checkout**:
 
 ### Side session (feat/side-batch)
 
+**Status, 2026-10-07: finished and merged. The block below is its 2026-10-04 state.** The side session confirmed on 2026-10-05 that it made no further changes; its last merge 82809af2 (tip 45790ac5) is in main's history, feat/side-batch was deleted on 2026-10-05 (MC-197 13), and its open items returned to the Main Campaign's pool (MC-196 2). Its unused number ranges were granted to the Main Campaign (MC-196 2).
+
 - **Branch and worktree:** `feat/side-batch`, cut at `517f0cdb`, in the worktree
   `C:\Projects\RisuAI\.claude\worktrees\handoff-instructions-16b8eb`. **The tip is `f38b503c` and nothing is pushed.** Set up
   by the Main Campaign's hand-off (`MC-219`). Batches A and B are done; Batch C is not run (CHORE-43 and CHORE-54 are already
@@ -531,7 +554,7 @@ Several sessions work **in this same checkout**:
 - **Next free numbers (side session, `MC-219` 2):** `MC-222`; ledger row 1179; CHORE-101; Report 70. These ranges
   (`MC-219` to `MC-239`, rows 1101 to 1200, CHORE-100 to CHORE-119, Reports 70 to 79) overlap the UI session's reserved `MC`,
   CHORE and Report ranges, whose tail the side session took over because the UI lane is finished.
-- **Merging:** not this session's. The maintainer will instruct the Main Campaign session to queue the merge of
+- **Merging (stale: done, 82809af2; see the status above):** not this session's. The maintainer will instruct the Main Campaign session to queue the merge of
   `feat/side-batch` into its work order. The Main Campaign merges on the maintainer's word, with an explicit merge commit,
   and then runs check, the full suite and the build.
 - **Native review wanted (not started):** the CHORE-80 note `settingsPage.apiKeyEnvRefNote` in ko, cn, zh-Hant, vi and es (the
@@ -561,7 +584,18 @@ Several sessions work **in this same checkout**:
 
 (Main Campaign rows continue at 1001; `MC-179` amendment of 2026-10-04)
 
-Next free within the Main Campaign's ranges: `MC-196` (`MC-195` is the latest used; it records the Main Campaign's decisions of 2026-10-05 after `d9adf375`; `MC-194` records the Main Campaign's decisions of 2026-10-04 after `7ff0d092`; `MC-193` records the memory step 6 and step 7 decisions, 2026-10-04; `MC-192` records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1099 (rows 1089 to 1098 are Stage 1a and 1b: the 1a implementation, Gate 2, remediation and re-check (1089 to 1092), the 1b implementation, Gate 2 round 1, remediation and Gate 2 round 2 (1093 to 1096), and this records batch 1097 and its fact-check 1098; rows 1071 to 1088 are the work after `7ae0485d`: the Carry-Forward section and its fact-check (1071, 1072), the Stage 1 boot-read measurement (1073), the Stage 1 write-side and read-side investigations (1074, 1075), CHORE-121 (1076 to 1078), the Stage 1 plan's Gate 1 rounds, the escalation and its two investigations (1079 to 1086), and this records batch 1087 and its fact-check 1088; rows 1031 to 1070 are the work after `7ff0d092`: the in-session unloading investigation and CHORE-82 (1031 to 1037, with 1033 the module archiving discovery), the module archiving plan's Gate 1 and escalation (1038, 1041), the `3472e63a` merge (1039), the Node limit investigation and CHORE-87 (1040, 1042 to 1047), the module heap measurement and Stage A (1048, 1051, 1052, 1056 to 1058), the delta-save, PocketRisu and save-layer work (1049, 1050, 1053), Stage 0 (1054, 1055, 1059 to 1061, 1063 to 1067), the merges `32fa1184` and `ddd47655` (1062, 1068), this records batch 1069 and its fact-check 1070; the side session's rows start at 1101 (`MC-219`); rows 1018 to 1030 are memory steps 6 and 7: the audit 1018, Gate 1 1019, 6a rows 1020 to 1022, step 7 Part A and the AVD retry 1023 and 1024, 6b rows 1025 and 1026, the live check and Part B 1027, the 6b message draft 1028, the fact-check of the merge records 1029, and this records batch 1030; row 1017 is the `feat/ui-batch` merge, `c9c57c9e`; rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
+**Next free numbers after the 2026-10-07 records batch (`MC-196` 2 gave the Main Campaign the side session's unused ranges; this table supersedes the two above and the long paragraph below):**
+
+| | Main Campaign, used by this batch | Next free |
+|---|---|---|
+| MC ids | `MC-196` to `MC-199`, `MC-222` to `MC-225` | `MC-226` (onward) |
+| Ledger rows | 1099, 1100 and 1179 to 1311 | 1312 |
+| CHORE ids | CHORE-122 to CHORE-129 and CHORE-101 to CHORE-113 (CHORE-120 and CHORE-121 were used earlier) | CHORE-114 to CHORE-119, then CHORE-130 |
+| Reports | 59 and 60 | 61 to 64, then 70 onward |
+
+The UI session and the side session are finished and take no more numbers; the Wiki and UI sessions are retired (`MC-222` 3), so a new session for wiki or parallel UI work would need its own ranges from the maintainer. Check the ledger's last row before taking a number.
+
+**Superseded by the table above (the 2026-10-05 state).** Next free within the Main Campaign's ranges: `MC-196` (`MC-195` is the latest used; it records the Main Campaign's decisions of 2026-10-05 after `d9adf375`; `MC-194` records the Main Campaign's decisions of 2026-10-04 after `7ff0d092`; `MC-193` records the memory step 6 and step 7 decisions, 2026-10-04; `MC-192` records the CHORE-78 and CHORE-79 decisions, 2026-10-04; `MC-191` records that the hosted build is private-only; `MC-190` the environment-variable API-key idea), ledger row 1099 (rows 1089 to 1098 are Stage 1a and 1b: the 1a implementation, Gate 2, remediation and re-check (1089 to 1092), the 1b implementation, Gate 2 round 1, remediation and Gate 2 round 2 (1093 to 1096), and this records batch 1097 and its fact-check 1098; rows 1071 to 1088 are the work after `7ae0485d`: the Carry-Forward section and its fact-check (1071, 1072), the Stage 1 boot-read measurement (1073), the Stage 1 write-side and read-side investigations (1074, 1075), CHORE-121 (1076 to 1078), the Stage 1 plan's Gate 1 rounds, the escalation and its two investigations (1079 to 1086), and this records batch 1087 and its fact-check 1088; rows 1031 to 1070 are the work after `7ff0d092`: the in-session unloading investigation and CHORE-82 (1031 to 1037, with 1033 the module archiving discovery), the module archiving plan's Gate 1 and escalation (1038, 1041), the `3472e63a` merge (1039), the Node limit investigation and CHORE-87 (1040, 1042 to 1047), the module heap measurement and Stage A (1048, 1051, 1052, 1056 to 1058), the delta-save, PocketRisu and save-layer work (1049, 1050, 1053), Stage 0 (1054, 1055, 1059 to 1061, 1063 to 1067), the merges `32fa1184` and `ddd47655` (1062, 1068), this records batch 1069 and its fact-check 1070; the side session's rows start at 1101 (`MC-219`); rows 1018 to 1030 are memory steps 6 and 7: the audit 1018, Gate 1 1019, 6a rows 1020 to 1022, step 7 Part A and the AVD retry 1023 and 1024, 6b rows 1025 and 1026, the live check and Part B 1027, the 6b message draft 1028, the fact-check of the merge records 1029, and this records batch 1030; row 1017 is the `feat/ui-batch` merge, `c9c57c9e`; rows 1002 to 1016 are the CHORE-78/79 work: the investigation 1002, the plan gate 1003 and 1004, stage 1 rows 1005 to 1009, stage 2 rows 1010 to 1015, the stage 1 commit message draft 1016; the Main Campaign's rows continue at 1001 on the maintainer's word, `MC-179` amendment of 2026-10-04: rows 800 to 1000 are the UI session's; row 1001 is the CHORE-77 Stage C2 Gate 2 round 2; rows 793 to 799 are the CHORE-77 Stage C2 Gate 1, implementation, translation, live check and Gate 2 round 1; row 792 is the CHORE-77 Stage C2 investigation; rows 787 to 791 are the CHORE-77 Stage C1 implementation, translation and Gate 2, rows 784 to 786 are the CHORE-77 Stage C1 Gate 1; row 783 is the CHORE-77 follow-up investigation; rows 775 to 780 are the CHORE-76/77 Stage B work, rows 781 and 782 are its records and their fact-check; row 773 is the CHORE-78/79 filing and row 774 its fact-check; rows 760 to 770 are the CHORE-76/77 Stage A work, rows 771 and 772 are its records and their fact-check; rows 748 to 756 are the CHORE-58 work, rows 757 and 758 are its records and their fact-check, row 759 is the CHORE-76/77 investigation; rows 736 to 745 are the CHORE-59
 work, rows 746 and 747 are its records and their fact-check; rows 734 and 735 are the `MC-181`
 records and their fact-check; rows 700 to 703 are the `MC-177`
 to `MC-179` records and their fact-checks; rows 704 to 713 are the stage 3 work; rows 714 to 717 are the stage 3 commit
@@ -574,7 +608,7 @@ them.
 **Rules for every session:**
 - stage by explicit path only;
 - never `git add -A`, `stash`, `reset`, `checkout -- <path>` or `restore` on another session's files;
-- commit and push only at the maintainer's request.
+- commit only at the maintainer's request; push main after each commit or fast-forward to it unless there is a major blocker (the standing approval of 2026-10-06, MC-222 4; push only, no tags).
 
 ## Current work
 
@@ -1062,7 +1096,7 @@ them.
    close before the first release. The maintainer chose to leave it at this position (`MC-157` 5).
 
 Not placed in the sequence:
-- **CHORE-41** (the edit-button bug): blocked on the maintainer's console output.
+- **CHORE-41** (the edit-button bug): blocked on the maintainer's console output; low priority since 2026-10-06 (MC-199 1).
 - **CHORE-45** (the script cache misses on a repeat send in a long chat): filed, not scheduled. It
   waits for the memory work.
 - **CHORE-46** (the Node server's 100 MB body limit): re-measure after stage 1 (Report 49).

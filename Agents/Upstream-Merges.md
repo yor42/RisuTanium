@@ -102,7 +102,7 @@ No upstream commit was skipped whole. Parts of commits that were not taken:
 ### Maintainer decisions
 
 - Take upstream's creator blocking.
-- Keep the "Create module" label on the duplicate-module button; do not take upstream's `language.close` relabel. Both are the maintainer's answers in the session of 2026-10-06; the Maintainer-Context entry follows with the next records batch.
+- Keep the "Create module" label on the duplicate-module button; do not take upstream's `language.close` relabel. Both are the maintainer's answers in the session of 2026-10-06; they are recorded in `MC-224` of `Agents/Maintainer-Context.md`, together with the rule that every upstream merge is recorded in this file.
 
 ### Review
 
