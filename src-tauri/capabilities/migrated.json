@@ -35,7 +35,6 @@
     "dialog:allow-message",
     "dialog:allow-ask",
     "dialog:allow-confirm",
-    "updater:default",
     {
       "identifier": "http:default",
       "allow": [
@@ -73,7 +72,6 @@
     "process:default",
     "shell:default",
     "http:default",
-    "deep-link:default",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

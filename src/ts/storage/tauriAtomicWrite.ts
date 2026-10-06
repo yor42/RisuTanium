@@ -1,4 +1,5 @@
 import { BaseDirectory, readDir, remove, rename, writeFile } from '@tauri-apps/plugin-fs'
+import { isAndroidTransport, writeChunked } from './tauriByteTransport'
 
 /**
  * Atomic file replacement on the Tauri file system, for paths under the
@@ -14,6 +15,11 @@ import { BaseDirectory, readDir, remove, rename, writeFile } from '@tauri-apps/p
  * The helper takes no lock; callers keep their own write ordering. It does not
  * flush to disk, so it protects against a failed or interrupted write, not
  * against power loss.
+ *
+ * On Android the plugin call cannot carry a large body, so the same replacement
+ * runs as base64 chunks into a temp file of the same name pattern and a rename
+ * on the last chunk (`writeChunked` in `tauriByteTransport.ts`), again without
+ * a flush.
  */
 
 /**
@@ -93,6 +99,11 @@ async function renameOverTarget(from: string, to: string): Promise<void> {
  * target holds `bytes`.
  */
 export async function writeFileAtomic(path: string, bytes: Uint8Array): Promise<void> {
+    if (isAndroidTransport()) {
+        // The chunk command takes the bare key; the plugin's `./` prefix is not part of it.
+        await writeChunked(path.startsWith('./') ? path.slice(2) : path, bytes, false)
+        return
+    }
     const temp = joinPath(directoryOf(path), randomTempName())
     try {
         await writeFile(temp, bytes, { baseDir: BaseDirectory.AppData, createNew: true })

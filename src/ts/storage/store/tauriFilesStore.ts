@@ -2,6 +2,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { BaseDirectory, exists, mkdir, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
+import { isAndroidTransport, MISSING_FILE_ERROR, readRanged } from '../tauriByteTransport'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
@@ -9,13 +10,17 @@ import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './gu
 import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform } from './keyRules'
 
 /**
- * The byte store on the desktop app's AppData directory: one file per key, at
+ * The byte store on the Tauri app's AppData directory (desktop and Android): one file per key, at
  * the path the key names.
  *
  * Every path handed to the plugin is `./` plus the key. The plugin parses a
  * path string as a URL first, and an absolute path that comes out of a `file:`
  * URL replaces the base directory, so a bare key such as `file:/home/u/x` would
  * leave AppData. With the `./` prefix no key parses as a URL.
+ *
+ * On Android a read goes through `readRanged` and a write through the chunked
+ * commands (`tauriByteTransport.ts`), because the bridge cannot carry a large
+ * body; the missing-file rule below applies to their errors too.
  *
  * Writes go through `writeFileAtomic`, so a failed write keeps the old file.
  * Block-store keys (`blocks/`), numbered backups and cold-storage units go
@@ -29,14 +34,6 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  */
 
 const APP_DATA = { baseDir: BaseDirectory.AppData }
-
-/**
- * The plugin reports a missing file as `(os error 2)` and, on Windows, a file in
- * a directory that does not exist as `(os error 3)`. The message before the
- * code is localized, so only the suffix is read. Android words its errors
- * differently and is not covered.
- */
-const MISSING_FILE_ERROR = /\(os error (2|3)\)\s*$/
 
 export interface TauriFilesStoreOptions {
     /** The platform decides which characters separate path segments and which keys are addressable. */
@@ -147,7 +144,9 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             checkAddressable(key)
             const path = pluginPath(key)
             try {
-                return { bytes: ownBytes(await readFile(path, APP_DATA)), version: null }
+                // Android reads in bounded pieces through the app's own command, which takes the bare key.
+                const bytes = isAndroidTransport() ? await readRanged(key) : await readFile(path, APP_DATA)
+                return { bytes: ownBytes(bytes), version: null }
             } catch (error) {
                 if (await isAbsent(error, path)) {
                     return { bytes: null, version: null }

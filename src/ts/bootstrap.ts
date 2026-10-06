@@ -73,9 +73,10 @@ import {
     afterNextSaveCommit
 } from "./globalApi.svelte";
 import { isTauri } from "./platform";
+import { isTauriDesktop } from "./tauriDesktop";
 import { registerModelDynamic } from "./model/modellist";
 
-const appWindow = isTauri ? getCurrentWebviewWindow() : null
+const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 /**
  * Resolves the next time the alert store returns to `type: 'none'`, the way
@@ -132,7 +133,7 @@ export async function loadData() {
         try {
             if (isTauri) {
                 LoadingStatusState.text = "Checking Files..."
-                appWindow.maximize()
+                appWindow?.maximize()
                 if (!await exists('', { baseDir: BaseDirectory.AppData })) {
                     await mkdir('', { baseDir: BaseDirectory.AppData })
                 }

@@ -600,6 +600,15 @@ mod tests {
             lock(&self.created).insert(temp.to_path_buf());
             Ok(())
         }
+        fn create_empty(&self, temp: &Path) -> io::Result<()> {
+            RealOps.create_empty(temp)
+        }
+        fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()> {
+            RealOps.append(temp, offset, bytes)
+        }
+        fn sync_file(&self, path: &Path) -> io::Result<()> {
+            RealOps.sync_file(path)
+        }
         fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
             // A rename of a temp that was not written and flushed first is a defect.
             assert!(lock(&self.created).contains(from), "renamed a temp that was never written and flushed");
@@ -865,6 +874,15 @@ mod tests {
         impl FileOps for Blocked {
             fn create_synced(&self, temp: &Path, bytes: &[u8]) -> io::Result<()> {
                 RealOps.create_synced(temp, bytes)
+            }
+            fn create_empty(&self, temp: &Path) -> io::Result<()> {
+                RealOps.create_empty(temp)
+            }
+            fn append(&self, temp: &Path, offset: u64, bytes: &[u8]) -> io::Result<()> {
+                RealOps.append(temp, offset, bytes)
+            }
+            fn sync_file(&self, path: &Path) -> io::Result<()> {
+                RealOps.sync_file(path)
             }
             fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
                 if self.0.fetch_add(1, Ordering::SeqCst) < 3 {

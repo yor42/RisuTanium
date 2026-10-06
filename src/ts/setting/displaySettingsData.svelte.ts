@@ -10,7 +10,7 @@ import { updateAnimationSpeed } from '../gui/animation';
 import { guiSizeText, updateGuisize } from '../gui/guisize';
 import { updateTextThemeAndCSS } from '../gui/colorscheme';
 import { CustomGUISettingMenuStore } from '../stores.svelte';
-import { isTauri } from '../platform';
+import { isTauriDesktop } from '../tauriDesktop';
 
 export const displayThemeSettingsItems: SettingItem[] = [
     {
@@ -255,7 +255,7 @@ export const displayOtherSettingsItems: SettingItem[] = [
         labelKey: 'fullscreen',
         bindKey: 'fullScreen',
         onChange: () => changeFullscreen(),
-        condition: () => isTauri,
+        condition: () => isTauriDesktop,
         keywords: ['fullscreen'],
     },
     { id: 'display.showMemoryLimit', type: 'check', labelKey: 'showMemoryLimit', bindKey: 'showMemoryLimit', keywords: ['memory', 'limit'] },
