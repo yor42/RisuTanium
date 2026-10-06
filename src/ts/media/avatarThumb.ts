@@ -4,6 +4,9 @@ import { getImageType } from './imageType'
 import { DBState } from '../stores.svelte'
 import type { Database, folder } from '../storage/database.svelte'
 import { asBuffer } from '../util'
+import { isNodeServer, isTauri } from '../platform'
+import { getAppStore } from '../storage/store/appStore'
+import { readTauriHeader, readUrlHeader, type ImageHeader } from './avatarThumbHeader'
 
 /**
  * Small cached thumbnails for the 56px list avatars (grid, mobile list,
@@ -32,15 +35,17 @@ interface ThumbStoreLike {
 }
 
 interface GenContext {
-    /** Lets the real generator register an early cleanup the queue's timeout
-     *  can call immediately, since a hung decode may never reach its own
-     *  `finally`. If the task has already timed out by the time this is
-     *  called, `fn` runs immediately instead of waiting to be invoked later. */
+    /** Lets the real generator register one cleanup the queue's timeout can
+     *  call immediately, since a hung header read or decode may never reach
+     *  its own `finally`. The function must release everything the task has
+     *  opened so far and everything it opens later. If the task has already
+     *  timed out by the time this is called, `fn` runs immediately instead of
+     *  waiting to be invoked later. */
     setCleanup(fn: () => void): void
     /** True once this task's own timeout has already fired. The generator
-     *  checks this after each await so a read/decode that was still in
-     *  flight at timeout doesn't go on to draw and encode the full image for
-     *  a caller nobody is waiting on any more. */
+     *  checks this after each await so a header read, whole read or decode
+     *  that was still in flight at timeout doesn't go on to draw and encode
+     *  the image for a caller nobody is waiting on any more. */
     isCancelled(): boolean
 }
 
@@ -243,12 +248,10 @@ async function runTask(task: QueueTask) {
         setCleanup(fn) {
             cleanupFn = fn
             if (settled) {
-                // Defensive: current `realGenerate` can't reach this branch,
-                // since it checks `isCancelled()` with no await before
-                // calling `setCleanup`, and injected test generators never
-                // receive `ctx` at all. Kept so that removing that post-read
-                // check, or adding an await before `setCleanup`, still can't
-                // leak a blob URL/image instead of just dropping the cleanup.
+                // A generator that registers its cleanup after the timeout
+                // already fired must still release what it opened: running
+                // `fn` here keeps a late registration from leaking a blob
+                // URL, an image or a request instead of dropping the cleanup.
                 try {
                     fn()
                 } catch {
@@ -501,6 +504,104 @@ export function isAnimatedImage(bytes: Uint8Array): boolean {
     }
 }
 
+/** What the thumbnail path does with a file, decided from its first bytes (or
+ *  from all of them). `undecided` only ever answers a prefix. */
+export type ImageClass =
+    | { kind: 'null' }
+    | { kind: 'animated' }
+    | { kind: 'unknown' }
+    | { kind: 'still', mime: string }
+    | { kind: 'undecided' }
+
+type Animation = 'animated' | 'still' | 'undecided'
+
+/** The shortest prefix every animation rule below can read: the VP8X flags
+ *  byte of a WebP is at offset 20. */
+const MIN_DECIDABLE_PREFIX = 21
+
+function startsWithJpegSignature(bytes: Uint8Array): boolean {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+}
+
+/** `bytes` is a PNG. Same walk as `isApng`, but a prefix that ends, or a chunk
+ *  that runs past it, before `IDAT`/`IEND` decides nothing. */
+function pngAnimation(bytes: Uint8Array, whole: boolean): Animation {
+    let pos = 8
+    while (pos + 8 <= bytes.length) {
+        const length = readU32BE(bytes, pos)
+        const type = chunkTypeAt(bytes, pos + 4)
+        if (type === 'IDAT' || type === 'IEND') {
+            return 'still'
+        }
+        if (type === 'acTL') {
+            return 'animated'
+        }
+        if (pos + 8 + length + 4 > bytes.length) {
+            return whole ? 'still' : 'undecided'
+        }
+        pos += 8 + length + 4
+    }
+    return whole ? 'still' : 'undecided'
+}
+
+function prefixAnimation(bytes: Uint8Array): Animation {
+    if (isGif(bytes)) {
+        return 'animated'
+    }
+    if (isPng(bytes)) {
+        return pngAnimation(bytes, false)
+    }
+    if (isRiffWebp(bytes)) {
+        return isAnimatedWebp(bytes) ? 'animated' : 'still'
+    }
+    if (isIsoBmff(bytes)) {
+        if (hasAvisBrand(bytes)) {
+            return 'animated'
+        }
+        // A box that ends inside the prefix has been scanned in full; size 0
+        // ("to end of file") and a size past the prefix have not.
+        const boxSize = readU32BE(bytes, 0)
+        return boxSize > 0 && boxSize <= bytes.length ? 'still' : 'undecided'
+    }
+    return 'still'
+}
+
+/**
+ * Pure. Classifies a file from `bytes`, which is the whole file when `whole`
+ * is true and otherwise its first bytes. On a whole file the answer matches
+ * what `isAnimatedImage` and `getImageType` give together, with one rule
+ * added: a buffer that starts `FF D8 FF` is a still JPEG whether or not it
+ * ends in `FF D9`. A JPEG has no animated form, and files with data after the
+ * end marker are common.
+ */
+export function classifyImage(bytes: Uint8Array, whole: boolean): ImageClass {
+    if (whole && bytes.length < 12) {
+        return { kind: 'null' }
+    }
+    if (startsWithJpegSignature(bytes)) {
+        return { kind: 'still', mime: 'image/jpeg' }
+    }
+    if (!whole) {
+        // Whether `FF D8` starts a JPEG cannot be told from a prefix, because
+        // `getImageType` looks at the last two bytes.
+        if ((bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) || bytes.length < MIN_DECIDABLE_PREFIX) {
+            return { kind: 'undecided' }
+        }
+    }
+    const animation: Animation = whole ? (isAnimatedImage(bytes) ? 'animated' : 'still') : prefixAnimation(bytes)
+    if (animation === 'animated') {
+        return { kind: 'animated' }
+    }
+    if (animation === 'undecided') {
+        return { kind: 'undecided' }
+    }
+    const type = getImageType(bytes)
+    if (type === 'Unknown') {
+        return { kind: 'unknown' }
+    }
+    return { kind: 'still', mime: mimeForType(type) }
+}
+
 /** Pure. `null` when the short side is already at or under `shortSide`, since
  *  the full-size path then costs no more than a thumbnail would. */
 export function thumbDimensions(w: number, h: number, shortSide: number): { w: number, h: number } | null {
@@ -534,47 +635,211 @@ function mimeForType(type: ReturnType<typeof getImageType>): string {
     }
 }
 
-async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
+/** Everything one task has opened and must release if the queue's timeout
+ *  fires: the header request and every image or blob URL. `own` runs a
+ *  release at once when the task has already timed out, so a resource opened
+ *  after the timeout is not leaked. */
+interface TaskScope {
+    signal: AbortSignal
+    isCancelled(): boolean
+    own(release: () => void): void
+    release(): void
+}
+
+/** Registers the scope's single cleanup with the queue synchronously, before
+ *  the task's first await. */
+function makeTaskScope(ctx: GenContext): TaskScope {
+    const controller = new AbortController()
+    const releases: Array<() => void> = []
+    const release = () => {
+        controller.abort()
+        for (const fn of releases.splice(0)) {
+            try {
+                fn()
+            } catch {
+                // best-effort cleanup only
+            }
+        }
+    }
+    ctx.setCleanup(release)
+    return {
+        signal: controller.signal,
+        isCancelled: () => ctx.isCancelled(),
+        own(fn) {
+            if (ctx.isCancelled()) {
+                try {
+                    fn()
+                } catch {
+                    // best-effort cleanup only
+                }
+                return
+            }
+            releases.push(fn)
+        },
+        release,
+    }
+}
+
+/** Set once, for the rest of the page's life, when decoding from the URL
+ *  failed for an avatar that the whole read then decoded. The page then
+ *  takes the whole read for every avatar. */
+let urlDecodeOff = false
+
+/** The asset URL of `loc` from the store, or `null` when the store cannot
+ *  make one. */
+async function assetUrlFor(loc: string): Promise<string | null> {
+    try {
+        const store = await getAppStore()
+        if (store.urlFor === undefined) {
+            return null
+        }
+        return await store.urlFor(loc)
+    } catch {
+        return null
+    }
+}
+
+/** The start of the file without reading the file, on the platforms that can
+ *  (Node-hosted pages and Tauri). `null` means "read the whole file". */
+async function readHeader(loc: string, scope: TaskScope): Promise<{ header: ImageHeader, url: string | null } | null> {
+    try {
+        if (isTauri) {
+            const header = await readTauriHeader(loc)
+            return header === null ? null : { header, url: null }
+        }
+        if (isNodeServer) {
+            const url = await assetUrlFor(loc)
+            if (url === null) {
+                return null
+            }
+            const header = await readUrlHeader(url, scope.signal)
+            return header === null ? null : { header, url }
+        }
+    } catch {
+        // fall through to the whole read
+    }
+    return null
+}
+
+/** Reads the whole file, classifies it as a whole file and decodes it from a
+ *  `Blob`. `decoded` is true when the decode step ran to a result. */
+async function generateFromBytes(loc: string, scope: TaskScope): Promise<{ result: GenResult, decoded: boolean }> {
     const bytes = await currentReadImage(loc)
-    if (ctx.isCancelled()) {
+    if (scope.isCancelled()) {
         // The queue's timeout already resolved the caller with null while
         // this read was still pending; decoding and drawing the full image
         // now would just be unbounded work outside the concurrency limit.
-        return null
+        return { result: null, decoded: false }
     }
-    if (!bytes || bytes.length < 12) {
-        return null
+    if (!bytes) {
+        return { result: null, decoded: false }
     }
-    if (isAnimatedImage(bytes)) {
-        return { skip: true }
+    const cls = classifyImage(bytes, true)
+    if (cls.kind === 'animated' || cls.kind === 'unknown') {
+        return { result: { skip: true }, decoded: false }
     }
-    const type = getImageType(bytes)
-    if (type === 'Unknown') {
-        return { skip: true }
+    if (cls.kind !== 'still') {
+        return { result: null, decoded: false }
     }
+    const result = await currentRenderThumb({ kind: 'bytes', bytes, mime: cls.mime }, scope)
+    return { result, decoded: result !== null }
+}
 
-    const blob = new Blob([asBuffer(bytes)], { type: mimeForType(type) })
-    // Built from a same-origin blob: URL rather than the resolved asset src,
-    // so the Tauri asset protocol's cross-origin behaviour can never taint
-    // the canvas.
-    const url = URL.createObjectURL(blob)
+/**
+ * Where the first 64 KiB can be read without the whole file (Node-hosted
+ * pages, Tauri), animation is decided from it and a still is decoded from the
+ * asset URL, so no JS copy of the file is made. Everything else, and every
+ * failure of that path, reads the whole file and decodes it from a `Blob`.
+ */
+async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
+    const scope = makeTaskScope(ctx)
+    try {
+        let urlFailed = false
+        if (!urlDecodeOff) {
+            const probe = await readHeader(loc, scope)
+            if (scope.isCancelled()) {
+                return null
+            }
+            if (probe !== null) {
+                const cls = classifyImage(probe.header.bytes, probe.header.whole)
+                if (cls.kind === 'null') {
+                    return null
+                }
+                if (cls.kind === 'animated' || cls.kind === 'unknown') {
+                    return { skip: true }
+                }
+                if (cls.kind === 'still') {
+                    const url = probe.url ?? await assetUrlFor(loc)
+                    if (scope.isCancelled()) {
+                        return null
+                    }
+                    if (url !== null) {
+                        try {
+                            return await currentRenderThumb({ kind: 'url', url }, scope)
+                        } catch {
+                            if (scope.isCancelled()) {
+                                return null
+                            }
+                            urlFailed = true
+                        }
+                    }
+                }
+            }
+        }
+        const outcome = await generateFromBytes(loc, scope)
+        if (urlFailed && outcome.decoded) {
+            urlDecodeOff = true
+        }
+        return outcome.result
+    } finally {
+        scope.release()
+    }
+}
+
+/** What the render step decodes: a URL the page can load directly, or the
+ *  file's bytes wrapped in a same-origin blob: URL. */
+type RenderSource =
+    | { kind: 'url', url: string }
+    | { kind: 'bytes', bytes: Uint8Array, mime: string }
+type RenderThumbFn = (source: RenderSource, scope: TaskScope) => Promise<GenResult>
+
+/** Load, draw and export: decodes the source, scales it to the thumbnail size
+ *  and encodes it. Rejects when the image fails to load, decode or export, so
+ *  the caller can try another path. Split from `realGenerate` so tests can
+ *  drive the classification and the reads without a canvas. */
+async function renderThumb(source: RenderSource, scope: TaskScope): Promise<GenResult> {
     const img = new Image()
+    let objectUrl: string | null = null
+    if (source.kind === 'bytes') {
+        // A same-origin blob: URL, so the asset protocol's cross-origin
+        // behaviour never reaches the canvas.
+        objectUrl = URL.createObjectURL(new Blob([asBuffer(source.bytes)], { type: source.mime }))
+    } else {
+        // Loaded with CORS, so a response the page may not read fails to load
+        // instead of tainting the canvas.
+        img.crossOrigin = 'anonymous'
+    }
     let cleaned = false
     const cleanup = () => {
         if (cleaned) {
             return
         }
         cleaned = true
-        URL.revokeObjectURL(url)
+        if (objectUrl !== null) {
+            URL.revokeObjectURL(objectUrl)
+        }
         img.src = ''
     }
-    ctx.setCleanup(cleanup)
+    scope.own(cleanup)
 
     let canvas: HTMLCanvasElement | null = null
     try {
-        img.src = url
+        if (scope.isCancelled()) {
+            return null
+        }
+        img.src = source.kind === 'url' ? source.url : (objectUrl ?? '')
         await img.decode()
-        if (ctx.isCancelled()) {
+        if (scope.isCancelled()) {
             return null
         }
         const dims = thumbDimensions(img.naturalWidth, img.naturalHeight, THUMB_SHORT_SIDE)
@@ -608,6 +873,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
     }
 }
 
+let currentRenderThumb: RenderThumbFn = renderThumb
 let currentGenerator: FullGenerator = realGenerate
 
 // ---------------------------------------------------------------------------
@@ -690,6 +956,9 @@ export const __avatarThumbTestHooks = {
     setReadImage(fn: ReadImageFn) {
         currentReadImage = fn
     },
+    setRenderThumb(fn: RenderThumbFn) {
+        currentRenderThumb = fn
+    },
     setReadbackCheck(fn: () => boolean) {
         readbackCheckFn = fn
         readbackChecked = false
@@ -722,6 +991,8 @@ export const __avatarThumbTestHooks = {
         readbackCheckFn = defaultReadbackCheck
         currentGenerator = realGenerate
         currentReadImage = readImage
+        currentRenderThumb = renderThumb
+        urlDecodeOff = false
         storeOverride = null
         concurrency = DEFAULT_CONCURRENCY
         timeoutMs = DEFAULT_TIMEOUT_MS

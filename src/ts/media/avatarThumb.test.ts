@@ -89,6 +89,7 @@ import {
     __avatarThumbTestHooks,
     THUMB_VERSION,
     buildThumbKeepSet,
+    classifyImage,
     getAvatarThumbSrc,
     isAnimatedImage,
     isThumbEligible,
@@ -96,6 +97,7 @@ import {
     thumbDimensions,
 } from './avatarThumb'
 import type { Database, folder } from '../storage/database.svelte'
+import { getImageType } from './imageType'
 
 //#region test store helpers
 
@@ -801,9 +803,9 @@ describe('T5d: a cancelled real-generator task never reaches the canvas/createOb
             expect(resolveRead).not.toBeNull()
 
             // PNG signature (8 bytes) + 4 more: >= the 12-byte floor, and
-            // `isAnimatedImage` calls this non-animated (`isApng` finds no
-            // room left for any chunk after the signature, so it bails out
-            // without ever finding an `acTL`).
+            // `classifyImage` calls this a still (`isApng` finds no room left
+            // for any chunk after the signature, so it bails out without ever
+            // finding an `acTL`).
             const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
             resolveRead!(pngBytes)
             await flushMicrotasks()
@@ -820,18 +822,13 @@ describe("T5e: a per-task timeout runs the real generator's cleanup immediately,
     // `GenContext.setCleanup` can run a registered cleanup two ways: (1) the
     // timer's own handler calls the already-registered `cleanupFn` directly
     // when it fires, or (2) if `setCleanup` itself is called after the timer
-    // already fired, it invokes `fn` immediately instead of storing it. (2)
-    // is unreachable through `realGenerate` as written: the only `await`
-    // before `ctx.setCleanup(cleanup)` is the initial `readImage` call, and
-    // that path always re-checks `isCancelled()` immediately upon resuming
-    // and returns before ever reaching `ctx.setCleanup` -- so nothing in
-    // `realGenerate` can call `setCleanup` after the timer has already run
-    // (T5d covers exactly that early-return path; it never calls
-    // `setCleanup` at all). This test instead exercises the reachable half
-    // of the same guarantee: a decode left hanging past `timeoutMs` has its
-    // blob URL revoked and its `<img>` unloaded right away, from the timer's
-    // own handler, not only if/when the hung `decode()` eventually settles
-    // on its own.
+    // already fired, it invokes `fn` immediately instead of storing it.
+    // `realGenerate` registers its single cleanup before its first `await`,
+    // so only (1) is reachable through it; (2) is the late registration that
+    // a generator which awaits first would hit. This test exercises (1): a
+    // decode left hanging past `timeoutMs` has its blob URL revoked and its
+    // `<img>` unloaded right away, from the timer's own handler, not only
+    // if/when the hung `decode()` eventually settles on its own.
     test('a hung decode has its blob URL revoked exactly at timeout, before decode ever settles', async () => {
         vi.useFakeTimers()
         __avatarThumbTestHooks.setReadbackCheck(() => true)
@@ -915,6 +912,230 @@ describe('T14: isThumbEligible (real predicate)', () => {
         ["a loc that only starts with the bare word 'assets' (no '/')", 'assetsX/x.png'],
     ])('%s -> not eligible', (_label, loc) => {
         expect(isThumbEligible(loc)).toBe(false)
+    })
+})
+
+//#endregion
+
+//#region classifyImage (a specification of new code; the equivalence guard compares it with the legacy decision)
+
+describe('classifyImage', () => {
+    function ascii(s: string): Uint8Array {
+        return Uint8Array.from(Array.from(s).map((c) => c.charCodeAt(0)))
+    }
+
+    function u32be(n: number): Uint8Array {
+        return Uint8Array.from([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff])
+    }
+
+    function cat(...parts: Uint8Array[]): Uint8Array {
+        const out = new Uint8Array(parts.reduce((sum, p) => sum + p.length, 0))
+        let at = 0
+        for (const p of parts) {
+            out.set(p, at)
+            at += p.length
+        }
+        return out
+    }
+
+    const PNG_SIG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    const PREFIX = 65536
+
+    function chunk(type: string, dataLen: number): Uint8Array {
+        return cat(u32be(dataLen), ascii(type), new Uint8Array(dataLen), new Uint8Array(4))
+    }
+
+    function riffWebp(fourCc: string, flags = 0): Uint8Array {
+        const body = cat(ascii(fourCc), u32be(10), Uint8Array.from([flags, 0, 0, 0, 0, 0, 0, 0, 0, 0]), new Uint8Array(20))
+        return cat(ascii('RIFF'), u32be(4 + body.length), ascii('WEBP'), body)
+    }
+
+    /** An `ftyp` box whose declared size equals its real length, followed by
+     *  `after` bytes of other data. */
+    function ftyp(major: string, compatible: string[], after = 0, declaredSize?: number): Uint8Array {
+        const box = cat(ascii('ftyp'), ascii(major), u32be(0), ...compatible.map(ascii))
+        return cat(u32be(declaredSize ?? 4 + box.length), box, new Uint8Array(after))
+    }
+
+    function jpeg(trailing = 0): Uint8Array {
+        return cat(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]), ascii('JFIF'), new Uint8Array(40), Uint8Array.from([0xff, 0xd9]), new Uint8Array(trailing))
+    }
+
+    const kindOf = (bytes: Uint8Array, whole: boolean) => classifyImage(bytes, whole).kind
+
+    describe('a whole file', () => {
+        test.each([
+            ['an empty file', new Uint8Array(0)],
+            ['11 bytes', new Uint8Array(11)],
+        ])('%s is null', (_label, bytes) => {
+            expect(kindOf(bytes, true)).toBe('null')
+        })
+
+        test('a GIF and an animated WebP are animated; an APNG with an early acTL is animated', () => {
+            expect(kindOf(cat(ascii('GIF89a'), new Uint8Array(20)), true)).toBe('animated')
+            expect(kindOf(riffWebp('VP8X', 0x02), true)).toBe('animated')
+            expect(kindOf(cat(PNG_SIG, chunk('IHDR', 13), chunk('acTL', 8), chunk('IDAT', 4), chunk('IEND', 0)), true)).toBe('animated')
+        })
+
+        test('stills carry the MIME type of their format', () => {
+            expect(classifyImage(cat(PNG_SIG, chunk('IHDR', 13), chunk('IDAT', 4), chunk('IEND', 0)), true)).toEqual({ kind: 'still', mime: 'image/png' })
+            expect(classifyImage(riffWebp('VP8 '), true)).toEqual({ kind: 'still', mime: 'image/webp' })
+            expect(classifyImage(cat(ascii('BM'), new Uint8Array(20)), true)).toEqual({ kind: 'still', mime: 'image/bmp' })
+            expect(classifyImage(ftyp('avif', ['mif1']), true)).toEqual({ kind: 'still', mime: 'image/avif' })
+            expect(classifyImage(jpeg(), true)).toEqual({ kind: 'still', mime: 'image/jpeg' })
+        })
+
+        test('an AVIF sequence is animated and an unrelated ftyp brand is unknown', () => {
+            expect(kindOf(ftyp('avif', ['avis']), true)).toBe('animated')
+            expect(kindOf(ftyp('isom', ['mp41']), true)).toBe('unknown')
+        })
+
+        test('bytes of no known format are unknown', () => {
+            expect(kindOf(new Uint8Array(64), true)).toBe('unknown')
+        })
+
+        test('a JPEG with bytes after its end marker is a still JPEG', () => {
+            expect(classifyImage(jpeg(16), true)).toEqual({ kind: 'still', mime: 'image/jpeg' })
+        })
+
+        test('a malformed JPEG that starts FF D8, has a byte other than FF third and ends FF D9 stays a still JPEG', () => {
+            const bytes = cat(Uint8Array.from([0xff, 0xd8, 0x00]), new Uint8Array(20), Uint8Array.from([0xff, 0xd9]))
+            expect(classifyImage(bytes, true)).toEqual({ kind: 'still', mime: 'image/jpeg' })
+        })
+
+        test('FF D8, a byte other than FF third and no end marker is unknown', () => {
+            expect(kindOf(cat(Uint8Array.from([0xff, 0xd8, 0x00]), new Uint8Array(20)), true)).toBe('unknown')
+        })
+    })
+
+    describe('a prefix', () => {
+        const stillHead = () => cat(PNG_SIG, chunk('IHDR', 13), chunk('IDAT', 4), chunk('IEND', 0))
+
+        test('a PNG with IDAT before any acTL is a still, and one with an early acTL is animated', () => {
+            expect(kindOf(cat(stillHead(), new Uint8Array(PREFIX)).subarray(0, PREFIX), false)).toBe('still')
+            expect(kindOf(cat(PNG_SIG, chunk('IHDR', 13), chunk('acTL', 8), new Uint8Array(PREFIX)).subarray(0, PREFIX), false)).toBe('animated')
+        })
+
+        test('a PNG prefix that ends cleanly at a chunk boundary before IDAT is undecided, and a still when whole', () => {
+            const bytes = cat(PNG_SIG, chunk('IHDR', 13), chunk('tEXt', 8))
+            expect(kindOf(bytes, false)).toBe('undecided')
+            expect(kindOf(bytes, true)).toBe('still')
+        })
+
+        test('an APNG with its acTL after 100 KiB of tEXt is undecided from the first 64 KiB and animated whole', () => {
+            const whole = cat(PNG_SIG, chunk('IHDR', 13), chunk('tEXt', 100 * 1024), chunk('acTL', 8), chunk('IDAT', 4), chunk('IEND', 0))
+            expect(kindOf(whole.subarray(0, PREFIX), false)).toBe('undecided')
+            expect(kindOf(whole, true)).toBe('animated')
+        })
+
+        test('an ISO-BMFF box that ends inside the prefix without avis is a still', () => {
+            expect(classifyImage(ftyp('avif', ['mif1', 'miaf'], PREFIX), false)).toEqual({ kind: 'still', mime: 'image/avif' })
+        })
+
+        test('an ftyp box with an avis brand is animated', () => {
+            expect(kindOf(ftyp('avif', ['isom', 'avis'], PREFIX), false)).toBe('animated')
+        })
+
+        test.each([
+            ['size 0 ("to end of file")', 0],
+            ['a size larger than the prefix', PREFIX + 1024],
+        ])('an ftyp box of %s with no avis in view is undecided, and a still when whole', (_label, declaredSize) => {
+            const bytes = ftyp('avif', ['mif1'], 64, declaredSize)
+            expect(kindOf(bytes, false)).toBe('undecided')
+            expect(kindOf(bytes, true)).toBe('still')
+        })
+
+        test('an ftyp box of size 0 with avis in view is animated', () => {
+            expect(kindOf(ftyp('avif', ['avis'], 64, 0), false)).toBe('animated')
+        })
+
+        test('WebP and GIF prefixes decide from their headers', () => {
+            expect(kindOf(cat(riffWebp('VP8X', 0x02), new Uint8Array(PREFIX)).subarray(0, PREFIX), false)).toBe('animated')
+            expect(classifyImage(cat(riffWebp('VP8L'), new Uint8Array(PREFIX)).subarray(0, PREFIX), false)).toEqual({ kind: 'still', mime: 'image/webp' })
+            expect(kindOf(cat(ascii('GIF87a'), new Uint8Array(PREFIX)).subarray(0, PREFIX), false)).toBe('animated')
+        })
+
+        test('a prefix starting FF D8 FF is a still JPEG whether or not it ends in FF D9', () => {
+            const bytes = cat(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]), new Uint8Array(PREFIX))
+            expect(classifyImage(bytes.subarray(0, PREFIX), false)).toEqual({ kind: 'still', mime: 'image/jpeg' })
+        })
+
+        test('a prefix starting FF D8 and then a byte other than FF is undecided', () => {
+            const bytes = cat(Uint8Array.from([0xff, 0xd8, 0x00]), new Uint8Array(PREFIX))
+            expect(kindOf(bytes.subarray(0, PREFIX), false)).toBe('undecided')
+        })
+
+        test('a prefix shorter than the bytes a rule reads is undecided', () => {
+            expect(kindOf(riffWebp('VP8X', 0x02).subarray(0, 18), false)).toBe('undecided')
+            expect(kindOf(PNG_SIG.subarray(0, 6), false)).toBe('undecided')
+        })
+
+        test('a prefix of no known format is unknown', () => {
+            expect(kindOf(new Uint8Array(PREFIX), false)).toBe('unknown')
+        })
+    })
+
+    describe('equivalence with the legacy decision on whole files', () => {
+        function legacy(bytes: Uint8Array): 'null' | 'animated' | 'unknown' | 'still' {
+            if (bytes.length < 12) {
+                return 'null'
+            }
+            if (isAnimatedImage(bytes)) {
+                return 'animated'
+            }
+            return getImageType(bytes) === 'Unknown' ? 'unknown' : 'still'
+        }
+
+        const fixtures: Array<[string, Uint8Array]> = [
+            ['empty', new Uint8Array(0)],
+            ['11 zero bytes', new Uint8Array(11)],
+            ['a GIF', cat(ascii('GIF89a'), new Uint8Array(20))],
+            ['a still PNG', cat(PNG_SIG, chunk('IHDR', 13), chunk('IDAT', 4), chunk('IEND', 0))],
+            ['an APNG', cat(PNG_SIG, chunk('IHDR', 13), chunk('acTL', 8), chunk('IDAT', 4))],
+            ['a PNG with acTL after IDAT', cat(PNG_SIG, chunk('IHDR', 13), chunk('IDAT', 4), chunk('acTL', 8))],
+            ['a PNG with an overrunning chunk', cat(PNG_SIG, u32be(9000), ascii('IHDR'), new Uint8Array(4))],
+            ['a bare PNG signature plus 4 bytes', cat(PNG_SIG, new Uint8Array(4))],
+            ['a VP8 WebP', riffWebp('VP8 ')],
+            ['a VP8X still WebP', riffWebp('VP8X', 0)],
+            ['a VP8X animated WebP', riffWebp('VP8X', 0x02)],
+            ['a 12-byte RIFF WEBP header', cat(ascii('RIFF'), u32be(4), ascii('WEBP'))],
+            ['an AVIF', ftyp('avif', ['mif1'])],
+            ['an AVIF sequence', ftyp('avif', ['avis'])],
+            ['an ftyp of size 0', ftyp('avif', ['mif1'], 32, 0)],
+            ['an mp4', ftyp('isom', ['mp41'])],
+            ['a BMP', cat(ascii('BM'), new Uint8Array(20))],
+            ['zeros', new Uint8Array(64)],
+            ['a malformed FF D8 xx ... FF D9', cat(Uint8Array.from([0xff, 0xd8, 0x00]), new Uint8Array(20), Uint8Array.from([0xff, 0xd9]))],
+            ['FF D8 xx without an end marker', cat(Uint8Array.from([0xff, 0xd8, 0x00]), new Uint8Array(20))],
+            ['a JPEG ending in FF D9', jpeg()],
+        ]
+
+        /** The decode MIME type the legacy path took from `getImageType`. */
+        function legacyMime(bytes: Uint8Array): string {
+            switch (getImageType(bytes)) {
+                case 'JPEG': return 'image/jpeg'
+                case 'PNG': return 'image/png'
+                case 'WEBP': return 'image/webp'
+                case 'BMP': return 'image/bmp'
+                case 'AVIF': return 'image/avif'
+                default: return 'application/octet-stream'
+            }
+        }
+
+        test.each(fixtures)('%s gets the legacy outcome and decode MIME type', (_label, bytes) => {
+            expect(kindOf(bytes, true)).toBe(legacy(bytes))
+            const cls = classifyImage(bytes, true)
+            if (cls.kind === 'still') {
+                expect(cls.mime).toBe(legacyMime(bytes))
+            }
+        })
+
+        test('a buffer starting FF D8 FF without an end marker is the one deliberate difference: still with image/jpeg, not unknown', () => {
+            const bytes = jpeg(16)
+            expect(legacy(bytes)).toBe('unknown')
+            expect(legacyMime(bytes)).toBe('application/octet-stream')
+            expect(classifyImage(bytes, true)).toEqual({ kind: 'still', mime: 'image/jpeg' })
+        })
     })
 })
 
