@@ -8164,3 +8164,125 @@ browser CORS behaviour of the Hugging Face router, and whether a real model answ
 **Disclosures:**
 - **(a)** The labels of the answers in items 2 and 5, other than "Also PNG card assets", were not kept (TODO(evidence)).
 - **(b)** The measurements behind the answers are one i9-13900KF-class machine and one Note 9 (`MC-003`, `MC-010`); they are in Report 60.
+
+---
+
+### MC-226 — Main Campaign, 2026-10-07: asset display without loading (CHORE-109): the route first, a read-only token with no expiry, thumbnails in scope, inlays split off
+
+- **Tag:** decisions (one typed message and three sets of `AskUserQuestion` answers; each item says which)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session at the start of CHORE-109 and through the plan gate for Stage A. The typed message is quoted as typed; answers are given by the option label the maintainer chose.
+- **Reasoning:** none stated, except where an option's description carries it.
+- **Alternatives rejected:** not recorded (the other option labels were not kept).
+- **Related:** `MC-003`, `MC-010`, `MC-131`, `MC-144`, `MC-175`, `MC-187`, `MC-198`, `MC-225`; CHORE-49, CHORE-108, CHORE-109, CHORE-114; Report 61 sections 2, 3 and 4; ledger rows 1312 to 1319.
+
+**What was decided:**
+1. **Start.** The maintainer typed: "start asset display without loading (CHORE-109)".
+2. **First set of answers.** Scope: "Node route first (Recommended)", meaning a GET route on the Node server that streams a stored asset with Range; Android is verified on the Note 9; the web service worker waits for CHORE-108. Route authentication: "Token in the URL (Recommended)", a signed `risu-auth` token as a query parameter, like the websocket route. Extras (several allowed): "Grid thumbnails" and "Inlays", both in scope.
+3. **Second set of answers.** URL token: "Scoped read token (Recommended)", a separate asset-read-only token, with a long expiry (the option text said "e.g. 30 days, server-capped"), kept in the browser so URLs are stable across reloads, and refused on every other route. Inlays: "Drop from CHORE-109 (Recommended)", with a separate ticket for them: inlays are missing from `.bin` backups and never reach the Node server (filed as CHORE-114). This reverses the "Inlays" extra of item 2. Thumbnails: "Yes, with fallback (Recommended)", meaning a header-first animated check, decoding stills from the URL, and a whole read when the header cannot decide; GIFs stay treated as animated. Node over https: "Yes, route for all Node (Recommended)".
+4. **Third answer.** "No expiry, read-only (Recommended)": one asset-read token per signed-in browser, no expiry, kept until that browser signs in with a new key; a leaked link reads assets only, until the server's key list is cleared. **This supersedes the "e.g. 30 days" of item 3.**
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The premise that plain-HTTP LAN users take the data-URL path was wrong: the Node server does not boot over plain HTTP at a LAN address (CHORE-49, `MC-144`), so Stage A helps Node pages on https and on localhost today. The fix for CHORE-49 must also give the asset-read token a signer. The Orchestrator told the maintainer in the Stage A Gate 2 progress message on 2026-10-07 (it said it had wrongly claimed that plain-HTTP LAN users get data URLs, and that the Node server does not start over plain HTTP at a LAN address). The maintainer gave no separate answer; their next message was the Stage A commit approval (`MC-227` 1). This is not a maintainer decision on CHORE-49.
+- `isPlainHttpFileSrc` was removed once no caller was left (Gate 2 optional O4); the sweep touched about 134 test files only to drop its mock.
+- For Gate 2 finding R2-1 (two parser test files now fail at load, not on their assertions, against the old parser) the Orchestrator kept the files and qualified the commit message, rather than keeping the mock only to preserve the red run.
+- The 200 MB per-asset policy limit (`MC-187`) was not changed by this work.
+
+**Disclosures:**
+- **(a)** The option descriptions in items 2 to 4 are the Orchestrator's text as recorded in the records items, not the maintainer's words.
+- **(b)** Every measurement behind the Stage A answers is from one i9-13900KF, best-case hardware (`MC-003`, `MC-010`), with synthetic data (`MC-131`); they are in Report 61.
+
+---
+
+### MC-227 — Main Campaign, 2026-10-07: the go-aheads for CHORE-109 Stages A, B and C, and the Stage B rules the Orchestrator set
+
+- **Tag:** decisions (typed messages, quoted as typed)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed messages in the Main Campaign session on 2026-10-07.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-175`, `MC-198`, `MC-222` (the standing push approval), `MC-226`; CHORE-109; Report 61 sections 3, 5 and 8; ledger rows 1316 to 1325 and 1331.
+
+**What was decided:**
+1. **Stage A commit.** The maintainer typed: "yes. commit and merge. you can also prune the worktree after that." Stage A was committed as `bccf1a53`, `main` was fast-forwarded and pushed, and the worktree `RisuAI-assetroute` and branch `feat/asset-route` were removed.
+2. **Plan Stage B.** The maintainer typed: "start planning stage B."
+3. **Implement Stage B.** The maintainer typed: "yes, start the implementation".
+4. **Stage B commit.** The maintainer typed: "yes, commit and merge. prune the worktree too." Stage B was committed as `9ec38568` (rebased onto `d019e66a`), `main` was fast-forwarded and pushed, and the worktree `RisuAI-assetthumbs` and its branch were removed.
+5. **Stage C.** The maintainer typed: "start stage C". It runs on the Note 9; its results are in Report 61 section 8, and the Android Range defect it found is `MC-229`. Its brief keeps the maintainer's data: an `install -r`, no `pm clear`, no uninstall, no settings change, and counts only of the maintainer's data.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **The JPEG rule.** A file that starts `FF D8 FF` is still a JPEG on every platform, whether or not it ends `FF D9`, so a JPEG with trailing bytes gets a thumbnail rather than a skip record (a JPEG cannot animate). This answered Gate 1 finding B1 and is the one deliberate behaviour change on the whole-file path.
+- **The T4 tightening.** A response of 200 counts as the whole file only when its `Content-Length` equals the bytes received (Gate 2 optional O4, taken).
+- **Stage B's Tauri URL path** was planned as evidenced only by Stage C until it is run.
+
+**Disclosures:**
+- **(a)** Stage B's live figures are one i9-13900KF, best case (`MC-003`, `MC-010`), with synthetic avatars (`MC-131`).
+- **(b)** Stage C ran on one Note 9 (Android 10, WebView 153, a debug build; `MC-198` (a)) with synthetic fixtures; its figures are single runs.
+
+---
+
+### MC-228 — Main Campaign, 2026-10-07: the CI test 32 fix is committed once reviewed; `src-tauri/key.txt` is no longer tracked
+
+- **Tag:** decisions (a report, a typed message, and an approval the maintainer recalled in approximate wording)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's words in the Main Campaign session on 2026-10-07.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-175`; Report 61 sections 6 and 7; ledger rows 1326 to 1328.
+
+**What was decided:**
+1. **The report.** The maintainer reported that CI vitest was failing and pasted a Copilot analysis of test 32 (in `globalApi.saveSkip.svelte.test.ts`), which claimed that the save loop forces a stale "Save mine". This is a report, not a quotation; the records items do not keep the maintainer's wording.
+2. **The fix.** The maintainer typed: "commit the CI test fix once reviewed." The reviewed fix was committed as `d019e66a` and pushed.
+3. **`key.txt`.** The tracked file `src-tauri/key.txt` was removed from the index and ignored in `f42cdad9`. The maintainer gave their approval on 2026-10-07, from memory and in approximate wording, not as a verbatim quote: "It came with the upstream. and I am not sure what it does. I just left it as is to not to break anything. you can remove it if it does nothing". This is the maintainer's recollection of their message. The commit message states that nothing reads the file.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The Copilot premise was rejected: `commitSave` in `blockStore.ts` already compares the stored sequence number with the Save mine's `peerSeq`, so the save code was not changed. The failure is a race in the test's mock, which answered Save mine at once.
+- The reviewer's claim that the commit's co-author line should name Sonnet was rejected; the session attribution is Opus 5.5.
+
+**Disclosures:**
+- **(a)** `Agents/Maintainer-Context.md` has no entry on "Save mine" (ledger row 1326), so the Save mine behaviour the test checks is not a recorded maintainer decision; it is described in the test and in the `d019e66a` message.
+- **(b)** The local figures for the fix (20 of 20, 3 of 3) are one Windows machine, an i9-13900KF (`MC-003`, `MC-010`); the CI result: PR Check (`gh run list --repo yor42/RisuAI`, Orchestrator, 2026-10-07; timestamps UTC): success on `d019e66a` (created 2026-10-06T23:03:05Z) and on `9ec38568` (2026-10-06T23:11:51Z); failure on `bccf1a53`, `f42cdad9`, `1e71c45c` and `64436cbd`.
+
+---
+
+### MC-229 — Main Campaign, 2026-10-07: the Android asset video stall is ticketed as CHORE-115 and investigated before any code
+
+- **Tag:** decisions (an `AskUserQuestion` answer)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the Orchestrator's question after the Stage C result, given by the option label.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded (the other option labels were not kept).
+- **Related:** `MC-198`, `MC-226`, `MC-227`; CHORE-109, CHORE-115; Report 61 section 8; ledger rows 1331 and 1332.
+
+**What was decided:**
+1. **Ticket and investigate.** The maintainer chose "Ticket + investigate (Recommended)". The option's description: file a ticket (CHORE-115), investigate where the bytes go wrong (Tauri, wry or the Android WebView) and size a fix such as serving media through our own handler on Android; no code until the maintainer sees the plan. The problem it names: an asset video on Android stalls after about 1 MB, and it predates CHORE-109. An `investigator` was dispatched (row 1332).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The Android Range defect predates CHORE-109: `getFileSrc` at `f42cdad9` already used `urlFor` or `convertFileSrc` on Tauri (INFERRED from source; the old build was not run). The `perf-analyzer`'s claim that Stage A causes it was rejected.
+
+**Disclosures:**
+- **(a)** The evidence is one Note 9 (Android 10, WebView 153.0.8010.36), a debug build, single runs, synthetic fixtures (`MC-198` (a)); the mechanism is INFERRED and was not isolated.
+- **(b)** The option description is the Orchestrator's text as recorded in the records items, not the maintainer's words.
+
+---
+
+### MC-230 — Main Campaign, 2026-10-07: CHORE-115 (the Android asset video stall) waits for a wry release with the fix
+
+- **Tag:** decisions (an `AskUserQuestion` answer)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the Orchestrator's question on the CHORE-115 options, given by the option label.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the other options were a patched wry fork, a Blob URL stopgap, an own protocol handler, a repo-side Kotlin change and a local HTTP server (Roadmap CHORE-115); their labels were not kept.
+- **Related:** `MC-175` (none of the options touches saves, assets on disk or upstream compatibility), `MC-198`, `MC-229`; CHORE-115; Report 61 section 8; ledger row 1332.
+
+**What was decided:**
+1. **Wait for wry.** The maintainer chose "Wait for wry (Recommended)". The option's text: no code now; keep CHORE-115 open, and check before the Android release whether a wry release with the fix has arrived; the build picks up the newest compatible version by itself; Android video stays broken until then.
+
+**Disclosures:**
+- **(a)** The option text is the Orchestrator's, as recorded in the records items, not the maintainer's words.
+- **(b)** "The build picks up the newest compatible version by itself" is the option text; `AGENTS.md` records that `Cargo.lock` is gitignored and the crate versions float.

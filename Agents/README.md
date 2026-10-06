@@ -109,7 +109,7 @@ a given piece of work by matching its topic/phase name, not by guessing a filena
 
 ## Reports/ — the four bands
 
-`Reports/` has 71 files as of 2026-10-07 (through Report 60; count with `git ls-files Agents/Reports`) in
+`Reports/` has 72 files as of 2026-10-07 (through Report 61; count with `git ls-files Agents/Reports`) in
 four numbered bands. Reports are read for detail once the
 Roadmap or handoff has pointed you at a specific one; you don't need to read the whole
 directory.
@@ -123,10 +123,10 @@ directory.
 - **09-21 — stage plans (13 files).** Design and implementation plans for individual
   Roadmap items, in the order they were written. Some describe what shipped; at least
   one describes a design that was **retired, not shipped** — see the convention below.
-- **22-60 — later stage plans and gate records (39 files as of 2026-10-07).** The same kind of document,
+- **22-61 — later stage plans and gate records (40 files as of 2026-10-07).** The same kind of document,
   continuing the numbering: plans with a STATUS block that records the gates, plus strategy records
   (Reports 23 and 25) and the workflow-pilot proposal (Report 29). The latest are the save-layer Stage 1
-  plan (Report 57, the accepted plan) and the gate records of its stages 1a and 1b (Report 58) and 1c (Report 59), and the large-data import and export record (Report 60).
+  plan (Report 57, the accepted plan) and the gate records of its stages 1a and 1b (Report 58) and 1c (Report 59), the large-data import and export record (Report 60), and the asset-display-without-loading record (Report 61).
 - **99-\* — subsystem bug references (7 files).** Hand-off lists of suspected bugs found
   incidentally (e.g. while writing a wiki page), one file per subsystem
   (`99-character-display`, `99-long-term-memory`, `99-modules`, `99-playground`,
