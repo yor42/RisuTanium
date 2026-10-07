@@ -65,7 +65,7 @@
     "katex": "^0.16.27",
     "localforage": "^1.10.0",
     "lodash": "^4.17.21",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^14.3.1",
     "mnemonist": "^0.40.3",
     "mobile-drag-drop": "3.0.0-rc.0",
     "monaco-editor": "^0.55.1",
