@@ -18,6 +18,7 @@ import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/atom-one-dark.min.css'
 import { language } from 'src/lang';
 import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { getModelInfo } from '../model/modellist';
 import { registerCBS, type matcherArg, type PromptView, type RegisterCallback } from '../cbs';
 import type { RunSubject } from '../process/chatOrigin';
