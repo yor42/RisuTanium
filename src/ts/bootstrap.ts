@@ -52,6 +52,7 @@ import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from ".
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
+import { startInlayCopy } from "./process/files/inlayCopy";
 import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
@@ -490,6 +491,8 @@ export async function loadData() {
             try {
                 void localforage.createInstance({ name: 'risuaiAccountCached' }).dropInstance({ name: 'risuaiAccountCached' }).catch(() => { })
             } catch (error) { }
+            // Never awaited: the copy of the old inlay database must not delay the app.
+            startInlayCopy()
 
             // Taken before any plugin runs: a plugin can write cold-storage
             // units from its first line, and a unit written after this point

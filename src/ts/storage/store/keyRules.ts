@@ -145,14 +145,39 @@ export function nodeAddressableViolation(key: string): string | null {
 }
 
 /**
+ * The shape of an inlay body key: `inlays/b-<encoded id>.<16 lowercase hex
+ * digits>`, the encoded id being `a-z`, `0-9`, `-` and `%` plus two UPPERCASE hex
+ * digits (`inlayKeys.ts`). It is the only key class that may hold a Blob, and
+ * the only one under `inlays/` the Node asset route serves. The server twin in
+ * `server/node/assetRoute.cjs` holds the same pattern.
+ */
+const INLAY_BODY_KEY_PATTERN = /^inlays\/b-(?:[a-z0-9-]|%[0-9A-F]{2})+\.[0-9a-f]{16}$/
+
+/** The reason `key` is not an inlay body key, or `null` when it is one. */
+export function inlayBodyKeyViolation(key: string): string | null {
+    if (typeof key !== 'string' || !INLAY_BODY_KEY_PATTERN.test(key)) {
+        return 'only an inlay body key (inlays/b-<encoded id>.<16 hex digits>) holds a Blob'
+    }
+    return null
+}
+
+/**
  * The reason the Node server's asset route (`GET /api/asset/<hex>`) refuses
- * `key`, or `null` when it serves it. The server holds the same rule in
- * `server/node/assetRoute.cjs` (`isRouteServedKey`); the route and `urlFor`
- * must agree on every key, and one table test runs both.
+ * `key`, or `null` when it serves it: a key under `assets/`, or an inlay body
+ * key (`inlayBodyKeyViolation`) within the longest key the server accepts.
+ * The server holds the same rule in `server/node/assetRoute.cjs`
+ * (`isRouteServedKey`); the route and `urlFor` must agree on every key, and one
+ * table test runs both.
  */
 export function nodeAssetRouteViolation(key: string): string | null {
+    if (typeof key === 'string' && key.startsWith('inlays/')) {
+        if (inlayBodyKeyViolation(key) !== null || key.length > NODE_MAX_WRITE_KEY_BYTES) {
+            return `under inlays/ the asset route serves only an inlay body key of at most ${NODE_MAX_WRITE_KEY_BYTES} bytes`
+        }
+        return null
+    }
     if (typeof key !== 'string' || !key.startsWith('assets/')) {
-        return 'the asset route serves only keys under assets/'
+        return 'the asset route serves only keys under assets/ and inlay body keys'
     }
     if (!isWellFormedUtf16(key)) {
         return 'a key is well-formed UTF-16'

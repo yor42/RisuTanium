@@ -4,7 +4,9 @@
  * IndexedDB. A key is a `/`-separated relative path (`database/database.bin`,
  * `assets/<name>`); the rules are in `keyRules.ts`.
  *
- * Invariants every adapter keeps:
+ * Invariants every adapter keeps (values are bytes, except under an inlay body
+ * key on a store that offers `writeBlob`, where a value may be held as a Blob
+ * that `read` still returns as the same bytes):
  * - Byte identity: `read` returns, byte for byte, the last value written under
  *   the key, or the value upstream wrote there. A zero-length value is a value
  *   and is never confused with an absent key.
@@ -129,9 +131,30 @@ export interface ByteStore {
      * server serves a value by URL, offers it; on every other backend the
      * caller reads the bytes instead. Refuses an unusable key like `read`. A
      * backend that serves only some keys by URL (the Node server serves keys
-     * under `assets/`) also refuses the others, and the caller reads those.
+     * under `assets/` and inlay body keys) also refuses the others, and the
+     * caller reads those.
      */
     urlFor?(key: string): Promise<string>
+
+    /**
+     * Stores a Blob as the value of `key` without reading it into memory. Only
+     * the browser's IndexedDB offers it, and only for an inlay body key: any other
+     * key is refused before anything is written, so every other key class keeps
+     * holding bytes. The value reads back through `read` as the same bytes, and
+     * `list`, `has` and `delete` treat the key like any other. A File is stored as
+     * a Blob over the same bytes.
+     */
+    writeBlob?(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult>
+
+    /**
+     * The Blob a `writeBlob` stored under `key`, still backed by the store and
+     * not a copy in memory. `null` when the key holds no such Blob: it is absent,
+     * holds bytes (a `write`, a copy from another store), or the browser kept the
+     * value in an encoded form that cannot be handed back as a Blob. A caller that
+     * gets `null` uses `read`. Refuses a key that is not an inlay body key like
+     * `writeBlob`.
+     */
+    readBlob?(key: string): Promise<Blob | null>
 
     /**
      * Starts a write of one value that arrives in pieces, so the caller never

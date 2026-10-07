@@ -1736,6 +1736,7 @@ export const languageEnglish = {
     realmDirectOpen: "Directly open character in RisuRealm",
     showPromptComparison: "Show Prompt Comparison",
     inlayErrorResponse: "Inlay Error Response",
+    inlayFileTooLarge: "{name} is larger than {size} MB and was not attached.",
     triggerOn: "Trigger On",
     noConfig: "No Config",
     var: "Variable",

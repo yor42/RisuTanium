@@ -4,12 +4,13 @@ import { sameHeadBytes, type HeadRead, type HeadSwap, type SwapOutcome } from '.
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreError, StoreInvalidKeyError, StoreNotBinaryError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
-import { indexedDbAddressableViolation, indexedDbCreatableViolation } from './keyRules'
+import { indexedDbAddressableViolation, indexedDbCreatableViolation, inlayBodyKeyViolation } from './keyRules'
 
 /**
  * The byte store on the browser's IndexedDB, in the database upstream already
  * uses: LocalForage database `risuai`, object store `keyvaluepairs`, each value
- * a plain `Uint8Array` under its key. No object store is added and no database
+ * a plain `Uint8Array` under its key, except under an inlay body key, which may
+ * hold a Blob (`writeBlob`) that `read` still returns as bytes. No object store is added and no database
  * version is forced, so data upstream wrote is read where it lies and data this
  * store writes is read by upstream's own LocalForage code.
  *
@@ -183,6 +184,72 @@ export function createEntryProbe(): EntryProbe {
     }
 }
 
+/**
+ * Reads the value stored under a key exactly as IndexedDB holds it, on a plain
+ * connection of its own. LocalForage is not used because its `getItem` turns an
+ * encoded string it stored for a Blob back into a fresh in-memory Blob, which is
+ * indistinguishable from a Blob the browser stored. A connection the browser
+ * closed is replaced once.
+ */
+function createRawReader(): { get(key: string): Promise<unknown> } {
+    let connection: IDBDatabase | undefined
+    let opening: Promise<IDBDatabase | null> | undefined
+
+    function connect(): Promise<IDBDatabase | null> {
+        if (connection !== undefined) {
+            return Promise.resolve(connection)
+        }
+        opening ??= openExistingDatabase((closed) => {
+            if (connection === closed) {
+                connection = undefined
+            }
+        }).then((database) => {
+            connection = database ?? undefined
+            opening = undefined
+            return database
+        })
+        return opening
+    }
+
+    return {
+        /** The stored value, or `undefined` when the key has none or the database does not exist. */
+        async get(key: string): Promise<unknown> {
+            for (let attempt = 0; ; attempt++) {
+                const database = await connect()
+                if (database === null) {
+                    return undefined
+                }
+                try {
+                    return await new Promise<unknown>((resolve, reject) => {
+                        const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
+                        const request = transaction.objectStore(OBJECT_STORE_NAME).get(key)
+                        request.onsuccess = () => resolve(request.result)
+                        request.onerror = () => reject(request.error)
+                        transaction.onabort = () => reject(transaction.error)
+                    })
+                } catch (error) {
+                    if (attempt > 0 || !isInvalidStateError(error)) {
+                        throw error
+                    }
+                    if (connection === database) {
+                        connection = undefined
+                    }
+                    try {
+                        database.close()
+                    } catch {
+                        // Already closed.
+                    }
+                }
+            }
+        },
+    }
+}
+
+function blobTag(value: unknown): '[object Blob]' | '[object File]' | null {
+    const tag = Object.prototype.toString.call(value)
+    return tag === '[object Blob]' || tag === '[object File]' ? tag : null
+}
+
 export function createIndexedDbStore(): ByteStore {
     let instance: LocalForage | undefined
 
@@ -204,6 +271,14 @@ export function createIndexedDbStore(): ByteStore {
 
     const probe = createEntryProbe()
     const entryExists = (key: string): Promise<boolean | null> => probe.exists(key)
+    const rawReader = createRawReader()
+
+    function checkBlobKey(key: string): void {
+        const reason = inlayBodyKeyViolation(key) ?? indexedDbCreatableViolation(key)
+        if (reason !== null) {
+            throw new StoreInvalidKeyError(key, reason)
+        }
+    }
 
     return {
         capabilities: { conditionalWrites: false },
@@ -243,6 +318,24 @@ export function createIndexedDbStore(): ByteStore {
             // the value handed over owns exactly its bytes.
             await forage().setItem(key, ownBytes(bytes))
             return { version: null }
+        },
+
+        async writeBlob(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult> {
+            checkBlobKey(key)
+            checkCondition(condition, false)
+            const tag = blobTag(blob)
+            if (tag === null) {
+                throw new TypeError('writeBlob stores a Blob.')
+            }
+            // A File reads back as `[object File]`, which `bytesOfStoredValue` refuses; a slice is a plain Blob over the same bytes, copied by nobody.
+            await forage().setItem(key, tag === '[object File]' ? blob.slice(0, blob.size, blob.type) : blob)
+            return { version: null }
+        },
+
+        async readBlob(key: string): Promise<Blob | null> {
+            checkBlobKey(key)
+            const value = await rawReader.get(key)
+            return blobTag(value) === null ? null : value as Blob
         },
 
         async delete(key: string, condition: StoreCondition): Promise<void> {

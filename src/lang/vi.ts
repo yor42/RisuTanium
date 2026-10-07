@@ -1605,6 +1605,7 @@ export const languageVietnamese = {
     "realmDirectOpen": "Mở trực tiếp nhân vật trong RisuRealm",
     "showPromptComparison": "Hiển thị so sánh lời nhắc",
     "inlayErrorResponse": "Phản hồi lỗi Inlay",
+    "inlayFileTooLarge": "{name} lớn hơn {size} MB nên không được đính kèm.",
     "triggerOn": "Kích hoạt bật",
     "noConfig": "Không có cấu hình",
     "var": "Biến",

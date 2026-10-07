@@ -1605,6 +1605,7 @@ export const languageChinese = {
     "realmDirectOpen": "在 RisuRealm 中直接打开角色",
     "showPromptComparison": "显示提示词比较",
     "inlayErrorResponse": "嵌入错误响应",
+    "inlayFileTooLarge": "{name} 超过 {size} MB，未能附加。",
     "triggerOn": "触发于",
     "noConfig": "无配置",
     "var": "变量",

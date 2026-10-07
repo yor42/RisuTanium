@@ -1605,6 +1605,7 @@ export const languageSpanish = {
     "realmDirectOpen": "Abrir personaje directamente en RisuRealm",
     "showPromptComparison": "Mostrar Comparación de Prompt",
     "inlayErrorResponse": "Respuesta de Error de Incrustación",
+    "inlayFileTooLarge": "{name} supera los {size} MB y no se adjuntó.",
     "triggerOn": "Trigger Activado",
     "noConfig": "Sin Configuración",
     "var": "Variable",

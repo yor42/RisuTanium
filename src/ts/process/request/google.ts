@@ -1051,7 +1051,7 @@ function getTranStream(args:{
                                                     type: 'text',
                                                     content: part.text,
                                                 }]
-                                            })
+                                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
                                             readed["0"] += `{{inlayeddata::${sigId}}}`;
                                         }
                                     }
@@ -1073,7 +1073,7 @@ function getTranStream(args:{
                                                     type: 'function',
                                                     content: `${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})`,
                                                 }]
-                                            })
+                                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
                                             readed["0"] += `{{inlayeddata::${sigId}}}`;
                                         }
                                     }

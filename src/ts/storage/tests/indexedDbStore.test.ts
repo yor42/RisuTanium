@@ -61,6 +61,7 @@ describeByteStoreConformance({
         return value === null ? null : new Uint8Array(value)
     },
     backendCalls: () => backendCallCount,
+    offersBlobs: true,
     invalidEverywhere: [''],
     invalidPrefixes: [''],
     writeOnlyInvalid: [],
@@ -293,6 +294,56 @@ describe('IndexedDB store', () => {
 
             await store.has('anything')
             expect(backendCallCount).toBeGreaterThan(before)
+        })
+    })
+
+    describe('a Blob under an inlay body key', () => {
+        const BODY = 'inlays/b-clip.0123456789abcdef'
+
+        test('IndexedDB holds a genuine Blob, which upstream\'s own LocalForage also reads', async () => {
+            await upstream.clear()
+            const store = createIndexedDbStore()
+            await store.writeBlob!(BODY, new Blob([Uint8Array.from([1, 2, 3, 4])], { type: 'audio/mpeg' }), 'unconditional')
+
+            const stored = await upstream.getItem<Blob>(BODY)
+            expect(Object.prototype.toString.call(stored)).toBe('[object Blob]')
+            expect(stored.type).toBe('audio/mpeg')
+            expect(Array.from(new Uint8Array(await stored.arrayBuffer()))).toEqual([1, 2, 3, 4])
+        })
+
+        test('a File is stored as a plain Blob of the same bytes and type, so read returns its bytes', async () => {
+            await upstream.clear()
+            const store = createIndexedDbStore()
+            await store.writeBlob!(BODY, new File([Uint8Array.from([5, 6, 7])], 'clip.mp4', { type: 'video/mp4' }), 'unconditional')
+
+            expect(Array.from((await store.read(BODY)).bytes)).toEqual([5, 6, 7])
+            const blob = await store.readBlob!(BODY)
+            expect(Object.prototype.toString.call(blob)).toBe('[object Blob]')
+            expect(blob.type).toBe('video/mp4')
+        })
+
+        test('a value that is not a Blob is refused and nothing is written', async () => {
+            await upstream.clear()
+            const store = createIndexedDbStore()
+
+            await expect(store.writeBlob!(BODY, Uint8Array.from([1]) as unknown as Blob, 'unconditional')).rejects.toBeInstanceOf(TypeError)
+            expect(await store.has(BODY)).toBe(false)
+        })
+
+        test('an entry in LocalForage\'s encoded form is not a Blob to readBlob, and read still returns its bytes', async () => {
+            await upstream.clear()
+            const store = createIndexedDbStore()
+            await upstream.setItem(BODY, { __local_forage_encoded_blob: true, data: 'AQID', type: 'audio/mpeg' })
+
+            expect(await store.readBlob!(BODY)).toBeNull()
+            expect(Array.from((await store.read(BODY)).bytes)).toEqual([1, 2, 3])
+        })
+
+        test('readBlob creates nothing when the database does not exist', async () => {
+            await dropDatabase()
+
+            expect(await createIndexedDbStore().readBlob!(BODY)).toBeNull()
+            expect((await indexedDB.databases()).map((entry) => entry.name)).not.toContain('risuai')
         })
     })
 

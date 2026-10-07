@@ -1,5 +1,5 @@
 /**
- * Every write to the inlay store (`inlays.ts`) counts as an in-flight write for
+ * Every write to the inlay stores (`inlays.ts`) counts as an in-flight write for
  * the busy registry's choke-point counter until the store call settles, whether
  * it resolves or rejects.
  */
@@ -14,15 +14,8 @@ vi.mock('localforage', () => ({
     default: {
         createInstance: () => ({
             getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => {
-                if (h.hold) {
-                    await h.hold
-                }
-                if (h.failNext) {
-                    h.failNext = false
-                    throw new Error('simulated inlay write failure')
-                }
-            }),
+            setItem: vi.fn(async () => { }),
+            keys: vi.fn(async () => []),
             removeItem: vi.fn(async () => {
                 if (h.hold) {
                     await h.hold
@@ -31,6 +24,22 @@ vi.mock('localforage', () => ({
         }),
     },
 }))
+
+vi.mock(import('src/ts/globalApi.svelte'), () => {
+    const stub: Record<string, unknown> = { forageStorage: {} }
+    return new Proxy(stub, {
+        get: (t, k) => (k in t ? t[k as string] : k === 'then' ? undefined : vi.fn()),
+        has: () => true,
+    }) as unknown as typeof import('src/ts/globalApi.svelte')
+})
+
+vi.mock(import('src/ts/stores.svelte'), () => {
+    const stub: Record<string, unknown> = { DBState: { db: {} }, selIdState: { selId: -1 } }
+    return new Proxy(stub, {
+        get: (t, k) => (k in t ? t[k as string] : k === 'then' ? undefined : vi.fn()),
+        has: () => true,
+    }) as unknown as typeof import('src/ts/stores.svelte')
+})
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
     getDatabase: vi.fn(() => ({})),
@@ -52,11 +61,26 @@ vi.mock(import('src/ts/media'), () => ({
 
 import { removeInlayAsset, saveInlayedSignature } from './inlays'
 import { chokePointInFlight, resetBusyActionsForTest } from '../memory/busyActions'
+import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { createMemoryByteStore } from './tests/memoryByteStore'
 
 beforeEach(() => {
     resetBusyActionsForTest()
     h.hold = null
     h.failNext = false
+    const store = createMemoryByteStore()
+    const write = store.write.bind(store)
+    store.write = async (key, bytes, condition) => {
+        if (h.hold) {
+            await h.hold
+        }
+        if (h.failNext) {
+            h.failNext = false
+            throw new Error('simulated inlay write failure')
+        }
+        return write(key, bytes, condition)
+    }
+    injectAppStore(store)
 })
 
 const signature = { signatures: [], sourceFormat: 0, source: 'test' } as unknown as Parameters<typeof saveInlayedSignature>[1]

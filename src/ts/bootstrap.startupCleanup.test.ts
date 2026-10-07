@@ -229,6 +229,10 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
     reencodeImage: vi.fn(async (d: unknown) => d),
 }) as unknown as typeof import('src/ts/process/files/inlays'))
 
+vi.mock(import('src/ts/process/files/inlayCopy'), () => ({
+    startInlayCopy: vi.fn(),
+}) as unknown as typeof import('src/ts/process/files/inlayCopy'))
+
 vi.mock(import('src/ts/pngChunk'), () => ({
     PngChunk: class { },
 }) as unknown as typeof import('src/ts/pngChunk'))

@@ -1605,6 +1605,7 @@ export const languageGerman = {
     "realmDirectOpen": "Charakter in RisuRealm direkt öffnen",
     "showPromptComparison": "Anweisungsvergleich anzeigen",
     "inlayErrorResponse": "Fehlerantwort einfügen",
+    "inlayFileTooLarge": "{name} ist größer als {size} MB und wurde nicht angehängt.",
     "triggerOn": "Trigger ein",
     "noConfig": "Keine Konfiguration",
     "var": "Variable",

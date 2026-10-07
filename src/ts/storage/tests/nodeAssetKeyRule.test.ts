@@ -18,6 +18,7 @@ interface AssetRoute {
 const assetRoute = createRequire(import.meta.url)('../../../../server/node/assetRoute.cjs') as AssetRoute
 
 const HASH = 'a'.repeat(64)
+const TOKEN = '0123456789abcdef'
 
 const TABLE: Array<[label: string, key: string, served: boolean]> = [
     ['a hash-named asset', `assets/${HASH}.png`, true],
@@ -40,6 +41,26 @@ const TABLE: Array<[label: string, key: string, served: boolean]> = [
     ['an upper-case folder name', 'Assets/x.png', false],
     ['a leading space', ' assets/x.png', false],
     ['a lone surrogate', 'assets/a\uD800b', false],
+    ['an inlay body key', `inlays/b-abc.${TOKEN}`, true],
+    ['an inlay body key of an id with escapes', `inlays/b-%E3%81%82.${TOKEN}`, true],
+    ['an inlay body key at the longest key length', `inlays/b-${'a'.repeat(117 - 'inlays/b-'.length - 17)}.${TOKEN}`, true],
+    ['an inlay body key one byte over the longest key length', `inlays/b-${'a'.repeat(117 - 'inlays/b-'.length - 16)}.${TOKEN}`, false],
+    ['an inlay metadata key', 'inlays/m-abc', false],
+    ['the bare inlay body prefix', 'inlays/b-', false],
+    ['an unknown key under inlays', 'inlays/x', false],
+    ['the inlay folder', 'inlays/', false],
+    ['an inlay body key with a dot-dot id', `inlays/b-../x.${TOKEN}`, false],
+    ['an inlay body key with a path in the id', `inlays/b-a/b.${TOKEN}`, false],
+    ['an inlay body key with a short token', `inlays/b-abc.${TOKEN.slice(1)}`, false],
+    ['an inlay body key with a long token', `inlays/b-abc.${TOKEN}0`, false],
+    ['an inlay body key with an upper-case token', `inlays/b-abc.${TOKEN.toUpperCase()}`, false],
+    ['an inlay body key with a lower-case escape', `inlays/b-%e3.${TOKEN}`, false],
+    ['an inlay body key with an upper-case letter in the id', `inlays/b-ABC.${TOKEN}`, false],
+    ['an inlay body key with no id', `inlays/b-.${TOKEN}`, false],
+    ['an inlay body key with a backslash', `inlays/b-a\\b.${TOKEN}`, false],
+    ['an inlay body key with a lone surrogate', `inlays/b-a\uD800.${TOKEN}`, false],
+    ['an inlay body key with a trailing newline', `inlays/b-abc.${TOKEN}\n`, false],
+    ['an upper-case inlay folder name', `Inlays/b-abc.${TOKEN}`, false],
 ]
 
 describe('the asset route key rule, server twin and client twin', () => {
@@ -54,6 +75,11 @@ describe('the route decodes the URL hex into a key', () => {
 
     test('a lower-case hex of a served key decodes to that key', () => {
         expect(assetRoute.assetKeyFromHex(hexOf(`assets/${HASH}.png`))).toBe(`assets/${HASH}.png`)
+    })
+
+    test('a lower-case hex of an inlay body key decodes to that key, and the hex of an inlay metadata key is refused', () => {
+        expect(assetRoute.assetKeyFromHex(hexOf(`inlays/b-%E3%81%82.${TOKEN}`))).toBe(`inlays/b-%E3%81%82.${TOKEN}`)
+        expect(assetRoute.assetKeyFromHex(hexOf('inlays/m-abc'))).toBeNull()
     })
 
     test('an upper-case hex decodes to the same key as its lower-case form', () => {
