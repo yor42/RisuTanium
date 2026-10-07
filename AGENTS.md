@@ -162,6 +162,7 @@ You can safely apply Tailwind's opacity modifiers directly to these custom theme
 - Unit tests use Vitest (`pnpm test` runs `vitest run`); there are 197 `*.test.ts` files under `src/` as of 2026-09-30 — re-check with `git ls-files 'src/**/*.test.ts' | wc -l` rather than trusting this number, which has gone stale before. They are spread across `src/ts/process`, `src/ts/parser`, `src/ts/storage`, `src/ts/media`, `src/ts/network`, `src/ts/plugins`, `src/ts/translator`, `src/lib` and elsewhere — not exhaustive coverage, but a real and growing suite, not just a placeholder.
 - Run `pnpm check` for type checking (svelte-check).
 - Test coverage is uneven: some areas (e.g. `src/ts/storage/remoteSaveCleanup.test.ts`) only exercise Tauri/Node-specific code paths and say nothing about the pure web build's behavior in that area. Don't assume a file has tests nearby means that exact runtime path is covered — check what the test actually exercises.
+- **Sanitizer output under happy-dom is not evidence.** DOMPurify 3.4.9 and later mis-sanitize under happy-dom 20.14.5 (3.4.6 is correct, 3.4.7 and 3.4.8 were not tested, and 3.4.16 strips `img`, `b`, `p` and `button`), so a test that asserts on sanitized markup passes or fails for the wrong reason there. Put such a test under jsdom with a `// @vitest-environment jsdom` first line, and check that swapping the sanitizer for an identity function makes it fail. Recorded as `MC-239`.
 
 ## Key Architectural Patterns
 
