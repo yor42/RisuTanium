@@ -129,8 +129,8 @@ importers:
         specifier: ^1.11.13
         version: 1.11.13
       katex:
-        specifier: ^0.16.27
-        version: 0.16.27
+        specifier: ^0.18.2
+        version: 0.18.2
       localforage:
         specifier: ^1.10.0
         version: 1.10.0
@@ -2075,8 +2075,8 @@ packages:
   json-stringify-safe@5.0.1:
     resolution: {integrity: sha512-ZClg6AaYvamvYEE82d3Iyd3vSSIjQ+odgjaTzRuO3s7toCdFKczob2i0zCh7JE8kWn17yvAWhUVxvqGwUalsRA==}
 
-  katex@0.16.27:
-    resolution: {integrity: sha512-aeQoDkuRWSqQN6nSvVCEFvfXdqo1OQiCmmW1kc9xSdjutPv7BGO7pqY9sQRJpMOGrEdfDgF2TfRXe5eUAD2Waw==}
+  katex@0.18.2:
+    resolution: {integrity: sha512-3snve4y0SXTMequLim1FMiPvLGElySam0blN5xQZBqEY3lOJz1TnuaaiugnBZBqHzlSAGmFTYL7MCQkORuLKCA==}
     hasBin: true
 
   lie@3.1.1:
@@ -4424,7 +4424,7 @@ snapshots:
 
   json-stringify-safe@5.0.1: {}
 
-  katex@0.16.27:
+  katex@0.18.2:
     dependencies:
       commander: 8.3.0
 
