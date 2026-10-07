@@ -13,6 +13,7 @@ const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
 const { NODE_BODY_LIMIT_BYTES } = require('./bodyLimit.cjs');
+const { hubTargetURL, hubRedirectTarget } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 app.use(express.json({ limit: NODE_BODY_LIMIT_BYTES }));
@@ -1130,17 +1131,8 @@ async function hubProxyFunc(req, res) {
     ];
 
     try {
-        let externalURL = '';
+        const externalURL = hubTargetURL(hubURL, req);
 
-        const pathHeader = req.headers['x-risu-node-path'];
-        if (pathHeader) {
-            const decodedPath = decodeURIComponent(pathHeader);
-            externalURL = decodedPath;
-        } else {
-            const pathAndQuery = req.originalUrl.replace(/^\/hub-proxy/, '');
-            externalURL = hubURL + pathAndQuery;
-        }
-        
         const headersToSend = { ...req.headers };
         delete headersToSend.host;
         delete headersToSend.connection;
@@ -1167,8 +1159,12 @@ async function hubProxyFunc(req, res) {
         }
         res.status(response.status);
 
-        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-            const redirectUrl = response.headers.get('location');
+        // A redirect to the hub origin is followed here; any other target is
+        // passed through to the client and never fetched by the server.
+        const redirectUrl = response.status >= 300 && response.status < 400
+            ? hubRedirectTarget(hubURL, externalURL, response.headers.get('location'))
+            : null;
+        if (redirectUrl) {
             const newHeaders = { ...headersToSend };
             const redirectResponse = await fetch(redirectUrl, {
                 method: req.method,
