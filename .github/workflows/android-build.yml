@@ -135,7 +135,7 @@ jobs:
           ABI: ${{ inputs.abi }}
         run: |
           set -euo pipefail
-          args=(android build --apk)
+          args=(android build --apk true)
           if [ "$BUILD_TYPE" = "debug" ]; then
             args+=(--debug)
           fi
