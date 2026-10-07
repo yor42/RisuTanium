@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 
 /**
  * Component-level coverage for the realm card's five-state model in
