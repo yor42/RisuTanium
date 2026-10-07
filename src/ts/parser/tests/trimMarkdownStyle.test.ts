@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+// Removal assertions need a DOM in which DOMPurify removes every offending
+// node; see sanitizerMultiRemoval.test.ts for why happy-dom is not one.
 import { describe, it, expect, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { ParseMarkdown } from '../parser.svelte'
@@ -47,7 +50,9 @@ vi.mock(import('../../stores.svelte'), () => {
 
 //#endregion
 
-const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html').body
+// The explicit <body> start tag keeps a leading <style> in the body, as a
+// spec-compliant parser would otherwise hoist it into <head>.
+const parse = (html: string) => new DOMParser().parseFromString('<body>' + html, 'text/html').body
 
 /**
  * Every rendered style rule must stay scoped to the chat text container.

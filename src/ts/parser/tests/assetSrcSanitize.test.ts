@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+// Sanitizer tests run in a DOM where DOMPurify visits every node; see
+// sanitizerMultiRemoval.test.ts for why happy-dom is not one.
 import { describe, it, expect, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { ParseMarkdown, trimMarkdown } from '../parser.svelte'
