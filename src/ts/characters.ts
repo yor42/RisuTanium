@@ -19,6 +19,7 @@ import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
+import { escapeHtmlText } from "./htmlEscape";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -310,7 +311,7 @@ export async function exportChat(page:number){
                 alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 chatContentHTML += `<div class="chat">
-                    <h2>${name}</h2>
+                    <h2>${escapeHtmlText(name)}</h2>
                     <div>${await htmlChatParse(v.data)}</div>
                 </div>`
             }
@@ -319,7 +320,7 @@ export async function exportChat(page:number){
                 <!DOCTYPE html>
                 <html>
                     <head>
-                        <title>${char.name} Chat</title>
+                        <title>${escapeHtmlText(char.name)} Chat</title>
                         <style>
                             body{
                                 font-family: Arial, sans-serif;
@@ -356,7 +357,7 @@ export async function exportChat(page:number){
                     <body>
                         <div class="container">
                             <div class="chat">
-                                <h2>${char.name}</h2>
+                                <h2>${escapeHtmlText(char.name)}</h2>
                                 <div>${await htmlChatParse(
                                     chat.fmIndex === -1 ? char.firstMessage : char.alternateGreetings?.[chat.fmIndex ?? 0]
                                 )}</div>
@@ -381,7 +382,7 @@ export async function exportChat(page:number){
                 alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 chatContentHTML += `<tr>
-                    <td>${name}</td>
+                    <td>${escapeHtmlText(name)}</td>
                     <td>${await htmlChatParse(v.data)}</td>
                 </tr>`
             }
@@ -393,7 +394,7 @@ export async function exportChat(page:number){
                         <th>Message</th>
                     </tr>
                     <tr>
-                        <td>${char.name}</td>
+                        <td>${escapeHtmlText(char.name)}</td>
                         <td>${await htmlChatParse(char.firstMessage)}</td>
                     </tr>
                     ${chatContentHTML}

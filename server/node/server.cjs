@@ -1,7 +1,9 @@
 const express = require('express');
 const app = express();
-if (process.env.TRUST_PROXY) {
-    app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+const { parseTrustProxy } = require('./trustProxy.cjs');
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+if (trustProxy !== undefined) {
+    app.set('trust proxy', trustProxy);
 }
 const http = require('http');
 const path = require('path');
@@ -13,9 +15,12 @@ const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
 const { NODE_BODY_LIMIT_BYTES } = require('./bodyLimit.cjs');
-const { hubTargetURL, hubRedirectTarget } = require('./hubProxy.cjs');
+const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
+// The hub proxy forwards the request body as the client sent it, so it is
+// captured as raw bytes before any parser can replace it with a parsed value.
+app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_BODY_LIMIT_BYTES }));
 app.use(express.json({ limit: NODE_BODY_LIMIT_BYTES }));
 app.use(express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }));
 app.use(express.text({ limit: NODE_BODY_LIMIT_BYTES }));
@@ -1124,40 +1129,21 @@ const reverseProxyFunc_get = async (req, res, next) => {
 }
 
 async function hubProxyFunc(req, res) {
-    const excludedHeaders = [
-        'content-encoding',
-        'content-length',
-        'transfer-encoding'
-    ];
-
     try {
         const externalURL = hubTargetURL(hubURL, req);
 
-        const headersToSend = { ...req.headers };
-        delete headersToSend.host;
-        delete headersToSend.connection;
-        delete headersToSend['content-length'];
-        delete headersToSend['x-risu-node-path'];
+        // Only the allow-listed request headers reach the hub, on the first
+        // request and on a followed redirect alike.
+        const headersToSend = hubRequestHeaders(req.headers, new URL(hubURL).origin);
+        const bodyToSend = hubForwardBody(req.method, req.body);
 
-        const hubOrigin = new URL(hubURL).origin;
-        headersToSend.origin = hubOrigin;
-
-        const response = await fetch(externalURL, {
+        let response = await fetch(externalURL, {
             method: req.method,
             headers: headersToSend,
-            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+            body: bodyToSend,
             redirect: 'manual',
             duplex: 'half'
         });
-        
-        for (const [key, value] of response.headers.entries()) {
-            // Skip encoding-related headers to prevent double decoding
-            if (excludedHeaders.includes(key.toLowerCase())) {
-                continue;
-            }
-            res.setHeader(key, value);
-        }
-        res.status(response.status);
 
         // A redirect to the hub origin is followed here; any other target is
         // passed through to the client and never fetched by the server.
@@ -1165,35 +1151,27 @@ async function hubProxyFunc(req, res) {
             ? hubRedirectTarget(hubURL, externalURL, response.headers.get('location'))
             : null;
         if (redirectUrl) {
-            const newHeaders = { ...headersToSend };
-            const redirectResponse = await fetch(redirectUrl, {
+            response = await fetch(redirectUrl, {
                 method: req.method,
-                headers: newHeaders,
-                body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+                headers: headersToSend,
+                body: bodyToSend,
                 redirect: 'manual',
                 duplex: 'half'
             });
-            for (const [key, value] of redirectResponse.headers.entries()) {
-                if (excludedHeaders.includes(key.toLowerCase())) {
-                    continue;
-                }
-                res.setHeader(key, value);
-            }
-            res.status(redirectResponse.status);
-            if (redirectResponse.body) {
-                await pipeline(redirectResponse.body, res);
-            } else {
-                res.end();
-            }
-            return;
         }
-        
+
+        // The client receives the headers of the response whose body it gets.
+        for (const [key, value] of hubResponseHeaders(response.headers.entries())) {
+            res.setHeader(key, value);
+        }
+        res.status(response.status);
+
         if (response.body) {
             await pipeline(response.body, res);
         } else {
             res.end();
         }
-        
+
     } catch (error) {
         console.error("[Hub Proxy] Error:", error);
         if (!res.headersSent) {
