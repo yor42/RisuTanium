@@ -74,7 +74,7 @@
     "ollama": "^0.5.18",
     "pdfjs-dist": "^4.10.38",
     "png-chunk-text": "^1.0.0",
-    "postcss-selector-parser": "^7.1.1",
+    "postcss-selector-parser": "^7.1.6",
     "pyodide": "^0.27.7",
     "rfdc": "^1.4.1",
     "sortablejs": "^1.15.6",
