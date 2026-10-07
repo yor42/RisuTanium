@@ -89,7 +89,7 @@ function nearestGapIndex(layout: Layout, y: number, from: number, allowed: (gap:
 }
 
 /** A gap is a no-op for the dragged item when it is directly before the item or after it. */
-function isNoopGap(layout: Layout, gapIndex: number, source: ItemRef): boolean {
+export function isNoopGap(layout: Layout, gapIndex: number, source: ItemRef): boolean {
     const sourceKey = refKey(source)
     const sourceIndex = layout.indexByKey.get(sourceKey)
     if (sourceIndex === undefined) {

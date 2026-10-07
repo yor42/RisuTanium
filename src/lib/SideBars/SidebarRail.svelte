@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
   import { addCharacter, changeChar, getCharImage } from "../../ts/characters";
@@ -16,7 +16,8 @@
   import { alertInput, alertSelect } from "src/ts/alert";
   import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
   import { nearViewport } from "src/ts/gui/nearViewport.svelte";
-  import { setRailTooltipsSuppressed } from "src/ts/gui/tooltip";
+  import { setRailTooltipsSuppressed, tooltipRail } from "src/ts/gui/tooltip";
+  import { keyEventBlocked, keysBlockedNow } from "src/ts/keyEventBlocked";
   import { SvelteMap } from "svelte/reactivity";
   import type { folder } from "src/ts/storage/database.svelte";
   import {
@@ -44,6 +45,16 @@
   import { NO_TARGET, type Target } from "./railTarget";
   import { RailDrag, type RailHost } from "./railDrag";
   import { bindRail, type RailBinding } from "./railBinding";
+  import {
+    classifyKey,
+    describePosition,
+    focusStep,
+    keyboardMove,
+    railRows,
+    resolveCurrent,
+    type CurrentEntry,
+    type MoveDirection,
+  } from "./railKeyboard";
 
   interface Props {
     reseter: () => void;
@@ -335,8 +346,258 @@
 
   //#endregion
 
-  //#region drag
+  //#region keyboard
 
+  // One entry is the Tab stop and the target of arrow keys: the last one that took focus,
+  // else the selected character's row, else the first. It is never persisted.
+  const rows = $derived(railRows(items))
+  const selectedKey = $derived.by(() => {
+    const selected = $selectedCharID
+    if (selected === -1) {
+      return null
+    }
+    for (const char of charImages) {
+      if (char.type === 'normal') {
+        if (char.index === selected) {
+          return char.key
+        }
+      }
+      else {
+        const member = char.folder.find((m) => m.index === selected)
+        if (member) {
+          return member.key
+        }
+      }
+    }
+    return null
+  })
+  let current: CurrentEntry | null = $state.raw(null)
+  const tabKey = $derived(resolveCurrent(rows, current, selectedKey)?.key ?? null)
+
+  // Keeps the remembered index and owner in step with the rows, and moves the current entry
+  // off a row that went away.
+  $effect(() => {
+    const shown = rows
+    untrack(() => {
+      if (!current) {
+        return
+      }
+      const next = resolveCurrent(shown, current, selectedKey)
+      if (next && (next.key !== current.key || next.index !== current.index || next.owner !== current.owner)) {
+        current = next
+      }
+    })
+  })
+
+  const entryOf = (target: EventTarget | null): HTMLElement | null =>
+    target instanceof Element ? target.closest<HTMLElement>('[data-rail-entry]') : null
+
+  const entryElement = (key: string): HTMLElement | undefined =>
+    Array.from(scroller.querySelectorAll<HTMLElement>('[data-rail-entry]')).find((el) => el.getAttribute('data-rail-entry') === key)
+
+  function setCurrent(key: string) {
+    const index = rows.findIndex((row) => row.key === key)
+    current = { key, index: index >= 0 ? index : (current?.index ?? 0), owner: index >= 0 ? (rows[index].owner ?? null) : null }
+  }
+
+  function focusEntry(key: string): boolean {
+    const el = entryElement(key)
+    if (!el) {
+      return false
+    }
+    el.focus({ preventScroll: true })
+    el.scrollIntoView?.({ block: 'nearest', behavior: DBState.db.animationSpeed === 0 ? 'instant' : 'smooth' })
+    return true
+  }
+
+  // The rail holds focus from a focusin inside it until focus leaves it. A focused entry that
+  // is removed can report a focusout without a related target, so a focusout counts only when
+  // its target is still attached afterwards and focus is then outside the rail.
+  let railHasFocus = false
+
+  function onFocusIn(e: FocusEvent) {
+    railHasFocus = true
+    const el = entryOf(e.target)
+    if (el) {
+      setCurrent(el.getAttribute('data-rail-entry')!)
+    }
+  }
+
+  function onFocusOut(e: FocusEvent) {
+    if (e.relatedTarget instanceof Node && scroller.contains(e.relatedTarget)) {
+      return
+    }
+    const target = e.target
+    queueMicrotask(() => {
+      if (target instanceof Node && target.isConnected && !scroller.contains(document.activeElement)) {
+        railHasFocus = false
+      }
+    })
+  }
+
+  // A rail change must not drop focus to the page body.
+  $effect(() => {
+    void rows
+    untrack(() => {
+      void tick().then(() => {
+        if (!railHasFocus) {
+          return
+        }
+        const active = document.activeElement
+        if (active && active !== document.body && active.isConnected) {
+          return
+        }
+        const key = resolveCurrent(rows, current, selectedKey)?.key
+        if (key !== undefined) {
+          focusEntry(key)
+        }
+      })
+    })
+  })
+
+  let liveText = $state('')
+  let announceToken = 0
+  // Cleared and committed before the new text is set, so an identical message is read again.
+  async function announce(text: string) {
+    const token = ++announceToken
+    liveText = ''
+    await tick()
+    if (token === announceToken) {
+      liveText = text
+    }
+  }
+
+  function announcePosition(order: typeof DBState.db.characterOrder, ref: ItemRef) {
+    const info = describePosition(order, items, ref)
+    if (!info) {
+      return
+    }
+    void announce(info.folderName === undefined
+      ? language.sidebarUi.movePosition(info.position, info.total)
+      : language.sidebarUi.movePositionInFolder(info.position, info.total, info.folderName))
+  }
+
+  const toggleFolder = (id: string) => {
+    const at = openFolders.indexOf(id)
+    if (at >= 0) {
+      openFolders.splice(at, 1)
+    }
+    else {
+      openFolders.push(id)
+    }
+  }
+
+  function activateEntry(key: string) {
+    for (const char of charImages) {
+      if (char.key === key) {
+        if (char.type === 'folder') {
+          toggleFolder(char.id)
+        }
+        else {
+          changeChar(char.index, {reseter})
+        }
+        return
+      }
+      if (char.type === 'folder') {
+        const member = char.folder.find((m) => m.key === key)
+        if (member) {
+          changeChar(member.index, {reseter})
+          return
+        }
+      }
+    }
+  }
+
+  async function moveEntry(key: string, dir: MoveDirection) {
+    const ref = items.find((item) => item.key === key)?.ref
+    if (!ref) {
+      return
+    }
+    const order = DBState.db.characterOrder
+    const result = keyboardMove(order, items, ref, dir)
+    if (!result) {
+      void announce(dir === 'up' ? language.sidebarUi.moveAtStart : language.sidebarUi.moveAtEnd)
+    }
+    else if (result.kind === 'refuse-sole') {
+      const owner = charImages.find((char) => char.type === 'folder' && char.key === refKey(result.folder))
+      void announce(language.sidebarUi.moveWouldRemoveFolder(owner?.name ?? language.sidebarUi.unnamedFolder))
+    }
+    else if (result.kind === 'focus') {
+      setCurrent(refKey(result.ref))
+      focusEntry(refKey(result.ref))
+      announcePosition(order, result.ref)
+    }
+    else {
+      const movedKey = refKey(result.ref)
+      applyOrderChange(() => result.order)
+      setCurrent(movedKey)
+      announcePosition(result.order, result.ref)
+      await tick()
+      focusEntry(movedKey)
+    }
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    const el = entryOf(e.target)
+    if (!el || e.isComposing) {
+      return
+    }
+    const action = classifyKey(e)
+    if (!action) {
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    if (keyEventBlocked(e) || machine.isPressed) {
+      return
+    }
+    const key = el.getAttribute('data-rail-entry')!
+    if (action.kind === 'focus') {
+      const target = focusStep(rows.map((row) => row.key), key, action.key)
+      if (target !== null) {
+        focusEntry(target)
+      }
+    }
+    else if (action.kind === 'activate') {
+      activateEntry(key)
+    }
+    else if (!e.repeat) {
+      void moveEntry(key, action.dir)
+    }
+  }
+
+  function folderMenu(e: MouseEvent, id: string, name: string) {
+    e.preventDefault()
+    if (!keysBlockedNow()) {
+      void openFolderMenu(id, name)
+    }
+  }
+
+  function onClick(e: MouseEvent) {
+    const el = entryOf(e.target)
+    if (el) {
+      activateEntry(el.getAttribute('data-rail-entry')!)
+    }
+  }
+
+  function railKeys(node: HTMLElement) {
+    node.addEventListener('click', onClick)
+    node.addEventListener('keydown', onKeyDown)
+    node.addEventListener('focusin', onFocusIn)
+    node.addEventListener('focusout', onFocusOut)
+    return {
+      destroy() {
+        node.removeEventListener('click', onClick)
+        node.removeEventListener('keydown', onKeyDown)
+        node.removeEventListener('focusin', onFocusIn)
+        node.removeEventListener('focusout', onFocusOut)
+      },
+    }
+  }
+
+  //#endregion
+
+  //#region drag
   let dragSourceKey: string | null = $state(null)
   let dropTarget: Target = $state.raw(NO_TARGET)
   let ghost: HTMLElement | null = null
@@ -503,6 +764,8 @@
 <div
   bind:this={scroller}
   use:railBinding
+  use:railKeys
+  role="list"
   class="relative flex grow w-full flex-col items-center overflow-x-hidden overflow-y-auto pr-0 select-none"
   style="touch-action: pan-y; -webkit-touch-callout: none;"
   data-rail-scroll
@@ -518,24 +781,18 @@
       <SidebarIndicator
         isActive={char.type === 'normal' && $selectedCharID === char.index && sideBarMode !== 1}
       />
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
-          role="button" tabindex="0"
+          role="button" tabindex={tabKey === char.key ? 0 : -1}
+          data-rail-entry={char.key}
+          aria-label={char.name}
+          aria-expanded={char.type === 'folder' ? isOpen : undefined}
+          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+          class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
+          use:tooltipRail={char.name}
           use:nearViewport={{ onChange: (v, node) => {
             if (v) { visibleRows.set(char.key, node) } else if (visibleRows.get(char.key) === node) { visibleRows.delete(char.key) }
           } }}
-          onclick={() => {
-            if(char.type === "normal"){
-              changeChar(char.index, {reseter});
-            }
-          }}
-          onkeydown={(e) => {
-            if (e.key === "Enter") {
-              if(char.type === "normal"){
-                changeChar(char.index, {reseter});
-              }
-            }
-          }}
+          oncontextmenu={char.type === 'folder' ? (e) => folderMenu(e, char.id, char.name) : undefined}
         >
         {#if char.type === 'normal'}
           {@const imgPath = char.img}
@@ -545,7 +802,6 @@
             src={avatarSrc as string | Promise<string>}
             size="56"
             rounded={IconRounded}
-            name={char.name}
             chaId={DBState.db.characters[char.index]?.chaId}
           />
         {:else if char.type === "folder"}
@@ -554,22 +810,7 @@
             {@const folderImgPath = char.img}
             {@const isFolderVisible = visibleRows.has(char.key)}
             {@const avatarBg = isFolderVisible ? (folderImgPath ? getCharImage(folderImgPath, "thumb") : "") : ""}
-            <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered name={char.name} color={char.color} backgroundimg={avatarBg}
-            oncontextmenu={(e) => {
-              e.preventDefault()
-              void openFolderMenu(char.id, char.name)
-            }}
-            onClick={() => {
-              if(char.type !== 'folder'){
-                return
-              }
-              if(openFolders.includes(char.id)){
-                openFolders.splice(openFolders.indexOf(char.id), 1)
-              }
-              else{
-                openFolders.push(char.id)
-              }
-            }}>
+            <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered color={char.color} backgroundimg={avatarBg}>
               {#if DBState.db.showFolderName}
                 <div class="h-full w-full flex justify-center items-center">
                   <span class="hyphens-auto truncate font-bold">{char.name}</span>
@@ -619,30 +860,21 @@
           <SidebarIndicator
             isActive={$selectedCharID === char2.index && sideBarMode !== 1}
           />
-          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
-              role="button" tabindex="0"
+              role="button" tabindex={tabKey === char2.key ? 0 : -1}
+              data-rail-entry={char2.key}
+              aria-label={char2.name}
+              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+              class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
+              use:tooltipRail={char2.name}
               use:nearViewport={{ onChange: (v, node) => {
                 if (v) { visibleRows.set(char2.key, node) } else if (visibleRows.get(char2.key) === node) { visibleRows.delete(char2.key) }
               } }}
-              onclick={() => {
-                if(char2.type === "normal"){
-                  changeChar(char2.index, {reseter});
-                }
-              }}
-              onkeydown={(e) => {
-                if (e.key === "Enter") {
-                  if(char2.type === "normal"){
-                    changeChar(char2.index, {reseter});
-                  }
-                }
-              }}
             >
             <SidebarAvatar
               src={avatarSrc2 as string | Promise<string>}
               size="56"
               rounded={IconRounded}
-              name={char2.name}
               chaId={DBState.db.characters[char2.index]?.chaId}
             />
           </div>
@@ -654,7 +886,7 @@
     {/if}
     {@render gapEl({ in: 'top', after: char.ref }, 'top', undefined, '')}
   {/each}
-  <div class="flex flex-col items-center gap-2 px-2" use:measure={PLUS_KEY} {...itemAttrs(PLUS_KEY, 'plus')}>
+  <div class="flex flex-col items-center gap-2 px-2" role="listitem" use:measure={PLUS_KEY} {...itemAttrs(PLUS_KEY, 'plus')}>
     <BaseRoundedButton
       onClick={async () => {
         addCharacter({reseter})
@@ -680,3 +912,4 @@
     </div>
   {/if}
 </div>
+<div class="sr-only" aria-live="polite" aria-atomic="true" data-rail-live>{liveText}</div>

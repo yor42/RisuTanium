@@ -1292,11 +1292,11 @@ describe('measured heights', () => {
 })
 
 describe('tooltips', () => {
-    test('an avatar tooltip stays closed while a drag runs and is not set to open on touch', async () => {
+    test('an entry tooltip stays closed while a drag runs and is not set to open on touch', async () => {
         setDb(['A', 'B'])
         const t = await mountSidebar()
         type TippyHost = HTMLElement & { _tippy?: { show(): void; state: { isVisible: boolean }; props: { touch: unknown } } }
-        const avatar = charRow(t, 'A').querySelector<TippyHost>('span.avatar')!
+        const avatar = charRow(t, 'A').querySelector<TippyHost>('[data-rail-entry]')!
         expect(avatar._tippy).toBeDefined()
         expect(avatar._tippy!.props.touch).toBe(false)
         await startMouseDrag(charRow(t, 'B'))

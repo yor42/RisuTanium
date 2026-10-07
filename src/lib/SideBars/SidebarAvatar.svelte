@@ -1,48 +1,34 @@
 <script lang="ts">
   import { warnOnReject } from "src/ts/warnOnReject";
-  import { tooltipRail } from "src/ts/gui/tooltip";
   import { language } from "src/lang";
 
   interface Props {
     rounded: boolean;
     src: string|Promise<string>;
-    name: string;
     size?: string;
-    onClick?: any;
     bordered?: boolean;
     color?: string;
     backgroundimg?: string|Promise<string>;
     children?: import('svelte').Snippet;
-    oncontextmenu?: (event: MouseEvent & {
-        currentTarget: EventTarget & HTMLDivElement;
-    }) => any
     chaId?: string;
   }
 
   let {
     rounded,
     src,
-    name,
     size = "22",
-    onClick = () => {},
     bordered = false,
     color = '',
     backgroundimg = '',
     children,
-    oncontextmenu,
     chaId
   }: Props = $props();
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <span class="flex shrink-0 items-center justify-center avatar"
       class:border = {bordered}
       class:border-selected={bordered}
       class:rounded-md={bordered}
-      oncontextmenu={oncontextmenu}
-      onclick={onClick} use:tooltipRail={name}
-      role="button"
-      tabindex="0"
       data-char-id={chaId}
 >
   {#if src}

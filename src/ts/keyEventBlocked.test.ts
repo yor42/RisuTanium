@@ -71,3 +71,15 @@ describe('keyEventBlocked', () => {
         expect(snapshot.keyEventBlocked(other)).toBe(false)
     })
 })
+
+describe('keysBlockedNow', () => {
+    test.each([true, false])('reads the live reader without an event (%s)', (live) => {
+        snapshot.setLiveKeysBlockedReader(() => live)
+
+        expect(snapshot.keysBlockedNow()).toBe(live)
+    })
+
+    test('with no live reader registered, keys are not blocked', () => {
+        expect(snapshot.keysBlockedNow()).toBe(false)
+    })
+})

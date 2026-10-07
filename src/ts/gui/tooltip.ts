@@ -62,6 +62,8 @@ export function tooltipRail(node:HTMLElement, tip:string) {
         placement: 'right',
         theme: 'translucent',
         touch: false,
+        // The focus target already carries the name as its aria-label, so the tooltip adds no aria-describedby.
+        aria: { content: null },
         onShow: () => {
             if (railTooltipsSuppressed) {
                 return false

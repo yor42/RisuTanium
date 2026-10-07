@@ -21,6 +21,11 @@ export function recordKeyEventBlocked(ev: KeyboardEvent, blocked: boolean): void
     recorded.set(ev, blocked)
 }
 
+/** The current blocked state, for a handler that has no key event (a context menu opened from the keyboard or the mouse). False with no reader. */
+export function keysBlockedNow(): boolean {
+    return liveReader ? liveReader() : false
+}
+
 /** The value recorded for `ev`; for an event never recorded, the live reader's answer, or false with no reader. */
 export function keyEventBlocked(ev: KeyboardEvent): boolean {
     const value = recorded.get(ev)

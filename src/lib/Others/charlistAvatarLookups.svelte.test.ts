@@ -440,7 +440,7 @@ function buildSidebarDbWithFolder(memberCount: number): Database {
  *  a `chaId` prop for normal characters and folder members, `Sidebar.svelte`
  *  `:622`/`:793` -- never for a folder itself). */
 function folderAvatarSpan(root: HTMLElement): HTMLElement {
-    const spans = Array.from(root.querySelectorAll('span.avatar[role="button"]')) as HTMLElement[]
+    const spans = Array.from(root.querySelectorAll('span.avatar')) as HTMLElement[]
     const found = spans.find((s) => !s.hasAttribute('data-char-id'))
     if (!found) {
         throw new Error('folder avatar span not found')
