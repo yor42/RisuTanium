@@ -620,7 +620,7 @@ export const languageEnglish = {
             "You can enable modules by putting the module namespace in the module intergartion sections. if you want to enable multiple modules, you can seperate them by comma. for example, `module1,module2,module3`. This is for advanced users, who wants to vary the use of modules by presets.",
         customCSS: "Custom CSS for styling. you can also disable/enable it by pressing (Ctrl + .) if something goes wrong.",
         betaMobileGUI: "If enabled, it will use beta mobile GUI on small (less than 800px) screens. Requires refresh.",
-        enableScrollToActiveChar: "If enabled, pressing the hotkey or holding Ctrl while dragging a character will scroll to the currently active character. Folders will be opened automatically if closed.",
+        enableScrollToActiveChar: "If enabled, pressing the hotkey scrolls the sidebar to the currently active character. Folders will be opened automatically if closed.",
         unrecommended: "This is a unrecommended setting. It is not recommended to use this setting.",
         jsonSchema:
             "This is a JSON Schema that will be sent to the AI model if AI model supports JSON Schema.\n\nHowever, since JSON Schema is hard to learn, In RisuTanium, you can use subset of TypeScript interface instead of JSON Schema. RisuTanium will convert it in runtime." +

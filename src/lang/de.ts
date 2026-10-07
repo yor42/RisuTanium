@@ -606,7 +606,7 @@ export const languageGerman = {
         "hypaV3QueryChatCount": "Die Anzahl der letzten Chat-Nachrichten, die als Abfrage für die Ähnlichkeitssuche verwendet werden. Höhere Werte nutzen mehr Chat-Kontext, um die Ähnlichkeit zu bestimmen.",
         "hypaV3SummaryChunkSeparator": "Trennzeichen, das verwendet wird, um Zusammenfassungen für die Ähnlichkeitssuche in Abschnitte zu unterteilen.",
         "coldstorage": "Wenn diese Option aktiviert ist, speichert die App beim Start die vollständigen Daten jedes Charakters separat und lädt sie erst, wenn Sie diesen Charakter öffnen. So bleibt der Speicherverbrauch niedrig, wenn Sie viele Charaktere haben. Wenn die Option deaktiviert ist, werden keine neuen Charaktere archiviert, und bereits archivierte Charaktere lassen sich weiterhin normal öffnen.",
-        "enableScrollToActiveChar": "Wenn aktiviert, wird durch Drücken des Hotkeys oder Halten der Strg-Taste beim Ziehen eines Charakters zum aktuell aktiven Charakter gescrollt. Geschlossene Ordner werden automatisch geöffnet."
+        "enableScrollToActiveChar": "Wenn aktiviert, scrollt die Seitenleiste durch Drücken des Hotkeys zum aktuell aktiven Charakter. Geschlossene Ordner werden automatisch geöffnet."
     },
     "setup": {
         "theme": "Wählen Sie Ihr bevorzugtes Design aus",

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { warnOnReject } from "src/ts/warnOnReject";
-  import { tooltipRight } from "src/ts/gui/tooltip";
+  import { tooltipRail } from "src/ts/gui/tooltip";
   import { language } from "src/lang";
 
   interface Props {
@@ -40,7 +40,7 @@
       class:border-selected={bordered}
       class:rounded-md={bordered}
       oncontextmenu={oncontextmenu}
-      onclick={onClick} use:tooltipRight={name}
+      onclick={onClick} use:tooltipRail={name}
       role="button"
       tabindex="0"
       data-char-id={chaId}
@@ -126,6 +126,7 @@
           style:minWidth={size + "px"}
           class:rounded-md={!rounded} class:rounded-full={rounded} 
           alt={language.sidebarUi.avatarAlt}
+          draggable="false"
         />
       {:catch}
         <div

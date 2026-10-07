@@ -2,7 +2,9 @@
 
 /**
  * Order operations and folder edits of the character sidebar, driven through the REAL
- * `Sidebar.svelte` with synthetic drag events and context-menu events.
+ * `Sidebar.svelte` with synthetic pointer events (`dragOnto` in `sidebarDnd.testKit`) and
+ * context-menu events. The same test bodies run on HTML5 drag and drop rows through
+ * the kit's native backend.
  *
  * Every operation addresses characters and folders by id, never by the index of a rendered
  * row, so a stale id, a duplicate entry or a data-less folder in `characterOrder` cannot
@@ -160,6 +162,20 @@ vi.mock(import('src/ts/alert'), async (importOriginal) => ({
 
 import { DBState, selectedCharID } from '../../ts/stores.svelte'
 import Sidebar from './Sidebar.svelte'
+import { MERGE_DWELL_MS } from './railConstants'
+import {
+    allRows as draggables,
+    charRow,
+    dragOnto,
+    fireNative,
+    folderAvatars,
+    folderGaps,
+    folderRow,
+    installGeometry,
+    topGaps,
+    topRows,
+    type DragOptions,
+} from './sidebarDnd.testKit'
 
 interface FolderFixture {
     id: string
@@ -225,6 +241,7 @@ async function mountSidebar(): Promise<{ target: HTMLElement; error: unknown }> 
         const app = mount(Sidebar, { target, props: {} }) as unknown as Record<string, unknown>
         mounted = { target, app }
         await settle()
+        installGeometry(target)
     } catch (e) {
         error = e
     }
@@ -257,82 +274,16 @@ afterEach(async () => {
 
 //#region drag helpers
 
-interface FakeDataTransfer {
-    types: string[]
-    setData(type: string, value: string): void
-    setDragImage(): void
-    dropEffect: string
-}
+const MERGE: DragOptions = { holdMs: MERGE_DWELL_MS + 50 }
 
-function makeDataTransfer(types: string[] = []): FakeDataTransfer {
-    return {
-        types: [...types],
-        setData(type: string) {
-            if (!this.types.includes(type)) {
-                this.types.push(type)
-            }
-        },
-        setDragImage() {},
-        dropEffect: 'none',
-    }
-}
-
-function fire(el: Element, type: string, dataTransfer: FakeDataTransfer): Event {
-    const ev = new Event(type, { bubbles: true, cancelable: true })
-    Object.defineProperty(ev, 'dataTransfer', { value: dataTransfer })
-    el.dispatchEvent(ev)
-    return ev
-}
-
-const draggables = (t: HTMLElement): HTMLElement[] => Array.from(t.querySelectorAll<HTMLElement>('div[draggable="true"]'))
-const FOLDER_BODY = 'div.mt-1.rounded-lg'
-const topRows = (t: HTMLElement): HTMLElement[] => draggables(t).filter((el) => !el.closest(FOLDER_BODY))
-const topGaps = (t: HTMLElement): HTMLElement[] =>
-    Array.from(t.querySelectorAll<HTMLElement>('div.h-4.min-h-4.w-14')).filter((g) => !g.classList.contains('relative'))
-const folderAvatars = (t: HTMLElement): HTMLElement[] =>
-    Array.from(t.querySelectorAll<HTMLElement>('span.avatar')).filter((a) => !a.hasAttribute('data-char-id'))
-
-/** The `n`-th rendered row for character `id` (a top-level or folder member row). */
-function charRow(t: HTMLElement, id: string, n = 0): HTMLElement {
-    const hits = Array.from(t.querySelectorAll(`[data-char-id="${id}"]`))
-    const row = hits[n]?.closest<HTMLElement>('div[draggable="true"]')
-    if (!row) {
-        throw new Error(`no row ${n} for ${id}`)
-    }
-    return row
-}
-
-/** The `n`-th folder row in the top-level list. */
-function folderRow(t: HTMLElement, n = 0): HTMLElement {
-    const row = folderAvatars(t)[n]?.closest<HTMLElement>('div[draggable="true"]')
-    if (!row) {
-        throw new Error(`no folder row ${n}`)
-    }
-    return row
-}
-
-/** The three kinds of gap inside an open folder, in order: start, then one after each member. */
-function folderGaps(folderRowEl: HTMLElement): HTMLElement[] {
-    const body = folderRowEl.nextElementSibling
-    if (!body || !body.matches(FOLDER_BODY)) {
-        throw new Error('folder is not open')
-    }
-    return Array.from(body.querySelectorAll<HTMLElement>('div.h-4'))
+/** Drags src onto dst in the mounted sidebar. */
+async function dragTo(src: HTMLElement, dst: HTMLElement, opts: DragOptions = {}): Promise<void> {
+    await dragOnto(mounted!.target, src, dst, { settle, ...opts })
 }
 
 async function openFolder(t: HTMLElement, n = 0): Promise<void> {
     folderAvatars(t)[n].click()
     await settle()
-}
-
-/** Starts a drag on `src`, then drops on `dst`; returns the drop event. */
-async function dragTo(src: HTMLElement, dst: HTMLElement): Promise<Event> {
-    const dt = makeDataTransfer()
-    fire(src, 'dragstart', dt)
-    await settle()
-    const ev = fire(dst, 'drop', dt)
-    await settle()
-    return ev
 }
 
 //#endregion
@@ -376,7 +327,7 @@ describe('guard: operations keep their results', () => {
     test('a character dropped on a character makes a new folder at the target place', async () => {
         setDb(['A', 'B', 'C'], LETTERS)
         const { target } = await mountSidebar()
-        await dragTo(charRow(target, 'C'), charRow(target, 'A'))
+        await dragTo(charRow(target, 'C'), charRow(target, 'A'), MERGE)
         expect(orderNow()).toEqual(['NEW[C,A]', 'B'])
         const created = foldersNow()[0]
         expect(created.name).toBe('New Folder')
@@ -396,9 +347,9 @@ describe('guard: operations keep their results', () => {
         setDb(['A', 'D', folderOf('f1', ['B', 'C'])], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target)
-        await dragTo(charRow(target, 'A'), folderGaps(folderRow(target))[1])
+        await dragTo(charRow(target, 'A'), folderGaps(target, folderRow(target))[1])
         expect(orderNow()).toEqual(['D', 'f1[B,A,C]'])
-        await dragTo(charRow(target, 'D'), folderGaps(folderRow(target))[0])
+        await dragTo(charRow(target, 'D'), folderGaps(target, folderRow(target))[0])
         expect(orderNow()).toEqual(['f1[D,B,A,C]'])
     })
 
@@ -406,9 +357,9 @@ describe('guard: operations keep their results', () => {
         setDb([folderOf('f1', ['B', 'C', 'D'])], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target)
-        await dragTo(charRow(target, 'D'), folderGaps(folderRow(target))[0])
+        await dragTo(charRow(target, 'D'), folderGaps(target, folderRow(target))[0])
         expect(orderNow()).toEqual(['f1[D,B,C]'])
-        await dragTo(charRow(target, 'D'), folderGaps(folderRow(target))[3])
+        await dragTo(charRow(target, 'D'), folderGaps(target, folderRow(target))[3])
         expect(orderNow()).toEqual(['f1[B,C,D]'])
     })
 
@@ -424,11 +375,11 @@ describe('guard: operations keep their results', () => {
         setDb(['A', folderOf('f1', ['B', 'C']), 'D'], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target)
-        await dragTo(charRow(target, 'B'), charRow(target, 'D'))
+        await dragTo(charRow(target, 'B'), charRow(target, 'D'), MERGE)
         expect(orderNow()).toEqual(['A', 'f1[C]', 'NEW[B,D]'])
     })
 
-    test('a folder member dropped on another folder is appended; on its own folder it moves to the end', async () => {
+    test('a folder member dropped on another folder is appended; on its own folder it is not moved to the end', async () => {
         setDb([folderOf('f1', ['A', 'B']), folderOf('f2', ['C', 'D'])], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target, 0)
@@ -437,8 +388,10 @@ describe('guard: operations keep their results', () => {
 
         setDb([folderOf('f1', ['A', 'B'])], LETTERS)
         await settle()
+        checkCharOrderSpy.mockClear()
         await dragTo(charRow(target, 'A'), folderRow(target, 0))
-        expect(orderNow()).toEqual(['f1[B,A]'])
+        expect(orderNow()).toEqual(['f1[A,B]'])
+        expect(checkCharOrderSpy).not.toHaveBeenCalled()
     })
 
     test('a whole folder dropped on a top-level gap is moved', async () => {
@@ -458,25 +411,22 @@ describe('guard: operations keep their results', () => {
         await dragTo(charRow(target, 'B'), topGaps(target)[2])
         await dragTo(folderRow(target), topGaps(target)[3])
         await dragTo(folderRow(target), topGaps(target)[4])
-        await dragTo(charRow(target, 'D'), folderGaps(folderRow(target))[0])
-        await dragTo(charRow(target, 'D'), folderGaps(folderRow(target))[1])
+        await dragTo(charRow(target, 'D'), folderGaps(target, folderRow(target))[0])
+        await dragTo(charRow(target, 'D'), folderGaps(target, folderRow(target))[1])
         expect(orderNow()).toEqual(['A', 'B', 'C', 'f1[D,E]'])
     })
 
-    test('drops that are ignored stay ignored', async () => {
+    test('drops that resolve to nothing stay unwritten', async () => {
         setDb(['A', folderOf('f1', ['B', 'C']), folderOf('f2', ['D', 'E']), 'F'], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target, 0)
         await openFolder(target, 1)
         const before = orderNow()
-        // a folder onto a character, onto a folder, and into a folder gap
-        await dragTo(folderRow(target, 0), charRow(target, 'A'))
-        await dragTo(folderRow(target, 0), folderRow(target, 1))
-        await dragTo(folderRow(target, 0), folderGaps(folderRow(target, 1))[1])
-        // any drop on a folder member row
-        await dragTo(charRow(target, 'A'), charRow(target, 'C'))
-        await dragTo(charRow(target, 'F'), charRow(target, 'E'))
-        await dragTo(charRow(target, 'B'), charRow(target, 'E'))
+        // an item over its own row and over each gap beside it
+        await dragTo(charRow(target, 'A'), charRow(target, 'A'))
+        await dragTo(charRow(target, 'F'), topGaps(target)[3])
+        await dragTo(charRow(target, 'F'), topGaps(target)[4])
+        await dragTo(folderRow(target, 0), folderRow(target, 0))
         expect(orderNow()).toEqual(before)
         expect(checkCharOrderSpy).not.toHaveBeenCalled()
     })
@@ -573,19 +523,20 @@ describe('guard: sidebar features', () => {
         }
     })
 
-    test('a non-sidebar drag over the rail is not intercepted', async () => {
+    test('an OS file drag over the rail is not intercepted', async () => {
         setDb(['A', 'B', folderOf('f1', ['C', 'D'])], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target)
         const reached: string[] = []
-        const targets = [topGaps(target)[0], charRow(target, 'A'), folderRow(target), folderGaps(folderRow(target))[1], charRow(target, 'C')]
+        const targets = [topGaps(target)[0], charRow(target, 'A'), folderRow(target), folderGaps(target, folderRow(target))[1], charRow(target, 'C')]
+        const filesTransfer = { types: ['Files'] }
         const spy = (e: Event) => reached.push(e.type)
         document.body.addEventListener('dragover', spy)
         document.body.addEventListener('drop', spy)
         try {
             for (const el of targets) {
                 for (const type of ['dragover', 'dragenter', 'drop']) {
-                    const ev = fire(el, type, makeDataTransfer(['Files']))
+                    const ev = fireNative(el, type, filesTransfer)
                     expect(ev.defaultPrevented).toBe(false)
                 }
             }
@@ -612,15 +563,15 @@ describe('reorder and drop addressing', () => {
         setDb([folderOf('f1', ['stale', 'A', 'B'])], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target)
-        await dragTo(charRow(target, 'B'), folderRow(target))
-        expect(orderNow()).toEqual(['f1[stale,A,B]'])
+        await dragTo(charRow(target, 'B'), folderGaps(target, folderRow(target))[0])
+        expect(orderNow()).toEqual(['f1[B,stale,A]'])
     })
 
     test('regression reproducer: an unknown id inside a folder does not shift a member gap drop', async () => {
         setDb([folderOf('f1', ['stale', 'A', 'B', 'C'])], LETTERS)
         const { target } = await mountSidebar()
         await openFolder(target)
-        await dragTo(charRow(target, 'C'), folderGaps(folderRow(target))[1])
+        await dragTo(charRow(target, 'C'), folderGaps(target, folderRow(target))[1])
         expect(orderNow()).toEqual(['f1[stale,A,C,B]'])
     })
 
@@ -653,7 +604,7 @@ describe('reorder and drop addressing', () => {
         expect($state.snapshot(DBState.db.characterOrder)).toEqual(['A', 'B', 'C'])
         await dragTo(charRow(target, 'A'), topGaps(target)[3])
         expect(orderNow()).toEqual(['B', 'C', 'A'])
-        await dragTo(charRow(target, 'B'), charRow(target, 'A'))
+        await dragTo(charRow(target, 'B'), charRow(target, 'A'), MERGE)
         expect(orderNow()).toEqual(['C', 'NEW[B,A]'])
         // the rendered rows follow the written order
         expect(Array.from(target.querySelectorAll('[data-char-id]')).map((e) => e.getAttribute('data-char-id'))).toEqual(['C'])
@@ -722,7 +673,7 @@ describe('folder edits address the folder by id', () => {
         expect(foldersNow().map((f) => f.color)).toEqual(['', 'red'])
     })
 
-    test('regression reproducer: an image chosen after the folder was removed writes nothing', async () => {
+    test('regression reproducer: an image chosen after the folder was removed writes nothing and saves no asset', async () => {
         setDb([folderOf('f1', ['A'])], LETTERS)
         const { target } = await mountSidebar()
         selectAnswers.push('2', '1')
@@ -733,6 +684,7 @@ describe('folder edits address the folder by id', () => {
         pickers[0]({ name: 'x.png', data: new Uint8Array([1]) })
         await settleLong()
         expect($state.snapshot(DBState.db.characterOrder)).toEqual(['A'])
+        expect(saveAssetSpy).not.toHaveBeenCalled()
     })
 
     test('regression reproducer: an image chosen after the folder moved lands on that folder, not on the entry now at its old place', async () => {

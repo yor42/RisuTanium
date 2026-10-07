@@ -606,7 +606,7 @@ export const languageVietnamese = {
         "hypaV3QueryChatCount": "Số lượng tin nhắn trò chuyện gần đây được sử dụng làm truy vấn cho tìm kiếm tương đồng. Giá trị cao hơn sẽ sử dụng nhiều ngữ cảnh trò chuyện hơn để xác định độ tương đồng.",
         "hypaV3SummaryChunkSeparator": "Ký tự phân tách được dùng để chia các bản tóm tắt thành từng đoạn cho tìm kiếm tương đồng.",
         "coldstorage": "Khi bật, ứng dụng sẽ lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Điều này giúp giữ mức sử dụng bộ nhớ thấp khi bạn có nhiều nhân vật. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.",
-        "enableScrollToActiveChar": "Nếu được bật, nhấn phím tắt hoặc giữ phím Ctrl khi kéo một nhân vật sẽ cuộn đến nhân vật hiện đang hoạt động. Các thư mục sẽ tự động được mở nếu đang đóng."
+        "enableScrollToActiveChar": "Nếu được bật, nhấn phím tắt sẽ cuộn thanh bên đến nhân vật hiện đang hoạt động. Các thư mục sẽ tự động được mở nếu đang đóng."
     },
     "setup": {
         "theme": "Chọn chủ đề của bạn",

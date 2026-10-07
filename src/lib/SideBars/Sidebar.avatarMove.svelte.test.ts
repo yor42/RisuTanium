@@ -136,6 +136,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => ({
 
 import { DBState } from '../../ts/stores.svelte'
 import Sidebar from './Sidebar.svelte'
+import { charRow, dragOnto, installGeometry, topGaps } from './sidebarDnd.testKit'
 
 //#region position-based fake IntersectionObserver
 
@@ -262,22 +263,6 @@ afterEach(async () => {
     }
 })
 
-interface FakeDataTransfer {
-    types: string[]
-    setData(type: string): void
-    setDragImage(): void
-    dropEffect: string
-}
-
-function fire(el: Element, type: string, dataTransfer: FakeDataTransfer): void {
-    const ev = new Event(type, { bubbles: true, cancelable: true })
-    Object.defineProperty(ev, 'dataTransfer', { value: dataTransfer })
-    el.dispatchEvent(ev)
-}
-
-const rowOf = (t: HTMLElement, id: string): HTMLElement => t.querySelector(`[data-char-id="${id}"]`)!.closest<HTMLElement>('div[draggable="true"]')!
-const topGaps = (t: HTMLElement): HTMLElement[] =>
-    Array.from(t.querySelectorAll<HTMLElement>('div.h-4.min-h-4.w-14')).filter((g) => !g.classList.contains('relative'))
 const avatarSrc = (t: HTMLElement, id: string): string | null =>
     t.querySelector(`[data-char-id="${id}"] img.sidebar-avatar`)?.getAttribute('src') ?? null
 
@@ -287,24 +272,13 @@ async function mountSidebar(): Promise<HTMLElement> {
     const app = mount(Sidebar, { target, props: {} }) as unknown as Record<string, unknown>
     mounted = { target, app }
     await frame()
+    installGeometry(target)
     return target
 }
 
+/** Drags src onto dst, letting the observer report positions after every step. */
 async function dragTo(src: HTMLElement, dst: HTMLElement): Promise<void> {
-    const dt: FakeDataTransfer = {
-        types: [],
-        setData(type: string) {
-            if (!this.types.includes(type)) {
-                this.types.push(type)
-            }
-        },
-        setDragImage() {},
-        dropEffect: 'none',
-    }
-    fire(src, 'dragstart', dt)
-    await settle()
-    fire(dst, 'drop', dt)
-    await frame()
+    await dragOnto(mounted!.target, src, dst, { settle: frame })
 }
 
 describe('avatar state moves with the row', () => {
@@ -322,7 +296,7 @@ describe('avatar state moves with the row', () => {
         const t = await mountSidebar()
         expect(avatarSrc(t, 'c7')).toBeNull()
 
-        await dragTo(rowOf(t, 'c7'), topGaps(t)[0])
+        await dragTo(charRow(t, 'c7'), topGaps(t)[0])
 
         const rows = Array.from(t.querySelectorAll('[data-char-id]')).map((e) => e.getAttribute('data-char-id'))
         expect(rows.slice(0, 3)).toEqual(['c7', 'c0', 'c1'])
@@ -333,7 +307,7 @@ describe('avatar state moves with the row', () => {
     test('guard: a character that stays out of view stays unresolved after another row moves', async () => {
         setDb()
         const t = await mountSidebar()
-        await dragTo(rowOf(t, 'c7'), topGaps(t)[0])
+        await dragTo(charRow(t, 'c7'), topGaps(t)[0])
         expect(avatarSrc(t, 'c6')).toBeNull()
         expect(avatarSrc(t, 'c5')).toBeNull()
     })

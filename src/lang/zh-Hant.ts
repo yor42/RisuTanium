@@ -577,7 +577,7 @@ export const languageChineseTraditional = {
         "moduleIntergration": "可在模組整合區塊填入模組 Namespace 以啟用模組；若要同時啟用多個模組，請以逗號分隔，例如 `module1,module2,module3`。此功能提供給希望依不同預設集切換模組的進階使用者",
         "customCSS": "自訂 CSS 樣式。若設定造成問題，也可按 Ctrl + . 快速停用／啟用",
         "betaMobileGUI": "啟用後，小於 800px 的螢幕會使用 Beta 行動版 GUI。需要重新整理",
-        "enableScrollToActiveChar": "啟用後，按下快捷鍵，或按住 Ctrl 拖曳角色時，會捲動至目前啟用的角色；若角色所在資料夾已收合，會自動展開",
+        "enableScrollToActiveChar": "啟用後，按下快捷鍵會將側邊欄捲動至目前啟用的角色；若角色所在資料夾已收合，會自動展開",
         "unrecommended": "此為不建議使用的設定",
         "jsonSchema": "若 AI 模型支援 JSON Schema，此處的 JSON Schema 會一併送給模型。\n\n由於 JSON Schema 較難撰寫，RisuTanium 也允許使用 TypeScript interface 的子集，並在執行時自動轉換。" +
             '例如，若希望模型輸出下列 JSON：\n\n```js\n{\n  "name": "RisuTanium", // name 必須為 RisuTanium\n  "age": 1, // age 必須是數字\n  "icon": "slim", // icon 必須為 \'slim\' 或 \'rounded\'\n  "thoughts": ["Good View!", "Lorem"] // thoughts 必須是字串陣列\n}\n```\n\n' +

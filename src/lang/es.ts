@@ -606,7 +606,7 @@ export const languageSpanish = {
         "hypaV3QueryChatCount": "El número de mensajes de chat recientes utilizados como consulta para la búsqueda de similitud. Valores más altos usan más contexto del chat para determinar la similitud.",
         "hypaV3SummaryChunkSeparator": "Separador utilizado para dividir los resúmenes en fragmentos para la búsqueda de similitud.",
         "coldstorage": "Cuando esta opción está activada, la aplicación guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. Así el uso de memoria se mantiene bajo cuando tienes muchos personajes. Si la desactivas, no se archiva ningún personaje nuevo y los personajes ya archivados se siguen abriendo con normalidad.",
-        "enableScrollToActiveChar": "Si está habilitado, pulsar la tecla de acceso rápido o mantener presionada la tecla Ctrl mientras se arrastra un personaje desplazará la vista hasta el personaje activo. Las carpetas se abrirán automáticamente si están cerradas."
+        "enableScrollToActiveChar": "Si está habilitado, pulsar la tecla de acceso rápido desplazará la barra lateral hasta el personaje activo. Las carpetas se abrirán automáticamente si están cerradas."
     },
     "setup": {
         "theme": "Selecciona tu tema",

@@ -10,7 +10,6 @@ import { fillLang } from "src/lang/fill"
 import { updateTextThemeAndCSS } from "./gui/colorscheme"
 import { defaultHotkeys } from "./defaulthotkeys"
 import { previewMayStart, renderPromptResult, runPreview } from "./process/previewRunner"
-import { RISU_SIDEBAR_DRAG_TYPE } from "./dragTypes"
 import { isEnterActivatedControl, shouldYieldToFocusedControl } from "./hotkeyYield"
 import { changeChar } from "./characters"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
@@ -418,27 +417,6 @@ export function initHotkey(){
     document.addEventListener('touchend', (ev) => {
         touchs = 0
     })
-    
-    let lastScrollTime = 0
-    const SCROLL_COOLDOWN = 500
-    
-    document.addEventListener('dragover', (ev) => {
-        if (ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
-            const types = ev.dataTransfer?.types || []
-            const isCharacterDrag = types.includes(RISU_SIDEBAR_DRAG_TYPE)
-            
-            if (isCharacterDrag) {
-                const db = getDatabase()
-                if(db.enableScrollToActiveChar !== false){
-                    const now = Date.now()
-                    if (now - lastScrollTime > SCROLL_COOLDOWN) {
-                        lastScrollTime = now
-                        window.dispatchEvent(new CustomEvent('scrollToActiveCharacter'))
-                    }
-                }
-            }
-        }
-    }, true)
 }
 
 // The characters the previous/next hotkeys cycle through, sorted by name, each

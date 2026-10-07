@@ -34,7 +34,7 @@
     import IrisModal from './lib/Others/IrisModal.svelte';
     import Legal from './lib/Others/Legal.svelte';
     import CustomSidebarConfig from './lib/Others/CustomSidebarConfig.svelte';
-    import { RISU_APP_INTERNAL_DRAG_TYPE, RISU_SIDEBAR_DRAG_TYPE } from './ts/dragTypes';
+    import { RISU_APP_INTERNAL_DRAG_TYPE } from './ts/dragTypes';
 
 
   
@@ -46,9 +46,6 @@
 
     const getMainDropEffect = (e:DragEvent): DataTransfer['dropEffect'] => {
         const types = Array.from(e.dataTransfer?.types ?? [])
-        if(types.includes(RISU_SIDEBAR_DRAG_TYPE)){
-            return 'none'
-        }
         if(types.includes(RISU_APP_INTERNAL_DRAG_TYPE)){
             return 'none'
         }
@@ -69,7 +66,7 @@
     e.dataTransfer.dropEffect = dropEffect
 }} ondragstart={markAppInternalDrag} ondrop={async (e) => {
     const types = Array.from(e.dataTransfer.types ?? [])
-    if (types.includes(RISU_APP_INTERNAL_DRAG_TYPE) || types.includes(RISU_SIDEBAR_DRAG_TYPE)) {
+    if (types.includes(RISU_APP_INTERNAL_DRAG_TYPE)) {
         e.preventDefault()
         return
     }
