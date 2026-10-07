@@ -2,7 +2,7 @@
 
 Risuai is a cross-platform AI chatting application built with:
 - **Frontend**: Svelte 5 + TypeScript
-- **Desktop**: Tauri 2 (Rust backend). The crate versions are not pinned: `src-tauri/Cargo.toml` asks for `tauri` 2.9.5 and the `tauri-plugin-*` crates at 2.2.1 to 2.9.0, but Cargo reads these as minimums within 2.x, and `src-tauri/Cargo.lock` is gitignored, so each build takes the newest compatible release when it resolves. A local lock on 2026-10-03 had `tauri` 2.11.5 and `tauri-plugin-fs` 2.5.2. Before citing crate source, check the `Cargo.lock` the build actually used. The JS packages are exact in `package.json`: `@tauri-apps/api` 2.9.1, `@tauri-apps/cli` 2.5.0 (its `cli-win32-arm64-msvc` binary package at 2.9.1), and the `@tauri-apps/plugin-*` packages 2.2.1 to 2.9.0 (`plugin-fs` 2.4.5)
+- **Desktop**: Tauri 2 (Rust backend). The crate versions are not pinned: `src-tauri/Cargo.toml` asks for `tauri` 2.9.5 and the `tauri-plugin-*` crates at 2.2.1 to 2.9.0, but Cargo reads these as minimums within 2.x, and `src-tauri/Cargo.lock` is gitignored, so each build takes the newest compatible release when it resolves. A local lock on 2026-10-03 had `tauri` 2.11.5 and `tauri-plugin-fs` 2.5.2. Before citing crate source, check the `Cargo.lock` the build actually used. The JS packages are exact in `package.json`: `@tauri-apps/api` 2.9.1, `@tauri-apps/cli` 2.9.1 (the platform binaries come through its own optional dependencies, also at 2.9.1; from 2.9.0 it writes `src-tauri/gen/android/app/tauri.properties` during `tauri android build`), and the `@tauri-apps/plugin-*` packages 2.2.1 to 2.9.0 (`plugin-fs` 2.4.5)
 - **Build Tool**: Vite 8
 - **Styling**: Tailwind CSS 4
 - **Package Manager**: pnpm
