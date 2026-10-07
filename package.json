@@ -62,7 +62,7 @@
     "fflate": "^0.8.2",
     "highlight.js": "^11.11.1",
     "html-to-image": "^1.11.13",
-    "katex": "^0.16.27",
+    "katex": "^0.18.2",
     "localforage": "^1.10.0",
     "lodash": "^4.17.21",
     "markdown-it": "^14.3.1",
