@@ -1871,6 +1871,20 @@ export const languageChinese = {
         `备份已恢复，但有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `服务器或其前端的代理以资源文件“${name}”过大为由拒绝了它，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
+    "partialBackupInlaysNotIncluded": "内嵌文件（聊天图片、视频、音频和签名）不包含在部分备份中。",
+    "backupInlaysLeftOut": (count: number, names: string[]) =>
+        `有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）无法读取或不受支持，因此未包含在备份中。使用这些文件的聊天会将其显示为缺失。已遗漏的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreInlaysInvalid": (count: number, names: string[]) =>
+        `备份已恢复，但有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）因其在文件中的条目不完整或已损坏而未能恢复。使用这些文件的聊天会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreInlaysNotStored": (count: number, names: string[]) =>
+        `备份已恢复，但有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）因本应用无法存储而未能恢复。使用这些文件的聊天会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreInlaysTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `备份已恢复，但有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）超过了此页面可存储的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的聊天会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupInlaysOldStoreUnlisted": "此浏览器的旧内嵌文件存储无法读取，因此仅存放在其中的内嵌文件未包含在备份中。",
+    "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
+        `此备份中有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的聊天会将其显示为缺失。是否在不恢复它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `此备份中有 ${assetCount} 个资源文件和 ${inlayCount} 个内嵌文件（聊天图片、视频、音频或签名）超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色或聊天会将其显示为缺失。是否在不恢复它们的情况下继续？\n\n资源文件：\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...另有 ${assetCount - assetNames.length} 个` : ''}\n\n内嵌文件：\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...另有 ${inlayCount - inlayNames.length} 个` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? '备份失败。' : `备份已停止，因为 ${asset} 在保存过程中发生了变化或无法读取。`}备份文件不完整，因此已被删除。请重新运行备份。`,
     "backupFailedFileKept": (asset: string | null) =>

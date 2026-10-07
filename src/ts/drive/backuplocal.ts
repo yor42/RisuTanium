@@ -28,6 +28,10 @@ import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, 
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
+import { inlayAttachmentLimit } from "../process/files/inlayStore";
+import { parseInlayEntryName } from "./inlayBackupCodec";
+import { writeInlaysToBackup } from "./inlayBackupExport";
+import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -429,6 +433,12 @@ async function writeLocalBackup(session: ExportSession){
         await assetReader?.close()
     }
 
+    // Inlays follow the assets and stay ahead of the database, which is last.
+    const inlayResult = await writeInlaysToBackup(writer, store, {
+        streaming: streamAssets,
+        onProgress: (done, total) => alertWait(`Saving local Backup Inlays... (${done} / ${total})`),
+    })
+
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
         let message = `Saving local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
@@ -449,7 +459,8 @@ async function writeLocalBackup(session: ExportSession){
     await writer.close()
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
-    if (missingAssets.length > 0 || lateColdStorageReport) {
+    const leftOutInlayNames = inlayResult.leftOut.map((left) => left.id)
+    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted) {
         let message = missingAssets.length > 0
             ? 'Backup Successful, but the following assets were missing and skipped:\n\n'
             : 'Backup Successful, but some data could not be included:\n\n'
@@ -465,6 +476,18 @@ async function writeLocalBackup(session: ExportSession){
             message += '\n'
         }
         message += lateColdStorageReport
+        if (leftOutInlayNames.length > 0) {
+            if (missingAssets.length > 0 || lateColdStorageReport) {
+                message += '\n\n'
+            }
+            message += language.backupInlaysLeftOut(leftOutInlayNames.length, shownSkippedNames(leftOutInlayNames))
+        }
+        if (inlayResult.oldStoreUnlisted) {
+            if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0) {
+                message += '\n\n'
+            }
+            message += language.backupInlaysOldStoreUnlisted
+        }
         alertMd(message)
     } else {
         alertNormal('Success')
@@ -653,9 +676,10 @@ async function writePartialLocalBackup(session: ExportSession){
             message += '\n'
         }
         message += lateColdStorageReport
+        message += `\n\n${language.partialBackupInlaysNotIncluded}`
         alertMd(message)
     } else {
-        alertNormal('Success')
+        alertNormal(`Success\n\n${language.partialBackupInlaysNotIncluded}`)
     }
 }
 
@@ -733,7 +757,8 @@ function checkIndexedEntry(bytes: Uint8Array, entry: BackupIndexEntry, expectedL
  * The asset entries whose body is over what the Node server takes in one
  * request, with their names. Judged from the walk's index alone: a cold-storage
  * unit is stored compressed, so its length in the backup says nothing about
- * what is written, and the database is not an asset.
+ * what is written, and the database is not an asset. An inlay part is not an
+ * asset either: it is judged by `listOversizedInlays`.
  */
 async function listOversizedAssets(file: Blob, entries: readonly BackupIndexEntry[]): Promise<{ entry: BackupIndexEntry; name: string }[]> {
     const found: { entry: BackupIndexEntry; name: string }[] = [];
@@ -744,7 +769,7 @@ async function listOversizedAssets(file: Blob, entries: readonly BackupIndexEntr
         const nameStart = entry.headerOffset + 4;
         const nameBytes = new Uint8Array(await file.slice(nameStart, nameStart + Math.min(entry.nameLength, OVERSIZED_NAME_READ_BYTES)).arrayBuffer());
         const name = new TextDecoder().decode(nameBytes);
-        if (entry.nameLength <= OVERSIZED_NAME_READ_BYTES && (name === 'database.risudat' || getColdStorageBackupKey(name))) {
+        if (entry.nameLength <= OVERSIZED_NAME_READ_BYTES && (name === 'database.risudat' || getColdStorageBackupKey(name) || parseInlayEntryName(name) !== null)) {
             continue;
         }
         found.push({ entry, name });
@@ -821,20 +846,32 @@ export function LoadLocalBackup(){
             // be stored. Those assets are named before anything is written, and
             // the restore goes on without them only if the user agrees.
             const oversizedAssetNames = new Map<number, string>();
+            const inlayCollector = new InlayRestoreCollector(inlayAttachmentLimit());
             if (isNodeServer) {
+                let oversizedInlays: { hash: string, id: string }[];
                 try {
                     for (const { entry, name } of await listOversizedAssets(file, backupEntries)) {
                         oversizedAssetNames.set(entry.headerOffset, name);
                     }
+                    oversizedInlays = await listOversizedInlays(file, backupEntries, inlayAttachmentLimit());
                 } catch (e) {
                     console.error(e);
                     alertError(language.backupFileUnreadable);
                     return;
                 }
-                if (oversizedAssetNames.size > 0) {
+                if (oversizedAssetNames.size > 0 || oversizedInlays.length > 0) {
                     const names = Array.from(oversizedAssetNames.values());
-                    if (!await alertConfirm(language.restoreOversizedAssetsConfirm(names.length, shownSkippedNames(names), NODE_BODY_LIMIT_BYTES))) {
+                    const inlayNames = oversizedInlays.map((inlay) => inlay.id);
+                    const question = oversizedInlays.length === 0
+                        ? language.restoreOversizedAssetsConfirm(names.length, shownSkippedNames(names), NODE_BODY_LIMIT_BYTES)
+                        : names.length === 0
+                            ? language.restoreOversizedInlaysConfirm(inlayNames.length, shownSkippedNames(inlayNames), inlayAttachmentLimit())
+                            : language.restoreOversizedWithInlaysConfirm(names.length, shownSkippedNames(names), inlayNames.length, shownSkippedNames(inlayNames), inlayAttachmentLimit());
+                    if (!await alertConfirm(question)) {
                         return;
+                    }
+                    for (const inlay of oversizedInlays) {
+                        inlayCollector.preSkip(inlay.hash, inlay.id);
                     }
                 }
             }
@@ -885,6 +922,7 @@ export function LoadLocalBackup(){
                 let pendingDatabase: Uint8Array | null = null;
                 const restoredColdStorageKeys = new Set<string>();
                 const skippedAssets: SkippedAsset[] = [];
+                const skippedInlays: InlaySkipped[] = [];
                 const yieldBudget = createYieldBudget({ budgetMs: RESTORE_YIELD_INTERVAL_MS, yieldFn: yieldToEventLoop });
                 let lastProgressText: string | null = null;
 
@@ -950,6 +988,22 @@ export function LoadLocalBackup(){
                             // parseBackupEntryHeader is called with no name-length
                             // limit, so every entry name here is always decoded; this
                             // only narrows the type.
+                            continue;
+                        }
+                        // An inlay part is routed here, ahead of the size rule and of
+                        // every asset path, whatever its size: it is held as a slice
+                        // of the file until all its parts are in, and is never an asset.
+                        const inlayPart = parseInlayEntryName(name);
+                        if (inlayPart !== null) {
+                            const partData = file.slice(dataStart, dataStart + entry.dataLength);
+                            const added = partData.size === entry.dataLength
+                                ? await inlayCollector.add(name, inlayPart.hash, inlayPart.index, partData)
+                                : 'unreadable';
+                            if (added === 'unreadable') {
+                                stopMessage = language.backupFileChangedWhileReading;
+                                break;
+                            }
+                            await yieldBudget.maybeYield();
                             continue;
                         }
                         if (isSkippedForSize) {
@@ -1093,6 +1147,16 @@ export function LoadLocalBackup(){
                     }
                 }
 
+                // Written before the database is looked at, so a file cut short
+                // after some complete inlays keeps them; a part that is missing
+                // keeps its whole inlay out. Additive, like the assets.
+                const inlayOutcome = await restoreCollectedInlays(inlayCollector);
+                if (inlayOutcome.changed) {
+                    alertError(language.backupFileChangedWhileReading);
+                    return;
+                }
+                skippedInlays.push(...inlayOutcome.skipped);
+
                 if(!pendingDatabase){
                     alertError('Failed, Is file corrupted?')
                     return
@@ -1220,6 +1284,19 @@ export function LoadLocalBackup(){
                 }
                 if (skippedTooLargeNames.length > 0) {
                     await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), NODE_BODY_LIMIT_BYTES));
+                }
+                const skippedInlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
+                const invalidInlays = skippedInlayNames('invalid');
+                const notStoredInlays = skippedInlayNames('notStored');
+                const tooLargeInlays = skippedInlayNames('tooLarge');
+                if (invalidInlays.length > 0) {
+                    await alertNormalWait(language.restoreInlaysInvalid(invalidInlays.length, shownSkippedNames(invalidInlays)));
+                }
+                if (notStoredInlays.length > 0) {
+                    await alertNormalWait(language.restoreInlaysNotStored(notStoredInlays.length, shownSkippedNames(notStoredInlays)));
+                }
+                if (tooLargeInlays.length > 0) {
+                    await alertNormalWait(language.restoreInlaysTooLarge(tooLargeInlays.length, shownSkippedNames(tooLargeInlays), inlayAttachmentLimit()));
                 }
 
                 alertStore.set({

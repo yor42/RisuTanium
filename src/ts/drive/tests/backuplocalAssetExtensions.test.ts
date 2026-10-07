@@ -66,13 +66,29 @@ vi.mock(import('src/ts/reloadGuard'), () => ({
     isAppInitiatedReload: () => reloadMark.marked,
 }) as unknown as typeof import('src/ts/reloadGuard'))
 
+/** What the old `inlay` database holds; every other LocalForage instance is empty. */
+const legacyInlays = vi.hoisted(() => new Map<string, unknown>())
+/** Runs once the old database's keys have been listed, to change it between the listing and a read. */
+const legacyHooks = vi.hoisted(() => ({ afterKeys: null as null | (() => void) }))
+
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => { }),
-            removeItem: vi.fn(async () => { }),
-        }),
+        createInstance: (config?: { name?: string }) => config?.name === 'inlay'
+            ? {
+                getItem: vi.fn(async (key: string) => legacyInlays.get(key) ?? null),
+                setItem: vi.fn(async (key: string, value: unknown) => { legacyInlays.set(key, value) }),
+                removeItem: vi.fn(async (key: string) => { legacyInlays.delete(key) }),
+                keys: vi.fn(async () => {
+                    const keys = [...legacyInlays.keys()]
+                    legacyHooks.afterKeys?.()
+                    return keys
+                }),
+            }
+            : {
+                getItem: vi.fn(async () => null),
+                setItem: vi.fn(async () => { }),
+                removeItem: vi.fn(async () => { }),
+            },
     },
 }))
 
@@ -213,6 +229,11 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
     loadPlugins: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
 
+// The inlay module only asks the model list about image input support, which no test here reaches.
+vi.mock(import('src/ts/model/modellist'), () => ({
+    getModelInfo: vi.fn(),
+}) as unknown as typeof import('src/ts/model/modellist'))
+
 vi.mock(import('src/ts/parser/parser.svelte'), () => ({
     hasher: vi.fn((s: string) => s),
 }) as unknown as typeof import('src/ts/parser/parser.svelte'))
@@ -290,6 +311,12 @@ import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { createForageBackedStore, createSwitchedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { getAppStore } from 'src/ts/storage/store/appStore'
+import { getInlayAsset, getInlayAssetBlob, setInlayAsset, type InlayAsset } from 'src/ts/process/files/inlays'
+import { inlayLimits } from 'src/ts/process/files/inlayStore'
+import { cacheInlayRender, cachedInlayRender } from 'src/ts/process/files/inlayRenderCache'
+import { runInlayCopy } from 'src/ts/process/files/inlayCopy'
+import { language } from 'src/lang'
+import { inlayEntryName, inlayIdHash } from 'src/ts/drive/inlayBackupCodec'
 
 /**
  * The Tauri tests below run once per way the desktop reaches its assets: one
@@ -497,6 +524,8 @@ beforeEach(() => {
     alertNormalMock.mockClear()
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
     reloadMark.marked = false
+    legacyInlays.clear()
+    legacyHooks.afterKeys = null
     webFiles.clear()
     forageKeysMock.mockImplementation(async () => Array.from(webFiles.keys()))
     forageGetItemMock.mockImplementation(async (key) => webFiles.get(key) ?? null)
@@ -1077,3 +1106,487 @@ describe('an entry too large for the 32-bit length field fails the backup loudly
         expect(reported).toBe(true)
     })
 })
+
+//#region inlays in a local backup
+
+const MIB = 1024 * 1024
+
+function patterned(size: number, seed: number): Uint8Array {
+    const out = new Uint8Array(size)
+    for (let i = 0; i < size; i++) {
+        out[i] = (i * 13 + seed) % 251
+    }
+    return out
+}
+
+function imageInlay(seed: number, extra: Record<string, unknown> = {}): InlayAsset {
+    return { name: `image-${seed}.png`, ext: 'png', type: 'image', width: 3, height: 4, data: new Blob([asBlobPart(patterned(300 + seed, seed))], { type: 'image/png' }), ...extra } as InlayAsset
+}
+
+function audioInlay(seed: number): InlayAsset {
+    return { name: `audio-${seed}.mp3`, ext: 'mp3', type: 'audio', data: new Blob([asBlobPart(patterned(500 + seed, seed))], { type: 'audio/mp3' }) }
+}
+
+function signatureInlay(text: string): InlayAsset {
+    return { name: 'sig', ext: 'json', type: 'signature', data: text }
+}
+
+async function snapshotOf(ids: string[]): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {}
+    for (const id of ids) {
+        out[id] = await getInlayAsset(id)
+    }
+    return out
+}
+
+function appInlayKeys(): string[] {
+    return [...webFiles.keys()].filter((key) => key.startsWith('inlays/'))
+}
+
+function clearInlayStores(): void {
+    for (const key of appInlayKeys()) {
+        webFiles.delete(key)
+    }
+    legacyInlays.clear()
+}
+
+function inlayEntries(): WrittenEntry[] {
+    return writtenEntries().filter((entry) => entry.name.startsWith('risu-inlay-'))
+}
+
+/** Where each entry of a backup starts, by walking the container. */
+function entryPositions(bytes: Uint8Array): { name: string, start: number }[] {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    const found: { name: string, start: number }[] = []
+    let offset = 0
+    while (offset + 4 <= bytes.length) {
+        const nameLength = view.getUint32(offset, true)
+        const name = new TextDecoder().decode(bytes.subarray(offset + 4, offset + 4 + nameLength))
+        const dataLength = view.getUint32(offset + 4 + nameLength, true)
+        found.push({ name, start: offset })
+        offset += 4 + nameLength + 4 + dataLength
+    }
+    return found
+}
+
+async function bytesOfInlay(id: string): Promise<Uint8Array | null> {
+    const found = await getInlayAssetBlob(id)
+    return found === null ? null : new Uint8Array(await found.data.arrayBuffer())
+}
+
+interface BuiltPart { index: number, name: string, data: Uint8Array }
+
+/** The part entries of one inlay, as a backup carries them; `options` bends one rule at a time. */
+async function buildInlayParts(id: string, body: Uint8Array, options: {
+    sizes?: number[]
+    repr?: 'blob' | 'string' | 'string16'
+    mime?: string
+    fields?: Record<string, unknown>
+    header?: Record<string, unknown>
+    hash?: string
+} = {}): Promise<BuiltPart[]> {
+    const sizes = options.sizes ?? [body.length]
+    const header = {
+        v: 1, id, repr: options.repr ?? 'blob', mime: options.mime ?? 'image/png',
+        fields: options.fields ?? { name: 'built.png', ext: 'png', type: 'image' },
+        len: body.length, parts: sizes.length, ...options.header,
+    }
+    const headerBytes = encoder.encode(JSON.stringify(header))
+    const hash = options.hash ?? await inlayIdHash(id)
+    const parts: BuiltPart[] = []
+    let offset = 0
+    sizes.forEach((size, index) => {
+        const slice = body.subarray(offset, offset + size)
+        offset += size
+        const data = index === 0 ? concat([u32le(headerBytes.length), headerBytes, slice]) : slice.slice()
+        parts.push({ index, name: inlayEntryName(hash, index), data })
+    })
+    return parts
+}
+
+function builtBackup(parts: BuiltPart[], between: Uint8Array[] = []): Uint8Array {
+    return concat([
+        ...parts.map((part) => buildChunk(part.name, part.data)),
+        ...between,
+        buildChunk('database.risudat', encodeRisuSaveLegacy(databaseWith({}), 'noCompression')),
+    ])
+}
+
+function installedHead(): boolean {
+    return forageSetItemMock.mock.calls.some((call) => call[0] === 'blocks/head')
+}
+
+function noticesShown(): string[] {
+    return alertNormalWaitMock.mock.calls.map((call) => String(call[0]))
+}
+
+describe('a full backup carries the inlays of both stores and restores them', () => {
+    const IDS = ['img', 'aud', 'sig', 'old-only']
+
+    async function setUpInlays(): Promise<void> {
+        await setInlayAsset('img', imageInlay(1, { custom: 7 }))
+        await setInlayAsset('aud', audioInlay(2))
+        await setInlayAsset('sig', signatureInlay('{"s":1}'))
+        legacyInlays.set('old-only', imageInlay(3))
+    }
+
+    test('reproducer: restored into empty stores, every inlay reads as it did before the backup', async () => {
+        await setUpInlays()
+        const before = await snapshotOf(IDS)
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        const backup = concat(backupSink.writes)
+        clearInlayStores()
+        expect(await getInlayAsset('img')).toBeNull()
+
+        await loadBackupBytes(backup)
+
+        for (const id of IDS) {
+            expect(await getInlayAsset(id), id).not.toBeNull()
+        }
+        expect(await snapshotOf(IDS)).toEqual(before)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    test('acceptance: an id held by both stores is written once and restores from the app store copy', async () => {
+        await setInlayAsset('both', imageInlay(4, { name: 'app-copy' }))
+        legacyInlays.set('both', imageInlay(5, { name: 'old-copy' }))
+        const before = await snapshotOf(['both'])
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        const backup = concat(backupSink.writes)
+
+        expect(inlayEntries()).toHaveLength(1)
+        clearInlayStores()
+        await loadBackupBytes(backup)
+
+        expect(await snapshotOf(['both'])).toEqual(before)
+        expect((await getInlayAsset('both'))?.name).toBe('app-copy')
+    })
+
+    test('acceptance: a backup taken right after the copy of the old store restores every copied inlay', async () => {
+        legacyInlays.set('a', imageInlay(6))
+        legacyInlays.set('b', audioInlay(7))
+        const before = await snapshotOf(['a', 'b'])
+        const flags = new Map<string, string>()
+        await runInlayCopy({
+            flags: { getItem: (key) => flags.get(key) ?? null, setItem: (key, value) => { flags.set(key, value) } },
+            estimate: async () => undefined,
+            withTabLock: async (work) => { await work(); return true },
+        })
+        expect(appInlayKeys().length).toBeGreaterThan(0)
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        const backup = concat(backupSink.writes)
+        clearInlayStores()
+
+        await loadBackupBytes(backup)
+
+        expect(await snapshotOf(['a', 'b'])).toEqual(before)
+        expect(inlayEntries()).toHaveLength(2)
+    })
+
+    test('acceptance: assets come first, then inlays, and the database is the last entry', async () => {
+        webFiles.set('assets/a.png', bytesFor('a.png'))
+        await setUpInlays()
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        const names = writtenEntries().map((entry) => entry.name)
+        const firstInlay = names.findIndex((name) => name.startsWith('risu-inlay-'))
+        expect(names.indexOf('a.png')).toBeLessThan(firstInlay)
+        expect(names[names.length - 1]).toBe('database.risudat')
+        expect(names.filter((name) => name.startsWith('risu-inlay-')).length).toBe(IDS.length)
+    })
+
+    test('acceptance: an inlay removed from the old store after its key was listed is named, and the backup completes', async () => {
+        await setInlayAsset('kept', imageInlay(8))
+        legacyInlays.set('gone', imageInlay(9))
+        legacyHooks.afterKeys = () => { legacyInlays.delete('gone') }
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(inlayEntries()).toHaveLength(1)
+        expect(writtenEntries().map((entry) => entry.name)).toContain('database.risudat')
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(alertMdMock).toHaveBeenCalledWith(expect.stringContaining(language.backupInlaysLeftOut(1, ['gone'])))
+    })
+
+    test('acceptance: an inlay whose body is shorter than its record says is named, and the backup completes', async () => {
+        await setInlayAsset('short', imageInlay(10))
+        await setInlayAsset('whole', imageInlay(11))
+        forageGetItemMock.mockImplementation(async (key) => {
+            const held = webFiles.get(key) ?? null
+            return held !== null && key.startsWith('inlays/b-') && key.includes('short') ? held.slice(0, 3) : held
+        })
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(inlayEntries()).toHaveLength(1)
+        expect(alertMdMock).toHaveBeenCalledWith(expect.stringContaining(language.backupInlaysLeftOut(1, ['short'])))
+        expect(writtenEntries().map((entry) => entry.name)).toContain('database.risudat')
+    })
+
+    test('acceptance: a value that is neither a Blob nor a string is named and the other inlays are written', async () => {
+        legacyInlays.set('weird', { name: 'w', ext: 'x', type: 'image', data: { not: 'a blob' } })
+        await setInlayAsset('fine', imageInlay(12))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(inlayEntries()).toHaveLength(1)
+        expect(alertMdMock).toHaveBeenCalledWith(expect.stringContaining(language.backupInlaysLeftOut(1, ['weird'])))
+    })
+
+    test('acceptance: a partial backup writes no inlay entry and says inlays are not included', async () => {
+        await setUpInlays()
+
+        expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
+
+        expect(inlayEntries()).toHaveLength(0)
+        expect(alertNormalMock).toHaveBeenCalledWith(expect.stringContaining(language.partialBackupInlaysNotIncluded))
+    })
+
+    test('acceptance: an id with no store key is exported and named when it cannot be restored', async () => {
+        const lone = '\ud800'
+        legacyInlays.set(lone, imageInlay(13))
+        const before = await snapshotOf([lone])
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        const backup = concat(backupSink.writes)
+        expect(inlayEntries()).toHaveLength(1)
+        clearInlayStores()
+
+        await loadBackupBytes(backup)
+
+        expect(before[lone]).not.toBeNull()
+        expect(await getInlayAsset(lone)).toBeNull()
+        expect(noticesShown()).toContain(language.restoreInlaysNotStored(1, [lone]))
+        expect(installedHead()).toBe(true)
+    })
+
+    test('acceptance: inlay entry names are flat and valid, never a cold, database or temp name, no entry is over the 100 MiB body limit of upstream Node, and the database is last', async () => {
+        webFiles.set('assets/a.png', bytesFor('a.png'))
+        await setUpInlays()
+        legacyInlays.set('a/b\\c', imageInlay(14))
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        const { getColdStorageBackupKey } = await import('src/ts/process/coldstorageData')
+        const seen = writtenEntries()
+        for (const entry of seen.filter((candidate) => candidate.name.startsWith('risu-inlay-'))) {
+            expect(entry.name).toMatch(/^[a-z0-9.-]+$/)
+            expect(entry.name).not.toMatch(/(^\.|[. ]$)/)
+            expect(entry.name).not.toMatch(/^risu-write-[0-9a-f]{16}\.tmp$/)
+            expect(getColdStorageBackupKey(entry.name)).toBeNull()
+            expect(['database.risudat', 'encryption.risudat']).not.toContain(entry.name)
+            expect(entry.declaredLength).toBeLessThanOrEqual(100 * MIB)
+        }
+        expect(seen[seen.length - 1].name).toBe('database.risudat')
+    })
+})
+
+describe('restoring the inlay entries of a backup', () => {
+    const BODY = patterned(900, 5)
+
+    test('acceptance: a backup cut inside an inlay keeps the inlays before the cut, drops the cut one and installs no database', async () => {
+        await setInlayAsset('first', imageInlay(20))
+        await setInlayAsset('second', imageInlay(21))
+        const before = await snapshotOf(['first', 'second'])
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        const backup = concat(backupSink.writes)
+        const located = entryPositions(backup).filter((entry) => entry.name.startsWith('risu-inlay-'))
+        expect(located).toHaveLength(2)
+        clearInlayStores()
+
+        // Inside the data of the later inlay entry.
+        await loadBackupBytes(backup.slice(0, located[1].start + 4 + located[1].name.length + 4 + 20))
+
+        const restored = await snapshotOf(['first', 'second'])
+        const present = Object.values(restored).filter((value) => value !== null)
+        expect(present).toHaveLength(1)
+        expect(Object.values(before)).toContainEqual(present[0])
+        expect(installedHead()).toBe(false)
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+    })
+
+    test('acceptance: parts split by other entries are accepted and the body is whole', async () => {
+        const parts = await buildInlayParts('split', BODY, { sizes: [300, 300, 300] })
+        const backup = concat([
+            buildChunk(parts[0].name, parts[0].data),
+            buildChunk('mid-1.png', bytesFor('mid-1.png')),
+            buildChunk(parts[1].name, parts[1].data),
+            buildChunk('mid-2.png', bytesFor('mid-2.png')),
+            buildChunk(parts[2].name, parts[2].data),
+            buildChunk('database.risudat', encodeRisuSaveLegacy(databaseWith({}), 'noCompression')),
+        ])
+
+        await loadBackupBytes(backup)
+
+        expect(Buffer.compare(Buffer.from((await bytesOfInlay('split'))!), Buffer.from(BODY))).toBe(0)
+        expect(restoredAssets()).toHaveProperty(['assets/mid-1.png'])
+        expect(restoredAssets()).toHaveProperty(['assets/mid-2.png'])
+        expect(noticesShown()).toEqual([])
+    })
+
+    test('acceptance: a string inlay keeps its representation, a signature included', async () => {
+        const text = '{"signature":"é😀"}'
+        const parts = await buildInlayParts('sig-1', encoder.encode(text), { repr: 'string', mime: '', fields: { name: 'sig-1', ext: 'json', type: 'signature' } })
+
+        await loadBackupBytes(builtBackup(parts))
+
+        expect((await getInlayAsset('sig-1'))?.data).toBe(text)
+    })
+
+    test.each([
+        { title: 'a part without its part 0', build: async () => (await buildInlayParts('x1', BODY, { sizes: [450, 450] })).slice(1) },
+        { title: 'entries whose name hash is not the id\'s', build: async () => await buildInlayParts('x2', BODY, { hash: 'f'.repeat(64) }) },
+        { title: 'a gap in the part numbers', build: async () => { const all = await buildInlayParts('x3', BODY, { sizes: [300, 300, 300] }); return [all[0], all[2]] } },
+        { title: 'a part number repeated', build: async () => { const all = await buildInlayParts('x4', BODY, { sizes: [450, 450] }); return [...all, all[1]] } },
+        { title: 'a total length that is not the header\'s', build: async () => await buildInlayParts('x5', BODY, { header: { len: BODY.length + 5 } }) },
+        { title: 'a header of an unknown version', build: async () => await buildInlayParts('x6', BODY, { header: { v: 2 } }) },
+        { title: 'a part beyond the header\'s part count', build: async () => { const whole = await buildInlayParts('x8', BODY); const split = await buildInlayParts('x8', BODY, { sizes: [450, 450] }); return [whole[0], split[1]] } },
+        { title: 'a header that is not JSON', build: async () => { const all = await buildInlayParts('x7', BODY); all[0].data = concat([u32le(5), encoder.encode('{oops'), BODY]); return all } },
+    ])('acceptance: $title writes nothing for that inlay, names it as invalid and still restores the rest', async ({ build }) => {
+        const parts = await build()
+        const good = await buildInlayParts('good', BODY)
+
+        await loadBackupBytes(builtBackup([...parts, ...good]))
+
+        expect(Buffer.compare(Buffer.from((await bytesOfInlay('good'))!), Buffer.from(BODY))).toBe(0)
+        for (const id of ['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8']) {
+            expect(await getInlayAsset(id)).toBeNull()
+        }
+        expect(appInlayKeys().filter((key) => key.startsWith('inlays/m-x'))).toEqual([])
+        const notices = noticesShown()
+        expect(notices).toHaveLength(1)
+        expect(notices[0]).toContain('incomplete or damaged')
+        expect(installedHead()).toBe(true)
+        expect(Object.keys(restoredAssets()).filter((key) => key.includes('inlay'))).toEqual([])
+    })
+
+    test('acceptance: restoring onto an existing id replaces it and drops its cached render, and leaves every other inlay alone', async () => {
+        await setInlayAsset('x', imageInlay(30))
+        await setInlayAsset('other', imageInlay(31))
+        const otherBefore = await getInlayAsset('other')
+        const revoked: string[] = []
+        const realRevoke = URL.revokeObjectURL
+        URL.revokeObjectURL = (url: string) => { revoked.push(url) }
+        try {
+            cacheInlayRender('x', { type: 'image', url: 'blob:shown', source: 'memory-blob' }, 'blob:shown')
+
+            await loadBackupBytes(builtBackup(await buildInlayParts('x', BODY)))
+        } finally {
+            URL.revokeObjectURL = realRevoke
+        }
+
+        expect(Buffer.compare(Buffer.from((await bytesOfInlay('x'))!), Buffer.from(BODY))).toBe(0)
+        expect(cachedInlayRender('x')).toBeNull()
+        expect(revoked).toEqual(['blob:shown'])
+        expect(await getInlayAsset('other')).toEqual(otherBefore)
+    })
+
+    test('acceptance: an inlay above the limit of this page is skipped and named, and the rest restores', async () => {
+        const saved = inlayLimits.attachmentBytes
+        inlayLimits.attachmentBytes = 500
+        try {
+            await loadBackupBytes(builtBackup([...await buildInlayParts('huge', BODY), ...await buildInlayParts('small', patterned(100, 1))]))
+
+            expect(await getInlayAsset('huge')).toBeNull()
+            expect(await bytesOfInlay('small')).not.toBeNull()
+            expect(noticesShown()).toEqual([language.restoreInlaysTooLarge(1, ['huge'], 500)])
+            expect(appInlayKeys().filter((key) => key.includes('huge'))).toEqual([])
+        } finally {
+            inlayLimits.attachmentBytes = saved
+        }
+    })
+
+    test('acceptance: a store that refuses an inlay is reported apart from an invalid entry, and the restore continues', async () => {
+        forageSetItemMock.mockImplementation(async (key, data) => {
+            if (key.startsWith('inlays/m-refused')) {
+                throw new Error('scratch: the store refuses this record')
+            }
+            webFiles.set(key, data)
+        })
+        const invalid = await buildInlayParts('broken', BODY, { header: { len: BODY.length + 1 } })
+
+        await loadBackupBytes(builtBackup([...await buildInlayParts('refused', BODY), ...invalid, ...await buildInlayParts('fine', BODY)]))
+
+        const notices = noticesShown()
+        expect(notices).toHaveLength(2)
+        expect(notices.some((notice) => notice.includes('incomplete or damaged'))).toBe(true)
+        expect(notices).toContain(language.restoreInlaysNotStored(1, ['refused']))
+        expect(await getInlayAsset('refused')).toBeNull()
+        expect(await bytesOfInlay('fine')).not.toBeNull()
+        expect(installedHead()).toBe(true)
+    })
+
+    test('acceptance: a file that cannot be read while an inlay is assembled stops the restore with the changed-file message', async () => {
+        const body = patterned(4321, 9)
+        const realArrayBuffer = Blob.prototype.arrayBuffer
+        const spy = vi.spyOn(Blob.prototype, 'arrayBuffer').mockImplementation(function (this: Blob) {
+            if (this.size === 4321) {
+                return Promise.reject(new DOMException('scratch: the file changed', 'NotReadableError'))
+            }
+            return realArrayBuffer.call(this)
+        })
+        try {
+            await loadBackupBytes(builtBackup(await buildInlayParts('changing', body)))
+        } finally {
+            spy.mockRestore()
+        }
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(installedHead()).toBe(false)
+        expect(await getInlayAsset('changing')).toBeNull()
+    })
+
+    test('acceptance: a file whose inlay entry cannot be read stops the restore with the changed-file message and installs nothing', async () => {
+        const bytes = builtBackup(await buildInlayParts('unreadable', BODY))
+        const inlayEntry = entryPositions(bytes).find((entry) => entry.name.startsWith('risu-inlay-'))!
+        const dataStart = inlayEntry.start + 4 + inlayEntry.name.length + 4
+        const base = new File([asBlobPart(bytes)], 'backup.bin')
+        const file = new Proxy(base, {
+            get(target, prop) {
+                if (prop === 'slice') {
+                    return (start = 0, end = target.size) => {
+                        const real = target.slice(start, end)
+                        if (start !== dataStart) {
+                            return real
+                        }
+                        return new Proxy(real, {
+                            get(blob, blobProp) {
+                                if (blobProp === 'slice') {
+                                    return () => ({ arrayBuffer: () => Promise.reject(new DOMException('scratch: the file changed', 'NotReadableError')) })
+                                }
+                                const value = Reflect.get(blob, blobProp, blob) as unknown
+                                return typeof value === 'function' ? value.bind(blob) : value
+                            },
+                        })
+                    }
+                }
+                const value = Reflect.get(target, prop, target) as unknown
+                return typeof value === 'function' ? value.bind(target) : value
+            },
+        })
+        LoadLocalBackup()
+        Object.defineProperty(capturedInput!, 'files', { value: [file], configurable: true })
+
+        await (capturedInput!.onchange as unknown as (ev: Event) => Promise<void>).call(capturedInput, new Event('change'))
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(installedHead()).toBe(false)
+        expect(await getInlayAsset('unreadable')).toBeNull()
+    })
+
+    test('guard: a backup with no inlay entries restores its assets as before, and a name that only looks like an inlay part stays an asset', async () => {
+        const dbData = encodeRisuSaveLegacy(databaseWith({}), 'noCompression')
+
+        await loadBackupBytes(concat([
+            buildChunk('a.png', bytesFor('a.png')),
+            buildChunk('risu-inlay-short-0.part', bytesFor('risu-inlay-short-0.part')),
+            buildChunk('database.risudat', dbData),
+        ]))
+
+        expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(['a.png', 'risu-inlay-short-0.part']))))
+        expect(appInlayKeys()).toEqual([])
+        expect(noticesShown()).toEqual([])
+        expect(installedHead()).toBe(true)
+    })
+})
+
+//#endregion

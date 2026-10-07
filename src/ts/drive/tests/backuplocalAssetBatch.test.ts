@@ -62,15 +62,30 @@ vi.mock(import('src/ts/reloadGuard'), () => ({
     isAppInitiatedReload: () => reloadMark.marked,
 }) as unknown as typeof import('src/ts/reloadGuard'))
 
+/** What the old `inlay` database holds; every other LocalForage instance is empty. */
+const legacyInlays = vi.hoisted(() => new Map<string, unknown>())
+
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => { }),
-            removeItem: vi.fn(async () => { }),
-        }),
+        createInstance: (config?: { name?: string }) => config?.name === 'inlay'
+            ? {
+                getItem: vi.fn(async (key: string) => legacyInlays.get(key) ?? null),
+                setItem: vi.fn(async (key: string, value: unknown) => { legacyInlays.set(key, value) }),
+                removeItem: vi.fn(async (key: string) => { legacyInlays.delete(key) }),
+                keys: vi.fn(async () => [...legacyInlays.keys()]),
+            }
+            : {
+                getItem: vi.fn(async () => null),
+                setItem: vi.fn(async () => { }),
+                removeItem: vi.fn(async () => { }),
+            },
     },
 }))
+
+// The inlay module only asks the model list about image input support, which no test here reaches.
+vi.mock(import('src/ts/model/modellist'), () => ({
+    getModelInfo: vi.fn(),
+}) as unknown as typeof import('src/ts/model/modellist'))
 
 vi.mock(import('src/ts/platform'), () => ({
     get isTauri() { return platformBox.isTauri },
@@ -299,6 +314,7 @@ import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { getAppStore } from 'src/ts/storage/store/appStore'
 import { CHUNK_MAX, resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { collectColdStorageBackupPayloads } from 'src/ts/process/coldstorage.svelte'
+import { getInlayAsset, setInlayAsset } from 'src/ts/process/files/inlays'
 
 //#region helpers
 
@@ -545,6 +561,7 @@ beforeEach(() => {
     eventLog.rawInFlight.length = 0
     eventLog.holdAbort = null
     reportedTotals.clear()
+    legacyInlays.clear()
     resetByteTransportForTests()
     fakeFs.reset()
     fakeFs.directories.add('assets')
@@ -1602,5 +1619,52 @@ describe('a partial backup', () => {
 
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(null))
         expect(backupSink.removed).toEqual([BACKUP_PATH])
+    })
+})
+
+describe('inlays on the desktop', () => {
+    function bigImage(size: number, seed: number) {
+        return { name: `big-${seed}.png`, ext: 'png', type: 'image' as const, width: 5, height: 6, data: new Blob([asBlobPart(patterned(size, seed))], { type: 'image/png' }) }
+    }
+
+    function dropStoredInlays(): void {
+        for (const key of [...fakeFs.files.keys()]) {
+            if (key.startsWith('inlays/')) {
+                fakeFs.files.delete(key)
+            }
+        }
+        legacyInlays.clear()
+    }
+
+    test('reproducer: an inlay body over CHUNK_MAX restores as an inlay and is never written as an asset', async () => {
+        await setInlayAsset('big', bigImage(5 * MIB + 17, 3))
+        await setInlayAsset('small', bigImage(400, 4))
+        const before = { big: await getInlayAsset('big'), small: await getInlayAsset('small') }
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+        const backup = concat(backupSink.writes)
+        dropStoredInlays()
+        expect(await getInlayAsset('big')).toBeNull()
+
+        await restoreBytes(backup)
+
+        expect(await getInlayAsset('big')).not.toBeNull()
+        expect({ big: await getInlayAsset('big'), small: await getInlayAsset('small') }).toEqual(before)
+        expect(Object.keys(storedAssets()).filter((key) => key.includes('inlay'))).toEqual([])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(fakeFs.files.has('blocks/head')).toBe(true)
+    })
+
+    test('acceptance: the export reads a stored inlay body in pieces of at most CHUNK_MAX and holds no whole-body read', async () => {
+        await setInlayAsset('big', bigImage(9 * MIB, 5))
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        const reads = desktop.chunk.callsOf('read_range').filter((call) => String(call.args.key).startsWith('inlays/b-'))
+        expect(reads.length).toBeGreaterThanOrEqual(3)
+        for (const call of reads) {
+            expect(call.args.len).toBeLessThanOrEqual(CHUNK_MAX)
+        }
+        const entries = exportedEntries().map((entry) => entry.name).filter((name) => name.startsWith('risu-inlay-'))
+        expect(entries).toHaveLength(1)
     })
 })

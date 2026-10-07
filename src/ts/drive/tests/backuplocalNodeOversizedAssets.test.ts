@@ -393,3 +393,67 @@ describe('a refusal by the server for an asset under the limit', () => {
         expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 })
+
+describe('an inlay over the Node server body limit is disclosed as an inlay before anything is written', () => {
+    /** The part entry of an inlay whose header claims `claimedLength` bytes; the body it carries is `body`. */
+    async function inlayEntry(id: string, body: Uint8Array, claimedLength = body.length): Promise<Uint8Array> {
+        const codec = await import('../inlayBackupCodec')
+        const header = new TextEncoder().encode(JSON.stringify({
+            v: 1, id, repr: 'blob', mime: 'image/png', fields: { name: id, ext: 'png', type: 'image' }, len: claimedLength, parts: codec.partsFor(claimedLength),
+        }))
+        return buildChunk(codec.inlayEntryName(await codec.inlayIdHash(id), 0), concatChunks([u32le(header.length), header, body]))
+    }
+
+    test('acceptance: names the inlay as an inlay beside the oversized asset, sends nothing of it, and restores the rest', async () => {
+        const bytes = concatChunks([
+            assetEntry('huge.png', LIMIT + 10),
+            await inlayEntry('too-big', new Uint8Array(20).fill(1), LIMIT + 1),
+            await inlayEntry('fits', new Uint8Array(20).fill(2)),
+            databaseEntry(),
+        ])
+
+        await loadBackupBytes(bytes)
+
+        expect(alertMocks.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedWithInlaysConfirm(1, ['huge.png'], 1, ['too-big'], LIMIT))
+        expect(writtenKeys().filter((key) => key.includes('too-big'))).toEqual([])
+        expect(writtenKeys().some((key) => key.startsWith('inlays/m-fits'))).toBe(true)
+        expect(writtenAssetKeys()).toEqual([])
+        expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], LIMIT))
+        expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysTooLarge(1, ['too-big'], LIMIT))
+        expectBlockGenerationCommitted()
+    })
+
+    test('acceptance: declining writes nothing, and an inlay alone over the limit still asks first', async () => {
+        alertMocks.alertConfirm.mockImplementation(async () => false)
+        const bytes = concatChunks([await inlayEntry('too-big', new Uint8Array(20), LIMIT + 1), databaseEntry()])
+
+        await loadBackupBytes(bytes)
+
+        expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedInlaysConfirm(1, ['too-big'], LIMIT))
+        expect(forageSetItemMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+    })
+
+    test('acceptance: an inlay part whose entry is over the limit is named only as an inlay, never as an asset, and is not written as one', async () => {
+        const bytes = concatChunks([await inlayEntry('too-big', new Uint8Array(LIMIT + 50)), databaseEntry()])
+
+        await loadBackupBytes(bytes)
+
+        expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedInlaysConfirm(1, ['too-big'], LIMIT))
+        expect(writtenAssetKeys()).toEqual([])
+        expect(writtenKeys().filter((key) => key.includes('too-big'))).toEqual([])
+    })
+
+    test('acceptance: a 413 for an inlay under the limit skips it, names it as not stored, and the restore continues', async () => {
+        failingWrites.set('inlays/m-refused', new NodeHttpError(413, 'write'))
+        const bytes = concatChunks([await inlayEntry('refused', new Uint8Array(20)), await inlayEntry('fits', new Uint8Array(20)), databaseEntry()])
+
+        await loadBackupBytes(bytes)
+
+        expect(writtenKeys().some((key) => key.startsWith('inlays/m-fits'))).toBe(true)
+        expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysNotStored(1, ['refused']))
+        expect(shownErrors()).toEqual([])
+        expectBlockGenerationCommitted()
+    })
+})

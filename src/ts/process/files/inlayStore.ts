@@ -128,7 +128,8 @@ function stringToBytes(text: string): { repr: 'string' | 'string16', bytes: Uint
     return { repr: 'string16', bytes }
 }
 
-function bytesToString(repr: 'string' | 'string16', bytes: Uint8Array): string {
+/** The string a `string` or `string16` body holds. */
+export function bytesToString(repr: 'string' | 'string16', bytes: Uint8Array): string {
     if (repr === 'string') {
         return decoder.decode(bytes)
     }

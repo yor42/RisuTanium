@@ -1870,6 +1870,20 @@ export const languageKorean = {
         `백업을 복원했지만, 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
+    "partialBackupInlaysNotIncluded": "인레이(채팅 이미지, 영상, 오디오, 서명)는 부분 백업에 포함되지 않습니다.",
+    "backupInlaysLeftOut": (count: number, names: string[]) =>
+        `인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개를 읽을 수 없거나 지원되지 않아 백업에 포함되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 제외된 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreInlaysInvalid": (count: number, names: string[]) =>
+        `백업을 복원했지만, 파일 내 항목이 불완전하거나 손상된 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreInlaysNotStored": (count: number, names: string[]) =>
+        `백업을 복원했지만, 이 앱이 저장할 수 없었던 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreInlaysTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `백업을 복원했지만, 이 페이지가 저장할 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupInlaysOldStoreUnlisted": "이 브라우저의 이전 인레이 저장소를 읽을 수 없어, 그곳에만 있는 인레이는 백업에 포함되지 않았습니다.",
+    "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
+        `이 백업에는 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개가 있어 여기서는 복원할 수 없습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `이 백업에는 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${assetCount}개와 인레이(채팅 이미지, 영상, 오디오, 서명) ${inlayCount}개가 있어 여기서는 복원할 수 없습니다. 이 항목을 사용하는 캐릭터나 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n에셋 파일:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...외 ${assetCount - assetNames.length}개` : ''}\n\n인레이:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...외 ${inlayCount - inlayNames.length}개` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? '백업에 실패했습니다.' : `${asset}이(가) 저장되는 동안 변경되었거나 읽을 수 없어 백업이 중단되었습니다.`} 백업 파일이 불완전하여 삭제했습니다. 백업을 다시 실행하세요.`,
     "backupFailedFileKept": (asset: string | null) =>

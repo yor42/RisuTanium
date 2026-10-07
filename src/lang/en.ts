@@ -2004,6 +2004,20 @@ export const languageEnglish = {
         `The backup was restored, except for ${count} asset file(s) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     restoreAssetRefusedTooLarge: (name: string) =>
         `The server, or a proxy in front of it, refused the asset "${name}" as too large, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.`,
+    partialBackupInlaysNotIncluded: "Inlays (chat images, video, audio and signatures) are not included in a partial backup.",
+    backupInlaysLeftOut: (count: number, names: string[]) =>
+        `${count} inlay(s) (chat images, video, audio or signatures) could not be read or are not supported, so they are not in the backup. A chat that uses one of them will show it as missing. Left out:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreInlaysInvalid: (count: number, names: string[]) =>
+        `The backup was restored, except for ${count} inlay(s) (chat images, video, audio or signatures) whose entries in the file are incomplete or damaged. A chat that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreInlaysNotStored: (count: number, names: string[]) =>
+        `The backup was restored, except for ${count} inlay(s) (chat images, video, audio or signatures) that this app could not store. A chat that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreInlaysTooLarge: (count: number, names: string[], limitBytes: number) =>
+        `The backup was restored, except for ${count} inlay(s) (chat images, video, audio or signatures) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this page can store. A chat that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupInlaysOldStoreUnlisted: "The old inlay store of this browser could not be read, so inlays that only it holds are not in the backup.",
+    restoreOversizedInlaysConfirm: (count: number, names: string[], limitBytes: number) =>
+        `${count} inlay(s) (chat images, video, audio or signatures) in this backup are larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request, so they cannot be restored here. A chat that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreOversizedWithInlaysConfirm: (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `${assetCount} asset file(s) and ${inlayCount} inlay(s) (chat images, video, audio or signatures) in this backup are larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request, so they cannot be restored here. A character or chat that uses one of them will show it as missing. Continue without them?\n\nAsset files:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...and ${assetCount - assetNames.length} more` : ''}\n\nInlays:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...and ${inlayCount - inlayNames.length} more` : ''}`,
     backupFailedFileDeleted: (asset: string | null) =>
         `${asset === null ? 'The backup failed.' : `The backup stopped because ${asset} changed or could not be read while it was being saved.`} The backup file was incomplete, so it was deleted. Run the backup again.`,
     backupFailedFileKept: (asset: string | null) =>

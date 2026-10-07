@@ -6,10 +6,12 @@
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
-import { chokePointInFlight, resetBusyActionsForTest } from '../../memory/busyActions'
+import { beginBusy, chokePointInFlight, resetBusyActionsForTest } from '../../memory/busyActions'
 import { inlayMetaKey } from '../inlayKeys'
-import { inlayLimits, readAppInlay } from '../inlayStore'
-import { runInlayCopy, type InlayCopyEnvironment } from '../inlayCopy'
+import { inlayLimits, readAppInlay, readAppInlayRecord } from '../inlayStore'
+import { runInlayCopy, runInlayOldStoreCleanup, resetInlayCopyForTests, type InlayCopyEnvironment } from '../inlayCopy'
+import { cachedInlayRender, cacheInlayRender } from '../inlayRenderCache'
+import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { createMemoryByteStore, type MemoryByteStore } from './memoryByteStore'
 import {
     getInlayAsset,
@@ -29,12 +31,15 @@ const h = vi.hoisted(() => ({
     holdGet: new Map<string, Promise<void>>(),
     failGet: new Set<string>(),
     node: false,
+    getCalls: [] as string[],
+    onRemove: null as null | (() => void),
 }))
 
 vi.mock('localforage', () => ({
     default: {
         createInstance: () => ({
             getItem: vi.fn(async (key: string) => {
+                h.getCalls.push(key)
                 await h.holdGet.get(key)
                 if (h.failGet.has(key)) {
                     throw new DOMException('The stored value cannot be read', 'UnknownError')
@@ -42,7 +47,10 @@ vi.mock('localforage', () => ({
                 return h.legacy.get(key) ?? null
             }),
             setItem: vi.fn(async (key: string, value: unknown) => { h.legacy.set(key, value) }),
-            removeItem: vi.fn(async (key: string) => { h.legacy.delete(key) }),
+            removeItem: vi.fn(async (key: string) => {
+                h.onRemove?.()
+                h.legacy.delete(key)
+            }),
             keys: vi.fn(async () => {
                 h.keysCalls++
                 const keys = [...h.legacy.keys()]
@@ -100,7 +108,11 @@ beforeEach(() => {
     h.holdGet.clear()
     h.failGet.clear()
     h.node = false
+    h.getCalls = []
+    h.onRemove = null
     resetBusyActionsForTest()
+    resetInlayCopyForTests()
+    resetPageStorageModeForTests()
     appStore = createMemoryByteStore()
     injectAppStore(appStore)
     flags = new Map()
@@ -467,5 +479,346 @@ describe('storage pressure and page state', () => {
         await runInlayCopy(env)
         expect(h.legacy.get('a')).toBe(original)
         expect(appStore.files.has(inlayMetaKey('a')!)).toBe(true)
+    })
+})
+
+describe('the cleanup of the old store', () => {
+    /** The next start: the page copies nothing yet. */
+    function laterStart(): void {
+        resetInlayCopyForTests()
+    }
+
+    function unresolved(): Record<string, string> {
+        const text = flags.get('inlayOldStoreUnresolved')
+        return text === undefined ? {} : (JSON.parse(text) as { ids: Record<string, string> }).ids
+    }
+
+    test('acceptance: an entry whose copy is verified is removed on a start that did not copy it, and still reads the same', async () => {
+        h.legacy.set('a', legacyImage('aa', { custom: 3 }))
+        const before = await snapshot('a')
+        await runInlayCopy(env)
+        laterStart()
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('a')).toBe(false)
+        expect(await readAppInlay('a')).not.toBeNull()
+        expect(await snapshot('a')).toEqual(before)
+    })
+
+    test('acceptance: an entry this page copied is not removed on this page and is removed by the next start', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await runInlayCopy(env)
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('settled')
+        expect(h.legacy.has('a')).toBe(true)
+
+        laterStart()
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+        expect(h.legacy.has('a')).toBe(false)
+    })
+
+    test('acceptance: a profile whose copy is already recorded gets its verified entries removed and needs no new marker', async () => {
+        flags.set('inlayCopyDone', JSON.stringify({ v: 1, residual: [] }))
+        const image = legacyImage('aa')
+        h.legacy.set('a', image)
+        await setInlayAsset('a', image)
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('a')).toBe(false)
+        expect([...flags.keys()]).toEqual(['inlayCopyDone'])
+    })
+
+    test('acceptance: an entry whose app store body cannot be read stays and is recorded, and the others are still examined', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        h.legacy.set('b', legacyImage('bb'))
+        await runInlayCopy(env)
+        laterStart()
+        appStore.failRead = (key) => (key.startsWith('inlays/b-a.') ? new Error('scratch: unreadable body') : null)
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('a')).toBe(true)
+        expect(h.legacy.has('b')).toBe(false)
+        expect(unresolved()).toEqual({ a: 'unreadable-copy' })
+    })
+
+    test('acceptance: an entry whose app store body has another length than its record says stays', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await runInlayCopy(env)
+        const record = (await readAppInlayRecord(appStore, 'a'))!
+        appStore.files.set(record.body, new Uint8Array(1))
+        laterStart()
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('a')).toBe(true)
+        expect(unresolved()).toEqual({ a: 'length-mismatch' })
+    })
+
+    describe('on a store that hands out stored Blobs', () => {
+        /** A Blob handle whose size is as stored but whose bytes cannot be read. */
+        class HollowBlob extends Blob {
+            constructor(private readonly claimed: number) {
+                super([])
+            }
+            override get size() { return this.claimed }
+            override slice(): Blob {
+                return { arrayBuffer: () => Promise.reject(new DOMException('The blob cannot be read', 'NotReadableError')) } as unknown as Blob
+            }
+            override arrayBuffer(): Promise<ArrayBuffer> {
+                return Promise.reject(new DOMException('The blob cannot be read', 'NotReadableError'))
+            }
+        }
+
+        let blobStore: MemoryByteStore
+
+        beforeEach(() => {
+            blobStore = createMemoryByteStore({ blobs: true })
+            injectAppStore(blobStore, 'indexeddb')
+        })
+
+        test('reproducer: an entry whose stored Blob has the right size but cannot be read stays, is recorded, and keeps rendering', async () => {
+            h.legacy.set('a', legacyImage('aa'))
+            await runInlayCopy(env)
+            const record = (await readAppInlayRecord(blobStore, 'a'))!
+            expect(blobStore.blobWrites).toContain(record.body)
+            blobStore.blobs.set(record.body, new HollowBlob(record.len))
+            laterStart()
+            expect(await getInlayAsset('a')).not.toBeNull()
+
+            await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+            expect(h.legacy.has('a')).toBe(true)
+            expect(unresolved()).toEqual({ a: 'unreadable-copy' })
+            expect(await getInlayAsset('a')).not.toBeNull()
+        })
+
+        test('acceptance: an entry whose stored Blob reads is removed', async () => {
+            h.legacy.set('a', legacyImage('aa'))
+            const before = await snapshot('a')
+            await runInlayCopy(env)
+            laterStart()
+
+            await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+            expect(h.legacy.has('a')).toBe(false)
+            expect(blobStore.blobReads.length).toBeGreaterThan(0)
+            expect(await snapshot('a')).toEqual(before)
+        })
+    })
+
+    test('acceptance: an entry whose app store record names another length than the body it points at stays', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await runInlayCopy(env)
+        const record = (await readAppInlayRecord(appStore, 'a'))!
+        appStore.files.set(inlayMetaKey('a')!, new TextEncoder().encode(JSON.stringify({ ...record, len: record.len + 5 })))
+        laterStart()
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('a')).toBe(true)
+        expect(unresolved()).toEqual({ a: 'length-mismatch' })
+    })
+
+    test('acceptance: an entry whose app store record has another length than the old value stays', async () => {
+        h.legacy.set('a', legacyImage('old'))
+        await setInlayAsset('a', legacyImage('a much longer replacement'))
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('a')).toBe(true)
+        expect(unresolved()).toEqual({ a: 'length-mismatch' })
+    })
+
+    test('acceptance: a string that is not well-formed UTF-16 is kept as UTF-16 in the app store and its old entry is removed by the length rule', async () => {
+        const text = 'x\ud800y'
+        const value = { name: 's', ext: 'json', type: 'signature', data: text } as InlayAsset
+        h.legacy.set('s', value)
+        await setInlayAsset('s', value)
+        expect((await readAppInlayRecord(appStore, 's'))!.repr).toBe('string16')
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+        expect(h.legacy.has('s')).toBe(false)
+        expect((await getInlayAsset('s'))!.data).toBe(text)
+    })
+
+    test('acceptance: an old-only entry is copied at one start and removed at a later one', async () => {
+        h.legacy.set('o', legacyImage('oo'))
+        const before = await snapshot('o')
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+        expect(await readAppInlay('o')).not.toBeNull()
+        expect(h.legacy.has('o')).toBe(true)
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('settled')
+        expect(h.legacy.has('o')).toBe(true)
+
+        laterStart()
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+        expect(h.legacy.has('o')).toBe(false)
+        expect(await snapshot('o')).toEqual(before)
+    })
+
+    test('acceptance: residue stays, is recorded with its reason, and keeps rendering', async () => {
+        const longId = 'q'.repeat(300)
+        const saved = inlayLimits.attachmentBytes
+        inlayLimits.attachmentBytes = 8
+        try {
+            h.legacy.set(longId, legacyImage('long'))
+            h.legacy.set('big', legacyImage('b', { data: new Blob(['123456789'], { type: 'video/mp4' }) }))
+            h.legacy.set('bad', legacyImage('x'))
+            h.failGet.add('bad')
+
+            await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
+
+            expect(unresolved()).toEqual({ [longId]: 'unmappable', big: 'residue', bad: 'unreadable' })
+            expect(h.legacy.size).toBe(3)
+            h.failGet.clear()
+            expect(await getInlayAsset('big')).not.toBeNull()
+        } finally {
+            inlayLimits.attachmentBytes = saved
+        }
+    })
+
+    test('acceptance: a settled start lists the old store once and reads nothing else', async () => {
+        h.legacy.set('big', legacyImage('b', { data: 'x'.repeat(40) }))
+        const saved = inlayLimits.attachmentBytes
+        inlayLimits.attachmentBytes = 8
+        try {
+            await runInlayOldStoreCleanup(env)
+        } finally {
+            inlayLimits.attachmentBytes = saved
+        }
+        const keys = h.keysCalls
+        const lists = appStore.lists.length
+        const reads = appStore.reads.length
+        const gets = h.getCalls.length
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('settled')
+
+        expect(h.keysCalls - keys).toBe(1)
+        expect(appStore.lists.length).toBe(lists)
+        expect(appStore.reads.length).toBe(reads)
+        expect(h.getCalls.length).toBe(gets)
+    })
+
+    test('acceptance: an id the copy recorded as residue is not read again', async () => {
+        flags.set('inlayCopyDone', JSON.stringify({ v: 1, residual: ['r'] }))
+        h.legacy.set('r', legacyImage('rr'))
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('settled')
+
+        expect(h.getCalls).toEqual([])
+        expect(h.legacy.has('r')).toBe(true)
+    })
+
+    test('acceptance: a recorded id that is absent from the old store is forgotten', async () => {
+        flags.set('inlayOldStoreUnresolved', JSON.stringify({ v: 1, ids: { gone: 'residue', kept: 'residue' } }))
+        h.legacy.set('kept', legacyImage('k'))
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('settled')
+
+        expect(unresolved()).toEqual({ kept: 'residue' })
+    })
+
+    test('acceptance: a read-only page removes and copies nothing', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await setInlayAsset('a', legacyImage('aa'))
+        setPageStorageMode({ kind: 'read-only' })
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('not-run')
+
+        injectAppStore(appStore, 'opfs-transitional')
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('not-run')
+        expect(h.legacy.has('a')).toBe(true)
+        expect(h.keysCalls).toBe(0)
+    })
+
+    test('acceptance: a page whose other tab holds the lock does nothing', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await expect(runInlayOldStoreCleanup({ ...env, withTabLock: async () => false })).resolves.toBe('busy')
+        expect(h.keysCalls).toBe(0)
+    })
+
+    test.each(['backupSave', 'backupLoad'] as const)('acceptance: a %s in progress ends the pass before anything is removed or copied', async (kind) => {
+        h.legacy.set('a', legacyImage('aa'))
+        h.legacy.set('b', legacyImage('bb'))
+        await setInlayAsset('a', legacyImage('aa'))
+        const busy = beginBusy(kind)
+        try {
+            await expect(runInlayOldStoreCleanup(env)).resolves.toBe('stopped')
+        } finally {
+            busy.end()
+        }
+
+        expect(h.legacy.has('a')).toBe(true)
+        expect(await readAppInlay('b')).toBeNull()
+    })
+
+    test('acceptance: a backup that starts while the pass runs ends it, and the entries after it stay', async () => {
+        for (const id of ['a', 'b', 'c']) {
+            h.legacy.set(id, legacyImage(id))
+            await setInlayAsset(id, legacyImage(id))
+        }
+        let busy: ReturnType<typeof beginBusy> | null = null
+        h.onRemove = () => { busy ??= beginBusy('backupSave') }
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('stopped')
+        busy!.end()
+
+        expect([...h.legacy.keys()].sort()).toEqual(['b', 'c'])
+    })
+
+    test('acceptance: a quota failure ends the start and removes nothing that is not verified', async () => {
+        h.legacy.set('a-old-only', legacyImage('aa'))
+        h.legacy.set('b-verified', legacyImage('bb'))
+        await setInlayAsset('b-verified', legacyImage('bb'))
+        appStore.failWrite = (key) => (key.startsWith('inlays/') ? new DOMException('full', 'QuotaExceededError') : null)
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('stopped')
+
+        expect(h.legacy.has('a-old-only')).toBe(true)
+        expect(await readAppInlay('a-old-only')).toBeNull()
+        expect(await snapshot('a-old-only')).not.toBeNull()
+    })
+
+    test('acceptance: a render shown from the old store keeps its URL when the old entry is removed, and the next render reads the app store', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await runInlayCopy(env)
+        cacheInlayRender('a', { type: 'image', url: 'blob:old', source: 'memory-blob' }, 'blob:old')
+        const revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { })
+        laterStart()
+        try {
+            await runInlayOldStoreCleanup(env)
+
+            expect(revoked).not.toHaveBeenCalled()
+            expect(cachedInlayRender('a')).toBeNull()
+        } finally {
+            revoked.mockRestore()
+        }
+    })
+
+    test('acceptance: the removal of an old entry counts as an inlay write in flight', async () => {
+        h.legacy.set('a', legacyImage('aa'))
+        await runInlayCopy(env)
+        laterStart()
+        const seen: number[] = []
+        h.onRemove = () => { seen.push(chokePointInFlight('inlay')) }
+
+        await runInlayOldStoreCleanup(env)
+
+        expect(seen).toEqual([1])
+        expect(chokePointInFlight('inlay')).toBe(0)
+    })
+
+    test('acceptance: an old store that cannot be listed ends the start without a record', async () => {
+        h.afterKeys = () => { throw new Error('idb closed') }
+        h.legacy.set('a', legacyImage('aa'))
+
+        await expect(runInlayOldStoreCleanup(env)).resolves.toBe('not-run')
+
+        expect(flags.size).toBe(0)
     })
 })
