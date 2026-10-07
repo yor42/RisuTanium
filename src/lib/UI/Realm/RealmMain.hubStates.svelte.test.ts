@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 
 /**
  * Component-level coverage for `RealmMain.svelte`'s Stage 2 adaptation to

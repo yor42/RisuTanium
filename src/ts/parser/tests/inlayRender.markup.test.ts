@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The markup `ParseMarkdown` emits for an inlay token over the real inlay
  * module and an in-memory app store: the URL a store gives is the URL in the

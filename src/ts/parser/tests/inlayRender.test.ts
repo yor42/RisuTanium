@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * What `parseInlayAssets` (through the exported `ParseMarkdown`) does with an
  * inlay token: the markup it makes from the render the inlay module gives, and

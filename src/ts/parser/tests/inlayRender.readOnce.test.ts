@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
