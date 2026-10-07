@@ -2229,6 +2229,7 @@ export const languageKorean = {
         folderColorPurple: "보라",
         folderColorPink: "분홍",
         folderColorDefault: "기본",
+        defaultFolderName: "새 폴더",
         empty: "비어 있음",
         avatarAlt: "아바타",
         ttsSpeaker: "화자",

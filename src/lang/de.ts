@@ -2229,6 +2229,7 @@ export const languageGerman = {
         "folderColorPurple": "lila",
         "folderColorPink": "pink",
         "folderColorDefault": "Standard",
+        "defaultFolderName": "Neuer Ordner",
         "empty": "Leer",
         "avatarAlt": "Avatar",
         "ttsSpeaker": "Sprecher",

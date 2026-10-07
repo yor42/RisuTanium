@@ -2368,6 +2368,7 @@ export const languageEnglish = {
         folderColorPurple: "purple",
         folderColorPink: "pink",
         folderColorDefault: "default",
+        defaultFolderName: "New Folder",
         empty: "Empty",
         avatarAlt: "avatar",
         ttsSpeaker: "Speaker",

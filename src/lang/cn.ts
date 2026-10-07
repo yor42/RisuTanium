@@ -2229,6 +2229,7 @@ export const languageChinese = {
         "folderColorPurple": "紫色",
         "folderColorPink": "粉色",
         "folderColorDefault": "默认",
+        "defaultFolderName": "新建文件夹",
         "empty": "空",
         "avatarAlt": "头像",
         "ttsSpeaker": "说话人",

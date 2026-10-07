@@ -2229,6 +2229,7 @@ export const languageSpanish = {
         folderColorPurple: "morado",
         folderColorPink: "rosa",
         folderColorDefault: "predeterminado",
+        defaultFolderName: "Carpeta nueva",
         empty: "Vacío",
         avatarAlt: "avatar",
         ttsSpeaker: "Hablante",

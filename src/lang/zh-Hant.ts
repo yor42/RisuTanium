@@ -2274,6 +2274,7 @@ export const languageChineseTraditional = {
         "folderColorPurple": "紫色",
         "folderColorPink": "粉紅色",
         "folderColorDefault": "預設",
+        "defaultFolderName": "新資料夾",
         "empty": "空",
         "avatarAlt": "頭像",
         "ttsSpeaker": "說話者",

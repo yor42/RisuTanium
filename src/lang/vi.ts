@@ -2229,6 +2229,7 @@ export const languageVietnamese = {
         folderColorPurple: "tím",
         folderColorPink: "hồng",
         folderColorDefault: "mặc định",
+        defaultFolderName: "Thư mục mới",
         empty: "Trống",
         avatarAlt: "ảnh đại diện",
         ttsSpeaker: "Người nói",

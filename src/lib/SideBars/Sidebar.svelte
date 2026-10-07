@@ -16,7 +16,7 @@
 
 
   } from "../../ts/stores.svelte";
-    import { setDatabase, type folder } from "../../ts/storage/database.svelte";
+    import { setDatabase } from "../../ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import BarIcon from "./BarIcon.svelte";
     import SidebarIndicator from "./SidebarIndicator.svelte";
@@ -57,6 +57,18 @@
     import { RISU_SIDEBAR_DRAG_TYPE } from "src/ts/dragTypes";
     import { nearViewport } from "src/ts/gui/nearViewport.svelte";
     import { SvelteMap } from "svelte/reactivity";
+    import type { folder } from "src/ts/storage/database.svelte";
+    import {
+      editFolder,
+      dropOnItem,
+      listRows,
+      moveToGap,
+      type CharRef,
+      type FolderRef,
+      type Gap,
+      type ItemRef,
+      type MemberRef,
+    } from "./sidebarOrder";
   let sideBarMode = $state(0);
   let editMode = $state(false);
   let menuMode = $state(0);
@@ -70,24 +82,23 @@
     CharEmotion.set({});
   }
 
-  type sortTypeNormal = { type:'normal',img: string, index: number, name:string }
-  type sortType =  sortTypeNormal|{type:'folder',folder:sortTypeNormal[],id:string, name:string, color:string, img?:string}
+  type sortTypeNormal = { type:'normal', key:string, img: string, index: number, name:string }
+  type sortTopNormal = sortTypeNormal & { ref: CharRef }
+  type sortMember = sortTypeNormal & { ref: MemberRef }
+  type sortFolder = {type:'folder', key:string, ref:FolderRef, folder:sortMember[], id:string, name:string, color:string, img?:string}
+  type sortType = sortTopNormal | sortFolder
   let charImages: sortType[] = $state([]);
   let IconRounded = $state(false)
   let openFolders:string[] = $state([])
-  let currentDrag: DragData | null = $state(null)
-  // AV-2: DB character indices (shared by top-level normal items and folder
-  // members -- a given index only ever appears in one place) and folder ids
-  // near the sidebar's own scroll viewport (`:542`), each mapped to its
-  // owning element rather than a plain Set/id. `nearViewport`'s destroy
+  let currentDrag: ItemRef | null = $state(null)
+  // Row keys (unique per row, see `refKey`) of the rows near the sidebar's own
+  // scroll viewport, each mapped to its owning element. A row keeps its key
+  // when it moves, so its avatar state moves with it. `nearViewport`'s destroy
   // calls `onChange(false, node)` on every unmount, including a folder
-  // member's when its folder closes -- mapping to the owning element means
-  // that release only clears an index/id if `node` still owns it, so
-  // closing one folder (or a grid/list/trash tab switch that reuses the
-  // same index for a different item) can never wrongly clear a DIFFERENT,
-  // still-visible item that happens to share the same key.
-  let visibleCharIndices = new SvelteMap<number, Element>()
-  let visibleFolderIds = new SvelteMap<string, Element>()
+  // member's when its folder closes; mapping to the owning element means that
+  // release only clears a key if `node` still owns it, so an unmount can never
+  // clear a different, still-visible row that was given the same key.
+  let visibleRows = new SvelteMap<string, Element>()
   interface Props {
     openGrid?: any;
     hidden?: boolean;
@@ -100,41 +111,43 @@
   $effect(() => {
     let newCharImages: sortType[] = [];
     const idObject = getCharacterIndexObject()
-    for (const id of DBState.db.characterOrder) {
-      if(typeof(id) === 'string'){
-        const index = idObject[id] ?? -1
-        if(index !== -1){
+    const rows = listRows(DBState.db.characterOrder, (id) => Object.hasOwn(idObject, id))
+    for (const row of rows) {
+      if(row.kind === 'char'){
+        const index = idObject[row.id]
+        const cha = DBState.db.characters[index]
+        newCharImages.push({
+          key: row.key,
+          ref: row.ref,
+          img:cha.image ?? "",
+          index:index,
+          type: "normal",
+          name: cha.name
+        });
+      }
+      else{
+        const folderCharImages: sortMember[] = []
+        for(const member of row.members){
+          const index = idObject[member.id]
           const cha = DBState.db.characters[index]
-          newCharImages.push({
+          folderCharImages.push({
+            key: member.key,
+            ref: member.ref,
             img:cha.image ?? "",
             index:index,
             type: "normal",
             name: cha.name
           });
         }
-      }
-      else{
-        const folder = id
-        let folderCharImages: sortTypeNormal[] = []
-        for(const id of folder.data){
-          const index = idObject[id] ?? -1
-          if(index !== -1){
-            const cha = DBState.db.characters[index]
-            folderCharImages.push({
-              img:cha.image ?? "",
-              index:index,
-              type: "normal",
-              name: cha.name
-            });
-          }
-        }
         newCharImages.push({
+          key: row.key,
+          ref: row.ref,
           folder: folderCharImages,
           type: "folder",
-          id: folder.id,
-          name: folder.name,
-          color: folder.color,
-          img: folder.imgFile,
+          id: row.id,
+          name: row.entry.name,
+          color: row.entry.color,
+          img: row.entry.imgFile,
         });
       }
     }
@@ -146,97 +159,6 @@
     }
   })
 
-
-  const inserter = (mainIndex:DragData, targetIndex:DragData) => {
-    if(mainIndex.index === targetIndex.index && mainIndex.folder === targetIndex.folder){
-      return
-    }
-    let db = DBState.db
-    let mainFolderIndex = mainIndex.folder ? getFolderIndex(mainIndex.folder) : null
-    let targetFolderIndex = targetIndex.folder ? getFolderIndex(targetIndex.folder) : null
-    let mainFolderId = mainIndex.folder ? (db.characterOrder[mainFolderIndex] as folder).id : ''
-    let movingFolder:folder|false = false
-    let mainId = ''
-    if(mainIndex.folder){
-      mainId = (db.characterOrder[mainFolderIndex] as folder).data[mainIndex.index]
-    }
-    else{
-      const da = db.characterOrder[mainIndex.index]
-      if(typeof(da) !== 'string'){
-        mainId = da.id
-        movingFolder = $state.snapshot(da)
-        if(targetIndex.folder){
-          return
-        }
-      }
-      else{
-        mainId = da
-      }
-    }
-    if(targetIndex.folder){
-        const folder = db.characterOrder[targetFolderIndex] as folder
-        folder.data.splice(targetIndex.index,0,mainId)
-        db.characterOrder[targetFolderIndex] = folder
-    }
-    else if(movingFolder){
-        db.characterOrder.splice(targetIndex.index,0,movingFolder)
-    }
-    else{
-        db.characterOrder.splice(targetIndex.index,0,mainId)
-    }
-    if(mainIndex.folder){
-      mainFolderIndex = -1
-      for(let i=0;i<db.characterOrder.length;i++){
-        const a =db.characterOrder[i]
-        if(typeof(a) !== 'string'){
-          if(a.id === mainFolderId){
-            mainFolderIndex = i
-            break
-          }
-        }
-      }
-      if(mainFolderIndex !== -1){
-        const folder:folder = db.characterOrder[mainFolderIndex] as folder
-        const ind = mainIndex.index > targetIndex.index ? folder.data.lastIndexOf(mainId) : folder.data.indexOf(mainId) 
-        if(ind !== -1){
-          folder.data.splice(ind, 1)
-        }
-        db.characterOrder[mainFolderIndex] = folder
-      }
-      else{
-        console.log('folder not found')
-      }
-    }
-    else if(movingFolder){
-      let idList:string[] = []
-      for(const ord of db.characterOrder){
-        idList.push(typeof(ord) === 'string' ? ord : ord.id)
-      }
-      const ind = mainIndex.index > targetIndex.index ? idList.lastIndexOf(mainId) : idList.indexOf(mainId) 
-      if(ind !== -1){
-        db.characterOrder.splice(ind, 1)
-      }
-    }
-    else{
-      const ind = mainIndex.index > targetIndex.index ? db.characterOrder.lastIndexOf(mainId) : db.characterOrder.indexOf(mainId) 
-      if(ind !== -1){
-        db.characterOrder.splice(ind, 1)
-      }
-    }
-
-    DBState.db.characterOrder = db.characterOrder
-    checkCharOrder()
-  }
-
-  function getFolderIndex(id:string){
-    for(let i=0;i<DBState.db.characterOrder.length;i++){
-      const data = DBState.db.characterOrder[i]
-      if(typeof(data) !== 'string' && data.id === id){
-        return i
-      }
-    }
-    return -1
-  }
 
   function scrollToActiveCharacter() {
     const selectedId = $selectedCharID
@@ -261,7 +183,6 @@
     
     if (targetFolderId && !openFolders.includes(targetFolderId)) {
       openFolders.push(targetFolderId)
-      openFolders = openFolders
     }
     
     setTimeout(() => {
@@ -290,60 +211,44 @@
   })
 
 
-  const createFolder = (mainIndex:DragData, targetIndex:DragData) => {
-    if(mainIndex.index === targetIndex.index && mainIndex.folder === targetIndex.folder){
-      return
-    }
-    let db = DBState.db
-    let mainFolderIndex = mainIndex.folder ? getFolderIndex(mainIndex.folder) : null
-    let mainFolder = db.characterOrder[mainFolderIndex] as folder
-    if(targetIndex.folder){
-      return
-    }
-    const main = mainIndex.folder ? mainFolder.data[mainIndex.index] : db.characterOrder[mainIndex.index]
-    const target = db.characterOrder[targetIndex.index]
-    if(typeof(main) !== 'string'){
-      return
-    }
-    if(typeof (target) === 'string'){
-      const newFolder:folder = {
-        name: "New Folder",
-        data: [main, target],
-        color: "",
-        id: v4()
-      }
-      db.characterOrder[targetIndex.index] = newFolder
-      if(mainIndex.folder){
-        mainFolder.data.splice(mainIndex.index, 1)
-        db.characterOrder[mainFolderIndex] = mainFolder
-      }
-      else{
-        db.characterOrder.splice(mainIndex.index, 1)
-      }
-    }
-    else{
-      target.data.push(main)
-      if(mainIndex.folder){
-        mainFolder.data.splice(mainIndex.index, 1)
-        db.characterOrder[mainFolderIndex] = mainFolder
-      }
-      else{
-        db.characterOrder.splice(mainIndex.index, 1)
-      }
-    }
-
-    DBState.db.characterOrder = db.characterOrder
-    checkCharOrder()
-  }
-
   type DragEv = DragEvent & {
     currentTarget: EventTarget & HTMLDivElement;
   }
-  type DragData = {
-    index:number,
-    folder?:string
+
+  // Every drop is resolved against the live order by id and occurrence. The
+  // result is assigned through `DBState.db.characterOrder` and followed by
+  // `checkCharOrder()`; an operation that changes nothing writes nothing.
+  const applyOrderChange = (change: (order: typeof DBState.db.characterOrder) => typeof DBState.db.characterOrder) => {
+    const current = DBState.db.characterOrder
+    const next = change(current)
+    if(next === current){
+      return
+    }
+    DBState.db.characterOrder = next
+    checkCharOrder()
   }
-  const avatarDragStart = (ind:DragData, e:DragEv) => {
+
+  const moveDragTo = (drag:ItemRef, gap:Gap) => {
+    applyOrderChange((order) => moveToGap(order, drag, gap))
+  }
+
+  const dropDragOn = (drag:ItemRef, target:ItemRef) => {
+    applyOrderChange((order) => dropOnItem(order, drag, target, {
+      id: v4(),
+      name: language.sidebarUi.defaultFolderName,
+    }))
+  }
+
+  // Finds the folder by id at the moment of writing, so an edit that waited
+  // on a dialog or a file picker never lands on a different entry.
+  const editFolderById = (id:string, edit:(copy:folder) => void) => {
+    const next = editFolder(DBState.db.characterOrder, id, edit)
+    if(next){
+      DBState.db.characterOrder = next
+    }
+  }
+
+  const avatarDragStart = (ind:ItemRef, e:DragEv) => {
     e.dataTransfer.setData('text/plain', '');
     e.dataTransfer.setData(RISU_SIDEBAR_DRAG_TYPE, 'true');
     currentDrag = ind
@@ -387,7 +292,7 @@
     e.dataTransfer.dropEffect = 'move'
   }
 
-  const avatarDrop = (ind:DragData, e:DragEv) => {
+  const avatarDrop = (ind:ItemRef, e:DragEv) => {
     const drag = getCurrentSidebarDrag(e)
     if(!drag){
       return
@@ -395,7 +300,7 @@
     e.preventDefault()
     e.stopPropagation()
     try {
-      createFolder(drag,ind)
+      dropDragOn(drag,ind)
     } catch (error) {
       console.error('avatarDrop error:', error)
     } finally {
@@ -572,19 +477,19 @@
       e.stopPropagation()
       e.currentTarget.classList.remove('bg-green-500')
       try {
-        inserter(drag,{index:0})
+        moveDragTo(drag,{in:'top', after:null})
       } finally {
         clearCurrentDrag()
       }
     }} ondragenter={preventAll}></div>
-    {#each charImages as char, ind}
+    {#each charImages as char (char.key)}
       <div class="group relative flex items-center px-2"
         role="listitem"
         draggable="true"
-        ondragstart={(e) => {avatarDragStart({index:ind}, e)}}
+        ondragstart={(e) => {avatarDragStart(char.ref, e)}}
         ondragend={clearCurrentDrag}
         ondragover={avatarDragOver}
-        ondrop={(e) => {avatarDrop({index:ind}, e)}}
+        ondrop={(e) => {avatarDrop(char.ref, e)}}
         ondragenter={preventAll}
       >
         <SidebarIndicator
@@ -594,11 +499,7 @@
         <div
             role="button" tabindex="0"
             use:nearViewport={{ onChange: (v, node) => {
-              if (char.type === 'normal') {
-                if (v) { visibleCharIndices.set(char.index, node) } else if (visibleCharIndices.get(char.index) === node) { visibleCharIndices.delete(char.index) }
-              } else if (char.type === 'folder') {
-                if (v) { visibleFolderIds.set(char.id, node) } else if (visibleFolderIds.get(char.id) === node) { visibleFolderIds.delete(char.id) }
-              }
+              if (v) { visibleRows.set(char.key, node) } else if (visibleRows.get(char.key) === node) { visibleRows.delete(char.key) }
             } }}
             onclick={() => {
               if(char.type === "normal"){
@@ -615,7 +516,7 @@
           >
           {#if char.type === 'normal'}
             {@const imgPath = char.img}
-            {@const isVisible = visibleCharIndices.has(char.index)}
+            {@const isVisible = visibleRows.has(char.key)}
             {@const avatarSrc = isVisible ? (imgPath ? getCharImage(imgPath, "thumb") : "/none.webp") : undefined}
             <SidebarAvatar
               src={avatarSrc as string | Promise<string>}
@@ -628,22 +529,17 @@
             {#key char.color}
             {#key char.name}
               {@const folderImgPath = char.img}
-              {@const isFolderVisible = visibleFolderIds.has(char.id)}
+              {@const isFolderVisible = visibleRows.has(char.key)}
               {@const avatarBg = isFolderVisible ? (folderImgPath ? getCharImage(folderImgPath, "thumb") : "") : ""}
               <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered name={char.name} color={char.color} backgroundimg={avatarBg}
               oncontextmenu={async (e) => {
                 e.preventDefault()
+                const folderId = char.id
                 const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.cancel]))
                 if(sel === 0){
                   const v = await alertInput(language.changeFolderName, [], char.name)
-                  const db = DBState.db
                   if(v){
-                    const oder = db.characterOrder[ind]
-                    if(typeof(oder) === 'string'){
-                      return
-                    }
-                    oder.name = v
-                    db.characterOrder[ind] = oder
+                    editFolderById(folderId, (entry) => { entry.name = v })
                   }
                 }
                 else if(sel === 1){
@@ -652,27 +548,16 @@
                   if(colorValue === undefined){
                     return
                   }
-                  const db = DBState.db
-                  const oder = db.characterOrder[ind]
-                  if(typeof(oder) === 'string'){
-                    return
-                  }
-                  oder.color = colorValue
-                  db.characterOrder[ind] = oder
+                  editFolderById(folderId, (entry) => { entry.color = colorValue })
                 }
                 else if(sel === 2) {
                   const sel = parseInt(await alertSelect([language.alerts.resetToDefaultImage, language.alerts.selectImageFile]))
-                  const db = DBState.db
-                  const oder = db.characterOrder[ind]
-                  if(typeof(oder) === 'string'){
-                    return
-                  }
 
                   switch (sel) {
                     case 0:
-                      applyFolderImage(oder, null)
+                      editFolderById(folderId, (entry) => { applyFolderImage(entry, null) })
                       break;
-                  
+
                     case 1:
                       const folderImage = await selectSingleFile([
                         'png',
@@ -688,8 +573,7 @@
                       try {
                         const folderImageData = await saveAsset(folderImage.data)
 
-                        applyFolderImage(oder, folderImageData)
-                        db.characterOrder[ind] = oder
+                        editFolderById(folderId, (entry) => { applyFolderImage(entry, folderImageData) })
                       } finally {
                         busy.end()
                       }
@@ -707,7 +591,6 @@
                 else{
                   openFolders.push(char.id)
                 }
-                openFolders = openFolders
               }}>
                 {#if DBState.db.showFolderName}
                   <div class="h-full w-full flex justify-center items-center">
@@ -753,23 +636,23 @@
             e.currentTarget.classList.remove('bg-green-500')
             try {
               if(char.type === 'folder'){
-                inserter(drag,{index:0,folder:char.id})
+                moveDragTo(drag,{in:'folder', folder:char.ref, after:null})
               }
             } finally {
               clearCurrentDrag()
             }
           }} ondragenter={preventAll}></div>
-          {#each char.folder as char2, ind}
+          {#each char.folder as char2 (char2.key)}
               {@const memberImgPath = char2.img}
-              {@const isMemberVisible = visibleCharIndices.has(char2.index)}
+              {@const isMemberVisible = visibleRows.has(char2.key)}
               {@const avatarSrc2 = isMemberVisible ? (memberImgPath ? getCharImage(memberImgPath, "thumb") : "/none.webp") : undefined}
               <div class="group relative flex items-center px-2 z-10"
               role="listitem"
               draggable="true"
-              ondragstart={(e) => {if(char.type === 'folder'){avatarDragStart({index: ind, folder:char.id}, e)}}}
+              ondragstart={(e) => {avatarDragStart(char2.ref, e)}}
               ondragend={clearCurrentDrag}
               ondragover={avatarDragOver}
-              ondrop={(e) => {if(char.type === 'folder'){avatarDrop({index: ind, folder:char.id}, e)}}}
+              ondrop={(e) => {avatarDrop(char2.ref, e)}}
               ondragenter={preventAll}
             >
               <SidebarIndicator
@@ -779,7 +662,7 @@
               <div
                   role="button" tabindex="0"
                   use:nearViewport={{ onChange: (v, node) => {
-                    if (v) { visibleCharIndices.set(char2.index, node) } else if (visibleCharIndices.get(char2.index) === node) { visibleCharIndices.delete(char2.index) }
+                    if (v) { visibleRows.set(char2.key, node) } else if (visibleRows.get(char2.key) === node) { visibleRows.delete(char2.key) }
                   } }}
                   onclick={() => {
                     if(char2.type === "normal"){
@@ -819,7 +702,7 @@
               e.currentTarget.classList.remove('bg-green-500')
               try {
                 if(char.type === 'folder'){
-                  inserter(drag,{index:ind+1,folder:char.id})
+                  moveDragTo(drag,{in:'folder', folder:char.ref, after:char2.ref})
                 }
               } finally {
                 clearCurrentDrag()
@@ -844,7 +727,7 @@
         e.stopPropagation()
         e.currentTarget.classList.remove('bg-green-500')
         try {
-          inserter(drag,{index:ind+1})
+          moveDragTo(drag,{in:'top', after:char.ref})
         } finally {
           clearCurrentDrag()
         }
