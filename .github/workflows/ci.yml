@@ -1,0 +1,141 @@
+name: CI
+
+# Type check, unit tests, production build, and smoke checks of the self-hosting servers.
+# Docs-only and agent-note-only changes skip the run.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'Agents/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'Agents/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+# One run per branch or pull request. A newer push to a pull request cancels the superseded run;
+# a running main run is never cancelled (GitHub still keeps only the newest pending one).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The pnpm version comes from the packageManager field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      # package.json engines allows node ^20.19.0 || >=22.12.0; the Dockerfile builds with 24.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  node-server:
+    name: Node server smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # server/node serves ./dist, so the web build must exist first.
+      - name: Build web app
+        run: pnpm build
+
+      # Boots the server on a spare port and expects the built index.html at "/".
+      # The server writes ./save in the working directory; it is gitignored.
+      - name: Boot server and fetch index.html
+        env:
+          PORT: '6011'
+        run: |
+          set -euo pipefail
+          node server/node/server.cjs > "$RUNNER_TEMP/node-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${PORT}/" -o "$RUNNER_TEMP/index.html" 2>/dev/null; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "::error::The Node server exited before answering."
+              cat "$RUNNER_TEMP/node-server.log"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if ! grep -qi '<html' "$RUNNER_TEMP/index.html"; then
+            echo "::error::GET / did not return the built index.html."
+            cat "$RUNNER_TEMP/node-server.log"
+            exit 1
+          fi
+          echo "GET / returned index.html"
+
+  hono-server:
+    name: Hono server type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The Hono server is under development; a type error here is reported but does not fail CI.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: server/hono/pnpm-lock.yaml
+
+      # server/hono is its own package with its own lockfile, separate from the root install.
+      - name: Install Hono server dependencies
+        working-directory: server/hono
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        working-directory: server/hono
+        run: pnpm exec tsc --noEmit

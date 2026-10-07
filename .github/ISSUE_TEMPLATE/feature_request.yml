@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a change or an addition.
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today? Describe the problem before any solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The change you have in mind, and any alternatives you considered.
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platforms affected
+      options:
+        - label: Hosted web
+        - label: Local web (Node server)
+        - label: Docker
+        - label: Desktop (Tauri)
+        - label: Android
+
+  - type: dropdown
+    id: compat
+    attributes:
+      label: Does it touch upstream-compatible data?
+      description: Backups (`.bin`), characters, modules, presets or plugins. This fork must keep reading and writing these in both directions with upstream RisuAI.
+      options:
+        - 'No'
+        - 'Yes'
+        - Not sure
+    validations:
+      required: true

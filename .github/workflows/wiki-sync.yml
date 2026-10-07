@@ -28,6 +28,9 @@ on:
       - '.github/workflows/wiki-sync.yml'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 concurrency:
   group: wiki-sync
   cancel-in-progress: false
@@ -43,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout source repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout wiki repo
         env:

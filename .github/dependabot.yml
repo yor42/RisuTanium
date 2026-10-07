@@ -1,0 +1,49 @@
+version: 2
+
+updates:
+  # Workflow action versions.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+
+  # App dependencies (pnpm is covered by the npm ecosystem). A group listed first wins for a
+  # package that matches several, so the Tauri JS packages stay out of the general group.
+  # Their versions are exact pins that must track the Rust plugin crates, so they move together.
+  # Major updates match no group and arrive as separate pull requests.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+    # Held at their current versions on purpose; update them by hand.
+    # @types/three follows three.
+    ignore:
+      - dependency-name: '@swc/core'
+      - dependency-name: msgpackr
+      - dependency-name: three
+      - dependency-name: '@types/three'
+    groups:
+      tauri:
+        patterns:
+          - '@tauri-apps/*'
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Hono server: its own package and lockfile.
+  - package-ecosystem: npm
+    directory: /server/hono
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch

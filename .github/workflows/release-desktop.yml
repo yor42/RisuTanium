@@ -1,0 +1,96 @@
+name: Desktop draft release
+
+# Manual only. Builds every desktop target and attaches the installers to a DRAFT release
+# named after the version in src-tauri/tauri.conf.json. Nothing is published until the
+# draft is published by hand (which also creates the v* tag and so triggers docker-publish.yml).
+#
+# The installers are unsigned: no Apple or Windows signing secrets exist, and updater
+# artifacts are off in tauri.conf.json, so no Tauri signing key is passed.
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-desktop:
+    name: Build ${{ matrix.settings.target }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - platform: macos-latest # Apple silicon
+            target: aarch64-apple-darwin
+          - platform: macos-latest # Intel
+            target: x86_64-apple-darwin
+          - platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - platform: ubuntu-24.04-arm # native arm64 runner
+            target: aarch64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.settings.platform }}
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The pnpm version comes from the packageManager field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Linux libraries
+        if: startsWith(matrix.settings.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.settings.platform }}-${{ matrix.settings.target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The legal flag comes from .env.production (on). Nothing here sets or overrides it.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # __VERSION__ is replaced by the app version.
+          tagName: v__VERSION__
+          # The tag is created at the commit this run built, not at the default branch head.
+          releaseCommitish: ${{ github.sha }}
+          releaseName: v__VERSION__
+          releaseBody: |
+            Unsigned desktop builds of RisuTanium. No release of this fork has been announced yet.
+
+            - Windows: SmartScreen warns about an unknown publisher. Choose "More info", then "Run anyway".
+            - macOS: the app is not signed or notarised. Right-click the app, choose Open, and confirm.
+            - Linux: use the AppImage, deb or rpm for your architecture.
+
+            Back up your data with Settings, Backup and Files before trying a build, and see the
+            Migrating-from-upstream wiki page if you are coming from RisuAI.
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.settings.target }}
+          tauriScript: pnpm tauri
