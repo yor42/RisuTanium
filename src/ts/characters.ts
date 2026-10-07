@@ -18,6 +18,7 @@ import { getAvatarThumbSrc, isThumbEligible } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
+import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -937,11 +938,12 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     if (removedChaId) {
         stopWorkIn({ chaId: removedChaId })
     }
+    let removed: (character | groupChat)[] = []
     if(type === 'normal'){
         chars[index].trashTime = Date.now()
     }
     else{
-        chars.splice(index, 1)
+        removed = chars.splice(index, 1)
     }
     checkCharOrder()
     DBState.db.characters = chars
@@ -951,6 +953,7 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     // listed) or the selected-character effects, so removing a character that is
     // not listed (an already-trashed one) with nothing selected needs this mark.
     markCharacterForSave(removedChaId)
+    queueInlayCleanupForCharacters(removed)
     selectedCharID.set(-1)
 }
 
@@ -1021,6 +1024,7 @@ export async function removeTrashedCharacters(refs: (character | groupChat)[], o
     for(const ref of doomed){
         markCharacterForSave(ref.chaId)
     }
+    queueInlayCleanupForCharacters([...doomed])
     if(selectedRef){
         selectedCharID.set(doomed.has(selectedRef) ? -1 : DBState.db.characters.indexOf(selectedRef))
     }
@@ -1058,6 +1062,9 @@ export async function removeChatConfirmed(owner: character | groupChat, chat: Ch
     const chats = owner.chats
     chats.splice(index, 1)
     owner.chats = chats
+    // The removal reaches the save only through this mark when the owner is not the selected character.
+    markCharacterForSave(owner.chaId)
+    queueInlayCleanupForChat(chat)
     return true
 }
 

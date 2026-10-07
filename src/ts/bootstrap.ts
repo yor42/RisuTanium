@@ -53,6 +53,7 @@ import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { startInlayCopy } from "./process/files/inlayCopy";
+import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
@@ -1071,16 +1072,18 @@ async function checkNewFormat(): Promise<void> {
     if (db.mainPrompt === oldJailbreak) {
         db.mainPrompt = defaultJailbreak;
     }
+    const purged: typeof db.characters = [];
     for (let i = 0; i < db.characters.length; i++) {
         const trashTime = db.characters[i].trashTime;
         const targetTrashTime = trashTime ? trashTime + 1000 * 60 * 60 * 24 * 3 : 0;
         if (trashTime && targetTrashTime < Date.now()) {
-            db.characters.splice(i, 1);
+            purged.push(...db.characters.splice(i, 1));
             i--;
         }
     }
     setDatabase(db);
     checkCharOrder();
+    queueInlayCleanupForCharacters(purged);
 }
 
 const ASSET_KEY_PREFIX = 'assets/'
