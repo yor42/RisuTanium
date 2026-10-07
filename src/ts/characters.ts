@@ -8,7 +8,7 @@ import { getImageType } from "./media";
 import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } from "./stores.svelte";
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
-import { parseMarkdownSafe } from "./parser/parser.svelte";
+import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
 import { doingChat } from "./process/index.svelte";
 import { importCharacter } from "./characterCards";
@@ -271,7 +271,9 @@ export async function exportChat(page:number){
             v = parseMarkdownSafe(v)
 
             if(doTranslate){
-                v = await translateHTML(v, false, '', -1)
+                // Translator, LLM and display-script output is not trusted markup:
+                // the exported file must be exactly as strict as the untranslated one.
+                v = sanitizeMarkdownSafe(await translateHTML(v, false, '', -1))
             }
 
             if(anonymous){

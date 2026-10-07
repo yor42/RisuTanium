@@ -936,13 +936,24 @@ export async function postTranslationParse(data:string){
     return data
 }
 
-export function parseMarkdownSafe(data:string, arg:{
+/**
+ * Sanitizes HTML with the rules parseMarkdownSafe applies, without rendering
+ * markdown. Anything that must be exactly as strict as parseMarkdownSafe output
+ * goes through here so the two cannot drift.
+ */
+export function sanitizeMarkdownSafe(html:string, arg:{
     forbidTags?: string[],
 } = {}) {
-    return DOMPurify.sanitize(renderMarkdown(md, data), {
+    return DOMPurify.sanitize(html, {
         FORBID_TAGS: ["a", "style", ...(arg.forbidTags || [])],
         FORBID_ATTR: ["style", "href", "class"]
     })
+}
+
+export function parseMarkdownSafe(data:string, arg:{
+    forbidTags?: string[],
+} = {}) {
+    return sanitizeMarkdownSafe(renderMarkdown(md, data), arg)
 }
 
 
