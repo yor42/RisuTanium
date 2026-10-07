@@ -24,7 +24,8 @@ import { characterURLImport, hubURL } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
-import { installCharacterSaveMarks } from "./storage/characterSaveMarks";
+import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
+import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { digestMainFileBytes } from "./storage/mainFileRecord";
@@ -1490,14 +1491,29 @@ export async function saveDb() {
     // bootSaveSequence's own comment for what this two-phase install
     // (pending, then real) actually buys: coalescing any save requests made
     // during init into a single deferred one, once init completes.
-    await bootSaveSequence({
-        tracker: changeTracker,
-        installMarks: installCharacterSaveMarks,
-        init: () => encoder.init(getDatabase(), {
-            compression: false
-        }),
-        createRealScheduler: () => saveTimeoutExecute
+
+    // The boot window (bootWindow.ts) records what the change effects below
+    // cannot see because they first run after `init`: the characters selected
+    // while it ran, and whether the person, a boot-time import or a plugin
+    // panel left unsaved work. It is closed, and its answer read, in the same
+    // synchronous step that registers the effects.
+    const bootWindow = openBootWindow({
+        getCharacters: () => getDatabase()?.characters,
+        markUnsaved: () => saveTimeoutExecute(true)
     })
+    try {
+        await bootSaveSequence({
+            tracker: changeTracker,
+            installMarks: installCharacterSaveMarks,
+            init: () => encoder.init(getDatabase(), {
+                compression: false
+            }),
+            createRealScheduler: () => saveTimeoutExecute
+        })
+    } catch (error) {
+        bootWindow.close()
+        throw error
+    }
     try {
         publishFrozenSaveIndicator(encoder, getDatabase())
     } catch (error) {
@@ -1505,6 +1521,7 @@ export async function saveDb() {
         console.error('Failed to publish the frozen-save indicator:', error)
     }
 
+    const bootWindowAnswer = bootWindow.close()
     $effect.root(() => {
         registerDbChangeEffects({
             tracker: changeTracker,
@@ -1523,6 +1540,15 @@ export async function saveDb() {
             seed: encoder.takeEncodedCharacterProxies()
         })
     })
+    // A character edited in place while it was selected in the window is
+    // re-encoded from live data by the first pass, whatever is selected now.
+    // Appending marks nothing unsaved: only the window's answer does.
+    for (const chaId of bootWindowAnswer.selectedChaIds) {
+        appendIfAbsent(changeTracker, chaId)
+    }
+    if (bootWindowAnswer.unsaved) {
+        saveTimeoutExecute(true)
+    }
 
     // The owner is the page's one; the store is the one it writes through.
     // Neither is needed before the loop starts, which keeps everything above

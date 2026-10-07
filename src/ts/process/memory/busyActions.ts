@@ -99,10 +99,17 @@ export interface PluginPanelHandle {
 }
 
 const shownPluginPanels = new Set<PluginPanelHandle>()
+let pluginPanelShownCount = 0
 
 /** Records that a plugin's panel was shown, until `markPluginPanelHidden` or the panel leaves the page. */
 export function markPluginPanelShown(panel: PluginPanelHandle): void {
     shownPluginPanels.add(panel)
+    pluginPanelShownCount += 1
+}
+
+/** How many times a plugin panel was shown in this page life, hidden again or not: a reader that saw a lower count knows a panel was shown since. */
+export function getPluginPanelShownCount(): number {
+    return pluginPanelShownCount
 }
 
 export function markPluginPanelHidden(panel: PluginPanelHandle): void {
@@ -139,4 +146,5 @@ export function resetBusyActionsForTest(): void {
     lastPluginActivityAt = 0
     pluginDevModeStarted = false
     shownPluginPanels.clear()
+    pluginPanelShownCount = 0
 }

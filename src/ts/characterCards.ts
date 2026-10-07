@@ -24,6 +24,7 @@ import { exportModuleLegacy, readModule, type RisuModule } from "./process/modul
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
+import { markBootWrite } from "./bootWindow"
 import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 
@@ -174,6 +175,8 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource):P
         }
         if(file.kind === 'preset'){
             const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : await data.read(0, data.size)
+            //Every import write in this file that adds a character, module or preset announces itself first: one that lands before the change effects exist is unsaved work the effects cannot see.
+            markBootWrite()
             await importPreset({
                 name: file.name,
                 data: bytes
@@ -185,6 +188,7 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource):P
         }
         const md = await readModule(data instanceof File ? importSourceOfFile(data) : data)
         md.id = v4()
+        markBootWrite()
         DBState.db.modules.push(md)
         alertNormal(language.successImport)
         SettingsMenuIndex.set(14)
@@ -270,6 +274,7 @@ async function readCharacterFile(f:{
             return {kind: 'declined'}
         }
         if((da?.char_name || da?.name) && (da.char_persona || da.description) && (da.char_greeting || da.first_mes)){
+            markBootWrite()
             DBState.db.characters.push(convertOffSpecCards(da))
             alertNormal(language.importedCharacter)
             return {kind: 'imported', index: DBState.db.characters.length - 1}
@@ -673,6 +678,7 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource):Pro
 
         if(plan.kind === 'tavern'){
             const imgp = await saveAsset(img)
+            markBootWrite()
             DBState.db.characters.push(convertOffSpecCards(plan.card, imgp))
             alertNormal(language.importedCharacter)
             return {kind: 'imported', index: DBState.db.characters.length - 1}
@@ -885,6 +891,7 @@ export async function characterURLImport() {
             importData.id = v4()
 
             if(!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm)){
+                markBootWrite()
                 DBState.db.modules.push(importData)
                 alertNormal(language.successImport)
                 SettingsMenuIndex.set(14)
@@ -899,6 +906,7 @@ export async function characterURLImport() {
         try {
             const data = hash.replace('#import_preset=', '')
             const importData =Buffer.from(decodeURIComponent(data), 'base64')
+            markBootWrite()
             await importPreset({
                 name: 'imported.risupreset',
                 data: importData
@@ -1452,6 +1460,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         return char as any
     }
 
+    markBootWrite()
     db.characters.push(char)
     alertNormal(language.importedCharacter)
     return true as any
