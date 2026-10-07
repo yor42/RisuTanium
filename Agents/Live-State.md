@@ -592,7 +592,7 @@ Several sessions work **in this same checkout**:
 |---|---|---|
 | MC ids | `MC-196` to `MC-199`, `MC-222` to `MC-225`, `MC-226` to `MC-230` | `MC-231` (onward) |
 | Ledger rows | 1099, 1100 and 1179 to 1334 | 1335 |
-| CHORE ids | CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 (CHORE-120 and CHORE-121 were used earlier) | CHORE-116 to CHORE-119, then CHORE-130 |
+| CHORE ids | CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 (CHORE-120 and CHORE-121 were used earlier) | CHORE-116 assigned, CHORE-117 and CHORE-118 held, CHORE-119 and CHORE-130 to CHORE-132 used; next free CHORE-133 |
 | Reports | 59, 60 and 61 | 62 to 64, then 70 onward |
 
 The UI session and the side session are finished and take no more numbers; the Wiki and UI sessions are retired (`MC-222` 3), so a new session for wiki or parallel UI work would need its own ranges from the maintainer. Check the ledger's last row before taking a number.
