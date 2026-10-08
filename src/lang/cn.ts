@@ -586,7 +586,7 @@ export const languageChinese = {
         "hideAllImagesDesc": "隐藏机器人图标、机器人图片资源和RisuRealm封面图片。",
         "embedding": "嵌入模型用于多个功能中的相似度搜索：\n\n- **长期记忆**: HypaV2, HypaV3, Hanurai Memory 和 SupaMemory (启用 HypaMemory 时)\n- **附加文本**: 基于上下文匹配角色附加信息\n- **动态资产**: 当未找到精确匹配时查找相似的资产名称\n- **情感图片**: 当情感方式设置为 'embedding' 时\n- **触发脚本**: 触发脚本中的相似度条件\n- **文件附件**: 在 PDF/TXT/XML 附件中搜索\n- **Playground**: Playground 中的嵌入测试",
         "enableScrollToActiveChar": "如果启用，按下热键将使侧边栏滚动到当前活跃的角色。如果文件夹已关闭，将自动打开。",
-        "keepSessionAlive": "使标签页保持活动状态，防止浏览器因长时间不活动而导致会话过期。此设置可能需要刷新页面后才能生效。\n\n- **通过声音**：定期播放静音音频以保持会话活跃。此方法在大多数浏览器中被认为是兼容性和效果最好的方式。\n",
+        "keepSessionAlive": "使标签页保持活动状态，防止浏览器因长时间不活动而导致会话过期。此设置可能需要刷新页面后才能生效。\n\n- **通过声音**：循环播放人耳听不到的低频音以保持会话。此方式在大多数浏览器中兼容性最好，也通常最有效。在 Android 上启用时会显示媒体通知，其他音乐应用也可能会暂停。\n",
         "reSummarizationPrompt": "通过批量编辑将多个选中的总结合并为一个时所使用的提示词。留空将使用默认提示词。",
         "hypaV3MemoryTokensRatio": "分配给提示词中长期记忆区块 {{slot}} 的最大上下文大小比例。",
         "hypaV3ExtraSummarizationRatio": "降低总结停止的阈值。设为 0 时，Token 数一旦低于最大上下文即停止总结。数值越高，停止前进行的总结越多。",
