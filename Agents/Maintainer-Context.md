@@ -8638,3 +8638,81 @@ This records the stated primary surface, not an independently inspected Desktop 
 > +commit the docs as separate commits when finished.
 
 Commit the completed and independently verified workflow/configuration/documentation changes in coherent separate groups. This amends the earlier no-commit boundary for this audit only. Stage exact owned paths; preserve existing launch/Android changes and raw untracked handoff evidence. No push, application-source change or unrelated commit is authorized.
+
+---
+
+### MC-245 — Main Campaign, 2026-10-07: answers on the translator innerHTML case, unused fonts, Android system bars, repo settings, inlay terms and ticket ids
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-07 (recorded 2026-10-08)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's `AskUserQuestion` answers as the Orchestrator recorded them in `Agents/Handoff-2026-10-08/records-pending2.md` (lines 3-9; repo-settings read-back lines 15-17) and `Agents/Handoff-2026-10-08.md` section 2. The question wording and the unchosen options are not in the sources given; only the chosen label and the Orchestrator's one-line gloss are. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded for any of the six.
+- **Related:** `MC-238` (which left F4 undecided), `MC-231`, `MC-175`; CHORE-114, CHORE-117, CHORE-118, CHORE-133, CHORE-134.
+
+**What was decided:**
+1. **F4 (translator `combineTranslation` single-sentence `node.innerHTML`): "File a ticket (Recommended)".** Ticket CHORE-133: trace where the markup can come from, then insert it as text or sanitize it. Gated; not now. `MC-238` recorded this case as "Not decided: ... a maintainer call and a candidate ticket" (finding F4, ledger row 1408); this answer settles that.
+2. **Tilt Prism and Yellowtail fonts (unused by the app): "Check cards first (Recommended)".** Trace whether upstream ships them for card or theme CSS; remove them only if nothing upstream-compatible can reference them (`MC-175`). No ticket number was assigned in the sources given.
+3. **Android release build: controls sit under the status and navigation bars: "Ticket a fix (Recommended)".** Ticket CHORE-134: safe-area insets on Android; check against the debug build in the Note 9 session.
+4. **Repository settings (Dependabot security updates, Actions default token read-only, secret scanning, push protection): "I'll toggle them (Recommended)".** The maintainer changes them in GitHub Settings; the Orchestrator supplies the list.
+5. **Inlay terms per locale (CHORE-114 strings: transliteration plus gloss, for example ko `인레이(...)`): "Keep as written (Recommended)".** The maintainer fixes any locale later.
+6. **CHORE-117 (save-time validation) and CHORE-118 (Gemini audio orphan, held) ids: "Keep (Recommended)".**
+
+**Repository settings read-back (Orchestrator, read-only `gh api`, after the maintainer's toggles; 2026-10-07 per the records note):**
+- `default_workflow_permissions`: `read`; `can_approve_pull_request_reviews`: `false` (the maintainer turned it off on the Orchestrator's suggestion; read back).
+- Dependabot alerts on (vulnerability-alerts 204); Dependabot security updates enabled (not paused); secret scanning enabled; push protection enabled; private vulnerability reporting enabled. Non-provider patterns and validity checks: disabled (not in the list).
+
+---
+
+### MC-246 — Main Campaign, 2026-10-07: CHORE-116 boot prompt is "Prompt"
+
+- **Tag:** decision (`AskUserQuestion` answer, by option label)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer as recorded in `Agents/Handoff-2026-10-08/records-pending2.md` line 22 and `Agents/Handoff-2026-10-08.md` section 2. The question text and the unchosen options are not in the sources given.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-041`; CHORE-116 (committed `a5a3095d`).
+
+**What was decided:** option **"Prompt (Recommended)"**: any trusted input, boot-import write or plugin panel use in the boot window makes the tab dirty, so a peer save before the first pass prompts instead of auto-reloading, even for input that changed nothing.
+
+---
+
+### MC-247 — Main Campaign, 2026-10-08: CHORE-117 save-time validation, decisions D1 to D8 (D4 superseded by D5)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers as recorded in `Agents/Handoff-2026-10-08/records-pending2.md` (lines 32, 35, 41, 46, 52, 57) and the decision table in `Agents/Handoff-2026-10-08.md` section 3. The Orchestrator's records give the chosen label, a gloss and the rejected alternative; the full question texts are not in the sources given.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** named per decision below, as the records give them.
+- **Related:** `MC-234` (queued the ticket), `MC-036`, `MC-163`, `MC-175`, `MC-078`, `MC-079`, `MC-082`; CHORE-117; ledger rows 1442 to 1454.
+
+**What was decided (D1 to D8 keep the Orchestrator's numbering):**
+1. **D1, "Fix or skip, then warn (Recommended)".** Live data that would make the file unloadable is repaired (missing id filled, unusable id replaced) or left out (non-character entry); everything else keeps saving; a toast names it. Rejected: "Stop saving and say why".
+2. **D2, "Yes, throw to the plugin (Recommended)".** `setDatabase`, `setDatabaseLite`, `setChar`, `setCharacter` and `setCharacterToIndex` reject malformed writes at the call, and the database is unchanged. Rejected: "No, save-time only".
+3. **D3, "Pause saving, name it (Recommended)".** An archived stub with an unusable id pauses saving and names it. Rejected: "Re-id and move the archive".
+4. **D4, "Keep last good id (Recommended)".** A plugin-set unusable live id is saved under the last good id (fresh if none), the in-memory object stays untouched until restart, and a notice names it. Rejected: "Rename it live". Refined D1. **Superseded by D5 (below); D4 is kept as history and is not in force.**
+5. **D5, "Pause saving for it (Recommended)"** (asked after the fourth rejection on the item, per the simplify-the-product rule). An already-saved character renamed in place to an unusable id pauses saving with a named error. **Supersedes D4.** Rejected: "Keep D4, fix the leaks".
+6. **D6, "Yes, recover the id (Recommended)".** On restore and export, an unusable-id stub takes back the `chaId` recorded in its archived unit; a missing or mismatched unit refuses the restore by name; boot is unchanged (install and pause). Rejected: "Refuse those restores".
+7. **D7, "Split 1a / 1b (Recommended)".** Stage 1 is split into 1a and 1b. Rejected: "Keep one Stage 1". (The stage contents are in the Roadmap entry, not decided here.)
+8. **D8, "Refuse it by name (Recommended)".** A restore whose stub id and unit id are both unusable is refused by name. Rejected: "Give both a new id".
+
+**Scope note:** the Orchestrator's records disclose one `MC-175` exception in the Stage 1a plan: a restore whose stub and unit ids are both unusable (D8; `records-pending2.md` line 55). No amendment to `MC-175` is recorded here.
+
+---
+
+### MC-248 — Main Campaign, 2026-10-08: a restore that repaired the character list announces it (extends MC-247 D1)
+
+- **Tag:** decision (`AskUserQuestion` answer, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the Orchestrator's question "Should a restore announce these repairs?", as relayed by the Orchestrator after the CHORE-117 Stage 1a Gate 2 review (a fresh `opus-reviewer`, `[REJECT]` on a separate finding) observed that the restore paths repair silently. The alternatives ("Stay silent", "Defer to Stage 1b") are named as relayed by the Orchestrator; the question wording beyond the quoted sentence and the option texts are not in the sources given. The observation is finding F4 of Gate 2 round 1 (ledger row 1467).
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** "Stay silent" and "Defer to Stage 1b" (the options offered were "Announce it", "Stay silent" and "Defer to Stage 1b").
+- **Related:** `MC-247` (extends D1; does not supersede it), `MC-223`; CHORE-117.
+
+**What was decided:** option **"Announce it"**. After a restore that repaired anything, show the same kind of one-time notice the live check uses, giving the counts of entries dropped and ids filled or recovered. Show no notice when nothing was repaired.
+
+**Scope as the Orchestrator described it:** the repairing restore paths are `repairRestoredCharacters` in `restoreReplace.ts` (used by `LoadLocalBackup` and the internal backup) and `bootBlockLoad.ts` (the boot damage-prompt restore). They drop entries that are not characters, fill missing ids, replace unusable ids and recover archived ids from the archived data. `MC-247` D1 had scoped the repair notice to live data only; this decision extends D1 to restores.
