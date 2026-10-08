@@ -1,0 +1,16 @@
+{
+  "name": "risutanium-lsp",
+  "owner": {
+    "name": "RisuTanium maintainers"
+  },
+  "metadata": {
+    "description": "Local language-intelligence metadata for the RisuTanium workflow. Language-server binaries are installed separately."
+  },
+  "plugins": [
+    {
+      "name": "svelte-lsp",
+      "source": "./plugins/svelte-lsp",
+      "description": "Svelte language intelligence using the separately installed svelteserver binary."
+    }
+  ]
+}

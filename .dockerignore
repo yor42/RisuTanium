@@ -36,7 +36,8 @@ xplugin
 src-others
 scripts
 build
-# Agents holds a gitignored folder of third-party material and large local tool output.
+# Agents includes two protected third-party evidence directories and local tool output.
+# Only the two named evidence directories are gitignored; the rest remains tracked.
 Agents
 docs
 src-tauri

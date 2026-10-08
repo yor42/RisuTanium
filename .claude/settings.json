@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
+  },
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\subagent-identity.ps1\"",
+            "type": "command",
+            "timeout": 10,
+            "shell": "powershell"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\guard-write.ps1\"",
+            "type": "command",
+            "timeout": 10,
+            "shell": "powershell"
+          }
+        ],
+        "matcher": "Write|Edit"
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "svelte-lsp@risutanium-lsp": true
+  }
+}
