@@ -1,4 +1,5 @@
 import { ROOT_BLOCK_NAME, isFixedBlockName } from './blockKeys'
+import { isCharacterEntry } from './characterIds'
 
 /** The part of a character the packing rule reads. Group chats and stubs fit it as well. */
 export interface PackableCharacter {
@@ -24,13 +25,17 @@ export function packedNamesOf(
     characters: ReadonlyArray<PackableCharacter>,
     frozenKeys: ReadonlySet<string> = new Set<string>(),
 ): Set<string> {
+    // Only an entry that can have a block is counted: a list read after the
+    // encoder's pass may hold an entry that is not a character, or an id that is
+    // not text or a number (a Symbol, an object), and those belong to no block.
+    const blocked = characters.filter((character) => isCharacterEntry(character) && (typeof character.chaId === 'string' || typeof character.chaId === 'number'))
     const holders = new Map<string, number>()
-    for (const character of characters) {
+    for (const character of blocked) {
         const name = String(character.chaId)
         holders.set(name, (holders.get(name) ?? 0) + 1)
     }
     const packed = new Set<string>()
-    for (const character of characters) {
+    for (const character of blocked) {
         if (!character.coldstorage) {
             continue
         }

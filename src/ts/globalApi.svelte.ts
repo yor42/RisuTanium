@@ -16,7 +16,7 @@ import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHe
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
-import { MobileGUI, botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
+import { MobileGUI, botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertConfirm, alertError, alertMd, alertSelect, alertToast, waitAlert } from "./alert";
 import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
@@ -32,7 +32,9 @@ import { digestMainFileBytes } from "./storage/mainFileRecord";
 import { didBootPassCommit } from "./process/memory/idleReloadBootState";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
-import { BlockTooLargeError } from "./storage/blockStore";
+import { BlockSetGateError, BlockTooLargeError } from "./storage/blockStore";
+import { SaveParkError, heldSaveStore, type HeldSaveInfo } from "./storage/saveHold";
+import { isCharacterEntry, isMissingCharacterId, isUsableCharacterId } from "./storage/characterIds";
 import { FILE_HEADER_V1 } from "./storage/blockFrame";
 import { getPageBlockOwner } from "./storage/pageBlockOwner";
 import { getPageStorageMode } from "./storage/pageStorageMode";
@@ -1356,6 +1358,98 @@ export function checkFrozenKeysForResolution(encoder: RisuSaveEncoder, db: Datab
 }
 
 /**
+ * True while the save loop waits on a character it cannot save under its id.
+ * `checkCharOrder` removes nothing from the order while it is true, so the
+ * paused character's folder entry under its saved id survives until saving
+ * resumes.
+ */
+let loopHoldsSaving = false
+
+// What `publishHeldSaves` last wrote to `heldSaveStore`, so a pass that changes
+// nothing does not re-notify every subscriber.
+let lastPublishedHeld = ''
+
+function publishHeldSaves(held: HeldSaveInfo[]): void {
+    const key = held.map((item) => `${item.kind}:${item.archived}:${item.name}`).join('\n')
+    if (key !== lastPublishedHeld) {
+        lastPublishedHeld = key
+        heldSaveStore.set(held)
+    }
+}
+
+function nameOfEntry(entry: Record<string, unknown>): string {
+    return typeof entry.name === 'string' && entry.name !== '' ? entry.name : '(unnamed)'
+}
+
+/**
+ * The save loop's check of the live character list, run on every pass in one
+ * synchronous stretch before anything is prepared:
+ *
+ * - an entry that is not a character is dropped, the selection keeps its
+ *   character, the order is repaired and the encoder is reloaded;
+ * - an unarchived character with no id gets a new one;
+ * - an archived character with no id, and any character whose id is present
+ *   but cannot key a block, is returned as held: saving waits for it, because
+ *   an archived character's id is never replaced and a present id is the
+ *   plugin's or the person's to undo.
+ *
+ * Tells the person once per pass at most.
+ */
+export function liveCharacterCheck(): { held: HeldSaveInfo[], repaired: boolean } {
+    const db = getDatabase()
+    const list: unknown = db?.characters
+    if (!Array.isArray(list)) {
+        loopHoldsSaving = false
+        return { held: [], repaired: false }
+    }
+    let needsWork = false
+    for (const entry of list) {
+        if (!isCharacterEntry(entry) || !isUsableCharacterId(entry.chaId)) {
+            needsWork = true
+            break
+        }
+    }
+    if (!needsWork) {
+        loopHoldsSaving = false
+        return { held: [], repaired: false }
+    }
+    let dropped = 0
+    let filled = 0
+    if (list.some((entry) => !isCharacterEntry(entry))) {
+        const selectedBefore = get(selectedCharID)
+        const selectedRef: unknown = selectedBefore >= 0 ? list[selectedBefore] : undefined
+        const kept = list.filter((entry) => isCharacterEntry(entry))
+        dropped = list.length - kept.length
+        db.characters = kept as unknown as Database['characters']
+        if (selectedRef !== undefined) {
+            selectedCharID.set(isCharacterEntry(selectedRef) ? db.characters.indexOf(selectedRef as unknown as Database['characters'][number]) : -1)
+        }
+    }
+    const held: HeldSaveInfo[] = []
+    for (const entry of db.characters) {
+        const cha = entry as unknown as Record<string, unknown>
+        if (isUsableCharacterId(cha.chaId)) {
+            continue
+        }
+        const archived = !!cha.coldstorage
+        if (isMissingCharacterId(cha.chaId) && !archived) {
+            cha.chaId = uuidv4()
+            filled++
+            continue
+        }
+        held.push({ name: nameOfEntry(cha), kind: 'unusable-id', archived })
+    }
+    loopHoldsSaving = held.length > 0
+    const repaired = dropped > 0 || filled > 0
+    if (repaired) {
+        checkCharOrder(db)
+        requiresFullEncoderReload.state = true
+        alertToast(language.saveRepairedEntriesNotice(dropped, filled))
+    }
+    return { held, repaired }
+}
+
+/**
  * Releases any orphan draft-content registration whose cap has elapsed, by
  * forwarding to
  * `draftContentOrphanGate.sweepExpiredRegistrations`. `now` is injectable
@@ -1404,6 +1498,14 @@ const CONVERSION_ATTEMPTS = 3
 export function describeBlockForPerson(blockName: string): string {
     const character = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId) === blockName)
     return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
+}
+
+/** What a park for unwritable data names to the person: the character, or the kind of data. */
+function describeParkedData(error: SaveParkError | BlockSetGateError): string {
+    if (error instanceof BlockSetGateError) {
+        return describeBlockForPerson(error.blockName)
+    }
+    return error.kind === 'character-not-object' ? describeBlockForPerson(error.what) : language.saveBlockLabel(error.what)
 }
 
 export async function saveDb() {
@@ -1501,6 +1603,10 @@ export async function saveDb() {
         getCharacters: () => getDatabase()?.characters,
         markUnsaved: () => saveTimeoutExecute(true)
     })
+    // Data that cannot become a loadable save does not stop the page from
+    // starting: the effects below are registered as usual and the loop parks
+    // with a named reason before it writes anything.
+    let bootPark: SaveParkError | null = null
     try {
         await bootSaveSequence({
             tracker: changeTracker,
@@ -1511,14 +1617,19 @@ export async function saveDb() {
             createRealScheduler: () => saveTimeoutExecute
         })
     } catch (error) {
-        bootWindow.close()
-        throw error
+        if (!(error instanceof SaveParkError)) {
+            bootWindow.close()
+            throw error
+        }
+        bootPark = error
     }
-    try {
-        publishFrozenSaveIndicator(encoder, getDatabase())
-    } catch (error) {
-        // Must never stop boot or the save loop that follows it.
-        console.error('Failed to publish the frozen-save indicator:', error)
+    if (bootPark === null) {
+        try {
+            publishFrozenSaveIndicator(encoder, getDatabase())
+        } catch (error) {
+            // Must never stop boot or the save loop that follows it.
+            console.error('Failed to publish the frozen-save indicator:', error)
+        }
     }
 
     const bootWindowAnswer = bootWindow.close()
@@ -1559,6 +1670,10 @@ export async function saveDb() {
     }
     const store = await getAppStore()
     let savetrys = 0
+    // Passes thrown away in a row because a character's id was blank, unusable
+    // or changing at the encoder's snapshot, and the characters they waited on.
+    let discardsInARow = 0
+    let waitingOn: HeldSaveInfo[] = []
     let quotaWarningShown = false
     // Shown once per ongoing conflict episode, not once per retry — a
     // version conflict keeps recurring every attempt until the user
@@ -1775,6 +1890,15 @@ export async function saveDb() {
         saveMarkCount += 1
         changed = true
     }
+    if (bootPark !== null) {
+        // The page is unclean: its data is not in the store, so a peer's save
+        // must not reload it out from under the edits it holds.
+        dirtySinceLastSave = true
+        console.error(bootPark)
+        const what = describeParkedData(bootPark)
+        alertToast(language.savingStoppedInvalidDataMessage(what))
+        await parkSaving('invalid-data', what)
+    }
     await sleep(1000)
     while (true) {
         // Releases any orphan draft-content registration whose
@@ -1850,6 +1974,32 @@ export async function saveDb() {
                 await applyStaleCopyChoice(await askAboutStaleCopy())
             }
         }
+        // The live character list is checked on every pass, idle ones included, so
+        // a plugin's change that sets no mark is still seen. A character that
+        // cannot be saved under its id holds the whole pass: nothing is prepared
+        // or written, the tracker is untouched, the page stays unclean and the
+        // failure counter is not involved. When the cause is gone, the encoder is
+        // rebuilt from the live data, because no mark names what changed meanwhile.
+        const wasHolding = loopHoldsSaving
+        const live = liveCharacterCheck()
+        if (live.repaired) {
+            saveMarkCount += 1
+            dirtySinceLastSave = true
+            changed = true
+        }
+        publishHeldSaves([...live.held, ...waitingOn])
+        if (live.held.length > 0) {
+            dirtySinceLastSave = true
+            saving.state = false
+            await sleep(changed ? 1000 : 500)
+            continue
+        }
+        if (wasHolding) {
+            requiresFullEncoderReload.state = true
+            saveMarkCount += 1
+            dirtySinceLastSave = true
+            changed = true
+        }
         if (!changed) {
             // While any chaId is frozen against a save-file rewrite, this
             // asks the loop to run a pass even without a save mark, so a
@@ -1883,6 +2033,7 @@ export async function saveDb() {
         let primaryCommitted = false
         try {
 
+            const encoderBefore = encoder
             const prepared = await prepareSaveIteration({
                 tracker: changeTracker,
                 encoder,
@@ -1914,6 +2065,8 @@ export async function saveDb() {
                 onSnapshotRestored: () => { dirtySinceLastSave = true }
             })
             encoder = prepared.encoder
+            // A reload's `init` report, which the `set` below replaces.
+            const reloadedReport = encoder === encoderBefore ? null : encoder.getReport()
             toSave = prepared.toSave
 
             let db = getDatabase()
@@ -1924,6 +2077,29 @@ export async function saveDb() {
             }
 
             await encoder.set(db, toSave)
+            // A character the encoder left out of this pass because its id was
+            // blank, unusable or changed while it was serialized: nothing is
+            // written from a layout that lacks it. The marks go back, the page
+            // stays unclean, and the next pass's check fills or holds it. A
+            // pass whose id keeps changing is shown as waiting after the second
+            // discard in a row.
+            const lost = [...(reloadedReport?.excluded ?? []), ...encoder.getReport().excluded].filter((item) => item.reason !== 'not-character')
+            if (lost.length > 0) {
+                mergeUnsavedChanges(changeTracker, toSave)
+                dirtySinceLastSave = true
+                saveMarkCount += 1
+                changed = true
+                discardsInARow += 1
+                waitingOn = discardsInARow >= 2
+                    ? lost.map((item) => ({ name: nameOfEntry(isCharacterEntry(item.entry) ? item.entry : {}), kind: 'waiting' as const, archived: false }))
+                    : []
+                publishHeldSaves([...waitingOn])
+                saving.state = false
+                await sleep(1000)
+                continue
+            }
+            discardsInARow = 0
+            waitingOn = []
             try {
                 publishFrozenSaveIndicator(encoder, db)
             } catch (error) {
@@ -2160,6 +2336,16 @@ export async function saveDb() {
                 const what = error instanceof BlockTooLargeError ? describeBlockForPerson(error.blockName) : ''
                 alertToast(language.savingStoppedTooLargeBlockMessage(what, NODE_BODY_LIMIT_BYTES))
                 await parkSaving('too-large', what)
+            }
+            else if (!primaryCommitted && (error instanceof SaveParkError || error instanceof BlockSetGateError)) {
+                // Writing the same data again cannot succeed, and nothing was
+                // written: the loop stops for this page load with the data named.
+                // The unsaved changes were folded back into the tracker above
+                // and the page stays unclean.
+                console.error(error)
+                const what = describeParkedData(error)
+                alertToast(language.savingStoppedInvalidDataMessage(what))
+                await parkSaving('invalid-data', what)
             }
             else if (isQuotaExceededError(error)) {
                 // A distinct, actionable message instead of the generic retry path —
@@ -2820,47 +3006,60 @@ export function getUncleanablesSync(db: Database, options?:{
  * Checks and updates the character order in the database.
  * Ensures that all characters are properly ordered and removes any invalid entries.
  */
-export function checkCharOrder() {
-    DBState.db.characterOrder = DBState.db.characterOrder ?? []
+export function checkCharOrder(db: Database = DBState.db) {
+    db.characterOrder = db.characterOrder ?? []
+    const order = db.characterOrder
+    // While saving waits on a character, the order only gains entries: a held
+    // character's folder entry under its saved id survives until saving
+    // resumes. An entry that is neither an id nor a folder with a list is
+    // skipped everywhere, and removed once nothing is held.
+    const holding = loopHoldsSaving
     const ordered = new Set<string>()
-    for (let i = 0; i < DBState.db.characterOrder.length; i++) {
-        const folder = DBState.db.characterOrder[i]
-        if (typeof (folder) !== 'string' && folder) {
+    for (let i = 0; i < order.length; i++) {
+        const folder = order[i]
+        if (typeof (folder) === 'string') {
+            ordered.add(folder)
+        }
+        else if (isCharacterEntry(folder) && Array.isArray(folder.data)) {
             for (const f of folder.data) {
                 ordered.add(f)
             }
-        }
-        if (typeof (folder) === 'string') {
-            ordered.add(folder)
         }
     }
 
     const charIdSet = new Set<string>()
 
-    for (let i = 0; i < DBState.db.characters.length; i++) {
-        const char = DBState.db.characters[i]
+    for (let i = 0; i < db.characters.length; i++) {
+        const char = db.characters[i]
+        if (!isCharacterEntry(char)) {
+            continue
+        }
         const charId = char.chaId
+        // A character whose id is text (even text that cannot key a block) keeps
+        // its place in the order and its folder; only ids that are not text or a
+        // number, which no entry of the order could name, are skipped.
+        if (!isUsableCharacterId(charId) && (typeof charId !== 'string' || charId === '')) {
+            continue
+        }
         if (!char.trashTime) {
             charIdSet.add(charId)
         }
         if (!ordered.has(charId)) {
             if (!isHiddenSystemCharacter(char) && !char.trashTime) {
-                DBState.db.characterOrder.push(charId)
+                order.push(charId)
             }
         }
     }
 
+    if (holding) {
+        return
+    }
 
-    for (let i = 0; i < DBState.db.characterOrder.length; i++) {
-        const data = DBState.db.characterOrder[i]
+    for (let i = 0; i < order.length; i++) {
+        const data = order[i]
         if (typeof (data) !== 'string') {
-            if (!data) {
-                DBState.db.characterOrder.splice(i, 1)
-                i--;
-                continue
-            }
-            if (data.data.length === 0) {
-                DBState.db.characterOrder.splice(i, 1)
+            if (!isCharacterEntry(data) || !Array.isArray(data.data) || data.data.length === 0) {
+                order.splice(i, 1)
                 i--;
                 continue
             }
@@ -2871,11 +3070,11 @@ export function checkCharOrder() {
                     i2--;
                 }
             }
-            DBState.db.characterOrder[i] = data
+            order[i] = data
         }
         else {
             if (!charIdSet.has(data)) {
-                DBState.db.characterOrder.splice(i, 1)
+                order.splice(i, 1)
                 i--;
             }
         }

@@ -255,6 +255,7 @@ function installDb(characters: character[] = []) {
     DBState.db = {
         characters,
         modules: [],
+        botPresets: [],
         templateDefaultVariables: '',
         personas: [],
         selectedPersona: 0,

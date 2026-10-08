@@ -25,6 +25,7 @@ import { registerMCPModule, unregisterMCPModule } from "src/ts/process/mcp/plugi
 import { setColdStorageItem, readColdStorageItem } from "src/ts/process/coldstorage.svelte";
 import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/coldCharacterAccess";
 import { incomingCharacterRefusal } from "../stubDowngrade";
+import { singleCharacterProblem } from "../characterWriteCheck";
 import { isColdChat } from "src/ts/process/coldstorageData";
 import { readPluginStorageValue, writePluginStorageValue } from "./pluginColdStorage";
 import { getInlayAsset } from "src/ts/process/files/inlays";
@@ -1006,6 +1007,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     throw new Error(refusal)
                 }
                 const replaced = db.characters[charId]
+                const problem = singleCharacterProblem(char, replaced)
+                if(problem !== null){
+                    throw new Error(problem)
+                }
                 fillMissingCharacterInstallIds(char)
                 warnIfCharacterChaIdDuplicated(db.characters, index, char?.chaId, replaced?.chaId, plugin.name)
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, plugin.name)

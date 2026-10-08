@@ -1,4 +1,4 @@
-import { alertClear, alertConfirm, alertError, alertSelect, alertStore, alertWait } from "../alert";
+import { alertClear, alertConfirm, alertError, alertNormalWait, alertSelect, alertStore, alertWait } from "../alert";
 import { dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
@@ -9,7 +9,6 @@ import { assembleLegacyFile, type BlockSetInput } from "../storage/blockStore";
 import { describeOmitted, layoutFileBytes } from "../storage/bootBlockLoad";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { getPageBlockOwner } from "../storage/pageBlockOwner";
-import { treeToBlockSet } from "../storage/treeToBlockSet";
 import { getAppStore, MAIN_FILE_KEY } from "../storage/store/appStore";
 import { getStartupCleanup } from "../storage/startupCleanupState";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -18,7 +17,7 @@ import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, type BusyHandle } from "../process/memory/busyActions";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
-import { completeRestoredTree, currentCharacterNames, replaceWithRestoredSet } from "./restoreReplace";
+import { buildRestoreSet, completeRestoredTree, currentCharacterNames, repairRestoredCharacters, replaceWithRestoredSet } from "./restoreReplace";
 import { describeBlockForPerson } from "../globalApi.svelte";
 
 const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
@@ -104,11 +103,19 @@ export function setRebuiltBytesTamperForTests(tamper: ((bytes: Uint8Array) => Ui
  * working settings as a new one. Throws when the encode, the decode or the
  * comparison fails; nothing has been written yet.
  */
-async function rebuildBlockSet(tree: Database): Promise<BlockSetInput> {
+async function rebuildBlockSet(tree: Database): Promise<{ set: BlockSetInput, notice: string | null } | { refusal: string }> {
+    const characterRepair = await repairRestoredCharacters(tree)
+    if ('refusal' in characterRepair) {
+        return characterRepair
+    }
     completeRestoredTree(tree)
     repairBotPresetsId(tree)
 
-    const set = await treeToBlockSet(tree)
+    const built = await buildRestoreSet(tree)
+    if ('refusal' in built) {
+        return built
+    }
+    const set = built.set
     let bytes: Uint8Array = layoutFileBytes(set.layout)
     if (rebuiltBytesTamper) {
         bytes = rebuiltBytesTamper(bytes)
@@ -119,7 +126,7 @@ async function rebuildBlockSet(tree: Database): Promise<BlockSetInput> {
     if (!isDatabaseObject(rebuilt) || identitySummary(rebuilt) !== expected) {
         throw new Error('The rebuilt save does not match the intact part of the backup.')
     }
-    return set
+    return { set, notice: characterRepair.notice }
 }
 
 /** Whether the current state was kept as a numbered backup, and when it was not, why there was nothing to keep. */
@@ -307,7 +314,12 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             }
         }
         stage = 'rebuild'
-        const restoredSet = await rebuildBlockSet(reading.tree)
+        const rebuilt = await rebuildBlockSet(reading.tree)
+        if ('refusal' in rebuilt) {
+            alertError(rebuilt.refusal)
+            return
+        }
+        const restoredSet = rebuilt.set
 
         stage = 'keep'
         const undoCopy = await keepCurrentState()
@@ -337,6 +349,10 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit))
             return
         }
+        if (written.kind === 'unsavable') {
+            alertError(language.restoreRefusedUnsavable(describeBlockForPerson(written.blockName)))
+            return
+        }
         if (written.kind === 'unconfirmed') {
             // Which state is current is unknown: nothing may save from this
             // page until a reload shows it.
@@ -350,6 +366,10 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         restoreLanded = true
         writeLockStaysClosed = true
 
+        // Awaited, so it is read before the reload takes the page away; only a load that landed gets here.
+        if (rebuilt.notice !== null) {
+            await alertNormalWait(rebuilt.notice)
+        }
         alertWait(undoCopy.kind === 'kept' ? language.internalBackupLoaded : language.internalBackupLoadedNoCopy)
         // The hold's Web Lock part is released first so other tabs can
         // proceed, and before the reload is marked app-initiated: the release

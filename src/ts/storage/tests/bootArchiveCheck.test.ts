@@ -169,10 +169,8 @@ describe('checkCommittedBlocks', () => {
         expect(result).toMatchObject({ ok: false })
     })
 
-    test('rejects a file whose loadouts block is empty, as an encoder writes it for a tree without loadouts', async () => {
-        const tree = baseTree([fullCharacter('a', 'A')]) as unknown as Json
-        delete tree.loadouts
-        const bytes = await encodeAsSaveDb(Encoder, tree as unknown as ReturnType<typeof baseTree>)
+    test('rejects a file whose loadouts block is empty, whatever wrote it: a payload-free list block does not load back', async () => {
+        const bytes = await composeWithBlocks({ loadouts: '' })
 
         const result = await checkCommittedBlocks(bytes, [plain('a')])
 

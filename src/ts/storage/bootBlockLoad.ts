@@ -6,6 +6,7 @@ import { validateLoadedBlocks } from './blockProfileValidate'
 import {
     BlockStoreReadError,
     type BlockLayout,
+    type BlockSetInput,
     type BlockStoreOwner,
     type DamagedItem,
     type DamagedResult,
@@ -20,7 +21,9 @@ import { holdAssetSweep, takeMainFileLeftOverLimit } from './pageStorageMode'
 import { decodeRisuSave, salvageRisuSave, type SalvageOmittedBlock } from './risuSave'
 import type { ByteStore } from './store/contract'
 import { StoreNotBinaryError } from './store/errors'
-import { completeRestoredTree, treeToBlockSet } from './treeToBlockSet'
+import { completeRestoredTree, treeToBlockSet, treeToBlockSetReported } from './treeToBlockSet'
+import { repairCharacterTree, summarizeRepair } from './characterTreeRepair'
+import { SaveParkError } from './saveHold'
 
 /**
  * The boot side of the block store: loading the profile through the page's
@@ -58,6 +61,13 @@ export interface BootLoadContext {
     session: BootArchiveSession
     ui: BootLoadUi
     backups: BootBackupSource
+    /**
+     * The character an archived character's unit holds, or null when the unit cannot
+     * supply one. Used only to give a restored archived character with an unusable id
+     * back the id its unit records; without it such a backup is refused. This module
+     * does not read the unit store itself.
+     */
+    readUnitCharacter?(stub: Record<string, unknown>): Promise<unknown>
     /** Never settles: this page is reloading and nothing may go on. */
     waitForReload(): Promise<never>
 }
@@ -176,9 +186,7 @@ async function offerBackup(ctx: BootLoadContext, scenario: Scenario): Promise<Re
     }
 
     const tree = found.tree
-    repairDatabaseIds(tree)
-    completeRestoredTree(tree)
-    const set = await treeToBlockSet(tree)
+    const { set, notice } = await buildBackupSet(ctx, tree)
 
     const release = await takeHold(ctx, scenario.stopped)
     let released = false
@@ -203,6 +211,10 @@ async function offerBackup(ctx: BootLoadContext, scenario: Scenario): Promise<Re
                 await giveBack()
                 // The same boot must not sweep what the generation it kept references.
                 holdAssetSweep()
+                // Acknowledged before boot goes on, so it is read before the app opens; only a replace that won gets here.
+                if (notice !== null) {
+                    await ctx.ui.notify(notice)
+                }
                 return { kind: 'installed', tree }
             case 'lost':
             case 'aborted':
@@ -223,6 +235,36 @@ async function offerBackup(ctx: BootLoadContext, scenario: Scenario): Promise<Re
     }
 }
 
+/**
+ * The block set the chosen backup is written as. The tree is made one the save
+ * can hold first, as every restore does: entries that are not characters are
+ * left out, a missing or unusable id is replaced, and an archived character
+ * takes back the id its unit records. A backup that still cannot be saved is
+ * refused by throwing the text the boot stop screen shows; nothing has been
+ * written.
+ */
+async function buildBackupSet(ctx: BootLoadContext, tree: Database): Promise<{ set: BlockSetInput, notice: string | null }> {
+    const repair = await repairCharacterTree(tree, 'restore', { readUnitCharacter: ctx.readUnitCharacter })
+    if (repair.refusals.length > 0) {
+        throw language.restoreRefusedArchivedId(repair.refusals[0].name)
+    }
+    const { dropped, changed, recovered } = summarizeRepair(repair.notices)
+    const notice = dropped + changed + recovered > 0 ? language.restoreRepairedNotice(dropped, changed, recovered) : null
+    repairDatabaseIds(tree)
+    completeRestoredTree(tree)
+    try {
+        const { set, report } = await treeToBlockSetReported(tree)
+        if (report.excluded.length > 0) {
+            throw language.restoreRefusedUnsavable('an entry of the backup')
+        }
+        return { set, notice }
+    } catch (error) {
+        if (error instanceof SaveParkError) {
+            throw language.restoreRefusedUnsavable(language.saveBlockLabel(error.what))
+        }
+        throw error
+    }
+}
 /**
  * The fresh exclusive hold for the replace. Where Web Locks exist and another
  * tab is open, the replace does not proceed: the person is told to close it

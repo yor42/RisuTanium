@@ -4,6 +4,8 @@ import { presetTemplate, type Database } from "./database.svelte";
 import localforage from "localforage";
 import { createYieldBudget } from "./saveYield"
 import { getAppStore } from "./store/appStore"
+import { characterIdProblem, isCharacterEntry, isUsableCharacterId } from "./characterIds"
+import { SaveParkError } from "./saveHold"
 
 const packr = new Packr({
     useRecords:false
@@ -229,9 +231,98 @@ export interface SaveLayout {
     readonly blocks: readonly Uint8Array[];
 }
 
+/** Why a pass left an entry of `characters` out. */
+export type ExclusionReason =
+    /** The entry is not a character: not an object, or a list. */
+    | 'not-character'
+    /** The entry has no id (every falsy value). */
+    | 'missing-id'
+    /** The entry has an id that cannot key a block. */
+    | 'unusable-id'
+    /** The entry's id changed while it was being serialized. */
+    | 'id-changed'
+
+export interface ExcludedEntry {
+    /** The live entry, by identity. */
+    entry: unknown
+    reason: ExclusionReason
+    /** The id that decided it, when the entry has one. */
+    id: unknown
+}
+
+/**
+ * What the latest `init()` or `set()` left out or repaired. The encoder only
+ * reports: whether to fill, drop, pause or refuse is the caller's decision.
+ */
+export interface EncoderReport {
+    excluded: ExcludedEntry[]
+    /** Containers that were missing and were written as empty lists. */
+    repairedContainers: string[]
+}
+
+type CharacterEntry = Database['characters'][number]
+
+interface HolderSnapshot {
+    holders: CharacterEntry[]
+    /** `String(chaId)` per holder, the key its block is held under and counted by. */
+    keys: string[]
+    counts: Map<string, number>
+}
+
+/**
+ * The characters of one pass, taken in a single synchronous step: only
+ * character entries with an id that can key a block are holders; each other
+ * entry is recorded in `excluded`.
+ */
+function snapshotHolders(characters: unknown, excluded: ExcludedEntry[]): HolderSnapshot {
+    if(!Array.isArray(characters)){
+        throw new SaveParkError('container-not-list', 'characters');
+    }
+    const holders: CharacterEntry[] = [];
+    const keys: string[] = [];
+    const counts = new Map<string, number>();
+    for(const entry of characters.slice()){
+        if(!isCharacterEntry(entry)){
+            excluded.push({ entry, reason: 'not-character', id: undefined });
+            continue;
+        }
+        const id = entry.chaId;
+        const problem = characterIdProblem(id);
+        if(problem !== null){
+            excluded.push({ entry, reason: problem === 'missing' ? 'missing-id' : 'unusable-id', id });
+            continue;
+        }
+        const key = String(id);
+        holders.push(entry as unknown as CharacterEntry);
+        keys.push(key);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return { holders, keys, counts };
+}
+
+/**
+ * The JSON text of a list container. `modules`, `loadouts` and `plugins` that
+ * are absent are written as empty lists and named in `repaired`; anything else
+ * that is not a list, and an absent preset list, cannot become a loadable
+ * block and is refused.
+ */
+function listContainerText(value: unknown, name: string, repaired: string[], absentIsEmpty: boolean): string {
+    if(Array.isArray(value)){
+        return JSON.stringify(value);
+    }
+    if(absentIsEmpty && (value === undefined || value === null)){
+        repaired.push(name);
+        return '[]';
+    }
+    throw new SaveParkError('container-not-list', name);
+}
+
 export class RisuSaveEncoder {
 
-    private blocks: { [key: string]: Uint8Array } = {};
+    // Prototype-free: a character id such as `constructor` is an ordinary key,
+    // and "no block yet" is `undefined` for every id.
+    private blocks: { [key: string]: Uint8Array } = Object.create(null);
+    private report: EncoderReport = { excluded: [], repairedContainers: [] };
     private compression: boolean = false;
     // Fork-specific internal API: the set of character objects THIS init()
     // call actually encoded (by identity, not a copy). Consumed by saveDb()
@@ -347,6 +438,17 @@ export class RisuSaveEncoder {
         } = arg;
         this.compression = compression;
         this.encodedCharacterProxies = new Set();
+        const report: EncoderReport = { excluded: [], repairedContainers: [] };
+        this.report = report;
+        // Every container is checked before the first block is built, so a
+        // refusal leaves no half-built layout behind.
+        if(!Array.isArray(data.characters)){
+            throw new SaveParkError('container-not-list', 'characters');
+        }
+        const presetText = listContainerText(data.botPresets, 'botPresets', report.repairedContainers, false);
+        const modulesText = listContainerText(data.modules, 'modules', report.repairedContainers, true);
+        const loadoutsText = listContainerText(data.loadouts, 'loadouts', report.repairedContainers, true);
+        const pluginsText = listContainerText(data.plugins, 'plugins', report.repairedContainers, true);
         let obj:Record<any,any> = {}
         let keys = Object.keys(data)
         for(const key of keys){
@@ -362,25 +464,25 @@ export class RisuSaveEncoder {
         });
         this.blocks['preset'] = await this.encodeBlock({
             compression,
-            data: JSON.stringify(data.botPresets),
+            data: presetText,
             type: RisuSaveType.BOTPRESET,
             name: 'preset'
         });
         this.blocks['modules'] = await this.encodeBlock({
             compression,
-            data: JSON.stringify(data.modules),
+            data: modulesText,
             type: RisuSaveType.MODULES,
             name: 'modules'
         });
         this.blocks['loadouts'] = await this.encodeBlock({
             compression,
-            data: JSON.stringify(data.loadouts),
+            data: loadoutsText,
             type: RisuSaveType.LOADOUTS,
             name: 'loadouts'
         });
         this.blocks['plugins'] = await this.encodeBlock({
             compression,
-            data: JSON.stringify(data.plugins),
+            data: pluginsText,
             type: RisuSaveType.PLUGINS,
             name: 'plugins'
         });
@@ -397,28 +499,18 @@ export class RisuSaveEncoder {
         // edited mid-pass still encodes and freezes under the value it held
         // when this pass started. `holderKeys` holds `String(chaId)`, the
         // same coercion a plain object's own property access already applies
-        // to `this.blocks[chaId]`, so a numeric or missing chaId dedupes and
-        // freezes exactly as it would key a block; `holderRawKeys` keeps the
-        // uncoerced value, which is what `encodeBlock`'s `name` must receive
-        // so the written bytes are unchanged.
-        const snapshot = data.characters.slice();
-        const holderKeys: string[] = new Array(snapshot.length);
-        const holderRawKeys: string[] = new Array(snapshot.length);
-        const holderCounts = new Map<string, number>();
-        for (let i = 0; i < snapshot.length; i++) {
-            const rawKey = snapshot[i].chaId;
-            const key = String(rawKey);
-            holderRawKeys[i] = rawKey;
-            holderKeys[i] = key;
-            holderCounts.set(key, (holderCounts.get(key) ?? 0) + 1);
-        }
+        // to `this.blocks[chaId]`, so a numeric chaId dedupes and freezes
+        // exactly as it keys a block, and is also the block's name (the text
+        // form of the id, so the written bytes are unchanged). An entry that
+        // is not a character, or whose id cannot key a block, is left out
+        // here and named in the report; it builds no block and removes none.
+        const { holders: snapshot, keys: holderKeys, counts: holderCounts } = snapshotHolders(data.characters, report.excluded);
 
         const encodedThisPass = new Set<string>();
         const newFrozenKeys = new Set<string>();
         for (let i = 0; i < snapshot.length; i++) {
             const character = snapshot[i];
             const key = holderKeys[i];
-            const rawKey = holderRawKeys[i];
             if (encodedThisPass.has(key)) {
                 // At most one encode per key per pass -- a later holder of an
                 // already-handled key is neither written nor counted again.
@@ -440,22 +532,22 @@ export class RisuSaveEncoder {
                 // MC-082: no block for this duplicated key in either encoder
                 // -- the first holder in snapshot order is written once,
                 // then frozen like any other duplicate.
-                this.blocks[key] = await this.encodeBlock({
-                    compression,
-                    data: JSON.stringify(character),
-                    type: RisuSaveType.CHARACTER_WITH_CHAT,
-                    name: rawKey
-                });
-                this.encodedCharacterProxies.add(character);
+                const written = await this.encodeCharacterBlock(character, key, compression);
+                if ('changedTo' in written) {
+                    report.excluded.push({ entry: character, reason: 'id-changed', id: written.changedTo });
+                } else {
+                    this.blocks[key] = written.block;
+                    this.encodedCharacterProxies.add(character);
+                }
                 newFrozenKeys.add(key);
                 continue;
             }
-            this.blocks[key] = await this.encodeBlock({
-                compression,
-                data: JSON.stringify(character),
-                type: RisuSaveType.CHARACTER_WITH_CHAT,
-                name: rawKey
-            });
+            const written = await this.encodeCharacterBlock(character, key, compression);
+            if ('changedTo' in written) {
+                report.excluded.push({ entry: character, reason: 'id-changed', id: written.changedTo });
+                continue;
+            }
+            this.blocks[key] = written.block;
             this.encodedCharacterProxies.add(character);
         }
         this.frozenKeys = newFrozenKeys;
@@ -491,6 +583,39 @@ export class RisuSaveEncoder {
         return proxies;
     }
 
+    /**
+     * What the latest `init()` or `set()` left out or repaired. A new report
+     * replaces the previous one at the start of each of those calls.
+     */
+    getReport(): EncoderReport {
+        return this.report;
+    }
+
+    /**
+     * One character's block. The id is read again after the serialization:
+     * when it does not name `key` any more, nothing is returned for the character and
+     * the caller keeps whatever block it held, because a form that carries a
+     * different id than its block's name does not load. A serialized form that
+     * is not an object cannot become a character block at all.
+     */
+    private async encodeCharacterBlock(character: CharacterEntry, key: string, compression: boolean): Promise<{ block: Uint8Array } | { changedTo: unknown }> {
+        const data: string | undefined = JSON.stringify(character);
+        if(typeof data !== 'string' || !data.startsWith('{')){
+            throw new SaveParkError('character-not-object', key);
+        }
+        const after: unknown = (character as { chaId?: unknown }).chaId;
+        if(!isUsableCharacterId(after) || String(after) !== key){
+            return { changedTo: after };
+        }
+        const block = await this.encodeBlock({
+            compression,
+            data,
+            type: RisuSaveType.CHARACTER_WITH_CHAT,
+            name: key
+        });
+        return { block };
+    }
+
     async set(data:Database, toSave:toSaveType){
         let obj:Record<any,any> = {}
         let keys = Object.keys(data)
@@ -508,18 +633,19 @@ export class RisuSaveEncoder {
         // seen until the next set() call, and each holder's chaId is read
         // once, up front. `holderKeys` holds `String(chaId)`, matching the
         // coercion a plain object's own property access already applies to
-        // `this.blocks[chaId]`; `holderRawKeys` keeps the uncoerced value for
-        // `encodeBlock`'s `name`, so the written bytes are unchanged.
-        const snapshot = data.characters.slice();
-        const holderKeys: string[] = new Array(snapshot.length);
-        const holderRawKeys: string[] = new Array(snapshot.length);
-        const holderCounts = new Map<string, number>();
-        for (let i = 0; i < snapshot.length; i++) {
-            const rawKey = snapshot[i].chaId;
-            const key = String(rawKey);
-            holderRawKeys[i] = rawKey;
-            holderKeys[i] = key;
-            holderCounts.set(key, (holderCounts.get(key) ?? 0) + 1);
+        // `this.blocks[chaId]`, and is also the block's name. Entries that
+        // cannot key a block are left out and named in the report, as in
+        // init().
+        const report: EncoderReport = { excluded: [], repairedContainers: [] };
+        this.report = report;
+        const { holders: snapshot, keys: holderKeys, counts: holderCounts } = snapshotHolders(data.characters, report.excluded);
+
+        // A mark that is not a usable id names no block: it never reaches the
+        // deletion below, and is dropped so no later step prints or compares it.
+        for (let i = toSave.character.length - 1; i >= 0; i--) {
+            if (!isUsableCharacterId(toSave.character[i])) {
+                toSave.character.splice(i, 1);
+            }
         }
 
         const frozenBeforePass = this.frozenKeys;
@@ -529,7 +655,6 @@ export class RisuSaveEncoder {
         for (let i = 0; i < snapshot.length; i++) {
             const character = snapshot[i];
             const key = holderKeys[i];
-            const rawKey = holderRawKeys[i];
             if (encodedThisPass.has(key)) {
                 // At most one encode per key per pass.
                 continue;
@@ -561,12 +686,12 @@ export class RisuSaveEncoder {
                 }
                 // MC-082: never saved before -- the first holder in snapshot
                 // order is written once, then frozen the same way.
-                this.blocks[key] = await this.encodeBlock({
-                    compression: this.compression,
-                    data: JSON.stringify(character),
-                    type: RisuSaveType.CHARACTER_WITH_CHAT,
-                    name: rawKey
-                });
+                const written = await this.encodeCharacterBlock(character, key, this.compression);
+                if ('changedTo' in written) {
+                    report.excluded.push({ entry: character, reason: 'id-changed', id: written.changedTo });
+                } else {
+                    this.blocks[key] = written.block;
+                }
                 savedId.add(key);
                 newFrozenKeys.add(key);
                 removeAllOccurrences(toSave.character, key);
@@ -580,36 +705,39 @@ export class RisuSaveEncoder {
             // arrive. A key with no block yet and no mark still gets its
             // first write.
             if (markIndex !== -1 || frozenBeforePass.has(key) || this.blocks[key] === undefined) {
-                this.blocks[key] = await this.encodeBlock({
-                    compression: this.compression,
-                    data: JSON.stringify(character),
-                    type: RisuSaveType.CHARACTER_WITH_CHAT,
-                    name: rawKey
-                });
+                const written = await this.encodeCharacterBlock(character, key, this.compression);
                 savedId.add(key);
+                if ('changedTo' in written) {
+                    // The id changed while the character was serialized: the
+                    // old block stays, its mark stays, and the form that
+                    // carries the new id is not stored.
+                    report.excluded.push({ entry: character, reason: 'id-changed', id: written.changedTo });
+                    continue;
+                }
+                this.blocks[key] = written.block;
                 if (markIndex !== -1) {
                     toSave.character.splice(markIndex, 1);
                 }
             }
         }
         this.frozenKeys = newFrozenKeys;
-        if(toSave.character.length > 0){
-            console.log(`Deleting character data: ${toSave.character.join(', ')}`);
+        // `savedId` holds `String(chaId)`, so a raw, numeric mark left over
+        // here (see `markIndex` above) is compared the same way, not by
+        // identity. A key whose holder kept its old block (an id that changed
+        // during serialization) is in `savedId` and is not deleted.
+        const probablyDeleted = toSave.character.filter((chaId) => !savedId.has(String(chaId)));
+        if(probablyDeleted.length > 0){
+            console.log(`Deleting character data: ${probablyDeleted.join(', ')}`);
             //probably deleted characters
-            for(const chaId of toSave.character){
-                // `savedId` holds `String(chaId)`, so a raw, possibly
-                // non-string mark left over here (see `markIndex` above) is
-                // compared the same way, not by identity.
-                if(!savedId.has(String(chaId))){
-                    delete this.blocks[chaId];
-                }
+            for(const chaId of probablyDeleted){
+                delete this.blocks[chaId];
             }
         }
 
         if(toSave.botPreset){
             this.blocks['preset'] = await this.encodeBlock({
                 compression: this.compression,
-                data: JSON.stringify(data.botPresets),
+                data: listContainerText(data.botPresets, 'botPresets', report.repairedContainers, false),
                 type: RisuSaveType.BOTPRESET,
                 name: 'preset'
             });
@@ -617,7 +745,7 @@ export class RisuSaveEncoder {
         if(toSave.modules){
             this.blocks['modules'] = await this.encodeBlock({
                 compression: this.compression,
-                data: JSON.stringify(data.modules),
+                data: listContainerText(data.modules, 'modules', report.repairedContainers, true),
                 type: RisuSaveType.MODULES,
                 name: 'modules'
             });
@@ -626,7 +754,7 @@ export class RisuSaveEncoder {
         if(toSave.loadouts){
             this.blocks['loadouts'] = await this.encodeBlock({
                 compression: this.compression,
-                data: JSON.stringify(data.loadouts),
+                data: listContainerText(data.loadouts, 'loadouts', report.repairedContainers, true),
                 type: RisuSaveType.LOADOUTS,
                 name: 'loadouts'
             });
@@ -644,7 +772,7 @@ export class RisuSaveEncoder {
         if(toSave.plugins){
             this.blocks['plugins'] = await this.encodeBlock({
                 compression: this.compression,
-                data: JSON.stringify(data.plugins),
+                data: listContainerText(data.plugins, 'plugins', report.repairedContainers, true),
                 type: RisuSaveType.PLUGINS,
                 name: 'plugins'
             });

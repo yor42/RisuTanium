@@ -2099,6 +2099,33 @@ export const languageSpanish = {
         `Esta pestaña ha dejado de guardar. El servidor autoalojado acepta como máximo ${limitBytes / (1024 * 1024)} MiB en una sola solicitud (menos si un proxy delante del servidor establece un límite más bajo), y ${what ? `esta parte de tus datos lo supera: ${what}` : 'una parte de tus datos lo supera; el servidor no indicó cuál'}. Los cambios desde el último guardado correcto se perderán al recargar. Reduce el tamaño de esa parte, por ejemplo eliminando chats o contenido de ella.`,
     savingStoppedConversionFailedMessage: "Esta pestaña ha dejado de guardar. Pasar tus datos al nuevo formato de guardado no tuvo éxito tras varios intentos, y no se cambió nada en tus datos guardados. Los cambios desde el último guardado correcto se perderán al recargar. Recarga la página para intentarlo de nuevo.",
     savingStoppedUnconfirmedMessage: "Esta pestaña ha dejado de guardar. RisuAI no pudo confirmar cuál es el guardado actual. Recarga la página para ver cuál se cargó; los cambios hechos en esta pestaña desde el último guardado correcto podrían perderse.",
+    savingStoppedInvalidDataMessage: (what: string) =>
+        `Esta pestaña ha dejado de guardar. ${what ? `${what} no se puede` : 'Una parte de tus datos no se puede'} escribir como un guardado que RisuAI pueda volver a cargar, así que no se escribió nada y tus datos guardados no han cambiado. Los cambios desde el último guardado correcto se perderán al recargar. Exporta una copia de seguridad si quieres conservar los datos de esta pestaña.`,
+    savingHeldMessage: (names: string, archived: boolean) =>
+        `El guardado está en pausa. El id de ${names} no se puede guardar, así que no se escribe nada hasta que se solucione; los cambios hechos mientras tanto se conservan en esta pestaña, pero se perderán si la cierras. ${archived ? 'Para reanudar: en un personaje archivado, cuyo id no se puede cambiar aquí, exporta una copia de seguridad y restáurala (la restauración repara el id a partir de los datos archivados); en cualquier otro personaje, deshaz el cambio que un plugin hizo en él; o elimina el personaje de forma permanente' : 'Para reanudar el guardado, deshaz el cambio que un plugin hizo en él, o elimina el personaje de forma permanente'} (muévelo a la papelera y luego elimínalo de la papelera; la papelera por sí sola no reanuda el guardado).`,
+    savingWaitingMessage: (names: string) =>
+        `El guardado está esperando a ${names}: su id cambió mientras se guardaba, así que ese intento se descartó y se volverá a intentar. No se escribe nada hasta que deje de cambiar. Los cambios hechos mientras tanto se conservan en esta pestaña, pero se perderán si la cierras.`,
+    saveRepairedEntriesNotice: (dropped: number, filled: number) =>
+        `RisuAI reparó la lista de personajes: ${dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : ''}${dropped > 0 && filled > 0 ? ', y ' : ''}${filled > 0 ? `se asignó un id nuevo a ${filled} ${filled === 1 ? 'personaje cuyo id faltaba o no se podía guardar' : 'personajes cuyo id faltaba o no se podía guardar'}` : ''}.${dropped > 0 ? ' Puede que un plugin haya escrito las entradas omitidas.' : ''}`,
+    personasRepairedNotice: (count: number) =>
+        `RisuAI omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
+    restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
+        `La copia de seguridad se cargó después de que RisuAI reparara su lista de personajes: ${[
+            dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : '',
+            changed > 0 ? `se asignó un id nuevo a ${changed} ${changed === 1 ? 'personaje cuyo id faltaba o no se podía guardar' : 'personajes cuyo id faltaba o no se podía guardar'}` : '',
+            recovered > 0 ? `${recovered} ${recovered === 1 ? 'personaje archivado recuperó' : 'personajes archivados recuperaron'} el id registrado en sus datos archivados` : '',
+        ].filter((part) => part !== '').join('; ')}.`,
+    restoreRefusedArchivedId: (name: string) =>
+        `No se pudo cargar esta copia de seguridad: el personaje archivado "${name}" tiene un id que no se puede guardar, y los datos archivados a los que apunta no contienen un id utilizable con el que repararlo. No se cambió nada.`,
+    restoreRefusedUnsavable: (what: string) =>
+        `No se pudo cargar esta copia de seguridad: ${what} no se puede guardar tal como está. No se cambió nada.`,
+    exportIdsRepairedNotice: (recovered: number, filled: number, replaced: number, unrestorable: string) =>
+        `Algunos ids de personajes se repararon en esta exportación; los personajes de la página no han cambiado. ${[
+            recovered > 0 ? `${recovered} ${recovered === 1 ? 'personaje archivado se exportó' : 'personajes archivados se exportaron'} con el id registrado en sus datos archivados.` : '',
+            filled > 0 ? `${filled} ${filled === 1 ? 'personaje no tenía id y se exportó' : 'personajes no tenían id y se exportaron'} con uno nuevo.` : '',
+            replaced > 0 ? `${replaced} ${replaced === 1 ? 'personaje tiene un id que no se puede guardar y se exportó' : 'personajes tienen un id que no se puede guardar y se exportaron'} con uno nuevo.` : '',
+            unrestorable ? `El contenido archivado de ${unrestorable} no se puede restaurar desde esta exportación: sus datos archivados no registran ningún id utilizable, así que se exportó con un id nuevo.` : '',
+        ].filter((part) => part !== '').join(' ')}`,
     saveBlockLabel: (blockName: string): string =>
         blockName === 'root' ? 'tus ajustes generales'
         : blockName === 'preset' ? 'tus presets de bot'

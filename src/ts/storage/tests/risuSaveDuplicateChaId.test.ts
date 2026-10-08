@@ -564,15 +564,18 @@ describe('RisuSaveEncoder.set() -- a chaId edited mid-pass still encodes and fre
         const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
         const decodedNames = new Set(decoded.characters?.map((ch: CharacterFixture) => ch.name))
 
-        // holder1 -- first in snapshot order -- is the one frozen for the
-        // starting duplicate; holder2 is skipped entirely by the per-pass
-        // dedupe and never gets a block of its own.
-        expect(decodedNames.has('Holder1')).toBe(true)
+        // holder1 -- first in snapshot order -- is the one that would be
+        // written for the starting duplicate, but its id changed before its
+        // turn: its form carries an id other than its block's name, so no
+        // block is stored for it (no block existed for the key before this
+        // pass, so none is kept either) and it is reported. holder2 is
+        // skipped entirely by the per-pass dedupe and never gets a block.
+        expect(decodedNames.has('Holder1')).toBe(false)
         expect(decodedNames.has('Holder2')).toBe(false)
-        // Exactly two blocks: other, and the one holder written for the
-        // starting duplicate -- nothing extra was created under a key read
+        // Exactly one block: other. Nothing was created under a key read
         // live mid-pass.
-        expect(decoded.characters?.length).toBe(2)
+        expect(decoded.characters?.length).toBe(1)
+        expect(encoder.getReport().excluded).toEqual([{ entry: holder1, reason: 'id-changed', id: changedId }])
         expect(encoder.getFrozenKeys().has(dupId)).toBe(true)
         expect(encoder.getFrozenKeys().has(changedId)).toBe(false)
     })
@@ -611,15 +614,16 @@ describe('RisuSaveEncoder.init() -- a chaId renamed mid-pass still encodes and f
         const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
         const decodedNames = new Set(decoded.characters?.map((ch: CharacterFixture) => ch.name))
 
-        // holder1 -- first in snapshot order -- is the one frozen for the
-        // starting duplicate; holder2 is skipped entirely by the per-pass
-        // dedupe and never gets a block of its own.
-        expect(decodedNames.has('Holder1')).toBe(true)
+        // holder1 -- first in snapshot order -- is the holder that would be
+        // written for the starting duplicate, but its id changed before its
+        // turn: no block is built for it and it is reported. holder2 is
+        // skipped entirely by the per-pass dedupe and never gets a block.
+        expect(decodedNames.has('Holder1')).toBe(false)
         expect(decodedNames.has('Holder2')).toBe(false)
-        // Exactly two blocks: other, and the one holder written for the
-        // starting duplicate -- nothing extra was created under a key read
+        // Exactly one block: other. Nothing was created under a key read
         // live mid-pass.
-        expect(decoded.characters?.length).toBe(2)
+        expect(decoded.characters?.length).toBe(1)
+        expect(encoder.getReport().excluded).toEqual([{ entry: holder1, reason: 'id-changed', id: changedId }])
         expect(encoder.getFrozenKeys().has(dupId)).toBe(true)
         expect(encoder.getFrozenKeys().has(changedId)).toBe(false)
     })

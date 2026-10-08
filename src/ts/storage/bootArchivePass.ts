@@ -4,6 +4,7 @@ import type { ColdStorageReadResult } from '../process/coldstorage.svelte'
 import { BlockTooLargeError, type BlockLayout, type BlockSetInput } from './blockStore'
 import { parseFramedHeader } from './blockFrame'
 import { packedNamesOf } from './packedNames'
+import { isUsableCharacterId } from './characterIds'
 import {
     RisuSaveEncoder,
     RisuSaveType,
@@ -278,9 +279,6 @@ class CommitTooLargeError extends Error { }
 /** Block names the save file keeps for itself; a character block of the same name replaces or collides with one of them. */
 const FIXED_BLOCK_NAMES: ReadonlySet<string> = new Set(['root', 'preset', 'modules', 'loadouts', 'plugins', 'pluginStorage', 'config'])
 
-/** The block header holds a name's byte length in one byte. */
-const MAX_BLOCK_NAME_BYTES = 255
-
 /**
  * Opens the session. Call it after `forageStorage.Init()` (web) or at the
  * start of the Tauri read, and before the saved profile is read: the exclusive
@@ -404,8 +402,9 @@ async function createSession(host: BootArchiveHost, deps: BootArchiveDeps): Prom
 
 //#region eligibility
 
+/** A character entry: an object that is not a list, because a list's `chaId` does not survive a JSON round trip and the save leaves it out. */
 function isObjectSlot(value: unknown): value is Slot {
-    return typeof value === 'object' && value !== null
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** The pass-wide gates P4 to P6 on the raw decoded tree. */
@@ -479,23 +478,15 @@ function refusalReason(tree: Database, characters: readonly Slot[]): string | nu
     const seen = new Set<string>()
     for (const cha of characters) {
         const id = String(cha.chaId)
-        if (FIXED_BLOCK_NAMES.has(id)) {
-            return 'a character id is the name of a block the save file keeps for itself'
-        }
-        if (id === '__proto__') {
-            return 'a character id is __proto__'
+        if (!isUsableCharacterId(cha.chaId)) {
+            return FIXED_BLOCK_NAMES.has(id)
+                ? 'a character id is the name of a block the save file keeps for itself'
+                : 'a character id cannot be used as a block name'
         }
         if (seen.has(id)) {
             return 'two characters have the same id'
         }
         seen.add(id)
-        const bytes = textEncoder.encode(id)
-        if (bytes.length > MAX_BLOCK_NAME_BYTES) {
-            return `a character id is longer than ${MAX_BLOCK_NAME_BYTES} bytes`
-        }
-        if (textDecoder.decode(bytes) !== id) {
-            return 'a character id does not survive a UTF-8 round trip'
-        }
     }
     return null
 }

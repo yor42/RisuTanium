@@ -17,8 +17,9 @@ import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { repairBotPresetsId } from "../storage/botPresetRepair";
 import { describeOmitted } from "../storage/bootBlockLoad";
-import { treeToBlockSet } from "../storage/treeToBlockSet";
-import { completeRestoredTree, currentCharacterNames, leftOutQuestion, replaceWithRestoredSet } from "./restoreReplace";
+import { buildRestoreSet, completeRestoredTree, currentCharacterNames, leftOutQuestion, readArchivedUnitCharacter, repairRestoredCharacters, replaceWithRestoredSet } from "./restoreReplace";
+import { repairCharacterTree } from "../storage/characterTreeRepair";
+import { isCharacterEntry, isUsableCharacterId } from "../storage/characterIds";
 import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
@@ -52,14 +53,44 @@ function getBasename(data:string){
  * database entry.
  */
 async function encodeDatabaseWithLateColdStorage(db: Database, collected: ColdStorageBackupCollection){
-    const dbWithoutAccount = { ...db, account: undefined }
+    const { tree: dbWithoutAccount, notice: repairNotice } = await exportCopyOf(db)
     const lateRoots = listColdBackupRoots(dbWithoutAccount)
     const dbData = encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
     const late = await collectColdStorageBackupPayloads(dbWithoutAccount, {
         roots: lateRoots,
         settledKeys: collected.settledKeys,
     })
-    return { dbData, late }
+    return { dbData, late, repairNotice }
+}
+
+/**
+ * The database an export encodes: `db` without its account, with the character
+ * list made one a reader can load. A list with nothing wrong is exported as it
+ * is, byte for byte. Otherwise the export gets its own copy (the page's
+ * characters are never changed): entries that are not characters are left out,
+ * an id that cannot be saved is replaced with the lists that named it following,
+ * and an archived character takes back the id its unit records, or, when the
+ * unit cannot name one, a new id (its archived content then cannot be restored
+ * from this export). The export is never refused; `notice` says what was done.
+ */
+async function exportCopyOf(db: Database): Promise<{ tree: Database, notice: string | null }> {
+    const plain = { ...db, account: undefined }
+    const list: unknown = db.characters
+    if (!Array.isArray(list) || list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId))) {
+        return { tree: plain, notice: null }
+    }
+    const repair = await repairCharacterTree(plain, 'export', { readUnitCharacter: readArchivedUnitCharacter })
+    const count = (kind: string) => repair.notices.filter((notice) => notice.kind === kind).length
+    const recovered = count('stub-id-recovered')
+    const filled = count('id-filled')
+    const replaced = count('id-replaced')
+    const unrestorable = repair.notices.flatMap((notice) => notice.kind === 'stub-unrestorable' ? [`"${notice.name}"`] : [])
+    return {
+        tree: plain,
+        notice: recovered + filled + replaced + unrestorable.length > 0
+            ? language.exportIdsRepairedNotice(recovered, filled, replaced, unrestorable.join(', '))
+            : null,
+    }
 }
 
 /**
@@ -446,7 +477,7 @@ async function writeLocalBackup(session: ExportSession){
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late } = await encodeDatabaseWithLateColdStorage(db, coldStoragePayloads)
+    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, coldStoragePayloads)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
@@ -460,10 +491,12 @@ async function writeLocalBackup(session: ExportSession){
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
     const leftOutInlayNames = inlayResult.leftOut.map((left) => left.id)
-    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted) {
+    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice) {
         let message = missingAssets.length > 0
             ? 'Backup Successful, but the following assets were missing and skipped:\n\n'
-            : 'Backup Successful, but some data could not be included:\n\n'
+            : (lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted)
+                ? 'Backup Successful, but some data could not be included:\n\n'
+                : 'Backup Successful.\n\n'
         for (const key of missingAssets) {
             const assetInfo = assetMap.get(key)
             if (assetInfo) {
@@ -487,6 +520,9 @@ async function writeLocalBackup(session: ExportSession){
                 message += '\n\n'
             }
             message += language.backupInlaysOldStoreUnlisted
+        }
+        if (repairNotice) {
+            message += (message.endsWith('\n') ? '\n' : '\n\n') + repairNotice
         }
         alertMd(message)
     } else {
@@ -647,7 +683,7 @@ async function writePartialLocalBackup(session: ExportSession){
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late } = await encodeDatabaseWithLateColdStorage(db, coldStoragePayloads)
+    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, coldStoragePayloads)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
@@ -660,10 +696,12 @@ async function writePartialLocalBackup(session: ExportSession){
     await writer.close()
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
-    if (missingAssets.length > 0 || lateColdStorageReport) {
+    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice) {
         let message = missingAssets.length > 0
             ? 'Partial backup successful, but the following profile images were missing and skipped:\n\n'
-            : 'Partial backup successful, but some data could not be included:\n\n'
+            : lateColdStorageReport
+                ? 'Partial backup successful, but some data could not be included:\n\n'
+                : 'Partial backup successful.\n\n'
         for (const key of missingAssets) {
             const assetInfo = assetMap.get(key)
             if (assetInfo) {
@@ -676,6 +714,9 @@ async function writePartialLocalBackup(session: ExportSession){
             message += '\n'
         }
         message += lateColdStorageReport
+        if (repairNotice) {
+            message += `\n\n${repairNotice}`
+        }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
         alertMd(message)
     } else {
@@ -1200,6 +1241,14 @@ export function LoadLocalBackup(){
                     return
                 }
 
+                // The character list is made one the save can hold first, with
+                // the archived units in the store to read an archived
+                // character's id back from: they were all written above.
+                const characterRepair = await repairRestoredCharacters(dbData);
+                if ('refusal' in characterRepair) {
+                    alertError(characterRepair.refusal);
+                    return;
+                }
                 // Repairs ids on the decoded backup before installing it,
                 // matching every other backup-loading path -- never left
                 // for boot's own repair after the reload below, which
@@ -1212,7 +1261,12 @@ export function LoadLocalBackup(){
                 // keeps its working settings as a new preset, over none.
                 completeRestoredTree(dbData);
                 repairBotPresetsId(dbData)
-                const restoredSet = await treeToBlockSet(dbData);
+                const built = await buildRestoreSet(dbData);
+                if ('refusal' in built) {
+                    alertError(built.refusal);
+                    return;
+                }
+                const restoredSet = built.set;
 
                 // The exclusive hold taken above (when granted) already holds
                 // dbWriteLock internally for the rest of this restore --
@@ -1250,6 +1304,10 @@ export function LoadLocalBackup(){
                 }
                 if (written.kind === 'too-large') {
                     alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit));
+                    return;
+                }
+                if (written.kind === 'unsavable') {
+                    alertError(language.restoreRefusedUnsavable(describeBlockForPerson(written.blockName)));
                     return;
                 }
                 if (written.kind === 'unconfirmed') {
@@ -1297,6 +1355,11 @@ export function LoadLocalBackup(){
                 }
                 if (tooLargeInlays.length > 0) {
                     await alertNormalWait(language.restoreInlaysTooLarge(tooLargeInlays.length, shownSkippedNames(tooLargeInlays), inlayAttachmentLimit()));
+                }
+                // Awaited like the notices above, so it is read before the reload
+                // takes the page away; only a restore that landed gets here.
+                if (characterRepair.notice !== null) {
+                    await alertNormalWait(characterRepair.notice);
                 }
 
                 alertStore.set({

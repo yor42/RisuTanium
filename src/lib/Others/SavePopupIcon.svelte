@@ -6,6 +6,20 @@
   import { language } from "src/lang";
   import { NODE_BODY_LIMIT_BYTES } from "src/ts/storage/nodeBodyLimit";
   import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
+  import { heldSaveStore } from "src/ts/storage/saveHold";
+
+  function heldMessage(held: { name: string, kind: 'unusable-id' | 'waiting', archived: boolean }[]){
+    const waiting = held.filter((item) => item.kind === 'waiting')
+    const paused = held.filter((item) => item.kind === 'unusable-id')
+    const parts: string[] = []
+    if(paused.length > 0){
+      parts.push(language.savingHeldMessage(paused.map((item) => item.name).join(', '), paused.some((item) => item.archived)))
+    }
+    if(waiting.length > 0){
+      parts.push(language.savingWaitingMessage(waiting.map((item) => item.name).join(', ')))
+    }
+    return parts.join('\n\n')
+  }
 
   // A page that runs from OPFS this time never starts the save loop, so its
   // state comes from the page's storage mode. The component is created before
@@ -24,6 +38,8 @@
         return language.savingStoppedConversionFailedMessage
       case 'unconfirmed':
         return language.savingStoppedUnconfirmedMessage
+      case 'invalid-data':
+        return language.savingStoppedInvalidDataMessage(getSavingStoppedDetail())
       default:
         return language.savingStoppedStayMessage
     }
@@ -47,6 +63,12 @@
   <button class="absolute top-3 right-3 z-10 text-white bg-red-800 hover:bg-red-600 p-2 rounded-sm" onclick={() =>{
       const groups = $frozenSaveKeysStore.map((k) => k.names.join(' and ')).join('; ')
       alertNormal(language.duplicateChaIdSavePausedMessage(groups))
+  }}>
+      <OctagonAlert size={24} />
+  </button>
+{:else if $heldSaveStore.length > 0}
+  <button class="absolute top-3 right-3 z-10 text-white bg-red-800 hover:bg-red-600 p-2 rounded-sm" onclick={() =>{
+      alertNormal(heldMessage($heldSaveStore))
   }}>
       <OctagonAlert size={24} />
   </button>

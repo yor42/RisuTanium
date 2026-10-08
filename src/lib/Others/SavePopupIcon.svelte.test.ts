@@ -24,6 +24,7 @@ import type { Database } from '../../ts/storage/database.svelte'
 import type { FrozenSaveKeyInfo } from '../../ts/stores.svelte'
 import { NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
+import { heldSaveStore } from 'src/ts/storage/saveHold'
 
 //#region module mocks
 
@@ -80,6 +81,7 @@ beforeEach(() => {
     saving.state = false
     savingStoppedReasonStore.set('')
     frozenSaveKeysStoreMock.set([])
+    heldSaveStore.set([])
     DBState.db = {} as unknown as Database
     alertMdSpy.mockReset()
     alertNormalSpy.mockReset()
@@ -295,6 +297,55 @@ describe('SavePopupIcon -- the duplicate-chaId indicator (MC-078, MC-079, MC-082
         expect(target.querySelector('button')).toBeNull()
         expect(target.textContent).toBe('')
         expect(target.querySelector('div.saving-animation')).not.toBeNull()
+
+        await teardown(target, app)
+    })
+})
+
+describe('SavePopupIcon -- saving waits on a character whose id cannot be saved', () => {
+    test('shows the indicator, names the character and says how to clear it; an archived character also gets the backup route', async () => {
+        heldSaveStore.set([{ name: 'Alice', kind: 'unusable-id', archived: false }])
+        const { target, app } = mountIcon()
+        flushSync()
+        target.querySelector('button')!.click()
+        flushSync()
+        expect(alertNormalSpy).toHaveBeenCalledTimes(1)
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.savingHeldMessage('Alice', false))
+        expect(language.savingHeldMessage('Alice', false)).toContain('delete the character permanently')
+        expect(language.savingHeldMessage('Alice', false)).not.toContain('export a backup')
+        expect(language.savingHeldMessage('Alice', true)).toContain('export a backup and restore it')
+
+        await teardown(target, app)
+    })
+
+    test('a character the loop keeps discarding is shown as waiting, and the indicator clears with the store', async () => {
+        heldSaveStore.set([{ name: 'Bob', kind: 'waiting', archived: false }])
+        const { target, app } = mountIcon()
+        flushSync()
+        target.querySelector('button')!.click()
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.savingWaitingMessage('Bob'))
+
+        heldSaveStore.set([])
+        flushSync()
+        expect(target.querySelector('button')).toBeNull()
+
+        await teardown(target, app)
+    })
+
+    test('savingStoppedReason wins over the wait, and the wait wins over the ordinary saving animation', async () => {
+        heldSaveStore.set([{ name: 'Alice', kind: 'unusable-id', archived: false }])
+        savingStoppedReasonStore.set('invalid-data')
+        stopDetail.value = 'your modules'
+        const { target, app } = mountIcon()
+        flushSync()
+        target.querySelector('button')!.click()
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.savingStoppedInvalidDataMessage('your modules'))
+
+        savingStoppedReasonStore.set('')
+        DBState.db = { showSavingIcon: true } as unknown as Database
+        saving.state = true
+        flushSync()
+        expect(target.querySelectorAll('button').length).toBe(1)
 
         await teardown(target, app)
     })
