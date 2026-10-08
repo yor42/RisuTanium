@@ -21,7 +21,25 @@ function Invoke-FixtureProcess([string]$Script, [string[]]$Arguments = @(), [str
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $pwshPath; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
     $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    $start.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
     foreach ($arg in @('-NoProfile', '-File', $Script) + $Arguments) { $start.ArgumentList.Add($arg) }
+    $process = [Diagnostics.Process]::Start($start)
+    $process.StandardInput.Write($InputText); $process.StandardInput.Close()
+    $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    $result = @{ ExitCode = $process.ExitCode; Stdout = $stdout; Stderr = $stderr }
+    $process.Dispose()
+    return $result
+}
+function Invoke-FixtureSettingsHook([string]$EventName, [string]$InputText) {
+    # Runs the hook exactly as project settings declare it, so the exit code seen here is the one Claude Code receives.
+    $settings = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../settings.json')) | ConvertFrom-Json -AsHashtable
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $pwshPath; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+    $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    $start.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.Environment['CLAUDE_PROJECT_DIR'] = $repo
+    foreach ($arg in @('-NoProfile', '-Command', $settings.hooks[$EventName][0].hooks[0].command)) { $start.ArgumentList.Add($arg) }
     $process = [Diagnostics.Process]::Start($start)
     $process.StandardInput.Write($InputText); $process.StandardInput.Close()
     $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd()
@@ -72,6 +90,9 @@ Register-Fixture -Revoke; Test-FixtureHook 'revoked instance' (New-FixturePayloa
 $amended = Join-Path $repo 'src/amended.ts'; Register-Fixture $amended
 Test-FixtureHook 'old target after amendment' (New-FixturePayload)
 Test-FixtureHook 'resumed same instance amended target' (New-FixturePayload $amended) 0
+$korean = Join-Path $repo 'src/한글.md'; Register-Fixture $korean
+Test-FixtureHook 'non-ASCII granted target' (New-FixturePayload $korean) 0
+Test-FixtureHook 'non-ASCII sibling of a granted target' (New-FixturePayload (Join-Path $repo 'src/한국.md'))
 Register-Fixture
 $payload = New-FixturePayload; $payload.Remove('agent_id'); $payload.Remove('agent_type'); Test-FixtureHook 'ordinary main absent identities' $payload 0
 foreach ($key in @('agent_id', 'agent_type')) {
@@ -123,6 +144,11 @@ $scratch = Join-Path $fixture 'probe.txt'; Register-Fixture $scratch -Role 'opus
 $readonly.tool_input.file_path = $scratch; Test-FixtureHook 'exact external temporary scratch' $readonly 0
 $readonly.tool_input.file_path = Join-Path $env:USERPROFILE 'outside-temp.txt'; Test-FixtureHook 'external outside TEMP' $readonly
 Test-FixtureRegistrationDenial 'external outside TEMP registration' $readonly.tool_input.file_path 'opus-reviewer'
+$unregistered = New-FixturePayload (Join-Path $fixture 'ad-hoc-probe.txt'); $unregistered.agent_id = 'unregistered-agent'; $unregistered.agent_type = 'opus-reviewer'
+Test-FixtureHook 'ungranted external temporary scratch for a scratch role' $unregistered 0
+$unregistered.agent_type = 'sonnet-coder'; Test-FixtureHook 'ungranted external temporary scratch for a writer role' $unregistered 0
+$unregistered.agent_type = 'code-searcher'; Test-FixtureHook 'read-only role external scratch' $unregistered
+$unregistered.agent_type = 'opus-reviewer'; $unregistered.tool_input.file_path = Join-Path $repo 'src/unregistered.ts'; Test-FixtureHook 'ungranted repository target for a scratch role' $unregistered
 $foreign = Join-Path $fixture 'foreign-repository'; [IO.Directory]::CreateDirectory((Join-Path $foreign '.git')) | Out-Null
 Test-FixtureHook 'foreign checkout' (New-FixturePayload (Join-Path $foreign 'file.ts'))
 Test-FixtureRegistrationDenial 'foreign checkout registration' (Join-Path $foreign 'file.ts')
@@ -166,7 +192,16 @@ if (Test-Path -LiteralPath $junction) {
         Remove-Item -LiteralPath $junction -Force
     }
 }
+$denied = Invoke-FixtureSettingsHook 'PreToolUse' ((New-FixturePayload (Join-Path $repo 'src/sibling.ts')) | ConvertTo-Json -Depth 10 -Compress)
+if ($denied.ExitCode -ne 2 -or -not $denied.Stderr) { throw "Settings-form denial must exit 2, got $($denied.ExitCode)." }
+$passed++
+$allowed = Invoke-FixtureSettingsHook 'PreToolUse' ((New-FixturePayload) | ConvertTo-Json -Depth 10 -Compress)
+if ($allowed.ExitCode -ne 0 -or $allowed.Stderr) { throw "Settings-form exact grant must exit 0, got $($allowed.ExitCode): $($allowed.Stderr)" }
+$passed++
 $startPayload = @{ session_id=$session; agent_id=$agent; agent_type=$role; hook_event_name='SubagentStart' } | ConvertTo-Json -Compress
+$settingsStart = Invoke-FixtureSettingsHook 'SubagentStart' $startPayload
+if ($settingsStart.ExitCode -ne 0 -or (Read-GuardObject $settingsStart.Stdout).hookSpecificOutput.additionalContext -notmatch 'fixture-agent') { throw 'Settings-form identity context failed.' }
+$passed++
 $identity = Invoke-FixtureProcess (Join-Path $scripts 'subagent-identity.ps1') -InputText $startPayload
 if ($identity.ExitCode -ne 0 -or $identity.Stderr -or (Read-GuardObject $identity.Stdout).hookSpecificOutput.additionalContext -notmatch 'fixture-agent') { throw 'Subagent identity context failed.' }
 $passed++

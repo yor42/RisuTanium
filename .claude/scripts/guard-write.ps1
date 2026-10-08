@@ -4,7 +4,7 @@ $role = '?'; $session = '?'; $agent = '?'; $requested = '?'
 try {
     . (Join-Path $PSScriptRoot 'write-guard-common.ps1')
     Assert-GuardRepository
-    $payload = Read-GuardObject ([Console]::In.ReadToEnd())
+    $payload = Read-GuardObject (Read-GuardStdin)
     $session = $payload.session_id
     Assert-GuardId $session
     if ($payload.hook_event_name -isnot [string] -or $payload.hook_event_name -cne 'PreToolUse' -or $payload.tool_name -isnot [string] -or $payload.tool_name -cnotin @('Write', 'Edit') -or $payload.tool_input -isnot [Collections.IDictionary]) { throw 'Unsupported hook event or tool shape.' }
@@ -17,6 +17,8 @@ try {
     Assert-GuardRole $role
     if ($hasAgent) { $agent = $payload.agent_id; Assert-GuardId $agent } else { $agent = 'main' }
     Assert-GuardTarget $role $path
+    # Assert-GuardTarget already confined external targets to writer/scratch roles under TEMP outside every repository.
+    if (-not (Test-GuardWithin $path $GuardRepositoryRoot)) { exit 0 }
     $targets = Read-GuardManifest $session $agent $role
     if (-not $targets.Contains($path)) { throw 'Requested file is outside the exact instance grant.' }
     exit 0

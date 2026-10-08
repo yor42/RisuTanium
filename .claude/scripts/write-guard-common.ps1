@@ -30,6 +30,11 @@ function Read-GuardObject([string]$Text) {
         return ConvertFrom-Json -InputObject $Text -AsHashtable -Depth 20
     } catch { throw 'Invalid JSON object.' }
 }
+function Read-GuardStdin {
+    # Hooks run without a console, where the default stdin decoding is the system ANSI code page; hook JSON is UTF-8.
+    $reader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.UTF8Encoding]::new($false))
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+}
 function Assert-GuardId([object]$Value) {
     if ($Value -isnot [string] -or [string]::IsNullOrWhiteSpace($Value) -or $Value.Length -gt 256 -or $Value -match '[\x00-\x1f\x7f]') {
         throw 'Missing or malformed identity.'

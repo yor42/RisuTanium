@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 try {
     . (Join-Path $PSScriptRoot 'write-guard-common.ps1')
     Assert-GuardRepository
-    $payload = Read-GuardObject ([Console]::In.ReadToEnd())
+    $payload = Read-GuardObject (Read-GuardStdin)
     if ($payload.hook_event_name -isnot [string] -or $payload.hook_event_name -cne 'SubagentStart') { throw 'Unexpected event.' }
     Assert-GuardId $payload.session_id; Assert-GuardId $payload.agent_id; Assert-GuardRole $payload.agent_type
     $context = 'Instance identity: session={0}; agent={1}; role={2}; checkout={3}. Proceed with authorized reads, analysis and returned drafts.' -f $payload.session_id, $payload.agent_id, $payload.agent_type, $GuardRepositoryRoot

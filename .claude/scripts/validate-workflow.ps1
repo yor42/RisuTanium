@@ -127,7 +127,7 @@ try {
         if ($commands -isnot [array] -or $commands.Count -ne 1) { Problem "Expected one command hook: $event"; continue }
         $hook = $commands[0]
         if ($hook.type -cne 'command' -or $hook.shell -cne 'powershell' -or $hook.timeout -le 0) { Problem "Invalid PowerShell command hook: $event" }
-        if ($hook.command -notmatch '^& "\$env:CLAUDE_PROJECT_DIR\\\.claude\\scripts\\([a-z-]+\.ps1)"$') { Problem "Hook must use the quoted project script path: $event" }
+        if ($hook.command -notmatch '^& "\$env:CLAUDE_PROJECT_DIR\\\.claude\\scripts\\([a-z-]+\.ps1)"; exit \$LASTEXITCODE$') { Problem "Hook must use the quoted project script path and propagate its exit code: $event" }
         elseif (-not (Test-Path -LiteralPath (Join-Path $taskRoot ('.claude/scripts/' + $Matches[1])) -PathType Leaf)) { Problem "Missing hook script: $event" }
     }
 } catch { Problem "Invalid settings JSON: $($_.Exception.Message)" }
