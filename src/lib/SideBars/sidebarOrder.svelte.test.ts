@@ -5,6 +5,7 @@ import {
     dropOnItem,
     editFolder,
     folderMemberIds,
+    isShownFolder,
     listRows,
     moveToGap,
     refKey,
@@ -247,10 +248,27 @@ describe('listRows and refKey', () => {
         expect(withStale.map((r) => r.key)).toEqual(without.map((r) => r.key))
     })
 
-    test('a null entry and a folder without data have no row; an empty folder has one', () => {
+    test('a null entry, a folder without data, an empty folder and a folder without a known member have no row', () => {
         const noData = { id: 'nd', name: 'x', color: '' } as unknown as folder
-        const rows = listRows([null, 'A', noData, f('e', [])], known)
-        expect(rows.map((r) => r.kind)).toEqual(['char', 'folder'])
+        const rows = listRows([null, 'A', noData, f('e', []), f('s', ['stale']), f('k', ['B'])], known)
+        expect(rows.map((r) => (r.kind === 'folder' ? `F:${r.id}` : r.id))).toEqual(['A', 'F:k'])
+    })
+
+    test('guard: a folder is shown by its visible members, and members come from the first predicate', () => {
+        const visible = (id: string): boolean => id !== 'hidden' && id !== 'stale'
+        expect(isShownFolder(f('a', ['hidden', 'B']), visible)).toBe(true)
+        expect(isShownFolder(f('a', ['hidden', 'stale']), visible)).toBe(false)
+        expect(isShownFolder(f('a', []), visible)).toBe(false)
+        // A closed folder lists no members but keeps its row; an open one lists the members it is given.
+        const closed = listRows([f('c', ['B', 'C'])], () => false, visible)
+        expect(closed.map((r) => r.kind === 'folder' && r.members.length)).toEqual([0])
+        const open = listRows([f('c', ['B', 'hidden', 'C'])], visible)
+        expect(open.map((r) => r.kind === 'folder' && r.members.map((m) => m.id))).toEqual([['B', 'C']])
+    })
+
+    test('guard: a dropped folder still counts as an occurrence, so a later folder with the same id keeps its ref', () => {
+        const rows = listRows([f('F', ['stale']), 'A', f('F', ['B'])], known)
+        expect(rows.map((r) => r.key)).toEqual([refKey(char('A')), refKey(fol('F', 1))])
     })
 
     test('keys are unique for duplicates, duplicate folder ids and a folder id equal to a character id', () => {

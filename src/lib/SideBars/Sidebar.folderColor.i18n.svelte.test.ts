@@ -156,7 +156,8 @@ function buildDb(folder: FolderEntry): Database {
         plugins: [],
         pluginCustomStorage: {},
         characterOrder: [folder],
-        characters: [],
+        // The folder needs a member with a character, or the rail shows no row for it.
+        characters: [{ chaId: 'm0', name: 'm0', image: '', type: 'character', chats: [], chatPage: 0 }],
         hideAllImages: false,
     } as unknown as Database
 }
@@ -189,7 +190,7 @@ beforeEach(() => {
     resetRailMemory()
     selectAnswers.length = 0
     selectOffers.length = 0
-    DBState.db = buildDb({ id: 'f1', name: 'Folder', color: '', data: [] })
+    DBState.db = buildDb({ id: 'f1', name: 'Folder', color: '', data: ['m0'] })
 })
 
 afterEach(async () => {
@@ -239,7 +240,7 @@ describe('folder colour select in the sidebar', () => {
     })
 
     test.each([['an empty answer', ''], ['an out-of-range index', '99'], ['a negative index', '-1']])('regression reproducer: %s leaves the folder colour unchanged and throws nothing', async (_label, answer) => {
-        DBState.db = buildDb({ id: 'f1', name: 'Folder', color: 'red', data: [] })
+        DBState.db = buildDb({ id: 'f1', name: 'Folder', color: 'red', data: ['m0'] })
         const unhandled: unknown[] = []
         const record = (reason: unknown) => { unhandled.push(reason) }
         process.on('unhandledRejection', record)
@@ -251,7 +252,7 @@ describe('folder colour select in the sidebar', () => {
         }
 
         const stored = DBState.db.characterOrder[0] as unknown as FolderEntry
-        expect(stored).toEqual({ id: 'f1', name: 'Folder', color: 'red', data: [] })
+        expect(stored).toEqual({ id: 'f1', name: 'Folder', color: 'red', data: ['m0'] })
         expect(selectOffers).toHaveLength(2)
         expect(unhandled).toEqual([])
     })

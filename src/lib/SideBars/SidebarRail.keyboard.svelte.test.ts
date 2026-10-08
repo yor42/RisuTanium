@@ -439,11 +439,11 @@ describe('moving an entry (K5 to K9)', () => {
         expect(checkCharOrderSpy).not.toHaveBeenCalled()
     })
 
-    test('a folder with one shown member and a hidden id is moved', async () => {
+    test('the only shown member of a folder that keeps an unknown id is refused', async () => {
         await mountSidebar([folderOf('F', ['X', 'GONE']), 'A'], 1)
         await pressAndSettle(focusEntry(memberKey('F', 'X')), 'ArrowDown', altDown)
-        expect(checkCharOrderSpy).toHaveBeenCalledTimes(1)
-        expect(orderNow()).toEqual(['F[GONE]', 'X', 'A'])
+        expect(checkCharOrderSpy).not.toHaveBeenCalled()
+        expect(orderNow()).toEqual(['F[X,GONE]', 'A'])
     })
 })
 

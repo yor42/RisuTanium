@@ -95,13 +95,26 @@ export function refKey(ref: ItemRef): string {
 }
 
 /**
+ * Whether the rail shows `entry`: at least one of its member ids is visible (`isVisible`).
+ * A folder with no visible member, whether its members are hidden characters, ids without a
+ * character or nothing at all, has no row. It stays in the saved order untouched.
+ */
+export function isShownFolder(entry: folder, isVisible: (id: string) => boolean): boolean {
+    return entry.data.some((id) => typeof id === 'string' && isVisible(id))
+}
+
+/**
  * Rows for the entries of `order` whose character is known (`isKnown`), one per occurrence.
- * A folder always has a row. A `null` entry and a folder without a `data` array have none.
+ * A folder has a row when `isShownFolder(entry, isVisible)` holds; `isVisible` defaults to
+ * `isKnown`. A caller whose `isKnown` is narrower than visibility, such as one that lists only
+ * the members of open folders, passes the visibility rule separately so a closed folder keeps
+ * its row. A `null` entry and a folder without a `data` array have none.
  * An occurrence number counts the entries with the same id over the whole order, the way
  * moveToGap and dropOnItem resolve a ref, so a row's ref names the entry those operations
- * will find. The count is per id, so an entry with another id never changes a ref.
+ * will find. The count is per id and is taken before a folder is dropped, so an entry with
+ * another id, or a dropped folder with the same id, never changes a ref.
  */
-export function listRows(order: readonly OrderEntry[], isKnown: (id: string) => boolean): TopRow[] {
+export function listRows(order: readonly OrderEntry[], isKnown: (id: string) => boolean, isVisible: (id: string) => boolean = isKnown): TopRow[] {
     const rows: TopRow[] = []
     const charSeen = new Map<string, number>()
     const folderSeen = new Map<string, number>()
@@ -131,7 +144,9 @@ export function listRows(order: readonly OrderEntry[], isKnown: (id: string) => 
                     members.push({ kind: 'member', key: refKey(memberRef), ref: memberRef, id: memberId })
                 }
             }
-            rows.push({ kind: 'folder', key: refKey(ref), ref, id: entry.id, entry, members })
+            if (isShownFolder(entry, isVisible)) {
+                rows.push({ kind: 'folder', key: refKey(ref), ref, id: entry.id, entry, members })
+            }
         }
     }
     return rows
@@ -408,6 +423,13 @@ function dropOnItemInternal(order: readonly OrderEntry[], sourceRef: ItemRef, ta
     draft.top.splice(src.index, 1)
     target.data.push(main)
     return draft.top
+}
+
+/** The folder entry `ref` names in `order` (the object itself, not a copy), or `null` when there is none. */
+export function folderEntryAt(order: readonly OrderEntry[], ref: FolderRef): folder | null {
+    const at = findFolder(order, ref)
+    const entry = at === -1 ? null : order[at]
+    return isFolderEntry(entry) ? entry : null
 }
 
 /** The member ids of the folder `ref` names, or `null` when no such folder is in the order. */

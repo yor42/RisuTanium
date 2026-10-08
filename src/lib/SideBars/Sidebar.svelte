@@ -439,18 +439,18 @@
   }
   @keyframes sidebar-dark-animation{
     from {
-      background-color: rgba(0,0,0,0) !important;
+      background-color: rgba(0,0,0,0);
     }
     to {
-      background-color: rgba(0,0,0,0.5) !important;
+      background-color: rgba(0,0,0,0.5);
     }
   }
   @keyframes sidebar-dark-closing-animation{
     from {
-      background-color: rgba(0,0,0,0.5) !important;
+      background-color: rgba(0,0,0,0.5);
     }
     to {
-      background-color: rgba(0,0,0,0) !important;
+      background-color: rgba(0,0,0,0);
     }
   }
 
@@ -485,12 +485,12 @@
     position: relative;
   }
   .sidebar-dark-animation{
-    animation-name: sidebar-dark-transition;
+    animation-name: sidebar-dark-animation;
     animation-duration: var(--risu-animation-speed);
     background-color: rgba(0,0,0,0.5)
   }
   .sidebar-dark-close-animation{
-    animation-name: sidebar-dark-closing-transition;
+    animation-name: sidebar-dark-closing-animation;
     animation-duration: var(--risu-animation-speed);
     background-color: rgba(0,0,0,0)
   }

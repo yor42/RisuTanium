@@ -3,6 +3,8 @@ import type { folder } from 'src/ts/storage/database.svelte'
 import { computeLayout, type LayoutItem } from './railLayout'
 import { isNoopGap } from './railTarget'
 import {
+    folderEntryAt,
+    isShownFolder,
     listRows,
     moveToGap,
     refKey,
@@ -157,6 +159,17 @@ function countFolders(order: readonly OrderEntry[], id: string): number {
     return count
 }
 
+/**
+ * True when the folder `ref` names is shown in `before` and not in `after`: the move took its
+ * last visible member out while hidden or unknown ids keep the folder in the saved order. The
+ * same-id folders before it keep their number in `after`, so the occurrence still names it.
+ */
+function leavesFolderUnshown(before: readonly OrderEntry[], after: readonly OrderEntry[], ref: FolderRef, isVisible: (id: string) => boolean): boolean {
+    const was = folderEntryAt(before, ref)
+    const now = folderEntryAt(after, ref)
+    return was !== null && now !== null && isShownFolder(was, isVisible) && !isShownFolder(now, isVisible)
+}
+
 const EMPTY_HEIGHTS: ReadonlyMap<string, number> = new Map()
 
 /**
@@ -169,11 +182,12 @@ const EMPTY_HEIGHTS: ReadonlyMap<string, number> = new Map()
  *  - the move leaves the order unchanged in content (the source passed an identical
  *    duplicate): `focus` on that neighbour at the source's own level (a folder row for a
  *    folder, a sibling member for a member), nothing to write;
- *  - the move would remove the source's folder: `refuse-sole`;
+ *  - the move would remove the source's folder, or leave it without a visible member (hidden
+ *    or unknown ids alone keep it in the saved order, off the rail): `refuse-sole`;
  *  - otherwise `move` with the new order and the moved entry's ref in it.
  * `null` when no gap is left in that direction.
  */
-export function keyboardMove<E extends OrderEntry>(order: readonly E[], items: readonly LayoutItem[], source: ItemRef, dir: MoveDirection): KeyboardMove<E> | null {
+export function keyboardMove<E extends OrderEntry>(order: readonly E[], items: readonly LayoutItem[], source: ItemRef, dir: MoveDirection, isVisible: (id: string) => boolean): KeyboardMove<E> | null {
     const layout = computeLayout(items, EMPTY_HEIGHTS)
     const start = layout.indexByKey.get(refKey(source))
     if (start === undefined) {
@@ -203,7 +217,7 @@ export function keyboardMove<E extends OrderEntry>(order: readonly E[], items: r
         if (isEqual(next, order)) {
             return passed ? { kind: 'focus', ref: passed } : null
         }
-        if (source.kind === 'member' && countFolders(next, source.folder.id) < countFolders(order, source.folder.id)) {
+        if (source.kind === 'member' && (countFolders(next, source.folder.id) < countFolders(order, source.folder.id) || leavesFolderUnshown(order, next, source.folder, isVisible))) {
             return { kind: 'refuse-sole', folder: source.folder }
         }
         const ref = movedRef(order, source, gap)
@@ -367,9 +381,11 @@ export interface PositionInfo {
 }
 
 /** The 1-based place of `ref` among the shown rows of its level (top level, or its folder). */
-export function describePosition(order: readonly OrderEntry[], items: readonly LayoutItem[], ref: ItemRef): PositionInfo | null {
+export function describePosition(order: readonly OrderEntry[], items: readonly LayoutItem[], ref: ItemRef, isVisible: (id: string) => boolean): PositionInfo | null {
     const shown = shownIds(items)
-    const rows = listRows(order, (id) => shown.has(id))
+    // Members come from the layout (a closed folder has none), but a folder counts exactly when
+    // the rail shows it, which the layout cannot tell.
+    const rows = listRows(order, (id) => shown.has(id), isVisible)
     if (ref.kind === 'member') {
         const owner = rows.find((row) => row.key === refKey(ref.folder))
         if (!owner || owner.kind !== 'folder') {

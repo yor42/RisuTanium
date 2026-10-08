@@ -15,6 +15,8 @@ const folderOf = (id: string, data: string[]): folder => ({ id, name: `Name ${id
 interface Fixture {
     order: OrderEntry[]
     items: LayoutItem[]
+    /** The rail's visibility rule for this fixture: an id is visible unless it is in `unknown`. */
+    isVisible: (id: string) => boolean
 }
 
 /** Items the way the rail builds them: unknown ids have no row, `open` folders show their members. */
@@ -25,7 +27,7 @@ function fixture(order: OrderEntry[], open: readonly string[] = [], unknown: rea
             ? { ref: row.ref, key: row.key, open: false, members: [] }
             : { ref: row.ref, key: row.key, open: open.includes(row.id), members: row.members.map((m) => ({ ref: m.ref, key: m.key })) },
     )
-    return { order, items: buildItems(entries) }
+    return { order, items: buildItems(entries), isVisible: known }
 }
 
 const ch = (id: string, occurrence = 0): ItemRef => ({ kind: 'char', id, occurrence })
@@ -35,7 +37,7 @@ const me = (folderId: string, id: string, occurrence = 0): ItemRef => ({ kind: '
 const show = (order: readonly OrderEntry[]): string[] => order.map((e) => (typeof e === 'string' ? e : e === null ? 'null' : `${e.id}[${e.data.join(',')}]`))
 
 function run(f: Fixture, source: ItemRef, dir: MoveDirection): KeyboardMove | null {
-    return keyboardMove(f.order, f.items, source, dir)
+    return keyboardMove(f.order, f.items, source, dir, f.isVisible)
 }
 
 function moved(result: KeyboardMove | null): { order: string[]; ref: string } {
@@ -188,11 +190,17 @@ describe('keyboardMove', () => {
         expect(run(f, me('F', 'X'), 'up')).toEqual({ kind: 'refuse-sole', folder: { kind: 'folder', id: 'F', occurrence: 0 } })
     })
 
-    test('a folder with one shown member and one hidden id is moved, not refused', () => {
+    test('the only visible member of a folder that keeps a hidden id is refused in both directions', () => {
         const f = fixture([folderOf('F', ['X', 'U']), 'A'], ['F'], ['U'])
-        const result = moved(run(f, me('F', 'X'), 'down'))
-        expect(result.order).toEqual(['F[U]', 'X', 'A'])
-        expect(result.ref).toBe(refKey(ch('X')))
+        expect(run(f, me('F', 'X'), 'down')).toEqual({ kind: 'refuse-sole', folder: { kind: 'folder', id: 'F', occurrence: 0 } })
+        expect(run(f, me('F', 'X'), 'up')).toEqual({ kind: 'refuse-sole', folder: { kind: 'folder', id: 'F', occurrence: 0 } })
+    })
+
+    test('a folder with two visible members and a hidden id lets one of them out', () => {
+        const f = fixture([folderOf('F', ['X', 'U', 'Y']), 'A'], ['F'], ['U'])
+        const result = moved(run(f, me('F', 'Y'), 'down'))
+        expect(result.order).toEqual(['F[X,U]', 'Y', 'A'])
+        expect(result.ref).toBe(refKey(ch('Y')))
     })
 
     test('the moved ref names the entry that moved when an identical id sits behind a hidden id', () => {
@@ -237,10 +245,17 @@ describe('keyboardMove', () => {
 describe('describePosition', () => {
     test('counts the shown rows of the level: top level, or inside a folder with its name', () => {
         const f = fixture(['U', 'A', folderOf('F', ['U', 'X', 'Y']), 'B'], ['F'], ['U'])
-        expect(describePosition(f.order, f.items, ch('B'))).toEqual({ position: 3, total: 3 })
-        expect(describePosition(f.order, f.items, fo('F'))).toEqual({ position: 2, total: 3 })
-        expect(describePosition(f.order, f.items, me('F', 'Y'))).toEqual({ position: 2, total: 2, folderName: 'Name F' })
-        expect(describePosition(f.order, f.items, ch('Q'))).toBeNull()
+        expect(describePosition(f.order, f.items, ch('B'), f.isVisible)).toEqual({ position: 3, total: 3 })
+        expect(describePosition(f.order, f.items, fo('F'), f.isVisible)).toEqual({ position: 2, total: 3 })
+        expect(describePosition(f.order, f.items, me('F', 'Y'), f.isVisible)).toEqual({ position: 2, total: 2, folderName: 'Name F' })
+        expect(describePosition(f.order, f.items, ch('Q'), f.isVisible)).toBeNull()
+    })
+
+    test('a folder without a visible member before the row does not count, and a closed visible folder does', () => {
+        const f = fixture([folderOf('H', ['U']), 'A', folderOf('F', ['X', 'Y']), 'B'], [], ['U'])
+        expect(describePosition(f.order, f.items, ch('A'), f.isVisible)).toEqual({ position: 1, total: 3 })
+        expect(describePosition(f.order, f.items, fo('F'), f.isVisible)).toEqual({ position: 2, total: 3 })
+        expect(describePosition(f.order, f.items, ch('B'), f.isVisible)).toEqual({ position: 3, total: 3 })
     })
 })
 
@@ -286,7 +301,9 @@ describe('keyboardMove property', () => {
         let folderIndex = 0
         while (chars.length > 0) {
             if (next() < 0.35 && folderIndex < 3) {
-                const size = Math.min(chars.length, Math.floor(next() * 4))
+                // A folder always has a member: this test's model counts every folder as a slot and
+                // compares the saved order, so folders the rail does not show are left out.
+                const size = Math.max(1, Math.min(chars.length, Math.floor(next() * 4)))
                 const id = `F${folderIndex++}`
                 top.push(folderOf(id, chars.splice(0, size)))
                 if (next() < 0.7) {
@@ -346,7 +363,7 @@ describe('keyboardMove property', () => {
                                 expect(after[to].parent).not.toBe(before[from].parent)
                             }
                         }
-                        const back = keyboardMove(result.order, fixture(result.order, [...open]).items, result.ref, dir === 'down' ? 'up' : 'down')
+                        const back = keyboardMove(result.order, fixture(result.order, [...open]).items, result.ref, dir === 'down' ? 'up' : 'down', () => true)
                         if (back?.kind === 'refuse-sole') {
                             continue
                         }

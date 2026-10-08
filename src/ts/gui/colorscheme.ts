@@ -6,6 +6,7 @@ import { alertError } from "../alert";
 import { language } from "../../lang";
 import { isLite } from "../lite";
 import { CustomCSSStore, DBState, SafeModeStore } from "../stores.svelte";
+import { syncSystemBars } from "./systemBars";
 
 export interface ColorScheme{
     bgcolor: string;
@@ -283,6 +284,8 @@ export function updateColorScheme(){
         document.documentElement.style.setProperty("--risu-theme-darkborderc", colorScheme.darkBorderc);
         document.documentElement.style.setProperty("--risu-theme-darkbutton", colorScheme.darkbutton);
         ColorSchemeTypeStore.set(colorScheme.type)
+        // The colour applied above, after the lite override; also reached at boot.
+        syncSystemBars(colorScheme.bgcolor)
     } catch (error) {}
 }
 

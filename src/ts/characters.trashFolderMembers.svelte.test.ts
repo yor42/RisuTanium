@@ -233,7 +233,7 @@ import { liveCharacterCheck, prepareSaveIteration, requiresFullEncoderReload } f
 import { trashFolderMembers, untrashedMembersOf } from 'src/ts/characters'
 import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
 import type { toSaveType } from 'src/ts/storage/risuSave'
-import type { Database } from 'src/ts/storage/database.svelte'
+import type { Database, folder } from 'src/ts/storage/database.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { alertConfirm } from 'src/ts/alert'
 import { language } from 'src/lang'
@@ -277,6 +277,8 @@ function makeTracker(): toSaveType {
     return { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
 }
 
+/** The folder as the rail reads it: the object `DBState.db.characterOrder` holds. */
+const folderEntry = (at = 1): folder => DBState.db.characterOrder[at] as folder
 const snapshot = () => $state.snapshot(DBState.db) as Database
 const byName = (name: string): CharacterFixture => DBState.db.characters.find((c) => c.name === name)!
 const orderNow = (): unknown[] => $state.snapshot(DBState.db.characterOrder) as unknown[]
@@ -285,6 +287,8 @@ let tracker: toSaveType
 
 beforeEach(() => {
     installDb()
+    // The check also resets the hold a previous test left on `checkCharOrder`.
+    liveCharacterCheck()
     requiresFullEncoderReload.state = false
     vi.mocked(alertConfirm).mockReset()
     vi.mocked(alertConfirm).mockImplementation(async () => true)
@@ -300,7 +304,7 @@ afterEach(() => {
 
 describe('trashFolderMembers', () => {
     test('(R) the untrashed members, a same-id twin included, are trashed; the others and the already-trashed one are untouched; the folder is gone', async () => {
-        const count = await trashFolderMembers(FOLDER.data, FOLDER.name)
+        const count = await trashFolderMembers(folderEntry(), FOLDER.name)
 
         expect(count).toBe(3)
         expect(byName('M1').trashTime).toBeGreaterThan(0)
@@ -313,7 +317,7 @@ describe('trashFolderMembers', () => {
     })
 
     test('(U) one confirmation names the folder and the count of untrashed members, and a refusal changes nothing', async () => {
-        await trashFolderMembers(FOLDER.data, FOLDER.name)
+        await trashFolderMembers(folderEntry(), FOLDER.name)
         expect(alertConfirm).toHaveBeenCalledTimes(1)
         const text = String(vi.mocked(alertConfirm).mock.calls[0][0])
         expect(text).toContain('Folder F')
@@ -322,28 +326,28 @@ describe('trashFolderMembers', () => {
         installDb()
         tracker.character.length = 0
         vi.mocked(alertConfirm).mockImplementation(async () => false)
-        expect(await trashFolderMembers(FOLDER.data, FOLDER.name)).toBe(0)
+        expect(await trashFolderMembers(folderEntry(), FOLDER.name)).toBe(0)
         expect(DBState.db.characters.filter((c) => c.trashTime).map((c) => c.name)).toEqual(['M3'])
         expect(tracker.character).toEqual([])
     })
 
     test('(U) nothing to trash asks nothing', async () => {
-        expect(await trashFolderMembers(['m3'], 'Folder F')).toBe(0)
-        expect(await trashFolderMembers([], 'Folder F')).toBe(0)
+        expect(await trashFolderMembers({ ...FOLDER, data: ['m3'] }, 'Folder F')).toBe(0)
+        expect(await trashFolderMembers({ ...FOLDER, data: [] }, 'Folder F')).toBe(0)
         expect(alertConfirm).not.toHaveBeenCalled()
         expect(untrashedMembersOf(['m3'])).toEqual([])
     })
 
     test('(U) the selection is cleared only when a trashed member was selected', async () => {
         selectedCharID.set(DBState.db.characters.findIndex((c) => c.name === 'A'))
-        await trashFolderMembers(FOLDER.data, FOLDER.name)
+        await trashFolderMembers(folderEntry(), FOLDER.name)
         let selected = -2
         selectedCharID.subscribe((v) => { selected = v })()
         expect(selected).toBe(DBState.db.characters.findIndex((c) => c.name === 'A'))
 
         installDb()
         selectedCharID.set(DBState.db.characters.findIndex((c) => c.name === 'M2'))
-        await trashFolderMembers(FOLDER.data, FOLDER.name)
+        await trashFolderMembers(folderEntry(), FOLDER.name)
         selectedCharID.subscribe((v) => { selected = v })()
         expect(selected).toBe(-1)
     })
@@ -355,7 +359,7 @@ describe('trashFolderMembers', () => {
             DBState.db.characters.splice(at, 1)
             return true
         })
-        const count = await trashFolderMembers(FOLDER.data, FOLDER.name)
+        const count = await trashFolderMembers(folderEntry(), FOLDER.name)
 
         expect(byName('M1').trashTime).toBe(T1)
         expect(byName('M1Twin').trashTime).toBeGreaterThan(T1)
@@ -372,7 +376,7 @@ describe('the save after trashing', () => {
         const encoder = new RisuSaveEncoder()
         await encoder.init(snapshot(), { compression: false })
 
-        await trashFolderMembers(FOLDER.data, FOLDER.name)
+        await trashFolderMembers(folderEntry(), FOLDER.name)
         expect(requiresFullEncoderReload.state).toBe(false)
         expect([...tracker.character].sort()).toEqual(['m1', 'm2'])
 
@@ -393,20 +397,80 @@ describe('the save after trashing', () => {
         expect(trashed).toEqual(['m1', 'm2', 'm3'])
     })
 
-    test('(G) while saving is held, the members are trashed and stay listed, and the count excludes the already-trashed one', async () => {
+    test('(G) while saving is held, the members are trashed and leave the order with the folder, and the count excludes the already-trashed one', async () => {
         // An archived character without a usable id holds saving, through the real check.
         DBState.db.characters.push({ ...makeCharacter('', 'Archived'), chaId: undefined, coldstorage: 'cold' } as unknown as CharacterFixture)
         expect(liveCharacterCheck().held).toHaveLength(1)
 
-        const count = await trashFolderMembers(FOLDER.data, FOLDER.name)
+        const count = await trashFolderMembers(folderEntry(), FOLDER.name)
 
         expect(count).toBe(3)
         expect(byName('M1').trashTime).toBeGreaterThan(0)
         expect(byName('M2').trashTime).toBeGreaterThan(0)
         expect(String(vi.mocked(alertConfirm).mock.calls[0][0])).toContain(language.deleteFolderTrashConfirm('Folder F', 3))
-        const order = orderNow()
-        expect(order).toHaveLength(3)
-        expect(order[1]).toMatchObject({ id: 'F', data: ['m1', 'm2', 'm3'] })
+        // Only the checkCharOrder cleanup is skipped while held: the folder is replaced by the
+        // ids not just trashed, here the member that was in the trash before.
+        expect(orderNow()).toEqual(['a', 'm3', 'o1'])
+    })
 
+    test('(G) while saving is held, an id with no character in the list (a held save) stays where the folder was', async () => {
+        DBState.db.characters.push({ ...makeCharacter('', 'Archived'), chaId: undefined, coldstorage: 'cold' } as unknown as CharacterFixture)
+        folderEntry().data.push('saved-id')
+        expect(liveCharacterCheck().held).toHaveLength(1)
+
+        await trashFolderMembers(folderEntry(), FOLDER.name)
+
+        expect(orderNow()).toEqual(['a', 'm3', 'saved-id', 'o1'])
+    })
+})
+
+describe('trashFolderMembers and hidden characters', () => {
+    beforeEach(() => {
+        DBState.db.characters.push(makeCharacter('§temp', 'Temp'), makeCharacter('§playground', 'Playground'))
+        folderEntry().data.splice(1, 0, '§temp')
+        folderEntry().data.push('§playground')
+    })
+
+    test('(R) hidden members are neither counted nor trashed, and they take the folder\'s place in the order', async () => {
+        const count = await trashFolderMembers(folderEntry(), FOLDER.name)
+
+        expect(count).toBe(3)
+        expect(String(vi.mocked(alertConfirm).mock.calls[0][0])).toBe(language.deleteFolderTrashConfirm('Folder F', 3))
+        expect(byName('Temp').trashTime).toBeUndefined()
+        expect(byName('Playground').trashTime).toBeUndefined()
+        expect(orderNow()).toEqual(['a', '§temp', '§playground', 'o1'])
+    })
+
+    test('(R) a folder of only hidden members trashes nothing and asks nothing', async () => {
+        const hiddenOnly = { ...FOLDER, data: ['§temp', '§playground'] }
+        expect(await trashFolderMembers(hiddenOnly, FOLDER.name)).toBe(0)
+        expect(alertConfirm).not.toHaveBeenCalled()
+    })
+
+    test('(G) a refusal leaves the order alone', async () => {
+        vi.mocked(alertConfirm).mockImplementation(async () => false)
+        const before = orderNow()
+        expect(await trashFolderMembers(folderEntry(), FOLDER.name)).toBe(0)
+        expect(orderNow()).toEqual(before)
+    })
+
+    test('(G) a same-id twin folder is left alone: the entry that was passed is the one replaced', async () => {
+        const twin = { ...FOLDER, data: ['o1', '§temp'] }
+        DBState.db.characterOrder.splice(1, 0, twin)
+        const count = await trashFolderMembers(folderEntry(2), FOLDER.name)
+
+        expect(count).toBe(3)
+        expect(orderNow()).toEqual(['a', { ...FOLDER, data: ['o1', '§temp'] }, '§temp', '§playground', 'o1'])
+    })
+
+    test('(G) a folder replaced during the dialog is not edited, though its members are trashed', async () => {
+        vi.mocked(alertConfirm).mockImplementation(async () => {
+            DBState.db.characterOrder = ['a', { ...FOLDER, data: ['m1', 'm2', '§temp'] }, 'o1']
+            return true
+        })
+        const count = await trashFolderMembers(folderEntry(), FOLDER.name)
+
+        expect(count).toBe(3)
+        expect(orderNow()).toEqual(['a', { ...FOLDER, data: ['§temp'] }, 'o1'])
     })
 })

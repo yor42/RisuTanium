@@ -2,7 +2,7 @@
   import { onDestroy, tick, untrack } from "svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
-  import { addCharacter, changeChar, getCharImage, trashFolderMembers, untrashedMembersOf } from "../../ts/characters";
+  import { addCharacter, changeChar, getCharImage, trashFolderMembers, untrashedMembersOf, visibleCharacterIds } from "../../ts/characters";
   import { language } from "../../lang";
   import isEqual from "lodash/isEqual";
   import SidebarAvatar from "./SidebarAvatar.svelte";
@@ -21,6 +21,7 @@
   import {
     editFolder,
     dropOnItem,
+    folderEntryAt,
     folderMemberIds,
     listRows,
     moveToGap,
@@ -101,10 +102,17 @@
     saveOpenFolders(ids, folderIdsInOrder())
   })
 
+  // The ids the rail shows: those with a character that is not a hidden system character. The
+  // lookup is built once per call; hidden and unknown ids keep their place in the saved order.
+  const visibilityNow = (idObject = getCharacterIndexObject()): ((id: string) => boolean) => {
+    const visible = visibleCharacterIds()
+    return (id) => Object.hasOwn(idObject, id) && visible.has(id)
+  }
+
   $effect(() => {
     let newCharImages: sortType[] = [];
     const idObject = getCharacterIndexObject()
-    const rows = listRows(DBState.db.characterOrder, (id) => Object.hasOwn(idObject, id))
+    const rows = listRows(DBState.db.characterOrder, visibilityNow(idObject))
     for (const row of rows) {
       if(row.kind === 'char'){
         const index = idObject[row.id]
@@ -253,7 +261,9 @@
     if(before === null){
       return
     }
-    const count = untrashedMembersOf(before).length
+    // Only visible members count: a hidden character is never offered for the trash.
+    const isVisible = visibilityNow()
+    const count = untrashedMembersOf(before.filter(isVisible)).length
     const labels = count > 0
       ? [language.deleteFolderKeep, language.deleteFolderTrash(count), language.cancel]
       : [language.deleteFolderKeep, language.cancel]
@@ -262,10 +272,11 @@
       ungroup(ref)
     }
     else if(sel === 1 && count > 0){
-      // Members as they are now: the folder may have changed while the choice was open.
-      const members = folderMemberIds(DBState.db.characterOrder, ref)
-      if(members !== null){
-        await trashFolderMembers(members, folderName)
+      // The folder as it is now: it may have changed while the choice was open. The order's own
+      // object is passed, so the trash finds the same entry again and not a same-id twin.
+      const entry = folderEntryAt(DBState.db.characterOrder, ref)
+      if(entry !== null){
+        await trashFolderMembers(entry, folderName)
       }
     }
   }
@@ -795,7 +806,7 @@
   }
 
   function announcePosition(order: typeof DBState.db.characterOrder, ref: ItemRef) {
-    const info = describePosition(order, items, ref)
+    const info = describePosition(order, items, ref, visibilityNow())
     if (!info) {
       return
     }
@@ -841,7 +852,7 @@
       return
     }
     const order = DBState.db.characterOrder
-    const result = keyboardMove(order, items, ref, dir)
+    const result = keyboardMove(order, items, ref, dir, visibilityNow())
     if (!result) {
       void announce(dir === 'up' ? language.sidebarUi.moveAtStart : language.sidebarUi.moveAtEnd)
     }

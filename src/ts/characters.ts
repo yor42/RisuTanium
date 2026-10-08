@@ -1,5 +1,5 @@
 import { get, writable } from "svelte/store";
-import { saveImage, type character, type Chat, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
+import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
 import { alertAddCharacter, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
 import { language } from "../lang";
 import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, selectMultipleFile, selectSingleFile } from "./util";
@@ -20,6 +20,7 @@ import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
+import { isHiddenSystemCharacter } from "./hiddenCharacters";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -1040,24 +1041,45 @@ export function untrashedMembersOf(memberIds: readonly string[]): (character | g
 }
 
 /**
- * Moves the characters of a folder to the trash after one confirmation. `memberIds` are the
- * folder's member ids as the rail read them when the choice was made. They resolve to every
- * untrashed character carrying one of those ids (a twin listed elsewhere with the same id
- * included, since an untrashed twin would keep the folder alive); already-trashed ones are
- * left out of the count and the action. After the confirmation a character is trashed only
- * if it is still in the list and currently untrashed, so one trashed elsewhere or removed
- * meanwhile keeps its own state. One trashed and then restored meanwhile is untrashed
- * again and is trashed with the rest. Nothing is removed from the list: the trash is the
- * recoverable path, and a restored character returns outside any folder.
+ * The ids of the characters the rail can show: every character in the list except the
+ * hidden system characters. An id outside this set is hidden or has no character.
+ */
+export function visibleCharacterIds(): Set<string> {
+    const ids = new Set<string>()
+    for(const c of DBState.db.characters){
+        if(typeof c.chaId === 'string' && !isHiddenSystemCharacter(c)){
+            ids.add(c.chaId)
+        }
+    }
+    return ids
+}
+
+/**
+ * Moves the visible characters of a folder to the trash after one confirmation. `entry` is
+ * the folder object the rail read from `DBState.db.characterOrder` when the choice was made
+ * (the order's own object, not a copy: the folder is found again by identity). Its visible
+ * member ids resolve to every untrashed character carrying one of those ids (a twin listed
+ * elsewhere with the same id included, since an untrashed twin would keep the folder alive);
+ * hidden system characters are never counted or trashed, and already-trashed ones are left
+ * out of the count and the action. After the confirmation visibility is read again from the
+ * live list, and a character is trashed only if it is still in the list, still visible and
+ * currently untrashed, so one trashed elsewhere or removed meanwhile keeps its own state.
+ * One trashed and then restored meanwhile is untrashed again and is trashed with the rest.
+ * No character is deleted: the trash is the recoverable path, and a restored character
+ * returns outside any folder.
  *
  * The change is one synchronous stretch: work owned by each character is stopped, each gets
- * `trashTime`, `checkCharOrder` drops the folder, and each id is marked for saving (a
- * non-selected character's in-place field write reaches the save only through that mark).
- * While saving is held `checkCharOrder` skips its cleanup, so the members stay listed until
- * the next order edit, restore or boot. Returns the number trashed.
+ * `trashTime`, the folder, if it is still the same entry of the order, is replaced in place by
+ * its member ids that were not just trashed (hidden characters, an id a held save still
+ * needs, an id added during the dialog), and `checkCharOrder` then runs twice and drops the
+ * trashed ids that remain elsewhere; each id is marked for saving (a non-selected
+ * character's in-place field write reaches the save only through that mark). A folder that was
+ * replaced or removed during the dialog is not edited. The replacement does not depend on
+ * `checkCharOrder`, which skips its cleanup while saving is held. Returns the number trashed.
  */
-export async function trashFolderMembers(memberIds: readonly string[], folderName: string): Promise<number> {
-    const asked = untrashedMembersOf(memberIds)
+export async function trashFolderMembers(entry: folder, folderName: string): Promise<number> {
+    const visibleBefore = visibleCharacterIds()
+    const asked = untrashedMembersOf(entry.data.filter((id) => visibleBefore.has(id)))
     if(asked.length === 0){
         return 0
     }
@@ -1070,7 +1092,8 @@ export async function trashFolderMembers(memberIds: readonly string[], folderNam
     }
 
     const present = new Set(DBState.db.characters)
-    const doomed = asked.filter((c) => present.has(c) && !c.trashTime)
+    const visibleNow = visibleCharacterIds()
+    const doomed = asked.filter((c) => present.has(c) && !c.trashTime && visibleNow.has(c.chaId))
     if(doomed.length === 0){
         return 0
     }
@@ -1081,8 +1104,14 @@ export async function trashFolderMembers(memberIds: readonly string[], folderNam
         stopWorkIn({ chaId: c.chaId })
         c.trashTime = now
     }
-    // One pass drops the trashed ids from the folder; a folder it emptied is only removed by a
-    // second pass, which would otherwise leave an empty folder in the rail.
+    const order = DBState.db.characterOrder
+    const at = order.findIndex((item) => item === entry)
+    if(at !== -1){
+        const trashedIds = new Set(doomed.map((c) => c.chaId))
+        order.splice(at, 1, ...entry.data.filter((id) => !trashedIds.has(id)))
+    }
+    // One pass drops the trashed ids that remain in other folders; a folder it emptied is only
+    // removed by a second pass, which would otherwise leave an empty folder in the rail.
     checkCharOrder()
     checkCharOrder()
     for(const c of doomed){
