@@ -135,7 +135,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => ({
 
 import { DBState } from '../../ts/stores.svelte'
 import Sidebar from './Sidebar.svelte'
-import { defaultSettle, installGeometry, scrollerOf, settleFrame } from './sidebarDnd.testKit'
+import { defaultSettle, installGeometry, scrollerOf, settleFrame, resetRailMemory } from './sidebarDnd.testKit'
 
 const N = 40
 /** Short enough that the row of `FAR` starts outside the window: viewport 300 plus 300 overscan reaches about row 12. */
@@ -176,6 +176,7 @@ async function settle(): Promise<void> {
 let mounted: { target: HTMLElement; app: Record<string, unknown> } | null = null
 
 beforeEach(() => {
+    resetRailMemory()
     getFileSrcSpy.mockClear()
 })
 

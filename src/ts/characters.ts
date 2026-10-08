@@ -1033,6 +1033,67 @@ export async function removeTrashedCharacters(refs: (character | groupChat)[], o
     }
 }
 
+/** Every untrashed character carrying one of the member ids, a same-id twin included. */
+export function untrashedMembersOf(memberIds: readonly string[]): (character | groupChat)[] {
+    const wanted = new Set(memberIds)
+    return DBState.db.characters.filter((c) => !!c.chaId && wanted.has(c.chaId) && !c.trashTime)
+}
+
+/**
+ * Moves the characters of a folder to the trash after one confirmation. `memberIds` are the
+ * folder's member ids as the rail read them when the choice was made. They resolve to every
+ * untrashed character carrying one of those ids (a twin listed elsewhere with the same id
+ * included, since an untrashed twin would keep the folder alive); already-trashed ones are
+ * left out of the count and the action. After the confirmation a character is trashed only
+ * if it is still in the list and currently untrashed, so one trashed elsewhere or removed
+ * meanwhile keeps its own state. One trashed and then restored meanwhile is untrashed
+ * again and is trashed with the rest. Nothing is removed from the list: the trash is the
+ * recoverable path, and a restored character returns outside any folder.
+ *
+ * The change is one synchronous stretch: work owned by each character is stopped, each gets
+ * `trashTime`, `checkCharOrder` drops the folder, and each id is marked for saving (a
+ * non-selected character's in-place field write reaches the save only through that mark).
+ * While saving is held `checkCharOrder` skips its cleanup, so the members stay listed until
+ * the next order edit, restore or boot. Returns the number trashed.
+ */
+export async function trashFolderMembers(memberIds: readonly string[], folderName: string): Promise<number> {
+    const asked = untrashedMembersOf(memberIds)
+    if(asked.length === 0){
+        return 0
+    }
+    const busy = asked.some((c) => hasWorkIn({ chaId: c.chaId }))
+    const conf = await alertConfirm(
+        language.deleteFolderTrashConfirm(folderName, asked.length) + (busy ? '\n' + language.removeCharacterWhileWorking : '')
+    )
+    if(!conf){
+        return 0
+    }
+
+    const present = new Set(DBState.db.characters)
+    const doomed = asked.filter((c) => present.has(c) && !c.trashTime)
+    if(doomed.length === 0){
+        return 0
+    }
+    const selectedBefore = get(selectedCharID)
+    const selectedRef = selectedBefore >= 0 ? DBState.db.characters[selectedBefore] : undefined
+    const now = Date.now()
+    for(const c of doomed){
+        stopWorkIn({ chaId: c.chaId })
+        c.trashTime = now
+    }
+    // One pass drops the trashed ids from the folder; a folder it emptied is only removed by a
+    // second pass, which would otherwise leave an empty folder in the rail.
+    checkCharOrder()
+    checkCharOrder()
+    for(const c of doomed){
+        markCharacterForSave(c.chaId)
+    }
+    if(selectedRef && doomed.includes(selectedRef)){
+        selectedCharID.set(-1)
+    }
+    return doomed.length
+}
+
 /**
  * A chat list's delete button. Asks for confirmation -- with a warning line
  * when something is writing into the chat -- and then deletes the chat the

@@ -133,7 +133,7 @@ vi.mock(import('../../ts/characters'), async (importOriginal) => ({
 
 vi.mock(import('src/ts/alert'), async (importOriginal) => ({
     ...(await importOriginal()),
-    alertSelect: vi.fn(async () => '3'),
+    alertSelect: vi.fn(async () => '5'),
     alertInput: vi.fn(async () => ''),
 }))
 
@@ -143,7 +143,7 @@ import { setLiveKeysBlockedReader } from '../../ts/keyEventBlocked'
 import Sidebar from './Sidebar.svelte'
 import { charKey, folderKey, memberKey } from './railTestKit'
 import { moveToGap, type Gap, type ItemRef } from './sidebarOrder'
-import { clientY, defaultSettle, folderAvatars, installGeometry, pointer, scrollerOf } from './sidebarDnd.testKit'
+import { clientY, defaultSettle, folderAvatars, installGeometry, pointer, scrollerOf, resetRailMemory } from './sidebarDnd.testKit'
 
 interface FolderFixture {
     id: string
@@ -198,6 +198,7 @@ async function mountSidebar(order: OrderFixture, openFolders = 0): Promise<HTMLE
 }
 
 beforeEach(() => {
+    resetRailMemory()
     checkCharOrderSpy.mockClear()
     changeCharSpy.mockClear()
     vi.mocked(alertSelect).mockClear()

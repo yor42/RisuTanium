@@ -176,6 +176,7 @@ import {
     topGaps,
     topRows,
     type DragOptions,
+    resetRailMemory,
 } from './sidebarDnd.testKit'
 
 interface FolderFixture {
@@ -250,6 +251,7 @@ async function mountSidebar(): Promise<{ target: HTMLElement; error: unknown }> 
 }
 
 beforeEach(() => {
+    resetRailMemory()
     selectAnswers.length = 0
     inputAnswers.length = 0
     pickers.length = 0

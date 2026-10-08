@@ -129,6 +129,14 @@ export async function settleFrame(): Promise<void> {
     await defaultSettle()
 }
 
+/**
+ * Clears what the rail remembers on this device (open folders, scroll position), so a test
+ * starts from a rail that remembers nothing. Call it in `beforeEach`.
+ */
+export function resetRailMemory(): void {
+    localStorage.clear()
+}
+
 const geometries = new WeakMap<HTMLElement, Geometry>()
 
 /** The model's total height, which the rail renders on its scroll container: the rows that are mounted are only a window of it. */
@@ -176,9 +184,13 @@ export function installGeometry(root: HTMLElement, height = 2000): Geometry | nu
     Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => (hidden ? 0 : Math.max(railTotal(el), height)) })
     Object.defineProperty(el, 'scrollTop', {
         configurable: true,
-        get: () => (hidden ? 0 : scrollTop),
+        // A container that is hidden or detached reports 0, as a browser does. A write is clamped
+        // to the scrollable range at the time of the write, as a browser clamps it, and a write
+        // to a hidden container is dropped.
+        get: () => (hidden || !el.isConnected ? 0 : scrollTop),
         set: (value: number) => {
-            scrollTop = value
+            const max = hidden ? 0 : Math.max(0, Math.max(railTotal(el), height) - height)
+            scrollTop = hidden ? scrollTop : Math.max(0, Math.min(value, max))
         },
     })
     geometries.set(root, geometry)

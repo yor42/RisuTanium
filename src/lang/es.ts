@@ -1251,6 +1251,14 @@ export const languageSpanish = {
     "renameFolder": "Renombrar Carpeta",
     "changeFolderColor": "Cambiar Color de Carpeta",
     "changeFolderImage": "Cambiar Imagen de Carpeta",
+    "ungroupFolder": "Desagrupar",
+    "deleteFolder": "Eliminar Carpeta",
+    "deleteFolderKeep": "Conservar los personajes",
+    "deleteFolderTrash": (count: number) => count === 1 ? `Mover 1 personaje a la papelera` : `Mover ${count} personajes a la papelera`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => (count === 1
+        ? `¿Mover a la papelera el 1 personaje de la carpeta "${name}"?`
+        : `¿Mover a la papelera los ${count} personajes de la carpeta "${name}"?`)
+        + ` Un personaje restaurado vuelve fuera de cualquier carpeta. La papelera se vacía automáticamente después de 3 días.`,
     "fullWordMatching": "Coincidencia Completa de Palabras",
     "botSettingAtStart": "Menú del Bot al Iniciar",
     "triggerStart": "Al enviar chat",

@@ -2,7 +2,7 @@
   import { onDestroy, tick, untrack } from "svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
-  import { addCharacter, changeChar, getCharImage } from "../../ts/characters";
+  import { addCharacter, changeChar, getCharImage, trashFolderMembers, untrashedMembersOf } from "../../ts/characters";
   import { language } from "../../lang";
   import isEqual from "lodash/isEqual";
   import SidebarAvatar from "./SidebarAvatar.svelte";
@@ -21,9 +21,11 @@
   import {
     editFolder,
     dropOnItem,
+    folderMemberIds,
     listRows,
     moveToGap,
     refKey,
+    ungroupFolder,
     type CharRef,
     type FolderRef,
     type Gap,
@@ -38,8 +40,10 @@
     folderHeadKey,
     folderTailKey,
     gapKey,
+    locate,
     type RailEntry,
   } from "./railLayout";
+  import { loadOpenFolders, loadScroll, saveOpenFolders, saveScroll, type RailScroll } from "./railMemory";
   import {
     DEFAULT_HEIGHTS,
     REVEAL_PIN_TIMEOUT_MS,
@@ -77,7 +81,25 @@
   type sortType = sortTopNormal | sortFolder
   let charImages: sortType[] = $state([]);
   let IconRounded = $state(false)
-  let openFolders:string[] = $state([])
+  // The ids of the folders now in the order. Only the array reference is read untracked: the loop
+  // reads entries, so the save effect also re-runs on an in-place order edit and rewrites the
+  // same remembered set. That touches only localStorage and cannot loop.
+  const folderIdsInOrder = (): Set<string> => {
+    const ids = new Set<string>()
+    for (const entry of untrack(() => DBState.db.characterOrder)) {
+      if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
+        ids.add(entry.id)
+      }
+    }
+    return ids
+  }
+  // Open folders are remembered on this device (railMemory), never in the database.
+  let openFolders:string[] = $state(loadOpenFolders(folderIdsInOrder()))
+
+  $effect(() => {
+    const ids = [...openFolders]
+    saveOpenFolders(ids, folderIdsInOrder())
+  })
 
   $effect(() => {
     let newCharImages: sortType[] = [];
@@ -128,6 +150,9 @@
     if(IconRounded !== DBState.db.roundIcons){
       IconRounded = DBState.db.roundIcons
     }
+    // The rows exist from here on (also when there are none): the remembered scroll can be placed.
+    rowsReady = true
+    maybeRestore()
   })
 
   // The selected character's row is the one `selectedKey` names. A folder that owns it opens
@@ -202,9 +227,58 @@
 
   const folderExists = (id:string) => editFolder(DBState.db.characterOrder, id, () => {}) !== null
 
-  async function openFolderMenu(folderId:string, folderName:string) {
-    const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.cancel]))
+  const closeFolder = (id:string) => {
+    const at = openFolders.indexOf(id)
+    if(at >= 0){
+      openFolders.splice(at, 1)
+    }
+  }
+
+  // The folder's own entry goes and its members take its place. Resolved against the live
+  // order by the menu's ref at the moment of the choice; a folder that is gone changes nothing.
+  const ungroup = (ref:FolderRef) => {
+    let changed = false
+    applyOrderChange((order) => {
+      const next = ungroupFolder(order, ref)
+      changed = next !== null
+      return next ?? order
+    })
+    if(changed){
+      closeFolder(ref.id)
+    }
+  }
+
+  async function deleteFolderMenu(ref:FolderRef, folderName:string) {
+    const before = folderMemberIds(DBState.db.characterOrder, ref)
+    if(before === null){
+      return
+    }
+    const count = untrashedMembersOf(before).length
+    const labels = count > 0
+      ? [language.deleteFolderKeep, language.deleteFolderTrash(count), language.cancel]
+      : [language.deleteFolderKeep, language.cancel]
+    const sel = parseInt(await alertSelect(labels))
     if(sel === 0){
+      ungroup(ref)
+    }
+    else if(sel === 1 && count > 0){
+      // Members as they are now: the folder may have changed while the choice was open.
+      const members = folderMemberIds(DBState.db.characterOrder, ref)
+      if(members !== null){
+        await trashFolderMembers(members, folderName)
+      }
+    }
+  }
+
+  async function openFolderMenu(ref:FolderRef, folderId:string, folderName:string) {
+    const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.ungroupFolder,language.deleteFolder,language.cancel]))
+    if(sel === 3){
+      ungroup(ref)
+    }
+    else if(sel === 4){
+      await deleteFolderMenu(ref, folderName)
+    }
+    else if(sel === 0){
       const v = await alertInput(language.changeFolderName, [], folderName)
       if(v){
         editFolderById(folderId, (entry) => { entry.name = v })
@@ -399,11 +473,83 @@
     viewScrollTop = el.scrollTop
     if (el.clientHeight > 0) {
       viewportH = el.clientHeight
+      noteVisibleScroll(el)
+      maybeRestore()
     }
     if (revealPin !== null && revealSmooth && revealTarget !== null && Math.abs(el.scrollTop - revealTarget) < 1) {
       releaseReveal()
     }
   }
+
+  //#region remembered scroll
+
+  // One position is remembered on this device (railMemory): the layout item at the top edge and
+  // the distance into it, with the pixel value as a fallback. Only a visible container is read
+  // (a hidden or detached one reports 0), the value saved is the last one so read, and nothing
+  // is saved before this mount has placed the remembered position, so the 0 at mount never
+  // overwrites it. A null `pendingRestore` (nothing saved, or unreadable) counts as placed.
+  // These are plain lets: the rows effect that starts the restore must not subscribe to them.
+  const SCROLL_SAVE_INTERVAL_MS = 250
+  let pendingRestore: RailScroll | null = loadScroll()
+  let restoreScheduled = false
+  let rowsReady = false
+  let railDestroyed = false
+  let lastVisibleScroll: RailScroll | null = null
+  let lastSavedScroll: RailScroll | null = null
+  let scrollSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+  function noteVisibleScroll(el: HTMLElement) {
+    const index = locate(layout, el.scrollTop)
+    if (index < 0) {
+      return
+    }
+    lastVisibleScroll = { key: layout.items[index].key, offset: el.scrollTop - layout.offsets[index], px: el.scrollTop }
+    if (pendingRestore === null && scrollSaveTimer === null) {
+      scrollSaveTimer = setTimeout(() => {
+        scrollSaveTimer = null
+        flushScroll()
+      }, SCROLL_SAVE_INTERVAL_MS)
+    }
+  }
+
+  function flushScroll() {
+    const value = lastVisibleScroll
+    if (value === null || pendingRestore !== null) {
+      return
+    }
+    const saved = lastSavedScroll
+    if (saved !== null && saved.key === value.key && saved.offset === value.offset && saved.px === value.px) {
+      return
+    }
+    lastSavedScroll = value
+    saveScroll(value)
+  }
+
+  // Starts the one restore of this mount once the rows exist. A hidden container leaves it
+  // pending; the next visible read after the rows exist starts it again.
+  function maybeRestore() {
+    if (!rowsReady || pendingRestore === null || restoreScheduled || !scroller) {
+      return
+    }
+    restoreScheduled = true
+    void applyRestore()
+  }
+
+  async function applyRestore() {
+    // The spacers for the rows are in the DOM after this, so the container can reach the target.
+    await tick()
+    restoreScheduled = false
+    const saved = pendingRestore
+    if (saved === null || railDestroyed || !scroller.isConnected || scroller.clientHeight <= 0) {
+      return
+    }
+    pendingRestore = null
+    const index = layout.indexByKey.get(saved.key)
+    scroller.scrollTop = index === undefined ? saved.px : layout.offsets[index] + saved.offset
+    readViewport(scroller)
+  }
+
+  //#endregion
 
   const viewportHeightNow = (): number => (scroller.clientHeight > 0 ? scroller.clientHeight : windowViewport)
 
@@ -747,10 +893,10 @@
     }
   }
 
-  function folderMenu(e: MouseEvent, id: string, name: string) {
+  function folderMenu(e: MouseEvent, ref: FolderRef, id: string, name: string) {
     e.preventDefault()
     if (!keysBlockedNow()) {
-      void openFolderMenu(id, name)
+      void openFolderMenu(ref, id, name)
     }
   }
 
@@ -885,7 +1031,7 @@
     onTouchMenu: (folderRef) => {
       const row = charImages.find((char) => char.type === 'folder' && char.key === refKey(folderRef))
       if (row && row.type === 'folder') {
-        void openFolderMenu(row.id, row.name)
+        void openFolderMenu(folderRef, row.id, row.name)
       }
     },
   }
@@ -942,6 +1088,14 @@
   }
 
   onDestroy(() => {
+    // The scroll is never read here: a container that is going away reports 0. The last value
+    // read while visible is written once, and only if this mount placed the remembered one.
+    railDestroyed = true
+    if (scrollSaveTimer !== null) {
+      clearTimeout(scrollSaveTimer)
+      scrollSaveTimer = null
+    }
+    flushScroll()
     machine.destroy()
     removeGhost()
     releaseReveal()
@@ -972,7 +1126,7 @@
 
 {#snippet gapEl(gap: Gap, scope: 'top' | 'folder', owner: string | undefined, z: string)}
   {@const key = gapKey(gap)}
-  <div class="h-4 min-h-4 w-14 {z}" aria-hidden="true" use:measure={key} {...itemAttrs(key, 'gap', scope, owner)}></div>
+  <div class="h-[12px] shrink-0 w-14 {z}" aria-hidden="true" use:measure={key} {...itemAttrs(key, 'gap', scope, owner)}></div>
 {/snippet}
 
 <div
@@ -1019,7 +1173,7 @@
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                 class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
                 use:tooltipRail={char.name}
-                oncontextmenu={char.type === 'folder' ? (e) => folderMenu(e, char.id, char.name) : undefined}
+                oncontextmenu={char.type === 'folder' ? (e) => folderMenu(e, char.ref, char.id, char.name) : undefined}
               >
               {#if char.type === 'normal'}
                 {@const imgPath = char.img}

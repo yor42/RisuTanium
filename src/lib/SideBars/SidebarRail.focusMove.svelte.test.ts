@@ -141,7 +141,7 @@ import { DBState, selectedCharID, alertStore } from '../../ts/stores.svelte'
 import { DEFAULT_HEIGHTS } from './railConstants'
 import Sidebar from './Sidebar.svelte'
 import { charKey } from './railTestKit'
-import { defaultSettle, installGeometry, scrollerOf, settleFrame, type Geometry } from './sidebarDnd.testKit'
+import { defaultSettle, installGeometry, scrollerOf, settleFrame, type Geometry, resetRailMemory } from './sidebarDnd.testKit'
 
 const ids = (count: number): string[] => Array.from({ length: count }, (_, i) => `c${i}`)
 const ROW_PITCH = DEFAULT_HEIGHTS.char + DEFAULT_HEIGHTS.gap
@@ -256,6 +256,7 @@ const onRejection = (reason: unknown): void => {
 }
 
 beforeEach(() => {
+    resetRailMemory()
     checkCharOrderSpy.mockClear()
     changeCharSpy.mockClear()
     selectedCharID.set(-1)

@@ -135,7 +135,7 @@ vi.mock(import('../../ts/characters'), async (importOriginal) => ({
 
 vi.mock(import('src/ts/alert'), async (importOriginal) => ({
     ...(await importOriginal()),
-    alertSelect: vi.fn(async () => '3'),
+    alertSelect: vi.fn(async () => '5'),
     alertInput: vi.fn(async () => ''),
 }))
 
@@ -170,6 +170,7 @@ import {
     zoneClientY,
     type Geometry,
     type PointerOptions,
+    resetRailMemory,
 } from './sidebarDnd.testKit'
 
 interface FolderFixture {
@@ -221,6 +222,7 @@ const captureSpy = vi.fn()
 const releaseSpy = vi.fn()
 
 beforeEach(() => {
+    resetRailMemory()
     checkCharOrderSpy.mockClear()
     changeCharSpy.mockClear()
     captureSpy.mockClear()

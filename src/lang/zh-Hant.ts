@@ -1296,6 +1296,12 @@ export const languageChineseTraditional = {
     "renameFolder": "重新命名資料夾",
     "changeFolderColor": "變更資料夾顏色",
     "changeFolderImage": "變更資料夾圖片",
+    "ungroupFolder": "解散資料夾",
+    "deleteFolder": "刪除資料夾",
+    "deleteFolderKeep": "保留角色",
+    "deleteFolderTrash": (count: number) => `將 ${count} 個角色移至垃圾桶`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => `要將資料夾「${name}」中的 ${count} 個角色移至垃圾桶嗎？`
+        + ` 還原的角色會回到資料夾之外。垃圾桶會在 3 天後自動清空。`,
     "fullWordMatching": "完整單字比對",
     "botSettingAtStart": "啟動時開啟 Bot 設定",
     "triggerStart": "送出對話時",

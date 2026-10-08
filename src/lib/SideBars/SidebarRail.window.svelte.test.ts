@@ -158,6 +158,7 @@ import {
     settleFrame,
     topGaps,
     type Geometry,
+    resetRailMemory,
 } from './sidebarDnd.testKit'
 
 //#region fixture and helpers
@@ -248,6 +249,7 @@ async function unmountRail(): Promise<void> {
 }
 
 beforeEach(() => {
+    resetRailMemory()
     checkCharOrderSpy.mockClear()
     changeCharSpy.mockClear()
     selectedCharID.set(-1)

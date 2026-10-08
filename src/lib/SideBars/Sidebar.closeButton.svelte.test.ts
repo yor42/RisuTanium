@@ -12,7 +12,7 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { describe, test, expect, vi, afterEach } from 'vitest'
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { RisuEnvironmentLabel } from '../../ts/platform'
 
@@ -119,6 +119,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
 import { DBState, sideBarClosing } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import Sidebar from './Sidebar.svelte'
+import { resetRailMemory } from './sidebarDnd.testKit'
 
 function buildDb(): Database {
     return {
@@ -153,6 +154,10 @@ function closeButton(root: HTMLElement): HTMLButtonElement | undefined {
 
 describe('character sidebar close strip', () => {
     let mounted: { target: HTMLElement; app: Record<string, unknown> } | null = null
+
+    beforeEach(() => {
+        resetRailMemory()
+    })
 
     afterEach(async () => {
         if (mounted) {

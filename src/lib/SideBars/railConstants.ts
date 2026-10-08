@@ -33,12 +33,13 @@ export const PAGE_SCROLL_FRACTION = 0.9
 export const FOLDER_BLOCK_MARGIN_PX = 4
 
 /**
- * Heights used for an item that is not mounted or has not been measured. They equal the
- * stock heights: a 56 px avatar, a 2 px border on a folder, the `h-4` gap, the `mt-1` and
+ * Heights used for an item that is not mounted or has not been measured. Each kind's markup
+ * has a fixed px height and must not shrink in the flex column, because the window's offsets
+ * assume these values: a 56 px avatar, a 2 px border on a folder, a 12 px gap, the `mt-1` and
  * `p-1` of an open folder and the 56 px "+" button.
  */
 export const DEFAULT_HEIGHTS = {
-    gap: 16,
+    gap: 12,
     char: 56,
     folder: 58,
     member: 56,

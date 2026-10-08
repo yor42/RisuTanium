@@ -1379,6 +1379,14 @@ export const languageEnglish = {
     renameFolder: "Rename Folder",
     changeFolderColor: "Change Folder Color",
     changeFolderImage: "Change Folder Image",
+    ungroupFolder: "Ungroup",
+    deleteFolder: "Delete Folder",
+    deleteFolderKeep: "Keep the characters",
+    deleteFolderTrash: (count: number) => count === 1 ? `Move 1 character to the trash` : `Move ${count} characters to the trash`,
+    deleteFolderTrashConfirm: (name: string, count: number) => (count === 1
+        ? `Move the 1 character in the folder "${name}" to the trash?`
+        : `Move the ${count} characters in the folder "${name}" to the trash?`)
+        + ` A restored character returns outside any folder. The trash is emptied automatically after 3 days.`,
     fullWordMatching: "Full Word Matching",
     botSettingAtStart: "Bot Menu when Launch",
     triggerStart: "On chat Send",

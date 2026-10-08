@@ -1251,6 +1251,12 @@ export const languageVietnamese = {
     "renameFolder": "Đổi tên thư mục",
     "changeFolderColor": "Thay đổi màu thư mục",
     "changeFolderImage": "Thay đổi hình ảnh thư mục",
+    "ungroupFolder": "Bỏ nhóm",
+    "deleteFolder": "Xóa thư mục",
+    "deleteFolderKeep": "Giữ lại các nhân vật",
+    "deleteFolderTrash": (count: number) => `Chuyển ${count} nhân vật vào thùng rác`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => `Chuyển ${count} nhân vật trong thư mục "${name}" vào thùng rác?`
+        + ` Nhân vật được khôi phục sẽ quay lại bên ngoài mọi thư mục. Thùng rác sẽ tự động được dọn sạch sau 3 ngày.`,
     "fullWordMatching": "So khớp từ đầy đủ",
     "botSettingAtStart": "Menu Bot khi khởi chạy",
     "triggerStart": "Đang trò chuyện Gửi",

@@ -1251,6 +1251,12 @@ export const languageChinese = {
     "renameFolder": "重命名数据夹",
     "changeFolderColor": "更改数据夹颜色",
     "changeFolderImage": "更改文件夹图片",
+    "ungroupFolder": "解散文件夹",
+    "deleteFolder": "删除文件夹",
+    "deleteFolderKeep": "保留角色",
+    "deleteFolderTrash": (count: number) => `将 ${count} 个角色移至垃圾桶`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => `将文件夹“${name}”中的 ${count} 个角色移至垃圾桶吗？`
+        + ` 还原的角色将回到文件夹之外。垃圾桶会在 3 天后自动清空。`,
     "fullWordMatching": "完整单词匹配",
     "botSettingAtStart": "激活时显示机器人菜单",
     "triggerStart": "聊天发送时触发",

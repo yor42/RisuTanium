@@ -410,6 +410,31 @@ function dropOnItemInternal(order: readonly OrderEntry[], sourceRef: ItemRef, ta
     return draft.top
 }
 
+/** The member ids of the folder `ref` names, or `null` when no such folder is in the order. */
+export function folderMemberIds(order: readonly OrderEntry[], ref: FolderRef): string[] | null {
+    const at = findFolder(order, ref)
+    const entry = at === -1 ? null : order[at]
+    return isFolderEntry(entry) ? entry.data.filter((id): id is string => typeof id === 'string') : null
+}
+
+/**
+ * Replaces the folder `ref` names with its member ids, in folder order, at the place the
+ * folder held. Every id is kept; only the folder entry goes. Returns `null` when the folder
+ * is gone. `ref` carries the occurrence the menu was opened on: if an edit shifted
+ * same-id folders in between, it may name a different one of them, and nothing is lost.
+ */
+export function ungroupFolder<E extends OrderEntry>(order: readonly E[], ref: FolderRef): (E | string)[] | null {
+    const at = findFolder(order, ref)
+    const entry = at === -1 ? null : order[at]
+    if (!isFolderEntry(entry)) {
+        return null
+    }
+    const members = entry.data.filter((id): id is string => typeof id === 'string')
+    const next: (E | string)[] = order.slice()
+    next.splice(at, 1, ...members)
+    return next
+}
+
 /**
  * Applies `edit` to a copy of the folder with `id` and returns the new order, or `null` when
  * no folder or more than one folder has that id (the edit then has no safe target).

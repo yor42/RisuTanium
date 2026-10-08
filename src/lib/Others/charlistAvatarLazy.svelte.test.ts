@@ -204,7 +204,7 @@ import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
 import Sidebar from '../SideBars/Sidebar.svelte'
-import { installGeometry, settleFrame, type Geometry } from '../SideBars/sidebarDnd.testKit'
+import { installGeometry, settleFrame, type Geometry, resetRailMemory } from '../SideBars/sidebarDnd.testKit'
 import AlertComp from './AlertComp.svelte'
 
 //#region fake IntersectionObserver (test seam)
@@ -612,6 +612,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
+    resetRailMemory()
     FakeIntersectionObserver.instances.length = 0
 })
 

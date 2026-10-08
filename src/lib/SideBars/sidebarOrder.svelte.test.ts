@@ -4,6 +4,7 @@ import type { folder } from 'src/ts/storage/database.svelte'
 import {
     dropOnItem,
     editFolder,
+    folderMemberIds,
     listRows,
     moveToGap,
     refKey,
@@ -14,6 +15,7 @@ import {
     type MemberRef,
     type OrderEntry,
     type TopRow,
+    ungroupFolder,
 } from './sidebarOrder'
 
 /**
@@ -487,6 +489,43 @@ describe('properties (random orders with duplicates, unknown entries and nested 
             }),
             { numRuns: 300 },
         )
+    })
+})
+//#endregion
+
+//#region ungroup
+describe('ungroupFolder', () => {
+    test('(U) the folder is replaced in place by its members, in folder order, at the top, middle and end', () => {
+        expect(ungroupFolder(deepFreeze(['a', f('F', ['x', 'y']), 'b']), fol('F'))).toEqual(['a', 'x', 'y', 'b'])
+        expect(ungroupFolder(deepFreeze([f('F', ['x', 'y']), 'a']), fol('F'))).toEqual(['x', 'y', 'a'])
+        expect(ungroupFolder(deepFreeze(['a', f('F', ['y', 'x'])]), fol('F'))).toEqual(['a', 'y', 'x'])
+    })
+    test('(U) other folders and their members are untouched and no input is mutated', () => {
+        const other = f('G', ['m'])
+        const order = deepFreeze(['a', f('F', ['x']), other])
+        const next = ungroupFolder(order, fol('F'))
+        expect(next).toEqual(['a', 'x', other])
+        expect(next?.[2]).toBe(other)
+    })
+    test('(G) with two folders sharing an id only the referenced occurrence is ungrouped', () => {
+        const order = deepFreeze([f('F', ['x']), 'a', f('F', ['y', 'z'])])
+        expect(ungroupFolder(order, fol('F', 1))).toEqual([expect.objectContaining({ id: 'F', data: ['x'] }), 'a', 'y', 'z'])
+        expect(ungroupFolder(order, fol('F', 0))).toEqual(['x', 'a', expect.objectContaining({ id: 'F', data: ['y', 'z'] })])
+    })
+    test('(U) a folder that is gone, an occurrence past the end and a non-folder id give null', () => {
+        expect(ungroupFolder(['a', f('F', ['x'])], fol('G'))).toBeNull()
+        expect(ungroupFolder(['a', f('F', ['x'])], fol('F', 1))).toBeNull()
+        expect(ungroupFolder(['F'], fol('F'))).toBeNull()
+        expect(ungroupFolder([], fol('F'))).toBeNull()
+    })
+    test('(U) an empty folder disappears without adding anything', () => {
+        expect(ungroupFolder(['a', f('F', [])], fol('F'))).toEqual(['a'])
+    })
+    test('(U) folderMemberIds names the members of the referenced occurrence, or null', () => {
+        const order = [f('F', ['x']), f('F', ['y', 'z'])]
+        expect(folderMemberIds(order, fol('F', 1))).toEqual(['y', 'z'])
+        expect(folderMemberIds(order, fol('F', 2))).toBeNull()
+        expect(folderMemberIds(['F'], fol('F'))).toBeNull()
     })
 })
 //#endregion

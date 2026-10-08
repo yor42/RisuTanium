@@ -1251,6 +1251,12 @@ export const languageKorean = {
     "renameFolder": "폴더 이름 변경하기",
     "changeFolderColor": "폴더 색상 변경하기",
     "changeFolderImage": "폴더 이미지 변경하기",
+    "ungroupFolder": "폴더 해제하기",
+    "deleteFolder": "폴더 삭제하기",
+    "deleteFolderKeep": "캐릭터 유지하기",
+    "deleteFolderTrash": (count: number) => `캐릭터 ${count}개를 휴지통으로 이동`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => `"${name}" 폴더에 있는 캐릭터 ${count}개를 휴지통으로 이동하시겠습니까?`
+        + ` 복구된 캐릭터는 폴더 밖으로 돌아갑니다. 휴지통은 3일 후 자동으로 비워집니다.`,
     "fullWordMatching": "단어 단위 매칭",
     "botSettingAtStart": "실행 시 봇 설정으로 시작하기",
     "triggerStart": "채팅 보낼 시",

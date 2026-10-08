@@ -131,7 +131,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => ({
 import { DBState } from '../../ts/stores.svelte'
 import Sidebar from './Sidebar.svelte'
 import { MERGE_DWELL_MS } from './railConstants'
-import { charRow, defaultSettle as settle, dragOnto, fireNative, folderAvatars, folderRow, installGeometry, topGaps, type DragOptions } from './sidebarDnd.testKit'
+import { charRow, defaultSettle as settle, dragOnto, fireNative, folderAvatars, folderRow, installGeometry, topGaps, type DragOptions, resetRailMemory } from './sidebarDnd.testKit'
 
 interface FolderFixture {
     id: string
@@ -184,6 +184,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
+    resetRailMemory()
     checkCharOrderSpy.mockClear()
 })
 

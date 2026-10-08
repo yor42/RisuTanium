@@ -127,7 +127,7 @@ vi.mock(import('src/ts/alert'), async (importOriginal) => ({
     ...(await importOriginal()),
     alertSelect: vi.fn(async (offered: string[]) => {
         selectOffers.push(offered)
-        return selectAnswers.shift() ?? '3'
+        return selectAnswers.shift() ?? '5'
     }),
     alertInput: vi.fn(async () => ''),
 }))
@@ -135,6 +135,7 @@ import { DBState } from '../../ts/stores.svelte'
 import { changeLanguage, language } from '../../lang'
 import { languageKorean } from '../../lang/ko'
 import Sidebar from './Sidebar.svelte'
+import { resetRailMemory } from './sidebarDnd.testKit'
 
 const STORED = ['red', 'green', 'blue', 'yellow', 'indigo', 'purple', 'pink', 'default']
 
@@ -185,6 +186,7 @@ async function pickFolderColor(answer: number | string): Promise<void> {
 }
 
 beforeEach(() => {
+    resetRailMemory()
     selectAnswers.length = 0
     selectOffers.length = 0
     DBState.db = buildDb({ id: 'f1', name: 'Folder', color: '', data: [] })
@@ -205,7 +207,7 @@ describe('folder colour select in the sidebar', () => {
         await pickFolderColor(2)
 
         expect(selectOffers).toHaveLength(2)
-        expect(selectOffers[0]).toEqual([language.renameFolder, language.changeFolderColor, language.changeFolderImage, language.cancel])
+        expect(selectOffers[0]).toEqual([language.renameFolder, language.changeFolderColor, language.changeFolderImage, language.ungroupFolder, language.deleteFolder, language.cancel])
         const ko = languageKorean.sidebarUi
         expect(selectOffers[1]).toEqual([
             ko.folderColorRed,

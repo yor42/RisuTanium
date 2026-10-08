@@ -1251,6 +1251,14 @@ export const languageGerman = {
     "renameFolder": "Ordner umbenennen",
     "changeFolderColor": "Ordnerfarbe ändern",
     "changeFolderImage": "Ordnerbild ändern",
+    "ungroupFolder": "Gruppierung aufheben",
+    "deleteFolder": "Ordner löschen",
+    "deleteFolderKeep": "Charaktere behalten",
+    "deleteFolderTrash": (count: number) => count === 1 ? `1 Charakter in den Papierkorb verschieben` : `${count} Charaktere in den Papierkorb verschieben`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => (count === 1
+        ? `Den 1 Charakter im Ordner "${name}" in den Papierkorb verschieben?`
+        : `Die ${count} Charaktere im Ordner "${name}" in den Papierkorb verschieben?`)
+        + ` Ein wiederhergestellter Charakter landet außerhalb jedes Ordners. Der Papierkorb wird nach 3 Tagen automatisch geleert.`,
     "fullWordMatching": "Vollständige Wortübereinstimmung",
     "botSettingAtStart": "Bot-Menü beim Start anzeigen",
     "triggerStart": "Beim Senden eines Chats",
