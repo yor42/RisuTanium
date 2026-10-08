@@ -330,6 +330,7 @@ function installDb(characters: (character | groupChat)[] = [], extra: Record<str
     DBState.db = {
         characters,
         modules: [],
+        botPresets: [],
         templateDefaultVariables: '',
         personas: [],
         selectedPersona: 0,

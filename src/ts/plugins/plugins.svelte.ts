@@ -14,6 +14,7 @@ import { loadV3Plugins } from "./apiV3/v3.svelte";
 import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
+import { databaseWriteProblem, singleCharacterProblem } from "./characterWriteCheck";
 import { hasEnabledV21Plugin } from "./v21Plugins";
 import { AssetList, toPlainAssetArray } from "../storage/assetList";
 import {
@@ -608,6 +609,10 @@ export const getV2PluginAPIs = () => {
             const db = getDatabase()
             const charid = get(selectedCharID)
             const replaced = charid >= 0 ? db.characters[charid] : undefined
+            const problem = singleCharacterProblem(char, replaced)
+            if (problem !== null) {
+                throw new Error(problem)
+            }
             fillMissingCharacterInstallIds(char)
             if (replaced) {
                 warnIfCharacterChaIdDuplicated(db.characters, charid, char?.chaId, replaced?.chaId, pluginName)
@@ -787,6 +792,12 @@ export const getV2PluginAPIs = () => {
                 },
                 set(target, prop, value) {
                     if (typeof prop === 'string' && allowedDbKeys.includes(prop)) {
+                        if (prop === 'characters' || prop === 'modules') {
+                            const problem = databaseWriteProblem(target, { [prop]: value })
+                            if (problem !== null) {
+                                throw new Error(problem)
+                            }
+                        }
                         (target as any)[prop] = value;
                         return true;
                     }
@@ -851,6 +862,10 @@ export const getV2PluginAPIs = () => {
             }
         },
         setDatabaseLite: (newDb: any, pluginName?: string): void | Promise<void> => {
+            const refusal = databaseWriteProblem(getDatabase(), newDb)
+            if (refusal !== null) {
+                return Promise.reject(new Error(refusal))
+            }
             const plan: PluginListPlan = Object.keys(newDb).includes('plugins')
                 ? planPluginListWrite(newDb.plugins, pluginName)
                 : { kind: 'idle' }
@@ -867,6 +882,11 @@ export const getV2PluginAPIs = () => {
             const classified = plan.classified
             return (async () => {
                 let failure = await askPluginChanges(classified, pluginName)
+                // The page may have changed while the prompt was open.
+                const lateRefusal = databaseWriteProblem(getDatabase(), newDb)
+                if (lateRefusal !== null) {
+                    throw new Error(lateRefusal)
+                }
                 // From here to the key writes nothing awaits, so the list and the
                 // characters are checked and assigned against the same live state.
                 failure ??= commitPluginChanges(classified)
@@ -880,12 +900,21 @@ export const getV2PluginAPIs = () => {
             })()
         },
         setDatabase: async (newDb: any, pluginName?: string) => {
+            const refusal = databaseWriteProblem(getDatabase(), newDb)
+            if (refusal !== null) {
+                throw new Error(refusal)
+            }
             const plan: PluginListPlan = Object.keys(newDb).includes('plugins')
                 ? planPluginListWrite(newDb.plugins, pluginName)
                 : { kind: 'idle' }
             let failure: Error | null = plan.kind === 'failed' ? plan.error : null
             if (plan.kind === 'changes') {
                 failure = await askPluginChanges(plan.classified, pluginName)
+                // The page may have changed while the prompt was open.
+                const lateRefusal = databaseWriteProblem(getDatabase(), newDb)
+                if (lateRefusal !== null) {
+                    throw new Error(lateRefusal)
+                }
             }
             // From here to the key writes nothing awaits, so the list and the
             // characters are checked and assigned against the same live state.

@@ -7,7 +7,9 @@ import { downloadFile } from 'src/ts/globalApi.svelte';
 import { isTauri } from "src/ts/platform"
 import { HypaProcesser } from '../memory/hypamemory';
 import { BufferToText as BufferToText, selectMultipleFile } from 'src/ts/util';
-import { postInlayAsset } from './inlays';
+import { isInlayRefusal, postInlayAsset } from './inlays';
+import { alertError } from '../../alert';
+import { language } from 'src/lang';
 
 type sendFileArg = {
     file:string
@@ -340,6 +342,12 @@ export async function postChatFile(query:string|{
             case 'mpeg':
             case 'avi':{
                 const postData = await postInlayAsset(file)
+                if(isInlayRefusal(postData)){
+                    alertError(language.inlayFileTooLarge
+                        .replace('{name}', postData.name)
+                        .replace('{size}', Math.floor(postData.limit / (1024 * 1024)).toString()))
+                    continue
+                }
                 if(!postData){
                     continue
                 }

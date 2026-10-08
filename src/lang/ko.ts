@@ -1606,6 +1606,7 @@ export const languageKorean = {
     "realmDirectOpen": "RisuRealm 미리보기에서 바로 열기",
     "showPromptComparison": "프롬프트 비교 보기",
     "inlayErrorResponse": "인레이 오류 응답",
+    "inlayFileTooLarge": "{name} 파일이 {size} MB보다 커서 첨부하지 않았습니다.",
     "triggerOn": "활성화 조건",
     "noConfig": "설정 없음",
     "var": "변수",
@@ -1869,6 +1870,20 @@ export const languageKorean = {
         `백업을 복원했지만, 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
+    "partialBackupInlaysNotIncluded": "인레이(채팅 이미지, 영상, 오디오, 서명)는 부분 백업에 포함되지 않습니다.",
+    "backupInlaysLeftOut": (count: number, names: string[]) =>
+        `인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개를 읽을 수 없거나 지원되지 않아 백업에 포함되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 제외된 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreInlaysInvalid": (count: number, names: string[]) =>
+        `백업을 복원했지만, 파일 내 항목이 불완전하거나 손상된 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreInlaysNotStored": (count: number, names: string[]) =>
+        `백업을 복원했지만, 이 앱이 저장할 수 없었던 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreInlaysTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `백업을 복원했지만, 이 페이지가 저장할 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupInlaysOldStoreUnlisted": "이 브라우저의 이전 인레이 저장소를 읽을 수 없어, 그곳에만 있는 인레이는 백업에 포함되지 않았습니다.",
+    "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
+        `이 백업에는 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개가 있어 여기서는 복원할 수 없습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `이 백업에는 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${assetCount}개와 인레이(채팅 이미지, 영상, 오디오, 서명) ${inlayCount}개가 있어 여기서는 복원할 수 없습니다. 이 항목을 사용하는 캐릭터나 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n에셋 파일:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...외 ${assetCount - assetNames.length}개` : ''}\n\n인레이:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...외 ${inlayCount - inlayNames.length}개` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? '백업에 실패했습니다.' : `${asset}이(가) 저장되는 동안 변경되었거나 읽을 수 없어 백업이 중단되었습니다.`} 백업 파일이 불완전하여 삭제했습니다. 백업을 다시 실행하세요.`,
     "backupFailedFileKept": (asset: string | null) =>
@@ -2084,6 +2099,33 @@ export const languageKorean = {
         `이 탭은 저장을 멈췄습니다. 셀프 호스팅 서버는 한 번의 요청에 최대 ${limitBytes / (1024 * 1024)} MiB까지만 받으며(서버 앞의 프록시가 더 낮은 한도를 설정했다면 그보다 작게), ${what ? `데이터의 이 부분이 그 한도를 넘었습니다: ${what}` : '데이터의 일부가 그 한도를 넘었지만, 서버가 어느 부분인지는 알려주지 않았습니다'}. 마지막으로 성공한 저장 이후의 변경 사항은 새로고침하면 사라집니다. 채팅이나 콘텐츠를 삭제하는 등으로 해당 부분의 크기를 줄이세요.`,
     savingStoppedConversionFailedMessage: "이 탭은 저장을 멈췄습니다. 데이터를 새 저장 형식으로 옮기려고 여러 번 시도했지만 성공하지 못했으며, 저장된 데이터는 전혀 변경되지 않았습니다. 마지막으로 성공한 저장 이후의 변경 사항은 새로고침하면 사라집니다. 페이지를 새로고침하여 다시 시도하세요.",
     savingStoppedUnconfirmedMessage: "이 탭은 저장을 멈췄습니다. RisuAI가 어느 저장본이 현재 것인지 확인하지 못했습니다. 페이지를 새로고침하여 어느 것이 불러와졌는지 확인하세요. 이 탭에서 마지막으로 성공한 저장 이후에 한 변경 사항은 사라졌을 수 있습니다.",
+    savingStoppedInvalidDataMessage: (what: string) =>
+        `이 탭은 저장을 멈췄습니다. ${what ? `${what}을(를)` : '데이터의 일부를'} RisuAI가 다시 불러올 수 있는 저장본으로 기록할 수 없어 아무것도 기록되지 않았으며, 저장된 데이터는 변경되지 않았습니다. 마지막으로 성공한 저장 이후의 변경 사항은 새로고침하면 사라집니다. 이 탭의 데이터를 보존하려면 백업을 내보내세요.`,
+    savingHeldMessage: (names: string, archived: boolean) =>
+        `저장이 일시 중지되었습니다. ${names}의 ID를 저장할 수 없으므로 문제가 해결될 때까지 아무것도 기록되지 않습니다. 그동안 한 변경 사항은 이 탭에 유지되지만 탭을 닫으면 사라집니다. ${archived ? '저장을 재개하려면: 보관된 캐릭터는 ID를 여기서 변경할 수 없으므로 백업을 내보낸 뒤 복원하세요(복원 시 보관된 데이터에서 ID가 복구됩니다). 그 외의 캐릭터는 플러그인이 가한 변경을 되돌리거나, 캐릭터를 영구 삭제하세요' : '저장을 재개하려면 플러그인이 해당 캐릭터에 가한 변경을 되돌리거나, 캐릭터를 영구 삭제하세요'} (휴지통으로 옮긴 뒤 휴지통에서 삭제해야 하며, 휴지통에 두는 것만으로는 저장이 재개되지 않습니다).`,
+    savingWaitingMessage: (names: string) =>
+        `저장이 ${names}을(를) 기다리는 중입니다. 저장하는 도중 해당 ID가 바뀌어 그 시도는 폐기되었고 다시 시도됩니다. ID가 더 이상 바뀌지 않을 때까지 아무것도 기록되지 않습니다. 그동안 한 변경 사항은 이 탭에 유지되지만 탭을 닫으면 사라집니다.`,
+    saveRepairedEntriesNotice: (dropped: number, filled: number) =>
+        `RisuAI가 캐릭터 목록을 복구했습니다: ${dropped > 0 ? `캐릭터가 아닌 항목 ${dropped}개를 제외했습니다` : ''}${dropped > 0 && filled > 0 ? ', 그리고 ' : ''}${filled > 0 ? `ID가 없거나 저장할 수 없던 캐릭터 ${filled}개에 새 ID를 부여했습니다` : ''}.${dropped > 0 ? ' 제외된 항목은 플러그인이 기록했을 수 있습니다.' : ''}`,
+    personasRepairedNotice: (count: number) =>
+        `RisuAI가 유효하지 않은 데이터인 페르소나 ${count}개를 제외했습니다. 플러그인이 기록했을 수 있습니다.`,
+    restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
+        `RisuAI가 캐릭터 목록을 복구한 뒤 백업을 불러왔습니다: ${[
+            dropped > 0 ? `캐릭터가 아닌 항목 ${dropped}개를 제외했습니다` : '',
+            changed > 0 ? `ID가 없거나 저장할 수 없던 캐릭터 ${changed}개에 새 ID를 부여했습니다` : '',
+            recovered > 0 ? `보관된 캐릭터 ${recovered}개가 보관된 데이터에 기록된 ID를 되찾았습니다` : '',
+        ].filter((part) => part !== '').join('; ')}.`,
+    restoreRefusedArchivedId: (name: string) =>
+        `이 백업을 불러올 수 없습니다. 보관된 캐릭터 "${name}"의 ID는 저장할 수 없으며, 연결된 보관 데이터에도 이를 복구할 수 있는 유효한 ID가 없습니다. 아무것도 변경되지 않았습니다.`,
+    restoreRefusedUnsavable: (what: string) =>
+        `이 백업을 불러올 수 없습니다. ${what}은(는) 현재 상태로는 저장할 수 없습니다. 아무것도 변경되지 않았습니다.`,
+    exportIdsRepairedNotice: (recovered: number, filled: number, replaced: number, unrestorable: string) =>
+        `이 내보내기에서 일부 캐릭터 ID가 복구되었으며, 페이지에 있는 캐릭터는 변경되지 않았습니다. ${[
+            recovered > 0 ? `보관된 캐릭터 ${recovered}개를 보관된 데이터에 기록된 ID로 내보냈습니다.` : '',
+            filled > 0 ? `ID가 없던 캐릭터 ${filled}개를 새 ID로 내보냈습니다.` : '',
+            replaced > 0 ? `ID를 저장할 수 없던 캐릭터 ${replaced}개를 새 ID로 내보냈습니다.` : '',
+            unrestorable ? `${unrestorable}의 보관된 내용은 이 내보내기에서 복원할 수 없습니다. 보관된 데이터에 사용 가능한 ID가 기록되어 있지 않아 새 ID로 내보냈습니다.` : '',
+        ].filter((part) => part !== '').join(' ')}`,
     saveBlockLabel: (blockName: string): string =>
         blockName === 'root' ? '일반 설정'
         : blockName === 'preset' ? '봇 프리셋'

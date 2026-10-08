@@ -1,0 +1,66 @@
+name: Rust check
+
+# Compiles and tests the Tauri backend on Linux. Runs only when src-tauri changes,
+# weekly (Cargo.lock is not tracked, so dependency drift shows up here), or on demand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/rust-check.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/rust-check.yml'
+  schedule:
+    - cron: '30 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: rust-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: cargo check and test (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Tauri's Linux prerequisites.
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # tauri::generate_context! checks that frontendDist (../dist) exists at compile time.
+      - name: Create empty frontend dist
+        run: mkdir -p dist
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      # Report only: the project has no lint baseline, so warnings do not fail the run.
+      - name: cargo clippy (report only)
+        working-directory: src-tauri
+        continue-on-error: true
+        run: cargo clippy --all-targets

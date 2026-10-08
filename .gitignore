@@ -58,3 +58,8 @@ Cargo.lock
 # commit them. See Agents/Maybe-Later.md.
 Agents/Evidences of Investigations/Community plugins to solve common pain points/
 Agents/Evidences of Investigations/Asset Cache/Community Mitigation_Webrowser Plugin/
+# Local Claude state; maintained agents, skills, scripts and settings stay tracked.
+.claude/worktrees/
+.claude/settings.local.json
+.claude/agent-memory-local/
+.claude/scratch/

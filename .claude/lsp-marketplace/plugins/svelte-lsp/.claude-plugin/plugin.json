@@ -1,0 +1,17 @@
+{
+  "name": "svelte-lsp",
+  "version": "1.0.0",
+  "description": "Svelte language intelligence using the separately installed svelteserver binary.",
+  "author": {
+    "name": "RisuTanium maintainers"
+  },
+  "lspServers": {
+    "svelte": {
+      "command": "svelteserver",
+      "args": ["--stdio"],
+      "extensionToLanguage": {
+        ".svelte": "svelte"
+      }
+    }
+  }
+}

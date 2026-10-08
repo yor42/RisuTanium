@@ -1,0 +1,108 @@
+name: Bug report
+description: Something does not work, or data is lost or damaged.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste API keys or other secrets, and do not attach a save or `.bin` backup to a public issue.
+        If you lost data, stop making changes in that profile and export a `.bin` backup first.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Hosted web
+        - Local web (Node server, pnpm runserver)
+        - Docker
+        - Desktop (Tauri)
+        - Android
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS, browser and device
+      description: For example Windows 11 arm64, Chrome 130, or Pixel 8 on Android 15.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version string shown on the home screen, copied exactly (for example "Version 0.1.0-up2026.8.250").
+    validations:
+      required: true
+
+  - type: input
+    id: install
+    attributes:
+      label: How it was installed or built
+      description: Release installer, docker compose, Docker image tag, or built from source (commit hash).
+
+  - type: dropdown
+    id: data-loss
+    attributes:
+      label: Is data lost, damaged or missing?
+      options:
+        - 'No'
+        - 'Yes'
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: backup
+    attributes:
+      label: Data safety
+      description: Only needed if data is lost or damaged.
+      options:
+        - label: I exported a `.bin` backup before the problem started.
+        - label: The profile was imported from upstream RisuAI.
+
+  - type: input
+    id: scale
+    attributes:
+      label: Size of the profile
+      description: Roughly how many characters and modules, and how large the assets are. Large profiles are the main risk area.
+
+  - type: textarea
+    id: plugins
+    attributes:
+      label: Plugins in use
+      description: Names of any plugins enabled, or "none".
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console or log output
+      description: Remove API keys and personal data first.
+      render: shell

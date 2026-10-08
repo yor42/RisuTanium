@@ -1605,6 +1605,7 @@ export const languageVietnamese = {
     "realmDirectOpen": "Mở trực tiếp nhân vật trong RisuRealm",
     "showPromptComparison": "Hiển thị so sánh lời nhắc",
     "inlayErrorResponse": "Phản hồi lỗi Inlay",
+    "inlayFileTooLarge": "{name} lớn hơn {size} MB nên không được đính kèm.",
     "triggerOn": "Kích hoạt bật",
     "noConfig": "Không có cấu hình",
     "var": "Biến",
@@ -1870,6 +1871,20 @@ export const languageVietnamese = {
         `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `Máy chủ, hoặc proxy đặt trước nó, đã từ chối tệp tài nguyên (asset) "${name}" vì quá lớn nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
+    "partialBackupInlaysNotIncluded": "Inlay (hình ảnh, video, âm thanh và chữ ký trong cuộc trò chuyện) không được đưa vào bản sao lưu một phần.",
+    "backupInlaysLeftOut": (count: number, names: string[]) =>
+        `Có ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) không thể đọc được hoặc không được hỗ trợ nên không có trong bản sao lưu. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Các inlay bị bỏ sót:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,
+    "restoreInlaysInvalid": (count: number, names: string[]) =>
+        `Bản sao lưu đã được khôi phục, trừ ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) có mục trong tệp không đầy đủ hoặc bị hỏng. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Các inlay đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,
+    "restoreInlaysNotStored": (count: number, names: string[]) =>
+        `Bản sao lưu đã được khôi phục, trừ ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) mà ứng dụng này không thể lưu trữ. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Các inlay đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,
+    "restoreInlaysTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `Bản sao lưu đã được khôi phục, trừ ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà trang này có thể lưu trữ. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Các inlay đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,
+    "backupInlaysOldStoreUnlisted": "Không thể đọc kho inlay cũ của trình duyệt này, nên các inlay chỉ có trong kho đó không có trong bản sao lưu.",
+    "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
+        `Bản sao lưu này có ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu, nên không thể khôi phục tại đây. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Tiếp tục mà không có chúng?\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,
+    "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `Bản sao lưu này có ${assetCount} tệp tài nguyên (asset) và ${inlayCount} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu, nên không thể khôi phục tại đây. Nhân vật hoặc cuộc trò chuyện nào dùng một trong số đó sẽ hiển thị chúng là bị thiếu. Tiếp tục mà không có chúng?\n\nTệp tài nguyên (asset):\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...và ${assetCount - assetNames.length} tệp nữa` : ''}\n\nInlay:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...và ${inlayCount - inlayNames.length} inlay nữa` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? 'Sao lưu không thành công.' : `Quá trình sao lưu đã dừng vì ${asset} đã thay đổi hoặc không thể đọc được trong lúc đang được lưu.`} Tệp sao lưu không đầy đủ nên đã bị xóa. Hãy chạy lại sao lưu.`,
     "backupFailedFileKept": (asset: string | null) =>
@@ -2084,6 +2099,33 @@ export const languageVietnamese = {
         `Tab này đã ngừng lưu. Máy chủ tự lưu trữ chỉ chấp nhận tối đa ${limitBytes / (1024 * 1024)} MiB trong một yêu cầu (ít hơn nếu proxy phía trước máy chủ đặt giới hạn thấp hơn), và ${what ? `phần dữ liệu này của bạn vượt quá giới hạn đó: ${what}` : 'một phần dữ liệu của bạn vượt quá giới hạn đó; máy chủ không cho biết đó là phần nào'}. Các thay đổi kể từ lần lưu thành công gần nhất sẽ bị mất khi bạn tải lại. Hãy làm cho phần đó nhỏ hơn, ví dụ bằng cách xóa các cuộc trò chuyện hoặc nội dung trong đó.`,
     savingStoppedConversionFailedMessage: "Tab này đã ngừng lưu. Việc chuyển dữ liệu của bạn sang định dạng lưu mới không thành công sau nhiều lần thử, và không có gì trong dữ liệu đã lưu của bạn bị thay đổi. Các thay đổi kể từ lần lưu thành công gần nhất sẽ bị mất khi bạn tải lại. Hãy tải lại trang để thử lại.",
     savingStoppedUnconfirmedMessage: "Tab này đã ngừng lưu. RisuAI không thể xác nhận bản lưu nào là bản hiện tại. Hãy tải lại trang để xem bản nào đã được tải; các thay đổi thực hiện trong tab này kể từ lần lưu thành công gần nhất có thể đã bị mất.",
+    savingStoppedInvalidDataMessage: (what: string) =>
+        `Tab này đã ngừng lưu. ${what ? `${what} không thể` : 'Một phần dữ liệu của bạn không thể'} được ghi thành bản lưu mà RisuAI có thể tải lại, nên chưa có gì được ghi và dữ liệu đã lưu của bạn không bị thay đổi. Các thay đổi kể từ lần lưu thành công gần nhất sẽ bị mất khi bạn tải lại. Hãy xuất bản sao lưu nếu bạn muốn giữ dữ liệu của tab này.`,
+    savingHeldMessage: (names: string, archived: boolean) =>
+        `Việc lưu đang bị tạm dừng. Không thể lưu id của ${names}, nên sẽ không có gì được ghi cho đến khi sự cố này được khắc phục; các thay đổi thực hiện trong thời gian đó được giữ trong tab này nhưng sẽ bị mất nếu bạn đóng tab. ${archived ? 'Để tiếp tục lưu: với nhân vật đã lưu trữ, không thể đổi id tại đây, hãy xuất bản sao lưu rồi khôi phục (việc khôi phục sẽ sửa id từ dữ liệu đã lưu trữ); với nhân vật khác, hãy hoàn tác thay đổi mà plugin đã thực hiện với nó; hoặc xóa vĩnh viễn nhân vật' : 'Để tiếp tục lưu, hãy hoàn tác thay đổi mà plugin đã thực hiện với nó, hoặc xóa vĩnh viễn nhân vật'} (chuyển vào thùng rác, rồi xóa khỏi thùng rác; chỉ để trong thùng rác thì việc lưu không tiếp tục).`,
+    savingWaitingMessage: (names: string) =>
+        `Việc lưu đang chờ ${names}: id của nó đã thay đổi trong lúc đang lưu, nên lần thử đó bị hủy bỏ và sẽ được thử lại. Sẽ không có gì được ghi cho đến khi nó ngừng thay đổi. Các thay đổi thực hiện trong thời gian đó được giữ trong tab này nhưng sẽ bị mất nếu bạn đóng tab.`,
+    saveRepairedEntriesNotice: (dropped: number, filled: number) =>
+        `RisuAI đã sửa danh sách nhân vật: ${dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : ''}${dropped > 0 && filled > 0 ? ', và ' : ''}${filled > 0 ? `${filled} nhân vật có id bị thiếu hoặc không thể lưu đã được cấp id mới` : ''}.${dropped > 0 ? ' Có thể một plugin đã ghi các mục bị loại bỏ đó.' : ''}`,
+    personasRepairedNotice: (count: number) =>
+        `RisuAI đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
+    restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
+        `Bản sao lưu đã được tải sau khi RisuAI sửa danh sách nhân vật: ${[
+            dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : '',
+            changed > 0 ? `${changed} nhân vật có id bị thiếu hoặc không thể lưu đã được cấp id mới` : '',
+            recovered > 0 ? `${recovered} nhân vật đã lưu trữ đã lấy lại id được ghi trong dữ liệu đã lưu trữ của chúng` : '',
+        ].filter((part) => part !== '').join('; ')}.`,
+    restoreRefusedArchivedId: (name: string) =>
+        `Không thể tải bản sao lưu này: nhân vật đã lưu trữ "${name}" có id không thể lưu, và dữ liệu đã lưu trữ mà nó trỏ tới không chứa id hợp lệ để sửa nó. Không có gì bị thay đổi.`,
+    restoreRefusedUnsavable: (what: string) =>
+        `Không thể tải bản sao lưu này: ${what} không thể lưu nguyên trạng. Không có gì bị thay đổi.`,
+    exportIdsRepairedNotice: (recovered: number, filled: number, replaced: number, unrestorable: string) =>
+        `Một số id nhân vật đã được sửa trong bản xuất này; các nhân vật trên trang không bị thay đổi. ${[
+            recovered > 0 ? `${recovered} nhân vật đã lưu trữ đã được xuất với id được ghi trong dữ liệu đã lưu trữ của chúng.` : '',
+            filled > 0 ? `${filled} nhân vật không có id và đã được xuất với id mới.` : '',
+            replaced > 0 ? `${replaced} nhân vật có id không thể lưu và đã được xuất với id mới.` : '',
+            unrestorable ? `Không thể khôi phục nội dung đã lưu trữ của ${unrestorable} từ bản xuất này: dữ liệu đã lưu trữ của nó không ghi id dùng được, nên nó đã được xuất với id mới.` : '',
+        ].filter((part) => part !== '').join(' ')}`,
     saveBlockLabel: (blockName: string): string =>
         blockName === 'root' ? 'cài đặt chung của bạn'
         : blockName === 'preset' ? 'các cài đặt trước của bot của bạn'

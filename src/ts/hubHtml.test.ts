@@ -1,3 +1,7 @@
+// @vitest-environment jsdom
+// The sanitizer assertions below need a DOM in which DOMPurify removes every
+// offending node. happy-dom's NodeIterator stops DOMPurify after the first
+// removal, so removal assertions made there only prove the first offender went.
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import DOMPurify from 'dompurify'
 
@@ -104,6 +108,25 @@ describe('sanitizeHubHtml', () => {
         expect(sanitizeHubHtml('<p>before<img src="x">after</p>')).toBe('<p>beforeafter</p>')
         expect(sanitizeHubHtml('<p>before<embed src="x">after</p>')).toBe('<p>beforeafter</p>')
         expect(sanitizeHubHtml('<p>before<object>inner</object>after</p>')).toBe('<p>beforeinnerafter</p>')
+    })
+
+    // Every offender in one input must go, not only the first one DOMPurify
+    // meets; allowed content around them must stay.
+    test('every offender in one input is removed while the allowed tags, text and http href stay', () => {
+        const out = sanitizeHubHtml(
+            '<script>alert(1)</script>' +
+            '<p onclick="a()" onmouseover="b()" class="c" style="color:red">first</p>' +
+            '<script>alert(2)</script>' +
+            '<a href="javascript:alert(3)" onfocus="c()">bad</a>' +
+            '<a href="https://example.com/ok" onclick="d()">ok</a>' +
+            '<img src="https://example.com/i.png" onerror="e()">' +
+            '<iframe src="https://example.com/f"></iframe>' +
+            '<svg onload="f()"><circle r="1"></circle></svg>' +
+            '<script>alert(4)</script>' +
+            '<b onanimationend="g()">bold</b>'
+        )
+
+        expect(out).toBe('<p>first</p><a>bad</a><a href="https://example.com/ok">ok</a><b>bold</b>')
     })
 
     test('an empty string and a plain string with no markup pass through unchanged, sanely', () => {

@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 
 /**
  * Wiring test for the `{@html sanitizeHubHtml(hubAnnouncement)}` sink in

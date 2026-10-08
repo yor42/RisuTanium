@@ -1651,6 +1651,7 @@ export const languageChineseTraditional = {
     "realmDirectOpen": "直接在 RisuRealm 開啟角色",
     "showPromptComparison": "顯示提示詞比較",
     "inlayErrorResponse": "內嵌錯誤回應",
+    "inlayFileTooLarge": "{name} 超過 {size} MB，未能附加。",
     "triggerOn": "Trigger 時機",
     "noConfig": "無設定",
     "var": "變數",
@@ -1915,6 +1916,20 @@ export const languageChineseTraditional = {
         `備份已復原，但有 ${count} 個資源檔案超過了此伺服器單次請求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能復原。使用這些檔案的角色會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `伺服器或其前端的代理以資源檔案「${name}」過大為由拒絕了它，因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。`,
+    "partialBackupInlaysNotIncluded": "內嵌檔案（聊天圖片、影片、音訊和簽名）不包含在部分備份中。",
+    "backupInlaysLeftOut": (count: number, names: string[]) =>
+        `有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）無法讀取或不受支援，因此未包含在備份中。使用這些檔案的聊天會將其顯示為遺失。已遺漏的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreInlaysInvalid": (count: number, names: string[]) =>
+        `備份已復原，但有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）因其在檔案中的項目不完整或已損毀而未能復原。使用這些檔案的聊天會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreInlaysNotStored": (count: number, names: string[]) =>
+        `備份已復原，但有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）因本應用程式無法儲存而未能復原。使用這些檔案的聊天會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreInlaysTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `備份已復原，但有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）超過了此頁面可儲存的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能復原。使用這些檔案的聊天會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "backupInlaysOldStoreUnlisted": "此瀏覽器的舊內嵌檔案儲存空間無法讀取，因此僅存放在其中的內嵌檔案未包含在備份中。",
+    "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
+        `此備份中有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）超過了此伺服器單次請求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此無法在此處復原。使用這些檔案的聊天會將其顯示為遺失。是否在不復原它們的情況下繼續？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `此備份中有 ${assetCount} 個資源檔案和 ${inlayCount} 個內嵌檔案（聊天圖片、影片、音訊或簽名）超過了此伺服器單次請求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此無法在此處復原。使用這些檔案的角色或聊天會將其顯示為遺失。是否在不復原它們的情況下繼續？\n\n資源檔案：\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...另有 ${assetCount - assetNames.length} 個` : ''}\n\n內嵌檔案：\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...另有 ${inlayCount - inlayNames.length} 個` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? '備份失敗。' : `備份已停止，因為 ${asset} 在儲存過程中發生了變更或無法讀取。`}備份檔案不完整，因此已被刪除。請重新執行備份。`,
     "backupFailedFileKept": (asset: string | null) =>
@@ -2129,6 +2144,33 @@ export const languageChineseTraditional = {
         `此分頁已停止儲存。自架伺服器單次請求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果伺服器前的代理設定了更低的限制，則以更低的為準），而${what ? `您的這部分資料超出了該限制：${what}` : '您的部分資料超出了該限制；伺服器沒有說明是哪一部分'}。自上次成功儲存以來的變更將在重新載入時遺失。請縮減該部分的大小，例如刪除其中的聊天或內容。`,
     "savingStoppedConversionFailedMessage": "此分頁已停止儲存。將您的資料遷移到新的儲存格式在多次嘗試後仍未成功，且已儲存的資料沒有任何變更。自上次成功儲存以來的變更將在重新載入時遺失。請重新載入頁面以重試。",
     "savingStoppedUnconfirmedMessage": "此分頁已停止儲存。RisuAI 無法確認哪一份儲存是目前的。請重新載入頁面，查看載入的是哪一份；此分頁中自上次成功儲存以來所做的變更可能已遺失。",
+    "savingStoppedInvalidDataMessage": (what: string) =>
+        `此分頁已停止儲存。${what ? `${what}` : '您的部分資料'}無法寫入為 RisuAI 能夠重新載入的存檔，因此沒有寫入任何內容，已儲存的資料沒有變更。自上次成功儲存以來的變更將在重新載入時遺失。如需保留此分頁的資料，請匯出備份。`,
+    "savingHeldMessage": (names: string, archived: boolean) =>
+        `儲存已暫停。${names} 的 ID 無法儲存，因此在問題解決之前不會寫入任何內容；在此期間所做的變更會保留在此分頁中，但關閉分頁後將遺失。${archived ? '要恢復儲存：已封存的角色無法在此處變更 ID，請匯出備份並還原（還原時會根據已封存的資料修復該 ID）；其他角色請復原外掛對它所做的變更；或者永久刪除該角色' : '要恢復儲存，請復原外掛對它所做的變更，或永久刪除該角色'}（先移入垃圾桶，再從垃圾桶中刪除；僅放在垃圾桶中不會恢復儲存）。`,
+    "savingWaitingMessage": (names: string) =>
+        `儲存正在等待 ${names}：它的 ID 在儲存過程中發生了變化，因此該次嘗試已被捨棄並將重試。在它停止變化之前不會寫入任何內容。在此期間所做的變更會保留在此分頁中，但關閉分頁後將遺失。`,
+    "saveRepairedEntriesNotice": (dropped: number, filled: number) =>
+        `RisuAI 已修復角色列表：${dropped > 0 ? `${dropped} 個不是角色的項目已被排除` : ''}${dropped > 0 && filled > 0 ? '，並且' : ''}${filled > 0 ? `${filled} 個 ID 缺失或無法儲存的角色已被分配新的 ID` : ''}。${dropped > 0 ? '被排除的項目可能是外掛寫入的。' : ''}`,
+    "personasRepairedNotice": (count: number) =>
+        `RisuAI 排除了 ${count} 個不是有效資料的使用者人設。這可能是外掛寫入的。`,
+    "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
+        `RisuAI 修復角色列表後已載入此備份：${[
+            dropped > 0 ? `${dropped} 個不是角色的項目已被排除` : '',
+            changed > 0 ? `${changed} 個 ID 缺失或無法儲存的角色已被分配新的 ID` : '',
+            recovered > 0 ? `${recovered} 個已封存的角色恢復了其已封存資料中記錄的 ID` : '',
+        ].filter((part) => part !== '').join('; ')}。`,
+    "restoreRefusedArchivedId": (name: string) =>
+        `無法載入此備份：已封存的角色「${name}」的 ID 無法儲存，且它所指向的已封存資料中也沒有可用於修復的有效 ID。未變更任何內容。`,
+    "restoreRefusedUnsavable": (what: string) =>
+        `無法載入此備份：${what} 無法依現狀儲存。未變更任何內容。`,
+    "exportIdsRepairedNotice": (recovered: number, filled: number, replaced: number, unrestorable: string) =>
+        `此匯出中的部分角色 ID 已被修復；頁面上的角色沒有變更。${[
+            recovered > 0 ? `${recovered} 個已封存的角色已使用其已封存資料中記錄的 ID 匯出。` : '',
+            filled > 0 ? `${filled} 個角色沒有 ID，已使用新的 ID 匯出。` : '',
+            replaced > 0 ? `${replaced} 個角色的 ID 無法儲存，已使用新的 ID 匯出。` : '',
+            unrestorable ? `無法從此匯出中還原 ${unrestorable} 的已封存內容：其已封存資料中沒有記錄可用的 ID，因此已使用新的 ID 匯出。` : '',
+        ].filter((part) => part !== '').join(' ')}`,
     "saveBlockLabel": (blockName: string): string =>
         blockName === 'root' ? '您的一般設定'
         : blockName === 'preset' ? '您的機器人預設集'

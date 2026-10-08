@@ -1,11 +1,11 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 
 /**
  * Fixed dark text on the always-light surfaces of `Chat.svelte`: the
  * mobilechat bubble and the cardboard card's text area.
  *
  * Every assertion reads the rendered DOM (inline custom properties, classes);
- * no stylesheet is loaded under happy-dom, so the resolved colour of a class
+ * no stylesheet is loaded in the test environment, so the resolved colour of a class
  * such as `x-risu-button-default` is not computable here and is left to a
  * visual check. The real `Chat.svelte` is mounted with the heavy modules
  * mocked as in `Chat.messageEditor.svelte.test.ts`; the real parser is kept so

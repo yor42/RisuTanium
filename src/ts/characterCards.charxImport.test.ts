@@ -206,12 +206,12 @@ vi.mock('fflate', async (importOriginal) => {
             if (final && h.finalPushError) {
                 const file = { name: 'assets/injected.bin', originalSize: 0, start() {} } as unknown as import('fflate').UnzipFile
                 this.onfile?.(file)
-                file.ondata?.(new Error('injected zip error') as import('fflate').FlateError, null as unknown as Uint8Array, false)
+                file.ondata?.(new Error('injected zip error') as import('fflate').FlateError, null as unknown as Uint8Array<ArrayBuffer>, false)
             }
             super.push(chunk, final)
             if (h.lateOndataError) {
                 for (const file of this.#files) {
-                    file.ondata?.(new Error('late zip error') as import('fflate').FlateError, null as unknown as Uint8Array, false)
+                    file.ondata?.(new Error('late zip error') as import('fflate').FlateError, null as unknown as Uint8Array<ArrayBuffer>, false)
                 }
             }
             if (h.latePushThrow) {

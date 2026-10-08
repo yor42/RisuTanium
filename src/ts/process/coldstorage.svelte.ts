@@ -156,6 +156,50 @@ export async function classifyOpfsColdRead(
  */
 const unitVersions = new Map<string, number>()
 
+/**
+ * Write stamps of the units this page has written or deleted. A stamp changes
+ * when a write or delete of the unit starts and again when it ends, and has no
+ * value while one is in flight, so two equal stamps of a key, with a read in
+ * between, mean that no write of this page overlapped or followed that read.
+ * One entry per unit written in this page session.
+ */
+const unitStamps = new Map<string, number>()
+const unitWritesInFlight = new Map<string, number>()
+let unitStampClock = 0
+
+function beginUnitWrites(keys: readonly string[]): () => void {
+    for (const key of keys) {
+        unitStamps.set(key, ++unitStampClock)
+        unitWritesInFlight.set(key, (unitWritesInFlight.get(key) ?? 0) + 1)
+    }
+    let ended = false
+    return () => {
+        if (ended) {
+            return
+        }
+        ended = true
+        for (const key of keys) {
+            unitStamps.set(key, ++unitStampClock)
+            const left = (unitWritesInFlight.get(key) ?? 1) - 1
+            if (left <= 0) {
+                unitWritesInFlight.delete(key)
+            } else {
+                unitWritesInFlight.set(key, left)
+            }
+        }
+    }
+}
+
+/** The write stamp of unit `key`, or `null` while this page is writing or deleting it. A unit this page never wrote has stamp 0. */
+export function getColdUnitStamp(key: string): number | null {
+    return unitWritesInFlight.has(key) ? null : (unitStamps.get(key) ?? 0)
+}
+
+/** Whether the page's store holds unit `key`, without transferring the unit. Rejects when the store cannot say. */
+export async function hasColdUnitInStore(key: string): Promise<boolean> {
+    return await (await getAppStore()).has(coldUnitStoreKey(key))
+}
+
 /** Whether this page can hold legacy OPFS unit files at all: only the web build, and only in a browser that offers OPFS. */
 function legacyOpfsAvailable(): boolean {
     return !isTauri && !isNodeServer && typeof navigator !== 'undefined' && typeof navigator.storage?.getDirectory === 'function'
@@ -302,6 +346,7 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
     console.log("setting cold storage item", key)
 
     const endInFlight = beginChokePoint('coldStorage')
+    const endUnitWrite = beginUnitWrites([key])
     try {
         const compressed = await compressColdStorageValue(value)
         if(!compressed){
@@ -335,6 +380,7 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
             return false
         }
     } finally {
+        endUnitWrite()
         endInFlight()
     }
 }
@@ -351,6 +397,15 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
  * deletion has outdated.
  */
 export async function deleteColdStorageUnits(keys: readonly string[]): Promise<{ key: string, error: unknown }[]> {
+    const endUnitWrites = beginUnitWrites(keys)
+    try {
+        return await deleteColdStorageUnitsNow(keys)
+    } finally {
+        endUnitWrites()
+    }
+}
+
+async function deleteColdStorageUnitsNow(keys: readonly string[]): Promise<{ key: string, error: unknown }[]> {
     const failed: { key: string, error: unknown }[] = []
     let removable = [...keys]
     if (legacyOpfsAvailable()) {

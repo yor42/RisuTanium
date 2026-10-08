@@ -12,9 +12,22 @@ const HEX_PATTERN = /^[0-9a-f]+$/;
 // A UTF-16 surrogate with no partner. Matched per code unit (no `u` flag).
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
+// The shape of an inlay body key: `inlays/b-<encoded id>.<16 lowercase hex
+// digits>`, the encoded id being a-z, 0-9, `-` and `%` plus two UPPERCASE hex
+// digits. Metadata keys (`inlays/m-`) and everything else under `inlays/` stay
+// refused. Twin of `INLAY_BODY_KEY_PATTERN` in src/ts/storage/store/keyRules.ts.
+const INLAY_BODY_KEY_PATTERN = /^inlays\/b-(?:[a-z0-9-]|%[0-9A-F]{2})+\.[0-9a-f]{16}$/;
+// The longest key the server accepts on a write, in UTF-8 bytes; an inlay body
+// key is ASCII. Twin of `NODE_MAX_WRITE_KEY_BYTES` in keyRules.ts.
+const MAX_WRITE_KEY_BYTES = 117;
+
 // Whether the route may serve the stored key `key`: a key under `assets/`, with
-// no backslash and no empty, `.` or `..` segment, that is well-formed UTF-16.
+// no backslash and no empty, `.` or `..` segment, that is well-formed UTF-16, or
+// an inlay body key of at most MAX_WRITE_KEY_BYTES.
 function isRouteServedKey(key) {
+    if (typeof key === 'string' && key.startsWith('inlays/')) {
+        return INLAY_BODY_KEY_PATTERN.test(key) && key.length <= MAX_WRITE_KEY_BYTES;
+    }
     if (typeof key !== 'string' || !key.startsWith('assets/')) {
         return false;
     }

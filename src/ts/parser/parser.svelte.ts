@@ -12,12 +12,13 @@ import css, { type CssAtRuleAST } from '@adobe/css-tools'
 import { selectedCharID } from '../stores.svelte';
 import { calcString } from '../process/infunctions';
 import { findCharacterbyId, getPersonaPrompt, getUserIcon, getUserName, pickHashRand, replaceAsync} from '../util';
-import { getInlayAssetBlob } from '../process/files/inlays';
+import { getInlayRender } from '../process/files/inlays';
 import { getModuleAssets, getModuleLorebooks, getModules } from '../process/modules';
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/atom-one-dark.min.css'
 import { language } from 'src/lang';
 import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { getModelInfo } from '../model/modellist';
 import { registerCBS, type matcherArg, type PromptView, type RegisterCallback } from '../cbs';
 import type { RunSubject } from '../process/chatOrigin';
@@ -694,8 +695,6 @@ function trimmer(str:string){
     return str.trim().replace(/[_ -.]/g, '')
 }
 
-const blobUrlCache = new Map<string, string>()
-
 async function parseInlayAssets(data:string){
     const inlayMatch = data.match(/{{(inlay|inlayed|inlayeddata)::(.+?)}}/g)
     if(inlayMatch){
@@ -705,13 +704,14 @@ async function parseInlayAssets(data:string){
             let prefix = inlayType !== 'inlay' ? `<div class="risu-inlay-image">` : ''
             let postfix = inlayType !== 'inlay' ? `</div>\n\n` : ''
 
-            const asset = await getInlayAssetBlob(id)
-            let url = blobUrlCache.get(id)
-            if(!url && asset?.data){
-                url = URL.createObjectURL(asset.data)
-                blobUrlCache.set(id, url)
-            } 
-            switch(asset?.type){
+            // The inlay module caches the render of an id until the id is written or removed.
+            const render = await getInlayRender(id)
+            const url = render?.url
+            switch(render?.type){
+                case 'signature':
+                    // Model-facing data: never shown
+                    data = data.replace(inlay, '')
+                    break
                 case 'image':
                     // Hide inlay images when hideAllImages is enabled
                     if(DBState.db.hideAllImages){
@@ -936,13 +936,24 @@ export async function postTranslationParse(data:string){
     return data
 }
 
-export function parseMarkdownSafe(data:string, arg:{
+/**
+ * Sanitizes HTML with the rules parseMarkdownSafe applies, without rendering
+ * markdown. Anything that must be exactly as strict as parseMarkdownSafe output
+ * goes through here so the two cannot drift.
+ */
+export function sanitizeMarkdownSafe(html:string, arg:{
     forbidTags?: string[],
 } = {}) {
-    return DOMPurify.sanitize(renderMarkdown(md, data), {
+    return DOMPurify.sanitize(html, {
         FORBID_TAGS: ["a", "style", ...(arg.forbidTags || [])],
         FORBID_ATTR: ["style", "href", "class"]
     })
+}
+
+export function parseMarkdownSafe(data:string, arg:{
+    forbidTags?: string[],
+} = {}) {
+    return sanitizeMarkdownSafe(renderMarkdown(md, data), arg)
 }
 
 
@@ -1880,7 +1891,7 @@ export function applyMarkdownToNode(node: Node) {
         if (text) {
             let markdown = renderMarkdown(md, text);
             if (markdown !== text) {
-                const span = document.createElement('span');
+                const span = node.ownerDocument.createElement('span');
                 span.innerHTML = markdown;
                 
                 // inherit inline style from the parent node

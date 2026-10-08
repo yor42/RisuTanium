@@ -402,6 +402,8 @@ export interface SetSpec {
 }
 
 const FIXED_ORDER = ['preset', 'modules', 'loadouts', 'plugins', 'pluginStorage'] as const
+/** The fixed blocks whose payload is a JSON list, as the encoder writes them. */
+const LIST_FIXED: ReadonlySet<string> = new Set(['preset', 'modules', 'loadouts', 'plugins'])
 const FIXED_TYPES: Record<string, number> = { preset: 4, modules: 5, loadouts: 10, plugins: 9, pluginStorage: 11, config: 0 }
 
 export function characterBlock(chaId: string, data = `{"chaId":${JSON.stringify(chaId)},"chats":[]}`): Uint8Array {
@@ -425,7 +427,7 @@ export function makeSet(spec: SetSpec = {}): BlockSetInput {
     blocks.push(frameJsonBlock(BLOCK_TYPE_ROOT, 'root', rootFields))
     for (const name of FIXED_ORDER) {
         keys.push(name)
-        blocks.push(frameBlock(FIXED_TYPES[name], name, new TextEncoder().encode(spec.fixed?.[name] ?? `{"${name}":1}`)))
+        blocks.push(frameBlock(FIXED_TYPES[name], name, new TextEncoder().encode(spec.fixed?.[name] ?? (LIST_FIXED.has(name) ? `[${JSON.stringify(name)}]` : `{"${name}":1}`))))
     }
     for (const character of characters) {
         keys.push(character.chaId)

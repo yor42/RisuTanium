@@ -7,6 +7,7 @@ import {
     frameJsonBlock,
     parseJsonObjectBlock,
     readPack,
+    refuseBlockBeforeWrite,
     type JsonObject,
 } from './blockFrame'
 import {
@@ -92,6 +93,24 @@ export class BlockSetInvalidError extends Error {
     constructor(message: string) {
         super(message)
         this.name = 'BlockSetInvalidError'
+    }
+}
+
+/** A block about to be written would not load back; nothing was written. */
+export class BlockSetGateError extends BlockSetInvalidError {
+    constructor(public readonly blockName: string, public readonly reason: string) {
+        super(`The block "${blockName}" would not load back: ${reason}`)
+        this.name = 'BlockSetGateError'
+    }
+}
+
+/** Header-level check of the values a write is about to put in the store; throws before the first write. */
+function gateBlocksBeforeWrite(blocks: Iterable<readonly [string, Uint8Array]>): void {
+    for (const [name, bytes] of blocks) {
+        const reason = refuseBlockBeforeWrite(name, bytes)
+        if (reason !== null) {
+            throw new BlockSetGateError(name, reason)
+        }
     }
 }
 
@@ -1136,17 +1155,27 @@ export class BlockStoreOwner {
 
         const members = new Map(live.stubMembers)
         let membersChanged = false
+        const gated: Array<readonly [string, Uint8Array]> = [[ROOT_BLOCK_NAME, set.rootInput]]
+        for (const write of writes) {
+            gated.push([write.name, write.bytes])
+        }
         for (const name of set.packedOrdered) {
             const bytes = set.blocks.get(name)
             const old = members.get(name)
             if (old === undefined || !bytesEqual(old, bytes)) {
                 members.set(name, bytes)
                 membersChanged = true
+                gated.push([name, bytes])
             } else if (old !== bytes) {
                 members.set(name, bytes)
                 live.stubMembers.set(name, bytes)
+            } else if (force) {
+                gated.push([name, bytes])
             }
         }
+        // Before any value is put in the store: a value that could not be read back
+        // is refused here and leaves the store as it was.
+        gateBlocksBeforeWrite(gated)
         const stubsAck = live.keys.get(stubsKey(live.generation))
         const packNeedsWrite = force
             ? set.packedOrdered.length > 0 || members.size > 0
@@ -1467,6 +1496,12 @@ export class BlockStoreOwner {
             throw new BlockOwnerStateError('The owner is closed; reload the page.')
         }
         const set = describeBlockSet(input)
+        // Before the root is built or any value is put in the store: a value that
+        // could not be read back is refused here and the previous generation stays.
+        gateBlocksBeforeWrite([
+            [ROOT_BLOCK_NAME, set.rootInput],
+            ...set.names.map((name): readonly [string, Uint8Array] => [name, set.blocks.get(name)]),
+        ])
 
         // 1. What the head is now. A head that is not binary data is a present head that names no generation.
         const headRead = await this.readHeadWithRetry()

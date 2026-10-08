@@ -339,6 +339,8 @@ describe('boot archive pass: a slot that cannot survive its unit is not eligible
         expect(world.units.writtenCharacters().map((c) => c.chaId), 'characters written as units').toEqual(['ok'])
         const slots = charactersOf(installedTree(outcome))
         expect(slots.find((c) => c.chaId === 'ok')?.coldstorage).toBeTruthy()
+        // A list is not a character: the committed file leaves it out, so the tree the page installs does too.
+        expect(slots.map((c) => c.chaId)).toEqual(['ok'])
         expect(noticeKinds(outcome)).toEqual([])
     })
 })

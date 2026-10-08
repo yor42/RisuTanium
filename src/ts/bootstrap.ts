@@ -45,6 +45,7 @@ import { markBootedByIdleReload, noteBootArchiveSession, noteBootPassCommitted }
 import { initMobileGesture } from "./hotkey";
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
+import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
 import { verifyAssetCacheEntry } from "./storage/assetIntegrity";
 import { cleanRouteServedCacheOnce } from "./storage/routeCacheCleanup";
 import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/remoteSaveCleanup";
@@ -52,6 +53,8 @@ import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from ".
 import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
+import { startInlayCopy } from "./process/files/inlayCopy";
+import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
@@ -114,6 +117,10 @@ export async function loadData() {
         // file that could not be moved aside, a read-only page), posted before
         // the archive pass's, once each.
         const bootNotices: BootNotice[] = []
+        // What the character list of the installed tree needed before it was
+        // installed: entries that are not characters left out, ids that are
+        // missing or cannot be saved replaced. Told once, after the install.
+        const bootRepairs: BootRepairs = { dropped: 0, changed: 0 }
         // What an idle reload of the previous page left for this one. Read before
         // the archive pass, whose keep-inline set it supplies, and applied once
         // the database is installed.
@@ -179,6 +186,7 @@ export async function loadData() {
                     }
                 }
                 if (storeBoot.kind === 'installed') {
+                    await repairBootTree(storeBoot.tree, bootRepairs)
                     setDatabase(storeBoot.tree)
                     archiveNotices = storeBoot.archiveNotices
                     bootNotices.push(...storeBoot.notices)
@@ -207,6 +215,7 @@ export async function loadData() {
                     }
                     if (outcome?.kind === 'install') {
                         try {
+                            await repairBootTree(outcome.tree, bootRepairs)
                             setDatabase(outcome.tree)
                             if (outcome.noteBytes) {
                                 noteMainFileBytes(outcome.noteBytes)
@@ -236,9 +245,9 @@ export async function loadData() {
                             try {
                                 LoadingStatusState.text = `Reading Backup File ${backup}...`
                                 const backupData = await readBackupBytes(backup)
-                                setDatabase(
-                                    await decodeRisuSave(backupData)
-                                )
+                                const backupTree = await decodeRisuSave(backupData)
+                                await repairBootTree(backupTree, bootRepairs)
+                                setDatabase(backupTree)
                                 backupLoaded = true
                             } catch (error) {
                                 console.error(error)
@@ -308,6 +317,7 @@ export async function loadData() {
                 LoadingStatusState.text = "Decoding Local Save File..."
                 let outcome: BootArchiveOutcome | null = null
                 if (storeBoot.kind === 'installed') {
+                    await repairBootTree(storeBoot.tree, bootRepairs)
                     setDatabase(storeBoot.tree)
                     archiveNotices = storeBoot.archiveNotices
                     bootNotices.push(...storeBoot.notices)
@@ -338,6 +348,7 @@ export async function loadData() {
                     }
                     if (outcome?.kind === 'install') {
                         try {
+                            await repairBootTree(outcome.tree, bootRepairs)
                             setDatabase(outcome.tree)
                             if (outcome.noteBytes) {
                                 noteMainFileBytes(outcome.noteBytes)
@@ -377,9 +388,9 @@ export async function loadData() {
                         try {
                             LoadingStatusState.text = `Reading Backup File ${backup}...`
                             const backupData = await readBackupBytes(backup)
-                            setDatabase(
-                                await decodeRisuSave(backupData)
-                            )
+                            const backupTree = await decodeRisuSave(backupData)
+                            await repairBootTree(backupTree, bootRepairs)
+                            setDatabase(backupTree)
                             backupLoaded = true
                         } catch (error) { }
                     }
@@ -490,6 +501,8 @@ export async function loadData() {
             try {
                 void localforage.createInstance({ name: 'risuaiAccountCached' }).dropInstance({ name: 'risuaiAccountCached' }).catch(() => { })
             } catch (error) { }
+            // Never awaited: the copy of the old inlay database must not delay the app.
+            startInlayCopy()
 
             // Taken before any plugin runs: a plugin can write cold-storage
             // units from its first line, and a unit written after this point
@@ -537,6 +550,9 @@ export async function loadData() {
                 alertMd(language.nightlyWarning)
                 await waitAlert()
                 localStorage.setItem('nightlyWarned', 'true')
+            }
+            if (bootRepairs.dropped > 0 || bootRepairs.changed > 0) {
+                alertToast(language.saveRepairedEntriesNotice(bootRepairs.dropped, bootRepairs.changed))
             }
             if (db.botSettingAtStart) {
                 botMakerMode.set(true)
@@ -647,13 +663,35 @@ const bootBackups: BootBackupSource = {
     read: (time) => readBackupBytes(time),
 }
 
+/**
+ * The character an archived character's unit holds, or null when the unit
+ * cannot supply one. Read only when a backup chosen at boot holds an archived
+ * character with an id that cannot be saved, so the module is loaded then.
+ */
+async function readArchivedUnitCharacterForBoot(stub: Record<string, unknown>): Promise<unknown> {
+    const key = stub.coldstorage
+    if (typeof key !== 'string' || key === '') {
+        return null
+    }
+    try {
+        const { readColdStorageItem } = await import('./process/coldstorage.svelte')
+        const read = await readColdStorageItem(key)
+        if (read.status !== 'ok') {
+            return null
+        }
+        return (read.value as { character?: unknown } | null | undefined)?.character ?? null
+    } catch (error) {
+        console.error(error)
+        return null
+    }
+}
 /** The block-store owner of this page with what the boot asks of its surroundings, or `null` on a page that runs from OPFS this time. */
 async function blockBootContext(session: BootArchiveSession): Promise<BootLoadContext | null> {
     const owner = await getPageBlockOwner()
     if (owner === null) {
         return null
     }
-    return { owner, store: await getAppStore(), session, ui: bootUi, backups: bootBackups, waitForReload: sleepForever }
+    return { owner, store: await getAppStore(), session, ui: bootUi, backups: bootBackups, readUnitCharacter: readArchivedUnitCharacterForBoot, waitForReload: sleepForever }
 }
 
 /** Whether this page's profile is a block profile, so the legacy block cache can go once boot is past the stale-profile gate. */
@@ -910,6 +948,33 @@ function updateHeightMode() {
     }
 }
 
+interface BootRepairs {
+    dropped: number
+    changed: number
+}
+
+/**
+ * Makes the character list of a tree about to be installed one the save can
+ * hold, before any plugin can read it: entries that are not characters are
+ * dropped, a missing id is filled, and an id that cannot key a block is
+ * replaced with the lists that named it following. No archived unit is read at
+ * boot: an archived character with an unusable id is installed as it is, and
+ * the save loop waits on it.
+ */
+async function repairBootTree(tree: unknown, tally: BootRepairs): Promise<void> {
+    if (typeof tree !== 'object' || tree === null) {
+        return
+    }
+    const result = await repairCharacterTree(tree as { characters?: unknown }, 'boot')
+    for (const notice of result.notices) {
+        if (notice.kind === 'entries-dropped') {
+            tally.dropped += notice.count
+        } else {
+            tally.changed += 1
+        }
+    }
+}
+
 /**
  * Checks and updates the database format to the latest version.
  */
@@ -997,12 +1062,17 @@ async function checkNewFormat(): Promise<void> {
         return v !== null && v !== undefined;
     });
 
+    // Entries of the persona list that are not objects are left out and a
+    // list that is not a list is empty, so the pass below cannot throw and the
+    // selected persona stays the same persona.
+    const droppedPersonas = repairPersonas(db);
     db.personas = (db.personas ?? []).map((v) => {
         v.id ??= uuidv4()
         return v
-    }).filter((v) => {
-        return v !== null && v !== undefined;
     });
+    if (droppedPersonas > 0) {
+        alertToast(language.personasRepairedNotice(droppedPersonas))
+    }
 
     if (!db.formatversion) {
         function checkClean(data: string) {
@@ -1068,16 +1138,18 @@ async function checkNewFormat(): Promise<void> {
     if (db.mainPrompt === oldJailbreak) {
         db.mainPrompt = defaultJailbreak;
     }
+    const purged: typeof db.characters = [];
     for (let i = 0; i < db.characters.length; i++) {
         const trashTime = db.characters[i].trashTime;
         const targetTrashTime = trashTime ? trashTime + 1000 * 60 * 60 * 24 * 3 : 0;
         if (trashTime && targetTrashTime < Date.now()) {
-            db.characters.splice(i, 1);
+            purged.push(...db.characters.splice(i, 1));
             i--;
         }
     }
     setDatabase(db);
     checkCharOrder();
+    queueInlayCleanupForCharacters(purged);
 }
 
 const ASSET_KEY_PREFIX = 'assets/'

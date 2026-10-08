@@ -13,7 +13,7 @@ import { nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolati
  * - `/api/write` replaces the file through a temp file and a rename, and answers
  *   the new revision; `if-match-revision` makes it conditional.
  * - `/api/remove` takes `$$`-joined hex keys and positionally aligned revisions.
- * - `/api/asset/<hex>` serves an `assets/` key to a web view that cannot send a
+ * - `/api/asset/<hex>` serves an `assets/` key or an inlay body key to a web view that cannot send a
  *   header: the token rides in the query, so `urlFor` builds the whole URL from
  *   the key alone and reads nothing.
  * - `/api/list` answers the decoded names of the files whose names are whole,

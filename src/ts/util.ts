@@ -342,7 +342,9 @@ export function findCharacterIndexbyId(id:string) {
 export function getCharacterIndexObject() {
     const db = getDatabase()
     let i=0;
-    let result:{[key:string]:number} = {}
+    // Prototype-free: an id such as `__proto__` or `constructor` is an ordinary
+    // key, and an id no character holds reads `undefined`.
+    let result:{[key:string]:number} = Object.create(null)
     for(const char of db.characters){
         result[char.chaId] = i
         i += 1

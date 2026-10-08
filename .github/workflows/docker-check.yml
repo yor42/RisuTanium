@@ -1,0 +1,50 @@
+name: Docker check
+
+# Builds the server image without pushing it, so Dockerfile and build-input changes are
+# exercised before a release tag. amd64 only; the multi-arch publish is docker-publish.yml.
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.npmrc'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - 'version.json'
+      - 'public/**'
+      - 'src/**'
+      - 'server/node/**'
+      - '.github/workflows/docker-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # The legal flag comes from the Dockerfile default (on). Nothing here sets or overrides it.
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -182,6 +182,68 @@ export function frameBlock(type: number, name: string, payload: Uint8Array): Uin
     return out
 }
 
+/** The type byte each fixed block carries. */
+const FIXED_BLOCK_TYPE: Readonly<Record<string, number>> = {
+    root: BLOCK_TYPE_ROOT,
+    config: 0,
+    preset: 4,
+    modules: 5,
+    loadouts: 10,
+    plugins: 9,
+    pluginStorage: 11,
+}
+
+/** The fixed blocks whose plain payload is a JSON list. */
+const LIST_BLOCK_NAMES: ReadonlySet<string> = new Set(['preset', 'modules', 'loadouts', 'plugins'])
+
+/**
+ * Why the value about to be written as the block `name` could not be loaded
+ * back, or null when its framing and shape hold. Header-level only: the header
+ * checksum and length, exactly one block, the header's name, a fixed block's
+ * type byte, a payload that is present and, for a plain (uncompressed) block,
+ * starts as an object (character, root) or a list (preset, modules, loadouts,
+ * plugins). The payload checksum is not recomputed, and a compressed payload is
+ * not looked into. `pluginStorage` may be empty.
+ */
+export function refuseBlockBeforeWrite(name: string, bytes: Uint8Array): string | null {
+    let header: FramedHeader
+    try {
+        header = parseFramedHeader(bytes, 0)
+    } catch (error) {
+        if (error instanceof BlockFrameError) {
+            return error.message
+        }
+        throw error
+    }
+    if (header.end !== bytes.length) {
+        return 'Bytes follow the block.'
+    }
+    if (header.name !== name) {
+        return `The block is named "${header.name}".`
+    }
+    const fixedType = FIXED_BLOCK_TYPE[name]
+    if (Object.hasOwn(FIXED_BLOCK_TYPE, name) && header.type !== fixedType) {
+        return `The block has type ${header.type}, not ${fixedType}.`
+    }
+    const length = header.dataEnd - header.dataStart
+    if (length === 0) {
+        return name === 'pluginStorage' ? null : 'The block has no payload.'
+    }
+    if (header.compression) {
+        return null
+    }
+    const first = bytes[header.dataStart]
+    const isList = Object.hasOwn(FIXED_BLOCK_TYPE, name) && LIST_BLOCK_NAMES.has(name)
+    const isObject = name === 'root' || !Object.hasOwn(FIXED_BLOCK_TYPE, name)
+    if (isList && first !== 0x5b) {
+        return 'The payload is not a list.'
+    }
+    if (isObject && first !== 0x7b) {
+        return 'The payload is not an object.'
+    }
+    return null
+}
+
 export type BlockCheck =
     | { status: 'ok', block: FramedBlock }
     | { status: 'damaged', kind: 'empty' | 'framing' | 'crc' | 'wrong-name' | 'trailing-bytes', detail: string }

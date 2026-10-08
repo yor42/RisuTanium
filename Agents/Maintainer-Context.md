@@ -8286,3 +8286,433 @@ browser CORS behaviour of the Hugging Face router, and whether a real model answ
 **Disclosures:**
 - **(a)** The option text is the Orchestrator's, as recorded in the records items, not the maintainer's words.
 - **(b)** "The build picks up the newest compatible version by itself" is the option text; `AGENTS.md` records that `Cargo.lock` is gitignored and the crate versions float.
+
+---
+
+### MC-231 — Main Campaign, 2026-10-07: CHORE-114 (inlay storage moves into the app store) is held at Stage A to fold in a disk-backed delivery seam; CHORE-116 is queued after it
+
+- **Tag:** decisions (`AskUserQuestion` answers, three sets, and one typed message)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the Orchestrator's questions, given by option label, in three sets: after the first investigator packet (where they also typed "start CHORE-114"), after the plan-prep investigator, and after the memory-regression measurement; and the typed message "queue the chore 116 after chore 114."
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded (the other option labels were not kept).
+- **Related:** `MC-003`, `MC-010`, `MC-131`, `MC-175`, `MC-223`, `MC-229`, `MC-230`; CHORE-49, CHORE-114, CHORE-115, CHORE-116; ledger rows 1335 to 1339, 1344 to 1346.
+
+**What was decided:**
+1. **First set (scope).** Scope "Store + backup (Recommended)". Upstream "Always include (Recommended)". Extras, multi-select: "Cleanup on delete" and "Size limit".
+2. **Second set (plan details).** Cleanup "Targeted, on delete (Recommended)". Partial "Referenced only (Recommended)". Old store "Delete at a later start (Recommended)". Web memory "Measure in the gate (Recommended)".
+3. **Third set (after the memory measurement).** The maintainer chose three options, each labelled "(Recommended)" in the records:
+   - Android video keeps a memory copy until CHORE-115.
+   - Plain-HTTP Node pages without a token keep a memory copy until CHORE-49.
+   - Stage A is held and the disk-backed delivery seam is folded into it: one review, one commit. This follows the `senior-advisor`'s recommendation to hold and fold.
+4. **Queue CHORE-116.** The maintainer typed: "queue the chore 116 after chore 114." CHORE-116 is the boot-window unsaved edits ticket. It starts after CHORE-114 (Stages A to C) closes.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The staging of CHORE-114 into Stage A (store, copy, size limit), Stage B (`.bin` export and import, and deletion of copied old entries) and Stage C (targeted cleanup on delete) is the Orchestrator's plan, built on the first two sets. The deletion phase was moved from Stage A to Stage B at Gate 1 so that no old entry is deleted before a `.bin` can carry inlays.
+- The memory regression's cause is the senior-advisor's INFERRED root cause (one run each): Stage A delivers inlays as memory Blobs, where the old store returned disk-backed Blobs. It was not isolated. A later measurement (`perf2`) found that revoking cached object URLs drops browser private memory from 455 to 75 MB, and that an IndexedDB Blob stayed disk-backed in Chrome 154 and Firefox 157; WebKit is unverified.
+
+**Disclosures:**
+- **(a)** The option descriptions are the Orchestrator's text as recorded in the records items, not the maintainer's words, apart from the typed messages quoted above.
+- **(b)** The memory figures are one i9-13900KF, best-case hardware (`MC-003`, `MC-010`), single runs.
+- **(c)** TODO(evidence): the maintainer's answer on the plan's "trade-off A" (an id deleted in one browser that stays readable in another browser's old store on Node) is not in the sources given; the plan calls it a maintainer trade-off and defers it to Stage B's deletion phase.
+
+---
+
+### MC-232 — Main Campaign, 2026-10-07: the sidebar is reworked on a separate worktree; hidden characters keep showing for now; touch gestures decided
+
+- **Tag:** decisions (a typed message and `AskUserQuestion` answers, two sets, plus one typed addendum)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed messages and their answers to the Orchestrator's questions, given by option label, after the sidebar survey and after the Stages 2 to 4 architecture review.
+- **Reasoning:** the typed message states the motive; the option labels carry none.
+- **Alternatives rejected:** not recorded (the other option labels were not kept).
+- **Related:** `MC-175`; Maybe-Later QOL-07 (touch-responsive animation); the sidebar rework stages (Stage 1 to Stage 5); ledger rows 1340 to 1343.
+
+**What was decided:**
+1. **The request.** The maintainer typed mid-turn: "I think we can do sidebar rework in the parallel on separate worktree. current implementation has unstable drag-and-drop folder creation, and auto scroll when user drags the character at the edge of the list works inconsistantly. it does not have virtual scroll, and it could use some QOL improvement like touch-responsive animation(refer maybe later.md for this). I think we can now work on a proper rework of sidebar, with all the potential improvements."
+2. **First set (after the survey).** New folder "Hover to merge (Recommended)". Windowing "Always (Recommended)". Gestures, multi-select: "Overlay panel (<=1024 px)", "Wide-screen panel" and "Beta mobile layout". Extras, multi-select: "Remember open folders", "Ungroup / delete folder", "Keyboard reorder" and "Folder-aware mobile list".
+3. **Addendum 1.** The maintainer typed: "keep hidden characters showing for now. and fix it in later stages." Stage 1 keeps hidden ids in the character order and renders them; filtering them from the rail is a later sidebar stage. Stage 1 otherwise keeps today's behaviour: duplicates show one row per occurrence and are never removed; trashed characters are rendered until `checkCharOrder` drops them; a folder that disappears during the image picker gets nothing written.
+4. **Addendum 2 (after the Stages 2 to 4 architecture review).**
+   - Touch folder menu: "Hold, release (Recommended)". A long press lifts the row; moving drags it; releasing without moving opens the menu. The mouse keeps right-click.
+   - Ctrl+drag scroll-to-active: "Drop it (Recommended)". The wheel, PageUp, PageDown, Home, End and edge auto-scroll work during a pointer drag. Check what else `enableScrollToActiveChar` gates before removing anything.
+   - Closed folder: "Pause opens it (Recommended)". A dwell over a closed folder opens it; an immediate release appends, as today.
+   - Touch extras: "Vibrate on lift" (Android, `navigator.vibrate`) and "Edge swipe opens panel". The maintainer chose the edge swipe despite the stated clash with OS back gestures.
+
+**Requirements on later plans:**
+- The Stage 4 plan must state how the edge swipe coexists with the OS back gesture (the records suggest an edge zone and an intent threshold, as examples only) and must test it on the Note 9.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The survey was an `investigator` run (no escalation; packet `sidebar\packet.md`). The Orchestrator spot-checked `Sidebar.svelte` at HEAD: the self-assignment, the 'New Folder' string and the `draggable` attributes are present, and there are no scroll, pointer or touch handlers.
+
+**Disclosures:**
+- **(a)** The option descriptions are the Orchestrator's text as recorded in the records items, not the maintainer's words, apart from the typed messages quoted above.
+- **(b)** Orchestrator disposition, not a maintainer decision: the work is in the worktree `C:\Projects\RisuAI-sidebar` on branch `feat/sidebar-rework`. Stage 1 was committed as `27112f8e` and is not pushed. The staging is: Stage 2a, pointer and touch drag-and-drop; Stage 2b, keyboard reorder, split from Stage 2 after the Stage 2 plan gate (`sidebar\gate1-s2\round1.md`, an optional item); Stage 3, windowing; Stage 4, gestures, including the edge swipe; Stage 5, remembered open folders and scroll position, plus ungroup and delete (`sidebar\arch-stages2-4.md`, `plan-stage2.md`).
+
+---
+
+### MC-233 — Main Campaign, 2026-10-07: CHORE-114 Stage A's explorer previews use the interim memory copy; the Stage B and Stage C answers (amend the second set of `MC-231`)
+
+- **Tag:** decisions (`AskUserQuestion` answers)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers to the Orchestrator's questions, given by option label: one after Stage A's Gate 2 round 1 (the explorer previews), one set after the Stage B and Stage C plan-prep investigator, and one on Stage C's plan gate (B4) and Gate 2 (F1).
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** where the records name the option the answer replaced, it is named below; the other option labels were not kept.
+- **Related:** `MC-003`, `MC-010`, `MC-131`, `MC-175`, `MC-223`, `MC-229`, `MC-230`, `MC-231`; CHORE-49, CHORE-114, CHORE-115; ledger rows 1356 to 1360 and 1379 to 1391.
+
+**What was decided:**
+1. **The explorer previews.** The Playground inlay explorer's previews use the interim memory copy of `MC-231` too: on Android for video, and on Node without a token for all types, up to 36 previews, held in the render cache until a reload. The maintainer accepted it, and the commit message discloses it. The option label was not kept.
+2. **Stages B and C answers**, by option label. Where one conflicts with the second set of `MC-231`, it replaces it:
+   - Upstream: "Always include (Recommended)": every `.bin` carries inlays; upstream ignores them and sweeps them; disclosed.
+   - Partial export: "No inlays, say so (Recommended)". It replaces "Referenced only" from `MC-231`.
+   - Restore onto an existing id: "Overwrite (Recommended)".
+   - Old-store entries absent from the app store: "Copy, then delete (Recommended)"; exports read both stores. It replaces "Delete at a later start" from `MC-231`.
+   - Snapshots against Stage C: "Accept, disclose (Recommended)".
+   - Unreadable archived data during the keep-set check: "Delete nothing, quietly (Recommended)".
+   - The boot 3-day purge: "Yes, all 3 paths (Recommended)".
+3. **Stage C plan gate, B4** (an export, delete, re-import loss path): "Accept, disclose (Recommended)".
+4. **Stage C Gate 2, F1** (the cost of the cleanup): "Bounded fix, then measure".
+5. **Commits.** Stage B: "Commit and push (Recommended)" (`10ba8012`, pushed to `origin/main`). Stage C: "Commit and push both" (`a4fcf589`).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The plan-prep investigator refuted four premises (ledger row 1379): no upstream-compatible export mode or `MC-223` warning code existed (R1); upstream's boot `cleanChunks` deletes fork inlay entries that landed under `assets/` (R2); a partial export writes the whole database (R3); three permanent-delete paths exist, including the silent 3-day boot purge (R4). The Orchestrator spot-checked R2 and R3.
+- Stage B's plan was revised at Gate 1 to one entry per part of at most 64 MiB, because upstream's Node server has a 100 MiB body limit (the Orchestrator verified the `server.cjs` limits at `ea0871de`).
+
+**Disclosures:**
+- **(a)** The option descriptions are the Orchestrator's text as recorded in the records items, not the maintainer's words, apart from the typed messages quoted.
+- **(b)** Open at the time of writing: a Note 9 low-end measurement of Stage C's cleanup (debug build). The Android and Node-without-token memory copy stays until CHORE-115 and CHORE-49 (`MC-231` 3).
+- **(c)** TODO(evidence): the Stage A explorer answer's option label, and the maintainer's answer on `MC-231` disclosure (c), "trade-off A", are not in the sources given.
+
+---
+
+### MC-234 — Main Campaign, 2026-10-07: save-time validation is queued after CHORE-116
+
+- **Tag:** decision (a typed message)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed reply, after the investigator found why a save written on the Note 9 would not load (ledger row 1365).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-011`, `MC-175`, `MC-231`; CHORE-116, CHORE-117; ledger row 1365.
+
+**What was decided:**
+1. **Queue it.** The maintainer typed: "queue it after chore 116". The ticket is save-time validation, so that a committed generation always loads (CHORE-117, by the order in which the Roadmap's hold note lists the two queued tickets; TODO(evidence): the records items say only "the next free CHORE id"). The Orchestrator's order of work is the sidebar Stage 2a commit, CHORE-114 Stages B and C, CHORE-116, then this ticket.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The investigator's trace: the damaged block was a `characters` entry that is the bare number 5 (the return value of `createNewGroup`, likely pushed by the agent). The encoder writes an empty header name with no check, and the loader rejects it on the next start. No ordinary UI route was found; plugin non-object writes were not examined (ledger row 1365).
+- Direction (non-normative): a guard at the encoder or commit, with a red-before-green test through `loadBlockProfile`. It touches persistence, so it goes through a plan gate and `opus-reviewer`. Also to look at: the two oldest backups that fail with "reading length".
+
+**Disclosures:**
+- **(a)** The maintainer approved one `pm clear` on the Note 9 for the damaged profile; the Orchestrator first copied the database, blocks and inlays to `sidebar\note9\corrupt-save\save.tar`. The five characters on it were test data (the maintainer's statement as relayed in the records items).
+
+---
+
+### MC-235 — Main Campaign, 2026-10-07: sidebar Stage 2b (keyboard reorder) decisions; Stages 2a and 2b are committed, not pushed
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers before the Stage 2b plan and after its Gate 1 round 1 (B5), and their words on each commit.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** named below, as the records give them.
+- **Related:** `MC-175`, `MC-232`; ledger rows 1362 to 1378; commits `8b23f47e` and `e55fb93e`.
+
+**What was decided:**
+1. **Move model:** "Alt+Up/Down moves now (Recommended)". Each press moves one place and writes; there is no pick-up mode; key repeat is ignored. Rejected: "Pick up, move, drop".
+2. **Tab stops:** "One stop, arrows inside (Recommended)". The rail is one Tab stop; Up, Down, Home and End move focus; Enter opens a character or toggles a folder. Rejected: "Keep every entry a Tab stop".
+3. **Folders:** "Reorder through open folders (Recommended)". A closed folder is stepped over; a folder never nests; keyboard folder creation and append stay pointer-only. Rejected: "Also add folder keys".
+4. **The sole member of a folder** (after Gate 1 round 1, B5): "Refuse and say why (Recommended)". Alt+Up or Alt+Down on a folder's only member writes nothing and announces why; pointer drags are unchanged. Rejected: "Move it, folder goes".
+5. **Stage 2a commit:** "Commit, no push", committed as `8b23f47e`. **Stage 2b commit:** "Commit, no push (Recommended)", committed as `e55fb93e` (18 files, +1766/-68). Both are on `feat/sidebar-rework` in `C:\Projects\RisuAI-sidebar`.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- `resolveCurrent` sends the focus of a deleted folder member to its folder row (owner first), which is slightly broader than plan K2's text. Accepted, and disclosed in the commit message.
+- The plan is `sidebar\plan-stage2b.md`; Gate 1 ended `[APPROVE]` at round 3, Gate 2 at round 2 (ledger rows 1370 to 1376).
+
+**Disclosures:**
+- **(a)** The option descriptions are the Orchestrator's text as recorded in the records items, not the maintainer's words.
+- **(b)** `MC-232` disclosure (b) says Stage 1 "is not pushed". That was true when it was written and is time-bound. At this entry's date, `8b23f47e` and `e55fb93e` are not pushed. The staging list in `MC-232` (b) is an Orchestrator disposition, not a maintainer decision.
+
+---
+
+### MC-236 — Main Campaign, 2026-10-07: the `.github` folder is reworked
+
+- **Tag:** decisions (a typed message and `AskUserQuestion` answers, two sets, plus two typed messages)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed request and their answers by option label, after the `.github` facts investigator (ledger row 1392).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not recorded, except where named.
+- **Related:** `MC-154`, `MC-175`; ledger rows 1392 to 1395; commit `24f12da7`.
+
+**What was decided:**
+1. **The request.** The maintainer typed: "as a side task, I think we can clean up and rework the .github folder, including issue/PR template, workflow(dependabot, checks, etc), along with build workflows."
+2. **First set.** Templates: "Issue forms + PR template (Recommended)". Dependabot: "Actions + grouped deps (Recommended)". CI checks (multi-select): "Rust check for src-tauri", "Node/Hono server build", "Keep CodeQL weekly", "Docker build on PR (no push)". Builds (multi-select): "Desktop draft release", "Android APK build", "Unsigned test artifacts", "Docker publish".
+3. **Second set.** Cargo deps: "Skip Cargo (Recommended)". Rust CI: "check + test on Linux (Recommended)". Android: "Plan a release keystore". Test builds: "Manual only (Recommended)".
+4. **Dependabot ignores.** The maintainer typed: "exclude those old pins from dependabot." Dependabot ignores `@swc/core`, `msgpackr`, `three` and `@types/three`.
+5. **Commit and push.** The maintainer typed: "commit and push the .github rework". Committed as `24f12da7` and pushed to `origin/main`.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- The facts investigator's corrections: the repo is `yor42/RisuTanium` (`MC-154` says `yor42/RisuAI`); updater signing is not required (`createUpdaterArtifacts` is false); `gen/android` is tracked; Dependabot security updates need a Settings toggle.
+- Gate 2 ended `[APPROVE]`; the commit message's fact-check found 2 OVERSTATED and 3 INCOMPLETE, corrected (ledger rows 1394 and 1395).
+
+**Disclosures:**
+- **(a)** The option descriptions are the Orchestrator's text as recorded in the records items, not the maintainer's words, apart from the typed messages quoted above.
+- **(b)** The workflows had not run on GitHub at commit time.
+- **(c)** "Plan a release keystore" is a plan only. No keystore exists in the sources given.
+
+---
+
+### MC-237 — Main Campaign, 2026-10-07: Android release-build testing on the Note 9, the `@tauri-apps/cli` 2.9.1 bump, and the post-update hang fix
+
+- **Tag:** decisions (typed messages and approvals, as the records items state them)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's approvals and typed words during the release APK test, the versionCode investigation and the hang investigation.
+- **Reasoning:** the maintainer's own, where stated below.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-047`, `MC-198`; ledger rows 1364 to 1366, 1396 to 1398; commits `454f2a97`, `49705709`, `8112b986`, `7f63f14a`.
+
+**What was decided:**
+1. **One-time exception.** The maintainer approved, in this session, uninstalling the debug app on the Note 9 to install the CI release APK. It is an exception to the no-uninstall rule.
+2. **Bump the CLI.** The maintainer decided to bump `@tauri-apps/cli` to 2.9.1 everywhere, and to remove the direct `@tauri-apps/cli-win32-arm64-msvc` pin (a leftover of the abandoned Windows-on-ARM attempt). Committed as `454f2a97`, pushed.
+3. **`--apk true`.** After run 37590320567 failed (CLI 2.9.1 `--apk` takes a value), the fix `49705709` was maintainer-approved and pushed. Run 37590617654 passed: versionCode 1000, version 0.1.0, arm64-v8a, the same signer certificate (SHA-256 `cd07b257...`). It was installed as an update (`install -r`) on the Note 9 with the profile kept.
+4. **The post-update hang.** The maintainer chose "Fix, then verify by update". The fix is `8112b986` (bundled KaTeX CSS, non-blocking Google Fonts, a 20 s reload watchdog).
+5. **Note 9 test profile.** The maintainer approved one `pm clear` after a test agent corrupted the profile (`MC-234`).
+
+**Orchestrator dispositions (not maintainer decisions):**
+- Cause of versionCode 1: the Linux runner used CLI 2.5.0, which has no `tauri.properties` writer (added in 2.9.0).
+- Release run 37603211373 on `7f63f14a`, installed as an update, reached home in under 12 s; the two earlier updates hung every time. Counted as verified on one update.
+- A possible follow-up: align the npm `@tauri-apps` pins with the resolved crates, because CLI 2.9 hard-fails on a major.minor mismatch unless `--ignore-version-mismatches` (verified by the Orchestrator in tauri-cli-v2.9.1).
+
+**Disclosures:**
+- **(a)** Observed once and not explained: the first launch right after the 1 to 1000 update stayed on "Loading RisuTanium..." for over 60 s; a force-stop and relaunch booted normally. It was not reproduced; watch for it.
+- **(b)** Pending the maintainer's call: the Tilt Prism and Yellowtail fonts are unused by the app. Release-build controls sit under the status and navigation bars; this was not yet compared with the debug build.
+- **(c)** One Note 9 (Android 10), single runs.
+
+---
+
+### MC-238 — Main Campaign, 2026-10-07: the security triage plan, the dismissals and the dependency decisions
+
+- **Tag:** decisions (`AskUserQuestion` answers and typed words, as the records items state them)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers after the CodeQL and Dependabot triage investigators (ledger rows 1399 and 1400), and their words during the batches.
+- **Reasoning:** none stated, except where noted.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-011`, `MC-157`, `MC-175`, `MC-191`; CHORE-67, CHORE-89, CHORE-119, CHORE-130 to CHORE-132; ledger rows 1399 to 1413; commits `bc495e3f`, `7f63f14a`, `673638b8`, `8bef5992`, `dd8f269d`, `1b881d0c`.
+
+**What was decided:**
+1. **Triage plan:** "Go with that order (Recommended)": (1) the in-range update batch, (2) PR #4 and #5, (3) happy-dom, then PR #6 with a render diff, (4) vite ~8.0.16, (5) dismissals with reasons after a fresh scan. **Hub-proxy:** "Fix now (Recommended)" (CHORE-89). **Extras:** Monaco 0.57, remove the unused `diff`, KaTeX 0.18 (PR #7), express-rate-limit 8.7. Outcome of "remove the unused `diff`": the premise was false, since `PromptDiffModal.svelte` imports `diff`; it was bumped to 8.0.4 in `dd8f269d` instead (per `work-order-rev.md`). **Alert 45:** "Fix in this batch (Recommended)".
+2. **Tauri crates and npm 2.12 aligned:** "Latest 2.x on both" (`00ec9e5a`; reviewer `[APPROVE]`).
+3. **CHORE-89** (hub-proxy origin pinning, `bc495e3f`): "Commit; ticket both". The two tickets are CHORE-119 (forwarded headers) and CHORE-130 (body).
+4. **CHORE-67:** after the happy-dom bump did not fix it, "Fix CHORE-67 now (Recommended)": jsdom for the sanitizer tests and the multi-element tests, before PR #6.
+5. **Commits:** "Commit, push, Android check" (batch 1, `7f63f14a`); "Commit both, ticket names" (the ticket filed from it is CHORE-131); "merge both" for PR #6 and PR #7 (squash-merged as `673638b8` and `8bef5992`).
+6. **DOMPurify 3.4.16: accept `command` and `commandfor`** (no `FORBID_ATTR`). The Orchestrator's differential (scratch `security\dompurify`) found DOMPurify 3.3.2 and 3.4.16 identical under jsdom 28.1.0 for all app configurations and hooks, except the allow-list additions `command` and `commandfor` (3.4.4) and the SVG attributes `pointer-events`, `vector-effect` and `dominant-baseline`. The maintainer decided only `command` and `commandfor`; no disposition is recorded for the three SVG attributes.
+7. **Work order:** "As listed" (`work-order-rev.md`).
+8. **Dependabot dismissals** (the maintainer's word):
+   - `sharp` alerts 74, 94 and 105: `not_used`. `sharp` comes only through `@huggingface/transformers` 3.8.1; the web and Tauri builds never load it; the fix needs transformers 4.x.
+   - `postcss-selector-parser` alert 99: `tolerable_risk`. It is build-time only, through `@tailwindcss/typography`, and has no fixed release.
+   - `monaco-editor` DOMPurify alerts 103 and 149: `not_used` ("Dismiss as not used"). Monaco 0.57.0 pins npm `dompurify` 3.4.15 but imports only its vendored `esm/vs/base/browser/dompurify`; the Orchestrator's grep found no Monaco caller that sets `IN_PLACE`.
+9. **The CodeQL Java/Kotlin configuration** was deleted by the maintainer in Tool status. It came from a stale `/language:java-kotlin` configuration (analyses 2025-08-02 to 04, 0 results, the last three "unsuccessful execution"); the current `codeql.yml` has no Java job and default setup is not configured.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **Alert 45's dead-branch instance** (branch `fix/persistence-conflict-platform-hardening`, `1ce8abff`; the branch is absent on the remote by `git ls-remote`) was dismissed as won't fix on 2026-10-07. The records items do not say who chose that dismissal. The main instance was marked fixed by CodeQL run 37622346394 on `1b881d0c`: the `ownerDocument` change was enough, and no sanitizer barrier was needed. That is observed for CodeQL; Firefox, WebKit and Android WebView behaviour is untested.
+- The Dependabot Updates failures are all security-update jobs (directory `/.`) for transitive dependencies pinned by a parent (`proxy-addr`, `source-map-js`, `sharp`, `ip-address`, Monaco's `dompurify`), ending `unknown_error`. `dependabot.yml` is fine; no action. Version-update runs succeed.
+- A candidate follow-up: `@huggingface/transformers` 3.8.1 to 4.x, which would close `sharp` properly; onnxruntime moves with it.
+- Not decided: the translator `combineTranslation` single-sentence `innerHTML` case (finding F4, ledger row 1408) is a maintainer call and a candidate ticket.
+
+**Disclosures:**
+- **(a)** The option descriptions are the Orchestrator's text as recorded in the records items, not the maintainer's words, apart from the typed words quoted.
+- **(b)** The DOMPurify differential ran under jsdom 28.1.0 only.
+- **(c)** `MC-157` (the legal flag) and `MC-191` (the hosted build is private-network only) bound this work: the hub-proxy risk is which of the user's own credentials leave the server, not an exposed attack surface.
+
+---
+
+### MC-239 — Main Campaign, 2026-10-07: the happy-dom rule for sanitizer tests, and the misattributed alert-45 commit
+
+- **Tag:** rules and Orchestrator dispositions (no maintainer decision; the maintainer's decision to move the tests is `MC-238` 4)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (derived from this session's investigations)
+- **Source:** the Orchestrator's DOMPurify bisect and the gates on `76af9bba` and `08aea278` (ledger rows 1404 and 1409), and the alert-45 investigator (row 1408).
+- **Reasoning:** DOMPurify versions after 3.4.6 mis-sanitize under happy-dom 20.14.5 (3.4.7 and 3.4.8 were not tested), so a test that asserts on sanitized markup there can pass or fail for the wrong reason.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-238`; CHORE-67; commits `76af9bba`, `08aea278`, `1f056247`, `1b881d0c`; `AGENTS.md` (Testing).
+
+**Rules:**
+1. **Sanitizer output under happy-dom is not evidence.** A test that asserts on sanitized markup runs under jsdom, not happy-dom. The bound is conservative: treat any DOMPurify version after 3.4.6 as affected; 3.4.7 and 3.4.8 were not tested. Evidence (the Orchestrator's bisect under happy-dom 20.14.5): correct at 3.4.6, wrapper drop from 3.4.9, and at 3.4.16 (the installed version) `img`, `b`, `p` and `button` are all stripped; PR #6's 11 CI failures were that only. The cause is INFERRED (realm-independent `Node.prototype` getter checks), not isolated. In `08aea278`, the hostile-payload assertions passed under happy-dom by coincidence, and an identity-sanitizer swap fails 3 of 21 tests under jsdom. `76af9bba` moved 6 files; a stub-sanitizer run found 18 files that reach the real sanitizer, and the remaining happy-dom ones assert positively.
+
+**Orchestrator dispositions (not maintainer decisions):**
+- **The message of `1f056247` cites alert 45 wrongly.** That commit sanitised the translated HTML export in `characters.ts` (a different path). CodeQL analysed `main` at `dd8f269d`, after `1f056247`, and alert 45 stayed open. The flagged sink is `applyMarkdownToNode` in `parser.svelte.ts`, reached from `translateNodeText` in `translator.ts`. `1b881d0c` fixed that sink. The mis-attribution is recorded here and in ledger row 1408; the history is not rewritten.
+
+**Disclosures:**
+- **(a)** The records items also say "3.4.7 or later"; the bisect has no data for 3.4.7 and 3.4.8, so this entry keeps the conservative bound above and does not claim those versions fail.
+
+---
+
+### MC-240 — Main Campaign, 2026-10-08: audit and refine the Claude workflow and documentation; use Haiku more, clarify gates and delegate commit drafts
+
+- **Tag:** request and authorization (direct maintainer messages)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's current workflow-audit request and steering, quoted below.
+- **Related:** MC-011, MC-027, MC-058, MC-175, MC-223, MC-239; [workflow audit](../docs/workflow/audit-2026-10-08.md).
+- **Supersedes:** MC-091's workflow routing/context procedure portion only; its substantive gates, scope-amendment rules, compatibility constraints and other settled safety decisions remain intact.
+
+> As a 3rd party workflow auditor, can you review this repository, and refine the claude code workflow here according to official anthropic docs?
+
+> Also, haiku is underutilized. and I'd like to allow agents to benefit more from it.
+
+> Do not touch the source code, but clean up claude code workflows and docs in general.
+
+> you may overhaul the folder structure, but make sure ignore list(gitignore, etc) still points at the right direction afterward.
+
+> I think we could also use clear guideline on gate1 and gate 2 criteria. I've observed some inconsistency of orchestrator somtimes re-triggering gate 2 over some minor editorial issue. also, currently orchestrator drafts commit message which seems can be delegated.
+
+**Authorized scope:** audit and improve workflow instructions, profiles/skills, supporting validation/navigation and documentation structure; broaden bounded Haiku use; make Gate 1/Gate 2 readiness, outcomes and remediation criteria clear; delegate evidence-backed commit-message drafting while retaining independent claim checks. Preserve the applicable ignore/protection boundaries and historical evidence. No application-source edits are authorized by this request.
+
+**Boundaries:** existing dirty changes and the 2026-10-08 handoff/evidence are preserved. This authorization does not settle or reconcile the earlier pending campaign decisions/records in that handoff, change the two-way backup invariant, remove independent safety gates or authorize a commit/push by itself. Local workflow choices are distinguished from official platform capabilities; reduced token cost remains unmeasured.
+
+---
+
+### MC-241 — Main Campaign, 2026-10-08: approve six workflow improvements, prioritizing record closeout and pre-plan sizing
+
+- **Tag:** approval (direct maintainer message)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's response to the six proposed workflow improvements, quoted below.
+- **Related:** MC-240, MC-027, MC-175, MC-223, MC-239; [improvement record](../docs/workflow/improvements-2026-10-08.md).
+- **Amends:** MC-240's current workflow/document cleanup scope with the accepted proposals below; existing substantive gates, compatibility and safety decisions remain intact. No historical decision text is rewritten.
+
+> suggestions seems reasonable. prioritize 1,4, then 2,3, and 5,6.
+
+**Accepted proposals, in the maintainer's priority order:**
+1. **Record closeout (proposal 1):** an item is COMPLETE only after applicable decisions, independent gate disposition, Roadmap/status and current-state/remaining-work records are current. Technical acceptance and administrative closeout are distinct; incremental record verification does not automatically restart Gate 2.
+2. **Pre-plan sizing and product decisions (proposal 4):** substantial work gets targeted mechanism/size evidence, affected subsystems and coherent stages before Gate 1. Relevant user-visible skip/repair/refuse/pause behavior is settled; decision-critical unresolved product questions block the affected plan/implementation. Trivial low-risk work retains its carve-out.
+3. **Evidence curation (proposal 2):** keep canonical reports and selected self-contained reproducible evidence; raw transcripts/temporary output stay local scratch. Do not delete only-copy sources until reviewed extraction and necessary operational evidence retention; preserve existing tracked history and exact legacy protections.
+4. **Haiku verification pilot (proposal 3):** ten eligible item-level independent reviews for ordinary documentation and exact semantics-preserving mechanical edits. Governance, consent, translated meaning, configuration behavior and behavioral/high-risk source work are excluded; uncertainty escalates. Sonnet remains the default outside the pilot and existing nontrivial/high-risk gates remain. Only observed actual Claude Haiku items count; configuration/Codex/no-output attempts do not. Maintainer review decides the outcome, with no automatic rollout or savings claim.
+5. **Write concurrency (proposal 5):** one application-code writer per checkout, counting coder and test worker together. Parallel distinct application items require separate worktrees with explicit starting revision and integration owner. Read-only helpers and named disjoint document writes remain allowed.
+6. **Direct-tool ownership guard (proposal 6):** exact allowed-file manifest and orchestrator grants for direct Write/Edit, reviewers read-only. This is not a filesystem sandbox or guaranteed shell/alternate-channel enforcement; implementation/settings/runtime claims require actual evidence.
+
+**Scope boundary:** policy, supporting workflow configuration and documentation only. No application source, commit/push, raw-artifact deletion/move or silent reconciliation of the older pending handoff is authorized by this approval. MC-175/223 compatibility, MC-027's exact two community-code protections, MC-239 sanitizer evidence and independent safety gates remain intact.
+
+---
+
+### MC-242 — Main Campaign, 2026-10-08: the maintainer primarily uses Claude Desktop's Code tab
+
+- **Tag:** stated (direct maintainer clarification)
+- **Date:** 2026-10-08
+- **Source:** the maintainer's feature-opportunity question and clarification, quoted below.
+- **Related:** MC-240, MC-241; [feature opportunities](../docs/workflow/feature-opportunities-2026-10-08.md).
+
+> are there any features we are currently missing out? I've been using claude app over claude code(which is up to date) so claude code alone can be a bit stale.
+
+> yes, I've been primarily using code tab of claude desktop app.
+
+This records the stated primary surface, not an independently inspected Desktop version or plugin inventory. The feature question requests assessment; it does not authorize installing plugins, creating schedules, changing account settings or automatically applying additional feature recommendations.
+
+---
+
+### MC-243 — Main Campaign, 2026-10-08: adopt scoped rules, language intelligence and Desktop-first live checks; provide manual setup and resumption
+
+- **Tag:** approval and request (direct maintainer messages)
+- **Date:** 2026-10-08
+- **Related:** MC-240, MC-241, MC-242; [Desktop setup](../docs/workflow/claude-desktop-setup.md), [live checks](../docs/workflow/live-checks.md), [resumption](../docs/workflow/resume-main-campaign.md).
+
+> side chats are more of on me about how to steer the agent(I've been doing it already. so consider it done).
+
+> We can use both claude in chrome in live checks, but prioritizing desktop preview seems more reasonable and more straightforward. and yes, language intelligence and path scoped rules seems to be a good idea.
+
+> when finished, Let me know which plugins I need to install along with the initiation prompt to resume the task from where it already is.
+
+**Authorized scope:** configure focused path-scoped rules and read-only language intelligence for appropriate source-reading roles; document live acceptance using Desktop preview first and Claude in Chrome when its capabilities are needed. Side-chat adoption is already handled by the maintainer. Supply manual plugin/server installation instructions and a continuation prompt grounded in the preserved campaign state. Do not install plugins/binaries or change account settings on the maintainer's behalf. Native loading, actual Desktop tools and server operation require their own observed checks. Application-source changes and reconciliation of the prior handoff remain outside this audit; the continuation prompt does not invent product decisions.
+
+---
+
+### MC-244 — Main Campaign, 2026-10-08: commit the completed workflow documentation in separate commits
+
+- **Tag:** authorization (direct maintainer message)
+- **Date:** 2026-10-08
+- **Related:** MC-240, MC-241, MC-243.
+
+> +commit the docs as separate commits when finished.
+
+Commit the completed and independently verified workflow/configuration/documentation changes in coherent separate groups. This amends the earlier no-commit boundary for this audit only. Stage exact owned paths; preserve existing launch/Android changes and raw untracked handoff evidence. No push, application-source change or unrelated commit is authorized.
+
+---
+
+### MC-245 — Main Campaign, 2026-10-07: answers on the translator innerHTML case, unused fonts, Android system bars, repo settings, inlay terms and ticket ids
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-07 (recorded 2026-10-08)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's `AskUserQuestion` answers as the Orchestrator recorded them in `Agents/Handoff-2026-10-08/records-pending2.md` (lines 3-9; repo-settings read-back lines 15-17) and `Agents/Handoff-2026-10-08.md` section 2. The question wording and the unchosen options are not in the sources given; only the chosen label and the Orchestrator's one-line gloss are. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded for any of the six.
+- **Related:** `MC-238` (which left F4 undecided), `MC-231`, `MC-175`; CHORE-114, CHORE-117, CHORE-118, CHORE-133, CHORE-134.
+
+**What was decided:**
+1. **F4 (translator `combineTranslation` single-sentence `node.innerHTML`): "File a ticket (Recommended)".** Ticket CHORE-133: trace where the markup can come from, then insert it as text or sanitize it. Gated; not now. `MC-238` recorded this case as "Not decided: ... a maintainer call and a candidate ticket" (finding F4, ledger row 1408); this answer settles that.
+2. **Tilt Prism and Yellowtail fonts (unused by the app): "Check cards first (Recommended)".** Trace whether upstream ships them for card or theme CSS; remove them only if nothing upstream-compatible can reference them (`MC-175`). No ticket number was assigned in the sources given.
+3. **Android release build: controls sit under the status and navigation bars: "Ticket a fix (Recommended)".** Ticket CHORE-134: safe-area insets on Android; check against the debug build in the Note 9 session.
+4. **Repository settings (Dependabot security updates, Actions default token read-only, secret scanning, push protection): "I'll toggle them (Recommended)".** The maintainer changes them in GitHub Settings; the Orchestrator supplies the list.
+5. **Inlay terms per locale (CHORE-114 strings: transliteration plus gloss, for example ko `인레이(...)`): "Keep as written (Recommended)".** The maintainer fixes any locale later.
+6. **CHORE-117 (save-time validation) and CHORE-118 (Gemini audio orphan, held) ids: "Keep (Recommended)".**
+
+**Repository settings read-back (Orchestrator, read-only `gh api`, after the maintainer's toggles; 2026-10-07 per the records note):**
+- `default_workflow_permissions`: `read`; `can_approve_pull_request_reviews`: `false` (the maintainer turned it off on the Orchestrator's suggestion; read back).
+- Dependabot alerts on (vulnerability-alerts 204); Dependabot security updates enabled (not paused); secret scanning enabled; push protection enabled; private vulnerability reporting enabled. Non-provider patterns and validity checks: disabled (not in the list).
+
+---
+
+### MC-246 — Main Campaign, 2026-10-07: CHORE-116 boot prompt is "Prompt"
+
+- **Tag:** decision (`AskUserQuestion` answer, by option label)
+- **Date:** 2026-10-07
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer as recorded in `Agents/Handoff-2026-10-08/records-pending2.md` line 22 and `Agents/Handoff-2026-10-08.md` section 2. The question text and the unchosen options are not in the sources given.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-041`; CHORE-116 (committed `a5a3095d`).
+
+**What was decided:** option **"Prompt (Recommended)"**: any trusted input, boot-import write or plugin panel use in the boot window makes the tab dirty, so a peer save before the first pass prompts instead of auto-reloading, even for input that changed nothing.
+
+---
+
+### MC-247 — Main Campaign, 2026-10-08: CHORE-117 save-time validation, decisions D1 to D8 (D4 superseded by D5)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answers as recorded in `Agents/Handoff-2026-10-08/records-pending2.md` (lines 32, 35, 41, 46, 52, 57) and the decision table in `Agents/Handoff-2026-10-08.md` section 3. The Orchestrator's records give the chosen label, a gloss and the rejected alternative; the full question texts are not in the sources given.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** named per decision below, as the records give them.
+- **Related:** `MC-234` (queued the ticket), `MC-036`, `MC-163`, `MC-175`, `MC-078`, `MC-079`, `MC-082`; CHORE-117; ledger rows 1442 to 1454.
+
+**What was decided (D1 to D8 keep the Orchestrator's numbering):**
+1. **D1, "Fix or skip, then warn (Recommended)".** Live data that would make the file unloadable is repaired (missing id filled, unusable id replaced) or left out (non-character entry); everything else keeps saving; a toast names it. Rejected: "Stop saving and say why".
+2. **D2, "Yes, throw to the plugin (Recommended)".** `setDatabase`, `setDatabaseLite`, `setChar`, `setCharacter` and `setCharacterToIndex` reject malformed writes at the call, and the database is unchanged. Rejected: "No, save-time only".
+3. **D3, "Pause saving, name it (Recommended)".** An archived stub with an unusable id pauses saving and names it. Rejected: "Re-id and move the archive".
+4. **D4, "Keep last good id (Recommended)".** A plugin-set unusable live id is saved under the last good id (fresh if none), the in-memory object stays untouched until restart, and a notice names it. Rejected: "Rename it live". Refined D1. **Superseded by D5 (below); D4 is kept as history and is not in force.**
+5. **D5, "Pause saving for it (Recommended)"** (asked after the fourth rejection on the item, per the simplify-the-product rule). An already-saved character renamed in place to an unusable id pauses saving with a named error. **Supersedes D4.** Rejected: "Keep D4, fix the leaks".
+6. **D6, "Yes, recover the id (Recommended)".** On restore and export, an unusable-id stub takes back the `chaId` recorded in its archived unit; a missing or mismatched unit refuses the restore by name; boot is unchanged (install and pause). Rejected: "Refuse those restores".
+7. **D7, "Split 1a / 1b (Recommended)".** Stage 1 is split into 1a and 1b. Rejected: "Keep one Stage 1". (The stage contents are in the Roadmap entry, not decided here.)
+8. **D8, "Refuse it by name (Recommended)".** A restore whose stub id and unit id are both unusable is refused by name. Rejected: "Give both a new id".
+
+**Scope note:** the Orchestrator's records disclose one `MC-175` exception in the Stage 1a plan: a restore whose stub and unit ids are both unusable (D8; `records-pending2.md` line 55). No amendment to `MC-175` is recorded here.
+
+---
+
+### MC-248 — Main Campaign, 2026-10-08: a restore that repaired the character list announces it (extends MC-247 D1)
+
+- **Tag:** decision (`AskUserQuestion` answer, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's answer to the Orchestrator's question "Should a restore announce these repairs?", as relayed by the Orchestrator after the CHORE-117 Stage 1a Gate 2 review (a fresh `opus-reviewer`, `[REJECT]` on a separate finding) observed that the restore paths repair silently. The alternatives ("Stay silent", "Defer to Stage 1b") are named as relayed by the Orchestrator; the question wording beyond the quoted sentence and the option texts are not in the sources given. The observation is finding F4 of Gate 2 round 1 (ledger row 1467).
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** "Stay silent" and "Defer to Stage 1b" (the options offered were "Announce it", "Stay silent" and "Defer to Stage 1b").
+- **Related:** `MC-247` (extends D1; does not supersede it), `MC-223`; CHORE-117.
+
+**What was decided:** option **"Announce it"**. After a restore that repaired anything, show the same kind of one-time notice the live check uses, giving the counts of entries dropped and ids filled or recovered. Show no notice when nothing was repaired.
+
+**Scope as the Orchestrator described it:** the repairing restore paths are `repairRestoredCharacters` in `restoreReplace.ts` (used by `LoadLocalBackup` and the internal backup) and `bootBlockLoad.ts` (the boot damage-prompt restore). They drop entries that are not characters, fill missing ids, replace unusable ids and recover archived ids from the archived data. `MC-247` D1 had scoped the repair notice to live data only; this decision extends D1 to restores.

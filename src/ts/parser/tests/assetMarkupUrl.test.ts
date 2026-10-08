@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * What `parseAdditionalAssets` (through the exported `ParseMarkdown`) does with
  * the URL `getFileSrc` hands back: the markup's `alt` carries the asset name and

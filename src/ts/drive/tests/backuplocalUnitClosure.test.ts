@@ -50,6 +50,7 @@ vi.mock('localforage', () => ({
             getItem: vi.fn(async () => null),
             setItem: vi.fn(async () => { }),
             removeItem: vi.fn(async () => { }),
+            keys: vi.fn(async () => []),
         }),
     },
 }))
@@ -977,7 +978,8 @@ describe.each(SAVES)('%s writes each unit exactly once', (_save, save) => {
         expect(backupPrompts()).toHaveLength(1)
         expect(readCount(ABSENT)).toBe(1)
         expect(alertMdMock).not.toHaveBeenCalled()
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        // The partial backup's completion also says that inlays are not in it.
+        expect(alertNormalMock).toHaveBeenCalledWith(expect.stringMatching(/^Success/))
     })
 })
 

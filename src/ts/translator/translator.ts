@@ -433,8 +433,10 @@ export async function translateHTML(html: string, reverse:boolean, charArg:simpl
                 return;
             }
 
-            // Replace the old node with the new one
-            const newNode = document.createElement(
+            // Replace the old node with the new one. Elements are created in the
+            // document being translated (dom), never the live one: markup parsed
+            // in the live document is active before it is serialized.
+            const newNode = dom.createElement(
                 node.nodeType === Node.TEXT_NODE ? "span" : node.nodeName
             );
             newNode.innerHTML = processedTranslated;
@@ -483,11 +485,11 @@ export async function translateHTML(html: string, reverse:boolean, charArg:simpl
                         // reconstruct the p tag
                         node.innerHTML = "";
                         for (const sentence of sentences) {
-                            const newNode = document.createElement("span");
+                            const newNode = dom.createElement("span");
                             newNode.textContent = sentence;
                             node.appendChild(newNode);
                             await translateNodeText(newNode, true);
-                            node.appendChild(document.createElement("br"));
+                            node.appendChild(dom.createElement("br"));
                         }
                     } else {
                         // Single sentence

@@ -43,9 +43,14 @@ vi.mock(import('src/ts/alert'), () => {
 
 vi.mock(import('src/ts/process/files/inlays'), () => ({
     listInlayAssets: vi.fn(async () => ['a1', 'a2', 'a3', 'a4'].map((id) => [id, {
-        type: 'image', name: 'name-' + id, data: new Blob(['x']), ext: 'png', width: 1, height: 1,
+        type: 'image', name: 'name-' + id, size: 1, ext: 'png', width: 1, height: 1,
     }])),
-    getInlayAssetBlob: vi.fn(async () => null),
+    getInlayAssetBlob: vi.fn(async () => ({ data: new Blob(['x']), ext: 'png', type: 'image', name: 'n' })),
+    getInlayRender: vi.fn(async (id: string) => {
+        if (id === 'a3') return null
+        if (id === 'a4') return { type: 'signature', url: '', source: 'signature' }
+        return { type: 'image', url: 'cache://' + id, source: 'store-url' }
+    }),
     removeInlayAsset: vi.fn(async (id: string) => {
         inlays.removed.push(id)
         await inlays.holds.get(id)
@@ -55,6 +60,7 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
 //#endregion
 
 import PlaygroundInlayExplorer from './PlaygroundInlayExplorer.svelte'
+import { getInlayAssetBlob, getInlayRender } from 'src/ts/process/files/inlays'
 
 //#region helpers
 
@@ -107,6 +113,8 @@ async function answer(value: boolean): Promise<void> {
 }
 
 beforeEach(() => {
+    vi.mocked(getInlayAssetBlob).mockClear()
+    vi.mocked(getInlayRender).mockClear()
     confirms.pending.length = 0
     inlays.removed.length = 0
     inlays.holds.clear()
@@ -171,5 +179,20 @@ describe('deleting the selected inlay assets', () => {
         expect(inlays.removed).toEqual(['a1', 'a2'])
         expect(shown(target)).toEqual(['a3', 'a4'])
         expect(isTicked(target, 'a3')).toBe(true)
+    })
+
+    test('a preview is shown from the render cache without reading the body, and deleting it revokes no cache-owned URL', async () => {
+        const revoke = vi.spyOn(URL, 'revokeObjectURL')
+        const target = await mountExplorer()
+        expect(vi.mocked(getInlayAssetBlob)).not.toHaveBeenCalled()
+        const srcs = Array.from(target.querySelectorAll('img')).map((img) => img.getAttribute('src'))
+        expect(srcs).toEqual(['cache://a1', 'cache://a2'])
+        await tick(target, 'a1')
+        await clickDeleteSelected(target)
+        await answer(true)
+        expect(inlays.removed).toEqual(['a1'])
+        expect(Array.from(target.querySelectorAll('img')).map((img) => img.getAttribute('src'))).toEqual(['cache://a2'])
+        expect(revoke).not.toHaveBeenCalled()
+        revoke.mockRestore()
     })
 })

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation (wiki)
+    url: https://github.com/yor42/RisuTanium/wiki
+    about: Guides for settings, backups, modules and plugins. Check here before opening an issue.
+  - name: Coming from upstream RisuAI
+    url: https://github.com/yor42/RisuTanium/wiki/Migrating-from-upstream
+    about: How to move your data between upstream RisuAI and this fork, in both directions.
+  - name: Report a bug in upstream RisuAI
+    url: https://github.com/kwaroran/RisuAI/issues
+    about: Problems that also happen in upstream RisuAI belong to the upstream project.

@@ -1605,6 +1605,7 @@ export const languageGerman = {
     "realmDirectOpen": "Charakter in RisuRealm direkt öffnen",
     "showPromptComparison": "Anweisungsvergleich anzeigen",
     "inlayErrorResponse": "Fehlerantwort einfügen",
+    "inlayFileTooLarge": "{name} ist größer als {size} MB und wurde nicht angehängt.",
     "triggerOn": "Trigger ein",
     "noConfig": "Keine Konfiguration",
     "var": "Variable",
@@ -1870,6 +1871,20 @@ export const languageGerman = {
         `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Asset-Datei(en), die größer sind als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `Der Server oder ein vorgeschalteter Proxy hat das Asset "${name}" als zu groß abgelehnt, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
+    "partialBackupInlaysNotIncluded": "Inlays (Chat-Bilder, Videos, Audio und Signaturen) sind in einem Teil-Backup nicht enthalten.",
+    "backupInlaysLeftOut": (count: number, names: string[]) =>
+        `${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen) konnten nicht gelesen werden oder werden nicht unterstützt und sind daher nicht im Backup enthalten. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Ausgelassen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreInlaysInvalid": (count: number, names: string[]) =>
+        `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen), deren Einträge in der Datei unvollständig oder beschädigt sind. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreInlaysNotStored": (count: number, names: string[]) =>
+        `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen), die diese App nicht speichern konnte. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreInlaysTooLarge": (count: number, names: string[], limitBytes: number) =>
+        `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen), die größer sind als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die diese Seite speichern kann. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupInlaysOldStoreUnlisted": "Der alte Inlay-Speicher dieses Browsers konnte nicht gelesen werden, daher sind Inlays, die nur dort liegen, nicht im Backup enthalten.",
+    "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
+        `${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen) in diesem Backup sind größer als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert, und können daher hier nicht wiederhergestellt werden. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Ohne sie fortfahren?\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `${assetCount} Asset-Datei(en) und ${inlayCount} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen) in diesem Backup sind größer als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert, und können daher hier nicht wiederhergestellt werden. Ein Charakter oder Chat, der eines davon verwendet, zeigt es als fehlend an. Ohne sie fortfahren?\n\nAsset-Dateien:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...und ${assetCount - assetNames.length} weitere` : ''}\n\nInlays:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...und ${inlayCount - inlayNames.length} weitere` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? 'Das Backup ist fehlgeschlagen.' : `Das Backup wurde abgebrochen, weil sich ${asset} während des Speicherns geändert hat oder nicht gelesen werden konnte.`} Die Backup-Datei war unvollständig und wurde daher gelöscht. Führen Sie das Backup erneut aus.`,
     "backupFailedFileKept": (asset: string | null) =>
@@ -2084,6 +2099,33 @@ export const languageGerman = {
         `Dieser Tab hat das Speichern eingestellt. Der selbst gehostete Server akzeptiert in einer Anfrage höchstens ${limitBytes / (1024 * 1024)} MiB (weniger, wenn ein vorgeschalteter Proxy ein niedrigeres Limit setzt), und ${what ? `dieser Teil Ihrer Daten überschreitet das: ${what}` : 'ein Teil Ihrer Daten überschreitet das; der Server hat nicht angegeben, welcher Teil'}. Änderungen seit dem letzten erfolgreichen Speichern gehen beim Neuladen verloren. Verkleinern Sie diesen Teil, zum Beispiel indem Sie Chats oder Inhalte daraus löschen.`,
     "savingStoppedConversionFailedMessage": "Dieser Tab hat das Speichern eingestellt. Das Überführen Ihrer Daten in das neue Speicherformat ist nach mehreren Versuchen nicht gelungen, und an Ihren gespeicherten Daten wurde nichts geändert. Änderungen seit dem letzten erfolgreichen Speichern gehen beim Neuladen verloren. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "savingStoppedUnconfirmedMessage": "Dieser Tab hat das Speichern eingestellt. RisuAI konnte nicht bestätigen, welcher Speicherstand aktuell ist. Laden Sie die Seite neu, um zu sehen, welcher geladen wurde; in diesem Tab seit dem letzten erfolgreichen Speichern vorgenommene Änderungen können verloren gehen.",
+    "savingStoppedInvalidDataMessage": (what: string) =>
+        `Dieser Tab hat das Speichern eingestellt. ${what ? `${what} kann` : 'Ein Teil Ihrer Daten kann'} nicht als Speicherstand geschrieben werden, den RisuAI wieder laden kann; daher wurde nichts geschrieben, und Ihre gespeicherten Daten sind unverändert. Änderungen seit dem letzten erfolgreichen Speichern gehen beim Neuladen verloren. Exportieren Sie ein Backup, wenn Sie die Daten dieses Tabs behalten möchten.`,
+    "savingHeldMessage": (names: string, archived: boolean) =>
+        `Das Speichern ist pausiert. Die ID von ${names} kann nicht gespeichert werden, daher wird nichts geschrieben, bis dies behoben ist; in der Zwischenzeit vorgenommene Änderungen bleiben in diesem Tab erhalten, gehen aber verloren, wenn Sie ihn schließen. ${archived ? 'Um das Speichern fortzusetzen: Bei einem archivierten Charakter lässt sich die ID hier nicht ändern; exportieren Sie ein Backup und stellen Sie es wieder her (die Wiederherstellung repariert die ID aus den archivierten Daten); bei jedem anderen Charakter machen Sie die Änderung eines Plugins daran rückgängig; oder löschen Sie den Charakter endgültig' : 'Um das Speichern fortzusetzen, machen Sie die Änderung eines Plugins daran rückgängig oder löschen Sie den Charakter endgültig'} (in den Papierkorb verschieben, dann aus dem Papierkorb löschen; der Papierkorb allein setzt das Speichern nicht fort).`,
+    "savingWaitingMessage": (names: string) =>
+        `Das Speichern wartet auf ${names}: Die ID hat sich während des Speicherns geändert, daher wurde dieser Versuch verworfen und wird erneut unternommen. Es wird nichts geschrieben, bis sie sich nicht mehr ändert. In der Zwischenzeit vorgenommene Änderungen bleiben in diesem Tab erhalten, gehen aber verloren, wenn Sie ihn schließen.`,
+    "saveRepairedEntriesNotice": (dropped: number, filled: number) =>
+        `RisuAI hat die Charakterliste repariert: ${dropped > 0 ? `${dropped} ${dropped === 1 ? 'Eintrag, der kein Charakter ist, wurde' : 'Einträge, die keine Charaktere sind, wurden'} ausgelassen` : ''}${dropped > 0 && filled > 0 ? ', und ' : ''}${filled > 0 ? `${filled} ${filled === 1 ? 'Charakter, dessen ID fehlte oder nicht gespeichert werden konnte, hat' : 'Charaktere, deren ID fehlte oder nicht gespeichert werden konnte, haben'} eine neue ID erhalten` : ''}.${dropped > 0 ? ' Möglicherweise hat ein Plugin die ausgelassenen Einträge geschrieben.' : ''}`,
+    "personasRepairedNotice": (count: number) =>
+        `RisuAI hat ${count} ${count === 1 ? 'Persona' : 'Personas'} ausgelassen, deren Daten ungültig waren. Möglicherweise hat ein Plugin sie geschrieben.`,
+    "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
+        `Das Backup wurde geladen, nachdem RisuAI seine Charakterliste repariert hat: ${[
+            dropped > 0 ? `${dropped} ${dropped === 1 ? 'Eintrag, der kein Charakter ist, wurde' : 'Einträge, die keine Charaktere sind, wurden'} ausgelassen` : '',
+            changed > 0 ? `${changed} ${changed === 1 ? 'Charakter, dessen ID fehlte oder nicht gespeichert werden konnte, hat' : 'Charaktere, deren ID fehlte oder nicht gespeichert werden konnte, haben'} eine neue ID erhalten` : '',
+            recovered > 0 ? `${recovered} ${recovered === 1 ? 'archivierter Charakter hat' : 'archivierte Charaktere haben'} die ID zurückerhalten, die in ${recovered === 1 ? 'seinen' : 'ihren'} archivierten Daten verzeichnet ist` : '',
+        ].filter((part) => part !== '').join('; ')}.`,
+    "restoreRefusedArchivedId": (name: string) =>
+        `Dieses Backup konnte nicht geladen werden: Der archivierte Charakter "${name}" hat eine ID, die nicht gespeichert werden kann, und die archivierten Daten, auf die er verweist, enthalten keine brauchbare ID, mit der sie repariert werden könnte. Es wurde nichts geändert.`,
+    "restoreRefusedUnsavable": (what: string) =>
+        `Dieses Backup konnte nicht geladen werden: ${what} kann so nicht gespeichert werden. Es wurde nichts geändert.`,
+    "exportIdsRepairedNotice": (recovered: number, filled: number, replaced: number, unrestorable: string) =>
+        `In diesem Export wurden einige Charakter-IDs repariert; die Charaktere auf der Seite sind unverändert. ${[
+            recovered > 0 ? `${recovered} ${recovered === 1 ? 'archivierter Charakter wurde' : 'archivierte Charaktere wurden'} mit der ID exportiert, die in ${recovered === 1 ? 'seinen' : 'ihren'} archivierten Daten verzeichnet ist.` : '',
+            filled > 0 ? `${filled} ${filled === 1 ? 'Charakter hatte' : 'Charaktere hatten'} keine ID und ${filled === 1 ? 'wurde' : 'wurden'} mit einer neuen exportiert.` : '',
+            replaced > 0 ? `${replaced} ${replaced === 1 ? 'Charakter hat' : 'Charaktere haben'} eine ID, die nicht gespeichert werden kann, und ${replaced === 1 ? 'wurde' : 'wurden'} mit einer neuen exportiert.` : '',
+            unrestorable ? `Der archivierte Inhalt von ${unrestorable} kann aus diesem Export nicht wiederhergestellt werden: Seine archivierten Daten verzeichnen keine brauchbare ID, daher wurde er mit einer neuen ID exportiert.` : '',
+        ].filter((part) => part !== '').join(' ')}`,
     "saveBlockLabel": (blockName: string): string =>
         blockName === 'root' ? 'Ihre allgemeinen Einstellungen'
         : blockName === 'preset' ? 'Ihre Bot-Voreinstellungen'

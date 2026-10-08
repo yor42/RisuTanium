@@ -1736,6 +1736,7 @@ export const languageEnglish = {
     realmDirectOpen: "Directly open character in RisuRealm",
     showPromptComparison: "Show Prompt Comparison",
     inlayErrorResponse: "Inlay Error Response",
+    inlayFileTooLarge: "{name} is larger than {size} MB and was not attached.",
     triggerOn: "Trigger On",
     noConfig: "No Config",
     var: "Variable",
@@ -2003,6 +2004,20 @@ export const languageEnglish = {
         `The backup was restored, except for ${count} asset file(s) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     restoreAssetRefusedTooLarge: (name: string) =>
         `The server, or a proxy in front of it, refused the asset "${name}" as too large, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.`,
+    partialBackupInlaysNotIncluded: "Inlays (chat images, video, audio and signatures) are not included in a partial backup.",
+    backupInlaysLeftOut: (count: number, names: string[]) =>
+        `${count} inlay(s) (chat images, video, audio or signatures) could not be read or are not supported, so they are not in the backup. A chat that uses one of them will show it as missing. Left out:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreInlaysInvalid: (count: number, names: string[]) =>
+        `The backup was restored, except for ${count} inlay(s) (chat images, video, audio or signatures) whose entries in the file are incomplete or damaged. A chat that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreInlaysNotStored: (count: number, names: string[]) =>
+        `The backup was restored, except for ${count} inlay(s) (chat images, video, audio or signatures) that this app could not store. A chat that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreInlaysTooLarge: (count: number, names: string[], limitBytes: number) =>
+        `The backup was restored, except for ${count} inlay(s) (chat images, video, audio or signatures) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this page can store. A chat that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupInlaysOldStoreUnlisted: "The old inlay store of this browser could not be read, so inlays that only it holds are not in the backup.",
+    restoreOversizedInlaysConfirm: (count: number, names: string[], limitBytes: number) =>
+        `${count} inlay(s) (chat images, video, audio or signatures) in this backup are larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request, so they cannot be restored here. A chat that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreOversizedWithInlaysConfirm: (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
+        `${assetCount} asset file(s) and ${inlayCount} inlay(s) (chat images, video, audio or signatures) in this backup are larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request, so they cannot be restored here. A character or chat that uses one of them will show it as missing. Continue without them?\n\nAsset files:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...and ${assetCount - assetNames.length} more` : ''}\n\nInlays:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...and ${inlayCount - inlayNames.length} more` : ''}`,
     backupFailedFileDeleted: (asset: string | null) =>
         `${asset === null ? 'The backup failed.' : `The backup stopped because ${asset} changed or could not be read while it was being saved.`} The backup file was incomplete, so it was deleted. Run the backup again.`,
     backupFailedFileKept: (asset: string | null) =>
@@ -2220,6 +2235,33 @@ export const languageEnglish = {
         `This tab has stopped saving. The self-hosted server accepts at most ${limitBytes / (1024 * 1024)} MiB in one request (less if a proxy in front of the server sets a lower limit), and ${what ? `this part of your data is over that: ${what}` : 'part of your data is over that; the server did not say which part'}. Changes since the last successful save will be lost when you reload. Make that part smaller, for example by deleting chats or content from it.`,
     savingStoppedConversionFailedMessage: "This tab has stopped saving. Moving your data to the new save format did not succeed after several tries, and nothing was changed in your saved data. Changes since the last successful save will be lost when you reload. Reload the page to try again.",
     savingStoppedUnconfirmedMessage: "This tab has stopped saving. RisuAI could not confirm which save is current. Reload the page to see which one loaded; changes made in this tab since the last successful save may be lost.",
+    savingStoppedInvalidDataMessage: (what: string) =>
+        `This tab has stopped saving. ${what ? `${what} cannot` : 'Part of your data cannot'} be written as a save that RisuAI can load back, so nothing was written and your saved data is unchanged. Changes since the last successful save will be lost when you reload. Export a backup if you want to keep this tab's data.`,
+    savingHeldMessage: (names: string, archived: boolean) =>
+        `Saving is paused. The id of ${names} cannot be saved, so nothing is written until that is fixed; changes made in the meantime are kept in this tab but are lost if you close it. ${archived ? 'To resume: for an archived character, whose id cannot be changed here, export a backup and restore it (the restore repairs the id from the archived data); for any other character, undo the change a plugin made to it; or delete the character permanently' : 'To resume, undo the change a plugin made to it, or delete the character permanently'} (move it to the trash, then delete it from the trash; the trash alone does not resume saving).`,
+    savingWaitingMessage: (names: string) =>
+        `Saving is waiting on ${names}: its id changed while it was being saved, so that attempt was thrown away and is tried again. Nothing is written until it stops changing. Changes made in the meantime are kept in this tab but are lost if you close it.`,
+    saveRepairedEntriesNotice: (dropped: number, filled: number) =>
+        `RisuAI repaired the character list: ${dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : ''}${dropped > 0 && filled > 0 ? ', and ' : ''}${filled > 0 ? `${filled} character${filled === 1 ? '' : 's'} whose id was missing or could not be saved ${filled === 1 ? 'was' : 'were'} given a new one` : ''}.${dropped > 0 ? ' A plugin may have written the entries that were left out.' : ''}`,
+    personasRepairedNotice: (count: number) =>
+        `RisuAI left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
+    restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
+        `The backup was loaded after RisuAI repaired its character list: ${[
+            dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : '',
+            changed > 0 ? `${changed} character${changed === 1 ? '' : 's'} whose id was missing or could not be saved ${changed === 1 ? 'was' : 'were'} given a new one` : '',
+            recovered > 0 ? `${recovered} archived character${recovered === 1 ? '' : 's'} got back the id ${recovered === 1 ? 'its' : 'their'} archived data records` : '',
+        ].filter((part) => part !== '').join('; ')}.`,
+    restoreRefusedArchivedId: (name: string) =>
+        `This backup could not be loaded: the archived character "${name}" has an id that cannot be saved, and the archived data it points to does not hold a usable id to repair it with. Nothing was changed.`,
+    restoreRefusedUnsavable: (what: string) =>
+        `This backup could not be loaded: ${what} cannot be saved as it is. Nothing was changed.`,
+    exportIdsRepairedNotice: (recovered: number, filled: number, replaced: number, unrestorable: string) =>
+        `Some character ids were repaired in this export; the characters on the page are unchanged. ${[
+            recovered > 0 ? `${recovered} archived character${recovered === 1 ? ' was' : 's were'} exported with the id its archived data records.` : '',
+            filled > 0 ? `${filled} character${filled === 1 ? ' had' : 's had'} no id and ${filled === 1 ? 'was' : 'were'} exported with a new one.` : '',
+            replaced > 0 ? `${replaced} character${replaced === 1 ? ' has' : 's have'} an id that cannot be saved and ${replaced === 1 ? 'was' : 'were'} exported with a new one.` : '',
+            unrestorable ? `The archived content of ${unrestorable} cannot be restored from this export: its archived data records no usable id, so it was exported with a new id.` : '',
+        ].filter((part) => part !== '').join(' ')}`,
     saveBlockLabel: (blockName: string): string =>
         blockName === 'root' ? 'your general settings'
         : blockName === 'preset' ? 'your bot presets'

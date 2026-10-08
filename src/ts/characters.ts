@@ -8,7 +8,7 @@ import { getImageType } from "./media";
 import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } from "./stores.svelte";
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
-import { parseMarkdownSafe } from "./parser/parser.svelte";
+import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
 import { doingChat } from "./process/index.svelte";
 import { importCharacter } from "./characterCards";
@@ -18,6 +18,8 @@ import { getAvatarThumbSrc, isThumbEligible } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
+import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
+import { escapeHtmlText } from "./htmlEscape";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -270,7 +272,9 @@ export async function exportChat(page:number){
             v = parseMarkdownSafe(v)
 
             if(doTranslate){
-                v = await translateHTML(v, false, '', -1)
+                // Translator, LLM and display-script output is not trusted markup:
+                // the exported file must be exactly as strict as the untranslated one.
+                v = sanitizeMarkdownSafe(await translateHTML(v, false, '', -1))
             }
 
             if(anonymous){
@@ -307,7 +311,7 @@ export async function exportChat(page:number){
                 alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 chatContentHTML += `<div class="chat">
-                    <h2>${name}</h2>
+                    <h2>${escapeHtmlText(name)}</h2>
                     <div>${await htmlChatParse(v.data)}</div>
                 </div>`
             }
@@ -316,7 +320,7 @@ export async function exportChat(page:number){
                 <!DOCTYPE html>
                 <html>
                     <head>
-                        <title>${char.name} Chat</title>
+                        <title>${escapeHtmlText(char.name)} Chat</title>
                         <style>
                             body{
                                 font-family: Arial, sans-serif;
@@ -353,7 +357,7 @@ export async function exportChat(page:number){
                     <body>
                         <div class="container">
                             <div class="chat">
-                                <h2>${char.name}</h2>
+                                <h2>${escapeHtmlText(char.name)}</h2>
                                 <div>${await htmlChatParse(
                                     chat.fmIndex === -1 ? char.firstMessage : char.alternateGreetings?.[chat.fmIndex ?? 0]
                                 )}</div>
@@ -378,7 +382,7 @@ export async function exportChat(page:number){
                 alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
                 chatContentHTML += `<tr>
-                    <td>${name}</td>
+                    <td>${escapeHtmlText(name)}</td>
                     <td>${await htmlChatParse(v.data)}</td>
                 </tr>`
             }
@@ -390,7 +394,7 @@ export async function exportChat(page:number){
                         <th>Message</th>
                     </tr>
                     <tr>
-                        <td>${char.name}</td>
+                        <td>${escapeHtmlText(char.name)}</td>
                         <td>${await htmlChatParse(char.firstMessage)}</td>
                     </tr>
                     ${chatContentHTML}
@@ -937,11 +941,12 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     if (removedChaId) {
         stopWorkIn({ chaId: removedChaId })
     }
+    let removed: (character | groupChat)[] = []
     if(type === 'normal'){
         chars[index].trashTime = Date.now()
     }
     else{
-        chars.splice(index, 1)
+        removed = chars.splice(index, 1)
     }
     checkCharOrder()
     DBState.db.characters = chars
@@ -951,6 +956,7 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     // listed) or the selected-character effects, so removing a character that is
     // not listed (an already-trashed one) with nothing selected needs this mark.
     markCharacterForSave(removedChaId)
+    queueInlayCleanupForCharacters(removed)
     selectedCharID.set(-1)
 }
 
@@ -1021,6 +1027,7 @@ export async function removeTrashedCharacters(refs: (character | groupChat)[], o
     for(const ref of doomed){
         markCharacterForSave(ref.chaId)
     }
+    queueInlayCleanupForCharacters([...doomed])
     if(selectedRef){
         selectedCharID.set(doomed.has(selectedRef) ? -1 : DBState.db.characters.indexOf(selectedRef))
     }
@@ -1058,6 +1065,9 @@ export async function removeChatConfirmed(owner: character | groupChat, chat: Ch
     const chats = owner.chats
     chats.splice(index, 1)
     owner.chats = chats
+    // The removal reaches the save only through this mark when the owner is not the selected character.
+    markCharacterForSave(owner.chaId)
+    queueInlayCleanupForChat(chat)
     return true
 }
 

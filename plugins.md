@@ -860,6 +860,13 @@ await Risuai.setChatToIndex(charIndex, chatIndex, chat);
 - `setChatToIndex()` loads the character first, then writes to it. If the archive is missing, unreadable, or does not hold that character, nothing is written, the call rejects, and the user sees one alert naming the character. It also rejects if the character is no longer in the list or can no longer be loaded. As upstream does, an out-of-range chat index does nothing, so a call that resolves does not guarantee the write.
 - `setCharacter()` (and the legacy `setChar()`) and `setCharacterToIndex()` reject, and write nothing, when you pass a placeholder (`coldstorage` set) that may not take the place. A placeholder is refused when the character with the same `chaId` is loaded in full, is archived under a different unit, or does not exist. The same placeholder you read from `getDatabase()` is accepted while the live character is still archived under that unit, and so is a full character. An out-of-range index passed to `setCharacterToIndex()` does nothing and does not reject.
 
+**Fork-specific note (not upstream RisuAI):** a write that would leave the page with data that cannot be saved is refused. `setDatabase()`, `setDatabaseLite()`, `setCharacter()` (and the legacy `setChar()`), `setCharacterToIndex()` and an assignment to `characters` or `modules` on the database object a V2 plugin receives throw (the two database setters reject) with an `Error`, and write nothing, when:
+
+- `characters` or `modules` is not an array, or an entry of `characters` is not an object (a number, `null` or an array, for example);
+- a character's `chaId` is present but cannot be saved: it is one of `root`, `config`, `preset`, `modules`, `loadouts`, `plugins`, `pluginStorage` or `__proto__`, is longer than 255 bytes in UTF-8, is not well-formed text, or is not a string or a finite number.
+
+A missing or empty `chaId` is still accepted and given a new id. An id that cannot be saved is accepted only where the character list already holds the same id (so `setDatabase(getDatabase())` and `setCharacter(getCharacter())` keep working while saving waits on such a character), never as an additional holder of it. `setCharacter()` (and `setChar()`) and `setCharacterToIndex()` also never move it onto a different character, because they check the one slot they replace. `setDatabase()` and `setDatabaseLite()` check only how many entries of the list carry each such id, so a held id may move between entries of a whole list.
+
 ## Advanced Features
 
 ### Network Requests

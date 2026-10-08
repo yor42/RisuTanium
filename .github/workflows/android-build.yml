@@ -1,0 +1,158 @@
+name: Android APK build
+
+# Manual only. Builds an APK and uploads it as a workflow artifact. It never creates a
+# release: shipping an Android build is gated on the memory and performance work, and the
+# debug build is the low-spec benchmark build. This repository is public, so anyone who can
+# read it can download the artifact until it expires.
+#
+# Build types
+#   debug    Signed with the runner's throwaway debug key, so it cannot update-install over an
+#            APK built or signed elsewhere. Needs no secrets.
+#   release  Signed with a release keystore from repository secrets (below). The run fails
+#            early, naming the missing secret, if any of the four is absent.
+#
+# Creating the release keystore and secrets (one time, keep the keystore and passwords safe;
+# losing the key means installed apps can never be updated):
+#   1. keytool -genkeypair -v -keystore risutanium-release.jks -alias risutanium \
+#        -keyalg RSA -keysize 4096 -validity 10000
+#   2. base64 -w0 risutanium-release.jks    (PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes("risutanium-release.jks")))
+#   3. Repository Settings > Secrets and variables > Actions > New repository secret:
+#        ANDROID_KEYSTORE_BASE64    the base64 text from step 2
+#        ANDROID_KEYSTORE_PASSWORD  the keystore password
+#        ANDROID_KEY_ALIAS          the alias from step 1
+#        ANDROID_KEY_PASSWORD       the key password
+#   4. Never commit the keystore. The workflow decodes it to a runner temp path and writes
+#      src-tauri/gen/android/keystore.properties, which is gitignored.
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        type: choice
+        options:
+          - debug
+          - release
+        default: debug
+      abi:
+        description: 'Target ABI'
+        type: choice
+        options:
+          - aarch64
+          - all
+        default: aarch64
+
+concurrency:
+  group: android-build
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Fail before the long build if a release build cannot be signed.
+      - name: Check release signing secrets
+        if: inputs.build_type == 'release'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set. See the comment block at the top of this workflow."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      # The pnpm version comes from the packageManager field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The Android Gradle plugin and Gradle 8.14 need JDK 21 here; newer JDKs are not supported.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The runner image already carries the Android SDK and an NDK.
+      - name: Point the build at the runner's Android SDK and NDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ inputs.abi == 'all' && 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android' || 'aarch64-linux-android' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-${{ inputs.abi }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write release signing configuration
+        if: inputs.build_type == 'release'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore_path="$RUNNER_TEMP/release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          {
+            echo "storeFile=$keystore_path"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+
+      # The legal flag comes from .env.production (on). Nothing here sets or overrides it.
+      - name: Build APK
+        env:
+          BUILD_TYPE: ${{ inputs.build_type }}
+          ABI: ${{ inputs.abi }}
+        run: |
+          set -euo pipefail
+          args=(android build --apk true)
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            args+=(--debug)
+          fi
+          if [ "$ABI" != "all" ]; then
+            args+=(--target "$ABI")
+          fi
+          pnpm tauri "${args[@]}"
+
+      - name: Remove release signing material
+        if: always() && inputs.build_type == 'release'
+        run: |
+          rm -f "$RUNNER_TEMP/release.jks" src-tauri/gen/android/keystore.properties
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: risutanium-android-${{ inputs.build_type }}-${{ inputs.abi }}
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,7 +1,7 @@
 import { BlockSetInvalidError, type BlockSetInput } from './blockStore'
 import { presetTemplate, type Database } from './database.svelte'
 import { packedNamesOf } from './packedNames'
-import { RisuSaveEncoder, type toSaveType } from './risuSave'
+import { RisuSaveEncoder, type EncoderReport, type toSaveType } from './risuSave'
 
 /**
  * Gives a decoded backup the containers the encoder reads, so every block of
@@ -44,12 +44,34 @@ function nothingMarked(): toSaveType {
  * the same tree gives the same blocks on any page. The blocks are uncompressed.
  */
 export async function treeToBlockSet(tree: Database): Promise<BlockSetInput> {
+    return (await treeToBlockSetReported(tree)).set
+}
+
+/**
+ * `treeToBlockSet` with what the encoder left out. A caller that installs or
+ * restores the tree refuses on a non-empty `excluded`, because the tree it is
+ * about to install would then hold entries the saved generation does not.
+ * Throws `SaveParkError` when a container is not a list or a character does not
+ * serialize to an object; nothing has been written then.
+ */
+export async function treeToBlockSetReported(tree: Database): Promise<{ set: BlockSetInput, report: EncoderReport }> {
     const encoder = new RisuSaveEncoder()
     await encoder.init(tree, { compression: false })
+    const initReport = encoder.getReport()
     await encoder.set(tree, nothingMarked())
     const layout = encoder.snapshotLayout()
     if (layout === null) {
         throw new BlockSetInvalidError('The encoder produced no layout for the tree.')
     }
-    return { layout, packed: packedNamesOf(tree.characters, encoder.getFrozenKeys()) }
+    const setReport = encoder.getReport()
+    const excluded = [...initReport.excluded]
+    for (const item of setReport.excluded) {
+        if (!excluded.some((seen) => seen.entry === item.entry)) {
+            excluded.push(item)
+        }
+    }
+    return {
+        set: { layout, packed: packedNamesOf(tree.characters, encoder.getFrozenKeys()) },
+        report: { excluded, repairedContainers: initReport.repairedContainers },
+    }
 }

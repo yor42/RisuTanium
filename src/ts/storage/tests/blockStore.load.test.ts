@@ -353,6 +353,17 @@ function jsonValidator(calls: LoadedBlocks[] = []) {
 }
 
 const BAD_CONTENT = makeSet({ characters: [{ chaId: 'alice' }, { chaId: 'bob', data: 'this is not json' }] })
+
+/**
+ * Stores a generation whose `bob` block is framed correctly but holds text that is not JSON. The write
+ * gate refuses such a block, so the bytes are planted after a well-formed generation is stored.
+ */
+async function seedBadContent(store: FakeStore): Promise<string> {
+    const generation = await seedStore(store, makeSet({ characters: [{ chaId: 'alice' }, { chaId: 'bob' }] }))
+    store.plant(characterBlockKey(generation, 'bob'), characterBlock('bob', 'this is not json'))
+    return generation
+}
+
 const GOOD_CONTENT = makeSet({ characters: [{ chaId: 'alice' }, { chaId: 'carol' }] })
 
 describe.each([{ versioned: true }, { versioned: false }])('load() with a validation hook, versioned=$versioned', ({ versioned }) => {
@@ -374,7 +385,7 @@ describe.each([{ versioned: true }, { versioned: false }])('load() with a valida
 
     test('damage from the hook is reported as damaged with the hook\'s items, installs nothing and writes nothing', async () => {
         const store = createFakeStore({ versioned })
-        const generation = await seedStore(store, BAD_CONTENT)
+        const generation = await seedBadContent(store)
         const before = store.mutating().length
         const { owner } = makeOwner(store)
         const result = await owner.load({ validate: jsonValidator() })
@@ -392,7 +403,7 @@ describe.each([{ versioned: true }, { versioned: false }])('load() with a valida
 
     test('after damage from the hook a later load is legal, and succeeds once another writer replaced the state', async () => {
         const store = createFakeStore({ versioned })
-        const damaged = await seedStore(store, BAD_CONTENT)
+        const damaged = await seedBadContent(store)
         const loser = makeOwner(store)
         expect((await loser.owner.load({ validate: jsonValidator() })).kind).toBe('damaged')
         expect((await loser.owner.load({ validate: jsonValidator() })).kind).toBe('damaged')
@@ -461,7 +472,7 @@ describe.each([{ versioned: true }, { versioned: false }])('readCommitted() with
 
     test('reports the hook\'s damage as damaged, on an owner that is live and on one that never loaded', async () => {
         const store = createFakeStore({ versioned })
-        const generation = await seedStore(store, BAD_CONTENT)
+        const generation = await seedBadContent(store)
         const idle = makeOwner(store)
         const idleResult = await idle.owner.readCommitted({ validate: jsonValidator() })
         expect(idleResult).toMatchObject({ kind: 'damaged', generation })

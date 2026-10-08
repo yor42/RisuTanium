@@ -5,31 +5,27 @@
 
   import { language } from 'src/lang'
   import { alertConfirm } from 'src/ts/alert'
-  import { getInlayAssetBlob, listInlayAssets, removeInlayAsset, type InlayAsset } from 'src/ts/process/files/inlays'
+  import { getInlayRender, listInlayAssets, removeInlayAsset, type InlaySummary } from 'src/ts/process/files/inlays'
   import Button from '../UI/GUI/Button.svelte'
   import CheckInput from '../UI/GUI/CheckInput.svelte'
 
   const PAGE_SIZE = 36
 
-  let allAssets = $state<[string, InlayAsset][]>([])
+  let allAssets = $state<[string, InlaySummary][]>([])
   let displayCount = $state(PAGE_SIZE)
   let loading = $state(true)
   let loadMoreSentinel: HTMLDivElement | null = $state(null)
-  // For revoking
-  let previewURLs = $state<Map<string, string>>(new Map())
   let selection = $state<Set<string>>(new SvelteSet())
 
   const displayedAssets = $derived(allAssets.slice(0, displayCount))
   const hasMore = $derived(displayCount < allAssets.length)
   const hasSelection = $derived(selection.size > 0)
 
+  // The render cache owns the URL and revokes it when the inlay is removed; the explorer never revokes it.
   const getPreviewURL = async (id: string) => {
-    if (previewURLs.has(id)) return previewURLs.get(id)!
-    const result = await getInlayAssetBlob(id)
-    if (result) {
-      const url = URL.createObjectURL(result.data)
-      previewURLs.set(id, url)
-      return url
+    const render = await getInlayRender(id)
+    if (render && render.url && (render.type === 'image' || render.type === 'video' || render.type === 'audio')) {
+      return render.url
     }
     return null
   }
@@ -55,10 +51,6 @@
       return
     }
     await removeInlayAsset(id)
-    if (previewURLs.has(id)) {
-      URL.revokeObjectURL(previewURLs.get(id)!)
-      previewURLs.delete(id)
-    }
     selection.delete(id)
     allAssets = allAssets.filter(([assetId]) => assetId !== id)
   }
@@ -71,10 +63,6 @@
     }
     for (const id of ids) {
       await removeInlayAsset(id)
-      if (previewURLs.has(id)) {
-        URL.revokeObjectURL(previewURLs.get(id)!)
-        previewURLs.delete(id)
-      }
     }
     const removed = new Set(ids)
     allAssets = allAssets.filter(([assetId]) => !removed.has(assetId))
@@ -87,11 +75,8 @@
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const getAssetSize = (asset: InlayAsset) => {
-    if (asset.data instanceof Blob) {
-      return formatSize(asset.data.size)
-    }
-    return formatSize(asset.data.length * 0.75) // base64 estimate
+  const getAssetSize = (asset: InlaySummary) => {
+    return asset.size === null ? '' : formatSize(asset.size)
   }
 
   let observer: IntersectionObserver | null = null
@@ -135,7 +120,6 @@
   })
 
   onDestroy(() => {
-    previewURLs.forEach((url) => URL.revokeObjectURL(url))
     observer?.disconnect()
   })
 

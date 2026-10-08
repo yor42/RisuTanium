@@ -1,3 +1,5 @@
+> Historical snapshot of investigation rounds 1–2. This file stays at its original path so its relative links keep their meaning. For current scope, corrections and status, use [Roadmap](Roadmap.md), [Live-State](Live-State.md) and the relevant report. This snapshot is not operative workflow guidance.
+
 # Investigation Summary
 
 **Historical snapshot.** This document records investigation rounds 1 and 2 as they stood at the time each was written. It is superseded for current project state by `Agents/Roadmap.md` (phase/item status), `Agents/README.md` (index) and `Agents/Maintainer-Context.md` (maintainer facts and decisions). Later corrections, fixes, and everything from Phase 1.5 onward are not reflected here except where an inline **[corrected]** marker was added at the time. Two such corrections, dated 2026-09-23, are recorded below where the original claims concerned `AGENTS.md` drift.
