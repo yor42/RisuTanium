@@ -8716,3 +8716,91 @@ Commit the completed and independently verified workflow/configuration/documenta
 **What was decided:** option **"Announce it"**. After a restore that repaired anything, show the same kind of one-time notice the live check uses, giving the counts of entries dropped and ids filled or recovered. Show no notice when nothing was repaired.
 
 **Scope as the Orchestrator described it:** the repairing restore paths are `repairRestoredCharacters` in `restoreReplace.ts` (used by `LoadLocalBackup` and the internal backup) and `bootBlockLoad.ts` (the boot damage-prompt restore). They drop entries that are not characters, fill missing ids, replace unusable ids and recover archived ids from the archived data. `MC-247` D1 had scoped the repair notice to live data only; this decision extends D1 to restores.
+
+---
+
+### MC-249 — Main Campaign, 2026-10-08: sidebar Stage 3 (rail windowing): overscan, scroll-to-active, pass bar; the branch comes into main; commit and push
+
+- **Tag:** decisions (typed messages and `AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed messages and chosen option labels as the Orchestrator listed them in the session's records facts (scratch `records\facts.md`, "Maintainer requests" and "Maintainer decisions", Stage 3). The question texts and the unchosen options are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-232` (the sidebar rework and its stage staging), `MC-130`; Stage 3 commit `9e9ea66b`; merge `0f04ec4d`.
+
+**What was decided:**
+1. **The request (typed):** "sync with main, and start sidebar Stages 3–5". The maintainer also typed "hold stage 3 until note 9 pass". Orchestrator note: Stage 3 was not committed until the Note 9 check had run.
+2. **Overscan:** first "Decide from Note 9 data", then, after the Note 9 data, "1 viewport (Recommended)". The implementation constant is `WINDOW_OVERSCAN_VIEWPORTS = 1` (named in the facts packet).
+3. **Scroll to the active character:** "Smooth when near, jump when far".
+4. **Pass bar:** "Bounded rows + Note 9 check".
+5. **Branch:** "Bring sidebar into main". `feat/sidebar-rework` was merged into `main` as `0f04ec4d`.
+6. **Commit:** "Commit and push (Recommended)". Landed as `9e9ea66b` `feat(sidebar): window the character rail (Stage 3)`, pushed `0f04ec4d..9e9ea66b`.
+
+**Accepted limitations the Orchestrator listed for Stage 3 (observations, not maintainer decisions):** Home leaves 12 px hidden; mid-fling blank rows on first visits (raster); the Android restore's `relaunch()` does not restart the app.
+
+---
+
+### MC-250 — Main Campaign, 2026-10-08: sidebar Stage 4 (phone panel edge swipe and Back), including amendment 1 "Ask Android for its strip"; commit and push
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the chosen option labels as the Orchestrator listed them in the session's records facts (scratch `records\facts.md`, Stage 4). Parenthetical glosses below are the Orchestrator's text in that file, not the maintainer's words. The question texts, the mapping of each label to its question and the unchosen options are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-232` (addendum 2 chose "Edge swipe opens panel" and required the Stage 4 plan to state how the edge swipe coexists with the OS back gesture, and to test it on the Note 9); `MC-249`; Stage 4 commit `bd4ef45b`.
+
+**What was decided (Stage 4):**
+1. "Phone overlay only".
+2. "Inset zone + handle".
+3. "Yes, close it first" (Android Back closes an open panel first).
+4. "Both modes" (3-button and gesture navigation).
+5. "Same as today" (Back with the panel closed, or with an alert open, behaves as before: the app exits).
+6. "Triggers now, follow later" (the swipe triggers open and close now; a finger-following animation is later work; see the Roadmap candidate list).
+
+**Amendment 1 (edge zone against the Android back-gesture strip):** "Ask Android for its strip (Recommended)". The Orchestrator's facts file describes the amendment as asking Android for its back-gesture strip rather than assuming a width.
+
+**Commit:** "Commit and push (Recommended)". Landed as `bd4ef45b` `feat(sidebar): open and close the phone panel by edge swipe; Back closes it (Stage 4)`, 9 files, pushed `9e9ea66b..bd4ef45b`.
+
+**Accepted limitations the Orchestrator listed for Stage 4 (observations, not maintainer decisions):** the triple-touch counter has no `touchcancel` (pre-existing, `hotkey.ts`); reverse landscape with 3-button navigation puts the bar on the left (inset 48, zone [48, 80] past the bar, content drawn under the bar); Android Back from the Settings page exits to the launcher.
+
+---
+
+### MC-251 — Main Campaign, 2026-10-08: sidebar Stage 5 (remembered open folders and scroll, ungroup, delete folder), including amendment 2 "12 px (Recommended)"; commit and push
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the chosen option labels as the Orchestrator listed them in the session's records facts (scratch `records\facts.md`, Stage 5). Parenthetical glosses are the Orchestrator's text in that file. The question texts, the mapping of some labels to their questions and the unchosen options are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-232` (extras "Remember open folders" and "Ungroup / delete folder"), `MC-249`, `MC-250`; Stage 5 commit `8f4a5be6`.
+
+**What was decided (Stage 5):**
+1. **Delete Folder:** "Offer both" (keep the characters, or move them to the trash).
+2. **Memory scope:** "This device only" (`localStorage`; not the database and not backups).
+3. **Remember open folders and scroll:** "Yes, on this device".
+4. **Ungroup placement:** "Where the folder was".
+5. **Amendment 2, rail gap:** "12 px (Recommended)". A fixed 12 px gap between rail rows; a rail too short to scroll changes from 16 px to 12 px.
+6. **Commit:** "Commit and push (Recommended)". Landed as `8f4a5be6` `feat(sidebar): remember open folders and scroll; ungroup and delete folders (Stage 5)`, 28 files, pushed `bd4ef45b..8f4a5be6`.
+
+**Accepted limitations the Orchestrator listed for Stage 5 (observations, not maintainer decisions):** duplicate folder ids plus an order edit during the delete dialog can make the trash target the other folder (accepted); a folder-row rounding residual of 0.48 px per folder row at dpr 2.625 (not observed in the 14-folder test); no automated test guards the gap markup (device probe only); smooth (near) scroll-to-active and content moving under the user while scrolling remain uncovered.
+
+---
+
+### MC-252 — Main Campaign, 2026-10-08: the connected Note 9 is a spare device; its release build holds only synthetic data and may be replaced by a debug build
+
+- **Tag:** decisions (typed messages)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed messages as listed in the session's records facts (scratch `records\facts.md`, "Maintainer requests"); the same fact is in the standing auto-memory "Note 9 is a spare device".
+- **Reasoning:** stated in the quotes.
+- **Alternatives rejected:** none.
+- **Related:** `MC-249` to `MC-251`; the handoff queue item that needed this approval (Live-State).
+
+**What was decided:**
+1. "release build on the note 9 only holds the synthetic test data. thus you can delete it and install the debug build." This is the approval to uninstall the release build that the Live-State and handoff queue said was needed.
+2. "The Note 9 that is currently plugged in is a spare device with no important data and USIM. so you can safely control it through adb or other development tool."
+
+**Scope note (Orchestrator reading, not a maintainer decision):** the approval names the plugged-in Note 9 only. Real data or a different device still need their own approval; the standing rule against hand-editing app state on a device for tests is not lifted by this entry.

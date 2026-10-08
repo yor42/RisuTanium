@@ -189,7 +189,8 @@ This phase is the load-bearing one: it's what Phase 4 (Android) is gated behind,
 **Status (2026-09-30) — Phase 2 is in progress; it has not landed.** Work on it has run since 2026-09-21, and the notes under the items below are the record. Per item, as those notes state it:
 - **Item 1 (module-editor keystroke cost): done on the i9-13900K, best case.** Stage A `f4867e63` and Stage B (2026-09-21) are both marked done. Asset-heavy modules still exceed the frame budget while being edited, and Pi and mobile are unmeasured.
 - **Item 2 (`saveDb()` change-tracking effects): partly done.** The selected-character effect is partitioned (CHORE-01 Stage 2, `fbf799a7`). The top-level part of the effect family (`characterOrder` and the other non-character keys) was not repartitioned by Stage 2.
-- **Item 3 (virtual scrolling): partly done.** The avatar track AV-1 to AV-4 is committed (`64777a34`, `97c3f53a`, `d6ee89db`, `41977ac0`), and so is the chat-list Stage A (`96311c4a`). Real windowing of the chat list, virtual scrolling of the character lists and the sidebar rework are still open.
+- **Item 3 (virtual scrolling): partly done.** The avatar track AV-1 to AV-4 is committed (`64777a34`, `97c3f53a`, `d6ee89db`, `41977ac0`), and so is the chat-list Stage A (`96311c4a`). Real windowing of the chat list, virtual scrolling of the character lists and the sidebar rework are still open. (Updated 2026-10-08: see the next bullet; the sidebar rework is mostly committed.)
+- **Sidebar rework (character rail), status 2026-10-08:** Stages 3, 4 and 5 are committed on `main` and pushed (`MC-249` to `MC-251`): Stage 3, windowing of the rail, `9e9ea66b`; Stage 4, edge swipe opens and closes the phone panel and Android Back closes it first, `bd4ef45b`; Stage 5, remembered open folders and scroll position, ungroup and delete folder, `8f4a5be6` (`feat/sidebar-rework` was merged into `main` as `0f04ec4d`). Technical acceptance rests on the independent gates and the Note 9 passes listed in the ledger (rows 1477 onward); administrative closeout awaits independent verification of the records themselves. **What remains:** real windowing of the chat list, virtual scrolling of the other character lists (grid, list/trash, simple), the Stage 4 finger-following animation, and the follow-up tickets CHORE-135 to CHORE-146 below. Not decided or not done in this rework: filtering hidden characters from the rail (`MC-232` addendum 1 left it to a later stage; no later record settles it). Stages 1, 2a and 2b are committed (`27112f8e`, `8b23f47e`, `e55fb93e`; `MC-235`) and reached main through the merge `0f04ec4d`. This status is by the Orchestrator's facts file; Note 9 figures are single-device, debug-build, synthetic-input measurements.
 - **Item 8 (resident chat data for characters that are not open): in progress.** The memory-footprint work (`MC-119`, `MC-130`, Report 49) addresses the problem this item measures, at the character grain; see the 2026-09-30 note under item 8 (`Reports/49-memory-stage-1-plan.md`). Stage 1 as a whole is not done: step 1 is committed as `2b3dd636` (Report 50, Gate 2 approved at round 3), step 2 as `db49aeeb` (Report 51; Gate 2: round 1 [REJECT], round 2 [APPROVE], round 3 [EDITORIAL]), step 3a (plugin and MCP reads and writes of archived characters) as `bd57aa19` (Report 52; Gate 2: rounds 1 and 2 [REJECT], round 3 [APPROVE]), and step 3b (groups, the Playground's restore, the dataset export, the asset-integrity check and the plugin documentation) as `1b38b5d5` (Report 53; Gate 2: round 1 [REJECT], rounds 2 and 3 [APPROVE]). **Step 4 (the backup: units closed under "refers to", error-text keys, plugin storage of any shape, `value` retention dropped; D13, `MC-147`) is done**, committed as `a6719e35` (Report 55; Gate 2 by `opus-reviewer`: round 1 [REJECT], round 2 [EDITORIAL]). Steps 5, 6 and 7 are done (see the note under item 8's stage 1 below, 2026-10-04). D20's heap projection was not met: 344 MB after boot against 70-76 MB, with modules about 305 MB of it.
 - **Item 4 (size-based compaction): open.** Stage 1 touches it only at the character grain; see the 2026-09-30 note under item 4.
 - **Items 5, 6, 7: no work recorded in this file** (item 7's characters list was folded into item 3 on 2026-09-21). **Item 9 (per-chat save blocks): not started** (its own text says so).
@@ -6399,9 +6400,69 @@ with index -1.
 
 - **Task (the maintainer's answer):** apply safe-area insets on Android, and check the result against the debug build in the Note 9 session (handoff queue item 5; installing the debug build needs the maintainer's approval to uninstall the release build). TODO(evidence): the symptom's screens, the build it was seen on and the mechanism are not in the sources given beyond the one-line description.
 
+### CHORE-135 — Sidebar Stage 4: the panel does not follow the finger
+
+**Status (2026-10-08): open; not scheduled.** Type: feature remainder. Stage 4 chose "Triggers now, follow later" (`MC-250` 6): the swipe triggers open and close, and a finger-following animation was left for later (Maybe-Later QOL-07 (c) remainder).
+
+- **Note (scratch plan notes `sidebar-s4\plan-stage4.md`, session scratch):** the open and close animation is CSS keyframes on the panel's width, and the close waits for `animationend`; a finger-following version needs a transform-based panel, a `dragging` state and a store flip on release, and `animationSpeed` 0 needs an immediate path. Backdrop: see CHORE-136. These are the Stage 4 packet's reading, not re-traced for this entry.
+
+### CHORE-136 — Sidebar backdrop fade names keyframes that do not exist
+
+**Status (2026-10-08): open; found during Stage 4, deliberately not fixed there.** Type: bug (suspected cosmetic).
+
+- **TRACED at `main` `8f4a5be6` (this entry's writer, `src/lib/SideBars/Sidebar.svelte`):** `.sidebar-dark-animation` sets `animation-name: sidebar-dark-transition` and the closing class sets `sidebar-dark-closing-transition`, but the file defines `@keyframes sidebar-dark-animation` and `@keyframes sidebar-dark-closing-animation`; no `@keyframes` carries the names the rules use. The Stage 4 packet reports the backdrop as a static `rgba(0,0,0,.5)`. The visible effect (no fade) was not observed by this entry's writer.
+- **Dependency:** the finger-following backdrop (CHORE-135) must be built new.
+
+### CHORE-137 — Android cold start sometimes hangs on "Loading..." / "Checking Files"
+
+**Status (2026-10-08): open; cause unknown; needs observation without a debugger.** Type: bug, Android, pre-existing.
+
+- **Observations (Orchestrator's facts file: earlier cold-start runs, per the session facts, and the Stage 5 amendment 2 pass, session scratch):** build A hung 3 of 16 starts and build B 1 of 16; seen again 3 times in the amendment 2 pass: on the first launch after install, while CDP polled during boot, and one reload stuck for 14 minutes. Whether the debugger or polling causes it is not established.
+- **Needed:** an observation that does not attach a debugger or poll during boot.
+
+### CHORE-138 — The triple-touch counter has no `touchcancel`
+
+**Status (2026-10-08): open; pre-existing.** Type: bug, low. `src/ts/hotkey.ts` counts touches for the triple-touch gesture and has no `touchcancel` handling (`MC-250` accepted limitation; Stage 4 Gate 2). Checked at `8f4a5be6`: the triple-touch block in `hotkey.ts` (about lines 399-419 at that commit) registers only `touchstart` and `touchend`; a `touchcancel` listener elsewhere in the same file (about line 550) sits in a separate block whose purpose was not traced.
+
+### CHORE-139 — `removeChar` leaves a just-emptied folder in place
+
+**Status (2026-10-08): open; latent.** Type: bug, latent. Stage 5's `trashFolderMembers` calls `checkCharOrder` twice to avoid the effect (Orchestrator's facts file; Stage 5 implementation report, session scratch). TODO(evidence): the `removeChar` trace and a reproducer outside that workaround.
+
+### CHORE-140 — Rail: Home leaves 12 px hidden; verify smooth scroll-to-active into a closed folder
+
+**Status (2026-10-08): open.** Type: verification and bug, low. Stage 3 accepted that Home leaves 12 px hidden (`MC-249`). Scroll-to-active into a closed folder was fixed for instant jumps by Stage 5 amendment 2 (restore errors at or under 0.5 px on the Note 9); the smooth (near) case is uncovered and needs a check.
+
+### CHORE-141 — Android restore's `relaunch()` does not restart the app
+
+**Status (2026-10-08): open; noticed in Stage 3.** Type: bug, Android (`MC-249` accepted limitation). The cause was not investigated in the sources given. TODO(evidence).
+
+### CHORE-142 — `Agents/Tools/generate-and-verify.harness.ts` is broken
+
+**Status (2026-10-08): open.** Type: tooling. Listed in the Orchestrator's facts file without details. TODO(evidence): the failure and the commands that show it.
+
+### CHORE-143 — A ResizeObserver-loop event makes `bootstrap.ts`'s global error handler throw before `alertError`
+
+**Status (2026-10-08): open.** Type: bug, low. Per the Orchestrator's facts file: the handler in `src/ts/bootstrap.ts` reads `event.error.target` when `event.error` is null, so it throws before `alertError` runs; the user sees no alert. TODO(evidence): the trace and the reproduction (not re-traced for this entry).
+
+### CHORE-144 — Test-suite fragilities seen during the sidebar closeout
+
+**Status (2026-10-08): open.** Type: tests. Per the Orchestrator's facts file (investigation `sidebar-s5\final2\flake.md`, session scratch):
+- `backuplocalCharacterIdsExport` "(G) ... byte for byte" (SavePartialLocalBackup) failed once on the Stage 5 snapshot run (1 failed / 12087 passed); not reproduced; Stage 5 is not on its path (the test mocks `src/ts/characters`).
+- `backuplocalEncryptedRefusal` fails under `--sequence.shuffle`.
+- `nodeHttpStore` failed once with ENOBUFS under load (full suite on the real tree: 4 of 5 clean, 12088 passed in a clean run).
+- `msgpackr` 1.10.1 `utf8Write` threw `ERR_BUFFER_OUT_OF_BOUNDS` on Node 24 in a standalone script; not checked inside vitest or the app.
+
+### CHORE-145 — Android edge-to-edge: the rail's Plus button at the list end is partly under the 3-button navigation bar
+
+**Status (2026-10-08): open.** Type: bug, Android layout. Related to CHORE-134 (safe-area insets). Source: the Orchestrator's facts file; TODO(evidence): the screenshot or measurement.
+
+### CHORE-146 — Possible Vietnamese wording tweak for "Ungroup" ("Bỏ nhóm")
+
+**Status (2026-10-08): open; maintainer or translator call.** Type: translation. Not a decision. Translator owns non-English locales (`MC-058`).
+
 ### Candidate tickets, not yet numbered (2026-10-04)
 
-Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, and the next free number is CHORE-135.
+Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, and the next free number is CHORE-147.
 
 - **A V2.1 plugin that switches itself off through the plugin API's `setDatabase` keeps running with wrapped module asset lists (G2-4; Stage A Gate 2 round 1, ledger row 1057; `b1d2804b`'s message).** SUSPECTED only, not reproduced. The real `setDatabase` would wrap the lists while the plugin's code is still running, and a later in-place push by that plugin would go untracked. No such upstream plugin is known.
 - **An unparseable or non-object `__revisions.json` on the Node server (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message).** Deferred. The server still starts as if the snapshot were empty (the log is replayed, and a non-object takes the same path with the error logged), and the next compaction overwrites the file. The log does not worsen this. Possible fixes named in the commit message: rename the bad file aside and seed a high revision floor so stale devices get 409.
