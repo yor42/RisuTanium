@@ -204,6 +204,7 @@ import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
 import Sidebar from '../SideBars/Sidebar.svelte'
+import { installGeometry, settleFrame, type Geometry } from '../SideBars/sidebarDnd.testKit'
 import AlertComp from './AlertComp.svelte'
 
 //#region fake IntersectionObserver (test seam)
@@ -582,6 +583,19 @@ function mountAlertComp(): { target: HTMLElement; app: Record<string, unknown> }
     return { target, app }
 }
 
+/** Characters in the Sidebar windowing fixtures: enough that the last row is far outside a 300 px window. */
+const SB_N = 40
+
+/** Mounts the Sidebar with a 300 px fake rail viewport, so the rail mounts only the window around it. */
+async function mountWindowedSidebar(): Promise<{ target: HTMLElement; app: Record<string, unknown>; geo: Geometry }> {
+    const { target, app } = mountSidebar()
+    await settle(target)
+    const geo = installGeometry(target, 300)!
+    await settleFrame()
+    await settle(target)
+    return { target, app, geo }
+}
+
 async function teardown(target: HTMLElement, app: Record<string, unknown>): Promise<void> {
     await unmount(app as never)
     target.remove()
@@ -704,23 +718,23 @@ describe('v1: only the fake-reported-intersecting items resolve, per layout', ()
         await teardown(target, app)
     })
 
-    test('Sidebar (Sidebar.svelte)', async () => {
-        DBState.db = buildSidebarDb(V_N)
+    test('Sidebar (Sidebar.svelte): only the rows in the scroll window are mounted, and each one requests its own avatar', async () => {
+        DBState.db = buildSidebarDb(SB_N)
         getFileSrcSpy.mockClear()
-        const { target, app } = mountSidebar()
-        await settle(target)
-        getFileSrcSpy.mockClear()
+        const { target, app } = await mountWindowedSidebar()
 
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-
-        // Same invariant as the grid case above, for Sidebar's own
-        // `{@const avatarSrc = ... getCharImage(imgPath, "plain") ...}` avatars.
-        expect(getFileSrcSpy.mock.calls.length).toBe(V_K)
+        // The rail mounts the window around the viewport instead of gating a mounted
+        // list on an observer: a mounted row resolves its own avatar, a row outside it does not.
+        const mountedRows = target.querySelectorAll('[data-char-id]').length
+        const requested = new Set(getFileSrcSpy.mock.calls.map((c) => c[0]))
+        expect(mountedRows).toBeGreaterThan(0)
+        expect(mountedRows).toBeLessThan(SB_N)
+        // Rows mounted before the container reported its height (the unmeasured window) may
+        // also have asked, so the lookups cover at least the mounted rows and never the whole list.
+        expect(requested.size).toBeGreaterThanOrEqual(mountedRows)
+        expect(requested.size).toBeLessThan(SB_N)
+        expect(requested.has('assets/sb-0.png')).toBe(true)
+        expect(requested.has(`assets/sb-${SB_N - 1}.png`)).toBe(false)
 
         await teardown(target, app)
     })
@@ -774,25 +788,21 @@ describe('v2: firing a single intersecting entry for item j resolves only j', ()
         await teardown(target, app)
     })
 
-    test('Sidebar -- item j renders its loc= path as the <img> src', async () => {
-        DBState.db = buildSidebarDb(V_N)
+    test('Sidebar -- a row that scrolls into the window renders its loc= path as the <img> src', async () => {
+        DBState.db = buildSidebarDb(SB_N)
         getFileSrcSpy.mockClear()
-        const { target, app } = mountSidebar()
-        await settle(target)
+        const { target, app, geo } = await mountWindowedSidebar()
 
-        // Nothing has fired yet, so nothing is resolved.
-        expect(target.querySelectorAll('img.sidebar-avatar').length).toBe(0)
+        const j = 30
+        const far = DBState.db.characters[j].chaId
+        // Outside the window the row is not mounted: no avatar element and no lookup.
+        expect(target.querySelector(`[data-char-id="${far}"]`)).toBeNull()
 
-        const j = 3
-        const itemTarget = orderedTargets(instancesByMargin(NEAR_MARGIN))[j]
-        if (itemTarget) {
-            fireOn(instancesByMargin(NEAR_MARGIN), [{ target: itemTarget, isIntersecting: true }])
-            await settle(target)
-        }
+        await geo.scrollAndSettle(16 + j * 72)
 
-        const imgs = Array.from(target.querySelectorAll('img.sidebar-avatar')) as HTMLImageElement[]
-        expect(imgs.length).toBe(1)
-        expect(imgs[0].getAttribute('src')).toBe(`data:mock-image;loc=${DBState.db.characters[j].image}`)
+        const img = target.querySelector(`[data-char-id="${far}"] img.sidebar-avatar`) as HTMLImageElement | null
+        expect(img).not.toBeNull()
+        expect(img!.getAttribute('src')).toBe(`data:mock-image;loc=${DBState.db.characters[j].image}`)
 
         await teardown(target, app)
     })
@@ -978,28 +988,24 @@ describe('v9: observer registry lifecycle across repeated mount/unmount and dial
     })
 })
 
-describe('v10: not-yet-visible Sidebar items render the no-src placeholder', () => {
-    test('sized and classed like the resolved state, without having started the async lookup', async () => {
-        DBState.db = buildSidebarDb(V_N)
+describe('v10: Sidebar rows outside the window do no avatar work', () => {
+    test('a mounted row keeps the avatar size and classes, and the lookup of a row outside the window never starts', async () => {
+        DBState.db = buildSidebarDb(SB_N)
         getFileSrcSpy.mockClear()
-        const { target, app } = mountSidebar()
-        await settle(target)
+        const { target, app } = await mountWindowedSidebar()
 
-        // Guard: SidebarAvatar's pending-await placeholder and its no-src
-        // placeholder share the same size and classes as the eventually-resolved
-        // <img>, whichever of the two placeholder branches is live.
-        const placeholder = target.querySelector('[data-char-id] .sidebar-avatar') as HTMLElement | null
-        expect(placeholder).toBeTruthy()
-        expect(placeholder!.style.width).toBe('56px')
-        expect(placeholder!.style.height).toBe('56px')
-        expect(placeholder!.classList.contains('sidebar-avatar')).toBe(true)
-        expect(placeholder!.classList.contains('rounded-md')).toBe(true)
+        // Guard: a mounted avatar, resolved or still pending, has the 56 px size and classes.
+        const avatar = target.querySelector('[data-char-id] .sidebar-avatar') as HTMLElement | null
+        expect(avatar).toBeTruthy()
+        expect(avatar!.style.width).toBe('56px')
+        expect(avatar!.style.height).toBe('56px')
+        expect(avatar!.classList.contains('sidebar-avatar')).toBe(true)
+        expect(avatar!.classList.contains('rounded-md')).toBe(true)
 
-        // Not-yet-visible items defer the lookup itself (not just the DOM it
-        // feeds): item 0's async lookup has not started, landing in
-        // SidebarAvatar's literal no-src branch (`src` itself undefined)
-        // rather than its pending-await branch.
-        expect(getFileSrcSpy.mock.calls.some((c) => c[0] === DBState.db.characters[0].image)).toBe(false)
+        // A row outside the window is not mounted, so its lookup (not just its DOM) never starts.
+        const farImage = DBState.db.characters[SB_N - 1].image
+        expect(target.querySelector(`[data-char-id="${DBState.db.characters[SB_N - 1].chaId}"]`)).toBeNull()
+        expect(getFileSrcSpy.mock.calls.some((c) => c[0] === farImage)).toBe(false)
 
         await teardown(target, app)
     })
@@ -1318,27 +1324,16 @@ describe('v12: entries must leave the visible set when items unmount', () => {
         })
     })
 
-    test('Sidebar folder members need a fresh near entry after close/reopen; top-level items stay resolved', async () => {
+    test('Sidebar folder members mount and resolve when the folder opens, unmount when it closes, and resolve again on reopen; top-level items stay resolved', async () => {
         DBState.db = buildSidebarFolderDb(2, 3)
         getFileSrcSpy.mockClear()
-        const { target, app } = mountSidebar()
-        await settle(target)
-        getFileSrcSpy.mockClear()
+        const { target, app } = await mountWindowedSidebar()
 
-        // Resolve the top-level items via their own near entries. There are
-        // three top-level `use:nearViewport` targets here, not two: Sidebar's
-        // outer wrapping div (:584) is used for BOTH `normal` characters and the
-        // folder header itself (:589-591 route the folder's own visibility into
-        // `visibleFolderIds`), so the folder row is a near-margin target too,
-        // alongside the 2 top-level characters.
-        const topTargets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        expect(topTargets.length).toBe(3)
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            topTargets.map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-        expect((Array.from(target.querySelectorAll('img.sidebar-avatar')) as HTMLImageElement[]).length).toBe(2)
+        // The two top-level characters resolve at mount; the closed folder's members
+        // are not mounted and request nothing.
+        const topImgs = Array.from(target.querySelectorAll('img.sidebar-avatar')) as HTMLImageElement[]
+        expect(topImgs.length).toBe(2)
+        expect(getFileSrcSpy.mock.calls.some((c) => String(c[0]).startsWith('assets/sb-mem-'))).toBe(false)
 
         // Open the folder. The folder's own toggle avatar is the one
         // `span.avatar` with no `data-char-id` (normal items and folder members
@@ -1353,37 +1348,21 @@ describe('v12: entries must leave the visible set when items unmount', () => {
         folderAvatar.click()
         await settle(target)
 
-        const memberTargets = orderedTargets(instancesByMargin(NEAR_MARGIN)).filter((t) => !topTargets.includes(t))
-        expect(memberTargets.length).toBe(3)
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            memberTargets.map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-        expect((Array.from(target.querySelectorAll('img.sidebar-avatar')) as HTMLImageElement[]).length).toBe(5)
+        // The mounted members resolve their own avatars without any observer report.
+        const imgCount = (): number => target.querySelectorAll('img.sidebar-avatar').length
+        expect(imgCount()).toBe(5)
 
-        // Close, then reopen the folder. No new entries fired for the reopened
-        // members.
+        // Close: the members unmount. Reopen: fresh member nodes mount and resolve again.
         folderAvatar.click()
         await settle(target)
+        expect(imgCount()).toBe(2)
         folderAvatar.click()
         await settle(target)
+        expect(imgCount()).toBe(5)
 
-        // `nearViewport`'s `destroy()` calls `onChange(false)`, removing the
-        // closed members' indices from `visibleCharIndices` (shared by
-        // top-level items and folder members). Reopening remounts fresh
-        // member nodes that need their own fresh near entry.
-        expect((Array.from(target.querySelectorAll('img.sidebar-avatar')) as HTMLImageElement[]).length).toBe(2)
-
-        // Firing a fresh near entry for the reopened members resolves them
-        // again; the top-level items, never unmounted, are untouched throughout.
-        const reopenTargets = orderedTargets(instancesByMargin(NEAR_MARGIN)).filter((t) => !topTargets.includes(t))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            reopenTargets.map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-        expect((Array.from(target.querySelectorAll('img.sidebar-avatar')) as HTMLImageElement[]).length).toBe(5)
+        // The top-level rows were never unmounted.
+        const topNow = Array.from(target.querySelectorAll('img.sidebar-avatar')).filter((img) => topImgs.includes(img as HTMLImageElement))
+        expect(topNow.length).toBe(2)
 
         await teardown(target, app)
     })

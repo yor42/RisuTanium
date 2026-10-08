@@ -75,6 +75,12 @@ export interface RailHost {
     setScrollTop(top: number): void
     captureTake(pointerId: number): void
     captureRelease(pointerId: number): void
+    /**
+     * A press on `source` was recorded, before `onSession(true)`. The host keeps that row
+     * mounted until `onSession(false)`, so a press that scrolls the rail before it lifts still
+     * has its source row when the drag starts.
+     */
+    onPress?(source: ItemRef): void
     /** A press is pending or a drag is running (`true`), or neither remains (`false`). */
     onSession(active: boolean): void
     onLift(): void
@@ -200,6 +206,7 @@ export class RailDrag {
         this.startY = this.y = e.clientY
         this.moved = false
         this.phase = 'pressed'
+        this.host.onPress?.(this.source)
         this.host.onSession(true)
         if (this.touchLike) {
             this.longPressTimer = this.env.setTimer(() => {

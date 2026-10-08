@@ -109,14 +109,31 @@ export interface Geometry {
     readonly scrollTop: number
     /** Sets the scroll position and fires the container's `scroll` event. */
     scrollTo(top: number): void
+    /**
+     * `scrollTo`, then waits for the animation frame in which the rail reads the new position
+     * and for the render that follows. Needs real animation frames.
+     */
+    scrollAndSettle(top: number): Promise<void>
+    /** Like `display: none`: the container reports no height and a scroll position of 0. */
+    hide(): void
+    /**
+     * Undoes `hide`. The container is back at the scroll position it had, or at `scrollTop`
+     * when given, set without a scroll event (a browser may restore a position silently).
+     */
+    show(scrollTop?: number): void
+}
+
+/** Resolves after the next animation frame and the render that follows it. */
+export async function settleFrame(): Promise<void> {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await defaultSettle()
 }
 
 const geometries = new WeakMap<HTMLElement, Geometry>()
 
-function lastRailBottom(el: HTMLElement): number {
-    const items = Array.from(el.querySelectorAll<HTMLElement>('[data-rail-y]'))
-    const last = items.at(-1)
-    return last ? Number(last.getAttribute('data-rail-y')) + Number(last.getAttribute('data-rail-h')) : 0
+/** The model's total height, which the rail renders on its scroll container: the rows that are mounted are only a window of it. */
+function railTotal(el: HTMLElement): number {
+    return Number(el.getAttribute('data-rail-total') ?? 0)
 }
 
 /** Gives the rail's scroll container a rect and scroll geometry. Returns null on a DOM without the pointer rail. */
@@ -126,6 +143,7 @@ export function installGeometry(root: HTMLElement, height = 2000): Geometry | nu
         return null
     }
     let scrollTop = 0
+    let hidden = false
     const geometry: Geometry = {
         el,
         height,
@@ -136,21 +154,36 @@ export function installGeometry(root: HTMLElement, height = 2000): Geometry | nu
             scrollTop = top
             el.dispatchEvent(new Event('scroll'))
         },
+        async scrollAndSettle(top: number) {
+            geometry.scrollTo(top)
+            await settleFrame()
+        },
+        hide() {
+            hidden = true
+        },
+        show(restoredTop?: number) {
+            hidden = false
+            if (restoredTop !== undefined) {
+                scrollTop = restoredTop
+            }
+        },
     }
     Object.defineProperty(el, 'getBoundingClientRect', {
         configurable: true,
         value: () => ({ left: 0, top: 0, width: COLUMN_WIDTH, height, right: COLUMN_WIDTH, bottom: height, x: 0, y: 0, toJSON: () => ({}) }),
     })
-    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => height })
-    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => Math.max(lastRailBottom(el), height) })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => (hidden ? 0 : height) })
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => (hidden ? 0 : Math.max(railTotal(el), height)) })
     Object.defineProperty(el, 'scrollTop', {
         configurable: true,
-        get: () => scrollTop,
+        get: () => (hidden ? 0 : scrollTop),
         set: (value: number) => {
             scrollTop = value
         },
     })
     geometries.set(root, geometry)
+    // The rail reads its viewport on a scroll event; the container is now laid out.
+    el.dispatchEvent(new Event('scroll'))
     return geometry
 }
 

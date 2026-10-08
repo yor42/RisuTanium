@@ -1,22 +1,21 @@
 // @vitest-environment happy-dom
 
 /**
- * A character moved in the sidebar keeps its avatar state with its row: dragging a
- * character from far down the list to the top shows its avatar without any scroll, because
- * the row moves as a unit and the observer reports it entering the viewport.
+ * A character moved in the sidebar keeps its avatar with its row: a character moved from far
+ * down the list to the top shows its avatar without any scroll, because the rail mounts the
+ * rows of the scroll window and a mounted row resolves its own avatar. A row outside the
+ * window is not mounted at all and does no avatar work.
  *
- * Mounts the REAL `Sidebar.svelte`. The `IntersectionObserver` is a fake that decides
- * intersection by DOM position: after each flush the test calls `report(k)`, and every
- * observed element among the first `k` in document order is reported as intersecting, once
- * per change, exactly as a browser reports a node that moves into view. The far band never
- * releases, so only the near band decides what resolves.
+ * Mounts the REAL `Sidebar.svelte` with a short fake viewport (`installGeometry`), so with
+ * 40 characters the row of `c30` starts outside the window. The order is changed directly in
+ * the database, the same write the keyboard move and a drop end in.
  *
  * MOCKED: storage, platform, `checkCharOrder`, `getFileSrc` (a counting spy), the avatar
  * thumbnail lookup (always "no thumbnail"), `changeChar`.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
-import { describe, test, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { RisuEnvironmentLabel } from '../../ts/platform'
 
@@ -136,71 +135,12 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => ({
 
 import { DBState } from '../../ts/stores.svelte'
 import Sidebar from './Sidebar.svelte'
-import { charRow, dragOnto, installGeometry, topGaps } from './sidebarDnd.testKit'
+import { defaultSettle, installGeometry, scrollerOf, settleFrame } from './sidebarDnd.testKit'
 
-//#region position-based fake IntersectionObserver
-
-const NEAR = '100% 0px'
-
-class PositionalIntersectionObserver implements Pick<IntersectionObserver, 'observe' | 'unobserve' | 'disconnect' | 'takeRecords'> {
-    static instances: PositionalIntersectionObserver[] = []
-
-    readonly rootMargin: string
-    readonly observed = new Set<Element>()
-    private readonly reported = new Map<Element, boolean>()
-
-    constructor(private readonly callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
-        this.rootMargin = options?.rootMargin ?? '0px'
-        PositionalIntersectionObserver.instances.push(this)
-    }
-
-    observe(target: Element): void {
-        this.observed.add(target)
-    }
-
-    unobserve(target: Element): void {
-        this.observed.delete(target)
-        this.reported.delete(target)
-    }
-
-    disconnect(): void {
-        this.observed.clear()
-        this.reported.clear()
-    }
-
-    takeRecords(): IntersectionObserverEntry[] {
-        return []
-    }
-
-    /** Reports every observed element whose intersection state changed since the last report. */
-    report(windowSize: number): void {
-        const ordered = Array.from(this.observed).sort((a, b) =>
-            a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
-        )
-        const changed: IntersectionObserverEntry[] = []
-        ordered.forEach((el, position) => {
-            const isIntersecting = this.rootMargin === NEAR ? position < windowSize : true
-            if (this.reported.get(el) !== isIntersecting) {
-                this.reported.set(el, isIntersecting)
-                changed.push({ target: el, isIntersecting, intersectionRatio: isIntersecting ? 1 : 0 } as IntersectionObserverEntry)
-            }
-        })
-        if (changed.length > 0) {
-            this.callback(changed, this as unknown as IntersectionObserver)
-        }
-    }
-}
-
-function report(windowSize: number): void {
-    for (const inst of PositionalIntersectionObserver.instances) {
-        inst.report(windowSize)
-    }
-}
-
-//#endregion
-
-const N = 8
-const WINDOW = 3
+const N = 40
+/** Short enough that the row of `FAR` starts outside the window: viewport 300 plus 300 overscan reaches about row 12. */
+const VIEWPORT = 300
+const FAR = 'c30'
 
 function setDb(): void {
     const characters = Array.from({ length: N }, (_, i) => ({
@@ -233,25 +173,9 @@ async function settle(): Promise<void> {
     }
 }
 
-/** One browser frame: flush, let the observer report positions, flush the reaction. */
-async function frame(): Promise<void> {
-    await settle()
-    report(WINDOW)
-    await settle()
-}
-
 let mounted: { target: HTMLElement; app: Record<string, unknown> } | null = null
 
-beforeAll(() => {
-    vi.stubGlobal('IntersectionObserver', PositionalIntersectionObserver)
-})
-
-afterAll(() => {
-    vi.unstubAllGlobals()
-})
-
 beforeEach(() => {
-    PositionalIntersectionObserver.instances.length = 0
     getFileSrcSpy.mockClear()
 })
 
@@ -265,54 +189,65 @@ afterEach(async () => {
 
 const avatarSrc = (t: HTMLElement, id: string): string | null =>
     t.querySelector(`[data-char-id="${id}"] img.sidebar-avatar`)?.getAttribute('src') ?? null
+const isMounted = (t: HTMLElement, id: string): boolean => t.querySelector(`[data-char-id="${id}"]`) !== null
+const mountedIds = (t: HTMLElement): string[] => Array.from(t.querySelectorAll('[data-char-id]')).map((e) => e.getAttribute('data-char-id')!)
 
 async function mountSidebar(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(Sidebar, { target, props: {} }) as unknown as Record<string, unknown>
     mounted = { target, app }
-    await frame()
-    installGeometry(target)
+    await settle()
+    installGeometry(target, VIEWPORT)
+    await settleFrame()
+    await defaultSettle()
     return target
 }
 
-/** Drags src onto dst, letting the observer report positions after every step. */
-async function dragTo(src: HTMLElement, dst: HTMLElement): Promise<void> {
-    await dragOnto(mounted!.target, src, dst, { settle: frame })
+/** Moves a character to the top of the list the way every order write ends: by assigning the order. */
+async function moveToTop(id: string): Promise<void> {
+    const order = DBState.db.characterOrder as string[]
+    DBState.db.characterOrder = [id, ...order.filter((o) => o !== id)]
+    await settleFrame()
+    await settle()
 }
 
 describe('avatar state moves with the row', () => {
-    test('guard: only the rows the observer reported as near resolve their avatar', async () => {
+    test('guard: a row inside the window resolves its avatar and a row outside it is not mounted', async () => {
         setDb()
         const t = await mountSidebar()
         expect(avatarSrc(t, 'c0')).toBe('data:mock-image;loc=assets/c0.png')
         expect(avatarSrc(t, 'c2')).toBe('data:mock-image;loc=assets/c2.png')
-        expect(avatarSrc(t, 'c3')).toBeNull()
-        expect(avatarSrc(t, 'c7')).toBeNull()
+        expect(isMounted(t, FAR)).toBe(false)
+        expect(isMounted(t, 'c39')).toBe(false)
+        expect(scrollerOf(t).querySelectorAll('[data-rail-entry]').length).toBeLessThan(N)
     })
 
-    test('regression reproducer: a character moved from far down to the top shows its avatar without a scroll', async () => {
+    test('guard: a character moved from far down to the top shows its avatar without a scroll', async () => {
         setDb()
         const t = await mountSidebar()
-        expect(avatarSrc(t, 'c7')).toBeNull()
+        expect(isMounted(t, FAR)).toBe(false)
 
-        await dragTo(charRow(t, 'c7'), topGaps(t)[0])
+        await moveToTop(FAR)
 
-        const rows = Array.from(t.querySelectorAll('[data-char-id]')).map((e) => e.getAttribute('data-char-id'))
-        expect(rows.slice(0, 3)).toEqual(['c7', 'c0', 'c1'])
-        expect(avatarSrc(t, 'c7')).toBe('data:mock-image;loc=assets/c7.png')
+        expect(mountedIds(t).slice(0, 3)).toEqual([FAR, 'c0', 'c1'])
+        expect(avatarSrc(t, FAR)).toBe('data:mock-image;loc=assets/c30.png')
         expect(avatarSrc(t, 'c0')).toBe('data:mock-image;loc=assets/c0.png')
     })
 
-    test('guard: a character that stays out of view stays unresolved after another row moves', async () => {
+    test('guard: a character that stays outside the window stays unmounted after another row moves', async () => {
         setDb()
         const t = await mountSidebar()
-        await dragTo(charRow(t, 'c7'), topGaps(t)[0])
-        expect(avatarSrc(t, 'c6')).toBeNull()
-        expect(avatarSrc(t, 'c5')).toBeNull()
+        getFileSrcSpy.mockClear()
+        await moveToTop(FAR)
+        expect(isMounted(t, 'c29')).toBe(false)
+        expect(isMounted(t, 'c28')).toBe(false)
+        const resolved = getFileSrcSpy.mock.calls.map((call) => call[0])
+        expect(resolved).not.toContain('assets/c29.png')
+        expect(resolved).not.toContain('assets/c28.png')
     })
 
-    test('guard: a folder row near the viewport loads its background image', async () => {
+    test('guard: a folder row inside the window loads its background image', async () => {
         setDb()
         const db = DBState.db as unknown as { characterOrder: Array<string | { id: string; name: string; color: string; data: string[]; imgFile?: string }> }
         db.characterOrder = [{ id: 'f1', name: 'Folder', color: '', data: ['c0'], imgFile: 'assets/folder.png' }, 'c1', 'c2']
@@ -320,4 +255,5 @@ describe('avatar state moves with the row', () => {
         const folderAvatar = Array.from(t.querySelectorAll<HTMLElement>('span.avatar')).find((a) => !a.hasAttribute('data-char-id'))!
         const bg = folderAvatar.querySelector<HTMLElement>('.sidebar-avatar')!
         expect(bg.style.backgroundImage).toContain('data:mock-image;loc=assets/folder.png')
-    })})
+    })
+})

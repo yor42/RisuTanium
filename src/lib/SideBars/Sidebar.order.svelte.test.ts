@@ -165,6 +165,7 @@ import Sidebar from './Sidebar.svelte'
 import { MERGE_DWELL_MS } from './railConstants'
 import {
     allRows as draggables,
+    boxOf,
     charRow,
     dragOnto,
     fireNative,
@@ -501,26 +502,46 @@ describe('guard: sidebar features', () => {
         expect(draggables(target)).toHaveLength(1)
     })
 
-    test('scrollToActiveCharacter opens the folder that holds the selected character and scrolls to it', async () => {
+    // A short viewport so the model offset of the member row is beyond the first screen.
+    const ACTIVE_VIEWPORT = 200
+
+    async function scrollToActiveMember(animationSpeed: number | undefined) {
         setDb(['A', folderOf('f1', ['B', 'C'])], LETTERS)
-        const scroll = vi.fn()
-        const original = Element.prototype.scrollIntoView
-        Element.prototype.scrollIntoView = scroll
-        try {
-            const { target } = await mountSidebar()
-            expect(draggables(target)).toHaveLength(2)
-            // The handler reads the store synchronously; the selection is cleared again before any
-            // flush so the chat panel for the selected character is never rendered.
-            selectedCharID.set(2)
-            window.dispatchEvent(new Event('scrollToActiveCharacter'))
-            selectedCharID.set(-1)
-            await settle()
-            expect(draggables(target)).toHaveLength(4)
-            await new Promise((r) => setTimeout(r, 150))
-            expect(scroll).toHaveBeenCalledTimes(1)
-        } finally {
-            Element.prototype.scrollIntoView = original
+        if (animationSpeed !== undefined) {
+            ;(DBState.db as unknown as { animationSpeed: number }).animationSpeed = animationSpeed
         }
+        const { target } = await mountSidebar()
+        const geo = installGeometry(target, ACTIVE_VIEWPORT)!
+        const scroller = target.querySelector<HTMLElement>('[data-rail-scroll]')!
+        const scrollTo = vi.fn()
+        Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollTo })
+        await settleLong()
+        expect(draggables(target)).toHaveLength(2)
+        // The handler reads the store synchronously; the selection is cleared again before any
+        // flush so the chat panel for the selected character is never rendered.
+        selectedCharID.set(2)
+        window.dispatchEvent(new Event('scrollToActiveCharacter'))
+        selectedCharID.set(-1)
+        await settleLong()
+        expect(draggables(target)).toHaveLength(4)
+        const row = boxOf(charRow(target, 'C'))
+        const total = Number(scroller.getAttribute('data-rail-total'))
+        const expected = Math.min(row.y, total - ACTIVE_VIEWPORT)
+        expect(expected).toBeGreaterThan(0)
+        return { geo, scrollTo, expected }
+    }
+
+    test('scrollToActiveCharacter opens the folder that holds the selected character and animates to the model offset when it is near', async () => {
+        const { geo, scrollTo, expected } = await scrollToActiveMember(undefined)
+        expect(scrollTo).toHaveBeenCalledTimes(1)
+        expect(scrollTo).toHaveBeenCalledWith({ top: expected, behavior: 'smooth' })
+        expect(geo.scrollTop).toBe(0)
+    })
+
+    test('scrollToActiveCharacter jumps to the model offset when animations are off', async () => {
+        const { geo, scrollTo, expected } = await scrollToActiveMember(0)
+        expect(scrollTo).not.toHaveBeenCalled()
+        expect(geo.scrollTop).toBe(expected)
     })
 
     test('an OS file drag over the rail is not intercepted', async () => {

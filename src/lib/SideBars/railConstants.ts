@@ -47,6 +47,21 @@ export const DEFAULT_HEIGHTS = {
     plus: 56,
 } as const
 
+/**
+ * The rail mounts the rows inside the scroll viewport plus this many viewport heights above
+ * and below it. It is the one knob for how far ahead rows are ready before a fling reaches
+ * them: larger means fewer blank frames and more mounted rows.
+ */
+export const WINDOW_OVERSCAN_VIEWPORTS = 1
+/** Floor of the overscan per side, in default character rows, so a tiny viewport still has a band. */
+export const WINDOW_MIN_OVERSCAN_ROWS = 2
+/** Longest a reveal pin may outlive its scroll when neither arrival nor focus releases it. */
+export const REVEAL_PIN_TIMEOUT_MS = 1000
+/** Viewport height assumed until the scroll container has reported a real one and the window has none. */
+export const UNMEASURED_VIEWPORT_PX = 800
+/** Scroll-to-active animates when the target is at most this many viewport heights away, and jumps beyond. */
+export const SCROLL_SMOOTH_MAX_VIEWPORTS = 2
+
 export function edgeBandPx(containerHeight: number): number {
     return Math.min(EDGE_BAND_MAX_PX, EDGE_BAND_FRACTION * containerHeight)
 }

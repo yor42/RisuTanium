@@ -15,10 +15,8 @@
   import { beginBusy } from "src/ts/process/memory/busyActions";
   import { alertInput, alertSelect } from "src/ts/alert";
   import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
-  import { nearViewport } from "src/ts/gui/nearViewport.svelte";
   import { setRailTooltipsSuppressed, tooltipRail } from "src/ts/gui/tooltip";
   import { keyEventBlocked, keysBlockedNow } from "src/ts/keyEventBlocked";
-  import { SvelteMap } from "svelte/reactivity";
   import type { folder } from "src/ts/storage/database.svelte";
   import {
     editFolder,
@@ -42,6 +40,15 @@
     gapKey,
     type RailEntry,
   } from "./railLayout";
+  import {
+    DEFAULT_HEIGHTS,
+    REVEAL_PIN_TIMEOUT_MS,
+    SCROLL_SMOOTH_MAX_VIEWPORTS,
+    UNMEASURED_VIEWPORT_PX,
+    WINDOW_MIN_OVERSCAN_ROWS,
+    WINDOW_OVERSCAN_VIEWPORTS,
+  } from "./railConstants";
+  import { buildSlices, computeWindow } from "./railWindow";
   import { NO_TARGET, type Target } from "./railTarget";
   import { RailDrag, type RailHost } from "./railDrag";
   import { bindRail, type RailBinding } from "./railBinding";
@@ -71,14 +78,6 @@
   let charImages: sortType[] = $state([]);
   let IconRounded = $state(false)
   let openFolders:string[] = $state([])
-  // Row keys (unique per row, see `refKey`) of the rows near the sidebar's own
-  // scroll viewport, each mapped to its owning element. A row keeps its key
-  // when it moves, so its avatar state moves with it. `nearViewport`'s destroy
-  // calls `onChange(false, node)` on every unmount, including a folder
-  // member's when its folder closes; mapping to the owning element means that
-  // release only clears a key if `node` still owns it, so an unmount can never
-  // clear a different, still-visible row that was given the same key.
-  let visibleRows = new SvelteMap<string, Element>()
 
   $effect(() => {
     let newCharImages: sortType[] = [];
@@ -131,40 +130,27 @@
     }
   })
 
-  function scrollToActiveCharacter() {
-    const selectedId = $selectedCharID
-    if (selectedId === -1) return
-
-    const characterId = DBState.db.characters[selectedId]?.chaId
-    if (!characterId) return
-
-    let targetFolderId: string | null = null
+  // The selected character's row is the one `selectedKey` names. A folder that owns it opens
+  // first, so the layout holds the row, then the rail scrolls it to the top: animated while it
+  // is within SCROLL_SMOOTH_MAX_VIEWPORTS viewports, a jump beyond that or with animations off.
+  async function scrollToActiveCharacter() {
+    const key = keyOfSelected($selectedCharID)
+    if (key === null) return
 
     for (const item of charImages) {
-      if (item.type === 'folder') {
-        const foundChar = item.folder.find(c =>
-          DBState.db.characters[c.index]?.chaId === characterId
-        )
-        if (foundChar) {
-          targetFolderId = item.id
-          break
+      if (item.type === 'folder' && item.folder.some((member) => member.key === key)) {
+        if (!openFolders.includes(item.id)) {
+          openFolders.push(item.id)
         }
+        break
       }
     }
+    await tick()
 
-    if (targetFolderId && !openFolders.includes(targetFolderId)) {
-      openFolders.push(targetFolderId)
-    }
-
-    setTimeout(() => {
-      const activeElement = document.querySelector(`[data-char-id="${characterId}"]`)
-      if (activeElement) {
-        activeElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        })
-      }
-    }, 100)
+    const target = scrollTargetFor(key, 'top')
+    if (target === null) return
+    const near = Math.abs(target - scroller.scrollTop) <= SCROLL_SMOOTH_MAX_VIEWPORTS * viewportHeightNow()
+    await scrollToKey(key, 'top', near && DBState.db.animationSpeed !== 0 ? 'smooth' : 'instant')
   }
 
   $effect(() => {
@@ -326,10 +312,14 @@
       measureTick++
     }
     if (rectMoved) {
+      // Also the report after a hidden container is shown again: the window follows the DOM.
+      readViewport(scroller)
       machine.rectChanged()
     }
   })
 
+  // A measurement outlives the row's element: a row that is scrolled out and back keeps its
+  // height, so the offsets above it never move again. It is dropped only with its key.
   function measure(node: Element, key: string) {
     measuredKeys.set(node, key)
     resizeObserver?.observe(node)
@@ -337,11 +327,148 @@
       destroy() {
         resizeObserver?.unobserve(node)
         measuredKeys.delete(node)
-        if (measured.delete(key)) {
-          measureTick++
-        }
       },
     }
+  }
+
+  $effect(() => {
+    const live = new Set(items.map((item) => item.key))
+    untrack(() => {
+      for (const key of Array.from(measured.keys())) {
+        if (!live.has(key)) {
+          measured.delete(key)
+        }
+      }
+    })
+  })
+
+  //#endregion
+
+  //#region window
+
+  // The scroll position and height the window is computed from. Only `readViewport` writes
+  // them, and always from the container's own values, never from a remembered scroll position.
+  let viewScrollTop = $state(0)
+  // The last non-zero height the container reported; 0 until it has reported one.
+  let viewportH = $state(0)
+  const windowViewport = $derived(
+    viewportH > 0 ? viewportH : typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : UNMEASURED_VIEWPORT_PX,
+  )
+  const overscanPx = $derived(Math.max(WINDOW_OVERSCAN_VIEWPORTS * windowViewport, WINDOW_MIN_OVERSCAN_ROWS * DEFAULT_HEIGHTS.char))
+
+  // Rows kept mounted outside the band: the Tab stop (which is also the focused entry), the
+  // entry a reveal is scrolling to, and the row a pointer press is on.
+  let revealPin: string | null = $state(null)
+  let pressPin: string | null = $state(null)
+  // The "+" button is not an entry, but while it holds focus it stays mounted: an unmounted
+  // focused element would leave the rail believing it still has focus and pull the scroll
+  // back to the Tab stop on the next change.
+  let plusFocused = $state(false)
+  let revealTarget: number | null = null
+  let revealSmooth = false
+  let revealTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Open folders whose span meets the band are drawn even when their head and tail rows are not mounted.
+  const backgrounds = $derived.by(() => {
+    const from = viewScrollTop - overscanPx
+    const to = viewScrollTop + windowViewport + overscanPx
+    const drawn: Array<{ key: string; top: number; height: number; color: string }> = []
+    for (const char of charImages) {
+      if (char.type !== 'folder' || !openFolders.includes(char.id)) {
+        continue
+      }
+      const span = folderBackground(layout, char.key)
+      if (span && span.top + span.height >= from && span.top <= to) {
+        drawn.push({ key: char.key, top: span.top, height: span.height, color: char.color })
+      }
+    }
+    return drawn
+  })
+
+  const folderTint: Record<string, string> = {
+    red: 'bg-red-700/20',
+    yellow: 'bg-yellow-700/20',
+    green: 'bg-green-700/20',
+    blue: 'bg-blue-700/20',
+    indigo: 'bg-indigo-700/20',
+    purple: 'bg-purple-700/20',
+    pink: 'bg-pink-700/20',
+  }
+
+  function readViewport(el: HTMLElement) {
+    viewScrollTop = el.scrollTop
+    if (el.clientHeight > 0) {
+      viewportH = el.clientHeight
+    }
+    if (revealPin !== null && revealSmooth && revealTarget !== null && Math.abs(el.scrollTop - revealTarget) < 1) {
+      releaseReveal()
+    }
+  }
+
+  const viewportHeightNow = (): number => (scroller.clientHeight > 0 ? scroller.clientHeight : windowViewport)
+
+  function releaseReveal() {
+    if (revealTimer !== null) {
+      clearTimeout(revealTimer)
+      revealTimer = null
+    }
+    revealTarget = null
+    revealSmooth = false
+    revealPin = null
+  }
+
+  function pinReveal(key: string, target: number, smooth: boolean) {
+    releaseReveal()
+    revealPin = key
+    revealTarget = target
+    revealSmooth = smooth
+    revealTimer = setTimeout(releaseReveal, REVEAL_PIN_TIMEOUT_MS)
+  }
+
+  /**
+   * The scroll position that brings `key` to the top (`top`) or just into view (`nearest`,
+   * unchanged when it already is), from the layout model; `null` when the key is not listed.
+   */
+  function scrollTargetFor(key: string, mode: 'nearest' | 'top'): number | null {
+    const index = layout.indexByKey.get(key)
+    if (index === undefined) {
+      return null
+    }
+    const viewport = viewportHeightNow()
+    const current = scroller.scrollTop
+    const top = layout.offsets[index]
+    const bottom = top + layout.heights[index]
+    let target = current
+    if (mode === 'top' || top < current) {
+      target = top
+    }
+    else if (bottom > current + viewport) {
+      target = bottom - viewport
+    }
+    return Math.max(0, Math.min(target, Math.max(0, layout.total - viewport)))
+  }
+
+  /**
+   * The one way the rail scrolls to an entry. An instant scroll writes the window state in the
+   * same turn, from the position the container ended up at (it may clamp), so the entry is
+   * mounted after the next render without waiting for the scroll event. A smooth scroll leaves
+   * the window to the scroll events. Either way the entry stays mounted until the scroll
+   * arrives, the reveal is released, or REVEAL_PIN_TIMEOUT_MS passes.
+   */
+  async function scrollToKey(key: string, mode: 'nearest' | 'top', behavior: 'instant' | 'smooth') {
+    const target = scrollTargetFor(key, mode)
+    if (target === null) {
+      return
+    }
+    if (behavior === 'smooth' && Math.abs(target - scroller.scrollTop) >= 1) {
+      pinReveal(key, target, true)
+      scroller.scrollTo?.({ top: target, behavior: 'smooth' })
+      return
+    }
+    pinReveal(key, target, false)
+    scroller.scrollTop = target
+    readViewport(scroller)
+    await tick()
   }
 
   //#endregion
@@ -351,8 +478,23 @@
   // One entry is the Tab stop and the target of arrow keys: the last one that took focus,
   // else the selected character's row, else the first. It is never persisted.
   const rows = $derived(railRows(items))
-  const selectedKey = $derived.by(() => {
-    const selected = $selectedCharID
+  // Where each entry sits among all entries, for `aria-posinset`; the "+" block comes last.
+  const rowPosition = $derived(new Map(rows.map((row, at) => [row.key, at + 1])))
+  // Row data by key, so a mounted item finds its character, folder or member without a scan.
+  const rowByKey = $derived.by(() => {
+    const byKey = new Map<string, sortType | sortMember>()
+    for (const char of charImages) {
+      byKey.set(char.key, char)
+      if (char.type === 'folder') {
+        for (const member of char.folder) {
+          byKey.set(member.key, member)
+        }
+      }
+    }
+    return byKey
+  })
+  // The first occurrence of the selected character in model order.
+  function keyOfSelected(selected: number): string | null {
     if (selected === -1) {
       return null
     }
@@ -370,9 +512,14 @@
       }
     }
     return null
-  })
+  }
+  const selectedKey = $derived(keyOfSelected($selectedCharID))
   let current: CurrentEntry | null = $state.raw(null)
   const tabKey = $derived(resolveCurrent(rows, current, selectedKey)?.key ?? null)
+
+  const pinnedKeys = $derived([tabKey, revealPin, pressPin, plusFocused ? PLUS_KEY : null].filter((key): key is string => key !== null))
+  const mountedWindow = $derived(computeWindow(layout, viewScrollTop, windowViewport, overscanPx, pinnedKeys))
+  const slices = $derived(buildSlices(layout, mountedWindow))
 
   // Keeps the remembered index and owner in step with the rows, and moves the current entry
   // off a row that went away.
@@ -400,13 +547,32 @@
     current = { key, index: index >= 0 ? index : (current?.index ?? 0), owner: index >= 0 ? (rows[index].owner ?? null) : null }
   }
 
-  function focusEntry(key: string): boolean {
-    const el = entryElement(key)
+  // An entry outside the viewport is scrolled to first, which mounts it, then focused. While
+  // the reveal runs its row is pinned; focus makes it the Tab stop, which pins it from then on.
+  async function revealEntry(key: string): Promise<boolean> {
+    const index = layout.indexByKey.get(key)
+    if (index === undefined) {
+      return false
+    }
+    let el = entryElement(key)
+    const top = layout.offsets[index]
+    const view = scroller.scrollTop
+    if (!el || top < view || top + layout.heights[index] > view + viewportHeightNow()) {
+      await scrollToKey(key, 'nearest', 'instant')
+      el = entryElement(key)
+    }
+    // Only the reveal this call owns is released: an arrow key must not drop the pin of a
+    // scroll-to-active that is still in flight for another entry.
     if (!el) {
+      if (revealPin === key) {
+        releaseReveal()
+      }
       return false
     }
     el.focus({ preventScroll: true })
-    el.scrollIntoView?.({ block: 'nearest', behavior: DBState.db.animationSpeed === 0 ? 'instant' : 'smooth' })
+    if (revealPin === key) {
+      releaseReveal()
+    }
     return true
   }
 
@@ -415,15 +581,30 @@
   // its target is still attached afterwards and focus is then outside the rail.
   let railHasFocus = false
 
+  // Chromium fires focusout synchronously while a keyed each-block moves a focused entry, inside
+  // a block effect where writing `$state` throws. The pin is therefore settled in a microtask,
+  // from where focus actually is by then.
+  function syncPlusFocus() {
+    queueMicrotask(() => {
+      if (!scroller?.isConnected) {
+        return
+      }
+      const active = document.activeElement
+      plusFocused = active instanceof Element && scroller.contains(active) && entryOf(active) === null && active.closest('[data-rail-kind="plus"]') !== null
+    })
+  }
+
   function onFocusIn(e: FocusEvent) {
     railHasFocus = true
     const el = entryOf(e.target)
     if (el) {
       setCurrent(el.getAttribute('data-rail-entry')!)
     }
+    syncPlusFocus()
   }
 
   function onFocusOut(e: FocusEvent) {
+    syncPlusFocus()
     if (e.relatedTarget instanceof Node && scroller.contains(e.relatedTarget)) {
       return
     }
@@ -449,7 +630,7 @@
         }
         const key = resolveCurrent(rows, current, selectedKey)?.key
         if (key !== undefined) {
-          focusEntry(key)
+          void revealEntry(key)
         }
       })
     })
@@ -524,8 +705,8 @@
     }
     else if (result.kind === 'focus') {
       setCurrent(refKey(result.ref))
-      focusEntry(refKey(result.ref))
       announcePosition(order, result.ref)
+      await revealEntry(refKey(result.ref))
     }
     else {
       const movedKey = refKey(result.ref)
@@ -533,7 +714,7 @@
       setCurrent(movedKey)
       announcePosition(result.order, result.ref)
       await tick()
-      focusEntry(movedKey)
+      await revealEntry(movedKey)
     }
   }
 
@@ -555,7 +736,7 @@
     if (action.kind === 'focus') {
       const target = focusStep(rows.map((row) => row.key), key, action.key)
       if (target !== null) {
-        focusEntry(target)
+        void revealEntry(target)
       }
     }
     else if (action.kind === 'activate') {
@@ -656,7 +837,13 @@
         // Already released.
       }
     },
+    onPress: (source) => {
+      pressPin = refKey(source)
+    },
     onSession: (active) => {
+      if (!active) {
+        pressPin = null
+      }
       binding?.setSession(active)
       setRailTooltipsSuppressed(active)
     },
@@ -716,11 +903,37 @@
     untrack(() => machine.layoutChanged())
   })
 
+  let viewFrame: number | null = null
+
+  // The window follows the container: its scroll events (one read per animation frame), the end
+  // of a smooth scroll, and its size changes (see the ResizeObserver callback).
   function railBinding(node: HTMLDivElement) {
     binding = bindRail(node, machine)
     resizeObserver?.observe(node)
+    readViewport(node)
+    const onViewportScroll = () => {
+      if (viewFrame === null) {
+        viewFrame = requestAnimationFrame(() => {
+          viewFrame = null
+          readViewport(node)
+        })
+      }
+    }
+    const onScrollEnd = () => {
+      if (revealSmooth) {
+        releaseReveal()
+      }
+    }
+    node.addEventListener('scroll', onViewportScroll)
+    node.addEventListener('scrollend', onScrollEnd)
     return {
       destroy() {
+        node.removeEventListener('scroll', onViewportScroll)
+        node.removeEventListener('scrollend', onScrollEnd)
+        if (viewFrame !== null) {
+          cancelAnimationFrame(viewFrame)
+          viewFrame = null
+        }
         resizeObserver?.unobserve(node)
         binding?.destroy()
         binding = null
@@ -731,6 +944,7 @@
   onDestroy(() => {
     machine.destroy()
     removeGhost()
+    releaseReveal()
     resizeObserver?.disconnect()
   })
 
@@ -767,142 +981,136 @@
   use:railKeys
   role="list"
   class="relative flex grow w-full flex-col items-center overflow-x-hidden overflow-y-auto pr-0 select-none"
-  style="touch-action: pan-y; -webkit-touch-callout: none;"
+  style="touch-action: pan-y; -webkit-touch-callout: none; overflow-anchor: none;"
   data-rail-scroll
+  data-rail-total={layout.total}
 >
-  {@render gapEl({ in: 'top', after: null }, 'top', undefined, '')}
-  {#each charImages as char (char.key)}
-    {@const isOpen = char.type === 'folder' && openFolders.includes(char.id)}
-    <div class="group relative flex items-center px-2{rowEffects(char.key)}"
-      role="listitem"
-      use:measure={char.key}
-      {...itemAttrs(char.key, char.type === 'folder' ? 'folder' : 'char')}
-    >
-      <SidebarIndicator
-        isActive={char.type === 'normal' && $selectedCharID === char.index && sideBarMode !== 1}
-      />
-      <div
-          role="button" tabindex={tabKey === char.key ? 0 : -1}
-          data-rail-entry={char.key}
-          aria-label={char.name}
-          aria-expanded={char.type === 'folder' ? isOpen : undefined}
-          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-          class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
-          use:tooltipRail={char.name}
-          use:nearViewport={{ onChange: (v, node) => {
-            if (v) { visibleRows.set(char.key, node) } else if (visibleRows.get(char.key) === node) { visibleRows.delete(char.key) }
-          } }}
-          oncontextmenu={char.type === 'folder' ? (e) => folderMenu(e, char.id, char.name) : undefined}
-        >
-        {#if char.type === 'normal'}
-          {@const imgPath = char.img}
-          {@const isVisible = visibleRows.has(char.key)}
-          {@const avatarSrc = isVisible ? (imgPath ? getCharImage(imgPath, "thumb") : "/none.webp") : undefined}
-          <SidebarAvatar
-            src={avatarSrc as string | Promise<string>}
-            size="56"
-            rounded={IconRounded}
-            chaId={DBState.db.characters[char.index]?.chaId}
-          />
-        {:else if char.type === "folder"}
-          {#key char.color}
-          {#key char.name}
-            {@const folderImgPath = char.img}
-            {@const isFolderVisible = visibleRows.has(char.key)}
-            {@const avatarBg = isFolderVisible ? (folderImgPath ? getCharImage(folderImgPath, "thumb") : "") : ""}
-            <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered color={char.color} backgroundimg={avatarBg}>
-              {#if DBState.db.showFolderName}
-                <div class="h-full w-full flex justify-center items-center">
-                  <span class="hyphens-auto truncate font-bold">{char.name}</span>
-                </div>
-              {:else if openFolders.includes(char.id)}
-                <FolderOpenIcon />
-              {:else}
-                <FolderIcon />
-              {/if}
-            </SidebarAvatar>
-          {/key}
-          {/key}
-        {/if}
-      </div>
-    </div>
-    {#if char.type === 'folder' && isOpen}
-      {@const headKey = folderHeadKey(char.key)}
-      {@const background = folderBackground(layout, char.key)}
-      <div class="h-2 min-h-2 w-14" aria-hidden="true" use:measure={headKey} {...itemAttrs(headKey, 'folderHead', undefined, char.key)}></div>
-      {#if background}
-        {#key char.color}
-        <div class="absolute inset-x-0 flex justify-center pointer-events-none z-0" aria-hidden="true"
-          style:top="{background.top}px" style:height="{background.height}px" data-rail-folder-bg={char.key}>
-          <div class="relative left-1 h-full w-16 border border-selected rounded-lg {
-            char.color === 'red' ? 'bg-red-700/20' :
-            char.color === 'yellow' ? 'bg-yellow-700/20' :
-            char.color === 'green' ? 'bg-green-700/20' :
-            char.color === 'blue' ? 'bg-blue-700/20' :
-            char.color === 'indigo' ? 'bg-indigo-700/20' :
-            char.color === 'purple' ? 'bg-purple-700/20' :
-            char.color === 'pink' ? 'bg-pink-700/20' :
-            'bg-darkbg/20'
-          }"></div>
-        </div>
-        {/key}
-      {/if}
-      {@render gapEl({ in: 'folder', folder: char.ref, after: null }, 'folder', char.key, 'relative z-10')}
-      {#each char.folder as char2 (char2.key)}
-        {@const memberImgPath = char2.img}
-        {@const isMemberVisible = visibleRows.has(char2.key)}
-        {@const avatarSrc2 = isMemberVisible ? (memberImgPath ? getCharImage(memberImgPath, "thumb") : "/none.webp") : undefined}
-        <div class="group relative flex items-center px-2 z-10{rowEffects(char2.key)}"
-          role="listitem"
-          use:measure={char2.key}
-          {...itemAttrs(char2.key, 'member', undefined, char.key)}
-        >
-          <SidebarIndicator
-            isActive={$selectedCharID === char2.index && sideBarMode !== 1}
-          />
-          <div
-              role="button" tabindex={tabKey === char2.key ? 0 : -1}
-              data-rail-entry={char2.key}
-              aria-label={char2.name}
-              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-              class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
-              use:tooltipRail={char2.name}
-              use:nearViewport={{ onChange: (v, node) => {
-                if (v) { visibleRows.set(char2.key, node) } else if (visibleRows.get(char2.key) === node) { visibleRows.delete(char2.key) }
-              } }}
-            >
-            <SidebarAvatar
-              src={avatarSrc2 as string | Promise<string>}
-              size="56"
-              rounded={IconRounded}
-              chaId={DBState.db.characters[char2.index]?.chaId}
+  {#each slices as slice (slice.key)}
+    {#if slice.kind === 'spacer'}
+      <div class="w-14 shrink-0" aria-hidden="true" data-rail-spacer
+        style:height="{slice.height}px" style:min-height="{slice.height}px"></div>
+    {:else}
+      {@const item = slice.item}
+      {#if item.kind === 'gap' && item.gap}
+        {@render gapEl(item.gap, item.gap.in === 'top' ? 'top' : 'folder', item.owner, item.gap.in === 'top' ? '' : item.gap.after === null ? 'relative z-10' : 'relative z-20')}
+      {:else if item.kind === 'folderHead'}
+        <div class="h-2 min-h-2 w-14" aria-hidden="true" use:measure={item.key} {...itemAttrs(item.key, 'folderHead', undefined, item.owner)}></div>
+      {:else if item.kind === 'folderTail'}
+        <div class="h-1 min-h-1 w-14" aria-hidden="true" use:measure={item.key} {...itemAttrs(item.key, 'folderTail', undefined, item.owner)}></div>
+      {:else if item.kind === 'char' || item.kind === 'folder'}
+        {@const char = rowByKey.get(item.key)}
+        {#if char}
+          {@const isOpen = char.type === 'folder' && openFolders.includes(char.id)}
+          <div class="group relative flex items-center px-2{rowEffects(char.key)}"
+            role="listitem"
+            aria-setsize={rows.length + 1}
+            aria-posinset={rowPosition.get(char.key)}
+            use:measure={char.key}
+            {...itemAttrs(char.key, char.type === 'folder' ? 'folder' : 'char')}
+          >
+            <SidebarIndicator
+              isActive={char.type === 'normal' && $selectedCharID === char.index && sideBarMode !== 1}
             />
+            <div
+                role="button" tabindex={tabKey === char.key ? 0 : -1}
+                data-rail-entry={char.key}
+                aria-label={char.name}
+                aria-expanded={char.type === 'folder' ? isOpen : undefined}
+                aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
+                use:tooltipRail={char.name}
+                oncontextmenu={char.type === 'folder' ? (e) => folderMenu(e, char.id, char.name) : undefined}
+              >
+              {#if char.type === 'normal'}
+                {@const imgPath = char.img}
+                <SidebarAvatar
+                  src={imgPath ? getCharImage(imgPath, "thumb") : "/none.webp"}
+                  size="56"
+                  rounded={IconRounded}
+                  chaId={DBState.db.characters[char.index]?.chaId}
+                />
+              {:else if char.type === "folder"}
+                {#key char.color}
+                {#key char.name}
+                  {@const folderImgPath = char.img}
+                  {@const avatarBg = folderImgPath ? getCharImage(folderImgPath, "thumb") : ""}
+                  <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered color={char.color} backgroundimg={avatarBg}>
+                    {#if DBState.db.showFolderName}
+                      <div class="h-full w-full flex justify-center items-center">
+                        <span class="hyphens-auto truncate font-bold">{char.name}</span>
+                      </div>
+                    {:else if isOpen}
+                      <FolderOpenIcon />
+                    {:else}
+                      <FolderIcon />
+                    {/if}
+                  </SidebarAvatar>
+                {/key}
+                {/key}
+              {/if}
+            </div>
           </div>
+        {/if}
+      {:else if item.kind === 'member'}
+        {@const member = rowByKey.get(item.key)}
+        {#if member && member.type === 'normal'}
+          <div class="group relative flex items-center px-2 z-10{rowEffects(member.key)}"
+            role="listitem"
+            aria-setsize={rows.length + 1}
+            aria-posinset={rowPosition.get(member.key)}
+            use:measure={member.key}
+            {...itemAttrs(member.key, 'member', undefined, item.owner)}
+          >
+            <SidebarIndicator
+              isActive={$selectedCharID === member.index && sideBarMode !== 1}
+            />
+            <div
+                role="button" tabindex={tabKey === member.key ? 0 : -1}
+                data-rail-entry={member.key}
+                aria-label={member.name}
+                aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                class="outline-none focus-visible:ring-2 focus-visible:ring-textcolor2 {IconRounded ? 'rounded-full' : 'rounded-md'}"
+                use:tooltipRail={member.name}
+              >
+              <SidebarAvatar
+                src={member.img ? getCharImage(member.img, "thumb") : "/none.webp"}
+                size="56"
+                rounded={IconRounded}
+                chaId={DBState.db.characters[member.index]?.chaId}
+              />
+            </div>
+          </div>
+        {/if}
+      {:else if item.kind === 'plus'}
+        <div class="flex flex-col items-center gap-2 px-2" role="listitem"
+          aria-setsize={rows.length + 1}
+          aria-posinset={rows.length + 1}
+          use:measure={PLUS_KEY} {...itemAttrs(PLUS_KEY, 'plus')}>
+          <BaseRoundedButton
+            onClick={async () => {
+              addCharacter({reseter})
+            }}
+            ><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+              ><path
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              /></svg
+            ></BaseRoundedButton
+          >
         </div>
-        {@render gapEl({ in: 'folder', folder: char.ref, after: char2.ref }, 'folder', char.key, 'relative z-20')}
-      {/each}
-      {@const tailKey = folderTailKey(char.key)}
-      <div class="h-1 min-h-1 w-14" aria-hidden="true" use:measure={tailKey} {...itemAttrs(tailKey, 'folderTail', undefined, char.key)}></div>
+      {/if}
     {/if}
-    {@render gapEl({ in: 'top', after: char.ref }, 'top', undefined, '')}
   {/each}
-  <div class="flex flex-col items-center gap-2 px-2" role="listitem" use:measure={PLUS_KEY} {...itemAttrs(PLUS_KEY, 'plus')}>
-    <BaseRoundedButton
-      onClick={async () => {
-        addCharacter({reseter})
-      }}
-      ><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
-        ><path
-          fill="none"
-          stroke="currentColor"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-        /></svg
-      ></BaseRoundedButton
-    >
-  </div>
+  {#each backgrounds as bg (bg.key)}
+    <div class="absolute inset-x-0 flex justify-center pointer-events-none z-0" aria-hidden="true"
+      style:top="{bg.top}px" style:height="{bg.height}px" data-rail-folder-bg={bg.key}>
+      <div class="relative left-1 h-full w-16 border border-selected rounded-lg {folderTint[bg.color] ?? 'bg-darkbg/20'}"></div>
+    </div>
+  {/each}
   {#if indicatorY !== null}
     <div class="absolute left-0 top-0 z-30 flex w-full justify-center pointer-events-none" aria-hidden="true"
       style:transform="translateY({indicatorY}px)"

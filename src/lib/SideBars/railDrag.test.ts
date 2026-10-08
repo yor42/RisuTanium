@@ -45,6 +45,9 @@ class Rig {
     captured: number[] = []
     released: number[] = []
     sessions: boolean[] = []
+    presses: ItemRef[] = []
+    /** Order of the press and session notifications, as `press` / `session:true` / `session:false`. */
+    calls: string[] = []
     lifts = 0
     dragStarts = 0
     dragEnds = 0
@@ -83,7 +86,14 @@ class Rig {
             },
             captureTake: (id) => this.captured.push(id),
             captureRelease: (id) => this.released.push(id),
-            onSession: (active) => this.sessions.push(active),
+            onPress: (source) => {
+                this.presses.push(source)
+                this.calls.push('press')
+            },
+            onSession: (active) => {
+                this.sessions.push(active)
+                this.calls.push(`session:${active}`)
+            },
             onLift: () => {
                 this.lifts++
             },
@@ -206,6 +216,32 @@ describe('mouse drag', () => {
         expect(rig.captured).toEqual([1])
         expect(rig.dragStarts).toBe(1)
         expect(rig.lifts).toBe(0)
+    })
+
+    test('a recorded press reports its source before the session opens, and the session closes after the gesture ends', () => {
+        rig.press(C)
+        expect(rig.calls).toEqual(['press', 'session:true'])
+        expect(rig.presses).toEqual([refOf('C')])
+        rig.release(rig.y(C))
+        expect(rig.calls).toEqual(['press', 'session:true', 'session:false'])
+    })
+
+    test('a press that is not recorded reports nothing: a gap, a secondary pointer and a second press during a gesture', () => {
+        rig.machine.pointerDown(rig.ptr(0))
+        rig.press(C, { isPrimary: false })
+        rig.press(C, { button: 2 })
+        expect(rig.calls).toEqual([])
+        rig.press(C)
+        rig.press(D)
+        expect(rig.presses).toEqual([refOf('C')])
+        expect(rig.calls).toEqual(['press', 'session:true'])
+    })
+
+    test('a touch press reports its source too, and a drag that is cancelled still closes the session', () => {
+        rig.touchLift(B)
+        expect(rig.presses).toEqual([refOf('B')])
+        rig.machine.cancel()
+        expect(rig.calls).toEqual(['press', 'session:true', 'session:false'])
     })
 
     test('a press takes no capture, so a plain click reaches the row', () => {
