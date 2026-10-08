@@ -8547,3 +8547,94 @@ browser CORS behaviour of the Hugging Face router, and whether a real model answ
 
 **Disclosures:**
 - **(a)** The records items also say "3.4.7 or later"; the bisect has no data for 3.4.7 and 3.4.8, so this entry keeps the conservative bound above and does not claim those versions fail.
+
+---
+
+### MC-240 — Main Campaign, 2026-10-08: audit and refine the Claude workflow and documentation; use Haiku more, clarify gates and delegate commit drafts
+
+- **Tag:** request and authorization (direct maintainer messages)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's current workflow-audit request and steering, quoted below.
+- **Related:** MC-011, MC-027, MC-058, MC-175, MC-223, MC-239; [workflow audit](../docs/workflow/audit-2026-10-08.md).
+- **Supersedes:** MC-091's workflow routing/context procedure portion only; its substantive gates, scope-amendment rules, compatibility constraints and other settled safety decisions remain intact.
+
+> As a 3rd party workflow auditor, can you review this repository, and refine the claude code workflow here according to official anthropic docs?
+
+> Also, haiku is underutilized. and I'd like to allow agents to benefit more from it.
+
+> Do not touch the source code, but clean up claude code workflows and docs in general.
+
+> you may overhaul the folder structure, but make sure ignore list(gitignore, etc) still points at the right direction afterward.
+
+> I think we could also use clear guideline on gate1 and gate 2 criteria. I've observed some inconsistency of orchestrator somtimes re-triggering gate 2 over some minor editorial issue. also, currently orchestrator drafts commit message which seems can be delegated.
+
+**Authorized scope:** audit and improve workflow instructions, profiles/skills, supporting validation/navigation and documentation structure; broaden bounded Haiku use; make Gate 1/Gate 2 readiness, outcomes and remediation criteria clear; delegate evidence-backed commit-message drafting while retaining independent claim checks. Preserve the applicable ignore/protection boundaries and historical evidence. No application-source edits are authorized by this request.
+
+**Boundaries:** existing dirty changes and the 2026-10-08 handoff/evidence are preserved. This authorization does not settle or reconcile the earlier pending campaign decisions/records in that handoff, change the two-way backup invariant, remove independent safety gates or authorize a commit/push by itself. Local workflow choices are distinguished from official platform capabilities; reduced token cost remains unmeasured.
+
+---
+
+### MC-241 — Main Campaign, 2026-10-08: approve six workflow improvements, prioritizing record closeout and pre-plan sizing
+
+- **Tag:** approval (direct maintainer message)
+- **Date:** 2026-10-08
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's response to the six proposed workflow improvements, quoted below.
+- **Related:** MC-240, MC-027, MC-175, MC-223, MC-239; [improvement record](../docs/workflow/improvements-2026-10-08.md).
+- **Amends:** MC-240's current workflow/document cleanup scope with the accepted proposals below; existing substantive gates, compatibility and safety decisions remain intact. No historical decision text is rewritten.
+
+> suggestions seems reasonable. prioritize 1,4, then 2,3, and 5,6.
+
+**Accepted proposals, in the maintainer's priority order:**
+1. **Record closeout (proposal 1):** an item is COMPLETE only after applicable decisions, independent gate disposition, Roadmap/status and current-state/remaining-work records are current. Technical acceptance and administrative closeout are distinct; incremental record verification does not automatically restart Gate 2.
+2. **Pre-plan sizing and product decisions (proposal 4):** substantial work gets targeted mechanism/size evidence, affected subsystems and coherent stages before Gate 1. Relevant user-visible skip/repair/refuse/pause behavior is settled; decision-critical unresolved product questions block the affected plan/implementation. Trivial low-risk work retains its carve-out.
+3. **Evidence curation (proposal 2):** keep canonical reports and selected self-contained reproducible evidence; raw transcripts/temporary output stay local scratch. Do not delete only-copy sources until reviewed extraction and necessary operational evidence retention; preserve existing tracked history and exact legacy protections.
+4. **Haiku verification pilot (proposal 3):** ten eligible item-level independent reviews for ordinary documentation and exact semantics-preserving mechanical edits. Governance, consent, translated meaning, configuration behavior and behavioral/high-risk source work are excluded; uncertainty escalates. Sonnet remains the default outside the pilot and existing nontrivial/high-risk gates remain. Only observed actual Claude Haiku items count; configuration/Codex/no-output attempts do not. Maintainer review decides the outcome, with no automatic rollout or savings claim.
+5. **Write concurrency (proposal 5):** one application-code writer per checkout, counting coder and test worker together. Parallel distinct application items require separate worktrees with explicit starting revision and integration owner. Read-only helpers and named disjoint document writes remain allowed.
+6. **Direct-tool ownership guard (proposal 6):** exact allowed-file manifest and orchestrator grants for direct Write/Edit, reviewers read-only. This is not a filesystem sandbox or guaranteed shell/alternate-channel enforcement; implementation/settings/runtime claims require actual evidence.
+
+**Scope boundary:** policy, supporting workflow configuration and documentation only. No application source, commit/push, raw-artifact deletion/move or silent reconciliation of the older pending handoff is authorized by this approval. MC-175/223 compatibility, MC-027's exact two community-code protections, MC-239 sanitizer evidence and independent safety gates remain intact.
+
+---
+
+### MC-242 — Main Campaign, 2026-10-08: the maintainer primarily uses Claude Desktop's Code tab
+
+- **Tag:** stated (direct maintainer clarification)
+- **Date:** 2026-10-08
+- **Source:** the maintainer's feature-opportunity question and clarification, quoted below.
+- **Related:** MC-240, MC-241; [feature opportunities](../docs/workflow/feature-opportunities-2026-10-08.md).
+
+> are there any features we are currently missing out? I've been using claude app over claude code(which is up to date) so claude code alone can be a bit stale.
+
+> yes, I've been primarily using code tab of claude desktop app.
+
+This records the stated primary surface, not an independently inspected Desktop version or plugin inventory. The feature question requests assessment; it does not authorize installing plugins, creating schedules, changing account settings or automatically applying additional feature recommendations.
+
+---
+
+### MC-243 — Main Campaign, 2026-10-08: adopt scoped rules, language intelligence and Desktop-first live checks; provide manual setup and resumption
+
+- **Tag:** approval and request (direct maintainer messages)
+- **Date:** 2026-10-08
+- **Related:** MC-240, MC-241, MC-242; [Desktop setup](../docs/workflow/claude-desktop-setup.md), [live checks](../docs/workflow/live-checks.md), [resumption](../docs/workflow/resume-main-campaign.md).
+
+> side chats are more of on me about how to steer the agent(I've been doing it already. so consider it done).
+
+> We can use both claude in chrome in live checks, but prioritizing desktop preview seems more reasonable and more straightforward. and yes, language intelligence and path scoped rules seems to be a good idea.
+
+> when finished, Let me know which plugins I need to install along with the initiation prompt to resume the task from where it already is.
+
+**Authorized scope:** configure focused path-scoped rules and read-only language intelligence for appropriate source-reading roles; document live acceptance using Desktop preview first and Claude in Chrome when its capabilities are needed. Side-chat adoption is already handled by the maintainer. Supply manual plugin/server installation instructions and a continuation prompt grounded in the preserved campaign state. Do not install plugins/binaries or change account settings on the maintainer's behalf. Native loading, actual Desktop tools and server operation require their own observed checks. Application-source changes and reconciliation of the prior handoff remain outside this audit; the continuation prompt does not invent product decisions.
+
+---
+
+### MC-244 — Main Campaign, 2026-10-08: commit the completed workflow documentation in separate commits
+
+- **Tag:** authorization (direct maintainer message)
+- **Date:** 2026-10-08
+- **Related:** MC-240, MC-241, MC-243.
+
+> +commit the docs as separate commits when finished.
+
+Commit the completed and independently verified workflow/configuration/documentation changes in coherent separate groups. This amends the earlier no-commit boundary for this audit only. Stage exact owned paths; preserve existing launch/Android changes and raw untracked handoff evidence. No push, application-source change or unrelated commit is authorized.
