@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# The page calls the gesture-inset bridge by name through addJavascriptInterface.
+-keep class io.github.yor42.risutanium.GestureInsetBridge {
+    @android.webkit.JavascriptInterface public <methods>;
+}

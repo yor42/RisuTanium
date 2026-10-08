@@ -10,7 +10,7 @@
             <ArrowLeft />
         </button>
     {:else}
-        <button onclick={() => {
+        <button data-panel-handle onclick={() => {
             sideBarClosing.set(false);
             sideBarStore.set(true)}} class="absolute top-3 left-0 h-12 w-12 border-r border-b border-t border-borderc rounded-r-md bg-darkbg hover:border-neutral-200 transition-colors flex items-center justify-center text-textcolor opacity-50 hover:opacity-90 z-20">
             <ArrowRight />

@@ -37,6 +37,7 @@
     import SideChatList from "./SideChatList.svelte";
     import QuickSettingsGui from "../Others/QuickSettingsGUI.svelte";
     import PluginDefinedIcon from "../Others/PluginDefinedIcon.svelte";
+    import { panelGestureAttachment } from "./panelGestureBinding";
   let sideBarMode = $state(0);
   let editMode = $state(false);
   let menuMode = $state(0);
@@ -61,6 +62,7 @@
 </script>
 {#if DBState.db.menuSideBar}
 <div
+  data-rail-root
   class="h-full w-20 min-w-20 flex-col items-center bg-bgcolor text-textcolor shadow-lg relative rs-sidebar"
   class:editMode
   class:risu-sub-sidebar={$sideBarClosing}
@@ -133,6 +135,7 @@
 </div>
 {:else}
 <div
+  data-rail-root
   class="h-full w-20 min-w-20 flex-col items-center bg-bgcolor text-textcolor shadow-lg relative rs-sidebar"
   class:editMode
   class:risu-sub-sidebar={$sideBarClosing}
@@ -270,6 +273,7 @@
 </div>
 {/if}
 <div
+  data-panel-surface
   class="setting-area h-full flex-col overflow-y-auto overflow-x-hidden bg-darkbg py-6 text-textcolor max-h-full"
   class:risu-sidebar={!$sideBarClosing}
   class:w-96={$sideBarSize === 0}
@@ -346,7 +350,7 @@
 </div>
 
 {#if $DynamicGUI}
-    <div role="button" tabindex="0" class="grow h-full min-w-12" class:hidden={hidden} onclick={() => {
+    <div role="button" tabindex="0" data-panel-surface {@attach panelGestureAttachment} class="grow h-full min-w-12" class:hidden={hidden} onclick={() => {
       if($sideBarClosing){
         return
       }
