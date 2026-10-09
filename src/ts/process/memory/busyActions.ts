@@ -9,6 +9,8 @@
  * resolves) and ends in a `finally`. A stale entry only ever answers "busy".
  */
 
+import { beginInFlight } from '../inFlightWork'
+
 /** Names the kind of work in an entry, so entries can be told apart. */
 export type BusyKind =
     | 'charImage' | 'charEmotion' | 'groupImage' | 'assetAdd' | 'imageAdd'
@@ -23,12 +25,26 @@ export interface BusyHandle {
 
 const entries = new Set<BusyHandle>()
 
+// Every entry also holds an in-flight token, so the page stays alive while a
+// data action runs. The max age is a backstop for a stale entry (see above); the
+// write choke points are not mirrored.
+const BUSY_TOKEN_MAX_AGE_MS = 2 * 60 * 60 * 1000
+const inFlightTokens = new Map<BusyHandle, () => void>()
+
 export function beginBusy(kind: BusyKind): BusyHandle {
     const handle: BusyHandle = {
         kind,
-        end: () => { entries.delete(handle) },
+        end: () => {
+            entries.delete(handle)
+            const endToken = inFlightTokens.get(handle)
+            if (endToken) {
+                inFlightTokens.delete(handle)
+                endToken()
+            }
+        },
     }
     entries.add(handle)
+    inFlightTokens.set(handle, beginInFlight('busy', { maxAgeMs: BUSY_TOKEN_MAX_AGE_MS }))
     return handle
 }
 
@@ -138,6 +154,10 @@ export function isPluginDevModeStarted(): boolean {
 }
 
 export function resetBusyActionsForTest(): void {
+    for (const endToken of inFlightTokens.values()) {
+        endToken()
+    }
+    inFlightTokens.clear()
     entries.clear()
     inFlightByPoint.asset = 0
     inFlightByPoint.inlay = 0

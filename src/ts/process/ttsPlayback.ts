@@ -1,7 +1,15 @@
+import { beginInFlight } from './inFlightWork'
+
 interface Clip {
     context: AudioContext
     node: AudioBufferSourceNode | null
+    /** Ends the in-flight token of a playing clip; set by `startClip`, called once by `releaseClip`. */
+    endInFlight: (() => void) | null
 }
+
+// A clip that never reports `onended` is released from the in-flight registry
+// this long after its audio should have finished.
+const CLIP_MAX_AGE_SLACK_MS = 10_000
 
 // Every clip whose AudioContext is open. A clip is registered before its audio
 // is decoded and released when it ends or is stopped, so a Stop reaches clips
@@ -23,13 +31,15 @@ export function isTTSPlaying(): boolean {
 }
 
 export function beginClip(context: AudioContext): Clip {
-    const clip: Clip = { context, node: null }
+    const clip: Clip = { context, node: null, endInFlight: null }
     clips.add(clip)
     return clip
 }
 
 export function releaseClip(clip: Clip): void {
     if (!clips.delete(clip)) return
+    clip.endInFlight?.()
+    clip.endInFlight = null
     try {
         const closing = clip.context.close()
         if (closing && typeof closing.catch === 'function') {
@@ -61,6 +71,8 @@ export function startClip(clip: Clip, buffer: AudioBuffer, signal: AbortSignal, 
     }
     node.onended = () => releaseClip(clip)
     clip.node = node
+    const durationMs = Number.isFinite(buffer.duration) ? buffer.duration * 1000 : 0
+    clip.endInFlight = beginInFlight('tts', { maxAgeMs: durationMs + CLIP_MAX_AGE_SLACK_MS })
     node.start()
     return true
 }

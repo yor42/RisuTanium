@@ -2,6 +2,7 @@
 import type { SettingItem } from './types';
 import { isNodeServer, isTauri } from '../platform';
 import { clearArchiveMemo, clearStubEnrichStrikes } from '../storage/bootArchiveMemo';
+import { isAndroidTransport } from '../storage/tauriByteTransport';
 
 export const advancedSettingsItems: SettingItem[] = [
     { type: 'header', id: 'adv.header', labelKey: 'advancedSettings', options: { level: 'h2' }, classes: '!mb-0' },
@@ -67,6 +68,7 @@ export const advancedSettingsItems: SettingItem[] = [
     // Keep Session alive
     {
         id: 'adv.keepSessionAlive', type: 'select', labelKey: 'keepSessionAlive', bindKey: 'keepSessionAlive', helpKey: 'keepSessionAlive',
+        condition: () => !isAndroidTransport(),
         options: {
             selectOptions: [
                 { value: 'off', label: 'Off', labelKey: 'optOff' },

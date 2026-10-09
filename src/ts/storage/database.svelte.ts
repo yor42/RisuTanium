@@ -30,6 +30,16 @@ export let appSubVer = 'up2026.8.250'
 
 export type StreamingDisplayOptimizationMode = 'off'|'balanced'|'strong'
 
+export type KeepSessionAliveMode = 'off'|'sound'
+
+/**
+ * Any stored value other than 'off' or 'sound' (absent, the retired 'pip',
+ * an unknown string) means 'off'.
+ */
+export function normalizeKeepSessionAlive(value: string | undefined): KeepSessionAliveMode {
+    return value === 'sound' ? 'sound' : 'off'
+}
+
 export function setDatabase(data:Database){
     // Drop any upstream RisuAccount token before it ever reaches `DBState.db`
     // (MC-080): no later save, backup, export or plugin read may carry it
@@ -711,7 +721,7 @@ export function setDatabase(data:Database){
     // If the user uses plugins, its probably better to enable RisuAI Pro Tools by default
     // Because its likely they are power users who would benefit from the features
     data.enableRisuaiProTools ??= data.plugins.length > 0
-    data.keepSessionAlive ??= 'off'
+    data.keepSessionAlive = normalizeKeepSessionAlive(data.keepSessionAlive)
     data.loadouts ??= []
     data.loadoutApplyOptions ??= {
         modules: true,
@@ -1302,7 +1312,7 @@ export interface Database{
     seperateParametersByModel?:boolean
     disableSeperateParameterChangeOnPresetChange?:boolean
     saveSignatures?:boolean
-    keepSessionAlive: 'off' | 'pip' | 'sound'
+    keepSessionAlive: KeepSessionAliveMode
     longPressToPopupEditor?: boolean
     loadouts: Loadout[]
     loadoutApplyOptions: {

@@ -35,6 +35,7 @@
     import Legal from './lib/Others/Legal.svelte';
     import CustomSidebarConfig from './lib/Others/CustomSidebarConfig.svelte';
     import { RISU_APP_INTERNAL_DRAG_TYPE } from './ts/dragTypes';
+    import { isAndroidTransport } from './ts/storage/tauriByteTransport';
 
 
   
@@ -83,12 +84,14 @@
         return
     }
 
+    // The Android app keeps the page alive with its foreground service
+    // while work is in flight, so the tone would only add a media notification.
+    if(isAndroidTransport()){
+        return
+    }
+
     const aliveMode = DBState?.db?.keepSessionAlive
     switch(aliveMode){
-        case 'pip':{
-
-            break
-        }
         case 'sound':{
             console.log("Starting inaudible audio to keep session alive")
             if(!keepAliveAudio){

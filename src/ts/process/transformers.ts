@@ -5,6 +5,8 @@ import { selectSingleFile, asBuffer  } from 'src/ts/util';
 import { v4 } from 'uuid';
 import { beginClip, currentTTSSignal, releaseClip, startClip } from './ttsPlayback';
 import { beginBusy } from './memory/busyActions';
+import { beginInFlight, withInFlight } from './inFlightWork';
+const VITS_DECODE_MAX_AGE_MS = 30_000
 let tfCache: Cache = null
 let tfLoaded = false
 let tfMap: { [key: string]: string } = {}
@@ -49,7 +51,9 @@ export const runTransformers = async (baseText: string, model: string, config: T
     return outputOne
 }
 
-export const runSummarizer = async (text: string) => {
+export const runSummarizer = (text: string) => withInFlight('embed', () => runSummarizerUntracked(text))
+
+const runSummarizerUntracked = async (text: string) => {
     await initTransformers()
     const { pipeline } = await import('@huggingface/transformers');
     let classifier = await pipeline("summarization", "Xenova/distilbart-cnn-6-6")
@@ -60,7 +64,10 @@ export const runSummarizer = async (text: string) => {
 let extractor: FeatureExtractionPipeline = null
 let lastEmbeddingModelQuery: string = ''
 type EmbeddingModel = 'Xenova/all-MiniLM-L6-v2' | 'nomic-ai/nomic-embed-text-v1.5'
-export const runEmbedding = async (texts: string[], model: EmbeddingModel = 'Xenova/all-MiniLM-L6-v2', device: 'webgpu' | 'wasm'): Promise<Float32Array[]> => {
+export const runEmbedding = (texts: string[], model: EmbeddingModel = 'Xenova/all-MiniLM-L6-v2', device: 'webgpu' | 'wasm'): Promise<Float32Array[]> =>
+    withInFlight('embed', () => runEmbeddingUntracked(texts, model, device))
+
+const runEmbeddingUntracked = async (texts: string[], model: EmbeddingModel, device: 'webgpu' | 'wasm'): Promise<Float32Array[]> => {
     await initTransformers()
     console.log('running embedding')
     let embeddingModelQuery = model + device
@@ -94,7 +101,9 @@ export const runEmbedding = async (texts: string[], model: EmbeddingModel = 'Xen
     return res ?? [];
 }
 
-export const runImageEmbedding = async (dataurl: string) => {
+export const runImageEmbedding = (dataurl: string) => withInFlight('embed', () => runImageEmbeddingUntracked(dataurl))
+
+const runImageEmbeddingUntracked = async (dataurl: string) => {
     await initTransformers()
     const { pipeline } = await import('@huggingface/transformers');
     const captioner = await pipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning');
@@ -147,11 +156,16 @@ export const runVITS = async (text: string, modelData: string | OnnxModelFiles =
     const wav = new WaveFile();
     wav.fromScratch(1, out.sampling_rate, '32f', out.audio);
     const clip = beginClip(new AudioContext());
+    // The decode finishes after this function returns, so it holds its own
+    // token until a callback runs; the clip's token begins in startClip first.
+    const endDecodeInFlight = beginInFlight('tts', { maxAgeMs: VITS_DECODE_MAX_AGE_MS });
     // The callbacks handle the outcome; the promise form must not surface a rejection as an unhandled one.
     const decoding = clip.context.decodeAudioData(asBuffer(wav.toBuffer().buffer), (decodedData) => {
         startClip(clip, decodedData, signal);
+        endDecodeInFlight();
     }, () => {
         releaseClip(clip);
+        endDecodeInFlight();
     });
     decoding?.catch(() => {});
 }

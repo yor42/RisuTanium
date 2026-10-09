@@ -6,6 +6,7 @@ import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { runVITS } from "./transformers";
 import { cancelTTSPlayback, currentTTSSignal, playEncodedAudio } from "./ttsPlayback";
+import { beginInFlight } from "./inFlightWork";
 import {
     getTTSPreprocessors,
     getTTSPostprocessors,
@@ -30,6 +31,28 @@ function isDefaultOpenAIHost(baseURL: string): boolean {
     } catch {
         return false
     }
+}
+
+// The browser's own speech reports its end only through the utterance's events.
+// A speech that never reports one is released after a time that grows with the
+// text, so it cannot hold the page indefinitely.
+const UTTERANCE_BASE_MAX_AGE_MS = 60_000
+const UTTERANCE_MAX_AGE_PER_CHAR_MS = 100
+const utteranceTokens = new Set<() => void>()
+
+/** Holds an in-flight token until the utterance ends, fails or `stopTTS` runs; returns the idempotent release. */
+function trackUtterance(utterance: SpeechSynthesisUtterance, text: string): () => void {
+    const endToken = beginInFlight('tts', {
+        maxAgeMs: UTTERANCE_BASE_MAX_AGE_MS + UTTERANCE_MAX_AGE_PER_CHAR_MS * text.length,
+    })
+    const finish = () => {
+        utteranceTokens.delete(finish)
+        endToken()
+    }
+    utteranceTokens.add(finish)
+    utterance.onend = finish
+    utterance.onerror = finish
+    return finish
 }
 
 const HF_MAX_REQUESTS = 5
@@ -139,6 +162,9 @@ async function playAudio(
 
 export async function sayTTS(character:character,text:string, options?: { skipTextFilter?: boolean }) {
     const signal = currentTTSSignal()
+    // Covers synthesis and decoding; the clip or utterance that carries the
+    // audio afterwards holds its own token, begun before this one ends.
+    const endInFlight = beginInFlight('tts')
     try {
         if(!character){
             const v = getCurrentCharacter()
@@ -184,7 +210,13 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                         }
                     }
                     utterThis.voice = voices[voiceIndex]
-                    const speak = speechSynthesis.speak(utterThis)
+                    const finishUtterance = trackUtterance(utterThis, text)
+                    try {
+                        speechSynthesis.speak(utterThis)
+                    } catch (error) {
+                        finishUtterance()
+                        throw error
+                    }
                 }
                 break
             }
@@ -581,6 +613,8 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             return
         }
         alertError(fillLang(language.errors.ttsError, { error: `${error}` }))
+    } finally {
+        endInFlight()
     }
 }
 
@@ -592,6 +626,9 @@ export const oaiVoices = [
 
 export function stopTTS(){
     cancelTTSPlayback()
+    for (const finish of [...utteranceTokens]) {
+        finish()
+    }
     if(typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined'){
         speechSynthesis.cancel()
     }

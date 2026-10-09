@@ -11,6 +11,7 @@ import { isTauri, isNodeServer } from "src/ts/platform"
 import { alertError } from "../alert"
 import { resolveSecret, SecretRefError } from "../secretRef"
 import { language } from "../../lang"
+import { withInFlight } from "../process/inFlightWork"
 import { requestChatData } from "../process/request/request"
 import { doingChat, type OpenAIChat } from "../process/index.svelte"
 import { applyMarkdownToNode, risuChatParser, type simpleCharacterArgument } from "../parser/parser.svelte"
@@ -60,7 +61,12 @@ export async function translate(text:string, reverse:boolean) {
     return runTranslator(text, reverse, db.translator,db.aiModel.startsWith('novellist') ? 'ja' : 'en')
 }
 
-export async function runTranslator(text:string, reverse:boolean, from:string,target:string, exarg?:{translatorNote?:string}) {
+/** Translates `text` under an in-flight token that ends however the translator settles. */
+export function runTranslator(text:string, reverse:boolean, from:string,target:string, exarg?:{translatorNote?:string}) {
+    return withInFlight('translate', () => runTranslatorUntracked(text, reverse, from, target, exarg))
+}
+
+async function runTranslatorUntracked(text:string, reverse:boolean, from:string,target:string, exarg?:{translatorNote?:string}) {
     const arg = {
 
         from: reverse ? from : target,
@@ -282,7 +288,11 @@ export function isExpTranslator(){
     return db.translatorType === 'llm' || db.translatorType === 'deepl' || db.translatorType === 'deeplX'
 }
 
-export async function translateHTML(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false): Promise<string> {
+export function translateHTML(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false): Promise<string> {
+    return withInFlight('translate', () => translateHTMLUntracked(html, reverse, charArg, chatID, regenerate))
+}
+
+async function translateHTMLUntracked(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false): Promise<string> {
     if(!html){
         return html
     }

@@ -5,6 +5,7 @@ import { appendLastPath } from "src/ts/util";
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { resolveSecret } from "src/ts/secretRef";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
+import { withInFlight } from "../inFlightWork";
 
 export type HypaModel = 'custom'|'ada'|'openai3small'|'openai3large'|'MiniLM'|'MiniLMGPU'|'nomic'|'nomicGPU'|'bgeSmallEn'|'bgeSmallEnGPU'|'bgem3'|'bgem3GPU'|'multiMiniLM'|'multiMiniLMGPU'|'bgeM3Ko'|'bgeM3KoGPU'|'voyageContext3'
 
@@ -75,7 +76,11 @@ export class HypaProcesser{
     }
     
     
-    async getEmbeds(input:string[]|string, inputType:'query'|'document' = 'query'):Promise<VectorArray[]> {
+    getEmbeds(input:string[]|string, inputType:'query'|'document' = 'query'):Promise<VectorArray[]> {
+        return withInFlight('embed', () => this.getEmbedsUntracked(input, inputType))
+    }
+
+    private async getEmbedsUntracked(input:string[]|string, inputType:'query'|'document'):Promise<VectorArray[]> {
         if(isContextModel(this.model)){
             const provider = getContextProvider(this.model)
             const inputs:string[] = Array.isArray(input) ? input : [input]

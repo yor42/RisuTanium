@@ -30,6 +30,7 @@ import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { digestMainFileBytes } from "./storage/mainFileRecord";
 import { didBootPassCommit } from "./process/memory/idleReloadBootState";
+import { beginInFlight } from "./process/inFlightWork";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
 import { BlockSetGateError, BlockTooLargeError } from "./storage/blockStore";
@@ -2567,6 +2568,9 @@ export function addFetchLog(arg: {
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
 export async function globalFetch(url: string, arg: GlobalFetchArgs = {}): Promise<GlobalFetchResult> {
+    // Every fetchWith* reads the body before it returns, so the token covers
+    // the whole transfer.
+    const endInFlight = beginInFlight('request')
     try {
         assertNoSecretRef(arg.headers, url);
         const db = getDatabase();
@@ -2625,6 +2629,8 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}): Promi
     } catch (error) {
         console.error(error);
         return { ok: false, data: `${error}`, headers: {}, status: 400 };
+    } finally {
+        endInFlight();
     }
 }
 
@@ -3720,8 +3726,15 @@ export async function fetchNative(url: string, arg: {
             readableStream = pipeFetchLog(fetchLogIndex, tauriReadableStream)
         }
 
-        while (resHeaders === null && !resolved) {
+        // A stop before the first byte ends the wait here, while the timeout
+        // relay is still live; once the Response is returned the caller's own
+        // abort handling takes over.
+        while (resHeaders === null && !resolved && !requestSignal?.aborted) {
             await sleep(10)
+        }
+
+        if (resHeaders === null && requestSignal?.aborted) {
+            throw new Error('aborted')
         }
 
         if (resHeaders === null) {

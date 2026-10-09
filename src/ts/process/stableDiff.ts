@@ -1,5 +1,6 @@
 import { get } from "svelte/store"
 import { getDatabase, type character } from "../storage/database.svelte"
+import { withInFlight } from "./inFlightWork"
 import { requestChatData } from "./request/request"
 import { alertError } from "../alert"
 import { fetchNative, globalFetch, readImage } from "../globalApi.svelte"
@@ -83,7 +84,12 @@ export async function stableDiff(currentChar:character,prompt:string,subject?:Ru
     return await generateAIImage(genPrompt, currentChar, neg, '')
 }
 
-export async function generateAIImage(genPrompt:string, currentChar:character, neg:string, returnSdData:string):Promise<string|false>{
+/** Generates one image under an in-flight token that ends however the provider call settles. */
+export function generateAIImage(genPrompt:string, currentChar:character, neg:string, returnSdData:string):Promise<string|false>{
+    return withInFlight('image', () => generateAIImageUntracked(genPrompt, currentChar, neg, returnSdData))
+}
+
+async function generateAIImageUntracked(genPrompt:string, currentChar:character, neg:string, returnSdData:string):Promise<string|false>{
     const db = getDatabase()
     console.log(db.sdProvider)
     if(db.sdProvider === 'webui'){

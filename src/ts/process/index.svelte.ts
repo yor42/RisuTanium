@@ -15,6 +15,7 @@ import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
 import { sayTTS } from "./tts";
+import { beginInFlight } from "./inFlightWork";
 import { isTTSVoiceMode } from "./ttsModes";
 import { ttsAddition } from "./ttsAddition";
 import { buildDisplayParseOptions } from "./displayParseOptions";
@@ -318,14 +319,20 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     }
     const callerSignal = arg.signal
     const relayAbort = () => unit.abort()
+    // Held from the moment the unit takes the flag until it releases it, so the
+    // page is not cut off while a reply is being produced. Refused sends and the
+    // recursion never begin one.
+    let endInFlight: () => void = () => {}
     try {
         callerSignal?.addEventListener('abort', relayAbort)
         publishUnit(unit)
+        endInFlight = beginInFlight('chat')
         doingChat.set(true)
         const completed = await sendChatBody(chatProcessIndex, { ...arg, signal: unit.signal }, entry.context)
         return completed && !unit.signal.aborted
     } finally {
         try {
+            endInFlight()
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
             doingChat.set(false)

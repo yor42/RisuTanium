@@ -8,6 +8,7 @@ import { getDatabase } from "src/ts/storage/database.svelte";
 import { appendLastPath } from "src/ts/util";
 import { isMobile } from "src/ts/platform";
 import { resolveSecret } from "src/ts/secretRef";
+import { withInFlight } from "../inFlightWork";
 
 export interface HypaProcessorV2Options {
   model?: HypaModel;
@@ -103,9 +104,16 @@ export class HypaProcessorV2<TMetadata> {
     return queries.map((query) => scoredResultsMap.get(query));
   }
 
-  private async getEmbeds(
+  private getEmbeds(
     ebdTexts: EmbeddingText<TMetadata>[],
     saveToMemory: boolean = true
+  ): Promise<EmbeddingResult<TMetadata>[]> {
+    return withInFlight("embed", () => this.getEmbedsUntracked(ebdTexts, saveToMemory));
+  }
+
+  private async getEmbedsUntracked(
+    ebdTexts: EmbeddingText<TMetadata>[],
+    saveToMemory: boolean
   ): Promise<EmbeddingResult<TMetadata>[]> {
     if (ebdTexts.length === 0) {
       return [];
