@@ -29,3 +29,8 @@
 -keep class io.github.yor42.risutanium.SystemBarsBridge {
     @android.webkit.JavascriptInterface public <methods>;
 }
+
+# The page calls the keep-alive service bridge by name the same way.
+-keep class io.github.yor42.risutanium.KeepAliveBridge {
+    @android.webkit.JavascriptInterface public <methods>;
+}

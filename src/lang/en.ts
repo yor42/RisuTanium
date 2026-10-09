@@ -2093,6 +2093,9 @@ export const languageEnglish = {
     seperateParametersByModel: "Separate Parameters by Model",
     disableSeperateParameterChangeOnPresetChange: "Disable Separate Parameter Change on Preset Change",
     keepSessionAlive: "Keep Session Alive",
+    keepAliveGenerating: "Generating a reply…",
+    keepAliveWorking: "Working…",
+    keepAliveStop: "Stop",
     // NanoGPT Dashboard
     nanoGPTLoadingAccountInfo: "Loading account info…",
     nanoGPTCreditBalance: "Credit Balance:",

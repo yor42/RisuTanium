@@ -650,7 +650,7 @@ export const languageChineseTraditional = {
         "hypaV3SummaryChunkSeparator": "用於將總結拆分成區塊以進行相似性搜尋的分隔符號。",
         "coldstorage": "開啟後，應用程式會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。這樣在角色很多時可維持較低的記憶體用量。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。",
         "keepSessionAlive": "維持分頁活動狀態，避免工作階段因閒置而失效。可能需要重新整理才會生效。\n\n" +
-            "- **透過音訊**：循環播放人耳聽不到的低頻音以維持工作階段。此方式在大多數瀏覽器中相容性最佳，也通常最有效。在 Android 上啟用時會顯示媒體通知，其他音樂 App 也可能會暫停。\n",
+            "- **透過音訊**：循環播放人耳聽不到的低頻音以維持工作階段。此方式在大多數瀏覽器中相容性最佳，也通常最有效。在 Android 瀏覽器上啟用時會顯示媒體通知，其他音樂 App 也可能會暫停。\n",
         "localNetworkModeDesc": "透過本機執行環境路徑路由私有/區域網路模型 URL，而非透過瀏覽器直接抓取。\n\n**用途**\n- 避免瀏覽器對 `192.168.x.x`、`10.x.x.x`、`localhost`、`.local` 等本機主機的私有網路/CORS 限制\n- 降低 Node 自架模式下本機推斷首個 Token 生成緩慢時的逾時風險\n\n**運作方式**\n- 僅在啟用區域網路模式且偵測到目標 URL 為本機/私有位址時套用\n- Node 自架模式：串流回應優先使用實驗性的 Job+WebSocket 中繼（失敗時回退至 `/proxy2`）；非串流回應使用 `/proxy2`\n- Tauri：使用原生/直接路徑\n- 公開網頁模式：依設計會封鎖本機/私有位址的直接呼叫\n\n**限制**\n- 適用範圍僅限 OpenAI 相容的請求路徑\n- 無法繞過兩個公開網域之間的 Cloudflare 來源限制\n- 需使用您的自架 URL（`globalThis.__NODE__ === true` 的位址）此功能才會生效"
     },
     "setup": {
@@ -2003,6 +2003,9 @@ export const languageChineseTraditional = {
     "seperateParametersByModel": "依模型分別設定參數",
     "disableSeperateParameterChangeOnPresetChange": "切換預設集時不要變更獨立參數設定",
     "keepSessionAlive": "維持工作階段",
+    "keepAliveGenerating": "正在產生回覆…",
+    "keepAliveWorking": "處理中…",
+    "keepAliveStop": "停止",
     "loadouts": "設定組合",
     "nanoGPTLoadingAccountInfo": "正在載入帳號資訊…",
     "nanoGPTCreditBalance": "帳戶餘額：",

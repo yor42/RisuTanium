@@ -1,11 +1,14 @@
 package io.github.yor42.risutanium
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -16,6 +19,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
 
 class MainActivity : TauriActivity() {
   private var backWebView: WebView? = null
@@ -107,9 +111,32 @@ class MainActivity : TauriActivity() {
     backWebView = webView
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
     webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
+    webView.addJavascriptInterface(
+      KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
+      "__risuTaniumKeepAlive"
+    )
     if (previous != null && previous !== webView && sameId(previous, webView)) {
       mainHandler.post { retire(previous) }
     }
+  }
+
+  // The service never outlives its activity. A recreated activity's page stops it at init when no
+  // work is in flight and starts it again when work is.
+  override fun onDestroy() {
+    KeepAliveService.stop(applicationContext)
+    super.onDestroy()
+  }
+
+  // Asked once, on the first work, and only while the activity is resumed: the dialog needs a
+  // foreground activity, and a denial is final (the service still runs, its notification hidden).
+  private fun requestKeepAliveNotificationPermissionOnce() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+    if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+    val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+    if (prefs.getBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, false)) return
+    prefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, true).apply()
+    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
   }
 
   private fun sameId(a: WebView, b: WebView) = a is RustWebView && b is RustWebView && a.id == b.id
@@ -166,6 +193,27 @@ class MainActivity : TauriActivity() {
     // The WebView of the latest onWebViewCreate; read and written on the main thread only. It
     // outlives the activity, which is how a recreation finds the view it supersedes.
     private var liveWebView: WebView? = null
+
+    // The service's stop action and time limit reach the page through the live WebView, on the
+    // main thread. False when there is no page to act on it or the call failed.
+    fun deliverKeepAliveStop(): Boolean = callPage("window.__risuTaniumKeepAliveStop?.()")
+
+    fun deliverKeepAliveTimeout(): Boolean = callPage("window.__risuTaniumKeepAliveTimeout?.()")
+
+    private fun callPage(script: String): Boolean {
+      val webView = liveWebView ?: return false
+      return try {
+        webView.evaluateJavascript(script, null)
+        true
+      } catch (error: Exception) {
+        Log.w("MainActivity", "page call failed", error)
+        false
+      }
+    }
+
+    private const val PREFS_NAME = "keepalive"
+    private const val KEY_NOTIFICATION_PERMISSION_ASKED = "notificationPermissionAsked"
+    private const val NOTIFICATION_PERMISSION_REQUEST = 0x4B41
 
     // A main thread busy for longer than this makes Back exit instead of closing the overlay.
     private const val BACK_TIMEOUT_MS = 1000L
