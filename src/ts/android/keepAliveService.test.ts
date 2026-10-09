@@ -35,6 +35,7 @@ interface FakeHost extends KeepAliveHost {
     start: Mock<(title: string, stopLabel: string) => void>
     update: Mock<(title: string, stopLabel: string) => void>
     stop: Mock<() => void>
+    stopAfter: Mock<(ms: number) => void>
     requestNotificationPermissionOnce: Mock<() => void>
 }
 
@@ -43,8 +44,15 @@ function fakeHost(): FakeHost {
         start: vi.fn(),
         update: vi.fn(),
         stop: vi.fn(),
+        stopAfter: vi.fn(),
         requestNotificationPermissionOnce: vi.fn(),
     }
+}
+
+/** A bridge from before `stopAfter`: the linger falls back to a page timer. */
+function legacyHost(): Omit<FakeHost, 'stopAfter'> {
+    const { stopAfter: _stopAfter, ...rest } = fakeHost()
+    return rest
 }
 
 const stopWork = vi.fn()
@@ -113,8 +121,23 @@ describe('starting and stopping the service', () => {
         endTts()
     })
 
-    test('the service stops after the linger once all work ended, and not before', () => {
+    test('the end of all work hands the linger to the host, with no page timer', () => {
         const host = fakeHost()
+        attach(host)
+        host.stop.mockClear()
+        const end = beginInFlight('chat')
+
+        end()
+
+        expect(host.stopAfter).toHaveBeenCalledTimes(1)
+        expect(host.stopAfter).toHaveBeenCalledWith(KEEP_ALIVE_LINGER_MS)
+        expect(vi.getTimerCount()).toBe(0)
+        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS * 5)
+        expect(host.stop).not.toHaveBeenCalled()
+    })
+
+    test('a host without stopAfter stops after the page timer, and not before', () => {
+        const host = legacyHost()
         attach(host)
         host.stop.mockClear()
         const end = beginInFlight('chat')
@@ -127,8 +150,23 @@ describe('starting and stopping the service', () => {
         expect(host.stop).toHaveBeenCalledTimes(1)
     })
 
-    test('a begin during the linger cancels the stop and keeps the one service', () => {
+    test('a begin after the host was asked to stop later calls start again', () => {
         const host = fakeHost()
+        attach(host)
+        host.stop.mockClear()
+        beginInFlight('chat')()
+        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS - 1)
+
+        const endNext = beginInFlight('image')
+
+        expect(host.start).toHaveBeenCalledTimes(2)
+        expect(host.start).toHaveBeenLastCalledWith(LABELS.working, '')
+        expect(host.stop).not.toHaveBeenCalled()
+        endNext()
+    })
+
+    test('a begin during the page-timer linger cancels the stop and keeps the one service', () => {
+        const host = legacyHost()
         attach(host)
         host.stop.mockClear()
         beginInFlight('chat')()
@@ -215,8 +253,8 @@ describe('the Stop action', () => {
         // The service stops through the linger once the aborted work ends.
         expect(host.stop).not.toHaveBeenCalled()
         end()
-        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS)
-        expect(host.stop).toHaveBeenCalledTimes(1)
+        expect(host.stopAfter).toHaveBeenCalledWith(KEEP_ALIVE_LINGER_MS)
+        expect(host.stop).not.toHaveBeenCalled()
     })
 
     test('stops speech alone too', () => {
@@ -251,6 +289,17 @@ describe('the Stop action', () => {
         expect(host.stop).toHaveBeenCalledTimes(1)
     })
 
+    test('Stop right after the host was asked to stop still stops immediately', () => {
+        const host = fakeHost()
+        attach(host)
+        beginInFlight('image')()
+        host.stop.mockClear()
+
+        window.__risuTaniumKeepAliveStop?.()
+
+        expect(host.stop).toHaveBeenCalledTimes(1)
+    })
+
     test('after the service was stopped, later work starts it again', () => {
         const host = fakeHost()
         attach(host)
@@ -276,8 +325,19 @@ describe('the system time limit', () => {
         expect(host.start).toHaveBeenCalledTimes(2)
     })
 
-    test('a timeout during the linger cancels the pending stop', () => {
+    test('a timeout after the host was asked to stop makes the next work start the service', () => {
         const host = fakeHost()
+        attach(host)
+        beginInFlight('chat')()
+
+        window.__risuTaniumKeepAliveTimeout?.()
+        beginInFlight('image')
+
+        expect(host.start).toHaveBeenCalledTimes(2)
+    })
+
+    test('a timeout during the page-timer linger cancels the pending stop', () => {
+        const host = legacyHost()
         attach(host)
         beginInFlight('chat')()
         host.stop.mockClear()

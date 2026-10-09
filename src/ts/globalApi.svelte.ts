@@ -3251,6 +3251,20 @@ let fetchIndex = 0
 let nativeFetchData: { [key: string]: StreamedFetchChunk[] } = {}
 
 /**
+ * The resolver of the stream pump that is waiting for its next native event, by fetch id.
+ * Events and exit conditions wake the pump instead of a timer, which a hidden page throttles.
+ */
+const nativeFetchWake: { [key: string]: (() => void) | undefined } = {}
+
+const wakeNativeFetch = (id: string) => {
+    const wake = nativeFetchWake[id]
+    if (wake) {
+        delete nativeFetchWake[id]
+        wake()
+    }
+}
+
+/**
  * Interface representing a streamed fetch chunk data.
  * @interface
  */
@@ -3328,6 +3342,7 @@ if (isTauri) {
             const parsed = JSON.parse(event.payload as string)
             const id = parsed.id
             nativeFetchData[id]?.push(parsed)
+            wakeNativeFetch(id)
         } catch (error) {
             console.error(error)
         }
@@ -3653,6 +3668,9 @@ export async function fetchNative(url: string, arg: {
         let resolved = false
 
         let error = ''
+        // Settles when the response head is known, the stream ended or the request was aborted.
+        let settleHeaders: () => void = () => {}
+        const headersReady = new Promise<void>((resolve) => { settleHeaders = resolve })
         while (!streamedFetchListening) {
             await sleep(100)
         }
@@ -3670,6 +3688,8 @@ export async function fetchNative(url: string, arg: {
                     if (!parsedRes.success) {
                         error = parsedRes.body
                         resolved = true
+                        settleHeaders()
+                        wakeNativeFetch(fetchId)
                     }
                 } catch (e) {
                     // Error properties (message/name/stack) are non-enumerable, so
@@ -3678,6 +3698,8 @@ export async function fetchNative(url: string, arg: {
                         ? (e.message || e.name || 'streamed_fetch parse failed')
                         : String(e)
                     resolved = true
+                    settleHeaders()
+                    wakeNativeFetch(fetchId)
                 }
             })
         }
@@ -3700,9 +3722,11 @@ export async function fetchNative(url: string, arg: {
 
         const tauriReadableStream = new ReadableStream<Uint8Array>({
             async start(controller) {
-                while (!resolved || nativeFetchData[fetchId].length > 0) {
-                    if (nativeFetchData[fetchId].length > 0) {
-                        const data = nativeFetchData[fetchId].shift()
+                // Nothing is awaited between the final emptiness check and arming the
+                // wake, so an event pushed meanwhile cannot be missed.
+                while (true) {
+                    const data = nativeFetchData[fetchId].shift()
+                    if (data !== undefined) {
                         if (data.type === 'chunk') {
                             const chunk = Buffer.from(data.body, 'base64')
                             controller.enqueue(chunk as unknown as Uint8Array)
@@ -3710,14 +3734,23 @@ export async function fetchNative(url: string, arg: {
                         if (data.type === 'headers') {
                             resHeaders = data.body
                             status = data.status
+                            settleHeaders()
                         }
                         if (data.type === 'end') {
                             resolved = true
+                            settleHeaders()
                         }
+                        await Promise.resolve()
+                        continue
                     }
-                    await sleep(10)
+                    if (resolved) {
+                        break
+                    }
+                    await new Promise<void>((resolve) => { nativeFetchWake[fetchId] = resolve })
                 }
                 controller.close()
+                delete nativeFetchData[fetchId]
+                delete nativeFetchWake[fetchId]
             }
         })
 
@@ -3729,9 +3762,12 @@ export async function fetchNative(url: string, arg: {
         // A stop before the first byte ends the wait here, while the timeout
         // relay is still live; once the Response is returned the caller's own
         // abort handling takes over.
-        while (resHeaders === null && !resolved && !requestSignal?.aborted) {
-            await sleep(10)
+        requestSignal?.addEventListener('abort', settleHeaders, { once: true })
+        if (requestSignal?.aborted) {
+            settleHeaders()
         }
+        await headersReady
+        requestSignal?.removeEventListener('abort', settleHeaders)
 
         if (resHeaders === null && requestSignal?.aborted) {
             throw new Error('aborted')

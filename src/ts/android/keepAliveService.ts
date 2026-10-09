@@ -15,6 +15,8 @@ export interface KeepAliveHost {
     start(title: string, stopLabel: string): unknown
     update(title: string, stopLabel: string): unknown
     stop(): unknown
+    /** Stops the service after `ms` natively, so a throttled hidden page cannot delay it; `start`, `update` and `stop` cancel it. */
+    stopAfter(ms: number): unknown
     requestNotificationPermissionOnce(): unknown
 }
 
@@ -53,7 +55,7 @@ export interface KeepAliveDeps {
 }
 
 export interface KeepAliveConsumer {
-    /** Detaches from the registry and the window hooks; does not stop the service. */
+    /** Detaches from the registry and the window hooks; does not stop the service, and a native stop already requested stays pending. */
     dispose(): void
 }
 
@@ -106,7 +108,16 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
     const sync = (): void => {
         const kinds = deps.kinds()
         if (kinds.length === 0) {
-            if (running && lingerTimer === null) {
+            if (!running) {
+                return
+            }
+            if (typeof host.stopAfter === 'function') {
+                // The host owns the linger: a hidden page's timers are throttled, the host's are not.
+                // The service counts as stopped here; a later begin calls start, which cancels the pending stop.
+                running = false
+                shown = null
+                callHost(host, 'stopAfter', lingerMs)
+            } else if (lingerTimer === null) {
                 lingerTimer = setTimeout(stopService, lingerMs)
             }
             return

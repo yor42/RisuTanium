@@ -205,6 +205,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 import { invoke } from '@tauri-apps/api/core'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { fetchNative, globalFetch } from 'src/ts/globalApi.svelte'
+import { sleep } from 'src/ts/util'
 import { inFlightKinds, resetInFlightForTest } from 'src/ts/process/inFlightWork'
 
 const tauriFetchMock = vi.mocked(tauriFetch)
@@ -316,5 +317,160 @@ describe('fetchNative before the first byte', () => {
 
         controller.abort()
         streamEvents.emit(JSON.stringify({ id, type: 'end' }))
+    })
+})
+
+describe('fetchNative stream pump while timers do not run', () => {
+    // A hidden page throttles timers, so the pump and the header wait must be
+    // driven by native events alone: every `sleep` here never resolves.
+    const STALL_MS = 300
+    const STREAM_URL = 'https://api.example.invalid/v1/stream'
+    const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+    const within = <T,>(promise: Promise<T>): Promise<T> => Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => setTimeout(() => reject(new Error('stalled')), STALL_MS)),
+    ])
+    const emit = (id: string, event: Record<string, unknown>) => streamEvents.emit(JSON.stringify({ id, ...event }))
+    const b64 = (text: string) => Buffer.from(text).toString('base64')
+
+    async function begin(signal?: AbortSignal) {
+        invokeMock.mockClear()
+        const outcome = { response: null as Response | null, error: null as string | null }
+        const pending = fetchNative(STREAM_URL, { body: '{}', signal }).then(
+            (response) => { outcome.response = response; return response },
+            (error: unknown) => { outcome.error = error instanceof Error ? error.message : String(error); return null },
+        )
+        for (let i = 0; i < 50 && invokeMock.mock.calls.length === 0; i++) {
+            await tick()
+        }
+        const id = (invokeMock.mock.calls[0][1] as { id: string }).id
+        return { id, pending, outcome }
+    }
+
+    beforeEach(() => {
+        vi.mocked(sleep).mockImplementation(() => new Promise<void>(() => {}))
+    })
+
+    afterEach(() => {
+        vi.mocked(sleep).mockImplementation(() => new Promise<void>((resolve) => setTimeout(resolve, 1)))
+    })
+
+    test('headers, chunks and end reach the reader in order', async () => {
+        invokeMock.mockImplementation(async () => JSON.stringify({ success: true }))
+        const { id, pending } = await begin()
+
+        emit(id, { type: 'headers', body: { 'x-test': '1' }, status: 201 })
+        emit(id, { type: 'chunk', body: b64('one ') })
+        emit(id, { type: 'chunk', body: b64('two ') })
+        emit(id, { type: 'chunk', body: b64('three') })
+        emit(id, { type: 'end' })
+
+        const response = await within(pending)
+        expect(response?.status).toBe(201)
+        expect(response?.headers.get('x-test')).toBe('1')
+        expect(await within(response!.text())).toBe('one two three')
+    })
+
+    test('a chunk pushed at any point of the drain is not lost', async () => {
+        invokeMock.mockImplementation(async () => JSON.stringify({ success: true }))
+        for (let gap = 0; gap < 6; gap++) {
+            const { id, pending } = await begin()
+            emit(id, { type: 'headers', body: {}, status: 200 })
+            emit(id, { type: 'chunk', body: b64('a') })
+            for (let i = 0; i < gap; i++) {
+                await Promise.resolve()
+            }
+            emit(id, { type: 'chunk', body: b64('b') })
+            for (let i = 0; i < gap; i++) {
+                await Promise.resolve()
+            }
+            emit(id, { type: 'end' })
+
+            const response = await within(pending)
+            expect(await within(response!.text())).toBe('ab')
+        }
+    })
+
+    test('a chunk pushed while the pump is idle wakes it', async () => {
+        invokeMock.mockImplementation(async () => JSON.stringify({ success: true }))
+        const { id, pending } = await begin()
+        emit(id, { type: 'headers', body: {}, status: 200 })
+        const response = await within(pending)
+        const reader: ReadableStreamDefaultReader<Uint8Array> = response!.body!.getReader()
+        await tick()
+
+        emit(id, { type: 'chunk', body: b64('late') })
+        const first = await within(reader.read())
+        expect(new TextDecoder().decode(first.value)).toBe('late')
+
+        emit(id, { type: 'end' })
+        expect((await within(reader.read())).done).toBe(true)
+    })
+
+    test('an end before any headers still resolves with the empty header default', async () => {
+        invokeMock.mockImplementation(async () => JSON.stringify({ success: true }))
+        const { id, pending } = await begin()
+
+        emit(id, { type: 'end' })
+
+        const response = await within(pending)
+        expect(response?.status).toBe(400)
+        expect([...response!.headers.keys()]).toEqual([])
+    })
+
+    test('a command failure before the headers rejects with its message', async () => {
+        invokeMock.mockImplementation(async () => JSON.stringify({ success: false, body: 'connection refused' }))
+        const { pending, outcome } = await begin()
+
+        await within(pending)
+
+        expect(outcome.error).toBe('connection refused')
+    })
+
+    test('an unparsable command result before the headers rejects with the parse failure', async () => {
+        invokeMock.mockImplementation(async () => 'not json')
+        const { pending, outcome } = await begin()
+
+        await within(pending)
+
+        expect(outcome.error).toBeTruthy()
+        expect(outcome.response).toBeNull()
+    })
+
+    test('a command failure after the headers ends the stream', async () => {
+        let finish: (value: string) => void = () => {}
+        invokeMock.mockImplementation(() => new Promise<string>((resolve) => { finish = resolve }))
+        const { id, pending } = await begin()
+        emit(id, { type: 'headers', body: {}, status: 200 })
+        emit(id, { type: 'chunk', body: b64('partial') })
+        const response = await within(pending)
+
+        finish(JSON.stringify({ success: false, body: 'reset' }))
+
+        expect(await within(response!.text())).toBe('partial')
+    })
+
+    test('an abort before the headers rejects as aborted', async () => {
+        invokeMock.mockImplementation(() => new Promise(() => {}))
+        const controller = new AbortController()
+        const { pending, outcome } = await begin(controller.signal)
+
+        controller.abort()
+        await within(pending)
+
+        expect(outcome.error).toBe('aborted')
+    })
+
+    test('an event for a stream that already closed is ignored', async () => {
+        invokeMock.mockImplementation(async () => JSON.stringify({ success: true }))
+        const { id, pending } = await begin()
+        emit(id, { type: 'headers', body: {}, status: 200 })
+        emit(id, { type: 'end' })
+        const response = await within(pending)
+        await within(response!.text())
+        const errors = vi.mocked(console.error).mock.calls.length
+
+        expect(() => emit(id, { type: 'chunk', body: b64('stray') })).not.toThrow()
+        expect(vi.mocked(console.error).mock.calls.length).toBe(errors)
     })
 })
