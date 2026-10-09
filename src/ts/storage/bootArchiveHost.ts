@@ -28,14 +28,25 @@ import { getAppStore, pageStoreIsIndexedDb, readMainFile as readMainFileFromStor
  * injected deps.
  */
 
-/** A Tauri desktop build: the native OS answers when it can, the user agent otherwise. No mobile build is supported, so a mobile OS never archives. */
+/**
+ * A Tauri build on an operating system that may archive: desktop and Android,
+ * never iOS. The native OS answers when it can, the user agent otherwise (a
+ * missing OS plugin on a mobile user agent is not capable). The pass's
+ * in-process commit lock relies on the premise that a Tauri app has exactly
+ * one live page on its data directory. Desktop holds it with the
+ * single-instance plugin. Android holds it with one `singleTask` activity,
+ * with `MainActivity` retiring the WebView that a recreation supersedes, and
+ * with the manifest declaring the common configuration changes. The
+ * superseded page's IPC replies never reach it, so no chain of its IPC
+ * requests continues to a later step, and its unsaved edits are lost.
+ */
 function isTauriDesktop(): boolean {
     if (!isTauri) {
         return false
     }
     try {
         const os = tauriOs.type()
-        return os !== 'android' && os !== 'ios'
+        return os !== 'ios'
     } catch (error) {
         return !isMobile && !isIOS()
     }

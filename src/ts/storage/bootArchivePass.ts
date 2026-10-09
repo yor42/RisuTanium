@@ -71,7 +71,7 @@ export interface BootArchiveEnvironment {
     host: BootArchiveHost
     /** Web only: the self-hosted Node server backs the main file and the units. */
     isNodeServer: boolean
-    /** Tauri only: a desktop build (single instance; not a mobile OS). */
+    /** Tauri only: a build on an operating system that may archive (desktop or Android; never iOS). The field keeps its name for the tests that inject it. */
     tauriDesktop: boolean
     /** Web only: `locksSupported !== false && !!navigator.locks`. */
     locksSupported: boolean
@@ -239,7 +239,7 @@ export type ReplaceHold =
     | { kind: 'held', release(): Promise<void> }
     /** Another tab is alive (or this page is reloading): the replace must not proceed. */
     | { kind: 'refused', reloading: boolean }
-    /** Nothing can be held: the desktop app is a single instance, and a browser without Web Locks cannot exclude other tabs, so the caller confirms instead. */
+    /** Nothing can be held: a Tauri app is assumed to have exactly one live page on its data directory (the single-instance plugin holds it on desktop; on Android one `singleTask` activity does, with the WebView a recreation supersedes retired and its IPC replies never reaching it), and a browser without Web Locks cannot exclude other tabs, so the caller confirms instead. */
     | { kind: 'unlocked', reason: 'single-instance' | 'no-web-locks' }
 
 type Slot = Database['characters'][number]
