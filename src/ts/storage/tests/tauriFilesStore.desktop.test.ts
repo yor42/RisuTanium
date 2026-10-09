@@ -69,7 +69,8 @@ describe.each(['windows', 'linux', 'macos'])('with the operating system reported
         async peek(key) {
             return h.fs.files.get(key)?.slice() ?? null
         },
-        backendCalls: () => h.fs.calls.length + h.desktop.commands.length,
+        // `app_data_dir_path` names the data directory and reads no file: a URL still comes from the key alone.
+        backendCalls: () => h.fs.calls.length + h.desktop.commands.filter((command) => command !== 'app_data_dir_path').length,
         invalidEverywhere: ['', '/abs', 'a/', '/a', 'a//b', 'a/./b', 'a/../b', 'a\u0000b', 'C:x', ...(os === 'windows' ? ['x/a:b'] : [])],
         invalidPrefixes: ['', '/abs', 'a//b', 'a/../b', 'a\u0000b', 'C:x'],
         writeOnlyInvalid: [...WRITE_ONLY_INVALID, ...(os === 'windows' ? [] : ['x/a:b'])],
@@ -179,10 +180,11 @@ describe('Tauri files store on desktop', () => {
             expect(same(h.fs.files.get('blocks/gen/c/6162'), bytes)).toBe(true)
         })
 
-        test('a plain key of at most CHUNK_MAX bytes is written through the plugin with the ./ path, and no command is invoked', async () => {
+        test('a plain key of at most CHUNK_MAX bytes is written through the plugin with the ./ path, and the only command invoked creates its folder', async () => {
             await store().write('database/database.bin', patterned(CAP), 'unconditional')
 
-            expect(h.desktop.commands).toEqual([])
+            expect(h.desktop.commands).toEqual(['app_fs_mkdir_all'])
+            expect(h.fs.calls.filter((call) => call.op === 'mkdir').map((call) => call.path)).toEqual(['database'])
             expect(h.fs.renameLog.at(-1)?.to).toBe('./database/database.bin')
             expect(h.fs.files.get('database/database.bin')?.length).toBe(CAP)
         })

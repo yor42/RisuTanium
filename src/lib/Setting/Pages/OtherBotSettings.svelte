@@ -26,6 +26,7 @@
     import { PlusIcon, PencilIcon, TrashIcon, DownloadIcon, HardDriveUploadIcon } from "@lucide/svelte";
     import { alertError, alertInput, alertConfirm, alertNormal } from "src/ts/alert";
     import { createHypaV3Preset } from "src/ts/process/memory/hypav3";
+    import { importHypaV3PresetFile } from "src/ts/process/memory/hypaV3PresetImport";
 
     let submenu = $state(DBState.db.useLegacyGUI ? -1 : 0);
 
@@ -1179,31 +1180,7 @@
                     <DownloadIcon size={24}/>
                 </button>
 
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async() => {
-                    try {
-                        const bytesImport = (await selectSingleFile(['json'])).data
-
-                        if(!bytesImport) return
-
-                        const objImport = JSON.parse(Buffer.from(bytesImport).toString('utf-8'))
-
-                        if(objImport.type !== 'risu' || !objImport.data) return
-
-                        const newPreset = createHypaV3Preset(
-                            objImport.data.name || "Imported Preset",
-                            objImport.data.settings || {}
-                        );
-                        const presets = DBState.db.hypaV3Presets
-                        
-                        presets.push(newPreset)
-                        DBState.db.hypaV3Presets = presets
-                        DBState.db.hypaV3PresetId = DBState.db.hypaV3Presets.length - 1
-
-                        alertNormal(language.successImport)
-                    } catch (error) {
-                        alertError(`${error}`)
-                    }
-                }}>
+                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={importHypaV3PresetFile}>
                     <HardDriveUploadIcon size={24}/>
                 </button>
             </div>

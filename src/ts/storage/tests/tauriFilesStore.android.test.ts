@@ -41,7 +41,8 @@ describeByteStoreConformance({
     async peek(key) {
         return h.fs.files.get(key)?.slice() ?? null
     },
-    backendCalls: () => h.fs.calls.length + h.chunk.calls.length,
+    // `app_data_dir_path` names the data directory and reads no file: a URL still comes from the key alone.
+    backendCalls: () => h.fs.calls.length + h.chunk.calls.filter((call) => call.command !== 'app_data_dir_path').length,
     invalidEverywhere: ['', '/abs', 'a/', '/a', 'a//b', 'a/./b', 'a/../b', 'a\u0000b', 'C:x'],
     invalidPrefixes: ['', '/abs', 'a//b', 'a/../b', 'a\u0000b', 'C:x'],
     writeOnlyInvalid: WRITE_ONLY_INVALID,

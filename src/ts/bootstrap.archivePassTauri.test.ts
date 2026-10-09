@@ -198,7 +198,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         await fakeFs.module.writeFile(path, data, options)
     }),
     remove: vi.fn(async (path: string) => {
-        world.events.push(`remove:${path}`)
+        world.events.push(`remove:${path.replace(/^\.\//, '')}`)
         await fakeFs.module.remove(path)
     }),
 }))

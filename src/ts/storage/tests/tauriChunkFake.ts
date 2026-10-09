@@ -19,6 +19,13 @@
  *   six identity words, little-endian u64) as an `ArrayBuffer`, and rejects a
  *   missing file with a message that ends in `(os error 2)`.
  *
+ * `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove` and `app_data_dir_path`
+ * mirror `src-tauri/src/app_fs.rs`: the key rule of `appFsKey`, a missing path
+ * rejects with a message that ends in `(os error 2)`, an empty directory is
+ * removable and a full one is not, and a refusal starts with `refused key:`.
+ * They act on the fake's files, so its fault injection (`failRemoves`) and call
+ * logs apply to them.
+ *
  * A file's identity is the identity of the array that holds it in the fake, so
  * replacing a file (a `files.set`) changes it and reading it does not.
  */
@@ -189,10 +196,65 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         return out.buffer
     }
 
+    /**
+     * The key rule of `app_fs.rs` (`resolve_addressable`): non-empty unless the
+     * root is allowed, no NUL, not absolute, no drive prefix, no empty, `.` or
+     * `..` segment. It leaves out the extra refusal of `:` and `\` that the Rust
+     * rule has on Windows, as `read_range` here does; the store's own key rule
+     * refuses those first. A refusal is a string that starts with
+     * `refused key:` and happens before any file is touched.
+     */
+    function appFsKey(args: Record<string, unknown>, allowRoot: boolean): string {
+        const key = stringArg(args, 'key')
+        if (key === '' && allowRoot) {
+            return key
+        }
+        const refused = key === ''
+            || key.includes('\0')
+            || key.startsWith('/')
+            || key.startsWith('\\')
+            || /^[A-Za-z]:/.test(key)
+            || key.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+        if (refused) {
+            throw `refused key: ${JSON.stringify(key)} is not an addressable key`
+        }
+        return key
+    }
+
+    /** `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove` and `app_data_dir_path`, over the same files; see `app_fs.rs` for the rules they mirror. */
+    async function appFsCommand(command: string, args: Record<string, unknown>): Promise<unknown> {
+        const fsModule = fs.module as {
+            exists(path: string): Promise<boolean>
+            mkdir(path: string, options?: { recursive?: boolean }): Promise<void>
+            remove(path: string): Promise<void>
+        }
+        switch (command) {
+            case 'app_fs_exists': {
+                const key = appFsKey(args, true)
+                return await fsModule.exists(key)
+            }
+            case 'app_fs_mkdir_all': {
+                const key = appFsKey(args, true)
+                await fsModule.mkdir(key, { recursive: true })
+                return undefined
+            }
+            case 'app_fs_remove':
+                await fsModule.remove(appFsKey(args, false))
+                return undefined
+            default:
+                return fs.getAppDataRoot() ?? '/appdata'
+        }
+    }
+
     async function invoke(command: string, args?: unknown): Promise<unknown> {
         const named = (args ?? {}) as Record<string, unknown>
         calls.push({ command, args: named })
         switch (command) {
+            case 'app_fs_exists':
+            case 'app_fs_mkdir_all':
+            case 'app_fs_remove':
+            case 'app_data_dir_path':
+                return await appFsCommand(command, named)
             case 'write_chunk':
                 return writeChunk(named)
             case 'abort_chunked':

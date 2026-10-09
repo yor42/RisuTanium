@@ -4,6 +4,7 @@ import { getDatabase } from "./storage/database.svelte"
 import { DBState, selectedCharID } from "./stores.svelte"
 import {open} from '@tauri-apps/plugin-dialog'
 import { readUserFile } from "./storage/tauriUserFile"
+import { isAndroidTransport } from "./storage/tauriByteTransport"
 import { basename } from "@tauri-apps/api/path"
 import { createBlankChar, getCharImage } from "./characters"
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -60,7 +61,10 @@ const domSelect = true
 export async function selectSingleFile(ext:string[]){
     if(domSelect){
         const v = await selectFileByDom(ext, 'single')
-        const file = v[0]
+        const file = v?.[0]
+        if(!file){
+            return null
+        }
         return {name: file.name,data:await readFileAsUint8Array(file)}
     }
 
@@ -88,9 +92,17 @@ export async function selectSingleFileObject(ext:string[]):Promise<File|null>{
     return picked?.[0] ?? null
 }
 
+/**
+ * Lets the user pick several files. Null when nothing was picked. The web build and Android use the
+ * web view's chooser: Android's dialog plugin answers content URIs whose names come from `basename`,
+ * a synchronous plugin command that waits for the UI thread there.
+ */
 export async function selectMultipleFile(ext:string[]){
-    if(!isTauri){
+    if(!isTauri || isAndroidTransport()){
         const v = await selectFileByDom(ext, 'multiple')
+        if(!v || v.length === 0){
+            return null
+        }
         let arr:{name:string, data:Uint8Array}[] = []
         for(const file of v){
             arr.push({name: file.name,data:await readFileAsUint8Array(file)})
@@ -249,22 +261,33 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
             fileInput.accept = '*'
         }
 
-    
+
+        // Nothing picked (a closed chooser, or a confirmed empty selection) resolves [] once and removes the input.
+        let settled = false
+        const finish = (files: File[]) => {
+            if (settled) {
+                return
+            }
+            settled = true
+            fileInput.remove()
+            resolve(files)
+        }
+
         fileInput.addEventListener('change', (event) => {
             if (fileInput.files.length === 0) {
-                resolve([]);
+                finish([])
                 return;
             }
-    
+
             const files = acceptAll ? Array.from(fileInput.files) :(Array.from(fileInput.files).filter(file => {
                 const fileExtension = file.name.split('.').pop().toLowerCase();
                 return !allowedExtensions || allowedExtensions.includes(fileExtension);
-            })) 
-    
-            fileInput.remove()
-            resolve(files);
+            }))
+
+            finish(files)
         });
-    
+        fileInput.addEventListener('cancel', () => finish([]));
+
         document.body.appendChild(fileInput);
         fileInput.click();
         fileInput.style.display = 'none'; // Hide the file input element

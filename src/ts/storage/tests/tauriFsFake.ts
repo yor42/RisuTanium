@@ -438,6 +438,11 @@ export function createFakeTauriFs(options: FakeFsOptions = {}) {
             appDataRoot = root
         },
 
+        /** The absolute AppData directory last named, if any. */
+        getAppDataRoot(): string | undefined {
+            return appDataRoot
+        },
+
         /** Puts a symbolic link in place, creating the directories above it. */
         plantSymlink(path: string, target: FakeSymlinkTarget): void {
             symlinks.set(path, target)

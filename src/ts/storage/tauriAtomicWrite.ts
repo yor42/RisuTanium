@@ -1,4 +1,5 @@
-import { BaseDirectory, exists, readDir, remove, rename, writeFile } from '@tauri-apps/plugin-fs'
+import { BaseDirectory, readDir, rename, writeFile } from '@tauri-apps/plugin-fs'
+import { appFsExists, appFsRemove } from './appFs'
 import { shouldChunkWrite, writeChunked } from './tauriByteTransport'
 
 /**
@@ -20,6 +21,10 @@ import { shouldChunkWrite, writeChunked } from './tauriByteTransport'
  * a body above `CHUNK_MAX` on desktop) goes as chunks into a temp file of the
  * same name pattern and a rename on the last chunk (`writeChunked` in
  * `tauriByteTransport.ts`), again without a flush.
+ *
+ * The plugin's `writeFile` and `rename` are reachable only off Android, because
+ * every Android body is chunked. They must stay out of the Android path: the
+ * plugin's synchronous `rename` waits for the UI thread there.
  */
 
 /**
@@ -67,9 +72,14 @@ function joinPath(directory: string, name: string): string {
     return directory === '' ? name : `${directory}/${name}`
 }
 
+/** The key of a plugin path: the plugin's `./` prefix is not part of it, and the app's commands refuse a key that has it. */
+function bareKey(path: string): string {
+    return path.startsWith('./') ? path.slice(2) : path
+}
+
 async function removeQuietly(path: string): Promise<void> {
     try {
-        await remove(path, { baseDir: BaseDirectory.AppData })
+        await appFsRemove(bareKey(path))
     } catch (error) {
         // A temp that cannot be removed now is removed by the boot sweep.
     }
@@ -100,8 +110,8 @@ async function renameOverTarget(from: string, to: string): Promise<void> {
  */
 export async function writeFileAtomic(path: string, bytes: Uint8Array): Promise<void> {
     if (shouldChunkWrite(bytes.length)) {
-        // The chunk command takes the bare key; the plugin's `./` prefix is not part of it.
-        await writeChunked(path.startsWith('./') ? path.slice(2) : path, bytes, false)
+        // The chunk command takes the bare key.
+        await writeChunked(bareKey(path), bytes, false)
         return
     }
     const temp = joinPath(directoryOf(path), randomTempName())
@@ -145,7 +155,7 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
                 continue
             }
             try {
-                await remove(joinPath(directory, entry.name), { baseDir: BaseDirectory.AppData })
+                await appFsRemove(joinPath(directory, entry.name))
             } catch (error) {
                 console.error(error)
             }
@@ -175,7 +185,7 @@ export async function sweepAllWriteTemps(): Promise<void> {
     await sweepAtomicWriteTemps('')
     for (const directory of WRITE_TEMP_DIRECTORIES) {
         try {
-            if (await exists(directory, { baseDir: BaseDirectory.AppData })) {
+            if (await appFsExists(directory)) {
                 await sweepAtomicWriteTemps(directory, { recursive: true })
             }
         } catch (error) {

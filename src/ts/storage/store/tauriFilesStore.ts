@@ -1,6 +1,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { appDataDir, join } from '@tauri-apps/api/path'
-import { BaseDirectory, exists, mkdir, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
+import { join } from '@tauri-apps/api/path'
+import { BaseDirectory, readDir, readFile } from '@tauri-apps/plugin-fs'
+import { appDataDirectory, appFsExists, appFsMkdirAll, appFsRemove } from '../appFs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
 import { createChunkedWriter, MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
@@ -13,7 +14,10 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * The byte store on the Tauri app's AppData directory (desktop and Android): one file per key, at
  * the path the key names.
  *
- * Every path handed to the plugin is `./` plus the key. The plugin parses a
+ * Existence, directory creation and removal take the bare key through
+ * `appFs.ts`, which uses the app's own async commands on Android and desktop
+ * (the plugin's synchronous variants can deadlock the Android page load).
+ * Every path handed to the plugin (`readDir`, `readFile`) is `./` plus the key. The plugin parses a
  * path string as a URL first, and an absolute path that comes out of a `file:`
  * URL replaces the base directory, so a bare key such as `file:/home/u/x` would
  * leave AppData. With the `./` prefix no key parses as a URL.
@@ -58,17 +62,17 @@ function errorText(error: unknown): string {
 }
 
 /**
- * A path is absent only when the plugin says so AND `exists` agrees. `exists`
+ * A key is absent only when the file call says so AND `exists` agrees. `exists`
  * is false for any error that stops the metadata lookup, so it alone cannot
  * tell an absent file from a denied one, and the error code alone would turn a
  * mislabelled failure into "no value". Any other error is a failure.
  */
-async function isAbsent(error: unknown, path: string): Promise<boolean> {
+async function isAbsent(error: unknown, key: string): Promise<boolean> {
     if (!MISSING_FILE_ERROR.test(errorText(error))) {
         return false
     }
     try {
-        return !(await exists(path, APP_DATA))
+        return !(await appFsExists(key))
     } catch {
         return false
     }
@@ -93,11 +97,10 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
 
     /** Removes one file; an absent file counts as removed. */
     async function removeFile(key: string): Promise<void> {
-        const path = pluginPath(key)
         try {
-            await remove(path, APP_DATA)
+            await appFsRemove(key)
         } catch (error) {
-            if (!(await isAbsent(error, path))) {
+            if (!(await isAbsent(error, key))) {
                 throw error
             }
         }
@@ -119,7 +122,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
         try {
             entries = await readDir(path, APP_DATA)
         } catch (error) {
-            if (await isAbsent(error, path)) {
+            if (await isAbsent(error, directory)) {
                 return
             }
             throw error
@@ -135,7 +138,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
                 continue
             } else if (entry.isFile) {
                 keys.push(key)
-            } else if (entry.isSymlink && await exists(pluginPath(key), APP_DATA)) {
+            } else if (entry.isSymlink && await appFsExists(key)) {
                 keys.push(key)
             }
         }
@@ -152,7 +155,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
                 const bytes = transportKind() === 'other' ? await readFile(path, APP_DATA) : await readRanged(key)
                 return { bytes: ownBytes(bytes), version: null }
             } catch (error) {
-                if (await isAbsent(error, path)) {
+                if (await isAbsent(error, key)) {
                     return { bytes: null, version: null }
                 }
                 throw error
@@ -170,7 +173,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             }
             const directory = parentDirectory(key)
             if (directory !== '') {
-                await mkdir(pluginPath(directory), { ...APP_DATA, recursive: true })
+                await appFsMkdirAll(directory)
             }
             await writeFileAtomic(pluginPath(key), bytes)
             return { version: null }
@@ -220,14 +223,13 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
 
         async has(key: string): Promise<boolean> {
             checkAddressable(key)
-            const path = pluginPath(key)
-            if (!(await exists(path, APP_DATA))) {
+            if (!(await appFsExists(key))) {
                 return false
             }
             // `exists` is also true for a directory, which holds no value. Only
             // a directory can be listed.
             try {
-                await readDir(path, APP_DATA)
+                await readDir(pluginPath(key), APP_DATA)
                 return false
             } catch {
                 return true
@@ -240,7 +242,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             if (known !== undefined) {
                 return known
             }
-            appDataPath ??= await appDataDir()
+            appDataPath ??= await appDataDirectory()
             const url = convertFileSrc(await join(appDataPath, key))
             urls.set(key, url)
             return url

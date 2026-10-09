@@ -8,7 +8,7 @@
  */
 
 import { get } from 'svelte/store'
-import { BaseDirectory, exists, readFile, remove } from '@tauri-apps/plugin-fs'
+import { BaseDirectory, readFile } from '@tauri-apps/plugin-fs'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { markAppInitiatedReload } from '../../reloadGuard'
 import { isTauri } from '../../platform'
@@ -49,6 +49,7 @@ import { readArchiveMemo, readArchiveStrikes } from '../../storage/bootArchiveMe
 import { hasEnabledV21Plugin } from '../../plugins/v21Plugins'
 import { STORAGE_TAB_LOCK_NAME } from '../../storage/storageTabLocks'
 import { writeFileAtomic } from '../../storage/tauriAtomicWrite'
+import { appFsExists, appFsRemove } from '../../storage/appFs'
 import {
     anyChokePointInFlight,
     getLastPluginActivityAt,
@@ -105,11 +106,11 @@ export function idleReloadPlatform(): 'web' | 'desktop' | null {
 /** The medium of the desktop's record: a file of the app's own data folder. */
 export function createTauriHandoffFiles(): HandoffFiles {
     return {
-        read: async (path) => (await exists(path, { baseDir: BaseDirectory.AppData }))
+        read: async (path) => (await appFsExists(path))
             ? await readFile(path, { baseDir: BaseDirectory.AppData })
             : null,
         writeAtomic: (path, bytes) => writeFileAtomic(path, bytes),
-        remove: (path) => remove(path, { baseDir: BaseDirectory.AppData }),
+        remove: (path) => appFsRemove(path),
     }
 }
 

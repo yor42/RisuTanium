@@ -15,6 +15,7 @@ use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_fs::FsExt;
 
+mod app_fs;
 mod asset_batch;
 mod chunked_io;
 mod durable_write;
@@ -177,6 +178,45 @@ async fn list_assets_sized(app: AppHandle) -> Result<Vec<(String, u64)>, String>
     tauri::async_runtime::spawn_blocking(move || asset_batch::list_assets_sized(&base))
         .await
         .map_err(|e| format!("the list task failed: {}", e))?
+}
+
+/// Whether `key` (empty: the app data directory) exists; see `app_fs::exists_key`.
+/// Async so that no plugin lock is held while the app data directory is
+/// resolved, which waits for the UI thread on Android. The file work runs on a
+/// blocking worker thread.
+#[tauri::command]
+async fn app_fs_exists(app: AppHandle, key: String) -> Result<bool, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || app_fs::exists_key(&base, &key))
+        .await
+        .map_err(|e| format!("the exists task failed: {}", e))?
+}
+
+/// Creates the directory `key` and its missing ancestors; see `app_fs::mkdir_all_key`.
+#[tauri::command]
+async fn app_fs_mkdir_all(app: AppHandle, key: String) -> Result<(), String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || app_fs::mkdir_all_key(&base, &key))
+        .await
+        .map_err(|e| format!("the mkdir task failed: {}", e))?
+}
+
+/// Removes the file, link or empty directory at `key`; see `app_fs::remove_key`.
+#[tauri::command]
+async fn app_fs_remove(app: AppHandle, key: String) -> Result<(), String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || app_fs::remove_key(&base, &key))
+        .await
+        .map_err(|e| format!("the remove task failed: {}", e))?
+}
+
+/// The absolute app data directory, for building asset URLs. The page supplies no path.
+#[tauri::command]
+async fn app_data_dir_path(app: AppHandle) -> Result<String, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -903,6 +943,10 @@ pub fn run() {
             write_chunk_raw,
             get_assets_batch,
             list_assets_sized,
+            app_fs_exists,
+            app_fs_mkdir_all,
+            app_fs_remove,
+            app_data_dir_path,
             write_chunk,
             abort_chunked,
             read_range,

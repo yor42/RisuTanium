@@ -24,11 +24,11 @@
     let aspectRatio = 1;
     let fontFamily = $state('Arial');
 
+    /** Loads the chosen image into the canvas. False when nothing was chosen; the caller decides what that ends. */
     async function selectFile(){
         const file = await selectSingleFile(['png', 'jpg', 'jpeg','gif','webp','avif']);
         if (!file){
-            loading = false;
-            return;
+            return false;
         };
 
         if(!ctx){
@@ -47,6 +47,7 @@
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         output = ''
+        return true;
     }
 
     async function imageTranslate(type:number = 0) {
@@ -55,8 +56,8 @@
         }
         loading = true;
         try {
-            if(mode === 'auto'){
-            await selectFile()
+            if(mode === 'auto' && !(await selectFile())){
+                return;
             }
 
             let data:string = ''

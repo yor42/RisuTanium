@@ -1,8 +1,4 @@
-import {
-    BaseDirectory,
-    exists,
-    mkdir
-} from "@tauri-apps/plugin-fs"
+import { appFsMkdirAll } from "./storage/appFs"
 import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import localforage from "localforage"
@@ -142,15 +138,10 @@ export async function loadData() {
             if (isTauri) {
                 LoadingStatusState.text = "Checking Files..."
                 appWindow?.maximize()
-                if (!await exists('', { baseDir: BaseDirectory.AppData })) {
-                    await mkdir('', { baseDir: BaseDirectory.AppData })
-                }
-                if (!await exists('database', { baseDir: BaseDirectory.AppData })) {
-                    await mkdir('database', { baseDir: BaseDirectory.AppData })
-                }
-                if (!await exists('assets', { baseDir: BaseDirectory.AppData })) {
-                    await mkdir('assets', { baseDir: BaseDirectory.AppData })
-                }
+                // Creating is idempotent, so no existence check precedes it: one call per directory.
+                await appFsMkdirAll('')
+                await appFsMkdirAll('database')
+                await appFsMkdirAll('assets')
                 // Must stay before the first write to any store key in this
                 // page load: a temp file found here is not from a write of
                 // this page load. It is a leftover, or at worst the orphaned

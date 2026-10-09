@@ -497,6 +497,10 @@ describe('startup asset sweep on Tauri: the desktop file system', () => {
         expect(Array.from(fakeFs.files.get(temp) ?? [])).toEqual([9, 9])
         expect(fakeFs.files.has('assets/orphan.png')).toBe(false)
         expect(fakeFs.removeLog.map((path) => path.replace(/^\.\//, ''))).not.toContain(temp)
+        // The sweep deletes through the app's own command; the key it names is the orphan, never the temp.
+        const removedKeys = desktop.chunk.callsOf('app_fs_remove').map((call) => call.args.key)
+        expect(removedKeys).toContain('assets/orphan.png')
+        expect(removedKeys).not.toContain(temp)
     })
 
     test('reproducer: an asset whose name differs from the keep-set entry only in case is kept', async () => {

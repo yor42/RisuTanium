@@ -203,7 +203,7 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource):P
 export async function importCharacter() {
     try {
         const files = await selectFileByDom(["*"], 'multiple')
-        if(!files){
+        if(!files || files.length === 0){
             return
         }
 

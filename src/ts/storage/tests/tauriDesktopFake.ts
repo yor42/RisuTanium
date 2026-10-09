@@ -4,7 +4,9 @@
  *
  * - `createDesktopInvoke` answers every command the desktop page may call:
  *   `write_chunk_raw` (raw body, headers, structured outcome), the three
- *   chunk commands of `tauriChunkFake.ts`, and `write_durable`. With a `cap`
+ *   chunk commands and the `app_fs_*` / `app_data_dir_path` commands of
+ *   `tauriChunkFake.ts` (a remove honours `failRemoves` of the fake file
+ *   system, as the plugin's remove did), and `write_durable`. With a `cap`
  *   it rejects any call whose file payload (request body, base64 `data`, or
  *   response bytes before the trailer) is above the cap, the way a per-call
  *   bound would fail it.

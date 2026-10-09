@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The records folder holds prose and saved sources, not app markup, so tailwind must not scan it for class names. */
+@source not "../Agents";
 
 @plugin '@tailwindcss/typography';
 
