@@ -8804,3 +8804,119 @@ Commit the completed and independently verified workflow/configuration/documenta
 2. "The Note 9 that is currently plugged in is a spare device with no important data and USIM. so you can safely control it through adb or other development tool."
 
 **Scope note (Orchestrator reading, not a maintainer decision):** the approval names the plugged-in Note 9 only. Real data or a different device still need their own approval; the standing rule against hand-editing app state on a device for tests is not lifted by this entry.
+
+---
+
+### MC-253 — Main Campaign, 2026-10-08/09: sidebar and Android batch (hidden characters off the rail, backdrop fade, system bars and keyboard): decisions, gates and accepted limits; commit `7921b287`
+
+- **Tag:** decisions (typed message and `AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-08 and 2026-10-09 (each decision carries its date below)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the plan chain `plan.md` to `plan-r4.md` and the amendment chain `amend1.md` to `amend1-r4.md` (session scratch `batch\`), which quote the chosen option labels and the Orchestrator's gloss; and the Orchestrator's records brief of 2026-10-09. The maintainer's chosen labels are quoted exactly. The glosses after each label are the Orchestrator's text in those files, not the maintainer's words. The original question texts and the unchosen options are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded, except where an item below says an earlier choice was superseded.
+- **Related:** `MC-232` addendum 1 (left hiding hidden characters to a later stage; this batch settles it), `MC-235` 4 (keyboard "Refuse and say why" for a folder's only member), `MC-175` (order round trip), `MC-083` (`§temp`), `MC-091` (scope), `MC-245` 3 (CHORE-134), `MC-249` to `MC-252`; CHORE-134, CHORE-136, CHORE-145 (closed by this batch); commit `7921b287`, pushed (`origin/main` was at `6f9c0b98`, which contains it, when checked 2026-10-09).
+
+**What was decided:**
+0. **The request (typed, 2026-10-08), as quoted in `plan.md`:** "you can remove the old worktrees, and see if we can do hiding hidden characters from the rail, fixing typo in fade, and fixing navigation bar overlap in batch/parallel." `plan.md` states that the worktree `C:\Projects\RisuAI-sidebar` was removed and the branch `feat/sidebar-rework` kept; a read-only `git worktree list` on 2026-10-09 shows only `C:/Projects/RisuAI`, and the branch is still listed.
+1. **A folder whose members are all hidden (2026-10-08): "Hide the folder (Recommended)".** The folder does not appear on the rail and stays untouched in the saved order.
+2. **Delete Folder with hidden members (2026-10-08): "Leave them out (Recommended)".** The count and the trash cover only visible characters; the hidden ones stay in the saved order outside any folder.
+3. **System bars (2026-10-08): "Native padding, app-wide (Recommended)".** Android keeps the whole page clear of the status and navigation bars on every screen and rotation, Android only; the edge-to-edge look is given up (the bars get a background matched to the theme); the edge-swipe zone is re-tested. `plan.md` says this closes CHORE-134 and CHORE-145.
+4. **Keyboard refusal for the only visible member (2026-10-08): "Yes, refuse it too (Recommended)".** Alt+Up/Down that would move a folder's only visible character out of it is refused with the existing refuse-sole message, as `MC-235` 4 does for the only character (`plan-r2.md`).
+5. **Bar colour (2026-10-08): "Follow the scheme (Recommended)".** The page tells Android its background colour whenever the scheme changes; the bars match on every scheme, with light or dark icons to suit; a small Android bridge and a release-build check (`plan-r2.md`).
+6. **A reviewer's change to a repository test file (date not stated in the sources): "Restore it (Recommended)".** During Gate 2 round 1 the reviewer wrote `src/lib/SideBars/railKeyboard.test.ts` in the repository through a relative path by mistake (`gate2\round1.md`, "INCIDENT"). Per the Orchestrator's brief the file was restored from the coder's pristine scratch copy, whose `git hash-object` is `8ea03f447566aebce408928306cd7ec4cfbebb9b`. **Resolved:** the committed blob `647915ae` differs from the pristine `8ea03f44` by a two-line comment reword (Gate 2 finding 1), applied after Gate 2 and before the full checks; the generator size, the 400 samples and the absence of a `SEED` read are unchanged, so the restore took effect. No Gate 2 re-review file exists; the edit is covered by the full checks (`batch\final\`) and by the records verification (diff executed).
+7. **Soft keyboard (2026-10-08, amendment 1): "Fold it in (Recommended)".** The same padding mechanism keeps the chat input above the keyboard on every Android version; a plan addendum, review and another device pass.
+8. **API 35+ navigation strip, three successive answers (amendment 1).** The final rule is (c); (a) and (b) are superseded.
+   - (a) **"Match when legible (Recommended)" (2026-10-08), SUPERSEDED.** A page-coloured strip when the scheme's lightness agrees with the system day/night mode; otherwise the system's own scrim (`amend1.md`). Gate 1 amendment round 1 `[REJECT]`: with a light scheme in system night mode the scrim leaves the buttons at about 2:1.
+   - (b) **"Solid system-mode colour (Recommended)" (2026-10-09), SUPERSEDED.** When the scheme and the system mode disagree, a solid strip in the system's colour (near-black `#1A1B1F` in system dark mode, light grey `#E9E9E9` by day) (`amend1-r2.md`). Gate 1 amendment round 2 `[REJECT]`: the framework turns that opaque colour TRANSPARENT when contrast enforcement is off (executed on the API 35 emulator, with the emulator image's `framework.jar` disassembled).
+   - (c) **"Accept the 80% blend (Recommended)" (2026-10-09), CURRENT.** Asked with the reviewer's measured numbers. The rule as stated in `amend1-r3.md`: on API 35 and above, `night` comes from the configuration's `uiMode` and `lightBackground` from the existing luminance test; `ruleColour = if (lightBackground == !night) pageColour else if (night) #1A1B1F else #E9E9E9`; `navigationBarColor = ruleColour` (opaque); `isNavigationBarContrastEnforced = true`; navigation appearance light = `!night`; re-applied from the last page colour on `onConfigurationChanged` (super first). Effect (framework behaviour, verified on the emulator): in 3-button mode an opaque navigation colour is drawn at 80 % alpha over the content frame, so the agreeing cases show the page colour and the disagreeing cases show `0.8 x rule + 0.2 x page` (strips `#C2C2C5` by day and `#48494C` at night, buttons at about 5.3:1); in gesture mode the colour is suppressed and the strip is the page colour with no band. API below 35 is unchanged.
+9. **CHORE-134 closure (2026-10-09, ask tool): "Close with the note (Recommended)".** Close CHORE-134, noting that the release build was checked only for the keep rules (the R8 check in Verification below); a full release-build device check happens anyway before the first release. The option text is the Orchestrator's relay. The closure is in the Roadmap entry.
+10. **Authorization to commit and push the batch (as the Orchestrator confirmed the mapping):** "commit and push, then start the merge." This authorizes commit `7921b287` (and starting the merge, `MC-254`).
+
+**Gate dispositions (independent reviewers; the saved files are in session scratch `batch\`):**
+- **Plan Gate 1, three rounds (`gate1\round1.md` to `round3.md`, opus-reviewer):** round 1 `[REJECT]` (five major findings, among them the position announcements, the conflict with `MC-235` 4, the trash placement rule, and "matched to the theme" being downgraded without the maintainer, which led to decisions 4 and 5), round 2 `[REJECT]` (the replacement rule dropped held-save ids; the IME and colour-parsing details), round 3 `[EDITORIAL]` (E1 to E4). The mechanism was reconsidered after the second rejection (`plan-r3.md`): the mechanisms were kept and the corrections were local. Plan revision 4 applied E1 to E4 and closed Gate 1.
+- **Amendment 1 Gate 1, three rounds (`gate1-amend1\round1.md` to `round3.md`, opus-reviewer):** round 1 `[REJECT]` (decision 8a illegible for a light scheme in system night mode; no pass criterion), round 2 `[REJECT]` (decision 8b not drawn by the framework), round 3 `[EDITORIAL]` (E1 to E5, applied in `amend1-r4.md`). **The second rejection triggered the mechanism reconsideration** (`amend1-r3.md`): the reviewer had built and measured the alternative "r2b" (enforcement on for API 35 and above); painting the inset region ourselves was untested and larger; r2b was taken with the maintainer's acceptance (decision 8c). Two consecutive `[REJECT]` rounds, then `[EDITORIAL]`: no advisor escalation was owed.
+- **Gate 2 for the batch (`gate2\round1.md`, opus-reviewer):** `[EDITORIAL]`. Targeted suite 41 files, 709 passed; the new hidden-character tests 13 failed and 6 passed on the base; 11 mutants (9 killed, one equivalent, one in a practically unreachable branch); Kotlin compile successful. Findings were editorial (a test comment, a missing space in an import, two test labels), plus the incident in decision 6. The `characters.ts` import space is visible as fixed in the committed text; all four editorial findings are applied in the committed text (verified by diff).
+- **Gate 2 for amendment 1 (`gate2-amend1\round1.md`, opus-reviewer):** `[EDITORIAL]`, no logic, threading, API-level or inset defect; one comment said "solid" for the disagreeing case, which the accepted mechanism does not draw. The committed `MainActivity.kt` (blob `5b326504`) differs from the Gate-2-reviewed `MainActivity.amend1.kt` (`942e95e2`) by a comment-only edit, the finding rewording (verified with `diff --ignore-space-at-eol`); it now says "an opaque system-mode colour".
+
+**Verification (provenance):**
+- Device passes (spare Note 9, API 29, and the API 35 emulator; adb strokes, no real finger): pass 1 (`batch\device\report.md`) and pass 2 on the amendment build (`batch\device2\report.md`). Pass 2 reports all six items PASS: the API 35 bars (3-button portrait and landscape, gesture), the keyboard (`innerHeight` within 2 css px of the expected value on both devices), the Note 9 spot checks, the two emulator items missed in pass 1, the abort-on-exit comparison and console cleanliness. Pass 1 found the API 35 button-contrast failure (decision 8) and that the keyboard already covered the chat input on BASELINE on both devices.
+- The pre-existing keyboard defect (no adjust-resize; the keyboard covered the chat input on both devices) was found on BASELINE and is fixed in this batch by decision 7.
+- Full checks after the last TypeScript edit (`batch\final\`): `pnpm test` 593 files passed, 12,140 tests passed, 6 skipped (exit 0); `pnpm check` 0 errors, 0 warnings; `pnpm build` built. After those checks only Kotlin changed; it is covered by the amendment 1 Gate 2 and device pass 2, not by a repeat of the full TypeScript checks.
+- Release minification: both JavaScript bridge methods (`left`, `setBackground`) were kept by R8 on the unsigned release minify task in a scratch copy; the release runtime was not exercised (DevTools are off in release). That check ran on the pre-amendment Kotlin copy; the bridge classes and `proguard-rules.pro` are hash-identical in the commit, so the conclusion stands.
+
+**Accepted limitations and named untested limits (observations, not maintainer decisions):**
+- A custom page colour near middle grey (the 0.179 luminance split) may give lower button contrast on API 35 and above (CHORE-150).
+- Untested: the keyboard on API 30 to 34; the bars on Android 16 and above; 3-button behaviour on large screens with a persistent taskbar (CHORE-151). Keyboard measured in 3-button navigation only; adb strokes only; Note 9 day-mode bars not re-sampled.
+- Pre-existing problems seen on BASELINE as well and ticketed separately: the native abort on exit with the OS Back (CHORE-147), the boot hang (CHORE-137).
+- The generated Android Gradle files under `src-tauri/gen/android` are stale in the checkout (CHORE-148).
+- The hidden-characters device run could not show that BASELINE listed `§playground`, because it was not in `characterOrder` on the device; the filter-on-order path is covered by the unit tests only (`batch\device\report.md` section 7).
+
+---
+
+### MC-254 — Main Campaign, 2026-10-09: upstream merge `6f9c0b98` (keep-alive sound counts as audible in Chrome); Korean label "소리로 유지"
+
+- **Tag:** decisions (typed messages)
+- **Date:** 2026-10-09
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed messages as supplied by the Orchestrator, the merge commit message (`merge\commitmsg.txt`, commit `6f9c0b98`), the translator's report (`merge\translator.md`) and the Gate 2 review (`merge\review.md`).
+- **Reasoning:** the Korean label should match the help bullet (merge commit message).
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-058` (Translator owns locales), `MC-255`, `MC-256`; commit `6f9c0b98`, pushed (`origin/main` was at `6f9c0b98` when checked).
+
+**What was decided:**
+1. **The merge request (typed, verbatim):** "upstream had 2 commits, and its mostly about a feature of playing empty sound on loop to keep the process alive on mobile devices. 1. see if we can merge it 2. I'd like to explore if there is better way to keep the process alive on mobile". Part 2 is the origin of `MC-255`. Merged: upstream `67e7b8cb` plus `2a511a31` ("make keep-alive sound count as audible in Chrome": `keepAliveAudio.ts`, which upstream describes as an inaudible 20 Hz looped tone). The translator resolved six locales (cn, de, es, ko, vi, zh-Hant; all pure CRLF): fork keys and labels kept, upstream's new help bullet taken, upstream's unused `keepSessionAlivePip` and `keepSessionAliveSound` labels dropped.
+2. **Korean option label `optViaSound` and authorization (typed, verbatim):** "use "소리로 유지". and commit and push after fixing korean." The label changed from "소리로 전달" to "소리로 유지", matching the help bullet; the message also authorizes the commit and push of `6f9c0b98`.
+
+**Verification (provenance):** Gate 2 by a fresh adversarial reviewer (`merge\review.md`, saved by the Orchestrator; read-only, ran no tests): `[EDITORIAL]`, no defects. The checks below are the Orchestrator's (`merge\check.txt`, `test.txt`, `build.txt`). Editorial note: the new help text's Android claim ("a media notification is shown") is unverified for the Tauri Android WebView. Full checks on the merge snapshot (`merge\`): `pnpm check` 0 errors, 0 warnings; build passes; `pnpm test` 593 files, 12,139 tests passed, 6 skipped, one failure: a 5 s load timeout of `assetPieceSave.test.ts` (CHORE-152).
+
+---
+
+### MC-255 — Main Campaign, 2026-10-09: keep-alive research choices (Android: only while working; mobile web: upstream's tone, save the partial reply on hide, remove the empty PiP mode)
+
+- **Tag:** decisions (typed message and `AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-09
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the Orchestrator's records brief of 2026-10-09, quoting the maintainer. The evidence behind the choices is `keepalive\packet.md` (an investigator packet, **not independently verified**). The question texts and the unchosen options are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** the maintainer's own words below.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-256` (these choices are deferred), `MC-254`; the Roadmap item "Keep-alive".
+
+**What was decided:**
+1. **Android:** "Only while working seems reasonable. the another reason why people wants to keep the process alive is because upstream with lots of data takes long time to boot. thus people tries to keep the process alive to prevent data loss and save time. see if we already fixed the boot time issue." The packet's suggested shape for "only while working" is an in-flight-only foreground service; it recommends type `dataSync`, but the type and wording, the notification persistence and the permission prompt timing remain maintainer decisions. The boot-time question was answered by `keepalive\boot.md` (an investigator report, not independently verified; see the Roadmap item "Android boot time").
+2. **Mobile web (three answers):** "Upstream's tone (Recommended)", "Save partial reply on hide", "Remove the empty PiP mode". The Orchestrator's glosses of these labels are in the Roadmap item; the question texts are not in the sources given.
+
+---
+
+### MC-256 — Main Campaign, 2026-10-09: proper keep-alive is deferred until Android boot time is fixed; queue order; chat-screen render work queued after the windowing items
+
+- **Tag:** decisions (typed messages)
+- **Date:** 2026-10-09
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's typed messages as quoted in the Orchestrator's records brief and its two addenda of 2026-10-09.
+- **Reasoning:** the maintainer's own words below.
+- **Alternatives rejected:** doing the keep-alive work now (implied by the words; no option text recorded).
+- **Related:** `MC-254` (the merge that was done), `MC-255`, `MC-257`; the Roadmap queue section.
+
+**What was decided (the maintainer's words, exactly):**
+1. "I think we should only merge the upstream(for now) and work on proper keep-alive AFTER we fix the boot time of android." The upstream merge is `MC-254`. The keep-alive work (an Android foreground service only while a request, TTS or image job is in flight; save the partial reply on hide; remove the PiP mode) is **deferred** until Android boot time is fixed.
+2. "after keep-alive, my next target for fixes are 1. rework the character list so it has faster and improved search algorithm on top of windowing. drag-to-rearrange(similar to how we rearrange the apps on smartphones) and folder managements in grid view would be nice to have. 2. add windowings to other scrolls, like plugin/module/prompt preset list"
+3. Queue order as the Orchestrator listed it: Android boot time, keep-alive, character list rework, windowing of other lists.
+4. On the chat-screen render investigation: "add these in the records as queued after the windowing items." The findings are queued after the windowing of other lists (Roadmap, CHORE-154 to CHORE-157).
+
+---
+
+### MC-257 — Main Campaign, 2026-10-09: chat-screen render questions: default streaming mode "Balanced", one Lua engine per script, superseded streaming parses finish but are not shown
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-09
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the maintainer's ask-tool answers of 2026-10-09 as relayed in the Orchestrator's second addendum; question context in `chatperf\verify.md` (findings F1 and F3). The option texts below are the Orchestrator's relay. The unchosen options are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-051` (this answer resolves its open question; `MC-051`'s own text is not edited), `MC-021`, `MC-175`, `MC-256` 4; CHORE-155 to CHORE-157 in the Roadmap.
+
+**What was decided:**
+1. **Default streaming display mode (resolves `MC-051`): "Balanced (Recommended)".** The question: the default for new profiles is `'off'`, and each chunk remounts and re-runs post-processing on the whole text. The option text: post-processing runs at most about every 0.125 s while streaming, with no per-chunk rebuild; the output is the same once streaming ends; the setting is labelled experimental, so check it on heavy-script cards first. The default currently comes from `?? 'off'` in `Chats.svelte` and the database default. Implementation must verify behaviour on heavy-script cards before the switch. **Not decided:** whether existing profiles with no stored value change; that is a plan question for Gate 1.
+2. **Lua engine reuse: "One engine per script (Recommended)".** Cache one engine per script (mode plus code) instead of per mode only. The option text: this removes the per-message recreation; multi-script setups keep globals between calls, as single-script setups already do; cards relying on the reset (unlikely) would behave differently from upstream.
+3. **Superseded streaming parses: "Finish, drop output (Recommended)".** Stale parses still run, including Lua side effects such as `setChatVar`, but their result is not put on screen. The option text: no behaviour change; this saves the extra DOM work but not the Lua time.

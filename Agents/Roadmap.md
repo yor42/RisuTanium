@@ -191,6 +191,7 @@ This phase is the load-bearing one: it's what Phase 4 (Android) is gated behind,
 - **Item 2 (`saveDb()` change-tracking effects): partly done.** The selected-character effect is partitioned (CHORE-01 Stage 2, `fbf799a7`). The top-level part of the effect family (`characterOrder` and the other non-character keys) was not repartitioned by Stage 2.
 - **Item 3 (virtual scrolling): partly done.** The avatar track AV-1 to AV-4 is committed (`64777a34`, `97c3f53a`, `d6ee89db`, `41977ac0`), and so is the chat-list Stage A (`96311c4a`). Real windowing of the chat list, virtual scrolling of the character lists and the sidebar rework are still open. (Updated 2026-10-08: see the next bullet; the sidebar rework is mostly committed.)
 - **Sidebar rework (character rail), status 2026-10-08:** Stages 3, 4 and 5 are committed on `main` and pushed (`MC-249` to `MC-251`): Stage 3, windowing of the rail, `9e9ea66b`; Stage 4, edge swipe opens and closes the phone panel and Android Back closes it first, `bd4ef45b`; Stage 5, remembered open folders and scroll position, ungroup and delete folder, `8f4a5be6` (`feat/sidebar-rework` was merged into `main` as `0f04ec4d`). Technical acceptance rests on the independent gates and the Note 9 passes listed in the ledger (rows 1477 onward); administrative closeout awaits independent verification of the records themselves. **What remains:** real windowing of the chat list, virtual scrolling of the other character lists (grid, list/trash, simple), the Stage 4 finger-following animation, and the follow-up tickets CHORE-135 to CHORE-146 below. Not decided or not done in this rework: filtering hidden characters from the rail (`MC-232` addendum 1 left it to a later stage; no later record settles it). Stages 1, 2a and 2b are committed (`27112f8e`, `8b23f47e`, `e55fb93e`; `MC-235`) and reached main through the merge `0f04ec4d`. This status is by the Orchestrator's facts file; Note 9 figures are single-device, debug-build, synthetic-input measurements.
+- **Sidebar and Android batch, status 2026-10-09: COMPLETE (committed `7921b287`, pushed; `MC-253`; records verified by doc-verifier 2026-10-09).** It settled the item the previous bullet lists as undecided (hidden characters are no longer rendered on the rail: `MC-232` addendum 1 is resolved), fixed the backdrop fade names (CHORE-136), kept the page clear of the Android status and navigation bars and the soft keyboard (CHORE-134, CHORE-145), and set the bar colours from the page scheme. CHORE-134, CHORE-136 and CHORE-145 are closed below. Technical acceptance: Gate 1 for the plan and for amendment 1 took three rounds each (REJECT, REJECT, EDITORIAL); Gate 2 was `[EDITORIAL]` for the batch and for amendment 1; full checks `pnpm test` 12,140 passed, `pnpm check` 0/0, build passes; device passes on the spare Note 9 and the API 35 emulator (ledger rows 1493 to 1505; the records were verified in rows 1513 and 1514). Upstream merge `6f9c0b98` (keep-alive sound; `MC-254`) is also on `main`. Follow-ups: CHORE-147 to CHORE-153. Queue after this batch: see "Queue after the 2026-10-09 batch" below.
 - **Item 8 (resident chat data for characters that are not open): in progress.** The memory-footprint work (`MC-119`, `MC-130`, Report 49) addresses the problem this item measures, at the character grain; see the 2026-09-30 note under item 8 (`Reports/49-memory-stage-1-plan.md`). Stage 1 as a whole is not done: step 1 is committed as `2b3dd636` (Report 50, Gate 2 approved at round 3), step 2 as `db49aeeb` (Report 51; Gate 2: round 1 [REJECT], round 2 [APPROVE], round 3 [EDITORIAL]), step 3a (plugin and MCP reads and writes of archived characters) as `bd57aa19` (Report 52; Gate 2: rounds 1 and 2 [REJECT], round 3 [APPROVE]), and step 3b (groups, the Playground's restore, the dataset export, the asset-integrity check and the plugin documentation) as `1b38b5d5` (Report 53; Gate 2: round 1 [REJECT], rounds 2 and 3 [APPROVE]). **Step 4 (the backup: units closed under "refers to", error-text keys, plugin storage of any shape, `value` retention dropped; D13, `MC-147`) is done**, committed as `a6719e35` (Report 55; Gate 2 by `opus-reviewer`: round 1 [REJECT], round 2 [EDITORIAL]). Steps 5, 6 and 7 are done (see the note under item 8's stage 1 below, 2026-10-04). D20's heap projection was not met: 344 MB after boot against 70-76 MB, with modules about 305 MB of it.
 - **Item 4 (size-based compaction): open.** Stage 1 touches it only at the character grain; see the 2026-09-30 note under item 4.
 - **Items 5, 6, 7: no work recorded in this file** (item 7's characters list was folded into item 3 on 2026-09-21). **Item 9 (per-chat save blocks): not started** (its own text says so).
@@ -2602,6 +2603,15 @@ amendment; live-checked, ledger row 299). Present at `688b13e8` as well.
 - **Related:** W2c-c (`MC-113`, Report 43) decides which prompt-pass results may be cached and
   leaves the capacity alone. This chore is decided after the memory-footprint work that follows
   W2e (`MC-119`).
+- **Update 2026-10-09 (chat-screen render investigation, `chatperf\packet.md` and its independent
+  verification `chatperf\verify.md`, finding N1; i9 best-case, source-verified, nothing measured on a
+  device):** under the default streaming mode `'off'`, every streamed chunk inserts one `editoutput`
+  entry into `processScriptCache` (`scripts.ts`), keyed by the whole accumulated text plus every
+  script's in/out, and the remounted body's `editdisplay` pass adds another. A long reply can
+  therefore evict the whole 1,000-entry cache, prompt and display entries included. Retained string
+  memory is up to about 1,000 x (key + value) (inferred: V8 flattens the rope keys on Map insertion).
+  Whether the default-mode change (`MC-257` 1) removes most of this is not established; CHORE-155
+  and CHORE-156 are the related render tickets.
 
 ### CHORE-46 — The self-hosted Node server cannot save a database larger than 100 MB
 
@@ -6396,7 +6406,7 @@ with index -1.
 
 ### CHORE-134 — Android release build: controls sit under the status and navigation bars
 
-**Status (2026-10-08): open; queued (`MC-245` 3: "Ticket a fix (Recommended)").** Type: bug, Android layout.
+**Status (2026-10-09): CLOSED by the sidebar and Android batch (`7921b287`, `MC-253` 3, 7 and 9; ledger rows 1493 to 1505).** The page is padded clear of the status bar, navigation bar, cutout and soft keyboard app-wide (one content-frame padding), measured at page level (inner size, rail, chat) on the debug build as `MC-245` 3 asked; device passes 1 and 2 measured it on the Note 9 (API 29) and the API 35 emulator (3-button and gesture, portrait and landscape). **Closed with the note, by the maintainer's answer "Close with the note (Recommended)" (`MC-253` 9):** the release build was checked only for the keep rules (R8 keeps both JavaScript bridge methods, checked in a scratch copy on the pre-amendment Kotlin; the bridge classes and `proguard-rules.pro` are unchanged in the commit), not by a release run; a full release-build device check happens anyway before the first release. **Earlier status (2026-10-08): open; queued (`MC-245` 3: "Ticket a fix (Recommended)").** Type: bug, Android layout.
 
 - **Task (the maintainer's answer):** apply safe-area insets on Android, and check the result against the debug build in the Note 9 session (handoff queue item 5; installing the debug build needs the maintainer's approval to uninstall the release build). TODO(evidence): the symptom's screens, the build it was seen on and the mechanism are not in the sources given beyond the one-line description.
 
@@ -6408,7 +6418,7 @@ with index -1.
 
 ### CHORE-136 — Sidebar backdrop fade names keyframes that do not exist
 
-**Status (2026-10-08): open; found during Stage 4, deliberately not fixed there.** Type: bug (suspected cosmetic).
+**Status (2026-10-09): CLOSED by the sidebar and Android batch (`7921b287`, `MC-253`).** The two `animation-name` references now point at the existing keyframes and `!important` is removed from the four keyframe declarations (the plan's reading of the CSS Animations rule is that `!important` inside a keyframe is ignored; the fade packet marked this as inferred from the spec, not executed). Note 9 (pass 1) and emulator (pass 2) samplers saw the background interpolate 0 to 0.5 on open (about 340 to 365 ms) and back to 0 on close (about 370 to 480 ms). **Earlier status (2026-10-08): open; found during Stage 4, deliberately not fixed there.** Type: bug (suspected cosmetic).
 
 - **TRACED at `main` `8f4a5be6` (this entry's writer, `src/lib/SideBars/Sidebar.svelte`):** `.sidebar-dark-animation` sets `animation-name: sidebar-dark-transition` and the closing class sets `sidebar-dark-closing-transition`, but the file defines `@keyframes sidebar-dark-animation` and `@keyframes sidebar-dark-closing-animation`; no `@keyframes` carries the names the rules use. The Stage 4 packet reports the backdrop as a static `rgba(0,0,0,.5)`. The visible effect (no fade) was not observed by this entry's writer.
 - **Dependency:** the finger-following backdrop (CHORE-135) must be built new.
@@ -6419,6 +6429,7 @@ with index -1.
 
 - **Observations (Orchestrator's facts file: earlier cold-start runs, per the session facts, and the Stage 5 amendment 2 pass, session scratch):** build A hung 3 of 16 starts and build B 1 of 16; seen again 3 times in the amendment 2 pass: on the first launch after install, while CDP polled during boot, and one reload stuck for 14 minutes. Whether the debugger or polling causes it is not established.
 - **Needed:** an observation that does not attach a debugger or poll during boot.
+- **Update 2026-10-09 (device pass 2, `batch\device2\report.md` section 5; evidence `emu-base-anr2.txt`, `emu-new2-anr.txt` in session scratch):** the hang was seen again with no CDP attached during boot: BASELINE 4 of 5 emulator boots, the amendment build 2 of 7 emulator boots; Note 9 0 of 3 cold starts. ANR traces (taken with adb root on the userdebug emulator) show the main thread in the native `Rust.onPageLoaded` called from `RustWebViewClient.onPageFinished` (`RustWebViewClient.kt:79`), in both builds. So the hang does not need a debugger or polling, and it also occurs on the pre-batch build. What blocks inside `onPageLoaded` is not established. Interacts with the "Android boot time" queue item below.
 
 ### CHORE-138 — The triple-touch counter has no `touchcancel`
 
@@ -6454,15 +6465,115 @@ with index -1.
 
 ### CHORE-145 — Android edge-to-edge: the rail's Plus button at the list end is partly under the 3-button navigation bar
 
-**Status (2026-10-08): open.** Type: bug, Android layout. Related to CHORE-134 (safe-area insets). Source: the Orchestrator's facts file; TODO(evidence): the screenshot or measurement.
+**Status (2026-10-09): CLOSED by the sidebar and Android batch (`7921b287`, `MC-253` 3).** Device pass 1 and 2: the rail's Plus button bottom matched the page bottom (773.6 against 773.7 css px on the Note 9 in 3-button mode). **Earlier status (2026-10-08): open.** Type: bug, Android layout. Related to CHORE-134 (safe-area insets). Source: the Orchestrator's facts file; TODO(evidence): the screenshot or measurement.
 
 ### CHORE-146 — Possible Vietnamese wording tweak for "Ungroup" ("Bỏ nhóm")
 
 **Status (2026-10-08): open; maintainer or translator call.** Type: translation. Not a decision. Translator owns non-English locales (`MC-058`).
 
+### CHORE-147 — Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called on a destroyed mutex")
+
+**Status (2026-10-09): open; pre-existing; cause not established.** Type: bug, Android, teardown.
+
+- **Observed (device passes, session scratch `batch\device\report.md` section 9(b) and `batch\device2\report.md` section 5):** exiting with the OS Back finishes the activity and the process logs `FORTIFY: pthread_mutex_lock called on a destroyed mutex`, then SIGABRT in `hwuiTask1` during teardown (also logged by `RustStdoutStderr`). Pass 2: BASELINE (`8acadfe0`) on the emulator, trial 5; the amendment build on the emulator, trials 1 and 3, and on the Note 9 (OS back gesture 07:50:55 and `KEYCODE_BACK` 08:23:10). The zygote reports "exited cleanly (0)". So it is not caused by this batch. Pass 1's guess "likely wry/Rust teardown" is unverified.
+- **Not known:** whether a user sees anything (crash dialog, lost unsaved data); the pass did not record it. TODO(evidence).
+
+### CHORE-148 — The generated Tauri Android files in the checkout are stale (tauri 2.11.5 against a lock that resolves 2.12.1)
+
+**Status (2026-10-09): open; regenerate before relying on them.** Type: build environment.
+
+- **Observed:** `src-tauri/gen/android/tauri.settings.gradle` points at `tauri-2.11.5\mobile\android`, and the generated `TauriActivity.kt` and `WryActivity.kt` are the tauri 2.11.5 and wry 0.55.1 templates; `src-tauri/Cargo.lock` resolves tauri 2.12.1, wry 0.57.0, tao 0.37.1 (read 2026-10-09). The generated files are git-ignored (`gen/android/.gitignore` and `app/.gitignore`; Gate 2 amendment 1), so they are not in any commit.
+- **Consequence:** a Gradle-only build from the checkout without regenerating compiles against 2.11.5. The batch's `MainActivity.kt` depends only on APIs the two versions share (Gate 2 amendment 1), and its compiled class was checked against 2.12.1 in a scratch copy. Gate 2 amendment 1 notes the 2.11.5 to 2.12.1 changes are lifecycle and plugin plumbing.
+
+### CHORE-149 — `streamed_fetch` in `src-tauri/src/lib.rs` uses `.unwrap()` where a failure can panic the task
+
+**Status (2026-10-09): open; observed in source, panic behaviour not run.** Type: bug, latent, Tauri (all platforms).
+
+- **First noted by** the keep-alive investigator (`keepalive\packet.md`, not independently verified); **re-read by this entry's writer in the working tree at `6f9c0b98`:** `streamed_fetch` (`lib.rs:706-837`) decodes the request body with `general_purpose::STANDARD.decode(...).unwrap()` for POST, PUT and DELETE (`lib.rs:743`, `759`, `769`), so an invalid base64 body panics; and it calls `app.emit(...).unwrap()` for the headers event (`lib.rs:800`) and the end event (`lib.rs:832`), so a failed emit (for example after the webview is gone) panics. The chunk emit in the loop returns an error string instead (`lib.rs:818-823`), and `chunk.unwrap()` at `lib.rs:808` follows an `is_none()` check.
+- **Not established:** whether a panic in the async command kills the app or only that command, and whether Activity destruction on Android reaches the emit paths. TODO(evidence): a reproduction.
+
+### CHORE-150 — A custom page colour near middle grey may give low button contrast on Android 15+
+
+**Status (2026-10-09): known limit; not tested.** Type: limitation, Android API 35 and above (`MC-253`).
+
+- The navigation-bar rule uses the existing luminance split (0.179) to decide whether the scheme is light. The API 35 three-button icons are `#45464F` and `#C5C6D0`, not black and white, so a page colour just above the split in day mode gives about 2:1 against `#45464F` (Gate 1 amendment round 1 finding 7). The shipped schemes tested (`#282A36`, `#FFFFFF`, `#1A1A1A`) are far from the split. A custom colour near it was not tested.
+
+### CHORE-151 — Untested limits of the Android bar and keyboard handling
+
+**Status (2026-10-09): open; not tested.** Type: verification (`MC-253`).
+
+- The soft keyboard on API 30 to 34 (the only branch that uses the native IME inset without enforced edge-to-edge; source-reasoned only).
+- The bars on Android 16 and above.
+- 3-button behaviour on large screens with a persistent taskbar.
+- Also not covered by device pass 2: the keyboard in gesture navigation (3-button only), a real finger (adb strokes only), and Note 9 day-mode bars (night mode left as found).
+
+### CHORE-152 — Slow and flaky test: `src/ts/storage/tests/assetPieceSave.test.ts`
+
+**Status (2026-10-09): open.** Type: tests. Related to CHORE-144.
+
+- On the upstream-merge snapshot (`merge\test.txt`, session scratch) the full `pnpm test` run failed once: the test "reproducer: a plain-HTTP page gets the content-hash key, the same key crypto.subtle gives" timed out at 5,000 ms (593 files, 12,139 passed, 1 failed, 6 skipped; duration 132 s). The Orchestrator reports all 23 tests in the file pass when it is run alone and that the file takes about 61 s. The earlier batch run (`batch\final\test.txt`, 12,140 passed) did not fail. Cause not investigated.
+
+### CHORE-153 — Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s after the tap
+
+**Status (2026-10-09): observation, not a confirmed defect; for the save-debounce and flush work.** Type: observation.
+
+- Device pass 2 section 4 (emulator): a Light scheme change was force-stopped about 15 s after the tap and was not persisted; after 60 s it was. The pass notes that a force-stop is not a normal exit. Not reproduced or traced; the debounce and flush paths were not read for this entry. TODO(evidence).
+
+### Chat-screen render findings (investigation 2026-10-09): CHORE-154 to CHORE-157
+
+**Evidence and confidence.** Source: investigator packet `chatperf\packet.md` (snapshot `8acadfe0`) and its independent verification `chatperf\verify.md` (deep-investigator, snapshot `7921b287`; verdict "HOLDS WITH CORRECTIONS"; mechanisms confirmed). Where the two differ the verification is used. The micro-benchmarks are on the i9-13900KF (best-case hardware) with synthetic data; **nothing was measured on a phone or Pi**, and the packet adopts no scale factor (CHORE-45 estimates 10 to 15 times slower). Premises the investigation refuted or narrowed: `addMetadataToElement` never runs (`aiWatermarkingLawApplies()` returns `false`); only the streaming message is re-parsed per chunk (the window-wide cost is the hash loop and a forced layout); global custom CSS is one event-driven `<style>`. **Queue position:** after the windowing of other lists (`MC-256` 4). **Gate:** each ticket needs a Gate 1 plan and the post-implementation review; rendered output must stay identical except where `MC-257` decides a change (CHORE-156). The equivalence-risk ratings are the packet's, not a maintainer rule.
+
+### CHORE-154 — Output-identical cheap fixes in the chat parse pipeline
+
+**Status (2026-10-09): open; queued after the windowing items.** Type: performance, low risk by design. Each sub-item needs its own differential test proving the output is unchanged.
+
+1. **CBS fast path (packet F13 and F5).** Skip `risuChatParser` when the text has no `{{`, no `{#` and no `<user>`, `<char>` or `<bot>` (matched case-insensitively). **Two conditions (verification):** the guard must run after the `callStack` check at `parser.svelte.ts:1675-1679` (a reused argument with `callStack` 20 returns "ERROR: Call stack limit reached" even for plain text), and the tag test must be case-insensitive (the parser uses `/gi` at `:1704`; "Hi <USER>" would differ under a case-sensitive guard). The caller that benefits most is `executeScript` (`scripts.ts:470-472`), which re-parses after every plain regex script whether or not it matched; do not skip on "the regex did not match". **Executed by the verifier:** a differential test over 102,599 random brace-free inputs, with the real parser lines extracted and the matchers stubbed to throw: 0 differences, 0 matcher calls (`verify_fastpath.ts`, session scratch; the inputs were brace-free, so inputs with `{` that is not `{{`/`{#` were not covered by that run). Model cost on the i9: 0.007, 0.023, 0.096 ms per pass at 1, 5, 20 KB; per message with 150 scripts and 5 KB the packet's loop model gives 3.9 ms (a lower bound for brace-free text).
+2. **Memoize the CSS decode and build the selector processor once per call (F4).** `decodeStyleContent` (`parser.svelte.ts:1008-1032`) decodes, CBS-parses, CSS-parses and stringifies the style of every message on every parse, and `:974` builds a new selector processor inside the selector loop. Memoize by the post-CBS CSS text, successes only, with the `returnCSSError` fallback outside the cache; do not deduplicate the per-message `<style>` elements (that would change the DOM and cascade order). Model cost: 0.52, 1.85, 7.6 ms per decode at 10, 50, 200 rules.
+3. **`getClosestMatch` caching (F9 as corrected).** Neither successes nor misses are cached for the looked-up name: it writes `assetPaths[closest]` under the real asset's key (`parser.svelte.ts:657-660`), never under the queried name. A cache keyed by character id and name, cleared in `resetAssetsCache`, gives identical output while assets are unchanged. Model cost per missed name: 0.18, 0.79, 2.98 ms at 50, 300, 1000 assets. Coordinate with CHORE-157 (the same lines).
+4. **Dynamic-asset setup before the match scan (F8).** With `dynamicAssets` and `dynamicAssetsEditDisplay` on, `scripts.ts:525-564` builds a `HypaProcesser` and adds every asset name (one awaited IndexedDB read each, then an O(n^2) filter) before checking whether any tag needs fuzzy resolution. It also runs for `editoutput`, so per streamed chunk under mode `'off'` (verification). Move the setup after the match scan; the output is unchanged when no tag needs resolution.
+5. **Every keystroke in a regex OUT field bumps `ReloadGUIPointer` (N4).** `RegexData.svelte:130-131` (the `onInput` of the OUT field) re-parses the whole window and wipes the script cache on each keystroke; the comment and type fields bump at `:114` and `:118`. Related to CHORE-155.
+
+### CHORE-155 — The full chat re-renders on every `ReloadGUIPointer` bump
+
+**Status (2026-10-09): open; queued after the windowing items; builds on CHORE-04 and Report 19** (`Agents/Reports/19-chat-list-window-plan.md`, sections 2.4 and 9.4 already list several bump sources).
+
+- **Mechanism (verified, with the correction):** each `Chat` subscribes to `ReloadGUIPointer` (`Chat.svelte:744-746`) and re-runs its display parse, and the pointer is in the `{#key}` at `Chat.svelte:1026/:1042`, so one bump remounts every windowed `ChatBody`. The packet's "no parse/render cache anywhere" is wrong (`processScriptCache` exists, `scripts.ts:185-200, 264-270`), but each bump also calls `resetScriptCache()` and `ReloadChatPointer.set({})` (`stores.svelte.ts:188-191`), so the window re-parse is a guaranteed script-cache miss and `Chats`' effect re-runs.
+- **Writers (verification, non-test, COMPLETE: 20 sites in 8 files):** `SideChatList.svelte` 144, 160, 217, 241, 317, 337, 416, 471; `ModuleChatMenu.svelte` 95, 109; `ModuleSettings.svelte` 39, 45; `RegexData.svelte` 114, 118, 131; `globalApi.svelte.ts` 4229 (`changeChatTo`); `modules.ts` 786; `scriptings.ts` 449; `triggers.ts` 2575, 3010 (fires only when a value actually changes). `ChatList.svelte` imports the pointer but never writes it.
+- **Packet's smallest correction (not separately verified):** memoize only the pure tail (markdown plus sanitize, keyed by the exact input string and the settings it reads); a full `ParseMarkdown` cache is not safe (Lua, triggers, variables and random make it impure).
+- **Lower-priority related costs, listed here by the writer's choice** (F11 and F10 follow the bump; F6 and F7 are triggered by re-parses and effect runs, not only by bumps, so they are listed as separate lower-priority sub-items and are not claimed to be bump costs; each fix carries medium equivalence risk per the packet):
+  - F11: `BackgroundDom.svelte:15-19` re-parses the background and recreates its DOM (animations, video, audio) on every bump.
+  - F10: the `customHTML` theme parses the theme HTML per message (`Chat.svelte:759-768, 1555`); a theme `<style>` becomes one `<style>` per message. Cost not measured.
+  - F6: on any re-parse of a live `ChatBody`, the `{#await}` pending branch sanitizes and injects the previous result, then the resolved branch does it again (`ChatBody.svelte:279-283`; Svelte 5.56.8 destroys and recreates the branch). Animated assets may restart (inferred).
+  - F7: every `Chats` effect run hashes every windowed message's text and forces a layout (`Chats.svelte:83-85, 104-113, 189-197, 212-214`). Model: 0.11 ms (30 x 1 KB) to 4.3 ms (600 x 5 KB) per run.
+
+### CHORE-156 — Decided chat-render work items (streaming default, Lua engine reuse, superseded parses)
+
+**Status (2026-10-09): decided (`MC-257`); queued after the windowing items; not planned.** These three were behaviour questions in the investigation; the maintainer answered them, so they are work items. Each needs a Gate 1 plan.
+
+1. **Default streaming display mode becomes "balanced"** (`MC-257` 1; resolves the open question of `MC-051`). Post-processing then runs at most about every 0.125 s while streaming instead of remounting on every chunk. The default is `?? 'off'` in `Chats.svelte` and the database default (`database.svelte.ts:699`). Before the switch: verify behaviour on heavy-script cards (the setting is labelled experimental). **Plan question for Gate 1, not decided:** whether existing profiles with no stored value change.
+2. **One Lua engine per script** (`MC-257` 2): cache the engine by mode plus code instead of mode only (`scriptings.ts:1364-1393`; recreate test at `:210-217`; the loop over every `triggerlua` at `:1595-1612`). Behaviour change: multi-script setups keep Lua globals between calls, as single-script setups already do; a card that relied on the reset (unlikely) differs from upstream. Measured on the i9 in Node with an empty-ish Lua: engine create plus 150 API functions plus a small `doString` 1.83 ms against 0.03 ms for a reused call; real card Lua is unmeasured. How many real cards ship two or more `triggerlua` triggers is unknown (not to be probed on community services).
+3. **Superseded streaming parses finish but their output is dropped** (`MC-257` 3): stale parses still run, including Lua side effects such as `setChatVar`; their result is not put on screen. This saves the extra DOM work, not the Lua time. No abort check exists today (`ChatBody.svelte:72-182`; the Lua call queues on `mutex.runExclusive`, `scriptings.ts:203`). The investigation's open measurement still applies: on a mid-range phone and a Pi-class device with the default mode, the share of each chunk spent in remount, hash loop, forced layout and editoutput scripts, and whether the abandoned-parse backlog grows.
+
+### CHORE-157 — Chat render small items: `ScriptingEditDisplayIds` never cleared; `getClosestMatch` overwrites multi-variant assets
+
+**Status (2026-10-09): open; queued after the windowing items.** Type: bugs, small.
+
+- **N2:** `ScriptingEditDisplayIds` (`scriptings.ts:24, 1214`) gains a UUID on every `editDisplay` Lua call and is never deleted (the deletes at `:1313-1314` are from the other two sets): unbounded growth, and stale ids stay valid for `setChatVar` and `getChatVar` (`:235, :241`).
+- **N3:** `getClosestMatch` overwrites `assetPaths[closest]` with a single source path (`parser.svelte.ts:657-660`), which can collapse a multi-variant asset's random-pick list until `resetAssetsCache` runs. Behavioural. **Upstream parity is unchecked.**
+
+### Queue after the 2026-10-09 batch (maintainer's order, `MC-256`)
+
+These are scope items, not defects, so they carry no CHORE number yet. Order: Android boot time, then keep-alive, then the character list rework, then windowing of other lists, then the chat-screen render tickets CHORE-154 to CHORE-157.
+
+1. **Android boot time.** The maintainer asked whether the boot-time problem is already fixed (`MC-255` 1). The investigator's survey `keepalive\boot.md` (**not independently verified**) answers: partly. The memory work and the block store shrank the main file and heap and made later boots a block-store read on desktop and web (0.5 s to the loaded store on the i9, plus 3.7 s for the page-load listing at 350,350 asset keys, CHORE-84; first boot after upgrade 13.2 s on the i9), but the boot archive pass does not run on Android or iOS (`isTauriDesktop()` gate, `src/ts/storage/bootArchiveHost.ts`), so Android decodes every character eagerly; nothing is measured on a phone or Pi, and no record gives a before and after boot time for the same profile and method. Suggested measurement (boot.md section 5, not an approved plan): the Note 9 before and after (release build, no debugger or CDP polling, the synthetic profiles, cold start to loaded store and to first interactive, first boot and later boot). Interacts with CHORE-137 (the cold-start hang, whose ANR trace is in `Rust.onPageLoaded`). Not planned or gated yet.
+2. **Keep-alive (DEFERRED until Android boot time is fixed; `MC-256` 1).** Per `MC-255`: on Android an in-flight-only foreground service (only while a request, TTS or image job is in flight); on mobile web upstream's tone (the merge `6f9c0b98` already carries it), save the partial reply on hide, and remove the empty PiP mode. Open and not decided: the foreground-service type and wording, the notification persistence, the permission prompt timing, resume semantics for an interrupted reply. The save-partial-reply part touches the save path (storage review rule). The Android manifest has uncommitted edits that are not this campaign's to touch (see Live-State). The evidence is `keepalive\packet.md` (investigator packet, **not independently verified**).
+3. **Character list rework.** A faster and improved search algorithm on top of windowing. Nice to have: drag-to-rearrange like rearranging apps on a smartphone, and folder management in grid view (the maintainer's words, `MC-256` 2). Not planned.
+4. **Windowing of the other scrolls** such as the plugin, module and prompt preset lists (`MC-256` 2). Not planned. Related earlier scope: Phase 2 item 3 (virtual scrolling) and the sidebar status above.
+5. **Chat-screen render tickets** CHORE-154 to CHORE-157 (`MC-256` 4, `MC-257`).
+
 ### Candidate tickets, not yet numbered (2026-10-04)
 
-Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, and the next free number is CHORE-147.
+Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, CHORE-147 to CHORE-157 are used by the 2026-10-09 entries above, and the next free number is CHORE-158.
 
 - **A V2.1 plugin that switches itself off through the plugin API's `setDatabase` keeps running with wrapped module asset lists (G2-4; Stage A Gate 2 round 1, ledger row 1057; `b1d2804b`'s message).** SUSPECTED only, not reproduced. The real `setDatabase` would wrap the lists while the plugin's code is still running, and a later in-place push by that plugin would go untracked. No such upstream plugin is known.
 - **An unparseable or non-object `__revisions.json` on the Node server (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message).** Deferred. The server still starts as if the snapshot were empty (the log is replayed, and a non-object takes the same path with the error logged), and the next compaction overwrites the file. The log does not worsen this. Possible fixes named in the commit message: rename the bad file aside and seed a high revision floor so stale devices get 409.
