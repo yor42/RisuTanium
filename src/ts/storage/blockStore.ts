@@ -164,8 +164,11 @@ const processLockChains = new WeakMap<object, Promise<void>>()
  * acquisitions on one store run one after the other in the order they asked.
  * It is `available`, which lets the post-commit deletes and the pack trim run.
  * It is never correct where several pages share a store: it excludes nothing
- * outside this page, which is what the desktop app's single-instance rule
- * stands in for, as it does for the mutex head swap.
+ * outside this page, which is what the Tauri app's one-live-page premise
+ * stands in for (the single-instance plugin on desktop; on Android one
+ * `singleTask` activity, with the superseded WebView of a recreation retired
+ * and its IPC replies never reaching it), as it does for the mutex head swap.
+ * The hosted web build does not rely on it; it uses Web Locks.
  *
  * A request that waits longer than `timeoutMs` rejects with
  * `CommitLockTimeoutError` (a live holder exists) and takes nothing from the

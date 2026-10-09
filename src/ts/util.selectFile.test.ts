@@ -129,6 +129,81 @@ describe.each([
     })
 })
 
+describe('selectFileByDom accept token and extension filter', () => {
+    test('regression: on Android the chooser is opened for any file, so types without a MIME mapping are selectable', async () => {
+        const pending = selectFileByDom(['png'], 'single')
+
+        expect(picker.settings().accept).toBe('*/*')
+        picker.cancel()
+        await settledWithin(pending)
+    })
+
+    test('guard: on Android a pick with an extension outside the list is still dropped', async () => {
+        const pending = selectFileByDom(['png'], 'single')
+
+        picker.pick([file('notes.txt', [1])])
+
+        expect(await settledWithin(pending)).toEqual({ pending: false, value: [] })
+    })
+
+    test('guard: on Android a pick with an extension in the list returns the file', async () => {
+        const pending = selectFileByDom(['lorebook'], 'single')
+
+        picker.pick([file('a.lorebook', [1])])
+
+        const result = await settledWithin(pending)
+        expect(result.value?.map((item) => item.name)).toEqual(['a.lorebook'])
+    })
+
+    test('guard: on Android an accept-all list applies no filter', async () => {
+        const pending = selectFileByDom(['*'], 'single')
+
+        picker.pick([file('notes.txt', [1])])
+
+        const result = await settledWithin(pending)
+        expect(result.value?.map((item) => item.name)).toEqual(['notes.txt'])
+    })
+
+    test.each([
+        ['desktop', true, 'windows'],
+        ['web', false, 'android'],
+    ] as const)('guard: on %s the accept list still names the extensions', async (_name, isTauri, os) => {
+        h.isTauri = isTauri
+        h.os = os
+        const pending = selectFileByDom(['png'], 'single')
+
+        expect(picker.settings().accept).toBe('.png')
+        picker.cancel()
+        await settledWithin(pending)
+    })
+
+    test.each([
+        ['desktop', true, 'windows'],
+        ['web', false, 'android'],
+        ['android', true, 'android'],
+    ] as const)('regression: a dotted extension in the list matches the picked file on %s', async (_name, isTauri, os) => {
+        h.isTauri = isTauri
+        h.os = os
+        const pending = selectFileByDom(['.json'], 'single')
+
+        picker.pick([file('cache.json', [1])])
+
+        const result = await settledWithin(pending)
+        expect(result.value?.map((item) => item.name)).toEqual(['cache.json'])
+    })
+
+    test('regression: the list and the picked name are compared in lower case with one leading dot stripped', async () => {
+        h.isTauri = false
+        const pending = selectFileByDom(['.JSON', 'lorebook'], 'single')
+
+        expect(picker.settings().accept).toBe('.json,.lorebook')
+        picker.pick([file('X.Json', [1])])
+
+        const result = await settledWithin(pending)
+        expect(result.value?.map((item) => item.name)).toEqual(['X.Json'])
+    })
+})
+
 describe('selectSingleFile', () => {
     test('a closed chooser answers null', async () => {
         const pending = selectSingleFile(['png'])

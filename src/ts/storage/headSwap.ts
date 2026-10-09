@@ -155,9 +155,9 @@ const mutexChains = new WeakMap<object, Promise<void>>()
 
 /**
  * An in-process mutex that wraps read, compare and write. Atomic against every
- * other swap on the same store object in this process, which is all a
- * single-instance desktop app needs. It is not atomic against another process
- * or against a write that does not come through here.
+ * other swap on the same store object in this process, which is all a Tauri
+ * app with exactly one live page on its data directory needs. It is not atomic
+ * against another process, another page or a write that does not come through here.
  */
 export function createMutexHeadSwap(store: ByteStore): HeadSwap {
     return {

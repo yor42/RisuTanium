@@ -252,9 +252,18 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
         fileInput.type = 'file';
         fileInput.multiple = multiple === 'multiple';
         const acceptAll = (getDatabase().allowAllExtentionFiles || isIOS() || allowedExtensions[0] === '*')
-        if(!acceptAll){
-            if (allowedExtensions && allowedExtensions.length) {
-                fileInput.accept = allowedExtensions.map(ext => `.${ext}`).join(',');
+        // The extension list is compared in lower case without a leading dot, whatever the caller wrote.
+        const extensions = (allowedExtensions ?? []).map(ext => (ext.startsWith('.') ? ext.slice(1) : ext).toLowerCase())
+        // The Android web view chooser maps each `.ext` to a MIME type and greys out files it cannot map,
+        // and it hands a single MIME type straight to the intent, so it gets the one valid any-file token.
+        // The extension filter below still decides which picked files are kept.
+        const androidChooser = isTauri && isAndroidTransport()
+        if(androidChooser){
+            fileInput.accept = '*/*'
+        }
+        else if(!acceptAll){
+            if (extensions.length) {
+                fileInput.accept = extensions.map(ext => `.${ext}`).join(',');
             }
         }
         else{
@@ -281,7 +290,7 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
 
             const files = acceptAll ? Array.from(fileInput.files) :(Array.from(fileInput.files).filter(file => {
                 const fileExtension = file.name.split('.').pop().toLowerCase();
-                return !allowedExtensions || allowedExtensions.includes(fileExtension);
+                return extensions.includes(fileExtension);
             }))
 
             finish(files)

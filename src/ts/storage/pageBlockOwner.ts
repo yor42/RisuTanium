@@ -15,9 +15,19 @@ import { createIndexedDbHeadSwap } from './store/indexedDbStore'
  * Which head swap and which commit lock an owner gets depends on the store the
  * page runs on, and the pairing is fixed here, not chosen by callers:
  *
- * - Tauri: the in-process mutex swap and the in-process commit lock. The
- *   desktop app is a single process (the single-instance plugin is registered),
- *   which is the premise of both.
+ * - Tauri: the in-process mutex swap and the in-process commit lock. A Tauri
+ *   app is assumed to have exactly one live page on its data directory, which
+ *   is the premise of both. Desktop holds it with the single-instance plugin.
+ *   Android holds it with one `singleTask` activity, with `MainActivity`
+ *   retiring the WebView that a recreation supersedes, and with the manifest
+ *   declaring the common configuration changes so they do not recreate the
+ *   activity. A recreation the manifest cannot declare still leaves the
+ *   superseded page running until its replacement is installed and it is
+ *   retired. Replies to its IPC requests never reach it: requests it has
+ *   already issued may still run natively, but none is answered, so no chain
+ *   of its continues to a later step, such as a root write after block writes.
+ *   Its unsaved edits are lost. The hosted web build does not rely on the
+ *   premise; it uses Web Locks.
  * - Node server: the revision swap, and the Web Locks commit lock where the
  *   page has Web Locks. The Node store enforces versions on its own writes.
  * - IndexedDB: the swap that is one read-write transaction on the shared

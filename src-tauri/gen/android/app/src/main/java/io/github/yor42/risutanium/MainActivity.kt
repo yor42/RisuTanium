@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
@@ -24,9 +25,13 @@ class MainActivity : TauriActivity() {
 
   // A live system day/night switch changes the navigation-bar rule on API 35+; the activity is
   // not recreated (uiMode is in configChanges), so the last colour is applied again.
+  // The WebView reads the system font scale only when it is created, and a font change does not
+  // recreate the activity (fontScale is in configChanges), so the text zoom a new WebView would
+  // get is applied here. Once set, the WebView no longer follows the system scale on its own.
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
     applyBarColor(lastBarColor)
+    backWebView?.settings?.textZoom = (newConfig.fontScale * 100).toInt()
   }
 
   // Back asks the page first: while the phone overlay sidebar is open the page closes it and
@@ -92,10 +97,27 @@ class MainActivity : TauriActivity() {
     applyBarColor(DEFAULT_BAR_COLOR)
   }
 
+  // A configuration recreation leaves the superseded WebView alive and running next to the
+  // replacement. It is retired right after wry has installed the replacement (the post runs after
+  // the message that is creating it), so after that only the replacement runs. Only a view with
+  // the same id is retired, and never the one just created.
   override fun onWebViewCreate(webView: WebView) {
+    val previous = liveWebView
+    liveWebView = webView
     backWebView = webView
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
     webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
+    if (previous != null && previous !== webView && sameId(previous, webView)) {
+      mainHandler.post { retire(previous) }
+    }
+  }
+
+  private fun sameId(a: WebView, b: WebView) = a is RustWebView && b is RustWebView && a.id == b.id
+
+  // destroy() must follow removal from the view tree.
+  private fun retire(stale: WebView) {
+    (stale.parent as? ViewGroup)?.removeView(stale)
+    stale.destroy()
   }
 
   // Colours the strips behind the bars with the page's background and sets the bar icons to
@@ -141,6 +163,10 @@ class MainActivity : TauriActivity() {
   }
 
   companion object {
+    // The WebView of the latest onWebViewCreate; read and written on the main thread only. It
+    // outlives the activity, which is how a recreation finds the view it supersedes.
+    private var liveWebView: WebView? = null
+
     // A main thread busy for longer than this makes Back exit instead of closing the overlay.
     private const val BACK_TIMEOUT_MS = 1000L
 
