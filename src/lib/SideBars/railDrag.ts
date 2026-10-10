@@ -13,8 +13,9 @@ import {
     TOUCH_SLOP_PX,
     edgeBandPx,
 } from './railConstants'
-import { locate, type Layout } from './railLayout'
-import { NO_TARGET, resolveTarget, zoneCandidateAt, type Target, type ZoneCandidate } from './railTarget'
+import type { Layout } from './railLayout'
+import { defaultGeometry, type RailGeometry } from './railResolver'
+import { NO_TARGET, type Target, type ZoneCandidate } from './railTarget'
 
 /**
  * The interaction machine of the sidebar rail: one pointer gesture from press to drop or
@@ -151,7 +152,11 @@ export class RailDrag {
     private readonly touchPointers = new Set<number>()
     private touchEndedAt = -Infinity
 
-    constructor(private readonly host: RailHost, private readonly env: RailEnv = browserEnv) {}
+    constructor(
+        private readonly host: RailHost,
+        private readonly env: RailEnv = browserEnv,
+        private readonly geometry: RailGeometry = defaultGeometry,
+    ) {}
 
     get isDragging(): boolean {
         return this.phase === 'dragging'
@@ -193,8 +198,7 @@ export class RailDrag {
         }
         this.rect = this.host.readRect()
         const layout = this.host.getLayout()
-        const index = locate(layout, e.clientY - this.rect.top + this.host.getScrollTop())
-        const item = index >= 0 ? layout.items[index] : undefined
+        const item = this.geometry.sourceAt(layout, e.clientX - this.rect.left, e.clientY - this.rect.top + this.host.getScrollTop())
         if (!item || !item.ref || (item.kind !== 'char' && item.kind !== 'folder' && item.kind !== 'member')) {
             return
         }
@@ -340,7 +344,7 @@ export class RailDrag {
         if (this.phase === 'idle') {
             return
         }
-        if (!this.host.getLayout().indexByKey.has(this.sourceKey)) {
+        if (!this.geometry.hasKey(this.host.getLayout(), this.sourceKey)) {
             this.cancel()
             return
         }
@@ -538,9 +542,10 @@ export class RailDrag {
         const outside = this.isOutside()
         const velocity = this.velocity()
         const inBand = velocity !== 0
+        const contentX = this.x - this.rect.left
         const contentY = this.y - this.rect.top + this.host.getScrollTop()
 
-        const candidate = outside || inBand ? null : zoneCandidateAt(layout, contentY, source)
+        const candidate = outside || inBand ? null : this.geometry.zoneCandidateAt(layout, contentX, contentY, source)
         const candidateKey = candidate ? candidate.key : null
         if (cause === 'move' && candidate && candidateKey !== this.lastCandidateKey) {
             this.enterZone(candidate)
@@ -550,8 +555,9 @@ export class RailDrag {
         }
         this.lastCandidateKey = candidateKey
 
-        const target = resolveTarget({
+        const target = this.geometry.resolveTarget({
             layout,
+            x: contentX,
             y: contentY,
             source,
             outside,

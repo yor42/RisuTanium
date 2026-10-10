@@ -1,5 +1,22 @@
 import type { RailDrag } from './railDrag'
 
+/** Every `RailDrag` method `bindRail` calls; a host with its own gesture machine satisfies it. */
+export type RailMachine = Pick<
+    RailDrag,
+    | 'pointerDown'
+    | 'pointerMove'
+    | 'pointerUp'
+    | 'pointerCancel'
+    | 'lostCapture'
+    | 'scrolled'
+    | 'rectChanged'
+    | 'interrupt'
+    | 'isTouchContextMenu'
+    | 'consumeClick'
+    | 'shouldPreventTouchMove'
+    | 'keyDown'
+>
+
 /**
  * Connects the rail's scroll container and the window to a `RailDrag` machine.
  *
@@ -14,7 +31,7 @@ export interface RailBinding {
     destroy(): void
 }
 
-export function bindRail(el: HTMLElement, machine: RailDrag): RailBinding {
+export function bindRail(el: HTMLElement, machine: RailMachine): RailBinding {
     const onPointerDown = (e: PointerEvent) => machine.pointerDown(e)
     const onPointerMove = (e: PointerEvent) => machine.pointerMove(e)
     const onPointerUp = (e: PointerEvent) => machine.pointerUp(e)
