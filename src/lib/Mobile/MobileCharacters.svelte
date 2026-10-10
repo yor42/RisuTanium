@@ -3,18 +3,22 @@
     import BarIcon from "../SideBars/BarIcon.svelte";
     import { addCharacter, changeChar, getCharImage } from "src/ts/characters";
     import { MobileSearch } from "src/ts/stores.svelte";
-    import { MessageSquareIcon, PlusIcon } from "@lucide/svelte";
+    import { ArrowLeft, MessageSquareIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
     import { nearViewport } from "src/ts/gui/nearViewport.svelte";
     import { SvelteMap } from "svelte/reactivity";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { isHiddenSystemCharacter } from "src/ts/hiddenCharacters";
     import { language } from "src/lang";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
+    import CharacterTrashList from "../Others/CharacterTrashList.svelte";
 
     interface Props {
         endGrid?: () => void;
         search?: string;
         hideTrash?: boolean;
+        // Offers a "Trash (n)" row that opens the trash in place. Off for the
+        // list embedded in GridCatalog, which has its own Trash tab.
+        trashEntry?: boolean;
         // The search result of the screen that embeds this list. Without it the
         // list searches by `search`, else by the mobile header's search box.
         results?: CharacterSearch;
@@ -22,7 +26,10 @@
 
     const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
 
-    let {endGrid = () => {}, search, hideTrash = false, results}: Props = $props();
+    let {endGrid = () => {}, search, hideTrash = true, trashEntry = false, results}: Props = $props();
+    // Local on purpose: the swipe gestures move through MobileGUIStack, so the
+    // trash view must not be a stack value. Leaving the screen resets it.
+    let trashOpen = $state(false);
     // Fixed for the component's life: the effect inside createCharacterSearch
     // can only be created during initialisation, and an embedding screen never
     // swaps its result. The result's properties are getters, so reading them in
@@ -83,6 +90,25 @@
     }));
 </script>
 <div class="flex flex-col items-center w-full overflow-y-auto h-full">
+    {#if trashOpen}
+        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc" onclick={() => {
+            trashOpen = false
+        }}>
+            <ArrowLeft size={20} />
+            <span>{language.settingsPage.back}</span>
+        </button>
+        <div class="w-full p-2">
+            <CharacterTrashList found={found} visibleIndices={visibleIndices} />
+        </div>
+    {:else}
+    {#if trashEntry && found.trashedTotal > 0}
+        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc" onclick={() => {
+            trashOpen = true
+        }}>
+            <TrashIcon size={20} />
+            <span>{language.trash} ({found.trashedTotal})</span>
+        </button>
+    {/if}
     {#each sorted as char, i (char.i)}
         {#if found.matched.has(char.i)}
             {@const c = DBState.db.characters[char.i]}
@@ -113,10 +139,14 @@
             {/if}
         {/if}
     {/each}
+    {/if}
 </div>
 
-<button class="p-4 rounded-full absolute bottom-2 right-2 bg-borderc" onclick={() => {
-    addCharacter()
-}}>
-    <PlusIcon size={24} />
-</button>
+<!-- Hidden in the trash view: it would cover the actions of the last row. -->
+{#if !trashOpen}
+    <button class="p-4 rounded-full absolute bottom-2 right-2 bg-borderc" onclick={() => {
+        addCharacter()
+    }}>
+        <PlusIcon size={24} />
+    </button>
+{/if}

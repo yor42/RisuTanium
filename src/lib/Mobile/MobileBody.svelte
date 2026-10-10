@@ -49,7 +49,7 @@
     {:else if $MobileGUIStack === 0}
         <RealmMain />
     {:else if $MobileGUIStack === 1}
-        <MobileCharacters />
+        <MobileCharacters trashEntry />
     {:else if $MobileGUIStack === 2}
         <Settings />
     {/if}
