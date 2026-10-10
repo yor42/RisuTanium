@@ -38,6 +38,7 @@ import { updateGuisize } from "./gui/guisize";
 import { selectCharacterByChaId, updateLorebooks } from "./characters";
 import { applyHandoff, readHandoff, type HandoffMedium, type ReadHandoff } from "./process/memory/idleHandoff";
 import { createHandoffMedium, startIdleReload } from "./process/memory/idleReloadHost";
+import { startCharacterPutBack } from "./process/memory/characterPutBack";
 import { markBootedByIdleReload, noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/idleReloadBootState";
 import { initMobileGesture } from "./hotkey";
 import { moduleUpdate } from "./process/modules";
@@ -566,6 +567,13 @@ export async function loadData() {
                 startIdleReload()
             } catch (error) {
                 console.error(error)
+            }
+            if (getPageStorageMode().kind !== 'read-only') {
+                try {
+                    startCharacterPutBack()
+                } catch (error) {
+                    console.error(error)
+                }
             }
             registerModelDynamic()
             if (getPageStorageMode().kind !== 'read-only') {

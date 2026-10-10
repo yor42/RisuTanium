@@ -44,6 +44,15 @@ export function noteRestoredBytes(chaId: string | undefined, bytes: number | und
     onBytesNoted?.()
 }
 
+/**
+ * Forgets what `chaId` has restored, because its stub is back in the character
+ * list and the bytes are no longer held. It calls no listener: the idle reload
+ * arms only when bytes are added.
+ */
+export function clearRestoredBytes(chaId: string): void {
+    bytesByChaId.delete(chaId)
+}
+
 export function restoredBytesOf(chaId: string): number {
     return bytesByChaId.get(chaId) ?? 0
 }

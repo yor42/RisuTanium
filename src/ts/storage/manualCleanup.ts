@@ -15,6 +15,7 @@ import { beginBusy, isBusy, type BusyHandle } from "../process/memory/busyAction
 import { deleteColdStorageUnits, readColdStorageItem, type ColdStorageReadResult } from "../process/coldstorage.svelte"
 import { isSafeColdStorageKey } from "../process/coldStorageKey"
 import { listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, listRecoverableErrorKeysFromDb } from "../process/coldstorageData"
+import { retainedUnitKeys } from "../process/coldRetained"
 import { isAppInitiatedReload } from "../reloadGuard"
 import { bytesEqual, crc32 } from "./blockFrame"
 import { HEAD_KEY, LEGACY_MAIN_FILE_KEY, PRE_BLOCKS_PREFIX, generationPrefix, keptKey, ownBlockKey, rootKey, stubsKey } from "./blockKeys"
@@ -816,9 +817,13 @@ function isAssetCandidateKey(key: string): boolean {
     return !isTauri || !key.slice(ASSET_KEY_PREFIX.length).includes('/')
 }
 
-/** Unit keys that live memory refers to right now. */
+/**
+ * Unit keys that live memory refers to right now, including the units of the
+ * stubs a loaded character can be put back as: its saved block is the full
+ * character, but the stub it returns to points at these.
+ */
 function liveUnitReferences(): Set<string> {
-    return new Set([...listColdDataKeysFromDb(DBState.db), ...listRecoverableErrorKeysFromDb(DBState.db)])
+    return new Set([...listColdDataKeysFromDb(DBState.db), ...listRecoverableErrorKeysFromDb(DBState.db), ...retainedUnitKeys()])
 }
 
 //#endregion

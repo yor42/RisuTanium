@@ -1134,6 +1134,40 @@ describe('units: what the clean-up keeps', () => {
     })
 })
 
+describe('units: a loaded character that can be put back as its stub', () => {
+    // End-to-end guard through the real restore, the real cleanup and the real
+    // unit reader (the put-back's own swap is in characterPutBack.svelte.test.ts;
+    // here the stub the restore retained is put back by hand). The put-back does
+    // not exist on the base, so this is a guard of the union; it fails when the
+    // retained stub's unit is left out of what live memory refers to: after the
+    // restore the committed save holds the character in full, so no other reader
+    // keeps the unit.
+    test('guard: keeps the unit of a restored character, so that the stub put back opens to the unit content', async () => {
+        await setup()
+        await putBlob('x-unit', fullCharacter('char-x', 'Xena'))
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([stubCharacter('char-x', 'Xena', 'x-unit')]))
+        const { restoreColdCharacter } = await import('src/ts/process/coldCharacterRestore')
+        const { retainedRecordOf } = await import('src/ts/process/coldRetained')
+        const restored = await restoreColdCharacter(ctx.stores.DBState.db.characters[0], { byChaId: true, quiet: true })
+        expect(restored.status).toBe('restored')
+        await prime(makeDb([fullCharacter('char-x', 'Xena')]))
+
+        await run()
+
+        const after = await units()
+        expect(after).toContain('x-unit')
+        expect(after).not.toContain('unreferenced-unit')
+
+        const record = retainedRecordOf(ctx.stores.DBState.db.characters[0])
+        expect(record).toBeDefined()
+        ctx.stores.DBState.db.characters[0] = record!.stub
+        const reopened = await restoreColdCharacter(ctx.stores.DBState.db.characters[0], { byChaId: true, quiet: true })
+        expect(reopened.status).toBe('restored')
+        expect(ctx.stores.DBState.db.characters[0].coldstorage).toBeUndefined()
+        expect(ctx.stores.DBState.db.characters[0].name).toBe('Xena')
+    })
+})
 describe('a profile that never used plugin storage', () => {
     test('REPRODUCER: proceeds when the committed main file and a snapshot hold an empty plugin storage block', async () => {
         await setup()

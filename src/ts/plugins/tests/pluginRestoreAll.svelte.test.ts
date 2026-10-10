@@ -487,6 +487,27 @@ describe('loadPlugins with an enabled V2.1 plugin restores every archived charac
         expect(maxInFlight).toBe(1)
     })
 
+    // Guard: a stub put back by the character put-back carries the live
+    // lastInteraction, which can be newer than the unit's. Restore-all must keep
+    // that value, and a stub with no number must leave the unit's. Passes with
+    // applyStubStateOnRestore as it is; the put-back that produces such a stub
+    // is exercised end to end in characterPutBack.svelte.test.ts.
+    test('guard: a stub newer than its unit keeps its lastInteraction, and a stub without a number leaves the unit\'s', async () => {
+        putUnit('beta')
+        putUnit('gamma')
+        const newer = stubOf('beta') as unknown as ColdCharacter
+        newer.lastInteraction = 9000
+        const numberless = stubOf('gamma') as unknown as ColdCharacter
+        delete numberless.lastInteraction
+        installDb([newer as unknown as CharacterFixture, numberless as unknown as CharacterFixture], [plugin('legacy', '2.1')])
+
+        await loadPlugins()
+
+        expect(liveOf('beta').coldstorage).toBeUndefined()
+        expect(liveOf('beta').lastInteraction).toBe(9000)
+        expect(liveOf('gamma').coldstorage).toBeUndefined()
+        expect(liveOf('gamma').lastInteraction).toBe(5000)
+    })
     test('a stub whose unit is missing stays, the plugin still runs, and one notice names that character and no other', async () => {
         putUnit('beta', 'Beta Hero')
         putUnit('delta', 'Delta Hero')

@@ -5,6 +5,7 @@ import type { character, groupChat } from "../storage/database.svelte"
 import { readColdStorageItem, type ColdReadErrorKind, type ColdStorageReadResult } from "./coldstorage.svelte"
 import { applyStubStateOnRestore } from "./coldCharacter"
 import { noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
+import { findChaIdHolders, retainOnRestore } from "./coldRetained"
 
 /**
  * Reading an archived character's unit back and installing it in place of its
@@ -91,23 +92,11 @@ export interface ColdRestoreOptions {
     quiet?: boolean
 }
 
+// Defined beside the retained records, so that the put-back finds a holder without loading the storage reader.
+export { findChaIdHolders }
+
 /** One running restore per stub object; a second request for the same stub joins it instead of reading and installing again. */
 const running = new WeakMap<object, Promise<ColdRestoreOutcome>>()
-
-/** The indexes of every character holding `chaId`. */
-export function findChaIdHolders(chaId: string): number[] {
-    const characters = DBState.db?.characters
-    const found: number[] = []
-    if (!Array.isArray(characters)) {
-        return found
-    }
-    for (let i = 0; i < characters.length; i++) {
-        if (characters[i]?.chaId === chaId) {
-            found.push(i)
-        }
-    }
-    return found
-}
 
 async function readUnit(key: string): Promise<ColdStorageReadResult> {
     try {
@@ -246,7 +235,11 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
         return refuse(options, restoreFailureReason(unit))
     }
 
-    characters[index] = applyStubStateOnRestore(target, unit.character)
+    const restored = applyStubStateOnRestore(target, unit.character)
+    characters[index] = restored
+    // Over the plain object the unit decoded to, in the step that installs it:
+    // nothing has changed it yet, so the fingerprint is what a put-back compares to.
+    retainOnRestore(characters[index], target, restored)
     noteRestoredBytes(chaId, readSizeOf(result))
     return { status: 'restored', character: characters[index], installedHere: true }
 }

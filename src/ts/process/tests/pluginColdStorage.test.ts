@@ -7,10 +7,20 @@
  * (`getLiveDb`, `readColdStorageItemFn`, `setColdStorageItemFn`,
  * `newColdId`) as a plain parameter.
  */
-import { describe, test, expect, vi } from 'vitest'
+import { afterEach, describe, test, expect, vi } from 'vitest'
+
+// A stand-in for the reactive store: the put-back records only need DBState.db.characters.
+vi.mock(import('../../stores.svelte'), () => ({
+    DBState: { db: {} },
+}) as unknown as typeof import('../../stores.svelte'))
+
 import { readPluginStorageValue, writePluginStorageValue, type PluginColdStorageDb } from '../../plugins/apiV3/pluginColdStorage'
 import type { ColdStorageReadResult } from '../coldstorage.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from '../coldstorageData'
+import { DBState } from '../../stores.svelte'
+import { resetRetainedForTest, retainOnRestore } from '../coldRetained'
+import { buildColdStub } from '../coldCharacter'
+import type { Database } from '../../storage/database.svelte'
 
 describe('CHORE-07: readPluginStorageValue', () => {
     test('no mapping for the key resolves null without calling the reader', async () => {
@@ -283,5 +293,46 @@ describe('writePluginStorageValue never overwrites an archive that something els
         await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused')
 
         expect(units.get(SHARED)).toBe('v')
+    })
+})
+
+describe('writePluginStorageValue never overwrites the unit of a stub the put-back can reinstall', () => {
+    const RETAINED_UNIT = 'retained-unit'
+    const FAILURE = 'Failed to write plugin storage for key: k'
+
+    afterEach(() => {
+        resetRetainedForTest()
+    })
+
+    /** A restored character whose stub is retained: the live database holds the full character, which links no unit. */
+    function loadRetainedCharacter(): void {
+        const full = { chaId: 'x', name: 'X', type: 'character', chatPage: 0, chats: [] } as unknown as Database['characters'][number]
+        const stub = buildColdStub(full, RETAINED_UNIT, [])
+        DBState.db = { characters: [full] } as unknown as Database
+        retainOnRestore(full, stub, full)
+    }
+
+    // Regression reproducer: without the retained-unit check the write goes through
+    // and replaces the unit the put-back stub points at.
+    test('a slot mapped to the unit of a retained stub throws and leaves the unit alone', async () => {
+        loadRetainedCharacter()
+        const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: RETAINED_UNIT } } }
+        const writer = vi.fn(async () => true)
+
+        await expect(writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused')).rejects.toThrow(FAILURE)
+
+        expect(writer).not.toHaveBeenCalled()
+        expect(db.pluginCustomStorage?._coldplugin?.k).toBe(RETAINED_UNIT)
+    })
+
+    // Guard: passes with or without the check.
+    test('guard: an unrelated unit is still written while a stub is retained', async () => {
+        loadRetainedCharacter()
+        const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: 'plugin-only-unit' } } }
+        const writer = vi.fn(async () => true)
+
+        await writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused')
+
+        expect(writer).toHaveBeenCalledWith('plugin-only-unit', 'plugin value')
     })
 })

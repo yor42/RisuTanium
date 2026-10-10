@@ -59,6 +59,7 @@ import {
 } from './busyActions'
 import { isBgmPlaying } from '../../observer.svelte'
 import { hasRestoredBytes, restoredBytesOutside, setRestoredBytesListener } from './restoredBytes'
+import { baseKeepInline } from './keepSet'
 import {
     MIN_RELOAD_INTERVAL_MS,
     POLL_MS,
@@ -123,26 +124,9 @@ export function createHandoffMedium(): HandoffMedium | null {
     return platform === 'desktop' ? createFileMedium(createTauriHandoffFiles()) : null
 }
 
-/** The selected character and, for a group, its members: the characters the pass must leave inline. */
-export function currentKeepInline(): Set<string> {
-    const keep = new Set<string>()
-    const selected = DBState.db?.characters?.[get(selectedCharID)]
-    if (selected) {
-        if (typeof selected.chaId === 'string' && selected.chaId !== '') {
-            keep.add(selected.chaId)
-        }
-        if (selected.type === 'group' && Array.isArray(selected.characters)) {
-            for (const member of selected.characters) {
-                keep.add(member)
-            }
-        }
-    }
-    return keep
-}
-
 /** The characters whose restored bytes the reload would not release: the kept-inline set and the trashed, which the pass never archives. */
 function bytesExcluded(): Set<string> {
-    const excluded = currentKeepInline()
+    const excluded = baseKeepInline()
     for (const cha of DBState.db?.characters ?? []) {
         if (cha?.trashTime && typeof cha.chaId === 'string') {
             excluded.add(cha.chaId)
@@ -152,7 +136,7 @@ function bytesExcluded(): Set<string> {
 }
 
 function buildCarry(now: number): IdleCarry {
-    const keep = currentKeepInline()
+    const keep = baseKeepInline()
     const selected = DBState.db.characters[get(selectedCharID)]
     const chaId = selected && typeof selected.chaId === 'string' && selected.chaId !== '' ? selected.chaId : null
     return {

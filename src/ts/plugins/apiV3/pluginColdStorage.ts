@@ -1,5 +1,6 @@
 import type { ColdStorageReadResult } from "src/ts/process/coldstorage.svelte"
 import { coldStorageHeader, matchColdStorageLoadErrorKey } from "src/ts/process/coldstorageData"
+import { retainedUnitKeys } from "src/ts/process/coldRetained"
 
 /**
  * The slice of the database `_getPluginStorage`/`_setPluginStorage` touch.
@@ -119,7 +120,8 @@ export async function readPluginStorageValue(
  *   and a brand-new key never gets one.
  * - a slot whose existing unit is linked from anything else in the database
  *   (`isPluginUnitLinkedElsewhere`, judged on `getLiveDb()` when the write is
- *   decided) is not written at all: it throws exactly as a failed write does
+ *   decided), or is the unit of a stub the character put-back can reinstall
+ *   (`retainedUnitKeys`), is not written at all: it throws exactly as a failed write does
  *   and leaves the mapping and that unit as they are. A slot whose unit
  *   nothing else links is updated in place.
  * - a brand-new key's mapping is written only after the write succeeds, and
@@ -143,7 +145,10 @@ export async function writePluginStorageValue(
     // as no mapping (a fresh id is generated) rather than being reused as a
     // cold-storage key.
     const existingColdId = db.pluginCustomStorage._coldplugin[key]
-    if (existingColdId && isPluginUnitLinkedElsewhere(getLiveDb(), key, existingColdId)) {
+    // The units of retained stubs are checked here, not in the database check:
+    // a loaded character that can be put back has no link to its unit in the
+    // database, but the stub it returns to does.
+    if (existingColdId && (retainedUnitKeys().has(existingColdId) || isPluginUnitLinkedElsewhere(getLiveDb(), key, existingColdId))) {
         throw new Error(`Failed to write plugin storage for key: ${key}`)
     }
     const coldId = existingColdId || newColdId()

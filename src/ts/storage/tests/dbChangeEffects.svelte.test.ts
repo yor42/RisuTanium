@@ -969,6 +969,32 @@ describe('registerDbChangeEffects — identity tracker', () => {
         expect(tracker.character).toEqual(['char-B'])
     })
 
+    // Guard (passes with or without a put-back): the contract the character
+    // put-back relies on. The real registerDbChangeEffects runs here, so the
+    // identity tracker is live; the save loop is not. A stub proxy the tracker
+    // has already seen, installed again into its slot, is not a new element, so
+    // nothing marks it: the put-back must mark the character itself, or the
+    // stub is never written.
+    test('a stub proxy the tracker has seen, put back into its slot after a restore, is not marked', () => {
+        installDbWithCharacters([makeChar('char-A', 'A'), makeChar('char-B', 'B')])
+        const stubProxy = DBState.db.characters[0]
+        const { tracker, markChanged } = freshTrackerAndMarker()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+
+        DBState.db.characters[0] = makeChar('char-A', 'A-restored') as unknown as Database['characters'][number]
+        flushSync()
+        expect(tracker.character).toEqual(['char-A'])
+
+        tracker.character.length = 0
+        DBState.db.characters[0] = stubProxy
+        flushSync()
+
+        expect(DBState.db.characters[0]).toBe(stubProxy)
+        expect(tracker.character).toEqual([])
+    })
     test('whole-array replacement marks all new elements', () => {
         installDbWithCharacters([makeChar('char-A', 'A'), makeChar('char-B', 'B')])
         const { tracker, markChanged } = freshTrackerAndMarker()

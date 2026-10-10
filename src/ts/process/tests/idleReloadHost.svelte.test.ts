@@ -86,10 +86,10 @@ import { noteRestoredBytes, resetRestoredBytesForTest } from 'src/ts/process/mem
 import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from 'src/ts/process/memory/idleReloadBootState'
 import {
     IDLE_RELOAD_DESKTOP_ENABLED,
-    currentKeepInline,
     idleReloadPlatform,
     startIdleReload,
 } from 'src/ts/process/memory/idleReloadHost'
+import { baseKeepInline } from 'src/ts/process/memory/keepSet'
 import { HOLD_MS, IDLE_MS, MIN_RELOAD_INTERVAL_MS, RESTORED_BYTES_THRESHOLD } from 'src/ts/process/memory/idleGate'
 import type { Database } from 'src/ts/storage/database.svelte'
 
@@ -214,7 +214,7 @@ describe('arming', () => {
         selectedCharID.set(2)
         startIdleReload()
         noteRestoredBytes('other', 10 * RESTORED_BYTES_THRESHOLD)
-        expect(currentKeepInline()).toEqual(new Set(['group', 'selected', 'other']))
+        expect(baseKeepInline()).toEqual(new Set(['group', 'selected', 'other']))
         expect(listenerTypes).toEqual([])
     })
 
