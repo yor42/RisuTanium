@@ -1446,6 +1446,10 @@ export class BlockStoreOwner {
                     live.stubMembers = new Map()
                 }
             } catch (error) {
+                // An acknowledgement is kept only for bytes known to be stored: a delete
+                // that did not report 'removed' may still have landed, and an
+                // acknowledgement left for it would let a later save of equal bytes
+                // skip the write the root depends on.
                 if (error instanceof StoreDeleteManyError) {
                     for (const entry of error.report) {
                         if (entry.outcome === 'removed') {
@@ -1453,14 +1457,41 @@ export class BlockStoreOwner {
                             deleted++
                         } else {
                             failed++
+                            if (entry.outcome !== 'unchanged') {
+                                this.forgetUncertainAck(live, entry.key, entry.outcome === 'conflict')
+                            }
                         }
                     }
                 } else {
                     failed += doomed.length
+                    for (const entry of doomed) {
+                        this.forgetUncertainAck(live, entry.key, false)
+                    }
                 }
             }
         }
         return { skipped: false, deleted, failed }
+    }
+
+    /**
+     * Drops what the owner believes about a doomed key whose delete did not
+     * report 'removed' or 'unchanged'. A version conflict means another writer changed the key: the
+     * bytes are dropped and the revision kept, so a write of the key is still
+     * refused. Otherwise the delete may have landed: a versioned store forgets
+     * the key, so the next write reads it first and presents the revision it
+     * finds; a store without versions keeps the key doomed, with no bytes
+     * to match, so the delete is retried.
+     */
+    private forgetUncertainAck(live: LiveState, key: string, conflict: boolean): void {
+        const ack = live.keys.get(key)
+        if (ack === undefined) {
+            return
+        }
+        if (this.versioned && !conflict) {
+            live.keys.delete(key)
+        } else {
+            live.keys.set(key, { bytes: null, version: ack.version })
+        }
     }
 
     // -- replaceWholeState --------------------------------------------------------
