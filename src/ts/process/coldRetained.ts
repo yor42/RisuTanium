@@ -1,5 +1,7 @@
 import { DBState } from "../stores.svelte"
 import type { character, groupChat } from "../storage/database.svelte"
+import { MEASURE, putBackEnabled } from "./memory/measureFlag"
+import { noteFingerprint } from "./memory/putBackMeasure"
 
 /**
  * What a restore keeps of the placeholder it replaced, so that a character the
@@ -21,8 +23,19 @@ export interface RetainedRecord {
     readonly stub: Slot
     readonly unitKey: string
     readonly fp: string
-    /** Development only: one hash per top-level key, to name what changed on a dirty verdict. */
+    /** Measurement builds only: one hash per top-level key, to name what changed on a dirty verdict. */
     readonly keyHashes?: Record<string, string>
+}
+
+/**
+ * Measurement builds only: a weak reference to the plain decoded object of a
+ * record, which the reactive installed character wraps without copying. Kept
+ * beside the record so that the record's shape is the same in every build.
+ */
+const rawRefs = new WeakMap<RetainedRecord, WeakRef<object>>()
+
+export function rawRefOf(record: RetainedRecord): WeakRef<object> | undefined {
+    return rawRefs.get(record)
 }
 
 /**
@@ -91,8 +104,8 @@ function perKeyHashes(cha: Slot): Record<string, string> {
     return hashes
 }
 
-/** Development only: the top-level keys of `current` whose content differs from what `record` was taken from. */
-export function differingKeys(record: RetainedRecord, current: Slot): string[] {
+/** Measurement builds only: the top-level keys of `current` whose content differs from what `record` was taken from. */
+export function differingKeys(record: Pick<RetainedRecord, 'keyHashes'>, current: Slot): string[] {
     const before = record.keyHashes
     if (!before) {
         return []
@@ -110,6 +123,9 @@ export function differingKeys(record: RetainedRecord, current: Slot): string[] {
  * Playground character are not retained.
  */
 export function retainOnRestore(installed: Slot, stub: Slot, restored: Slot): void {
+    if (!putBackEnabled()) {
+        return
+    }
     const chaId = stub.chaId
     const unitKey = stub.coldstorage
     if (typeof chaId !== 'string' || chaId === '' || chaId === PLAYGROUND_CHA_ID || typeof unitKey !== 'string' || unitKey === '') {
@@ -117,12 +133,17 @@ export function retainOnRestore(installed: Slot, stub: Slot, restored: Slot): vo
     }
     let record: RetainedRecord
     try {
-        record = {
-            chaId,
-            stub,
-            unitKey,
-            fp: contentFingerprint(restored),
-            ...(import.meta.env.DEV ? { keyHashes: perKeyHashes(restored) } : {}),
+        const startedAt = MEASURE ? performance.now() : 0
+        const fp = contentFingerprint(restored)
+        const fingerprintedAt = MEASURE ? performance.now() : 0
+        const keyHashes = MEASURE ? perKeyHashes(restored) : undefined
+        if (MEASURE) {
+            noteFingerprint('restore', fingerprintedAt - startedAt, fp)
+            noteFingerprint('restore-keyhash', performance.now() - fingerprintedAt, fp)
+        }
+        record = { chaId, stub, unitKey, fp, ...(keyHashes ? { keyHashes } : {}) }
+        if (MEASURE) {
+            rawRefs.set(record, new WeakRef<object>(restored))
         }
     } catch (error) {
         // A character that cannot be fingerprinted stays loaded; the restore itself must not fail for it.
@@ -155,6 +176,11 @@ export function findChaIdHolders(chaId: string): number[] {
         }
     }
     return found
+}
+
+/** How many restored characters are retained. */
+export function retainedCount(): number {
+    return byChaId.size
 }
 
 /** True while any restored character is retained. */

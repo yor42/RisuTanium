@@ -29,11 +29,30 @@ import {
     findChaIdHolders,
     hasRetained,
     pruneRetained,
+    rawRefOf,
+    retainedCount,
     retainedRecordOf,
     type RetainedRecord,
 } from '../coldRetained'
 import { anyChokePointInFlight, isBusy } from './busyActions'
 import { addGroupMembers, baseKeepInline } from './keepSet'
+import { MEASURE, tripwireEnabled } from './measureFlag'
+import {
+    countReason,
+    noteCandidate,
+    noteCandidateExit,
+    noteDirty,
+    noteFingerprint,
+    noteFire,
+    noteReplaced,
+    readReasonCounters,
+    registerPutBackProvider,
+    resetPutBackMeasureForTest,
+    tripwireStep,
+    type CandidateExit,
+    type FireOutcome,
+    type PutBackReason,
+} from './putBackMeasure'
 import { clearRestoredBytes } from './restoredBytes'
 
 /** One `fire` swaps at most one character, fingerprints at most this many, and stops starting a fingerprint after `MAX_FIRE_MS`. */
@@ -48,19 +67,17 @@ const MAX_FIRE_MS = 8
  * that the full characters stay in memory longer.
  */
 
-/** Why a candidate was or was not put back; counted in development builds only, in memory only. */
-export type PutBackReason = 'clean' | 'dirty' | 'busy' | 'writing' | 'kept' | 'gone'
-
-const counters: Record<PutBackReason, number> = { clean: 0, dirty: 0, busy: 0, writing: 0, kept: 0, gone: 0 }
+/** Why a candidate was or was not put back; counted in measurement builds only, in memory only. */
+export type { PutBackReason }
 
 function count(reason: PutBackReason): void {
-    if (import.meta.env.DEV) {
-        counters[reason] += 1
+    if (MEASURE) {
+        countReason(reason)
     }
 }
 
 export function getPutBackCounters(): Readonly<Record<PutBackReason, number>> {
-    return { ...counters }
+    return readReasonCounters()
 }
 
 /** The `chaId`s waiting for the next commit; checked again, in full, when it comes. */
@@ -68,6 +85,21 @@ const pending = new Set<string>()
 let currentChaId: string | null = null
 let previousChaId: string | null = null
 let armed = false
+let tripwireArmed = false
+
+/** Takes `chaId` out of `pending`, recording how long it waited and why it left. */
+function leave(chaId: string, exit: CandidateExit): void {
+    pending.delete(chaId)
+    if (MEASURE) {
+        noteCandidateExit(chaId, exit)
+    }
+}
+
+function clearPending(exit: CandidateExit): void {
+    for (const chaId of [...pending]) {
+        leave(chaId, exit)
+    }
+}
 
 /** Whether this database may put characters back at all: archiving on, no V2.1 plugin and a block-format database. */
 function putBackMayRun(): boolean {
@@ -104,6 +136,28 @@ function arm(): void {
     }
 }
 
+/** Re-arms itself for the next save commit until the measurement module wants no more. */
+function armTripwire(): void {
+    if (!tripwireArmed) {
+        tripwireArmed = true
+        afterNextSaveCommit(() => {
+            tripwireArmed = false
+            if (tripwireStep()) {
+                armTripwire()
+            }
+        })
+    }
+}
+
+if (MEASURE) {
+    registerPutBackProvider({
+        keepSet: () => putBackKeepSet(),
+        retainedCount,
+        fingerprint: (cha) => contentFingerprint(cha as Parameters<typeof contentFingerprint>[0]),
+        differingKeys: (keyHashes, cha) => differingKeys({ keyHashes }, cha as Parameters<typeof contentFingerprint>[0]),
+    })
+}
+
 /** Swaps the retained stub into `index`, carrying what changes without the content changing, and marks it for save. */
 function swapIn(characters: NonNullable<typeof DBState.db>['characters'], index: number, record: RetainedRecord): void {
     const live = characters[index]
@@ -119,6 +173,11 @@ function swapIn(characters: NonNullable<typeof DBState.db>['characters'], index:
         delete stub.trashTime
     }
     characters[index] = stub
+    // The replaced object is held weakly only.
+    if (MEASURE && tripwireEnabled()) {
+        noteReplaced(record.chaId, record.fp, record.keyHashes, live, rawRefOf(record))
+        armTripwire()
+    }
     dropRetained(record)
     // No effect marks a stub put back into its slot, and the character's saved
     // block is the full one: without this the stub would never be written.
@@ -126,63 +185,100 @@ function swapIn(characters: NonNullable<typeof DBState.db>['characters'], index:
     clearRestoredBytes(record.chaId)
 }
 
+/** Time inside the current fire that a normal build does not spend: left out of its duration and of its time budget. */
+let measurementMs = 0
+
 function fire(): void {
+    const startedAt = MEASURE ? performance.now() : 0
+    measurementMs = 0
+    const outcome = runFire()
+    if (MEASURE) {
+        noteFire(outcome, performance.now() - startedAt - measurementMs)
+    }
+}
+
+function runFire(): FireOutcome {
     armed = false
     if (!putBackMayRun()) {
-        pending.clear()
-        return
+        clearPending('cleared-early')
+        return 'empty'
     }
     if (isBusy() || anyChokePointInFlight()) {
         count('busy')
         arm()
-        return
+        return 'busy'
     }
     const characters = DBState.db?.characters
     if (!Array.isArray(characters)) {
-        pending.clear()
-        return
+        clearPending('cleared-early')
+        return 'empty'
     }
     pruneRetained()
     const keep = putBackKeepSet()
     const startedAt = performance.now()
     let fingerprints = 0
+    let deferredWriting = false
+    let dropped = false
     for (const chaId of [...pending]) {
         if (keep.has(chaId)) {
-            pending.delete(chaId)
+            leave(chaId, 'kept')
             count('kept')
+            dropped = true
             continue
         }
         const holders = findChaIdHolders(chaId)
         const record = holders.length === 1 ? retainedRecordOf(characters[holders[0]]) : undefined
         if (!record) {
-            pending.delete(chaId)
+            leave(chaId, 'gone')
             count('gone')
+            dropped = true
             continue
         }
         if (isWriting({ chaId })) {
             count('writing')
+            deferredWriting = true
             continue
         }
-        if (fingerprints >= MAX_FINGERPRINTS_PER_FIRE || performance.now() - startedAt >= MAX_FIRE_MS) {
+        if (fingerprints >= MAX_FINGERPRINTS_PER_FIRE || performance.now() - startedAt - measurementMs >= MAX_FIRE_MS) {
             break
         }
         fingerprints += 1
-        pending.delete(chaId)
-        if (contentFingerprint(characters[holders[0]]) !== record.fp) {
-            if (import.meta.env.DEV) {
-                console.debug('[put-back] changed since restore, kept loaded:', chaId, differingKeys(record, characters[holders[0]]))
+        const fingerprintStartedAt = MEASURE ? performance.now() : 0
+        const current = contentFingerprint(characters[holders[0]])
+        if (MEASURE) {
+            noteFingerprint('fire', performance.now() - fingerprintStartedAt, current)
+        }
+        if (current !== record.fp) {
+            if (MEASURE) {
+                const blockStartedAt = performance.now()
+                const keys = differingKeys(record, characters[holders[0]])
+                noteFingerprint('fire-keyhash', performance.now() - blockStartedAt, current)
+                noteDirty(chaId, keys)
+                if (import.meta.env.DEV) {
+                    console.debug('[put-back] changed since restore, kept loaded:', chaId, keys)
+                }
+                measurementMs += performance.now() - blockStartedAt
             }
+            leave(chaId, 'dirty')
             dropRetained(record)
             count('dirty')
             continue
         }
         swapIn(characters, holders[0], record)
+        leave(chaId, 'swap')
         count('clean')
         break
     }
     if (pending.size > 0) {
         arm()
     }
+    if (fingerprints > 0) {
+        return 'fingerprinted'
+    }
+    if (deferredWriting) {
+        return 'writing'
+    }
+    return dropped ? 'kept-only' : 'empty'
 }
 
 /** Adds every retained character outside the keep-set to the pending set and waits for the next commit. */
@@ -193,7 +289,7 @@ function onSelection(index: number): void {
         currentChaId = chaId
     }
     if (chaId !== null) {
-        pending.delete(chaId)
+        leave(chaId, 'cleared-selection')
     }
     if (!hasRetained() || !putBackMayRun()) {
         return
@@ -203,6 +299,9 @@ function onSelection(index: number): void {
         const record = retainedRecordOf(cha)
         if (record && !keep.has(record.chaId)) {
             pending.add(record.chaId)
+            if (MEASURE) {
+                noteCandidate(record.chaId)
+            }
         }
     }
     if (pending.size > 0) {
@@ -226,7 +325,6 @@ export function resetPutBackForTest(): void {
     currentChaId = null
     previousChaId = null
     armed = false
-    for (const reason of Object.keys(counters) as PutBackReason[]) {
-        counters[reason] = 0
-    }
+    tripwireArmed = false
+    resetPutBackMeasureForTest()
 }
