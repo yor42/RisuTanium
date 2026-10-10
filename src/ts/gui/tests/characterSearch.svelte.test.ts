@@ -162,6 +162,21 @@ describe('createCharacterSearch: results follow the query and the database', () 
         expect(search.searching).toBe(true)
     })
 
+    // Feature test: the property does not exist before the windowed lists, which reset their scroll position when it changes.
+    test('query is the typed query as it landed: it follows the debounce, and clearing lands at once', () => {
+        setCharacters([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        const search = within(() => createCharacterSearch(() => query))
+        expect(search.query).toBe('')
+        type('bo')
+        expect(search.query).toBe('')
+        elapse(149)
+        expect(search.query).toBe('')
+        elapse(1)
+        expect(search.query).toBe('bo')
+        type('')
+        expect(search.query).toBe('')
+    })
+
     test('a query present at creation applies without waiting', () => {
         setCharacters([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
         query = 'ann'

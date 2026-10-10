@@ -2,7 +2,8 @@
 
 /**
  * `GridCatalog.svelte` List tab: each description is rendered as markdown once
- * its row is near the viewport (plain text before), clamped, and a "Show more"
+ * its row is mounted (a row outside the list's window does not exist, so it is
+ * never parsed), clamped, and a "Show more"
  * toggle appears only when the clamp actually cuts the text off. Expanded, the
  * toggle reads "Show less". The toggle belongs to its row, never opens the
  * character, and follows resizes and text changes.
@@ -154,49 +155,36 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-class AllVisibleIntersectionObserver implements IntersectionObserver {
-    readonly root: Element | Document | null = null
-    readonly rootMargin: string = ''
-    readonly thresholds: ReadonlyArray<number> = []
-    #callback: IntersectionObserverCallback
-
-    constructor(callback: IntersectionObserverCallback) {
-        this.#callback = callback
-    }
-
-    observe(target: Element): void {
-        this.#callback([{ target, isIntersecting: true, intersectionRatio: 1 } as IntersectionObserverEntry], this)
-    }
-
-    unobserve(): void {}
-    disconnect(): void {}
-    takeRecords(): IntersectionObserverEntry[] {
-        return []
-    }
-}
-
-/** Reports nothing: every row stays far from the viewport. */
-class NeverVisibleIntersectionObserver extends AllVisibleIntersectionObserver {
-    override observe(): void {}
-}
-
+/**
+ * A ResizeObserver that reports on demand. `fireAll` reports only the description blocks the clamp
+ * checks watch, not the rows the list's window measures: a clamp re-check is what these tests drive.
+ */
 class ControlledResizeObserver {
     static instances: ControlledResizeObserver[] = []
+    readonly targets = new Set<Element>()
 
-    constructor(readonly callback: () => void) {
+    constructor(readonly callback: ResizeObserverCallback) {
         ControlledResizeObserver.instances.push(this)
     }
 
-    observe(): void {}
-    disconnect(): void {}
+    observe(target: Element): void {
+        this.targets.add(target)
+    }
+    unobserve(target: Element): void {
+        this.targets.delete(target)
+    }
+    disconnect(): void {
+        this.targets.clear()
+    }
     static fireAll(): void {
         for (const instance of ControlledResizeObserver.instances) {
-            instance.callback()
+            const watched = Array.from(instance.targets).filter((target) => target.hasAttribute('data-description'))
+            if (watched.length > 0) {
+                instance.callback(watched.map((target) => ({ target, contentRect: { height: 0 } }) as unknown as ResizeObserverEntry), instance as unknown as ResizeObserver)
+            }
         }
     }
 }
-
-vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
 
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
@@ -295,6 +283,44 @@ function listRow(root: HTMLElement, name: string): HTMLElement {
     return row
 }
 
+/** The windowed list's container. */
+function scrollerOf(root: ParentNode): HTMLElement {
+    const el = root.querySelector<HTMLElement>('[role="list"][data-charlist-total]')
+    if (!el) {
+        throw new Error('no windowed list in this DOM')
+    }
+    return el
+}
+
+/** Gives the container a height and a scroll position (happy-dom has no layout) and lets the window read them. */
+function installGeometry(el: HTMLElement, height: number): { scrollAndSettle(top: number): Promise<void> } {
+    let top = 0
+    const total = (): number => Number(el.getAttribute('data-charlist-total') ?? 0)
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => height })
+    Object.defineProperty(el, 'scrollTop', {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+            top = Math.max(0, Math.min(value, Math.max(0, total() - height)))
+        },
+    })
+    el.dispatchEvent(new Event('scroll'))
+    return {
+        async scrollAndSettle(value) {
+            top = value
+            el.dispatchEvent(new Event('scroll'))
+            await settleFrame()
+        },
+    }
+}
+
+async function settleFrame(): Promise<void> {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+}
+
 function toggleOf(row: HTMLElement): HTMLButtonElement | undefined {
     return Array.from(row.querySelectorAll('button')).find((b) => /^Show (more|less)$/.test(b.textContent?.trim() ?? ''))
 }
@@ -327,7 +353,6 @@ beforeEach(() => {
 
 afterEach(() => {
     restoreLayout()
-    vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
     vi.stubGlobal('ResizeObserver', undefined)
 })
 
@@ -462,17 +487,64 @@ describe('GridCatalog List tab: markdown descriptions', { timeout: 60_000 }, () 
         })
     })
 
-    test('a row far from the viewport shows plain text and is not parsed', async () => {
-        vi.stubGlobal('IntersectionObserver', NeverVisibleIntersectionObserver)
-        DBState.db = buildDb(characters())
+    // Feature test: a row outside the window is not mounted, so nothing parses or measures it.
+    test('a row outside the window is not mounted and its description is not parsed', async () => {
+        const far = makeCharacter('far', 'Zed', 'far words')
+        const fillers = Array.from({ length: 60 }, (_, i) => makeCharacter(`f${i}`, `Filler ${i}`, `filler words ${i}`))
+        DBState.db = buildDb([...characters(), ...fillers, far])
 
-        await withList(vi.fn(), (target) => {
-            const description = clampElement(listRow(target, 'Bob'))
-            expect(description.textContent?.trim()).toBe('short text')
-            expect(description.querySelector('p')).toBeNull()
-            expect(parseSpy).not.toHaveBeenCalled()
-            // Not measured either: a far row never offers Show more.
-            expect(toggleOf(listRow(target, 'Ann'))).toBeUndefined()
+        await withList(vi.fn(), async (target) => {
+            installGeometry(scrollerOf(target), 300)
+            await settleFrame()
+            const names = Array.from(target.querySelectorAll('h4')).map((h) => h.textContent?.trim())
+            expect(names).toContain('Bob')
+            expect(names).not.toContain('Zed')
+            expect(names.length).toBeLessThan(DBState.db.characters.length)
+            expect(parseSpy).toHaveBeenCalledWith('short text')
+            expect(parseSpy).not.toHaveBeenCalledWith('far words')
+        })
+    })
+
+    // Feature test: the expanded state belongs to the character, so it outlives the row's element.
+    test('an expanded row is still expanded after it scrolls out of the window and back', async () => {
+        const fillers = Array.from({ length: 60 }, (_, i) => makeCharacter(`f${i}`, `Filler ${i}`, `filler words ${i}`))
+        DBState.db = buildDb([...characters(), ...fillers])
+
+        await withList(vi.fn(), async (target) => {
+            const geometry = installGeometry(scrollerOf(target), 300)
+            await settleFrame()
+            toggleOf(listRow(target, 'Ann'))!.click()
+            await settle()
+            expect(toggleOf(listRow(target, 'Ann'))?.textContent?.trim()).toBe('Show less')
+
+            await geometry.scrollAndSettle(6000)
+            expect(Array.from(target.querySelectorAll('h4')).some((h) => h.textContent?.trim() === 'Ann')).toBe(false)
+
+            await geometry.scrollAndSettle(0)
+            const ann = listRow(target, 'Ann')
+            expect(toggleOf(ann)?.textContent?.trim()).toBe('Show less')
+            expect(clampElement(ann).classList.contains(CLAMP_CLASS)).toBe(false)
+            expect(toggleOf(listRow(target, 'Cat'))?.textContent?.trim()).toBe('Show more')
+        })
+    })
+
+    // Guard: scrolling parses the descriptions it mounts and nothing else.
+    test('scrolling the list parses only the descriptions of rows that were mounted', async () => {
+        const fillers = Array.from({ length: 120 }, (_, i) => makeCharacter(`f${i}`, `Filler ${i}`, `filler words ${i}`))
+        DBState.db = buildDb([...characters(), ...fillers])
+
+        await withList(vi.fn(), async (target) => {
+            const geometry = installGeometry(scrollerOf(target), 300)
+            await settleFrame()
+            await geometry.scrollAndSettle(15_000)
+            await geometry.scrollAndSettle(0)
+            await vi.waitFor(() => expect(parseSpy).toHaveBeenCalledWith('filler words 114'), { timeout: 20_000 })
+            const parsed = new Set(parseSpy.mock.calls.map((call) => call[0]))
+            expect(parsed.has('short text')).toBe(true)
+            // Rows between the two places the list rested at were never mounted.
+            expect(parsed.has('filler words 40')).toBe(false)
+            expect(parsed.has('filler words 60')).toBe(false)
+            expect(parsed.size).toBeLessThan(60)
         })
     })
 

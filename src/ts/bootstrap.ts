@@ -11,6 +11,7 @@ import { checkRisuUpdate } from "./update";
 import { MobileGUI, botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertError, alertMd, alertStaleAccountNotice, alertNormal, alertNormalWait, alertSelect, waitAlert, alertConfirm, alertInput, alertToast } from "./alert";
+import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
@@ -898,10 +899,11 @@ async function registerSw() {
  */
 function updateErrorHandling() {
     const errorHandler = (event: ErrorEvent) => {
-        console.error(event.error);
-        if(!(event.error.target instanceof Worker)){
-            alertError(event.error);            
-        }
+        handleWindowError(event, {
+            warn: (message) => console.warn(message),
+            error: (error) => console.error(error),
+            report: (error) => alertError(error),
+        });
     };
     const rejectHandler = (event: PromiseRejectionEvent) => {
         console.error(event.reason);

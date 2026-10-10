@@ -1,16 +1,16 @@
 <script lang="ts">
     import { DBState } from 'src/ts/stores.svelte';
-    import BarIcon from "../SideBars/BarIcon.svelte";
-    import { addCharacter, changeChar, getCharImage } from "src/ts/characters";
+    import { addCharacter, changeChar } from "src/ts/characters";
     import { MobileSearch } from "src/ts/stores.svelte";
     import { ArrowLeft, MessageSquareIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
-    import { nearViewport } from "src/ts/gui/nearViewport.svelte";
-    import { SvelteMap } from "svelte/reactivity";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { isHiddenSystemCharacter } from "src/ts/hiddenCharacters";
     import { language } from "src/lang";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
     import CharacterTrashList from "../Others/CharacterTrashList.svelte";
+    import CharacterWindow from "../Others/CharacterWindow.svelte";
+    import CharListAvatar from "../Others/CharListAvatar.svelte";
+    import { SIMPLE_ROW_FALLBACK_PX, listRows, type ScrollAnchor } from "../Others/charListRows";
 
     interface Props {
         endGrid?: () => void;
@@ -36,11 +36,28 @@
     // the template follows later queries.
     // svelte-ignore state_referenced_locally
     const found = results ?? createCharacterSearch(() => search ?? $MobileSearch);
-    // AV-2: indices of characters near this list's own scroll viewport,
-    // mapped to their owning element (see GridCatalog.svelte's own comment
-    // on `visibleIndices` for why a Map, not a Set: it makes releasing an
-    // index on unmount safe regardless of mount/unmount order).
-    let visibleIndices = new SvelteMap<number, Element>()
+
+    // The list is unmounted while the trash view is open, so what it needs to come back to the
+    // same row is kept here: the row measurements (the saved position only means the same row
+    // against the heights it was taken with) and the row at the top when the trash was opened.
+    const listHeights = new Map<string, number>();
+    let listWindow = $state<ReturnType<typeof CharacterWindow>>();
+    let listAnchor = $state<ScrollAnchor | null>(null);
+    let anchorQuery = '';
+
+    function openTrash() {
+        listAnchor = listWindow?.getAnchor() ?? null;
+        anchorQuery = found.query;
+        trashOpen = true;
+    }
+
+    // A search that changed while the trash was open means a different list: it starts at the top.
+    function closeTrash() {
+        if (found.query !== anchorQuery) {
+            listAnchor = null;
+        }
+        trashOpen = false;
+    }
 
     function makeAgoText(time:number){
         if(time === 0){
@@ -88,57 +105,51 @@
         }
         return b.interaction - a.interaction;
     }));
+    const entryByIndex = $derived(new Map(sorted.map((entry) => [entry.i, entry])));
+    const rows = $derived(listRows(sorted.filter((entry) => found.matched.has(entry.i)).map((entry) => String(entry.i))));
 </script>
-<div class="flex flex-col items-center w-full overflow-y-auto h-full">
-    {#if trashOpen}
-        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc" onclick={() => {
-            trashOpen = false
+{#snippet card(cardKey: string, position: number)}
+    {@const index = Number(cardKey)}
+    {@const entry = entryByIndex.get(index)}
+    {@const c = DBState.db.characters[index]}
+    <!-- Defence in depth: a position past the end of a shrinking list draws no row instead of throwing. -->
+    {#if entry && c}
+        {@const chats = coldStubChatCount(c)}
+        {@const agoText = makeAgoText(entry.interaction)}
+        <button class="flex p-2 border-t-darkborderc gap-2 w-full" class:border-t={position !== 1} onclick={() => {
+            changeChar(index)
+            endGrid()
         }}>
+            <CharListAvatar src={c.image} class="hover:bg-[#10b981] transition-colors duration-150" />
+            <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
+                <span>{entry.name}</span>
+                <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
+                    <span class="mr-1">{chats}</span>
+                    <MessageSquareIcon size={14} />
+                    <span class="mr-1 ml-1">|</span>
+                    <span>{agoText}</span>
+                </div>
+            </div>
+        </button>
+    {/if}
+{/snippet}
+<div class="flex flex-col items-center w-full h-full">
+    {#if trashOpen}
+        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc shrink-0" onclick={closeTrash}>
             <ArrowLeft size={20} />
             <span>{language.settingsPage.back}</span>
         </button>
-        <div class="w-full p-2">
-            <CharacterTrashList found={found} visibleIndices={visibleIndices} />
+        <div class="w-full p-2 flex-1 min-h-0">
+            <CharacterTrashList found={found} />
         </div>
     {:else}
     {#if trashEntry && found.trashedTotal > 0}
-        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc" onclick={() => {
-            trashOpen = true
-        }}>
+        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc shrink-0" onclick={openTrash}>
             <TrashIcon size={20} />
             <span>{language.trash} ({found.trashedTotal})</span>
         </button>
     {/if}
-    {#each sorted as char, i (char.i)}
-        {#if found.matched.has(char.i)}
-            {@const c = DBState.db.characters[char.i]}
-            <!-- Defence in depth: a position past the end of a shrinking list draws no row instead of throwing. -->
-            {#if c}
-                {@const imgPath = c.image}
-                {@const isVisible = visibleIndices.has(char.i)}
-                {@const avatarStyle = isVisible ? getCharImage(imgPath, 'thumbcss') : ''}
-                {@const chats = coldStubChatCount(c)}
-                {@const agoText = makeAgoText(char.interaction)}
-                <button class="flex p-2 border-t-darkborderc gap-2 w-full" class:border-t={i !== 0} onclick={() => {
-                    changeChar(char.i)
-                    endGrid()
-                }} use:nearViewport={{ onChange: (v, node) => {
-                    if (v) { visibleIndices.set(char.i, node) } else if (visibleIndices.get(char.i) === node) { visibleIndices.delete(char.i) }
-                } }}>
-                    <BarIcon additionalStyle={avatarStyle}></BarIcon>
-                    <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
-                        <span>{char.name}</span>
-                        <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
-                            <span class="mr-1">{chats}</span>
-                            <MessageSquareIcon size={14} />
-                            <span class="mr-1 ml-1">|</span>
-                            <span>{agoText}</span>
-                        </div>
-                    </div>
-                </button>
-            {/if}
-        {/if}
-    {/each}
+    <CharacterWindow bind:this={listWindow} class="w-full flex-1 min-h-0" {rows} fallbackHeight={SIMPLE_ROW_FALLBACK_PX} heights={listHeights} resetToken={found.query} initialAnchor={listAnchor} {card} />
     {/if}
 </div>
 

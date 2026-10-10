@@ -3,7 +3,9 @@
 /**
  * Avatars resolve only near the viewport, using a shared, injectable
  * `IntersectionObserver`, instead of every listed avatar resolving
- * unconditionally at mount.
+ * unconditionally at mount. The Grid tab's tiles and the dialogs still use the
+ * observer; the List, Trash and Simple tabs and the Sidebar mount only the rows
+ * near their scroll viewport, and each mounted row resolves its own avatar.
  *
  * This file copies `charlistAvatarLookups.svelte.test.ts`'s mock setup and
  * fixture-building helpers rather than extending that file in place, because
@@ -667,68 +669,49 @@ describe('v1: only the fake-reported-intersecting items resolve, per layout', ()
         await teardown(target, app)
     })
 
-    test('list layout (GridCatalog.svelte, selected=1)', async () => {
+    // The list, trash and simple tabs mount only the rows near their scroll viewport and each mounted
+    // row requests its own avatar: no observer is involved, so a report from the fake changes nothing.
+    test('list layout (GridCatalog.svelte, selected=1): every mounted row requests its own avatar and no observer watches a row', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
+        getFileSrcSpy.mockClear()
         clickLayoutButton(target, 1)
         await settle(target)
-        getFileSrcSpy.mockClear()
 
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-
-        // Same invariant as the grid case above.
-        expect(getFileSrcSpy.mock.calls.length).toBe(V_K)
+        expect(avatarButtons(target).length).toBe(V_N)
+        expect(getFileSrcSpy.mock.calls.length).toBe(V_N)
+        expect(orderedTargets(FakeIntersectionObserver.instances).length).toBe(0)
 
         await teardown(target, app)
     })
 
-    test('trash layout (GridCatalog.svelte, selected=2)', async () => {
-        const k = Math.min(V_K, V_TRASHED)
+    test('trash layout (GridCatalog.svelte, selected=2): every mounted row requests its own avatar and no observer watches a row', async () => {
         DBState.db = buildDb(V_N, V_TRASHED)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
+        getFileSrcSpy.mockClear()
         clickLayoutButton(target, 2)
         await settle(target)
-        getFileSrcSpy.mockClear()
 
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.slice(0, k).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-
-        // Same invariant as the grid case above, for the trashed avatars
-        // shown in this tab.
-        expect(getFileSrcSpy.mock.calls.length).toBe(k)
+        expect(avatarButtons(target).length).toBe(V_TRASHED)
+        expect(getFileSrcSpy.mock.calls.length).toBe(V_TRASHED)
+        expect(orderedTargets(FakeIntersectionObserver.instances).length).toBe(0)
 
         await teardown(target, app)
     })
 
-    test('simple layout (MobileCharacters.svelte, GridCatalog default selected=3)', async () => {
+    test('simple layout (MobileCharacters.svelte, GridCatalog default selected=3): every mounted row requests its own avatar and no observer watches a row', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog() // defaults to selected=3 (simple)
         await settle(target)
-        getFileSrcSpy.mockClear()
 
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-
-        // Same invariant as the grid case above.
-        expect(getFileSrcSpy.mock.calls.length).toBe(V_K)
+        expect(avatarButtons(target).length).toBe(V_N)
+        expect(getFileSrcSpy.mock.calls.length).toBe(V_N)
+        expect(orderedTargets(FakeIntersectionObserver.instances).length).toBe(0)
 
         await teardown(target, app)
     })
@@ -887,33 +870,17 @@ describe('v4: no IntersectionObserver global means every avatar still resolves (
     })
 })
 
-describe('v5 (new): nested MobileCharacters-inside-GridCatalog root selection', () => {
-    test('the chosen root for MobileCharacters items is its own overflow-y-auto container, not GridCatalog\'s outer one', async () => {
+describe('v5 (new): MobileCharacters inside GridCatalog has one scroll root', () => {
+    test('the simple tab is a single overflow-y-auto container: the screen around it does not scroll', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
-        const { target, app } = mountGridCatalog() // defaults to selected=3 (simple, nested)
+        const { target, app } = mountGridCatalog() // defaults to selected=3 (simple, embedded)
         await settle(target)
 
         const scrollBoxes = Array.from(target.querySelectorAll('.overflow-y-auto')) as HTMLElement[]
-        // GridCatalog's own outer scroll box is the first in document
-        // order; MobileCharacters' own nested scroll box is the second.
-        expect(scrollBoxes.length).toBeGreaterThanOrEqual(2)
-        const gridOuter = scrollBoxes[0]
-        const mobileCharsRoot = scrollBoxes[1]
-        expect(gridOuter).not.toBe(mobileCharsRoot)
-        expect(gridOuter.contains(mobileCharsRoot)).toBe(true)
-
-        const nearInNested = instancesByMargin(NEAR_MARGIN).filter((inst) =>
-            Array.from(inst.observed).some((el) => mobileCharsRoot.contains(el)),
-        )
-        // Precondition: at least one near-band instance was actually created
-        // for MobileCharacters' items.
-        expect(nearInNested.length).toBeGreaterThan(0)
-        for (const inst of nearInNested) {
-            // The specific expected root: MobileCharacters' own container, not
-            // "some ancestor" and not GridCatalog's outer one.
-            expect(inst.root).toBe(mobileCharsRoot)
-        }
+        expect(scrollBoxes.length).toBe(1)
+        expect(scrollBoxes[0].getAttribute('role')).toBe('list')
+        expect(scrollBoxes[0].querySelectorAll('.ico').length).toBe(V_N)
 
         await teardown(target, app)
     })
@@ -1283,16 +1250,10 @@ describe('v12: entries must leave the visible set when items unmount', () => {
         await teardown(target, app)
     })
 
-    describe('v12b: ordering hazard on grid -> list', () => {
-        test('a list item resolves once its own near entry fires after switching from grid, even without ever firing in grid mode', async () => {
-            // Guards against an ordering hazard: if the OLD grid item's
-            // destroy-time `onChange(false)` ran after the NEW list item's
-            // `onChange(true)` add, it would incorrectly strip the just-added
-            // index back out of `visibleIndices` and leave the freshly-fired
-            // list item stuck on the placeholder. Never firing anything in grid
-            // mode first isolates this from the stale-entry case in the tests
-            // above: there is nothing stale to fall back on here, so if this
-            // ever regresses to "does not resolve", it is this ordering hazard.
+    describe('v12b: grid -> list', () => {
+        test('the list rows resolve on their own after the grid tab, without any report from an observer and without having fired in grid mode', async () => {
+            // The grid tiles are gated by the observer and the list rows are not: a grid
+            // tile's destroy-time release must not leave a list row without its avatar.
             DBState.db = buildDb(V_N, 0)
             getFileSrcSpy.mockClear()
             const { target, app } = mountGridCatalog()
@@ -1302,16 +1263,8 @@ describe('v12: entries must leave the visible set when items unmount', () => {
             // Deliberately fire nothing in grid mode.
             clickLayoutButton(target, 1)
             await settle(target)
-            getFileSrcSpy.mockClear()
 
-            const listTargets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-            fireOn(
-                instancesByMargin(NEAR_MARGIN),
-                listTargets.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-            )
-            await settle(target)
-
-            expect(resolvedAvatarButtons(target).length).toBe(V_K)
+            expect(resolvedAvatarButtons(target).length).toBe(V_N)
 
             await teardown(target, app)
         })

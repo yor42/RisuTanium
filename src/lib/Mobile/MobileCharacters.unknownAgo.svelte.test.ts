@@ -135,29 +135,6 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-class AllVisibleIntersectionObserver implements IntersectionObserver {
-    readonly root: Element | Document | null = null
-    readonly rootMargin: string = ''
-    readonly thresholds: ReadonlyArray<number> = []
-    #callback: IntersectionObserverCallback
-
-    constructor(callback: IntersectionObserverCallback) {
-        this.#callback = callback
-    }
-
-    observe(target: Element): void {
-        this.#callback([{ target, isIntersecting: true, intersectionRatio: 1 } as IntersectionObserverEntry], this)
-    }
-
-    unobserve(): void {}
-    disconnect(): void {}
-    takeRecords(): IntersectionObserverEntry[] {
-        return []
-    }
-}
-
-vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
-
 import { changeLanguage } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageKorean } from 'src/lang/ko'

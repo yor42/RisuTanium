@@ -470,6 +470,24 @@ function clickLayoutButton(root: HTMLElement, layout: 0 | 1 | 2 | 3): void {
     btn.click()
 }
 
+/**
+ * The list, simple and trash tabs mount only the rows near their scroll viewport. A container
+ * with no layout (happy-dom) is windowed by `window.innerHeight`, so a tall window mounts the
+ * whole fixture: the lookups guards below are about re-resolution of an avatar, which has to be
+ * observed on every row; the window itself is covered by `GridCatalog.window.svelte.test.ts`.
+ */
+function useTallViewport(): () => void {
+    const previous = Object.getOwnPropertyDescriptor(window, 'innerHeight')
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 100_000 })
+    return () => {
+        if (previous) {
+            Object.defineProperty(window, 'innerHeight', previous)
+        } else {
+            delete (window as unknown as Record<string, unknown>).innerHeight
+        }
+    }
+}
+
 function setSearchValue(root: HTMLElement, value: string): void {
     const input = root.querySelector('input[type="text"]') as HTMLInputElement | null
     if (!input) {
@@ -650,8 +668,10 @@ describe.sequential('grid layout: avatar lookups (AV-1 regression, GridCatalog.s
 describe.sequential('list layout: avatar lookups (AV-1 regression, GridCatalog.svelte)', () => {
     let target: HTMLElement
     let app: Record<string, unknown>
+    let restoreViewport: () => void
 
     beforeAll(async () => {
+        restoreViewport = useTallViewport()
         DBState.db = buildDb(NON_TRASHED, TRASHED)
         getFileSrcSpy.mockClear()
         const mounted = mountGridCatalog()
@@ -666,6 +686,7 @@ describe.sequential('list layout: avatar lookups (AV-1 regression, GridCatalog.s
 
     afterAll(async () => {
         await teardown(target, app)
+        restoreViewport()
     })
 
     test('a search keystroke that still matches every character resolves no avatar again', async () => {
@@ -725,8 +746,10 @@ describe.sequential('list layout: avatar lookups (AV-1 regression, GridCatalog.s
 describe.sequential('simple layout: avatar lookups (AV-1 regression, MobileCharacters.svelte)', () => {
     let target: HTMLElement
     let app: Record<string, unknown>
+    let restoreViewport: () => void
 
     beforeAll(async () => {
+        restoreViewport = useTallViewport()
         DBState.db = buildDb(NON_TRASHED, TRASHED)
         getFileSrcSpy.mockClear()
         const mounted = mountGridCatalog() // GridCatalog defaults to selected=3 (simple)
@@ -737,6 +760,7 @@ describe.sequential('simple layout: avatar lookups (AV-1 regression, MobileChara
 
     afterAll(async () => {
         await teardown(target, app)
+        restoreViewport()
     })
 
     test('renaming one character resolves no avatar again (the rename does not move its row: sort is primarily by lastInteraction, which is unique per character in this fixture and untouched by a rename)', async () => {

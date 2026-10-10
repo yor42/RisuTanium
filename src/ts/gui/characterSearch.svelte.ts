@@ -69,6 +69,10 @@ export function createCharacterSearch(getQuery: () => string, options: Character
         get trashedTotal() {
             return result.trashedTotal
         },
+        /** The query the lists currently show, after the typing debounce. */
+        get query() {
+            return query.value
+        },
         /** True while the landed query has at least one word. */
         get searching() {
             return tokens.length > 0
