@@ -74,9 +74,11 @@ function shownDescription(notes: string): string {
 
 /**
  * The description a stub carries, chosen the way the grid chooses it and then
- * cut to a bounded length, so the stub renders as the full character does.
+ * cut to a bounded length, so the stub renders as the full character does. The
+ * character search matches loaded and archived characters on this same text, so
+ * archiving never changes what a search finds.
  */
-function stubDescription(creatorNotes: unknown): string {
+export function stubDescription(creatorNotes: unknown): string {
     const text = shownDescription(typeof creatorNotes === 'string' ? creatorNotes : '')
     if (text.length <= COLD_STUB_DESCRIPTION_LIMIT) {
         return text

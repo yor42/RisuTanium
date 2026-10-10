@@ -601,6 +601,20 @@ async function teardown(target: HTMLElement, app: Record<string, unknown>): Prom
     target.remove()
 }
 
+/**
+ * A typed search query lands after the search debounce. Fakes the clock only
+ * for that window, so the rest of the file keeps real timers.
+ */
+function landSearchQuery(): void {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+        flushSync()
+        vi.advanceTimersByTime(150)
+    } finally {
+        vi.useRealTimers()
+    }
+}
+
 //#endregion
 
 beforeAll(() => {
@@ -1241,12 +1255,14 @@ describe('v12: entries must leave the visible set when items unmount', () => {
         const searchInput = target.querySelector('input') as HTMLInputElement
         searchInput.value = 'Character 0'
         searchInput.dispatchEvent(new Event('input'))
+        landSearchQuery()
         await settle(target)
         expect(avatarButtons(target).length).toBe(1)
 
         // Restore the search -- indices 1..V_N-1 remount as fresh DOM nodes.
         searchInput.value = ''
         searchInput.dispatchEvent(new Event('input'))
+        landSearchQuery()
         await settle(target)
 
         // Index 0's node was never unmounted, so it stays correctly resolved.

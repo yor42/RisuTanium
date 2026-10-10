@@ -205,6 +205,15 @@ function typeSearch(root: HTMLElement, value: string): void {
     }
     input.value = value
     input.dispatchEvent(new Event('input', { bubbles: true }))
+    // The typed query lands after the search debounce; fake the clock only for
+    // that window so the rest of the file keeps real timers.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+        flushSync()
+        vi.advanceTimersByTime(150)
+    } finally {
+        vi.useRealTimers()
+    }
     flushSync()
 }
 
