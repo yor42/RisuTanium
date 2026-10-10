@@ -235,15 +235,15 @@ describe('createCharacterSearch: results follow the query and the database', () 
         const search = within(() => createCharacterSearch(() => query))
         DBState.db.characters[0].trashTime = 5
         flushSync()
-        expect(search.live).toEqual([{ index: 1, chaId: 'b' }])
-        expect(search.trash).toEqual([{ index: 0, chaId: 'a' }])
+        expect(search.live).toEqual([{ index: 1, key: '["s","b",0]', chaId: 'b' }])
+        expect(search.trash).toEqual([{ index: 0, key: '["s","a",0]', chaId: 'a' }])
         expect(search.trashedTotal).toBe(1)
         DBState.db.characters[0].trashTime = undefined
         DBState.db.characters[0].chaId = 'a2'
         flushSync()
         expect(search.live).toEqual([
-            { index: 0, chaId: 'a2' },
-            { index: 1, chaId: 'b' },
+            { index: 0, key: '["s","a2",0]', chaId: 'a2' },
+            { index: 1, key: '["s","b",0]', chaId: 'b' },
         ])
         expect(search.trash).toEqual([])
     })

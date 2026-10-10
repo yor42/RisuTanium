@@ -35,8 +35,12 @@
     // always show the same matches.
     const found = createCharacterSearch(() => search)
 
-    const listRowsNow = $derived(listRows(found.live.map((match) => String(match.index))))
-    const gridKeys = $derived(found.live.map((match) => String(match.index)))
+    // A card is keyed by its character (`slotKeys`), never by its position, so a removal elsewhere keeps
+    // focus, scroll anchor and measured heights on the same character. The map resolves a key to the
+    // slot it is at now, in the same derivation as the key list.
+    const indexByKey = $derived(new Map(found.live.map((match) => [match.key, match.index])))
+    const listRowsNow = $derived(listRows(found.live.map((match) => match.key)))
+    const gridKeys = $derived(found.live.map((match) => match.key))
     // The Grid tab builds its rows from the column count its container reports.
     const gridRowsFor = (columns: number) => gridRows(gridKeys, columns)
 
@@ -69,7 +73,7 @@
 </script>
 
 {#snippet listCard(cardKey: string)}
-    {@const index = Number(cardKey)}
+    {@const index = indexByKey.get(cardKey) ?? -1}
     {@const char = DBState.db.characters[index]}
     <!-- Defence in depth: a position past the end of a shrinking list draws no row instead of throwing. -->
     {#if char}
@@ -112,7 +116,7 @@
 {/snippet}
 
 {#snippet gridCard(cardKey: string)}
-    {@const index = Number(cardKey)}
+    {@const index = indexByKey.get(cardKey) ?? -1}
     {@const char = DBState.db.characters[index]}
     <!-- Defence in depth: a position past the end of a shrinking list draws no tile instead of throwing. -->
     {#if char}

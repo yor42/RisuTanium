@@ -51,11 +51,12 @@ export interface SearchCache {
 }
 
 /**
- * One searchable character. `index`, `chaId` and `trashed` are read from the
- * slot on every build; only the two normalised strings are ever cached.
+ * One searchable character. `index`, `key`, `chaId` and `trashed` are read from
+ * the slot on every build; only the two normalised strings are ever cached.
  */
 export interface SearchEntry {
     index: number
+    key: string
     chaId: string
     trashed: boolean
     nameCompact: string
@@ -64,6 +65,8 @@ export interface SearchEntry {
 
 export interface CharacterMatch {
     index: number
+    /** The list key of the slot's character; see `slotKeys`. */
+    key: string
     chaId: string
 }
 
@@ -101,6 +104,35 @@ function buildText(name: string, notes: string, tags: string, creator: string): 
 }
 
 /**
+ * The list key of every slot of `characters`, by slot index; null for a hidden
+ * system character, which is in no list. A key names the character, not its
+ * position, so a delete, a restore or a put-back of another slot leaves it
+ * unchanged: it is `['s', chaId, occurrence]`, where `occurrence` counts the
+ * earlier non-hidden slots with the same `chaId`. Every non-hidden slot counts,
+ * trashed ones included and whatever a list hides, so a query or a trash filter
+ * never changes a key. A `chaId` that is not a string counts as ''.
+ *
+ * Two slots sharing a `chaId` therefore get different keys. The later holder's
+ * key changes when an earlier holder of the same `chaId` is deleted, and a slot
+ * whose `chaId` is rewritten gets a new key.
+ */
+export function slotKeys(characters: readonly Slot[]): (string | null)[] {
+    const seen = new Map<string, number>()
+    const keys: (string | null)[] = []
+    for (const slot of characters) {
+        if (!slot || isHiddenSystemCharacter(slot)) {
+            keys.push(null)
+            continue
+        }
+        const chaId = typeof slot.chaId === 'string' ? slot.chaId : ''
+        const occurrence = seen.get(chaId) ?? 0
+        seen.set(chaId, occurrence + 1)
+        keys.push(JSON.stringify(['s', chaId, occurrence]))
+    }
+    return keys
+}
+
+/**
  * The index of `characters`. Reads exactly what the search depends on: the
  * length, and per slot `chaId`, `trashTime`, `type`, `coldstorage`, `name`,
  * `creatorNotes` and, for a loaded individual character, `tags` and `creator`.
@@ -109,9 +141,11 @@ function buildText(name: string, notes: string, tags: string, creator: string): 
  */
 export function buildIndex(characters: readonly Slot[], cache: SearchCache): SearchEntry[] {
     const entries: SearchEntry[] = []
+    const keys = slotKeys(characters)
     for (let i = 0; i < characters.length; i++) {
         const slot = characters[i]
-        if (!slot || isHiddenSystemCharacter(slot)) {
+        const key = keys[i]
+        if (!slot || key === null) {
             continue
         }
         const name = typeof slot.name === 'string' ? slot.name : ''
@@ -136,6 +170,7 @@ export function buildIndex(characters: readonly Slot[], cache: SearchCache): Sea
         }
         entries.push({
             index: i,
+            key,
             chaId: typeof slot.chaId === 'string' ? slot.chaId : '',
             trashed: !!slot.trashTime,
             nameCompact: text.nameCompact,
@@ -159,7 +194,7 @@ export function searchIndex(index: readonly SearchEntry[], tokens: readonly stri
             continue
         }
         matched.add(entry.index)
-        const match: CharacterMatch = { index: entry.index, chaId: entry.chaId }
+        const match: CharacterMatch = { index: entry.index, key: entry.key, chaId: entry.chaId }
         if (entry.trashed) {
             trash.push(match)
         } else {

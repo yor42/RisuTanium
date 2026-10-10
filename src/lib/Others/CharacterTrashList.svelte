@@ -19,10 +19,12 @@
 
     let { found }: Props = $props();
 
-    const rows = $derived(listRows(found.trash.map((match) => String(match.index))));
+    // A row is keyed by its character, never by its position; the map resolves a key to the slot it is at now.
+    const indexByKey = $derived(new Map(found.trash.map((match) => [match.key, match.index])));
+    const rows = $derived(listRows(found.trash.map((match) => match.key)));
 </script>
 {#snippet card(cardKey: string)}
-    {@const char = DBState.db.characters[Number(cardKey)]}
+    {@const char = DBState.db.characters[indexByKey.get(cardKey) ?? -1]}
     {#if char}
         {@const parsedDesc = parseMultilangString(char.creatorNotes ?? '')}
         <!-- A trashed row does not open: its avatar is only a picture, and the row keeps restore and delete. -->

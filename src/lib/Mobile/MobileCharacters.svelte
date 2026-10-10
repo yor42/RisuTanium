@@ -4,9 +4,9 @@
     import { MobileSearch } from "src/ts/stores.svelte";
     import { ArrowLeft, MessageSquareIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
-    import { isHiddenSystemCharacter } from "src/ts/hiddenCharacters";
     import { language } from "src/lang";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
+    import { slotKeys } from "src/ts/gui/characterSearch";
     import CharacterTrashList from "../Others/CharacterTrashList.svelte";
     import CharacterWindow from "../Others/CharacterWindow.svelte";
     import CharListAvatar from "../Others/CharListAvatar.svelte";
@@ -91,26 +91,36 @@
     // The order of the list: most recent first, then by name. It depends on
     // neither the search nor the chats, so a keystroke or a new message does
     // not re-sort it; a row reads its own chat count and image when drawn.
-    const sorted = $derived(DBState.db.characters.map((c, i) => ({ c, i })).filter(({ c }) => {
-        return !isHiddenSystemCharacter(c) && (!hideTrash || !c.trashTime);
-    }).map(({ c, i }) => {
-        return {
-            name: c.name || language.settingsPage.unnamed,
-            i: i,
-            interaction: c.lastInteraction || 0,
-        }
-    }).sort((a, b) => {
-        if (a.interaction === b.interaction) {
-            return a.name.localeCompare(b.name);
-        }
-        return b.interaction - a.interaction;
-    }));
-    const entryByIndex = $derived(new Map(sorted.map((entry) => [entry.i, entry])));
-    const rows = $derived(listRows(sorted.filter((entry) => found.matched.has(entry.i)).map((entry) => String(entry.i))));
+    // A row is keyed by its character (`slotKeys`), never by its position, so a removal elsewhere keeps
+    // the saved scroll anchor and the row heights on the same character. `i` is the slot it is at now.
+    const sorted = $derived.by(() => {
+        const keys = slotKeys(DBState.db.characters);
+        const entries: { name: string; i: number; key: string; interaction: number }[] = [];
+        DBState.db.characters.forEach((c, i) => {
+            const key = keys[i];
+            if (key === null || (hideTrash && c.trashTime)) {
+                return;
+            }
+            entries.push({
+                name: c.name || language.settingsPage.unnamed,
+                i: i,
+                key: key,
+                interaction: c.lastInteraction || 0,
+            });
+        });
+        return entries.sort((a, b) => {
+            if (a.interaction === b.interaction) {
+                return a.name.localeCompare(b.name);
+            }
+            return b.interaction - a.interaction;
+        });
+    });
+    const entryByKey = $derived(new Map(sorted.map((entry) => [entry.key, entry])));
+    const rows = $derived(listRows(sorted.filter((entry) => found.matched.has(entry.i)).map((entry) => entry.key)));
 </script>
 {#snippet card(cardKey: string, position: number)}
-    {@const index = Number(cardKey)}
-    {@const entry = entryByIndex.get(index)}
+    {@const entry = entryByKey.get(cardKey)}
+    {@const index = entry?.i ?? -1}
     {@const c = DBState.db.characters[index]}
     <!-- Defence in depth: a position past the end of a shrinking list draws no row instead of throwing. -->
     {#if entry && c}

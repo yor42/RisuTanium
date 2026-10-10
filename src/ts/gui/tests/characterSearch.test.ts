@@ -7,6 +7,7 @@ import {
     normalizeForSearch,
     parseQuery,
     searchIndex,
+    slotKeys,
     type SearchStats,
 } from '../characterSearch'
 
@@ -161,8 +162,8 @@ describe('partition by trash state (specification)', () => {
         ]
         const index = buildIndex(characters, createSearchCache())
         const result = searchIndex(index, parseQuery('ann'))
-        expect(result.live).toEqual([{ index: 0, chaId: 'a' }])
-        expect(result.trash).toEqual([{ index: 1, chaId: 'b' }])
+        expect(result.live).toEqual([{ index: 0, key: '["s","a",0]', chaId: 'a' }])
+        expect(result.trash).toEqual([{ index: 1, key: '["s","b",0]', chaId: 'b' }])
         expect([...result.matched].sort()).toEqual([0, 1])
         expect(result.trashedTotal).toBe(2)
     })
@@ -173,6 +174,73 @@ describe('partition by trash state (specification)', () => {
         expect(searchIndex(index, parseQuery('')).trashedTotal).toBe(2)
         expect(searchIndex(index, parseQuery('zzz')).trashedTotal).toBe(2)
         expect(searchIndex(index, parseQuery('zzz')).trash).toEqual([])
+    })
+})
+
+describe('slot keys (invariant)', () => {
+    const key = (chaId: string, occurrence: number): string => JSON.stringify(['s', chaId, occurrence])
+
+    test('a slot is keyed by its chaId and the number of earlier slots with the same chaId', () => {
+        const characters = [makeCharacter('a', 'One'), makeCharacter('b', 'Two'), makeCharacter('a', 'Three'), makeCharacter('a', 'Four')]
+        expect(slotKeys(characters)).toEqual([key('a', 0), key('b', 0), key('a', 1), key('a', 2)])
+    })
+
+    test('a hidden system character has no key and is not counted', () => {
+        const characters = [makeCharacter('§playground', 'assistant'), makeCharacter('a', 'One'), makeCharacter('§playground', 'again'), makeCharacter('a', 'Two')]
+        expect(slotKeys(characters)).toEqual([null, key('a', 0), null, key('a', 1)])
+    })
+
+    test('trashed slots count towards the occurrence, so no list setting changes a key', () => {
+        const characters = [makeCharacter('a', 'One', { trashTime: 1 }), makeCharacter('a', 'Two')]
+        expect(slotKeys(characters)).toEqual([key('a', 0), key('a', 1)])
+    })
+
+    test('a chaId that is not a string counts as the empty id', () => {
+        const characters = [makeCharacter('', 'One'), makeCharacter(undefined as unknown as string, 'Two'), makeCharacter(7 as unknown as string, 'Three')]
+        expect(slotKeys(characters)).toEqual([key('', 0), key('', 1), key('', 2)])
+    })
+
+    test('a key survives a delete of an earlier slot, and a later holder of a shared chaId steps down', () => {
+        const characters = [makeCharacter('a', 'One'), makeCharacter('b', 'Two'), makeCharacter('c', 'Three'), makeCharacter('a', 'Four')]
+        const before = slotKeys(characters)
+        characters.splice(1, 1)
+        const after = slotKeys(characters)
+        expect(after[1]).toBe(before[2])
+        // The earlier holder of 'a' stays, so the later one keeps occurrence 1; deleting the earlier holder moves it to 0.
+        expect(after[2]).toBe(before[3])
+        characters.splice(0, 1)
+        expect(slotKeys(characters)[1]).toBe(key('a', 0))
+    })
+
+    test('a rewritten chaId gives the slot a new key', () => {
+        const characters = [makeCharacter('a', 'One')]
+        characters[0].chaId = 'b'
+        expect(slotKeys(characters)).toEqual([key('b', 0)])
+    })
+
+    test('buildIndex carries exactly the key of its slot, trashed or not', () => {
+        const characters = [
+            makeCharacter('a', 'One'),
+            makeCharacter('§temp', 'hidden'),
+            makeCharacter('a', 'Two', { trashTime: 1 }),
+            makeCharacter('b', 'Three'),
+            makeCharacter('a', 'Four'),
+        ]
+        const keys = slotKeys(characters)
+        const index = buildIndex(characters, createSearchCache())
+        expect(index.map((entry) => [entry.index, entry.key])).toEqual(
+            keys.flatMap((slotKey, i) => (slotKey === null ? [] : [[i, slotKey]])),
+        )
+        const result = searchIndex(index, parseQuery(''))
+        expect([...result.live, ...result.trash].map((match) => [match.index, match.key])).toEqual(
+            expect.arrayContaining([[0, key('a', 0)], [2, key('a', 1)], [3, key('b', 0)], [4, key('a', 2)]]),
+        )
+    })
+
+    test('a query never changes a key', () => {
+        const characters = [makeCharacter('a', 'One'), makeCharacter('a', 'Two')]
+        const index = buildIndex(characters, createSearchCache())
+        expect(searchIndex(index, parseQuery('two')).live.map((match) => match.key)).toEqual([key('a', 1)])
     })
 })
 

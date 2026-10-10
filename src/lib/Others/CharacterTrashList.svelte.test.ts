@@ -161,6 +161,7 @@ import { DBState } from '../../ts/stores.svelte'
 import { clearDescriptionCache } from '../../ts/gui/descriptionMarkdown'
 import { language } from '../../lang'
 import type { CharacterSearch } from '../../ts/gui/characterSearch.svelte'
+import { slotKeys } from '../../ts/gui/characterSearch'
 import CharacterTrashList from './CharacterTrashList.svelte'
 
 //#region fixtures and helpers
@@ -189,8 +190,9 @@ function buildDb(characters: CharacterFixture[]): Database {
 }
 
 function resultFor(indices: number[], searching = false): CharacterSearch {
+    const keys = slotKeys(DBState.db.characters)
     return {
-        trash: indices.map((index) => ({ index, chaId: DBState.db.characters[index].chaId })),
+        trash: indices.map((index) => ({ index, key: keys[index]!, chaId: DBState.db.characters[index].chaId })),
         searching,
         query: '',
     } as unknown as CharacterSearch
