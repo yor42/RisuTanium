@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import type { character, folder } from '../../ts/storage/database.svelte'
 import { buildIndex, createSearchCache, searchIndex, type CharacterMatch } from '../../ts/gui/characterSearch'
 import { refKey, type OrderEntry } from '../SideBars/sidebarOrder'
-import { buildGridEntries, folderTileClass, type GridEntry } from './charListOrder'
+import { buildGridEntries, compareRecent, folderTileClass, type GridEntry, type SortMode } from './charListOrder'
 
 /** The Grid tab's tile list: the live characters in the saved order, with folders. */
 
@@ -58,10 +58,12 @@ describe('buildGridEntries: placement', () => {
         expect(entries.map((entry) => entry.kind === 'char' ? entry.folderName : 'folder')).toEqual([undefined, 'name-f1', 'name-f1', undefined, undefined, 'name-f2', undefined, undefined])
     })
 
-    test('(U) a sort other than the saved order lists the live characters flat, in the order given', () => {
+    test('(U) a sort other than the saved order lists the live characters flat, with no folder tile', () => {
+        const nameOf = (index: number): string => String.fromCharCode(120 - index)
+        const interactionOf = (index: number): number => index
         for (const sort of ['recent', 'name'] as const) {
-            const entries = buildGridEntries({ live, order, openFolderIds: new Set(['f1']), sort, searching: false })
-            expect(entries.map(label)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7'])
+            const entries = buildGridEntries({ live, order, openFolderIds: new Set(['f1']), sort, searching: false, nameOf, interactionOf })
+            expect(entries.map(label)).toEqual(['7', '6', '5', '4', '3', '2', '1', '0'])
         }
     })
 
@@ -181,6 +183,127 @@ describe('buildGridEntries: property', () => {
             expect(JSON.stringify(live)).toBe(liveBefore)
             expect(JSON.stringify(order)).toBe(orderBefore)
         }
+    })
+})
+
+//#endregion
+
+//#region sorts: Recent and Name (F = new behaviour, fails before the sorts exist; G = guard)
+
+interface SortSlot {
+    chaId: string
+    name: string
+    interaction: number
+}
+
+function buildSorted(slots: SortSlot[], sort: SortMode, order: OrderEntry[] | undefined = undefined, searching = false) {
+    const live = slots.map((slot, index) => match(index, slot.chaId))
+    const nameOf = vi.fn((index: number) => slots[index].name)
+    const interactionOf = vi.fn((index: number) => slots[index].interaction)
+    const entries = buildGridEntries({ live, order, openFolderIds: none, sort, searching, nameOf, interactionOf })
+    return { entries, live, nameOf, interactionOf }
+}
+
+const slotIndexes = (entries: GridEntry[]): number[] => entries.map((entry) => (entry.kind === 'char' ? entry.index : -1))
+const folderOfTile = (entries: GridEntry[], index: number): Array<string | undefined> | null => {
+    const entry = entries.find((candidate) => candidate.kind === 'char' && candidate.index === index)
+    return entry?.kind === 'char' ? [entry.folderId, entry.folderName] : null
+}
+
+describe('buildGridEntries: Recent', () => {
+    const slots: SortSlot[] = [
+        { chaId: 'a', name: 'Beta', interaction: 5 },
+        { chaId: 'b', name: 'Alpha', interaction: 9 },
+        { chaId: 'c', name: 'Zed', interaction: 5 },
+        { chaId: 'd', name: 'Alpha', interaction: 0 },
+        { chaId: 'e', name: 'Mid', interaction: 5 },
+    ]
+
+    test('(F) newest first; equal interactions fall back to the displayed name, as the simple list does', () => {
+        expect(slotIndexes(buildSorted(slots, 'recent').entries)).toEqual([1, 0, 4, 2, 3])
+    })
+
+    test('(F) members of folders carry their folder, others none, and no folder tile appears', () => {
+        const order: OrderEntry[] = ['a', makeFolder('f1', ['c', 'd'])]
+        const { entries } = buildSorted(slots, 'recent', order)
+        expect(entries.every((entry) => entry.kind === 'char')).toBe(true)
+        expect(folderOfTile(entries, 2)).toEqual(['f1', 'name-f1'])
+        expect(folderOfTile(entries, 3)).toEqual(['f1', 'name-f1'])
+        expect(folderOfTile(entries, 0)).toEqual([undefined, undefined])
+        expect(folderOfTile(entries, 1)).toEqual([undefined, undefined])
+    })
+
+    test('(F) the sort works on a copy: live keeps its order', () => {
+        const { live } = buildSorted(slots, 'recent')
+        expect(live.map((m) => m.index)).toEqual([0, 1, 2, 3, 4])
+    })
+
+    test('(G) compareRecent is the comparator the simple list sorts with', () => {
+        const rows = slots.map((slot) => ({ name: slot.name, interaction: slot.interaction }))
+        expect([...rows].sort(compareRecent).map((row) => rows.indexOf(row))).toEqual([1, 0, 4, 2, 3])
+    })
+})
+
+describe('buildGridEntries: Name', () => {
+    test('(F) by displayed name with the locale collation', () => {
+        const slots: SortSlot[] = [
+            { chaId: 'a', name: 'zebra', interaction: 0 },
+            { chaId: 'b', name: 'Apple', interaction: 0 },
+            { chaId: 'c', name: 'apple pie', interaction: 0 },
+            { chaId: 'd', name: 'Ärger', interaction: 0 },
+        ]
+        const expected = slots.map((_, i) => i).sort((x, y) => slots[x].name.localeCompare(slots[y].name))
+        expect(expected).not.toEqual([0, 1, 2, 3])
+        expect(slotIndexes(buildSorted(slots, 'name').entries)).toEqual(expected)
+    })
+
+    test('(F) equal names are ordered by key, whatever the order of live', () => {
+        const live = [match(2, 'c'), match(0, 'a'), match(1, 'b')]
+        const entries = buildGridEntries({ live, order: undefined, openFolderIds: none, sort: 'name', searching: false, nameOf: () => 'Same' })
+        expect(slotIndexes(entries)).toEqual([0, 1, 2])
+    })
+
+    test('(F) members of folders carry their folder in Name too', () => {
+        const slots: SortSlot[] = [
+            { chaId: 'a', name: 'B', interaction: 0 },
+            { chaId: 'b', name: 'A', interaction: 0 },
+        ]
+        const { entries } = buildSorted(slots, 'name', [makeFolder('f', ['b'])])
+        expect(slotIndexes(entries)).toEqual([1, 0])
+        expect(folderOfTile(entries, 1)).toEqual(['f', 'name-f'])
+        expect(folderOfTile(entries, 0)).toEqual([undefined, undefined])
+    })
+})
+
+describe('buildGridEntries: what is read', () => {
+    const slots: SortSlot[] = [
+        { chaId: 'a', name: 'B', interaction: 1 },
+        { chaId: 'b', name: 'A', interaction: 2 },
+    ]
+
+    test('(F) the last interaction is read only under Recent', () => {
+        expect(buildSorted(slots, 'order').interactionOf).not.toHaveBeenCalled()
+        expect(buildSorted(slots, 'name').interactionOf).not.toHaveBeenCalled()
+        expect(buildSorted(slots, 'recent').interactionOf).toHaveBeenCalled()
+    })
+
+    test('(G) the name is not read under My order', () => {
+        expect(buildSorted(slots, 'order').nameOf).not.toHaveBeenCalled()
+    })
+
+    test('(G) a flat sort does not modify the saved order', () => {
+        const order: OrderEntry[] = ['a', makeFolder('f', ['b'])]
+        const before = JSON.stringify(order)
+        buildSorted(slots, 'recent', order)
+        buildSorted(slots, 'name', order)
+        expect(JSON.stringify(order)).toBe(before)
+    })
+
+    test('(G) searching under My order keeps the saved-order list with folder names', () => {
+        const order: OrderEntry[] = [makeFolder('f', ['b']), 'a']
+        const { entries } = buildSorted(slots, 'order', order, true)
+        expect(slotIndexes(entries)).toEqual([1, 0])
+        expect(folderOfTile(entries, 1)).toEqual(['f', 'name-f'])
     })
 })
 

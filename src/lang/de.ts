@@ -2412,6 +2412,8 @@ export const languageGerman = {
         "noDescription": "Keine Beschreibung",
         "showMore": "Mehr anzeigen",
         "showLess": "Weniger anzeigen",
+        "sortLabel": "Sortierung",
+        "sortMyOrder": "Meine Reihenfolge",
         "noCustomSidebarItems": "Keine benutzerdefinierten Seitenleisten-Einträge konfiguriert",
         "addItem": "Eintrag hinzufügen",
         "backToList": "Zurück zur Liste",

@@ -2455,6 +2455,8 @@ export const languageChineseTraditional = {
         "noDescription": "沒有說明",
         "showMore": "展開",
         "showLess": "收合",
+        "sortLabel": "排序",
+        "sortMyOrder": "我的順序",
         "noCustomSidebarItems": "尚未設定自訂側邊欄項目",
         "addItem": "新增項目",
         "backToList": "返回清單",

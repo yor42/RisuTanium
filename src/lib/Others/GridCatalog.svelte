@@ -14,7 +14,9 @@
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
     import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
-    import { buildGridEntries, folderTileClass } from "./charListOrder";
+    import { buildGridEntries, folderTileClass, type SortMode } from "./charListOrder";
+    import { loadGridSort, parseGridSort, saveGridSort } from "./gridMemory";
+    import SelectInput from "../UI/GUI/SelectInput.svelte";
     import { loadOpenFolders, saveOpenFolders } from "../SideBars/railMemory";
     import { clickedButton, clickedLink, selectedInside } from "src/ts/gui/descriptionMarkdown";
     import { SvelteSet } from "svelte/reactivity";
@@ -24,6 +26,8 @@
     }
 
     let { endGrid = () => {} }: Props = $props();
+    // A dark halo behind a folder tile's icon or name keeps it readable over a bright picture.
+    const FACE_SHADOW = 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]'
     let search = $state('')
     let selected = $state(3)
     // List tab, per row and keyed by the character's chaId (stable when a removal shifts indices): whether the
@@ -64,14 +68,25 @@
     })
     const openFolderIds = $derived(new Set(openFolders))
 
+    // The Grid's sort is remembered on this device (gridMemory), never in the database. Only "My order"
+    // shows folders as tiles; Recent and Name list the live characters flat.
+    let sort: SortMode = $state(loadGridSort())
+    function chooseSort(value: string) {
+        sort = parseGridSort(value)
+        saveGridSort(sort)
+    }
+
     // The Grid tab's tiles, built once per change: the live characters in the saved order with their
-    // folders. Reading only; the order is the rail's and is never written or repaired from here.
+    // folders. Reading only: the Grid never writes the database, never assigns characterOrder and never
+    // repairs the order; the order is the rail's. A timestamp is read only under Recent.
     const entries = $derived(buildGridEntries({
         live: found.live,
         order: DBState.db.characterOrder,
         openFolderIds,
-        sort: 'order',
+        sort,
         searching: found.searching,
+        nameOf: (index) => DBState.db.characters[index]?.name || language.settingsPage.unnamed,
+        interactionOf: (index) => DBState.db.characters[index]?.lastInteraction || 0,
     }))
     const entryByKey = $derived(new Map(entries.map((entry) => [entry.key, entry])))
     // The Grid tab builds its rows from the column count its container reports. An open folder is a
@@ -197,11 +212,11 @@
 <!-- What a folder tile always shows, over its picture when it has one: its name when the setting asks for it, else the icon. -->
 {#snippet folderFace(name: string, open: boolean)}
     {#if DBState.db.showFolderName}
-        <span class="relative truncate font-bold text-sm px-1">{name}</span>
+        <span class="relative truncate font-bold text-sm px-1 {FACE_SHADOW}">{name}</span>
     {:else if open}
-        <FolderOpenIcon class="relative" />
+        <FolderOpenIcon class="relative {FACE_SHADOW}" />
     {:else}
-        <FolderIcon class="relative" />
+        <FolderIcon class="relative {FACE_SHADOW}" />
     {/if}
 {/snippet}
 
@@ -234,8 +249,8 @@
     {:else if entry}
         {@const index = entry.index}
         {@const char = DBState.db.characters[index]}
-        <!-- A search result names the folder of each member. -->
-        {@const badge = found.searching && entry.folderName !== undefined ? (entry.folderName || language.sidebarUi.defaultFolderName) : undefined}
+        <!-- A search result, or any sort but My order, names the folder of each member. -->
+        {@const badge = (found.searching || sort !== 'order') && entry.folderName !== undefined ? (entry.folderName || language.sidebarUi.defaultFolderName) : undefined}
         <!-- Defence in depth: a position past the end of a shrinking list draws no tile instead of throwing. -->
         {#if char}
             <div class="flex items-center text-textcolor" class:relative={badge !== undefined}>
@@ -297,10 +312,21 @@
                     {selected === 2 ? found.trash.length : found.live.length} {language.character}
                 </span>
             </div>
+            {#if selected === 0}
+                <!-- Its own line, so the tab buttons and the count never wrap or crowd at a narrow width. -->
+                <label class="flex items-center gap-2 mt-2 text-textcolor2 text-sm">
+                    <span>{language.othersUi.sortLabel}</span>
+                    <SelectInput size="sm" value={sort} onchange={(event) => chooseSort(event.currentTarget.value)}>
+                        <option value="order">{language.othersUi.sortMyOrder}</option>
+                        <option value="recent">{language.recent}</option>
+                        <option value="name">{language.name}</option>
+                    </SelectInput>
+                </label>
+            {/if}
         </div>
         <!-- The header above stays on screen; each tab below is the only scroller of its content. -->
         {#if selected === 0}
-            <CharacterWindow class="flex-1 min-h-0" layout="grid" rows={gridRowsFor} fallbackHeight={GRID_ROW_FALLBACK_PX} resetToken={found.query} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
+            <CharacterWindow class="flex-1 min-h-0" layout="grid" rows={gridRowsFor} fallbackHeight={GRID_ROW_FALLBACK_PX} resetToken={JSON.stringify([sort, found.query])} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
         {:else if selected === 1}
             <CharacterWindow class="flex-1 min-h-0" rows={listRowsNow} fallbackHeight={LIST_ROW_FALLBACK_PX} resetToken={found.query} rowClass="pb-2" card={listCard} />
         {:else if selected === 2}

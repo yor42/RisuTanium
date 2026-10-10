@@ -11,6 +11,7 @@
     import CharacterWindow from "../Others/CharacterWindow.svelte";
     import CharListAvatar from "../Others/CharListAvatar.svelte";
     import { SIMPLE_ROW_FALLBACK_PX, listRows, type ScrollAnchor } from "../Others/charListRows";
+    import { compareRecent } from "../Others/charListOrder";
 
     interface Props {
         endGrid?: () => void;
@@ -108,12 +109,7 @@
                 interaction: c.lastInteraction || 0,
             });
         });
-        return entries.sort((a, b) => {
-            if (a.interaction === b.interaction) {
-                return a.name.localeCompare(b.name);
-            }
-            return b.interaction - a.interaction;
-        });
+        return entries.sort(compareRecent);
     });
     const entryByKey = $derived(new Map(sorted.map((entry) => [entry.key, entry])));
     const rows = $derived(listRows(sorted.filter((entry) => found.matched.has(entry.i)).map((entry) => entry.key)));

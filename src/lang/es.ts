@@ -2412,6 +2412,8 @@ export const languageSpanish = {
         noDescription: "Sin descripción",
         showMore: "Ver más",
         showLess: "Ver menos",
+        sortLabel: "Ordenar",
+        sortMyOrder: "Mi orden",
         noCustomSidebarItems: "No hay elementos personalizados configurados en la barra lateral",
         addItem: "Añadir Elemento",
         backToList: "Volver a la Lista",

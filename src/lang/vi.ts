@@ -2410,6 +2410,8 @@ export const languageVietnamese = {
         noDescription: "Không có mô tả",
         showMore: "Xem thêm",
         showLess: "Thu gọn",
+        sortLabel: "Sắp xếp",
+        sortMyOrder: "Thứ tự của tôi",
         noCustomSidebarItems: "Chưa cấu hình mục thanh bên tùy chỉnh nào",
         addItem: "Thêm mục",
         backToList: "Quay lại danh sách",

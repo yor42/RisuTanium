@@ -155,6 +155,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import { OPEN_FOLDERS_KEY } from '../SideBars/railMemory'
+import { GRID_SORT_KEY } from './gridMemory'
 import GridCatalog from './GridCatalog.svelte'
 
 //#region fixtures and helpers
@@ -562,6 +563,177 @@ describe('Grid tab: the screen only reads', { timeout: 60_000 }, () => {
         await withMounted(async (target) => {
             await toggle(target, 'F1')
             expect(tileNames(target)).toEqual(F1_OPEN)
+        })
+    })
+})
+
+describe('Grid tab: the sort selector', { timeout: 60_000 }, () => {
+    // Live characters: Char A (10), Char B (40, in F1), Char C (30), Char U, G first, G second, X first,
+    // X second (in F2), Char Y (50, in F1), Char W (20, in F2); the rest have no interaction.
+    const RECENT = ['Char Y', 'Char B', 'Char C', 'Char W', 'Char A', 'Char U', 'G first', 'G second', 'X first', 'X second']
+    const BY_NAME = ['Char A', 'Char B', 'Char C', 'Char U', 'Char W', 'Char Y', 'G first', 'G second', 'X first', 'X second']
+
+    function sortedFixture(): void {
+        const characters = ORDER_FIXTURE_CHARACTERS()
+        const interactions: Record<string, number> = { 'Char A': 10, 'Char B': 40, 'Char C': 30, 'Char W': 20, 'Char Y': 50 }
+        for (const character of characters) {
+            character.lastInteraction = interactions[character.name] ?? 0
+        }
+        DBState.db = buildDb(characters, ORDER_FIXTURE())
+    }
+
+    const selector = (root: ParentNode): HTMLSelectElement | null => root.querySelector('select')
+
+    async function choose(root: ParentNode, value: string): Promise<void> {
+        const select = selector(root)!
+        select.value = value
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+        await settleFrame()
+    }
+
+    const badges = (root: ParentNode): string[] =>
+        Array.from(root.querySelectorAll('[data-charlist-key]')).map((card) => card.textContent?.trim() ?? '')
+
+    function clickLabel(root: HTMLElement, label: string): void {
+        Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === label.trim())!.click()
+        flushSync()
+    }
+
+    test('(F) Recent lists every live character flat, newest first, each folder member with its folder', async () => {
+        sortedFixture()
+        await withMounted(async (target) => {
+            await choose(target, 'recent')
+            expect(tileNames(target)).toEqual(RECENT)
+            expect(target.querySelectorAll('button[aria-expanded]').length).toBe(0)
+            expect(badges(target)).toEqual(['F1', 'F1', '', 'F2', '', '', '', '', '', 'F2'])
+        })
+    })
+
+    test('(F) Name lists every live character flat by name, each folder member with its folder', async () => {
+        sortedFixture()
+        await withMounted(async (target) => {
+            await choose(target, 'name')
+            expect(tileNames(target)).toEqual(BY_NAME)
+            expect(badges(target)).toEqual(['', 'F1', '', '', 'F2', 'F1', '', '', '', 'F2'])
+        })
+    })
+
+    test('(F) My order brings the folders back, with no badges', async () => {
+        sortedFixture()
+        await withMounted(async (target) => {
+            await choose(target, 'name')
+            await choose(target, 'order')
+            expect(tileNames(target)).toEqual(CLOSED)
+            expect(badges(target).every((text) => text === '')).toBe(true)
+        })
+    })
+
+    test('(F) the chosen sort is remembered across a remount, on this device only', async () => {
+        sortedFixture()
+        await withMounted(async (target) => {
+            expect(selector(target)!.value).toBe('order')
+            await choose(target, 'recent')
+            expect(localStorage.getItem(GRID_SORT_KEY)).toBe('recent')
+        })
+        await withMounted((target) => {
+            expect(selector(target)!.value).toBe('recent')
+            expect(tileNames(target)).toEqual(RECENT)
+        })
+    })
+
+    test('(F) a corrupt remembered sort reads as My order', async () => {
+        sortedFixture()
+        localStorage.setItem(GRID_SORT_KEY, '{oops')
+        await withMounted((target) => {
+            expect(selector(target)!.value).toBe('order')
+            expect(tileNames(target)).toEqual(CLOSED)
+        })
+    })
+
+    test('(F) the selector is on the Grid tab only and has a label', async () => {
+        sortedFixture()
+        await withMounted((target) => {
+            expect(selector(target)).not.toBeNull()
+            expect(selector(target)!.closest('label')?.textContent).toContain(language.othersUi.sortLabel)
+            expect(Array.from(selector(target)!.options).map((option) => option.textContent?.trim())).toEqual([
+                language.othersUi.sortMyOrder, language.recent, language.name,
+            ])
+            clickLabel(target, language.simple)
+            expect(selector(target)).toBeNull()
+            clickLabel(target, language.list)
+            expect(selector(target)).toBeNull()
+            clickLabel(target, language.trash)
+            expect(selector(target)).toBeNull()
+            clickLabel(target, language.grid)
+            expect(selector(target)).not.toBeNull()
+        })
+    })
+
+    test('(F) a sort change scrolls to the top; a folder toggle in My order does not', async () => {
+        const characters = Array.from({ length: 100 }, (_, i) => makeCharacter(`id-${i}`, `Character ${String(i).padStart(3, '0')}`, { lastInteraction: i }))
+        DBState.db = buildDb(characters, [makeFolder('f1', 'F1', characters.slice(6, 56).map((c) => c.chaId)), ...characters.slice(0, 6).map((c) => c.chaId)] as OrderFixture)
+        await withMounted(async (target) => {
+            const scroller = target.querySelector<HTMLElement>('[role="list"][data-charlist-total]')!
+            let top = 0
+            const writes: number[] = []
+            Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 600 })
+            Object.defineProperty(scroller, 'scrollTop', {
+                configurable: true,
+                get: () => top,
+                set: (value: number) => {
+                    writes.push(value)
+                    top = Math.max(0, value)
+                },
+            })
+            scroller.dispatchEvent(new Event('scroll'))
+            await settleFrame()
+            top = 400
+            scroller.dispatchEvent(new Event('scroll'))
+            await settleFrame()
+            writes.length = 0
+
+            await toggle(target, 'F1')
+            await settleFrame()
+            expect(writes.includes(0)).toBe(false)
+            expect(top).toBe(400)
+
+            await choose(target, 'recent')
+            expect(top).toBe(0)
+            expect(writes.at(-1)).toBe(0)
+        })
+    })
+
+    test('(G) choosing a sort changes nothing in the database and calls no checkCharOrder', async () => {
+        sortedFixture()
+        const characters = DBState.db.characters
+        const order = DBState.db.characterOrder
+        const slots = [...characters]
+        const orderSnapshot = JSON.stringify(order)
+        const snapshot = JSON.stringify(DBState.db)
+        await withMounted(async (target) => {
+            for (const value of ['recent', 'name', 'order', 'recent']) {
+                await choose(target, value)
+            }
+            await typeQuery(target, 'Char')
+            await choose(target, 'name')
+        })
+        expect(DBState.db.characters).toBe(characters)
+        expect(DBState.db.characterOrder).toBe(order)
+        DBState.db.characters.forEach((slot, i) => expect(slot).toBe(slots[i]))
+        expect(JSON.stringify(DBState.db.characterOrder)).toBe(orderSnapshot)
+        expect(JSON.stringify(DBState.db)).toBe(snapshot)
+        expect(checkCharOrderSpy).not.toHaveBeenCalled()
+    })
+
+    test('(F) a folder tile\'s icon and name carry a dark shadow', async () => {
+        sortedFixture()
+        await withMounted(async (target) => {
+            const icon = folderTile(target, 'F1')!.querySelector('svg')!
+            expect(icon.getAttribute('class')).toContain('drop-shadow')
+            DBState.db.showFolderName = true
+            await settle()
+            const name = folderTile(target, 'F1')!.querySelector('span.truncate')!
+            expect(name.getAttribute('class')).toContain('drop-shadow')
         })
     })
 })

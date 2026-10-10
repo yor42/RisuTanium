@@ -2551,6 +2551,8 @@ export const languageEnglish = {
         noDescription: "No description",
         showMore: "Show more",
         showLess: "Show less",
+        sortLabel: "Sort",
+        sortMyOrder: "My order",
         noCustomSidebarItems: "No custom sidebar items configured",
         addItem: "Add Item",
         backToList: "Back to List",

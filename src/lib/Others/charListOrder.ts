@@ -63,6 +63,21 @@ export interface GridEntryInput {
     sort: SortMode
     /** A query is active: the result is flat, with each member carrying its folder's name. */
     searching: boolean
+    /** The displayed name of a slot; read under 'name', and under 'recent' to break ties. */
+    nameOf?: (index: number) => string
+    /** The last interaction of a slot; read only under 'recent', so other modes depend on no timestamp. */
+    interactionOf?: (index: number) => number
+}
+
+/**
+ * The Recent order, shared with the simple list: newest interaction first, equal interactions by
+ * displayed name.
+ */
+export function compareRecent(a: { name: string, interaction: number }, b: { name: string, interaction: number }): number {
+    if (a.interaction === b.interaction) {
+        return a.name.localeCompare(b.name)
+    }
+    return b.interaction - a.interaction
 }
 
 class HolderQueues {
@@ -106,10 +121,56 @@ function charTile(match: CharacterMatch, ref: ItemRef | null, folder?: { id: str
     return tile
 }
 
+/** The folder each live character is a member of in the saved order, read only. */
+function folderOfMatches(live: readonly CharacterMatch[], order: readonly OrderEntry[] | undefined): Map<CharacterMatch, { id: string, name: string }> {
+    const holders = new HolderQueues(live)
+    const folders = new Map<CharacterMatch, { id: string, name: string }>()
+    for (const row of listRows(order ?? [], (id) => holders.has(id))) {
+        if (row.kind === 'char') {
+            holders.take(row.id)
+            continue
+        }
+        const folder = { id: row.id, name: typeof row.entry.name === 'string' ? row.entry.name : '' }
+        for (const member of row.members) {
+            const match = holders.take(member.id)
+            if (match) {
+                folders.set(match, folder)
+            }
+        }
+    }
+    return folders
+}
+
+/**
+ * Recent and Name: every live match once, flat, each folder member carrying its folder. The sort
+ * runs on a copy; `live` is never reordered.
+ */
+function flatEntries(input: GridEntryInput): CharTile[] {
+    const { live, sort } = input
+    const folders = folderOfMatches(live, input.order)
+    const keyed = live.map((match) => ({
+        tile: charTile(match, null, folders.get(match)),
+        name: input.nameOf?.(match.index) ?? '',
+        interaction: sort === 'recent' ? (input.interactionOf?.(match.index) ?? 0) : 0,
+    }))
+    if (sort === 'recent') {
+        keyed.sort(compareRecent)
+    } else {
+        keyed.sort((a, b) => {
+            const byName = a.name.localeCompare(b.name)
+            if (byName !== 0) {
+                return byName
+            }
+            return a.tile.key < b.tile.key ? -1 : a.tile.key > b.tile.key ? 1 : 0
+        })
+    }
+    return keyed.map((item) => item.tile)
+}
+
 export function buildGridEntries(input: GridEntryInput): GridEntry[] {
     const { live, openFolderIds, sort, searching } = input
     if (sort !== 'order') {
-        return live.map((match) => charTile(match, null))
+        return flatEntries(input)
     }
     const holders = new HolderQueues(live)
     const rows = listRows(input.order ?? [], (id) => holders.has(id))
