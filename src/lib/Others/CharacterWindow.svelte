@@ -1,11 +1,16 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack, type Snippet } from "svelte";
+    import { flushSync, onDestroy, tick, untrack, type Snippet } from "svelte";
     import { buildSlices, computeWindow } from "../SideBars/railWindow";
     import { UNMEASURED_VIEWPORT_PX, WINDOW_MIN_OVERSCAN_ROWS, WINDOW_OVERSCAN_VIEWPORTS } from "../SideBars/railConstants";
-    import { anchorAt, buildRowLayout, heightDeltaAbove, scrollTopFor, type CharRow, type ScrollAnchor } from "./charListRows";
+    import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, heightDeltaAbove, scrollTopFor, scrollTopForCard, type CardAnchor, type CharRow, type ScrollAnchor } from "./charListRows";
 
     interface Props {
-        rows: readonly CharRow[];
+        // With a function, the rows are built from the column count of the container (grid layout only):
+        // nothing is built until the container has reported a width.
+        rows: readonly CharRow[] | ((columns: number) => readonly CharRow[]);
+        // A list row is one `listitem`. A grid row holds several cards, each its own `listitem`,
+        // and the number of columns follows the container's width.
+        layout?: "list" | "grid";
         // Height of a row that has not been measured yet.
         fallbackHeight: number;
         // Measured row heights by row key. The owner may keep the map alive across
@@ -24,9 +29,33 @@
         card: Snippet<[cardKey: string, position: number]>;
     }
 
-    let { rows, fallbackHeight, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", card }: Props = $props();
+    let { rows: rowsProp, layout: variant = "list", fallbackHeight, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", card }: Props = $props();
 
     //#region geometry
+
+    // Grid layout: the width the tiles can use and the pixel size of 1 rem, as the container last reported them;
+    // 0 width until the first report. The column count is the only thing the rows depend on, so a width change
+    // that keeps the count rebuilds nothing.
+    let contentWidth = $state(0);
+    let remPx = $state(16);
+    const columns = $derived(variant === "grid" && contentWidth > 0 ? gridColumns(contentWidth, remPx) : 0);
+    const noRows: readonly CharRow[] = [];
+    const rows = $derived.by(() => {
+        if (typeof rowsProp !== "function") {
+            return rowsProp;
+        }
+        return variant === "grid" && columns === 0 ? noRows : rowsProp(columns);
+    });
+    // The position of each card among all cards, for the grid's per-card aria.
+    const cardOrdinal = $derived.by(() => {
+        const ordinals = new Map<string, number>();
+        for (const row of rows) {
+            for (const cardKey of row.cards) {
+                ordinals.set(cardKey, ordinals.size);
+            }
+        }
+        return ordinals;
+    });
 
     let measureTick = $state(0);
     const layout = $derived.by(() => {
@@ -75,10 +104,105 @@
     const mountedWindow = $derived(computeWindow(layout, viewScrollTop, windowViewport, overscanPx, pinnedKeys));
     const slices = $derived(buildSlices(layout, mountedWindow));
 
-    function readViewport(el: HTMLElement) {
+    // `remeasure` reads the size of 1 rem again (on a size report of the container, not on every scroll
+    // frame); `deferColumns` leaves a change of the column count to the next frame (inside an observer
+    // delivery the rows must not be re-created).
+    function readViewport(el: HTMLElement, remeasure = false, deferColumns = false) {
         viewScrollTop = el.scrollTop;
         if (el.clientHeight > 0) {
             viewportH = el.clientHeight;
+        }
+        if (variant === "grid") {
+            applyWidth(el, remeasure, deferColumns);
+        }
+    }
+
+    function readContentWidth(el: HTMLElement): number {
+        const style = getComputedStyle(el);
+        return el.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+    }
+
+    // The size 1 rem is drawn at, from a rendered length: the computed root font size can disagree with it
+    // (a WebView with a system font scale reports the scaled size and still lays 1 rem out at 16 px). The
+    // computed size is only the fallback for a document that draws nothing.
+    function measureRemPx(): number {
+        const probe = document.createElement("div");
+        probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;width:1rem;height:0;padding:0;border:0;";
+        document.body.appendChild(probe);
+        const drawn = probe.getBoundingClientRect().width;
+        probe.remove();
+        if (drawn > 0) {
+            return drawn;
+        }
+        const size = parseFloat(getComputedStyle(document.documentElement).fontSize);
+        return size > 0 ? size : 16;
+    }
+
+    let measuredRemPx = 0;
+    let columnsFrame: number | null = null;
+    // The card at the top before the first of a run of column changes, kept until the reader scrolls: a
+    // round trip of column counts then returns to the same card instead of drifting by a row each time.
+    let stickyAnchor: CardAnchor | null = null;
+    let stickyTop = 0;
+
+    // A width that keeps the column count changes nothing the rows depend on. A new count re-creates the rows, so
+    // in one step: the first card on screen is noted, the new rows are drawn (their spacers give the container the
+    // height the new position needs) and the container is moved to the row that now holds that card. The focused
+    // card is pinned across the change and focused again if the change removed its element; the focus report of the
+    // removal is settled after that, from where focus is by then. A zero width (a hidden container) is ignored, as
+    // a zero height is.
+    function applyWidth(el: HTMLElement, remeasure: boolean, deferColumns: boolean) {
+        const width = readContentWidth(el);
+        if (width <= 0) {
+            return;
+        }
+        if (remeasure || measuredRemPx === 0) {
+            measuredRemPx = measureRemPx();
+        }
+        const rem = measuredRemPx;
+        if (columns === 0 || gridColumns(width, rem) === columns) {
+            contentWidth = width;
+            remPx = rem;
+            return;
+        }
+        if (deferColumns) {
+            if (columnsFrame === null) {
+                columnsFrame = requestAnimationFrame(() => {
+                    columnsFrame = null;
+                    if (el.isConnected) {
+                        applyWidth(el, false, false);
+                    }
+                });
+            }
+            return;
+        }
+        // The kept card counts only while the reader has not moved the container since it was written (a scroll
+        // can land before its own frame has read it) and while the card is still listed.
+        if (stickyAnchor && (Math.abs(el.scrollTop - stickyTop) > 1 || !rowByCard.has(stickyAnchor.card))) {
+            stickyAnchor = null;
+        }
+        const anchor = stickyAnchor ?? cardAnchorAt(layout, rowByKey, el.scrollTop);
+        const active = document.activeElement;
+        const holder = active instanceof Element && el.contains(active) ? active.closest("[data-charlist-key]") : null;
+        const heldCard = holder?.getAttribute("data-charlist-key") ?? null;
+        if (heldCard !== null) {
+            focusedCard = heldCard;
+        }
+        contentWidth = width;
+        remPx = rem;
+        flushSync();
+        if (anchor) {
+            el.scrollTop = scrollTopForCard(layout, rowByCard, anchor);
+            viewScrollTop = el.scrollTop;
+            stickyAnchor = anchor;
+            stickyTop = el.scrollTop;
+            flushSync();
+        }
+        if (heldCard !== null) {
+            const element = Array.from(el.querySelectorAll<HTMLElement>("[data-charlist-key]")).find((candidate) => candidate.getAttribute("data-charlist-key") === heldCard);
+            if (!el.contains(document.activeElement) || document.activeElement === el) {
+                element?.querySelector<HTMLElement>("button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])")?.focus();
+            }
         }
     }
 
@@ -104,6 +228,7 @@
             if (scroller) {
                 scroller.scrollTop = 0;
                 viewScrollTop = 0;
+                stickyAnchor = null;
             }
         });
     });
@@ -158,12 +283,13 @@
             if (delta !== 0) {
                 scroller.scrollTop += delta;
                 viewScrollTop = scroller.scrollTop;
+                stickyTop = scroller.scrollTop;
             }
             measureTick++;
         }
         if (rectMoved) {
             // Also the report after a hidden container is shown again: the window follows the DOM.
-            readViewport(scroller);
+            readViewport(scroller, true, true);
         }
     });
 
@@ -243,11 +369,15 @@
         if (initialAnchor) {
             node.scrollTop = scrollTopFor(layout, initialAnchor);
         }
-        readViewport(node);
+        readViewport(node, true);
         const onScroll = () => {
             if (viewFrame === null) {
                 viewFrame = requestAnimationFrame(() => {
                     viewFrame = null;
+                    // A scroll the window did not write itself is the reader's: the anchored card is theirs now.
+                    if (stickyAnchor && Math.abs(node.scrollTop - stickyTop) > 1) {
+                        stickyAnchor = null;
+                    }
                     readViewport(node);
                 });
             }
@@ -263,6 +393,10 @@
                 if (viewFrame !== null) {
                     cancelAnimationFrame(viewFrame);
                     viewFrame = null;
+                }
+                if (columnsFrame !== null) {
+                    cancelAnimationFrame(columnsFrame);
+                    columnsFrame = null;
                 }
                 resizeObserver?.unobserve(node);
             },
@@ -281,7 +415,7 @@
     role="list"
     tabindex="-1"
     class="overflow-y-auto outline-none {className}"
-    style="overflow-anchor: none;"
+    style="overflow-anchor: none;{variant === 'grid' ? ' scrollbar-gutter: stable;' : ''}"
     data-charlist-total={layout.total}
 >
     {#each slices as slice (slice.key)}
@@ -291,18 +425,33 @@
             {@const row = rowByKey.get(slice.key)}
             {#if row}
                 {@const position = (layout.indexByKey.get(row.key) ?? 0) + 1}
-                <div
-                    role="listitem"
-                    class={rowClass}
-                    aria-setsize={rows.length}
-                    aria-posinset={position}
-                    data-charlist-key={row.cards[0]}
-                    use:measure={row.key}
-                >
-                    {#each row.cards as cardKey (cardKey)}
-                        {@render card(cardKey, position)}
-                    {/each}
-                </div>
+                {#if variant === "grid"}
+                    <div role="presentation" class={rowClass} data-charlist-row use:measure={row.key}>
+                        {#each row.cards as cardKey (cardKey)}
+                            <div
+                                role="listitem"
+                                aria-setsize={cardOrdinal.size}
+                                aria-posinset={(cardOrdinal.get(cardKey) ?? 0) + 1}
+                                data-charlist-key={cardKey}
+                            >
+                                {@render card(cardKey, position)}
+                            </div>
+                        {/each}
+                    </div>
+                {:else}
+                    <div
+                        role="listitem"
+                        class={rowClass}
+                        aria-setsize={rows.length}
+                        aria-posinset={position}
+                        data-charlist-key={row.cards[0]}
+                        use:measure={row.key}
+                    >
+                        {#each row.cards as cardKey (cardKey)}
+                            {@render card(cardKey, position)}
+                        {/each}
+                    </div>
+                {/if}
             {/if}
         {/if}
     {/each}

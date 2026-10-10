@@ -286,11 +286,16 @@ class AllVisibleIntersectionObserver implements IntersectionObserver {
 
 vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
 
+// happy-dom has no layout, and the Grid tab builds no tile until its container reports a width:
+// every element reports 312 px, room for four tiles.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 312 })
+
 //#endregion
 
 import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
+import { resetCharListAvatarCacheForTest } from './CharListAvatar.svelte'
 import Sidebar from '../SideBars/Sidebar.svelte'
 import AlertComp from './AlertComp.svelte'
 
@@ -471,7 +476,7 @@ function clickLayoutButton(root: HTMLElement, layout: 0 | 1 | 2 | 3): void {
 }
 
 /**
- * The list, simple and trash tabs mount only the rows near their scroll viewport. A container
+ * The grid, list, simple and trash tabs mount only the rows near their scroll viewport. A container
  * with no layout (happy-dom) is windowed by `window.innerHeight`, so a tall window mounts the
  * whole fixture: the lookups guards below are about re-resolution of an avatar, which has to be
  * observed on every row; the window itself is covered by `GridCatalog.window.svelte.test.ts`.
@@ -534,7 +539,10 @@ async function settle(root: HTMLElement): Promise<void> {
     flushSync()
 }
 
+// A mount starts from an empty avatar style cache, so a block's counts are its own and never
+// satisfied by what an earlier block resolved for the same location.
 function mountGridCatalog(): { target: HTMLElement; app: Record<string, unknown> } {
+    resetCharListAvatarCacheForTest()
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(GridCatalog, { target, props: {} }) as unknown as Record<string, unknown>
@@ -542,6 +550,7 @@ function mountGridCatalog(): { target: HTMLElement; app: Record<string, unknown>
 }
 
 function mountSidebar(): { target: HTMLElement; app: Record<string, unknown> } {
+    resetCharListAvatarCacheForTest()
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(Sidebar, { target, props: {} }) as unknown as Record<string, unknown>
@@ -549,6 +558,7 @@ function mountSidebar(): { target: HTMLElement; app: Record<string, unknown> } {
 }
 
 function mountAlertComp(): { target: HTMLElement; app: Record<string, unknown> } {
+    resetCharListAvatarCacheForTest()
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(AlertComp, { target, props: {} }) as unknown as Record<string, unknown>
@@ -565,8 +575,10 @@ async function teardown(target: HTMLElement, app: Record<string, unknown>): Prom
 describe.sequential('grid layout: avatar lookups (AV-1 regression, GridCatalog.svelte)', () => {
     let target: HTMLElement
     let app: Record<string, unknown>
+    let restoreViewport: () => void
 
     beforeAll(async () => {
+        restoreViewport = useTallViewport()
         DBState.db = buildDb(NON_TRASHED, TRASHED)
         getFileSrcSpy.mockClear()
         // Generous effective timeout: this first mount in the file pays the
@@ -585,6 +597,7 @@ describe.sequential('grid layout: avatar lookups (AV-1 regression, GridCatalog.s
 
     afterAll(async () => {
         await teardown(target, app)
+        restoreViewport()
     })
 
     test('a search keystroke that still matches every character resolves no avatar again', async () => {
@@ -601,9 +614,10 @@ describe.sequential('grid layout: avatar lookups (AV-1 regression, GridCatalog.s
         getFileSrcSpy.mockClear()
         setSearchValue(target, '~')
         await settle(target)
-        // Guards against the now-visible subset re-resolving on a narrowing
-        // search.
+        // Guards against the now-visible subset re-resolving on a narrowing search: a card that
+        // lands in a different row is a new tile, which paints from the style cache.
         expect(getFileSrcSpy.mock.calls.length).toBe(0)
+        expect(countAvatarEls(target)).toBe(MARKED_INDICES.length)
         setSearchValue(target, '') // restore the full list for later tests
         await settle(target)
     })
@@ -648,7 +662,9 @@ describe.sequential('grid layout: avatar lookups (AV-1 regression, GridCatalog.s
         getFileSrcSpy.mockClear()
         DBState.db.hideAllImages = false
         await settle(target)
-        expect(getFileSrcSpy.mock.calls.length).toBe(NON_TRASHED)
+        // The pictures resolved before the toggle come back from the style cache, so the
+        // way back asks for nothing; they must all be showing again.
+        expect(getFileSrcSpy.mock.calls.length).toBe(0)
         expect(countAvatarEls(target)).toBe(NON_TRASHED)
     })
 
@@ -870,8 +886,10 @@ describe('T12: getAvatarThumbSrc is wired into every list site', () => {
         await settle(target)
         // The default tab (simple/`MobileCharacters.svelte`) already resolved
         // every one of these same locs before the switch below; clear so the
-        // assertion below can only be satisfied by the GRID tab's own calls.
+        // assertion below can only be satisfied by the GRID tab's own calls. The style cache is
+        // emptied too, or the tab would paint from it and look nothing up.
         avatarThumbSpy.mockClear()
+        resetCharListAvatarCacheForTest()
         clickLayoutButton(target, 0)
         await settle(target)
 
@@ -988,8 +1006,9 @@ describe('T12: getAvatarThumbSrc is wired into every list site', () => {
         await settle(target)
         // The default tab (simple/`MobileCharacters.svelte`) already resolved
         // every one of these same locs before the switch below; clear so the
-        // assertion below can only be satisfied by the LIST tab's own calls.
+        // assertion below can only be satisfied by the LIST tab's own calls (style cache emptied as above).
         avatarThumbSpy.mockClear()
+        resetCharListAvatarCacheForTest()
         clickLayoutButton(target, 1)
         await settle(target)
 

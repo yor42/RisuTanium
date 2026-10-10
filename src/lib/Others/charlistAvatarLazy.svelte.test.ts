@@ -3,9 +3,9 @@
 /**
  * Avatars resolve only near the viewport, using a shared, injectable
  * `IntersectionObserver`, instead of every listed avatar resolving
- * unconditionally at mount. The Grid tab's tiles and the dialogs still use the
- * observer; the List, Trash and Simple tabs and the Sidebar mount only the rows
- * near their scroll viewport, and each mounted row resolves its own avatar.
+ * unconditionally at mount. The dialogs still use the observer; the Grid, List,
+ * Trash and Simple tabs and the Sidebar mount only the rows or tiles near their
+ * scroll viewport, and each mounted one resolves its own avatar.
  *
  * This file copies `charlistAvatarLookups.svelte.test.ts`'s mock setup and
  * fixture-building helpers rather than extending that file in place, because
@@ -205,6 +205,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
+import { resetCharListAvatarCacheForTest } from './CharListAvatar.svelte'
 import Sidebar from '../SideBars/Sidebar.svelte'
 import { installGeometry, settleFrame, type Geometry, resetRailMemory } from '../SideBars/sidebarDnd.testKit'
 import AlertComp from './AlertComp.svelte'
@@ -386,6 +387,10 @@ function injectOverflowStylesheet(): void {
     document.head.appendChild(style)
 }
 injectOverflowStylesheet()
+
+// happy-dom has no layout, and the Grid tab builds no tile until its container reports a width:
+// every element reports 312 px, room for four tiles.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 312 })
 
 //#endregion
 
@@ -628,6 +633,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
+    resetCharListAvatarCacheForTest()
     resetRailMemory()
     FakeIntersectionObserver.instances.length = 0
 })
@@ -645,26 +651,22 @@ describe('test-infrastructure sanity check (not one of v1-v10)', () => {
     })
 })
 
-describe('v1: only the fake-reported-intersecting items resolve, per layout', () => {
-    test('grid layout (GridCatalog.svelte, selected=0)', async () => {
+describe('v1: every mounted row or tile requests its own avatar, per layout', () => {
+    // The Grid tab mounts only the tiles near its scroll viewport (GridCatalog.window.svelte.test.ts
+    // counts them at 300 characters); with a handful of characters every tile is mounted.
+    test('grid layout (GridCatalog.svelte, selected=0): every mounted tile requests its own avatar and no observer watches a tile', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
+        getFileSrcSpy.mockClear() // the default (simple) tab's own lookups, uncounted
+        resetCharListAvatarCacheForTest() // the Grid tab must not paint from them
         clickLayoutButton(target, 0)
         await settle(target)
-        getFileSrcSpy.mockClear() // initial mount + layout switch, uncounted
 
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-
-        // Only the fired-and-intersecting items resolve: firing the first k
-        // triggers exactly V_K new calls, none for the rest.
-        expect(getFileSrcSpy.mock.calls.length).toBe(V_K)
+        expect(avatarButtons(target).length).toBe(V_N)
+        expect(getFileSrcSpy.mock.calls.length).toBe(V_N)
+        expect(orderedTargets(FakeIntersectionObserver.instances).length).toBe(0)
 
         await teardown(target, app)
     })
@@ -677,6 +679,7 @@ describe('v1: only the fake-reported-intersecting items resolve, per layout', ()
         const { target, app } = mountGridCatalog()
         await settle(target)
         getFileSrcSpy.mockClear()
+        resetCharListAvatarCacheForTest()
         clickLayoutButton(target, 1)
         await settle(target)
 
@@ -760,8 +763,8 @@ describe('v1: only the fake-reported-intersecting items resolve, per layout', ()
     })
 })
 
-describe('v2: firing a single intersecting entry for item j resolves only j', () => {
-    test('grid layout -- item j renders its own loc= path', async () => {
+describe('v2: each avatar shows its own picture', () => {
+    test('grid layout -- tile j renders its own loc= path', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
@@ -769,19 +772,11 @@ describe('v2: firing a single intersecting entry for item j resolves only j', ()
         clickLayoutButton(target, 0)
         await settle(target)
 
-        // Nothing has fired yet, so nothing is resolved.
-        expect(resolvedAvatarButtons(target).length).toBe(0)
-
-        const j = 2
-        const itemTarget = orderedTargets(instancesByMargin(NEAR_MARGIN))[j]
-        if (itemTarget) {
-            fireOn(instancesByMargin(NEAR_MARGIN), [{ target: itemTarget, isIntersecting: true }])
-            await settle(target)
-        }
-
         const resolved = resolvedAvatarButtons(target)
-        expect(resolved.length).toBe(1)
-        expect(resolved[0].getAttribute('style')).toContain(`loc=${DBState.db.characters[j].image}`)
+        expect(resolved.length).toBe(V_N)
+        for (let j = 0; j < V_N; j++) {
+            expect(avatarButtons(target)[j].getAttribute('style')).toContain(`loc=${DBState.db.characters[j].image}`)
+        }
 
         await teardown(target, app)
     })
@@ -806,48 +801,6 @@ describe('v2: firing a single intersecting entry for item j resolves only j', ()
     })
 })
 
-describe('v3: release -- leaving the far band shows the placeholder again; re-entry resolves again', () => {
-    test('grid layout, near band (100% 0px) resolves, far band (300% 0px) releases', async () => {
-        DBState.db = buildDb(5, 0)
-        getFileSrcSpy.mockClear()
-        const { target, app } = mountGridCatalog()
-        await settle(target)
-        clickLayoutButton(target, 0)
-        await settle(target)
-
-        const j = 1
-        const itemTarget = orderedTargets(FakeIntersectionObserver.instances)[j]
-
-        if (itemTarget) {
-            fireOn(instancesByMargin(NEAR_MARGIN), [{ target: itemTarget, isIntersecting: true }])
-            await settle(target)
-        }
-        // This alone does not distinguish gated resolution from unconditional
-        // resolution at mount -- the far-band release below is the real check.
-        expect(avatarButtons(target)[j].getAttribute('style') ?? '').toContain('background: url(')
-
-        if (itemTarget) {
-            fireOn(instancesByMargin(FAR_MARGIN), [{ target: itemTarget, isIntersecting: false }])
-            await settle(target)
-        }
-        // Firing a non-intersecting entry on the far-band ('300% 0px') observer
-        // releases a resolved avatar back to its placeholder.
-        expect(avatarButtons(target)[j].getAttribute('style') ?? '').not.toContain('background: url(')
-
-        const callsBeforeReentry = getFileSrcSpy.mock.calls.length
-        if (itemTarget) {
-            fireOn(instancesByMargin(NEAR_MARGIN), [{ target: itemTarget, isIntersecting: true }])
-            await settle(target)
-        }
-        expect(avatarButtons(target)[j].getAttribute('style') ?? '').toContain('background: url(')
-        // Re-entry re-runs the base64 encode on plain HTTP: no string cache
-        // survives a release, so getFileSrc is called again.
-        expect(getFileSrcSpy.mock.calls.length).toBeGreaterThan(callsBeforeReentry)
-
-        await teardown(target, app)
-    })
-})
-
 describe('v4: no IntersectionObserver global means every avatar still resolves (fail open)', () => {
     test('grid layout resolves all N with the global absent', async () => {
         vi.stubGlobal('IntersectionObserver', undefined)
@@ -857,6 +810,7 @@ describe('v4: no IntersectionObserver global means every avatar still resolves (
             const { target, app } = mountGridCatalog()
             await settle(target) // default (simple) layout's own resolution, uncounted
             getFileSrcSpy.mockClear()
+            resetCharListAvatarCacheForTest()
             clickLayoutButton(target, 0)
             await settle(target)
 
@@ -886,30 +840,21 @@ describe('v5 (new): MobileCharacters inside GridCatalog has one scroll root', ()
     })
 })
 
-describe('v6: hideAllImages toggled while items are off-screen', () => {
-    test('becoming visible while hideAllImages is true shows the placeholder; toggling back resolves with the fresh value', async () => {
+describe('v6: hideAllImages toggled around the Grid tab', () => {
+    test('tiles mounted while hideAllImages is true show the placeholder; toggling back resolves with the fresh value', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
+        DBState.db.hideAllImages = true
+        await settle(target)
         clickLayoutButton(target, 0)
         await settle(target)
 
-        // Nothing has fired yet, so nothing is resolved.
-        expect(resolvedAvatarButtons(target).length).toBe(0)
-
-        DBState.db.hideAllImages = true
-        await settle(target)
-
         const j = 0
-        const itemTarget = orderedTargets(instancesByMargin(NEAR_MARGIN))[j]
-        if (itemTarget) {
-            fireOn(instancesByMargin(NEAR_MARGIN), [{ target: itemTarget, isIntersecting: true }])
-            await settle(target)
-        }
+        expect(avatarButtons(target).length).toBe(V_N)
         // getCharImage returns '' for css type while hideAllImages is true,
-        // regardless of visibility, so a newly-visible item still shows no
-        // background-url style.
+        // so a mounted tile shows no background-url style.
         expect(avatarButtons(target)[j].getAttribute('style') ?? '').not.toContain('background: url(')
 
         DBState.db.hideAllImages = false
@@ -1020,16 +965,14 @@ describe('v11: a throwing IntersectionObserver constructor must fail open', () =
         await settle(target)
         vi.stubGlobal('IntersectionObserver', ThrowingIntersectionObserver)
         try {
-            // A LATER reactive update populates the Simple tab's `{#each}`; each
-            // item's `use:nearViewport` now calls the throwing constructor for
-            // the first time.
+            // A LATER reactive update populates the lists. The Grid tab constructs
+            // no observer, so the unusable one cannot touch it.
             DBState.db = buildDb(V_N, 0)
             await settle(target)
             clickLayoutButton(target, 0)
             await settle(target)
 
-            // Fail open: every avatar still resolves even though the observer
-            // is unusable.
+            // Every avatar still resolves even though the observer is unusable.
             expect(resolvedAvatarButtons(target).length).toBe(V_N)
             expect(avatarButtons(target).length).toBe(V_N)
         } finally {
@@ -1066,7 +1009,7 @@ describe('v11: a throwing IntersectionObserver constructor must fail open', () =
     })
 })
 
-describe('v11c: a HALF-throwing constructor (near succeeds, far throws) must still fail open', () => {
+describe('v11c: the Grid tab constructs no observer, so a half-throwing constructor never runs for it', () => {
     // See `HalfThrowingIntersectionObserver`'s own doc comment above for why
     // this fake exists and why the far band is the one made to throw (it is
     // the second construction in `nearViewport.svelte.ts`'s real call order,
@@ -1092,7 +1035,7 @@ describe('v11c: a HALF-throwing constructor (near succeeds, far throws) must sti
         return type
     }
 
-    test('every avatar resolves, the created near instance is torn down empty, console.warn fires without an alert, and unmount does not throw', async () => {
+    test('every avatar resolves, no observer is constructed for the tiles, no alert is raised, and unmount does not throw', async () => {
         DBState.db = buildDb(0, 0) // no characters yet: initial mount drives zero nearViewport calls
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
@@ -1105,38 +1048,19 @@ describe('v11c: a HALF-throwing constructor (near succeeds, far throws) must sti
 
         let unmountError: unknown
         try {
-            // A LATER reactive update populates the grid's `{#each}`; each
-            // item's `use:nearViewport` now calls the half-succeeding
-            // constructor for the first time.
+            // A LATER reactive update populates the lists and the Grid tab.
             DBState.db = buildDb(V_N, 0)
             await settle(target)
             clickLayoutButton(target, 0)
             await settle(target)
 
-            // Fail open: every avatar still resolves, exactly like v11's
-            // always-throwing case, even though the near construction itself
-            // succeeded before the far one threw.
+            // Every avatar resolves, and the tiles constructed no observer at all.
             expect(resolvedAvatarButtons(target).length).toBe(V_N)
             expect(avatarButtons(target).length).toBe(V_N)
+            expect(HalfThrowingIntersectionObserver.nearInstances.length).toBe(0)
 
-            // Precondition: at least one near instance was actually created
-            // (otherwise the teardown assertions below would vacuously pass).
-            expect(HalfThrowingIntersectionObserver.nearInstances.length).toBeGreaterThan(0)
-            // Every near instance that WAS created gets torn down by the
-            // catch block's `removeTarget(root, NEAR_MARGIN, node)`
-            // (`nearViewport.svelte.ts` ~:280): the far construction throws
-            // before that near entry's own `targets.set`/`observe` calls
-            // ever run, so its target map is already empty when
-            // `removeTarget` runs, and it disconnects immediately, holding
-            // no targets.
-            for (const inst of HalfThrowingIntersectionObserver.nearInstances) {
-                expect(inst.disconnected).toBe(true)
-                expect(inst.observed.size).toBe(0)
-            }
-
-            // The catch block's own fail-open warning fired, and nothing
-            // routed this into the app's own alert UI.
-            expect(warnSpy).toHaveBeenCalled()
+            // Nothing was routed into the app's own alert UI.
+            expect(warnSpy).not.toHaveBeenCalled()
             expect(currentAlertType()).toBe(alertBefore)
         } finally {
             vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
@@ -1154,52 +1078,29 @@ describe('v11c: a HALF-throwing constructor (near succeeds, far throws) must sti
     })
 })
 
-describe('v12: entries must leave the visible set when items unmount', () => {
-    test('switching tabs away and back requires a fresh near entry per remounted item', async () => {
+describe('v12: remounted tiles resolve on their own', () => {
+    test('switching tabs away and back resolves every remounted tile without any report', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
         clickLayoutButton(target, 0)
         await settle(target)
-        getFileSrcSpy.mockClear()
+        expect(resolvedAvatarButtons(target).length).toBe(V_N)
 
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-        // Sanity precondition: firing the first k resolves exactly k (same as v1).
-        expect(resolvedAvatarButtons(target).length).toBe(V_K)
-
-        // Switch away, then back -- no new entries fired for either hop.
         clickLayoutButton(target, 1)
         await settle(target)
         clickLayoutButton(target, 0)
         await settle(target)
 
-        // `nearViewport`'s `destroy()` calls `onChange(false)`, which removes
-        // the destroyed node's index from `GridCatalog.svelte`'s shared
-        // `visibleIndices`. The freshly remounted grid items for those same
-        // indices therefore read `isVisible = visibleIndices.has(char.index)`
-        // as `false` again, with no fresh near entry fired for their new nodes.
-        expect(resolvedAvatarButtons(target).length).toBe(0)
-
-        // Firing a fresh near entry for the same indices' new nodes resolves them
-        // again, same as v1/v2.
-        const targetsAfter = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targetsAfter.slice(0, V_K).map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
-        expect(resolvedAvatarButtons(target).length).toBe(V_K)
+        expect(avatarButtons(target).length).toBe(V_N)
+        expect(resolvedAvatarButtons(target).length).toBe(V_N)
+        expect(orderedTargets(FakeIntersectionObserver.instances).length).toBe(0)
 
         await teardown(target, app)
     })
 
-    test('narrowing then restoring the search requires a fresh near entry for the restored items', async () => {
+    test('narrowing then restoring the search resolves the restored tiles on their own', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
@@ -1208,13 +1109,6 @@ describe('v12: entries must leave the visible set when items unmount', () => {
         await settle(target)
         getFileSrcSpy.mockClear()
 
-        // Fire near for everything -- all V_N resolve.
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
         expect(resolvedAvatarButtons(target).length).toBe(V_N)
 
         // Narrow the search so only "Character 0" (index 0) survives; the rest
@@ -1232,19 +1126,8 @@ describe('v12: entries must leave the visible set when items unmount', () => {
         landSearchQuery()
         await settle(target)
 
-        // Index 0's node was never unmounted, so it stays correctly resolved.
-        // Indices 1..V_N-1 are fresh nodes whose entries were removed from
-        // `visibleIndices` on unmount, so they need their own fresh near entry,
-        // which nothing here has fired yet.
-        expect(resolvedAvatarButtons(target).length).toBe(1)
-
-        // Firing a fresh near entry for the restored items resolves them.
-        const targetsAfterRestore = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targetsAfterRestore.map((t) => ({ target: t, isIntersecting: true })),
-        )
-        await settle(target)
+        // Index 0's tile was never unmounted; indices 1..V_N-1 are fresh tiles and
+        // request their own avatars.
         expect(resolvedAvatarButtons(target).length).toBe(V_N)
 
         await teardown(target, app)
@@ -1252,15 +1135,13 @@ describe('v12: entries must leave the visible set when items unmount', () => {
 
     describe('v12b: grid -> list', () => {
         test('the list rows resolve on their own after the grid tab, without any report from an observer and without having fired in grid mode', async () => {
-            // The grid tiles are gated by the observer and the list rows are not: a grid
-            // tile's destroy-time release must not leave a list row without its avatar.
+            // Guard: leaving the Grid tab must not leave a list row without its avatar.
             DBState.db = buildDb(V_N, 0)
             getFileSrcSpy.mockClear()
             const { target, app } = mountGridCatalog()
             await settle(target)
             clickLayoutButton(target, 0)
             await settle(target)
-            // Deliberately fire nothing in grid mode.
             clickLayoutButton(target, 1)
             await settle(target)
 
@@ -1366,19 +1247,14 @@ describe('T12: getAvatarThumbSrc is wired into the grid layout and Sidebar', () 
         avatarThumbSpy.mockClear()
     })
 
-    test("grid layout: firing near entries makes the spy receive each newly-visible character's loc", async () => {
+    test("grid layout: the spy receives each mounted tile's loc", async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
+        avatarThumbSpy.mockClear()
+        resetCharListAvatarCacheForTest()
         clickLayoutButton(target, 0)
-        await settle(target)
-
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.map((t) => ({ target: t, isIntersecting: true })),
-        )
         await settle(target)
 
         const calledLocs = avatarThumbSpy.mock.calls.map((c) => c[0])
@@ -1396,14 +1272,8 @@ describe('T12: getAvatarThumbSrc is wired into the grid layout and Sidebar', () 
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
+        resetCharListAvatarCacheForTest()
         clickLayoutButton(target, 0)
-        await settle(target)
-
-        const targets = orderedTargets(instancesByMargin(NEAR_MARGIN))
-        fireOn(
-            instancesByMargin(NEAR_MARGIN),
-            targets.map((t) => ({ target: t, isIntersecting: true })),
-        )
         await settle(target)
 
         const buttons = resolvedAvatarButtons(target)

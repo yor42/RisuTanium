@@ -12,10 +12,9 @@
     import CharacterDescription from "./CharacterDescription.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
-    import { LIST_ROW_FALLBACK_PX, listRows } from "./charListRows";
-    import { nearViewport } from "src/ts/gui/nearViewport.svelte";
+    import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridRows, listRows } from "./charListRows";
     import { clickedButton, clickedLink, selectedInside } from "src/ts/gui/descriptionMarkdown";
-    import { SvelteMap, SvelteSet } from "svelte/reactivity";
+    import { SvelteSet } from "svelte/reactivity";
     import { createCharacterSearch } from "src/ts/gui/characterSearch.svelte";
     interface Props {
         endGrid?: any;
@@ -24,16 +23,6 @@
     let { endGrid = () => {} }: Props = $props();
     let search = $state('')
     let selected = $state(3)
-    // AV-2: indices near the Grid tab's scroll viewport, mapped to the element
-    // currently observing that index. Only the grid tiles use it (the other tabs
-    // mount just the rows near their viewport). Mapping to the owning element
-    // (rather than a plain Set) is what makes releasing an index safe
-    // regardless of mount/unmount order: `nearViewport`'s destroy calls
-    // `onChange(false, node)` on every unmount (not just via the far band),
-    // and a release only actually clears the index if `node` is still the
-    // element that owns it.
-    let visibleIndices = new SvelteMap<number, Element>()
-
     // List tab, per row and keyed by the character's chaId (stable when a removal shifts indices): whether the
     // description is expanded, and whether its clamp currently cuts text off.
     // The toggle shows while either holds, so an expanded row keeps its "Show
@@ -47,6 +36,9 @@
     const found = createCharacterSearch(() => search)
 
     const listRowsNow = $derived(listRows(found.live.map((match) => String(match.index))))
+    const gridKeys = $derived(found.live.map((match) => String(match.index)))
+    // The Grid tab builds its rows from the column count its container reports.
+    const gridRowsFor = (columns: number) => gridRows(gridKeys, columns)
 
     // Picking an entry opens the character and leaves the screen, as the
     // simple list does.
@@ -119,6 +111,30 @@
     {/if}
 {/snippet}
 
+{#snippet gridCard(cardKey: string)}
+    {@const index = Number(cardKey)}
+    {@const char = DBState.db.characters[index]}
+    <!-- Defence in depth: a position past the end of a shrinking list draws no tile instead of throwing. -->
+    {#if char}
+        <div class="flex items-center text-textcolor">
+            <CharListAvatar
+                src={char.image}
+                fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
+                label={char.name || language.settingsPage.unnamed}
+                onclick={() => pick(index)}
+            >
+                {#if !char.image}
+                    {#if char.type === 'group'}
+                        <Users />
+                    {:else}
+                        <User/>
+                    {/if}
+                {/if}
+            </CharListAvatar>
+        </div>
+    {/if}
+{/snippet}
+
 <div class="h-full w-full flex justify-center">
     <div class="h-full p-6 bg-darkbg max-w-full w-2xl flex flex-col">
         <div class="mx-4 mb-6 flex flex-col shrink-0">
@@ -155,36 +171,7 @@
         </div>
         <!-- The header above stays on screen; each tab below is the only scroller of its content. -->
         {#if selected === 0}
-            <div class="flex-1 min-h-0 overflow-y-auto">
-                <div class="w-full flex justify-center">
-                    <div class="flex flex-wrap gap-2 w-full justify-center">
-                        {#each found.live as match (match.index)}
-                            {@const char = DBState.db.characters[match.index]}
-                            {#if char}
-                                {@const isVisible = visibleIndices.has(match.index)}
-                                <div class="flex items-center text-textcolor" use:nearViewport={{ onChange: (v, node) => {
-                                    if (v) { visibleIndices.set(match.index, node) } else if (visibleIndices.get(match.index) === node) { visibleIndices.delete(match.index) }
-                                } }}>
-                                    <CharListAvatar
-                                        src={isVisible ? char.image : ''}
-                                        fallbackStyle={char.image ? '' : match.index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
-                                        label={char.name || language.settingsPage.unnamed}
-                                        onclick={() => pick(match.index)}
-                                    >
-                                        {#if !char.image}
-                                            {#if char.type === 'group'}
-                                                <Users />
-                                            {:else}
-                                                <User/>
-                                            {/if}
-                                        {/if}
-                                    </CharListAvatar>
-                                </div>
-                            {/if}
-                        {/each}
-                    </div>
-                </div>
-            </div>
+            <CharacterWindow class="flex-1 min-h-0" layout="grid" rows={gridRowsFor} fallbackHeight={GRID_ROW_FALLBACK_PX} resetToken={found.query} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
         {:else if selected === 1}
             <CharacterWindow class="flex-1 min-h-0" rows={listRowsNow} fallbackHeight={LIST_ROW_FALLBACK_PX} resetToken={found.query} rowClass="pb-2" card={listCard} />
         {:else if selected === 2}

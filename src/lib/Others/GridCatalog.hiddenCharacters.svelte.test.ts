@@ -146,28 +146,9 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-class AllVisibleIntersectionObserver implements IntersectionObserver {
-    readonly root: Element | Document | null = null
-    readonly rootMargin: string = ''
-    readonly thresholds: ReadonlyArray<number> = []
-    #callback: IntersectionObserverCallback
-
-    constructor(callback: IntersectionObserverCallback) {
-        this.#callback = callback
-    }
-
-    observe(target: Element): void {
-        this.#callback([{ target, isIntersecting: true, intersectionRatio: 1 } as IntersectionObserverEntry], this)
-    }
-
-    unobserve(): void {}
-    disconnect(): void {}
-    takeRecords(): IntersectionObserverEntry[] {
-        return []
-    }
-}
-
-vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
+// happy-dom has no layout, and the Grid tab builds no tile until its container reports a width:
+// every element reports 312 px, room for four tiles.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 312 })
 
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'

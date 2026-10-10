@@ -22,8 +22,8 @@
  * `src/ts/platform`, `@tauri-apps/plugin-fs`, a reactive `stores.svelte`
  * stand-in, `src/ts/characters`'s `changeChar` alone (a bare spy; everything
  * else stays real, `getCharImage` included), `src/ts/media/avatarThumb`'s
- * `getAvatarThumbSrc` alone (resolves null: no thumbnail), and a fake
- * `IntersectionObserver` that reports every target visible. The mount and
+ * `getAvatarThumbSrc` alone (resolves null: no thumbnail), and a fixed
+ * container width (the Grid tab builds no tile without one). The mount and
  * mock pattern follows `charlistAvatarLookups.svelte.test.ts` (same
  * directory), which documents the reasons in full.
  */
@@ -153,28 +153,9 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-class AllVisibleIntersectionObserver implements IntersectionObserver {
-    readonly root: Element | Document | null = null
-    readonly rootMargin: string = ''
-    readonly thresholds: ReadonlyArray<number> = []
-    #callback: IntersectionObserverCallback
-
-    constructor(callback: IntersectionObserverCallback) {
-        this.#callback = callback
-    }
-
-    observe(target: Element): void {
-        this.#callback([{ target, isIntersecting: true, intersectionRatio: 1 } as IntersectionObserverEntry], this)
-    }
-
-    unobserve(): void {}
-    disconnect(): void {}
-    takeRecords(): IntersectionObserverEntry[] {
-        return []
-    }
-}
-
-vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
+// happy-dom has no layout, and the Grid tab builds no tile until its container reports a width:
+// every element reports 312 px, room for four tiles.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 312 })
 
 import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'

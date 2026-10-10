@@ -6,7 +6,8 @@
  * location it was resolved for.
  *
  * MOCKED: `getCharImage` is a spy whose promises the test settles by hand, so the order in which
- * pictures arrive is the test's. Nothing else is involved.
+ * pictures arrive is the test's, and `DBState` is a constant object. The style cache is reset
+ * before every test.
  *
  * Test labels: every test is a feature test of a component that does not exist before the
  * windowed lists. The base behaviour it replaces (the avatar element being re-created when its
@@ -18,8 +19,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const { getCharImageMock } = vi.hoisted(() => ({ getCharImageMock: vi.fn() }))
 
 vi.mock('src/ts/characters', () => ({ getCharImage: getCharImageMock }))
+// Only `DBState.db.hideAllImages` is read, as part of the cache key.
+vi.mock('src/ts/stores.svelte', () => ({ DBState: { db: { hideAllImages: false } } }))
 
-import CharListAvatar from './CharListAvatar.svelte'
+import CharListAvatar, { CHAR_LIST_AVATAR_CACHE_LIMIT, CHAR_LIST_AVATAR_CACHE_MAX_LENGTH, resetCharListAvatarCacheForTest } from './CharListAvatar.svelte'
 
 interface Deferred {
     loc: string
@@ -30,6 +33,7 @@ interface Deferred {
 const pending: Deferred[] = []
 
 beforeEach(() => {
+    resetCharListAvatarCacheForTest()
     pending.length = 0
     getCharImageMock.mockReset()
     getCharImageMock.mockImplementation((loc: string) => new Promise<string>((resolve, reject) => {
@@ -151,6 +155,99 @@ describe('CharListAvatar', () => {
         const target = mountAvatar({ src: '', fallbackStyle: 'background:red' })
         expect(getCharImageMock).not.toHaveBeenCalled()
         expect(styleOf(target.querySelector('.ico')!)).toContain('red')
+    })
+
+    test('a tile created again for a location that was resolved shows its picture at once and looks nothing up', async () => {
+        const first = mountAvatar({ src: 'assets/a.png' })
+        pending[0].resolve('background: url("data:a");')
+        await settle()
+        expect(styleOf(first.querySelector('.ico')!)).toContain('data:a')
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+        getCharImageMock.mockClear()
+
+        const second = mountAvatar({ src: 'assets/a.png' })
+        expect(styleOf(second.querySelector('.ico')!)).toContain('data:a')
+        await settle()
+        expect(getCharImageMock).not.toHaveBeenCalled()
+    })
+
+    test('a location change on a tile still looks the new location up', async () => {
+        const props = $state({ src: 'assets/a.png' })
+        mountAvatar(props)
+        pending[0].resolve('background: url("data:a");')
+        await settle()
+        props.src = 'assets/b.png'
+        flushSync()
+        await settle()
+        expect(pending.map((p) => p.loc)).toEqual(['assets/a.png', 'assets/b.png'])
+    })
+
+    test('the cache is bounded: the oldest location is looked up again once the limit is passed', async () => {
+        for (let i = 0; i <= CHAR_LIST_AVATAR_CACHE_LIMIT; i++) {
+            const target = mountAvatar({ src: `assets/${i}.png` })
+            pending[pending.length - 1].resolve(`background: url("data:${i}");`)
+            await settle()
+            expect(styleOf(target.querySelector('.ico')!)).toContain(`data:${i}`)
+            await unmount(mounted!.app as never)
+            mounted!.target.remove()
+            mounted = null
+        }
+        getCharImageMock.mockClear()
+        mountAvatar({ src: `assets/${CHAR_LIST_AVATAR_CACHE_LIMIT}.png` })
+        expect(getCharImageMock).not.toHaveBeenCalled()
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+        mountAvatar({ src: 'assets/0.png' })
+        await settle()
+        expect(getCharImageMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('a failed lookup is not remembered: a tile created again asks again', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+        mountAvatar({ src: 'assets/a.png' })
+        pending[0].reject(new Error('no such asset'))
+        await settle()
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+        getCharImageMock.mockClear()
+
+        mountAvatar({ src: 'assets/a.png' })
+        await settle()
+        expect(getCharImageMock).toHaveBeenCalledTimes(1)
+    })
+
+    async function remountAndCountLookups(src: string): Promise<number> {
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+        getCharImageMock.mockClear()
+        mountAvatar({ src })
+        await settle()
+        return getCharImageMock.mock.calls.length
+    }
+
+    test('a style that carries a whole file is not retained: a tile created again resolves again', async () => {
+        const target = mountAvatar({ src: 'assets/big.gif' })
+        const big = `background: url("data:image/gif;base64,${'A'.repeat(CHAR_LIST_AVATAR_CACHE_MAX_LENGTH)}");`
+        pending[0].resolve(big)
+        await settle()
+        expect(styleOf(target.querySelector('.ico')!)).toContain('base64')
+        expect(await remountAndCountLookups('assets/big.gif')).toBe(1)
+    })
+
+    test('a style with an empty URL is not retained, but the empty style of hide-all-images is', async () => {
+        mountAvatar({ src: 'assets/a.png' })
+        pending[0].resolve('background: url("");background-size: cover;')
+        await settle()
+        expect(await remountAndCountLookups('assets/a.png')).toBe(1)
+
+        pending[pending.length - 1].resolve('')
+        await settle()
+        expect(await remountAndCountLookups('assets/a.png')).toBe(0)
     })
 
     test('a change of an unrelated prop does not look the image up again', async () => {

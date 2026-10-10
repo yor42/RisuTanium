@@ -21,7 +21,7 @@
  */
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { listRowKey, listRows, type ScrollAnchor } from './charListRows'
+import { gridRows, listRowKey, listRows, type CharRow, type ScrollAnchor } from './charListRows'
 import CharacterWindow from './CharacterWindow.svelte'
 
 //#region fixtures and fake geometry
@@ -67,6 +67,8 @@ interface Geometry {
     scrollAndSettle(top: number): Promise<void>
     hide(): void
     show(): void
+    /** The width the container reports (0 until a grid test sets one). */
+    setWidth(width: number): void
     /** Every value written to a `scrollTop` by the component, in order. */
     readonly writes: number[]
 }
@@ -79,9 +81,12 @@ function installGeometry(): { geometry: Geometry; restore: () => void } {
     const tops = new WeakMap<Element, number>()
     const writes: number[] = []
     let hidden = false
+    let width = 0
     const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
     const scrollTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTop')
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => (hidden ? 0 : VIEWPORT) })
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => (hidden ? 0 : width) })
     Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
         configurable: true,
         get(this: HTMLElement) {
@@ -109,12 +114,15 @@ function installGeometry(): { geometry: Geometry; restore: () => void } {
         show() {
             hidden = false
         },
+        setWidth(next) {
+            width = next
+        },
         writes,
     }
     return {
         geometry,
         restore() {
-            for (const [name, descriptor] of [['clientHeight', clientHeight], ['scrollTop', scrollTop]] as const) {
+            for (const [name, descriptor] of [['clientHeight', clientHeight], ['clientWidth', clientWidth], ['scrollTop', scrollTop]] as const) {
                 if (descriptor) {
                     Object.defineProperty(HTMLElement.prototype, name, descriptor)
                 } else {
@@ -188,6 +196,7 @@ afterEach(async () => {
     }
     restoreGeometry()
     document.body.innerHTML = ''
+    document.documentElement.style.fontSize = ''
 })
 
 const listOf = (target: HTMLElement): HTMLElement => target.querySelector<HTMLElement>('[role="list"][data-charlist-total]')!
@@ -573,3 +582,375 @@ describe('CharacterWindow: focus', () => {
         expect(document.activeElement).toBe(other)
     })
 })
+
+//#region grid layout
+
+/** 5 columns at 16 px per rem: five tiles need 312 px, six need 376 px. */
+const FIVE_COLUMNS = 345
+/** 3 columns: three tiles need 184 px, four need 248 px. */
+const THREE_COLUMNS = 200
+const GRID_ROW = 64
+
+interface GridOptions {
+    cards?: number
+    width?: number
+    build?: (columns: number) => readonly CharRow[]
+    rowClass?: string
+}
+
+async function mountGrid(options: GridOptions = {}) {
+    geometry.setWidth(options.width ?? FIVE_COLUMNS)
+    const keys = cardKeys(options.cards ?? COUNT)
+    const props = $state({
+        rows: options.build ?? ((columns: number): readonly CharRow[] => gridRows(keys, columns)),
+        layout: 'grid' as const,
+        fallbackHeight: GRID_ROW,
+        rowClass: options.rowClass ?? '',
+        card,
+    })
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const app = mount(CharacterWindow, { target, props: props as never }) as Record<string, unknown>
+    mounted = { app, target }
+    flushSync()
+    await settleFrame()
+    return { target, props, api: app as unknown as { getAnchor(): ScrollAnchor | null } }
+}
+
+/** Reports a size change of the container, as the browser does when its width changes. */
+function reportContainer(target: HTMLElement): void {
+    observer().report([[listOf(target), 0]])
+}
+
+/** A size report, then the frame in which the window applies a new column count. */
+async function resizeContainer(target: HTMLElement): Promise<void> {
+    reportContainer(target)
+    await settleFrame()
+}
+
+const tileEls = (target: HTMLElement): HTMLElement[] => Array.from(target.querySelectorAll<HTMLElement>('[role="listitem"]'))
+const tileOf = (target: HTMLElement, key: string): HTMLElement | null => target.querySelector<HTMLElement>(`[role="listitem"][data-charlist-key="${key}"]`)
+const gridRowEls = (target: HTMLElement): HTMLElement[] => Array.from(target.querySelectorAll<HTMLElement>('[data-charlist-row]'))
+const tileKeys = (target: HTMLElement): number[] => tileEls(target).map((el) => Number(el.getAttribute('data-charlist-key')))
+
+describe('CharacterWindow: grid layout', () => {
+    test('(F) no row is built until the container has reported a width', async () => {
+        const build = vi.fn((columns: number): readonly CharRow[] => gridRows(cardKeys(20), columns))
+        const { target } = await mountGrid({ width: 0, build })
+        expect(tileEls(target).length).toBe(0)
+        expect(totalOf(target)).toBe(0)
+        expect(build).not.toHaveBeenCalled()
+
+        geometry.setWidth(FIVE_COLUMNS)
+        reportContainer(target)
+        flushSync()
+        expect(tileEls(target).length).toBe(20)
+        expect(gridRowEls(target).length).toBe(4)
+        // The first width builds the rows once, with the real column count.
+        expect(build.mock.calls.every(([columns]) => columns === 5)).toBe(true)
+    })
+
+    test('(F) 300 cards mount a bounded number of tiles, and the number does not depend on the list length', async () => {
+        const { target } = await mountGrid({ cards: 300 })
+        const large = tileEls(target).length
+        expect(totalOf(target)).toBe(60 * GRID_ROW)
+        expect(large).toBeGreaterThan(0)
+        expect(large).toBeLessThanOrEqual(5 * (Math.ceil((3 * VIEWPORT) / GRID_ROW) + 1))
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+
+        const { target: small } = await mountGrid({ cards: 150 })
+        expect(totalOf(small)).toBe(30 * GRID_ROW)
+        expect(tileEls(small).length).toBe(large)
+    })
+
+    test('(F) a far tile is mounted by scrolling to it, and the spacers keep the model height', async () => {
+        const { target } = await mountGrid()
+        expect(tileOf(target, '250')).toBeNull()
+        await geometry.scrollAndSettle(50 * GRID_ROW)
+        expect(tileOf(target, '250')).not.toBeNull()
+        expect(tileOf(target, '0')).toBeNull()
+        expect(totalOf(target)).toBe(60 * GRID_ROW)
+        let y = 0
+        for (const child of Array.from(listOf(target).children) as HTMLElement[]) {
+            y += child.hasAttribute('data-charlist-spacer') ? Number.parseFloat(child.style.height) : GRID_ROW
+        }
+        expect(y).toBe(60 * GRID_ROW)
+    })
+
+    test('(F) every tile is a list item that names its place among all tiles; the row wrapper carries the row class and is presentational', async () => {
+        const { target } = await mountGrid({ rowClass: 'flex gap-2 pb-2' })
+        const first = tileOf(target, '0')!
+        expect(first.getAttribute('aria-setsize')).toBe(String(COUNT))
+        expect(first.getAttribute('aria-posinset')).toBe('1')
+        expect(tileOf(target, '4')!.getAttribute('aria-posinset')).toBe('5')
+        const row = first.parentElement!
+        expect(row.hasAttribute('data-charlist-row')).toBe(true)
+        expect(row.getAttribute('role')).toBe('presentation')
+        expect(row.className).toBe('flex gap-2 pb-2')
+        expect(first.className).toBe('')
+        expect(row.children.length).toBe(5)
+
+        await geometry.scrollAndSettle(50 * GRID_ROW)
+        const far = tileOf(target, '253')!
+        expect(far.getAttribute('aria-posinset')).toBe('254')
+        expect(far.querySelector('.card')!.getAttribute('data-pos')).toBe(String(50 + 1))
+    })
+
+    test('(F) the last row holds the cards left over', async () => {
+        const { target } = await mountGrid({ cards: 23 })
+        const rowsMounted = gridRowEls(target)
+        expect(rowsMounted.length).toBe(5)
+        expect(rowsMounted.map((row) => row.children.length)).toEqual([5, 5, 5, 5, 3])
+    })
+
+    test('(F) no cards and one card each build an empty and a one-tile grid', async () => {
+        const none = await mountGrid({ cards: 0 })
+        expect(tileEls(none.target).length).toBe(0)
+        expect(totalOf(none.target)).toBe(0)
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+
+        const one = await mountGrid({ cards: 1 })
+        expect(tileKeys(one.target)).toEqual([0])
+        expect(gridRowEls(one.target).length).toBe(1)
+        expect(tileOf(one.target, '0')!.getAttribute('aria-setsize')).toBe('1')
+    })
+
+    test('(F) the container keeps a scrollbar gutter, a list does not', async () => {
+        const grid = await mountGrid()
+        expect(listOf(grid.target).style.cssText).toContain('scrollbar-gutter: stable')
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+
+        const plain = await mountWindow({ rows: cardKeys(5) })
+        expect(listOf(plain.target).style.cssText).not.toContain('scrollbar-gutter')
+    })
+
+    test('(F) the column count follows the root font size', async () => {
+        document.documentElement.style.fontSize = '20px'
+        // At 20 px per rem a tile is 70 px and a gap 10 px: 345 px hold four, not five.
+        const { target } = await mountGrid()
+        expect(gridRowEls(target)[0].children.length).toBe(4)
+    })
+
+    test('(F) a width that keeps the column count builds no new rows; one that changes it does', async () => {
+        const build = vi.fn((columns: number): readonly CharRow[] => gridRows(cardKeys(COUNT), columns))
+        const { target } = await mountGrid({ build })
+        const calls = build.mock.calls.length
+        geometry.setWidth(FIVE_COLUMNS + 20)
+        reportContainer(target)
+        flushSync()
+        geometry.setWidth(FIVE_COLUMNS - 20)
+        reportContainer(target)
+        flushSync()
+        expect(build.mock.calls.length).toBe(calls)
+        expect(gridRowEls(target)[0].children.length).toBe(5)
+
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+        expect(build.mock.calls.length).toBeGreaterThan(calls)
+        expect(gridRowEls(target)[0].children.length).toBe(3)
+    })
+
+    test('(F) a hidden container (width 0) keeps the columns it had', async () => {
+        const { target } = await mountGrid()
+        geometry.setWidth(0)
+        reportContainer(target)
+        flushSync()
+        expect(gridRowEls(target)[0].children.length).toBe(5)
+        expect(tileEls(target).length).toBeGreaterThan(0)
+    })
+})
+
+describe('CharacterWindow: grid column changes', () => {
+    test('(F) the rows are not re-created inside the observer delivery, only in the frame after it', async () => {
+        const { target } = await mountGrid()
+        geometry.writes.length = 0
+        const row = gridRowEls(target)[0]
+        geometry.setWidth(THREE_COLUMNS)
+        reportContainer(target)
+        // Still inside the frame of the delivery: nothing observed has changed size yet.
+        expect(gridRowEls(target)[0]).toBe(row)
+        expect(row.children.length).toBe(5)
+        expect(geometry.writes).toEqual([])
+
+        await settleFrame()
+        expect(gridRowEls(target)[0].children.length).toBe(3)
+    })
+
+    test('(F) the column count follows the rendered size of 1 rem, not the computed root font size', async () => {
+        // A WebView with a system font scale reports 13.6 px and still draws 1 rem at 16 px.
+        document.documentElement.style.fontSize = '13.6px'
+        const original = HTMLElement.prototype.getBoundingClientRect
+        HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+            return this.style.width === '1rem' ? ({ width: 16, height: 0, top: 0, left: 0, right: 16, bottom: 0, x: 0, y: 0 } as DOMRect) : original.call(this)
+        }
+        try {
+            // 345 px hold five 56 px tiles; the computed size would model six 47.6 px tiles.
+            const { target } = await mountGrid()
+            expect(gridRowEls(target)[0].children.length).toBe(5)
+
+            geometry.setWidth(THREE_COLUMNS)
+            await resizeContainer(target)
+            expect(gridRowEls(target)[0].children.length).toBe(3)
+        } finally {
+            HTMLElement.prototype.getBoundingClientRect = original
+        }
+    })
+
+    test('(F) a round trip of column counts returns to the same top card, and a scroll by the reader ends that', async () => {
+        const { target, api } = await mountGrid()
+        await geometry.scrollAndSettle(40 * GRID_ROW + 10)
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '200']), offset: 10 })
+
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+        geometry.setWidth(FIVE_COLUMNS)
+        await resizeContainer(target)
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '200']), offset: 10 })
+
+        // The reader scrolls: the next change anchors on what is on screen now.
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+        await geometry.scrollAndSettle(75 * GRID_ROW)
+        geometry.setWidth(FIVE_COLUMNS)
+        await resizeContainer(target)
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '225']), offset: 0 })
+    })
+
+    test('(F) a scroll by the reader that lands before its own frame is read ends the kept card too', async () => {
+        const { target, api } = await mountGrid()
+        await geometry.scrollAndSettle(40 * GRID_ROW + 10)
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+
+        // The size report registers the column frame first; the scroll event registers its read after it.
+        geometry.setWidth(FIVE_COLUMNS)
+        reportContainer(target)
+        geometry.scrollTo(75 * GRID_ROW)
+        await settleFrame()
+        await settleFrame()
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '225']), offset: 0 })
+    })
+
+    test('(F) a kept card that has left the list does not send the window to the top', async () => {
+        const keys = cardKeys(COUNT)
+        const { target, props, api } = await mountGrid()
+        await geometry.scrollAndSettle(40 * GRID_ROW + 10)
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+
+        props.rows = (columns: number): readonly CharRow[] => gridRows(keys.filter((key) => key !== '200'), columns)
+        flushSync()
+        geometry.writes.length = 0
+        geometry.setWidth(FIVE_COLUMNS)
+        await resizeContainer(target)
+        expect(geometry.writes.at(-1)).not.toBe(0)
+        expect(api.getAnchor()!.key).not.toBe(JSON.stringify(['g', '0']))
+    })
+
+    test('(F) fewer columns, taller content: the first tile on screen stays on screen, in the frame after the report', async () => {
+        const { target, api } = await mountGrid()
+        // Row 40 holds cards 200 to 204; the viewport top is 10 px into it.
+        await geometry.scrollAndSettle(40 * GRID_ROW + 10)
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '200']), offset: 10 })
+        geometry.writes.length = 0
+
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+
+        // Card 200 is now the last of the row 198..200 (row 66 of 100). The stub clamps a scroll
+        // position to the rendered total, so the target is reachable only because the new spacers
+        // were in the DOM when it was written.
+        expect(totalOf(target)).toBe(100 * GRID_ROW)
+        expect(geometry.writes.at(-1)).toBe(66 * GRID_ROW + 10)
+        expect(listOf(target).scrollTop).toBe(66 * GRID_ROW + 10)
+        expect(tileOf(target, '200')).not.toBeNull()
+        expect(tileOf(target, '198')).not.toBeNull()
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '198']), offset: 10 })
+    })
+
+    test('(F) more columns: the first tile on screen stays on screen', async () => {
+        const { target, api } = await mountGrid({ width: THREE_COLUMNS })
+        // Row 66 holds cards 198 to 200.
+        await geometry.scrollAndSettle(66 * GRID_ROW + 10)
+        geometry.setWidth(FIVE_COLUMNS)
+        await resizeContainer(target)
+        expect(totalOf(target)).toBe(60 * GRID_ROW)
+        expect(geometry.writes.at(-1)).toBe(39 * GRID_ROW + 10)
+        expect(tileOf(target, '198')).not.toBeNull()
+        expect(api.getAnchor()).toEqual({ key: JSON.stringify(['g', '195']), offset: 10 })
+    })
+
+    test('(F) the focused tile is the same card, and has focus, after the columns change', async () => {
+        const { target } = await mountGrid()
+        await geometry.scrollAndSettle(40 * GRID_ROW)
+        const before = tileOf(target, '201')!.querySelector('button')!
+        before.focus()
+        await settleMicrotasks()
+        expect(document.activeElement).toBe(before)
+
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+        await settleMicrotasks()
+
+        const after = tileOf(target, '201')!.querySelector('button')!
+        expect(after.isConnected).toBe(true)
+        expect(before.isConnected).toBe(false)
+        expect(document.activeElement).toBe(after)
+    })
+
+    test('(F) a focused tile far outside the window stays mounted across the change and keeps being pinned afterwards', async () => {
+        const { target } = await mountGrid()
+        const before = tileOf(target, '5')!.querySelector('button')!
+        before.focus()
+        await settleMicrotasks()
+        await geometry.scrollAndSettle(50 * GRID_ROW)
+        expect(tileOf(target, '5')).not.toBeNull()
+
+        // Chromium reports the loss of focus while the focused element is being removed; happy-dom does not.
+        const originalRemove = Element.prototype.remove
+        Element.prototype.remove = function (this: Element) {
+            const active = document.activeElement
+            if (active && this.contains(active)) {
+                active.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+            }
+            originalRemove.call(this)
+        }
+        try {
+            geometry.setWidth(THREE_COLUMNS)
+            await resizeContainer(target)
+            await settleMicrotasks()
+        } finally {
+            Element.prototype.remove = originalRemove
+        }
+
+        // Card 5 moved from the row starting at 5 to the row starting at 3: its element was re-created.
+        const after = tileOf(target, '5')?.querySelector('button')
+        expect(after).toBeTruthy()
+        expect(after).not.toBe(before)
+        expect(document.activeElement).toBe(after)
+
+        await geometry.scrollAndSettle(80 * GRID_ROW)
+        expect(tileOf(target, '5')).not.toBeNull()
+        expect(document.activeElement).toBe(tileOf(target, '5')!.querySelector('button'))
+    })
+
+    test('(F) a change while focus is elsewhere does not move focus', async () => {
+        const { target } = await mountGrid()
+        const other = document.createElement('button')
+        document.body.appendChild(other)
+        other.focus()
+        await settleMicrotasks()
+        geometry.setWidth(THREE_COLUMNS)
+        await resizeContainer(target)
+        await settleMicrotasks()
+        expect(document.activeElement).toBe(other)
+    })
+})
+
+//#endregion

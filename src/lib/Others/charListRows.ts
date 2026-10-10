@@ -43,6 +43,42 @@ export function listRows(cardKeys: readonly string[]): CharRow[] {
 }
 
 /**
+ * The Grid tab. A tile is `h-14 w-14` and the gap between tiles and rows is `gap-2` / `pb-2`,
+ * all in rem, so the column count follows the root font size (text zoom, a larger default
+ * font) and never a pixel constant. A row is a tile plus the padding below it; the pixel value
+ * is only the height of a row that has not been measured yet.
+ */
+export const GRID_TILE_REM = 3.5
+export const GRID_GAP_REM = 0.5
+export const GRID_ROW_FALLBACK_PX = 64
+/** `clientWidth` is rounded, so the columns are counted against a width one pixel short of it. */
+export const GRID_WIDTH_MARGIN_PX = 1
+
+/**
+ * How many tiles fit in a row of `contentWidthPx` when 1 rem is `remPx`. Never below 1: a
+ * container narrower than one tile still shows its tiles, one per row.
+ */
+export function gridColumns(contentWidthPx: number, remPx: number): number {
+    const tile = GRID_TILE_REM * remPx
+    const gap = GRID_GAP_REM * remPx
+    const columns = Math.floor((contentWidthPx - GRID_WIDTH_MARGIN_PX + gap) / (tile + gap))
+    return Number.isFinite(columns) ? Math.max(1, columns) : 1
+}
+
+export const gridRowKey = (firstCardKey: string): string => JSON.stringify(['g', firstCardKey])
+
+/** Rows of `columns` cards each; the last one holds the rest. A row is named by its first card. */
+export function gridRows(cardKeys: readonly string[], columns: number): CharRow[] {
+    const per = Math.max(1, Math.floor(columns))
+    const rows: CharRow[] = []
+    for (let from = 0; from < cardKeys.length; from += per) {
+        const cards = cardKeys.slice(from, from + per)
+        rows.push({ key: gridRowKey(cards[0]), cards })
+    }
+    return rows
+}
+
+/**
  * The layout of `rows` with each row at its measured height, else at `fallbackHeight`. A
  * measured height counts only when it is a positive finite number.
  */
@@ -73,6 +109,25 @@ export function scrollTopFor(layout: Layout, anchor: ScrollAnchor): number {
         return 0
     }
     return Math.min(layout.offsets[index] + Math.min(anchor.offset, layout.heights[index]), layout.total)
+}
+
+/** A scroll position that survives a change of columns: the first card of the row at the top and how far into the row. */
+export interface CardAnchor {
+    card: string
+    offset: number
+}
+
+/** The first card of the row holding content coordinate `y`; null for an empty list. */
+export function cardAnchorAt(layout: Layout, rowByKey: ReadonlyMap<string, CharRow>, y: number): CardAnchor | null {
+    const anchor = anchorAt(layout, y)
+    const card = anchor ? rowByKey.get(anchor.key)?.cards[0] : undefined
+    return anchor && card !== undefined ? { card, offset: anchor.offset } : null
+}
+
+/** The content coordinate of the row that now holds the anchor's card; the top when the card is gone. */
+export function scrollTopForCard(layout: Layout, rowByCard: ReadonlyMap<string, CharRow>, anchor: CardAnchor): number {
+    const row = rowByCard.get(anchor.card)
+    return row ? scrollTopFor(layout, { key: row.key, offset: anchor.offset }) : 0
 }
 
 /**

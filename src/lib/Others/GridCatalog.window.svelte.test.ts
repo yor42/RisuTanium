@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
 
 /**
- * `GridCatalog.svelte`: the tabs mount only the rows near their scroll viewport. With 200
+ * `GridCatalog.svelte`: the tabs mount only the rows or tiles near their scroll viewport. With 200
  * characters the List, Trash and Simple tabs mount a bounded window instead of every row, watch
  * no row with an `IntersectionObserver`, scroll as the one container under the header, and keep
- * their avatars and controls stable while they do.
+ * their avatars and controls stable while they do. The Grid tab does the same with 300 characters
+ * laid out in rows of tiles, and its rows follow the column count of its container.
  *
- * Fixture size: 200 characters in a happy-dom document that is 768 px high, so a tab that mounted
- * every row would mount 200. Counts for 1000 and 2000 characters live in the
- * `charlist-window-count` harness, not in this suite.
+ * Fixture size: 200 characters (300 for the Grid tab) in a happy-dom document that is 768 px high,
+ * so a tab that mounted every row would mount all of them. Counts for 500 to 2000 characters live
+ * in the `charlist-window-count` harness, not in this suite.
  *
  * Test labels: `(R)` is a reproducer: it fails on the commit before the windowed lists with an
  * assertion about the defect (every row mounted, an observer per row, a nested button, a header
@@ -17,9 +18,9 @@
  * that may pass before and after.
  *
  * MOCKED: the module set of `GridCatalog.pick.svelte.test.ts` (same directory), with `changeChar`
- * and `removeChar` bare spies, and a fake `IntersectionObserver` that reports every target visible
- * and counts the targets it was asked to watch (the Grid tab still uses one). Geometry is faked as
- * in `CharacterWindow.svelte.test.ts`. Nothing here writes to storage.
+ * and `removeChar` bare spies, and a fake `IntersectionObserver` that counts the targets it was
+ * asked to watch (no tab watches one). Geometry is faked as in `CharacterWindow.svelte.test.ts`:
+ * the container's width is a mutable value every element reports. Nothing here writes to storage.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -299,16 +300,64 @@ function installGeometry(el: HTMLElement): Geometry {
 
 const rowNames = (root: ParentNode): string[] => Array.from(root.querySelectorAll('h4')).map((h) => h.textContent?.trim() ?? '')
 
+/** Four tiles fit (a tile is 56 px and a gap 8 px at 16 px per rem). */
+const FOUR_COLUMNS = 312
+/** Three tiles fit. */
+const THREE_COLUMNS = 200
+const TILE_ROW = 64
+/** The most tiles a 768 px document can mount: its band of rows at four per row, with slack. */
+const MOST_TILES = 150
+
+let containerWidth = FOUR_COLUMNS
+let clientWidthDescriptor: PropertyDescriptor | undefined
+
+/** Reports a size change of the container to the window's observer, as the browser does. */
+class FakeResizeObserver {
+    static instances: FakeResizeObserver[] = []
+    readonly observed = new Set<Element>()
+    constructor(private readonly callback: ResizeObserverCallback) {
+        FakeResizeObserver.instances.push(this)
+    }
+    observe(el: Element) {
+        this.observed.add(el)
+    }
+    unobserve(el: Element) {
+        this.observed.delete(el)
+    }
+    disconnect() {
+        this.observed.clear()
+    }
+    static reportContainer(el: Element): void {
+        const owner = FakeResizeObserver.instances.find((instance) => instance.observed.has(el))
+        if (!owner) {
+            throw new Error('no observer watches the container')
+        }
+        owner.callback(
+            [{ target: el, borderBoxSize: [{ blockSize: 0, inlineSize: 0 }], contentRect: { height: 0 } } as unknown as ResizeObserverEntry],
+            owner as unknown as ResizeObserver,
+        )
+    }
+}
+
 beforeEach(() => {
     changeCharSpy.mockClear()
     removeCharSpy.mockClear()
     CountingIntersectionObserver.watched.length = 0
+    FakeResizeObserver.instances.length = 0
+    containerWidth = FOUR_COLUMNS
+    clientWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => containerWidth })
     vi.stubGlobal('IntersectionObserver', CountingIntersectionObserver)
     vi.stubGlobal('ResizeObserver', undefined)
 })
 
 afterEach(() => {
     vi.unstubAllGlobals()
+    if (clientWidthDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidthDescriptor)
+    } else {
+        delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
+    }
 })
 
 //#endregion
@@ -379,7 +428,8 @@ describe('GridCatalog tabs: a bounded window of rows', { timeout: 60_000 }, () =
         })
     })
 
-    test('(R) a Grid tile is the same element, and keeps focus, when its avatar style resolves', async () => {
+    // Passes before and after: the Grid tile was already a stable element; this keeps it so.
+    test('(G) a Grid tile is the same element, and keeps focus, when its avatar style resolves', async () => {
         DBState.db = buildDb(live(5))
         await withMounted(async (target) => {
             clickLayoutButton(target, 0)
@@ -395,12 +445,242 @@ describe('GridCatalog tabs: a bounded window of rows', { timeout: 60_000 }, () =
         })
     })
 
-    test('(G) the Grid tab keeps centring a partial last row', async () => {
+    // A class check, not a position proof: the centred partial row is checked on the device.
+    test('(F) every Grid row is its own flex row centred with overflow going right, so a partial last row is centred', async () => {
         DBState.db = buildDb(live(5))
         await withMounted((target) => {
             clickLayoutButton(target, 0)
-            const wrap = target.querySelector('.ico')!.closest('.flex-wrap')!
-            expect(wrap.classList.contains('justify-center')).toBe(true)
+            const rows = Array.from(target.querySelectorAll<HTMLElement>('[data-charlist-row]'))
+            expect(rows.map((row) => row.querySelectorAll('.ico').length)).toEqual([4, 1])
+            for (const row of rows) {
+                expect(row.classList.contains('flex')).toBe(true)
+                // Plain centring everywhere; `safe` only where the browser supports it (the generated
+                // rule for the variant sorts after `justify-center`, so it wins there).
+                expect(row.classList.contains('justify-center')).toBe(true)
+                expect(row.className).toContain('supports-[justify-content:safe_center]:[justify-content:safe_center]')
+            }
+        })
+    })
+})
+
+describe('GridCatalog Grid tab: a bounded window of tiles', { timeout: 60_000 }, () => {
+    const GRID_COUNT = 300
+    const tileNames = (root: ParentNode): string[] => Array.from(root.querySelectorAll('.ico')).map((el) => el.getAttribute('aria-label') ?? '')
+    const tileNamed = (root: ParentNode, name: string): HTMLButtonElement | null => root.querySelector<HTMLButtonElement>(`.ico[aria-label="${name}"]`)
+
+    test('(R) the Grid tab mounts a bounded number of tiles of 300 characters', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted((target) => {
+            clickLayoutButton(target, 0)
+            const tiles = target.querySelectorAll('.ico').length
+            expect(tiles).toBeGreaterThan(0)
+            expect(tiles).toBeLessThan(MOST_TILES)
+        })
+    })
+
+    test('(R) the Grid tab watches no tile with an observer', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            await settle()
+            expect(target.querySelectorAll('.ico').length).toBeGreaterThan(0)
+            expect(CountingIntersectionObserver.watched.length).toBe(0)
+        })
+    })
+
+    test('(R) the number of mounted tiles does not depend on the number of characters', async () => {
+        const counts: number[] = []
+        for (const count of [150, 300]) {
+            DBState.db = buildDb(live(count))
+            await withMounted((target) => {
+                clickLayoutButton(target, 0)
+                counts.push(target.querySelectorAll('.ico').length)
+            })
+        }
+        expect(counts[0]).toBeGreaterThan(0)
+        expect(counts[1]).toBe(counts[0])
+    })
+
+    test('(R) a tile outside the window requests no picture; tiles in it request their own', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            await settle()
+            await settle()
+            const tiles = Array.from(target.querySelectorAll<HTMLElement>('.ico'))
+            expect(tiles.length).toBeLessThan(MOST_TILES)
+            expect(tiles.every((tile) => (tile.getAttribute('style') ?? '').includes(`loc=assets/${tile.getAttribute('aria-label')!.replace('Character ', '')}.png`))).toBe(true)
+            expect(target.innerHTML).not.toContain('loc=assets/250.png')
+        })
+    })
+
+    test('(F) a tile far down is mounted by scrolling to it, and a click on it opens that character', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        const endGrid = vi.fn()
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const geometry = installGeometry(scrollerOf(target))
+            await settleFrame()
+            expect(tileNamed(target, 'Character 250')).toBeNull()
+
+            // Tile 250 is in row 62 of 75, 3968 px down.
+            await geometry.scrollAndSettle(62 * TILE_ROW - 100)
+            expect(tileNamed(target, 'Character 250')).not.toBeNull()
+            expect(tileNamed(target, 'Character 0')).toBeNull()
+            expect(target.querySelectorAll('.ico').length).toBeLessThan(MOST_TILES)
+
+            tileNamed(target, 'Character 250')!.click()
+            expect(changeCharSpy.mock.calls).toEqual([[250]])
+            expect(endGrid).toHaveBeenCalledTimes(1)
+        }, endGrid)
+    })
+
+    test('(F) each tile says where it is among all tiles', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const geometry = installGeometry(scrollerOf(target))
+            await settleFrame()
+            const first = tileNamed(target, 'Character 0')!.closest('[role="listitem"]')!
+            expect(first.getAttribute('aria-setsize')).toBe(String(GRID_COUNT))
+            expect(first.getAttribute('aria-posinset')).toBe('1')
+
+            await geometry.scrollAndSettle(62 * TILE_ROW - 100)
+            const far = tileNamed(target, 'Character 250')!.closest('[role="listitem"]')!
+            expect(far.getAttribute('aria-posinset')).toBe('251')
+        })
+    })
+
+    test('(F) the last row holds the tiles left over', async () => {
+        DBState.db = buildDb(live(23))
+        await withMounted((target) => {
+            clickLayoutButton(target, 0)
+            const rows = Array.from(target.querySelectorAll<HTMLElement>('[data-charlist-row]'))
+            expect(rows.map((row) => row.querySelectorAll('.ico').length)).toEqual([4, 4, 4, 4, 4, 3])
+        })
+    })
+
+    test('(F) no characters give no tile, and one character gives one', async () => {
+        DBState.db = buildDb([])
+        await withMounted((target) => {
+            clickLayoutButton(target, 0)
+            expect(target.querySelectorAll('.ico').length).toBe(0)
+            expect(target.querySelectorAll('[data-charlist-row]').length).toBe(0)
+        })
+        DBState.db = buildDb(live(1))
+        await withMounted((target) => {
+            clickLayoutButton(target, 0)
+            expect(tileNames(target)).toEqual(['Character 0'])
+            expect(target.querySelectorAll('[data-charlist-row]').length).toBe(1)
+        })
+    })
+
+    test('(F) a new search scrolls to the top and shows only matches within a bounded window', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const geometry = installGeometry(scrollerOf(target))
+            await settleFrame()
+            await geometry.scrollAndSettle(62 * TILE_ROW - 100)
+            expect(tileNamed(target, 'Character 0')).toBeNull()
+
+            const input = target.querySelector('input')!
+            input.value = 'Character 1'
+            input.dispatchEvent(new Event('input'))
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+            try {
+                flushSync()
+                vi.advanceTimersByTime(150)
+            } finally {
+                vi.useRealTimers()
+            }
+            await settleFrame()
+
+            expect(geometry.writes.at(-1)).toBe(0)
+            expect(tileNamed(target, 'Character 1')).not.toBeNull()
+            expect(target.querySelectorAll('.ico').length).toBeLessThan(MOST_TILES)
+        })
+    })
+
+    test('(F) coming back to the Grid tab starts at the top', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const geometry = installGeometry(scrollerOf(target))
+            await settleFrame()
+            await geometry.scrollAndSettle(62 * TILE_ROW - 100)
+            expect(tileNamed(target, 'Character 0')).toBeNull()
+
+            clickLayoutButton(target, 1)
+            await settle()
+            clickLayoutButton(target, 0)
+            await settle()
+            expect(tileNamed(target, 'Character 0')).not.toBeNull()
+        })
+    })
+
+    test('(F) fewer columns keep the first tile on screen, mounted in the frame after the size report', async () => {
+        vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const scroller = scrollerOf(target)
+            const geometry = installGeometry(scroller)
+            await settleFrame()
+            // Row 40 holds characters 160 to 163; the viewport top is 10 px into it.
+            await geometry.scrollAndSettle(40 * TILE_ROW + 10)
+            geometry.writes.length = 0
+
+            containerWidth = THREE_COLUMNS
+            FakeResizeObserver.reportContainer(scroller)
+            await settleFrame()
+
+            // Character 160 now ends the row 159 to 161, row 53 of 100.
+            expect(geometry.writes.at(-1)).toBe(53 * TILE_ROW + 10)
+            expect(Number(scroller.getAttribute('data-charlist-total'))).toBe(100 * TILE_ROW)
+            expect(tileNamed(target, 'Character 160')).not.toBeNull()
+            expect(tileNamed(target, 'Character 0')).toBeNull()
+            expect(Array.from(target.querySelectorAll('[data-charlist-row]')).every((row) => row.querySelectorAll('.ico').length <= 3)).toBe(true)
+        })
+    })
+
+    test('(F) a focused tile keeps focus when the column count changes', async () => {
+        vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const scroller = scrollerOf(target)
+            installGeometry(scroller)
+            await settleFrame()
+            const before = tileNamed(target, 'Character 5')!
+            before.focus()
+            await settle()
+            expect(document.activeElement).toBe(before)
+
+            containerWidth = THREE_COLUMNS
+            FakeResizeObserver.reportContainer(scroller)
+            await settleFrame()
+
+            const after = tileNamed(target, 'Character 5')!
+            expect(after).not.toBe(before)
+            expect(document.activeElement).toBe(after)
+        })
+    })
+
+    // A guard in intent (scrolling reads names and images of the characters it mounts, and opens none
+    // of them); it needs the Grid's own scroller, so it fails before the windowed Grid.
+    test('(F) scrolling across the whole Grid opens no character and removes none', async () => {
+        DBState.db = buildDb(live(GRID_COUNT))
+        await withMounted(async (target) => {
+            clickLayoutButton(target, 0)
+            const geometry = installGeometry(scrollerOf(target))
+            await settleFrame()
+            for (const top of [1000, 2000, 4000, 0]) {
+                await geometry.scrollAndSettle(top)
+            }
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            expect(removeCharSpy).not.toHaveBeenCalled()
+            expect(DBState.db.characters.length).toBe(GRID_COUNT)
         })
     })
 })

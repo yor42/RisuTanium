@@ -6,9 +6,11 @@
  *
  * Test labels: every test here is a feature test. The module does not exist before the windowed
  * lists, so on the earlier base each one fails at the import and proves nothing about a defect.
+ * The Grid tab helpers (`gridColumns`, `gridRows`, the card anchors) are feature tests too: before
+ * them the functions are missing and each call throws.
  */
 import { describe, expect, test } from 'vitest'
-import { anchorAt, buildRowLayout, heightDeltaAbove, listRowKey, listRows, scrollTopFor } from './charListRows'
+import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, gridRowKey, gridRows, heightDeltaAbove, listRowKey, listRows, scrollTopFor, scrollTopForCard } from './charListRows'
 
 const keys = (count: number): string[] => Array.from({ length: count }, (_, i) => String(i))
 
@@ -69,6 +71,87 @@ describe('scroll anchors', () => {
     test('an anchor whose row is gone, or whose offset is past the row, lands at the top or the row end', () => {
         expect(scrollTopFor(layout, { key: listRowKey('99'), offset: 10 })).toBe(0)
         expect(scrollTopFor(layout, { key: rows[0].key, offset: 500 })).toBe(50)
+    })
+})
+
+describe('gridColumns', () => {
+    // At 16 px per rem a tile is 56 px and a gap 8 px: n tiles need 64 n - 8 px, and one pixel is held back.
+    test('(F) counts the tiles that fit, one pixel short of the reported width', () => {
+        expect(gridColumns(624, 16)).toBe(9)
+        expect(gridColumns(569, 16)).toBe(9)
+        expect(gridColumns(568, 16)).toBe(8)
+        expect(gridColumns(121, 16)).toBe(2)
+        expect(gridColumns(120, 16)).toBe(1)
+    })
+
+    test('(F) a container narrower than one tile, or with no width, still has one column', () => {
+        expect(gridColumns(63, 16)).toBe(1)
+        expect(gridColumns(55, 16)).toBe(1)
+        expect(gridColumns(0, 16)).toBe(1)
+        expect(gridColumns(Number.NaN, 16)).toBe(1)
+    })
+
+    test('(F) the tile and the gap scale with the root font size', () => {
+        // 20 px per rem: a tile is 70 px, a gap 10 px, five tiles need 390 px.
+        expect(gridColumns(391, 20)).toBe(5)
+        expect(gridColumns(390, 20)).toBe(4)
+        expect(gridColumns(624, 20)).toBe(7)
+        expect(gridColumns(624, 20)).toBeLessThan(gridColumns(624, 16))
+    })
+
+    test('(F) a fractional width counts against its own value', () => {
+        expect(gridColumns(568.5, 16)).toBe(8)
+        expect(gridColumns(569.5, 16)).toBe(9)
+    })
+})
+
+describe('gridRows', () => {
+    test('(F) fills each row to the column count and leaves the rest in the last one', () => {
+        const rows = gridRows(keys(7), 3)
+        expect(rows.map((row) => row.cards)).toEqual([['0', '1', '2'], ['3', '4', '5'], ['6']])
+    })
+
+    test('(F) a row is named by its first card, in a form no spacer key of the window can take', () => {
+        const rows = gridRows(keys(7), 3)
+        expect(rows.map((row) => row.key)).toEqual([gridRowKey('0'), gridRowKey('3'), gridRowKey('6')])
+        expect(new Set(rows.map((row) => row.key)).size).toBe(3)
+        for (const row of rows) {
+            expect(Array.isArray(JSON.parse(row.key))).toBe(true)
+            expect(row.key === 'top' || row.key === 'bottom' || row.key.startsWith('gap-after:')).toBe(false)
+        }
+        expect(gridRowKey('0')).not.toBe(listRowKey('0'))
+    })
+
+    test('(F) no cards give no rows, and a column count below one gives one card per row', () => {
+        expect(gridRows([], 4)).toEqual([])
+        expect(gridRows(keys(2), 0).map((row) => row.cards)).toEqual([['0'], ['1']])
+    })
+})
+
+describe('card anchors across a change of columns', () => {
+    const wide = gridRows(keys(20), 5)
+    const wideLayout = buildRowLayout(wide, new Map(), 64)
+    const wideByKey = new Map(wide.map((row) => [row.key, row] as const))
+
+    test('(F) names the first card of the row at the top and how far into the row', () => {
+        expect(cardAnchorAt(wideLayout, wideByKey, 2 * 64 + 10)).toEqual({ card: '10', offset: 10 })
+        expect(cardAnchorAt(buildRowLayout([], new Map(), 64), new Map(), 10)).toBeNull()
+    })
+
+    test('(F) the anchor lands in the row that holds its card after the columns change', () => {
+        const anchor = cardAnchorAt(wideLayout, wideByKey, 2 * 64 + 10)!
+        const narrow = gridRows(keys(20), 3)
+        const narrowLayout = buildRowLayout(narrow, new Map(), 64)
+        const narrowByCard = new Map(narrow.flatMap((row) => row.cards.map((card) => [card, row] as const)))
+        // Card 10 sits in the row 9..11, the fourth row.
+        expect(scrollTopForCard(narrowLayout, narrowByCard, anchor)).toBe(3 * 64 + 10)
+    })
+
+    test('(F) a card that is no longer listed lands at the top', () => {
+        const narrow = gridRows(keys(5), 3)
+        const narrowLayout = buildRowLayout(narrow, new Map(), 64)
+        const narrowByCard = new Map(narrow.flatMap((row) => row.cards.map((card) => [card, row] as const)))
+        expect(scrollTopForCard(narrowLayout, narrowByCard, { card: '10', offset: 10 })).toBe(0)
     })
 })
 
