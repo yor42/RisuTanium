@@ -15,7 +15,9 @@ import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -71,6 +73,9 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    // Must precede super.onCreate: it switches the starting theme (Theme.risuai.Starting) to
+    // Theme.risuai, which the activity's own theme handling has to see.
+    installSplashScreen()
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     // Below API 30 the platform reports the keyboard in the insets only under adjust-resize.
@@ -109,6 +114,8 @@ class MainActivity : TauriActivity() {
     val previous = liveWebView
     liveWebView = webView
     backWebView = webView
+    // Until the page paints, the WebView shows the loading screen's colour, so no white or black frame appears.
+    webView.setBackgroundColor(ContextCompat.getColor(this, R.color.loading_background))
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
     webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(

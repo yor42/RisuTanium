@@ -2,5 +2,15 @@
     <!-- Base application theme. -->
     <style name="Theme.risuai" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
+        <item name="android:windowBackground">@color/loading_background</item>
+    </style>
+
+    <!-- Launch theme of MainActivity; the splash hands over to Theme.risuai after the first frame. -->
+    <style name="Theme.risuai.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.risuai</item>
+        <item name="android:windowLightStatusBar">@bool/splash_light_bars</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">@bool/splash_light_bars</item>
     </style>
 </resources>

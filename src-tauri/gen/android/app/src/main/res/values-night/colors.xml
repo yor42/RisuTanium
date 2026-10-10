@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch splash background in night mode: the default theme background, as MainActivity's default bar colour. -->
+    <color name="splash_background">#FF282A36</color>
+</resources>

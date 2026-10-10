@@ -2,5 +2,6 @@
     <!-- Base application theme. -->
     <style name="Theme.risuai" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
+        <item name="android:windowBackground">@color/loading_background</item>
     </style>
 </resources>
