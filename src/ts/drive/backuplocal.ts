@@ -1,6 +1,7 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
 import { remove } from "@tauri-apps/plugin-fs";
 import type { ExportByteWriter } from "../exportWriters";
+import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
@@ -354,7 +355,7 @@ async function writeLocalBackup(session: ExportSession){
     }
 
     const writer = new LocalWriter()
-    const r = await writer.init()
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()))
     if(!r){
         alertError('Failed')
         return
@@ -568,7 +569,7 @@ async function writePartialLocalBackup(session: ExportSession){
     }
 
     const writer = new LocalWriter()
-    const r = await writer.init()
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true))
     if(!r){
         alertError('Failed')
         return

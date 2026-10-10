@@ -3188,11 +3188,13 @@ export class LocalWriter {
      * 
      * @param {string} [name='Binary'] - The name of the file.
      * @param {string[]} [ext=['bin']] - The file extensions.
+     * @param {string} [suggestedFileName] - A complete file name (with extension) offered as the download name on web and as the save dialog's default path on Tauri. Without it, the web name is `name.ext[0]` and the dialog suggests none.
      * @returns {Promise<boolean>} - A promise that resolves to a boolean indicating success.
      */
-    async init(name = 'Binary', ext = ['bin']): Promise<boolean> {
+    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string): Promise<boolean> {
         if (isTauri) {
             const filePath = await save({
+                ...(suggestedFileName ? { defaultPath: suggestedFileName } : {}),
                 filters: [{
                     name: name,
                     extensions: ext
@@ -3204,7 +3206,7 @@ export class LocalWriter {
             this.writer = new TauriWriter(filePath)
             return true
         }
-        this.writer = await openWebExportWriter(name + '.' + ext[0])
+        this.writer = await openWebExportWriter(suggestedFileName ?? name + '.' + ext[0])
         return true
     }
 
