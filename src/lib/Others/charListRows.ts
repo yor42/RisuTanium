@@ -1,4 +1,5 @@
 import { computeLayout, locate, type Layout, type LayoutItem } from '../SideBars/railLayout'
+import { folderSectionClass, type GridEntry } from './charListOrder'
 
 /**
  * The geometry of a windowed character list as rows of cards, computed from keys and
@@ -14,6 +15,10 @@ export interface CharRow {
     key: string
     /** Card keys in display order; the first one names the row for focus and aria. */
     cards: readonly string[]
+    /** Classes the owner adds to the row's wrapper; set on the rows of an open folder's section. */
+    className?: string
+    /** The folder whose section the row belongs to; unset on a row of the flow. */
+    folderId?: string
 }
 
 /**
@@ -75,6 +80,46 @@ export function gridRows(cardKeys: readonly string[], columns: number): CharRow[
         const cards = cardKeys.slice(from, from + per)
         rows.push({ key: gridRowKey(cards[0]), cards })
     }
+    return rows
+}
+
+/**
+ * The Grid tab's rows for entries in display order. Tiles flow in rows of `columns`; an open
+ * folder is a section instead: the flow before it ends its row (partial if need be), the folder
+ * tile and the members that follow it fill rows of their own that carry the folder's id and
+ * tint, and the flow resumes in a new row. A member is a character entry naming the folder.
+ * Every row, partial or not, is a row of cards named by its first card, so card keys that are
+ * unique make row keys unique.
+ */
+export function gridSectionRows(entries: readonly GridEntry[], columns: number): CharRow[] {
+    const rows: CharRow[] = []
+    let flow: string[] = []
+    let at = 0
+    while (at < entries.length) {
+        const entry = entries[at]
+        if (entry.kind !== 'folder' || !entry.open) {
+            flow.push(entry.key)
+            at++
+            continue
+        }
+        rows.push(...gridRows(flow, columns))
+        flow = []
+        let end = at + 1
+        while (end < entries.length) {
+            const next = entries[end]
+            if (next.kind !== 'char' || next.folderId !== entry.id) {
+                break
+            }
+            end++
+        }
+        const section = gridRows(entries.slice(at, end).map((member) => member.key), columns)
+        section.forEach((row, i) => {
+            const position = section.length === 1 ? 'only' : i === 0 ? 'first' : i === section.length - 1 ? 'last' : 'middle'
+            rows.push({ ...row, folderId: entry.id, className: folderSectionClass(entry.color, position) })
+        })
+        at = end
+    }
+    rows.push(...gridRows(flow, columns))
     return rows
 }
 

@@ -10,7 +10,8 @@
  * them the functions are missing and each call throws.
  */
 import { describe, expect, test } from 'vitest'
-import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, gridRowKey, gridRows, heightDeltaAbove, listRowKey, listRows, scrollTopFor, scrollTopForCard } from './charListRows'
+import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, gridRowKey, gridRows, gridSectionRows, heightDeltaAbove, listRowKey, listRows, scrollTopFor, scrollTopForCard } from './charListRows'
+import type { FolderTile, GridEntry } from './charListOrder'
 
 const keys = (count: number): string[] => Array.from({ length: count }, (_, i) => String(i))
 
@@ -177,3 +178,94 @@ describe('heightDeltaAbove', () => {
         expect(heightDeltaAbove(layout, 0, [[rows[0].key, 400]])).toBe(0)
     })
 })
+
+//#region gridSectionRows
+
+const charEntry = (key: string, folderId?: string): GridEntry => ({ kind: 'char', key, index: 0, ref: null, ...(folderId === undefined ? {} : { folderId, folderName: folderId }) })
+const folderEntry = (id: string, open: boolean, color = ''): FolderTile => ({
+    kind: 'folder',
+    key: `folder-${id}`,
+    id,
+    name: id,
+    color,
+    imgFile: '',
+    count: 0,
+    open,
+    ref: { kind: 'folder', id, occurrence: 0 },
+})
+
+const cardsOf = (rows: ReturnType<typeof gridSectionRows>): string[][] => rows.map((row) => [...row.cards])
+
+describe('gridSectionRows', () => {
+    test('entries without an open folder are rows of the flow, as gridRows makes them', () => {
+        const entries = [charEntry('a'), folderEntry('f', false), charEntry('b'), charEntry('c'), charEntry('d')]
+        const rows = gridSectionRows(entries, 3)
+        expect(rows).toEqual(gridRows(entries.map((entry) => entry.key), 3))
+        expect(rows.every((row) => row.folderId === undefined && row.className === undefined)).toBe(true)
+    })
+
+    test('an open folder ends the flow row before it, even a partial one, and the flow resumes in a new row', () => {
+        const entries = [charEntry('a'), charEntry('b'), folderEntry('f', true), charEntry('m1', 'f'), charEntry('m2', 'f'), charEntry('x'), charEntry('y'), charEntry('z'), charEntry('w')]
+        const rows = gridSectionRows(entries, 3)
+        expect(cardsOf(rows)).toEqual([['a', 'b'], ['folder-f', 'm1', 'm2'], ['x', 'y', 'z'], ['w']])
+        expect(rows.map((row) => row.folderId)).toEqual([undefined, 'f', undefined, undefined])
+        expect(rows[0].className).toBeUndefined()
+        expect(rows[2].className).toBeUndefined()
+    })
+
+    test('a section of several rows has a first row rounded on top and a last row rounded at the bottom', () => {
+        const members = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].map((key) => charEntry(key, 'f'))
+        const rows = gridSectionRows([folderEntry('f', true), ...members], 3)
+        expect(cardsOf(rows)).toEqual([['folder-f', 'm1', 'm2'], ['m3', 'm4', 'm5'], ['m6']])
+        expect(rows.every((row) => row.folderId === 'f')).toBe(true)
+        expect(rows[0].className).toContain('rounded-t-lg')
+        expect(rows[0].className).not.toContain('rounded-b-lg')
+        expect(rows[1].className).not.toContain('rounded')
+        expect(rows[2].className).toContain('rounded-b-lg')
+        expect(rows[2].className).not.toContain('rounded-t-lg')
+    })
+
+    test('a one-row section is rounded at both ends', () => {
+        const rows = gridSectionRows([charEntry('a'), folderEntry('f', true), charEntry('m1', 'f')], 4)
+        expect(cardsOf(rows)).toEqual([['a'], ['folder-f', 'm1']])
+        expect(rows[1].className).toContain('rounded-t-lg')
+        expect(rows[1].className).toContain('rounded-b-lg')
+    })
+
+    test('two open folders in a row make two sections with no flow row between them', () => {
+        const entries = [folderEntry('f', true, 'red'), charEntry('m1', 'f'), folderEntry('g', true), charEntry('n1', 'g'), charEntry('n2', 'g')]
+        const rows = gridSectionRows(entries, 4)
+        expect(cardsOf(rows)).toEqual([['folder-f', 'm1'], ['folder-g', 'n1', 'n2']])
+        expect(rows.map((row) => row.folderId)).toEqual(['f', 'g'])
+        expect(rows[0].className).toContain('bg-red-700/20')
+        expect(rows[1].className).not.toContain('bg-red-700/20')
+    })
+
+    test('an open folder first and an open folder last leave no empty row', () => {
+        const first = gridSectionRows([folderEntry('f', true), charEntry('m1', 'f'), charEntry('a')], 2)
+        expect(cardsOf(first)).toEqual([['folder-f', 'm1'], ['a']])
+        const last = gridSectionRows([charEntry('a'), folderEntry('f', true), charEntry('m1', 'f'), charEntry('m2', 'f')], 2)
+        expect(cardsOf(last)).toEqual([['a'], ['folder-f', 'm1'], ['m2']])
+        expect(gridSectionRows([], 3)).toEqual([])
+    })
+
+    test('a member of another folder does not extend the section, and a closed folder stays a flow tile', () => {
+        const entries = [folderEntry('f', true), charEntry('m1', 'f'), charEntry('stray', 'other'), folderEntry('g', false), charEntry('a')]
+        const rows = gridSectionRows(entries, 4)
+        expect(cardsOf(rows)).toEqual([['folder-f', 'm1'], ['stray', 'folder-g', 'a']])
+        expect(rows.map((row) => row.folderId)).toEqual(['f', undefined])
+    })
+
+    test('row keys are unique and are the first card, whatever the column count', () => {
+        const entries = [charEntry('a'), charEntry('b'), folderEntry('f', true), ...Array.from({ length: 9 }, (_, i) => charEntry(`m${i}`, 'f')), folderEntry('g', true), charEntry('n', 'g'), charEntry('c'), folderEntry('h', false)]
+        for (const columns of [1, 2, 3, 4, 5, 7, 0, 2.9]) {
+            const rows = gridSectionRows(entries, columns)
+            expect(new Set(rows.map((row) => row.key)).size).toBe(rows.length)
+            expect(rows.every((row) => row.key === gridRowKey(row.cards[0]))).toBe(true)
+            expect(rows.flatMap((row) => row.cards)).toEqual(entries.map((entry) => entry.key))
+            expect(rows.every((row) => row.cards.length <= Math.max(1, Math.floor(columns)))).toBe(true)
+        }
+    })
+})
+
+//#endregion

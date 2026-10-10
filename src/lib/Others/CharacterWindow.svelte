@@ -426,7 +426,7 @@
             {#if row}
                 {@const position = (layout.indexByKey.get(row.key) ?? 0) + 1}
                 {#if variant === "grid"}
-                    <div role="presentation" class={rowClass} data-charlist-row use:measure={row.key}>
+                    <div role="presentation" class={row.className ? `${rowClass} ${row.className}` : rowClass} data-charlist-row data-charlist-folder={row.folderId} use:measure={row.key}>
                         {#each row.cards as cardKey (cardKey)}
                             <div
                                 role="listitem"

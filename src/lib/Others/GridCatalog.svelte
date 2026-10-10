@@ -1,6 +1,6 @@
 <script lang="ts">
     import { tick, untrack } from "svelte";
-    import { changeChar, removeChar } from "../../ts/characters";
+    import { changeChar, getCharImage, removeChar } from "../../ts/characters";
     import { DBState } from 'src/ts/stores.svelte';
     import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
@@ -13,7 +13,7 @@
     import CharacterDescription from "./CharacterDescription.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
-    import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridRows, listRows } from "./charListRows";
+    import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
     import { buildGridEntries, folderTileClass } from "./charListOrder";
     import { loadOpenFolders, saveOpenFolders } from "../SideBars/railMemory";
     import { clickedButton, clickedLink, selectedInside } from "src/ts/gui/descriptionMarkdown";
@@ -74,10 +74,30 @@
         searching: found.searching,
     }))
     const entryByKey = $derived(new Map(entries.map((entry) => [entry.key, entry])))
-    const gridKeys = $derived(entries.map((entry) => entry.key))
-    // The Grid tab builds its rows from the column count its container reports.
-    const gridRowsFor = (columns: number) => gridRows(gridKeys, columns)
+    // The Grid tab builds its rows from the column count its container reports. An open folder is a
+    // section of rows of its own.
+    const gridRowsFor = (columns: number) => gridSectionRows(entries, columns)
 
+    // A folder tile's picture lookup, kept per instance: `entries` is rebuilt on every toggle and the
+    // tile's await block re-runs with it, so a fresh lookup would blank every picture for a moment.
+    // The key carries the hide-all-images setting, which the lookup reads, so a flip is a new lookup;
+    // a lookup that fails is dropped so the next render asks again.
+    const pictureLookups = new Map<string, Promise<string>>()
+    function folderPicture(imgFile: string): Promise<string> {
+        const key = `${DBState.db.hideAllImages ? 'hidden' : 'shown'}|${imgFile}`
+        let lookup = pictureLookups.get(key)
+        if (lookup === undefined) {
+            const started = getCharImage(imgFile, 'thumbcss')
+            lookup = started
+            pictureLookups.set(key, started)
+            started.catch(() => {
+                if (pictureLookups.get(key) === started) {
+                    pictureLookups.delete(key)
+                }
+            })
+        }
+        return lookup
+    }
     // Picking an entry opens the character and leaves the screen, as the
     // simple list does.
     function pick(index: number) {
@@ -85,8 +105,9 @@
         endGrid()
     }
 
-    // A toggle re-chunks the rows, which can re-create the tile that holds focus. The focused tile is
-    // named before the change; if focus was lost by the change, it goes back to that tile.
+    // A toggle re-chunks the rows, and an open folder's tile moves into the row of its section, so the
+    // element that holds focus is re-created. The focused tile is named before the change; if focus was
+    // lost by the change, it goes back to that tile.
     async function toggleFolder(id: string) {
         const held = document.activeElement?.closest('[data-charlist-key]') ?? null
         const heldKey = held?.getAttribute('data-charlist-key') ?? null
@@ -173,6 +194,17 @@
     {/if}
 {/snippet}
 
+<!-- What a folder tile shows where there is no picture: its name when the setting asks for it, else the icon. -->
+{#snippet folderFace(name: string, open: boolean)}
+    {#if DBState.db.showFolderName}
+        <span class="truncate font-bold text-sm px-1">{name}</span>
+    {:else if open}
+        <FolderOpenIcon />
+    {:else}
+        <FolderIcon />
+    {/if}
+{/snippet}
+
 {#snippet gridCard(cardKey: string)}
     {@const entry = entryByKey.get(cardKey)}
     {#if entry?.kind === 'folder'}
@@ -185,13 +217,20 @@
                 onclick={() => { void toggleFolder(entry.id) }}
             >
                 {#if entry.imgFile}
-                    <CharListAvatar src={entry.imgFile} class="absolute inset-0" />
-                {:else if DBState.db.showFolderName}
-                    <span class="truncate font-bold text-sm px-1">{entry.name}</span>
-                {:else if entry.open}
-                    <FolderOpenIcon />
+                    <!-- A picture that is missing, fails to load or is hidden leaves the face, as in the rail. -->
+                    {#await folderPicture(entry.imgFile)}
+                        <span class="absolute inset-0" aria-hidden="true"></span>
+                    {:then pictureStyle}
+                        {#if pictureStyle && !pictureStyle.includes('url("")')}
+                            <span class="absolute inset-0" aria-hidden="true" style={pictureStyle}></span>
+                        {:else}
+                            {@render folderFace(entry.name, entry.open)}
+                        {/if}
+                    {:catch}
+                        {@render folderFace(entry.name, entry.open)}
+                    {/await}
                 {:else}
-                    <FolderIcon />
+                    {@render folderFace(entry.name, entry.open)}
                 {/if}
             </button>
         </div>

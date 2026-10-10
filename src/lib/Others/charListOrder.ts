@@ -185,3 +185,43 @@ export function folderTileClass(color: string): string {
             return 'bg-darkbg/50'
     }
 }
+
+export type SectionPosition = 'first' | 'middle' | 'last' | 'only'
+
+/**
+ * The classes of one row of an open folder's section: the folder's tint on every row, rounded
+ * ends and an edge line on the first and last. Nothing here adds width (no side border, no side
+ * padding), because a full row has no slack for it. The strings are literal so the stylesheet
+ * generator sees every class.
+ */
+export function folderSectionClass(color: string, position: SectionPosition): string {
+    let tint: string
+    switch (color) {
+        case 'red':
+            tint = 'bg-red-700/20'
+            break
+        case 'yellow':
+            tint = 'bg-yellow-700/20'
+            break
+        case 'green':
+            tint = 'bg-green-700/20'
+            break
+        case 'blue':
+            tint = 'bg-blue-700/20'
+            break
+        case 'indigo':
+            tint = 'bg-indigo-700/20'
+            break
+        case 'purple':
+            tint = 'bg-purple-700/20'
+            break
+        case 'pink':
+            tint = 'bg-pink-700/20'
+            break
+        default:
+            tint = 'bg-selected/20'
+    }
+    const top = position === 'first' || position === 'only' ? 'rounded-t-lg border-t border-selected pt-2' : ''
+    const bottom = position === 'last' || position === 'only' ? 'rounded-b-lg border-b border-selected' : ''
+    return [tint, top, bottom].filter((part) => part !== '').join(' ')
+}
