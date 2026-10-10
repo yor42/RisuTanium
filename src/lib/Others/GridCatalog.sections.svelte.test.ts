@@ -504,6 +504,37 @@ describe('Grid tab: focus across a toggle that re-parents the folder tile', { ti
         })
     })
 
+    test('(R) the focus restored after a toggle does not scroll the tile into view', async () => {
+        DBState.db = buildDb(lettered(), ['A', 'B', makeFolder('f1', 'F1', ['C', 'D']), 'E', 'F'] as OrderFixture)
+        await withMounted(async (target) => {
+            const closed = folderTile(target, 'F1')!
+            closed.focus()
+            await settle()
+
+            const originalFocus = HTMLElement.prototype.focus
+            const calls: Array<{ element: HTMLElement, options: FocusOptions | undefined }> = []
+            HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
+                calls.push({ element: this, options })
+                originalFocus.call(this, options)
+            }
+            const restore = emulateFocusoutOnRemove()
+            try {
+                closed.click()
+                await settle()
+                const opened = folderTile(target, 'F1')!
+                expect(document.activeElement).toBe(opened)
+                const refocus = calls.filter((call) => call.element === opened)
+                expect(refocus.length).toBeGreaterThan(0)
+                for (const call of refocus) {
+                    expect(call.options?.preventScroll).toBe(true)
+                }
+            } finally {
+                restore()
+                HTMLElement.prototype.focus = originalFocus
+            }
+        })
+    })
+
     test('(G) a toggle while focus is elsewhere does not move focus', async () => {
         DBState.db = buildDb(lettered(), ['A', 'B', makeFolder('f1', 'F1', ['C', 'D']), 'E', 'F'] as OrderFixture)
         await withMounted(async (target) => {
@@ -563,15 +594,20 @@ describe('Grid tab: a folder tile whose picture does not load', { timeout: 60_00
         })
     })
 
-    test('(G) a picture that loads is shown instead of the icon or the name', async () => {
+    test('(R) a picture that loads still shows the folder icon over it, or the name when the setting asks for it', async () => {
         withPicture()
-        DBState.db.showFolderName = true
         await withMounted(async (target) => {
             await settleFrame()
             const tile = folderTile(target, 'F1')!
             expect(tile.querySelector('[style*="data:mock-image;loc=assets/folder.png"]')).not.toBeNull()
-            expect(tile.querySelector('svg')).toBeNull()
+            expect(tile.querySelector('svg')).not.toBeNull()
             expect(tile.textContent?.trim()).toBe('')
+
+            DBState.db.showFolderName = true
+            await settle()
+            expect(tile.querySelector('[style*="data:mock-image;loc=assets/folder.png"]')).not.toBeNull()
+            expect(tile.querySelector('svg')).toBeNull()
+            expect(tile.textContent?.trim()).toBe('F1')
             expect(tile.getAttribute('aria-label')).toBe('F1')
         })
     })

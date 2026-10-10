@@ -127,7 +127,7 @@
             return
         }
         const card = Array.from(list.querySelectorAll('[data-charlist-key]')).find((el) => el.getAttribute('data-charlist-key') === heldKey)
-        card?.querySelector('button')?.focus()
+        card?.querySelector('button')?.focus({ preventScroll: true })
     }
 
     function toggleExpanded(id: string) {
@@ -194,14 +194,14 @@
     {/if}
 {/snippet}
 
-<!-- What a folder tile shows where there is no picture: its name when the setting asks for it, else the icon. -->
+<!-- What a folder tile always shows, over its picture when it has one: its name when the setting asks for it, else the icon. -->
 {#snippet folderFace(name: string, open: boolean)}
     {#if DBState.db.showFolderName}
-        <span class="truncate font-bold text-sm px-1">{name}</span>
+        <span class="relative truncate font-bold text-sm px-1">{name}</span>
     {:else if open}
-        <FolderOpenIcon />
+        <FolderOpenIcon class="relative" />
     {:else}
-        <FolderIcon />
+        <FolderIcon class="relative" />
     {/if}
 {/snippet}
 
@@ -217,21 +217,18 @@
                 onclick={() => { void toggleFolder(entry.id) }}
             >
                 {#if entry.imgFile}
-                    <!-- A picture that is missing, fails to load or is hidden leaves the face, as in the rail. -->
+                    <!-- The picture is a layer beneath the face; a picture that is missing, fails to load or is hidden leaves the face alone, as in the rail. -->
                     {#await folderPicture(entry.imgFile)}
                         <span class="absolute inset-0" aria-hidden="true"></span>
                     {:then pictureStyle}
                         {#if pictureStyle && !pictureStyle.includes('url("")')}
                             <span class="absolute inset-0" aria-hidden="true" style={pictureStyle}></span>
-                        {:else}
-                            {@render folderFace(entry.name, entry.open)}
                         {/if}
                     {:catch}
-                        {@render folderFace(entry.name, entry.open)}
+                        <span class="absolute inset-0" aria-hidden="true"></span>
                     {/await}
-                {:else}
-                    {@render folderFace(entry.name, entry.open)}
                 {/if}
+                {@render folderFace(entry.name, entry.open)}
             </button>
         </div>
     {:else if entry}
