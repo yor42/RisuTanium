@@ -1,7 +1,8 @@
 <script lang="ts">
+    import { tick, untrack } from "svelte";
     import { changeChar, removeChar } from "../../ts/characters";
     import { DBState } from 'src/ts/stores.svelte';
-    import { ArrowLeft, User, Users, TrashIcon } from "@lucide/svelte";
+    import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
@@ -13,6 +14,8 @@
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
     import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridRows, listRows } from "./charListRows";
+    import { buildGridEntries, folderTileClass } from "./charListOrder";
+    import { loadOpenFolders, saveOpenFolders } from "../SideBars/railMemory";
     import { clickedButton, clickedLink, selectedInside } from "src/ts/gui/descriptionMarkdown";
     import { SvelteSet } from "svelte/reactivity";
     import { createCharacterSearch } from "src/ts/gui/characterSearch.svelte";
@@ -40,7 +43,38 @@
     // slot it is at now, in the same derivation as the key list.
     const indexByKey = $derived(new Map(found.live.map((match) => [match.key, match.index])))
     const listRowsNow = $derived(listRows(found.live.map((match) => match.key)))
-    const gridKeys = $derived(found.live.map((match) => match.key))
+
+    // Open folders are shared with the rail and remembered on this device (railMemory), never in the
+    // database. The save prunes against every folder id in the order, so a folder with no visible
+    // member keeps its state. Only the array reference is read untracked: the loop reads the entries,
+    // so the save also re-runs on an in-place edit of the order and rewrites the same set.
+    const folderIdsInOrder = (): Set<string> => {
+        const ids = new Set<string>()
+        for (const entry of untrack(() => DBState.db.characterOrder) ?? []) {
+            if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
+                ids.add(entry.id)
+            }
+        }
+        return ids
+    }
+    let openFolders: string[] = $state(loadOpenFolders(folderIdsInOrder()))
+    $effect(() => {
+        const ids = [...openFolders]
+        saveOpenFolders(ids, folderIdsInOrder())
+    })
+    const openFolderIds = $derived(new Set(openFolders))
+
+    // The Grid tab's tiles, built once per change: the live characters in the saved order with their
+    // folders. Reading only; the order is the rail's and is never written or repaired from here.
+    const entries = $derived(buildGridEntries({
+        live: found.live,
+        order: DBState.db.characterOrder,
+        openFolderIds,
+        sort: 'order',
+        searching: found.searching,
+    }))
+    const entryByKey = $derived(new Map(entries.map((entry) => [entry.key, entry])))
+    const gridKeys = $derived(entries.map((entry) => entry.key))
     // The Grid tab builds its rows from the column count its container reports.
     const gridRowsFor = (columns: number) => gridRows(gridKeys, columns)
 
@@ -49,6 +83,30 @@
     function pick(index: number) {
         changeChar(index)
         endGrid()
+    }
+
+    // A toggle re-chunks the rows, which can re-create the tile that holds focus. The focused tile is
+    // named before the change; if focus was lost by the change, it goes back to that tile.
+    async function toggleFolder(id: string) {
+        const held = document.activeElement?.closest('[data-charlist-key]') ?? null
+        const heldKey = held?.getAttribute('data-charlist-key') ?? null
+        const list = held?.closest('[role="list"]') ?? null
+        const at = openFolders.indexOf(id)
+        if (at === -1) {
+            openFolders.push(id)
+        } else {
+            openFolders.splice(at, 1)
+        }
+        if (heldKey === null || list === null) {
+            return
+        }
+        await tick()
+        const active = document.activeElement
+        if (active && active !== document.body && active.isConnected) {
+            return
+        }
+        const card = Array.from(list.querySelectorAll('[data-charlist-key]')).find((el) => el.getAttribute('data-charlist-key') === heldKey)
+        card?.querySelector('button')?.focus()
     }
 
     function toggleExpanded(id: string) {
@@ -116,26 +174,57 @@
 {/snippet}
 
 {#snippet gridCard(cardKey: string)}
-    {@const index = indexByKey.get(cardKey) ?? -1}
-    {@const char = DBState.db.characters[index]}
-    <!-- Defence in depth: a position past the end of a shrinking list draws no tile instead of throwing. -->
-    {#if char}
+    {@const entry = entryByKey.get(cardKey)}
+    {#if entry?.kind === 'folder'}
+        <!-- The tile is a native button; its picture is decorative and the folder's name is the button's. -->
         <div class="flex items-center text-textcolor">
-            <CharListAvatar
-                src={char.image}
-                fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
-                label={char.name || language.settingsPage.unnamed}
-                onclick={() => pick(index)}
+            <button
+                class="relative overflow-hidden shrink-0 flex justify-center items-center rounded-md h-14 w-14 min-h-14 shadow-lg border border-selected cursor-pointer hover:border-textcolor2 transition-colors duration-150 {folderTileClass(entry.color)}"
+                aria-expanded={entry.open}
+                aria-label={entry.name || language.sidebarUi.defaultFolderName}
+                onclick={() => { void toggleFolder(entry.id) }}
             >
-                {#if !char.image}
-                    {#if char.type === 'group'}
-                        <Users />
-                    {:else}
-                        <User/>
-                    {/if}
+                {#if entry.imgFile}
+                    <CharListAvatar src={entry.imgFile} class="absolute inset-0" />
+                {:else if DBState.db.showFolderName}
+                    <span class="truncate font-bold text-sm px-1">{entry.name}</span>
+                {:else if entry.open}
+                    <FolderOpenIcon />
+                {:else}
+                    <FolderIcon />
                 {/if}
-            </CharListAvatar>
+            </button>
         </div>
+    {:else if entry}
+        {@const index = entry.index}
+        {@const char = DBState.db.characters[index]}
+        <!-- A search result names the folder of each member. -->
+        {@const badge = found.searching && entry.folderName !== undefined ? (entry.folderName || language.sidebarUi.defaultFolderName) : undefined}
+        <!-- Defence in depth: a position past the end of a shrinking list draws no tile instead of throwing. -->
+        {#if char}
+            <div class="flex items-center text-textcolor" class:relative={badge !== undefined}>
+                <CharListAvatar
+                    src={char.image}
+                    fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
+                    label={char.name || language.settingsPage.unnamed}
+                    onclick={() => pick(index)}
+                >
+                    {#if !char.image}
+                        {#if char.type === 'group'}
+                            <Users />
+                        {:else}
+                            <User/>
+                        {/if}
+                    {/if}
+                </CharListAvatar>
+                {#if badge !== undefined}
+                    <span class="absolute bottom-0 inset-x-0 flex items-center gap-0.5 px-0.5 rounded-b-md bg-darkbg/80 text-textcolor2 text-[10px] leading-tight pointer-events-none">
+                        <FolderIcon size={10} class="shrink-0" />
+                        <span class="truncate">{badge}</span>
+                    </span>
+                {/if}
+            </div>
+        {/if}
     {/if}
 {/snippet}
 
