@@ -22,7 +22,13 @@ vi.mock('src/ts/characters', () => ({ getCharImage: getCharImageMock }))
 // Only `DBState.db.hideAllImages` is read, as part of the cache key.
 vi.mock('src/ts/stores.svelte', () => ({ DBState: { db: { hideAllImages: false } } }))
 
-import CharListAvatar, { CHAR_LIST_AVATAR_CACHE_LIMIT, CHAR_LIST_AVATAR_CACHE_MAX_LENGTH, resetCharListAvatarCacheForTest } from './CharListAvatar.svelte'
+import CharListAvatar, {
+    CHAR_LIST_AVATAR_CACHE_MAX_ENTRIES,
+    CHAR_LIST_AVATAR_CACHE_MAX_LENGTH,
+    CHAR_LIST_AVATAR_CACHE_MAX_TOTAL,
+    charListAvatarCacheTotalForTest,
+    resetCharListAvatarCacheForTest,
+} from './CharListAvatar.svelte'
 
 interface Deferred {
     loc: string
@@ -184,25 +190,98 @@ describe('CharListAvatar', () => {
         expect(pending.map((p) => p.loc)).toEqual(['assets/a.png', 'assets/b.png'])
     })
 
-    test('the cache is bounded: the oldest location is looked up again once the limit is passed', async () => {
-        for (let i = 0; i <= CHAR_LIST_AVATAR_CACHE_LIMIT; i++) {
-            const target = mountAvatar({ src: `assets/${i}.png` })
-            pending[pending.length - 1].resolve(`background: url("data:${i}");`)
-            await settle()
-            expect(styleOf(target.querySelector('.ico')!)).toContain(`data:${i}`)
-            await unmount(mounted!.app as never)
-            mounted!.target.remove()
-            mounted = null
-        }
-        getCharImageMock.mockClear()
-        mountAvatar({ src: `assets/${CHAR_LIST_AVATAR_CACHE_LIMIT}.png` })
-        expect(getCharImageMock).not.toHaveBeenCalled()
+    async function releaseMounted(): Promise<void> {
         await unmount(mounted!.app as never)
         mounted!.target.remove()
         mounted = null
-        mountAvatar({ src: 'assets/0.png' })
+    }
+
+    // Resolves one location through a tile and releases the tile, as a windowed list does while scrolling.
+    async function resolveAndRelease(src: string, style: string): Promise<void> {
+        mountAvatar({ src })
+        pending[pending.length - 1].resolve(style)
         await settle()
-        expect(getCharImageMock).toHaveBeenCalledTimes(1)
+        await releaseMounted()
+    }
+
+    // A style of exactly `length` UTF-16 units that is unique to `i`.
+    function styleOfLength(i: number, length: number): string {
+        const head = `background: url("data:image/webp;base64,${i}-`
+        const tail = '");'
+        return head + 'A'.repeat(length - head.length - tail.length) + tail
+    }
+
+    async function lookupsOnRemount(src: string): Promise<number> {
+        getCharImageMock.mockClear()
+        mountAvatar({ src })
+        await settle()
+        const calls = getCharImageMock.mock.calls.length
+        await releaseMounted()
+        return calls
+    }
+
+    test('a scroll pass over 625 thumbnail-sized styles keeps every one: the first is not looked up again', async () => {
+        for (let i = 0; i < 625; i++) {
+            await resolveAndRelease(`assets/${i}.png`, styleOfLength(i, 13 * 1024))
+        }
+        expect(await lookupsOnRemount('assets/0.png')).toBe(0)
+        expect(await lookupsOnRemount('assets/624.png')).toBe(0)
+    })
+
+    test('the size budget evicts the least recently used style, and a style hit since survives', async () => {
+        const perEntry = CHAR_LIST_AVATAR_CACHE_MAX_LENGTH
+        const fitting = CHAR_LIST_AVATAR_CACHE_MAX_TOTAL / perEntry
+        for (let i = 0; i < fitting; i++) {
+            await resolveAndRelease(`assets/${i}.png`, styleOfLength(i, perEntry))
+        }
+        expect(charListAvatarCacheTotalForTest()).toBe(CHAR_LIST_AVATAR_CACHE_MAX_TOTAL)
+        expect(await lookupsOnRemount('assets/0.png')).toBe(0)
+
+        await resolveAndRelease(`assets/${fitting}.png`, styleOfLength(fitting, perEntry))
+        expect(charListAvatarCacheTotalForTest()).toBeLessThanOrEqual(CHAR_LIST_AVATAR_CACHE_MAX_TOTAL)
+        expect(await lookupsOnRemount('assets/0.png')).toBe(0)
+        expect(await lookupsOnRemount(`assets/${fitting}.png`)).toBe(0)
+        expect(await lookupsOnRemount('assets/1.png')).toBe(1)
+    })
+
+    test('the entry cap evicts the least recently used style when styles are tiny', async () => {
+        for (let i = 0; i <= CHAR_LIST_AVATAR_CACHE_MAX_ENTRIES; i++) {
+            await resolveAndRelease(`assets/${i}.png`, `background: url("d:${i}");`)
+        }
+        expect(await lookupsOnRemount(`assets/${CHAR_LIST_AVATAR_CACHE_MAX_ENTRIES}.png`)).toBe(0)
+        expect(await lookupsOnRemount('assets/1.png')).toBe(0)
+        expect(await lookupsOnRemount('assets/0.png')).toBe(1)
+    })
+
+    test('the running total follows a key stored again with another length, and returns to zero on reset', async () => {
+        const first = mountAvatar({ src: 'assets/a.png' })
+        const firstApp = mounted!.app
+        const second = document.createElement('div')
+        document.body.appendChild(second)
+        const secondApp = mount(CharListAvatar, { target: second, props: { src: 'assets/a.png' } as never }) as Record<string, unknown>
+        flushSync()
+        expect(pending.map((p) => p.loc)).toEqual(['assets/a.png', 'assets/a.png'])
+
+        const long = styleOfLength(1, 5000)
+        const short = styleOfLength(2, 300)
+        pending[0].resolve(long)
+        await settle()
+        expect(charListAvatarCacheTotalForTest()).toBe(long.length)
+        pending[1].resolve(short)
+        await settle()
+        expect(charListAvatarCacheTotalForTest()).toBe(short.length)
+        expect(styleOf(first.querySelector('.ico')!)).toContain('1-')
+
+        await unmount(secondApp as never)
+        second.remove()
+        await unmount(firstApp as never)
+        first.remove()
+        mounted = null
+
+        expect(await lookupsOnRemount('assets/a.png')).toBe(0)
+        resetCharListAvatarCacheForTest()
+        expect(charListAvatarCacheTotalForTest()).toBe(0)
+        expect(await lookupsOnRemount('assets/a.png')).toBe(1)
     })
 
     test('a failed lookup is not remembered: a tile created again asks again', async () => {
