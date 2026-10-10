@@ -6,7 +6,8 @@
     import { createSimpleCharacter, DBState, selectedCharID, ReloadChatPointer } from 'src/ts/stores.svelte';
     import { chatFoldedStateMessageIndex } from 'src/ts/globalApi.svelte';
     import { get } from 'svelte/store';
-    
+    import { isActiveStreamReply } from 'src/ts/process/activeStreams';
+
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
         if (charId < 0) return null;
@@ -108,7 +109,12 @@
             const reloadPointer = reloadPointerMap[i] ?? 0;
             const activeStreamingMessage = i === activeStreamingIndex && message.role === 'char';
             const hashMessageData = activeStreamingMessage ? '' : message.data;
-            let hashd = hashMessageData + (message.chatId ?? '') + i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString();
+            // Read here, where the effect already re-runs on the chat's `isStreaming`
+            // writes, which happen in the same step as the registry changes. The
+            // note is part of the hash, so removing the flag without touching the
+            // text still re-mounts the message.
+            const interrupted = message.interrupted === true && !isActiveStreamReply(message.chatId);
+            let hashd = hashMessageData + (message.chatId ?? '') + i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '');
             const currentHash = hashCode(hashd);
             currentHashes.add(currentHash);
             if(!hashes.has(currentHash)){
@@ -136,6 +142,7 @@
                         isOptimizedStreamingMessage: activeStreamingMessage,
                         streamingOptimizationMode: performanceMode,
                         rawStreamingText: message.data,
+                        interrupted,
                     },
 
                 })

@@ -71,6 +71,8 @@
         isOptimizedStreamingMessage?: boolean;
         streamingOptimizationMode?: StreamingDisplayOptimizationMode;
         rawStreamingText?: string;
+        /** The reply was left unfinished when the page last ran; shows a note under it. */
+        interrupted?: boolean;
     }
 
     let {
@@ -96,6 +98,7 @@
         isOptimizedStreamingMessage = false,
         streamingOptimizationMode = 'off',
         rawStreamingText = message,
+        interrupted = false,
     }: Props = $props();
 
     let msgDisplay = $state('')
@@ -309,7 +312,10 @@
         // the user is looking at.
         const newText = editBuffer
         message = newText
-        DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].data = newText
+        const edited = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
+        edited.data = newText
+        // Committing is a look at the text, changed or not.
+        delete edited.interrupted
         // The draft is committed -- cleared only on a deliberate exit.
         if (frozenMessageIdentity) {
             draftContentOrphanGate.delete(frozenMessageIdentity)
@@ -429,7 +435,9 @@
         }
 
         message = e.detail.newData
-        DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].data = e.detail.newData
+        const edited = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
+        edited.data = e.detail.newData
+        delete edited.interrupted
         displaya(e.detail.newData)
     }
 
@@ -1059,6 +1067,9 @@
                     {rawStreamingText} />
             {/key}
         </span>
+        {#if interrupted && !isOptimizedStreamingMessage}
+            <div class="text-xs text-textcolor2 italic interrupted-note" role="note">{language.messageInterrupted}</div>
+        {/if}
         {#if idx >= 0 && !editMode && !editTranslationMode && !isOptimizedStreamingMessage && partialEditEnabled && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
             <PartialEditController
                 messageData={message}

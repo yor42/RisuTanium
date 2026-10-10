@@ -6,6 +6,7 @@ import { loadData } from "./ts/bootstrap";
 import { initHotkey } from "./ts/hotkey";
 import { preLoadCheck } from "./preload";
 import { startKeepAliveService } from "./ts/android/keepAliveService";
+import { startSaveOnHide } from "./ts/process/saveOnHide";
 import { mount } from "svelte";
 
 window.addEventListener('vite:preloadError', (event) => {
@@ -20,6 +21,7 @@ let app = mount(App, {
 loadData()
 initHotkey()
 startKeepAliveService()
+startSaveOnHide()
 document.getElementById('preloading').remove()
 
 export default app;

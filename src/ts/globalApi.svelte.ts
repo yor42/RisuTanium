@@ -25,6 +25,7 @@ import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from
 import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
 import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
+import { createSaveScheduler } from "./storage/saveScheduler";
 import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
@@ -829,6 +830,17 @@ let saveMarkCount = 0
 let snapshotMarkCount = 0
 let lastIterationCommitted = false
 let saveLoopPending: (() => boolean) | null = null
+let requestSaveNowImpl: (() => void) | null = null
+
+/**
+ * Asks the save loop to save what is marked without waiting out the debounce.
+ * Does nothing in a read-only page and before the loop's real scheduler is
+ * live; marks made then are saved by the ordinary debounce. A loop parked or
+ * holding keeps its state: the request only counts as a mark.
+ */
+export function requestSaveNow(): void {
+    requestSaveNowImpl?.()
+}
 
 const nextCommitCallbacks = new Set<() => void>()
 
@@ -975,7 +987,7 @@ export interface BootSaveSequenceOptions {
  * `encoder.init` (a seconds-long window at 1000 characters, ledger row 61) is
  * still running, then create and swap in the real scheduler
  * (`saveTimeoutExecute`) and flush once if a mark arrived during that window.
- * `saveTimeout` (the `let` `saveTimeoutExecute` reads) and
+ * The save scheduler (which `saveTimeoutExecute` calls) and
  * `saveTimeoutExecute` itself are both declared in saveDb() before this
  * function is even called, so there is no TDZ window here to worry about.
  * What the pending/real split actually does: it makes sure a mark made while
@@ -1566,24 +1578,30 @@ export async function saveDb() {
     let encoder = new RisuSaveEncoder()
 
     const debounceTime = 500; // 500 milliseconds
-    let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    let debouncePending = false
-    saveLoopPending = () => changed || debouncePending || dirtySinceLastSave
+    const scheduler = createSaveScheduler({
+        debounceMs: debounceTime,
+        sleep,
+        hooks: {
+            onMark: (markDirty) => {
+                saveMarkCount += 1
+                if (markDirty) {
+                    dirtySinceLastSave = true
+                }
+            },
+            onDue: () => {
+                changed = true
+            },
+            onRequestNow: () => {
+                saveMarkCount += 1
+                dirtySinceLastSave = true
+                changed = true
+            },
+        },
+    })
+    saveLoopPending = () => changed || scheduler.debouncePending() || dirtySinceLastSave
 
     function saveTimeoutExecute(markDirty = true) {
-        saveMarkCount += 1
-        if (markDirty) {
-            dirtySinceLastSave = true
-        }
-        if (saveTimeout) {
-            clearTimeout(saveTimeout);
-        }
-        debouncePending = true
-        saveTimeout = setTimeout(() => {
-            debouncePending = false
-            changed = true;
-        }, debounceTime);
+        scheduler.schedule(markDirty)
     }
 
     // Character-save marks (CHORE-01) are installed
@@ -1615,7 +1633,10 @@ export async function saveDb() {
             init: () => encoder.init(getDatabase(), {
                 compression: false
             }),
-            createRealScheduler: () => saveTimeoutExecute
+            createRealScheduler: () => {
+                requestSaveNowImpl = () => scheduler.requestNow()
+                return saveTimeoutExecute
+            }
         })
     } catch (error) {
         if (!(error instanceof SaveParkError)) {
@@ -1900,7 +1921,7 @@ export async function saveDb() {
         alertToast(language.savingStoppedInvalidDataMessage(what))
         await parkSaving('invalid-data', what)
     }
-    await sleep(1000)
+    await scheduler.wait(1000)
     while (true) {
         // Releases any orphan draft-content registration whose
         // cap has elapsed. Runs every iteration of this loop -- roughly every
@@ -2018,7 +2039,7 @@ export async function saveDb() {
                 saveMarkCount += 1
                 changed = true
             } else {
-                await sleep(500)
+                await scheduler.wait(500)
                 continue
             }
         }
@@ -2217,7 +2238,7 @@ export async function saveDb() {
                         break
                 }
             }
-            await sleep(500)
+            await scheduler.wait(500)
         } catch (error) {
             // `primaryCommitted` separates two independent concerns: (1) whether
             // it's safe to retry — restore the tracker, mark `changed`, and loop

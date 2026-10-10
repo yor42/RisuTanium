@@ -1963,6 +1963,7 @@ export const languageGerman = {
     "keepAliveGenerating": "Antwort wird generiert…",
     "keepAliveWorking": "Wird bearbeitet…",
     "keepAliveStop": "Stopp",
+    "messageInterrupted": "Unterbrochen – die Antwort ist möglicherweise unvollständig",
     "nanoGPTLoadingAccountInfo": "Kontodaten werden geladen…",
     "nanoGPTCreditBalance": "Guthaben:",
     "nanoGPTSubscription": "Abonnement",

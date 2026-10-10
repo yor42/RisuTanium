@@ -1961,6 +1961,7 @@ export const languageChinese = {
     "keepAliveGenerating": "正在生成回复…",
     "keepAliveWorking": "正在处理…",
     "keepAliveStop": "停止",
+    "messageInterrupted": "已中断 — 回复可能不完整",
     "nanoGPTLoadingAccountInfo": "正在加载账户信息…",
     "nanoGPTCreditBalance": "余额:",
     "nanoGPTSubscription": "订阅",

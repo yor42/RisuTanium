@@ -431,7 +431,10 @@ function stepCandidates(origin: Origin, chat: Chat, direction: 'back' | 'forward
         return false
     }
     writeAt(origin, (ctx) => {
-        ctx.chat.message[ctx.chat.message.length - 1].data = candidate
+        const shown = ctx.chat.message[ctx.chat.message.length - 1]
+        shown.data = candidate
+        // A candidate the person stepped to has been looked at.
+        delete shown.interrupted
     })
     return true
 }

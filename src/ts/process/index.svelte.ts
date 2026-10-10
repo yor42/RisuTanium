@@ -42,6 +42,7 @@ import { isColdChat } from "./coldstorageData";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { beginWork, createSendSubject, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
+import { addActiveStream } from "./activeStreams";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -2099,11 +2100,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             }
             else{
                 trackReply(streamCtx.chat, continuedIndex)
+                streamCtx.chat.message[continuedIndex].interrupted = true
                 prefix = streamCtx.chat.message[continuedIndex].data
                 ttsBefore = prefix
             }
         }
         else{
+            // `interrupted` stays on the reply until the stream ends in this
+            // page, so a saved copy of a page that died mid-stream carries it.
             streamCtx.chat.message.push({
                 role: 'char',
                 data: "",
@@ -2112,9 +2116,19 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 generationInfo,
                 promptInfo,
                 chatId: generationId,
+                interrupted: true,
             })
             trackReply(streamCtx.chat, streamCtx.chat.message.length - 1)
         }
+        // Added in the same synchronous block as the `isStreaming` writes: the
+        // chat view re-runs on those writes and reads this registry then.
+        // A stream that started with its reply already gone set no flag and
+        // must not clear one at its end.
+        const streamedReplyId = replyGone ? undefined : replyId
+        const streamsIntoReply = streamedReplyId !== undefined
+        const removeActiveStream = streamedReplyId !== undefined
+            ? addActiveStream({ chaId: origin.chaId, memberChaId: origin.memberChaId, replyChatId: streamedReplyId })
+            : () => {}
         const performanceMode: StreamingDisplayOptimizationMode = DBState.db.streamingDisplayOptimizationMode ?? 'off'
         streamCtx.chat.isStreaming = true
         streamCtx.chat.activeStreamingDisplayOptimizationMode = performanceMode
@@ -2277,6 +2291,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 }
             }
             finally {
+                removeActiveStream()
+                const endedReply = streamsIntoReply ? resolveReply() : null
+                if(endedReply){
+                    delete endedReply.ctx.chat.message[endedReply.index].interrupted
+                }
                 const streamEndCtx = subject.resolve()
                 if(streamEndCtx){
                     streamEndCtx.chat.isStreaming = false

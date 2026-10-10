@@ -1913,6 +1913,8 @@ export interface Message{
     otherUser?:boolean
     disabled?:false|true|'allBefore'
     isComment?:boolean
+    /** Set while a reply streams: this page never saw the stream end. Removed when it does. */
+    interrupted?:true
 }
 
 export interface MessageGenerationInfo{

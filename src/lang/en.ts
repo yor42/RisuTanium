@@ -2096,6 +2096,7 @@ export const languageEnglish = {
     keepAliveGenerating: "Generating a reply…",
     keepAliveWorking: "Working…",
     keepAliveStop: "Stop",
+    messageInterrupted: "Interrupted — the reply may be incomplete",
     // NanoGPT Dashboard
     nanoGPTLoadingAccountInfo: "Loading account info…",
     nanoGPTCreditBalance: "Credit Balance:",
