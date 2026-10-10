@@ -9044,3 +9044,70 @@ Commit the completed and independently verified workflow/configuration/documenta
 **Gate dispositions and verification (provenance from the saved reports in session scratch `keepalive\`; not maintainer decisions; details in the Roadmap):**
 - Stages 1 and 2: Gate 2 `adversarial-reviewer`: `[APPROVE]` (`gate2-s12.md`). Stage 3: Gate 2 `adversarial-reviewer`: `[APPROVE]` (`gate2-s3.md`), after the Stage 3 device pass. Stage 3b: Gate 1 `adversarial-reviewer`: `[APPROVE WITH CHANGES]` of `[EDITORIAL]` class (`gate1-3b.md`); Gate 2 `adversarial-reviewer`: `[APPROVE]` with two editorial notes (`gate2-3b.md`). Stage 4 (persistence, `opus-reviewer`): Gate 2 `[REJECT]`, test-only remediation (`gate2-4.md`: findings F1 to F9; production code accepted as written); the remediation was made (`stage4-report.md`, "Remediation r1") and the same reviewer instance reviewed it again: `[ACCEPT with notes]`, gate token `[APPROVE]` (`gate2-4-r1.md`, saved by the Orchestrator from the reviewer's hand-back because its append to `gate2-4.md` did not land): F1 to F6 and F8 resolved with the mutants re-run, F4 with an optional wording note; F7 (the device and browser check) open until the device pass, which later ran (`device4\report.md`); F9 a named limitation; N1 information only (a surviving mutant that cannot affect the note); the six locale lines checked.
 - Device passes: Stage 3 (`device\report.md`), Stage 3b (`device3b\report.md`), Stage 4 (`device4\report.md`, two rounds); the Orchestrator's spot-checks are in the last two files.
+
+---
+
+### MC-262 — Main Campaign, 2026-10-10: character list rework decisions (sort control with drag under "My order", folders and drag in the grid only, search over name, description, tags and creator, mobile trash view, every-word search, "Trash (n)" row, header count of the open tab)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-10 (the maintainer's "then move on to the character list rework" started the item, per the Orchestrator's saved record; round 2 followed the Stage 1 plan)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the Orchestrator's saved record of the answers, `charlist\answers.md` (round 1 items 1 to 4, round 2 items 5 to 7, and the defaults taken without asking; option labels and the option text as the Orchestrator recorded them). The full question texts are not in the sources given. TODO(evidence): the original question texts. The evidence the questions rested on: `charlist\survey.md` (an investigator report) as corrected by `charlist\verify.md` (`doc-verifier`; verdicts CONFIRMED on items 1, 2, 5, 6 and 7, PARTLY on items 3, 4 and 9, and omissions A to E).
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-256` 2 (the queue item and the maintainer's words: a faster and improved search algorithm, drag-to-rearrange, folder management in grid view), `MC-263` (execution and commits), `MC-249` to `MC-251` (the rail's folders and drag; the survey found that only the sidebar rail uses `characterOrder` today, `charlist\verify.md` verdict 2, and that the upstream folder shape is equal, verdict 5); the Roadmap bullet "Character list rework" and its section.
+
+**What was decided (answers quoted exactly by label; option text as recorded in `answers.md`):**
+1. **Order (round 1): "Sort control, drag in My order (Recommended)".** A sort selector with My order (the sidebar's `characterOrder`, with folders), Recent and Name; drag only under My order. Alternatives: "Always My order", "Keep current orders, add drag". Not yet built (the Orchestrator's staging puts it in Stages 3 and 4).
+2. **Tabs with folders and drag (round 1): "Grid only (Recommended)".** Folders and drag in the grid; simple, list and trash keep flat rows; all tabs get windowing and the faster search. Alternatives: "Grid and simple", "Grid, simple and list".
+3. **Search fields (round 1): "Name + description + tags/creator when available (Recommended)".** Name and the stub description (the English section, at most 500 characters) for every character; tags and creator for loaded characters only; archived characters are never unpacked to search. Alternatives: "Name only, just faster", "Everything, unpack archived". Built in Stage 1a.
+4. **Mobile trash (round 1): "Hide + add a trash view" (not the option marked Recommended).** The mobile list hides trashed characters and mobile gets a way to open the trash. Alternatives: "Hide them (Recommended)", "Keep as is". Built in Stage 1b.
+5. **Multi-word search (round 2): "Every word, any field (Recommended)".** All words must match, in any order, across name, description, tags and creator. Alternatives: "Exact phrase", "Every word, name only".
+6. **Mobile trash entry (round 2): "\"Trash (n)\" row at top (Recommended)".** Hidden when the trash is empty; opens in place with a back row; restore, permanent delete and Empty trash. Alternatives: "Trash row, restore only", "Icon in the header".
+7. **Header count (round 2): "Show the open tab's count (Recommended)".** Alternative: "Keep as is".
+
+**Defaults taken without asking (NOT asked of the maintainer; the answers record says "revisit if the maintainer objects"):** a search across folders gives flat results with a folder badge; folders open inline in the grid like the rail; grid folder management at parity with the rail; touch drag starts on a long press (the rail's 500 ms); the trash tab is not draggable; clearing the search applies instantly while typing waits 150 ms (round 2 default). Whether the maintainer accepted these is not recorded in the sources given.
+
+**Not decided:** the Stage 2 to 4 designs beyond the answers above (windowing, the grid on `characterOrder`, folder tiles, drag and folder management); they have no plan or gate yet except the Stage 2 plan now being drafted (not part of this entry).
+
+---
+
+### MC-263 — Main Campaign, 2026-10-10: character list rework execution (Stage 1a and 1b commit-and-push authorizations; the phone check of the trash view moves to Stage 2; the Orchestrator's "Trash (n)" count choice); commits `62d55ab6` and `6833d0ac`
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label) and one Orchestrator choice, labelled as such
+- **Date:** 2026-10-10 (commit times from `git log`, +0900: `62d55ab6` 10:56, `6833d0ac` 11:05; the time of each answer is not recorded in the sources given)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the exact `AskUserQuestion` results relayed in the Orchestrator's records brief of 2026-10-10 (question text in quotation marks is the brief's wording, with ellipses as the brief wrote them; the option label is the answer); `git show --stat 62d55ab6 6833d0ac`; the commit messages `charlist\commit-1a.txt` and `charlist\commit-1b.txt`. The full question texts are not in the sources given. TODO(evidence): the original question texts and the alternatives offered.
+- **Reasoning:** the description of the 1b answer carried the reason (the phone check moves to Stage 2); no other reasoning is recorded.
+- **Alternatives rejected:** not recorded in the sources given.
+- **Related:** `MC-262` (the product decisions), `MC-256` 2, commits `62d55ab6` and `6833d0ac`, pushed (`origin/main` resolved to `6833d0ac` when checked 2026-10-10).
+
+**What was decided:**
+1. **Stage 1a (search) commit: "Commit and push (Recommended)".** The question text is not recorded in the sources given. Commit `62d55ab6`, 2026-10-10 10:56 (`git show --stat`: 14 files, 2,599 insertions, 161 deletions).
+2. **Stage 1b (mobile trash) commit: "Commit and push (Recommended)".** The question was "Stage 1b (mobile trash) passed review ... It hasn't been tried on a phone yet ... Commit and push it?" and the option's description said the phone check moves to Stage 2 (windowing). Commit `6833d0ac`, 2026-10-10 11:05 (7 files, 1,203 insertions, 51 deletions). The phone check of the mobile trash view is therefore **deferred to Stage 2**; it has not been done.
+3. **Orchestrator choice, not the maintainer's:** the "Trash (n)" row shows the unfiltered trash total, while the open trash view applies the search. This was the plan's stated choice (Gate 1 `charlist\gate1-s1.md` R3 asked that the choice be stated and tested). Whether the maintainer accepted or changed it is not recorded in the sources given. TODO(evidence).
+
+**Not decided:** when the phone check of the trash view runs beyond "in Stage 2"; Stages 2 to 4.
+
+**Gate dispositions and verification (provenance from the saved reports in session scratch `charlist\`; not maintainer decisions; details in the Roadmap):** Gate 1 for the Stage 1 plan: `adversarial-reviewer` `[APPROVE WITH CHANGES]`, seven required changes (`gate1-s1.md`). Gate 2 Stage 1a: `[APPROVE WITH CHANGES]` of `[EDITORIAL]` class (`gate2-1a.md`). Gate 2 Stage 1b: `[ACCEPT with notes]`, gate token `[APPROVE]` (`gate2-1b.md`). Full checks on each final tree: `charlist\full-1a.txt`, `check-1a.txt`, `build-1a.txt` and `full-1b.txt`, `check-1b.txt`, `build-1b.txt`.
+
+---
+
+### MC-264 — Main Campaign, 2026-10-10: character list rework round 3 (Stage 1c before windowing: the whole Grid and List entry opens the character and closes the screen, trash rows do not open on click, "Show more" / "Show less" on List descriptions)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label), prompted by a maintainer side note
+- **Date:** 2026-10-10 (after Stage 1 was pushed; the time of each answer is not recorded in the sources given)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md`, section "Round 3" (items 8 to 10: option labels and the option text as the Orchestrator recorded them). The maintainer's own words, quoted from that section: "selecting the character sometimes does not close the character list automatically, and selecting the character is done through small button, instead of being able to click other parts of each entry in general. also, I think bot descriptions on the list view can be collapsed with "show more" button." The full question texts are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-262` (the rework's decisions), `MC-263`, `MC-256` 2; the Roadmap "Character list rework" bullet and section ("Remaining work").
+
+**Orchestrator finding behind the questions (an observation, `charlist\answers.md`, not a maintainer decision):** the grid and list tabs and the trash avatar call `changeChar` without `endGrid`; only the Simple tab closes the screen. No "show more" language key exists.
+
+**What was decided (answers quoted exactly by label; option text as recorded in `answers.md`):**
+8. **When: "Small stage now, before windowing (Recommended)".** Stage 1c is added before Stage 2. Alternatives: "Fold into Stage 2", "Ticket for later".
+9. **Click: "Whole entry opens and closes (Recommended)".** In Grid and List a click anywhere on the entry (except its delete button) opens the character and closes the screen, like Simple; Trash rows do not open on click, only restore and delete. Alternatives: "Whole entry; trash avatar too", "Only close; keep targets".
+10. **Show more: "\"Show more\" / \"Show less\" button (Recommended)".** Shown only when the text is cut off; two new English keys; the translator adds the other languages. Alternatives: "Tap the text to expand", "Leave as is".
+
+**Not decided:** the Stage 1c plan and gates (not drafted when this was recorded). Items 8 to 10 continue the numbering of `MC-262` items 1 to 7 because `answers.md` numbers them so.
