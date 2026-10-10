@@ -13,8 +13,9 @@ import { recordRestoreAllStart, resetRestoreAllStrikes } from "../storage/bootAr
  * memory beyond those already installed. Each restore is quiet; a character
  * whose unit cannot be used stays archived and, at the end, one notice names
  * every such character; the notice has an OK button and the call returns once
- * the user has dismissed it. A restored character keeps the `lastInteraction`
- * its unit holds. With no placeholder left nothing is read and nothing is shown.
+ * the user has dismissed it. A restored character keeps the newer
+ * `lastInteraction` of its stub and its unit. With no placeholder left nothing
+ * is read and nothing is shown.
  *
  * Like `coldCharacterRestore.ts`, this module must not import `characters.ts`
  * or `index.svelte.ts`.

@@ -1,15 +1,28 @@
 <script lang="ts">
     import { FileMusicIcon, PlusIcon } from "@lucide/svelte";
     import { type character, type groupChat } from "src/ts/storage/database.svelte";
+    import { DBState } from "src/ts/stores.svelte";
     import { getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
     import { selectMultipleFile } from "src/ts/util";
     import { beginBusy } from "src/ts/process/memory/busyActions";
+    import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
     interface Props {
         currentCharacter: character|groupChat;
         onSelect: (additionalAsset:[string,string,string])=>void;
     }
 
     const { currentCharacter, onSelect }: Props = $props();
+
+    // The character list can shift or swap the slot for an archived stub while
+    // the picker or a save is awaited, so a write goes to the clicked character
+    // only while it is still a full character in the list.
+    function isTargetLive(target: character|groupChat): boolean {
+        if(DBState.db.characters.indexOf(target) === -1 || target.coldstorage){
+            console.warn('Asset add dropped: the character was removed or archived while it was being made')
+            return false
+        }
+        return true
+    }
 
     let assetFileExtensions:string[] = $state([])
     let assetFilePath:string[] = $state([])
@@ -34,9 +47,9 @@
 </script>
 {#if currentCharacter.type ==='character'}
     <button class="hover:text-green-500 bg-textcolor2 flex justify-center items-center w-16 h-16 m-1 rounded-md" onclick={async () => {
-        if(currentCharacter.type === 'character'){
+        const target = currentCharacter
+        if(target.type === 'character'){
             const da = await selectMultipleFile(['png', 'webp', 'mp4', 'mp3', 'gif'])
-            currentCharacter.additionalAssets = currentCharacter.additionalAssets ?? []
             if(!da){
                 return
             }
@@ -47,8 +60,18 @@
                     const img = f.data
                     const name = f.name
                     const extension = name.split('.').pop().toLowerCase()
+                    if(!isTargetLive(target)){
+                        return
+                    }
                     const imgp = await saveAsset(img,'',extension)
-                    currentCharacter.additionalAssets.push([name, imgp, extension])
+                    if(!isTargetLive(target)){
+                        return
+                    }
+                    target.additionalAssets = target.additionalAssets ?? []
+                    target.additionalAssets.push([name, imgp, extension])
+                    // The target may no longer be the selected character, whose
+                    // edits the selection effects would otherwise save.
+                    markCharacterForSave(target.chaId)
                 }
             } finally {
                 busy.end()

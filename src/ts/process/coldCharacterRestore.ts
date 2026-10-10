@@ -141,8 +141,9 @@ function checkUnit(result: ColdStorageReadResult, key: string, target: Slot): Co
 
 /**
  * The full character in `stub`'s unit, as an independent copy that carries the
- * stub's trash state (`applyStubStateOnRestore`). It installs nothing, marks
- * nothing for save and shows nothing: `DBState.db.characters` is not touched
+ * stub's trash state and newer `lastInteraction` (`applyStubStateOnRestore`).
+ * It installs nothing, marks nothing for save and shows nothing:
+ * `DBState.db.characters` is not touched
  * and the stub stays in its slot. Every call reads the unit again.
  */
 export async function readColdCharacterCopy(stub: Slot): Promise<ColdCopyOutcome> {

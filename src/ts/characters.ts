@@ -133,7 +133,24 @@ export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgc
     }
 }
 
+/**
+ * Index of `target` in the character list now, or -1 (with a console warning)
+ * when it is gone or has become an archived stub. The list can shift or swap
+ * the slot for a stub while a file picker or an image save is awaited, so a
+ * writer that awaits must hold the character object and look the index up again
+ * after every await; a stored index may name another character by then.
+ */
+function liveIndexOf(target:character|groupChat|undefined):number {
+    const index = target ? DBState.db.characters.indexOf(target) : -1
+    if(index === -1 || target.coldstorage){
+        console.warn('Image change dropped: the character was removed or archived while it was being made')
+        return -1
+    }
+    return index
+}
+
 export async function selectCharImg(charIndex:number) {
+    const target = DBState.db.characters[charIndex]
     const selected = await selectSingleFile(['png', 'webp', 'gif', 'jpg', 'jpeg'])
     if(!selected){
         return
@@ -141,12 +158,14 @@ export async function selectCharImg(charIndex:number) {
     const busy = beginBusy('charImage')
     try {
         const img = selected.data
-        let db = DBState.db
+        if(liveIndexOf(target) === -1){
+            return
+        }
 
         const type = getImageType(img)
 
         try {
-            if(type === 'PNG' && db.characters[charIndex].type === 'character'){
+            if(type === 'PNG' && target.type === 'character'){
                 const gen = PngChunk.readGenerator(img)
                 const allowedChunk = [
                     'parameters', 'Comment', 'Title', 'Description', 'Author', 'Software', 'Source', 'Disclaimer', 'Warning', 'Copyright',
@@ -162,13 +181,16 @@ export async function selectCharImg(charIndex:number) {
                         continue
                     }
                     if(allowedChunk.includes(chunk.key)){
+                        if(liveIndexOf(target) === -1){
+                            return
+                        }
                         console.log(chunk.key, chunk.value)
-                        db.characters[charIndex].extentions ??= {}
-                        db.characters[charIndex].extentions.pngExif ??= {}
-                        db.characters[charIndex].extentions.pngExif[chunk.key] = chunk.value
+                        target.extentions ??= {}
+                        target.extentions.pngExif ??= {}
+                        target.extentions.pngExif[chunk.key] = chunk.value
                     }
                 }
-                console.log(db.characters[charIndex].extentions)
+                console.log(target.extentions)
             }
         } catch (error) {
             console.error(error)
@@ -177,9 +199,13 @@ export async function selectCharImg(charIndex:number) {
 
 
         const imgp = await saveImage(img)
-        dumpCharImage(charIndex)
-        DBState.db.characters[charIndex].image = imgp
-        markCharacterForSave(DBState.db.characters[charIndex].chaId)
+        const index = liveIndexOf(target)
+        if(index === -1){
+            return
+        }
+        dumpCharImage(index)
+        target.image = imgp
+        markCharacterForSave(target.chaId)
     } finally {
         busy.end()
     }
@@ -215,6 +241,7 @@ export const addingEmotion = writable(false)
 
 export async function addCharEmotion(charId:number) {
     addingEmotion.set(true)
+    const target = DBState.db.characters[charId]
     const selected = await selectMultipleFile(['png', 'webp', 'gif'])
     if(!selected){
         addingEmotion.set(false)
@@ -222,22 +249,27 @@ export async function addCharEmotion(charId:number) {
     }
     const busy = beginBusy('charEmotion')
     try {
-        let db = DBState.db
+        if(liveIndexOf(target) === -1){
+            return
+        }
         for(const f of selected){
             const img = f.data
             const imgp = await saveImage(img)
             const name = f.name.replace('.png','').replace('.webp','')
-            let dbChar = db.characters[charId]
-            if(dbChar.type !== 'group'){
-                dbChar.emotionImages.push([name,imgp])
-                DBState.db.characters[charId] = dbChar
-                markCharacterForSave(dbChar.chaId)
+            const index = liveIndexOf(target)
+            if(index === -1){
+                return
+            }
+            if(target.type !== 'group'){
+                target.emotionImages.push([name,imgp])
+                DBState.db.characters[index] = target
+                markCharacterForSave(target.chaId)
             }
         }
     } finally {
         busy.end()
+        addingEmotion.set(false)
     }
-    addingEmotion.set(false)
 }
 
 export function rmCharEmotion(charId:number, emotionId:number) {
@@ -839,11 +871,24 @@ export async function makeGroupImage() {
                         images.push(img);
                         resolve();
                     };
+                    img.onerror = () => resolve();
                     img.src = url;
                 })
             )
         );
-      
+
+        // Members whose image failed to load are omitted from the composite; when
+        // none loaded, the group keeps its current image.
+        if(images.length === 0 && imageUrls.length > 0){
+            console.warn('Group image not made: no member image could be loaded')
+            canvas.remove()
+            alertStore.set({
+                type: 'none',
+                msg: ''
+            })
+            return
+        }
+
         // Calculate dimensions and draw the grid
         const numImages = images.length;
         const numCols = Math.ceil(Math.sqrt(images.length));
@@ -869,8 +914,8 @@ export async function makeGroupImage() {
     
         const uri = canvas.toDataURL()
         canvas.remove()
-        db.characters[charID].image = await saveImage(dataURLtoBuffer(uri));
-        markCharacterForSave(db.characters[charID].chaId)
+        group.image = await saveImage(dataURLtoBuffer(uri));
+        markCharacterForSave(group.chaId)
         alertStore.set({
             type: 'none',
             msg: ''

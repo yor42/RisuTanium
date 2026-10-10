@@ -595,7 +595,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
     })
 })
 
-describe('applyStubStateOnRestore -- the restored character\'s trash state', () => {
+describe('applyStubStateOnRestore -- the restored character\'s trash state and lastInteraction', () => {
     function blob(extra: Record<string, unknown> = {}): character {
         return fullCharacter({ chaId: 'cha-alice', ...extra })
     }
@@ -665,6 +665,42 @@ describe('applyStubStateOnRestore -- the restored character\'s trash state', () 
 
         const { trashTime: _trashTime, ...rest } = JSON.parse(JSON.stringify(result)) as Record<string, unknown>
         expect(rest).toEqual(expected)
+    })
+
+    // Contract tests: the restored character keeps the newer lastInteraction of
+    // stub and unit. Stubs built here copy the unit's value, so the newer-stub
+    // cases are only reachable with a stub refreshed after its unit was written.
+    test('contract: a stub with a newer lastInteraction gives it to the restored character', () => {
+        const stub = buildColdStub(fullCharacter({ lastInteraction: 9_000 }), 'unit-1', [])
+
+        const result = applyStubStateOnRestore(stub, blob({ lastInteraction: 5_000 }))
+
+        expect(result.lastInteraction).toBe(9_000)
+    })
+
+    test('contract: a stub with an older lastInteraction leaves the unit\'s value', () => {
+        const stub = buildColdStub(fullCharacter({ lastInteraction: 1_000 }), 'unit-1', [])
+
+        const result = applyStubStateOnRestore(stub, blob({ lastInteraction: 5_000 }))
+
+        expect(result.lastInteraction).toBe(5_000)
+    })
+
+    test('contract: a unit without a numeric lastInteraction takes the stub\'s number', () => {
+        const stub = buildColdStub(fullCharacter({ lastInteraction: 9_000 }), 'unit-1', [])
+
+        expect(applyStubStateOnRestore(stub, blob({ lastInteraction: undefined })).lastInteraction).toBe(9_000)
+        expect(applyStubStateOnRestore(stub, blob({ lastInteraction: 'x' })).lastInteraction).toBe(9_000)
+    })
+
+    test('contract: a stub value that is not a number leaves the unit\'s value', () => {
+        const noValue = buildColdStub(fullCharacter({ lastInteraction: undefined }), 'unit-1', [])
+        const oddValue = buildColdStub(fullCharacter({ lastInteraction: undefined }), 'unit-1', [])
+        ;(oddValue as unknown as Record<string, unknown>).lastInteraction = '9000'
+
+        expect(applyStubStateOnRestore(noValue, blob({ lastInteraction: 5_000 })).lastInteraction).toBe(5_000)
+        expect(applyStubStateOnRestore(oddValue, blob({ lastInteraction: 5_000 })).lastInteraction).toBe(5_000)
+        expect(applyStubStateOnRestore(oddValue, blob({ lastInteraction: undefined })).lastInteraction).toBeUndefined()
     })
 
     test('guard: the restored character carries no stub pointer fields afterwards', () => {

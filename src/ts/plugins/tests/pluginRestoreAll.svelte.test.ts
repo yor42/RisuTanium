@@ -8,7 +8,7 @@
  * `loadPlugins` (boot, the plugin toggle, a plugin calling `loadPlugins`):
  * - one unit at a time, so only one archived character is in flight beyond
  *   those already installed;
- * - a restored character keeps the `lastInteraction` its unit holds;
+ * - a restored character keeps the newer `lastInteraction` of stub and unit;
  * - a stub whose unit cannot be used stays a stub, the plugin still runs, and
  *   the user gets one notice naming exactly those characters;
  * - nothing is restored, and nothing is shown, when no enabled V2.1 plugin
@@ -465,7 +465,7 @@ afterEach(async () => {
 //#endregion
 
 describe('loadPlugins with an enabled V2.1 plugin restores every archived character first', () => {
-    test('the plugin sees no stub, every stub is full afterwards and each keeps its unit\'s lastInteraction, one unit read at a time', async () => {
+    test('the plugin sees no stub, every stub is full afterwards and each keeps the newer of stub and unit lastInteraction, one unit read at a time', async () => {
         putUnit('beta')
         putUnit('gamma')
         installDb([fullCharacter('alpha') as unknown as CharacterFixture, stubOf('beta'), stubOf('gamma')], [plugin('legacy', '2.1')])

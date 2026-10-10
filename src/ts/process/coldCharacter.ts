@@ -206,19 +206,28 @@ export function enrichLegacyStub<T extends Slot>(stub: T, unitCharacter: Slot): 
 
 /**
  * Gives the character restored from a unit the trash state of the stub it
- * replaces, and returns it. Only `trashTime` is touched.
+ * replaces, and returns it. Only `trashTime` and `lastInteraction` are touched.
  *
  * Every stub is authoritative for the trash state, including its absence: a
  * trash applied to (or lifted from) the stub after the unit was written is the
  * state the user last saw, so a stub with a `trashTime` gives the restored
  * character that `trashTime` and a stub without one leaves it with none,
  * whatever the unit holds.
+ *
+ * `lastInteraction` keeps the newer of stub and unit: a stub whose value is
+ * newer than the unit's (the stub was refreshed after the unit was written)
+ * gives its value to the restored character, a unit without a numeric value
+ * takes the stub's, and a stub value that is not a number leaves the unit's.
  */
 export function applyStubStateOnRestore<T extends Slot>(stub: Slot, restored: T): T {
     if (stub.trashTime) {
         restored.trashTime = stub.trashTime
     } else {
         delete restored.trashTime
+    }
+    if (typeof stub.lastInteraction === 'number'
+        && (typeof restored.lastInteraction !== 'number' || stub.lastInteraction > restored.lastInteraction)) {
+        restored.lastInteraction = stub.lastInteraction
     }
     return restored
 }
