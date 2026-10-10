@@ -9,7 +9,7 @@
  * ordinary character that merely shares the name 'assistant' is listed like
  * any other.
  *
- * Every `.ico` button is one reachable character: clicking each in turn and
+ * Every `.ico` avatar (a tile or a row) is one reachable character: clicking each in turn and
  * reading the index handed to `changeChar` shows which `db.characters` entries
  * a layout offers, including the grid layout, which renders icons only.
  *
@@ -276,10 +276,15 @@ function setSearchValue(root: HTMLElement, value: string): void {
 /** The `db.characters` index each avatar button of the current layout hands to `changeChar`, in display order. */
 function reachableIndices(root: HTMLElement): number[] {
     changeCharSpy.mockClear()
-    for (const icon of Array.from(root.querySelectorAll<HTMLButtonElement>('button.ico'))) {
+    for (const icon of Array.from(root.querySelectorAll<HTMLElement>('.ico'))) {
         icon.click()
     }
     return changeCharSpy.mock.calls.map((args) => args[0] as number)
+}
+
+/** The names of the trashed rows, which are listed but never opened by a click. */
+function trashedNames(root: HTMLElement): string[] {
+    return Array.from(root.querySelectorAll('h4')).map((h) => h.textContent?.trim() ?? '')
 }
 
 /** The number the header shows next to the "characters" label. */
@@ -361,7 +366,7 @@ describe('GridCatalog skips the Playground and stray temp characters', { timeout
 
         await withMounted((target) => {
             clickLayoutButton(target, 2)
-            expect(reachableIndices(target)).toEqual([NAMED_ASSISTANT])
+            expect(trashedNames(target)).toEqual(['assistant'])
         })
     })
 
@@ -371,7 +376,7 @@ describe('GridCatalog skips the Playground and stray temp characters', { timeout
 
         await withMounted((target) => {
             clickLayoutButton(target, 2)
-            expect(reachableIndices(target)).toEqual([])
+            expect(trashedNames(target)).toEqual([])
         })
     })
 
@@ -409,7 +414,7 @@ describe('GridCatalog skips the Playground and stray temp characters', { timeout
 
         await withMounted((target) => {
             clickLayoutButton(target, 2)
-            expect(reachableIndices(target)).toEqual([1])
+            expect(trashedNames(target)).toEqual(['Gone'])
             clickLayoutButton(target, 1)
             expect(reachableIndices(target)).toEqual([0])
         })

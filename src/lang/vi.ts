@@ -2408,6 +2408,8 @@ export const languageVietnamese = {
     },
     othersUi: {
         noDescription: "Không có mô tả",
+        showMore: "Xem thêm",
+        showLess: "Thu gọn",
         noCustomSidebarItems: "Chưa cấu hình mục thanh bên tùy chỉnh nào",
         addItem: "Thêm mục",
         backToList: "Quay lại danh sách",

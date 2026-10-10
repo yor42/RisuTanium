@@ -2408,6 +2408,8 @@ export const languageKorean = {
     },
     othersUi: {
         noDescription: "설명 없음",
+        showMore: "더 보기",
+        showLess: "접기",
         noCustomSidebarItems: "설정된 커스텀 사이드바 항목이 없습니다",
         addItem: "항목 추가",
         backToList: "목록으로 돌아가기",

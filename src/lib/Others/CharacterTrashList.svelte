@@ -1,12 +1,14 @@
 <script lang="ts">
-    import { changeChar, getCharImage, removeChar, removeTrashedCharacters, restoreCharacterFromTrash } from "../../ts/characters";
+    import { getCharImage, removeChar, removeTrashedCharacters, restoreCharacterFromTrash } from "../../ts/characters";
     import { DBState } from 'src/ts/stores.svelte';
-    import BarIcon from "../SideBars/BarIcon.svelte";
     import { TrashIcon, Undo2Icon } from "@lucide/svelte";
     import Button from "../UI/GUI/Button.svelte";
+    import CharacterDescription from "./CharacterDescription.svelte";
     import { language } from "src/lang";
     import { parseMultilangString } from "src/ts/util";
     import { nearViewport } from "src/ts/gui/nearViewport.svelte";
+    import { warnOnReject } from "src/ts/warnOnReject";
+    import type { Snippet } from "svelte";
     import type { SvelteMap } from "svelte/reactivity";
     import type { CharacterSearch } from "src/ts/gui/characterSearch.svelte";
 
@@ -22,6 +24,16 @@
 
     let { found, visibleIndices }: Props = $props();
 </script>
+<!-- An avatar style may still be loading or may have failed to load: either way the avatar shows without it. -->
+{#snippet styled(style: string | Promise<string>, body: Snippet<[string]>)}
+    {#await warnOnReject('CharacterTrashList: avatar style rejected', style)}
+        {@render body('')}
+    {:then resolved}
+        {@render body(resolved)}
+    {:catch}
+        {@render body('')}
+    {/await}
+{/snippet}
 <div class="flex items-start gap-2 mb-2">
     <span class="text-textcolor2 text-sm grow">{language.trashDesc}</span>
     {#if found.trash.length > 0}
@@ -39,13 +51,17 @@
         {@const isVisible = visibleIndices.has(match.index)}
         {@const avatarStyle = isVisible ? getCharImage(imgPath, 'thumbcss') : ''}
         {@const parsedDesc = parseMultilangString(char.creatorNotes ?? '')}
+        <!-- A trashed row does not open: its avatar is only a picture, and the row keeps restore and delete. -->
+        {#snippet face(avatar: string)}
+            <div class="ico shrink-0 rounded-md h-14 w-14 min-h-14 shadow-lg bg-[#6b7280]" aria-hidden="true" style={avatar || null}></div>
+        {/snippet}
         <div class="flex p-2 border border-darkborderc rounded-md mb-2" use:nearViewport={{ onChange: (v, node) => {
             if (v) { visibleIndices.set(match.index, node) } else if (visibleIndices.get(match.index) === node) { visibleIndices.delete(match.index) }
         } }}>
-            <BarIcon onClick={() => {changeChar(match.index)}} additionalStyle={avatarStyle}></BarIcon>
+            {@render styled(avatarStyle, face)}
             <div class="flex-1 flex flex-col ml-2 min-w-0">
                 <h4 class="text-textcolor font-bold text-lg mb-1 break-words">{char.name || language.settingsPage.unnamed}</h4>
-                <span class="text-textcolor2 line-clamp-3 wrap-break-word">{parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}</span>
+                <CharacterDescription text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription} visible={isVisible} />
                 <div class="flex gap-2 justify-end">
                     <button class="hover:text-textcolor text-textcolor2" onclick={() => {
                         restoreCharacterFromTrash(char)

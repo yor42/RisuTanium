@@ -2408,6 +2408,8 @@ export const languageChinese = {
     },
     "othersUi": {
         "noDescription": "没有描述",
+        "showMore": "展开",
+        "showLess": "收起",
         "noCustomSidebarItems": "尚未配置自定义侧边栏项目",
         "addItem": "添加项目",
         "backToList": "返回列表",

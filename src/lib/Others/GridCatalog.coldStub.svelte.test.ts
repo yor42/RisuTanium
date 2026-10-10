@@ -322,7 +322,7 @@ function mobileChatCount(root: HTMLElement, name: string): string {
 function listDescription(root: HTMLElement, name: string): string {
     const heading = Array.from(root.querySelectorAll('h4')).find((h) => h.textContent?.trim() === name)
     const row = heading?.closest('.flex-1') as HTMLElement | null
-    const text = row?.querySelector('span.line-clamp-3')?.textContent
+    const text = row?.querySelector('[data-description]')?.textContent
     if (text === undefined || text === null) {
         throw new Error(`list row not found for "${name}"`)
     }
@@ -534,7 +534,7 @@ describe('AlertComp select-character dialog -- archived characters', { timeout: 
 
         try {
             await withMounted(AlertComp, {}, (target) => {
-                expect(target.querySelectorAll('button.ico')).toHaveLength(2)
+                expect(target.querySelectorAll('.ico')).toHaveLength(2)
             })
         } finally {
             alertStore.set({ type: 'none', msg: '' } as never)
@@ -550,7 +550,7 @@ describe('AlertComp select-character dialog -- archived characters', { timeout: 
 
         try {
             await withMounted(AlertComp, {}, (target) => {
-                expect(target.querySelectorAll('button.ico')).toHaveLength(2)
+                expect(target.querySelectorAll('.ico')).toHaveLength(2)
             })
         } finally {
             alertStore.set({ type: 'none', msg: '' } as never)

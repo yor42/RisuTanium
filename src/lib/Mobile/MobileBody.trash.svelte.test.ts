@@ -328,6 +328,24 @@ describe('MobileBody: the mobile trash', { timeout: 60_000 }, () => {
         })
     })
 
+    test('a trashed row does not open on a click: the avatar and the name do nothing', async () => {
+        DBState.db = buildDb(withTrash())
+
+        await withMounted(async (target) => {
+            buttonWith(target, trashEntryLabel(2))!.click()
+            await settle()
+            const avatars = Array.from(target.querySelectorAll<HTMLElement>('.ico'))
+            expect(avatars.length).toBe(2)
+            for (const avatar of avatars) {
+                avatar.click()
+            }
+            for (const heading of Array.from(target.querySelectorAll('h4'))) {
+                heading.click()
+            }
+            expect(changeCharSpy).not.toHaveBeenCalled()
+        })
+    })
+
     test('after the last trashed character is restored the open view shows the empty trash with the back row', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('c', 'Cat', { trashTime: GONE })])
 

@@ -421,6 +421,23 @@ describe('MobileCharacters: the open trash view', { timeout: 60_000 }, () => {
         })
     })
 
+    test('a trashed row does not open on a click: the avatar and the name do nothing', async () => {
+        DBState.db = buildDb(standard())
+
+        await withMounted({ trashEntry: true }, async (target) => {
+            await openTrash(target)
+            const avatars = Array.from(target.querySelectorAll<HTMLElement>('.ico'))
+            expect(avatars.length).toBe(2)
+            for (const avatar of avatars) {
+                avatar.click()
+            }
+            for (const heading of Array.from(target.querySelectorAll('h4'))) {
+                heading.click()
+            }
+            expect(changeCharSpy).not.toHaveBeenCalled()
+        })
+    })
+
     test('Empty trash hands over exactly the shown trashed characters', async () => {
         DBState.db = buildDb(standard())
 

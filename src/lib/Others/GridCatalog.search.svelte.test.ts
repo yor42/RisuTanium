@@ -304,7 +304,7 @@ async function search(root: HTMLElement, value: string): Promise<void> {
 /** The `db.characters` index each avatar button of the current layout hands to `changeChar`, in display order. */
 function reachableIndices(root: HTMLElement): number[] {
     changeCharSpy.mockClear()
-    for (const icon of Array.from(root.querySelectorAll<HTMLButtonElement>('button.ico'))) {
+    for (const icon of Array.from(root.querySelectorAll<HTMLElement>('.ico'))) {
         icon.click()
     }
     return changeCharSpy.mock.calls.map((args) => args[0] as number)

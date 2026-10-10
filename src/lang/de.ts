@@ -2410,6 +2410,8 @@ export const languageGerman = {
     },
     "othersUi": {
         "noDescription": "Keine Beschreibung",
+        "showMore": "Mehr anzeigen",
+        "showLess": "Weniger anzeigen",
         "noCustomSidebarItems": "Keine benutzerdefinierten Seitenleisten-Einträge konfiguriert",
         "addItem": "Eintrag hinzufügen",
         "backToList": "Zurück zur Liste",

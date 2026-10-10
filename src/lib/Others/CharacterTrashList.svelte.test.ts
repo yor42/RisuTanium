@@ -30,12 +30,21 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { changeCharSpy, restoreSpy, removeCharSpy, removeTrashedSpy } = vi.hoisted(() => ({
+const { changeCharSpy, restoreSpy, removeCharSpy, removeTrashedSpy, parseSpy } = vi.hoisted(() => ({
+    parseSpy: vi.fn(async (text: string) => `<p>${text}</p><img src="https://example.com/a.png">`),
     changeCharSpy: vi.fn(),
     restoreSpy: vi.fn(),
     removeCharSpy: vi.fn(),
     removeTrashedSpy: vi.fn(),
 }))
+
+vi.mock(import('src/ts/parser/parser.svelte'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+        ...actual,
+        ParseMarkdown: parseSpy,
+    }
+})
 
 vi.mock(
     import('src/ts/globalApi.svelte'),
@@ -172,6 +181,7 @@ class AllVisibleIntersectionObserver implements IntersectionObserver {
 vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
 
 import { DBState } from '../../ts/stores.svelte'
+import { clearDescriptionCache } from '../../ts/gui/descriptionMarkdown'
 import { SvelteMap } from 'svelte/reactivity'
 import { language } from '../../lang'
 import type { CharacterSearch } from '../../ts/gui/characterSearch.svelte'
@@ -239,6 +249,8 @@ beforeEach(() => {
     restoreSpy.mockClear()
     removeCharSpy.mockClear()
     removeTrashedSpy.mockClear()
+    parseSpy.mockClear()
+    clearDescriptionCache()
 })
 
 //#endregion
@@ -275,7 +287,8 @@ describe('CharacterTrashList', { timeout: 60_000 }, () => {
         })
     })
 
-    test('restore and delete permanently act on the row\'s own character, and a row click opens it by db index', async () => {
+    // Guard: passes before and after.
+    test('guard: restore and delete permanently act on the row\'s own character', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
 
         await withMounted(resultFor([1]), new SvelteMap(), (target) => {
@@ -284,8 +297,21 @@ describe('CharacterTrashList', { timeout: 60_000 }, () => {
             expect(restoreSpy).toHaveBeenCalledWith(DBState.db.characters[1])
             actions[1].click()
             expect(removeCharSpy).toHaveBeenCalledWith(DBState.db.characters[1], 'Bob', 'permanent')
-            target.querySelector<HTMLButtonElement>('button.ico')!.click()
-            expect(changeCharSpy).toHaveBeenCalledWith(1)
+        })
+    })
+
+    test('a trashed row does not open on a click: the avatar is not a button and the row has only restore and delete', async () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+
+        await withMounted(resultFor([1]), new SvelteMap(), (target) => {
+            const avatar = target.querySelector<HTMLElement>('.ico')!
+            expect(avatar.tagName).not.toBe('BUTTON')
+            avatar.click()
+            target.querySelector<HTMLElement>('h4')!.click()
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            const rowButtons = Array.from(target.querySelectorAll('button')).filter((b) => b.closest('.justify-end'))
+            expect(rowButtons.length).toBe(2)
+            expect(target.querySelectorAll('button').length).toBe(3)
         })
     })
 
@@ -295,6 +321,56 @@ describe('CharacterTrashList', { timeout: 60_000 }, () => {
 
         await withMounted(resultFor([0, 1]), visibleIndices, () => {
             expect([...visibleIndices.keys()].sort()).toEqual([0, 1])
+        })
+    })
+
+    test('a row near the viewport shows its description as markdown without media, clamped and without a Show more toggle', async () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann', { creatorNotes: 'LONG **bold** text' })])
+
+        await withMounted(resultFor([0]), new SvelteMap(), async (target) => {
+            await settle()
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            await settle()
+            const description = target.querySelector<HTMLElement>('[data-description]')!
+            expect(description.querySelector('p')?.textContent).toBe('LONG **bold** text')
+            expect(description.querySelector('img')).toBeNull()
+            expect(description.classList.contains('max-h-18')).toBe(true)
+            expect(Array.from(target.querySelectorAll('button')).some((b) => /^Show (more|less)$/.test(b.textContent?.trim() ?? ''))).toBe(false)
+        })
+    })
+
+    test('a row far from the viewport shows plain text and is not parsed', async () => {
+        const Never = class extends AllVisibleIntersectionObserver {
+            override observe(): void {}
+        }
+        vi.stubGlobal('IntersectionObserver', Never)
+        try {
+            DBState.db = buildDb([makeCharacter('a', 'Ann', { creatorNotes: 'plain words' })])
+
+            await withMounted(resultFor([0]), new SvelteMap(), async (target) => {
+                await settle()
+                const description = target.querySelector<HTMLElement>('[data-description]')!
+                expect(description.textContent?.trim()).toBe('plain words')
+                expect(description.querySelector('p')).toBeNull()
+                expect(parseSpy).not.toHaveBeenCalled()
+            })
+        } finally {
+            vi.stubGlobal('IntersectionObserver', AllVisibleIntersectionObserver)
+        }
+    })
+
+    test('a click on a link in a trashed description does not open the character', async () => {
+        parseSpy.mockImplementationOnce(async () => '<p><a href="https://example.com">link</a></p>')
+        DBState.db = buildDb([makeCharacter('a', 'Ann', { creatorNotes: 'x' })])
+
+        await withMounted(resultFor([0]), new SvelteMap(), async (target) => {
+            await settle()
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            await settle()
+            const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+            target.querySelector('a')!.dispatchEvent(event)
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            expect(event.defaultPrevented).toBe(false)
         })
     })
 })

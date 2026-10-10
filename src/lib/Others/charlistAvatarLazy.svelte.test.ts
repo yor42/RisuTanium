@@ -525,12 +525,12 @@ function countAvatarEls(root: HTMLElement): number {
     return root.querySelectorAll('[style*="background: url("]').length
 }
 
-function avatarButtons(root: HTMLElement): HTMLButtonElement[] {
-    return Array.from(root.querySelectorAll('button.ico'))
+function avatarButtons(root: HTMLElement): HTMLElement[] {
+    return Array.from(root.querySelectorAll<HTMLElement>('.ico'))
 }
 
-function resolvedAvatarButtons(root: HTMLElement): HTMLButtonElement[] {
-    return Array.from(root.querySelectorAll('button.ico[style]'))
+function resolvedAvatarButtons(root: HTMLElement): HTMLElement[] {
+    return Array.from(root.querySelectorAll<HTMLElement>('.ico[style]'))
 }
 
 function clickLayoutButton(root: HTMLElement, layout: 0 | 1 | 2 | 3): void {

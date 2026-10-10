@@ -2410,6 +2410,8 @@ export const languageSpanish = {
     },
     othersUi: {
         noDescription: "Sin descripción",
+        showMore: "Ver más",
+        showLess: "Ver menos",
         noCustomSidebarItems: "No hay elementos personalizados configurados en la barra lateral",
         addItem: "Añadir Elemento",
         backToList: "Volver a la Lista",

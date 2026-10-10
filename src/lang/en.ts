@@ -2549,6 +2549,8 @@ export const languageEnglish = {
     },
     othersUi: {
         noDescription: "No description",
+        showMore: "Show more",
+        showLess: "Show less",
         noCustomSidebarItems: "No custom sidebar items configured",
         addItem: "Add Item",
         backToList: "Back to List",
