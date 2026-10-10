@@ -8989,3 +8989,58 @@ Commit the completed and independently verified workflow/configuration/documenta
 - Plan Gate 1 for part 2 (`opus-reviewer`, one round): `[ACCEPT WITH CHANGES]`, token `[EDITORIAL]` (`nextbatch\gate1.md`). Gate 2 (`opus-reviewer`): `[ACCEPT]` (`nextbatch\gate2.md`). The live text zoom, added after a device step failed, had its own Gate 2: `[ACCEPT]` (`nextbatch\review3.md`).
 - Device passes on the spare Note 9 and the API 35 emulator: round 1 on E.apk (retire only) and D.apk (retire plus the manifest tokens) stopped at step D1, where D.apk's text and layout did not follow a font change; after "Apply it live", round 2 on F.apk passed steps F1 to F6 on both devices.
 - Full checks on the D snapshot: `pnpm test` 610 files, 12,243 passed, 6 skipped; `pnpm check` 0 errors, 0 warnings. On the F snapshot only `pnpm check` was run (0 errors, 0 warnings).
+
+---
+
+### MC-260 — Main Campaign, 2026-10-09: keep-alive design decisions (Android foreground service with status and Stop, permission asked at first work, always on and hidden on Android, `dataSync`, four work kinds; mobile web keeps the partial reply with a stored `interrupted` flag, shown only if the page died, saved as of the hide)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-09 (the maintainer's "start keep-alive" message started the item, per the Orchestrator's records brief)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the Orchestrator's saved record of the answers, `keepalive\answers.md` (rounds 1 to 3, items 1 to 9; option labels and the option text as the Orchestrator recorded them). The full question texts are not in the sources given. TODO(evidence): the original question texts. The evidence the questions rested on: `keepalive\packet.md` (an investigator packet, **not independently verified**) and `keepalive\refresh.md` (an investigator report, verified by `doc-verifier`: PASS, optional notes only).
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-255` (research choices; items 1 to 9 here answer the points `MC-255` 1 and the Roadmap item left open: the foreground-service type and wording, the notification persistence, the permission prompt timing, resume semantics for an interrupted reply; the text of `MC-255` is not edited), `MC-256` 1 (the deferral; its condition, a fixed Android boot time, was met by the Android boot batch, `MC-258` and `MC-259`), `MC-175` (the stored `interrupted` flag is an optional message field that upstream ignores); `MC-261` (execution decisions and commits); the Roadmap section "Keep-alive (2026-10-09 to 2026-10-10)"; commits `92bc96e4`, `265c78b6`, `61abe7e5`, `dfc5062e`.
+
+**What was decided (answers quoted exactly by label; option text as recorded in `answers.md`):**
+1. **Notification content (round 1): "Status + Stop button (Recommended)".** "Generating a reply…" with a Stop button that aborts the request; it disappears when the work ends. Alternatives: "Status only", "Minimal, silent".
+2. **Notification permission timing (round 1): "First time work starts (Recommended)".** Ask once on the first reply; if denied, never ask again; the service still runs with a hidden notification. Alternatives: "At first app launch", "Never ask".
+3. **The setting (round 1): "Always on Android (Recommended)".** Automatic on the Android app while work is in flight; the Keep session alive setting stays web-only (Off / Via Sound) and is hidden on the Android app. Alternatives: "New setting option", "Reuse Off/Via Sound".
+4. **Interrupted reply on mobile web (round 1): "Keep partial, you continue (Recommended)".** The partial reply stays as the message with a small "interrupted" note; the existing continue and regenerate actions apply; nothing restarts on its own. Alternatives: "Keep partial, offer a button", "Auto-retry".
+5. **Foreground-service type (round 2, after `refresh.md` and its verification): "dataSync (Recommended)".** Alternatives: "specialUse", "shortService".
+6. **Work kinds (round 2, multi-select, all four chosen):** "Chat replies (send/continue/reroll)", "TTS and image generation", "Translation, summaries, embeddings", "Imports, exports, backups".
+7. **Interrupted marker (round 2): "Store a flag (Recommended)".** An optional message field, cleared on continue and reroll; the persistence reviewer (`opus-reviewer`) gates it. Alternative: "No marker".
+8. **When the interrupted note shows (round 3, after Gate 1 round 1): "Only if the page died (Recommended)".** The note means the page was killed or frozen before the reply finished; any end the page saw (finish, stop, error) removes it. Alternative: "Also on errors, best effort".
+9. **Text that arrives while hidden (round 3): "Save as of hide (Recommended)".** Save once on hide; text arriving later in the background is lost only if the page is killed. Alternative: "Keep saving while hidden".
+
+**Gate facts and Orchestrator choices (provenance from the saved plan and gate files in session scratch `keepalive\`; not maintainer decisions; details in the Roadmap):**
+- Gate 1 for Stages 1 to 3: round 1 `[REJECT]` (`gate1-adv.md`), round 2 `[REJECT]` (`gate1-adv-r2.md`), round 3 `[APPROVE WITH CHANGES]` of `[EDITORIAL]` class (`gate1-adv-r3.md`). The mechanism was reconsidered at the second rejection, as the gates rule requires: `plan-v3.md` dropped the request tokens inside `fetchNative` (and every change to its stream pump) and the hide-time flush of the coalesced stream buffer. Gate 1 for Stage 4 (`opus-reviewer`): `[APPROVE WITH CHANGES]` in all three rounds (round 3 with `[EDITORIAL]`).
+- Choices the Orchestrator made and reported to the maintainer in `plan-v3.md` ("Orchestrator choices reported to the maintainer"): the Stop action only while a chat reply or TTS is in flight, and a linger of about 2 s before the service stops. Further Orchestrator choices in `plan-v3-amend.md`: a small pre-return abort check in `fetchNative`'s Tauri branch so Stop works before the first byte (A1), and a hide with a 'chat' token but no active-stream entry still requests an immediate save (T6). Whether the maintainer accepted or changed any of these is not recorded in the sources given. TODO(evidence).
+
+---
+
+### MC-261 — Main Campaign, 2026-10-09/10: keep-alive execution decisions (diagnose the hidden-app lag first, then fix it with an event-woken stream pump and a native linger; Stop does not close the native request: ticketed) and the four commit-and-push authorizations; commits `92bc96e4`, `265c78b6`, `61abe7e5`, `dfc5062e`
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-09 to 2026-10-10 (the exact date of each answer is not recorded in the sources given; the commit times below are from `git log`, +0900)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** items 1 to 3 (`answers.md` items 10 to 12): `keepalive\answers.md` (rounds 4 and 5, option labels and option text as the Orchestrator recorded them); the commit authorizations: the exact `AskUserQuestion` results relayed in the Orchestrator's records brief of 2026-10-10 (question text in quotation marks is the brief's wording; the option label is the answer). The full question texts of items 1 to 3 are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the unchosen option labels, per item below; for the four commit questions the alternatives are not recorded in the sources given.
+- **Related:** `MC-260` (design decisions), `MC-255`, `MC-256` 1 and 2; CHORE-164 (item 2); CHORE-165 to CHORE-168 (found during the item; no separate maintainer answer is recorded for them); commits `92bc96e4`, `265c78b6`, `61abe7e5`, `dfc5062e`, pushed (`origin/main` was at `dfc5062e` when checked 2026-10-10).
+
+**What was decided:**
+1. **Hidden-app lag (round 4, after the Stage 3 device pass, `keepalive\device\report.md` finding 2): "Diagnose first (Recommended)".** A performance investigation finds what slows while the app is hidden, then a targeted fix with its cost is proposed before any change. Alternatives: "Try the pump drain fix", "Accept for now".
+2. **Stop does not close the native request (round 4, `keepalive\device\report.md` finding 1): "Ticket it, fix later (Recommended)".** A new ticket for a native request cancel for `streamed_fetch` on Tauri, desktop too; out of the keep-alive item. Alternative: "Fix it in this batch". Ticket: CHORE-164.
+3. **The lag fix (round 5, after the diagnosis `keepalive\lag\report.md`): "Do A + B (Recommended)".** (A) an event-woken stream pump instead of the 10 ms polling timer; (B) the 2 s linger moved into Android (`Handler.postDelayed`). Alternatives: "Only A", "Ticket both". Implemented as Stage 3b (`61abe7e5`).
+4. **Commit and push authorizations (each answer "Commit and push (Recommended)"):**
+   - Stages 1 and 2: "Stages 1–2 ... passed Gate 2. Commit them now?" The Orchestrator's brief gives only this much of the question text. Commit `92bc96e4`, 2026-10-09 20:48 (`git show --stat`: 21 files, 2,052 insertions, 19 deletions).
+   - Stage 3: the question text is not recorded in the sources given. Commit `265c78b6`, 2026-10-10 06:57 (17 files, 885 insertions, 6 deletions).
+   - Stage 3b: "The hidden-app lag fix (Stage 3b) passed review and the device re-check on both devices. Commit and push it?" Commit `61abe7e5`, 2026-10-10 08:19 (5 files, 308 insertions, 14 deletions). The earlier question "Fix the hidden-app lag with the two targeted changes? (A) ... (B) ..." is item 3.
+   - Stage 4: "Stage 4 passed every device check (Note 9 app, Note 9 Chrome, emulator). Commit and push it with the drafted message?" Commit `dfc5062e`, 2026-10-10 09:33 (26 files, 2,702 insertions, 26 deletions).
+
+**Not decided:** whether the maintainer wants CHORE-165 to CHORE-168 fixed, and in what order (they are filed from the findings only); the character list rework that follows in the queue (`MC-256` 2).
+
+**Gate dispositions and verification (provenance from the saved reports in session scratch `keepalive\`; not maintainer decisions; details in the Roadmap):**
+- Stages 1 and 2: Gate 2 `adversarial-reviewer`: `[APPROVE]` (`gate2-s12.md`). Stage 3: Gate 2 `adversarial-reviewer`: `[APPROVE]` (`gate2-s3.md`), after the Stage 3 device pass. Stage 3b: Gate 1 `adversarial-reviewer`: `[APPROVE WITH CHANGES]` of `[EDITORIAL]` class (`gate1-3b.md`); Gate 2 `adversarial-reviewer`: `[APPROVE]` with two editorial notes (`gate2-3b.md`). Stage 4 (persistence, `opus-reviewer`): Gate 2 `[REJECT]`, test-only remediation (`gate2-4.md`: findings F1 to F9; production code accepted as written); the remediation was made (`stage4-report.md`, "Remediation r1") and the same reviewer instance reviewed it again: `[ACCEPT with notes]`, gate token `[APPROVE]` (`gate2-4-r1.md`, saved by the Orchestrator from the reviewer's hand-back because its append to `gate2-4.md` did not land): F1 to F6 and F8 resolved with the mutants re-run, F4 with an optional wording note; F7 (the device and browser check) open until the device pass, which later ran (`device4\report.md`); F9 a named limitation; N1 information only (a surviving mutant that cannot affect the note); the six locale lines checked.
+- Device passes: Stage 3 (`device\report.md`), Stage 3b (`device3b\report.md`), Stage 4 (`device4\report.md`, two rounds); the Orchestrator's spot-checks are in the last two files.
