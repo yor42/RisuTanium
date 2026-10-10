@@ -9111,3 +9111,167 @@ Commit the completed and independently verified workflow/configuration/documenta
 10. **Show more: "\"Show more\" / \"Show less\" button (Recommended)".** Shown only when the text is cut off; two new English keys; the translator adds the other languages. Alternatives: "Tap the text to expand", "Leave as is".
 
 **Not decided:** the Stage 1c plan and gates (not drafted when this was recorded). Items 8 to 10 continue the numbering of `MC-262` items 1 to 7 because `answers.md` numbers them so.
+
+---
+
+### MC-265 — Main Campaign, 2026-10-10: character list rework round 4 (List and Trash descriptions render as markdown without images; added to Stage 1c); Stage 1c as committed in `9c1b8a39`
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label), prompted by a maintainer side note
+- **Date:** 2026-10-10 (the time of each answer is not recorded in the sources given; the commit `9c1b8a39` is dated 2026-10-10)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md`, section "Round 4" (items 11 and 12: option labels and the option text as the Orchestrator recorded them); `git show --stat 9c1b8a39` and its message. The maintainer's own words, quoted from that section: "plus, many character card authors uses markdown and linebreaks to format their character description. but list view in the catalogue just shows them as long line of plain text." The full question texts are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it ("images left out so rows stay small and the list does not fetch banners for every card").
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-264` (round 3, the rest of Stage 1c), `MC-262`, `MC-256` 2; the Roadmap section "Character list rework (2026-10-10): Stages 1c, 2a and 2b".
+
+**Orchestrator finding behind the question (an observation, `answers.md`, not a maintainer decision):** the chat's Creator Notes box (`CreatorQuote` to `MultiLangDisplay` with `markdown=true`) renders the same field through `ParseMarkdown(text)` with no character argument.
+
+**What was decided (answers quoted exactly by label; option text as recorded in `answers.md`):**
+11. **Rendering: "Markdown, no images (Recommended)".** The same renderer as the chat's Creator Notes box; formatting and line breaks kept; images left out so rows stay small and the list does not fetch banners for every card; links open normally and do not open the character. Applies to the List view and the Trash rows. Alternatives: "Full markdown with images", "Line breaks only".
+12. **When: "Add to Stage 1c (Recommended)".** Alternative: "Separate stage after 1c".
+
+**Commit:** `9c1b8a39` (Stage 1c: 25 files, 2,015 insertions, 49 deletions; `git show --stat`). The maintainer's commit authorization for Stage 1c is not in the sources given. TODO(evidence).
+
+**Not decided at this point:** whether an expanded description stays open when its row scrolls out of the window (asked with the Stage 2 plan, `MC-266` 16).
+
+**Gate dispositions and verification (provenance from the saved reports in session scratch `charlist\`; not maintainer decisions; details in the Roadmap and ledger rows 1586 to 1589):** Gate 2 `adversarial-reviewer`: `[REJECT]` (B1 `risu-ctrl` audio, B2 CSS-escaped `url`; `gate2-1c.md`), then a second fresh reviewer `[PASS WITH FIXES]` (F1 forms should-fix, F2 to F6 notes; `gate2-1c-r1.md`); the coder's r1 and r2 applied B1, B2, S1, S2, N1 to N3 and F1 to F4 (`stage1c-report.md`); no review of r2 is recorded. Sanitizer tests run under jsdom with an identity-stripper falsification per vector (`MC-239`). Full run on the final tree: `pnpm test` 638 files, 12,630 passed, 6 skipped; `pnpm check` 0 and 0; build passes. The commit message says "Not yet seen in a browser"; the Stage 2a Note 9 pass later tapped a row, expanded and collapsed a markdown row, and saw media stripped (`note9-2a.md` check 4: PASS for the 2a behaviours).
+
+---
+
+### MC-266 — Main Campaign, 2026-10-10: character list rework Stage 2 plan answers (the header and tabs stay on screen, Tab-only grid keyboard, stage 2a lists then 2b grid, expanded descriptions stay open; fling anchoring fixed at once; the partial last grid row stays centred)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label) and defaults the Orchestrator took without asking, labelled as such
+- **Date:** 2026-10-10 (rounds 5 and 6; the time of each answer is not recorded in the sources given)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md`, sections "Round 5 (2026-10-10, Stage 2 plan questions)" and "Round 6" (option labels and option text as the Orchestrator recorded them); `charlist\plan-s2.md` section F for the Q8 options; `charlist\plan-s2-v4.md` item 6 for the round 6 centring answer. The full question texts of rounds 5 and 6 are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-262` to `MC-265`, `MC-249` to `MC-251` (the sidebar rail, whose layout and windowing code Stage 2 reuses), the Roadmap section "Character list rework (2026-10-10): Stages 1c, 2a and 2b".
+
+**What was decided (answers quoted exactly by label; option text as recorded in `answers.md`):**
+13. **Header (round 5): "Stay on screen (Recommended)".** Search and tabs fixed, only the list scrolls; the mobile "Trash (n)" / Back row pinned; removes the Simple tab's double scroll. Alternative: "Scroll away as today".
+14. **Grid keyboard (round 5): "Tab only for now (Recommended)".** Tab and Shift+Tab, focus pinned; arrow keys come with Stage 4's drag work. Alternative: "Arrow keys now".
+15. **Staging (round 5): "2a lists, then 2b grid (Recommended)".** Each with review, a Note 9 pass and a commit; 2a covers the deferred Stage 1b phone check (`MC-263` 2). Alternative: "One stage".
+16. **Expanded descriptions (round 5): "Stays open until you leave (Recommended)".** Kept across scroll out and back and across a search, reset when the screen closes. Alternative: "Collapses when scrolled away".
+17. **Q8, anchoring during a fling (round 6): "(a) Fix at once (Recommended)".** Correct `scrollTop` immediately when a row above the viewport changes height; switch to (b), defer the correction to `scrollend`, only if the Note 9 shows fling cuts. (This item and the next are unnumbered in `answers.md`; the numbers are this record's.)
+18. **Grid partial last row when windowed (round 6): "Keep centred (Recommended)".** The windowed grid keeps today's centring of a partial last row; Stage 4's drag hit test uses the same per-row offset (`plan-s2-v4.md` item 6).
+
+**Defaults taken without asking (NOT asked of the maintainer; `answers.md` says they were stated to the maintainer before the question):** tab switch goes to the top; a new search goes to the top, while restore and delete keep the position; reopening the screen goes to the top; Back from the mobile trash returns to the previous position; Ctrl+F cannot reach names outside the window (the screen search still does). Whether the maintainer accepted them beyond answering the questions is not recorded in the sources given.
+
+**Not decided:** whether the Q8 fallback (b) is needed (the Note 9 pass did not observe a fling cut, `note9-2a.md` check 3); Stage 3 (the grid reads `characterOrder`, folder tiles) and Stage 4 (drag, folder management, arrow keys).
+
+---
+
+### MC-267 — Main Campaign, 2026-10-10: local backups are named with the export date (`local-YYYYMMDD.bin`, `local-partial-YYYYMMDD.bin`); commit `14962101`
+
+- **Tag:** decisions (a typed request and `AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-10
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md` section "Side request (2026-10-10): dated local backup names"; `git show --stat 14962101` and its message; `backupname\gate2.md`. The full question texts are not in the sources given. TODO(evidence): the original question texts. The typed request is recorded in `answers.md` as the Orchestrator's paraphrase: "change the default local .bin name to include the export date, like local-20261010.bin"; the maintainer's exact words are not in the sources given.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not recorded in the sources given.
+- **Related:** `MC-175` and `MC-223` (the `.bin` file itself is unchanged; only the suggested file name is), ledger rows 1593 and 1594.
+
+**What was decided:**
+1. **The default local `.bin` name includes the export date**, like `local-20261010.bin` (the device's local date).
+2. **The partial backup name: `local-partial-20261010.bin` (Recommended).**
+3. **Commit: "Commit and push (Recommended)".** Landed as `14962101` (5 files, 382 insertions, 4 deletions), pushed (`9c1b8a39..14962101` per `answers.md`).
+
+**Behaviour as committed (commit message):** before, the web download was named `Binary.bin` and the desktop and Android save dialogs suggested no name (Android fell back to "(invalid).txt"); `LocalWriter.init` takes an optional suggested name used as the web download name and as the Tauri save dialog's `defaultPath`; card and module exports pass no name and behave as before.
+
+**Gate disposition (not a maintainer decision):** Gate 2 reviewer `a65cabc2f1a3ae2db`: `[PASS]`, one nit (new files LF in the working tree). The native dialogs were read from the plugin source, not run on a device (`gate2.md`, commit message). Full run: `pnpm test` 648 files, 12,736 passed; `pnpm check` 0 and 0; build passes.
+
+---
+
+### MC-268 — Main Campaign, 2026-10-10: archive-by-default and runtime unload reopened (the maintainer's idle-reload feedback; rounds AD-1 and AD-2: keep-set, old copies, idle reload off then removed, card import to archive, the Node two-device gap accepted for the whole session, trashed characters archive, tags and creator in the stub)
+
+- **Tag:** decisions (the maintainer's words and `AskUserQuestion` answers, by option text) and Orchestrator mechanism choices, labelled as such
+- **Date:** 2026-10-10
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md` sections "Archive-default (2026-10-10)" (the maintainer's words, rounds AD-1 and AD-2) as the Orchestrator recorded them; the evidence the rounds rested on: `archdefault\report.md` (`investigator`, ledger row 1595) as corrected by `archdefault\verify.md` (HOLDS WITH CORRECTIONS, row 1596) and `archdefault\advisor.md` (`senior-advisor`, row 1597). The answers are recorded as summaries, not as option labels; the full question texts are not in the sources given. TODO(evidence): the original question texts and option labels.
+- **Reasoning:** the maintainer's own words below.
+- **Alternatives rejected:** not recorded in the sources given.
+- **Amends:** `MC-141` 2 (scope of the accepted Node clean-up window, see item 7); **Reopens:** `MC-140` (rejected a runtime unload), `MC-194` 1 (the gated reopening; the writer audit that gate required was run this session, ledger rows 1599 and 1601, HOLDS WITH CORRECTIONS).
+- **Related:** `MC-137` 4, `MC-139` 3 (orphan units accepted), `MC-158`, `MC-130`, `MC-270` (round AD-3), the Roadmap section "Runtime unload (archive-default follow-up)".
+
+**The maintainer's words, quoted from `answers.md` (relayed to `senior-advisor` `afba9dbbdc74d19e1`):** "I've been testing node server for a while, and idle reloading felt more like it harms the UX more than good. I think runtime unloading is something that now worths a second visit."
+
+**What was decided, round AD-1 (as `answers.md` records it):**
+1. **Keep-set:** the open character, the members of the open group, characters with active work, and the last one.
+2. **Old copies of an unloaded character's unit:** keep them until a manual cleanup for now (an orphan counter and a prompt); auto-delete the character's own previous unit later.
+3. **Idle reload:** off when the unload ships, then removed.
+4. **Imports:** card import goes to the archive too (not the `.bin` two-phase restore).
+
+**What was decided, round AD-2 (as `answers.md` records it):**
+5. **The Node two-device gap is accepted for the whole session**, with the same cleanup-dialog warning. This amends `MC-141` 2, which accepted a short clean-up window on a shared Node server (another device has just archived a character and not yet saved); the amended reading covers the whole session.
+6. **Trashed characters archive too.**
+7. **Tags and creator go into archived entries (stub v3) as their own ticket, ahead of card import.**
+
+**Orchestrator mechanism choices (NOT asked of the maintainer; `answers.md`):** the first unload stage is a clean-only put-back at the character switch; edited characters are unloaded only after their save lands (stage 2); the idle reload is removed only after stage 2 covers edited characters; the unload must work on Android.
+
+**CHORE-86 is not recorded as won't-do.** `archdefault\advisor.md` says "retire later (CHORE-86 won't-do)"; that is the advisor's recommendation. No maintainer decision on CHORE-86 is in the sources given. The CHORE-86 entry in the Roadmap is unchanged.
+
+**Not decided:** what the keep-set's "last one" covers beyond the words in item 1 (`answers.md` gives no more); the timing of the idle-reload removal beyond "after stage 2"; the reconciliation between `advisor.md`, whose revised report shelves card import and the `.bin` two-phase restore, and the maintainer's AD-1 and AD-2 answers, which keep card import to archive in the queue after stub v3 (the order of the advisor's reports and the answers is not recorded in the sources given).
+
+---
+
+### MC-269 — Main Campaign, 2026-10-10: Stage 2a closeout (commit when green; the Android link-tap error is ticketed); commit `ac2db1fb`
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-10
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md` section "2a closeout (2026-10-10)"; `git show --stat ac2db1fb` and its message; `charlist\note9-2a.md`. The full question texts are not in the sources given. TODO(evidence): the original question texts.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** not recorded in the sources given.
+- **Related:** `MC-266` (the Stage 2 plan answers), `MC-263` 2 (the phone check of the trash view, now done for the mobile trash view on the Note 9), ledger rows 1591, 1592 and 1598.
+
+**What was decided:**
+1. **Commit 2a: "Commit if green (Recommended)".** Commit the 29 Stage 2a paths after the full test, check and build pass, then push. Landed as `ac2db1fb` (29 files, 3,524 insertions, 542 deletions; `git show --stat`).
+2. **The Android link-tap error: "Ticket it (Recommended)".** The error is "Scoped shell IO error: Permission denied (os error 13)" after tapping a markdown link in a row; a new CHORE, to be confirmed on the base, and not a Stage 2a blocker (CHORE-169).
+
+**Also recorded from `note9-2a.md` (observations, not maintainer decisions; ticketed by the Orchestrator's list):** the Trash tab showed 13 to 17% janky frames over fewer than 600 frames, cause UNCERTAIN (CHORE-172); in List rows with long plain text the Stage 1c clamp cuts the third line mid-glyph with "Show more" directly under it (CHORE-171).
+
+**Gate dispositions and verification (provenance from the saved reports; not maintainer decisions):** Gate 1 of the Stage 2 plan: `[PASS WITH FIXES]` (`gate1-s2.md`, v4 dispositions in `plan-s2-v4.md`; ledger row 1590). Gate 2 Stage 2a: `adversarial-reviewer` `[PASS WITH FIXES]`, one should-fix (rows observed one frame late, UNCERTAIN) and four nits, all handled in r1 (`gate2-2a.md`, `stage2a-report.md` "Remediation r1"); no re-review is recorded. Full run on the final tree: `pnpm test` 648 files, 12,736 passed, 6 skipped; `pnpm check` 0 and 0; `pnpm build` exit 0. Note 9 (SM-N960N, API 29, 1000 synthetic characters; `note9-2a.md`): all seven checks PASS with caveats (a 125-row trash rather than 1000; raster blanks UNCERTAIN); the Q8 fling cut was not observed; 0 `ResizeObserver loop` events. Accepted limitations: index keys until Stage 3 (a permanent delete can leave the focus pin on the next character once); Tab into a scrolled list lands on the first mounted control; Ctrl+F cannot reach names outside the window; a narrowing search forgets measured heights of filtered-out rows; the Grid tab was still unwindowed in 2a; no Pi 3 or mid-range phone run.
+
+---
+
+### MC-270 — Main Campaign, 2026-10-10: runtime unload increment 1 plan answers (round AD-3: the Node gap also covers put-back; a changed target during a file picker aborts quietly; stub v3 right after put-back); the test platforms; Gate 1 passed
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label), a maintainer statement about test platforms, and Orchestrator choices, labelled as such
+- **Date:** 2026-10-10
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md` section "Round AD-3 (2026-10-10), unload increment 1 plan" (option labels and option text as the Orchestrator recorded them); `archdefault\plan-unload-1.md`, `advisor-unload-1.md`, `gate1-unload-1-r1.md`. The full question texts are not in the sources given. TODO(evidence): the original question texts. The test-platform statement is recorded as the Orchestrator's paraphrase ("Test platforms (maintainer, 2026-10-10)"); the maintainer's exact words are not in the sources given.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the unchosen option labels are not recorded in the sources given.
+- **Related:** `MC-268` (rounds AD-1, AD-2), `MC-140`, `MC-141` 2, `MC-194` 1, `MC-239` (jsdom tests where a sanitizer is involved), ledger rows 1603 to 1605 and 1609.
+
+**What was decided:**
+1. **D5, Node cleanup versus put-back: "Yes, same warning (Recommended)".** `MC-268` item 5's accepted two-device gap and its cleanup-dialog warning also cover put-back; no check that the unit still exists. The `senior-advisor` recommended a unit-exists check (`advisor-unload-1.md`); the Gate 1 reviewer said it would not close the race (`gate1-unload-1-r1.md`); the maintainer's "no check" stands.
+2. **D6, picker race: "Drop it quietly (Recommended)".** `selectCharImg` and `addCharEmotion` abort without applying when the target character changed while the file picker was open; a `console.warn` only, no new locale keys.
+3. **Search gap, stub v3 sequencing: "Right after put-back (Recommended)".** Put-back ships first; stub v3 (tags and creator in the stub) comes next, ahead of card import; tag and creator search is degraded for put-back characters only between the two.
+4. **Test platforms (maintainer, as recorded):** no AVD; measurements and device checks use the Note 9 plus a Windows desktop (Tauri or Node plus web).
+
+**Orchestrator choices (NOT asked of the maintainer; pending Gate 1 when recorded, then adopted by Gate 1):** D1, the fingerprint baseline is the unit as read; D2, the put-back is not gated on `canBootArchive()`; D3, the previous group's members are kept too; D4, a dev-only A/B flag, removed after measurement. For stage 1c the Orchestrator picked the desktop platform: the Node server plus the web page on Windows, where the idle-reload UX issue was seen and where put-back and the idle reload are both active.
+
+**Gate 1 (provenance; not a maintainer decision):** `senior-advisor` challenge (`advisor-unload-1.md`, row 1604); `opus-reviewer` r1 `[REJECT]` with narrow amendments, mechanism sound (F1 save-loop test validity, F2 `lastInteraction` going backwards, F3 registry enumeration, F4 test classification, F5 the `AssetInput` picker hazard, F6 to F8); the Orchestrator's v2 amendments; r2 targeted re-review `[PASS WITH FIXES]` (`plan-unload-1.md` section E). Gate 1 is therefore recorded as passed; the r2 fixes are checked at Gate 2. Stage cut: 1a writer fixes (the index-bound image writers, `AssetInput`, `applyStubStateOnRestore` carrying a newer stub `lastInteraction`); 1b retain, fingerprint and put-back with dev counters and a stop rule (if browse-only switches show near-zero clean put-backs, stop and fix the dirtier first); 1c a dev tripwire and the measurement on the Note 9 plus the Windows desktop.
+
+**Not decided:** the stage 2 design (edited characters unloaded after their save lands, byte-budget LRU); card import to archive, trash archiving and the idle-reload removal (all after stage 2 or later, `MC-268`); stub v3's fields beyond tags and creator.
+
+---
+
+### MC-271 — Main Campaign, 2026-10-10: Stage 2b commit authorization; commit `e31b4f2f`
+
+- **Tag:** decision (the maintainer's words) and an Orchestrator choice, labelled as such
+- **Date:** 2026-10-10 (the commit `e31b4f2f` is dated 2026-10-10)
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `charlist\answers.md` bullet "2b commit (maintainer, 2026-10-10)" and the "Stage 2b Q1" bullet; `git show --stat e31b4f2f` and its message; `charlist\plan-s2b.md` (v2 item 6); `charlist\stage2b-report.md`; `charlist\note9-2b.md`.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not recorded.
+- **Related:** `MC-266` (round 6, the centred partial row), `MC-269`, ledger rows 1600, 1602 and 1606 to 1608.
+
+**What was decided:**
+1. **Commit 2b when ready.** The maintainer's words, quoted from `answers.md`: "go ahead and commit when stage 2b is ready to do so." The Orchestrator's reading of "ready" (recorded in `answers.md`, not the maintainer's): the r3 fixes, a re-review pass, a device recheck of D1 and D2, and the full test, check and build green; then commit and push. Landed as `e31b4f2f` (14 files, 1,264 insertions, 366 deletions). `origin/main` resolved to `e31b4f2f` when checked 2026-10-10 (`git status -sb` shows no "ahead").
+
+**Closed without asking the maintainer (Orchestrator, per Gate 1 finding 6 of the Stage 2b plan):** Stage 2b Q1, the scrollbar gutter: the Grid scroller uses `scrollbar-gutter: stable`; the custom scrollbar is 5 px (0 on overlay platforms), so the shift is at most about 2.5 px and not a product trade-off.
+
+**Gate dispositions and verification (provenance from the saved reports; not maintainer decisions):** Gate 1 `adversarial-reviewer` `[PASS WITH FIXES]`, eight dispositions (`plan-s2b.md` v2; row 1602). Gate 2 `adversarial-reviewer`: initial `[PASS WITH FIXES]` (picture-cache bounds, centring CSS order), a re-review `PASS WITH FIXES` (cache size cap, empty URL), r2 check `APPROVE`, the r3 review (device defects D1 font scale and D2 `ResizeObserver` loop, the sticky anchor) with two LOW findings, and the r4 check `APPROVE` (row 1607). Full run on the final tree: `pnpm test` 648 files, 12,784 passed, 6 skipped; `pnpm check` 0 and 0; `pnpm build` exit 0. Device passes (`note9-2b.md`; Note 9 SM-N960N API 29 and Edge 155 on Windows against the Node server, not the Tauri app): first pass found D1 (the column count under Android font scaling: 6 columns with a clipped sixth tile at 0.85, 4 at 1.3) and D2 (`ResizeObserver loop` events on column-narrowing); the r3 recheck on the r3 build found 5 columns with no overflow at 0.85, 1.1 and 1.3, 0 loop events on 4 rotations and on desktop narrowing and widening resizes, the same tile after rotation round trips, 2.57% janky frames over 5,952 frames (one run at 15.0%, cause not attributed). **Accepted limitations and not observed:** the r4 anchor edge cases are covered by unit tests only (the device builds preceded them); long tasks of up to 153 to 227 ms remain (attributed mostly to style recalculation and compositor commit after about 140 tiles mount; a smaller overscan is untested, CHORE-170); the two-in-nine bimodal jank runs are unexplained; a one-frame interval of old rows in the new width after a column change was not looked for; a zoom or font-scale change without a scroller resize is not picked up until the next resize (CHORE-173); the Tauri desktop app, real browser zoom, raster blanks, a tap during momentum scrolling and a 1000-row trash on the phone were not run; an unexplained selection of a character while the Edge window was minimized during the first desktop pass is treated as a harness artefact until reproduced; the Stage 2a link-tap alert was not retested.
