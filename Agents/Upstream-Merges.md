@@ -119,3 +119,97 @@ Full suite (`CI=true`): 509 files, 10271 passed, 6 skipped. `pnpm check`: 0 erro
 - The info lookup in the no-creator download path shows no wait text.
 - The `?realm=` popup block does not refresh an open Realm list. Upstream behaves the same way.
 - Round 2 noted a wrong "Guard:" label on the test "an unblocked creator resolved from the realm info proceeds to the download request" (it fails on the pre-merge `main`, so it is a feature test). The label was removed before the merge commit; `534c5a66` carries the corrected comment.
+
+## 2026-10-09 — merge `6f9c0b98`
+
+Merge commit `6f9c0b98`, "Merge upstream/main: keep-alive sound counts as audible in Chrome" (2026-10-09). Parents: `7921b287` (the fork's `main`) and `2a511a31` (upstream/main, "fix: make keep-alive sound count as audible in Chrome (#1640)"). This entry was written on 2026-10-11, after the fact, from the merge commit and `MC-254`.
+
+**Upstream range:** `ea0871de..2a511a31`, 1 non-merge commit (`git rev-list --count --no-merges`). `2a511a31` is upstream's merge of the PR. **Last upstream commit merged: `2a511a31`.**
+
+**What the merge adds.** Upstream's inaudible 20 Hz looped tone for the "Via Sound" keep-alive option, so that Chrome counts the sound as audible (new `src/ts/keepAliveAudio.ts`, plus changes in `src/App.svelte`), and the updated "Via Sound" help text in the language files.
+
+### Disposition per upstream commit or group
+
+| Upstream commit(s) | Disposition | Reason |
+|---|---|---|
+| `67e7b8cb` "fix: make keep-alive sound count as audible in Chrome" (#1640) | TAKEN | `keepAliveAudio.ts` and the `App.svelte` change came in. The merge touches those two files and the seven language files (`git show --stat 6f9c0b98`). |
+
+Part of the commit that was not taken: upstream's `keepSessionAlivePip` and `keepSessionAliveSound` label keys. The merge message says they are unused and not carried over.
+
+### Conflicts and how each was resolved
+
+The conflicts were in six locale files: `cn`, `de`, `es`, `ko`, `vi` and `zh-Hant` (translator report, `merge\translator.md`). The Gate 2 review adds that they were unmerged (`UU`) until staged. No conflict in `App.svelte`, `keepAliveAudio.ts` or `en.ts` is recorded; the review found the `App.svelte` hunks identical to upstream's.
+
+Resolution, from the translator report: in each file the fork's side was kept, and only the "Via Sound" bullet body of the `keepSessionAlive` help text was replaced with upstream's new translation, keeping the fork's bold labels (cn 通过声音, de Über Ton, es Por Sonido, ko 소리로 유지, vi Qua Âm thanh, zh-Hant 透過音訊). Upstream's top-level `keepSessionAlive`, `keepSessionAlivePip` and `keepSessionAliveSound` duplicates in cn/de/es/ko/vi were dropped. The fork already has a top-level `keepSessionAlive`, and the Pip and Sound keys are unreferenced outside `src/lang` and absent from `en.ts` (review point 1). In `zh-Hant` only the second line of the help string changed, and the fork's concatenation structure was kept. All six files stay CRLF with no BOM.
+
+### Adaptations to the fork
+
+- Korean: the option label `optViaSound` changed from "소리로 전달" to "소리로 유지" so that it matches the help bullet (`MC-254`).
+
+### Maintainer decisions
+
+- Korean label "소리로 유지", and the authorization to commit and push `6f9c0b98` after the Korean fix: `MC-254`. The commit was pushed (`origin/main` was at `6f9c0b98` when `MC-254` was written).
+- Proper keep-alive work is deferred until Android boot time is fixed; only the upstream merge was done now: `MC-256` (see also `MC-255`).
+
+### Review
+
+Gate 2: `adversarial-reviewer`, verdict `[EDITORIAL]`, no substantive defects (`merge\review.md`, 2026-10-09). One review round is recorded. It was read-only (git diff, git grep, byte counts, part of `App.svelte`); no tests were run. It found:
+
+- Every upstream change in `ea0871de..upstream/main` (9 files) is present, and the `App.svelte` hunks are identical to upstream's.
+- The locale files have no conflict markers, are CRLF with no bare LF, and have one changed line each against `HEAD`. Bullet bodies equal upstream's translation and the labels are the fork's.
+- `App.svelte`: imports fine, `send.mp3` still used elsewhere, the pause listener is added once, a `play()` rejection resets the flag, and the `'pip'` branch is empty (deferred).
+- Editorial: whether the Tauri Android WebView shows a media notification is unverified, so the new help text's Android claim may overstate.
+- Housekeeping: the Korean option label "소리로 전달" differed from the help text "소리로 유지"; the maintainer's decision (`MC-254`) later changed the label.
+
+### Checks
+
+The merge message states no results. The run logs in session scratch (`merge\test.txt`, `check.txt`, `build.txt`) come from a copy of the merge tree; the test run started at 08:30:55. Whether they cover the final Korean label change is not recorded.
+
+- `pnpm test`: exit 1. 592 of 593 test files passed; 12139 tests passed, 1 failed, 6 skipped. The failure was a 5000 ms timeout in `src/ts/storage/tests/assetPieceSave.test.ts` ("saveAsset without crypto.subtle > reproducer: a plain-HTTP page gets the content-hash key"). MC-254 and ledger row 1551 track this timeout as CHORE-152.
+- `pnpm check`: 0 errors, 0 warnings, exit 0.
+- `pnpm build`: built, exit 0.
+
+### Follow-ups
+
+- The fork's own keep-alive rework (an Android foreground service only while a request, TTS or image job is in flight; save the partial reply on hide; remove the PiP mode) is deferred (`MC-256`).
+
+## 2026-10-11 — merge of upstream/main `979dbc9d`
+
+Merge commit: the commit that adds this section (`git log --grep=979dbc9d main`). Parents: the fork's `main` and `979dbc9d` (upstream/main, upstream's merge of PR #1532).
+
+**Upstream range:** `2a511a31..979dbc9d`, 1 non-merge commit (`git rev-list --count --no-merges`): `4fa72fb5` "Fix searchMatch key mutation in regex lorebook" (PR #1532). `6e0277b3` and `979dbc9d` are upstream merge commits. **Last upstream commit merged: `979dbc9d`.**
+
+**Why.** The maintainer typed, in the Orchestrator session of 2026-10-11: "upstream had 3 commits which seems like a bugfix. see if we can merge them." Of the three, one is a code change and two are merge commits. Asked by the Orchestrator, the maintainer chose to merge after the Grid coder finished, with a reproducer test and a fresh review.
+
+**What the merge adds.** Regex lorebook keys activate. Before, a flagged key such as `/dragon/i` was rewritten to `/dragon` with its leading slash kept, so a regex lorebook key effectively never matched. A key with no flags (`/dragon/`) was skipped. Now each key is parsed as `/pattern/flags`, flags are limited to `dgimsuvy`, and a key that cannot be parsed or is not a valid regular expression makes that key list (primary or secondary) not match. The regex's `lastIndex` is reset; this is defensive only, because the regexes are rebuilt on each `searchMatch` call.
+
+### Disposition per upstream commit or group
+
+| Upstream commit(s) | Disposition | Reason |
+|---|---|---|
+| `4fa72fb5` "Fix searchMatch key mutation in regex lorebook" (#1532) | TAKEN | Auto-merged with no conflicts (`git merge --no-commit --no-ff upstream/main`). The staged diff is only the regex branch of `searchMatch` in `src/ts/process/lorebook.svelte.ts`. The fork's own `subject`, `promptView` and `snapshotSubject` code in that file is intact. |
+| `6e0277b3`, `979dbc9d` | Upstream merge commits | No change of their own beyond the commit above. |
+
+### Conflicts and how each was resolved
+
+None. The merge applied cleanly.
+
+### Persistence
+
+Nothing persisted changes. The keys come from a `.split(',')` on a cloned entry, and `searchMatch` only reassigns its own local key list.
+
+### Fork addition
+
+`src/ts/process/tests/lorebookRegexKeys.svelte.test.ts`: 10 tests that drive the real `loadLoreBookV3Prompt`. Five are reproducers that fail on the pre-merge code ("expected +0 to be 1": the entry did not activate). Five are compatibility guards that pass before and after. One reproducer key was corrected from `/dragon/g` to `/dragon/gi`, because the test data only has "Dragon". That test fails on the old code through its slash handling; it does not observe the `lastIndex` reset. Source: `upstream-1532-test-report.md` (session scratch).
+
+### Review
+
+Gate 2: `adversarial-reviewer`, `[APPROVE]` (`gate2-upstream-1532.md`, session scratch). It confirmed that the staged diff is only the regex branch of `searchMatch`, that the merged test file passes 10/10, and that with the pre-merge source injected in memory 5 tests fail and 5 pass. It also confirmed the behaviour changes: flagless keys are valid, flags are limited to `dgimsuvy`, any key that is not of the form `/…/` or is an invalid regex makes the whole query false (the old code aborted only on the first key), and the key mutation is gone.
+
+### Checks
+
+Full checks, on the merged tree with the uncommitted Grid edit-mode work also present: `pnpm test` 667 of 668 files pass (13064 tests pass, 6 skipped); the 6 failures are all `src/lang/localeParity.test.ts`, from the Grid work's five new English keys not yet translated, not from this merge. `pnpm check`: 0 errors, 0 warnings. `pnpm build`: succeeds.
+
+### Follow-ups
+
+- Not fixed, and present in upstream too: `searchMatch` slices messages from `length - scanDepth` with no clamp. A scan depth larger than the message count gives a negative start and drops the oldest messages (for example 3 messages with depth 5 keeps only the last 2). This affects plain keys as well as regex keys.
