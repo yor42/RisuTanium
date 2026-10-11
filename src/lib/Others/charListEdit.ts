@@ -1,5 +1,5 @@
 import type { character, folder, groupChat } from '../../ts/storage/database.svelte'
-import { folderEntryAt, type ItemRef, type OrderEntry } from '../SideBars/sidebarOrder'
+import { folderEntryAt, type FolderRef, type ItemRef, type OrderEntry } from '../SideBars/sidebarOrder'
 import type { GridEntry, SortMode } from './charListOrder'
 
 /**
@@ -80,6 +80,93 @@ export function actingPicks(
         }
     }
     return picked
+}
+
+/**
+ * Widths, in pixels, the edit row's forms are chosen from. All of them are stable measures that do not
+ * depend on the forms shown: the natural width of the count's full text and of its number (invisible
+ * copies), the row's own width, the Group button (`groupWidth`; the icon-only trash button has the same
+ * width, `iconWidth`), the labelled trash button (an invisible copy) and the gap between row items.
+ */
+export interface RowMeasure {
+    fullWidth: number
+    numberWidth: number
+    rowWidth: number
+    groupWidth: number
+    labelWidth: number
+    iconWidth: number
+    gap: number
+}
+
+export interface RowForms {
+    /** The count as its full localized text or as its number alone. */
+    count: 'full' | 'number'
+    /** Move to trash as an icon-only button instead of its labelled button. */
+    iconTrash: boolean
+}
+
+/**
+ * The forms of the edit row, most informative first: the full text beside the labelled trash button;
+ * else the number beside the label; else the trash button as an icon, with the count as its full text
+ * if that fits beside the icon and as its number otherwise. A row that has not been measured
+ * (`rowWidth` 0) shows the full text and the label. The row holds the count, Group and trash, so two gaps.
+ */
+export function chooseRowForms(m: RowMeasure): RowForms {
+    if (m.rowWidth <= 0) {
+        return { count: 'full', iconTrash: false }
+    }
+    const beside = (trashWidth: number) => m.rowWidth - m.groupWidth - trashWidth - 2 * m.gap
+    const roomWithLabel = beside(m.labelWidth)
+    if (m.fullWidth <= roomWithLabel) {
+        return { count: 'full', iconTrash: false }
+    }
+    if (m.numberWidth <= roomWithLabel) {
+        return { count: 'number', iconTrash: false }
+    }
+    return { count: m.fullWidth <= beside(m.iconWidth) ? 'full' : 'number', iconTrash: true }
+}
+
+export type GroupPlan =
+    | { ok: true, sources: ItemRef[] }
+    | { ok: false, reason: 'empty' | 'unlisted' | 'loneFolder' }
+
+/**
+ * What "Group into new folder" would act on, from the live picks. A stale pick is skipped. The
+ * reference of each pick is read from the current entries, never from the pick. Group is unavailable
+ * when no pick is left, when a pick has no order entry (an unlisted character or a second holder of
+ * an id), and when the only thing left is one folder (regrouping it would only rename it and lose its
+ * name, colour and picture). A member pick whose own folder tile is also picked adds nothing, since the
+ * folder brings all its members, so it does not turn a lone folder into "a folder and a character".
+ * Sources keep pick order; the operation sorts them into document order. Nothing is written.
+ */
+export function groupPlan(
+    selection: ReadonlyMap<string, Picked>,
+    entryByKey: ReadonlyMap<string, GridEntry>,
+    characters: readonly (character | groupChat)[],
+    order: readonly OrderEntry[] | undefined,
+): GroupPlan {
+    const stale = new Set(stalePickedKeys(selection, entryByKey, characters, order))
+    const refs: ItemRef[] = []
+    for (const key of selection.keys()) {
+        if (stale.has(key)) {
+            continue
+        }
+        const ref = entryByKey.get(key)?.ref
+        if (!ref) {
+            return { ok: false, reason: 'unlisted' }
+        }
+        refs.push(ref)
+    }
+    const pickedFolders = refs.filter((ref): ref is FolderRef => ref.kind === 'folder')
+    const kept = refs.filter((ref) => ref.kind !== 'member'
+        || !pickedFolders.some((folderRef) => folderRef.id === ref.folder.id && folderRef.occurrence === ref.folder.occurrence))
+    if (kept.length === 0) {
+        return { ok: false, reason: 'empty' }
+    }
+    if (kept.length === 1 && kept[0].kind === 'folder') {
+        return { ok: false, reason: 'loneFolder' }
+    }
+    return { ok: true, sources: kept }
 }
 
 /**

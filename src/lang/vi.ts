@@ -2416,6 +2416,7 @@ export const languageVietnamese = {
         editMode: "Chỉnh sửa",
         editDone: "Xong",
         editMoveToTrash: "Chuyển vào thùng rác",
+        editGroup: "Gom vào thư mục mới",
         editSelectedCount: (count: number) => `Đã chọn ${count}`,
         editFolderToggle: "Mở hoặc đóng thư mục",
         editTrashConfirm: (count: number) => `Chuyển ${count} nhân vật vào thùng rác?`,

@@ -2418,6 +2418,7 @@ export const languageGerman = {
         "editMode": "Bearbeiten",
         "editDone": "Fertig",
         "editMoveToTrash": "In den Papierkorb verschieben",
+        "editGroup": "In neuen Ordner gruppieren",
         "editSelectedCount": (count: number) => `${count} ausgewählt`,
         "editFolderToggle": "Ordner öffnen oder schließen",
         "editTrashConfirm": (count: number) => count === 1 ? `1 Charakter in den Papierkorb verschieben?` : `${count} Charaktere in den Papierkorb verschieben?`,

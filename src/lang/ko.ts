@@ -2416,6 +2416,7 @@ export const languageKorean = {
         editMode: "편집",
         editDone: "완료",
         editMoveToTrash: "휴지통으로 이동",
+        editGroup: "새 폴더로 묶기",
         editSelectedCount: (count: number) => `${count}개 선택됨`,
         editFolderToggle: "폴더 열기 또는 닫기",
         editTrashConfirm: (count: number) => `캐릭터 ${count}개를 휴지통으로 이동하시겠습니까?`,

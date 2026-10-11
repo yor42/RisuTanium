@@ -160,6 +160,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 import { alertStore, DBState } from '../../ts/stores.svelte'
 import type { alertData } from '../../ts/alert'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
+import { promptWaiting, resetAlertPromptsForTests } from '../../ts/alertPrompts'
 import { language } from '../../lang'
 import { setLiveKeysBlockedReader } from '../../ts/keyEventBlocked'
 import { GRID_SORT_KEY } from './gridMemory'
@@ -258,7 +259,7 @@ const editButton = (root: ParentNode): HTMLButtonElement | undefined =>
 const isEditing = (root: ParentNode): boolean => buttonByText(root, language.othersUi.editDone) !== undefined
 const countBar = (root: ParentNode): HTMLElement | null => root.querySelector('[aria-live="polite"]')?.parentElement ?? null
 const countText = (root: ParentNode): string => root.querySelector('[aria-live="polite"]')?.textContent?.trim() ?? ''
-const trashButton = (root: ParentNode): HTMLButtonElement | null => countBar(root)?.querySelector('button') ?? null
+const trashButton = (root: ParentNode): HTMLButtonElement | null => buttonByText(countBar(root) ?? root, language.othersUi.editMoveToTrash) ?? null
 const picked = (root: ParentNode): number => root.querySelectorAll('[data-charlist-picked]').length
 
 const charTile = (root: ParentNode, name: string): HTMLButtonElement | null =>
@@ -329,6 +330,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    // A hold in edit mode opens a menu that nothing answers here; it must not cover the page for the next test.
+    resetAlertPromptsForTests()
+    alertStore.set({ type: 'none', msg: '' })
     resetBackHandlersForTests()
     vi.useRealTimers()
     setLiveKeysBlockedReader(() => false)
@@ -988,12 +992,12 @@ describe('Grid edit mode: long press', () => {
         })
     })
 
-    test('(F) a long press in edit mode toggles nothing', async () => {
+    test('(F) a long press in edit mode selects the held tile and offers the menu, keeping the earlier pick', async () => {
         fixture()
         await withMounted(async (target) => {
             await enter(target)
             await tap(target, 'Char A')
-            // Char U is not selected: a hold on it must not select it.
+            // Char U is not selected: the hold selects it and opens the menu (covered in the group suite).
             const { x, y } = tileAt(3, 2)
             vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
             try {
@@ -1006,8 +1010,9 @@ describe('Grid edit mode: long press', () => {
             firePointer('pointerup', window, x, y)
             await settle()
             expect(isEditing(target)).toBe(true)
-            expect(picked(target)).toBe(1)
-            expect(charTile(target, 'Char U')!.getAttribute('aria-pressed')).toBe('false')
+            expect(picked(target)).toBe(2)
+            expect(charTile(target, 'Char U')!.getAttribute('aria-pressed')).toBe('true')
+            expect(promptWaiting()).toBe(true)
         })
     })
 
@@ -1289,7 +1294,7 @@ describe('Grid edit mode: where a long press leaves the scroll', () => {
     })
 })
 
-describe('Grid edit mode: the screen only writes through the bulk trash', () => {
+describe('Grid edit mode: the screen only writes through the bulk trash and the group', () => {
     test('(G) entering, selecting, toggling a folder, leaving, a sort switch and a declined trash change nothing in the database and call no checkCharOrder', async () => {
         fixture()
         const characters = DBState.db.characters

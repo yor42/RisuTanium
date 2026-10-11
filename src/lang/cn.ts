@@ -2416,6 +2416,7 @@ export const languageChinese = {
         "editMode": "编辑",
         "editDone": "完成",
         "editMoveToTrash": "移至垃圾桶",
+        "editGroup": "归入新文件夹",
         "editSelectedCount": (count: number) => `已选择 ${count} 个`,
         "editFolderToggle": "打开或关闭文件夹",
         "editTrashConfirm": (count: number) => `将 ${count} 个角色移至垃圾桶吗？`,

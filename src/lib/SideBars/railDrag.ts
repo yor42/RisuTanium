@@ -102,6 +102,11 @@ export interface RailHost {
     onSpringOpen(folder: FolderRef): void
     /** A touch long-press on a folder was released without moving. */
     onTouchMenu(folder: FolderRef): void
+    /**
+     * A touch long-press on a character or member was released without moving and without a drop.
+     * Optional: a host without it behaves as before.
+     */
+    onTouchHold?(source: ItemRef): void
 }
 
 type Phase = 'idle' | 'pressed' | 'dragging'
@@ -270,6 +275,7 @@ export class RailDrag {
         const source = this.source!
         const target = this.target
         const menuRelease = this.touchLike && !this.moved && source.kind === 'folder'
+        const holdRelease = this.touchLike && !this.moved && source.kind !== 'folder'
         this.teardown(true)
         if (target.kind === 'merge' || target.kind === 'append' || (target.kind === 'gap' && !target.noop)) {
             try {
@@ -281,6 +287,9 @@ export class RailDrag {
         }
         else if (menuRelease && source.kind === 'folder') {
             this.host.onTouchMenu(source)
+        }
+        else if (holdRelease) {
+            this.host.onTouchHold?.(source)
         }
     }
 

@@ -1176,3 +1176,90 @@ describe('source identity', () => {
         expect(gapAfterOf(rig.drops[0].target)).toBeNull()
     })
 })
+
+describe('touch hold release hook', () => {
+    let holds: ItemRef[]
+    beforeEach(() => {
+        rig = new Rig(['A', 'B', folderOf('f1', ['C']), 'D'], ['f1'])
+        holds = []
+        rig.host.onTouchHold = (source) => {
+            rig.calls.push('hold')
+            holds.push(source)
+        }
+    })
+
+    test('a lifted character released in place reports its source once, after the session has ended', () => {
+        rig.touchLift(B)
+        rig.release(rig.y(B), { pointerType: 'touch' })
+        expect(holds).toEqual([refOf('B')])
+        expect(rig.calls.slice(-2)).toEqual(['session:false', 'hold'])
+        expect(rig.drops).toEqual([])
+        expect(rig.machine.consumeClick()).toBe(true)
+    })
+
+    test('a lifted folder member released in place reports the member reference', () => {
+        rig.touchLift(memberKey('f1', 'C'))
+        rig.release(rig.y(memberKey('f1', 'C')), { pointerType: 'touch' })
+        expect(holds).toEqual([{ kind: 'member', folder: { kind: 'folder', id: 'f1', occurrence: 0 }, id: 'C', occurrence: 0 }])
+    })
+
+    test('a lifted folder asks for the folder menu and not for the hold hook', () => {
+        rig.touchLift(folderKey('f1'))
+        rig.release(rig.y(folderKey('f1')), { pointerType: 'touch' })
+        expect(holds).toEqual([])
+        expect(rig.touchMenus).toHaveLength(1)
+    })
+
+    test('a hold that moved beyond the slop does not report', () => {
+        rig.touchLift(B)
+        rig.move(rig.y(B) + TOUCH_SLOP_PX + 2, { pointerType: 'touch' })
+        rig.release(rig.y(B), { pointerType: 'touch' })
+        expect(holds).toEqual([])
+    })
+
+    test('a lifted character dropped on a real target drops and does not report', () => {
+        rig.touchLift(B)
+        rig.move(rig.y(D, 1) + 8, { pointerType: 'touch' })
+        rig.release(rig.y(D, 1) + 8, { pointerType: 'touch' })
+        expect(rig.drops).toHaveLength(1)
+        expect(holds).toEqual([])
+    })
+
+    test('a key scroll that carries a lifted character onto a drop target without finger travel drops and does not report', () => {
+        const y0 = rig.y(B)
+        rig.touchLift(B)
+        rig.machine.keyDown('PageDown')
+        rig.release(y0, { pointerType: 'touch' })
+        expect(rig.drops).toHaveLength(1)
+        expect(holds).toEqual([])
+    })
+
+    test('a mouse press never reports', () => {
+        rig.press(B)
+        rig.release(rig.y(B))
+        rig.mouseDrag(B)
+        rig.release(rig.y(B) + MOUSE_DRAG_THRESHOLD_PX)
+        expect(holds).toEqual([])
+    })
+
+    test('a cancelled pointer and a cancelled gesture do not report', () => {
+        rig.touchLift(B)
+        rig.machine.pointerCancel(rig.ptr(rig.y(B), { pointerType: 'touch' }))
+        rig.touchLift(B)
+        rig.machine.cancel()
+        expect(holds).toEqual([])
+    })
+
+    test('a release before the hold time reports nothing', () => {
+        rig.press(B, { pointerType: 'touch' })
+        rig.release(rig.y(B), { pointerType: 'touch' })
+        expect(holds).toEqual([])
+    })
+
+    test('a host without the hook releases a lifted character without throwing', () => {
+        rig.host.onTouchHold = undefined
+        rig.touchLift(B)
+        expect(() => rig.release(rig.y(B), { pointerType: 'touch' })).not.toThrow()
+        expect(rig.machine.isDragging).toBe(false)
+    })
+})

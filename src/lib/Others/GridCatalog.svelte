@@ -1,8 +1,11 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
+    import { v4 } from "uuid";
     import { changeChar, getCharImage, removeChar, trashCharacters } from "../../ts/characters";
+    import { checkCharOrder } from "src/ts/globalApi.svelte";
+    import { alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
-    import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
+    import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
@@ -21,13 +24,14 @@
     import { clickedButton, clickedLink, selectedInside } from "src/ts/gui/descriptionMarkdown";
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import { createCharacterSearch } from "src/ts/gui/characterSearch.svelte";
-    import { keyEventBlocked } from "src/ts/keyEventBlocked";
+    import { keyEventBlocked, keysBlockedNow } from "src/ts/keyEventBlocked";
+    import { groupIntoFolder, refKey } from "../SideBars/sidebarOrder";
     import { RailDrag, type RailHost } from "../SideBars/railDrag";
     import { bindRail, type RailBinding } from "../SideBars/railBinding";
     import { computeLayout, type LayoutItem } from "../SideBars/railLayout";
     import type { RailGeometry } from "../SideBars/railResolver";
     import { NO_TARGET } from "../SideBars/railTarget";
-    import { actingPicks, canEdit, gestureRef, resolvePicked, stalePickedKeys, type Picked } from "./charListEdit";
+    import { actingPicks, canEdit, chooseRowForms, gestureRef, groupPlan, resolvePicked, stalePickedKeys, type Picked, type RowMeasure } from "./charListEdit";
     import { tileKeyAt, type GridGeometry } from "./gridTarget";
     import { registerBackHandler } from "../../ts/backHandlers";
     import { pageCovered } from "../../ts/alertPrompts";
@@ -91,10 +95,12 @@
     }
 
     // The Grid tab's tiles, built once per change: the live characters in the saved order with their
-    // folders. The Grid writes the database only through the bulk move to the trash (`trashPicked`):
-    // mounting, searching, opening folders, choosing a sort, entering and leaving edit mode, selecting
-    // and every cancelled or refused action write nothing, never assign characterOrder and never repair
-    // the order; the order is the rail's. A timestamp is read only under Recent.
+    // folders. The Grid writes the database only through the bulk move to the trash (`trashPicked`, whose
+    // `trashCharacters` also edits the order) and the group into a new folder (`groupPicked`, which
+    // assigns characterOrder and repairs it as the rail does): mounting, searching, opening folders,
+    // choosing a sort, entering and leaving edit mode, selecting and every cancelled or refused action
+    // write nothing, never assign characterOrder and never repair the order; the order is the rail's.
+    // A timestamp is read only under Recent.
     const entries = $derived(buildGridEntries({
         live: found.live,
         order: DBState.db.characterOrder,
@@ -145,10 +151,74 @@
     let editing = $state(false)
     const picks = new SvelteMap<string, Picked>()
     let trashing = $state(false)
+    // Whether Group would act on the live selection; the row button and the menu share `groupPlan`.
+    const groupAvailable = $derived(groupPlan(picks, entryByKey, DBState.db.characters, DBState.db.characterOrder).ok)
+
+    // The edit row has three forms, chosen by `chooseRowForms` (charListEdit): the count as its full
+    // localized text or just its number, and Move to trash as its labelled button or an icon. Every input
+    // is a stable measure that does not depend on the form shown: the row's own width, the Group button
+    // (the icon button has the same size), and invisible absolutely positioned copies of the full text,
+    // the number and the labelled button, which take no layout space. The visible count and the visible
+    // trash button are never measured.
+    let rowEl: HTMLDivElement | undefined = $state()
+    let groupBtn: HTMLButtonElement | undefined = $state()
+    let countProbe: HTMLSpanElement | undefined = $state()
+    let numberProbe: HTMLSpanElement | undefined = $state()
+    let labelProbe: HTMLSpanElement | undefined = $state()
+    let rowMeasure: RowMeasure = $state({ fullWidth: 0, numberWidth: 0, rowWidth: 0, groupWidth: 0, labelWidth: 0, iconWidth: 0, gap: 0 })
+    const countFull = $derived(language.othersUi.editSelectedCount(picks.size))
+    const rowForms = $derived(chooseRowForms(rowMeasure))
+    const countShown = $derived(rowForms.count === 'full' ? countFull : String(picks.size))
+
+    function measureRow() {
+        if (!rowEl || !groupBtn || !countProbe || !numberProbe || !labelProbe) {
+            return
+        }
+        const width = (element: Element) => element.getBoundingClientRect().width
+        rowMeasure = {
+            fullWidth: width(countProbe),
+            numberWidth: width(numberProbe),
+            rowWidth: width(rowEl),
+            groupWidth: width(groupBtn),
+            labelWidth: width(labelProbe),
+            iconWidth: width(groupBtn),
+            gap: parseFloat(getComputedStyle(rowEl).columnGap) || 0,
+        }
+    }
+
+    // Measured again when the count or the language text changes (the probes' text changes with it).
+    $effect(() => {
+        void countFull
+        void language.othersUi.editMoveToTrash
+        void rowEl
+        void groupBtn
+        void countProbe
+        void numberProbe
+        void labelProbe
+        untrack(measureRow)
+    })
+
+    // Measured again when the row or any probe changes size. Disconnected when the row goes away.
+    $effect(() => {
+        const row = rowEl
+        const probes = [countProbe, numberProbe, labelProbe, groupBtn]
+        if (!row || typeof ResizeObserver === 'undefined') {
+            return
+        }
+        const observer = new ResizeObserver(() => measureRow())
+        observer.observe(row)
+        for (const probe of probes) {
+            if (probe) {
+                observer.observe(probe)
+            }
+        }
+        return () => observer.disconnect()
+    })
 
     function exitEdit() {
         editing = false
         enterGeneration++
+        groupGeneration++
         picks.clear()
     }
 
@@ -208,16 +278,43 @@
             if (index < 0) {
                 return
             }
-            const top = geometry.layout.offsets[index]
-            const height = geometry.layout.heights[index]
-            const view = gridScroller.clientHeight
-            const scrollTop = host.getScrollTop()
-            if (top >= scrollTop && top + height <= scrollTop + view) {
-                return
-            }
-            host.setScrollTop(top + height / 2 - view / 2)
+            centreRowIfHidden(geometry, index, gridScroller)
         } catch (error) {
             console.error('Grid scroll to the held tile failed:', error)
+        }
+    }
+
+    // Centres row `index` unless it is already fully in view.
+    function centreRowIfHidden(geometry: GridGeometry, index: number, scroller: HTMLDivElement) {
+        const top = geometry.layout.offsets[index]
+        const height = geometry.layout.heights[index]
+        const view = scroller.clientHeight
+        const scrollTop = host.getScrollTop()
+        if (top >= scrollTop && top + height <= scrollTop + view) {
+            return
+        }
+        host.setScrollTop(top + height / 2 - view / 2)
+    }
+
+    // After a group, the new folder tile stands where the first picked tile was, which can be far from
+    // the view: scroll to it once if it is not fully visible. Under search there is no folder tile (the
+    // results are flat), so nothing scrolls. Done, a sort change, a newer action or leaving the tab
+    // bumps the count and cancels the continuation.
+    let groupGeneration = 0
+    async function scrollToNewFolder(id: string, generation: number) {
+        try {
+            await tick()
+            const geometry = geometryNow()
+            if (generation !== groupGeneration || !editing || sort !== 'order' || !gridScroller || !geometry) {
+                return
+            }
+            const index = rowIndexOf(refKey({ kind: 'folder', id, occurrence: 0 }))
+            if (index < 0) {
+                return
+            }
+            centreRowIfHidden(geometry, index, gridScroller)
+        } catch (error) {
+            console.error('Grid scroll to the new folder failed:', error)
         }
     }
 
@@ -282,6 +379,7 @@
         if (trashing) {
             return
         }
+        groupGeneration++
         const acting = actingPicks(picks, entryByKey, DBState.db.characters, DBState.db.characterOrder)
         if (acting.characters.length === 0 && acting.folders.length === 0) {
             return
@@ -293,6 +391,93 @@
             }
         } finally {
             trashing = false
+        }
+    }
+
+    // The one write of the Grid besides the trash: the rail's assignment and repair of the saved order.
+    // An operation that changes nothing writes nothing.
+    function applyGridOrderChange(change: (order: typeof DBState.db.characterOrder) => typeof DBState.db.characterOrder): boolean {
+        const current = DBState.db.characterOrder
+        if (current === undefined) {
+            return false
+        }
+        const next = change(current)
+        if (next === current) {
+            return false
+        }
+        DBState.db.characterOrder = next
+        checkCharOrder()
+        return true
+    }
+
+    // Groups the live selection into one new folder, closed, at the first picked tile's place. The picks
+    // are resolved against the live order and entries at this moment (a menu may have waited), never
+    // from anything captured earlier. A folder the group dissolved leaves the open set, as an ungroup
+    // does in the rail. The selection is cleared and edit mode stays.
+    function groupPicked() {
+        const plan = groupPlan(picks, entryByKey, DBState.db.characters, DBState.db.characterOrder)
+        if (!plan.ok) {
+            return
+        }
+        groupGeneration++
+        const spec = { id: v4(), name: language.sidebarUi.defaultFolderName }
+        const idsBefore = folderIdsInOrder()
+        if (!applyGridOrderChange((order) => groupIntoFolder(order, plan.sources, spec))) {
+            return
+        }
+        const idsAfter = folderIdsInOrder()
+        for (const id of idsBefore) {
+            const at = openFolders.indexOf(id)
+            if (!idsAfter.has(id) && at !== -1) {
+                openFolders.splice(at, 1)
+            }
+        }
+        picks.clear()
+        void scrollToNewFolder(spec.id, groupGeneration)
+    }
+
+    // The choices are fixed when the menu opens and the chosen index is read against that list, so an
+    // availability change while the menu waits cannot turn one choice into another.
+    let menuOpen = false
+    async function openBulkMenu() {
+        if (menuOpen) {
+            return
+        }
+        menuOpen = true
+        try {
+            const actions: ('group' | 'trash' | 'cancel')[] = []
+            const labels: string[] = []
+            if (groupAvailable) {
+                actions.push('group')
+                labels.push(language.othersUi.editGroup)
+            }
+            actions.push('trash', 'cancel')
+            labels.push(language.othersUi.editMoveToTrash, language.cancel)
+            const chosen = actions[parseInt(await alertSelect(labels))]
+            if (chosen === 'group') {
+                groupPicked()
+            }
+            else if (chosen === 'trash') {
+                void trashPicked()
+            }
+        } finally {
+            menuOpen = false
+        }
+    }
+
+    // A hold released in place, a right-click and the context-menu key all arrive here. An unselected
+    // character tile joins the selection first; a selected one stays as it is. The menu then acts on the
+    // whole selection. Folder tiles have no menu here yet.
+    function openTileMenu(key: string) {
+        const entry = entryByKey.get(key)
+        if (!entry || entry.kind !== 'char' || !editing || sort !== 'order') {
+            return
+        }
+        if (!picks.has(key)) {
+            togglePick(entry)
+        }
+        if (picks.has(key)) {
+            void openBulkMenu()
         }
     }
 
@@ -310,6 +495,10 @@
     // gone would otherwise end the gesture (and its click suppression) while the finger is still down.
     // Plain on purpose: the entries effect reads it untracked, and the end of the session resets it.
     let holdEnteredEdit = false
+    // The tile a hold lifted while already in edit mode, for the release hook. Only a hold that began in
+    // edit mode sets it, so the press that entered edit mode opens no menu. Reset when a session starts
+    // (not when it ends: the session ends before the release hook runs); plain for the same reason.
+    let holdMenuKey: string | null = null
     const NO_ITEMS: readonly LayoutItem[] = []
     const emptyLayout = computeLayout(NO_ITEMS, new Map())
 
@@ -362,7 +551,10 @@
         // A held finger never scrolls the Grid: its long press has no drop target to reach.
         edgeScroll: () => false,
         onSession: (active) => {
-            if (!active) {
+            if (active) {
+                holdMenuKey = null
+            }
+            else {
                 lifted = false
                 holdEnteredEdit = false
             }
@@ -373,11 +565,15 @@
             lifted = true
         },
         onDragStart: () => {
-            if (!lifted || editing) {
+            if (!lifted) {
                 return
             }
             const entry = pressedKey === null ? undefined : entryByKey.get(pressedKey)
             if (!entry) {
+                return
+            }
+            if (editing) {
+                holdMenuKey = entry.key
                 return
             }
             try {
@@ -394,6 +590,14 @@
         onDrop: () => {},
         onSpringOpen: () => {},
         onTouchMenu: () => {},
+        // A hold released in place on a character tile, begun in edit mode: the tile's menu.
+        onTouchHold: () => {
+            const key = holdMenuKey
+            holdMenuKey = null
+            if (key !== null) {
+                openTileMenu(key)
+            }
+        },
     }
 
     const machine = new RailDrag(host, undefined, gridGeometry)
@@ -412,7 +616,27 @@
     function attachGrid(node: HTMLDivElement) {
         gridScroller = node
         binding = bindRail(node, machine)
+        // Bubble phase, after bindRail's capture-phase guard: a touch-originated contextmenu is stopped
+        // there and never reaches this. Right-click and the context-menu key open the same menu as a hold,
+        // in edit mode only; otherwise the browser's own menu stays.
+        const onContextMenu = (event: MouseEvent) => {
+            const target = event.target
+            if (!editing || sort !== 'order' || !(target instanceof Element)) {
+                return
+            }
+            const key = target.closest('[data-charlist-key]')?.getAttribute('data-charlist-key') ?? null
+            const entry = key === null ? undefined : entryByKey.get(key)
+            if (key === null || entry?.kind !== 'char') {
+                return
+            }
+            event.preventDefault()
+            if (!keysBlockedNow()) {
+                openTileMenu(key)
+            }
+        }
+        node.addEventListener('contextmenu', onContextMenu)
         return () => {
+            node.removeEventListener('contextmenu', onContextMenu)
             machine.cancel()
             binding?.destroy()
             binding = null
@@ -672,14 +896,41 @@
                 </span>
             </div>
             {#if selected === 0}
-                <!-- Its own line, so the tab buttons and the count never wrap or crowd at a narrow width. The row keeps one height in both modes, so entering or leaving edit mode moves no tile; sorting is offered only outside edit mode. The trash button never wraps, since a second line would outgrow the row; a long count is cut short instead. The row is not selectable, so a hold that ends on it starts no text selection. -->
-                <div class="mt-2 h-8 flex items-center gap-2 select-none [-webkit-touch-callout:none]">
+                <!-- Its own line, so the tab buttons and the count never wrap or crowd at a narrow width. The row keeps one height in both modes, so entering or leaving edit mode moves no tile; sorting is offered only outside edit mode. Nothing in the row wraps, since a second line would outgrow it. When the count's full text does not fit beside the labelled trash button the count shows only its number; when not even the number fits there, the trash button becomes an icon with the same name and tooltip, and the count is its full text if that fits beside the icon, else its number, which is never cut short. Screen readers always get the full count text and the trash button's name. The measures are invisible copies and the row's own width, never the forms on screen. The row is not selectable, so a hold that ends on it starts no text selection. -->
+                <div class="relative mt-2 h-8 flex items-center gap-2 select-none [-webkit-touch-callout:none]" bind:this={rowEl}>
                     {#if editing}
-                        <span class="min-w-0 truncate text-textcolor2 text-sm" aria-live="polite">{language.othersUi.editSelectedCount(picks.size)}</span>
-                        <div class="grow"></div>
-                        <Button styled="danger" size="sm" className="shrink-0 whitespace-nowrap" disabled={picks.size === 0 || trashing} onclick={() => { void trashPicked() }}>
-                            {language.othersUi.editMoveToTrash}
-                        </Button>
+                        <span class="sr-only" aria-live="polite">{countFull}</span>
+                        <div class="min-w-0 flex-1 text-sm" class:flex-none={rowForms.iconTrash && rowForms.count === 'number'}>
+                            <span class="block text-textcolor2" class:truncate={!(rowForms.iconTrash && rowForms.count === 'number')} class:whitespace-nowrap={rowForms.iconTrash && rowForms.count === 'number'} aria-hidden="true">{countShown}</span>
+                        </div>
+                        <span class="invisible absolute left-0 top-0 whitespace-nowrap pointer-events-none text-sm" aria-hidden="true" bind:this={countProbe}>{countFull}</span>
+                        <span class="invisible absolute left-0 top-0 whitespace-nowrap pointer-events-none text-sm" aria-hidden="true" bind:this={numberProbe}>{picks.size}</span>
+                        <span class="invisible absolute left-0 top-0 whitespace-nowrap pointer-events-none border px-2 py-1 text-sm" aria-hidden="true" bind:this={labelProbe}>{language.othersUi.editMoveToTrash}</span>
+                        <button
+                            bind:this={groupBtn}
+                            class="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label={language.othersUi.editGroup}
+                            title={language.othersUi.editGroup}
+                            disabled={!groupAvailable || trashing}
+                            onclick={() => { groupPicked() }}
+                        >
+                            <FolderPlusIcon size={16} />
+                        </button>
+                        {#if rowForms.iconTrash}
+                            <button
+                                class="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-red-600 bg-red-700 text-textcolor hover:bg-red-500 focus:outline-hidden focus:ring-2 focus:ring-red-600 shadow-xs transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                aria-label={language.othersUi.editMoveToTrash}
+                                title={language.othersUi.editMoveToTrash}
+                                disabled={picks.size === 0 || trashing}
+                                onclick={() => { void trashPicked() }}
+                            >
+                                <TrashIcon size={16} />
+                            </button>
+                        {:else}
+                            <Button styled="danger" size="sm" className="shrink-0 whitespace-nowrap" disabled={picks.size === 0 || trashing} onclick={() => { void trashPicked() }}>
+                                {language.othersUi.editMoveToTrash}
+                            </Button>
+                        {/if}
                     {:else}
                         <label class="flex items-center gap-2 text-textcolor2 text-sm">
                             <span>{language.othersUi.sortLabel}</span>

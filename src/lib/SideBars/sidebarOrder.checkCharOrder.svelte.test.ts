@@ -209,7 +209,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 import { checkCharOrder } from 'src/ts/globalApi.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import type { Database, folder } from 'src/ts/storage/database.svelte'
-import { dropOnItem, moveToGap, type OrderEntry } from './sidebarOrder'
+import { dropOnItem, groupIntoFolder, moveToGap, type OrderEntry } from './sidebarOrder'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -294,5 +294,34 @@ describe('sidebar order operations followed by the real checkCharOrder', () => {
             { in: 'folder', folder: { kind: 'folder', id: 'f1', occurrence: 0 }, after: { kind: 'member', folder: { kind: 'folder', id: 'f1', occurrence: 0 }, id: 'A', occurrence: 0 } },
         )
         expect(apply(result)).toEqual(['f1[A,C,B]', 'D'])
+    })
+
+    test('a group of characters survives checkCharOrder and changes nothing else when every id has a character', () => {
+        setDb(['A', 'B', 'C', 'D'], IDS)
+        const result = groupIntoFolder(DBState.db.characterOrder as OrderEntry[], [
+            { kind: 'char', id: 'D', occurrence: 0 },
+            { kind: 'char', id: 'B', occurrence: 0 },
+        ], { id: 'new', name: 'New Folder' })
+        expect(apply(result)).toEqual(['A', 'new[B,D]', 'C'])
+    })
+
+    test('a group that takes a folder with an unknown member keeps the new folder; checkCharOrder prunes only the unknown id', () => {
+        setDb([f('f1', ['A', 'stale', 'B']), 'C', 'D'], IDS)
+        const result = groupIntoFolder(DBState.db.characterOrder as OrderEntry[], [
+            { kind: 'folder', id: 'f1', occurrence: 0 },
+            { kind: 'char', id: 'C', occurrence: 0 },
+        ], { id: 'new', name: 'New Folder' })
+        expect(show(result)).toEqual(['new[A,stale,B,C]', 'D'])
+        expect(apply(result)).toEqual(['new[A,B,C]', 'D'])
+    })
+
+    test('a group that empties its source folder leaves no empty folder for checkCharOrder to remove', () => {
+        setDb(['A', f('f1', ['B', 'C']), 'D'], IDS)
+        const result = groupIntoFolder(DBState.db.characterOrder as OrderEntry[], [
+            { kind: 'member', folder: { kind: 'folder', id: 'f1', occurrence: 0 }, id: 'B', occurrence: 0 },
+            { kind: 'member', folder: { kind: 'folder', id: 'f1', occurrence: 0 }, id: 'C', occurrence: 0 },
+        ], { id: 'new', name: 'New Folder' })
+        expect(show(result)).toEqual(['A', 'new[B,C]', 'D'])
+        expect(apply(result)).toEqual(['A', 'new[B,C]', 'D'])
     })
 })

@@ -2557,6 +2557,7 @@ export const languageEnglish = {
         editMode: "Edit",
         editDone: "Done",
         editMoveToTrash: "Move to trash",
+        editGroup: "Group into new folder",
         editSelectedCount: (count: number) => `${count} selected`,
         editFolderToggle: "Open or close folder",
         editTrashConfirm: (count: number) => (count === 1

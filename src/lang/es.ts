@@ -2418,6 +2418,7 @@ export const languageSpanish = {
         editMode: "Editar",
         editDone: "Listo",
         editMoveToTrash: "Mover a la papelera",
+        editGroup: "Agrupar en carpeta nueva",
         editSelectedCount: (count: number) => count === 1 ? `1 seleccionado` : `${count} seleccionados`,
         editFolderToggle: "Abrir o cerrar la carpeta",
         editTrashConfirm: (count: number) => count === 1 ? `¿Mover 1 personaje a la papelera?` : `¿Mover ${count} personajes a la papelera?`,

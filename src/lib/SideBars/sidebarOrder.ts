@@ -425,6 +425,105 @@ function dropOnItemInternal(order: readonly OrderEntry[], sourceRef: ItemRef, ta
     return draft.top
 }
 
+/** A position in the order: a top-level character (`member` -1) or a member of the folder at `top`. */
+interface Spot {
+    top: number
+    member: number
+}
+
+/**
+ * Groups the sources into one new folder, placed at the first source's place in document order
+ * (for a folder member, immediately before its folder). A character source contributes itself, a
+ * member contributes itself and a folder contributes every string member of its `data`, so the
+ * emptied folder disappears. The new folder's `data` follows document order whatever the order of
+ * `sources`. Sources are resolved to positions once, on the input, and two refs that reach the
+ * same position count once. Returns the same array when nothing changes: no source, a source that
+ * does not resolve (nothing is then moved), or a source set that holds no character.
+ */
+export function groupIntoFolder<E extends OrderEntry>(order: readonly E[], sources: readonly ItemRef[], spec: NewFolderSpec): (E | folder)[] {
+    const result = groupIntoFolderInternal(order, sources, spec)
+    return (result ?? order) as (E | folder)[]
+}
+
+function groupIntoFolderInternal(order: readonly OrderEntry[], sourceRefs: readonly ItemRef[], spec: NewFolderSpec): OrderEntry[] | null {
+    const spots = new Map<string, Spot>()
+    const add = (top: number, member: number) => {
+        spots.set(`${top}:${member}`, { top, member })
+    }
+    for (const ref of sourceRefs) {
+        const src = resolveSource(order, ref)
+        if (!src) {
+            return null
+        }
+        if (src.where === 'member') {
+            add(src.folderIndex, src.index)
+            continue
+        }
+        const entry = order[src.index]
+        if (!src.isFolder) {
+            add(src.index, -1)
+        }
+        else if (isFolderEntry(entry)) {
+            entry.data.forEach((id, member) => {
+                if (typeof id === 'string') {
+                    add(src.index, member)
+                }
+            })
+        }
+    }
+    if (spots.size === 0) {
+        return null
+    }
+    const sorted = [...spots.values()].sort((a, b) => a.top - b.top || a.member - b.member)
+    const slot = sorted[0].top
+    const data: string[] = []
+    const topSpots: number[] = []
+    const ownerSpots = new Map<number, number[]>()
+    for (const spot of sorted) {
+        const entry = order[spot.top]
+        if (spot.member === -1) {
+            if (typeof entry !== 'string') {
+                return null
+            }
+            data.push(entry)
+            topSpots.push(spot.top)
+            continue
+        }
+        const id = isFolderEntry(entry) ? entry.data[spot.member] : undefined
+        if (typeof id !== 'string') {
+            return null
+        }
+        data.push(id)
+        const members = ownerSpots.get(spot.top)
+        if (members) {
+            members.push(spot.member)
+        }
+        else {
+            ownerSpots.set(spot.top, [spot.member])
+        }
+    }
+
+    const draft = new Draft(order)
+    const owners: folder[] = []
+    for (const [top, members] of ownerSpots) {
+        const owner = draft.editable(top)
+        for (let i = members.length - 1; i >= 0; i--) {
+            owner.data.splice(members[i], 1)
+        }
+        owners.push(owner)
+    }
+    const created: folder = { name: spec.name, data, color: '', id: spec.id }
+    draft.top.splice(slot, 0, created)
+    // Every removed entry sits at or after `slot`, so each top-level source is now one place later.
+    for (let i = topSpots.length - 1; i >= 0; i--) {
+        draft.top.splice(topSpots[i] + 1, 1)
+    }
+    for (const owner of owners) {
+        draft.dropIfEmpty(owner)
+    }
+    return draft.top
+}
+
 /** The folder entry `ref` names in `order` (the object itself, not a copy), or `null` when there is none. */
 export function folderEntryAt(order: readonly OrderEntry[], ref: FolderRef): folder | null {
     const at = findFolder(order, ref)

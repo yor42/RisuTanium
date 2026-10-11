@@ -5,6 +5,7 @@ import {
     dropOnItem,
     editFolder,
     folderMemberIds,
+    groupIntoFolder,
     isShownFolder,
     listRows,
     moveToGap,
@@ -544,6 +545,346 @@ describe('ungroupFolder', () => {
         expect(folderMemberIds(order, fol('F', 1))).toEqual(['y', 'z'])
         expect(folderMemberIds(order, fol('F', 2))).toBeNull()
         expect(folderMemberIds(['F'], fol('F'))).toBeNull()
+    })
+})
+//#endregion
+
+//#region groupIntoFolder
+const grp = (order: OrderEntry[], sources: ItemRef[]): string[] => show(groupIntoFolder(deepFreeze(order), sources, NEW))
+
+describe('groupIntoFolder', () => {
+    test('(F) two top-level characters become one folder at the first one place, in document order', () => {
+        expect(grp(['a', 'b', 'c', 'd'], [char('b'), char('d')])).toEqual(['a', 'new-id[b,d]', 'c'])
+    })
+    test('(F) the order the sources arrive in does not change the result', () => {
+        expect(grp(['a', 'b', 'c', 'd'], [char('d'), char('b')])).toEqual(['a', 'new-id[b,d]', 'c'])
+    })
+    test('(F) members of one folder keep their folder order whatever order they are given in', () => {
+        expect(grp(['a', f('F', ['x', 'y', 'z'])], [mem(fol('F'), 'z'), mem(fol('F'), 'x')])).toEqual(['a', 'new-id[x,z]', 'F[y]'])
+    })
+    test('(F) one character makes a folder of one at its own place', () => {
+        expect(grp(['a', 'b'], [char('b')])).toEqual(['a', 'new-id[b]'])
+    })
+    test('(F) a folder member as the first source puts the new folder immediately before its folder', () => {
+        expect(grp(['a', f('F1', ['x', 'y']), 'b'], [mem(fol('F1'), 'y')])).toEqual(['a', 'new-id[y]', 'F1[x]', 'b'])
+    })
+    test('(F) a member that empties its folder leaves the new folder in the place of the old one', () => {
+        expect(grp(['a', f('F1', ['x']), 'b'], [mem(fol('F1'), 'x')])).toEqual(['a', 'new-id[x]', 'b'])
+    })
+    test('(F) a member and a later top-level character: the new folder stands before the folder of the member', () => {
+        expect(grp(['a', f('F1', ['x', 'y']), 'b', 'c'], [mem(fol('F1'), 'x'), char('c')])).toEqual(['a', 'new-id[x,c]', 'F1[y]', 'b'])
+    })
+    test('(F) every member of a folder plus a character before it: one folder at that character place, old folder gone', () => {
+        expect(grp(['a', f('F1', ['x', 'y']), 'b'], [char('a'), mem(fol('F1'), 'x'), mem(fol('F1'), 'y')])).toEqual(['new-id[a,x,y]', 'b'])
+    })
+    test('(F) members of two folders: the new folder stands before the earlier folder, both keep their other members', () => {
+        expect(grp([f('F1', ['x', 'y']), 'a', f('F2', ['p', 'q'])], [mem(fol('F2'), 'p'), mem(fol('F1'), 'y')])).toEqual(['new-id[y,p]', 'F1[x]', 'a', 'F2[q]'])
+    })
+    test('(F) with a duplicated id each occurrence is its own source', () => {
+        expect(grp(['a', 'x', 'a', 'y'], [char('a', 1)])).toEqual(['a', 'x', 'new-id[a]', 'y'])
+        expect(grp(['a', 'x', 'a', 'y'], [char('a', 0)])).toEqual(['new-id[a]', 'x', 'a', 'y'])
+    })
+    test('(F) the same source twice counts once', () => {
+        expect(grp(['a', 'b'], [char('b'), char('b')])).toEqual(['a', 'new-id[b]'])
+    })
+    test('(G) a source that does not resolve changes nothing, even beside valid ones', () => {
+        const order = deepFreeze(['a', 'b'])
+        expect(groupIntoFolder(order, [char('b'), char('zz')], NEW)).toBe(order)
+        expect(groupIntoFolder(order, [mem(fol('zz'), 'a')], NEW)).toBe(order)
+    })
+    test('(G) no sources changes nothing', () => {
+        const order = deepFreeze(['a', 'b'])
+        expect(groupIntoFolder(order, [], NEW)).toBe(order)
+    })
+    test('(G) null entries, folders without data and folders that were already empty are carried through', () => {
+        const nodata = { id: 'nd', name: 'nodata', color: '' } as unknown as folder
+        const result = groupIntoFolder(deepFreeze([null, nodata, 'a', 'b', f('E', [])]), [char('a'), char('b')], NEW)
+        expect(result).toEqual([null, nodata, { id: 'new-id', name: 'New Folder', color: '', data: ['a', 'b'] }, f('E', [])])
+        expect(grp(['a', f('E', []), 'b'], [char('a'), char('b')])).toEqual(['new-id[a,b]', 'E[]'])
+    })
+    test('(G) non-string members of a folder stay in its copy, and a folder left with only them stays', () => {
+        const junk = f('F', ['x', 7 as never, 'y'])
+        const result = groupIntoFolder(deepFreeze(['a', junk]), [char('a'), fol('F')], NEW)
+        expect(result).toEqual([{ id: 'new-id', name: 'New Folder', color: '', data: ['a', 'x', 'y'] }, { ...junk, data: [7] }])
+        const partly = groupIntoFolder(deepFreeze([f('F', ['x', 7 as never, 'y'])]), [mem(fol('F'), 'y')], NEW)
+        expect(partly).toEqual([{ id: 'new-id', name: 'New Folder', color: '', data: ['y'] }, f('F', ['x', 7 as never])])
+    })
+    test('(F) a folder and a character: the folder members join the new folder in member order and the folder is gone', () => {
+        expect(grp(['a', f('F', ['x', 'y']), 'b'], [fol('F'), char('b')])).toEqual(['a', 'new-id[x,y,b]'])
+    })
+    test('(F) a folder together with one of its own members is the folder alone', () => {
+        expect(grp(['a', f('F', ['x', 'y'])], [fol('F'), mem(fol('F'), 'x')])).toEqual(['a', 'new-id[x,y]'])
+    })
+    test('(F) a folder as the only source regroups its members; a folder with no string member changes nothing', () => {
+        expect(grp([f('F', ['x', 'y'])], [fol('F')])).toEqual(['new-id[x,y]'])
+        const empty = deepFreeze([f('F', [])])
+        expect(groupIntoFolder(empty, [fol('F')], NEW)).toBe(empty)
+    })
+    test('(F) two folders merge into one at the first folder place', () => {
+        expect(grp([f('F', ['x']), 'a', f('G', ['y', 'z'])], [fol('F'), fol('G')])).toEqual(['new-id[x,y,z]', 'a'])
+    })
+    test('(F) a character before a selected folder keeps the folder place rule: the first source in document order decides', () => {
+        expect(grp([f('F', ['x']), 'a', 'b'], [char('b'), fol('F')])).toEqual(['new-id[x,b]', 'a'])
+    })
+    test('(G) the result on a $state proxy equals the result on a plain copy', () => {
+        const plain: OrderEntry[] = ['a', f('F1', ['x', 'y']), 'b', 'c']
+        const proxied: OrderEntry[] = $state(structuredClone(plain))
+        const sources = [mem(fol('F1'), 'x'), char('c')]
+        expect(show(groupIntoFolder(proxied, sources, NEW))).toEqual(show(groupIntoFolder(plain, sources, NEW)))
+    })
+    test('(G) the input folders are not mutated and untouched entries are the same objects', () => {
+        const keep = f('K', ['k'])
+        const touched = f('T', ['x', 'y'])
+        const order = deepFreeze(['a', keep, touched, 'b'])
+        const result = groupIntoFolder(order, [mem(fol('T'), 'x'), char('b')], NEW)
+        expect(result[1]).toBe(keep)
+        expect(touched.data).toEqual(['x', 'y'])
+        expect(result[0]).toBe('a')
+    })
+})
+
+describe('groupIntoFolder properties', () => {
+    const letters = ['a', 'b', 'c', 'd', 'e', 'f']
+    const memberArb = fc.oneof(
+        { weight: 9, arbitrary: fc.constantFrom(...letters) },
+        { weight: 1, arbitrary: fc.constant(7 as never as string) },
+    )
+    const groupFolderArb: fc.Arbitrary<OrderEntry> = fc.oneof(
+        { weight: 9, arbitrary: fc.record({ id: fc.constantFrom('a', 'b', 'f1', 'f2', 'f3'), name: fc.constantFrom('n1', 'n2'), color: fc.constantFrom('', 'red'), data: fc.array(memberArb, { maxLength: 4 }) }, { requiredKeys: ['id', 'name', 'color', 'data'] }) },
+        { weight: 1, arbitrary: fc.constant({ id: 'nd', name: 'nodata', color: '' } as unknown as folder) },
+    )
+    const groupOrderArb = fc.array(
+        fc.oneof(
+            { weight: 6, arbitrary: fc.constantFrom(...letters) },
+            { weight: 3, arbitrary: groupFolderArb },
+            { weight: 1, arbitrary: fc.constant(null) },
+        ),
+        { maxLength: 14 },
+    )
+    const nats = fc.array(fc.nat(), { minLength: 1, maxLength: 8 })
+
+    /** Every ref that resolves in `order`: top-level characters, folders and folder members. */
+    function resolvable(order: readonly OrderEntry[]): ItemRef[] {
+        const { tops, members } = refsOf(order)
+        return [...tops.slice(0, -2), ...members.slice(0, -1)]
+    }
+
+    function nth(order: readonly OrderEntry[], ref: ItemRef): { top: number; member: number } | null {
+        const indexes = (list: readonly unknown[], same: (item: unknown) => boolean) => list.map((item, i) => (same(item) ? i : -1)).filter((i) => i >= 0)
+        if (ref.kind === 'char') {
+            const at = indexes(order, (e) => e === ref.id)[ref.occurrence]
+            return at === undefined ? null : { top: at, member: -1 }
+        }
+        const folderAt = (r: FolderRef) => indexes(order, (e) => isValidFolder(e as OrderEntry) && (e as folder).id === r.id)[r.occurrence]
+        if (ref.kind === 'folder') {
+            const at = folderAt(ref)
+            return at === undefined ? null : { top: at, member: -2 }
+        }
+        const owner = folderAt(ref.folder)
+        if (owner === undefined) {
+            return null
+        }
+        const at = indexes((order[owner] as folder).data, (m) => m === ref.id)[ref.occurrence]
+        return at === undefined ? null : { top: owner, member: at }
+    }
+
+    /** An independent model of the operation: filter-based, no splicing, written from the rules. */
+    function oracle(order: readonly OrderEntry[], sources: readonly ItemRef[]): OrderEntry[] | null {
+        const chosen = new Map<number, Set<number>>()
+        const take = (top: number, member: number) => {
+            chosen.set(top, (chosen.get(top) ?? new Set<number>()).add(member))
+        }
+        for (const ref of sources) {
+            const found = nth(order, ref)
+            if (!found) {
+                return null
+            }
+            if (found.member === -2) {
+                (order[found.top] as folder).data.forEach((m, i) => { if (typeof m === 'string') { take(found.top, i) } })
+            }
+            else {
+                take(found.top, found.member)
+            }
+        }
+        if (chosen.size === 0) {
+            return null
+        }
+        const tops = [...chosen.keys()].sort((x, y) => x - y)
+        const data: string[] = []
+        for (const t of tops) {
+            if (chosen.get(t)!.has(-1)) {
+                data.push(order[t] as string)
+            }
+            else {
+                const picked = [...chosen.get(t)!].sort((x, y) => x - y)
+                data.push(...picked.map((m) => (order[t] as folder).data[m]))
+            }
+        }
+        const out: OrderEntry[] = []
+        order.forEach((entry, t) => {
+            if (t === tops[0]) {
+                out.push({ name: NEW.name, data, color: '', id: NEW.id })
+            }
+            const picked = chosen.get(t)
+            if (!picked) {
+                out.push(entry)
+                return
+            }
+            if (picked.has(-1)) {
+                return
+            }
+            const rest = (entry as folder).data.filter((_, m) => !picked.has(m))
+            if (rest.length > 0) {
+                out.push({ ...(entry as folder), data: rest })
+            }
+        })
+        return out
+    }
+
+    const strings = (order: readonly OrderEntry[]): string[] => {
+        const out: string[] = []
+        for (const e of order) {
+            if (typeof e === 'string') {
+                out.push(e)
+            }
+            else if (isValidFolder(e)) {
+                out.push(...e.data.filter((m): m is string => typeof m === 'string'))
+            }
+        }
+        return out.sort()
+    }
+
+    const sourcesFrom = (order: readonly OrderEntry[], picks: number[]): ItemRef[] => {
+        const all = resolvable(order)
+        return all.length === 0 ? [] : picks.map((n) => all[n % all.length])
+    }
+
+    test('(P) the result matches an independent model, never mutates its input and keeps every character once', () => {
+        fc.assert(
+            fc.property(groupOrderArb, nats, (order, picks) => {
+                deepFreeze(order)
+                const sources = sourcesFrom(order, picks)
+                const result = groupIntoFolder(order, sources, NEW)
+                const expected = oracle(order, sources)
+                if (expected === null) {
+                    expect(result).toBe(order)
+                    return
+                }
+                expect(result).toEqual(expected)
+                expect(strings(result)).toEqual(strings(order))
+                const created = result.filter((e) => typeof e === 'object' && e !== null && e.id === NEW.id)
+                expect(created.length).toBe(1)
+                const at = result.indexOf(created[0])
+                for (let i = 0; i < at; i++) {
+                    expect(result[i]).toBe(order[i])
+                }
+                expect((created[0] as folder).data.every((m) => typeof m === 'string')).toBe(true)
+            }),
+            { numRuns: 500 },
+        )
+    })
+
+    test('(P) the result does not depend on the order, repetition or member expansion of the sources', () => {
+        fc.assert(
+            fc.property(groupOrderArb, nats, (order, picks) => {
+                deepFreeze(order)
+                const sources = sourcesFrom(order, picks)
+                const base = groupIntoFolder(order, sources, NEW)
+                const { members } = refsOf(order)
+                const selectedFolders = sources.filter((s): s is FolderRef => s.kind === 'folder')
+                const expanded = [
+                    ...sources,
+                    ...members.filter((m) => selectedFolders.some((fr) => fr.id === m.folder.id && fr.occurrence === m.folder.occurrence) && nth(order, m) !== null),
+                ]
+                expect(groupIntoFolder(order, [...sources].reverse(), NEW)).toEqual(base)
+                expect(groupIntoFolder(order, [...sources, ...sources], NEW)).toEqual(base)
+                expect(groupIntoFolder(order, expanded, NEW)).toEqual(base)
+            }),
+            { numRuns: 400 },
+        )
+    })
+
+    test('(P) any source that does not resolve refuses the whole operation', () => {
+        fc.assert(
+            fc.property(groupOrderArb, nats, fc.nat(), (order, picks, where) => {
+                deepFreeze(order)
+                const sources = sourcesFrom(order, picks)
+                sources.splice(where % (sources.length + 1), 0, char('zz'))
+                expect(groupIntoFolder(order, sources, NEW)).toBe(order)
+            }),
+            { numRuns: 300 },
+        )
+    })
+
+    test('(P) two characters grouped equal the rail drop of the later on the earlier, up to the folder member order', () => {
+        const norm = (order: readonly OrderEntry[]) => order.map((e) => (typeof e === 'object' && e !== null && e.id === NEW.id && Array.isArray(e.data) ? { ...e, data: [...e.data].sort() } : e))
+        fc.assert(
+            fc.property(groupOrderArb, fc.nat(), fc.nat(), (order, i, j) => {
+                deepFreeze(order)
+                const { tops, members } = refsOf(order)
+                const firsts = tops.slice(0, -2).filter((r): r is CharRef => r.kind === 'char')
+                if (firsts.length === 0) {
+                    return
+                }
+                const a = firsts[i % firsts.length]
+                const aAt = nth(order, a)!.top
+                const laters: ItemRef[] = [
+                    ...firsts.filter((r) => nth(order, r)!.top > aAt),
+                    ...members.slice(0, -1).filter((m) => nth(order, m)!.top > aAt),
+                ]
+                if (laters.length === 0) {
+                    return
+                }
+                const b = laters[j % laters.length]
+                expect(norm(groupIntoFolder(order, [a, b], NEW))).toEqual(norm(dropOnItem(order, b, a, NEW)))
+            }),
+            { numRuns: 500 },
+        )
+    })
+
+    test('(P) top-level characters only: the others stay in order and the block lands at the first one place', () => {
+        fc.assert(
+            fc.property(fc.array(fc.constantFrom(...letters), { maxLength: 10 }), fc.array(fc.nat(), { minLength: 1, maxLength: 6 }), (order, picks) => {
+                deepFreeze(order)
+                if (order.length === 0) {
+                    return
+                }
+                const chosen = [...new Set(picks.map((n) => n % order.length))].sort((x, y) => x - y)
+                const refs = chosen.map((at) => char(order[at], order.slice(0, at).filter((id) => id === order[at]).length))
+                const rest = order.filter((_, at) => !chosen.includes(at))
+                const expected: OrderEntry[] = [...rest]
+                expected.splice(chosen[0], 0, { name: NEW.name, data: chosen.map((at) => order[at]), color: '', id: NEW.id })
+                expect(groupIntoFolder(order, [...refs].reverse(), NEW)).toEqual(expected)
+            }),
+            { numRuns: 400 },
+        )
+    })
+
+    test('(P) ungrouping the new folder gives the characters back, and for one top-level character the same order', () => {
+        fc.assert(
+            fc.property(groupOrderArb, nats, (order, picks) => {
+                deepFreeze(order)
+                const sources = sourcesFrom(order, picks)
+                const result = groupIntoFolder(order, sources, NEW)
+                if (result === order) {
+                    return
+                }
+                const back = ungroupFolder(result, fol(NEW.id))
+                expect(back).not.toBeNull()
+                expect(strings(back!)).toEqual(strings(order))
+                expect(back!.some((e) => typeof e === 'object' && e !== null && e.id === NEW.id)).toBe(false)
+            }),
+            { numRuns: 400 },
+        )
+        fc.assert(
+            fc.property(fc.array(fc.constantFrom(...letters), { minLength: 1, maxLength: 8 }), fc.nat(), (order, n) => {
+                deepFreeze(order)
+                const at = n % order.length
+                const ref = char(order[at], order.slice(0, at).filter((id) => id === order[at]).length)
+                expect(ungroupFolder(groupIntoFolder(order, [ref], NEW), fol(NEW.id))).toEqual(order)
+            }),
+            { numRuns: 300 },
+        )
     })
 })
 //#endregion
