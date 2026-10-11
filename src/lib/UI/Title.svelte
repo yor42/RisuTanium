@@ -20,6 +20,9 @@ let specialDay = $state('')
     if( today.getMonth() === 9 && today.getDate() === 31){
         specialDay = 'halloween'
     }
+    if( today.getMonth() === 9 && today.getDate() === 9 && DBState.db.language === 'ko'){
+        specialDay = 'hangulDay'
+    }
     if( (today.getMonth() === 8 && today.getDate() === 16)){
         if(DBState.db.language === 'ko'){
             specialDay = 'chuseok'
@@ -77,8 +80,10 @@ let specialDay = $state('')
             <span class="text-black">Tan</span>
             <span class="text-blue-500">ium</span>
         </div>
+    {:else if specialDay === 'hangulDay'}
+        <span class="logo-gradient">리스<span class="text-textcolor">타늄</span></span>
     {:else}
-        RisuTanium
+        <span class="logo-gradient">Risu<span class="text-textcolor">Tanium</span></span>
     {/if}
     {#if specialDay === 'christmas'}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -175,5 +180,13 @@ let specialDay = $state('')
 
     .logo-font {
         font-family: 'NanumSquare Neo Logo', var(--risu-font-family);
+    }
+
+    /* Mirrors docs/branding: the gradient spans the whole word's box, and the coloured second half paints over it. */
+    .logo-gradient {
+        background-image: linear-gradient(to bottom right, #00a1ad, #587bff);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
     }
 </style>
