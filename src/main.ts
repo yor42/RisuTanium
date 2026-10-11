@@ -8,6 +8,9 @@ import { preLoadCheck } from "./preload";
 import { startKeepAliveService } from "./ts/android/keepAliveService";
 import { startSaveOnHide } from "./ts/process/saveOnHide";
 import { mount } from "svelte";
+import { installBackGuard } from "./ts/backHandlers";
+import { alertToast } from "./ts/alert";
+import { language } from "./lang";
 
 window.addEventListener('vite:preloadError', (event) => {
     console.error("Chunk load error detected:", event);
@@ -18,6 +21,7 @@ preLoadCheck()
 let app = mount(App, {
     target: document.getElementById("app"),
 });
+installBackGuard({ showToast: () => alertToast(language.alerts.pressBackAgainToQuit) })
 loadData()
 initHotkey()
 startKeepAliveService()

@@ -188,6 +188,7 @@ export const languageVietnamese = {
         "noImageInZip": "Không tìm thấy hình ảnh trong tệp ZIP"
     },
     "alerts": {
+        "pressBackAgainToQuit": "Nhấn Quay lại lần nữa để thoát",
         "screenshotTaking": "Đang chụp ảnh màn hình...",
         "screenshotMerging": "Đang ghép các hình ảnh...",
         "enterNewName": "Nhập tên mới cho {name}",
@@ -2412,6 +2413,12 @@ export const languageVietnamese = {
         showLess: "Thu gọn",
         sortLabel: "Sắp xếp",
         sortMyOrder: "Thứ tự của tôi",
+        editMode: "Chỉnh sửa",
+        editDone: "Xong",
+        editMoveToTrash: "Chuyển vào thùng rác",
+        editSelectedCount: (count: number) => `Đã chọn ${count}`,
+        editFolderToggle: "Mở hoặc đóng thư mục",
+        editTrashConfirm: (count: number) => `Chuyển ${count} nhân vật vào thùng rác?`,
         noCustomSidebarItems: "Chưa cấu hình mục thanh bên tùy chỉnh nào",
         addItem: "Thêm mục",
         backToList: "Quay lại danh sách",

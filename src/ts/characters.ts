@@ -1169,6 +1169,84 @@ export async function trashFolderMembers(entry: folder, folderName: string): Pro
 }
 
 /**
+ * Moves the picked characters, and the visible untrashed members of the picked folders, to
+ * the trash after one confirmation that names the character count. `characters` are the
+ * character objects and `folders` the folder objects of `DBState.db.characterOrder` the
+ * caller resolved when the action was chosen; nothing is looked up again by position or id.
+ * A character reached twice (picked, and a member of a picked folder) counts and is trashed
+ * once. Hidden system characters and already-trashed ones are never counted or trashed.
+ *
+ * After the confirmation every character is checked again by identity: it is trashed only if
+ * it is still in the list, still visible and currently untrashed, so one trashed elsewhere or
+ * removed meanwhile keeps its own state. A picked folder that is still the same entry of the
+ * order is replaced in place by its member ids that were not just trashed, without relying on
+ * `checkCharOrder`, which skips its cleanup while saving is held; a folder replaced or
+ * removed during the dialog is not edited. Like `trashFolderMembers` this is a move to the
+ * trash, not a removal: the encoder reload flag is untouched and each trashed character is
+ * marked for saving. Returns the number trashed; 0 when nothing was asked or the user declined.
+ */
+export async function trashCharacters(picked: { characters: readonly (character | groupChat)[], folders: readonly folder[] }): Promise<number> {
+    const visibleBefore = visibleCharacterIds()
+    const listed = new Set(DBState.db.characters)
+    const asked = new Set<character | groupChat>()
+    for(const c of picked.characters){
+        if(listed.has(c) && !c.trashTime && visibleBefore.has(c.chaId)){
+            asked.add(c)
+        }
+    }
+    for(const entry of picked.folders){
+        for(const c of untrashedMembersOf(entry.data.filter((id) => visibleBefore.has(id)))){
+            asked.add(c)
+        }
+    }
+    if(asked.size === 0){
+        return 0
+    }
+    const busy = [...asked].some((c) => hasWorkIn({ chaId: c.chaId }))
+    const conf = await alertConfirm(
+        language.othersUi.editTrashConfirm(asked.size) + (busy ? '\n' + language.removeCharacterWhileWorking : '')
+    )
+    if(!conf){
+        return 0
+    }
+
+    const present = new Set(DBState.db.characters)
+    const visibleNow = visibleCharacterIds()
+    const doomed = [...asked].filter((c) => present.has(c) && !c.trashTime && visibleNow.has(c.chaId))
+    if(doomed.length === 0){
+        return 0
+    }
+    const selectedBefore = get(selectedCharID)
+    const selectedRef = selectedBefore >= 0 ? DBState.db.characters[selectedBefore] : undefined
+    const now = Date.now()
+    for(const c of doomed){
+        stopWorkIn({ chaId: c.chaId })
+        c.trashTime = now
+    }
+    const trashedIds = new Set(doomed.map((c) => c.chaId))
+    const order = DBState.db.characterOrder
+    if(order){
+        for(const entry of picked.folders){
+            const at = order.findIndex((item) => item === entry)
+            if(at !== -1){
+                order.splice(at, 1, ...entry.data.filter((id) => !trashedIds.has(id)))
+            }
+        }
+    }
+    // One pass drops the trashed ids that remain in other folders; a folder it emptied is only
+    // removed by a second pass, which would otherwise leave an empty folder in the rail.
+    checkCharOrder()
+    checkCharOrder()
+    for(const c of doomed){
+        markCharacterForSave(c.chaId)
+    }
+    if(selectedRef && doomed.includes(selectedRef)){
+        selectedCharID.set(-1)
+    }
+    return doomed.length
+}
+
+/**
  * A chat list's delete button. Asks for confirmation -- with a warning line
  * when something is writing into the chat -- and then deletes the chat the
  * user confirmed: it is found again in `owner.chats` by reference after the

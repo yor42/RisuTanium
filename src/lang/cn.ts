@@ -188,6 +188,7 @@ export const languageChinese = {
         "noImageInZip": "ZIP 文件中未找到图片"
     },
     "alerts": {
+        "pressBackAgainToQuit": "再按一次返回键退出",
         "screenshotTaking": "正在截图...",
         "screenshotMerging": "正在合并图片...",
         "enterNewName": "请输入 {name} 的新名称",
@@ -2412,6 +2413,12 @@ export const languageChinese = {
         "showLess": "收起",
         "sortLabel": "排序",
         "sortMyOrder": "我的顺序",
+        "editMode": "编辑",
+        "editDone": "完成",
+        "editMoveToTrash": "移至垃圾桶",
+        "editSelectedCount": (count: number) => `已选择 ${count} 个`,
+        "editFolderToggle": "打开或关闭文件夹",
+        "editTrashConfirm": (count: number) => `将 ${count} 个角色移至垃圾桶吗？`,
         "noCustomSidebarItems": "尚未配置自定义侧边栏项目",
         "addItem": "添加项目",
         "backToList": "返回列表",

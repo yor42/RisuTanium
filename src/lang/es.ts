@@ -188,6 +188,7 @@ export const languageSpanish = {
         "noImageInZip": "No se encontró ninguna imagen en el archivo ZIP"
     },
     "alerts": {
+        "pressBackAgainToQuit": "Pulsa Atrás de nuevo para salir",
         "screenshotTaking": "Tomando captura de pantalla...",
         "screenshotMerging": "Combinando imágenes...",
         "enterNewName": "Introduce un nuevo nombre para {name}",
@@ -2414,6 +2415,12 @@ export const languageSpanish = {
         showLess: "Ver menos",
         sortLabel: "Ordenar",
         sortMyOrder: "Mi orden",
+        editMode: "Editar",
+        editDone: "Listo",
+        editMoveToTrash: "Mover a la papelera",
+        editSelectedCount: (count: number) => count === 1 ? `1 seleccionado` : `${count} seleccionados`,
+        editFolderToggle: "Abrir o cerrar la carpeta",
+        editTrashConfirm: (count: number) => count === 1 ? `¿Mover 1 personaje a la papelera?` : `¿Mover ${count} personajes a la papelera?`,
         noCustomSidebarItems: "No hay elementos personalizados configurados en la barra lateral",
         addItem: "Añadir Elemento",
         backToList: "Volver a la Lista",

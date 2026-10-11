@@ -188,6 +188,7 @@ export const languageKorean = {
         "noImageInZip": "ZIP 파일에서 이미지를 찾을 수 없습니다"
     },
     "alerts": {
+        "pressBackAgainToQuit": "'뒤로' 버튼을 한 번 더 누르면 종료됩니다.",
         "screenshotTaking": "스크린샷을 찍는 중...",
         "screenshotMerging": "이미지를 합치는 중...",
         "enterNewName": "{name}의 새 이름을 입력하세요",
@@ -2412,6 +2413,12 @@ export const languageKorean = {
         showLess: "접기",
         sortLabel: "정렬",
         sortMyOrder: "내 순서",
+        editMode: "편집",
+        editDone: "완료",
+        editMoveToTrash: "휴지통으로 이동",
+        editSelectedCount: (count: number) => `${count}개 선택됨`,
+        editFolderToggle: "폴더 열기 또는 닫기",
+        editTrashConfirm: (count: number) => `캐릭터 ${count}개를 휴지통으로 이동하시겠습니까?`,
         noCustomSidebarItems: "설정된 커스텀 사이드바 항목이 없습니다",
         addItem: "항목 추가",
         backToList: "목록으로 돌아가기",

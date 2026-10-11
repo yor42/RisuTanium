@@ -193,6 +193,7 @@ export const languageEnglish = {
         noImageInZip: "No image found in ZIP file",
     },
     alerts: {
+        pressBackAgainToQuit: "Press Back again to quit",
         screenshotTaking: "Taking screenshot...",
         screenshotMerging: "Merging images...",
         enterNewName: "Enter new name for {name}",
@@ -2553,6 +2554,15 @@ export const languageEnglish = {
         showLess: "Show less",
         sortLabel: "Sort",
         sortMyOrder: "My order",
+        editMode: "Edit",
+        editDone: "Done",
+        editMoveToTrash: "Move to trash",
+        editSelectedCount: (count: number) => `${count} selected`,
+        editFolderToggle: "Open or close folder",
+        editTrashConfirm: (count: number) => (count === 1
+            ? `Move 1 character to the trash?`
+            : `Move ${count} characters to the trash?`)
+            + ` A restored character returns outside any folder. The trash is emptied automatically after 3 days.`,
         noCustomSidebarItems: "No custom sidebar items configured",
         addItem: "Add Item",
         backToList: "Back to List",

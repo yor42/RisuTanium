@@ -1,7 +1,7 @@
 import { get } from "svelte/store"
 import { alertSelect, alertToast, alertClear, doingAlert, alertRequestLogs, type alertData } from "./alert"
-import { coversPage, escapeActionFor } from "./alertEscape"
-import { ANSWER_GUARD_MS, promptWaiting } from "./alertPrompts"
+import { escapeActionFor } from "./alertEscape"
+import { ANSWER_GUARD_MS, pageCovered } from "./alertPrompts"
 import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlocked"
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
 import { alertStore, DBState, loadoutModalStore, MobileGUIStack, MobileSideBar, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
@@ -16,7 +16,7 @@ import { isHiddenSystemCharacter } from "./hiddenCharacters"
 
 // The one predicate for every key path: a prompt is waiting, or an alert covers the page.
 function keysBlocked(): boolean {
-    return promptWaiting() || coversPage(get(alertStore).type)
+    return pageCovered()
 }
 
 const BUTTON_LIKE_INPUT_TYPES = ['button', 'submit', 'reset', 'image', 'checkbox', 'radio']

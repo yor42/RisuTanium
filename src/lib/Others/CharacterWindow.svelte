@@ -3,6 +3,7 @@
     import { buildSlices, computeWindow } from "../SideBars/railWindow";
     import { UNMEASURED_VIEWPORT_PX, WINDOW_MIN_OVERSCAN_ROWS, WINDOW_OVERSCAN_VIEWPORTS } from "../SideBars/railConstants";
     import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, heightDeltaAbove, scrollTopFor, scrollTopForCard, type CardAnchor, type CharRow, type ScrollAnchor } from "./charListRows";
+    import type { GridGeometry } from "./gridTarget";
 
     interface Props {
         // With a function, the rows are built from the column count of the container (grid layout only):
@@ -26,10 +27,13 @@
         // are not part of a measured border box.
         rowClass?: string;
         class?: string;
+        // Called with the scroll container when it is created; the returned function runs when it goes away.
+        // The owner binds its own listeners to the real scroller through it.
+        attach?: (node: HTMLDivElement) => (() => void) | void;
         card: Snippet<[cardKey: string, position: number]>;
     }
 
-    let { rows: rowsProp, layout: variant = "list", fallbackHeight, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", card }: Props = $props();
+    let { rows: rowsProp, layout: variant = "list", fallbackHeight, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", attach, card }: Props = $props();
 
     //#region geometry
 
@@ -238,6 +242,11 @@
         return scroller ? anchorAt(layout, scroller.scrollTop) : null;
     }
 
+    /** The rows, their layout and the measures a position inside them is resolved from (grid layout). */
+    export function getGeometry(): GridGeometry {
+        return { rows, layout, contentWidth, remPx };
+    }
+
     //#endregion
 
     //#region measuring
@@ -385,8 +394,12 @@
         node.addEventListener("scroll", onScroll);
         node.addEventListener("focusin", settleFocus);
         node.addEventListener("focusout", settleFocus);
+        const detach = attach?.(node);
         return {
             destroy() {
+                if (typeof detach === "function") {
+                    detach();
+                }
                 node.removeEventListener("scroll", onScroll);
                 node.removeEventListener("focusin", settleFocus);
                 node.removeEventListener("focusout", settleFocus);

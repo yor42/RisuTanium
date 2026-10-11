@@ -74,6 +74,12 @@ export interface RailHost {
     getScrollMax(): number
     /** Sets the scroll position; the host clamps it to the scrollable range. */
     setScrollTop(top: number): void
+    /**
+     * Whether a pointer held in an edge band scrolls the container. A host that returns false
+     * never gets a frame loop or a `setScrollTop` from the machine's frames, and its bands stay
+     * inert. Absent means true. Keyboard scrolling during a drag is not affected.
+     */
+    edgeScroll?(): boolean
     captureTake(pointerId: number): void
     captureRelease(pointerId: number): void
     /**
@@ -515,7 +521,7 @@ export class RailDrag {
      * in that band's direction.
      */
     private velocity(): number {
-        if (this.isOutside() || this.rect.height <= 0) {
+        if (this.isOutside() || this.rect.height <= 0 || this.host.edgeScroll?.() === false) {
             return 0
         }
         const band = edgeBandPx(this.rect.height)

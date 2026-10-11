@@ -188,6 +188,7 @@ export const languageGerman = {
         "noImageInZip": "Kein Bild in der ZIP-Datei gefunden"
     },
     "alerts": {
+        "pressBackAgainToQuit": "Zum Beenden erneut „Zurück“ drücken",
         "screenshotTaking": "Screenshot wird erstellt...",
         "screenshotMerging": "Bilder werden zusammengeführt...",
         "enterNewName": "Neuen Namen für {name} eingeben",
@@ -2414,6 +2415,12 @@ export const languageGerman = {
         "showLess": "Weniger anzeigen",
         "sortLabel": "Sortierung",
         "sortMyOrder": "Meine Reihenfolge",
+        "editMode": "Bearbeiten",
+        "editDone": "Fertig",
+        "editMoveToTrash": "In den Papierkorb verschieben",
+        "editSelectedCount": (count: number) => `${count} ausgewählt`,
+        "editFolderToggle": "Ordner öffnen oder schließen",
+        "editTrashConfirm": (count: number) => count === 1 ? `1 Charakter in den Papierkorb verschieben?` : `${count} Charaktere in den Papierkorb verschieben?`,
         "noCustomSidebarItems": "Keine benutzerdefinierten Seitenleisten-Einträge konfiguriert",
         "addItem": "Eintrag hinzufügen",
         "backToList": "Zurück zur Liste",

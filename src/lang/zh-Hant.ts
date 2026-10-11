@@ -188,6 +188,7 @@ export const languageChineseTraditional = {
         "noImageInZip": "ZIP 檔案中找不到圖片"
     },
     "alerts": {
+        "pressBackAgainToQuit": "再按一次返回鍵即可退出",
         "screenshotTaking": "正在擷取螢幕畫面...",
         "screenshotMerging": "正在合併圖片...",
         "enterNewName": "請輸入 {name} 的新名稱",
@@ -2457,6 +2458,12 @@ export const languageChineseTraditional = {
         "showLess": "收合",
         "sortLabel": "排序",
         "sortMyOrder": "我的順序",
+        "editMode": "編輯",
+        "editDone": "完成",
+        "editMoveToTrash": "移至垃圾桶",
+        "editSelectedCount": (count: number) => `已選取 ${count} 個`,
+        "editFolderToggle": "開啟或關閉資料夾",
+        "editTrashConfirm": (count: number) => `要將 ${count} 個角色移至垃圾桶嗎？`,
         "noCustomSidebarItems": "尚未設定自訂側邊欄項目",
         "addItem": "新增項目",
         "backToList": "返回清單",

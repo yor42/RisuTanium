@@ -70,6 +70,7 @@ import {
 } from '../../ts/stores.svelte'
 import Sidebar from './Sidebar.svelte'
 import SideBarArrow from '../UI/GUI/SideBarArrow.svelte'
+import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { installPanelGesture } from './panelGestureBinding'
 import { EDGE_ZONE_PX, INSET_MAX_CSS, INSET_PROBE_MAX_CSS } from './panelGesture'
 
@@ -206,7 +207,7 @@ afterEach(() => {
     vi.restoreAllMocks()
     host.remove()
     chat.remove()
-    delete window.__risuTaniumBack
+    resetBackHandlersForTests()
     delete window.__risuTaniumGestureInset
 })
 
@@ -685,6 +686,14 @@ describe('Android Back hook', () => {
         expect(get(sideBarClosing)).toBe(false)
     })
 
+    test('open overlay with a toast up: still consumed, the toast does not cover the page', () => {
+        mountSidebar()
+        sideBarStore.set(true)
+        alertStore.set({ type: 'toast', msg: 'Press Back again to quit' } as alertData)
+        expect(window.__risuTaniumBack?.()).toBe(true)
+        expect(get(sideBarClosing)).toBe(true)
+    })
+
     test('a close whose animationend never comes is finished by the watchdog', () => {
         vi.useFakeTimers()
         mountSidebar()
@@ -713,12 +722,14 @@ describe('Android Back hook', () => {
     test('an older instance cleaning up keeps the newer instance hook', () => {
         const first = installPanelGesture()
         const second = installPanelGesture()
-        const newer = window.__risuTaniumBack
-        expect(typeof newer).toBe('function')
+        sideBarStore.set(true)
         first()
-        expect(window.__risuTaniumBack).toBe(newer)
+        expect(dispatchBack()).toBe(true)
+        expect(get(sideBarClosing)).toBe(true)
+        sideBarClosing.set(false)
         second()
-        expect(window.__risuTaniumBack).toBeUndefined()
+        expect(dispatchBack()).toBe(false)
+        expect(get(sideBarClosing)).toBe(false)
     })
 })
 
@@ -728,15 +739,18 @@ describe('lifetime', () => {
         DynamicGUI.set(false)
         mountSidebar()
         expect(seen.touchstartListeners()).toBe(0)
-        expect(window.__risuTaniumBack).toBeUndefined()
+        sideBarStore.set(true)
+        expect(dispatchBack()).toBe(false)
         DynamicGUI.set(true)
         flushSync()
         expect(seen.touchstartListeners()).toBe(1)
-        expect(typeof window.__risuTaniumBack).toBe('function')
+        expect(dispatchBack()).toBe(true)
+        sideBarClosing.set(false)
         DynamicGUI.set(false)
         flushSync()
         expect(seen.touchstartListeners()).toBe(0)
-        expect(window.__risuTaniumBack).toBeUndefined()
+        expect(dispatchBack()).toBe(false)
+        expect(get(sideBarClosing)).toBe(false)
     })
 
     test('a screen that replaces the sidebar leaves no listener and no Back hook', () => {
@@ -748,7 +762,7 @@ describe('lifetime', () => {
         mounted = mounted.filter((m) => m !== app)
         flushSync()
         expect(seen.touchstartListeners()).toBe(0)
-        expect(window.__risuTaniumBack).toBeUndefined()
+        expect(dispatchBack()).toBe(false)
         expect(get(sideBarClosing)).toBe(false)
     })
 })

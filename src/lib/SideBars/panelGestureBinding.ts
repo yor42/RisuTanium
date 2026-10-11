@@ -1,5 +1,7 @@
 import { get, type Readable } from 'svelte/store'
-import { alertStore, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
+import { pageCovered } from '../../ts/alertPrompts'
+import { registerBackHandler } from '../../ts/backHandlers'
+import { sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import { inEdgeZone, INSET_MAX_CSS, INSET_PROBE_MAX_CSS, PanelGesture, type PanelIntent } from './panelGesture'
 
 declare global {
@@ -9,11 +11,6 @@ declare global {
          * elsewhere; absence, a throw or a non-finite answer all mean no strip.
          */
         __risuTaniumGestureInset?: { left?: () => unknown }
-        /**
-         * Android Back hook: true when the page consumed Back by closing the overlay.
-         * Legacy in-window plugin code can reach it; sandboxed V3 plugins cannot.
-         */
-        __risuTaniumBack?: () => boolean
     }
 }
 
@@ -275,7 +272,7 @@ export function installPanelGesture(options: PanelGestureOptions = {}): () => vo
         if (e.touches.length !== 1) {
             return
         }
-        if (get(alertStore).type !== 'none' || get(sideBarClosing)) {
+        if (pageCovered() || get(sideBarClosing)) {
             return
         }
         const touch = e.changedTouches[0]
@@ -330,7 +327,7 @@ export function installPanelGesture(options: PanelGestureOptions = {}): () => vo
     storeReady = true
 
     const backHook = (): boolean => {
-        if (get(alertStore).type !== 'none' || !get(sideBarStore)) {
+        if (pageCovered() || !get(sideBarStore)) {
             return false
         }
         if (get(sideBarClosing)) {
@@ -343,11 +340,7 @@ export function installPanelGesture(options: PanelGestureOptions = {}): () => vo
         sideBarClosing.set(true)
         return true
     }
-    Object.defineProperty(window, '__risuTaniumBack', {
-        configurable: true,
-        writable: false,
-        value: backHook,
-    })
+    const unregisterBack = registerBackHandler(backHook)
 
     document.addEventListener('touchstart', onTouchStart, { passive: true })
 
@@ -361,10 +354,8 @@ export function installPanelGesture(options: PanelGestureOptions = {}): () => vo
             clearTimeout(closingTimer)
             closingTimer = null
         }
-        // A newer instance may already own the hook; only remove our own.
-        if (window.__risuTaniumBack === backHook) {
-            delete window.__risuTaniumBack
-        }
+        // Removes only this instance's registration; a newer instance keeps its own.
+        unregisterBack()
     }
 }
 

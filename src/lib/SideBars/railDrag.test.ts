@@ -53,6 +53,7 @@ class Rig {
     dragEnds = 0
     ghost: Array<[number, number]> = []
     machine: RailDrag
+    host: RailHost
     order: Array<string | folder> = []
     open: string[] = []
 
@@ -110,6 +111,7 @@ class Rig {
             onSpringOpen: (f) => this.springOpened.push(f),
             onTouchMenu: (f) => this.touchMenus.push(f),
         }
+        this.host = host
         this.machine = new RailDrag(host, env)
     }
 
@@ -718,6 +720,36 @@ describe('auto-scroll and keys', () => {
             rig.frame(16)
         }
         expect(rig.target).not.toEqual(first)
+    })
+
+    test('(F) a host that declines edge scrolling gets no frame loop and no scroll from a frame while the pointer sits in a band', () => {
+        let declined = 0
+        rig.host.edgeScroll = () => {
+            declined++
+            return false
+        }
+        const setScrollTop = vi.spyOn(rig.host, 'setScrollTop')
+        const requestFrame = vi.fn(() => 1)
+        const declining = new RailDrag(rig.host, {
+            now: () => rig.now,
+            setTimer: () => 1,
+            clearTimer: () => {},
+            requestFrame,
+            cancelFrame: () => {},
+        })
+        const press = rig.y(charKey('C'))
+        declining.pointerDown(rig.ptr(press))
+        declining.pointerMove(rig.ptr(press + MOUSE_DRAG_THRESHOLD_PX))
+        expect(declining.isDragging).toBe(true)
+        declining.pointerMove(rig.ptr(VIEW_H))
+        declining.pointerMove(rig.ptr(2))
+        expect(requestFrame).not.toHaveBeenCalled()
+        expect(setScrollTop).not.toHaveBeenCalled()
+        expect(rig.scrollTop).toBe(100)
+        expect(declined).toBeGreaterThan(0)
+        // Keys are the keyboard's scroll and stay available.
+        expect(declining.keyDown('PageDown')).toBe(true)
+        expect(setScrollTop).toHaveBeenCalledTimes(1)
     })
 
     test('PageDown, PageUp, Home and End scroll the container, and the target follows', () => {

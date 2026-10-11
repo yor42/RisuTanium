@@ -40,9 +40,11 @@ class MainActivity : TauriActivity() {
     backWebView?.settings?.textZoom = (newConfig.fontScale * 100).toInt()
   }
 
-  // Back asks the page first: while the phone overlay sidebar is open the page closes it and
-  // answers true. Any other answer, a missing page, or no answer within the timeout falls
-  // through to the default Back, exactly as without this callback.
+  // Back asks the page first: the page runs its registered Back handlers (the phone overlay
+  // sidebar, the Grid's edit mode) and, when none takes the press, its quit guard, which shows
+  // "press Back again" and answers true on the first press. Any other answer, a missing page,
+  // or no answer within the timeout falls through to the default Back, exactly as without this
+  // callback.
   private val backCallback = object : OnBackPressedCallback(true) {
     override fun handleOnBackPressed() {
       val webView = backWebView
@@ -68,7 +70,8 @@ class MainActivity : TauriActivity() {
         }
       }
       // A late "true" after the timeout already fell through is ignored here, but the page
-      // has by then started closing the overlay; harmless because the app is leaving.
+      // has by then acted: it may have closed the overlay, left edit mode or armed the quit
+      // guard. All harmless, because the app is leaving.
     }
   }
 
