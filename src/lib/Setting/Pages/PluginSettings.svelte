@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { PlusIcon, TrashIcon, LinkIcon, CodeXmlIcon, PowerIcon, PowerOffIcon } from "@lucide/svelte";
+    import { PlusIcon, TrashIcon, LinkIcon, CodeXmlIcon, PowerIcon, PowerOffIcon, DownloadIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import { alertConfirm, alertMd, alertSelect } from "src/ts/alert";
     import { TriangleAlert } from '@lucide/svelte';
@@ -13,6 +13,7 @@
     import CheckInput from "src/lib/UI/GUI/CheckInput.svelte";
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
     import { hotReloadPluginFiles } from "src/ts/plugins/apiV3/developMode";
+    import { pluginExportFile } from "src/ts/plugins/pluginExport";
 
     let showParams = $state([])
 </script>
@@ -93,6 +94,19 @@
                     {/if}
                 {/await}
             {/if}
+
+            <button
+                class="textcolor2 hover:gray-200 cursor-pointer"
+                aria-label={language.export}
+                title={language.export}
+                onclick={async () => {
+                    const file = pluginExportFile(plugin)
+                    const { downloadFile } = await import("src/ts/globalApi.svelte")
+                    await downloadFile(file.fileName, file.content)
+                }}
+            >
+                <DownloadIcon />
+            </button>
 
             <button
                 class="textcolor2 hover:gray-200 cursor-pointer"
