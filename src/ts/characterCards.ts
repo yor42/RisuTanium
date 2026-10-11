@@ -24,6 +24,7 @@ import { exportModuleLegacy, readModule, type RisuModule } from "./process/modul
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
+import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
 import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
@@ -37,97 +38,21 @@ export const hubURL = isNodeServer
     ? NIGHTLY_HUB_URL 
     : EXTERNAL_HUB_URL;
 
-/**
- * How the attempt to import one file ended. The import code decides it; nothing reads alert text.
- * - imported: a character, preset or module was added (`index` is the new character's position, `null` for a preset, a
- *   module, or a character handed back instead of added).
- * - declined: the user chose not to go on (the low-level-access prompt or the card password prompt). Nothing is shown.
- * - refused: the file is not usable; `reason` is shown as text. `summaryOnly` marks a reason that has no message of its own.
- * - failed: an unexpected error; it is shown with its details.
- */
-type ImportOutcome =
-    | {kind: 'imported', index: number|null, character?: character}
-    | {kind: 'declined'}
-    | {kind: 'refused', reason: string, summaryOnly?: true}
-    | {kind: 'failed', error: Error|string}
-
-type ImportItem = {name: string, run: () => Promise<ImportOutcome>}
-
 const refusedOutcome = (reason:string):ImportOutcome => ({kind: 'refused', reason})
 
-//A refused module is a refusal whichever import it came out of; any other error is a failure.
-function outcomeOfError(error:unknown):ImportOutcome {
-    if(error instanceof ModuleRefusal){
-        return refusedOutcome(error.message)
-    }
-    return {kind: 'failed', error: error instanceof Error ? error : String(error)}
-}
-
-function outcomeReason(outcome:ImportOutcome):string {
-    if(outcome.kind === 'refused'){
-        return outcome.reason
-    }
-    if(outcome.kind === 'failed'){
-        return outcome.error instanceof Error ? outcome.error.message : outcome.error
-    }
-    return ''
-}
-
-//One file's own message: a refusal as text, a failure with its details.
-function showOutcome(outcome:ImportOutcome) {
-    if(outcome.kind === 'refused'){
-        alertError(outcome.reason)
-    }
-    else if(outcome.kind === 'failed'){
-        alertError(outcome.error)
-    }
-}
-
-/**
- * Attempts every item, whatever an earlier item's outcome, then shows what did not import. The loop never rejects.
- * When something was refused or failed, the last message of the action is one error: the file's own message when the
- * action had a single file with a message of its own, otherwise a summary naming each file and its reason. Nothing is
- * shown after it. When nothing was refused or failed, the alerts of the last file stay as they are.
- */
-function importFiles(items:ImportItem[]):Promise<void> {
-    return withBusy('import', () => importEachFile(items))
-}
-
-async function importEachFile(items:ImportItem[]):Promise<void> {
-    const results:ImportOutcome[] = []
-    for(const item of items){
-        let outcome:ImportOutcome
-        try {
-            outcome = await item.run()
-        } catch (error) {
-            console.error(error)
-            outcome = outcomeOfError(error)
-        }
-        if(outcome.kind === 'imported' && outcome.index !== null){
-            try {
-                checkCharOrder()
-            } catch (error) {
-                console.error(error)
+//Attempts every file through `runImportBatch`; a character that was added gets its order checked.
+async function importFiles(items:ImportItem[]):Promise<void> {
+    await runImportBatch(items, {
+        afterImported: (outcome) => {
+            if(outcome.kind === 'imported' && outcome.index !== null){
+                try {
+                    checkCharOrder()
+                } catch (error) {
+                    console.error(error)
+                }
             }
         }
-        results.push(outcome)
-    }
-    const notImported = items
-        .map((item, i) => ({item, outcome: results[i]}))
-        .filter(({outcome}) => outcome.kind === 'refused' || outcome.kind === 'failed')
-    if(notImported.length === 0){
-        return
-    }
-    const only = notImported[0].outcome
-    if(items.length === 1 && !(only.kind === 'refused' && only.summaryOnly)){
-        showOutcome(only)
-        return
-    }
-    alertError(language.importFilesNotImported(
-        notImported.length,
-        items.length,
-        notImported.map(({item, outcome}) => `${item.name}: ${outcomeReason(outcome)}`).join('\n')
-    ))
+    })
 }
 
 //One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
@@ -240,11 +165,12 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     return undefined
 }
 
-//Reads one character file and reports how it ended. It never rejects.
-async function importCharacterFile(f:{
+//Reads one character file and reports how it ended. It never rejects. `lowLevelLabel` names the card in the charx low-level-access prompt.
+export async function importCharacterFile(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
+    lowLevelLabel?:string
 }):Promise<ImportOutcome>{
     try {
         return await readCharacterFile(f)
@@ -258,6 +184,7 @@ async function readCharacterFile(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
+    lowLevelLabel?:string
 }):Promise<ImportOutcome>{
     if(f.name.endsWith('json')){
         if(!f.data || f.data instanceof ReadableStream){
@@ -345,7 +272,7 @@ async function readCharacterFile(f:{
                 }
             }
             await importer.done()
-            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter)
+            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter, false, f.lowLevelLabel)
             if(v === null){
                 return refusedOutcome(language.errors.noData)
             }
@@ -1147,7 +1074,7 @@ export async function openRealmUpload(target: string): Promise<void> {
 
 //Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
 //A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
-async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false):Promise<T extends true ? character|false|null : boolean|null>{
+async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:string):Promise<T extends true ? character|false|null : boolean|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
         return null
     }
@@ -1343,7 +1270,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
     }
 
     if(risuext && risuext?.lowLevelAccess && !lowLevelAccessAsked){
-        const conf = await alertConfirm(language.lowLevelAccessConfirm)
+        const conf = await alertConfirm(lowLevelLabel ? `${lowLevelLabel}\n${language.lowLevelAccessConfirm}` : language.lowLevelAccessConfirm)
         if(!conf){
             return false
         }
