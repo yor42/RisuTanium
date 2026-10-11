@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { PlusIcon, TrashIcon, LinkIcon, CodeXmlIcon, PowerIcon, PowerOffIcon, DownloadIcon } from "@lucide/svelte";
+    import { PlusIcon, TrashIcon, LinkIcon, CodeXmlIcon, PowerIcon, PowerOffIcon, DownloadIcon, Settings2Icon } from "@lucide/svelte";
     import { language } from "src/lang";
-    import { alertConfirm, alertMd, alertSelect } from "src/ts/alert";
+    import { alertConfirm, alertError, alertMd, alertNormal, alertSelect } from "src/ts/alert";
     import { TriangleAlert } from '@lucide/svelte';
 
     import { DBState, hotReloading } from "src/ts/stores.svelte";
@@ -14,6 +14,7 @@
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
     import { hotReloadPluginFiles } from "src/ts/plugins/apiV3/developMode";
     import { pluginExportFile } from "src/ts/plugins/pluginExport";
+    import { openPluginSettingsMenu } from "src/ts/plugins/pluginSettingsFile";
 
     let showParams = $state([])
 </script>
@@ -107,6 +108,33 @@
             >
                 <DownloadIcon />
             </button>
+
+            {#if plugin.version !== 1 && Object.keys(plugin.arguments ?? {}).some((k) => !k.startsWith('hidden_'))}
+                <button
+                    class="textcolor2 hover:gray-200 cursor-pointer"
+                    aria-label={language.pluginSettingsFile.button}
+                    title={language.pluginSettingsFile.button}
+                    onclick={async () => {
+                        // The list is unkeyed: after an await `plugin` can be another row's plugin, so only the name is kept.
+                        const name = plugin.name
+                        await openPluginSettingsMenu(name, {
+                            plugins: () => DBState.db.plugins,
+                            select: alertSelect,
+                            confirm: alertConfirm,
+                            notify: alertNormal,
+                            fail: alertError,
+                            pickFile: async () => (await import("src/ts/util")).selectSingleFile(['json']),
+                            download: async (fileName, content) => {
+                                const { downloadFile } = await import("src/ts/globalApi.svelte")
+                                await downloadFile(fileName, content)
+                            },
+                            reload: loadPlugins,
+                        })
+                    }}
+                >
+                    <Settings2Icon />
+                </button>
+            {/if}
 
             <button
                 class="textcolor2 hover:gray-200 cursor-pointer"

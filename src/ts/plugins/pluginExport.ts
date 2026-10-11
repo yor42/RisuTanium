@@ -4,11 +4,11 @@ const fallbackBaseName = 'plugin'
 const reservedWindowsName = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i
 
 /**
- * File name for an exported plugin script: the plugin name with every character that is invalid
- * on Windows or Android file systems, and every path separator, removed, ending in `.js`.
- * A name with nothing left, or one Windows reserves, still yields a usable name.
+ * File name stem for a plugin file: the plugin name with every character that is invalid on
+ * Windows or Android file systems, and every path separator, removed. A name with nothing left,
+ * or one Windows reserves, still yields a usable stem.
  */
-export function pluginExportFileName(name: string | undefined): string {
+export function pluginFileBaseName(name: string | undefined): string {
     let base = (name ?? '')
         .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
         .trim()
@@ -19,7 +19,12 @@ export function pluginExportFileName(name: string | undefined): string {
     else if (reservedWindowsName.test(base)) {
         base = '_' + base
     }
-    return base + '.js'
+    return base
+}
+
+/** File name for an exported plugin script: the plugin's file name stem ending in `.js`. */
+export function pluginExportFileName(name: string | undefined): string {
+    return pluginFileBaseName(name) + '.js'
 }
 
 /**
