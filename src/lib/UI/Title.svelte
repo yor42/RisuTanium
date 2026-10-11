@@ -65,7 +65,7 @@ let specialDay = $state('')
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<h2 class="text-4xl text-textcolor mb-0 mt-6 font-black relative" class:text-bordered={specialDay === 'newYear'} onclick={onClick}>
+<h2 class="text-4xl text-textcolor mb-0 mt-6 font-black relative logo-font" class:text-bordered={specialDay === 'newYear'} onclick={onClick}>
     {#if specialDay === 'midAutumn'}
         <span class="text-amber-400">🐉RisuTanium🐉</span>
     {:else if specialDay === 'chuseok'}
@@ -162,3 +162,18 @@ let specialDay = $state('')
         >
     </div>
 {/if}
+
+<style>
+    /* NanumSquare Neo Heavy by NAVER, SIL OFL 1.1; the license travels next to the font file. */
+    @font-face {
+        font-family: 'NanumSquare Neo Logo';
+        src: url('../../etc/fonts/NanumSquareNeo/NanumSquareNeoTTF-eHv.woff2') format('woff2');
+        font-weight: 900;
+        font-style: normal;
+        font-display: swap;
+    }
+
+    .logo-font {
+        font-family: 'NanumSquare Neo Logo', var(--risu-font-family);
+    }
+</style>
