@@ -20,6 +20,9 @@ let specialDay = $state('')
     if( today.getMonth() === 9 && today.getDate() === 31){
         specialDay = 'halloween'
     }
+    if( today.getMonth() === 9 && today.getDate() === 9 && DBState.db.language === 'ko'){
+        specialDay = 'hangulDay'
+    }
     if( (today.getMonth() === 8 && today.getDate() === 16)){
         if(DBState.db.language === 'ko'){
             specialDay = 'chuseok'
@@ -65,7 +68,7 @@ let specialDay = $state('')
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<h2 class="text-4xl text-textcolor mb-0 mt-6 font-black relative" class:text-bordered={specialDay === 'newYear'} onclick={onClick}>
+<h2 class="text-4xl text-textcolor mb-0 mt-6 font-black relative logo-font" class:text-bordered={specialDay === 'newYear'} onclick={onClick}>
     {#if specialDay === 'midAutumn'}
         <span class="text-amber-400">🐉RisuTanium🐉</span>
     {:else if specialDay === 'chuseok'}
@@ -77,8 +80,10 @@ let specialDay = $state('')
             <span class="text-black">Tan</span>
             <span class="text-blue-500">ium</span>
         </div>
+    {:else if specialDay === 'hangulDay'}
+        <span class="logo-gradient">리스<span class="text-textcolor">타늄</span></span>
     {:else}
-        RisuTanium
+        <span class="logo-gradient">Risu<span class="text-textcolor">Tanium</span></span>
     {/if}
     {#if specialDay === 'christmas'}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -162,3 +167,26 @@ let specialDay = $state('')
         >
     </div>
 {/if}
+
+<style>
+    /* NanumSquare Neo Heavy by NAVER, SIL OFL 1.1; the license travels next to the font file. */
+    @font-face {
+        font-family: 'NanumSquare Neo Logo';
+        src: url('../../etc/fonts/NanumSquareNeo/NanumSquareNeoTTF-eHv.woff2') format('woff2');
+        font-weight: 900;
+        font-style: normal;
+        font-display: swap;
+    }
+
+    .logo-font {
+        font-family: 'NanumSquare Neo Logo', var(--risu-font-family);
+    }
+
+    /* Mirrors docs/branding: the gradient spans the whole word's box, and the coloured second half paints over it. */
+    .logo-gradient {
+        background-image: linear-gradient(to bottom right, #00a1ad, #587bff);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+</style>

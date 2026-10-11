@@ -121,3 +121,9 @@ docker build --build-arg VITE_RISU_LEGAL_CONFIGURED= .
 ```
 
 Or put `VITE_RISU_LEGAL_CONFIGURED=` in your own `.env` file next to `docker-compose.yml`, which works from any shell. Compose reads that file, and `.env` is in `.gitignore`, so it stays yours. With an empty value the notice replaces the app.
+
+## Credits
+
+The home-screen logo uses NanumSquare Neo by NAVER (designed by Sandoll), licensed under the SIL Open Font License 1.1. The font file and its full license are in [`src/etc/fonts/NanumSquareNeo/`](src/etc/fonts/NanumSquareNeo/).
+
+이 프로그램에는 네이버에서 제공한 나눔글꼴이 적용되어 있습니다.
