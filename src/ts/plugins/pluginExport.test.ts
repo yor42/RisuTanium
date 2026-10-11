@@ -109,7 +109,7 @@ vi.mock(import('./apiV3/transpiler'), () => ({
 //#endregion
 
 import { importPlugin } from './plugins.svelte'
-import { pluginExportFile, pluginExportFileName } from './pluginExport'
+import { pluginExportFile, pluginExportFileName, pluginFileBaseName } from './pluginExport'
 
 const source = [
     '//@name Round Trip',
@@ -151,6 +151,23 @@ describe('pluginExportFileName', () => {
         expect(pluginExportFileName(undefined)).toBe('plugin.js')
         expect(pluginExportFileName('   ')).toBe('plugin.js')
         expect(pluginExportFileName('///')).toBe('plugin.js')
+    })
+
+    test('guard: exact file names for a table of names, pinned from the pre-refactor function', () => {
+        const table: Array<[string | undefined, string]> = [
+            ['My Plugin', 'My Plugin.js'],
+            ['a/b', 'ab.js'],
+            ['name.', 'name.js'],
+            ['', 'plugin.js'],
+            [undefined, 'plugin.js'],
+            ['CON', '_CON.js'],
+            ['a\u0001b\u001fc', 'abc.js'],
+            ['플러그인 プラグイン', '플러그인 プラグイン.js'],
+        ]
+        for (const [input, expected] of table) {
+            expect(pluginExportFileName(input)).toBe(expected)
+            expect(pluginFileBaseName(input) + '.js').toBe(expected)
+        }
     })
 
     test('trailing dots and spaces, which Windows drops, are removed', () => {
