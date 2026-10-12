@@ -607,6 +607,7 @@ export const languageVietnamese = {
         "hypaV3QueryChatCount": "Số lượng tin nhắn trò chuyện gần đây được sử dụng làm truy vấn cho tìm kiếm tương đồng. Giá trị cao hơn sẽ sử dụng nhiều ngữ cảnh trò chuyện hơn để xác định độ tương đồng.",
         "hypaV3SummaryChunkSeparator": "Ký tự phân tách được dùng để chia các bản tóm tắt thành từng đoạn cho tìm kiếm tương đồng.",
         "coldstorage": "Khi bật, ứng dụng sẽ lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Điều này giúp giữ mức sử dụng bộ nhớ thấp khi bạn có nhiều nhân vật. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.",
+        "dynamicModelRegistry": "Khi khởi động, tải danh sách mô hình của Google, Anthropic và OpenAI bằng khóa API của bạn và thêm các mô hình chưa có trong danh sách tích hợp (với OpenAI là các mô hình GPT). Ứng dụng cũng kiểm tra openrouter.ai để lấy giới hạn và giá công khai của mô hình khi khởi động, tối đa mỗi ngày một lần (không gửi khóa nào). Khi tắt tính năng này, việc tải xuống tự động và các mô hình được thêm sẽ dừng lại; dữ liệu đã lưu vẫn được sử dụng và nút Làm mới dữ liệu mô hình vẫn hoạt động.",
         "enableScrollToActiveChar": "Nếu được bật, nhấn phím tắt sẽ cuộn thanh bên đến nhân vật hiện đang hoạt động. Các thư mục sẽ tự động được mở nếu đang đóng."
     },
     "setup": {
@@ -1011,6 +1012,13 @@ export const languageVietnamese = {
     "autoSuggest": "Tự động đề xuất",
     "tokens": "Mã thông báo",
     "maxContextSize": "Kích thước ngữ cảnh tối đa",
+    "maxContextAboveModelMax": (max: string) => `Giá trị này vượt quá ngữ cảnh tối đa được liệt kê của mô hình là ${max}. Nhà cung cấp có thể từ chối hoặc cắt bớt yêu cầu.`,
+    "modelDataRefresh": "Làm mới dữ liệu mô hình",
+    "modelDataRefreshing": "Đang làm mới...",
+    "modelDataStatusNever": "Dữ liệu mô hình chưa được tải xuống",
+    "modelDataStatusUpdated": (time: string) => `Dữ liệu mô hình được cập nhật ${time}`,
+    "modelDataStatusFailed": (time: string) => `Không thể làm mới. Đang hiển thị dữ liệu từ ${time}`,
+    "modelDataStatusFailedEmpty": "Không thể tải xuống dữ liệu mô hình",
     "maxResponseSize": "Kích thước phản hồi tối đa",
     "temperature": "Nhiệt độ",
     "frequencyPenalty": "Hình phạt tần số",

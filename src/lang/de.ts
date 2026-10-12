@@ -607,6 +607,7 @@ export const languageGerman = {
         "hypaV3QueryChatCount": "Die Anzahl der letzten Chat-Nachrichten, die als Abfrage für die Ähnlichkeitssuche verwendet werden. Höhere Werte nutzen mehr Chat-Kontext, um die Ähnlichkeit zu bestimmen.",
         "hypaV3SummaryChunkSeparator": "Trennzeichen, das verwendet wird, um Zusammenfassungen für die Ähnlichkeitssuche in Abschnitte zu unterteilen.",
         "coldstorage": "Wenn diese Option aktiviert ist, speichert die App beim Start die vollständigen Daten jedes Charakters separat und lädt sie erst, wenn Sie diesen Charakter öffnen. So bleibt der Speicherverbrauch niedrig, wenn Sie viele Charaktere haben. Wenn die Option deaktiviert ist, werden keine neuen Charaktere archiviert, und bereits archivierte Charaktere lassen sich weiterhin normal öffnen.",
+        "dynamicModelRegistry": "Ruft beim Start mit Ihren API-Schlüsseln die Modelllisten von Google, Anthropic und OpenAI ab und ergänzt Modelle, die in der integrierten Liste fehlen (bei OpenAI GPT-Modelle). Außerdem prüft die App beim Start auf openrouter.ai die öffentlichen Modelllimits und Preise, höchstens einmal am Tag (es wird kein Schlüssel gesendet). Wenn Sie dies deaktivieren, werden die automatischen Downloads und die ergänzten Modelle beendet; gespeicherte Daten werden weiterhin verwendet, und die Schaltfläche „Modelldaten aktualisieren“ funktioniert weiterhin.",
         "enableScrollToActiveChar": "Wenn aktiviert, scrollt die Seitenleiste durch Drücken des Hotkeys zum aktuell aktiven Charakter. Geschlossene Ordner werden automatisch geöffnet."
     },
     "setup": {
@@ -1011,6 +1012,13 @@ export const languageGerman = {
     "autoSuggest": "Automatische Vorschläge",
     "tokens": "Tokens",
     "maxContextSize": "Maximale Kontextgröße",
+    "maxContextAboveModelMax": (max: string) => `Dieser Wert liegt über dem angegebenen maximalen Kontext des Modells von ${max}. Der Anbieter kann die Anfrage ablehnen oder kürzen.`,
+    "modelDataRefresh": "Modelldaten aktualisieren",
+    "modelDataRefreshing": "Wird aktualisiert...",
+    "modelDataStatusNever": "Modelldaten wurden noch nicht heruntergeladen",
+    "modelDataStatusUpdated": (time: string) => `Modelldaten aktualisiert: ${time}`,
+    "modelDataStatusFailed": (time: string) => `Aktualisierung fehlgeschlagen. Es werden die Daten von ${time} angezeigt`,
+    "modelDataStatusFailedEmpty": "Modelldaten konnten nicht heruntergeladen werden",
     "maxResponseSize": "Maximale Antwortgröße",
     "temperature": "Temperatur",
     "frequencyPenalty": "Häufigkeitslimitierung",

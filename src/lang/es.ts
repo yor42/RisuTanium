@@ -607,6 +607,7 @@ export const languageSpanish = {
         "hypaV3QueryChatCount": "El número de mensajes de chat recientes utilizados como consulta para la búsqueda de similitud. Valores más altos usan más contexto del chat para determinar la similitud.",
         "hypaV3SummaryChunkSeparator": "Separador utilizado para dividir los resúmenes en fragmentos para la búsqueda de similitud.",
         "coldstorage": "Cuando esta opción está activada, la aplicación guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. Así el uso de memoria se mantiene bajo cuando tienes muchos personajes. Si la desactivas, no se archiva ningún personaje nuevo y los personajes ya archivados se siguen abriendo con normalidad.",
+        "dynamicModelRegistry": "Obtiene al iniciar las listas de modelos de Google, Anthropic y OpenAI con tus claves de API y añade los modelos que faltan en la lista integrada (en OpenAI, los modelos GPT). También consulta openrouter.ai al iniciar para obtener los límites y precios públicos de los modelos, como máximo una vez al día (no se envía ninguna clave). Si lo desactivas, se detienen las descargas automáticas y los modelos añadidos; los datos guardados se siguen usando y el botón «Actualizar datos de modelos» sigue funcionando.",
         "enableScrollToActiveChar": "Si está habilitado, pulsar la tecla de acceso rápido desplazará la barra lateral hasta el personaje activo. Las carpetas se abrirán automáticamente si están cerradas."
     },
     "setup": {
@@ -1011,6 +1012,13 @@ export const languageSpanish = {
     "autoSuggest": "Auto Sugerir",
     "tokens": "Tokens",
     "maxContextSize": "Tamaño Máximo del Contexto",
+    "maxContextAboveModelMax": (max: string) => `Este valor supera el contexto máximo indicado para el modelo, que es de ${max}. El proveedor podría rechazar o truncar la solicitud.`,
+    "modelDataRefresh": "Actualizar datos de modelos",
+    "modelDataRefreshing": "Actualizando...",
+    "modelDataStatusNever": "Aún no se han descargado los datos de modelos",
+    "modelDataStatusUpdated": (time: string) => `Datos de modelos actualizados: ${time}`,
+    "modelDataStatusFailed": (time: string) => `No se pudo actualizar. Se muestran los datos de ${time}`,
+    "modelDataStatusFailedEmpty": "No se pudieron descargar los datos de modelos",
     "maxResponseSize": "Tamaño Máximo de la Respuesta",
     "temperature": "Temperatura",
     "frequencyPenalty": "Penalización por Frecuencia",

@@ -607,7 +607,8 @@ export const languageChinese = {
         "hypaV3EmbeddingMaxConcurrent": "用于相似度搜索的嵌入模型最大并发请求数。",
         "hypaV3QueryChatCount": "用作相似度搜索查询的最近聊天消息数量。数值越高，用于判断相似度的聊天上下文越多。",
         "hypaV3SummaryChunkSeparator": "用于将总结拆分为多个块以进行相似度搜索的分隔符。",
-        "coldstorage": "开启后，应用会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。这样在角色很多时可以保持较低的内存占用。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。"
+        "coldstorage": "开启后，应用会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。这样在角色很多时可以保持较低的内存占用。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。",
+        "dynamicModelRegistry": "启动时使用您的 API 密钥获取 Google、Anthropic 和 OpenAI 的模型列表，并添加内置列表中没有的模型（OpenAI 为 GPT 模型）。同时会在启动时检查 openrouter.ai 上公开的模型限制和价格，每天最多检查一次（不会发送任何密钥）。关闭后将停止自动下载以及新增的模型；已保存的数据仍会被使用，“刷新模型数据”按钮仍可使用。"
     },
     "setup": {
         "theme": "选择介面主题",
@@ -1011,6 +1012,13 @@ export const languageChinese = {
     "autoSuggest": "自动建议",
     "tokens": "Tokens",
     "maxContextSize": "最大上下文长度（Max Context Size）",
+    "maxContextAboveModelMax": (max: string) => `该值超过了模型标注的最大上下文长度 ${max}。服务提供方可能会拒绝或截断该请求。`,
+    "modelDataRefresh": "刷新模型数据",
+    "modelDataRefreshing": "正在刷新...",
+    "modelDataStatusNever": "尚未下载模型数据",
+    "modelDataStatusUpdated": (time: string) => `模型数据更新于 ${time}`,
+    "modelDataStatusFailed": (time: string) => `刷新失败。显示的是 ${time} 的数据`,
+    "modelDataStatusFailedEmpty": "无法下载模型数据",
     "maxResponseSize": "最大回应长度（Max Response Size）",
     "temperature": "温度（Temperature）",
     "frequencyPenalty": "频率惩罚（Frequency Penalty）",

@@ -607,7 +607,8 @@ export const languageKorean = {
         "hypaV3SummarizationMaxConcurrent": "요약 시 최대 동시 수파메모리 모델 요청 수입니다. 수파메모리 모델이 보조 모델인 경우에만 적용됩니다.",
         "hypaV3EmbeddingRequestsPerMinute": "유사도 검색 시 분당 최대 임베딩 모델 요청 수입니다.",
         "hypaV3EmbeddingMaxConcurrent": "유사도 검색 시 최대 동시 임베딩 모델 요청 수입니다.",
-        "coldstorage": "이 옵션을 켜면 앱이 시작될 때 각 캐릭터의 전체 데이터를 별도로 저장하고, 해당 캐릭터를 열 때만 불러옵니다. 캐릭터가 많을 때 메모리 사용량을 낮게 유지할 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다."
+        "coldstorage": "이 옵션을 켜면 앱이 시작될 때 각 캐릭터의 전체 데이터를 별도로 저장하고, 해당 캐릭터를 열 때만 불러옵니다. 캐릭터가 많을 때 메모리 사용량을 낮게 유지할 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.",
+        "dynamicModelRegistry": "시작할 때 사용자의 API 키로 Google, Anthropic, OpenAI의 모델 목록을 가져와 내장 목록에 없는 모델을 추가합니다(OpenAI는 GPT 모델). 또한 시작할 때 openrouter.ai에서 공개된 모델 한도와 가격을 하루에 한 번까지만 확인하며, 키는 전송하지 않습니다. 이 옵션을 끄면 자동 다운로드와 추가되는 모델이 중단됩니다. 저장된 데이터는 계속 사용되며, 모델 데이터 새로고침 버튼도 계속 작동합니다."
     },
     "setup": {
         "theme": "테마를 입력해 주세요",
@@ -1011,6 +1012,13 @@ export const languageKorean = {
     "autoSuggest": "자동 제안",
     "tokens": "토큰",
     "maxContextSize": "최대 컨텍스트 크기",
+    "maxContextAboveModelMax": (max: string) => `이 값은 모델에 명시된 최대 컨텍스트 ${max}을(를) 초과합니다. 제공자가 요청을 거부하거나 잘라낼 수 있습니다.`,
+    "modelDataRefresh": "모델 데이터 새로고침",
+    "modelDataRefreshing": "새로고침 중...",
+    "modelDataStatusNever": "모델 데이터를 아직 내려받지 않았습니다",
+    "modelDataStatusUpdated": (time: string) => `모델 데이터 업데이트 시각: ${time}`,
+    "modelDataStatusFailed": (time: string) => `새로고침하지 못했습니다. ${time} 기준 데이터를 표시합니다`,
+    "modelDataStatusFailedEmpty": "모델 데이터를 내려받지 못했습니다",
     "maxResponseSize": "최대 응답 크기",
     "temperature": "온도",
     "frequencyPenalty": "빈도 패널티",
