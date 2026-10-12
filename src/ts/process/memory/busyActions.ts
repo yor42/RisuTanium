@@ -96,18 +96,6 @@ export function anyChokePointInFlight(): boolean {
     return inFlightByPoint.asset + inFlightByPoint.inlay + inFlightByPoint.coldStorage + inFlightByPoint.pluginBridge > 0
 }
 
-let lastPluginActivityAt = 0
-
-/** Stamps the time a V3 plugin last called into the host. */
-export function stampPluginActivity(now: number = Date.now()): void {
-    lastPluginActivityAt = now
-}
-
-/** 0 until a plugin has called into the host. */
-export function getLastPluginActivityAt(): number {
-    return lastPluginActivityAt
-}
-
 /** What a plugin's visible panel is: the iframe element, whose own state says whether it is still shown. */
 export interface PluginPanelHandle {
     readonly isConnected: boolean
@@ -142,17 +130,6 @@ export function isPluginPanelOpen(): boolean {
     return shownPluginPanels.size > 0
 }
 
-let pluginDevModeStarted = false
-
-/** Set once the plugin dev-mode poll starts; it never ends within a page life. */
-export function markPluginDevModeStarted(): void {
-    pluginDevModeStarted = true
-}
-
-export function isPluginDevModeStarted(): boolean {
-    return pluginDevModeStarted
-}
-
 export function resetBusyActionsForTest(): void {
     for (const endToken of inFlightTokens.values()) {
         endToken()
@@ -163,8 +140,6 @@ export function resetBusyActionsForTest(): void {
     inFlightByPoint.inlay = 0
     inFlightByPoint.coldStorage = 0
     inFlightByPoint.pluginBridge = 0
-    lastPluginActivityAt = 0
-    pluginDevModeStarted = false
     shownPluginPanels.clear()
     pluginPanelShownCount = 0
 }

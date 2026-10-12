@@ -238,7 +238,7 @@ describe('boot archive pass: the size rule on the Node server', () => {
 
     test('the limit applies per block: a profile whose whole save is over it but no block is commits, and the too-large notice is not raised', async () => {
         useHost('node')
-        // Trashed characters are never archived, so the commit carries all three in full.
+        // Characters whose trash purge is due are not archived, so the commit carries all three in full.
         const characters = ['a', 'b', 'c'].map((id) => fullCharacter(id, id.toUpperCase(), { desc: 'd'.repeat(9_000), trashTime: 1 }))
         const world = await worldFor(kit, 'node', baseTree(characters), { nodeBodyLimit: TEST_LIMIT })
 

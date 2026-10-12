@@ -41,7 +41,8 @@ async function importDropped(file:File){
         } else {
             await importCharacterProcess({
                 name: file.name,
-                data: file
+                data: file,
+                archive: true
             })
             checkCharOrder()
         }

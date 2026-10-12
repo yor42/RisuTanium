@@ -30,7 +30,7 @@ import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { digestMainFileBytes } from "./storage/mainFileRecord";
-import { didBootPassCommit } from "./process/memory/idleReloadBootState";
+import { didBootPassCommit } from "./process/memory/bootArchiveState";
 import { beginInFlight } from "./process/inFlightWork";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
@@ -861,6 +861,13 @@ export function afterNextSaveCommit(callback: () => void): void {
     nextCommitCallbacks.add(callback)
 }
 
+let peerSaveCount = 0
+
+/** How many saves another tab has announced to this page; it only grows, so a peer save between two reads always shows. */
+export function getPeerSaveCount(): number {
+    return peerSaveCount
+}
+
 /** How many saves have been requested on this page; it only grows, so a change that is later undone still shows. */
 export function getSaveMarkCount(): number {
     return saveMarkCount
@@ -1559,6 +1566,7 @@ export async function saveDb() {
                 return
             }
             otherTabSaved = true
+            peerSaveCount += 1
             if (message.seq !== null) {
                 peerSeq = message.seq
             }
@@ -2350,10 +2358,9 @@ export async function saveDb() {
                 // A retry of the same block cannot get accepted, so the loop
                 // stops for this page load instead of resending it. The unsaved
                 // changes were folded back into the tracker above and the
-                // iteration is not marked committed, so the page stays unclean
-                // and the idle reload does not fire. The block is named so the
-                // person knows what to make smaller; a server that refused for a
-                // limit this client does not know names nothing.
+                // iteration is not marked committed, so the page stays unclean.
+                // The block is named so the person knows what to make smaller; a
+                // server that refused for a limit this client does not know names nothing.
                 console.error(error)
                 const what = error instanceof BlockTooLargeError ? describeBlockForPerson(error.blockName) : ''
                 alertToast(language.savingStoppedTooLargeBlockMessage(what, NODE_BODY_LIMIT_BYTES))

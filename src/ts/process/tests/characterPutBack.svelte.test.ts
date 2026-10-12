@@ -357,7 +357,7 @@ describe('what blocks a put-back', () => {
         ['a chat message', (cha: Slot) => { cha.chats[0].message.push({ role: 'user', data: 'hi', time: 2 } as never) }, 'chats'],
         ['a field', (cha: Slot) => { cha.name = 'renamed' }, 'name'],
         ['a lorebook entry', (cha: Slot) => { cha.globalLore.push({ key: 'k', comment: '', content: 'c', mode: 'normal', insertorder: 1, alwaysActive: false, secondkey: '', selective: false } as never) }, 'globalLore'],
-    ])('acceptance: %s added after the restore keeps the character loaded, with the edit, for good', async (_label, edit, changedKey) => {
+    ])('acceptance: %s added after the restore keeps the character loaded, with the edit, for good when canBootArchive() is false (nothing can re-archive it)', async (_label, edit, changedKey) => {
         archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C'), fullCharacter('D')])
         begin()
         await open('A')

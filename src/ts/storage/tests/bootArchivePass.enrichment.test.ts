@@ -49,6 +49,7 @@ import {
     uid,
     unitValue,
     upstreamStub,
+    versionTwoStub,
     worldFor,
     type BootResult,
     type Json,
@@ -183,7 +184,7 @@ const TRASHED_AT = 1_700_000_001_000
 const OLD_TRASH = Date.now() - 30 * 24 * 60 * 60 * 1000
 
 /** The enrichment-only fields: none of them is on an upstream stub. */
-const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters']
+const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters', 'tags', 'creator']
 
 /** An upstream stub of a group: the type is `'character'`, as the upstream application writes it. */
 function legacyStub(extra: Json = {}): Json {
@@ -245,7 +246,7 @@ function expectEnrichedGroup(slot: Json) {
     expect(slot.creatorNotes).toBe(unit.creatorNotes)
     expect(slot.lastInteraction).toBe(unit.lastInteraction)
     expect(slot.coldChatCount).toBe(2)
-    expect(slot.coldVersion).toBe(2)
+    expect(slot.coldVersion).toBe(3)
     expect(slot.name).toBe(stub.name)
     expect(slot.image).toBe(stub.image)
     expect(slot.chaId).toBe(stub.chaId)
@@ -462,7 +463,7 @@ describe('boot archive pass: an enriched stub keeps the trash state of the stub,
         const boot = await bootOnce(world)
 
         const slot = slotOf(installedTree(boot.outcome))
-        expect(slot.coldVersion).toBe(2)
+        expect(slot.coldVersion).toBe(3)
         expect(slot.type).toBe('group')
         expect(slot).not.toHaveProperty('trashTime')
         expect(world.mainWrites.length).toBe(1)
@@ -490,7 +491,7 @@ describe('boot archive pass: an enriched stub keeps the trash state of the stub,
         const boot = await bootOnce(world)
 
         const slot = slotOf(installedTree(boot.outcome))
-        expect(slot.coldVersion).toBe(2)
+        expect(slot.coldVersion).toBe(3)
         expect(slot.trashTime).toBe(TRASHED_AT)
         expect((await committedCharacters(world))[0].trashTime).toBe(TRASHED_AT)
     })
@@ -664,7 +665,7 @@ describe('boot archive pass: enrichment beside archiving', () => {
         const installed = installedTree(boot.outcome)
         expectEnrichedGroup(slotOf(installed))
         const archived = slotOf(installed, 'a')
-        expect(archived.coldVersion).toBe(2)
+        expect(archived.coldVersion).toBe(3)
         expect(archived.coldChatCount).toBe(1)
         expect(typeof archived.coldstorage).toBe('string')
         expect(archived.coldstorage).not.toBe(LEGACY_UNIT)
@@ -727,7 +728,7 @@ describe('boot archive pass: several upstream stubs', () => {
         expect(slots.map((c) => c.type)).toEqual(['character', 'group', 'group'])
         expect(slots.map((c) => c.characters)).toEqual([undefined, ['m2'], ['m3']])
         expect(slots.map((c) => c.name)).toEqual(['One', 'Two', 'Three'])
-        expect(slots.map((c) => c.coldVersion)).toEqual([2, 2, 2])
+        expect(slots.map((c) => c.coldVersion)).toEqual([3, 3, 3])
         expect(slots.map((c) => c.coldChatCount)).toEqual([0, 2, 2])
         expect(world.mainWrites.length).toBe(1)
     })
@@ -1070,11 +1071,65 @@ describe('boot archive pass: enriched stubs and remote saving', () => {
         expect(blocks.every((b) => b.type === BLOCK.CHARACTER_WITH_CHAT)).toBe(true)
         const installed = installedTree(boot.outcome)
         const slot = slotOf(installed, stubId)
-        expect(slot.coldVersion).toBe(2)
+        expect(slot.coldVersion).toBe(3)
         expect(slot.type).toBe('group')
         expect(slot.characters).toEqual(MEMBERS)
         expect(blockJson(blocks[0])).toEqual(jsonOf(slot))
         expect(jsonOf(charactersOf(await decodeRisuSave(world.mainWrites[0], { strict: true })))).toEqual(jsonOf(charactersOf(installed)))
         expect((await remoteKeys(host)).sort()).toEqual(remotesBefore)
+    })
+})
+
+// A fork stub of version 2 carries no tags or creator; the pass upgrades it once, from its unit.
+describe('boot archive pass: a version 2 stub is upgraded once', () => {
+    const THREE_CHATS = [1, 2, 3].map((n) => ({ id: `chat-${n}`, message: [{ time: n, data: `hello ${n}`, role: 'char' }], note: '', name: '', localLore: [] }))
+
+    const UNITS = [
+        { chaId: 'v2-a', key: '20000000-0000-4000-8000-00000000000a', unitExtra: { tags: ['a', 'b'], creator: 'Top', additionalData: { creator: 'Edited' }, lastInteraction: 5_000 }, stubExtra: { lastInteraction: 9_000 } },
+        { chaId: 'v2-b', key: '20000000-0000-4000-8000-00000000000b', unitExtra: { tags: ['c'], creator: 'Plain', lastInteraction: 1_000 }, stubExtra: { trashTime: TRASHED_AT } },
+        { chaId: 'v2-c', key: '20000000-0000-4000-8000-00000000000c', unitExtra: {}, stubExtra: {} },
+    ]
+
+    async function versionTwoWorld(host: WorldHost, archive: boolean): Promise<World> {
+        useHost(host)
+        const stubs = UNITS.map((u) => versionTwoStub(u.chaId, `Name ${u.chaId}`, u.key, { coldChatCount: 3, ...u.stubExtra }))
+        const world = await worldFor(kit, host, baseTree(stubs, { archiveCharacters: archive }))
+        for (const u of UNITS) {
+            await world.seedUnit(u.key, unitValue(fullCharacter(u.chaId, `Name ${u.chaId}`, { chats: THREE_CHATS, ...u.unitExtra })))
+        }
+        return world
+    }
+
+    test.each(MATRIX)('%s, %s: regression reproducer: each unit is read once, each stub carries tags and creator, and its chat count, lastInteraction and trashTime are kept', async (host, _label, archive) => {
+        const world = await versionTwoWorld(host, archive)
+
+        const boot = await bootOnce(world)
+
+        expect(world.units.reads.slice().sort()).toEqual(UNITS.map((u) => u.key).sort())
+        expect(world.units.writes.length).toBe(0)
+        expect(world.mainWrites.length).toBe(1)
+        const slots = charactersOf(installedTree(boot.outcome))
+        expect(slots.map((c) => c.coldVersion)).toEqual([3, 3, 3])
+        expect(slots.map((c) => c.tags)).toEqual([['a', 'b'], ['c'], []])
+        expect(slots.map((c) => c.creator)).toEqual(['Edited', 'Plain', ''])
+        expect(slots.map((c) => c.coldChatCount)).toEqual([3, 3, 3])
+        expect(slots.map((c) => c.lastInteraction)).toEqual([9_000, 1_000, undefined])
+        expect(slots[1].trashTime).toBe(TRASHED_AT)
+        expect('trashTime' in slots[0]).toBe(false)
+        const committed = await committedCharacters(world)
+        expect(jsonOf(committed)).toEqual(jsonOf(slots))
+    })
+
+    test.each(MATRIX)('%s, %s: guard: a second boot over the committed file reads no unit and writes no main file', async (host, _label, archive) => {
+        const world = await versionTwoWorld(host, archive)
+        await bootOnce(world)
+        const reads = world.units.reads.length
+        const writes = world.mainWrites.length
+
+        const second = await bootOnce(world)
+
+        expect(second.outcome.kind).toBe('install')
+        expect(world.units.reads.length).toBe(reads)
+        expect(world.mainWrites.length).toBe(writes)
     })
 })

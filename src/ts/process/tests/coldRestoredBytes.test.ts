@@ -66,7 +66,7 @@ import { readColdCharacterCopy, restoreColdCharacter } from '../coldCharacterRes
 import { preLoadChat, setColdStorageItem } from '../coldstorage.svelte'
 import { chokePointInFlight } from '../memory/busyActions'
 import { coldStorageHeader } from '../coldstorageData'
-import { clearRestoredBytes, resetRestoredBytesForTest, restoredBytesOf, restoredBytesOutside, setRestoredBytesListener } from '../memory/restoredBytes'
+import { clearRestoredBytes, resetRestoredBytesForTest, restoredBytesOf, restoredBytesOutside } from '../memory/restoredBytes'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import type { Database } from 'src/ts/storage/database.svelte'
 
@@ -161,7 +161,7 @@ describe('restoredBytes', () => {
         expect(restoredBytesOutside(new Set(['a', 'b']))).toBe(0)
     })
 
-    test('acceptance: clearRestoredBytes forgets one chaId, keeps the others and calls no listener', async () => {
+    test('acceptance: clearRestoredBytes forgets one chaId, keeps the others', async () => {
         const sizeB = storeUnit('unit-b', { character: character('b') })
         storeUnit('unit-a', { character: character('a') })
         const a = stub('a', 'unit-a')
@@ -169,15 +169,11 @@ describe('restoredBytes', () => {
         install(a, b)
         await restoreColdCharacter(a)
         await restoreColdCharacter(b)
-        const listener = vi.fn()
-        setRestoredBytesListener(listener)
-
         clearRestoredBytes('a')
 
         expect(restoredBytesOf('a')).toBe(0)
         expect(restoredBytesOf('b')).toBe(sizeB)
         expect(restoredBytesOutside()).toBe(sizeB)
-        expect(listener).not.toHaveBeenCalled()
         clearRestoredBytes('never-restored')
     })
 

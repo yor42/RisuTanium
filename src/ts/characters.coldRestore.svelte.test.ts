@@ -337,14 +337,18 @@ describe('changeChar on an archived character -- the install', () => {
     })
 
     test('guard: the installed character carries none of the placeholder\'s pointer, marker or count fields', async () => {
-        const blob = fullCharacter('member', 'restored description')
+        const blob = fullCharacter('member', 'restored description', { tags: ['stub-tag'], creator: 'stub-creator' })
         const stub = buildColdStub(blob, 'unit-member', ['chat-unit'])
         installDb([stub as unknown as CharacterFixture])
-        readColdStorageItemMock.mockResolvedValue(ok(fullCharacter('member', 'restored description')))
+        readColdStorageItemMock.mockResolvedValue(ok(fullCharacter('member', 'restored description', { tags: ['unit-tag'], creator: 'unit-creator' })))
 
         await changeChar(0)
 
-        const stubOnlyKeys = Object.keys(stub).filter((key) => !(key in (blob as unknown as Record<string, unknown>)) && key !== 'trashTime')
+        const restored = slot(0) as unknown as { tags: string[], creator: string }
+        expect(restored.tags).toEqual(['unit-tag'])
+        expect(restored.creator).toBe('unit-creator')
+        // `tags` and `creator` are character fields too: the format update gives a restored character its defaults.
+        const stubOnlyKeys = Object.keys(stub).filter((key) => !(key in (blob as unknown as Record<string, unknown>)) && key !== 'trashTime' && key !== 'tags' && key !== 'creator')
         expect(stubOnlyKeys).toContain('coldstorage')
         for (const key of stubOnlyKeys) {
             expect(key in (slot(0) as unknown as Record<string, unknown>)).toBe(false)

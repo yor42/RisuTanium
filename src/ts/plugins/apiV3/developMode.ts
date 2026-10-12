@@ -2,7 +2,6 @@ import { alertError } from "src/ts/alert"
 import { language } from "src/lang"
 import { importPlugin } from "../plugins.svelte"
 import { sleep } from "src/ts/util"
-import { markPluginDevModeStarted } from "src/ts/process/memory/busyActions"
 
 export async function hotReloadPluginFiles(){
 
@@ -31,7 +30,6 @@ export async function hotReloadPluginFiles(){
         return
     }
 
-    markPluginDevModeStarted()
     let lastModified = 0
     const callback = async () => {
         try {

@@ -166,7 +166,7 @@ describe('boot archive pass: a unit that cannot be read back is skipped whatever
 describe('boot archive pass: an upstream stub whose unit cannot be read is left alone whatever the cause', () => {
     const LEGACY_UNIT = '11111111-2222-4333-8444-555555555555'
     const GROUP_ID = 'group-up'
-    const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters']
+    const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters', 'tags', 'creator']
 
     function legacyStub(): Json {
         return { ...upstreamStub(GROUP_ID, 'Stub Name', LEGACY_UNIT), image: 'stub-image.png', coldStoragedChats: ['chat-key-stub'] }

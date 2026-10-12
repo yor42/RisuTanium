@@ -22,14 +22,6 @@ export function currentTTSSignal(): AbortSignal {
     return controller.signal
 }
 
-/** True while a clip is open or the browser's own speech is speaking or queued. */
-export function isTTSPlaying(): boolean {
-    if (clips.size > 0) {
-        return true
-    }
-    return typeof speechSynthesis !== 'undefined' && (speechSynthesis.speaking || speechSynthesis.pending)
-}
-
 export function beginClip(context: AudioContext): Clip {
     const clip: Clip = { context, node: null, endInFlight: null }
     clips.add(clip)

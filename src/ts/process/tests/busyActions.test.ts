@@ -3,8 +3,8 @@
  */
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
-    anyChokePointInFlight, beginBusy, beginChokePoint, busyKinds, chokePointInFlight, getLastPluginActivityAt,
-    isBusy, isPluginDevModeStarted, markPluginDevModeStarted, resetBusyActionsForTest, stampPluginActivity, withBusy,
+    anyChokePointInFlight, beginBusy, beginChokePoint, busyKinds, chokePointInFlight,
+    isBusy, resetBusyActionsForTest, withBusy,
 } from '../memory/busyActions'
 
 beforeEach(() => {
@@ -73,17 +73,5 @@ describe('the choke-point counters', () => {
         endAssetAgain()
         endInlay()
         expect(anyChokePointInFlight()).toBe(false)
-    })
-})
-
-describe('the plugin signals', () => {
-    test('the last host call is stamped, and the dev-mode flag stays set once raised', () => {
-        expect(getLastPluginActivityAt()).toBe(0)
-        stampPluginActivity(1234)
-        expect(getLastPluginActivityAt()).toBe(1234)
-
-        expect(isPluginDevModeStarted()).toBe(false)
-        markPluginDevModeStarted()
-        expect(isPluginDevModeStarted()).toBe(true)
     })
 })

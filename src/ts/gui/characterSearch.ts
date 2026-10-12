@@ -1,21 +1,22 @@
 import { isHiddenSystemCharacter } from '../hiddenCharacters'
-import { stubDescription } from '../process/coldCharacter'
+import { characterCreator, stubDescription, stubTags } from '../process/coldCharacter'
 import type { character, groupChat } from '../storage/database.svelte'
 
 /**
  * The character list search: pure text matching over a precomputed index of
  * `db.characters`. It never reads storage and never restores an archived
- * character; an archived character is searched by the name and description its
- * stub carries.
+ * character; an archived character is searched by the name, description, tags
+ * and creator its stub carries.
  *
  * What a query matches, per character:
  * - the name, with every space and zero-width character ignored;
  * - the description, which is the text the list shows (`stubDescription`: the
  *   `en` section, else the text outside sections, at most 500 characters), for
  *   loaded and archived characters alike, so archiving never changes a result;
- * - tags and creator, for a loaded individual character only. An archived
- *   character and a group are not searched by them even when the slot carries
- *   them.
+ * - tags and creator, for every individual character, loaded or archived (the
+ *   creator is `characterCreator`: the edited `additionalData.creator`, else the
+ *   top-level `creator`). A group is not searched by them even when the slot
+ *   carries them.
  * Text is compared after NFKC normalisation and lower-casing (composed Hangul,
  * full-width Latin and half-width kana fold; the result does not depend on the
  * locale). A query is split on whitespace into words and every word must be
@@ -134,8 +135,9 @@ export function slotKeys(characters: readonly Slot[]): (string | null)[] {
 
 /**
  * The index of `characters`. Reads exactly what the search depends on: the
- * length, and per slot `chaId`, `trashTime`, `type`, `coldstorage`, `name`,
- * `creatorNotes` and, for a loaded individual character, `tags` and `creator`.
+ * length, and per slot `chaId`, `trashTime`, `type`, `name`,
+ * `creatorNotes` and, for an individual character, `tags`, `creator` and
+ * `additionalData.creator`.
  * It must not read `chats`, `lastInteraction`, `image` or group members: a chat
  * in progress would otherwise rebuild the index on every message.
  */
@@ -152,13 +154,9 @@ export function buildIndex(characters: readonly Slot[], cache: SearchCache): Sea
         const notes = typeof slot.creatorNotes === 'string' ? slot.creatorNotes : ''
         let tags = ''
         let creator = ''
-        if (slot.type !== 'group' && !slot.coldstorage) {
-            if (Array.isArray(slot.tags)) {
-                tags = slot.tags.filter((tag): tag is string => typeof tag === 'string').join('\n')
-            }
-            if (typeof slot.creator === 'string') {
-                creator = slot.creator
-            }
+        if (slot.type !== 'group') {
+            tags = stubTags(slot).join('\n')
+            creator = characterCreator(slot)
         }
         let text = cache.texts.get(slot)
         if (!text || text.name !== name || text.notes !== notes || text.tags !== tags || text.creator !== creator) {

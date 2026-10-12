@@ -188,6 +188,22 @@ export function hasRetained(): boolean {
     return byChaId.size > 0
 }
 
+/**
+ * Records a put-back found changed since its restore and left waiting for
+ * `characterRearchive.ts`: the record stays retained, so its unit stays
+ * referenced until the re-archive's stub replaces the character, but the
+ * put-back never fingerprints it again.
+ */
+const dirtyRecords = new WeakSet<RetainedRecord>()
+
+export function noteDirtyRecord(record: RetainedRecord): void {
+    dirtyRecords.add(record)
+}
+
+export function isDirtyRecord(record: RetainedRecord): boolean {
+    return dirtyRecords.has(record)
+}
+
 /** Forgets `record`; its installed character stays where it is. */
 export function dropRetained(record: RetainedRecord): void {
     if (byChaId.get(record.chaId) === record) {

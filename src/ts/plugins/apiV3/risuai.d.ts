@@ -1568,7 +1568,10 @@ interface RisuaiPluginAPI {
      * `chaId`, `coldstorage`, and one empty dummy chat. Placeholders built by
      * this fork also carry `lastInteraction` and `trashTime` when they are
      * set, a shortened description in `creatorNotes`, the real chat count in
-     * `coldChatCount`, a real `type`, and a group's `characters`.
+     * `coldChatCount`, a real `type`, a group's `characters`, and for a
+     * character its `tags` and `creator` (from placeholder version 3; an older
+     * placeholder may carry empty `tags` and `creator` from defaults, so empty
+     * does not mean the character has none).
      * Placeholders made by upstream RisuAI, which a save brought over from
      * upstream may contain, carry only the first set, plus internal fields
      * (`chatPage`, `firstMsgIndex`, `coldStoragedChats`), and their `type` is

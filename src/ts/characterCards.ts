@@ -27,7 +27,8 @@ import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImp
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
-import { wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
+import { canBootArchive } from "./process/memory/bootArchiveState"
+import { applyCharacterDefaults, resetChatStreamingState } from "./storage/characterDefaults"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 
 
@@ -40,6 +41,51 @@ export const hubURL = isNodeServer
     : EXTERNAL_HUB_URL;
 
 const refusedOutcome = (reason:string):ImportOutcome => ({kind: 'refused', reason})
+
+//One batch's archive state: a card whose archive write fails is imported live, and after this many failures in a row the rest of the batch is imported live without trying.
+export type ImportArchiveRun = {failuresInRow: number}
+const MAX_ARCHIVE_FAILURES_IN_ROW = 2
+const newImportArchiveRun = ():ImportArchiveRun => ({failuresInRow: 0})
+
+//Formats a new card and writes it straight to the archive, so the full card never sits in the list. Returns the slot's index, or null when the card is to be added live: the format step threw (not a storage failure, so it does not count against the run), the engine could not be loaded, or the archive was refused or failed. The silent fallback is the import as it always was.
+async function archiveImportedCharacter(char:character, run:ImportArchiveRun):Promise<number|null> {
+    try {
+        characterFormatUpdate(char)
+        applyCharacterDefaults(char)
+        resetChatStreamingState(char)
+    } catch (error) {
+        console.error(error)
+        return null
+    }
+    try {
+        const { archiveCharacterNow } = await import("./process/coldCharacterArchive")
+        const result = await archiveCharacterNow({kind: 'new', character: char})
+        if(result.ok){
+            run.failuresInRow = 0
+            return result.index
+        }
+        if(result.ok === false && result.countsAsFailure){
+            run.failuresInRow += 1
+        }
+    } catch (error) {
+        console.error(error)
+        run.failuresInRow += 1
+    }
+    return null
+}
+
+//Adds an imported character to the library and returns its index, which is read at the push: it is not valid later, after another await.
+//Without a run, or when archiving cannot run, the card is pushed live.
+async function addImportedCharacter(char:character, run:ImportArchiveRun|null):Promise<number> {
+    markBootWrite()
+    if(run && run.failuresInRow < MAX_ARCHIVE_FAILURES_IN_ROW && canBootArchive() && DBState.db.archiveCharacters === true){
+        const archived = await archiveImportedCharacter(char, run)
+        if(archived !== null){
+            return archived
+        }
+    }
+    return DBState.db.characters.push(char) - 1
+}
 
 //Attempts every file through `runImportBatch`; a character that was added gets its order checked.
 async function importFiles(items:ImportItem[]):Promise<void> {
@@ -58,7 +104,7 @@ async function importFiles(items:ImportItem[]):Promise<void> {
 
 //One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
 //A source the read hands over is closed on every exit of the item, whichever way the import ends.
-function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>):ImportItem {
+function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>, run:ImportArchiveRun|null):ImportItem {
     return {
         name: label,
         run: async () => {
@@ -71,7 +117,7 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
                 return {kind: 'refused', reason: language.importFileNotReceived, summaryOnly: true}
             }
             try {
-                return await importClassified(kind, data)
+                return await importClassified(kind, data, run)
             } finally {
                 if(isImportSource(data)){
                     await data.close()
@@ -84,20 +130,21 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
 //Files the operating system handed to the desktop app, read through the plugin-fs scope that was widened for exactly these paths. Each file is opened as a source that is read in pieces and closed when its import ends. Never rejects.
 export async function importOpenedFiles(paths:string[]):Promise<void> {
     try {
-        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path))))
+        const run = newImportArchiveRun()
+        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path), run)))
     } catch (error) {
         alertError(error)
     }
 }
 
 //Cards and modules are handed on as the File or the source as it is, for the importer to read in pieces; a preset is read whole. The caller owns a source and closes it.
-async function importClassified(file:ClassifiedImport, data:File|ImportSource):Promise<ImportOutcome> {
+async function importClassified(file:ClassifiedImport, data:File|ImportSource, run:ImportArchiveRun|null):Promise<ImportOutcome> {
     try {
         if(file.kind === 'card'){
             return await importCharacterFile({
                 name: file.name,
                 data: data
-            })
+            }, run)
         }
         if(file.kind === 'preset'){
             const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : await data.read(0, data.size)
@@ -137,12 +184,13 @@ export async function importCharacter() {
             return
         }
 
+        const run = newImportArchiveRun()
         await importFiles(Array.from(files, (f) => ({
             name: f.name,
             run: () => importCharacterFile({
                 name: f.name,
                 data: f
-            })
+            }, run)
         })))
     } catch (error) {
         alertError(error)
@@ -161,6 +209,7 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:T //note That this option only works with v3 charx
+    archive?:boolean //write the card straight to the archive when archiving can run
 }):Promise<ImportProcessResult<T>>{
     const outcome = await importCharacterFile(f)
     if(outcome.kind === 'imported'){
@@ -172,14 +221,16 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
 
 type LowLevelLabel = string | ((cardName:string) => string)
 //Reads one character file and reports how it ended. It never rejects. `lowLevelLabel` names the card in the charx low-level-access prompt; a function gets the card's name, which only the parsed card knows.
+//`archive` makes one archive run for this file; a batch passes the run it shares instead, and without either the card is imported live.
 export async function importCharacterFile(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
     lowLevelLabel?:LowLevelLabel
-}):Promise<ImportOutcome>{
+    archive?:boolean
+}, run:ImportArchiveRun|null = f.archive ? newImportArchiveRun() : null):Promise<ImportOutcome>{
     try {
-        return await readCharacterFile(f)
+        return await readCharacterFile(f, run)
     } catch (error) {
         console.error(error)
         return outcomeOfError(error)
@@ -191,26 +242,24 @@ async function readCharacterFile(f:{
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
     lowLevelLabel?:LowLevelLabel
-}):Promise<ImportOutcome>{
+}, run:ImportArchiveRun|null):Promise<ImportOutcome>{
     if(f.name.endsWith('json')){
         if(!f.data || f.data instanceof ReadableStream){
             return refusedOutcome(language.errors.noData)
         }
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
         const da = JSON.parse(Buffer.from(data).toString('utf-8'))
-        const spec = await importCharacterCardSpec(da)
-        if(spec){
-            let db = getDatabase()
-            return {kind: 'imported', index: db.characters.length - 1}
+        const spec = await importCharacterCardSpec(da, undefined, 'normal', undefined, undefined, undefined, undefined, undefined, run)
+        if(typeof spec === 'number'){
+            return {kind: 'imported', index: spec}
         }
         if(spec === false){
             return {kind: 'declined'}
         }
         if((da?.char_name || da?.name) && (da.char_persona || da.description) && (da.char_greeting || da.first_mes)){
-            markBootWrite()
-            DBState.db.characters.push(convertOffSpecCards(da))
+            const index = await addImportedCharacter(convertOffSpecCards(da), run)
             alertNormal(language.importedCharacter)
-            return {kind: 'imported', index: DBState.db.characters.length - 1}
+            return {kind: 'imported', index}
         }
         return refusedOutcome(language.errors.noData)
     }
@@ -278,15 +327,15 @@ async function readCharacterFile(f:{
                 }
             }
             await importer.done()
-            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter, false, f.lowLevelLabel)
+            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter, false, f.lowLevelLabel, run)
             if(v === null){
                 return refusedOutcome(language.errors.noData)
             }
             if(v === false){
                 return {kind: 'declined'}
             }
-            if(v === true){
-                return {kind: 'imported', index: getDatabase().characters.length - 1}
+            if(typeof v === 'number'){
+                return {kind: 'imported', index: v}
             }
             return {kind: 'imported', index: null, character: v}
         } finally {
@@ -309,15 +358,15 @@ async function readCharacterFile(f:{
     const pngData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
         ? new File([await new Response(f.data).blob()], f.name, {type: 'image/png'})
         : f.data
-    return await importPngCard(f.name, pngData)
+    return await importPngCard(f.name, pngData, run)
 }
 
 //The outcome of `importCharacterCardSpec` for a card that was added: `false` is a declined prompt, `null` a card of no known spec.
-function cardSpecOutcome(result:boolean|null, index:number, notACard:string = language.errors.noData):ImportOutcome {
+function cardSpecOutcome(result:number|false|null, notACard:string = language.errors.noData):ImportOutcome {
     if(result === null){
         return refusedOutcome(notACard)
     }
-    return result ? {kind: 'imported', index} : {kind: 'declined'}
+    return typeof result === 'number' ? {kind: 'imported', index: result} : {kind: 'declined'}
 }
 
 /**
@@ -541,7 +590,7 @@ async function planPngCard(source:ImportSource, chunks:PngLayoutChunk[], assetKe
  * asset chunks one at a time, saves them and imports the card the first pass chose. A file that is not the one the
  * first pass saw, or cannot be read, is refused and saves nothing further.
  */
-async function importPngCard(name:string, data:File|Uint8Array|ImportSource):Promise<ImportOutcome> {
+async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run:ImportArchiveRun|null):Promise<ImportOutcome> {
     const source = isImportSource(data) ? data : data instanceof Uint8Array ? importSourceOfBytes(name, data) : importSourceOfFile(data)
     try {
         const stat = await source.stat()
@@ -611,13 +660,12 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource):Pro
 
         if(plan.kind === 'tavern'){
             const imgp = await saveAsset(img)
-            markBootWrite()
-            DBState.db.characters.push(convertOffSpecCards(plan.card, imgp))
+            const index = await addImportedCharacter(convertOffSpecCards(plan.card, imgp), run)
             alertNormal(language.importedCharacter)
-            return {kind: 'imported', index: DBState.db.characters.length - 1}
+            return {kind: 'imported', index}
         }
-        const result = await importCharacterCardSpec(plan.card, img, "normal", assets, null, false, true)
-        return cardSpecOutcome(result, DBState.db.characters.length - 1)
+        const result = await importCharacterCardSpec(plan.card, img, "normal", assets, null, false, true, undefined, run)
+        return cardSpecOutcome(result)
     } catch (error) {
         if(error instanceof PngCardSourceChanged){
             console.error(error)
@@ -775,7 +823,8 @@ export async function characterURLImport() {
                 try {
                     await importCharacterProcess({
                         name: 'charahub.png',
-                        data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'})
+                        data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'}),
+                        archive: true
                     })
                     checkCharOrder()
                 } finally {
@@ -804,7 +853,7 @@ export async function characterURLImport() {
                 const fileName = getFileName(res)
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                 const blob = await res.blob()
-                await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}))])
+                await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
             }
         } catch (error) {
             alertError(language.errors.noData)
@@ -863,15 +912,14 @@ export async function characterURLImport() {
     }
     if ("launchQueue" in window) {
         //Every file is attempted; what did not import is shown once at the end. The consumer hands back the promise of that work.
-        const handleFiles = (files:FileSystemFileHandle[]) => importFiles(
-            files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile()))
-        ).catch((error) => alertError(error))
+        const handleFiles = (files:FileSystemFileHandle[]) => {
+            const run = newImportArchiveRun()
+            return importFiles(
+                files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile(), run))
+            ).catch((error) => alertError(error))
+        }
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
         window.launchQueue.setConsumer((launchParams) => {
-            //The page before an idle reload has already imported whatever launched it; a browser that hands those files to the new page must not import them twice.
-            if (wasBootedByIdleReload()) {
-                return
-            }
             if (launchParams.files && launchParams.files.length) {
                 const files = launchParams.files as FileSystemFileHandle[]
                 return handleFiles(files)
@@ -914,6 +962,7 @@ export async function characterURLImport() {
                 alertError(language.shareInvalid)
                 return
             }
+            const run = newImportArchiveRun()
             await importFiles(entries.map((entry) => classifiedImport(entry.name, entry.name, entry.type, async (kind) => {
                 const res = await fetch(entry.key)
                 if(!res.ok){
@@ -921,7 +970,7 @@ export async function characterURLImport() {
                 }
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                 return new File([await res.blob()], kind.name, {type: entry.type})
-            })))
+            }, run)))
         } finally {
             try {
                 await fetch(base, {method: 'DELETE'})
@@ -1080,7 +1129,7 @@ export async function openRealmUpload(target: string): Promise<void> {
 
 //Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
 //A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
-async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:LowLevelLabel):Promise<T extends true ? character|false|null : boolean|null>{
+async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:LowLevelLabel, archive:ImportArchiveRun|null = null):Promise<T extends true ? character|false|null : number|false|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
         return null
     }
@@ -1089,7 +1138,6 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
 
     const data = card.data
     let im = img ? await saveAsset(img) : undefined
-    let db = DBState.db
 
     const risuext = safeStructuredClone(data.extensions.risuai)
     let emotions:[string, string][] = []
@@ -1394,10 +1442,9 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         return char as any
     }
 
-    markBootWrite()
-    db.characters.push(char)
+    const index = await addImportedCharacter(char, archive)
     alertNormal(language.importedCharacter)
-    return true as any
+    return index as any
 
 }
 
@@ -2199,6 +2246,9 @@ async function downloadRealmCard(id:string, arg:{
             return
         }
 
+        //A card that opens at once is imported live: it is the one in use. Read once, before the download, so the archive decision and the redirect agree.
+        const opensAtOnce = !!(DBState.db.goCharacterOnImport || arg.forceRedirect)
+
         if(!arg.forceRedirect){
             alertStore.set({
                 type: "wait",
@@ -2222,6 +2272,7 @@ async function downloadRealmCard(id:string, arg:{
                 imported = await importCharacterProcess({
                     name: 'realm.charx',
                     data: new File([await res.blob()], 'realm.charx', {type: res.headers.get('content-type')}),
+                    archive: !opensAtOnce,
                 })
             }
             else{
@@ -2229,6 +2280,7 @@ async function downloadRealmCard(id:string, arg:{
                 imported = await importCharacterProcess({
                     name: 'realm.png',
                     data: new File([await res.blob()], 'realm.png', {type: res.headers.get('content-type')}),
+                    archive: !opensAtOnce,
                 })
             }
             //A file that was declined, refused or failed has shown its own message and leaves the library as it was.
@@ -2236,10 +2288,8 @@ async function downloadRealmCard(id:string, arg:{
                 return
             }
             checkCharOrder()
-            const db = getDatabase()
-            if(db.characters[db.characters.length-1] && (db.goCharacterOnImport || arg.forceRedirect)){
-                const index = db.characters.length-1
-                changeChar(index)
+            if(opensAtOnce && getDatabase().characters[imported]){
+                changeChar(imported)
             }
             return
         }
@@ -2250,19 +2300,17 @@ async function downloadRealmCard(id:string, arg:{
 
         data.data.extensions.risuRealmImportId = id
     
-        const added = await importCharacterCardSpec(data, await getHubResources(img), 'hub')
+        const added = await importCharacterCardSpec(data, await getHubResources(img), 'hub', undefined, undefined, undefined, undefined, undefined, opensAtOnce ? null : newImportArchiveRun())
         if(added === null){
             alertError(language.errors.noData)
             return
         }
-        if(!added){
+        if(typeof added !== 'number'){
             return
         }
         checkCharOrder()
-        let db = getDatabase()
-        if(db.characters[db.characters.length-1] && (db.goCharacterOnImport || arg.forceRedirect)){
-            const index = db.characters.length-1
-            changeChar(index)
+        if(opensAtOnce && getDatabase().characters[added]){
+            changeChar(added)
             alertStore.set({
                 type: 'none',
                 msg: ''

@@ -51,12 +51,17 @@ vi.mock(import('../index.svelte'), () => {
 })
 
 import {
+    COLD_STUB_CHAT_COUNT_VERSION,
+    COLD_STUB_VERSION,
     applyStubStateOnRestore,
     buildColdStub,
+    characterCreator,
     coldStubChatCount,
     enrichLegacyStub,
+    coldUnitCharacter,
     isArchivableCharacter,
     isLegacyStub,
+    stubTags,
 } from '../coldCharacter'
 import { listColdDataKeysFromDb } from '../coldstorageData'
 import { language } from '../../../lang'
@@ -133,8 +138,13 @@ function upstreamStub(chaId: string, key: string, extra: Record<string, unknown>
 
 const KNOWN_STUB_KEYS = new Set([
     'type', 'name', 'image', 'chaId', 'lastInteraction', 'trashTime', 'characters', 'creatorNotes',
-    'coldstorage', 'coldStoragedChats', 'chats', 'chatPage', 'firstMsgIndex',
+    'coldstorage', 'coldStoragedChats', 'chats', 'chatPage', 'firstMsgIndex', 'tags', 'creator',
 ])
+
+/** A fork stub as version 2 wrote it: a marker and a chat count, no tags or creator. */
+function versionTwoStub(chaId: string, key: string, extra: Record<string, unknown> = {}): character {
+    return upstreamStub(chaId, key, { coldVersion: 2, coldChatCount: 7, creatorNotes: 'old note', ...extra })
+}
 
 //#endregion
 
@@ -305,6 +315,59 @@ describe('buildColdStub -- what the stub carries', () => {
     })
 })
 
+describe('buildColdStub -- tags and creator (stub version 3)', () => {
+    test('regression reproducer: a character stub carries its tags as a copy, whole and untruncated', () => {
+        const longTag = 't'.repeat(5_000)
+        const source = fullCharacter({ tags: ['a', 'b', longTag] })
+
+        const stub = buildColdStub(source, 'unit-1', [])
+
+        expect(stub.tags).toEqual(['a', 'b', longTag])
+        expect(stub.tags).not.toBe(source.tags)
+    })
+
+    test('regression reproducer: only the string tags are carried, and tags that are not a list give an empty list', () => {
+        expect(buildColdStub(fullCharacter({ tags: ['a', 3, null, { x: 1 }, 'b'] }), 'unit-1', []).tags).toEqual(['a', 'b'])
+        expect(buildColdStub(fullCharacter({ tags: 'a,b' }), 'unit-1', []).tags).toEqual([])
+        expect(buildColdStub(fullCharacter({ tags: undefined }), 'unit-1', []).tags).toEqual([])
+    })
+
+    test.each([
+        ['the edited additionalData.creator wins over the top-level creator', { creator: 'Top', additionalData: { creator: 'Edited' } }, 'Edited'],
+        ['an empty additionalData.creator falls back to the top-level creator', { creator: 'Top', additionalData: { creator: '' } }, 'Top'],
+        ['an additionalData without a creator falls back to the top-level creator', { creator: 'Top', additionalData: {} }, 'Top'],
+        ['a non-string additionalData.creator falls back to the top-level creator', { creator: 'Top', additionalData: { creator: 5 } }, 'Top'],
+        ['a character with neither gives an empty creator', {}, ''],
+        ['a non-string top-level creator gives an empty creator', { creator: 9 }, ''],
+    ])('regression reproducer: %s', (_label, extra, expected) => {
+        const source = fullCharacter(extra)
+
+        expect(buildColdStub(source, 'unit-1', []).creator).toBe(expected)
+        expect(characterCreator(source)).toBe(expected)
+    })
+
+    test('regression reproducer: a long creator is carried whole', () => {
+        const creator = 'c'.repeat(5_000)
+
+        expect(buildColdStub(fullCharacter({ creator }), 'unit-1', []).creator).toBe(creator)
+    })
+
+    test('guard: a group stub carries neither tags nor creator', () => {
+        const stub = buildColdStub(fullGroup({ tags: ['a'], creator: 'X' }), 'unit-g', [])
+
+        expect('tags' in stub).toBe(false)
+        expect('creator' in stub).toBe(false)
+    })
+
+    test('specification: characterCreator of a stub is the creator the stub carries, and stubTags never throws on odd input', () => {
+        const stub = buildColdStub(fullCharacter({ creator: 'Top', additionalData: { creator: 'Edited' } }), 'unit-1', [])
+
+        expect(characterCreator(stub)).toBe('Edited')
+        expect(stubTags({ tags: null } as unknown as character)).toEqual([])
+        expect(stubTags({} as unknown as character)).toEqual([])
+    })
+})
+
 describe('coldStubChatCount', () => {
     test('a stub built from a character with several chats reports that count', () => {
         const stub = buildColdStub(fullCharacter({ chats: makeChats(12) }), 'unit-1', [])
@@ -319,28 +382,69 @@ describe('coldStubChatCount', () => {
     test('guard: an upstream-shaped stub reports its dummy chat array length', () => {
         expect(coldStubChatCount(upstreamStub('cha-up', 'unit-up'))).toBe(1)
     })
+
+    // Passes before and after the version bump; fails only on a bare bump of the
+    // trust gate (the mutant where `coldStubChatCount` requires the current version).
+    test('compatibility guard: a version 2 stub, not yet upgraded, still reports its coldChatCount', () => {
+        expect(coldStubChatCount(versionTwoStub('cha-v2', 'unit-v2'))).toBe(7)
+    })
+
+    test('the chat count trust floor is version 2, below the current version', () => {
+        expect(COLD_STUB_CHAT_COUNT_VERSION).toBe(2)
+        expect(COLD_STUB_CHAT_COUNT_VERSION).toBeLessThan(COLD_STUB_VERSION)
+    })
+
+    test('guard: a stub below the trust floor reports its dummy chat array length', () => {
+        expect(coldStubChatCount(upstreamStub('cha-up', 'unit-up', { coldVersion: 1, coldChatCount: 7 }))).toBe(1)
+    })
 })
 
 describe('isArchivableCharacter', () => {
-    test('a trashed character is not archivable', () => {
-        expect(isArchivableCharacter(fullCharacter({ trashTime: 1_000 }))).toBe(false)
+    const NOW = 1_800_000_000_000
+    const RECENT = NOW - 60_000
+
+    test('new behaviour: a recently trashed character is archivable', () => {
+        expect(isArchivableCharacter(fullCharacter({ trashTime: RECENT }), NOW)).toBe(true)
     })
 
-    test('a trashed group is not archivable', () => {
-        expect(isArchivableCharacter(fullGroup({ trashTime: 1_000 }))).toBe(false)
+    test('new behaviour: a recently trashed group is archivable', () => {
+        expect(isArchivableCharacter(fullGroup({ trashTime: RECENT }), NOW)).toBe(true)
+    })
+
+    test('mutation-checked guard: a character whose purge is due is not archivable', () => {
+        // Dropping the purge-due check from isArchivableCharacter fails this.
+        expect(isArchivableCharacter(fullCharacter({ trashTime: 1_000 }), NOW)).toBe(false)
+        expect(isArchivableCharacter(fullGroup({ trashTime: 1_000 }), NOW)).toBe(false)
     })
 
     test('guard: a full untrashed character is archivable', () => {
-        expect(isArchivableCharacter(fullCharacter())).toBe(true)
+        expect(isArchivableCharacter(fullCharacter(), NOW)).toBe(true)
     })
 
     test('guard: a character that is already a stub is not archivable', () => {
-        expect(isArchivableCharacter(buildColdStub(fullCharacter(), 'unit-1', []))).toBe(false)
-        expect(isArchivableCharacter(upstreamStub('cha-up', 'unit-up'))).toBe(false)
+        expect(isArchivableCharacter(buildColdStub(fullCharacter(), 'unit-1', []), NOW)).toBe(false)
+        expect(isArchivableCharacter(upstreamStub('cha-up', 'unit-up'), NOW)).toBe(false)
+        expect(isArchivableCharacter(buildColdStub(fullCharacter({ trashTime: RECENT }), 'unit-1', []), NOW)).toBe(false)
     })
 })
 
-describe('isLegacyStub -- the stubs the upstream application wrote', () => {
+describe('coldUnitCharacter', () => {
+    test('new behaviour: the unit copy has no trashTime and every other field of the source', () => {
+        const source = fullCharacter({ trashTime: 1_234 })
+        const unit = coldUnitCharacter(source)
+        expect('trashTime' in unit).toBe(false)
+        const { trashTime: _dropped, ...rest } = source
+        expect(unit).toEqual(rest)
+    })
+
+    test('new behaviour: the source keeps its trashTime', () => {
+        const source = fullGroup({ trashTime: 99 })
+        coldUnitCharacter(source)
+        expect(source.trashTime).toBe(99)
+    })
+})
+
+describe('isLegacyStub -- the older stubs (upstream-made or version 2)', () => {
     test('an upstream stub is a legacy stub', () => {
         expect(isLegacyStub(upstreamStub('cha-up', 'unit-up'))).toBe(true)
     })
@@ -349,9 +453,17 @@ describe('isLegacyStub -- the stubs the upstream application wrote', () => {
         expect(isLegacyStub(upstreamStub('cha-up', 'unit-up', { coldVersion: 1 }))).toBe(true)
     })
 
+    test('regression reproducer: a version 2 stub is a legacy stub, so it is upgraded once', () => {
+        expect(isLegacyStub(versionTwoStub('cha-v2', 'unit-v2'))).toBe(true)
+    })
+
+    test('guard: a version 3 stub is not a legacy stub', () => {
+        expect(isLegacyStub(upstreamStub('cha-up', 'unit-up', { coldVersion: 3 }))).toBe(false)
+    })
+
     test.each([
         ['a stub built here', () => buildColdStub(fullCharacter(), 'unit-1', [])],
-        ['a stub with a later coldVersion', () => upstreamStub('cha-up', 'unit-up', { coldVersion: 3 })],
+        ['a stub with a later coldVersion', () => upstreamStub('cha-up', 'unit-up', { coldVersion: 4 })],
     ])('%s is not a legacy stub', (_label, make) => {
         expect(isLegacyStub(make())).toBe(false)
     })
@@ -373,7 +485,7 @@ describe('isLegacyStub -- the stubs the upstream application wrote', () => {
     })
 })
 
-describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => {
+describe('enrichLegacyStub -- what an older stub (upstream-made or version 2) takes from its unit', () => {
     function legacy(extra: Record<string, unknown> = {}): character {
         return upstreamStub('cha-up', 'unit-up', { name: 'Stub Name', image: 'stub.png', coldStoragedChats: ['stub-chat-key'], ...extra })
     }
@@ -403,7 +515,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
         expect(result.creatorNotes).toBe('Group notes')
         expect(result.lastInteraction).toBe(123)
         expect(result.coldChatCount).toBe(3)
-        expect(result.coldVersion).toBe(2)
+        expect(result.coldVersion).toBe(COLD_STUB_VERSION)
         expect(coldStubChatCount(result)).toBe(3)
     })
 
@@ -418,7 +530,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
         expect(result.lastInteraction).toBe(1_700_000_000_000)
         expect(result.coldChatCount).toBe(7)
         expect(coldStubChatCount(result)).toBe(7)
-        expect(result.coldVersion).toBe(2)
+        expect(result.coldVersion).toBe(COLD_STUB_VERSION)
     })
 
     test('the stub keeps its own name, image, chaId, unit key, chat keys, page, first-message index and placeholder chat, whatever the unit holds', () => {
@@ -456,7 +568,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
 
             expect(result).not.toHaveProperty('trashTime')
             expect('trashTime' in jsonOf(result)).toBe(false)
-            expect(result.coldVersion).toBe(2)
+            expect(result.coldVersion).toBe(COLD_STUB_VERSION)
         })
 
         test.each([
@@ -468,18 +580,83 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
             const result = enrichLegacyStub(legacy({ trashTime: 5_000 }), unit)
 
             expect(result.trashTime).toBe(5_000)
-            expect(result.coldVersion).toBe(2)
+            expect(result.coldVersion).toBe(COLD_STUB_VERSION)
         })
 
         test('a stub and a unit that are both untrashed give a stub with no trashTime key after JSON.stringify', () => {
             const result = enrichLegacyStub(legacy(), fullCharacter({ chaId: 'cha-up' }))
 
             expect('trashTime' in jsonOf(result)).toBe(false)
-            expect(result.coldVersion).toBe(2)
+            expect(result.coldVersion).toBe(COLD_STUB_VERSION)
+        })
+    })
+
+    describe('tags and creator', () => {
+        test('regression reproducer: a version 2 stub takes the unit\'s tags and resolved creator', () => {
+            const unit = fullCharacter({ chaId: 'cha-v2', tags: ['a', 'b'], creator: 'Top', additionalData: { creator: 'Edited' } })
+
+            const result = enrichLegacyStub(versionTwoStub('cha-v2', 'unit-v2'), unit)
+
+            expect(result.tags).toEqual(['a', 'b'])
+            expect(result.tags).not.toBe(unit.tags)
+            expect(result.creator).toBe('Edited')
+            expect(result.coldVersion).toBe(COLD_STUB_VERSION)
+            expect(coldStubChatCount(result)).toBe(7)
+        })
+
+        test('regression reproducer: an upstream stub takes the unit\'s tags and creator the way buildColdStub does', () => {
+            const unit = fullCharacter({ chaId: 'cha-up', tags: ['x'], creator: 'Top' })
+
+            const result = enrichLegacyStub(legacy(), unit)
+
+            expect(result.tags).toEqual(['x'])
+            expect(result.creator).toBe('Top')
+            expect(result.tags).toEqual(buildColdStub(unit, 'unit-up', []).tags)
+            expect(result.creator).toBe(buildColdStub(unit, 'unit-up', []).creator)
+        })
+
+        test('regression reproducer: a unit with neither gives an empty list and an empty creator', () => {
+            const result = enrichLegacyStub(legacy(), fullCharacter({ chaId: 'cha-up' }))
+
+            expect(result.tags).toEqual([])
+            expect(result.creator).toBe('')
+        })
+
+        test('guard: a group unit gives a group stub whose tags and creator are not read', () => {
+            const result = enrichLegacyStub(legacy(), fullGroup({ chaId: 'cha-up', tags: ['x'], creator: 'Y' }))
+
+            expect(result.type).toBe('group')
+            expect(result.tags).toBeUndefined()
+            expect(result.creator).toBeUndefined()
         })
     })
 
     describe('last interaction', () => {
+        // Put-back refreshes the stub's lastInteraction while the unit keeps the older value.
+        test('regression reproducer: a stub whose lastInteraction is newer than the unit\'s keeps it', () => {
+            const result = enrichLegacyStub(versionTwoStub('cha-v2', 'unit-v2', { lastInteraction: 9_000 }), fullCharacter({ chaId: 'cha-v2', lastInteraction: 5_000 }))
+
+            expect(result.lastInteraction).toBe(9_000)
+        })
+
+        test('guard: a unit whose lastInteraction is newer than the stub\'s gives it', () => {
+            const result = enrichLegacyStub(versionTwoStub('cha-v2', 'unit-v2', { lastInteraction: 1_000 }), fullCharacter({ chaId: 'cha-v2', lastInteraction: 5_000 }))
+
+            expect(result.lastInteraction).toBe(5_000)
+        })
+
+        test('guard: a stub whose lastInteraction is not a number takes the unit\'s', () => {
+            const result = enrichLegacyStub(versionTwoStub('cha-v2', 'unit-v2', { lastInteraction: 'x' }), fullCharacter({ chaId: 'cha-v2', lastInteraction: 5_000 }))
+
+            expect(result.lastInteraction).toBe(5_000)
+        })
+
+        test('guard: a unit without a numeric lastInteraction leaves the stub\'s', () => {
+            const result = enrichLegacyStub(versionTwoStub('cha-v2', 'unit-v2', { lastInteraction: 9_000 }), fullCharacter({ chaId: 'cha-v2', lastInteraction: undefined }))
+
+            expect(result.lastInteraction).toBe(9_000)
+        })
+
         test.each([
             ['a string', 'yesterday'],
             ['null', null],
@@ -489,7 +666,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
             const result = enrichLegacyStub(legacy(), fullCharacter({ chaId: 'cha-up', lastInteraction: value }))
 
             expect(result).not.toHaveProperty('lastInteraction')
-            expect(result.coldVersion).toBe(2)
+            expect(result.coldVersion).toBe(COLD_STUB_VERSION)
         })
 
         test('a unit whose lastInteraction is zero gives a stub with a lastInteraction of zero', () => {
@@ -534,7 +711,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
             const result = enrichLegacyStub(legacy(), fullCharacter({ chaId: 'cha-up', creatorNotes: notes }))
 
             expect(result.creatorNotes).toBe('')
-            expect(result.coldVersion).toBe(2)
+            expect(result.coldVersion).toBe(COLD_STUB_VERSION)
         })
     })
 
@@ -542,7 +719,7 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
         const result = enrichLegacyStub(legacy(), fullCharacter({ chaId: 'cha-up', chats: 'garbled' }))
 
         expect(result.coldChatCount).toBe(0)
-        expect(result.coldVersion).toBe(2)
+        expect(result.coldVersion).toBe(COLD_STUB_VERSION)
     })
 
     test('a group unit with no member list gives a group stub with an empty one', () => {
@@ -592,6 +769,27 @@ describe('enrichLegacyStub -- what an upstream stub takes from its unit', () => 
         expect(result).not.toBe(stub)
         expect(JSON.stringify(stub)).toBe(stubBefore)
         expect(JSON.stringify(unit)).toBe(unitBefore)
+    })
+})
+
+describe('a trashed character archived with a unit without trashTime', () => {
+    // Restore from the trash lifts the stub's trashTime in place; the restore path is unchanged by archiving trashed characters.
+    function archived() {
+        const source = fullCharacter({ trashTime: 5_000 })
+        const stub = buildColdStub(coldUnitCharacter(source), 'unit-1', [])
+        stub.trashTime = source.trashTime
+        return { stub, unit: () => coldUnitCharacter(source) }
+    }
+
+    test('compatibility guard: opening it while still trashed gives the stub\'s trashTime', () => {
+        const { stub, unit } = archived()
+        expect(applyStubStateOnRestore(stub, unit()).trashTime).toBe(5_000)
+    })
+
+    test('compatibility guard: opening it after restore from the trash gives an untrashed character', () => {
+        const { stub, unit } = archived()
+        stub.trashTime = undefined
+        expect(applyStubStateOnRestore(stub, unit())).not.toHaveProperty('trashTime')
     })
 })
 

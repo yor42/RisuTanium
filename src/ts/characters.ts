@@ -1476,18 +1476,3 @@ export async function changeChar(index: number, arg:{
     });
     selectedCharID.set(index);
 }
-
-/**
- * Selects the one character that holds `chaId`, through the same steps as
- * `changeChar` and without changing its last interaction time. Selects nothing
- * when no character holds the id or several do. Returns whether the character
- * is the selected one when the call settles.
- */
-export async function selectCharacterByChaId(chaId: string): Promise<boolean> {
-    const holders = findChaIdHolders(chaId)
-    if(holders.length !== 1){
-        return false
-    }
-    await changeChar(holders[0], { keepInteraction: true })
-    return DBState.db.characters[get(selectedCharID)]?.chaId === chaId
-}
