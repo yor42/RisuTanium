@@ -98,7 +98,7 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
 
                 if(modal.type === 'signature' && db.saveSignatures){
                     const sig:InlaySignature = JSON.parse(Buffer.from(modal.base64, 'base64').toString('utf-8'))
-                    if(sig.source === arg.modelInfo.internalID || sig.source === arg.modelInfo.id){
+                    if(sig.source === arg.modelInfo.internalID || sig.source === 'models/' + arg.modelInfo.internalID || sig.source === arg.modelInfo.id){
                         geminiParts.push({
                             thought: true,
                             thoughtSignature: sig.signatures[0].content

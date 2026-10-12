@@ -20,6 +20,10 @@ import { customProviderStore, pluginV2 } from "../plugins/plugins.svelte"
 import { get } from "svelte/store"
 import { customV3ProviderMetaStore } from "../plugins/apiV3/v3.svelte"
 import { isHiddenFromPicker, modelIdStatus } from "./modelStatus"
+import { getListedAddedModels, registerCatalog, resolveAdded, seedProviderLists, setProviderList } from "./modelData/addedModels.svelte"
+import type { AddedFamily } from "./modelData/addedModelsData"
+import type { TaskOutcome } from "./modelData/modelDataService.svelte"
+import { PROVIDER_LIST_MAX_PAGES, appendListPage, parseProviderListPage, type ProviderListItem } from "./modelData/providerListData"
 
 // Re-export types for backwards compatibility
 export { LLMFlags, LLMProvider, LLMFormat, LLMTokenizer, ProviderNames, OpenAIParameters, ClaudeParameters }
@@ -612,17 +616,193 @@ for(let i=0; i<LLMModels.length; i++){
     }
 }
 
+registerCatalog(() => LLMModels)
+
 /**
- * Hands the registry option to the model data service. The service loads its saved file
- * whatever the option says and fetches only when it is on. The dynamic import keeps the
- * page store out of every module graph that loads this file without calling
- * registerModelDynamic. Nothing here can throw or reject, and nothing awaits it, so the
- * provider fetches below are neither delayed nor ordered by it.
+ * Hands the registry option and the registry's saved-list seed to the model data service.
+ * The service loads its saved files whatever the option says and fetches only when it is on.
+ * The dynamic import keeps the page store out of every module graph that loads this file
+ * without calling registerModelDynamic. Nothing here can throw or reject, and nothing awaits
+ * it, so the provider fetches below are neither delayed nor ordered by it.
  */
 function startModelData(autoRefresh:boolean){
     void import('./modelData/modelDataStore')
-        .then(m => m.startModelData(autoRefresh))
+        .then(m => m.startModelData(autoRefresh, seedProviderLists))
         .catch(error => console.error('Model data', error))
+}
+
+const LIST_FAMILIES: readonly AddedFamily[] = ['google', 'anthropic', 'openai']
+
+const LIST_LABELS: Readonly<Record<AddedFamily, { log: string, failure: string }>> = {
+    google: { log: 'Google models response', failure: 'Error fetching Google models' },
+    anthropic: { log: 'Anthropic models response', failure: 'Error fetching Anthropic models' },
+    openai: { log: 'OpenAI models response', failure: 'Error fetching OpenAI models' },
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Read when the family's turn comes, so a key changed mid-pass is the one used. */
+function listKeyOf(family: AddedFamily): string {
+    switch(family){
+        case 'google':
+            return DBState.db.google.accessToken
+        case 'anthropic':
+            return DBState.db.claudeAPIKey
+        case 'openai':
+            return DBState.db.openAIKey
+    }
+}
+
+async function fetchListPage(family: AddedFamily, key: string, cursor: string | undefined): Promise<unknown> {
+    let res: Response
+    if(family === 'google'){
+        const paging = cursor === undefined ? '' : `&pageToken=${encodeURIComponent(cursor)}`
+        res = await fetchNative(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}&pageSize=1000${paging}`, {
+            method: 'GET',
+        })
+    }
+    else if(family === 'anthropic'){
+        const paging = cursor === undefined ? '' : `&after_id=${encodeURIComponent(cursor)}`
+        res = await fetchNative(`https://api.anthropic.com/v1/models?limit=1000${paging}`, {
+            method: 'GET',
+            headers: {
+                'anthropic-version': '2023-06-01',
+                "x-api-key": key,
+            }
+        })
+    }
+    else{
+        res = await fetchNative(`https://api.openai.com/v1/models`, {
+            method: 'GET',
+            headers: {
+                "Authorization": 'Bearer ' + key
+            }
+        })
+    }
+    if(!res.ok){
+        throw new Error(`The ${family} model list request failed with status ${res.status}`)
+    }
+    const json = await res.json()
+    console.log(LIST_LABELS[family].log, json)
+    return json
+}
+
+/** The cursor of the next page, or undefined on the last one. Field names are from the providers' API docs. */
+function nextListCursor(family: AddedFamily, json: unknown): string | undefined {
+    if(!isRecord(json)){
+        return undefined
+    }
+    if(family === 'google'){
+        return typeof json.nextPageToken === 'string' && json.nextPageToken !== '' ? json.nextPageToken : undefined
+    }
+    if(family === 'anthropic' && json.has_more === true){
+        if(typeof json.last_id === 'string' && json.last_id !== ''){
+            return json.last_id
+        }
+        throw new Error('The anthropic model list has more pages but names no last_id')
+    }
+    return undefined
+}
+
+/**
+ * Every page of one family's list: at most PROVIDER_LIST_MAX_PAGES pages and the cumulative
+ * item cap. A failing page, the page cap or the item cap throws, so nothing of an earlier
+ * page is applied. Null when the option went off before a request; the option is checked
+ * before every page.
+ */
+async function fetchFamilyList(family: AddedFamily, key: string, isRegistryOn: () => boolean): Promise<ProviderListItem[] | null> {
+    let items: ProviderListItem[] = []
+    let cursor: string | undefined
+    for(let page = 0; page < PROVIDER_LIST_MAX_PAGES; page++){
+        if(!isRegistryOn()){
+            return null
+        }
+        const json = await fetchListPage(family, key, cursor)
+        const parsed = parseProviderListPage(family, json)
+        if(parsed === null){
+            throw new Error(`The ${family} model list response is invalid or holds too many models`)
+        }
+        const merged = appendListPage(items, parsed)
+        if(merged === null){
+            throw new Error(`The ${family} model list holds too many models`)
+        }
+        items = merged
+        cursor = nextListCursor(family, json)
+        if(cursor === undefined){
+            return items
+        }
+    }
+    throw new Error(`The ${family} model list has more than ${PROVIDER_LIST_MAX_PAGES} pages`)
+}
+
+/**
+ * Saving is fire-and-forget and runs after the live list reached the registry, so a store
+ * that cannot be imported or written costs the saved copy only. An empty list is never saved.
+ */
+function persistProviderList(family: AddedFamily, items: ProviderListItem[]){
+    if(items.length === 0){
+        return
+    }
+    void import('./modelData/modelDataStore')
+        .then(m => m.saveProviderLists(family, { fetchedAt: Date.now(), items }))
+        .catch(error => console.error('Model data', error))
+}
+
+async function refreshFamilyList(family: AddedFamily, isRegistryOn: () => boolean): Promise<TaskOutcome> {
+    try {
+        if(!isRegistryOn()){
+            return 'skipped'
+        }
+        const keyValue = listKeyOf(family)
+        if(!keyValue){
+            return 'skipped'
+        }
+        const items = await fetchFamilyList(family, await resolveSecret(keyValue), isRegistryOn)
+        if(items === null){
+            return 'skipped'
+        }
+        // A request that succeeded with nothing usable never empties the family: its current list stays.
+        if(items.length > 0){
+            setProviderList(family, items)
+            persistProviderList(family, items)
+        }
+        return 'ok'
+    } catch (error) {
+        console.error(LIST_LABELS[family].failure, error)
+        return 'failed'
+    }
+}
+
+async function runListPass(isRegistryOn: () => boolean): Promise<TaskOutcome> {
+    const outcomes: TaskOutcome[] = []
+    for(const family of LIST_FAMILIES){
+        outcomes.push(await refreshFamilyList(family, isRegistryOn))
+    }
+    const attempted = outcomes.filter(outcome => outcome !== 'skipped')
+    if(attempted.length === 0){
+        return 'skipped'
+    }
+    return attempted.every(outcome => outcome === 'ok') ? 'ok' : 'failed'
+}
+
+let listPassInFlight: Promise<TaskOutcome> | null = null
+
+/**
+ * Fetches the model lists of Google, Anthropic and OpenAI for the families that have a key,
+ * one family after another, and hands each successful list to the registry. `isRegistryOn`
+ * is checked before each family and before each page. A missing key skips its family (no
+ * request, nothing written); a failed family keeps its current live or saved list. The
+ * outcome is `ok` when every attempted family succeeded, `failed` when any failed and
+ * `skipped` when none was attempted. One pass runs at a time: a caller arriving while it
+ * runs shares it, so boot and the Refresh button never double the requests.
+ */
+export function refreshProviderLists(isRegistryOn: () => boolean): Promise<TaskOutcome> {
+    if(listPassInFlight === null){
+        listPassInFlight = runListPass(isRegistryOn).finally(() => { listPassInFlight = null })
+    }
+    return listPassInFlight
 }
 
 export async function registerModelDynamic(){
@@ -631,165 +811,19 @@ export async function registerModelDynamic(){
     if(!DBState.db.dynamicModelRegistry){
         return
     }
-    //google
-    try {
-        if(DBState.db.google.accessToken){
-            const googleKey = await resolveSecret(DBState.db.google.accessToken)
-            const res = await fetchNative(`https://generativelanguage.googleapis.com/v1beta/models?key=${googleKey}`, {
-                method: 'GET',
-            })
-            const json = await res.json()
-            console.log('Google models response', json)
-            const models = json?.models || []
-            for(let model of models){
-                if(
-                    !model.supportedGenerationMethods ||
-                    !model.supportedGenerationMethods.includes('generateContent')
-                ){
-                    continue
-                }
-
-                const id = model.name.startsWith('models/') ? model.name.replace('models/', '') : model.name
-                const exists = LLMModels.find(m => m.id === id || m.internalID === id)
-
-                if(!exists){
-                    LLMModels.push({
-                        id: 'dynamic_google_' + id,
-                        name: model.displayName || id,
-                        shortName: model.displayName || id,
-                        fullName: model.displayName || id,
-                        internalID: model.name,
-                        provider: LLMProvider.GoogleCloud,
-                        format: LLMFormat.GoogleCloud,
-                        flags: [LLMFlags.hasImageInput, LLMFlags.poolSupported, LLMFlags.hasAudioInput, LLMFlags.hasVideoInput, LLMFlags.hasStreaming, LLMFlags.requiresAlternateRole, LLMFlags.geminiThinking],
-                        parameters: ['thinking_tokens', 'temperature', 'top_k', 'top_p', 'presence_penalty', 'frequency_penalty'],
-                        tokenizer: LLMTokenizer.GoogleCloud
-                    })
-                }
-
-            }
-        }
-    } catch (error) {
-        console.error('Error fetching Google models', error)
-    }
-
-    //Anthropic
-    try {
-        if(DBState.db.claudeAPIKey){
-            const anthropicKey = await resolveSecret(DBState.db.claudeAPIKey)
-            const res = await fetchNative('https://api.anthropic.com/v1/models', {
-                method: 'GET',
-                headers: {
-                    'anthropic-version': '2023-06-01',
-                    "x-api-key": anthropicKey,
-                }
-            })
-
-            const json = await res.json()
-            console.log('Anthropic models response', json)
-            const models:{
-                id: string,
-                display_name: string,
-            }[] = json?.data || []
-
-            for(let model of models){
-                const exists = LLMModels.find(m => m.id === model.id || m.internalID === model.id)
-                if(!exists){
-                    LLMModels.push({
-                        name: model.display_name || model.id,
-                        id: `dynamic_anthropic_${model.id}`,
-                        shortName: model.display_name || model.id,
-                        fullName: model.display_name || model.id,
-                        internalID: model.id,
-                        provider: LLMProvider.Anthropic,
-                        format: LLMFormat.Anthropic,
-                        flags: [
-                            LLMFlags.hasImageInput,
-                            LLMFlags.hasFirstSystemPrompt,
-                            LLMFlags.hasStreaming,
-                            LLMFlags.claudeThinking,
-                            LLMFlags.claudeAdaptiveThinking
-                        ],
-                        parameters: [...ClaudeParameters, 'thinking_tokens'],
-                        tokenizer: LLMTokenizer.Claude,
-                        recommended: true
-                    })
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error fetching Anthropic models', error)
-    }
-
-
-    try {
-        if(DBState.db.openAIKey){
-            const openAIKey = await resolveSecret(DBState.db.openAIKey)
-            const res = await fetchNative(`https://api.openai.com/v1/models`, {
-                method: 'GET',
-                headers: {
-                    "Authorization": 'Bearer ' + openAIKey
-                }
-            })
-            const json = await res.json()
-            console.log(json)
-            if(!json.data){
-                throw "Invaild Openai Model Response"
-            }
-            let i = 0;
-            for(const model of json.data){
-                const exists = LLMModels.find(m => m.id === model.id || m.internalID === model.id)
-
-                if(exists){
-                    continue
-                }
-
-                if(!model.id.startsWith('gpt-')){
-                    continue
-                }
-                i++;
-
-                const a:LLMModel = {
-                    id: model.id,
-                    internalID: model.id,
-                    name: model.id,
-                    shortName: model.id,
-                    fullName: model.id,
-                    provider: LLMProvider.OpenAI,
-                    format: LLMFormat.OpenAICompatible,
-                    flags: [
-                        LLMFlags.hasStreaming,
-                        LLMFlags.OAICompletionTokens,
-                        LLMFlags.hasFullSystemPrompt,
-                        LLMFlags.hasImageInput,
-                        LLMFlags.DeveloperRole
-                    ],
-                    parameters: GPT5XHighParameters,
-                    tokenizer: LLMTokenizer.tiktokenO200Base,
-                    recommended: i<8
-                }
-
-                LLMModels.push(a,{
-                    ...a,
-                    format: LLMFormat.OpenAIResponseAPI,
-                    flags: [...a.flags, LLMFlags.hasPrefill],
-                    id: `${a.id}-response-api`,
-                    name: `${a.name} (Response API)`,
-                    fullName: `${a.fullName ?? a.name} (Response API)`,
-                    recommended: false
-                })
-
-                
-            }
-        }
-    } catch (error){
-        console.error('Error fetching OpenAI models', error)
-    }
-
+    await refreshProviderLists(() => !!DBState.db.dynamicModelRegistry)
 }
-
 //testing purpose only, not used in production
 globalThis.registerModelDynamic = registerModelDynamic
+
+/** A resolved entry is a copy, because callers change it, and takes the user's custom flags when that override is on. */
+function withUserFlags(model: LLMModel, db: ReturnType<typeof getDatabase>): LLMModel{
+    const copy:LLMModel = safeStructuredClone(model)
+    if(db.enableCustomFlags){
+        copy.flags = db.customFlags
+    }
+    return copy
+}
 
 export function getModelInfo(id?: string | null): LLMModel{
 
@@ -808,14 +842,10 @@ export function getModelInfo(id?: string | null): LLMModel{
             tokenizer: LLMTokenizer.Unknown
         }
     }
-    const found:LLMModel = safeStructuredClone(LLMModels.find(model => model.id === id))
-    
-    if(found){
-        if(db.enableCustomFlags){
-            found.flags = db.customFlags
-        }
+    const catalogEntry = LLMModels.find(model => model.id === id)
 
-        return found
+    if(catalogEntry){
+        return withUserFlags(catalogEntry, db)
     }
 
     if(id.startsWith('hf:::')){
@@ -874,6 +904,11 @@ export function getModelInfo(id?: string | null): LLMModel{
         }
     }
 
+    const added = resolveAdded(id)
+    if(added){
+        return withUserFlags(added, db)
+    }
+
     return {
         id,
         name: id,
@@ -898,7 +933,7 @@ export function getModelList<T extends boolean>(arg:{
     groupedByProvider?:T,
     includeHidden?:boolean
 } = {}): T extends true ? GetModelListGroup[] : LLMModel[]{
-    let models = LLMModels.filter(model => arg.includeHidden || !isHiddenFromPicker(modelIdStatus(model.id)))
+    let models = [...LLMModels, ...getListedAddedModels()].filter(model => arg.includeHidden || !isHiddenFromPicker(modelIdStatus(model.id)))
     if(arg.recommendedOnly){
          models = models.filter(model => model.recommended)
     }
