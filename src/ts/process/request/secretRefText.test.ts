@@ -28,6 +28,8 @@ const h = vi.hoisted(() => ({
     fail: false,
     db: {} as Record<string, unknown>,
     alertError: null as unknown as ReturnType<typeof import('vitest').vi.fn>,
+    startModelData: vi.fn(),
+    refreshModelDataNow: vi.fn(),
 }))
 
 function normalizeHeaders(headers: unknown): Record<string, string> {
@@ -91,6 +93,10 @@ vi.mock('../../alert', () => {
     h.alertError = vi.fn()
     return { alertError: h.alertError }
 })
+vi.mock('../../model/modelData/modelDataStore', () => ({
+    startModelData: h.startModelData,
+    refreshModelDataNow: h.refreshModelDataNow,
+}))
 vi.mock('../../platform', () => ({ isTauri: false, isNodeServer: false }))
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) }) } }))
 vi.mock('../../../etc/send.mp3', () => ({ default: '' }))
@@ -132,6 +138,8 @@ beforeEach(() => {
     h.resolveCalls = []
     h.fail = false
     h.alertError.mockClear()
+    h.startModelData.mockReset()
+    h.refreshModelDataNow.mockReset()
     fetchCalls = []
     vi.stubGlobal('safeStructuredClone', <T>(value: T): T => structuredClone(value))
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { headers?: unknown, body?: unknown }) => {
@@ -308,6 +316,73 @@ describe.each(readers)('$name', (reader) => {
         const { errorSpy } = await runReader(reader)
         errorSpy.mockRestore()
         expect(reader.calls().length).toBeGreaterThan(0)
+    })
+})
+
+//#endregion
+
+//#region model data hook
+
+describe('registerModelDynamic hands the registry option to the model data service', () => {
+    const unhandled: unknown[] = []
+    const recordUnhandled = (reason: unknown) => { unhandled.push(reason) }
+
+    beforeEach(() => {
+        unhandled.length = 0
+        process.on('unhandledRejection', recordUnhandled)
+    })
+
+    afterEach(() => {
+        process.off('unhandledRejection', recordUnhandled)
+    })
+
+    async function registerAndSettle() {
+        await registerModelDynamic()
+        await vi.dynamicImportSettled()
+    }
+
+    test('H1 registry on: the service is started once with true', async () => {
+        h.db.dynamicModelRegistry = true
+
+        await registerAndSettle()
+
+        expect(h.startModelData).toHaveBeenCalledTimes(1)
+        expect(h.startModelData).toHaveBeenCalledWith(true)
+    })
+
+    test('H2 registry off: the service is started once with false and no provider is fetched', async () => {
+        h.db.dynamicModelRegistry = false
+        ;(h.db.google as { accessToken: string }).accessToken = PLAIN
+        h.db.claudeAPIKey = PLAIN
+        h.db.openAIKey = PLAIN
+
+        await registerAndSettle()
+
+        expect(h.startModelData).toHaveBeenCalledTimes(1)
+        expect(h.startModelData).toHaveBeenCalledWith(false)
+        expect(h.calls).toHaveLength(0)
+        expect(fetchCalls).toHaveLength(0)
+    })
+
+    test.each([
+        ['rejects', () => h.startModelData.mockRejectedValue(new Error('scratch: start rejected'))],
+        ['throws synchronously', () => h.startModelData.mockImplementation(() => { throw new Error('scratch: start threw') })],
+    ])('H3 a service start that %s does not reach the registry: it resolves, the provider fetches still happen, nothing is unhandled', async (_title, arrange) => {
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        arrange()
+        h.db.claudeAPIKey = PLAIN
+        h.db.openAIKey = PLAIN
+
+        await expect(registerModelDynamic()).resolves.toBeUndefined()
+        await vi.dynamicImportSettled()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(h.startModelData).toHaveBeenCalledTimes(1)
+        expect(h.calls.some((call) => call.url.includes('anthropic.com'))).toBe(true)
+        expect(h.calls.some((call) => call.url.includes('api.openai.com'))).toBe(true)
+        expect(errorSpy.mock.calls.some((args) => args[0] === 'Model data')).toBe(true)
+        expect(unhandled).toEqual([])
+        errorSpy.mockRestore()
     })
 })
 

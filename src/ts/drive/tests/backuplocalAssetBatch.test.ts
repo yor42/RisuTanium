@@ -618,6 +618,19 @@ describe('a restore through the batch commands', () => {
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
+    // Guard: passes before and after the model data change. A restore writes the entries of the file
+    // and touches no other key, so the cached model data file stays as it was.
+    test('guard: the cached model data file is left as it was', async () => {
+        const cached = encoder.encode('{"v":1}')
+        fakeFs.plant('modeldata/openrouter.json', cached)
+
+        await restoreBytes(backupOf([['a.png', filled(8, 1)]]))
+
+        expect(same(fakeFs.files.get('modeldata/openrouter.json'), cached)).toBe(true)
+        expect(Object.keys(storedAssets())).toEqual(['assets/a.png'])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
     test('records every key for the startup sweep before the batch that carries it is sent', async () => {
         const noted: boolean[] = []
         batchFake.ctl.beforeWrite = (call) => {
@@ -1219,6 +1232,22 @@ describe('an export through the batch commands', () => {
         expect(backupSink.removed).toEqual([BACKUP_PATH])
         expect(alertNormalMock).not.toHaveBeenCalled()
         expect(unhandled).toEqual([])
+    })
+
+    // Guard: passes before and after the model data change. The cached model data file is derived
+    // device data outside the .bin, and the export enumerates only assets/.
+    test('guard: the cached model data file is not an entry of the export', async () => {
+        plant(NAMES)
+        const cached = encoder.encode('{"v":1}')
+        fakeFs.plant('modeldata/openrouter.json', cached)
+
+        expect(await outcomeOf(SaveLocalBackup)).toBeNull()
+
+        expect(exportedAssets()).toEqual(expectedExport(NAMES))
+        expect(exportedEntries().map((entry) => entry.name)).not.toContain('modeldata/openrouter.json')
+        expect(exportedEntries().map((entry) => entry.name)).not.toContain('openrouter.json')
+        expect(exportedHasName('modeldata')).toBe(false)
+        expect(same(fakeFs.files.get('modeldata/openrouter.json'), cached)).toBe(true)
     })
 })
 

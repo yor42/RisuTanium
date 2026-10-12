@@ -169,12 +169,12 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
  * Every AppData directory a store write can put a temp file into, each swept
  * below recursively because keys under it may nest: `database/` (the main
  * file, numbered backups, the backup fingerprint, pre-conversion copies),
- * `remotes/`, `coldstorage/`, `blocks/` (generations nest) and `assets/`.
- * A key without a slash lands in the AppData root itself, which is swept
+ * `remotes/`, `coldstorage/`, `blocks/` (generations nest), `assets/` and
+ * `modeldata/` (the cached model data files). A key without a slash lands in the AppData root itself, which is swept
  * without descending: the other directories are listed here, and nothing else
  * under the root holds store keys.
  */
-export const WRITE_TEMP_DIRECTORIES: readonly string[] = ['database', 'remotes', 'coldstorage', 'blocks', 'assets']
+export const WRITE_TEMP_DIRECTORIES: readonly string[] = ['database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata']
 
 /**
  * Sweeps the leftover write temps of every location in `WRITE_TEMP_DIRECTORIES`

@@ -112,7 +112,7 @@ describe('modelDataStore wiring', () => {
         expect(writes).toHaveLength(0)
     })
 
-    test('(F) startModelData(false) only loads: no request', async () => {
+    test('(F) startModelData(false) makes no request (the file is loaded once per test file, by the first test)', async () => {
         startModelData(false)
         for (let i = 0; i < 30; i++) {
             await Promise.resolve()
