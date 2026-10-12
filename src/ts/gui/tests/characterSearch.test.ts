@@ -92,15 +92,39 @@ describe('what an entry matches (specification)', () => {
         expect(liveFor(characters, 'somebody')).toEqual([0])
     })
 
-    test('an archived character and a group are searched by name and description only', () => {
+    // Regression reproducer: red before stub v3, when an archived character was searched by name and description only.
+    test('an archived character is searched by name, description, tags and creator; a group is searched by name and description only', () => {
         const characters: Slot[] = [
             makeStub('a', 'Ann', 'dragon keeper', { tags: ['fantasy'], creator: 'Somebody' }),
             makeCharacter('g', 'Group', { type: 'group', creatorNotes: 'band of heroes', tags: ['fantasy'], creator: 'Somebody' }),
         ]
         expect(liveFor(characters, 'dragon')).toEqual([0])
         expect(liveFor(characters, 'heroes')).toEqual([1])
-        expect(liveFor(characters, 'fantasy')).toEqual([])
-        expect(liveFor(characters, 'somebody')).toEqual([])
+        expect(liveFor(characters, 'fantasy')).toEqual([0])
+        expect(liveFor(characters, 'somebody')).toEqual([0])
+    })
+
+    // Regression reproducer: red before the creator was resolved, when only the top-level creator was read.
+    test('a loaded character is found by its edited additionalData.creator and no longer by the top-level creator it replaced', () => {
+        const characters = [makeCharacter('a', 'Ann', { creator: 'Original', additionalData: { creator: 'Edited' } })]
+        expect(liveFor(characters, 'edited')).toEqual([0])
+        expect(liveFor(characters, 'original')).toEqual([])
+    })
+
+    // Regression reproducer: red before stub v3 (a stub's tags and creator were never searched).
+    test('a stub finds exactly the words its source finds: name, description, tags and the resolved creator', () => {
+        const source = makeCharacter('a', 'Ann', {
+            creatorNotes: 'dragon keeper',
+            tags: ['fantasy', 'elf'],
+            creator: 'Original',
+            additionalData: { creator: 'Edited' },
+        })
+        const stub = buildColdStub(source, 'unit-a', [])
+        for (const word of ['ann', 'dragon', 'fantasy', 'elf', 'edited', 'original', 'zzz']) {
+            expect(liveFor([stub], word), word).toEqual(liveFor([source], word))
+        }
+        expect(liveFor([stub], 'edited')).toEqual([0])
+        expect(liveFor([stub], 'original')).toEqual([])
     })
 
     test('a zero-width character inside a description or tag does not hide the word', () => {
@@ -273,7 +297,7 @@ describe('index cache (invariant)', () => {
         ['creatorNotes', (c: character) => { c.creatorNotes = 'other' }],
         ['a tag', (c: character) => { c.tags = ['new'] }],
         ['creator', (c: character) => { c.creator = 'someone' }],
-        ['coldstorage', (c: character) => { c.coldstorage = 'unit-x' }],
+        ['an edited additionalData.creator', (c: character) => { c.additionalData = { creator: 'edited' } as character['additionalData'] }],
     ])('a change of %s is a cache miss for that character only', (_label, change) => {
         const stats: SearchStats = { entriesNormalised: 0 }
         const cache = createSearchCache(stats)
@@ -282,6 +306,17 @@ describe('index cache (invariant)', () => {
         change(characters[3])
         buildIndex(characters, cache)
         expect(stats.entriesNormalised).toBe(11)
+    })
+
+    // Regression reproducer: red before stub v3, when coldstorage was part of the searched text.
+    test('a change of coldstorage alone is a cache hit, because the searched text does not depend on it', () => {
+        const stats: SearchStats = { entriesNormalised: 0 }
+        const cache = createSearchCache(stats)
+        const characters = many(10)
+        buildIndex(characters, cache)
+        characters[3].coldstorage = 'unit-x'
+        buildIndex(characters, cache)
+        expect(stats.entriesNormalised).toBe(10)
     })
 
     test('writes the search does not read (chats, lastInteraction, image) are cache hits', () => {

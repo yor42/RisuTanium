@@ -20,9 +20,10 @@
  *
  * Turning the setting off clears all of it.
  *
- * The stub-enrichment count bounds the boot pass's rewrite of upstream-made
- * stubs on a profile whose archiving is off, with the strike count's states and
- * its fail-closed rule, under its own key. `clearArchiveMemo` leaves it, because
+ * The stub-enrichment count bounds the boot pass's rewrite of older archived
+ * stubs (no `coldVersion`, or one below the current version) on a profile
+ * whose archiving is off, with the strike count's states and its fail-closed
+ * rule, under its own key. `clearArchiveMemo` leaves it, because
  * the boot clears the archive memo on every boot that reads the setting off and
  * the count must outlive that. A completed enrichment attempt and a change of
  * the setting in Settings, in either direction, remove it; the boot-time clear

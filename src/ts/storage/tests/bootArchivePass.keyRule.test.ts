@@ -131,7 +131,7 @@ afterEach(() => {
 
 describe('guard: boot archive pass with an upstream stub whose unit key the key rule rejects', () => {
     const CHA_ID = 'cha-rejected-key'
-    const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters']
+    const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters', 'tags', 'creator']
     const REJECTED_KEYS = ['a/b', 'a\\b', 'a:b', 'k'.repeat(101)]
 
     test.each(REJECTED_KEYS.map((key) => [key.length > 20 ? `a ${key.length}-byte key` : key, key]))('%s: the stub is kept as found and nothing is written', async (_label, key) => {

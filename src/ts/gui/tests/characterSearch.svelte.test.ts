@@ -3,8 +3,8 @@
 /**
  * The reactive side of the character search: the debounce of the typed query
  * and the shared result that follows `db.characters`. A write the search reads
- * (length, chaId, trashTime, type, coldstorage, name, creatorNotes, tags,
- * creator) updates the result in the same flush; a write it does not read
+ * (length, chaId, trashTime, type, name, creatorNotes, tags,
+ * creator, additionalData.creator) updates the result in the same flush; a write it does not read
  * (chats, lastInteraction, image) walks nothing.
  *
  * MOCKED: `src/ts/stores.svelte` (only `DBState`, a real `$state` object) and
@@ -199,8 +199,10 @@ describe('createCharacterSearch: results follow the query and the database', () 
         ['creatorNotes', (c: CharacterFixture) => { c.creatorNotes = 'zed' }],
         ['a pushed tag', (c: CharacterFixture) => { (c as { tags: string[] }).tags.push('zed') }],
         ['creator', (c: CharacterFixture) => { (c as { creator: string }).creator = 'zed' }],
+        // Regression reproducer: red before the creator was resolved from additionalData.
+        ['additionalData.creator', (c: CharacterFixture) => { (c as { additionalData: { creator: string } }).additionalData.creator = 'zed' }],
     ])('a write to %s is searched in the same flush', (_label, write) => {
-        setCharacters([makeCharacter('a', 'Ann', { tags: [], creator: '' }), makeCharacter('b', 'Bob', { tags: [], creator: '' })])
+        setCharacters([makeCharacter('a', 'Ann', { tags: [], creator: '', additionalData: { creator: '' } }), makeCharacter('b', 'Bob', { tags: [], creator: '', additionalData: { creator: '' } })])
         query = 'zed'
         const search = within(() => createCharacterSearch(() => query))
         expect(liveIndices(search)).toEqual([])
@@ -209,14 +211,18 @@ describe('createCharacterSearch: results follow the query and the database', () 
         expect(liveIndices(search)).toEqual([1])
     })
 
-    test('archiving (coldstorage) drops tags and creator from the searched text', () => {
-        setCharacters([makeCharacter('a', 'Ann', { tags: ['zed'], creator: '' })])
+    // Regression reproducer: red before stub v3, when archiving dropped tags and creator from the searched text.
+    test('archiving (coldstorage) keeps tags and creator in the searched text', () => {
+        setCharacters([makeCharacter('a', 'Ann', { tags: ['zed'], creator: 'quux' })])
         query = 'zed'
         const search = within(() => createCharacterSearch(() => query))
         expect(liveIndices(search)).toEqual([0])
         DBState.db.characters[0].coldstorage = 'unit-a'
         flushSync()
-        expect(liveIndices(search)).toEqual([])
+        expect(liveIndices(search)).toEqual([0])
+        type('quux')
+        elapse(150)
+        expect(liveIndices(search)).toEqual([0])
     })
 
     test('turning a character into a group drops tags and creator from the searched text', () => {

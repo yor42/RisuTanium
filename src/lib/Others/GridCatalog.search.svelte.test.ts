@@ -2,7 +2,7 @@
 
 /**
  * The search of `GridCatalog.svelte`: what a query matches (name, description,
- * tags and creator; every word, in any order; normalised), that the header
+ * tags and creator, for archived characters too; every word, in any order; normalised), that the header
  * count follows the open tab, that a typed query lands once after the debounce
  * with header and rows always agreeing, and that the list follows later
  * database changes (trash, restore, delete, add) while a query is active. The
@@ -205,14 +205,16 @@ function makeCharacter(chaId: string, name: string, extra: Record<string, unknow
     } as unknown as CharacterFixture
 }
 
-/** An archived character as the list sees it: a stub whose `creatorNotes` is its description. */
+/** An archived character as the list sees it: a current (version 3) stub whose `creatorNotes` is its description and which carries `tags` and `creator`. */
 function makeStub(chaId: string, name: string, description: string, extra: Record<string, unknown> = {}): CharacterFixture {
     return makeCharacter(chaId, name, {
         creatorNotes: description,
         coldstorage: `unit-${chaId}`,
         coldStoragedChats: [],
-        coldVersion: 2,
+        coldVersion: 3,
         coldChatCount: 1,
+        tags: [],
+        creator: '',
         ...extra,
     })
 }
@@ -367,10 +369,19 @@ describe.each(LAYOUTS)('GridCatalog search in the %s layout: what a query matche
         expect(await offered(characters, layout, 'somebody')).toEqual([0])
     })
 
-    // Guards: green on a name-only base as well, because nothing is found there.
-    test('guard: tags and creator of an archived character and of a group are not searched', async () => {
+    // Regression reproducer: red before stub v3, when an archived character was not searched by tags or creator.
+    test('tags and creator of an archived character are searched', async () => {
         const characters = [
             makeStub('a', 'Ann', 'plain', { tags: ['fantasy'], creator: 'Somebody' }),
+            makeCharacter('b', 'Bob'),
+        ]
+        expect(await offered(characters, layout, 'fantasy')).toEqual([0])
+        expect(await offered(characters, layout, 'somebody')).toEqual([0])
+    })
+
+    // Guard: green on a name-only base as well, because nothing is found there.
+    test('guard: tags and creator of a group are not searched', async () => {
+        const characters = [
             makeCharacter('g', 'Group', { type: 'group', tags: ['fantasy'], creator: 'Somebody' }),
         ]
         expect(await offered(characters, layout, 'fantasy')).toEqual([])

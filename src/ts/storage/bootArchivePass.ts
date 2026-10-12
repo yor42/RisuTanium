@@ -30,10 +30,11 @@ import type { ArchiveMemo, ArchiveStrikeState } from './bootArchiveMemo'
  * profile (no head yet) is converted by that same commit. The caller installs
  * the tree this module returns.
  *
- * The same pass rewrites every stub the upstream application made (a
- * "legacy" stub: no current `coldVersion`, the type always `'character'`, no
- * description or chat count) from its unit, so it carries what the fork's own
- * stubs carry. That runs on a profile with archiving on, in the same commit,
+ * The same pass rewrites every older stub (a "legacy" stub: no
+ * `coldVersion` or one below the current version, whether the upstream
+ * application or an earlier version of this one made it) from its unit, so it
+ * carries what a current stub carries (type, description, chat count, tags and
+ * creator). That runs on a profile with archiving on, in the same commit,
  * and on a profile with archiving off, where it archives nothing, writes no
  * unit, leaves the setting off and posts no notice.
  *
@@ -709,11 +710,11 @@ async function archiveAndCommit(
     if (enrichOnly) {
         const enrichStrikes = readStubEnrichStrikesOrUnreadable(deps)
         if (enrichStrikes === 'paused') {
-            console.warn('The boot did not update upstream-made characters: two attempts in a row did not finish on this device. Changing the archive setting in Settings (for example on, then off again) tries once more.')
+            console.warn('The boot did not update older archived characters: two attempts in a row did not finish on this device. Changing the archive setting in Settings (for example on, then off again) tries once more.')
             return installUntouched(tree)
         }
         if (enrichStrikes !== 'none' && enrichStrikes !== 'one') {
-            console.warn('The boot did not update upstream-made characters: its attempt count could not be read on this device.')
+            console.warn('The boot did not update older archived characters: its attempt count could not be read on this device.')
             return installUntouched(tree)
         }
     } else {
@@ -747,7 +748,7 @@ async function archiveAndCommit(
     }
     if (enrichOnly) {
         if (!recordStubEnrichStartOrFalse(deps)) {
-            console.warn('The boot did not update upstream-made characters: its start could not be recorded on this device.')
+            console.warn('The boot did not update older archived characters: its start could not be recorded on this device.')
             return installUntouched(tree)
         }
     } else {

@@ -77,7 +77,7 @@ export function fullCharacter(chaId: string, name: string, extra: Json = {}): Js
     }
 }
 
-/** A stub as the fork writes it (`coldVersion` 2). */
+/** A stub as the fork writes it now (`coldVersion` 3, with `tags` and `creator`). */
 export function currentStub(chaId: string, name: string, unitKey: string, extra: Json = {}): Json {
     return {
         type: 'character',
@@ -89,10 +89,18 @@ export function currentStub(chaId: string, name: string, unitKey: string, extra:
         chats: [{ id: `stub-chat-${chaId}`, message: [{ time: 1, data: '', role: 'char' }], note: '', name: '', localLore: [] }],
         chatPage: 0,
         firstMsgIndex: 0,
-        coldVersion: 2,
+        coldVersion: 3,
         coldChatCount: 3,
+        tags: [],
+        creator: '',
         ...extra,
     }
+}
+
+/** A stub as the fork wrote it before tags and creator (`coldVersion` 2): still to be upgraded once. */
+export function versionTwoStub(chaId: string, name: string, unitKey: string, extra: Json = {}): Json {
+    const { tags: _tags, creator: _creator, ...stub } = currentStub(chaId, name, unitKey)
+    return { ...stub, coldVersion: 2, ...extra }
 }
 
 /** A stub as the upstream application writes it: no `coldVersion`, a placeholder chat without an id. */

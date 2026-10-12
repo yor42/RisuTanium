@@ -331,7 +331,7 @@ describe('boot archive pass: slots the pass leaves alone', () => {
         const kept = charactersOf(installedTree(boot.outcome)).find((c) => c.chaId === row.chaId) as Json
         expect(kept).toBeDefined()
         // The boot's id repair may give the placeholder chat an id, so the chat is not compared.
-        for (const field of ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters']) {
+        for (const field of ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters', 'tags', 'creator']) {
             expect(kept, field).not.toHaveProperty(field)
         }
         expect(kept.type).toBe(row.type)
