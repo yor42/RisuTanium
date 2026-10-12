@@ -6,7 +6,7 @@
  * enters the library live, silently. A batch stops trying after two failures in a row.
  *
  * The real `characterCards.ts` and `pngChunk.ts` run on synthetic cards. The archive engine is replaced by a
- * scripted stand-in (its own contract is tested in `coldCharacterArchive.svelte.test.ts`); `idleReloadBootState`
+ * scripted stand-in (its own contract is tested in `coldCharacterArchive.svelte.test.ts`); `bootArchiveState`
  * is real. A pass here says nothing about the real stores.
  *
  * Labels: "new behaviour" tests the archive wiring, which does not exist on the base; "regression reproducer" fails
@@ -222,7 +222,7 @@ vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
 //#endregion
 
 import { downloadRisuHub, importCharacter, importCharacterProcess } from 'src/ts/characterCards'
-import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from 'src/ts/process/memory/idleReloadBootState'
+import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { archiveCharacterNow } from 'src/ts/process/coldCharacterArchive'
 
 // ---------------------------------------------------------------------------------------------
@@ -310,7 +310,7 @@ beforeEach(() => {
     h.saveWaiting = 0
     h.changed = []
     vi.mocked(archiveCharacterNow).mockClear()
-    resetIdleReloadBootStateForTest()
+    resetBootArchiveStateForTest()
     noteBootArchiveSession(true)
     setup()
     vi.spyOn(console, 'log').mockImplementation(() => {})

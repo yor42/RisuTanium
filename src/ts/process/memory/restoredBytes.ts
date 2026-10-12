@@ -23,31 +23,17 @@ export function readSizeOf(result: object): number | undefined {
     return readSizes.get(result)
 }
 
-let onBytesNoted: (() => void) | null = null
-
-/** Calls `listener` after every count that added bytes; one listener, `null` removes it. */
-export function setRestoredBytesListener(listener: (() => void) | null): void {
-    onBytesNoted = listener
-}
-
-/** True once any character has restored bytes on this page. */
-export function hasRestoredBytes(): boolean {
-    return bytesByChaId.size > 0
-}
-
 /** Adds `bytes` to what `chaId` has restored; a missing id or a size that is not positive adds nothing. */
 export function noteRestoredBytes(chaId: string | undefined, bytes: number | undefined): void {
     if (!chaId || typeof bytes !== 'number' || !(bytes > 0)) {
         return
     }
     bytesByChaId.set(chaId, (bytesByChaId.get(chaId) ?? 0) + bytes)
-    onBytesNoted?.()
 }
 
 /**
  * Forgets what `chaId` has restored, because its stub is back in the character
- * list and the bytes are no longer held. It calls no listener: the idle reload
- * arms only when bytes are added.
+ * list and the bytes are no longer held.
  */
 export function clearRestoredBytes(chaId: string): void {
     bytesByChaId.delete(chaId)
@@ -70,5 +56,4 @@ export function restoredBytesOutside(keepInline: ReadonlySet<string> = new Set()
 
 export function resetRestoredBytesForTest(): void {
     bytesByChaId.clear()
-    onBytesNoted = null
 }

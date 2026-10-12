@@ -245,7 +245,7 @@ import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { importCharacterProcess } from 'src/ts/characterCards'
 import { changeChar, characterFormatUpdate } from 'src/ts/characters'
 import { contentFingerprint, resetRetainedForTest, retainedRecordOf } from 'src/ts/process/coldRetained'
-import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from 'src/ts/process/memory/idleReloadBootState'
+import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { resetRestoredBytesForTest } from 'src/ts/process/memory/restoredBytes'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
@@ -308,7 +308,7 @@ beforeEach(() => {
     resetRetainedForTest()
     resetRestoredBytesForTest()
     resetCharacterSaveMarksForTest()
-    resetIdleReloadBootStateForTest()
+    resetBootArchiveStateForTest()
     noteBootArchiveSession(true)
     selectedCharID.set(-1)
     installDb()

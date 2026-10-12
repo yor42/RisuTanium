@@ -5,7 +5,7 @@
  *
  * What is real: the engine, `buildColdStub`, `coldRetained`, the restored-bytes
  * counter, `characterSaveMarks` (an installed tracker records the marks),
- * `idleReloadBootState` and a reactive `DBState` built with `$state`, so
+ * `bootArchiveState` and a reactive `DBState` built with `$state`, so
  * characters are the same proxies the application holds. What is a stand-in:
  * the unit writer and reader (a map whose behaviour a test can bend). A pass
  * here says nothing about the real IndexedDB, Tauri or Node stores.
@@ -71,7 +71,7 @@ import { DBState } from 'src/ts/stores.svelte'
 import { archiveCharacterNow, archiveMayRun, type ArchiveResult } from 'src/ts/process/coldCharacterArchive'
 import { contentFingerprint, resetRetainedForTest, retainedRecordOf, retainOnRestore } from 'src/ts/process/coldRetained'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
-import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from 'src/ts/process/memory/idleReloadBootState'
+import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { noteRestoredBytes, resetRestoredBytesForTest, restoredBytesOf } from 'src/ts/process/memory/restoredBytes'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
@@ -134,7 +134,7 @@ beforeEach(() => {
     resetRetainedForTest()
     resetRestoredBytesForTest()
     resetCharacterSaveMarksForTest()
-    resetIdleReloadBootStateForTest()
+    resetBootArchiveStateForTest()
     noteBootArchiveSession(true)
     tracker = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
     installCharacterSaveMarks({ tracker, schedule: vi.fn() })

@@ -104,7 +104,7 @@ import { buildColdStub } from 'src/ts/process/coldCharacter'
 import { resetRetainedForTest, retainedRecordOf, retainedUnitKeys } from 'src/ts/process/coldRetained'
 import { getPutBackCounters, resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
 import { beginBusy, beginChokePoint, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
-import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from 'src/ts/process/memory/idleReloadBootState'
+import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { snapshot } from 'src/ts/process/memory/putBackMeasure'
 import { resetRestoredBytesForTest, restoredBytesOf } from 'src/ts/process/memory/restoredBytes'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
@@ -213,7 +213,7 @@ beforeEach(() => {
     resetBusyActionsForTest()
     resetRestoredBytesForTest()
     resetCharacterSaveMarksForTest()
-    resetIdleReloadBootStateForTest()
+    resetBootArchiveStateForTest()
     noteBootArchiveSession(true)
     selectedCharID.set(-1)
     tracker = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }

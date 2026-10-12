@@ -1,7 +1,6 @@
 /**
  * The characters that must stay as they are in memory: the one on screen and,
- * for a group, its members. The idle reload leaves them inline and the put-back
- * leaves them loaded (`characterPutBack.ts` adds the previous selection).
+ * for a group, its members. The put-back leaves them loaded (`characterPutBack.ts` adds the previous selection).
  */
 
 import { get } from 'svelte/store'
@@ -18,7 +17,7 @@ export function addGroupMembers(keep: Set<string>, cha: { type?: string, charact
     }
 }
 
-/** The selected character and, for a group, its members: the characters the idle reload must leave inline. */
+/** The selected character and, for a group, its members: the characters that must stay as they are. */
 export function baseKeepInline(): Set<string> {
     const keep = new Set<string>()
     const selected = DBState.db?.characters?.[get(selectedCharID)]

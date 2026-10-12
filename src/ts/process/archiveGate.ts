@@ -1,6 +1,6 @@
 import { DBState } from '../stores.svelte'
 import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
-import { canBootArchive } from './memory/idleReloadBootState'
+import { canBootArchive } from './memory/bootArchiveState'
 
 /**
  * The gates every archive of a character must pass, kept apart from the

@@ -35,11 +35,9 @@ import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
 import { startObserveDom } from "./observer.svelte";
 import { updateGuisize } from "./gui/guisize";
-import { selectCharacterByChaId, updateLorebooks } from "./characters";
-import { applyHandoff, readHandoff, type HandoffMedium, type ReadHandoff } from "./process/memory/idleHandoff";
-import { createHandoffMedium, startIdleReload } from "./process/memory/idleReloadHost";
+import { updateLorebooks } from "./characters";
 import { startCharacterPutBack } from "./process/memory/characterPutBack";
-import { markBootedByIdleReload, noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/idleReloadBootState";
+import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/bootArchiveState";
 import { initMobileGesture } from "./hotkey";
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
@@ -72,8 +70,7 @@ import {
     wasAssetWrittenThisPage,
     listAssetsWrittenThisPage,
     setUsingSw,
-    checkCharOrder,
-    afterNextSaveCommit
+    checkCharOrder
 } from "./globalApi.svelte";
 import { isTauri } from "./platform";
 import { isTauriDesktop } from "./tauriDesktop";
@@ -120,23 +117,6 @@ export async function loadData() {
         // installed: entries that are not characters left out, ids that are
         // missing or cannot be saved replaced. Told once, after the install.
         const bootRepairs: BootRepairs = { dropped: 0, changed: 0 }
-        // What an idle reload of the previous page left for this one. Read before
-        // the archive pass, whose keep-inline set it supplies, and applied once
-        // the database is installed.
-        let handoffMedium: HandoffMedium | null = null
-        let handoff: ReadHandoff = { selection: null, drafts: null }
-        try {
-            handoffMedium = createHandoffMedium()
-            if (handoffMedium) {
-                handoff = await readHandoff(handoffMedium, Date.now())
-                if (handoff.selection) {
-                    markBootedByIdleReload()
-                }
-            }
-        } catch (error) {
-            console.error(error)
-        }
-        const keepInline = handoff.selection ? new Set(handoff.selection.keepInline) : undefined
         try {
             if (isTauri) {
                 LoadingStatusState.text = "Checking Files..."
@@ -162,7 +142,7 @@ export async function loadData() {
                 LoadingStatusState.text = "Reading Save File..."
                 // A head means the profile lives in the block store; only a
                 // profile with no head is read as the legacy main file below.
-                let storeBoot = await bootFromStore(archiveSession, keepInline)
+                let storeBoot = await bootFromStore(archiveSession)
                 // Only an absent main file starts a first launch. A read that
                 // fails for any other reason leaves the file as it is and takes
                 // the backup route below.
@@ -176,7 +156,7 @@ export async function loadData() {
                         mainReadable = false
                     }
                     if (mainReadable && readed === null && storeBoot.ctx !== null) {
-                        storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession, keepInline)
+                        storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession)
                     }
                 }
                 if (storeBoot.kind === 'installed') {
@@ -199,7 +179,7 @@ export async function loadData() {
                             noteMainFileBytes(readed)
                             LoadingStatusState.text = "Decoding Save File..."
                             const decoded = await decodeMainFile(readed)
-                            outcome = await resolveArchiveOutcome(archiveSession, decoded, keepInline)
+                            outcome = await resolveArchiveOutcome(archiveSession, decoded)
                         } catch (error) {
                             outcome = null
                         }
@@ -280,7 +260,7 @@ export async function loadData() {
                 LoadingStatusState.text = "Loading Local Save File..."
                 // A head means the profile lives in the block store; only a
                 // profile with no head is read as the legacy main file below.
-                let storeBoot = await bootFromStore(archiveSession, keepInline)
+                let storeBoot = await bootFromStore(archiveSession)
                 // Only an absent main file is seeded. A zero-length file, or a
                 // stored value that is not bytes, is an undecodable main file and
                 // takes the backup route; it is never written over. A page that
@@ -297,7 +277,7 @@ export async function loadData() {
                             if (storeBoot.ctx === null) {
                                 gotStorage = encodeRisuSaveLegacy({})
                             } else {
-                                storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession, keepInline)
+                                storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession)
                             }
                         }
                     } catch (error) {
@@ -331,7 +311,7 @@ export async function loadData() {
                             // keeps its own reference only until it has hashed them.
                             gotStorage = null
                             console.log(decoded.tree)
-                            outcome = await resolveArchiveOutcome(archiveSession, decoded, keepInline)
+                            outcome = await resolveArchiveOutcome(archiveSession, decoded)
                         } catch (error) {
                             console.error(error)
                             outcome = null
@@ -559,16 +539,6 @@ export async function loadData() {
             selectedCharID.set(-1)
             startObserveDom()
             assignIds()
-            if (handoffMedium && (handoff.selection || handoff.drafts)) {
-                // The drafts are put back now and their part is deleted once this page's
-                // first save has committed; the reselect settles in the background.
-                void applyHandoff(handoff, handoffMedium, selectCharacterByChaId, afterNextSaveCommit)
-            }
-            try {
-                startIdleReload()
-            } catch (error) {
-                console.error(error)
-            }
             if (getPageStorageMode().kind !== 'read-only') {
                 try {
                     startCharacterPutBack()
@@ -716,7 +686,7 @@ async function settleBlockProfile(ctx: BootLoadContext): Promise<BootNotice[]> {
  * install; a profile restored from a backup at that prompt is not run through
  * the archive pass.
  */
-async function bootFromStore(session: BootArchiveSession, keepInline: ReadonlySet<string> | undefined): Promise<StoreBoot> {
+async function bootFromStore(session: BootArchiveSession): Promise<StoreBoot> {
     const ctx = await blockBootContext(session)
     if (ctx === null) {
         setPageStorageMode({ kind: 'read-only' })
@@ -731,7 +701,7 @@ async function bootFromStore(session: BootArchiveSession, keepInline: ReadonlySe
     let archiveNotices: BootArchiveNotice[] = []
     let committed = false
     if (loaded.how === 'store') {
-        const outcome = await resolveArchiveOutcome(session, { tree, strict: true }, keepInline)
+        const outcome = await resolveArchiveOutcome(session, { tree, strict: true })
         if (outcome.kind === 'stop') {
             throw outcome.error
         }
@@ -752,10 +722,10 @@ async function bootFromStore(session: BootArchiveSession, keepInline: ReadonlySe
  * Creates the first profile in the block store when there is no head and no
  * main file. A seed that loses to another page loads that page's state.
  */
-async function seedBootProfile(ctx: BootLoadContext, session: BootArchiveSession, keepInline: ReadonlySet<string> | undefined): Promise<StoreBoot> {
+async function seedBootProfile(ctx: BootLoadContext, session: BootArchiveSession): Promise<StoreBoot> {
     const seeded = await seedEmptyBlockProfile(ctx)
     if (seeded.kind === 'load-again') {
-        const again = await bootFromStore(session, keepInline)
+        const again = await bootFromStore(session)
         if (again.kind === 'legacy') {
             throw language.saveSeedFailed
         }
@@ -825,7 +795,6 @@ async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, stri
 async function resolveArchiveOutcome(
     session: BootArchiveSession,
     decoded: { tree: Database, strict: boolean },
-    keepInline?: ReadonlySet<string>,
 ): Promise<BootArchiveOutcome> {
     if (decoded.tree.archiveCharacters === false) {
         clearArchiveMemo()
@@ -835,7 +804,7 @@ async function resolveArchiveOutcome(
         return { kind: 'install', tree: decoded.tree, noteBytes: null, notices: [] }
     }
     try {
-        return await session.run({ tree: decoded.tree, keepInline })
+        return await session.run({ tree: decoded.tree })
     } catch (error) {
         console.error(error)
         return { kind: 'install', tree: decoded.tree, noteBytes: null, notices: [] }
@@ -983,7 +952,7 @@ async function repairBootTree(tree: unknown, tally: BootRepairs): Promise<void> 
 async function checkNewFormat(): Promise<void> {
     let db = getDatabase();
 
-    // A database that has just been loaded (an idle reload is a boot) may name
+    // A database that has just been loaded may name
     // no preset: the working settings are kept as a new one, never over another.
     repairBotPresetsId(db);
 

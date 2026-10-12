@@ -479,7 +479,7 @@ describe('a character edited in place in the boot window is saved by the first p
         expect(stored?.chats[0].message).toHaveLength(1)
     })
 
-    test('S1b (R): the character the idle hand-off selected before saveDb started is saved when it is edited after its block and then left', async () => {
+    test('S1b (R): the character selected before saveDb started is saved when it is edited after its block and then left', async () => {
         const { w, stores } = await bootInWindow(AFTER_FIRST_CHARACTER, { selectedAtStart: 0 })
         const committed = nextCommit(w)
         editInPlace(0, 'alpha edited')
@@ -711,10 +711,10 @@ describe('a boot with no unsaved work stays reloadable by a peer\'s save', () =>
         expect(await peerSaveOutcome()).toBe('reloaded')
     })
 
-    test('S7 (G): a character the idle hand-off selected before saveDb started, with no input, then a peer save, reloads the tab without asking', async () => {
+    test('S7 (G): a character selected before saveDb started, with no input, then a peer save, reloads the tab without asking', async () => {
         await bootInWindow(AFTER_FIRST_CHARACTER, {
             selectedAtStart: 0,
-            beforeSaveDb: async () => { liveCharacters()[0].name = 'normalised by the hand-off' },
+            beforeSaveDb: async () => { liveCharacters()[0].name = 'normalised before saveDb' },
         })
         broadcastFromPeer()
         finishInit()

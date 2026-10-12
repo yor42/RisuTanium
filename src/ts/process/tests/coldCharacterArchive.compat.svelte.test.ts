@@ -296,7 +296,7 @@ import {
 } from '../coldstorage.svelte'
 import { archiveCharacterNow } from '../coldCharacterArchive'
 import { DBState } from 'src/ts/stores.svelte'
-import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from '../memory/idleReloadBootState'
+import { noteBootArchiveSession, resetBootArchiveStateForTest } from '../memory/bootArchiveState'
 import { resetRetainedForTest } from '../coldRetained'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { character } from 'src/ts/storage/database.svelte'
@@ -331,7 +331,7 @@ beforeEach(() => {
     unitReadLog.length = 0
     resetRetainedForTest()
     resetCharacterSaveMarksForTest()
-    resetIdleReloadBootStateForTest()
+    resetBootArchiveStateForTest()
     noteBootArchiveSession(true)
     DBState.db = { formatversion: 5, archiveCharacters: true, plugins: [], characters: [], pluginCustomStorage: {} } as unknown as Database
 })

@@ -175,8 +175,6 @@ export type BootReread =
 export interface BootArchivePassInput {
     /** The tree `decodeRisuSave(bytes, { strict: true })` returned. The pass may mutate it and return it. */
     tree: Database
-    /** `chaId`s that must stay full. The 5c boot never supplies it. */
-    keepInline?: ReadonlySet<string>
 }
 
 /**
@@ -427,7 +425,6 @@ function passesTreeGates(tree: Database): boolean {
  */
 function eligibleIndexes(
     characters: readonly Slot[],
-    keepInline: ReadonlySet<string> | undefined,
     skippedBefore: ReadonlySet<string>,
     now: number,
 ): number[] {
@@ -446,7 +443,6 @@ function eligibleIndexes(
             || cha.chaId.length === 0
             || cha.chaId.startsWith('§')
             || holders.get(cha.chaId) !== 1
-            || keepInline?.has(cha.chaId)
             || skippedBefore.has(cha.chaId)
         ) {
             continue
@@ -734,7 +730,7 @@ async function archiveAndCommit(
     // Sampled once. A character skipped for its due purge is purged later in
     // this boot; if the boot stops before the purge, it stays full.
     const now = Date.now()
-    const eligible = enrichOnly ? [] : eligibleIndexes(characters, input.keepInline, memo.skipped, now)
+    const eligible = enrichOnly ? [] : eligibleIndexes(characters, memo.skipped, now)
     if (legacy.length === 0 && eligible.length === 0 && !keyAbsent) {
         return installUntouched(tree)
     }

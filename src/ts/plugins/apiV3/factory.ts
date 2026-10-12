@@ -1,4 +1,4 @@
-import { beginChokePoint, stampPluginActivity } from "src/ts/process/memory/busyActions";
+import { beginChokePoint } from "src/ts/process/memory/busyActions";
 
 type MsgType =
     | 'CALL_ROOT'
@@ -839,7 +839,6 @@ export class SandboxHost {
                     streamCleanups = [];
                 };
 
-                stampPluginActivity();
                 const endInFlight = beginChokePoint('pluginBridge');
                 try {
 

@@ -27,7 +27,7 @@ import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImp
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
-import { canBootArchive, wasBootedByIdleReload } from "./process/memory/idleReloadBootState"
+import { canBootArchive } from "./process/memory/bootArchiveState"
 import { applyCharacterDefaults, resetChatStreamingState } from "./storage/characterDefaults"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 
@@ -920,10 +920,6 @@ export async function characterURLImport() {
         }
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
         window.launchQueue.setConsumer((launchParams) => {
-            //The page before an idle reload has already imported whatever launched it; a browser that hands those files to the new page must not import them twice.
-            if (wasBootedByIdleReload()) {
-                return
-            }
             if (launchParams.files && launchParams.files.length) {
                 const files = launchParams.files as FileSystemFileHandle[]
                 return handleFiles(files)

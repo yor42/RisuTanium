@@ -30,7 +30,7 @@ import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { digestMainFileBytes } from "./storage/mainFileRecord";
-import { didBootPassCommit } from "./process/memory/idleReloadBootState";
+import { didBootPassCommit } from "./process/memory/bootArchiveState";
 import { beginInFlight } from "./process/inFlightWork";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
@@ -2358,10 +2358,9 @@ export async function saveDb() {
                 // A retry of the same block cannot get accepted, so the loop
                 // stops for this page load instead of resending it. The unsaved
                 // changes were folded back into the tracker above and the
-                // iteration is not marked committed, so the page stays unclean
-                // and the idle reload does not fire. The block is named so the
-                // person knows what to make smaller; a server that refused for a
-                // limit this client does not know names nothing.
+                // iteration is not marked committed, so the page stays unclean.
+                // The block is named so the person knows what to make smaller; a
+                // server that refused for a limit this client does not know names nothing.
                 console.error(error)
                 const what = error instanceof BlockTooLargeError ? describeBlockForPerson(error.blockName) : ''
                 alertToast(language.savingStoppedTooLargeBlockMessage(what, NODE_BODY_LIMIT_BYTES))

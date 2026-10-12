@@ -1,12 +1,10 @@
 /**
- * `loadData()`'s wiring of the idle reload: what it reads before the archive
- * pass (the hand-off an idle reload left), what it gives the pass, what it
- * applies after the install, and what it learns from the pass's outcome. The
- * pass module is mocked at its boundary as in `bootstrap.archivePass.test.ts`;
- * the hand-off storage (`sessionStorage`) and the draft stores are real.
+ * `loadData()`'s record of its archive session and pass outcome: whether the
+ * session could archive and whether the pass committed. The pass module is
+ * mocked at its boundary as in `bootstrap.archivePass.test.ts`.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { writable, get } from 'svelte/store'
+import { writable } from 'svelte/store'
 import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { BLOCK, composeSave, corruptBlockPayload } from 'src/ts/storage/tests/manualCleanupHarness'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
@@ -31,7 +29,7 @@ const world = vi.hoisted(() => ({
     setItemKeys: [] as string[],
 }))
 
-interface RunInput { tree: Record<string, unknown>, keepInline?: ReadonlySet<string> }
+interface RunInput { tree: Record<string, unknown> }
 
 const pass = vi.hoisted(() => ({
     opened: [] as string[],
@@ -41,7 +39,6 @@ const pass = vi.hoisted(() => ({
     run: null as null | ((input: unknown) => Promise<unknown>),
 }))
 
-const commits = vi.hoisted(() => ({ waiters: [] as (() => void)[] }))
 const sleepForeverMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const noteMainFileBytesMock = vi.hoisted(() => vi.fn((_bytes: Uint8Array): void => { }))
@@ -126,11 +123,8 @@ vi.mock(import('src/ts/observer.svelte'), () => ({ startObserveDom: vi.fn() }) a
 
 vi.mock(import('src/ts/gui/guisize'), () => ({ updateGuisize: vi.fn() }) as unknown as typeof import('src/ts/gui/guisize'))
 
-const selectMock = vi.hoisted(() => vi.fn(async (_chaId: string): Promise<boolean> => true))
-
 vi.mock(import('src/ts/characters'), () => ({
     updateLorebooks: vi.fn((v: unknown) => v),
-    selectCharacterByChaId: selectMock,
 }) as unknown as typeof import('src/ts/characters'))
 
 vi.mock(import('src/ts/hotkey'), () => ({ initMobileGesture: vi.fn() }) as unknown as typeof import('src/ts/hotkey'))
@@ -226,7 +220,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         get buffer() { return new Uint8Array() }
     },
     requiresFullEncoderReload: { state: false },
-    afterNextSaveCommit: vi.fn((callback: () => void) => { commits.waiters.push(callback) }),
     fetchNative: vi.fn(async () => new Response(null, { status: 404 })),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
@@ -373,177 +366,7 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-
-const SELECTION_KEY = 'risu-idle-handoff:selection'
-const DRAFTS_KEY = 'risu-idle-handoff:drafts'
-
-function leaveSelection(chaId: string | null, keepInline: string[], at: number = Date.now()): void {
-    sessionStorage.setItem(SELECTION_KEY, JSON.stringify({ v: 1, reason: 'idle', at, chaId, keepInline }))
-}
-
-function leaveDrafts(composer: { key: string, messageInput: string }[], at: number = Date.now()): void {
-    sessionStorage.setItem(DRAFTS_KEY, JSON.stringify({
-        v: 1,
-        at,
-        composer: composer.map((record) => ({ ...record, messageInputTranslate: '', fileInput: [] })),
-        durable: [],
-    }))
-}
-
-async function composerText(chaId: string, chatId: string): Promise<string> {
-    const { peek } = await import('src/ts/process/composerDrafts.svelte')
-    return peek({ chaId, chatId }).messageInput
-}
-
-beforeEach(() => {
-    sessionStorage.clear()
-    commits.waiters.length = 0
-    selectMock.mockReset().mockResolvedValue(true)
-})
-
-describe('loadData() after an idle reload: the selection part', () => {
-    test('passes its keep-inline set to the pass, reselects by id once the database is installed and deletes the part', async () => {
-        armLegacy()
-        leaveSelection('a', ['a', 'member'])
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        const input = pass.runInputs[0] as RunInput
-        expect(input.keepInline).toEqual(new Set(['a', 'member']))
-        expect(selectMock).toHaveBeenCalledWith('a')
-        expect(sessionStorage.getItem(SELECTION_KEY)).toBeNull()
-        expect(world.events.indexOf('setDatabase')).toBeLessThan(selectMock.mock.invocationCallOrder[0])
-    })
-
-    test('guard: an ordinary boot passes no keep-inline set and selects nothing', async () => {
-        armLegacy()
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        expect((pass.runInputs[0] as RunInput).keepInline).toBeUndefined()
-        expect(selectMock).not.toHaveBeenCalled()
-    })
-
-    test('a selection part older than the interval is deleted and ignored', async () => {
-        armLegacy()
-        leaveSelection('a', ['a'], Date.now() - 11 * 60_000)
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        expect((pass.runInputs[0] as RunInput).keepInline).toBeUndefined()
-        expect(selectMock).not.toHaveBeenCalled()
-        expect(sessionStorage.getItem(SELECTION_KEY)).toBeNull()
-        const { wasBootedByIdleReload } = await import('src/ts/process/memory/idleReloadBootState')
-        expect(wasBootedByIdleReload()).toBe(false)
-    })
-
-    test('a selection that names no character keeps nothing inline beyond its own list and selects nothing', async () => {
-        armLegacy()
-        leaveSelection(null, [])
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        expect((pass.runInputs[0] as RunInput).keepInline).toEqual(new Set())
-        expect(selectMock).not.toHaveBeenCalled()
-    })
-
-    test('marks the boot as started by an idle reload', async () => {
-        armLegacy()
-        leaveSelection('a', ['a'])
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        const { wasBootedByIdleReload } = await import('src/ts/process/memory/idleReloadBootState')
-        expect(wasBootedByIdleReload()).toBe(true)
-    })
-})
-
-describe('loadData() after an idle reload: the carried drafts', () => {
-    test('puts the drafts back once the database is installed and deletes their part when the first save has committed', async () => {
-        armLegacy()
-        leaveDrafts([{ key: 'gone::chat', messageInput: 'carried text' }])
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        expect(await composerText('gone', 'chat')).toBe('carried text')
-        expect(sessionStorage.getItem(DRAFTS_KEY)).not.toBeNull()
-        for (const callback of commits.waiters.splice(0)) {
-            callback()
-        }
-        expect(sessionStorage.getItem(DRAFTS_KEY)).toBeNull()
-    })
-
-    test('a boot that dies after the put-back but before its first save commits leaves the part, and the next boot restores the same text once', async () => {
-        armLegacy()
-        leaveDrafts([{ key: 'gone::chat', messageInput: 'carried text' }])
-        const first = await freshLoadData()
-        await first.loadData()
-        expect(await composerText('gone', 'chat')).toBe('carried text')
-        commits.waiters.length = 0
-
-        vi.resetModules()
-        const next = await freshLoadData()
-        await next.loadData()
-
-        expect(await composerText('gone', 'chat')).toBe('carried text')
-        expect(sessionStorage.getItem(DRAFTS_KEY)).not.toBeNull()
-        for (const callback of commits.waiters.splice(0)) {
-            callback()
-        }
-        expect(sessionStorage.getItem(DRAFTS_KEY)).toBeNull()
-    })
-
-    test('puts back drafts older than the interval, with no selection part present', async () => {
-        armLegacy()
-        leaveDrafts([{ key: 'gone::chat', messageInput: 'old text' }], Date.now() - 3 * 60 * 60_000)
-        const { loadData } = await freshLoadData()
-
-        await loadData()
-
-        expect(await composerText('gone', 'chat')).toBe('old text')
-    })
-
-    test('a boot that fails before the database is installed leaves the drafts part, and the next boot puts the drafts back', async () => {
-        armLegacy()
-        leaveDrafts([{ key: 'gone::chat', messageInput: 'carried text' }])
-        world.failingKeys.add(MAIN_KEY)
-        const failing = await freshLoadData()
-
-        await failing.loadData()
-
-        expect(get(failing.loadedStore)).toBe(false)
-        expect(sessionStorage.getItem(DRAFTS_KEY)).not.toBeNull()
-        expect(await composerText('gone', 'chat')).toBe('')
-
-        world.failingKeys.clear()
-        vi.resetModules()
-        const next = await freshLoadData()
-        await next.loadData()
-
-        expect(await composerText('gone', 'chat')).toBe('carried text')
-        expect(sessionStorage.getItem(DRAFTS_KEY)).not.toBeNull()
-    })
-
-    test('an unreadable drafts part is left in place and the boot carries on', async () => {
-        armLegacy()
-        sessionStorage.setItem(DRAFTS_KEY, '{"v":1,')
-        vi.spyOn(console, 'error').mockImplementation(() => { })
-        const { loadData, loadedStore } = await freshLoadData()
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(sessionStorage.getItem(DRAFTS_KEY)).toBe('{"v":1,')
-    })
-})
-
-describe('loadData(): what the idle reload learns from the pass', () => {
+describe('loadData(): what it records from the archive pass', () => {
     test('records that the pass wrote the main file when its outcome says it committed', async () => {
         armLegacy()
         pass.run = async (input) => ({ kind: 'install', tree: (input as RunInput).tree, noteBytes: new Uint8Array([1]), notices: [], committed: true })
@@ -551,7 +374,7 @@ describe('loadData(): what the idle reload learns from the pass', () => {
 
         await loadData()
 
-        const state = await import('src/ts/process/memory/idleReloadBootState')
+        const state = await import('src/ts/process/memory/bootArchiveState')
         expect(state.didBootPassCommit()).toBe(true)
         expect(state.canBootArchive()).toBe(true)
     })
@@ -562,33 +385,8 @@ describe('loadData(): what the idle reload learns from the pass', () => {
 
         await loadData()
 
-        const state = await import('src/ts/process/memory/idleReloadBootState')
+        const state = await import('src/ts/process/memory/bootArchiveState')
         expect(state.didBootPassCommit()).toBe(false)
         expect(state.canBootArchive()).toBe(true)
-    })
-
-    async function armedAfterBoot(commits: boolean): Promise<boolean> {
-        armLegacy()
-        leaveSelection('a', ['a'])
-        pass.run = async (input) => ({
-            kind: 'install', tree: (input as RunInput).tree, noteBytes: commits ? new Uint8Array([1]) : null, notices: [],
-            ...(commits ? { committed: true as const } : {}),
-        })
-        const listeners = vi.spyOn(window, 'addEventListener')
-        listeners.mockClear()
-        vi.spyOn(globalThis, 'setInterval').mockReturnValue(0 as unknown as ReturnType<typeof setInterval>)
-        const { loadData } = await freshLoadData()
-        await loadData()
-        const { noteRestoredBytes } = await import('src/ts/process/memory/restoredBytes')
-        noteRestoredBytes('someone-else', 60 * 1024 * 1024)
-        return listeners.mock.calls.some((call) => call[0] === 'keydown')
-    }
-
-    test('arms the idle reload on a boot that an idle reload started and whose pass committed', async () => {
-        expect(await armedAfterBoot(true)).toBe(true)
-    })
-
-    test('never arms the idle reload on a boot that an idle reload started and whose pass did not commit', async () => {
-        expect(await armedAfterBoot(false)).toBe(false)
     })
 })
