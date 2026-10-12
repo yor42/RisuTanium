@@ -2641,6 +2641,14 @@ export const languageEnglish = {
         audioTagUnsupported: "Your browser does not support the audio tag.",
         imageAlt: "img",
     },
+    modelStatus: {
+        retiredTag: "retired",
+        retiresTag: "retires {date}",
+        redirectedTag: "now uses {target}",
+        retiredWarning: "{model} has been retired by its provider, so requests to it will probably fail. Choose another model.",
+        redirectedWarning: "{model} has been shut down by its provider, which now forwards its requests to {target}. Answers come from {target}, not from {model}. Choose a model explicitly.",
+        retiresWarning: "{model} is scheduled to be retired by its provider on {date}. After that day it is treated as retired.",
+    },
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

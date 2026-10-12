@@ -108,7 +108,7 @@
 
             {#if DBState.db.seperateParametersByModel}
 
-                <ModelList bind:value={parameterModelSelection} blankable excludesPrefix="plugin" onChange={(v) => {
+                <ModelList bind:value={parameterModelSelection} blankable showRetired excludesPrefix="plugin" onChange={(v) => {
                     DBState.db.seperateParameters.overrides ??= {}
                     DBState.db.seperateParameters.overrides[v] ??= {}
                 }}/>

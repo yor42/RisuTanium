@@ -8,6 +8,8 @@
     import CheckInput from "./GUI/CheckInput.svelte";
     import { getModelInfo, getModelList } from 'src/ts/model/modellist';
     import { ArrowLeft } from "@lucide/svelte";
+    import { modelIdStatus } from 'src/ts/model/modelStatus';
+    import { modelStatusTag, modelStatusWarning } from 'src/ts/model/modelStatusText';
 
     interface Props {
         value?: string;
@@ -18,9 +20,11 @@
         blankable?: boolean
         excludesPrefix?: string
         noMargin?: boolean
+        /** Lists retired and redirected ids too, for a picker that chooses a key rather than a model to run. */
+        showRetired?: boolean
     }
 
-    let { value = $bindable(""), onChange = (v) => {}, onclick, blankable, excludesPrefix, noMargin }: Props = $props();
+    let { value = $bindable(""), onChange = (v) => {}, onclick, blankable, excludesPrefix, noMargin, showRetired }: Props = $props();
     let openOptions = $state(false)
 
     function changeModel(name:string){
@@ -31,8 +35,18 @@
     let showUnrec = $state(false)
     let providers = $derived(getModelList({
         recommendedOnly: !showUnrec,
-        groupedByProvider: true
+        groupedByProvider: true,
+        includeHidden: showRetired
     }))
+    let selectedStatus = $derived(modelIdStatus(value))
+    let selectedTag = $derived(modelStatusTag(selectedStatus))
+    let selectedInfo = $derived(getModelInfo(value))
+    let selectedWarning = $derived(modelStatusWarning(selectedStatus, selectedInfo?.fullName || value))
+
+    function rowLabel(model: { id: string, name: string }){
+        const tag = modelStatusTag(modelIdStatus(model.id))
+        return tag ? `${model.name} (${tag})` : model.name
+    }
 </script>
 
 {#if openOptions}
@@ -61,12 +75,12 @@
             {#each providers as provider}
                 {#if provider.providerName === '@as-is'}
                     {#each provider.models as model}
-                        <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name}</button>
+                        <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
                     {/each}
                 {:else}
                     <Accordion name={provider.providerName}>
                         {#each provider.models.filter(m => !excludesPrefix || !m.id.startsWith(excludesPrefix)) as model}
-                            <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{model.name}</button>
+                            <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
                         {/each}
                     </Accordion>
                 {/if}
@@ -115,6 +129,9 @@
         "drop-shadow-lg p-3 flex justify-center items-center ml-2 mr-2 rounded-lg bg-darkbutton border-darkborderc border": true,
         "my-4": !noMargin,
     }}>
-        {getModelInfo(value)?.fullName || language.none}
+        {(selectedInfo?.fullName || language.none) + (selectedTag ? ` (${selectedTag})` : '')}
 </button>
+{#if selectedWarning}
+    <p data-testid="model-status-note" class={["mx-2 mb-2 text-sm", selectedStatus.kind === 'deprecated' ? "text-textcolor2" : "text-draculared"]}>{selectedWarning}</p>
+{/if}
 

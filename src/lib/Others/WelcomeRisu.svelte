@@ -7,6 +7,7 @@
     import { prebuiltPresets } from "src/ts/process/templates/templates";
     import { updateTextThemeAndCSS } from "src/ts/gui/colorscheme";
     import { alertError } from "src/ts/alert";
+    import { FIRST_RUN_MODELS } from "src/ts/model/firstRunModels";
     import Airisu from '../../etc/Airisu.webp'
 
     const airisuStyle = `background: url("${Airisu}");background-size: cover;`
@@ -101,13 +102,13 @@
                 }
 
                 if(provider === 'claude'){
-                    DBState.db.aiModel = 'claude-sonnet-4-6'
-                    DBState.db.subModel = 'claude-sonnet-4-6'
+                    DBState.db.aiModel = FIRST_RUN_MODELS.claude
+                    DBState.db.subModel = FIRST_RUN_MODELS.claude
                 }
 
                 if(provider === 'openai'){
-                    DBState.db.aiModel = 'gpt4o-chatgpt'
-                    DBState.db.subModel = 'gpt4o-chatgpt'
+                    DBState.db.aiModel = FIRST_RUN_MODELS.openai
+                    DBState.db.subModel = FIRST_RUN_MODELS.openai
                 }
 
                 if(provider === 'openrouter'){
