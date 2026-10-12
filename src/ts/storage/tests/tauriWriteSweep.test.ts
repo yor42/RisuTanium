@@ -54,8 +54,18 @@ describe('sweepAllWriteTemps', () => {
         expect(temps()).toEqual([])
     })
 
-    test('names the directories it covers: database, remotes, coldstorage, blocks and assets', () => {
-        expect([...WRITE_TEMP_DIRECTORIES].sort()).toEqual(['assets', 'blocks', 'coldstorage', 'database', 'remotes'])
+    test('removes the temp an interrupted write of the cached model data file left in modeldata', async () => {
+        h.fs.plant(`modeldata/${TEMP}`, BYTES)
+        h.fs.plant('modeldata/openrouter.json', BYTES)
+
+        await sweepAllWriteTemps()
+
+        expect(temps()).toEqual([])
+        expect(h.fs.files.has('modeldata/openrouter.json')).toBe(true)
+    })
+
+    test('names the directories it covers: database, remotes, coldstorage, blocks, assets and modeldata', () => {
+        expect([...WRITE_TEMP_DIRECTORIES].sort()).toEqual(['assets', 'blocks', 'coldstorage', 'database', 'modeldata', 'remotes'])
     })
 
     test('keeps every file that is not a write temp, including names that merely look like one', async () => {

@@ -101,6 +101,7 @@ vi.mock('./ChatFormatSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./PromptSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./SeparateParametersSection.svelte', () => ({ default: () => {} }))
 vi.mock('./Model/AuxModelSelectors.svelte', () => ({ default: () => {} }))
+vi.mock('./Model/ModelDataRefresh.svelte', () => ({ default: () => {} }))
 
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'

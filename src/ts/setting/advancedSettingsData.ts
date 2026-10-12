@@ -163,7 +163,7 @@ export const advancedSettingsItems: SettingItem[] = [
     { id: 'adv.noWaitTrans', type: 'check', labelKey: 'noWaitForTranslate', bindKey: 'noWaitForTranslate', classes: 'mt-4' },
     { id: 'adv.newImgBeta', type: 'check', labelKey: 'newImageHandlingBeta', bindKey: 'newImageHandlingBeta', classes: 'mt-4' },
     { id: 'adv.allowExt', type: 'check', labelKey: 'allowAllFileSelect', fallbackLabel: 'Allow all in file select', bindKey: 'allowAllExtentionFiles', classes: 'mt-4' },
-    { id: 'adv.dynamicModelRegistry', type: 'check', labelKey: 'dynamicModelRegistry', bindKey: 'dynamicModelRegistry', classes: 'mt-4' },
+    { id: 'adv.dynamicModelRegistry', type: 'check', labelKey: 'dynamicModelRegistry', bindKey: 'dynamicModelRegistry', classes: 'mt-4', helpKey: 'dynamicModelRegistry' },
     { id: 'adv.disableSeperateParameterChangeOnPresetChange', type: 'check', labelKey: 'disableSeperateParameterChangeOnPresetChange', bindKey: 'disableSeperateParameterChangeOnPresetChange', classes: 'mt-4' },
     { id: 'adv.coldstorage', type: 'check', labelKey: 'coldStorage', getValue: (db) => db.archiveCharacters !== false, setValue: (db, val: boolean) => { db.archiveCharacters = val; clearStubEnrichStrikes(); if (!val) { clearArchiveMemo() } }, classes: 'mt-4', helpKey: 'coldstorage', keywords: ['cold storage', 'archive'] },
 

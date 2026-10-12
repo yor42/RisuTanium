@@ -611,8 +611,22 @@ for(let i=0; i<LLMModels.length; i++){
     }
 }
 
+/**
+ * Hands the registry option to the model data service. The service loads its saved file
+ * whatever the option says and fetches only when it is on. The dynamic import keeps the
+ * page store out of every module graph that loads this file without calling
+ * registerModelDynamic. Nothing here can throw or reject, and nothing awaits it, so the
+ * provider fetches below are neither delayed nor ordered by it.
+ */
+function startModelData(autoRefresh:boolean){
+    void import('./modelData/modelDataStore')
+        .then(m => m.startModelData(autoRefresh))
+        .catch(error => console.error('Model data', error))
+}
+
 export async function registerModelDynamic(){
 
+    startModelData(!!DBState.db.dynamicModelRegistry)
     if(!DBState.db.dynamicModelRegistry){
         return
     }

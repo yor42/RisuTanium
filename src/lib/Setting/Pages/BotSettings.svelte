@@ -12,6 +12,7 @@
     import { isTauri } from "src/ts/platform"
     import { tokenizeAccurate, tokenizerList } from "src/ts/tokenizer";
     import ModelList from "src/lib/UI/ModelList.svelte";
+    import ModelDataRefresh from "./Model/ModelDataRefresh.svelte";
     import DropList from "src/lib/SideBars/DropList.svelte";
     import { PlusIcon, TrashIcon, HardDriveUploadIcon, DownloadIcon, UploadIcon } from "@lucide/svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
@@ -170,6 +171,7 @@
 
     <span class="text-textcolor mt-2">{language.submodel} <Help key="submodel"/></span>
     <ModelList bind:value={DBState.db.subModel}/>
+    <ModelDataRefresh />
 
     <p class="text-textcolor2 text-sm mt-4 mb-2" data-testid="api-key-env-ref-note">{language.settingsPage.apiKeyEnvRefNote}</p>
 

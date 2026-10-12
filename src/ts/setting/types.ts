@@ -72,7 +72,9 @@ export interface SettingOptions {
     customText?: string | ((value: number) => string); // Custom display text for slider
     multiple?: number;      // Multiplier for display value
     nullable?: boolean;     // Allow null for color inputs
-    
+    actualMax?: (ctx: SettingContext) => number | undefined; // number: listed maximum shown beside the value; undefined = unknown
+    actualMaxWarning?: (max: string) => string; // number: warning shown when the value is above actualMax
+
     // select
     selectOptions?: SelectOption[];
     

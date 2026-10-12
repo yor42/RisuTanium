@@ -731,7 +731,8 @@ export const languageEnglish = {
             "Higher values use more chat context to determine similarity.",
         hypaV3SummaryChunkSeparator:
             "Separator used to split summaries into chunks for similarity search.",
-        coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. This keeps memory use low when you have many characters. Turning it off archives nothing new, and characters that are already archived still open normally."
+        coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. This keeps memory use low when you have many characters. Turning it off archives nothing new, and characters that are already archived still open normally.",
+        dynamicModelRegistry: "Fetches the model lists of Google, Anthropic and OpenAI with your API keys at startup and adds models missing from the built-in list (for OpenAI, GPT models). It also checks openrouter.ai for public model limits and prices at startup, at most once a day (no key is sent). Turning this off stops the automatic downloads and the added models; saved data is still used, and the Refresh model data button still works."
     },
     setup: {
         theme: "Select your theme",
@@ -1139,6 +1140,14 @@ export const languageEnglish = {
     autoSuggest: "Auto Suggest",
     tokens: "Tokens",
     maxContextSize: "Max Context Size",
+    maxContextAboveModelMax: (max: string) =>
+        `This is above the model's listed maximum context of ${max}. The provider may reject or truncate the request.`,
+    modelDataRefresh: "Refresh model data",
+    modelDataRefreshing: "Refreshing...",
+    modelDataStatusNever: "Model data has not been downloaded yet",
+    modelDataStatusUpdated: (time: string) => `Model data updated ${time}`,
+    modelDataStatusFailed: (time: string) => `Could not refresh. Showing data from ${time}`,
+    modelDataStatusFailedEmpty: "Could not download model data",
     maxResponseSize: "Max Response Size",
     temperature: "Temperature",
     frequencyPenalty: "Frequency Penalty",
