@@ -1886,6 +1886,14 @@ export const languageChineseTraditional = {
     "aiGenerationWarning": "內容將由 AI 生成，可能包含不準確資訊或偏見",
     "duplicatePluginFoundUpdateIt": "已安裝相同外掛。要更新現有外掛嗎？",
     "pluginUpdateFoundInstallIt": "發現外掛更新。要安裝更新嗎？",
+    "pluginBatchReview": (added: string, updated: string, failed: string) =>
+        '請檢查這些外掛檔案。確認後，新外掛會以啟用狀態安裝，已安裝的外掛則會更新並保留其已儲存的設定。失敗的檔案不會被安裝。'
+        + (added ? `\n\n新增：\n${added}` : '')
+        + (updated ? `\n\n更新（保留設定）：\n${updated}` : '')
+        + (failed ? `\n\n失敗：\n${failed}` : ''),
+    "pluginBatchMore": (count: number) => `……另外還有 ${count} 個`,
+    "pluginBatchRepeated": "此次選取中的另一個檔案使用了相同的外掛名稱。",
+    "pluginBatchTranspileFailed": (message: string) => `轉譯 TypeScript 程式碼失敗：${message}`,
     "goToChat": "前往對話",
     "bookmark": "書籤",
     "translate": "翻譯",
@@ -2248,6 +2256,16 @@ export const languageChineseTraditional = {
     "importUnsupportedFile": "無法匯入此檔案類型。",
     "importNotCardFile": "這不是角色卡檔案。",
     "importFileNotReceived": "未能接收到該檔案。",
+    "importDeclinedLowLevel": "未匯入：低階存取已被拒絕。",
+    "moduleLowLevelNamed": (name: string, file?: string) => file ? `模組「${name}」（${file}）` : `模組「${name}」`,
+    "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `已匯入 ${imported} 個模組，略過 ${skipped} 個。` : `已匯入 ${imported} 個模組。`,
+    "moduleUnsupportedFile": (name: string) => `${name}：此檔案類型不支援作為模組。`,
+    "moduleDuplicatePrompt": (name: string, file: string) => `已安裝名為「${name}」的模組（${file}）。要如何處理此檔案？`,
+    "moduleDuplicateReplace": "取代",
+    "moduleDuplicateSkip": "略過",
+    "moduleDuplicateAddAnyway": "仍然新增",
+    "moduleDuplicateAll": (label: string) => `對其餘所有檔案${label}`,
+    "moduleReplaceNamespaceChanged": (name: string, oldNamespace: string, newNamespace: string) => `模組「${name}」：Namespace 已從「${oldNamespace}」變更為「${newNamespace}」。`,
     "devTool": {
         "variables": "變數",
         "object": "物件",

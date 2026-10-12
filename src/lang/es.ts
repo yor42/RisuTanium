@@ -1847,6 +1847,14 @@ export const languageSpanish = {
     "duplicatePluginFoundUpdateIt": "Se encontró un plugin duplicado. ¿Deseas actualizar el plugin existente?",
     "branchedText": "Este chat se ha ramificado desde {}.",
     "pluginUpdateFoundInstallIt": "Se ha encontrado una actualización del plugin. ¿Deseas instalar la actualización?",
+    "pluginBatchReview": (added: string, updated: string, failed: string) =>
+        'Revisa estos archivos de plugin. Al confirmar, los plugins nuevos se instalan activados y los ya instalados se actualizan, conservando su configuración guardada. Los archivos con error no se instalan.'
+        + (added ? `\n\nNuevos:\n${added}` : '')
+        + (updated ? `\n\nActualización (se conserva la configuración):\n${updated}` : '')
+        + (failed ? `\n\nCon error:\n${failed}` : ''),
+    "pluginBatchMore": (count: number) => `...y ${count} más`,
+    "pluginBatchRepeated": "Otro archivo de esta selección tiene el mismo nombre de plugin.",
+    "pluginBatchTranspileFailed": (message: string) => `No se pudo transpilar el código TypeScript: ${message}`,
     "branch": "Rama",
     "newMessageButtonBottomLeft": "Abajo a la izquierda",
     "newMessage": "Nuevo mensaje",
@@ -2205,6 +2213,16 @@ export const languageSpanish = {
     importUnsupportedFile: "Este tipo de archivo no se puede importar.",
     importNotCardFile: "Este no es un archivo de tarjeta de personaje.",
     importFileNotReceived: "No se pudo recibir el archivo.",
+    importDeclinedLowLevel: "No importado: se rechazó el Acceso de Bajo Nivel.",
+    moduleLowLevelNamed: (name: string, file?: string) => file ? `Módulo "${name}" (${file})` : `Módulo "${name}"`,
+    importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Se ${imported === 1 ? 'importó' : 'importaron'} ${imported} ${imported === 1 ? 'módulo' : 'módulos'}; omitidos: ${skipped}.` : `Se ${imported === 1 ? 'importó' : 'importaron'} ${imported} ${imported === 1 ? 'módulo' : 'módulos'}.`,
+    moduleUnsupportedFile: (name: string) => `${name}: este tipo de archivo no es compatible como módulo.`,
+    moduleDuplicatePrompt: (name: string, file: string) => `Ya hay instalado un módulo llamado "${name}" (${file}). ¿Qué debe hacerse con este archivo?`,
+    moduleDuplicateReplace: "Reemplazar",
+    moduleDuplicateSkip: "Omitir",
+    moduleDuplicateAddAnyway: "Añadir de todos modos",
+    moduleDuplicateAll: (label: string) => `${label} en todos los archivos restantes`,
+    moduleReplaceNamespaceChanged: (name: string, oldNamespace: string, newNamespace: string) => `Módulo "${name}": el namespace cambió de "${oldNamespace}" a "${newNamespace}".`,
     devTool: {
         variables: "Variables",
         object: "Objeto",

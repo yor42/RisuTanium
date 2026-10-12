@@ -1842,6 +1842,14 @@ export const languageVietnamese = {
     "bookmark": "Dấu trang",
     "duplicatePluginFoundUpdateIt": "Phát hiện plugin trùng lặp. Bạn có muốn cập nhật plugin hiện có không?",
     "pluginUpdateFoundInstallIt": "Đã tìm thấy bản cập nhật plugin. Bạn có muốn cài đặt bản cập nhật này không?",
+    "pluginBatchReview": (added: string, updated: string, failed: string) =>
+        'Hãy xem lại các tệp plugin này. Khi xác nhận, các plugin mới sẽ được cài đặt ở trạng thái bật và các plugin đã cài đặt sẽ được cập nhật, giữ nguyên các cài đặt đã lưu của chúng. Các tệp bị lỗi sẽ không được cài đặt.'
+        + (added ? `\n\nMới:\n${added}` : '')
+        + (updated ? `\n\nCập nhật (giữ nguyên cài đặt):\n${updated}` : '')
+        + (failed ? `\n\nLỗi:\n${failed}` : ''),
+    "pluginBatchMore": (count: number) => `...và ${count} mục khác`,
+    "pluginBatchRepeated": "Một tệp khác trong lựa chọn này có cùng tên plugin.",
+    "pluginBatchTranspileFailed": (message: string) => `Không thể chuyển đổi (transpile) mã TypeScript: ${message}`,
     "branchedText": "Cuộc trò chuyện này đã được rẽ nhánh từ {}.",
     "loadMore": "Tải thêm",
     "goToChat": "Đi đến Chat",
@@ -2203,6 +2211,16 @@ export const languageVietnamese = {
     importUnsupportedFile: "Không thể nhập loại tệp này.",
     importNotCardFile: "Đây không phải là tệp thẻ nhân vật.",
     importFileNotReceived: "Không thể nhận được tệp.",
+    importDeclinedLowLevel: "Chưa nhập: Truy cập cấp thấp đã bị từ chối.",
+    moduleLowLevelNamed: (name: string, file?: string) => file ? `Mô-đun "${name}" (${file})` : `Mô-đun "${name}"`,
+    importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Đã nhập ${imported} mô-đun, bỏ qua ${skipped}.` : `Đã nhập ${imported} mô-đun.`,
+    moduleUnsupportedFile: (name: string) => `${name}: loại tệp này không được hỗ trợ làm mô-đun.`,
+    moduleDuplicatePrompt: (name: string, file: string) => `Mô-đun có tên "${name}" (${file}) đã được cài đặt. Nên xử lý tệp này như thế nào?`,
+    moduleDuplicateReplace: "Thay thế",
+    moduleDuplicateSkip: "Bỏ qua",
+    moduleDuplicateAddAnyway: "Vẫn thêm",
+    moduleDuplicateAll: (label: string) => `${label} cho tất cả các tệp còn lại`,
+    moduleReplaceNamespaceChanged: (name: string, oldNamespace: string, newNamespace: string) => `Mô-đun "${name}": namespace đã thay đổi từ "${oldNamespace}" thành "${newNamespace}".`,
     devTool: {
         variables: "Biến",
         object: "Đối tượng",

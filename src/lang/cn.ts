@@ -1841,6 +1841,14 @@ export const languageChinese = {
     "bookmark": "书签",
     "loadMore": "加载更多",
     "pluginUpdateFoundInstallIt": "发现插件更新。是否安装更新？",
+    "pluginBatchReview": (added: string, updated: string, failed: string) =>
+        '请检查这些插件文件。确认后，新插件将以启用状态安装，已安装的插件将更新并保留其已保存的设置。失败的文件不会被安装。'
+        + (added ? `\n\n新增：\n${added}` : '')
+        + (updated ? `\n\n更新（保留设置）：\n${updated}` : '')
+        + (failed ? `\n\n失败：\n${failed}` : ''),
+    "pluginBatchMore": (count: number) => `……以及另外 ${count} 个`,
+    "pluginBatchRepeated": "此次选择中的另一个文件具有相同的插件名称。",
+    "pluginBatchTranspileFailed": (message: string) => `转译 TypeScript 代码失败：${message}`,
     "goToChat": "前往聊天",
     "branchedText": "此对话分支自 {}。",
     "noRequestLogs": "暂无请求日志。",
@@ -2203,6 +2211,16 @@ export const languageChinese = {
     "importUnsupportedFile": "无法导入此文件类型。",
     "importNotCardFile": "这不是角色卡文件。",
     "importFileNotReceived": "未能接收到该文件。",
+    "importDeclinedLowLevel": "未导入：低层级访问被拒绝。",
+    "moduleLowLevelNamed": (name: string, file?: string) => file ? `模块“${name}”（${file}）` : `模块“${name}”`,
+    "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `已导入 ${imported} 个模块，跳过 ${skipped} 个。` : `已导入 ${imported} 个模块。`,
+    "moduleUnsupportedFile": (name: string) => `${name}：此文件类型不支持作为模块。`,
+    "moduleDuplicatePrompt": (name: string, file: string) => `已安装名为“${name}”的模块（${file}）。应如何处理此文件？`,
+    "moduleDuplicateReplace": "替换",
+    "moduleDuplicateSkip": "跳过",
+    "moduleDuplicateAddAnyway": "仍然添加",
+    "moduleDuplicateAll": (label: string) => `对其余所有文件${label}`,
+    "moduleReplaceNamespaceChanged": (name: string, oldNamespace: string, newNamespace: string) => `模块“${name}”：命名空间已从“${oldNamespace}”更改为“${newNamespace}”。`,
     "devTool": {
         "variables": "变量",
         "object": "对象",

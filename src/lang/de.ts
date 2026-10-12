@@ -1846,6 +1846,14 @@ export const languageGerman = {
     "branchedText": "Dieser Chat wurde von {} abgezweigt.",
     "duplicatePluginFoundUpdateIt": "Doppeltes Plugin gefunden. Möchten Sie das bestehende Plugin aktualisieren?",
     "pluginUpdateFoundInstallIt": "Plugin-Update gefunden. Möchten Sie das Update installieren?",
+    "pluginBatchReview": (added: string, updated: string, failed: string) =>
+        'Prüfen Sie diese Plugin-Dateien. Mit der Bestätigung werden neue Plugins eingeschaltet installiert und bereits installierte Plugins aktualisiert, wobei ihre gespeicherten Einstellungen erhalten bleiben. Fehlgeschlagene Dateien werden nicht installiert.'
+        + (added ? `\n\nNeu:\n${added}` : '')
+        + (updated ? `\n\nUpdate (Einstellungen bleiben erhalten):\n${updated}` : '')
+        + (failed ? `\n\nFehlgeschlagen:\n${failed}` : ''),
+    "pluginBatchMore": (count: number) => `...und ${count} weitere`,
+    "pluginBatchRepeated": "Eine andere Datei in dieser Auswahl hat denselben Plugin-Namen.",
+    "pluginBatchTranspileFailed": (message: string) => `TypeScript-Code konnte nicht transpiliert werden: ${message}`,
     "goToChat": "Zum Chat",
     "branch": "Zweig",
     "newMessageButtonBottomLeft": "Unten links",
@@ -2205,6 +2213,16 @@ export const languageGerman = {
     "importUnsupportedFile": "Dieser Dateityp kann nicht importiert werden.",
     "importNotCardFile": "Dies ist keine Charakterkarten-Datei.",
     "importFileNotReceived": "Die Datei konnte nicht empfangen werden.",
+    "importDeclinedLowLevel": "Nicht importiert: Low-Level-Zugriff wurde abgelehnt.",
+    "moduleLowLevelNamed": (name: string, file?: string) => file ? `Modul "${name}" (${file})` : `Modul "${name}"`,
+    "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `${imported} ${imported === 1 ? 'Modul' : 'Module'} importiert, ${skipped} übersprungen.` : `${imported} ${imported === 1 ? 'Modul' : 'Module'} importiert.`,
+    "moduleUnsupportedFile": (name: string) => `${name}: Dieser Dateityp wird nicht als Modul unterstützt.`,
+    "moduleDuplicatePrompt": (name: string, file: string) => `Ein Modul mit dem Namen "${name}" (${file}) ist bereits installiert. Was soll mit dieser Datei geschehen?`,
+    "moduleDuplicateReplace": "Ersetzen",
+    "moduleDuplicateSkip": "Überspringen",
+    "moduleDuplicateAddAnyway": "Trotzdem hinzufügen",
+    "moduleDuplicateAll": (label: string) => `${label} für alle verbleibenden Dateien`,
+    "moduleReplaceNamespaceChanged": (name: string, oldNamespace: string, newNamespace: string) => `Modul "${name}": Der Namespace wurde von "${oldNamespace}" zu "${newNamespace}" geändert.`,
     "devTool": {
         "variables": "Variablen",
         "object": "Objekt",

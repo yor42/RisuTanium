@@ -1866,6 +1866,14 @@ export const languageKorean = {
     "duplicatePluginFoundUpdateIt": "중복된 플러그인이 발견되었습니다. 기존 플러그인을 업데이트하시겠습니까?",
     "loadMore": "더 보기",
     "pluginUpdateFoundInstallIt": "플러그인 업데이트가 발견되었습니다. 업데이트를 설치하시겠습니까?",
+    "pluginBatchReview": (added: string, updated: string, failed: string) =>
+        '이 플러그인 파일들을 검토하세요. 확인하면 새 플러그인은 켜진 상태로 설치되고, 이미 설치된 플러그인은 저장된 설정을 유지한 채 업데이트됩니다. 실패한 파일은 설치되지 않습니다.'
+        + (added ? `\n\n신규:\n${added}` : '')
+        + (updated ? `\n\n업데이트 (설정 유지):\n${updated}` : '')
+        + (failed ? `\n\n실패:\n${failed}` : ''),
+    "pluginBatchMore": (count: number) => `...외 ${count}개`,
+    "pluginBatchRepeated": "이 선택에 같은 플러그인 이름을 가진 다른 파일이 있습니다.",
+    "pluginBatchTranspileFailed": (message: string) => `TypeScript 코드를 트랜스파일하지 못했습니다: ${message}`,
     "noRequestLogs": "요청 로그가 없습니다.",
     "branchedText": "이 채팅은 {}에서 분기되었습니다.",
     "disableMessage": "메시지 비활성화",
@@ -2203,6 +2211,16 @@ export const languageKorean = {
     importUnsupportedFile: "이 파일 형식은 임포트할 수 없습니다.",
     importNotCardFile: "캐릭터 카드 파일이 아닙니다.",
     importFileNotReceived: "파일을 받지 못했습니다.",
+    importDeclinedLowLevel: "임포트하지 않음: 저수준 접근이 거부되었습니다.",
+    moduleLowLevelNamed: (name: string, file?: string) => file ? `모듈 "${name}" (${file})` : `모듈 "${name}"`,
+    importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `모듈 ${imported}개를 임포트했고 ${skipped}개를 건너뛰었습니다.` : `모듈 ${imported}개를 임포트했습니다.`,
+    moduleUnsupportedFile: (name: string) => `${name}: 이 파일 형식은 모듈로 지원되지 않습니다.`,
+    moduleDuplicatePrompt: (name: string, file: string) => `"${name}" 모듈(${file})이 이미 설치되어 있습니다. 이 파일을 어떻게 처리할까요?`,
+    moduleDuplicateReplace: "바꾸기",
+    moduleDuplicateSkip: "건너뛰기",
+    moduleDuplicateAddAnyway: "그대로 추가",
+    moduleDuplicateAll: (label: string) => `남은 모든 파일에 대해 ${label}`,
+    moduleReplaceNamespaceChanged: (name: string, oldNamespace: string, newNamespace: string) => `모듈 "${name}": 네임스페이스가 "${oldNamespace}"에서 "${newNamespace}"(으)로 변경되었습니다.`,
     devTool: {
         variables: "변수",
         object: "오브젝트",
