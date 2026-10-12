@@ -2495,5 +2495,13 @@ export const languageChinese = {
         "videoTagUnsupported": "您的浏览器不支持 video 标签。",
         "audioTagUnsupported": "您的浏览器不支持 audio 标签。",
         "imageAlt": "图片"
+    },
+    "modelStatus": {
+        "retiredTag": "已停用",
+        "retiresTag": "{date} 停用",
+        "redirectedTag": "现使用 {target}",
+        "retiredWarning": "{model} 已被服务提供方停用，向其发送的请求很可能会失败。请选择其他模型。",
+        "redirectedWarning": "{model} 已被服务提供方关停，其请求现被转发至 {target}。回答来自 {target}，而非 {model}。请明确选择一个模型。",
+        "retiresWarning": "服务提供方计划于 {date} 停用 {model}。该日期之后将视为已停用。"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

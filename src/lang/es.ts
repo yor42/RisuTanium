@@ -2498,4 +2498,12 @@ export const languageSpanish = {
         audioTagUnsupported: "Tu navegador no admite la etiqueta audio.",
         imageAlt: "imagen"
     },
+    modelStatus: {
+        retiredTag: "retirado",
+        retiresTag: "se retira el {date}",
+        redirectedTag: "ahora usa {target}",
+        retiredWarning: "El proveedor ha retirado {model}, por lo que es probable que las solicitudes a este modelo fallen. Elige otro modelo.",
+        redirectedWarning: "El proveedor ha cerrado {model} y ahora reenvía sus solicitudes a {target}. Las respuestas proceden de {target}, no de {model}. Elige un modelo de forma explícita.",
+        retiresWarning: "El proveedor tiene previsto retirar {model} el {date}. A partir de ese día se considera retirado.",
+    },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

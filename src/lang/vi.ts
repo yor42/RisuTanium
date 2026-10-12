@@ -2496,4 +2496,12 @@ export const languageVietnamese = {
         audioTagUnsupported: "Trình duyệt của bạn không hỗ trợ thẻ audio.",
         imageAlt: "hình ảnh"
     },
+    modelStatus: {
+        retiredTag: "đã ngừng",
+        retiresTag: "ngừng {date}",
+        redirectedTag: "nay dùng {target}",
+        retiredWarning: "{model} đã bị nhà cung cấp ngừng hoạt động nên các yêu cầu gửi đến nó có thể sẽ thất bại. Hãy chọn mô hình khác.",
+        redirectedWarning: "{model} đã bị nhà cung cấp ngừng hoạt động và hiện chuyển tiếp các yêu cầu của nó đến {target}. Câu trả lời đến từ {target}, không phải từ {model}. Hãy chọn một mô hình cụ thể.",
+        retiresWarning: "Nhà cung cấp dự kiến ngừng {model} vào {date}. Sau ngày đó, nó được xem là đã ngừng.",
+    },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

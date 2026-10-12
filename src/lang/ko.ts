@@ -2496,4 +2496,12 @@ export const languageKorean = {
         audioTagUnsupported: "사용 중인 브라우저가 audio 태그를 지원하지 않습니다.",
         imageAlt: "이미지"
     },
+    modelStatus: {
+        retiredTag: "종료됨",
+        retiresTag: "{date} 종료 예정",
+        redirectedTag: "이제 {target} 사용",
+        retiredWarning: "{model}은(는) 제공자가 서비스를 종료했으므로 요청이 실패할 가능성이 높습니다. 다른 모델을 선택하세요.",
+        redirectedWarning: "{model}은(는) 제공자가 서비스를 종료했으며, 제공자가 현재 요청을 {target}(으)로 전달합니다. 응답은 {model}이(가) 아니라 {target}에서 생성됩니다. 모델을 직접 선택하세요.",
+        retiresWarning: "{model}은(는) 제공자가 {date}에 서비스를 종료할 예정입니다. 해당 날짜 이후에는 종료된 것으로 처리됩니다.",
+    },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

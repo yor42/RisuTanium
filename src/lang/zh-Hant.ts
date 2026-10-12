@@ -2540,5 +2540,13 @@ export const languageChineseTraditional = {
         "videoTagUnsupported": "您的瀏覽器不支援 video 標籤。",
         "audioTagUnsupported": "您的瀏覽器不支援 audio 標籤。",
         "imageAlt": "圖片"
+    },
+    "modelStatus": {
+        "retiredTag": "已停用",
+        "retiresTag": "{date} 停用",
+        "redirectedTag": "現改用 {target}",
+        "retiredWarning": "{model} 已被供應商停用，對其發出的請求很可能會失敗。請選擇其他模型。",
+        "redirectedWarning": "{model} 已被供應商關閉，供應商現將其請求轉送至 {target}。回應來自 {target}，而非 {model}。請明確選擇一個模型。",
+        "retiresWarning": "供應商計劃於 {date} 停用 {model}。該日期之後將視為已停用。"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

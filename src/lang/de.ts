@@ -2497,5 +2497,13 @@ export const languageGerman = {
         "videoTagUnsupported": "Ihr Browser unterstützt das Video-Tag nicht.",
         "audioTagUnsupported": "Ihr Browser unterstützt das Audio-Tag nicht.",
         "imageAlt": "Bild"
+    },
+    "modelStatus": {
+        "retiredTag": "eingestellt",
+        "retiresTag": "wird {date} eingestellt",
+        "redirectedTag": "nutzt jetzt {target}",
+        "retiredWarning": "{model} wurde vom Anbieter eingestellt, daher werden Anfragen daran wahrscheinlich fehlschlagen. Wählen Sie ein anderes Modell.",
+        "redirectedWarning": "{model} wurde vom Anbieter abgeschaltet, der Anfragen dafür jetzt an {target} weiterleitet. Antworten stammen von {target}, nicht von {model}. Wählen Sie ein Modell ausdrücklich aus.",
+        "retiresWarning": "{model} wird vom Anbieter voraussichtlich am {date} eingestellt. Ab diesem Tag gilt es als eingestellt."
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;
