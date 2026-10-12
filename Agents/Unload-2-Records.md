@@ -123,6 +123,7 @@ Environment: a cloud Linux container (no Note 9, no Android build, no Windows, n
 | 2012 | 2026-10-12 | Gate 1, the card import plan (round 2, amendments A1 to A10) | `opus-reviewer` (same context, resumed) | cumulative 176,486 subagent tokens; this round 5 tool uses, 51,728 ms | Gate 1 | `[REJECT]` (substantive, round 2 of the streak). One SHOULD: the ok result's `stub` is the plain object, but the list stores a deep `$state` proxy of it (Svelte 5.56.8 proxy `set` trap), so stage 2's identity check would always fail and the decided old-unit deletion (`MC-305` 4) would silently never run. Fix: return the slot's element read back after placement. A2, A3, A6 and A9 judged acceptable; a swallowed save mark after placement is covered by the identity tracker once the change effects are registered. Mechanism reconsidered at the second rejection: both rejections are engine contract details, the mechanism is kept. |
 | 2013 | 2026-10-12 | Gate 1, the card import plan (round 3, targeted: A4' and A9') | `opus-reviewer` (same context, resumed) | cumulative 178,205 subagent tokens; this round 2 tool uses, about 21 s | Gate 1 | `[APPROVE]`. The slot's element read back after placement is the stable proxy every later read returns; the retained record, restore and put-back all use that same proxy. Streak ended at two substantive rejections; no advisor escalation needed. |
 | 2014 | 2026-10-12 | Gate 2, stub v3 (uncommitted working tree on `7d8890a`) | `opus-reviewer` | 116,439 subagent tokens, 47 tool uses, 442,011 ms | Gate 2 | `[EDITORIAL]`, no behaviour, save-format or data-loss defect. Executed: the 10 touched test files on the live tree, 547 of 547 pass; in a scratch copy with the `f45ac41` `coldCharacter.ts`, `characterSearch.ts` and `bootArchivePass.ts`, 67 fail and 480 pass, with the upgrade pass, edited-creator, archived-search, newer-`lastInteraction`, reactivity and cache reproducers failing on behaviour; a bare-bump mutant fails exactly the v2 chat-count guard; `pnpm check` 0 errors, 0 warnings on the final tree; LF preserved, `git diff --check` clean. Editorial findings: three tests labelled reproducer pass on base (relabel or assert literals), one is red only on a missing export, stale `coldstorage` mentions in the `buildIndex` comment and a test header, `bootArchiveMemo.ts` still says upstream-made, `plugins.md` lacks the v3 note, describe titles, a tautological compat assertion, two overlong comment lines. |
+| 2015 | 2026-10-12 | Apply the stub v3 Gate 2 editorial fixes | `sonnet-coder` (same context, resumed) | cumulative 140,120 subagent tokens; this round 6 tool uses, 105,861 ms | editorial closure | Executed: the five touched test files, 214 passed; the upstream-stub tags and creator test, now asserting literals, fails on `f45ac41`'s `coldCharacter.ts` ("expected undefined to deeply equal [ 'x' ]"), file restored byte-identical; `pnpm check` 0 errors, 0 warnings. Labels, describe titles, stale comments (`characterSearch.ts`, `bootArchiveMemo.ts`, a test header), the `plugins.md` placeholder note, the compat test's self-comparison and two overlong comment lines fixed; `characters.coldRestore.svelte.test.ts` now asserts the restored slot takes the unit's tags and creator. |
 
 ## Tickets (CHORE-200 to CHORE-219)
 
@@ -130,14 +131,17 @@ None yet.
 
 ## Gate verdicts
 
-- **Stub v3 (`MC-302`):** Gate 1 `opus-reviewer` `[APPROVE]` with SHOULD findings adopted into plan v2 (row 2006). Gate 2 `opus-reviewer` `[EDITORIAL]` (row 2014); editorial fixes pending.
+- **Stub v3 (`MC-302`):** Gate 1 `opus-reviewer` `[APPROVE]` with SHOULD findings adopted into plan v2 (row 2006). Gate 2 `opus-reviewer` `[EDITORIAL]` (row 2014); the editorial fixes were applied by the coder (row 2015) and verified incrementally by the orchestrator (diff read for the comment and `plugins.md` items; the coder's targeted run and red-before for the one assertion change). No Gate 2 restart (editorial only).
 - **Card import to the archive (`MC-303`, `MC-306`):** Gate 1 `opus-reviewer` `[REJECT]`, `[REJECT]`, then `[APPROVE]` on plan v3 (rows 2011 to 2013); the mechanism was reconsidered at the second rejection and kept. Implementation waits for the stub v3 commit.
 - **Release item, the `dist` check (`MC-301`):** small and low-risk, no plan gate (the carve-out); Gate 2 `adversarial-reviewer` `[APPROVE]` (row 2004). No application code changed, so no `pnpm test` or `pnpm check` run for it; the script was run against a normal and a measurement build (rows 2003, 2004).
 
 ## Full checks
 
-None yet.
+- **Stub v3 (`MC-302`), owner: the orchestrator, on the stub v3 working tree over `c183d17`.**
+  - `pnpm test`: 691 files passed, 13,683 tests passed, 6 skipped, exit 0 (716 s). Run before the editorial fixes; those changed four test files' labels or assertions and comments only, re-run by the coder with the touched files (row 2015).
+  - `pnpm check` on the final snapshot: 0 errors, 0 warnings.
+  - `pnpm build` on the final snapshot: exit 0; then `pnpm check:dist`: OK, 203 files scanned, no measurement markers.
 
 ## Owed device and Tauri checks
 
-None yet.
+- **Stub v3:** on the Note 9 (Android, Tauri) and Windows (Tauri desktop, and a Node server profile), a profile with many version 2 stubs upgrades once at the next startup: the progress line shows, the time per 1000 archived characters is recorded (to decide whether a per-boot cap is needed), a second startup reads nothing, chat counts are unchanged, and searching by tag and by an edited creator finds archived characters. On iOS or an OPFS-only browser, version 2 stubs stay, show the right chat count and are not found by tag (accepted, `MC-302` 2).
