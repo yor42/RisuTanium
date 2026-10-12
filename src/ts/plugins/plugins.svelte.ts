@@ -3,7 +3,7 @@ import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
 import { getCurrentCharacter, getDatabase, setDatabase, setDatabaseLite } from "../storage/database.svelte";
 import { alertConfirm, alertError, alertNormal, alertPluginConfirm, waitAlert } from "../alert";
-import { selectSingleFile, sleep } from "../util";
+import { selectFileByDom, sleep } from "../util";
 import type { OpenAIChat } from "../process/index.svelte";
 import { fetchNative, globalFetch, readImage, saveAsset, toGetter } from "../globalApi.svelte";
 import { DBState, hotReloading, pluginAlertModalStore, selectedCharID } from "../stores.svelte";
@@ -27,6 +27,13 @@ import {
     pluginEntryFromHeader,
     type PluginListClassification,
 } from "./pluginListMerge";
+import {
+    applyPluginBatch,
+    capReviewLines,
+    classifyPluginBatch,
+    type PluginBatchFailure,
+    type PreparedPlugin,
+} from "./pluginBatch";
 import { clearRestoreAllStrikes, readRestoreAllStrikes } from "../storage/bootArchiveMemo";
 import {
     fillMissingCharacterInstallIds,
@@ -143,27 +150,113 @@ export async function importPlugin(code:string|null = null, argu:{
     isHotReload?: boolean
     isTypescript?: boolean
 } = {}) {
+    if(!code){
+        return importPluginFromPicker()
+    }
+    return importPluginSource(code, argu.isTypescript || false, argu)
+}
+
+/** The plugin file picker: one file takes the single-file path, two or more are reviewed together. Nothing picked is silent. */
+async function importPluginFromPicker() {
     try {
-        let jsFile = ''
+        const files = await selectFileByDom(['js','ts'], 'multiple')
+        if (!files || files.length === 0) {
+            return
+        }
+        const sources: PluginPickedSource[] = []
+        for (const f of files) {
+            //support utf-8 with BOM or without BOM
+            const text = Buffer.from(new Uint8Array(await f.arrayBuffer())).toString('utf-8').replace(/^\uFEFF/gm, "")
+            sources.push({ file: f.name, text, isTypescript: f.name.endsWith('.ts') })
+        }
+        if (sources.length === 1) {
+            return await importPluginSource(sources[0].text, sources[0].isTypescript, {})
+        }
+        return await importPluginBatch(sources)
+    } catch (error) {
+        console.error(error)
+        alertError(language.errors.noData)
+    }
+}
+
+interface PluginPickedSource {
+    file: string
+    text: string
+    isTypescript: boolean
+}
+
+/** Header, API and transpile checks for one file of a batch; a refusal names the file and the reason. */
+async function preparePluginFile(source: PluginPickedSource): Promise<PreparedPlugin | PluginBatchFailure> {
+    const header = parsePluginHeader(source.text)
+    if ('error' in header) {
+        return { file: source.file, reason: header.error }
+    }
+    const apiRefusal = apiVersionRefusal(header.apiVersion)
+    if (apiRefusal !== null) {
+        return { file: source.file, reason: apiRefusal }
+    }
+    let script = source.text
+    if (source.isTypescript) {
+        try {
+            script = await pluginCodeTranspiler(script)
+        } catch (error) {
+            return { file: source.file, reason: language.pluginBatchTranspileFailed(error instanceof Error ? error.message : String(error)) }
+        }
+    }
+    return { file: source.file, entry: pluginEntryFromHeader(script, header) }
+}
+
+/** Two or more files: one review for the whole pick, then one write and one reload. */
+async function importPluginBatch(sources: PluginPickedSource[]) {
+    const prepared: PreparedPlugin[] = []
+    const failures: PluginBatchFailure[] = []
+    for (const source of sources) {
+        const result = await preparePluginFile(source)
+        if ('entry' in result) {
+            prepared.push(result)
+        } else {
+            failures.push(result)
+        }
+    }
+
+    const classified = classifyPluginBatch(getDatabase().plugins ?? [], prepared, language.pluginBatchRepeated)
+    const failed = [...failures, ...classified.failed]
+    if (classified.news.length + classified.updates.length === 0) {
+        const details = failed.map((item) => `${item.file}: ${item.reason}`).join('\n')
+        alertError(language.importFilesNotImported(failed.length, sources.length, details))
+        return
+    }
+
+    const label = (entry: RisuPlugin) => entry.displayName || entry.name
+    const section = (lines: string[]) => capReviewLines(lines, language.pluginBatchMore).join('\n')
+    const confirmed = await alertConfirm(language.pluginBatchReview(
+        section(classified.news.map((item) => `${label(item.entry)} (${item.file})`)),
+        section(classified.updates.map((item) => `${label(item.entry)} (${item.file}): ${item.fromVersion || '-'} -> ${item.toVersion || '-'}`)),
+        section(failed.map((item) => `${item.file}: ${item.reason}`)),
+    ))
+    if (!confirmed) {
+        return
+    }
+
+    // The installed list is read again here: it may have changed while the review was open.
+    const db = getDatabase()
+    db.plugins ??= []
+    applyPluginBatch(db.plugins, [...classified.news, ...classified.updates].map((item) => item.entry))
+    console.log(`Imported plugins: ${classified.news.length} new, ${classified.updates.length} updated`)
+    setDatabaseLite(db)
+    loadPlugins()
+}
+
+async function importPluginSource(code:string, isTypescript:boolean, argu:{
+    isUpdate?: boolean
+    originalPluginName?: string
+    isHotReload?: boolean
+}) {
+    try {
+        let jsFile = code
         let db = getDatabase()
         let isUpdate = argu.isUpdate || false
         let originalPluginName = argu.originalPluginName || ''
-        let isTypescript = argu.isTypescript || false
-        
-        if(!code){
-            const f = await selectSingleFile(['js','ts'])
-            if (!f) {
-                return
-            }
-            if(f.name.endsWith('.ts')){
-                isTypescript = true
-            }
-            //support utf-8 with BOM or without BOM
-            jsFile = Buffer.from(f.data).toString('utf-8').replace(/^\uFEFF/gm, "");
-        }
-        else{
-            jsFile = code
-        }
 
         const splitedJs = jsFile.split('\n')
         let name = ''

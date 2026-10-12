@@ -1976,6 +1976,14 @@ export const languageEnglish = {
     aiGenerationWarning: "Contents will be AI generated and may contain inaccuracies or biases.",
     duplicatePluginFoundUpdateIt: "Duplicate plugin found. do you want to update the existing plugin?",
     pluginUpdateFoundInstallIt: "Plugin update found. Do you want to install the update?",
+    pluginBatchReview: (added: string, updated: string, failed: string) =>
+        'Review these plugin files. Confirming installs the new plugins switched on and updates the ones already installed, keeping their saved settings. Files that failed are not installed.'
+        + (added ? `\n\nNew:\n${added}` : '')
+        + (updated ? `\n\nUpdate (settings kept):\n${updated}` : '')
+        + (failed ? `\n\nFailed:\n${failed}` : ''),
+    pluginBatchMore: (count: number) => `...and ${count} more`,
+    pluginBatchRepeated: "Another file in this selection has the same plugin name.",
+    pluginBatchTranspileFailed: (message: string) => `Failed to transpile TypeScript code: ${message}`,
     goToChat: "Go to Chat",
     bookmark: "Bookmark",
     translate: "Translate",
