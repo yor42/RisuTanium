@@ -57,6 +57,10 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The put-back measurement code is compiled out unless VITE_RISU_MEASURE=1; a release build must not contain it.
+      - name: Check the build has no measurement code
+        run: pnpm check:dist
+
   node-server:
     name: Node server smoke test
     runs-on: ubuntu-latest

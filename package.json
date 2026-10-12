@@ -13,6 +13,7 @@
     "tauribuild": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check:dist": "node util/checkReleaseDist.mjs",
     "test": "vitest run",
     "tauri": "tauri",
     "buildsite": "vite build --outDir dist",
