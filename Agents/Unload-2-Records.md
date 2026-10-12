@@ -61,6 +61,38 @@ Environment: a cloud Linux container (no Note 9, no Android build, no Windows, n
 3. **A bulk import whose archive write fails: "Fall back, stop after 2 (Recommended)".** Option text: "A card whose archive write fails is imported as a normal loaded character (nothing is lost). After two failures in a row, the rest of the batch imports live without trying to archive, like the startup archive pass does." Alternative: "Fall back per card".
 4. **Telling the user about a fallback: "Silent (Recommended)".** Option text: "No message: the character imported fine and nothing was lost; it is just held in memory until a later archive." Alternative: "Short notice".
 
+### MC-304 — Unload-2 session, 2026-10-12: a permanently deleted archived character leaves its archive file for the manual cleanup
+
+- **Tag:** decision (`AskUserQuestion` answer, by option label)
+- **Date:** 2026-10-12
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this session's `AskUserQuestion`. Question as asked: "Trashed characters will now be archived too. When an archived character in the trash is deleted for good (by hand, by 'empty trash', or by the 3-day automatic purge), what should happen to its archive file?" The sizing it rests on: ledger row 2007.
+- **Reasoning:** the chosen option's text: "Leave the archive file on disk, exactly as delete works today for every character. The planned manual cleanup (the orphan counter and prompt) reclaims it later. This adds no new delete path in the riskiest part of saving."
+- **Alternatives rejected:** "Delete it too" (deleting the character also deletes its archive file and chat files right away).
+- **Related:** `MC-268` items 2 and 6, `MC-139` 3 (orphan units accepted), `MC-148`.
+
+**What was decided:** trash archiving adds no unit deletion. Single permanent delete, "empty trash" and the startup purge keep today's contract: the stub goes, its units stay for the manual cleanup.
+
+**Orchestrator note (implementation-level, not asked):** the boot archive pass runs before the startup purge in the same boot, so a character whose purge is already due would get a unit written and then orphaned at once. The pass will skip a trashed character whose purge is due, sharing the purge's age constant.
+
+### MC-305 — Unload-2 session, 2026-10-12: stage 2 answers (all loaded characters; re-archive when you move on; stay loaded silently on failure; delete the character's previous archive file once the new one is safe)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label)
+- **Date:** 2026-10-12
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this session's `AskUserQuestion`, four questions, quoted below with the chosen option's text. The sizing they rest on: ledger row 2008.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** per item below.
+- **Related:** `MC-268` items 2 and 3, `MC-270`, `MC-273`, `MC-139` 3, `MC-141` item 2.
+
+**What was decided:**
+1. **Scope: "All loaded characters"** (not the recommended option). Option text: "Also archive loaded characters that were never archived, during use. Covers more memory, but there is no 'before' snapshot to compare against, so it needs a separate scan and more code in the save path." Alternative rejected: "Opened from archive (Recommended)".
+2. **Timing: "When you move on (Recommended)".** Option text: "Right after the next save once you have switched away (the one you just left stays loaded). Frees memory soonest. Switching back and forth while editing writes a new archive copy each time." Alternative rejected: "Only past a memory limit" (about 50 MB).
+3. **Failure: "Stay loaded, silent (Recommended)".** Option text: "The character just stays loaded; nothing is lost. After two failures in a row, stop trying for the rest of the session, like the startup archive pass does." Alternative rejected: "Stay loaded, tell me".
+4. **Old copies: "Delete the old copy now"** (not the recommended option). Option text: "Delete the character's previous archive file right after the new one is safely saved. Saves disk, but adds a delete step to the save code in stage 2." Alternative rejected: "Yes, manual cleanup (Recommended)".
+
+**Orchestrator note:** item 4 applies to a re-archive replacing a character's own previous unit; `MC-304` (permanent delete leaves units) is unchanged. "Safely saved" must cover the stub that names the new unit being committed, and any snapshot, backup or other copy that still names the old unit; the plan settles this at Gate 1 against the manual cleanup's keep rules, and any remaining product trade-off goes back to the maintainer.
+
 ## Ledger rows (2001 to 2099)
 
 | Row | Date | Dispatch / question | Role | Usage | Gate | Outcome |
@@ -70,6 +102,9 @@ Environment: a cloud Linux container (no Note 9, no Android build, no Windows, n
 | 2003 | 2026-10-12 | Implement the `dist` check (`util/checkReleaseDist.mjs`, `pnpm check:dist`, the CI step) | `sonnet-coder` | 26,472 subagent tokens, 4 tool uses, 110,236 ms | Gate 2 in row 2004 | Executed: normal `pnpm build` then `pnpm check:dist` exit 0 (203 files); a `VITE_RISU_MEASURE=1` build into `/tmp` exit 1 with all three markers in one chunk; a missing directory exit 2. `.map` files are not scanned (they embed original source). |
 | 2004 | 2026-10-12 | Gate 2, the `dist` check | `adversarial-reviewer` | 24,075 subagent tokens, 7 tool uses, 115,061 ms | Gate 2 | `[APPROVE]`, no substantive finding. Re-ran: normal build exit 0 (203 files, equal to the count of .js/.mjs/.cjs/.html/.css files in `dist`); a measurement build exit 1 with all three markers; a missing directory and a directory of dangling symlinks exit 2. Fact recorded: `pnpm build` is `vite build --sourcemap`, so a normal build ships 164 `.map` files, and `dist/assets/database.svelte-*.js.map` contains `__risuPutBackMeasure` and `risu-measure` in its `sourcesContent`; a literal `grep -r dist` therefore fails on a normal build, and the script deliberately scans only shipped code. Whether to ship source maps is a separate question, not raised. Optional: symlinks are skipped (Vite emits none). |
 | 2005 | 2026-10-12 | Pin upstream's reader shape for an archived character, upstream's `.bin` import, and this fork's `.bin` export | `investigator` | 59,573 subagent tokens, 23 tool uses, 93,285 ms | Gate 1 input (stub v3) | Upstream `kwaroran/RisuAI` main at `979dbc9d5fd913abd6996eaec64e0f83be53964d` (`git ls-remote`), read in a scratch clone; source tracing only, nothing run. Upstream detects a stub by a truthy `coldstorage`, restores in `changeChar` by replacing the slot wholesale with the unit's `character` when its `chaId` equals the stub's, lists a stub from `name`, `image`, `chats.length` and `creatorNotes` only, never validates stubs on `.bin` import, has no `coldVersion` or `coldChatCount`, and declares top-level `tags` and `creator` on every character (its own defaults fill them on stubs too). This fork's export writes stubs as stubs plus `coldstorage_<key>.json` units. Conclusion: a v3 stub is read by upstream exactly as a v2 stub. |
+| 2006 | 2026-10-12 | Gate 1, the stub v3 plan (`/tmp/unload2/stubv3/plan.md` v1) | `opus-reviewer` | 99,036 subagent tokens, 38 tool uses, 308,309 ms | Gate 1 | `[APPROVE]`; source reading and `git log -S/-G` only, nothing run. Confirmed the backwards `lastInteraction` defect (put-back refreshes the stub, the unit keeps the older value, enrichment copies the unit's) and the newer-of-two rule; the chat-count trust floor 2 (no version 1 was ever written); search reactivity on `additionalData.creator` through the deep `$state`; no data-loss path in the upgrade (no unit writes, nothing committed before the pass's commit); upstream claims against the clone at `979dbc9d`. SHOULD findings adopted as plan v2: invert the three existing tests that pin "stubs are not searched by tags or creator"; a reactivity reproducer for an edited creator; build the compatibility test from real builder output; add `tags` and `creator` to four `ENRICHMENT_FIELDS` lists and split the current and v2 stub fixtures; reword comments and logs that equate "legacy" with upstream-made. NIT accepted as a limitation: a group stub's member list remapped by duplicate-id repair reverts at upgrade, as restore already does. |
+| 2007 | 2026-10-12 | Size trash archiving (`MC-268` item 6) | `investigator` | 81,778 subagent tokens, 32 tool uses, 77,456 ms | n/a (sizing) | Packet, source reading only, on `feat/unload-2`. Two gates exclude trashed characters: `isArchivableCharacter` and an inline `trashTime` check in the boot pass's `eligibleIndexes` (the pass does not call the former). The original reason (Report 49 D7, Report 51 R1) was trash-state fidelity, already solved: the stub carries `trashTime`, `applyStubStateOnRestore` makes the stub authoritative, and put-back copies the live value. Every trashed-character consumer (purge, permanent delete, empty trash, restore from trash, the trash list, search) reads only stub fields; none needs a restore. Permanent removals never delete units today. New hazard (inferred from the traced order): the pass runs before the startup purge, so a purge-due trashed character would be archived and then orphaned on the same boot. `idleReloadHost` `bytesExcluded` excludes trashed characters on the "never archived" premise. About 12 test files use a trashed character as an ineligible fixture. Question answered in `MC-304`. |
+| 2008 | 2026-10-12 | Size stage 2 (re-archive characters changed after restore) | `investigator` | 172,741 subagent tokens, 53 tool uses, 345,431 ms | n/a (sizing) | Packet, source reading only, on `feat/unload-2`. Refuted premises: a dirty put-back verdict drops the retained record (stage 2 must keep it); no per-character "save landed" signal exists (commit callbacks run while the save is still in progress); the boot pass does not run `characterFormatUpdate`; the fork never writes chat units; put-back has no `canBootArchive` gate. Proposed engine: fingerprint, write a unit under a fresh key, read it back and compare fingerprints, then one synchronous swap with the put-back checks, gated by `canBootArchive`, `archiveCharacters === true`, no V2.1 plugin and formatversion >= 5, with a two-in-a-row breaker; shared with card import. First-open dirty (`MC-273`): stage 2 makes a remedy unnecessary for correctness (one extra re-archive per character); recommends measuring before adding one. Superseded units stay for the manual cleanup. Product questions listed for the maintainer. |
 
 ## Tickets (CHORE-200 to CHORE-219)
 
@@ -77,6 +112,7 @@ None yet.
 
 ## Gate verdicts
 
+- **Stub v3 (`MC-302`):** Gate 1 `opus-reviewer` `[APPROVE]` with SHOULD findings adopted into plan v2 (row 2006). Gate 2 pending.
 - **Release item, the `dist` check (`MC-301`):** small and low-risk, no plan gate (the carve-out); Gate 2 `adversarial-reviewer` `[APPROVE]` (row 2004). No application code changed, so no `pnpm test` or `pnpm check` run for it; the script was run against a normal and a measurement build (rows 2003, 2004).
 
 ## Full checks
