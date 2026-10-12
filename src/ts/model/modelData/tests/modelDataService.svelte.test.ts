@@ -22,19 +22,35 @@ import {
     createModelDataService,
     getModelContextLimit,
     getModelDataFetchedAt,
+    getLiteLLMData,
+    getLiteLLMFetchedAt,
     getModelPricing,
     modelDataStatus,
     resetModelDataForTests,
+    seedLiteLLMForTests,
     seedModelDataForTests,
+    subscribeDataset,
     type ModelDataResponse,
     type ModelDataService,
+    type TaskOutcome,
 } from '../modelDataService.svelte'
+import {
+    LITELLM_DATA_KEY,
+    LITELLM_DATA_URL,
+    LITELLM_MAX_FILE_BYTES,
+    decodeLiteLLMData,
+    encodeLiteLLMData,
+    parseLiteLLMDataset,
+    type LiteLLMData,
+} from '../litellmData'
 import fixture from './openrouterRows.fixture.json'
 
 const T = 1_800_000_000_000
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 const gpt4o = { id: 'gpt-4o', provider: LLMProvider.OpenAI }
+/** ModelDataResponse also reads text (the LiteLLM source); the OpenRouter source never does. */
+const noText = async (): Promise<string> => ''
 const db = { openrouterRequestModel: 'openai/gpt-3.5-turbo' }
 
 /** A listing with one row, whose context identifies the fetch that produced it. */
@@ -137,10 +153,11 @@ function harness(options: {
     const store = options.store ?? fakeStore()
     const clock = { now: T }
     const fetchImpl = vi.fn<(url: string, init: { credentials: 'omit', signal: AbortSignal }) => Promise<ModelDataResponse>>(
-        options.respond ?? (async () => ({ ok: true, json: async () => listing() })))
+        options.respond ?? (async () => ({ ok: true, text: noText, json: async () => listing() })))
     const getStore = vi.fn(async (): Promise<ByteStore> => store)
     const canWrite = vi.fn(options.canWrite ?? (async () => true))
-    const service = createModelDataService({ fetchImpl, getStore, canWrite, now: () => clock.now })
+    // These cases run the OpenRouter runner alone; the two-source cases follow.
+    const service = createModelDataService({ fetchImpl, getStore, canWrite, now: () => clock.now }, { sources: ['openrouter'] })
     return { store, service, fetchImpl, getStore, canWrite, clock }
 }
 
@@ -303,11 +320,11 @@ describe('writes', () => {
 
 describe('a failed refresh changes nothing', () => {
     const bodies: [string, () => Promise<ModelDataResponse>][] = [
-        ['an HTTP error', async () => ({ ok: false, json: async () => listing() })],
+        ['an HTTP error', async () => ({ ok: false, text: noText, json: async () => listing() })],
         ['a thrown fetch', async () => { throw new TypeError('offline') }],
-        ['a body that is not JSON', async () => ({ ok: true, json: async () => { throw new SyntaxError('bad json') } })],
-        ['a listing with no rows', async () => ({ ok: true, json: async () => ({ data: [] }) })],
-        ['a body that is not a listing', async () => ({ ok: true, json: async () => ({ error: 'nope' }) })],
+        ['a body that is not JSON', async () => ({ ok: true, text: noText, json: async () => { throw new SyntaxError('bad json') } })],
+        ['a listing with no rows', async () => ({ ok: true, text: noText, json: async () => ({ data: [] }) })],
+        ['a body that is not a listing', async () => ({ ok: true, text: noText, json: async () => ({ error: 'nope' }) })],
     ]
 
     test.each(bodies)('(F) S4 %s', async (_name, respond) => {
@@ -337,7 +354,7 @@ describe('a failed refresh changes nothing', () => {
 
     test('(F) S4 the 15 second limit covers a body that never arrives', async () => {
         vi.useFakeTimers()
-        const h = harness({ respond: async () => ({ ok: true, json: () => new Promise<unknown>(() => { }) }) })
+        const h = harness({ respond: async () => ({ ok: true, text: noText, json: () => new Promise<unknown>(() => { }) }) })
         const result = h.service.refreshNow()
         await vi.advanceTimersByTimeAsync(15_000)
         await expect(result).resolves.toBe('failed')
@@ -371,7 +388,7 @@ describe('a failed refresh changes nothing', () => {
             if (attempt === 1) {
                 throw new Error('offline')
             }
-            return { ok: true, json: async () => listing() }
+            return { ok: true, text: noText, json: async () => listing() }
         } })
         await expect(h.service.refreshNow()).resolves.toBe('failed')
         await expect(h.service.refreshNow()).resolves.toBe('ok')
@@ -383,7 +400,7 @@ describe('a failed refresh changes nothing', () => {
 describe('single flight', () => {
     test('(F) S7 two simultaneous manual refreshes make one fetch', async () => {
         const answer = gate()
-        const h = harness({ respond: async () => { await answer.wait; return { ok: true, json: async () => listing() } } })
+        const h = harness({ respond: async () => { await answer.wait; return { ok: true, text: noText, json: async () => listing() } } })
         const first = h.service.refreshNow()
         const second = h.service.refreshNow()
         await flush()
@@ -396,7 +413,7 @@ describe('single flight', () => {
 
     test('(F) S7 a click during the boot auto-refresh shares its fetch', async () => {
         const answer = gate()
-        const h = harness({ respond: async () => { await answer.wait; return { ok: true, json: async () => listing() } } })
+        const h = harness({ respond: async () => { await answer.wait; return { ok: true, text: noText, json: async () => listing() } } })
         const booting = h.service.boot(true)
         await flush()
         expect(h.fetchImpl).toHaveBeenCalledTimes(1)
@@ -531,5 +548,321 @@ describe('getters', () => {
         flushSync()
         stop()
         expect(figure).toBe(333)
+    })
+})
+
+/** A dataset with one row, whose context identifies the fetch (or the saved file) that produced it. */
+function litellmBody(context = 999000): string {
+    return JSON.stringify({ 'gpt-4o': { litellm_provider: 'openai', mode: 'chat', max_input_tokens: context, input_cost_per_token: 0.5 } })
+}
+
+function savedLiteLLM(fetchedAt: number, context = 777000): LiteLLMData {
+    const data = parseLiteLLMDataset(JSON.parse(litellmBody(context)), fetchedAt)
+    if (data === null) {
+        throw new Error('dataset must parse')
+    }
+    return data
+}
+
+function litellmBytes(fetchedAt: number, context = 777000): Uint8Array {
+    const bytes = encodeLiteLLMData(savedLiteLLM(fetchedAt, context))
+    if (bytes === null) {
+        throw new Error('dataset must encode')
+    }
+    return bytes
+}
+
+const noJson = async (): Promise<unknown> => { throw new Error('the LiteLLM source reads text, not json') }
+
+/** Both sources, routed by URL. `respondLiteLLM` and `respondOpenRouter` override one source. */
+function bothHarness(options: {
+    store?: FakeStore
+    respondLiteLLM?: () => Promise<ModelDataResponse>
+    respondOpenRouter?: () => Promise<ModelDataResponse>
+    canWrite?: () => Promise<boolean>
+} = {}) {
+    const store = options.store ?? fakeStore()
+    const clock = { now: T }
+    const fetchImpl = vi.fn<(url: string, init: { credentials: 'omit', signal: AbortSignal }) => Promise<ModelDataResponse>>(async (url) => {
+        if (url === LITELLM_DATA_URL) {
+            return options.respondLiteLLM ? options.respondLiteLLM() : { ok: true, text: async () => litellmBody(), json: noJson }
+        }
+        return options.respondOpenRouter ? options.respondOpenRouter() : { ok: true, text: noText, json: async () => listing() }
+    })
+    const getStore = vi.fn(async (): Promise<ByteStore> => store)
+    const canWrite = vi.fn(options.canWrite ?? (async () => true))
+    const service = createModelDataService({ fetchImpl, getStore, canWrite, now: () => clock.now })
+    return { store, service, fetchImpl, getStore, canWrite, clock }
+}
+
+const urlsOf = (h: ReturnType<typeof bothHarness>): string[] => h.fetchImpl.mock.calls.map(call => call[0]).sort()
+
+describe('two sources: independent runners behind one aggregate', () => {
+    test('(F) both sources refresh: two keyless fetches, two unconditional writes, both snapshots held', async () => {
+        const h = bothHarness()
+        await expect(h.service.refreshNow()).resolves.toBe('ok')
+        expect(urlsOf(h)).toEqual([LITELLM_DATA_URL, 'https://openrouter.ai/api/v1/models'].sort())
+        for (const [, init] of h.fetchImpl.mock.calls) {
+            expect(init.credentials).toBe('omit')
+        }
+        expect(h.store.writes.map(w => w.key).sort()).toEqual([LITELLM_DATA_KEY, OPENROUTER_DATA_KEY].sort())
+        expect(h.store.writes.every(w => w.condition === 'unconditional')).toBe(true)
+        expect(decodeLiteLLMData(h.store.files.get(LITELLM_DATA_KEY)!)).toEqual(savedLiteLLM(T, 999000))
+        expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(999000)
+        expect(getLiteLLMFetchedAt()).toBe(T)
+        expect(getModelDataFetchedAt()).toBe(T)
+        expect(modelDataStatus.lastOutcome).toBe('ok')
+    })
+
+    test('(F) one source failing is partial: the other still applies and writes, the failed one is untouched', async () => {
+        const h = bothHarness({
+            store: fakeStore(encodeOpenRouterData(savedData(T - 2 * DAY, 111))),
+            respondLiteLLM: async () => { throw new TypeError('offline') },
+        })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - 2 * DAY, 777000))
+        await h.service.boot(false)
+        await expect(h.service.refreshNow()).resolves.toBe('partial')
+        expect(getModelDataFetchedAt()).toBe(T)
+        expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(777000)
+        expect(getLiteLLMFetchedAt()).toBe(T - 2 * DAY)
+        expect(h.store.writes.map(w => w.key)).toEqual([OPENROUTER_DATA_KEY])
+        expect(modelDataStatus.lastOutcome).toBe('partial')
+        expect(modelDataStatus.refreshing).toBe(false)
+    })
+
+    test('(F) the other source failing is partial the other way, and both failing is failed', async () => {
+        const half = bothHarness({ respondOpenRouter: async () => { throw new TypeError('offline') } })
+        await expect(half.service.refreshNow()).resolves.toBe('partial')
+        expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(999000)
+        expect(getModelDataFetchedAt()).toBeNull()
+        expect(half.store.writes.map(w => w.key)).toEqual([LITELLM_DATA_KEY])
+
+        resetModelDataForTests()
+        const none = bothHarness({
+            respondOpenRouter: async () => { throw new TypeError('offline') },
+            respondLiteLLM: async () => ({ ok: false, text: noText, json: noJson }),
+        })
+        await expect(none.service.refreshNow()).resolves.toBe('failed')
+        expect(modelDataStatus.lastOutcome).toBe('failed')
+        expect(none.store.writes).toHaveLength(0)
+    })
+
+    test('(F) a LiteLLM response with no usable rows or not JSON text fails the source and keeps the saved data', async () => {
+        for (const text of ['{}', '<html>', JSON.stringify({ 'gpt-4o': { litellm_provider: 'openai', mode: 'embedding', max_input_tokens: 5 } })]) {
+            resetModelDataForTests()
+            const h = bothHarness({ respondLiteLLM: async () => ({ ok: true, text: async () => text, json: noJson }) })
+            h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - 2 * DAY))
+            await h.service.boot(false)
+            await expect(h.service.refreshNow()).resolves.toBe('partial')
+            expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(777000)
+            expect(h.store.writes.map(w => w.key)).not.toContain(LITELLM_DATA_KEY)
+        }
+    })
+
+    test('(F) a LiteLLM body above 8 MB is rejected before JSON.parse and changes nothing', async () => {
+        const h = bothHarness({ respondLiteLLM: async () => ({ ok: true, text: async () => 'x'.repeat(8 * 1024 * 1024 + 1), json: noJson }) })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - 2 * DAY))
+        await h.service.boot(false)
+        const spy = vi.spyOn(JSON, 'parse')
+        try {
+            await expect(h.service.refreshNow()).resolves.toBe('partial')
+            expect(spy).not.toHaveBeenCalled()
+        } finally {
+            spy.mockRestore()
+        }
+        expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(777000)
+        expect(h.store.writes.map(w => w.key)).not.toContain(LITELLM_DATA_KEY)
+    })
+
+    test('(F) a saved LiteLLM file above 1 MB is not parsed, reads as empty, and the next success rewrites it', async () => {
+        const h = bothHarness()
+        h.store.files.set(LITELLM_DATA_KEY, new Uint8Array(LITELLM_MAX_FILE_BYTES + 1).fill(0x20))
+        const spy = vi.spyOn(JSON, 'parse')
+        try {
+            await h.service.boot(false)
+            expect(spy).not.toHaveBeenCalled()
+        } finally {
+            spy.mockRestore()
+        }
+        expect(getLiteLLMData()).toBeNull()
+        await h.service.refreshNow()
+        expect(decodeLiteLLMData(h.store.files.get(LITELLM_DATA_KEY)!)?.rows['gpt-4o'].ctx).toBe(999000)
+    })
+
+    test('(F) boot loads both saved files once each, whatever the entries', async () => {
+        const h = bothHarness({ store: fakeStore(encodeOpenRouterData(savedData(T - HOUR))) })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - HOUR))
+        await Promise.all([h.service.boot(false), h.service.refreshIfStale(), h.service.refreshNow()])
+        expect([...h.store.reads].sort()).toEqual([LITELLM_DATA_KEY, OPENROUTER_DATA_KEY].sort())
+    })
+})
+
+describe('two sources: staleness and single flight are per source', () => {
+    test('(F) boot(true) refreshes only the stale source, and skipped sources do not count in the outcome', async () => {
+        const h = bothHarness({ store: fakeStore(encodeOpenRouterData(savedData(T - HOUR))) })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - 2 * DAY))
+        await h.service.boot(true)
+        expect(urlsOf(h)).toEqual([LITELLM_DATA_URL])
+        expect(modelDataStatus.lastOutcome).toBe('ok')
+        expect(getModelDataFetchedAt()).toBe(T - HOUR)
+    })
+
+    test('(F) boot(true) with both fresh fetches nothing and leaves the status alone', async () => {
+        const h = bothHarness({ store: fakeStore(encodeOpenRouterData(savedData(T - HOUR))) })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - HOUR))
+        await h.service.boot(true)
+        expect(h.fetchImpl).not.toHaveBeenCalled()
+        expect(modelDataStatus.lastOutcome).toBeNull()
+    })
+
+    test.each([
+        ['exactly a day old', T - DAY, false],
+        ['older than a day', T - DAY - 1, true],
+        ['dated in the future', T + HOUR, true],
+    ])('(F) the LiteLLM TTL boundary: data %s', async (_name, fetchedAt, fetches) => {
+        const h = bothHarness({ store: fakeStore(encodeOpenRouterData(savedData(T - HOUR))) })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(fetchedAt))
+        await h.service.refreshIfStale()
+        expect(urlsOf(h)).toEqual(fetches ? [LITELLM_DATA_URL] : [])
+    })
+
+    test('(F) concurrent refreshes make one fetch per source', async () => {
+        const answer = gate()
+        const h = bothHarness({
+            respondLiteLLM: async () => { await answer.wait; return { ok: true, text: async () => litellmBody(), json: noJson } },
+            respondOpenRouter: async () => { await answer.wait; return { ok: true, text: noText, json: async () => listing() } },
+        })
+        const first = h.service.refreshNow()
+        const second = h.service.refreshAll()
+        const booting = h.service.boot(true)
+        await flush()
+        answer.open()
+        await expect(Promise.all([first, second])).resolves.toEqual(['ok', 'ok'])
+        await booting
+        expect(h.fetchImpl).toHaveBeenCalledTimes(2)
+        expect(h.store.writes).toHaveLength(2)
+    })
+})
+
+describe('aggregate status: one owner for the flags', () => {
+    function gatedExtra(outcome: TaskOutcome) {
+        const g = gate()
+        return { open: g.open, task: async (): Promise<TaskOutcome> => { await g.wait; return outcome } }
+    }
+
+    test('(F) overlapping aggregates: refreshing holds until both finish and lastOutcome is the last finisher', async () => {
+        const h = bothHarness()
+        const a = gatedExtra('failed')
+        const b = gatedExtra('ok')
+        const first = h.service.refreshAll(a.task)
+        const second = h.service.refreshAll(b.task)
+        await flush()
+        expect(modelDataStatus.refreshing).toBe(true)
+
+        b.open()
+        await expect(second).resolves.toBe('ok')
+        expect(modelDataStatus.refreshing).toBe(true)
+        expect(modelDataStatus.lastOutcome).toBe('ok')
+
+        a.open()
+        await expect(first).resolves.toBe('partial')
+        expect(modelDataStatus.refreshing).toBe(false)
+        expect(modelDataStatus.lastOutcome).toBe('partial')
+    })
+
+    test('(F) the extra task counts: failed beside two ok is partial, skipped is not counted, all failed is failed', async () => {
+        const failedExtra = bothHarness()
+        await expect(failedExtra.service.refreshAll(async () => 'failed')).resolves.toBe('partial')
+
+        resetModelDataForTests()
+        const skipped = bothHarness()
+        await expect(skipped.service.refreshAll(async () => 'skipped')).resolves.toBe('ok')
+
+        resetModelDataForTests()
+        const allFailed = bothHarness({
+            respondOpenRouter: async () => { throw new TypeError('offline') },
+            respondLiteLLM: async () => { throw new TypeError('offline') },
+        })
+        await expect(allFailed.service.refreshAll(async () => 'failed')).resolves.toBe('failed')
+        expect(modelDataStatus.lastOutcome).toBe('failed')
+    })
+
+    test('(F) an extra task that throws counts as failed and never rejects', async () => {
+        const h = bothHarness()
+        await expect(h.service.refreshAll(async () => { throw new Error('list pass blew up') })).resolves.toBe('partial')
+        expect(modelDataStatus.refreshing).toBe(false)
+    })
+
+    test('(F) the runners set no flags: refreshing stays false until an aggregate starts', async () => {
+        const h = bothHarness()
+        await h.service.boot(false)
+        expect(modelDataStatus.refreshing).toBe(false)
+        expect(modelDataStatus.lastOutcome).toBeNull()
+    })
+})
+
+describe('write permission and unreadable files are per source', () => {
+    test('(F) a LiteLLM file that cannot be read disables only its own writes', async () => {
+        const h = bothHarness()
+        const read = h.store.read
+        h.store.read = async (key: string) => {
+            if (key === LITELLM_DATA_KEY) {
+                throw new Error('disk gone')
+            }
+            return read(key)
+        }
+        await expect(h.service.refreshNow()).resolves.toBe('ok')
+        expect(h.store.writes.map(w => w.key)).toEqual([OPENROUTER_DATA_KEY])
+        expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(999000)
+    })
+
+    test('(F) a page that must not write fetches and shows both sources but writes neither', async () => {
+        const h = bothHarness({ canWrite: async () => false })
+        await expect(h.service.refreshNow()).resolves.toBe('ok')
+        expect(h.store.writes).toHaveLength(0)
+        expect(getLiteLLMData()?.rows['gpt-4o'].ctx).toBe(999000)
+        expect(getModelDataFetchedAt()).toBe(T)
+    })
+})
+
+describe('dataset subscription', () => {
+    test('(F) listeners run after each LiteLLM snapshot replacement: load, refresh and seed, not a failed refresh', async () => {
+        const h = bothHarness({ store: fakeStore(encodeOpenRouterData(savedData(T - HOUR))) })
+        h.store.files.set(LITELLM_DATA_KEY, litellmBytes(T - 2 * DAY))
+        const seen: (number | undefined)[] = []
+        subscribeDataset(() => seen.push(getLiteLLMData()?.rows['gpt-4o'].ctx))
+
+        await h.service.boot(false)
+        expect(seen).toEqual([777000])
+        await h.service.refreshNow()
+        expect(seen).toEqual([777000, 999000])
+        seedLiteLLMForTests(savedLiteLLM(T, 5))
+        expect(seen).toEqual([777000, 999000, 5])
+
+        const failing = bothHarness({ respondLiteLLM: async () => { throw new TypeError('offline') } })
+        await failing.service.refreshNow()
+        expect(seen).toEqual([777000, 999000, 5])
+    })
+
+    test('(F) the OpenRouter source does not notify, an unsubscribed listener is not called, and a throwing listener breaks nothing', async () => {
+        const h = bothHarness()
+        const calls: string[] = []
+        const stop = subscribeDataset(() => calls.push('removed'))
+        subscribeDataset(() => { throw new Error('listener failed') })
+        subscribeDataset(() => calls.push('kept'))
+        stop()
+        seedModelDataForTests(savedData(T))
+        expect(calls).toEqual([])
+        await expect(h.service.refreshNow()).resolves.toBe('ok')
+        expect(calls).toEqual(['kept'])
+        expect(errorSpy).toHaveBeenCalled()
+    })
+
+    test('(F) resetModelDataForTests drops the listeners', () => {
+        const calls: number[] = []
+        subscribeDataset(() => calls.push(1))
+        resetModelDataForTests()
+        seedLiteLLMForTests(savedLiteLLM(T))
+        expect(calls).toEqual([])
     })
 })

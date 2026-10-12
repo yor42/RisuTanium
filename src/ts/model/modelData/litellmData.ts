@@ -1,5 +1,5 @@
 import { LLMProvider } from '../types'
-import { canonicalModelId, type ModelDataLookupModel } from './openrouterData'
+import { canonicalModelId, resolveRows, type ModelDataLookupModel, type OpenRouterIndex, type OpenRouterPricing } from './openrouterData'
 
 /**
  * Pure data layer for the LiteLLM price and context-window dataset: what is
@@ -538,4 +538,49 @@ export function resolveLiteLLMRow(index: LiteLLMIndex, model: ModelDataLookupMod
     } catch {
         return undefined
     }
+}
+
+/** True for a model that is not routed and belongs to Anthropic: its figures come from LiteLLM only. */
+function isDirectAnthropic(model: ModelDataLookupModel): boolean {
+    return model.id !== 'openrouter' && model.provider === LLMProvider.Anthropic
+}
+
+/**
+ * The context window to compare a user setting against, one source per field.
+ * A routed `openrouter` entry reads OpenRouter's exact row of the requested
+ * model and never LiteLLM. A direct entry reads its LiteLLM row first; OpenAI
+ * and Google fall back to OpenRouter's first-party row when LiteLLM has no
+ * figure, Anthropic never does.
+ */
+export function chooseContextLimit(openrouter: OpenRouterIndex | null, litellm: LiteLLMIndex | null, model: ModelDataLookupModel, routedId?: string): number | undefined {
+    if (model.id === 'openrouter') {
+        return openrouter ? resolveRows(openrouter, model, routedId).context : undefined
+    }
+    const own = litellm ? resolveLiteLLMRow(litellm, model)?.ctx : undefined
+    if (own !== undefined) {
+        return own
+    }
+    if (isDirectAnthropic(model)) {
+        return undefined
+    }
+    return openrouter ? resolveRows(openrouter, model, routedId).context : undefined
+}
+
+/**
+ * The prices of a model with the same source rule as the context window. The
+ * LiteLLM price object is used whole, never completed key by key from
+ * OpenRouter, so one field never mixes two sources. The result is a copy.
+ */
+export function choosePricing(openrouter: OpenRouterIndex | null, litellm: LiteLLMIndex | null, model: ModelDataLookupModel, routedId?: string): OpenRouterPricing | undefined {
+    if (model.id === 'openrouter') {
+        return openrouter ? resolveRows(openrouter, model, routedId).pricing : undefined
+    }
+    const own = litellm ? resolveLiteLLMRow(litellm, model)?.price : undefined
+    if (own !== undefined) {
+        return { ...own }
+    }
+    if (isDirectAnthropic(model)) {
+        return undefined
+    }
+    return openrouter ? resolveRows(openrouter, model, routedId).pricing : undefined
 }
