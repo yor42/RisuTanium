@@ -16,11 +16,18 @@ const h = vi.hoisted(() => ({
     moduleInput: undefined as unknown,
     importCard: null as null | (() => Promise<unknown>),
     importPreset: null as null | (() => Promise<unknown>),
+    /** the options the module reader was handed */
+    moduleOpts: undefined as undefined | { beforeAssets?: (module: { name: string, lowLevelAccess?: boolean }) => Promise<void> },
+    confirm: false,
+    prompts: [] as string[],
+    /** the module list's length at each markBootWrite call */
+    marks: [] as number[],
 }))
 
 vi.mock(import('src/ts/alert'), () => {
     const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
     return {
+        alertConfirm: vi.fn(async (msg: string) => { h.prompts.push(msg); return h.confirm }),
         alertError: vi.fn((msg: string | Error) => { h.log.push('error:' + text(msg)); h.last = 'error:' + text(msg) }),
         alertNormal: vi.fn((msg: string) => { h.log.push('normal:' + msg); h.last = 'normal:' + msg }),
     } as unknown as typeof import('src/ts/alert')
@@ -35,11 +42,16 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/process/modules'), () => ({
-    readModule: vi.fn(async (input: unknown) => {
+    readModule: vi.fn(async (input: unknown, opts?: typeof h.moduleOpts) => {
         h.moduleInput = input
+        h.moduleOpts = opts
         return h.readModule?.()
     }),
 }) as unknown as typeof import('src/ts/process/modules'))
+
+vi.mock(import('src/ts/bootWindow'), () => ({
+    markBootWrite: vi.fn(() => { h.marks.push(h.modules.length) }),
+}) as unknown as typeof import('src/ts/bootWindow'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { get db() { return { modules: h.modules } } },
@@ -67,6 +79,10 @@ beforeEach(() => {
     h.readModule = async () => ({ name: 'Synthetic', id: 'x' })
     h.importCard = async () => 0
     h.importPreset = null
+    h.moduleOpts = undefined
+    h.confirm = false
+    h.prompts = []
+    h.marks = []
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -135,5 +151,47 @@ describe('a dropped module file (regression reproducer)', () => {
         const source = h.moduleInput as { size: number, read: (start: number, end: number) => Promise<Uint8Array> }
         expect(source.size).toBe(5)
         expect(Array.from(await source.read(1, 3))).toEqual([2, 3])
+    })
+})
+
+describe('a dropped module and the low-level-access prompt', () => {
+    /** a module reader that, like the real one, asks its hook before it "saves" an asset */
+    const readerWith = (module: { name: string, lowLevelAccess?: boolean }, saved: string[]) => async () => {
+        await h.moduleOpts?.beforeAssets?.(module)
+        saved.push(module.name)
+        return { ...module, id: 'x' }
+    }
+
+    test('feature: a declined prompt saves nothing, adds no module and shows no success text', async () => {
+        const saved: string[] = []
+        h.readModule = readerWith({ name: 'Risky', lowLevelAccess: true }, saved)
+        await expect(importDroppedFile(file('m.risum'))).resolves.toBeUndefined()
+        expect(saved).toEqual([])
+        expect(h.modules).toEqual([])
+        expect(h.log).toEqual([])
+        expect(h.prompts).toEqual([`${language.moduleLowLevelNamed('Risky')}\n${language.lowLevelAccessConfirm}`])
+    })
+
+    test('guard: a confirmed prompt imports the module and reports success (passes before and after)', async () => {
+        h.confirm = true
+        const saved: string[] = []
+        h.readModule = readerWith({ name: 'Risky', lowLevelAccess: true }, saved)
+        await importDroppedFile(file('m.risum'))
+        expect(saved).toEqual(['Risky'])
+        expect(h.modules).toHaveLength(1)
+        expect(h.last).toBe('normal:' + language.successImport)
+    })
+
+    test('a module without low-level access asks nothing', async () => {
+        h.readModule = readerWith({ name: 'Plain' }, [])
+        await importDroppedFile(file('m.risum'))
+        expect(h.prompts).toEqual([])
+        expect(h.modules).toHaveLength(1)
+    })
+
+    test('feature: the write is announced to the boot window before the module is in the list', async () => {
+        await importDroppedFile(file('m.risum'))
+        expect(h.marks).toEqual([0])
+        expect(h.modules).toHaveLength(1)
     })
 })

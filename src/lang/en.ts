@@ -1976,6 +1976,14 @@ export const languageEnglish = {
     aiGenerationWarning: "Contents will be AI generated and may contain inaccuracies or biases.",
     duplicatePluginFoundUpdateIt: "Duplicate plugin found. do you want to update the existing plugin?",
     pluginUpdateFoundInstallIt: "Plugin update found. Do you want to install the update?",
+    pluginBatchReview: (added: string, updated: string, failed: string) =>
+        'Review these plugin files. Confirming installs the new plugins switched on and updates the ones already installed, keeping their saved settings. Files that failed are not installed.'
+        + (added ? `\n\nNew:\n${added}` : '')
+        + (updated ? `\n\nUpdate (settings kept):\n${updated}` : '')
+        + (failed ? `\n\nFailed:\n${failed}` : ''),
+    pluginBatchMore: (count: number) => `...and ${count} more`,
+    pluginBatchRepeated: "Another file in this selection has the same plugin name.",
+    pluginBatchTranspileFailed: (message: string) => `Failed to transpile TypeScript code: ${message}`,
     goToChat: "Go to Chat",
     bookmark: "Bookmark",
     translate: "Translate",
@@ -2344,6 +2352,16 @@ export const languageEnglish = {
     importUnsupportedFile: "This file type cannot be imported.",
     importNotCardFile: "This is not a character card file.",
     importFileNotReceived: "The file could not be received.",
+    importDeclinedLowLevel: "Not imported: Low Level Access was declined.",
+    moduleLowLevelNamed: (name: string, file?: string) => file ? `Module "${name}" (${file})` : `Module "${name}"`,
+    importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Imported ${imported} ${imported === 1 ? 'module' : 'modules'}, skipped ${skipped}.` : `Imported ${imported} ${imported === 1 ? 'module' : 'modules'}.`,
+    moduleUnsupportedFile: (name: string) => `${name}: this file type is not supported as a module.`,
+    moduleDuplicatePrompt: (name: string, file: string) => `A module named "${name}" (${file}) is already installed. What should happen to this file?`,
+    moduleDuplicateReplace: "Replace",
+    moduleDuplicateSkip: "Skip",
+    moduleDuplicateAddAnyway: "Add anyway",
+    moduleDuplicateAll: (label: string) => `${label} for all remaining files`,
+    moduleReplaceNamespaceChanged: (name: string, oldNamespace: string, newNamespace: string) => `Module "${name}": the namespace changed from "${oldNamespace}" to "${newNamespace}".`,
     devTool: {
         variables: "Variables",
         object: "Object",

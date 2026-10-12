@@ -58,7 +58,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     checkPersonaBinded: vi.fn(),
-    selectSingleFileObject: vi.fn(async () => new File([new Uint8Array(h.file.data)], h.file.name)),
+    selectFileByDom: vi.fn(async () => [new File([new Uint8Array(h.file.data)], h.file.name)]),
     sleep: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
@@ -183,6 +183,7 @@ describe('importModule with a .risum file', () => {
 
         h.saveFails = true
         h.busyAtSave = []
+        h.modules = []
         await importModule()
         expect(h.busyAtSave.length).toBeGreaterThan(0)
         expect(h.busyAtSave.every((kinds) => kinds.length === 1 && kinds[0] === 'import')).toBe(true)

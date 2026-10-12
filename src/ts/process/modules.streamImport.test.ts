@@ -90,7 +90,7 @@ vi.mock(import('src/ts/util'), () => ({
     checkPersonaBinded: vi.fn(),
     // util's whole-file reader: the bytes of the picked file in one array, for an importer that takes the bytes.
     selectSingleFile: vi.fn(async () => ({ name: h.file.name, data: await readWholeThroughFileReader(h.file) })),
-    selectSingleFileObject: vi.fn(async () => h.file),
+    selectFileByDom: vi.fn(async () => [h.file]),
     sleep: vi.fn(async (ms: number) => { h.sleeps.push(ms) }),
 }) as unknown as typeof import('src/ts/util'))
 
@@ -121,9 +121,9 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 
 vi.mock(import('src/ts/characterCards'), () => ({
     exportCharacterCard: vi.fn(),
-    importCharacterProcess: vi.fn(async (arg: { data: unknown }) => {
+    importCharacterFile: vi.fn(async (arg: { data: unknown }) => {
         h.cardData = arg.data
-        return undefined
+        return { kind: 'declined' }
     }),
 }) as unknown as typeof import('src/ts/characterCards'))
 
@@ -289,7 +289,7 @@ describe('guards', () => {
         await importModule()
         expect(h.modules).toHaveLength(1)
 
-        pick(risumBytes({ records: [patterned(40, 1)], trailing: new Uint8Array([9, 9, 9, 1, 255, 255, 255, 255]) }))
+        pick(risumBytes({ records: [patterned(40, 1)], module: { name: 'Second' }, trailing: new Uint8Array([9, 9, 9, 1, 255, 255, 255, 255]) }))
         await importModule()
         expect(h.modules).toHaveLength(2)
         expect(h.saves).toHaveLength(1)
