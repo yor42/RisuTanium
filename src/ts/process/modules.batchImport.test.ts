@@ -182,6 +182,13 @@ describe('several picked files', () => {
         expect(h.last).toBe('error:' + message)
     })
 
+    test('feature: the count message says "module" for one and "modules" otherwise', () => {
+        expect(language.importModulesDone(1, 0)).toBe('Imported 1 module.')
+        expect(language.importModulesDone(2, 0)).toBe('Imported 2 modules.')
+        expect(language.importModulesDone(1, 2)).toBe('Imported 1 module, skipped 2.')
+        expect(language.importModulesDone(0, 1)).toBe('Imported 0 modules, skipped 1.')
+    })
+
     test('feature: the first failure is in the summary when later files fail too', async () => {
         h.files = [risum('f1.risum', 'One', { magic: 0 }), risum('f2.risum', 'Two'), risum('f3.risum', 'Three', { magic: 0 })]
         await importModule()

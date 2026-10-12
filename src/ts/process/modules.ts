@@ -18,6 +18,7 @@ import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
 import { markBootWrite } from "../bootWindow"
+import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
 import { withBusy } from "./memory/busyActions"
 import { assetByteLimit, charxLimits } from "./processzip"
 import { IMPORT_PIECE_BYTES, WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
@@ -470,17 +471,38 @@ function moduleFileRoute(name:string):{suffix: string, kind: ModuleFileKind}|nul
     return MODULE_FILE_SUFFIXES.find((route) => lower.endsWith(route.suffix)) ?? null
 }
 
-//The one write of a module that was read in full. The boot-window mark and the push stay in one synchronous block, so the change effects see the module at once.
-function commitModule(module:RisuModule){
+/**
+ * The one write of a module that was read in full, and the notes it leaves for the end message. The boot-window mark,
+ * the write and, for a replace, the cache reset stay in one synchronous block, so the change effects see the module at
+ * once and `getModules` never hands out the replaced one.
+ */
+function commitModule(module:RisuModule, decision:DuplicateDecision, session:DuplicateSession):string[] {
     markBootWrite()
-    DBState.db.modules.push(module)
+    const placement = applyModulePlacement(DBState.db.modules, module, decision)
+    if(placement.kind === 'added'){
+        return []
+    }
+    refreshModules()
+    session.replaced = true
+    return describeReplace(placement.previous, module)
 }
 
-//Runs on a scanned `.risum` before any of its assets is saved; a throw saves nothing and adds no module. `batchFile` names the file in a batch.
-function beforeRisumAssets(batchFile?:string){
-    return async (module:RisuModule) => {
-        await confirmRisumLowLevel(module, batchFile)
+/** Decides the duplicate question of a module that was read in full, then writes it. A skip writes nothing. */
+async function placeModule(module:RisuModule, file:File, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
+    const decision = await session.decide(DBState.db.modules, module.name, file.name, laterFiles)
+    if(decision.choice === 'skip'){
+        return {kind: 'skipped'}
     }
+    return importedOutcome(commitModule(module, decision, session))
+}
+
+function importedOutcome(notes:string[]):ImportOutcome {
+    return notes.length > 0 ? {kind: 'imported', index: null, notes} : {kind: 'imported', index: null}
+}
+
+/** The module screens read ids, which a replace keeps, so they are told once that the content changed. */
+export function bumpModuleGui(){
+    ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
 }
 
 /**
@@ -488,7 +510,7 @@ function beforeRisumAssets(batchFile?:string){
  * true when the pick had several files: the prompts then name the file, and an unsupported file gets the short reason
  * that the batch summary lists next to its name.
  */
-async function importModuleFile(file:File, batch:boolean):Promise<ImportOutcome> {
+async function importModuleFile(file:File, batch:boolean, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
     const route = moduleFileRoute(file.name)
     if(!route){
         return {kind: 'refused', reason: batch ? language.importUnsupportedFile : language.moduleUnsupportedFile(file.name), normal: true}
@@ -509,19 +531,26 @@ async function importModuleFile(file:File, batch:boolean):Promise<ImportOutcome>
             if(!outcome.character){
                 return {kind: 'refused', reason: language.errors.noData}
             }
-            commitModule(convertCharacterToModule(outcome.character))
-            return {kind: 'imported', index: null}
+            return await placeModule(convertCharacterToModule(outcome.character), file, session, laterFiles)
         }
         if(route.kind === 'risum'){
             const source = importSourceOfFile(file)
             try {
-                commitModule(await readModule(source, {beforeAssets: beforeRisumAssets(batchFile)}))
+                //The duplicate answer is taken before any asset is saved; a skip saves nothing. Only the write happens after the read.
+                let decision:DuplicateDecision = {choice: 'add'}
+                const module = await readModule(source, {beforeAssets: async (scanned) => {
+                    await confirmRisumLowLevel(scanned, batchFile)
+                    decision = await session.decide(DBState.db.modules, scanned.name, file.name, laterFiles)
+                    if(decision.choice === 'skip'){
+                        throw new ModuleImportStopped('skipped')
+                    }
+                }})
+                return importedOutcome(commitModule(module, decision, session))
             } finally {
                 await source.close()
             }
-            return {kind: 'imported', index: null}
         }
-        return await importModuleJson(file, batchFile)
+        return await importModuleJson(file, batchFile, session, laterFiles)
     } catch (error) {
         if(!(error instanceof ModuleImportStopped)){
             console.error(error)
@@ -531,7 +560,7 @@ async function importModuleFile(file:File, batch:boolean):Promise<ImportOutcome>
 }
 
 //A `.json` or `.lorebook` file: a module, a risu lorebook, an external lorebook or a regex list. What none of these fits is refused at the normal alert level, like a file that does not parse.
-async function importModuleJson(file:File, batchFile?:string):Promise<ImportOutcome> {
+async function importModuleJson(file:File, batchFile:string|undefined, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
     const fileData = new Uint8Array(await file.arrayBuffer())
     try {
         const importData = JSON.parse(Buffer.from(fileData).toString())
@@ -551,40 +580,36 @@ async function importModuleJson(file:File, batchFile?:string):Promise<ImportOutc
                     return {kind: 'declined'}
                 }
             }
-            commitModule(importData)
-            return {kind: 'imported', index: null}
+            return await placeModule(importData, file, session, laterFiles)
         }
         // importData.type === 'risu' in conflict with HypaV3 preset exports
         // difference: record vs. array
         if(importData.type === 'risu' && importData.data && Array.isArray(importData.data)){
             const lores:loreBook[] = importData.data
-            commitModule({
+            return await placeModule({
                 name: importData.name || 'Imported Lorebook',
                 description: importData.description || 'Converted from risu lorebook',
                 lorebook: lores,
                 id: v4()
-            })
-            return {kind: 'imported', index: null}
+            }, file, session, laterFiles)
         }
         if(importData.entries){
             const lores:loreBook[] = convertExternalLorebook(importData.entries)
-            commitModule({
+            return await placeModule({
                 name: importData.name || 'Imported Lorebook',
                 description: importData.description || 'Converted from external lorebook',
                 lorebook: lores,
                 id: v4()
-            })
-            return {kind: 'imported', index: null}
+            }, file, session, laterFiles)
         }
         if(importData.type === 'regex'  && importData.data){
             const regexs:customscript[] = importData.data
-            commitModule({
+            return await placeModule({
                 name: importData.name || 'Imported Regex',
                 description: importData.description || 'Converted from risu regex',
                 regex: regexs,
                 id: v4()
-            })
-            return {kind: 'imported', index: null}
+            }, file, session, laterFiles)
         }
     } catch (error) {
         console.error(error)
@@ -599,8 +624,13 @@ async function importModuleJson(file:File, batchFile?:string):Promise<ImportOutc
  */
 export function singleFileFeedback(outcome:ImportOutcome, fileName:string){
     if(outcome.kind === 'imported'){
+        //A replace that changed the namespace adds its note to the one message of the import, never a second alert.
+        const notes = outcome.notes ?? []
         if(moduleFileRoute(fileName)?.kind === 'charx'){
-            alertNormal(language.successImport)
+            alertNormal([language.successImport, ...notes].join('\n'))
+        }
+        else if(notes.length > 0){
+            alertNormal(notes.join('\n'))
         }
         return
     }
@@ -622,18 +652,25 @@ export async function importModule(){
     if(!files || files.length === 0){
         return
     }
+    const session = new DuplicateSession()
     if(files.length === 1){
         const file = files[0]
-        const outcome = await withBusy('import', () => importModuleFile(file, false))
+        const outcome = await withBusy('import', () => importModuleFile(file, false, session, false))
+        if(session.replaced){
+            bumpModuleGui()
+        }
         singleFileFeedback(outcome, file.name)
         return
     }
     const summary = await runImportBatch(
-        files.map((file) => ({name: file.name, run: () => importModuleFile(file, true)})),
+        files.map((file, index) => ({name: file.name, run: () => importModuleFile(file, true, session, index < files.length - 1)})),
         {declinedReason: language.importDeclinedLowLevel}
     )
+    if(session.replaced){
+        bumpModuleGui()
+    }
     if(!summary.message && !summary.own){
-        alertNormal(language.importModulesDone(summary.imported, summary.skipped))
+        alertNormal([language.importModulesDone(summary.imported, summary.skipped), ...summary.notes].join('\n'))
     }
 }
 

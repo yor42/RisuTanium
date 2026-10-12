@@ -23,7 +23,7 @@ beforeEach(() => {
 })
 
 describe('ModuleImportStopped', () => {
-    test('is an Error that carries its reason and the name the batch reporter used to recognise', () => {
+    test('is an Error that carries its reason and its class name', () => {
         const stop = new ModuleImportStopped('skipped')
         expect(stop).toBeInstanceOf(Error)
         expect(stop.name).toBe('ModuleImportStopped')
