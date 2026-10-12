@@ -48,6 +48,25 @@ export function isColdChat(chat: Pick<Chat, 'message'> | null | undefined): bool
 }
 
 /**
+ * The keys of the chat units `cha` already points at: one per chat whose first
+ * message is still a cold-storage pointer. Shared by the boot archive pass and
+ * the one-character archive, which both build a stub's `coldStoragedChats`.
+ */
+export function pointerChatKeys(cha: character | groupChat): string[] {
+    const keys: string[] = []
+    if (!Array.isArray(cha.chats)) {
+        return keys
+    }
+    for (const chat of cha.chats) {
+        const data = chat?.message?.[0]?.data
+        if (typeof data === 'string' && data.startsWith(coldStorageHeader)) {
+            keys.push(data.slice(coldStorageHeader.length))
+        }
+    }
+    return keys
+}
+
+/**
  * Recovers the key from text that exactly matches
  * `formatColdStorageLoadError`'s output, anchored on the whole string.
  * Returns null for anything else, including a near-miss with extra

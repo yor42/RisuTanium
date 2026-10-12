@@ -15,7 +15,7 @@ import {
     type toSaveType,
 } from './risuSave'
 import { buildColdStub, enrichLegacyStub, isLegacyStub } from '../process/coldCharacter'
-import { coldStorageHeader } from '../process/coldstorageData'
+import { pointerChatKeys } from '../process/coldstorageData'
 import { repairDatabaseIds } from '../process/chatIds'
 import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
 import { applyCharacterDefaults, resetChatStreamingState } from './characterDefaults'
@@ -493,20 +493,6 @@ function refusalReason(tree: Database, characters: readonly Slot[]): string | nu
 }
 
 //#endregion
-
-function pointerChatKeys(cha: Slot): string[] {
-    const keys: string[] = []
-    if (!Array.isArray(cha.chats)) {
-        return keys
-    }
-    for (const chat of cha.chats) {
-        const data = chat?.message?.[0]?.data
-        if (typeof data === 'string' && data.startsWith(coldStorageHeader)) {
-            keys.push(data.slice(coldStorageHeader.length))
-        }
-    }
-    return keys
-}
 
 function characterOf(value: unknown): Slot | null {
     if (typeof value !== 'object' || value === null) {
