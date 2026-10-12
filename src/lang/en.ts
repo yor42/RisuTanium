@@ -2649,6 +2649,12 @@ export const languageEnglish = {
         redirectedWarning: "{model} has been shut down by its provider, which now forwards its requests to {target}. Answers come from {target}, not from {model}. Choose a model explicitly.",
         retiresWarning: "{model} is scheduled to be retired by its provider on {date}. After that day it is treated as retired.",
     },
+    modelSource: {
+        cautionDataset: "{model} is listed only in a public dataset (LiteLLM), not by the provider. It might not work, or its parameters might be incorrect. Use it anyway?",
+        cautionProvider: "{model} is listed only by the provider's API, not in the public dataset. It might not work, or its parameters might be incorrect. Use it anyway?",
+        grayNote: "Not confirmed by both the provider and the public dataset. It might not work, or its parameters might be incorrect.",
+        sourceUnknownNote: "This model is not in the built-in list and has not been confirmed by the provider or the public dataset. It might not work, or its parameters might be incorrect.",
+    },
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;
