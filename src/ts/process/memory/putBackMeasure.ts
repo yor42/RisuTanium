@@ -25,7 +25,13 @@ type CounterName = PutBackReason | 'cleared' | 'dirtyNoKeys'
  */
 export type FireOutcome = 'fingerprinted' | 'busy' | 'writing' | 'kept-only' | 'empty'
 /** 'fire-keyhash' is the per-key hash cost of a dirty verdict, which a normal build does not pay and a fire's duration excludes. */
-export type FingerprintSource = 'restore' | 'restore-keyhash' | 'fire' | 'fire-keyhash' | 'tripwire'
+export type FingerprintSource = 'restore' | 'restore-keyhash' | 'fire' | 'fire-keyhash' | 'tripwire' | 'rearchive'
+/**
+ * What one re-archive job (`characterRearchive.ts`) or one skipped candidate came to: 'archived', 'too-large',
+ * 'counted-failure', 'changed', 'refused' (any other engine refusal), 'gate' (a gate went off), the deferrals
+ * and skips, and 'stopped' (the session breaker is set).
+ */
+export type RearchiveOutcome = 'archived' | 'too-large' | 'counted-failure' | 'changed' | 'refused' | 'gate' | 'deferred-busy' | 'deferred-writing' | 'skipped-purge' | 'skipped-memo' | 'stopped'
 export type CandidateExit = 'swap' | 'dirty' | 'kept' | 'gone' | 'cleared-selection' | 'cleared-early'
 
 /** What `characterPutBack.ts` owns and this module reads at snapshot time or on a tripwire commit. */
@@ -60,6 +66,7 @@ function push<T>(ring: Ring<T>, item: T): void {
     }
 }
 
+interface RearchiveSample { ms: number, length: number, outcome: RearchiveOutcome }
 interface FireSample { ms: number, outcome: FireOutcome }
 interface FingerprintSample { ms: number, length: number, source: FingerprintSource }
 interface WaitSample { ms: number, exit: CandidateExit }
@@ -80,7 +87,13 @@ function zeroCounters(): Record<CounterName, number> {
     return { clean: 0, dirty: 0, busy: 0, writing: 0, kept: 0, gone: 0, cleared: 0, dirtyNoKeys: 0 }
 }
 
+function zeroRearchive(): Record<RearchiveOutcome, number> {
+    return { archived: 0, 'too-large': 0, 'counted-failure': 0, changed: 0, refused: 0, gate: 0, 'deferred-busy': 0, 'deferred-writing': 0, 'skipped-purge': 0, 'skipped-memo': 0, stopped: 0 }
+}
+
 let counters = zeroCounters()
+let rearchiveCounters = zeroRearchive()
+let rearchiveJobs = newRing<RearchiveSample>()
 let fires = newRing<FireSample>()
 let fingerprints = newRing<FingerprintSample>()
 let waits = newRing<WaitSample>()
@@ -108,6 +121,14 @@ export function countReason(name: CounterName): void {
 export function readReasonCounters(): Record<PutBackReason, number> {
     const { clean, dirty, busy, writing, kept, gone } = counters
     return { clean, dirty, busy, writing, kept, gone }
+}
+
+/** A negative `fpLength` records the outcome in the counters only: it is not a job with a duration or a size. */
+export function noteRearchive(outcome: RearchiveOutcome, ms: number, fpLength: number): void {
+    rearchiveCounters[outcome] += 1
+    if (fpLength >= 0) {
+        push(rearchiveJobs, { ms, length: fpLength, outcome })
+    }
 }
 
 export function noteFire(outcome: FireOutcome, ms: number): void {
@@ -287,6 +308,12 @@ export function snapshot() {
         dirty: { byKey: { ...dirtyByKey }, samples: dirtySamples.map((s) => ({ chaId: s.chaId, keys: [...s.keys] })) },
         restoredBytesOutside: restoredBytesOutside(keep),
         retainedCount: provider?.retainedCount() ?? 0,
+        rearchive: {
+            counters: { ...rearchiveCounters },
+            job: statsOf(rearchiveJobs.items.map((s) => s.ms)),
+            sizes: statsOf(rearchiveJobs.items.map((s) => s.length)),
+            byOutcome: groupStats(rearchiveJobs.items, (s) => s.outcome, (s) => s.ms),
+        },
         tripwire: {
             swaps: trips.length,
             finalizedProxy,
@@ -304,6 +331,8 @@ export function snapshot() {
 /** Clears what was measured; candidates still waiting keep their first-add time. */
 export function reset(): void {
     counters = zeroCounters()
+    rearchiveCounters = zeroRearchive()
+    rearchiveJobs = newRing()
     fires = newRing()
     fingerprints = newRing()
     waits = newRing()

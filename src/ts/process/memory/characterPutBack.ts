@@ -13,6 +13,11 @@
  *
  * The put-back writes no unit and takes no lock, so it does not depend on the
  * boot archive pass being allowed on this platform.
+ *
+ * A restored character found changed is not dropped from the retained records
+ * when re-archiving may run: it is marked dirty and left to
+ * `characterRearchive.ts`, which writes its new unit. The put-back never
+ * fingerprints a dirty-marked record again.
  */
 
 import { get } from 'svelte/store'
@@ -28,6 +33,8 @@ import {
     dropRetained,
     findChaIdHolders,
     hasRetained,
+    isDirtyRecord,
+    noteDirtyRecord,
     pruneRetained,
     rawRefOf,
     retainedCount,
@@ -35,6 +42,7 @@ import {
     type RetainedRecord,
 } from '../coldRetained'
 import { anyChokePointInFlight, isBusy } from './busyActions'
+import { rearchiveMayRun, rearchiveOnSelection, resetCharacterRearchiveForTest, startCharacterRearchive } from './characterRearchive'
 import { addGroupMembers, baseKeepInline } from './keepSet'
 import { MEASURE, tripwireEnabled } from './measureFlag'
 import {
@@ -234,6 +242,10 @@ function runFire(): FireOutcome {
             dropped = true
             continue
         }
+        if (isDirtyRecord(record)) {
+            leave(chaId, 'dirty')
+            continue
+        }
         if (isWriting({ chaId })) {
             count('writing')
             deferredWriting = true
@@ -260,7 +272,11 @@ function runFire(): FireOutcome {
                 measurementMs += performance.now() - blockStartedAt
             }
             leave(chaId, 'dirty')
-            dropRetained(record)
+            if (rearchiveMayRun() === null) {
+                noteDirtyRecord(record)
+            } else {
+                dropRetained(record)
+            }
             count('dirty')
             continue
         }
@@ -288,6 +304,9 @@ function onSelection(index: number): void {
         previousChaId = currentChaId
         currentChaId = chaId
     }
+    // Before the retained-record exit: a character that was never restored has
+    // no record and is still a re-archive candidate.
+    rearchiveOnSelection()
     if (chaId !== null) {
         leave(chaId, 'cleared-selection')
     }
@@ -297,7 +316,7 @@ function onSelection(index: number): void {
     const keep = putBackKeepSet()
     for (const cha of DBState.db.characters) {
         const record = retainedRecordOf(cha)
-        if (record && !keep.has(record.chaId)) {
+        if (record && !isDirtyRecord(record) && !keep.has(record.chaId)) {
             pending.add(record.chaId)
             if (MEASURE) {
                 noteCandidate(record.chaId)
@@ -315,6 +334,8 @@ function onSelection(index: number): void {
  */
 export function startCharacterPutBack(): () => void {
     currentChaId = chaIdAt(get(selectedCharID))
+    // Before the subscription below, which calls `onSelection` at once.
+    startCharacterRearchive({ keepSet: putBackKeepSet, armTripwire: MEASURE ? armTripwire : undefined })
     // The body runs untracked: a selection set from inside an effect would
     // otherwise make that effect depend on every character read here.
     return selectedCharID.subscribe((index) => untrack(() => onSelection(index)))
@@ -326,5 +347,6 @@ export function resetPutBackForTest(): void {
     previousChaId = null
     armed = false
     tripwireArmed = false
+    resetCharacterRearchiveForTest()
     resetPutBackMeasureForTest()
 }

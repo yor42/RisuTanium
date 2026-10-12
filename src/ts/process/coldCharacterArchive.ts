@@ -3,12 +3,11 @@ import { DBState } from '../stores.svelte'
 import type { character, groupChat } from '../storage/database.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { isUsableCharacterId } from '../storage/characterIds'
-import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
-import { readColdStorageItem, setColdStorageItem } from './coldstorage.svelte'
+import { readColdStorageItem, writeColdStorageUnit } from './coldstorage.svelte'
 import { buildColdStub, coldUnitCharacter } from './coldCharacter'
 import { pointerChatKeys } from './coldstorageData'
 import { contentFingerprint, dropRetained, findChaIdHolders, retainedRecordOf } from './coldRetained'
-import { canBootArchive } from './memory/idleReloadBootState'
+import { archiveMayRun } from './archiveGate'
 import { clearRestoredBytes } from './memory/restoredBytes'
 
 /**
@@ -39,9 +38,6 @@ import { clearRestoredBytes } from './memory/restoredBytes'
 
 type Slot = character | groupChat
 
-/** The oldest `formatversion` whose characters are saved as blocks; the boot pass archives from here on as well. */
-const MIN_FORMAT_VERSION = 5
-
 export type ArchiveTarget =
     /** Not in the list; on success the stub is appended. */
     | { kind: 'new', character: Slot }
@@ -64,6 +60,7 @@ export type ArchiveFailure =
     | 'id-taken'        // new: some slot holds the chaId; loaded: it is not the sole holder
     | 'slot-gone'       // loaded: the character is no longer in the list
     | 'changed'         // loaded: its content differs from what was written
+    | 'too-large'       // the unit is over what the Node server accepts; a property of the character, not a device fault
     | 'write-failed'
     | 'read-failed'
     | 'read-mismatch'   // the unit read back holds another chaId or other content
@@ -95,23 +92,7 @@ function failure(reason: ArchiveFailure, writtenUnitKey: string | null): Archive
     return { ok: false, reason, writtenUnitKey, countsAsFailure: COUNTED_FAILURES.has(reason) }
 }
 
-/** The gates that must hold for the whole archive, synchronous; null when archiving may run. */
-export function archiveMayRun(): ArchiveFailure | null {
-    if (!canBootArchive()) {
-        return 'unavailable'
-    }
-    const db = DBState.db
-    if (!db || db.archiveCharacters !== true) {
-        return 'setting'
-    }
-    if (typeof db.formatversion !== 'number' || db.formatversion < MIN_FORMAT_VERSION) {
-        return 'format-version'
-    }
-    if (hasEnabledV21Plugin(db.plugins)) {
-        return 'v21-plugin'
-    }
-    return null
-}
+export { archiveMayRun }
 
 function isArchivableTarget(value: unknown): value is Slot {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -185,7 +166,11 @@ export async function archiveCharacterNow(target: ArchiveTarget, options: Archiv
 
         const fp = contentFingerprint(live)
         key = (options.newUnitKey ?? uuidv4)()
-        if (!(await setColdStorageItem(key, { character: coldUnitCharacter(live) }))) {
+        const writeResult = await writeColdStorageUnit(key, { character: coldUnitCharacter(live) })
+        if (writeResult === 'too-large') {
+            return failure('too-large', null)
+        }
+        if (writeResult !== 'written') {
             return failure('write-failed', null)
         }
         written = key

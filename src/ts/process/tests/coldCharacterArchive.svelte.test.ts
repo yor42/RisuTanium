@@ -25,6 +25,8 @@ const h = vi.hoisted(() => ({
     writes: [] as string[],
     deletes: [] as string[],
     writeOk: true,
+    /** What a failed write answers: the engine tells a size refusal from any other failure. */
+    failureKind: 'failed' as 'failed' | 'too-large',
     /** Runs while a write is in flight, after the unit is stored. */
     whileWriting: null as null | (() => void),
     /** Runs while a read is in flight. */
@@ -40,15 +42,15 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 })
 
 vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
-    setColdStorageItem: async (key: string, value: unknown) => {
+    writeColdStorageUnit: async (key: string, value: unknown) => {
         h.writes.push(key)
         await Promise.resolve()
         if (!h.writeOk) {
-            return false
+            return h.failureKind
         }
         h.units.set(key, JSON.parse(JSON.stringify(value)))
         h.whileWriting?.()
-        return true
+        return 'written'
     },
     readColdStorageItem: async (key: string): Promise<ReadResult> => {
         await Promise.resolve()
@@ -125,6 +127,7 @@ beforeEach(() => {
     h.writes.length = 0
     h.deletes.length = 0
     h.writeOk = true
+    h.failureKind = 'failed'
     h.whileWriting = null
     h.whileReading = null
     h.readOverride = null
@@ -287,6 +290,31 @@ describe('a unit that does not hold', () => {
         expect(result.countsAsFailure).toBe(true)
         expect(result.writtenUnitKey).toBeNull()
         expect(DBState.db.characters.length).toBe(0)
+    })
+
+    test('new behaviour (CHORE-200): a unit over the Node body limit is a too-large refusal that is not counted, writes nothing and leaves the list untouched', async () => {
+        h.writeOk = false
+        h.failureKind = 'too-large'
+        setDb([fullCharacter('A')])
+        const before = JSON.stringify(live(0))
+
+        const result = failed(await archiveCharacterNow({ kind: 'loaded', character: live(0) }))
+
+        expect(result).toEqual({ ok: false, reason: 'too-large', writtenUnitKey: null, countsAsFailure: false })
+        expect(JSON.stringify(live(0))).toBe(before)
+        expect(h.units.size).toBe(0)
+        expect(tracker.character).toEqual([])
+    })
+
+    test('guard: any other failed write is still a counted write-failed; catches mapping every refused write to too-large', async () => {
+        h.writeOk = false
+        h.failureKind = 'failed'
+        setDb([fullCharacter('A')])
+
+        const result = failed(await archiveCharacterNow({ kind: 'loaded', character: live(0) }))
+
+        expect(result.reason).toBe('write-failed')
+        expect(result.countsAsFailure).toBe(true)
     })
 
     test.each([

@@ -20,7 +20,7 @@ import * as fflate from 'fflate'
 //#region module mocks
 
 type Target = { kind: 'new' | 'loaded', character: Record<string, unknown> }
-type Step = 'ok' | 'write-failed' | 'setting' | 'throw' | 'gate'
+type Step = 'ok' | 'write-failed' | 'too-large' | 'setting' | 'throw' | 'gate'
 
 const h = vi.hoisted(() => ({
     errors: [] as string[],
@@ -205,6 +205,9 @@ vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
         }
         if (step === 'write-failed') {
             return { ok: false, reason: 'write-failed', writtenUnitKey: null, countsAsFailure: true }
+        }
+        if (step === 'too-large') {
+            return { ok: false, reason: 'too-large', writtenUnitKey: null, countsAsFailure: false }
         }
         if (step === 'setting' || step === 'gate') {
             return { ok: false, reason: 'setting', writtenUnitKey: null, countsAsFailure: false }
@@ -436,6 +439,17 @@ describe('a batch through the picker', () => {
 
         expect(h.engineCalls).toHaveLength(4)
         expect(stubs()).toEqual([false, false, false, true])
+    })
+
+    test('guard (MC-308 3): cards refused as too large for the Node server are not counted, so the batch is not stopped and the next card archives; catches a caller that counts every refusal', async () => {
+        h.script = ['too-large', 'too-large', 'too-large', 'ok']
+
+        await pick([charx('C1'), charx('C2'), charx('C3'), charx('C4')])
+
+        expect(h.engineCalls).toHaveLength(4)
+        expect(names()).toEqual(['C1', 'C2', 'C3', 'C4'])
+        expect(stubs()).toEqual([false, false, false, true])
+        expect(h.errors).toEqual([])
     })
 
     test('new behaviour: an engine that throws is a failure for the breaker and the card imports live', async () => {

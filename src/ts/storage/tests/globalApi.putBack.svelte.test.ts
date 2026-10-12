@@ -25,7 +25,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { makeCharacter, makeDb } from 'src/ts/storage/tests/saveLoopSupport'
-import { createWorldKit, nextCommit, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
+import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { characterBlockKey, stubsKey } from 'src/ts/storage/blockKeys'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
 import type { FaultRule } from 'src/ts/storage/tests/blockStoreHarness'
@@ -49,11 +49,17 @@ type Entry = Record<string, unknown>
 
 const units = new Map<string, unknown>()
 
+/** Held to arrange an interleave: the write of x's unit waits until `unitWrite` resolves; `started` counts those writes. */
+const holds: { unitWrite: Promise<void> | null, started: number } = { unitWrite: null, started: 0 }
+const writeStarted = (): boolean => holds.started > 0
+
 let stops: Array<() => void> = []
 
 beforeEach(() => {
     vi.clearAllMocks()
     units.clear()
+    holds.unitWrite = null
+    holds.started = 0
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -63,6 +69,18 @@ beforeEach(() => {
         const { noteReadSize } = await import('src/ts/process/memory/restoredBytes')
         return {
             getColdStorageItem: vi.fn(),
+            writeColdStorageUnit: async (key: string, value: unknown) => {
+                // Serialised at the call, as the real compression does.
+                const json = JSON.stringify(value)
+                if ((value as { character: { chaId: string } }).character.chaId === 'x') {
+                    holds.started += 1
+                    if (holds.unitWrite) {
+                        await holds.unitWrite
+                    }
+                }
+                units.set(key, JSON.parse(json))
+                return 'written'
+            },
             readColdStorageItem: async (key: string) => {
                 const unit = units.get(key)
                 if (unit === undefined) {
@@ -261,5 +279,84 @@ describe('guard: a clean-up delete that landed but was reported uncertain, throu
         const restored = xOf(await a.reload())
         expect(isStubEntry(restored)).toBe(false)
         expect(((restored.chats as Entry[])[0].message as Entry[])[0].data).toBe('hello from the unit')
+    })
+})
+
+describe('a loaded character re-archived through the real save loop', () => {
+    /** An archived x, restored, edited and saved as a full block; archiving is allowed on this page. */
+    async function editedRestoredWorld(): Promise<Arena> {
+        const a = await startArchivedWorld('tauri')
+        a.w.bootState.noteBootArchiveSession(true)
+        ;(h.db as Record<string, unknown>).archiveCharacters = true
+        await a.restoreX()
+        ;((a.slotOfX().chats as Entry[])[0].message as Entry[])[0].data = 'edited after the restore'
+        await nextCommit(a.w, () => a.w.marks.markCharacterForSave('x'))
+        return a
+    }
+
+    test('new behaviour: after the user moves on, the next commit writes the stubs pack with the new stub, the full block is gone, and a reboot loads the stub whose unit holds the edit', async () => {
+        const a = await editedRestoredWorld()
+        expect(a.w.owner.committedState()!.packed).not.toContain('x')
+        const generation = a.w.owner.committedState()!.generation
+
+        await a.moveOn()
+        await until(() => isStubEntry(a.slotOfX()), 'the re-archive to place the stub')
+        await settled(a.w)
+
+        const rebooted = xOf(await a.reload())
+        expect(typeof rebooted.coldstorage).toBe('string')
+        expect(rebooted.coldstorage).not.toBe('unit-x')
+        const unit = units.get(rebooted.coldstorage as string) as { character: { chats: Array<{ message: Array<{ data: string }> }> } }
+        expect(unit.character.chats[0].message[0].data).toBe('edited after the restore')
+        expect(a.w.owner.committedState()!.packed).toContain('x')
+        expect(a.w.store.peek(characterBlockKey(generation, 'x'))).toBeNull()
+    })
+
+    test('guard: a placement that lands while an iteration is encoding the character leaves a commit that still loads the full, edited character, and the next commit writes the stub; catches a loader that requires every pack member to be a stub', async () => {
+        const a = await editedRestoredWorld()
+        const proto = a.w.risuSave.RisuSaveEncoder.prototype as unknown as { encodeCharacterBlock: (...args: unknown[]) => Promise<unknown> }
+        const original = proto.encodeCharacterBlock
+        let holdEncode: Promise<void> | null = null
+        let encodeReached = false
+        proto.encodeCharacterBlock = async function (this: unknown, ...args: unknown[]) {
+            if (holdEncode && (args[0] as { chaId?: string }).chaId === 'x') {
+                encodeReached = true
+                await holdEncode
+            }
+            return await original.apply(this, args)
+        }
+
+        // The unit write waits, so that a mark of x can start an iteration that stops in x's encode first.
+        let releaseWrite!: () => void
+        holds.unitWrite = new Promise<void>((resolve) => { releaseWrite = resolve })
+        await a.moveOn()
+        await until(writeStarted, 'the re-archive to start its write of x')
+
+        let releaseEncode!: () => void
+        holdEncode = new Promise<void>((resolve) => { releaseEncode = resolve })
+        a.w.marks.markCharacterForSave('x')
+        await until(() => encodeReached, 'an iteration to reach the encode of x')
+        releaseWrite()
+        await until(() => isStubEntry(a.slotOfX()), 'the re-archive to place the stub')
+
+        // The commit that finishes the held iteration, as the store held it at that moment.
+        let atHeldCommit: typeof a.w.store | null = null
+        a.w.api.afterNextSaveCommit(() => { atHeldCommit = a.w.store.cloneUngated() as typeof a.w.store })
+        releaseEncode()
+        await until(() => atHeldCommit !== null, 'the held iteration to commit')
+        const { makeOwner } = await import('src/ts/storage/tests/blockStoreHarness')
+        const { validateLoadedBlocks } = await import('src/ts/storage/blockProfileValidate')
+        const loaded = await makeOwner(atHeldCommit!.cloneUngated()).owner.load({ validate: validateLoadedBlocks })
+        expect(loaded.kind).toBe('loaded')
+        const atHeld = (loaded as unknown as { tree: { characters: Entry[] } }).tree.characters.find((c) => c.chaId === 'x')!
+        expect(isStubEntry(atHeld)).toBe(false)
+        expect(((atHeld.chats as Entry[])[0].message as Entry[])[0].data).toBe('edited after the restore')
+
+        await settled(a.w)
+
+        // The placement's own mark made a later commit write the stub.
+        const rebooted = xOf(await a.reload())
+        expect(typeof rebooted.coldstorage).toBe('string')
+        expect(a.w.owner.committedState()!.packed).toContain('x')
     })
 })

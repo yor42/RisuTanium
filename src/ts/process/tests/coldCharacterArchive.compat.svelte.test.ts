@@ -292,6 +292,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 import {
     readColdStorageItem,
     collectColdStorageBackupPayloads,
+    setColdStorageItem,
 } from '../coldstorage.svelte'
 import { archiveCharacterNow } from '../coldCharacterArchive'
 import { DBState } from 'src/ts/stores.svelte'
@@ -369,5 +370,87 @@ describe('a character the one-character archive wrote', () => {
         expect(collected.missingKeys).toEqual([])
         expect(collected.invalidKeys).toEqual([])
         expect(collected.payloads.map((payload) => payload.key)).toContain(stub.coldstorage)
+    })
+})
+
+describe('a loaded character the engine archived again', () => {
+    /** A character that is in the list as a full object, as a restored or never archived one is. */
+    function loadedCharacter(chaId: string, extra: Record<string, unknown> = {}): character {
+        const cha = { ...fullCharacter(chaId), ...extra } as character
+        DBState.db.characters.push(cha)
+        return DBState.db.characters[DBState.db.characters.length - 1] as unknown as character
+    }
+
+    test('guard: after an edit and a trash-then-untrash, upstream opens the stub as the edited character without trashTime, and lists it from the stub', async () => {
+        const live = loadedCharacter('cha-alice')
+        live.name = 'Alice edited'
+        live.creatorNotes = 'An edited note'
+        live.chats.push({ id: 'c2', name: 'Two', note: '', localLore: [], message: [{ role: 'user', data: 'again', time: 2 }] } as never)
+        live.trashTime = 1234
+        delete live.trashTime
+        const edited = JSON.parse(JSON.stringify(live)) as character
+
+        const result = await archiveCharacterNow({ kind: 'loaded', character: live, previousUnitKey: 'older-unit' })
+
+        expect(result.ok).toBe(true)
+        const stub = DBState.db.characters[0] as unknown as character
+        expect(stub.coldstorage).toBeTruthy()
+        expect(stub.trashTime).toBeUndefined()
+        expect(stub.name).toBe('Alice edited')
+        expect(stub.image).toBe('assets/alice.png')
+        expect(stub.creatorNotes).toBe('An edited note')
+        expect(stub.coldChatCount).toBe(2)
+        expect(stub.chats[0].message[0].data).toBe('')
+        const opened = await upstreamOpen(stub)
+        expect(opened).not.toBe('restore-failed')
+        expect(opened).toEqual(edited)
+        expect((opened as character).trashTime).toBeUndefined()
+    })
+
+    test('guard: a trashed character keeps its trash state on the stub only and the unit never holds trashTime; catches writing the live object instead of coldUnitCharacter(live)', async () => {
+        const live = loadedCharacter('cha-alice', { trashTime: Date.now() })
+
+        const result = await archiveCharacterNow({ kind: 'loaded', character: live })
+
+        expect(result.ok).toBe(true)
+        const stub = DBState.db.characters[0] as unknown as character
+        expect(stub.trashTime).toBeGreaterThan(0)
+        const opened = await upstreamOpen(stub) as character
+        expect(opened.trashTime).toBeUndefined()
+    })
+
+    test('guard (MC-175, MC-223): the export carries the new unit and not the superseded one, and a fork import of that export restores the edited character', async () => {
+        const first = await archiveCharacterNow({ kind: 'new', character: fullCharacter('cha-alice') })
+        expect(first.ok).toBe(true)
+        if (first.ok === false) {
+            return
+        }
+        const oldKey = (DBState.db.characters[first.index] as unknown as character).coldstorage as string
+        // The user opens it: the slot now holds the unit's full character, which is then edited.
+        const restored = await upstreamOpen(DBState.db.characters[first.index] as unknown as character) as character
+        DBState.db.characters[first.index] = restored as never
+        const live = DBState.db.characters[first.index] as unknown as character
+        live.name = 'Alice edited'
+
+        const second = await archiveCharacterNow({ kind: 'loaded', character: live, previousUnitKey: oldKey })
+
+        expect(second.ok).toBe(true)
+        if (second.ok === false) {
+            return
+        }
+        expect(second.unitKey).not.toBe(oldKey)
+        const stub = DBState.db.characters[second.index] as unknown as character
+        const collected = await collectColdStorageBackupPayloads(DBState.db)
+        expect(collected.missingKeys).toEqual([])
+        expect(collected.payloads.map((payload) => payload.key)).toContain(stub.coldstorage)
+        expect(collected.payloads.map((payload) => payload.key)).not.toContain(oldKey)
+
+        // A fork import writes each payload's unit back before the stub is opened.
+        unitStore.clear()
+        for (const payload of collected.payloads) {
+            expect(await setColdStorageItem(payload.key, JSON.parse(new TextDecoder().decode(payload.encoded)))).toBe(true)
+        }
+        const opened = await upstreamOpen(stub) as character
+        expect(opened.name).toBe('Alice edited')
     })
 })

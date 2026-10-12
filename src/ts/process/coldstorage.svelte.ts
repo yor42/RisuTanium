@@ -4,6 +4,8 @@ import { get } from "svelte/store"
 import { listStoredUnitNames } from "../storage/loadTimeListing"
 import type { ReadResult, StoreCondition } from "../storage/store/contract"
 import { getAppStore } from "../storage/store/appStore"
+import { NodeHttpError } from "../storage/store/nodeHttpStore"
+import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit"
 import { StoreDeleteManyError, StoreInvalidKeyError, StoreVersionConflictError } from "../storage/store/errors"
 import { compress as fflateCompress, decompress as fflateDecompress } from "fflate"
 import { alertConfirm } from "../alert"
@@ -328,17 +330,25 @@ async function compressColdStorageValue(value:any):Promise<Uint8Array | null> {
     }
 }
 
-export async function setColdStorageItem(key:string, value:any):Promise<boolean> {
+/**
+ * Writes one unit and says why it did not land: `'too-large'` when its
+ * compressed bytes are over what the Node server accepts (refused before any
+ * upload, or answered 413 by a server configured smaller than this client
+ * knows), `'failed'` for every other failure. A refusal for size is a property
+ * of the unit and not a device fault, so callers that count failures can tell
+ * them apart.
+ */
+export async function writeColdStorageUnit(key:string, value:any):Promise<'written' | 'too-large' | 'failed'> {
     // A key that cannot be a storage name is a failed write, decided before
     // anything is compressed or any backend is asked. The key itself is not
     // logged: it may be arbitrarily long.
     if(!isSafeColdStorageKey(key)){
         console.error('Cold storage write refused: the archive key cannot be used as a storage name.')
-        return false
+        return 'failed'
     }
     if (coldUnitStoreRefusal(key) !== null) {
         console.error('Cold storage write refused: the page store cannot hold this archive key.')
-        return false
+        return 'failed'
     }
 
     // The key only: a unit holds a whole character, and a console keeps every
@@ -350,7 +360,15 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
     try {
         const compressed = await compressColdStorageValue(value)
         if(!compressed){
-            return false
+            return 'failed'
+        }
+
+        // The Node server refuses a body over its limit, and the body is these
+        // compressed bytes. The unit is not sent: an upload that is certain to
+        // fail would only cost the transfer.
+        if (isNodeServer && compressed.length > NODE_BODY_LIMIT_BYTES) {
+            console.error('Cold storage write refused: the unit is over the Node server body limit.')
+            return 'too-large'
         }
 
         // Only the page's store is written, never a legacy OPFS file. On a store that
@@ -368,8 +386,12 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
             } else {
                 unitVersions.set(key, version)
             }
-            return true
+            return 'written'
         } catch (error) {
+            if (error instanceof NodeHttpError && error.status === 413 && error.operation === 'write') {
+                console.error('Cold storage write refused: the Node server answered 413 to the unit.')
+                return 'too-large'
+            }
             if (error instanceof StoreVersionConflictError) {
                 console.error('Cold storage write refused: the unit was changed by another writer since this page read it.')
             } else if (error instanceof StoreInvalidKeyError) {
@@ -377,12 +399,16 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
             } else {
                 console.error('Cold storage write failed:', error)
             }
-            return false
+            return 'failed'
         }
     } finally {
         endUnitWrite()
         endInFlight()
     }
+}
+
+export async function setColdStorageItem(key:string, value:any):Promise<boolean> {
+    return (await writeColdStorageUnit(key, value)) === 'written'
 }
 
 /**

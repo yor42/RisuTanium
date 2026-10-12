@@ -23,6 +23,10 @@ const h = vi.hoisted(() => ({
     /** while set, the import's own object-mode format step does nothing */
     skipImportFormat: false,
     uuid: 0,
+    /** The callbacks the save loop would call after the next commit. */
+    commits: [] as Array<() => void>,
+    /** The `chaId` of every unit written. */
+    writes: [] as string[],
 }))
 
 vi.mock('uuid', () => ({
@@ -81,6 +85,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     const { AppendableBuffer } = await import('src/ts/byteBuffer')
     return {
         AppendableBuffer,
+        afterNextSaveCommit: (callback: () => void) => { h.commits.push(callback) },
         BlankWriter: class {},
         LocalWriter: class {},
         VirtualWriter: class {},
@@ -188,6 +193,10 @@ vi.mock(import('src/ts/interchangeability'), () => ({
     convertModuleToCharacter: vi.fn(),
 }) as unknown as typeof import('src/ts/interchangeability'))
 
+vi.mock(import('src/ts/process/chatOrigin'), () => ({
+    isWriting: () => false,
+}) as unknown as typeof import('src/ts/process/chatOrigin'))
+
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     getAvatarThumbSrc: vi.fn(),
     isThumbEligible: vi.fn(() => false),
@@ -197,6 +206,11 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     setColdStorageItem: async (key: string, value: unknown) => {
         h.units.set(key, JSON.parse(JSON.stringify(value)))
         return true
+    },
+    writeColdStorageUnit: async (key: string, value: { character: { chaId: string } }) => {
+        h.writes.push(value.character.chaId)
+        h.units.set(key, JSON.parse(JSON.stringify(value)))
+        return 'written'
     },
     readColdStorageItem: async (key: string) => {
         const unit = h.units.get(key)
@@ -231,6 +245,7 @@ import { contentFingerprint, resetRetainedForTest, retainedRecordOf } from 'src/
 import { noteBootArchiveSession, resetIdleReloadBootStateForTest } from 'src/ts/process/memory/idleReloadBootState'
 import { resetRestoredBytesForTest } from 'src/ts/process/memory/restoredBytes'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
+import { resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
 
 const enc = new TextEncoder()
 
@@ -284,6 +299,9 @@ beforeEach(() => {
     h.units.clear()
     h.skipImportFormat = false
     h.uuid = 0
+    h.commits.length = 0
+    h.writes.length = 0
+    resetPutBackForTest()
     resetRetainedForTest()
     resetRestoredBytesForTest()
     resetCharacterSaveMarksForTest()
@@ -295,7 +313,11 @@ beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
+let stopPutBack: (() => void) | null = null
+
 afterEach(() => {
+    stopPutBack?.()
+    stopPutBack = null
     vi.restoreAllMocks()
 })
 
@@ -356,5 +378,58 @@ describe('the format step', () => {
         characterFormatUpdate(char)
 
         expect(contentFingerprint(char)).toBe(once)
+    })
+})
+
+describe('a character opened, changed by the open, left and re-archived', () => {
+    /** One macrotask: the re-archive job the commit scheduled runs and finishes. */
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+    const commitAndSettle = async (): Promise<void> => {
+        for (const callback of h.commits.splice(0)) {
+            callback()
+        }
+        await settle()
+    }
+
+    test.each([
+        ['a V2 card', v2Card],
+        ['a tavern card', tavernCard],
+    ])('new behaviour (MC-273): a unit written without the format step (as the boot pass writes it) that %s opens changed is re-archived in its formatted state, so the next open is clean and leaving it writes no unit', async (_name, card) => {
+        stopPutBack = startCharacterPutBack()
+        h.skipImportFormat = true
+        const archived = await importAndOpen(card, true)
+        h.skipImportFormat = false
+        expect(archived.wasStub).toBe(true)
+        expect(archived.cleanAfterOpen).toBe(false)
+        const chaId = slot(archived.index).chaId as string
+        const firstUnit = [...h.units.keys()][0]
+
+        // Two live characters to move on to, so that the opened one is neither selected nor previous.
+        noteBootArchiveSession(false)
+        const b = await importCharacterProcess({ name: 'b.json', data: jsonData(v3Card), archive: false }) as number
+        const c = await importCharacterProcess({ name: 'c.json', data: jsonData(tavernCard), archive: false }) as number
+        noteBootArchiveSession(true)
+        selectedCharID.set(b)
+        selectedCharID.set(c)
+
+        await commitAndSettle()
+
+        expect(typeof slot(archived.index).coldstorage).toBe('string')
+        expect(slot(archived.index).coldstorage).not.toBe(firstUnit)
+        expect(h.writes.filter((id) => id === chaId)).toHaveLength(2)
+
+        await changeChar(archived.index)
+        const opened = slot(archived.index)
+        const record = retainedRecordOf(opened)
+        expect(record).toBeDefined()
+        expect(contentFingerprint(opened)).toBe(record!.fp)
+
+        selectedCharID.set(b)
+        selectedCharID.set(c)
+        const writesBeforeLeaving = h.writes.filter((id) => id === chaId).length
+        await commitAndSettle()
+
+        expect(typeof slot(archived.index).coldstorage).toBe('string')
+        expect(h.writes.filter((id) => id === chaId)).toHaveLength(writesBeforeLeaving)
     })
 })
