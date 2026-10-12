@@ -1139,6 +1139,8 @@ export const languageEnglish = {
     autoSuggest: "Auto Suggest",
     tokens: "Tokens",
     maxContextSize: "Max Context Size",
+    maxContextAboveModelMax: (max: string) =>
+        `This is above the model's listed maximum context of ${max}. The provider may reject or truncate the request.`,
     maxResponseSize: "Max Response Size",
     temperature: "Temperature",
     frequencyPenalty: "Frequency Penalty",

@@ -7,6 +7,8 @@
 
 import type { SettingItem } from './types';
 import { LLMFlags, resolveClaudeThinkingType } from '../model/types';
+import { getModelContextLimit } from '../model/modelData/modelDataService.svelte';
+import { language } from 'src/lang';
 
 /**
  * Basic parameter settings that are always visible
@@ -17,7 +19,11 @@ export const basicParameterItems: SettingItem[] = [
         type: 'number',
         labelKey: 'maxContextSize',
         bindKey: 'maxContext',
-        options: { min: 0 },
+        options: {
+            min: 0,
+            actualMax: (ctx) => getModelContextLimit(ctx.modelInfo, ctx.db),
+            actualMaxWarning: (max) => language.maxContextAboveModelMax(max),
+        },
         keywords: ['context', 'size', 'token', 'limit'],
     },
     {
