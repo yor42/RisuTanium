@@ -650,7 +650,7 @@ export const languageChineseTraditional = {
         "hypaV3EmbeddingMaxConcurrent": "相似度搜尋可同時進行的 Embedding 模型請求上限",
         "hypaV3SummaryChunkSeparator": "用於將總結拆分成區塊以進行相似性搜尋的分隔符號。",
         "coldstorage": "開啟後，應用程式會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。這樣在角色很多時可維持較低的記憶體用量。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。",
-        "dynamicModelRegistry": "啟動時會使用您的 API 金鑰取得 Google、Anthropic 和 OpenAI 的模型清單，並新增內建清單中沒有的模型（OpenAI 為 GPT 模型）。同時會在啟動時檢查 openrouter.ai 上公開的模型限制與價格，每天最多檢查一次（不會傳送任何金鑰）。關閉後會停止自動下載與新增的模型；已儲存的資料仍會使用，「重新整理模型資料」按鈕仍可使用。",
+        "dynamicModelRegistry": "啟動時會使用您的 API 金鑰取得 Google、Anthropic 和 OpenAI 的模型清單，並新增內建清單中沒有的模型（OpenAI 為 GPT 模型）。同時每天最多一次從 openrouter.ai 以及 raw.githubusercontent.com 上的 LiteLLM 資料集（LiteLLM，MIT 授權）下載公開的模型限制與價格；不會向這兩處傳送任何金鑰。僅由供應商或僅由資料集列出的新增模型，會在「顯示不建議使用的設定」下以灰色顯示，選擇時會要求確認。關閉後會停止自動下載與新增的模型；已儲存的資料仍會使用，「重新整理模型資料」按鈕仍可更新限制與價格。",
         "keepSessionAlive": "維持分頁活動狀態，避免工作階段因閒置而失效。可能需要重新整理才會生效。\n\n" +
             "- **透過音訊**：循環播放人耳聽不到的低頻音以維持工作階段。此方式在大多數瀏覽器中相容性最佳，也通常最有效。在 Android 瀏覽器上啟用時會顯示媒體通知，其他音樂 App 也可能會暫停。\n",
         "localNetworkModeDesc": "透過本機執行環境路徑路由私有/區域網路模型 URL，而非透過瀏覽器直接抓取。\n\n**用途**\n- 避免瀏覽器對 `192.168.x.x`、`10.x.x.x`、`localhost`、`.local` 等本機主機的私有網路/CORS 限制\n- 降低 Node 自架模式下本機推斷首個 Token 生成緩慢時的逾時風險\n\n**運作方式**\n- 僅在啟用區域網路模式且偵測到目標 URL 為本機/私有位址時套用\n- Node 自架模式：串流回應優先使用實驗性的 Job+WebSocket 中繼（失敗時回退至 `/proxy2`）；非串流回應使用 `/proxy2`\n- Tauri：使用原生/直接路徑\n- 公開網頁模式：依設計會封鎖本機/私有位址的直接呼叫\n\n**限制**\n- 適用範圍僅限 OpenAI 相容的請求路徑\n- 無法繞過兩個公開網域之間的 Cloudflare 來源限制\n- 需使用您的自架 URL（`globalThis.__NODE__ === true` 的位址）此功能才會生效"
@@ -1064,6 +1064,7 @@ export const languageChineseTraditional = {
     "modelDataStatusUpdated": (time: string) => `模型資料更新於 ${time}`,
     "modelDataStatusFailed": (time: string) => `無法重新整理。顯示的是 ${time} 的資料`,
     "modelDataStatusFailedEmpty": "無法下載模型資料",
+    "modelDataStatusPartial": "部分來源無法更新。這些來源將顯示已儲存的資料",
     "maxResponseSize": "最大回應長度",
     "temperature": "Temperature",
     "frequencyPenalty": "Frequency Penalty",
@@ -2548,5 +2549,11 @@ export const languageChineseTraditional = {
         "retiredWarning": "{model} 已被供應商停用，對其發出的請求很可能會失敗。請選擇其他模型。",
         "redirectedWarning": "{model} 已被供應商關閉，供應商現將其請求轉送至 {target}。回應來自 {target}，而非 {model}。請明確選擇一個模型。",
         "retiresWarning": "供應商計劃於 {date} 停用 {model}。該日期之後將視為已停用。"
+    },
+    "modelSource": {
+        "cautionDataset": "{model} 僅在公開資料集（LiteLLM）中列出，供應商並未列出。它可能無法使用，或其參數可能不正確。仍要使用嗎？",
+        "cautionProvider": "{model} 僅由供應商的 API 列出，公開資料集中沒有。它可能無法使用，或其參數可能不正確。仍要使用嗎？",
+        "grayNote": "僅由供應商或公開資料集其中一方列出。它可能無法使用，或其參數可能不正確。",
+        "sourceUnknownNote": "此模型不在內建清單中，也未獲得供應商或公開資料集的確認。它可能無法使用，或其參數可能不正確。"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

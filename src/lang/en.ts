@@ -732,7 +732,7 @@ export const languageEnglish = {
         hypaV3SummaryChunkSeparator:
             "Separator used to split summaries into chunks for similarity search.",
         coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. This keeps memory use low when you have many characters. Turning it off archives nothing new, and characters that are already archived still open normally.",
-        dynamicModelRegistry: "At startup, fetches the model lists of Google, Anthropic and OpenAI with your API keys and adds models missing from the built-in list (for OpenAI, GPT models). It also downloads public model limits and prices, at most once a day, from openrouter.ai and from the LiteLLM dataset on raw.githubusercontent.com (LiteLLM, MIT license); no key is sent to either of those two. Added models that only the provider or only the dataset lists are shown in gray under \"Show unrecommended\" and ask for confirmation when chosen. Turning this off stops the automatic downloads and the added models; saved data is still used, and the Refresh model data button still updates the limits and prices."
+        dynamicModelRegistry: "At startup, fetches the model lists of Google, Anthropic and OpenAI with your API keys and adds models missing from the built-in list (for OpenAI, GPT models). It also downloads public model limits and prices, at most once a day, from openrouter.ai and from the LiteLLM dataset on raw.githubusercontent.com (LiteLLM, MIT license); no key is sent to either of those two. Added models that only the provider or only the dataset lists are shown in gray under \"Show Unrecommended Settings\" and ask for confirmation when chosen. Turning this off stops the automatic downloads and the added models; saved data is still used, and the Refresh model data button still updates the limits and prices."
     },
     setup: {
         theme: "Select your theme",
@@ -2653,7 +2653,7 @@ export const languageEnglish = {
     modelSource: {
         cautionDataset: "{model} is listed only in a public dataset (LiteLLM), not by the provider. It might not work, or its parameters might be incorrect. Use it anyway?",
         cautionProvider: "{model} is listed only by the provider's API, not in the public dataset. It might not work, or its parameters might be incorrect. Use it anyway?",
-        grayNote: "Not confirmed by both the provider and the public dataset. It might not work, or its parameters might be incorrect.",
+        grayNote: "Listed by only one source, the provider or the public dataset. It might not work, or its parameters might be incorrect.",
         sourceUnknownNote: "This model is not in the built-in list and has not been confirmed by the provider or the public dataset. It might not work, or its parameters might be incorrect.",
     },
 } satisfies I18nTranslation;

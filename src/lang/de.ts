@@ -607,7 +607,7 @@ export const languageGerman = {
         "hypaV3QueryChatCount": "Die Anzahl der letzten Chat-Nachrichten, die als Abfrage für die Ähnlichkeitssuche verwendet werden. Höhere Werte nutzen mehr Chat-Kontext, um die Ähnlichkeit zu bestimmen.",
         "hypaV3SummaryChunkSeparator": "Trennzeichen, das verwendet wird, um Zusammenfassungen für die Ähnlichkeitssuche in Abschnitte zu unterteilen.",
         "coldstorage": "Wenn diese Option aktiviert ist, speichert die App beim Start die vollständigen Daten jedes Charakters separat und lädt sie erst, wenn Sie diesen Charakter öffnen. So bleibt der Speicherverbrauch niedrig, wenn Sie viele Charaktere haben. Wenn die Option deaktiviert ist, werden keine neuen Charaktere archiviert, und bereits archivierte Charaktere lassen sich weiterhin normal öffnen.",
-        "dynamicModelRegistry": "Ruft beim Start mit Ihren API-Schlüsseln die Modelllisten von Google, Anthropic und OpenAI ab und ergänzt Modelle, die in der integrierten Liste fehlen (bei OpenAI GPT-Modelle). Außerdem prüft die App beim Start auf openrouter.ai die öffentlichen Modelllimits und Preise, höchstens einmal am Tag (es wird kein Schlüssel gesendet). Wenn Sie dies deaktivieren, werden die automatischen Downloads und die ergänzten Modelle beendet; gespeicherte Daten werden weiterhin verwendet, und die Schaltfläche „Modelldaten aktualisieren“ funktioniert weiterhin.",
+        "dynamicModelRegistry": "Ruft beim Start mit Ihren API-Schlüsseln die Modelllisten von Google, Anthropic und OpenAI ab und ergänzt Modelle, die in der integrierten Liste fehlen (bei OpenAI GPT-Modelle). Außerdem lädt die App höchstens einmal am Tag öffentliche Modelllimits und Preise von openrouter.ai und aus dem LiteLLM-Datensatz auf raw.githubusercontent.com herunter (LiteLLM, MIT-Lizenz); an keine dieser beiden Stellen wird ein Schlüssel gesendet. Ergänzte Modelle, die nur der Anbieter oder nur der Datensatz auflistet, werden unter „Nicht empfohlene Einstellungen anzeigen“ grau dargestellt und fragen bei der Auswahl nach einer Bestätigung. Wenn Sie dies deaktivieren, werden die automatischen Downloads und die ergänzten Modelle beendet; gespeicherte Daten werden weiterhin verwendet, und die Schaltfläche „Modelldaten aktualisieren“ aktualisiert weiterhin Limits und Preise.",
         "enableScrollToActiveChar": "Wenn aktiviert, scrollt die Seitenleiste durch Drücken des Hotkeys zum aktuell aktiven Charakter. Geschlossene Ordner werden automatisch geöffnet."
     },
     "setup": {
@@ -1019,6 +1019,7 @@ export const languageGerman = {
     "modelDataStatusUpdated": (time: string) => `Modelldaten aktualisiert: ${time}`,
     "modelDataStatusFailed": (time: string) => `Aktualisierung fehlgeschlagen. Es werden die Daten von ${time} angezeigt`,
     "modelDataStatusFailedEmpty": "Modelldaten konnten nicht heruntergeladen werden",
+    "modelDataStatusPartial": "Einige Quellen konnten nicht aktualisiert werden. Für diese werden gespeicherte Daten angezeigt",
     "maxResponseSize": "Maximale Antwortgröße",
     "temperature": "Temperatur",
     "frequencyPenalty": "Häufigkeitslimitierung",
@@ -2505,5 +2506,11 @@ export const languageGerman = {
         "retiredWarning": "{model} wurde vom Anbieter eingestellt, daher werden Anfragen daran wahrscheinlich fehlschlagen. Wählen Sie ein anderes Modell.",
         "redirectedWarning": "{model} wurde vom Anbieter abgeschaltet, der Anfragen dafür jetzt an {target} weiterleitet. Antworten stammen von {target}, nicht von {model}. Wählen Sie ein Modell ausdrücklich aus.",
         "retiresWarning": "{model} wird vom Anbieter voraussichtlich am {date} eingestellt. Ab diesem Tag gilt es als eingestellt."
+    },
+    "modelSource": {
+        "cautionDataset": "{model} wird nur in einem öffentlichen Datensatz (LiteLLM) geführt, nicht vom Anbieter. Es funktioniert möglicherweise nicht, oder seine Parameter sind möglicherweise falsch. Trotzdem verwenden?",
+        "cautionProvider": "{model} wird nur von der API des Anbieters aufgeführt, nicht im öffentlichen Datensatz. Es funktioniert möglicherweise nicht, oder seine Parameter sind möglicherweise falsch. Trotzdem verwenden?",
+        "grayNote": "Nur von einer Quelle aufgeführt, dem Anbieter oder dem öffentlichen Datensatz. Es funktioniert möglicherweise nicht, oder seine Parameter sind möglicherweise falsch.",
+        "sourceUnknownNote": "Dieses Modell steht nicht in der integrierten Liste und wurde weder vom Anbieter noch vom öffentlichen Datensatz bestätigt. Es funktioniert möglicherweise nicht, oder seine Parameter sind möglicherweise falsch."
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

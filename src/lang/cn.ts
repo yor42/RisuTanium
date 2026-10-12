@@ -608,7 +608,7 @@ export const languageChinese = {
         "hypaV3QueryChatCount": "用作相似度搜索查询的最近聊天消息数量。数值越高，用于判断相似度的聊天上下文越多。",
         "hypaV3SummaryChunkSeparator": "用于将总结拆分为多个块以进行相似度搜索的分隔符。",
         "coldstorage": "开启后，应用会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。这样在角色很多时可以保持较低的内存占用。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。",
-        "dynamicModelRegistry": "启动时使用您的 API 密钥获取 Google、Anthropic 和 OpenAI 的模型列表，并添加内置列表中没有的模型（OpenAI 为 GPT 模型）。同时会在启动时检查 openrouter.ai 上公开的模型限制和价格，每天最多检查一次（不会发送任何密钥）。关闭后将停止自动下载以及新增的模型；已保存的数据仍会被使用，“刷新模型数据”按钮仍可使用。"
+        "dynamicModelRegistry": "启动时使用您的 API 密钥获取 Google、Anthropic 和 OpenAI 的模型列表，并添加内置列表中没有的模型（OpenAI 为 GPT 模型）。同时每天最多一次从 openrouter.ai 以及 raw.githubusercontent.com 上的 LiteLLM 数据集（LiteLLM，MIT 许可证）下载公开的模型限制和价格；不会向这两处发送任何密钥。仅由服务提供方或仅由数据集列出的新增模型，会在“显示不建议的设置”下以灰色显示，选择时会要求确认。关闭后将停止自动下载以及新增的模型；已保存的数据仍会被使用，“刷新模型数据”按钮仍可更新限制和价格。"
     },
     "setup": {
         "theme": "选择介面主题",
@@ -1019,6 +1019,7 @@ export const languageChinese = {
     "modelDataStatusUpdated": (time: string) => `模型数据更新于 ${time}`,
     "modelDataStatusFailed": (time: string) => `刷新失败。显示的是 ${time} 的数据`,
     "modelDataStatusFailedEmpty": "无法下载模型数据",
+    "modelDataStatusPartial": "部分来源无法更新。这些来源将显示已保存的数据",
     "maxResponseSize": "最大回应长度（Max Response Size）",
     "temperature": "温度（Temperature）",
     "frequencyPenalty": "频率惩罚（Frequency Penalty）",
@@ -2503,5 +2504,11 @@ export const languageChinese = {
         "retiredWarning": "{model} 已被服务提供方停用，向其发送的请求很可能会失败。请选择其他模型。",
         "redirectedWarning": "{model} 已被服务提供方关停，其请求现被转发至 {target}。回答来自 {target}，而非 {model}。请明确选择一个模型。",
         "retiresWarning": "服务提供方计划于 {date} 停用 {model}。该日期之后将视为已停用。"
+    },
+    "modelSource": {
+        "cautionDataset": "{model} 仅在公开数据集（LiteLLM）中列出，服务提供方并未列出。它可能无法使用，或其参数可能不正确。仍要使用吗？",
+        "cautionProvider": "{model} 仅由服务提供方的 API 列出，公开数据集中没有。它可能无法使用，或其参数可能不正确。仍要使用吗？",
+        "grayNote": "仅由服务提供方或公开数据集其中一方列出。它可能无法使用，或其参数可能不正确。",
+        "sourceUnknownNote": "此模型不在内置列表中，也未得到服务提供方或公开数据集的确认。它可能无法使用，或其参数可能不正确。"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

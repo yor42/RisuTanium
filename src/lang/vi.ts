@@ -607,7 +607,7 @@ export const languageVietnamese = {
         "hypaV3QueryChatCount": "Số lượng tin nhắn trò chuyện gần đây được sử dụng làm truy vấn cho tìm kiếm tương đồng. Giá trị cao hơn sẽ sử dụng nhiều ngữ cảnh trò chuyện hơn để xác định độ tương đồng.",
         "hypaV3SummaryChunkSeparator": "Ký tự phân tách được dùng để chia các bản tóm tắt thành từng đoạn cho tìm kiếm tương đồng.",
         "coldstorage": "Khi bật, ứng dụng sẽ lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Điều này giúp giữ mức sử dụng bộ nhớ thấp khi bạn có nhiều nhân vật. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.",
-        "dynamicModelRegistry": "Khi khởi động, tải danh sách mô hình của Google, Anthropic và OpenAI bằng khóa API của bạn và thêm các mô hình chưa có trong danh sách tích hợp (với OpenAI là các mô hình GPT). Ứng dụng cũng kiểm tra openrouter.ai để lấy giới hạn và giá công khai của mô hình khi khởi động, tối đa mỗi ngày một lần (không gửi khóa nào). Khi tắt tính năng này, việc tải xuống tự động và các mô hình được thêm sẽ dừng lại; dữ liệu đã lưu vẫn được sử dụng và nút Làm mới dữ liệu mô hình vẫn hoạt động.",
+        "dynamicModelRegistry": "Khi khởi động, tải danh sách mô hình của Google, Anthropic và OpenAI bằng khóa API của bạn và thêm các mô hình chưa có trong danh sách tích hợp (với OpenAI là các mô hình GPT). Ứng dụng cũng tải xuống giới hạn và giá công khai của mô hình, tối đa mỗi ngày một lần, từ openrouter.ai và từ bộ dữ liệu LiteLLM trên raw.githubusercontent.com (LiteLLM, giấy phép MIT); không gửi khóa nào đến hai nơi này. Các mô hình được thêm mà chỉ nhà cung cấp hoặc chỉ bộ dữ liệu liệt kê sẽ hiển thị màu xám dưới mục \"Hiển thị cài đặt không được đề xuất\" và yêu cầu xác nhận khi được chọn. Khi tắt tính năng này, việc tải xuống tự động và các mô hình được thêm sẽ dừng lại; dữ liệu đã lưu vẫn được sử dụng và nút Làm mới dữ liệu mô hình vẫn cập nhật giới hạn và giá.",
         "enableScrollToActiveChar": "Nếu được bật, nhấn phím tắt sẽ cuộn thanh bên đến nhân vật hiện đang hoạt động. Các thư mục sẽ tự động được mở nếu đang đóng."
     },
     "setup": {
@@ -1019,6 +1019,7 @@ export const languageVietnamese = {
     "modelDataStatusUpdated": (time: string) => `Dữ liệu mô hình được cập nhật ${time}`,
     "modelDataStatusFailed": (time: string) => `Không thể làm mới. Đang hiển thị dữ liệu từ ${time}`,
     "modelDataStatusFailedEmpty": "Không thể tải xuống dữ liệu mô hình",
+    "modelDataStatusPartial": "Không thể cập nhật một số nguồn. Đang hiển thị dữ liệu đã lưu cho các nguồn đó",
     "maxResponseSize": "Kích thước phản hồi tối đa",
     "temperature": "Nhiệt độ",
     "frequencyPenalty": "Hình phạt tần số",
@@ -2503,5 +2504,11 @@ export const languageVietnamese = {
         retiredWarning: "{model} đã bị nhà cung cấp ngừng hoạt động nên các yêu cầu gửi đến nó có thể sẽ thất bại. Hãy chọn mô hình khác.",
         redirectedWarning: "{model} đã bị nhà cung cấp ngừng hoạt động và hiện chuyển tiếp các yêu cầu của nó đến {target}. Câu trả lời đến từ {target}, không phải từ {model}. Hãy chọn một mô hình cụ thể.",
         retiresWarning: "Nhà cung cấp dự kiến ngừng {model} vào {date}. Sau ngày đó, nó được xem là đã ngừng.",
+    },
+    modelSource: {
+        cautionDataset: "{model} chỉ được liệt kê trong một bộ dữ liệu công khai (LiteLLM), không phải do nhà cung cấp liệt kê. Mô hình có thể không hoạt động hoặc các tham số của nó có thể không chính xác. Vẫn sử dụng?",
+        cautionProvider: "{model} chỉ được liệt kê qua API của nhà cung cấp, không có trong bộ dữ liệu công khai. Mô hình có thể không hoạt động hoặc các tham số của nó có thể không chính xác. Vẫn sử dụng?",
+        grayNote: "Chỉ được một nguồn liệt kê, nhà cung cấp hoặc bộ dữ liệu công khai. Mô hình có thể không hoạt động hoặc các tham số của nó có thể không chính xác.",
+        sourceUnknownNote: "Mô hình này không có trong danh sách tích hợp và chưa được nhà cung cấp hay bộ dữ liệu công khai xác nhận. Mô hình có thể không hoạt động hoặc các tham số của nó có thể không chính xác.",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

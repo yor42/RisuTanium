@@ -608,7 +608,7 @@ export const languageKorean = {
         "hypaV3EmbeddingRequestsPerMinute": "유사도 검색 시 분당 최대 임베딩 모델 요청 수입니다.",
         "hypaV3EmbeddingMaxConcurrent": "유사도 검색 시 최대 동시 임베딩 모델 요청 수입니다.",
         "coldstorage": "이 옵션을 켜면 앱이 시작될 때 각 캐릭터의 전체 데이터를 별도로 저장하고, 해당 캐릭터를 열 때만 불러옵니다. 캐릭터가 많을 때 메모리 사용량을 낮게 유지할 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.",
-        "dynamicModelRegistry": "시작할 때 사용자의 API 키로 Google, Anthropic, OpenAI의 모델 목록을 가져와 내장 목록에 없는 모델을 추가합니다(OpenAI는 GPT 모델). 또한 시작할 때 openrouter.ai에서 공개된 모델 한도와 가격을 하루에 한 번까지만 확인하며, 키는 전송하지 않습니다. 이 옵션을 끄면 자동 다운로드와 추가되는 모델이 중단됩니다. 저장된 데이터는 계속 사용되며, 모델 데이터 새로고침 버튼도 계속 작동합니다."
+        "dynamicModelRegistry": "시작할 때 사용자의 API 키로 Google, Anthropic, OpenAI의 모델 목록을 가져와 내장 목록에 없는 모델을 추가합니다(OpenAI는 GPT 모델). 또한 하루에 한 번까지만 openrouter.ai와 raw.githubusercontent.com의 LiteLLM 데이터셋(LiteLLM, MIT 라이선스)에서 공개된 모델 한도와 가격을 내려받으며, 이 두 곳에는 키를 전송하지 않습니다. 제공자만 또는 데이터셋만 목록에 올린 추가 모델은 \"비권장 설정 보이기\" 아래에 회색으로 표시되며, 선택할 때 확인을 요청합니다. 이 옵션을 끄면 자동 다운로드와 추가되는 모델이 중단됩니다. 저장된 데이터는 계속 사용되며, 모델 데이터 새로고침 버튼은 계속 한도와 가격을 갱신합니다."
     },
     "setup": {
         "theme": "테마를 입력해 주세요",
@@ -1019,6 +1019,7 @@ export const languageKorean = {
     "modelDataStatusUpdated": (time: string) => `모델 데이터 업데이트 시각: ${time}`,
     "modelDataStatusFailed": (time: string) => `새로고침하지 못했습니다. ${time} 기준 데이터를 표시합니다`,
     "modelDataStatusFailedEmpty": "모델 데이터를 내려받지 못했습니다",
+    "modelDataStatusPartial": "일부 출처를 업데이트하지 못했습니다. 해당 출처는 저장된 데이터를 표시합니다",
     "maxResponseSize": "최대 응답 크기",
     "temperature": "온도",
     "frequencyPenalty": "빈도 패널티",
@@ -2503,5 +2504,11 @@ export const languageKorean = {
         retiredWarning: "{model}은(는) 제공자가 서비스를 종료했으므로 요청이 실패할 가능성이 높습니다. 다른 모델을 선택하세요.",
         redirectedWarning: "{model}은(는) 제공자가 서비스를 종료했으며, 제공자가 현재 요청을 {target}(으)로 전달합니다. 응답은 {model}이(가) 아니라 {target}에서 생성됩니다. 모델을 직접 선택하세요.",
         retiresWarning: "{model}은(는) 제공자가 {date}에 서비스를 종료할 예정입니다. 해당 날짜 이후에는 종료된 것으로 처리됩니다.",
+    },
+    modelSource: {
+        cautionDataset: "{model}은(는) 제공자가 아닌 공개 데이터셋(LiteLLM)에만 등재되어 있습니다. 작동하지 않거나 매개변수가 잘못되었을 수 있습니다. 그래도 사용하시겠습니까?",
+        cautionProvider: "{model}은(는) 공개 데이터셋이 아닌 제공자의 API에만 등재되어 있습니다. 작동하지 않거나 매개변수가 잘못되었을 수 있습니다. 그래도 사용하시겠습니까?",
+        grayNote: "제공자와 공개 데이터셋 중 한 곳에서만 등재되어 있습니다. 작동하지 않거나 매개변수가 잘못되었을 수 있습니다.",
+        sourceUnknownNote: "이 모델은 내장 목록에 없으며 제공자나 공개 데이터셋에서도 확인되지 않았습니다. 작동하지 않거나 매개변수가 잘못되었을 수 있습니다.",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>
