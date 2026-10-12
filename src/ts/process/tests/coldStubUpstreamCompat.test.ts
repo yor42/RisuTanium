@@ -14,7 +14,8 @@
  */
 import { describe, test, expect } from 'vitest'
 import type { character } from '../../storage/database.svelte'
-import { buildColdStub, enrichLegacyStub } from '../coldCharacter'
+import { buildColdStub, coldUnitCharacter, enrichLegacyStub } from '../coldCharacter'
+import { TRASH_PURGE_AGE_MS } from '../../storage/trashPurge'
 
 interface UpstreamUnit {
     character?: character
@@ -129,5 +130,80 @@ describe.each(STUBS)('compatibility guard (model of upstream): %s', (_label, mak
         expect(stub.tags).toEqual(['a', 'b'])
         expect(stub.creator).toBe('Edited')
         expect(upstreamListRead(stub)).toEqual({ name: 'Alice', image: 'assets/alice.png', chatCount: expect.any(Number), description: 'A short note' })
+    })
+})
+
+// Trash model, from kwaroran/RisuAI 979dbc9d:
+//  - the trash list shows slots with a truthy `trashTime` (GridCatalog.svelte);
+//  - untrash sets `slot.trashTime = undefined` on the slot itself (GridCatalog.svelte);
+//  - the startup purge in bootstrap.ts uses the same expression as this fork's
+//    `isTrashPurgeDue` and only splices the slot: no unit is removed (units go
+//    only through the manual "Clean Unused Cold Storage" path);
+//  - opening a stub replaces the slot wholesale with the unit's character
+//    (changeChar in characters.ts), so the unit's `trashTime` is what survives.
+
+/** Model: whether upstream's trash list shows the slot. */
+function upstreamTrashListed(slot: character): boolean {
+    return !!slot.trashTime
+}
+
+/** Model: upstream's startup purge; it never touches units. */
+function upstreamPurge(slots: character[], now: number): character[] {
+    return slots.filter((slot) => !(slot.trashTime && slot.trashTime + TRASH_PURGE_AGE_MS < now))
+}
+
+/** Model: upstream's untrash. */
+function upstreamUntrash(slot: character): void {
+    slot.trashTime = undefined
+}
+
+describe('compatibility guard (model of upstream): a trashed character this fork archived', () => {
+    const TRASHED_AT = 1_700_000_000_000
+
+    function trashed(): character {
+        return { ...fullCharacter(), trashTime: TRASHED_AT } as character
+    }
+
+    function archive() {
+        const source = trashed()
+        const stub = buildColdStub(source, 'unit-1', [])
+        stub.trashTime = source.trashTime
+        const units: Record<string, UpstreamUnit> = { 'unit-1': { character: coldUnitCharacter(source) } }
+        return { stub, units }
+    }
+
+    test('the trashed stub is listed in upstream\'s trash and its keys name the unit', () => {
+        const { stub } = archive()
+
+        expect(upstreamTrashListed(stub)).toBe(true)
+        expect(upstreamKeys(stub)).toEqual(['unit-1'])
+    })
+
+    test('upstream\'s purge removes the stub after the age and leaves the units as they are', () => {
+        const { stub, units } = archive()
+        const before = JSON.stringify(units)
+
+        expect(upstreamPurge([stub], TRASHED_AT + TRASH_PURGE_AGE_MS)).toEqual([stub])
+        expect(upstreamPurge([stub], TRASHED_AT + TRASH_PURGE_AGE_MS + 1)).toEqual([])
+        expect(JSON.stringify(units)).toBe(before)
+    })
+
+    test('mutation-checked guard: untrash, then open, gives a character that a later purge keeps', () => {
+        // Mutation: a unit that still carries trashTime (writing the source as is) fails this.
+        const { stub, units } = archive()
+
+        upstreamUntrash(stub)
+        const opened = upstreamOpen(stub, units) as character
+
+        expect(opened.trashTime).toBeUndefined()
+        expect(upstreamPurge([opened], TRASHED_AT + 10 * TRASH_PURGE_AGE_MS)).toEqual([opened])
+    })
+
+    test('diagnostic: opening without untrashing gives an untrashed character, because the unit carries no trashTime', () => {
+        const { stub, units } = archive()
+
+        const opened = upstreamOpen(stub, units) as character
+
+        expect(opened.trashTime).toBeUndefined()
     })
 })

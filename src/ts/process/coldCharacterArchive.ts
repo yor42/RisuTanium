@@ -5,7 +5,7 @@ import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { isUsableCharacterId } from '../storage/characterIds'
 import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
 import { readColdStorageItem, setColdStorageItem } from './coldstorage.svelte'
-import { buildColdStub } from './coldCharacter'
+import { buildColdStub, coldUnitCharacter } from './coldCharacter'
 import { pointerChatKeys } from './coldstorageData'
 import { contentFingerprint, dropRetained, findChaIdHolders, retainedRecordOf } from './coldRetained'
 import { canBootArchive } from './memory/idleReloadBootState'
@@ -20,7 +20,8 @@ import { clearRestoredBytes } from './memory/restoredBytes'
  *
  * Every unit key is new, so no existing unit is overwritten. The engine never
  * deletes a unit (`previousUnitKey` is only handed back to the caller), never
- * formats or normalizes the character, takes no lock and does not commit: the
+ * formats or normalizes the character (the unit leaves out `trashTime`, see
+ * `coldUnitCharacter`), takes no lock and does not commit: the
  * stub reaches disk through the normal save, which `markCharacterForSave`
  * schedules. It checks no busy state, keep-set or trash policy; a caller that
  * needs those passes them in `finalCheck`.
@@ -184,7 +185,7 @@ export async function archiveCharacterNow(target: ArchiveTarget, options: Archiv
 
         const fp = contentFingerprint(live)
         key = (options.newUnitKey ?? uuidv4)()
-        if (!(await setColdStorageItem(key, { character: live }))) {
+        if (!(await setColdStorageItem(key, { character: coldUnitCharacter(live) }))) {
             return failure('write-failed', null)
         }
         written = key

@@ -218,10 +218,10 @@ describe('arming', () => {
         expect(listenerTypes).toEqual([])
     })
 
-    test('does not count the bytes of a trashed character, which the pass never archives', async () => {
+    test('new behaviour: counts the bytes of a trashed character, which the reload\'s boot archives or purges', async () => {
         startIdleReload()
         noteRestoredBytes('trashed', 10 * RESTORED_BYTES_THRESHOLD)
-        expect(listenerTypes).toEqual([])
+        expect(listenerTypes).toContain('keydown')
     })
 
     test('arms when the character that was left behind is the one that holds the bytes', async () => {

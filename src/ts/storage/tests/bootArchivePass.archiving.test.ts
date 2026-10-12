@@ -17,6 +17,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
     BLOCK,
+    groupCharacter,
     chaIdsOf,
     characterBlocks,
     COLD_POINTER_HEADER,
@@ -224,6 +225,7 @@ describe('boot archive pass: archiving eligible characters', () => {
         useHost('opfs')
         const world = await worldFor(kit, 'opfs', baseTree([
             fullCharacter('a', 'A'),
+            // trashTime 123 is long past the three-day purge, so the pass leaves it for the purge.
             fullCharacter('t', 'Trashed', { trashTime: 123 }),
             fullCharacter('b', 'B'),
             fullCharacter('§playground', 'Playground'),
@@ -294,10 +296,69 @@ describe('boot archive pass: archiving eligible characters', () => {
     })
 })
 
+describe('boot archive pass: trashed characters', () => {
+    const recent = () => Date.now() - 60_000
+
+    test.each(HOSTS)('new behaviour (%s): a recently trashed character and group each get one unit, and the committed and installed stubs keep their trashTime', async (host) => {
+        useHost(host)
+        const trashTime = recent()
+        const world = await worldFor(kit, host, baseTree([
+            fullCharacter('r', 'Recent', { trashTime }),
+            groupCharacter('g', 'Group', ['r'], { trashTime }),
+        ]))
+
+        const boot = await bootOnce(world)
+
+        expect(world.units.writes.length).toBe(2)
+        const installed = charactersOf(installedTree(boot.outcome))
+        const committed = charactersOf(await decodeRisuSave(world.mainWrites[0], { strict: true }))
+        for (const slots of [installed, committed]) {
+            expect(slots.map((c) => !!c.coldstorage)).toEqual([true, true])
+            expect(slots.map((c) => c.trashTime)).toEqual([trashTime, trashTime])
+        }
+        expect(installed[1].characters).toEqual(['r'])
+    })
+
+    test('new behaviour and mutation-checked guard: the unit of a trashed character has no trashTime, keeps the content fields, and the stub keeps the trashTime', async () => {
+        // Mutations: writing the slot as is fails the first assertion; dropping the stub's trashTime copy fails the last.
+        useHost('opfs')
+        const trashTime = recent()
+        const source = fullCharacter('r', 'Recent', { trashTime })
+        const world = await worldFor(kit, 'opfs', baseTree([source]))
+
+        const boot = await bootOnce(world)
+
+        const unit = world.units.writtenCharacters()[0]
+        expect(unit).not.toHaveProperty('trashTime')
+        for (const field of ['chaId', 'name', 'type', 'desc', 'creatorNotes']) {
+            expect(jsonOf(unit[field]), field).toEqual(jsonOf(source[field]))
+        }
+        expect(charactersOf(installedTree(boot.outcome))[0].trashTime).toBe(trashTime)
+    })
+
+    test.each(HOSTS)('new behaviour and mutation-checked guard (%s): only the recently trashed character gets a unit; the one whose purge is due stays as it is', async (host) => {
+        // Mutation: removing the purge-due skip (archiving every trashed character) fails this.
+        useHost(host)
+        const world = await worldFor(kit, host, baseTree([
+            fullCharacter('due', 'Due', { trashTime: 1 }),
+            fullCharacter('recent', 'Recent', { trashTime: recent() }),
+        ]))
+
+        const boot = await bootOnce(world)
+
+        const written = world.units.writtenCharacters()
+        expect(written.map((c) => c.chaId)).toEqual(['recent'])
+        const slots = charactersOf(installedTree(boot.outcome))
+        expect(slots[0].coldstorage).toBeUndefined()
+        expect(slots[0].trashTime).toBe(1)
+        expect(slots[1].coldstorage).toBeTruthy()
+    })
+})
+
 describe('boot archive pass: slots the pass leaves alone', () => {
     const UNIT = '11111111-2222-4333-8444-555555555555'
     const rows: [string, () => Json][] = [
-        ['a trashed character', () => fullCharacter('trashed', 'Trashed', { trashTime: 123 })],
+        ['a trashed character whose purge is due', () => fullCharacter('trashed', 'Trashed', { trashTime: 123 })],
         ['the hidden playground character', () => fullCharacter('§playground', 'Playground')],
         ['the hidden temporary character', () => fullCharacter('§temp', 'Temp')],
         ['a current stub', () => currentStub('current-stub', 'Current Stub', UNIT, { coldStoragedChats: ['inner'] })],

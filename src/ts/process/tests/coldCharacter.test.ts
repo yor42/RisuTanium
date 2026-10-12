@@ -58,6 +58,7 @@ import {
     characterCreator,
     coldStubChatCount,
     enrichLegacyStub,
+    coldUnitCharacter,
     isArchivableCharacter,
     isLegacyStub,
     stubTags,
@@ -399,21 +400,47 @@ describe('coldStubChatCount', () => {
 })
 
 describe('isArchivableCharacter', () => {
-    test('a trashed character is not archivable', () => {
-        expect(isArchivableCharacter(fullCharacter({ trashTime: 1_000 }))).toBe(false)
+    const NOW = 1_800_000_000_000
+    const RECENT = NOW - 60_000
+
+    test('new behaviour: a recently trashed character is archivable', () => {
+        expect(isArchivableCharacter(fullCharacter({ trashTime: RECENT }), NOW)).toBe(true)
     })
 
-    test('a trashed group is not archivable', () => {
-        expect(isArchivableCharacter(fullGroup({ trashTime: 1_000 }))).toBe(false)
+    test('new behaviour: a recently trashed group is archivable', () => {
+        expect(isArchivableCharacter(fullGroup({ trashTime: RECENT }), NOW)).toBe(true)
+    })
+
+    test('mutation-checked guard: a character whose purge is due is not archivable', () => {
+        // Dropping the purge-due check from isArchivableCharacter fails this.
+        expect(isArchivableCharacter(fullCharacter({ trashTime: 1_000 }), NOW)).toBe(false)
+        expect(isArchivableCharacter(fullGroup({ trashTime: 1_000 }), NOW)).toBe(false)
     })
 
     test('guard: a full untrashed character is archivable', () => {
-        expect(isArchivableCharacter(fullCharacter())).toBe(true)
+        expect(isArchivableCharacter(fullCharacter(), NOW)).toBe(true)
     })
 
     test('guard: a character that is already a stub is not archivable', () => {
-        expect(isArchivableCharacter(buildColdStub(fullCharacter(), 'unit-1', []))).toBe(false)
-        expect(isArchivableCharacter(upstreamStub('cha-up', 'unit-up'))).toBe(false)
+        expect(isArchivableCharacter(buildColdStub(fullCharacter(), 'unit-1', []), NOW)).toBe(false)
+        expect(isArchivableCharacter(upstreamStub('cha-up', 'unit-up'), NOW)).toBe(false)
+        expect(isArchivableCharacter(buildColdStub(fullCharacter({ trashTime: RECENT }), 'unit-1', []), NOW)).toBe(false)
+    })
+})
+
+describe('coldUnitCharacter', () => {
+    test('new behaviour: the unit copy has no trashTime and every other field of the source', () => {
+        const source = fullCharacter({ trashTime: 1_234 })
+        const unit = coldUnitCharacter(source)
+        expect('trashTime' in unit).toBe(false)
+        const { trashTime: _dropped, ...rest } = source
+        expect(unit).toEqual(rest)
+    })
+
+    test('new behaviour: the source keeps its trashTime', () => {
+        const source = fullGroup({ trashTime: 99 })
+        coldUnitCharacter(source)
+        expect(source.trashTime).toBe(99)
     })
 })
 
@@ -742,6 +769,27 @@ describe('enrichLegacyStub -- what an older stub (upstream-made or version 2) ta
         expect(result).not.toBe(stub)
         expect(JSON.stringify(stub)).toBe(stubBefore)
         expect(JSON.stringify(unit)).toBe(unitBefore)
+    })
+})
+
+describe('a trashed character archived with a unit without trashTime', () => {
+    // Restore from the trash lifts the stub's trashTime in place; the restore path is unchanged by archiving trashed characters.
+    function archived() {
+        const source = fullCharacter({ trashTime: 5_000 })
+        const stub = buildColdStub(coldUnitCharacter(source), 'unit-1', [])
+        stub.trashTime = source.trashTime
+        return { stub, unit: () => coldUnitCharacter(source) }
+    }
+
+    test('compatibility guard: opening it while still trashed gives the stub\'s trashTime', () => {
+        const { stub, unit } = archived()
+        expect(applyStubStateOnRestore(stub, unit()).trashTime).toBe(5_000)
+    })
+
+    test('compatibility guard: opening it after restore from the trash gives an untrashed character', () => {
+        const { stub, unit } = archived()
+        stub.trashTime = undefined
+        expect(applyStubStateOnRestore(stub, unit())).not.toHaveProperty('trashTime')
     })
 })
 

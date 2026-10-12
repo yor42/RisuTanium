@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid"
 import type { Chat, character, groupChat } from "../storage/database.svelte"
+import { isTrashPurgeDue } from "../storage/trashPurge"
 
 /**
  * The archived-character placeholder (the "stub"): what stands in the
@@ -185,11 +186,29 @@ export function buildColdStub(source: Slot, unitKey: string, coldStoragedChats: 
 }
 
 /**
- * Whether the boot-time archive pass may turn `cha` into a stub: it is not one
- * already and it is not in the trash.
+ * Whether the boot archive pass may turn `cha` into a stub: it is not one
+ * already, and the startup purge, which runs after the pass in the same boot,
+ * is not about to remove it (`isTrashPurgeDue`). A trashed character is
+ * archivable; its stub carries its `trashTime` (`buildColdStub`), and the stub
+ * is authoritative for the trash state (`applyStubStateOnRestore`).
  */
-export function isArchivableCharacter(cha: Slot): boolean {
-    return !cha.coldstorage && !cha.trashTime
+export function isArchivableCharacter(cha: Slot, now: number): boolean {
+    return !cha.coldstorage && !isTrashPurgeDue(cha.trashTime, now)
+}
+
+/**
+ * What a cold-storage unit holds for `source`: everything but `trashTime`. The
+ * stub is the only carrier of the trash state on this fork. A unit that carried
+ * one would bring it back when upstream opens the stub, because upstream
+ * replaces the slot wholesale with the unit's character, and upstream's startup
+ * purge could then delete a character the user had taken out of the trash. The
+ * fork never reads a unit's `trashTime` (`applyStubStateOnRestore`,
+ * `enrichLegacyStub`).
+ */
+export function coldUnitCharacter<T extends Slot>(source: T): T {
+    const copy = { ...source }
+    delete copy.trashTime
+    return copy
 }
 
 function isCurrentStub(stub: Slot): boolean {

@@ -14,7 +14,7 @@ import {
     type EncodedBlockView,
     type toSaveType,
 } from './risuSave'
-import { buildColdStub, enrichLegacyStub, isLegacyStub } from '../process/coldCharacter'
+import { buildColdStub, coldUnitCharacter, enrichLegacyStub, isArchivableCharacter, isLegacyStub } from '../process/coldCharacter'
 import { pointerChatKeys } from '../process/coldstorageData'
 import { repairDatabaseIds } from '../process/chatIds'
 import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
@@ -421,11 +421,15 @@ function passesTreeGates(tree: Database): boolean {
  * The slots the pass archives. An array slot is never eligible: its `chaId`
  * property does not survive the unit's JSON round trip, so its read-back could
  * never match. A `chaId` the device memo lists is not tried again.
+ * A trashed character is archived unless its startup purge is due
+ * (`isArchivableCharacter`): the purge runs after this pass in the same boot,
+ * and a unit written for such a character would be orphaned at once.
  */
 function eligibleIndexes(
     characters: readonly Slot[],
     keepInline: ReadonlySet<string> | undefined,
     skippedBefore: ReadonlySet<string>,
+    now: number,
 ): number[] {
     const holders = new Map<string, number>()
     for (const cha of characters) {
@@ -437,8 +441,7 @@ function eligibleIndexes(
         const cha = characters[i]
         if (
             Array.isArray(cha)
-            || cha.coldstorage
-            || cha.trashTime
+            || !isArchivableCharacter(cha, now)
             || typeof cha.chaId !== 'string'
             || cha.chaId.length === 0
             || cha.chaId.startsWith('§')
@@ -728,7 +731,10 @@ async function archiveAndCommit(
     }
 
     const legacy = legacyStubIndexes(characters)
-    const eligible = enrichOnly ? [] : eligibleIndexes(characters, input.keepInline, memo.skipped)
+    // Sampled once. A character skipped for its due purge is purged later in
+    // this boot; if the boot stops before the purge, it stays full.
+    const now = Date.now()
+    const eligible = enrichOnly ? [] : eligibleIndexes(characters, input.keepInline, memo.skipped, now)
     if (legacy.length === 0 && eligible.length === 0 && !keyAbsent) {
         return installUntouched(tree)
     }
@@ -775,12 +781,12 @@ async function archiveAndCommit(
         const slot = characters[index]
         deps.setProgress?.(`Archiving characters ${n + 1}/${eligible.length}`)
         // The unit holds the character as the application would hold it after
-        // install.
+        // install, without its `trashTime` (`coldUnitCharacter`).
         applyCharacterDefaults(slot)
         resetChatStreamingState(slot)
         const key = makeKey()
         let readBack: Slot | null = null
-        if (await deps.writeUnit(key, { character: slot })) {
+        if (await deps.writeUnit(key, { character: coldUnitCharacter(slot) })) {
             const read = await deps.readUnit(key)
             const candidate = read.status === 'ok' ? characterOf(read.value) : null
             if (candidate && candidate.chaId === slot.chaId) {
@@ -803,6 +809,10 @@ async function archiveAndCommit(
         }
         // The slot's full object is dropped as soon as its stub replaces it.
         const stub = buildColdStub(readBack, key, pointerChatKeys(readBack))
+        // The unit carries no trashTime (`coldUnitCharacter`); the stub takes the slot's.
+        if (slot.trashTime) {
+            stub.trashTime = slot.trashTime
+        }
         characters[index] = stub
         archivedInfo.set(index, { key, stubJson: JSON.stringify(stub) })
     }

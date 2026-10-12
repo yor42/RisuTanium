@@ -124,17 +124,6 @@ export function createHandoffMedium(): HandoffMedium | null {
     return platform === 'desktop' ? createFileMedium(createTauriHandoffFiles()) : null
 }
 
-/** The characters whose restored bytes the reload would not release: the kept-inline set and the trashed, which the pass never archives. */
-function bytesExcluded(): Set<string> {
-    const excluded = baseKeepInline()
-    for (const cha of DBState.db?.characters ?? []) {
-        if (cha?.trashTime && typeof cha.chaId === 'string') {
-            excluded.add(cha.chaId)
-        }
-    }
-    return excluded
-}
-
 function buildCarry(now: number): IdleCarry {
     const keep = baseKeepInline()
     const selected = DBState.db.characters[get(selectedCharID)]
@@ -218,7 +207,11 @@ export function startIdleReload(): void {
             breaker: readArchiveStrikes(),
             tooLarge: readArchiveMemo().tooLarge,
             formatOk: typeof db.formatversion === 'number' && db.formatversion >= 5,
-            restoredBytesOutside: restoredBytesOutside(bytesExcluded()),
+            // A restored character outside the keep-set is released by the
+            // reload's boot like any other: the pass archives it again (trashed
+            // ones included), or the startup purge removes it. The pass's own
+            // skips (refusal, memo, archiving off) apply to it as to the rest.
+            restoredBytesOutside: restoredBytesOutside(baseKeepInline()),
             otherTabOpen,
             saveClean: isSaveClean(),
             busyAction: isBusy(),
@@ -282,7 +275,8 @@ export function startIdleReload(): void {
         if (armed || !get(loadedStore) || !hasRestoredBytes()) {
             return
         }
-        if (restoredBytesOutside(bytesExcluded()) >= RESTORED_BYTES_THRESHOLD) {
+        // Trashed characters count too: see the same rule in the idle inputs.
+        if (restoredBytesOutside(baseKeepInline()) >= RESTORED_BYTES_THRESHOLD) {
             arm()
         }
     }

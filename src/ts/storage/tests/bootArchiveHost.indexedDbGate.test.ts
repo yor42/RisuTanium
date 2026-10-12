@@ -51,6 +51,8 @@ vi.mock(import('src/ts/process/coldCharacter'), () => ({
     buildColdStub: vi.fn(),
     enrichLegacyStub: vi.fn(),
     isLegacyStub: vi.fn(),
+    isArchivableCharacter: vi.fn(),
+    coldUnitCharacter: vi.fn(),
 }) as unknown as typeof import('src/ts/process/coldCharacter'))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({

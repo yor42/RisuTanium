@@ -60,6 +60,7 @@ import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberS
 import { hasEnabledV21Plugin } from "./plugins/v21Plugins";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { recordStartupCleanup } from "./storage/startupCleanupState";
+import { isTrashPurgeDue } from "./storage/trashPurge";
 import { startAvatarThumbSweep } from "./media/avatarThumb";
 import {
     forageStorage,
@@ -1141,9 +1142,7 @@ async function checkNewFormat(): Promise<void> {
     }
     const purged: typeof db.characters = [];
     for (let i = 0; i < db.characters.length; i++) {
-        const trashTime = db.characters[i].trashTime;
-        const targetTrashTime = trashTime ? trashTime + 1000 * 60 * 60 * 24 * 3 : 0;
-        if (trashTime && targetTrashTime < Date.now()) {
+        if (isTrashPurgeDue(db.characters[i].trashTime, Date.now())) {
             purged.push(...db.characters.splice(i, 1));
             i--;
         }

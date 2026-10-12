@@ -185,6 +185,16 @@ describe('a new character', () => {
         expect('trashTime' in live(result.index)).toBe(false)
     })
 
+    test('new behaviour and mutation-checked guard: the unit written for a trashed character has no trashTime and the stub keeps it', async () => {
+        // Mutation: writing the live character as is fails the first assertion.
+        const result = succeeded(await archiveCharacterNow({ kind: 'new', character: fullCharacter('A', { trashTime: 55 }) }, { newUnitKey: () => 'unit-1' }))
+
+        const unit = h.units.get('unit-1') as { character: Record<string, unknown> }
+        expect(unit.character).not.toHaveProperty('trashTime')
+        expect(unit.character.chaId).toBe('A')
+        expect(live(result.index).trashTime).toBe(55)
+    })
+
     test('new behaviour: lastInteraction edited during the write is the one the stub carries', async () => {
         const card = fullCharacter('A')
         h.whileWriting = () => { card.lastInteraction = 777 }
