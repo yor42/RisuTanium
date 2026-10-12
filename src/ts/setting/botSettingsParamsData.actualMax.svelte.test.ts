@@ -14,10 +14,12 @@ import type { SettingContext, SettingItem } from 'src/ts/setting/types'
 import { AnthropicModels } from 'src/ts/model/providers/anthropic'
 import { OpenAIModels } from 'src/ts/model/providers/openai'
 import { LLMProvider } from 'src/ts/model/types'
+import { parseLiteLLMDataset } from 'src/ts/model/modelData/litellmData'
 import { parseOpenRouterModels } from 'src/ts/model/modelData/openrouterData'
 import {
     getModelPricing,
     resetModelDataForTests,
+    seedLiteLLMForTests,
     seedModelDataForTests,
 } from 'src/ts/model/modelData/modelDataService.svelte'
 import { language } from 'src/lang'
@@ -61,7 +63,18 @@ describe('params.maxContext actualMax wiring', () => {
         const modelInfo = catalog(AnthropicModels, 'claude-sonnet-4-6')
         expect(modelInfo.provider).toBe(LLMProvider.Anthropic)
         expect(figure(modelInfo)).toBeUndefined()
-        expect(getModelPricing(modelInfo, { openrouterRequestModel: undefined })).toBeDefined()
+        // Anthropic is priced from LiteLLM only: OpenRouter's row does not answer for it.
+        expect(getModelPricing(modelInfo, { openrouterRequestModel: undefined })).toBeUndefined()
+    })
+
+    test('(F) W2b an Anthropic entry gets its figure and price from the LiteLLM row, ahead of OpenRouter', () => {
+        seedModelDataForTests(parseOpenRouterModels(fixture, T))
+        const dataset = parseLiteLLMDataset({ 'claude-sonnet-4-6': { litellm_provider: 'anthropic', mode: 'chat', max_input_tokens: 200000, input_cost_per_token: 0.000003 } }, T)
+        if (dataset === null) throw new Error('dataset must parse')
+        seedLiteLLMForTests(dataset)
+        const modelInfo = catalog(AnthropicModels, 'claude-sonnet-4-6')
+        expect(figure(modelInfo)).toBe(200000)
+        expect(getModelPricing(modelInfo, { openrouterRequestModel: undefined })).toEqual({ input: '0.000003' })
     })
 
     test('(F) W3 the routed openrouter entry reads the exact row of the requested model', () => {

@@ -10,6 +10,8 @@
     import { ArrowLeft } from "@lucide/svelte";
     import { modelIdStatus } from 'src/ts/model/modelStatus';
     import { modelStatusTag, modelStatusWarning } from 'src/ts/model/modelStatusText';
+    import { addedSourceOf } from 'src/ts/model/modelData/addedModels.svelte';
+    import { alertConfirm } from 'src/ts/alert';
 
     interface Props {
         value?: string;
@@ -27,7 +29,21 @@
     let { value = $bindable(""), onChange = (v) => {}, onclick, blankable, excludesPrefix, noMargin, showRetired }: Props = $props();
     let openOptions = $state(false)
 
-    function changeModel(name:string){
+    /** Gray means known from one source only: the picker marks it and asks before it is chosen. */
+    function isGray(id: string): boolean {
+        const source = addedSourceOf(id)
+        return source === 'dataset' || source === 'provider'
+    }
+
+    async function changeModel(name:string){
+        const source = addedSourceOf(name)
+        if (source === 'dataset' || source === 'provider') {
+            const caution = source === 'dataset' ? language.modelSource.cautionDataset : language.modelSource.cautionProvider
+            const info = getModelInfo(name)
+            if (!await alertConfirm(fillLang(caution, { model: info?.fullName || info?.name || name }))) {
+                return
+            }
+        }
         value = name
         openOptions = false
         onChange(name)
@@ -42,6 +58,15 @@
     let selectedTag = $derived(modelStatusTag(selectedStatus))
     let selectedInfo = $derived(getModelInfo(value))
     let selectedWarning = $derived(modelStatusWarning(selectedStatus, selectedInfo?.fullName || value))
+    let selectedSource = $derived(addedSourceOf(value))
+    /** A dynamic_* id the registry does not hold is unconfirmed too, so it gets the generic note. */
+    let sourceNote = $derived(
+        selectedSource === 'dataset' || selectedSource === 'provider'
+            ? language.modelSource.grayNote
+            : selectedSource === undefined && (value.startsWith('dynamic_google_') || value.startsWith('dynamic_anthropic_'))
+                ? language.modelSource.sourceUnknownNote
+                : ''
+    )
 
     function rowLabel(model: { id: string, name: string }){
         const tag = modelStatusTag(modelIdStatus(model.id))
@@ -75,12 +100,12 @@
             {#each providers as provider}
                 {#if provider.providerName === '@as-is'}
                     {#each provider.models as model}
-                        <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
+                        <button class={["hover:bg-selected px-6 py-2 text-lg", isGray(model.id) && "text-textcolor2"]} onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
                     {/each}
                 {:else}
                     <Accordion name={provider.providerName}>
                         {#each provider.models.filter(m => !excludesPrefix || !m.id.startsWith(excludesPrefix)) as model}
-                            <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
+                            <button class={["hover:bg-selected px-6 py-2 text-lg", isGray(model.id) && "text-textcolor2"]} onclick={() => {changeModel(model.id)}}>{rowLabel(model)}</button>
                         {/each}
                     </Accordion>
                 {/if}
@@ -133,5 +158,8 @@
 </button>
 {#if selectedWarning}
     <p data-testid="model-status-note" class={["mx-2 mb-2 text-sm", selectedStatus.kind === 'deprecated' ? "text-textcolor2" : "text-draculared"]}>{selectedWarning}</p>
+{/if}
+{#if sourceNote}
+    <p data-testid="model-source-note" class="mx-2 mb-2 text-sm text-textcolor2">{sourceNote}</p>
 {/if}
 

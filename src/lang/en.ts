@@ -732,7 +732,7 @@ export const languageEnglish = {
         hypaV3SummaryChunkSeparator:
             "Separator used to split summaries into chunks for similarity search.",
         coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. This keeps memory use low when you have many characters. Turning it off archives nothing new, and characters that are already archived still open normally.",
-        dynamicModelRegistry: "Fetches the model lists of Google, Anthropic and OpenAI with your API keys at startup and adds models missing from the built-in list (for OpenAI, GPT models). It also checks openrouter.ai for public model limits and prices at startup, at most once a day (no key is sent). Turning this off stops the automatic downloads and the added models; saved data is still used, and the Refresh model data button still works."
+        dynamicModelRegistry: "At startup, fetches the model lists of Google, Anthropic and OpenAI with your API keys and adds models missing from the built-in list (for OpenAI, GPT models). It also downloads public model limits and prices, at most once a day, from openrouter.ai and from the LiteLLM dataset on raw.githubusercontent.com (LiteLLM, MIT license); no key is sent to either of those two. Added models that only the provider or only the dataset lists are shown in gray under \"Show unrecommended\" and ask for confirmation when chosen. Turning this off stops the automatic downloads and the added models; saved data is still used, and the Refresh model data button still updates the limits and prices."
     },
     setup: {
         theme: "Select your theme",
@@ -1148,6 +1148,7 @@ export const languageEnglish = {
     modelDataStatusUpdated: (time: string) => `Model data updated ${time}`,
     modelDataStatusFailed: (time: string) => `Could not refresh. Showing data from ${time}`,
     modelDataStatusFailedEmpty: "Could not download model data",
+    modelDataStatusPartial: "Some sources could not be updated. Showing saved data for those",
     maxResponseSize: "Max Response Size",
     temperature: "Temperature",
     frequencyPenalty: "Frequency Penalty",
@@ -2648,6 +2649,12 @@ export const languageEnglish = {
         retiredWarning: "{model} has been retired by its provider, so requests to it will probably fail. Choose another model.",
         redirectedWarning: "{model} has been shut down by its provider, which now forwards its requests to {target}. Answers come from {target}, not from {model}. Choose a model explicitly.",
         retiresWarning: "{model} is scheduled to be retired by its provider on {date}. After that day it is treated as retired.",
+    },
+    modelSource: {
+        cautionDataset: "{model} is listed only in a public dataset (LiteLLM), not by the provider. It might not work, or its parameters might be incorrect. Use it anyway?",
+        cautionProvider: "{model} is listed only by the provider's API, not in the public dataset. It might not work, or its parameters might be incorrect. Use it anyway?",
+        grayNote: "Not confirmed by both the provider and the public dataset. It might not work, or its parameters might be incorrect.",
+        sourceUnknownNote: "This model is not in the built-in list and has not been confirmed by the provider or the public dataset. It might not work, or its parameters might be incorrect.",
     },
 } satisfies I18nTranslation;
 

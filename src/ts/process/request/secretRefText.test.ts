@@ -30,6 +30,8 @@ const h = vi.hoisted(() => ({
     alertError: null as unknown as ReturnType<typeof import('vitest').vi.fn>,
     startModelData: vi.fn(),
     refreshModelDataNow: vi.fn(),
+    loadProviderLists: vi.fn(),
+    saveProviderLists: vi.fn(),
 }))
 
 function normalizeHeaders(headers: unknown): Record<string, string> {
@@ -96,6 +98,8 @@ vi.mock('../../alert', () => {
 vi.mock('../../model/modelData/modelDataStore', () => ({
     startModelData: h.startModelData,
     refreshModelDataNow: h.refreshModelDataNow,
+    loadProviderLists: h.loadProviderLists,
+    saveProviderLists: h.saveProviderLists,
 }))
 vi.mock('../../platform', () => ({ isTauri: false, isNodeServer: false }))
 vi.mock('localforage', () => ({ default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) }) } }))
@@ -347,7 +351,7 @@ describe('registerModelDynamic hands the registry option to the model data servi
         await registerAndSettle()
 
         expect(h.startModelData).toHaveBeenCalledTimes(1)
-        expect(h.startModelData).toHaveBeenCalledWith(true)
+        expect(h.startModelData).toHaveBeenCalledWith(true, expect.any(Function))
     })
 
     test('H2 registry off: the service is started once with false and no provider is fetched', async () => {
@@ -359,7 +363,7 @@ describe('registerModelDynamic hands the registry option to the model data servi
         await registerAndSettle()
 
         expect(h.startModelData).toHaveBeenCalledTimes(1)
-        expect(h.startModelData).toHaveBeenCalledWith(false)
+        expect(h.startModelData).toHaveBeenCalledWith(false, expect.any(Function))
         expect(h.calls).toHaveLength(0)
         expect(fetchCalls).toHaveLength(0)
     })
