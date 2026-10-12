@@ -38,7 +38,7 @@ import { afterNextSaveCommit, getSaveMarkCount, isSaveClean, locksSupported } fr
 import { isRestorableColdStorageKey, listColdBackupRoots, listInnerColdStorageKeys, type ColdStorageInnerKey } from "../coldstorageData";
 import { isBusy } from "../memory/busyActions";
 import { inlayTokenRegex } from "../../util/inlayTokens";
-import { STORAGE_TAB_LOCK_NAME } from "../../storage/storageTabLocks";
+import { tabLockSnapshotShowsOthers } from "../../storage/storageTabLocks";
 
 /** Longest stretch of walking, measured by the clock, before the walk gives the event loop a turn. */
 const SLICE_MS = 40
@@ -600,10 +600,7 @@ async function tabState(): Promise<TabState> {
     }
     try {
         const snapshot = await manager.query()
-        const held = (snapshot.held ?? []).filter((lock) => lock.name === STORAGE_TAB_LOCK_NAME)
-        const requested = (snapshot.pending ?? []).some((lock) => lock.name === STORAGE_TAB_LOCK_NAME && lock.mode === 'exclusive')
-        const exclusiveHeld = held.some((lock) => lock.mode === 'exclusive')
-        return held.length > 1 || requested || exclusiveHeld ? 'others' : 'alone'
+        return tabLockSnapshotShowsOthers(snapshot) ? 'others' : 'alone'
     } catch (error) {
         return 'others'
     }

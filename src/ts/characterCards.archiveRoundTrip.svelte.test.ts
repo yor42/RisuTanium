@@ -86,6 +86,9 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     return {
         AppendableBuffer,
         afterNextSaveCommit: (callback: () => void) => { h.commits.push(callback) },
+        getPeerSaveCount: () => 0,
+        getSaveMarkCount: () => 0,
+        isSaveClean: () => false,
         BlankWriter: class {},
         LocalWriter: class {},
         VirtualWriter: class {},

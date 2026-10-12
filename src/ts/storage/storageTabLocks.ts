@@ -55,6 +55,18 @@ import { markAppInitiatedReload } from "../reloadGuard"
 /** The name of the Web Lock shared by every tab's presence hold and by an exclusive storage-backend switch. */
 export const STORAGE_TAB_LOCK_NAME = 'risu-storage-tab-presence'
 
+/**
+ * Whether a Web Locks snapshot shows another tab of this origin or an exclusive
+ * storage operation: more than one presence holder, an exclusive holder, or a
+ * pending exclusive request. A tab that has requested the exclusive lock has
+ * released its own shared hold, so only the pending request shows it.
+ */
+export function tabLockSnapshotShowsOthers(snapshot: { held?: readonly { name?: string, mode?: string }[], pending?: readonly { name?: string, mode?: string }[] }): boolean {
+    const held = (snapshot.held ?? []).filter((lock) => lock.name === STORAGE_TAB_LOCK_NAME)
+    const requested = (snapshot.pending ?? []).some((lock) => lock.name === STORAGE_TAB_LOCK_NAME && lock.mode === 'exclusive')
+    return held.length > 1 || requested || held.some((lock) => lock.mode === 'exclusive')
+}
+
 /** The epoch store key `recordStorageEpoch()` reads, under whichever store (`localStorage` by default) `createStorageTabLocks()` was built against. */
 export const STORAGE_EPOCH_KEY = 'risu-storage-epoch'
 

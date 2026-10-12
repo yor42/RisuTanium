@@ -34,6 +34,10 @@
  * selection change) or while a registered writer holds a character. Both end
  * when the verdict or the writer does.
  *
+ * On success the unit the character's earlier stub named is handed to
+ * `supersededUnits.ts`, which deletes it only when no copy of the profile can
+ * still name it.
+ *
  * Memory only: the failure memo, the orphan counts and the strike count start
  * empty on a page load and are never persisted. The device-wide pause the boot
  * pass records (`readArchiveStrikes`) is honoured but never written here.
@@ -44,7 +48,7 @@
 
 import { DBState } from '../../stores.svelte'
 import type { Database, character, groupChat } from '../../storage/database.svelte'
-import { afterNextSaveCommit } from '../../globalApi.svelte'
+import { afterNextSaveCommit, getPeerSaveCount, getSaveMarkCount } from '../../globalApi.svelte'
 import { isUsableCharacterId } from '../../storage/characterIds'
 import { readArchiveMemo, readArchiveStrikes } from '../../storage/bootArchiveMemo'
 import { archiveMayRun, type ArchiveGateFailure } from '../archiveGate'
@@ -53,6 +57,7 @@ import { contentFingerprint, findChaIdHolders, isDirtyRecord, retainedRecordOf }
 import { isWriting } from '../chatOrigin'
 import { anyChokePointInFlight, isBusy } from './busyActions'
 import { MEASURE, putBackEnabled, tripwireEnabled } from './measureFlag'
+import { queueSupersededUnit, resetSupersededUnitsForTest } from './supersededUnits'
 import { noteFingerprint, noteReplaced, noteRearchive, type RearchiveOutcome } from './putBackMeasure'
 
 type Slot = character | groupChat
@@ -275,6 +280,9 @@ async function runJob(cha: Slot): Promise<void> {
     let fpLength = -1
     let rearm = false
     try {
+        // Before the engine's await: a peer save that lands during the job
+        // must show against this baseline.
+        const peerSavesAtStart = getPeerSaveCount()
         // The engine is loaded here, before anything is read about the
         // character: from the pre-gate below to the engine's fingerprint and
         // the serialised unit nothing awaits, so the unit is the state that was
@@ -326,6 +334,13 @@ async function runJob(cha: Slot): Promise<void> {
             strikes = 0
             outcome = 'archived'
             rearm = true
+            if (result.previousUnitKey !== null && sameDatabase) {
+                try {
+                    queueSupersededUnit({ chaId, newKey: result.unitKey, oldKey: result.previousUnitKey, peerSavesAt: peerSavesAtStart, db: dbAtStart }, getSaveMarkCount())
+                } catch (error) {
+                    console.error('Queueing a superseded unit failed', error)
+                }
+            }
             if (MEASURE && tripwireEnabled() && deps?.armTripwire) {
                 noteReplaced(chaId, beforeLabel, undefined, cha)
                 deps.armTripwire()
@@ -406,6 +421,7 @@ export function rearchiveOnSelection(): void {
 }
 
 export function resetCharacterRearchiveForTest(): void {
+    resetSupersededUnitsForTest()
     deps = null
     armed = false
     jobPending = false

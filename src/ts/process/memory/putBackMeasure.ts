@@ -66,6 +66,8 @@ function push<T>(ring: Ring<T>, item: T): void {
     }
 }
 
+/** What became of a superseded unit (`supersededUnits.ts`): queued, deleted, or why it was withheld or dropped. */
+export type SupersededOutcome = 'queued' | 'deleted' | 'delete-failed' | 'withheld-backup' | 'withheld-copy' | 'withheld-tab' | 'withheld-node' | 'withheld-busy' | 'dropped-db' | 'dropped-peer' | 'dropped-live' | 'dropped-state'
 interface RearchiveSample { ms: number, length: number, outcome: RearchiveOutcome }
 interface FireSample { ms: number, outcome: FireOutcome }
 interface FingerprintSample { ms: number, length: number, source: FingerprintSource }
@@ -94,6 +96,7 @@ function zeroRearchive(): Record<RearchiveOutcome, number> {
 let counters = zeroCounters()
 let rearchiveCounters = zeroRearchive()
 let rearchiveJobs = newRing<RearchiveSample>()
+let supersededCounters: Record<string, number> = {}
 let fires = newRing<FireSample>()
 let fingerprints = newRing<FingerprintSample>()
 let waits = newRing<WaitSample>()
@@ -129,6 +132,10 @@ export function noteRearchive(outcome: RearchiveOutcome, ms: number, fpLength: n
     if (fpLength >= 0) {
         push(rearchiveJobs, { ms, length: fpLength, outcome })
     }
+}
+
+export function noteSuperseded(outcome: SupersededOutcome): void {
+    supersededCounters[outcome] = (supersededCounters[outcome] ?? 0) + 1
 }
 
 export function noteFire(outcome: FireOutcome, ms: number): void {
@@ -314,6 +321,7 @@ export function snapshot() {
             sizes: statsOf(rearchiveJobs.items.map((s) => s.length)),
             byOutcome: groupStats(rearchiveJobs.items, (s) => s.outcome, (s) => s.ms),
         },
+        superseded: { ...supersededCounters },
         tripwire: {
             swaps: trips.length,
             finalizedProxy,
@@ -333,6 +341,7 @@ export function reset(): void {
     counters = zeroCounters()
     rearchiveCounters = zeroRearchive()
     rearchiveJobs = newRing()
+    supersededCounters = {}
     fires = newRing()
     fingerprints = newRing()
     waits = newRing()

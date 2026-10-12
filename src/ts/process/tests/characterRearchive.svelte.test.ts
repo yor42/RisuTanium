@@ -54,6 +54,9 @@ vi.mock(import('src/ts/alert'), () => ({
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     afterNextSaveCommit: (callback: () => void) => { h.commits.push(callback) },
+    getPeerSaveCount: () => 0,
+    getSaveMarkCount: () => 0,
+    isSaveClean: () => false,
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/process/chatOrigin'), () => ({

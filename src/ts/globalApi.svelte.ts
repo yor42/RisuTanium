@@ -861,6 +861,13 @@ export function afterNextSaveCommit(callback: () => void): void {
     nextCommitCallbacks.add(callback)
 }
 
+let peerSaveCount = 0
+
+/** How many saves another tab has announced to this page; it only grows, so a peer save between two reads always shows. */
+export function getPeerSaveCount(): number {
+    return peerSaveCount
+}
+
 /** How many saves have been requested on this page; it only grows, so a change that is later undone still shows. */
 export function getSaveMarkCount(): number {
     return saveMarkCount
@@ -1559,6 +1566,7 @@ export async function saveDb() {
                 return
             }
             otherTabSaved = true
+            peerSaveCount += 1
             if (message.seq !== null) {
                 peerSeq = message.seq
             }
