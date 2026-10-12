@@ -19,6 +19,7 @@ import { DBState } from "../stores.svelte"
 import { customProviderStore, pluginV2 } from "../plugins/plugins.svelte"
 import { get } from "svelte/store"
 import { customV3ProviderMetaStore } from "../plugins/apiV3/v3.svelte"
+import { isHiddenFromPicker, modelIdStatus } from "./modelStatus"
 
 // Re-export types for backwards compatibility
 export { LLMFlags, LLMProvider, LLMFormat, LLMTokenizer, ProviderNames, OpenAIParameters, ClaudeParameters }
@@ -894,9 +895,10 @@ interface GetModelListGroup {
 
 export function getModelList<T extends boolean>(arg:{
     recommendedOnly?:boolean,
-    groupedByProvider?:T
+    groupedByProvider?:T,
+    includeHidden?:boolean
 } = {}): T extends true ? GetModelListGroup[] : LLMModel[]{
-    let models = LLMModels
+    let models = LLMModels.filter(model => arg.includeHidden || !isHiddenFromPicker(modelIdStatus(model.id)))
     if(arg.recommendedOnly){
          models = models.filter(model => model.recommended)
     }
