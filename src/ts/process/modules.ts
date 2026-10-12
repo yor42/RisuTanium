@@ -1,11 +1,11 @@
 import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
-import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
+import { alertClear, alertConfirm, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getCurrentChat, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash"
 import { AppendableBuffer, AssetSourceChangedError, downloadFile, forageStorage, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "../globalApi.svelte"
-import { checkPersonaBinded, selectSingleFileObject, sleep } from "../util"
+import { checkPersonaBinded, selectFileByDom, sleep } from "../util"
 import { v4 } from "uuid"
 import { convertExternalLorebook } from "./lorebook.svelte"
 import { compressImage } from '../media'
@@ -13,8 +13,11 @@ import { decodeRPack, encodeRPack } from "../rpack/rpack_js"
 import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } from "../stores.svelte"
 import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
-import { exportCharacterCard, importCharacterProcess } from "../characterCards"
-import { ModuleRefusal, importErrorMessage } from "./moduleRefusal"
+import { exportCharacterCard, importCharacterFile } from "../characterCards"
+import { ModuleRefusal } from "./moduleRefusal"
+import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
+import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
+import { markBootWrite } from "../bootWindow"
 import { withBusy } from "./memory/busyActions"
 import { assetByteLimit, charxLimits } from "./processzip"
 import { IMPORT_PIECE_BYTES, WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
@@ -304,6 +307,9 @@ async function* readRisumRecordPieces(source: ImportSource, record: RisumRecord)
     }
 }
 
+/** A hook for the caller to stop the read once the scanned module is known (the low-level-access and duplicate questions). */
+export type ReadModuleOptions = {beforeAssets?: (module:RisuModule) => Promise<void>}
+
 /**
  * Reads a `.risum` module and saves its assets. The source is read in two passes and never as a whole: the first
  * validates the structure (see scanRisum), the second reads one record at a time, in file order, and saves it. A record
@@ -319,8 +325,9 @@ async function* readRisumRecordPieces(source: ImportSource, record: RisumRecord)
  * from the source again for each retry.
  * It shows progress and clears it before it returns or throws, and never shows an error itself: the caller shows it.
  * It never returns without a module. It does not close the source: the caller that opened it does.
+ * `opts.beforeAssets` runs once with the scanned module, after the file is known to be complete and before the first asset is saved. If it throws, the throw leaves as it is, no asset is saved and the progress is cleared.
  */
-export async function readModule(input:Uint8Array|ImportSource):Promise<RisuModule> {
+export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModuleOptions):Promise<RisuModule> {
     const source = isImportSource(input) ? input : importSourceOfBytes('module.risum', input)
     let progressShown = false
     let scan: RisumScan
@@ -429,6 +436,7 @@ export async function readModule(input:Uint8Array|ImportSource):Promise<RisuModu
     }
 
     try {
+        await opts?.beforeAssets?.(module)
         let failed = await runRecords(scan.records.map((_, index) => index))
         let retryCount = 0
         while (failed.length > 0 && retryCount < MAX_ASSET_SAVE_RETRIES) {
@@ -447,47 +455,84 @@ export async function readModule(input:Uint8Array|ImportSource):Promise<RisuModu
     return module
 }
 
-export async function importModule(){
-    const f = await selectSingleFileObject(['json', 'lorebook', 'risum', 'charx'])
-    if(!f){
-        return
+type ModuleFileKind = 'risum' | 'charx' | 'json'
+
+const MODULE_FILE_SUFFIXES: {suffix: string, kind: ModuleFileKind}[] = [
+    {suffix: '.risum', kind: 'risum'},
+    {suffix: '.charx', kind: 'charx'},
+    {suffix: '.json', kind: 'json'},
+    {suffix: '.lorebook', kind: 'json'},
+]
+
+//A file is routed by its suffix in lower case, whatever case the file name has. A file with any other suffix is not a module file.
+function moduleFileRoute(name:string):{suffix: string, kind: ModuleFileKind}|null {
+    const lower = name.toLowerCase()
+    return MODULE_FILE_SUFFIXES.find((route) => lower.endsWith(route.suffix)) ?? null
+}
+
+//The one write of a module that was read in full. The boot-window mark and the push stay in one synchronous block, so the change effects see the module at once.
+function commitModule(module:RisuModule){
+    markBootWrite()
+    DBState.db.modules.push(module)
+}
+
+//Runs on a scanned `.risum` before any of its assets is saved; a throw saves nothing and adds no module. `batchFile` names the file in a batch.
+function beforeRisumAssets(batchFile?:string){
+    return async (module:RisuModule) => {
+        await confirmRisumLowLevel(module, batchFile)
     }
-    if(f.name.endsWith('.charx')){
-        try {
-            //The archive is handed over as the picked file, which is read in pieces, never as one buffer.
-            const char = await withBusy('import', () => importCharacterProcess({
-                name: f.name,
-                data: f,
-                returnCharacter: true
-            }))
-            //A refusal has shown its own message and a declined low-level-access prompt shows none (it returns false, a type the declared return leaves out); neither is followed by another message.
-            if(!char || typeof char === 'number'){
-                return
+}
+
+/**
+ * Imports one picked file as a module and reports how it ended. It never rejects and shows nothing itself. `batch` is
+ * true when the pick had several files: the prompts then name the file, and an unsupported file gets the short reason
+ * that the batch summary lists next to its name.
+ */
+async function importModuleFile(file:File, batch:boolean):Promise<ImportOutcome> {
+    const route = moduleFileRoute(file.name)
+    if(!route){
+        return {kind: 'refused', reason: batch ? language.importUnsupportedFile : language.moduleUnsupportedFile(file.name), normal: true}
+    }
+    const batchFile = batch ? file.name : undefined
+    try {
+        if(route.kind === 'charx'){
+            //The archive is handed over as the picked File, which is read in pieces, never as one buffer. The importer tests the suffix in lower case.
+            const outcome = await importCharacterFile({
+                name: file.name.slice(0, -route.suffix.length) + route.suffix,
+                data: file,
+                returnCharacter: true,
+                lowLevelLabel: (cardName) => language.moduleLowLevelNamed(cardName, batchFile)
+            })
+            if(outcome.kind !== 'imported'){
+                return outcome
             }
-            const module = convertCharacterToModule(char)
-            DBState.db.modules.push(module)
-        } catch (error) {
-            console.error(error)
-            alertError(importErrorMessage(error))
-            return
+            if(!outcome.character){
+                return {kind: 'refused', reason: language.errors.noData}
+            }
+            commitModule(convertCharacterToModule(outcome.character))
+            return {kind: 'imported', index: null}
         }
-        alertNormal(language.successImport)
-        return
-    }
-    if(f.name.endsWith('.risum')){
-        const source = importSourceOfFile(f)
-        try {
-            const module = await withBusy('import', () => readModule(source))
-            DBState.db.modules.push(module)
-        } catch (error) {
-            console.error(error)
-            alertError(importErrorMessage(error))
-        } finally {
-            await source.close()
+        if(route.kind === 'risum'){
+            const source = importSourceOfFile(file)
+            try {
+                commitModule(await readModule(source, {beforeAssets: beforeRisumAssets(batchFile)}))
+            } finally {
+                await source.close()
+            }
+            return {kind: 'imported', index: null}
         }
-        return
+        return await importModuleJson(file, batchFile)
+    } catch (error) {
+        if(!(error instanceof ModuleImportStopped)){
+            console.error(error)
+        }
+        return outcomeOfError(error)
     }
-    const fileData = new Uint8Array(await f.arrayBuffer())
+}
+
+//A `.json` or `.lorebook` file: a module, a risu lorebook, an external lorebook or a regex list. What none of these fits is refused at the normal alert level, like a file that does not parse.
+async function importModuleJson(file:File, batchFile?:string):Promise<ImportOutcome> {
+    const fileData = new Uint8Array(await file.arrayBuffer())
     try {
         const importData = JSON.parse(Buffer.from(fileData).toString())
         if(importData.type === 'risuModule'){
@@ -495,60 +540,101 @@ export async function importModule(){
                 (!importData.name)
                 || (!importData.id)
             ){
-                alertError(language.errors.noData)
-                return
+                return {kind: 'refused', reason: language.errors.noData}
             }
             importData.id = v4()
 
             if(importData.lowLevelAccess){
-                const conf = await alertConfirm(language.lowLevelAccessConfirm)
+                const prompt = batchFile ? `${language.moduleLowLevelNamed(importData.name, batchFile)}\n${language.lowLevelAccessConfirm}` : language.lowLevelAccessConfirm
+                const conf = await alertConfirm(prompt)
                 if(!conf){
-                    return false
+                    return {kind: 'declined'}
                 }
             }
-            DBState.db.modules.push(importData)
-            return
+            commitModule(importData)
+            return {kind: 'imported', index: null}
         }
         // importData.type === 'risu' in conflict with HypaV3 preset exports
         // difference: record vs. array
         if(importData.type === 'risu' && importData.data && Array.isArray(importData.data)){
             const lores:loreBook[] = importData.data
-            const importModule = {
+            commitModule({
                 name: importData.name || 'Imported Lorebook',
                 description: importData.description || 'Converted from risu lorebook',
                 lorebook: lores,
                 id: v4()
-            }
-            DBState.db.modules.push(importModule)
-            return
+            })
+            return {kind: 'imported', index: null}
         }
         if(importData.entries){
             const lores:loreBook[] = convertExternalLorebook(importData.entries)
-            const importModule = {
+            commitModule({
                 name: importData.name || 'Imported Lorebook',
                 description: importData.description || 'Converted from external lorebook',
                 lorebook: lores,
                 id: v4()
-            }
-            DBState.db.modules.push(importModule)
-            return
+            })
+            return {kind: 'imported', index: null}
         }
         if(importData.type === 'regex'  && importData.data){
             const regexs:customscript[] = importData.data
-            const importModule = {
+            commitModule({
                 name: importData.name || 'Imported Regex',
                 description: importData.description || 'Converted from risu regex',
                 regex: regexs,
                 id: v4()
-            }
-            DBState.db.modules.push(importModule)
-            return
+            })
+            return {kind: 'imported', index: null}
         }
     } catch (error) {
         console.error(error)
     }
+    return {kind: 'refused', reason: language.errors.noData, normal: true}
+}
 
-    alertNormal(language.errors.noData)
+/**
+ * What one picked file leaves on screen, by the outcome of its import: a `.charx` that imported reports success, a
+ * `.risum` or json module that imported shows nothing; a decline or a skip shows nothing; a refusal is an error, or a
+ * normal alert when the outcome says so; a failure shows its details.
+ */
+export function singleFileFeedback(outcome:ImportOutcome, fileName:string){
+    if(outcome.kind === 'imported'){
+        if(moduleFileRoute(fileName)?.kind === 'charx'){
+            alertNormal(language.successImport)
+        }
+        return
+    }
+    if(outcome.kind === 'refused' && outcome.normal){
+        alertNormal(outcome.reason)
+        return
+    }
+    showOutcome(outcome)
+}
+
+/**
+ * Imports the files picked in Settings > Modules, in order, one at a time. One file reports as `singleFileFeedback`
+ * says. Several files are all attempted inside one busy scope and end with one message: the files that were not
+ * imported with their reasons, or a count when nothing went wrong. A module that is imported stays imported when a
+ * later file fails.
+ */
+export async function importModule(){
+    const files = await selectFileByDom(['*'], 'multiple')
+    if(!files || files.length === 0){
+        return
+    }
+    if(files.length === 1){
+        const file = files[0]
+        const outcome = await withBusy('import', () => importModuleFile(file, false))
+        singleFileFeedback(outcome, file.name)
+        return
+    }
+    const summary = await runImportBatch(
+        files.map((file) => ({name: file.name, run: () => importModuleFile(file, true)})),
+        {declinedReason: language.importDeclinedLowLevel}
+    )
+    if(!summary.message && !summary.own){
+        alertNormal(language.importModulesDone(summary.imported, summary.skipped))
+    }
 }
 
 function getModuleById(id:string){

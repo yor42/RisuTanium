@@ -1,6 +1,6 @@
 /**
  * `importModule` in `src/ts/process/modules.ts` for a `.charx` file: which message the user is left with when
- * `importCharacterProcess` returns without a character or throws.
+ * `importCharacterFile` ends without a character or throws.
  *
  * The real `modules.ts` runs; the character import and everything else it reaches are replaced by recorders.
  */
@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
     log: [] as string[],
     modules: [] as unknown[],
     imported: undefined as unknown,
-    importer: null as null | ((arg: { name: string, data: File, returnCharacter?: boolean }) => Promise<unknown>),
+    importer: null as null | ((arg: { name: string, data: File, returnCharacter?: boolean }) => Promise<ImportOutcome>),
     /** what the single alert slot holds: every alert function replaces it */
     last: 'none' as string,
 }))
@@ -51,7 +51,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     checkPersonaBinded: vi.fn(),
-    selectSingleFileObject: vi.fn(async () => new File([new Uint8Array([1, 2, 3])], 'card.charx')),
+    selectFileByDom: vi.fn(async () => [new File([new Uint8Array([1, 2, 3])], 'card.charx')]),
     sleep: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
 
@@ -82,11 +82,13 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 
 vi.mock(import('src/ts/characterCards'), () => ({
     exportCharacterCard: vi.fn(),
-    importCharacterProcess: vi.fn(async (arg: { name: string, data: File, returnCharacter?: boolean }) => h.importer?.(arg)),
+    importCharacterFile: vi.fn(async (arg: { name: string, data: File, returnCharacter?: boolean }) => h.importer?.(arg)),
 }) as unknown as typeof import('src/ts/characterCards'))
 
 import { importModule } from 'src/ts/process/modules'
 import { language } from 'src/lang'
+import type { ImportOutcome } from 'src/ts/importBatch'
+import type { character } from 'src/ts/storage/database.svelte'
 
 beforeEach(() => {
     h.log = []
@@ -101,34 +103,36 @@ afterEach(() => {
 })
 
 describe('importModule with a .charx file', () => {
-    test('a refusal that importCharacterProcess already reported is not followed by another message', async () => {
-        h.importer = async () => {
-            h.log.push('error:' + language.cardFileIncomplete)
-            return null
-        }
+    test('a refusal is shown once and is not followed by another message', async () => {
+        h.importer = async () => ({ kind: 'refused', reason: language.cardFileIncomplete })
         await importModule()
         expect(h.log).toEqual(['error:' + language.cardFileIncomplete])
         expect(h.modules).toEqual([])
     })
 
-    test('a size refusal that importCharacterProcess already reported is not followed by noData or a success message (compatibility guard)', async () => {
-        h.importer = async () => {
-            h.log.push('error:' + language.cardFileEntryTooLarge('assets/big.bin', 200))
-            return undefined
-        }
+    test('a size refusal is shown once and is not followed by noData or a success message (compatibility guard)', async () => {
+        h.importer = async () => ({ kind: 'refused', reason: language.cardFileEntryTooLarge('assets/big.bin', 200) })
         await importModule()
         expect(h.log).toEqual(['error:' + language.cardFileEntryTooLarge('assets/big.bin', 200)])
         expect(h.modules).toEqual([])
     })
 
     test('a declined low-level-access prompt shows neither an error nor a success message', async () => {
-        h.importer = async () => false
+        h.importer = async () => ({ kind: 'declined' })
         await importModule()
         expect(h.log).toEqual([])
         expect(h.modules).toEqual([])
     })
 
-    test('a failure inside importCharacterProcess shows its own reason as the last message, no success, and adds no module', async () => {
+    test('a failure the importer reports shows its own reason as the last message, no success, and adds no module', async () => {
+        h.importer = async () => ({ kind: 'failed', error: new Error('Failed to save 3 assets') })
+        await importModule()
+        expect(h.last).toBe('error:Failed to save 3 assets')
+        expect(h.log).toEqual(['error:Failed to save 3 assets'])
+        expect(h.modules).toEqual([])
+    })
+
+    test('an importer that rejects shows its reason as the last message, no success, and adds no module (feature test: importModuleFile catches it)', async () => {
         h.importer = async () => { throw new Error('Failed to save 3 assets') }
         await importModule()
         expect(h.last).toBe('error:Failed to save 3 assets')
@@ -139,7 +143,7 @@ describe('importModule with a .charx file', () => {
     test('a returned character becomes a module and reports success (compatibility guard)', async () => {
         h.importer = async (arg) => {
             expect(arg.returnCharacter).toBe(true)
-            return { name: 'Synthetic' }
+            return { kind: 'imported', index: null, character: { name: 'Synthetic' } as unknown as character }
         }
         await importModule()
         expect(h.modules).toEqual([{ id: 'converted-module' }])

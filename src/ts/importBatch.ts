@@ -2,6 +2,7 @@ import { alertError } from "./alert"
 import { language } from "src/lang"
 import type { character } from "./storage/database.svelte"
 import { ModuleRefusal } from "./process/moduleRefusal"
+import { ModuleImportStopped } from "./process/moduleImportStop"
 import { withBusy } from "./process/memory/busyActions"
 
 /**
@@ -37,23 +38,13 @@ export type ImportSummary = {
     message: string|null
 }
 
-//The leaf that throws a stop (`ModuleImportStopped`) lives apart from the heavy modules, so it is recognised by name and reason instead of by class.
-function stopReasonOf(error:unknown):'declined'|'skipped'|null {
-    if(!(error instanceof Error) || error.name !== 'ModuleImportStopped'){
-        return null
-    }
-    const reason = (error as Error & {reason?:unknown}).reason
-    return reason === 'declined' || reason === 'skipped' ? reason : null
-}
-
 //A refused module is a refusal whichever import it came out of, a stop the user chose is not an error; any other error is a failure.
 export function outcomeOfError(error:unknown):ImportOutcome {
     if(error instanceof ModuleRefusal){
         return {kind: 'refused', reason: error.message}
     }
-    const stop = stopReasonOf(error)
-    if(stop){
-        return {kind: stop}
+    if(error instanceof ModuleImportStopped){
+        return {kind: error.reason}
     }
     return {kind: 'failed', error: error instanceof Error ? error : String(error)}
 }

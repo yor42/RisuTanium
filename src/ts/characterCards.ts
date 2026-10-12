@@ -22,6 +22,7 @@ import type { OnnxModelFiles } from "./process/transformers"
 import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, hasZipEndRecord } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { ModuleRefusal } from "./process/moduleRefusal"
+import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
 import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
@@ -111,7 +112,8 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource):P
             alertNormal(language.successImport)
             return {kind: 'imported', index: null}
         }
-        const md = await readModule(data instanceof File ? importSourceOfFile(data) : data)
+        //The low-level-access question comes before any asset of the module is saved; a decline saves nothing and ends the file quietly.
+        const md = await readModule(data instanceof File ? importSourceOfFile(data) : data, {beforeAssets: (module) => confirmRisumLowLevel(module)})
         md.id = v4()
         markBootWrite()
         DBState.db.modules.push(md)
@@ -120,6 +122,9 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource):P
         settingsOpen.set(true)
         return {kind: 'imported', index: null}
     } catch (error) {
+        if(error instanceof ModuleImportStopped){
+            return outcomeOfError(error)
+        }
         console.error(error)
         return outcomeOfError(error)
     }
@@ -165,12 +170,13 @@ export async function importCharacterProcess<T extends boolean = false>(f:{
     return undefined
 }
 
-//Reads one character file and reports how it ended. It never rejects. `lowLevelLabel` names the card in the charx low-level-access prompt.
+type LowLevelLabel = string | ((cardName:string) => string)
+//Reads one character file and reports how it ended. It never rejects. `lowLevelLabel` names the card in the charx low-level-access prompt; a function gets the card's name, which only the parsed card knows.
 export async function importCharacterFile(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
-    lowLevelLabel?:string
+    lowLevelLabel?:LowLevelLabel
 }):Promise<ImportOutcome>{
     try {
         return await readCharacterFile(f)
@@ -184,7 +190,7 @@ async function readCharacterFile(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
-    lowLevelLabel?:string
+    lowLevelLabel?:LowLevelLabel
 }):Promise<ImportOutcome>{
     if(f.name.endsWith('json')){
         if(!f.data || f.data instanceof ReadableStream){
@@ -1074,7 +1080,7 @@ export async function openRealmUpload(target: string): Promise<void> {
 
 //Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
 //A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
-async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:string):Promise<T extends true ? character|false|null : boolean|null>{
+async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:LowLevelLabel):Promise<T extends true ? character|false|null : boolean|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
         return null
     }
@@ -1270,7 +1276,8 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
     }
 
     if(risuext && risuext?.lowLevelAccess && !lowLevelAccessAsked){
-        const conf = await alertConfirm(lowLevelLabel ? `${lowLevelLabel}\n${language.lowLevelAccessConfirm}` : language.lowLevelAccessConfirm)
+        const label = typeof lowLevelLabel === 'function' ? lowLevelLabel(data.name) : lowLevelLabel
+        const conf = await alertConfirm(label ? `${label}\n${language.lowLevelAccessConfirm}` : language.lowLevelAccessConfirm)
         if(!conf){
             return false
         }

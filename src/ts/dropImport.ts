@@ -4,6 +4,8 @@ import { importCharacterProcess } from "./characterCards"
 import { checkCharOrder } from "./globalApi.svelte"
 import { readModule } from "./process/modules"
 import { importErrorMessage } from "./process/moduleRefusal"
+import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
+import { markBootWrite } from "./bootWindow"
 import { DBState } from "./stores.svelte"
 import { importPreset } from "./storage/database.svelte"
 import { withBusy } from "./process/memory/busyActions"
@@ -28,7 +30,9 @@ async function importDropped(file:File){
         } else if (name.endsWith('.risum')) {
             const source = importSourceOfFile(file)
             try {
-                const module = await readModule(source)
+                //The low-level-access question comes before any asset is saved; a decline saves nothing and shows nothing.
+                const module = await readModule(source, {beforeAssets: (m) => confirmRisumLowLevel(m)})
+                markBootWrite()
                 DBState.db.modules.push(module)
             } finally {
                 await source.close()
@@ -42,6 +46,9 @@ async function importDropped(file:File){
             checkCharOrder()
         }
     } catch (error) {
+        if(error instanceof ModuleImportStopped){
+            return
+        }
         console.error(error)
         alertError(importErrorMessage(error))
     }

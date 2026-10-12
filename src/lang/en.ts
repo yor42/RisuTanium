@@ -2352,6 +2352,10 @@ export const languageEnglish = {
     importUnsupportedFile: "This file type cannot be imported.",
     importNotCardFile: "This is not a character card file.",
     importFileNotReceived: "The file could not be received.",
+    importDeclinedLowLevel: "Not imported: Low Level Access was declined.",
+    moduleLowLevelNamed: (name: string, file?: string) => file ? `Module "${name}" (${file})` : `Module "${name}"`,
+    importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Imported ${imported} modules, skipped ${skipped}.` : `Imported ${imported} modules.`,
+    moduleUnsupportedFile: (name: string) => `${name}: this file type is not supported as a module.`,
     devTool: {
         variables: "Variables",
         object: "Object",

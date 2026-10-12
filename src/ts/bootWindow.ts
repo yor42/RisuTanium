@@ -30,7 +30,7 @@ let bootWriteSeen = false
 let markUnsavedAfterWindow: (() => void) | null = null
 
 /**
- * Every import in characterCards.ts that is about to add a character, module or preset calls this,
+ * Every import in characterCards.ts, modules.ts and dropImport.ts that is about to add a character, module or preset calls this,
  * for the whole page life. Before the window closes the write is remembered for
  * the window's answer, because an effect's first run cannot tell it from the
  * state the effects started from. After the window closes the save loop is asked

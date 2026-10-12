@@ -29,12 +29,18 @@ const h = vi.hoisted(() => ({
     moduleReads: [] as unknown[],
     /** makes the mocked readModule throw a ModuleRefusal with this message */
     moduleFails: null as string | null,
+    /** makes the mocked readModule ask its beforeAssets hook about a module with low-level access, as the real one does before it saves an asset */
+    moduleLowLevel: false,
+    /** how many times the mocked readModule got past its hook, that is, started saving assets */
+    moduleSaved: 0,
     ordered: 0,
     uuid: 0,
     /** what the single alert slot holds: every alert function replaces it */
     last: 'none',
     /** the answer of the low-level-access prompt */
     confirm: true,
+    /** the text of every low-level-access prompt shown */
+    prompts: [] as string[],
     /** makes importPreset throw this message */
     presetFails: null as string | null,
     isTauri: false,
@@ -61,7 +67,7 @@ vi.mock(import('src/ts/alert'), () => {
     const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
     return {
         alertCardExport: vi.fn(),
-        alertConfirm: vi.fn(async () => { h.last = 'ask'; const answer = h.confirm; h.last = 'none'; return answer }),
+        alertConfirm: vi.fn(async (msg?: string) => { h.prompts.push(String(msg)); h.last = 'ask'; const answer = h.confirm; h.last = 'none'; return answer }),
         alertError: vi.fn((msg: string | Error) => { h.errors.push(text(msg)); h.errorKinds.push(typeof msg); h.events.push('error:' + text(msg)); h.last = 'error:' + text(msg) }),
         alertInput: vi.fn(async () => ''),
         alertMd: vi.fn(),
@@ -159,10 +165,12 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
 
 vi.mock(import('src/ts/process/modules'), () => ({
     exportModuleLegacy: vi.fn(),
-    readModule: vi.fn(async (data: Uint8Array | { size: number, read: (start: number, end: number) => Promise<Uint8Array> }) => {
+    readModule: vi.fn(async (data: Uint8Array | { size: number, read: (start: number, end: number) => Promise<Uint8Array> }, opts?: { beforeAssets?: (module: { name: string, lowLevelAccess?: boolean }) => Promise<void> }) => {
         h.moduleReads.push(data instanceof Uint8Array ? data : await data.read(0, data.size))
         h.events.push('module')
         if (h.moduleFails) throw new ModuleRefusal(h.moduleFails)
+        if (h.moduleLowLevel) await opts?.beforeAssets?.({ name: 'synthetic module', lowLevelAccess: true })
+        h.moduleSaved++
         return { name: 'synthetic module', lorebook: [], trigger: [], regex: [] }
     }),
 }) as unknown as typeof import('src/ts/process/modules'))
@@ -195,7 +203,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { characterURLImport, importOpenedFiles } from 'src/ts/characterCards'
+import { characterURLImport, importCharacterFile, importOpenedFiles } from 'src/ts/characterCards'
 import { CharXImporter, CharXWriter } from 'src/ts/process/processzip'
 import { PngChunk } from 'src/ts/pngChunk'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
@@ -357,10 +365,13 @@ beforeEach(() => {
     h.presets = []
     h.moduleReads = []
     h.moduleFails = null
+    h.moduleLowLevel = false
+    h.moduleSaved = 0
     h.ordered = 0
     h.uuid = 0
     h.last = 'none'
     h.confirm = true
+    h.prompts = []
     h.presetFails = null
     h.isTauri = false
     h.tauriFiles = {}
@@ -969,5 +980,113 @@ describe('download links that fail', () => {
         await characterURLImport()
         expect(h.last).toBe('error:' + language.errors.noData)
         expect(setConsumer).toHaveBeenCalledTimes(1)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// The low-level-access prompt of a .risum module on the paths that reach importClassified
+// ---------------------------------------------------------------------------------------------
+
+describe('a .risum module and the low-level-access prompt', () => {
+    const paths: Array<[string, () => Promise<void>]> = [
+        ['open-with', async () => {
+            h.tauriFiles = { '/docs/m.risum': new U8([8]) }
+            await importOpenedFiles(['/docs/m.risum'])
+        }],
+        ['#import= link', async () => {
+            routes.set('https://files.test/m.risum', () => new Response(new U8([4, 5]), { headers: { 'content-disposition': 'attachment; filename="m.risum"' } }))
+            setUrl('/#import=https://files.test/m.risum')
+            await characterURLImport()
+        }],
+        ['launchQueue consumer', async () => {
+            let consumer: ((params: LaunchParams) => Promise<void>) | null = null
+            ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
+            await characterURLImport()
+            await consumer!({ files: [{ name: 'm.risum', getFile: async () => new File([new U8([8])], 'm.risum') }] })
+            await new Promise((resolve) => setTimeout(resolve, 50))
+        }],
+        ['Web Share Target', async () => {
+            setUrl('/#share=' + seedShare([{ name: 'm.risum', type: 'application/octet-stream', bytes: new U8([8, 8]) }]))
+            await characterURLImport()
+        }],
+    ]
+
+    test.each(paths)('%s: a declined prompt saves nothing, adds no module, and shows neither a success text nor an error (feature test)', async (_label, run) => {
+        h.moduleLowLevel = true
+        h.confirm = false
+        await run()
+        expect(h.moduleSaved).toBe(0)
+        expect(h.modules).toEqual([])
+        expect(h.events.filter((e) => e.startsWith('normal:') || e.startsWith('error:'))).toEqual([])
+        expect(h.last).toBe('none')
+    })
+
+    test.each(paths)('%s: a confirmed prompt imports the module and reports success (compatibility guard: passes before and after)', async (_label, run) => {
+        h.moduleLowLevel = true
+        h.confirm = true
+        await run()
+        expect(h.moduleSaved).toBe(1)
+        expect(h.modules).toHaveLength(1)
+        expect(h.events).toContain('normal:' + language.successImport)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// The charx low-level-access prompt label, and a module embedded in a charx
+// ---------------------------------------------------------------------------------------------
+
+describe('the charx low-level-access prompt label (feature tests)', () => {
+    async function lowLevelCharx(name: string, embeddedModule?: Uint8Array): Promise<File> {
+        const chunks: Uint8Array[] = []
+        const sink = { write: async (b: Uint8Array) => { chunks.push(new U8(b)) }, close: async () => {} }
+        const writer = new CharXWriter(sink as unknown as VirtualWriter)
+        const card = JSON.parse(v3Card(name))
+        card.data.extensions.risuai.lowLevelAccess = true
+        await writer.write('card.json', JSON.stringify(card), 6)
+        if (embeddedModule) await writer.write('module.risum', embeddedModule, 6)
+        await writer.end()
+        return new File([new U8(concat(chunks))], 'card.charx', { type: 'application/zip' })
+    }
+
+    test('guard: without a label the prompt is the plain question (passes before and after the label existed)', async () => {
+        const file = await lowLevelCharx('Risky')
+        expect((await importCharacterFile({ name: file.name, data: file })).kind).toBe('imported')
+        expect(h.prompts).toEqual([language.lowLevelAccessConfirm])
+    })
+
+    test('a text label is the first line of the prompt', async () => {
+        const file = await lowLevelCharx('Risky')
+        await importCharacterFile({ name: file.name, data: file, lowLevelLabel: 'Label line' })
+        expect(h.prompts).toEqual([`Label line\n${language.lowLevelAccessConfirm}`])
+    })
+
+    test('a label function is given the card name that only the parsed card knows', async () => {
+        const file = await lowLevelCharx('Risky')
+        await importCharacterFile({ name: file.name, data: file, lowLevelLabel: (cardName) => language.moduleLowLevelNamed(cardName, 'card.charx') })
+        expect(h.prompts).toEqual([`${language.moduleLowLevelNamed('Risky', 'card.charx')}\n${language.lowLevelAccessConfirm}`])
+    })
+
+    test('a declined labelled prompt ends as declined and adds no character', async () => {
+        h.confirm = false
+        const file = await lowLevelCharx('Risky')
+        expect(await importCharacterFile({ name: file.name, data: file, lowLevelLabel: 'Label line' })).toEqual({ kind: 'declined' })
+        expect(h.characters).toEqual([])
+    })
+
+    test('a card that does not ask is not asked, label or not', async () => {
+        const file = new File([new U8(await charxBytes('Plain'))], 'card.charx', { type: 'application/zip' })
+        await importCharacterFile({ name: file.name, data: file, lowLevelLabel: 'Label line' })
+        expect(h.prompts).toEqual([])
+    })
+
+    test('guard: a module embedded in the charx is read without a hook, so it never asks the prompt', async () => {
+        const { readModule } = await import('src/ts/process/modules')
+        vi.mocked(readModule).mockClear()
+        const file = await lowLevelCharx('Risky', new U8([111, 0]))
+        h.confirm = true
+        await importCharacterFile({ name: file.name, data: file, lowLevelLabel: 'Label line' })
+        expect(vi.mocked(readModule)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(readModule).mock.calls[0][1]).toBeUndefined()
+        expect(h.prompts).toEqual([`Label line\n${language.lowLevelAccessConfirm}`])
     })
 })

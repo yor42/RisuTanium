@@ -22,19 +22,11 @@ vi.mock('./process/memory/busyActions', () => ({
 
 import { language } from 'src/lang'
 import { ModuleRefusal } from './process/moduleRefusal'
+import { ModuleImportStopped } from './process/moduleImportStop'
 import { outcomeOfError, outcomeReason, runImportBatch, summariseImport, type ImportItem, type ImportOutcome } from './importBatch'
 
 const item = (name: string, run: () => Promise<ImportOutcome>): ImportItem => ({ name, run })
 const done = (outcome: ImportOutcome) => () => Promise.resolve(outcome)
-
-class StopLike extends Error {
-    reason: string
-    constructor(reason: string) {
-        super('stop')
-        this.name = 'ModuleImportStopped'
-        this.reason = reason
-    }
-}
 
 beforeEach(() => {
     h.errors = []
@@ -46,12 +38,13 @@ describe('outcomeOfError', () => {
     it('maps a module refusal to a refusal with its text', () => {
         expect(outcomeOfError(new ModuleRefusal('bad module'))).toEqual({ kind: 'refused', reason: 'bad module' })
     })
-    it('maps a stop by reason', () => {
-        expect(outcomeOfError(new StopLike('declined'))).toEqual({ kind: 'declined' })
-        expect(outcomeOfError(new StopLike('skipped'))).toEqual({ kind: 'skipped' })
+    it('maps the real ModuleImportStopped class by its reason', () => {
+        expect(outcomeOfError(new ModuleImportStopped('declined'))).toEqual({ kind: 'declined' })
+        expect(outcomeOfError(new ModuleImportStopped('skipped'))).toEqual({ kind: 'skipped' })
     })
-    it('treats a stop with an unknown reason, any other error and a string as failures', () => {
-        expect(outcomeOfError(new StopLike('other')).kind).toBe('failed')
+    it('treats an error that only imitates the stop by name, any other error and a string as failures', () => {
+        const imitation = Object.assign(new Error('stop'), { name: 'ModuleImportStopped', reason: 'declined' })
+        expect(outcomeOfError(imitation).kind).toBe('failed')
         const error = new Error('x')
         expect(outcomeOfError(error)).toEqual({ kind: 'failed', error })
         expect(outcomeOfError('text')).toEqual({ kind: 'failed', error: 'text' })
@@ -210,8 +203,8 @@ describe('runImportBatch', () => {
 
     it('maps a thrown stop to declined or skipped without an error', async () => {
         const summary = await runImportBatch([
-            item('a', async () => { throw new StopLike('skipped') }),
-            item('b', async () => { throw new StopLike('declined') }),
+            item('a', async () => { throw new ModuleImportStopped('skipped') }),
+            item('b', async () => { throw new ModuleImportStopped('declined') }),
         ])
         expect(summary.skipped).toBe(1)
         expect(summary.declined).toBe(1)
