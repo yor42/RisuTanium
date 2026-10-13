@@ -9567,6 +9567,7 @@ better yet, I'd like to investigate if we can delete the old file in archiving p
 - **Alternatives rejected:** the options not chosen, listed per item below as the source gives them.
 - **Amends:** `MC-281` item 5 in one respect only (item 1 below): (the Orchestrator's reading, item 1; the maintainer's words are conditional on the spike justifying the full A) the hold on "unload stage 2" does not apply to the cloud session's unload-2 work; the other held follow-ups stay held. `MC-281` items 6, 9 and 10 (the two-device merge goal and its scope) are narrowed in one respect only (item 2 below): merge stays a goal but is designed in a separate, later spike. **Extends:** `MC-281` item 5 (the spike) with the answers that start it.
 - **Outcome (2026-10-13 records pass; the text of this entry is unchanged and its wording about merging unload-2 "first" or "before any rewrite stage" is now history):** `feat/unload-2` was merged into `main` as `2e065403a` (2026-10-12 21:08 +0900, `git log`) before the spike reported; see the "Amended by" bullet of `MC-281`. The S0 report names `2e065403a` as its decision base and says the day-1 items and the S0-16 server prototype were first run on `3cd4acd6` and that verification re-checked the day-1 items on `2e065403a` (`S0-report.md`, header).
+- **Amended by `MC-286` (2026-10-13 records pass; the text of this entry is unchanged):** item 4 ("automatic clean-up never runs on a plain-HTTP page") is amended: on 2026-10-13 the maintainer said "run the cleanup over plain http. it was also because of old format being a blocker on http.", so the new automatic clean-up runs on plain-HTTP pages too. The reason given there ("old format being a blocker on http") differs from the reason recorded in this entry's question (no cross-tab lock).
 - **Related:** `MC-281`, `MC-199` (2), `MC-175` and `MC-223` (the `.bin` compatibility rules; the plan lists the `.bin` mapping as something the spike must prove), `MC-268` 5 and `MC-270` 1 (the accepted Node two-device gap), `MC-011` (no release pressure; the fork has never shipped).
 
 **The maintainer's plain message (after the spike plan summary):** "if this spike justifies the full A, I think it would be a good idea to wait and merge the cloud session working on unload-2 first before starting rewrite. so it doesn't collide."
@@ -9632,6 +9633,7 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - **Reasoning:** none stated, except where the option or question text carries it.
 - **Alternatives rejected:** the options not chosen, listed per item below as the source gives them.
 - **Amends:** none of the earlier entries' text. Item 3 clarifies the scope of `MC-282` item 4 (plain-HTTP pages never clean up automatically). Item 4 reads `MC-223` as covering restores onto a Node server.
+- **Amended by `MC-286` (2026-10-13 records pass; the text of this entry is unchanged):** item 3's rule, that the plain-HTTP restriction of `MC-282` item 4 covers the new clean-up only, no longer restricts anything: the maintainer said the new automatic clean-up runs on plain-HTTP pages too. Item 3's other statement, that the deletes already running on a plain-HTTP page today are not covered by the rule, is not touched.
 - **Related:** `MC-283`, `MC-282` 4, `MC-132` 1 and 2 (per-chat storage: V3 plugins load on demand, chats stay loaded while a V2.1 plugin is enabled; the S0 report cites both), `MC-223`, `MC-175`, `MC-141` 2.
 
 **What was decided, round S8 (`AskUserQuestion`, 2026-10-13):**
@@ -9662,6 +9664,72 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 **Notes that are not the maintainer's words:**
 - `MC-199`'s record gives the usage pattern as the reason for "no merge" (its Reasoning field: "the maintainer's own, in item 1; and the usage pattern stated in item 2"); the risk reason in the message above is new to the records.
 - The S0 report (section 6) flags that how the backup format treats the newer-data marker under merge is TODO(evidence) and is not decided in its inputs; this entry does not decide it either.
+
+### MC-286 — Main Campaign, 2026-10-13: the new automatic clean-up runs on plain-HTTP pages too (amends `MC-282` item 4 and `MC-284` item 3); the maintainer's stated reason is the old format
+
+- **Tag:** decision (the maintainer's plain message, verbatim, typos kept; item 1 of two) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-13. The time of the message is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `storage\maintainer-answers.md` (session scratch, the Orchestrator's verbatim record), the entry "[plain message, 2026-10-13, after the senior-advisor challenge of rewrite Gate 1 plan v1 (Q1 plain-HTTP clean-up; Q2 fork block-format profiles)]" and the "Orchestrator reading" line under it. The plan is `Agents/Reports/62-storage-rewrite-gate1-plan.md`.
+- **Reasoning:** the maintainer's own, in the message: "it was also because of old format being a blocker on http."
+- **Alternatives rejected:** none stated in the source (the message answers the plan's question 1; the options of that question are not recorded in the source).
+- **Amends:** `MC-282` item 4 ("automatic clean-up never runs on a plain-HTTP page") and `MC-284` item 3 (the plain-HTTP rule covers the new clean-up only); see "What was decided" and the "Amended by" bullets on those entries. Items 1 and 2 of the same message are recorded here and in `MC-287`.
+- **Related:** `MC-282`, `MC-284`, `MC-287`, `MC-288`, `MC-011` (the fork has never shipped).
+
+**The maintainer's message (plain, 2026-10-13; items 1 and 2 as sent):** "1. run the cleanup over plain http. it was also because of old format being a blocker on http.
+2. this fork has never shipped, and all data within the current data format are synthetic. you can delete the old files safely and import the new ones."
+
+**What was decided (item 1):** the new automatic clean-up (the A-lite garbage collection of the rewrite) runs on plain-HTTP pages as well. **The Orchestrator's reading (`maintainer-answers.md`; the maintainer's words say it only in this short form):** this amends `MC-282` item 4 and `MC-284` item 3: the new automatic clean-up runs on plain-HTTP pages too. `MC-284` item 3's other statement, that the deletes already running on a plain-HTTP page today are not covered by the rule, is not touched.
+
+**Notes that are not the maintainer's words (from `storage\rewrite-gate1-plan.md` v3 and the Gate 1 verdicts in `storage\gate1-review\`; none is a decision):**
+- **The stated reason differs from the recorded one.** `MC-282` item 4's question gave the reason "the browser has no cross-tab lock, so clean-up can't make sure it's the only tab". The maintainer's reason here is "old format being a blocker on http". The plan (the v3 header paragraph) and `senior-advisor` round 2 (finding 8) ask for this difference to be recorded; this entry records it and does not resolve it.
+- **How the plan makes it safe (the plan's text, INFERRED, not run):** on IndexedDB every commit and every clean-up batch is one `readwrite` transaction on the single store, which overlapping read-write transactions run one at a time across tabs, so no Web Lock is needed; Node is server-checked. The premise (the plan's P10) rests on the IndexedDB specification's scheduling rules and on the `fake-indexeddb` 6.2.5 scheduler, which models neither durability nor crashes. A two-tab plain-HTTP probe on desktop Chrome and Note 9 Chrome is owed before stage 1 Gate 2. If it fails, the plan's fallback is adapter-only (Web Locks on secure pages; no clean-up on plain-HTTP IndexedDB) and the maintainer is informed; the plan says `MC-286` would then hold only for Node and Tauri. That fallback is the plan's, not the maintainer's.
+
+### MC-287 — Main Campaign, 2026-10-13: no converter and no `.bin` move for fork-format data; the cutover may delete it (scoped by the plan: only when a fork marker exists; upstream data is never deleted)
+
+- **Tag:** decision (the maintainer's plain message, verbatim, typos kept; item 2 of two), the Orchestrator's reading and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-13. The time of the message is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the same entry in `storage\maintainer-answers.md` as `MC-286` (the message quoted there in full, item 2) and the "Orchestrator reading" line under it; the scope text is `storage\rewrite-gate1-plan.md` v3 section 2.4a and `storage\gate1-review\opus-verdict-r2.md` (R2-1), `opus-verdict-r3.md` (item C1) and the editorial note on `database.pre-blocks*`.
+- **Reasoning:** the maintainer's own, in the message: "this fork has never shipped, and all data within the current data format are synthetic."
+- **Alternatives rejected:** none stated in the source (the message answers the plan's question 2; the options of that question are not recorded in the source).
+- **Amends:** none of the earlier entries' text. Settles the plan's v1 question 2 (what to do with fork block-format profiles). Applies `MC-011` (the fork has never shipped).
+- **Related:** `MC-286`, `MC-288`, `MC-011`, `MC-175` and `MC-223` (the `.bin` compatibility rules; the scope below keeps upstream data out of the deletion).
+
+**The maintainer's words (item 2 of the message quoted in `MC-286`):** "this fork has never shipped, and all data within the current data format are synthetic. you can delete the old files safely and import the new ones."
+
+**What was decided (item 2):** the old files of the fork's current data format may be deleted, and the new format's data is imported. **The Orchestrator's reading (`maintainer-answers.md`):** this settles the plan's question 2: there is no converter and no `.bin` move of fork block-format data; the cutover may delete the old fork-format files; the maintainer imports fresh data into the new format. The reading adds that the upstream `database.bin` conversion is upstream data and is not covered by item 2.
+
+**Scope as the plan sets it (the plan's and the reviewers' text; not the maintainer's words; the plan passed Gate 1 on 2026-10-13):**
+- The deletion runs only when a fork marker exists (any `blocks/` key). A profile that holds only upstream data deletes nothing.
+- When both formats are present, the upstream `database.bin` and every numbered backup are kept, and a `coldstorage/` key is deleted only if no decoded upstream tree reaches it; any read, decode or walk error means no `coldstorage/` key is deleted.
+- In a fork-only profile, deleting `database.pre-blocks*` is covered by this entry: such profiles exist only in the unreleased fork (`opus-reviewer` round 3, editorial).
+- Binding for the stage 4a+4b Gate 1 (`opus-reviewer` round 3, item C1): the deletion works from a key list taken and persisted before the cutover commit and deletes `blocks/` last. This is a gate input, not a maintainer decision.
+- `AGENTS.md` (project instructions) already says the fork has never shipped and "Do not design recovery for already-corrupted fork-local state" (`MC-011`); this entry is the maintainer's explicit statement for the storage cutover.
+
+### MC-288 — Main Campaign, 2026-10-13: round G1 after the rewrite Gate 1 passed: the stage list is approved and stage 0a may start; plugin storage goes inside backups; lazy modules stay resident under a V2.1 plugin and a v3 `getDatabase` with modules waits; a full quota drops the oldest backups one at a time with a one-time notice
+
+- **Tag:** decisions (`AskUserQuestion` answers by option label with the option text as given, typos kept) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-13. The times of the answers are not recorded in the source. Round G1 was asked after the rewrite Gate 1 plan v3 passed (`senior-advisor` round 3 `[APPROVE]`; `opus-reviewer` round 3 `[APPROVE]` with items C1 to C4).
+- **Sweep ref:** none (stated directly this session)
+- **Source:** `storage\maintainer-answers.md` (session scratch, the Orchestrator's verbatim record), the entry "[AskUserQuestion round G1, 2026-10-13, after rewrite Gate 1 plan v3 passed (advisor r3 APPROVE; opus r3 APPROVE with C1-C4)]" and its "Still open" line. The plan is `Agents/Reports/62-storage-rewrite-gate1-plan.md`. The source gives an option text for each chosen option; the rejected options are labels only.
+- **Reasoning:** none stated, except where the option text carries it.
+- **Alternatives rejected:** the options not chosen, listed per item below as the source gives them.
+- **Amends:** none of the earlier entries' text. Settles three questions of the plan (Q-C, Q5 and Q-B). Item 3 concerns plugins under the lazy modules of `MC-283` item 6 and does not change that item.
+- **Related:** `MC-281` item 8 (the storage freeze), `MC-283`, `MC-284`, `MC-286`, `MC-287`, `MC-132` 2 and 3 (V2.1 keeps chats resident; a snapshot is a recovery point), `MC-130` 4.
+
+**What was decided, round G1 (`AskUserQuestion`, 2026-10-13):**
+1. **Stage list.** Question: "Approve the rewrite's stage list? 0a server safety checks → 0b big-file upload to Node (side track) → 1+3 new save logic and file split (format fixed here) → 2 clean-up logic + safety replay → 4a/4b switch-over (start, save, backups, .bin) → 5 clean-up on → 6+7 lazy chats and modules → 8 delete old code. About 35-70 review rounds plus Note 9 sessions." Answer: "Approve (Recommended)" (option text: "Record your answers as decisions, then start stage 0a (server safety checks). Plan: scratchpad\storage\rewrite-gate1-plan.md."). Not chosen: "Approve, but hold"; "Change something" (no option texts in the source). Decided: the stage list is approved, and stage 0a (the guarded Node routes, retire and capabilities) may start once these answers are recorded. The review-round figure is the plan's estimate, not measured.
+2. **Plugin storage.** Question: "Plugin storage (v3 plugins) is written in place today, so restoring a backup doesn't roll it back. Should it move into backups, so a restore also rolls plugin storage back to that point? Needed before the format is fixed." Answer: "Inside backups (Recommended)" (option text: "A backup is a full recovery point. Each plugin storage write then costs one small save; a plugin that writes every message adds one per message. Memory use unchanged (values load on demand)."). Not chosen: "Outside backups". Decided: v3 plugin storage moves into the backups (snapshots): a restore also rolls plugin storage back to that point, each plugin storage write costs one small commit, and values stay loaded on demand.
+3. **Lazy modules and plugins.** Question: "Lazy modules: while an old-style (V2.1) plugin is on, keep every module loaded, and make a v3 plugin asking for the whole database with modules wait until all are loaded?" Answer: "Yes (Recommended)". Not chosen: "No". Decided: while a V2.1 plugin is on, every module stays loaded; a v3 plugin that asks for the whole database with modules waits until all modules are loaded.
+4. **Full storage.** Question: "When storage is full and clean-up can't free enough, may the app drop the oldest backups one at a time to keep saving, showing a one-time notice with how many it dropped?" Answer: "Yes, with notice (Recommended)" (option text: "Saving keeps working; you're told how many old backups went. Never silent, no hidden size budget."). Not chosen: "No, stop saving". Decided: when storage is full and clean-up cannot free enough, the app may drop the oldest backups one at a time to keep saving, with a one-time notice of how many were dropped.
+
+**Still open at the end of the round (the source's line):** Q3 (the foreign-marker prompt, stage 4; with item C3), Q9 (the orphan counter, stage 5) and Q-D (the size script on the real save, a maintainer action before the stage 1+3 freeze). The source records no answer to these.
+
+**Notes that are not the maintainer's words (from `storage\rewrite-gate1-plan.md` v3 section 7 and the Gate 1 verdicts):**
+- **Gate 1 of the plan passed on 2026-10-13:** `senior-advisor` rounds `[REJECT]`, `[EDITORIAL]`, `[APPROVE]`; `opus-reviewer` rounds `[REJECT]`, `[REJECT]`, `[APPROVE]` with binding carry-forward items C1 to C4. The record is Report 62 (not yet independently verified when this entry was written).
+- **Binding items the maintainer was not asked about:** C1 (deletion from a persisted key list, `blocks/` last; 4a+4b Gate 1), C2 (recovery details; 1+3 Gate 1), C3 (stale foreign marker clear from the quota path and manual clean-up; stage 4 Gate 1, with Q3) and C4 (asset references in the shard entry; a 1+3 freeze input). They are gate inputs, not product decisions.
+- Item 2 takes effect on the manifest (the `pluginStorage` field) and on the freeze; the plan marks the commit cost per plugin write as within the S0-11 per-key budget, which is the plan's statement.
 
 ### MC-300 — Unload-2 session, 2026-10-12: the stage-1c measurement code is kept, compiled out of normal builds
 

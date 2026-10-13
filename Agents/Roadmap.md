@@ -7152,6 +7152,40 @@ Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-30
   - **Web, installed as an app:** open a card file with the app: it is imported once.
   - **Note 9 (Android, Tauri) and Windows (Tauri desktop):** start-up, the boot archive pass and re-archiving behave as before (no change expected; the desktop path was never on).
 
+### A-lite storage rewrite (2026-10-13): stage list, gates and state
+
+**State (2026-10-13): Gate 1 of the plan PASSED; the stage list is approved (`MC-288` 1); stage 0a is next; no stage has started and no application code has been written.** The plan, its gate record and the full text of every stage are in `Agents/Reports/62-storage-rewrite-gate1-plan.md` (`doc-verifier` `[EDITORIAL]`, fixes applied, ledger row 1732). Decisions: `MC-281` to `MC-288` (`MC-286` and `MC-287` record the maintainer's plain-HTTP and old-data answers; `MC-288` records round G1). Records: ledger rows 1721 to 1732. **Tickets:** none were opened for the stages, so no CHORE number from CHORE-182 onward was used; the next free number stays CHORE-182. Whether the existing CHORE-105 ("A Node chunked upload endpoint (optional)") carries stage 0b is not decided: TODO(evidence). The `MC-223` export-warning gap that the plan names (invariant I6) is the existing CHORE-129. Storage stays a freeze of gated stages before the first release (`MC-281` 8); the review-round figures are the plan's estimates, not measured.
+
+**Stage list.** Dependencies: 0a → (1+3) → 2 → 4a+4b → 5 → (6+7) → 8; 0b sits off the critical path; the merge spike follows stage 5; the fork backup format follows stage 8.
+
+| Stage | What | Gates | State |
+|---|---|---|---|
+| 0a | Guarded Node routes (`/api/write-checked`, `/api/remove-checked`), retire, `/api/caps`, a positive response marker, the client's fail-closed handling | Gates: `opus-reviewer` (the plan names no Gate 1 / Gate 2 split); no device check | Not started; next |
+| 0b | Chunked Node upload for restores (`MC-284` 4) | Gates: `opus-reviewer` (the plan names no Gate 1 / Gate 2 split); device check: a real restore over 100 MiB onto a Windows Node server | Not started; off the critical path, any time after 0a |
+| 1+3 | Protocol library and unit codec, unwired; the format freeze | One Gate 1 with one `senior-advisor` challenge; two Gate 2s (`opus-reviewer`); E1-1 model extension before the freeze; device checks (IndexedDB strict commit cost, Tauri Android durable hold, the two-tab plain-HTTP probe before stage 1 Gate 2) | Not started |
+| 2 | GC library and the full replay, unwired | Gate 1 is the plan's replay requirement (passed with the plan); Gate 2 `opus-reviewer` (many rounds expected); device check: two real tabs over plain HTTP and HTTPS | Not started |
+| 4a+4b | The cutover: boot table, save path, snapshots, old-data deletion; `.bin` import and export | Joint Gate 1 (`senior-advisor` and `opus-reviewer`) with the stage 2 replay record as input; separate Gate 2s (`opus-reviewer`); translator; device checks on the integrated build | Not started |
+| 5 | GC switched on; manual clean-up reworked; quota path | Gate 1; Gate 2 `opus-reviewer`; device checks (mark under 1 s on the Note 9, plain-HTTP IndexedDB GC) | Not started |
+| 6+7 | Lazy chats and lazy modules | One Gate 1; two Gate 2s; Note 9 device checks | Not started |
+| 8 | Remove the unwired internals; re-measure memory and Android boot | Gate 1; Gate 2 | Not started |
+
+**Binding carry-forward from the plan's Gate 1 (`opus-reviewer` round 3 and the Orchestrator's disposition, 2026-10-13):**
+
+| Item | Binds | Content |
+|---|---|---|
+| C1 | Stage 4a+4b Gate 1 (a silent-loss path) | The old-data deletion works only from a key list taken and persisted before the seed or conversion commit; `blocks/` is deleted last; the "commit key parses" boot row resumes an unfinished deletion; mutant: a resumed run that re-lists |
+| C2 | Stage 1+3 Gate 1 | Recovery: on a 409 at the recovery marker CAS, re-read and abandon recovery if the key now parses (modelled in E1-1(g)); manifests recognisable without body reads, listing cost disclosed; newest-first candidate list with a visible cap; disclose the memory cost on phones (`MC-130` 4); an uncaught "direct install" mutant is a mutant-validity finding |
+| C3 | Stage 4 Gate 1, with Q3 | Offer the foreign-marker clear when the marker is older than a threshold, from the quota path and from manual clean-up |
+| C4 | Stage 1+3 freeze input (format-shaping) | Decide before the freeze whether the shard entry records asset references per character, so the boot asset sweep needs no body reads. `opus-reviewer` named stage 4a Gate 1 for it; the Orchestrator's disposition moved it to the freeze (Report 62, B6) |
+
+**Open items.**
+- **Q-D (maintainer action; before the 1+3 freeze):** run the size-report script on the real save.
+- **Q3 (stage 4, with C3):** the foreign-marker prompt wording and behaviour. The plan recommends showing `startedAt` and a platform label with Wait (default) / Clear and continue; not decided.
+- **Q9 (stage 5):** point the orphan counter at assets only (the plan's recommendation); not decided.
+- **An upstream-exported `.bin` sample** (stage 4b).
+- **Before the freeze (technical):** independent re-verification or re-measure of the S0-8 root-write series and the S0-5b 16-shard run (both AUTHOR-ONLY); the E1-1 model run (4-hour cap on the i9; not finishing blocks the freeze).
+- **Settled in round G1 (`MC-288`):** plugin storage inside backups (Q-C), V2.1 keeps modules resident and a v3 `getDatabase` with modules waits (Q5), oldest backups dropped one at a time with a notice on a full quota (Q-B).
+
 ### Queue after the 2026-10-09 batch (maintainer's order, `MC-256`)
 
 These are scope items, not defects, so they carry no CHORE number yet. Order: Android boot time (done), then keep-alive (done: pushed 2026-10-10, records verified), then the character list rework (in progress: Stages 1 to 3, S4-1 to S4-3 pushed by 2026-10-12, S4-4 to S4-6 remain), then windowing of other lists, then the chat-screen render tickets CHORE-154 to CHORE-157.
