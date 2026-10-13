@@ -215,7 +215,7 @@ Dependencies: 0a → (1+3) → 2 → 4a+4b → 5 → (6+7) → 8. Stage 0b sits 
 
 **Freeze preconditions:**
 - independent re-verification or re-measure of the S0-8 root-write series and the S0-5b 16-shard re-run;
-- **Q-D** answered (the size script on real data; maintainer action; still open);
+- **Q-D** answered 2026-10-13 (the size script on real data; result in A6 "Settled"; ledger row 1741);
 - **C4** decided (whether asset references go into the shard entry);
 - Q-C is settled (inside backups, `MC-288` 2), so `pluginStorage` is in the manifest.
 
@@ -439,7 +439,7 @@ The "unavailable" failure (plain HTTP with no cold store) disappears.
 | IndexedDB scheduling across tabs does not hold on a real browser (P10) | Before stage 1 Gate 2; stage 2 | Adapter-only fallback; the maintainer is informed (`MC-286` then holds only for Node and Tauri) |
 | Strict durability breaks A2 on the Note 9 | 1+3 | Relaxing needs evidence and goes back to review |
 | Re-verified P5 or P6 fails | 1+3, 5 | Revisit the amendments before the freeze |
-| Real sizes: a unit nears 100 MiB on Node | 1+3 | Split further before the freeze (Q-D) |
+| Real sizes: a unit nears 100 MiB on Node | 1+3 | Split further before the freeze (Q-D). **Not triggered (2026-10-13): the largest unit is 4.48 MiB, see A6 "Settled".** |
 | Upstream cannot restore fork stubs | 4b | Switch export to all-inline with the `MC-130` 4 warning |
 | A scan of unloaded characters makes the boot asset sweep slow | 4a | Yields; Note 9 check; C4 |
 | The Lua-display trace contradicts the PLAUSIBLE reading | 6 | Back to the maintainer |
@@ -494,11 +494,20 @@ These are binding inputs to the Gate 1 named for each. They are not optional not
 - Q5: V2.1 keeps every module resident; a v3 `getDatabase` with modules awaits them (`MC-288` 3).
 - Q-B: on quota, drop the oldest snapshots one at a time with a one-time notice (`MC-288` 4).
 - Stage list approved; stage 0a may start (`MC-288` 1).
+- **Q-D, answered 2026-10-13 (the real-size census; ledger row 1741).** The maintainer ran `Agents/Tools/save-gen/real-size-report.harness.ts` on 2026-10-13 against a local copy of their real upstream `.bin`; the output is `Agents/Tools/output/real-size-report.json` (gitignored; sizes, counts and ordinals only). The measure is the UTF-8 bytes of each piece's JSON serialisation, so it is an upper-side measure of the stored units, which are compressed or encoded. Units: lore is `globalLore`; scripts are `customscript`, `triggerscript` and `virtualscript`; core is the character minus chats, lore and scripts; chat chunks are a greedy 128 KiB packing of whole messages. Numbers (VERIFIED: the maintainer's run output, scalars checked by the orchestrator against the JSON):
+  - Container 32.24 GiB, 383,743 entries. The database entry is the legacy format, 62 MiB (65,143,738 bytes), decoded in 1,075 ms; peak RSS 944 MiB (the whole decode added about 570 MB). A first attempt from a NAS was seek-bound; the harness reads sequentially in 32 MiB chunks, and the rerun from local disk ran at about 2.5 GB/s overall (34.6 GB in 13.8 s, per the JSON's `elapsedMs`).
+  - 485 characters, no stubs, no cold-storage units. Largest whole character 4.48 MiB (core max 2.12 MiB, lore max 3.92 MiB, scripts max 1.0 MiB); character p95 1.12 MiB; all characters together 132 MiB (138,319,559 bytes).
+  - 814 chats; largest whole chat 773 KiB; most messages in one chat 62; most chunks in one chat 7.
+  - 180 modules; largest 3.30 MiB; the whole array 35.6 MiB (37,349,021 bytes).
+  - Config root 619 KiB; plugins 8.5 MiB; `pluginCustomStorage` 0.9 MiB; `botPresets` 1.7 MiB.
+  - Assets: 383,742, 32.2 GiB, largest 20.5 MiB, 3 over 16 MiB, none over 100 MiB.
+  - Nothing at or over 50 MiB; nothing at or over 100 MiB.
+
+  Interpretation (the orchestrator's; INFERRED): the largest A-lite unit has about 22x headroom under Node's 100 MiB body limit, so the A4.1 "unit nears 100 MiB" risk does not trigger and no further split is needed before the freeze. A design that stores all characters as one value (132 MiB) would exceed the limit. The whole module array as one value is 35.6 MiB today, about a third of the limit; other users have far larger module sets (1 to 2 GB asset modules, recorded in campaign memory), so modules stay per-unit. The library is character-heavy and chat-light; chat chunking is still required for long-chat users. Limit: one library, one maintainer; it is not representative of the extreme 1000+ character users.
 - `statics` coalesced; retention admission matches today's cadence; manual clean-up hidden during stage 4 to 5; owner id fresh per load; A1 redefined; the existing delete paths (post-commit clean-up, generation retire and numbered-backup rotation go away with the block store; `cleanChunks` stays, its keep-set source changes, see T2).
 
 ### Open
 
-- **Q-D (before the 1+3 freeze; maintainer action).** Run the size-report script on the real save (S0-6). Needed to rule out a unit near 100 MiB and to size `MC-132` 1.
 - **Q3 (stage 4, with C3).** Foreign-marker prompt. With fresh owner ids, every crash mid-bulk on the web leads to this prompt. Recommended (not decided): show `startedAt` and a platform label; offer Wait (default) / Clear and continue; prompt rather than wait silently.
 - **Q9 (stage 5).** Point the orphan counter at assets only. Recommended (not decided).
 - **C4** (the asset references in the shard entry): an internal decision owed before the freeze.
@@ -582,7 +591,7 @@ These were accepted at Gate 1 and are not closed; each keeps its source label.
 - Whether `durability: 'strict'` is honoured by the Note 9's Chrome build.
 - Upstream's numbered-backup naming was not checked against upstream source (advisor r2 finding 3 and its UNCERTAINTY note; opus r2 R2-1 treats the files as upstream's backups without flagging this); the deletion rule is safe under either naming.
 - The editDisplay / display-trigger / CBS behaviour behind stage 6's "wait only if used" is PLAUSIBLE and untraced.
-- Real sizes (Q-D), Q3 and Q9, and C4's decision.
+- Real sizes (Q-D) answered 2026-10-13 (A6); still open: Q3, Q9 and C4's decision.
 - Whether CHORE-105 carries stage 0b: TODO(evidence).
 - The order in which the code-searcher packet and the round-1 verdicts arrived is not recorded.
 - The report's documentation claims were checked by `doc-verifier` (`[EDITORIAL]`, ledger row 1732); the plan's design claims remain as labelled above.
@@ -596,7 +605,7 @@ These were accepted at Gate 1 and are not closed; each keeps its source label.
 ## B7. Next steps and owners
 
 1. Stage 0a (guarded Node routes, retire, capabilities): done 2026-10-13 on `feat/alite`, see Part C (a stage-level plan was written and passed its own Gate 1, rounds 1 and 2, before implementation). Gates: `opus-reviewer`.
-2. Stages 1+3: Gate 1 with a `senior-advisor` challenge; C2 and C4 bind it; Q-D is the maintainer's action.
+2. Stages 1+3: Gate 1 with a `senior-advisor` challenge; C2 and C4 bind it; Q-D answered 2026-10-13 (A6); preparation started (C9).
 3. The independent `doc-verifier` pass of this report and of the records of this pass is done (ledger row 1732, `[EDITORIAL]`, fixes applied).
 
 ---
@@ -690,5 +699,5 @@ Gate 2 follow-up: M-AQ (only the first key's delete record appended) was killed,
 - **Merge:** `feat/alite` (`ebe3c77a9`) is not merged to `main`. When it merges is the maintainer's call; the timing is not stated in the sources given to this record (the orchestrator relays that the branch decision says at the latest after 4a+4b): TODO(evidence).
 - **Express ETag note (implementer's):** the literal table's ETag values are Express weak ETags of the JSON bodies; a different Express major could change them.
 - **Not exercised:** the old write temp-file failure path (review-only); M-AF and M-AI (review-only); nothing ran on a phone, a Pi or against a reverse proxy; the proxy modes are stubs.
-- **Stage 1+3 Gate 1 preparation (not started):** Q-D real-size run (maintainer action, size-report script being written), the P10 two-tab plain-HTTP probe, re-verification of S0-8 and S0-5b, and the E1-1 model extension (see B4, B5, A6).
+- **Stage 1+3 Gate 1 preparation:** Q-D, the real-size run, is done (2026-10-13; A6 "Settled", ledger row 1741). The rest started 2026-10-13: the P10 two-tab plain-HTTP probe, the S0-8 and S0-5b re-measure, the E1-1 model extension and the C4 sizing; none of these has a recorded result yet (see B4, B5, A6).
 - **Records:** this part was verified by `doc-verifier` `a76804465aa082c3d`: `[EDITORIAL]`, about 95 claims in 11 groups, 9 groups confirmed; two fixes applied (ledger row 1739 cell split, the C3 cross-reference to C8); 95k tokens (ledger row 1740).

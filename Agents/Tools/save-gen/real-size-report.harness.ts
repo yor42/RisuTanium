@@ -1,0 +1,953 @@
+/**
+ * Read-only size report over a real RisuAI `.bin` backup (any size, built for
+ * ~36 GB), feeding the A-lite storage rewrite's stage 1+3 freeze (Report 62,
+ * Q-D): rule out any storage unit near the Node server's 100 MiB body limit
+ * and size the per-unit ceilings of A-lite's unit split.
+ *
+ * Run (from the repo root; PowerShell):
+ *   $env:RISU_SIZE_BIN = '<path to .bin>'
+ *   $env:NODE_OPTIONS = '--max-old-space-size=16384'
+ *   npx vitest run --config Agents/Tools/vitest.harness.config.ts real-size-report
+ * Without RISU_SIZE_BIN the test is skipped, so other harness runs are not
+ * affected. RISU_SIZE_PARSE_LIMIT_MIB (default 256) is the largest archived
+ * cold-storage entry that is parsed to split it into units; larger ones are
+ * reported whole and flagged as not split.
+ *
+ * Guarantees:
+ * - The input is opened read-only (`fs.openSync(..., 'r')`) and never written,
+ *   renamed or touched. The only file written is
+ *   Agents/Tools/output/real-size-report.json (gitignored).
+ * - The container is scanned once, front to back, in 32 MiB sequential reads
+ *   (no per-entry seeking, which is hours on a spinning or USB disk). Asset and
+ *   inlay bodies are skipped through the stream, only their sizes recorded.
+ *   Only the database entry and cold-storage entries (up to the parse limit)
+ *   are held in memory. Progress goes to stderr about every 10 s.
+ * - Privacy: the report holds sizes, counts and ordinals only. No names, ids,
+ *   content, config field names or asset file names are ever emitted.
+ *
+ * Container format (src/ts/drive/backupContainer.ts, written by the
+ * LocalWriter in backuplocal.ts): a flat sequence of
+ * [u32le nameLength][name][u32le dataLength][data], no header or trailer.
+ * Entry classes follow the restore pass: `database.risudat` (the last one
+ * wins), cold-storage units (`coldstorage_<uuid>.json`, plain UTF-8 JSON),
+ * inlay parts (`risu-inlay-*.part`), and everything else is an asset.
+ *
+ * SIZE MEASURE: every byte figure is the UTF-8 byte length of the piece's
+ * JSON serialisation (JSON.stringify semantics, undefined keys omitted).
+ * Whole-chat and whole-unit figures are exact; `character.total` is the sum of
+ * its core, lore, scripts and chat sizes (JSON punctuation between the parts
+ * excluded). Kinds whose unit is `count` hold counts, not bytes.
+ *
+ * Unit split (Report 62 "Units" and the character type):
+ * - lore    = `globalLore`
+ * - scripts = `customscript`, `triggerscript`, `virtualscript`
+ * - core    = the character minus `chats`, lore and scripts
+ * - chat    = whole chat; chat core = chat minus `message`; chunks = greedy
+ *             packing of whole messages into 128 KiB chunks (a larger message
+ *             takes a chunk alone)
+ * - config root = database minus characters, modules, botPresets, loadouts,
+ *             plugins and pluginCustomStorage
+ * Ordinals are 0-based positions in the decoded arrays, or entry order in the
+ * file for assets and cold units.
+ *
+ * The mocks follow src/ts/storage/tests/risuSave.test.ts (including its
+ * appStore mock: the real store starts async work that throws after the test
+ * environment is torn down) so the repo's real decoder runs headlessly. Unlike
+ * generate-and-verify.harness.ts, Buffer stays defined: that harness removes it
+ * for msgpackr's encode path only, and this one only decodes.
+ */
+import { describe, it, expect, vi, beforeAll } from 'vitest'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import * as v8 from 'node:v8'
+import { fileURLToPath } from 'node:url'
+import type { ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+
+//#region module mocks — same set as generate-and-verify.harness.ts
+const store = new Map<string, unknown>()
+
+vi.mock('localforage', () => ({
+    default: {
+        createInstance: () => ({
+            getItem: vi.fn(async (key: string) => store.get(key) ?? null),
+            setItem: vi.fn(async (key: string, value: unknown) => {
+                store.set(key, value)
+            }),
+            removeItem: vi.fn(async (key: string) => {
+                store.delete(key)
+            }),
+        }),
+    },
+}))
+
+vi.mock(
+    import('src/ts/globalApi.svelte'),
+    () =>
+        ({
+            forageStorage: {
+                keys: vi.fn(async () => []),
+                getItem: vi.fn(async () => null),
+                setItem: vi.fn(async () => {}),
+            },
+            // The cold-storage and inlay modules pull in characters.ts, whose
+            // avatar helper binds this export at load.
+            readImage: vi.fn(async () => new Uint8Array()),
+        }) as unknown as typeof import('src/ts/globalApi.svelte'),
+)
+
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
+
+vi.mock(
+    import('src/ts/storage/database.svelte'),
+    () =>
+        ({
+            getDatabase: vi.fn(() => { throw new Error('no live database in tests') }),
+            presetTemplate: { name: 'test-preset' },
+        }) as unknown as typeof import('src/ts/storage/database.svelte'),
+)
+
+vi.mock(import('src/ts/platform'), () => ({
+    isTauri: false,
+    isNodeServer: false,
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+    writeFile: vi.fn(),
+    exists: vi.fn(async () => false),
+    mkdir: vi.fn(),
+    readFile: vi.fn(),
+    BaseDirectory: { AppData: 0 },
+}))
+//#endregion
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const OUTPUT_DIR = path.resolve(__dirname, '../output')
+const OUTPUT_PATH = path.join(OUTPUT_DIR, 'real-size-report.json')
+
+const BIN_PATH = process.env.RISU_SIZE_BIN
+const PARSE_LIMIT_BYTES = (Number(process.env.RISU_SIZE_PARSE_LIMIT_MIB) || 256) * 1024 * 1024
+const TEST_TIMEOUT_MS = 2 * 60 * 60 * 1000
+
+const KIB = 1024
+const MIB = 1024 * KIB
+const GIB = 1024 * MIB
+const CHUNK_CAP_BYTES = 128 * KIB
+const FLAG_50_MIB = 50 * MIB
+const FLAG_100_MIB = 100 * MIB
+/** Entry names longer than this are never decoded (only DB, cold-unit and inlay names are short). */
+const NAME_READ_LIMIT = 1024
+
+//#region plain-data helpers (no `any`: unknown at the boundary, narrowed here)
+type Rec = Record<string, unknown>
+
+function asRec(value: unknown): Rec | null {
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Rec) : null
+}
+
+function asArr(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : []
+}
+
+let unmeasurableValues = 0
+
+function utf8Length(text: string): number {
+    return Buffer.byteLength(text, 'utf8')
+}
+
+/** Streaming JSON length for values too large for one string (or holding what stringify rejects). */
+function walkJsonBytes(value: unknown): number {
+    if (value === null) return 4
+    switch (typeof value) {
+        case 'boolean': return value ? 4 : 5
+        case 'number': return Number.isFinite(value) ? String(value).length : 4
+        case 'string': return utf8Length(JSON.stringify(value))
+        case 'bigint': unmeasurableValues++; return 0
+        case 'undefined': case 'function': case 'symbol': return 0
+        default: break
+    }
+    const withToJson = value as { toJSON?: unknown }
+    if (typeof withToJson.toJSON === 'function') {
+        return walkJsonBytes((withToJson.toJSON as () => unknown)())
+    }
+    if (Array.isArray(value)) {
+        let total = 2 + Math.max(value.length - 1, 0)
+        for (const element of value) {
+            const t = typeof element
+            total += element === undefined || t === 'function' || t === 'symbol' ? 4 : walkJsonBytes(element)
+        }
+        return total
+    }
+    const record = value as Rec
+    let total = 2
+    let members = 0
+    for (const key of Object.keys(record)) {
+        const member = record[key]
+        const t = typeof member
+        if (member === undefined || t === 'function' || t === 'symbol') continue
+        total += utf8Length(JSON.stringify(key)) + 1 + walkJsonBytes(member)
+        members++
+    }
+    return total + Math.max(members - 1, 0)
+}
+
+/** UTF-8 byte length of JSON.stringify(value); 0 for a value JSON omits. */
+function jsonBytes(value: unknown): number {
+    if (value === undefined) return 0
+    try {
+        const text = JSON.stringify(value)
+        return text === undefined ? 0 : utf8Length(text)
+    } catch {
+        return walkJsonBytes(value)
+    }
+}
+
+/** The record without the named keys (shallow). */
+function without(record: Rec, omit: ReadonlySet<string>): Rec {
+    const out: Rec = {}
+    for (const key of Object.keys(record)) {
+        if (!omit.has(key)) out[key] = record[key]
+    }
+    return out
+}
+
+/** Exact JSON length of an array whose elements have the given JSON lengths. */
+function arrayBytesFrom(sizes: readonly number[]): number {
+    return 2 + Math.max(sizes.length - 1, 0) + sizes.reduce((a, b) => a + b, 0)
+}
+//#endregion
+
+//#region statistics
+type Unit = 'bytes' | 'count'
+
+interface FlaggedUnit { kind: string; ordinal: string; size: number }
+
+class KindStats {
+    readonly sizes: number[] = []
+    readonly ordinals: string[] = []
+    constructor(readonly unit: Unit) {}
+    add(ordinal: string, size: number): void {
+        this.ordinals.push(ordinal)
+        this.sizes.push(size)
+    }
+}
+
+const kinds = new Map<string, KindStats>()
+const flagged50: FlaggedUnit[] = []
+const flagged100: FlaggedUnit[] = []
+const scalars: Record<string, { bytes: number; count?: number }> = {}
+
+interface PendingRecord { kind: string; ordinal: string; size: number; unit: Unit }
+
+/** While set, measurements are collected here instead of recorded (cold units are measured before their class is known). */
+let recordSink: PendingRecord[] | null = null
+
+function record(kind: string, ordinal: string, size: number, unit: Unit = 'bytes'): void {
+    if (recordSink) {
+        recordSink.push({ kind, ordinal, size, unit })
+        return
+    }
+    applyRecord(kind, ordinal, size, unit)
+}
+
+function applyRecord(kind: string, ordinal: string, size: number, unit: Unit): void {
+    let stats = kinds.get(kind)
+    if (!stats) {
+        stats = new KindStats(unit)
+        kinds.set(kind, stats)
+    }
+    stats.add(ordinal, size)
+    if (unit === 'bytes') {
+        if (size >= FLAG_100_MIB) flagged100.push({ kind, ordinal, size })
+        if (size >= FLAG_50_MIB) flagged50.push({ kind, ordinal, size })
+    }
+}
+
+function percentile(sortedAscending: readonly number[], p: number): number {
+    if (sortedAscending.length === 0) return 0
+    const rank = Math.max(Math.ceil(p * sortedAscending.length) - 1, 0)
+    return sortedAscending[Math.min(rank, sortedAscending.length - 1)]
+}
+
+function topTen(stats: KindStats): { ordinal: string; size: number }[] {
+    const order = stats.sizes.map((_, i) => i).sort((a, b) => stats.sizes[b] - stats.sizes[a])
+    return order.slice(0, 10).map((i) => ({ ordinal: stats.ordinals[i], size: stats.sizes[i] }))
+}
+
+function summarize(stats: KindStats) {
+    const sorted = [...stats.sizes].sort((a, b) => a - b)
+    return {
+        unit: stats.unit,
+        count: sorted.length,
+        max: sorted.length ? sorted[sorted.length - 1] : 0,
+        p50: percentile(sorted, 0.5),
+        p95: percentile(sorted, 0.95),
+        top10: topTen(stats),
+    }
+}
+//#endregion
+
+//#region unit measurement
+const CHARACTER_SCRIPT_KEYS = ['customscript', 'triggerscript', 'virtualscript'] as const
+const CHARACTER_SPLIT_OUT = new Set<string>(['chats', 'globalLore', ...CHARACTER_SCRIPT_KEYS])
+const CHAT_SPLIT_OUT = new Set<string>(['message'])
+
+let messagesOver128KiB = 0
+let pointerChats = 0
+
+/** Greedy packing of whole messages into byte-capped chunks. */
+function countChunks(messageSizes: readonly number[]): number {
+    let chunks = 0
+    let current = 0
+    for (const size of messageSizes) {
+        if (current === 0 || current + size > CHUNK_CAP_BYTES) {
+            chunks++
+            current = size
+        } else {
+            current += size
+        }
+    }
+    return chunks
+}
+
+/** Records one chat under `scope` and returns its exact whole JSON size. */
+function measureChat(scope: string, ordinal: string, chatValue: unknown): number {
+    const chat = asRec(chatValue)
+    if (!chat) {
+        const whole = jsonBytes(chatValue)
+        record(`${scope}.whole`, ordinal, whole)
+        return whole
+    }
+    const hasMessages = Array.isArray(chat.message)
+    const messageSizes = asArr(chat.message).map((m) => jsonBytes(m))
+    for (const size of messageSizes) if (size > CHUNK_CAP_BYTES) messagesOver128KiB++
+    const core = without(chat, CHAT_SPLIT_OUT)
+    const coreBytes = jsonBytes(core)
+    // `{...core,"message":[...]}`: drop core's closing brace, add the key, array and brace.
+    const emptyCore = Object.keys(core).length === 0
+    const whole = hasMessages
+        ? coreBytes - 2 + (emptyCore ? 0 : 1) + utf8Length('"message":') + arrayBytesFrom(messageSizes) + 2
+        : coreBytes
+    const first = asRec(asArr(chat.message)[0])
+    if (first && typeof first.data === 'string' && first.data.startsWith('COLDSTORAGE')) pointerChats++
+    record(`${scope}.whole`, ordinal, whole)
+    record(`${scope}.core`, ordinal, coreBytes)
+    record(`${scope}.chunks`, ordinal, countChunks(messageSizes), 'count')
+    record(`${scope}.messages`, ordinal, messageSizes.length, 'count')
+    record(`${scope}.largestMessage`, ordinal, messageSizes.length ? Math.max(...messageSizes) : 0)
+    return whole
+}
+
+/** Records one non-stub character (or group chat) under `scope` and returns its total. */
+function measureCharacter(scope: string, ordinal: string, characterValue: unknown, chatScope: string): number {
+    const cha = asRec(characterValue)
+    if (!cha) return 0
+    const core = jsonBytes(without(cha, CHARACTER_SPLIT_OUT))
+    const lore = jsonBytes(cha.globalLore)
+    const scripts = jsonBytes(Object.fromEntries(CHARACTER_SCRIPT_KEYS.map((key) => [key, cha[key]])))
+    let chatTotal = 0
+    asArr(cha.chats).forEach((chat, chatIndex) => {
+        chatTotal += measureChat(chatScope, `${ordinal}/chat#${chatIndex}`, chat)
+    })
+    const total = core + lore + scripts + chatTotal
+    record(`${scope}.core`, ordinal, core)
+    record(`${scope}.lore`, ordinal, lore)
+    record(`${scope}.scripts`, ordinal, scripts)
+    record(`${scope}.chatCount`, ordinal, asArr(cha.chats).length, 'count')
+    record(`${scope}.total`, ordinal, total)
+    return total
+}
+
+function isStub(value: unknown): boolean {
+    const cha = asRec(value)
+    return !!cha && typeof cha.coldstorage === 'string' && cha.coldstorage.length > 0
+}
+
+/** Elements of `value` measured one by one as `kind`; returns the exact array JSON size. */
+function measureArrayUnits(kind: string, prefix: string, value: unknown): number {
+    const sizes = asArr(value).map((element, index) => {
+        const size = jsonBytes(element)
+        record(kind, `${prefix}#${index}`, size)
+        return size
+    })
+    return arrayBytesFrom(sizes)
+}
+//#endregion
+
+//#region container walk
+const ENCRYPTION_MARKER = 'encryption.risudat'
+const SCAN_CHUNK_BYTES = 32 * MIB
+const PROGRESS_INTERVAL_MS = 10_000
+
+/** Progress goes straight to stderr (fd 2), bypassing the test runner's buffered console. */
+function progressLine(text: string): void {
+    try {
+        fs.writeSync(2, `[size-report] ${text}\n`)
+    } catch {
+        // progress is best-effort
+    }
+}
+
+/** Front-to-back reader over one fd: large sequential reads, never a per-entry seek. */
+class SequentialReader {
+    private readonly chunk = Buffer.allocUnsafe(SCAN_CHUNK_BYTES)
+    private start = 0
+    private end = 0
+    private nextReadPosition = 0
+    /** Bytes consumed so far, i.e. the file offset of the next unread byte. */
+    consumed = 0
+
+    constructor(
+        private readonly fd: number,
+        private readonly fileSize: number,
+        private readonly onFill: (scannedBytes: number) => void,
+    ) {}
+
+    private fill(): boolean {
+        if (this.nextReadPosition >= this.fileSize) return false
+        const want = Math.min(this.chunk.length, this.fileSize - this.nextReadPosition)
+        const n = fs.readSync(this.fd, this.chunk, 0, want, this.nextReadPosition)
+        if (n === 0) return false
+        this.start = 0
+        this.end = n
+        this.nextReadPosition += n
+        this.onFill(this.nextReadPosition)
+        return true
+    }
+
+    /** Copies the next `length` bytes into a new buffer; null when the file ends first. */
+    take(length: number): Buffer | null {
+        const out = Buffer.allocUnsafe(length)
+        let got = 0
+        while (got < length) {
+            if (this.start === this.end && !this.fill()) return null
+            const run = Math.min(length - got, this.end - this.start)
+            this.chunk.copy(out, got, this.start, this.start + run)
+            this.start += run
+            got += run
+        }
+        this.consumed += length
+        return out
+    }
+
+    /** Advances past `length` bytes without copying them; false when the file ends first. */
+    skip(length: number): boolean {
+        let left = length
+        while (left > 0) {
+            if (this.start === this.end && !this.fill()) return false
+            const run = Math.min(left, this.end - this.start)
+            this.start += run
+            left -= run
+        }
+        this.consumed += length
+        return true
+    }
+}
+
+type ColdShape = 'character' | 'chat' | 'other'
+
+interface ColdUnit {
+    ordinal: number
+    key: string
+    length: number
+    parsed: boolean
+    parseFailed: boolean
+    notSplit: boolean
+    /** Shape read from the body; the class from the database is applied after it is decoded. */
+    derivedShape: ColdShape | null
+    pending: PendingRecord[]
+    messagesOver128KiBDelta: number
+    pointerChatsDelta: number
+}
+
+interface WalkResult {
+    entryCount: number
+    truncatedTrailingEntry: boolean
+    encryptionMarker: boolean
+    longNameEntries: number
+    databaseCount: number
+    /** Body of the last database entry (the restore pass keeps the last); released once decoded. */
+    databaseBody: Buffer | null
+    coldUnits: ColdUnit[]
+    inlayPartSizes: number[]
+    assetSizes: number[]
+    entryBytes: { database: number; coldUnit: number; inlayPart: number; asset: number }
+}
+
+/** Measures a parsed cold unit by the shape of its body, into the unit's pending records. */
+function measureColdUnit(unit: ColdUnit, value: unknown): void {
+    const ordinal = `coldUnit#${unit.ordinal}`
+    const obj = asRec(value)
+    const shape: ColdShape = Array.isArray(value) || Array.isArray(obj?.message) ? 'chat'
+        : asRec(obj?.character) ? 'character' : 'other'
+    unit.derivedShape = shape
+    const overBefore = messagesOver128KiB
+    const pointersBefore = pointerChats
+    recordSink = unit.pending
+    try {
+        if (shape === 'character') {
+            measureCharacter('archivedCharacter', ordinal, obj?.character, 'archivedChat')
+        } else if (shape === 'chat') {
+            const chat = Array.isArray(value) ? { message: value } : value
+            const messageSizes = asArr(asRec(chat)?.message).map((m) => jsonBytes(m))
+            for (const size of messageSizes) if (size > CHUNK_CAP_BYTES) messagesOver128KiB++
+            record('coldChatUnit.chunks', ordinal, countChunks(messageSizes), 'count')
+            record('coldChatUnit.messages', ordinal, messageSizes.length, 'count')
+            record('coldChatUnit.largestMessage', ordinal, messageSizes.length ? Math.max(...messageSizes) : 0)
+        }
+    } finally {
+        recordSink = null
+    }
+    // Counters join the totals only if the unit's class keeps this measurement.
+    unit.messagesOver128KiBDelta = messagesOver128KiB - overBefore
+    unit.pointerChatsDelta = pointerChats - pointersBefore
+    messagesOver128KiB = overBefore
+    pointerChats = pointersBefore
+}
+
+/**
+ * One sequential pass. Only the database body and cold-unit bodies up to the
+ * parse limit are held (one at a time, apart from the database); inlay and
+ * asset bodies are skipped, recording sizes only.
+ */
+function walkContainer(
+    fd: number,
+    fileSize: number,
+    classify: { coldKey: (name: string) => string | null; isInlay: (name: string) => boolean },
+): WalkResult {
+    const result: WalkResult = {
+        entryCount: 0,
+        truncatedTrailingEntry: false,
+        encryptionMarker: false,
+        longNameEntries: 0,
+        databaseCount: 0,
+        databaseBody: null,
+        coldUnits: [],
+        inlayPartSizes: [],
+        assetSizes: [],
+        entryBytes: { database: 0, coldUnit: 0, inlayPart: 0, asset: 0 },
+    }
+    const startedAtMs = Date.now()
+    let lastReportAtMs = startedAtMs
+    let lastReportBytes = 0
+    const report = (scannedBytes: number, force: boolean) => {
+        const now = Date.now()
+        if (!force && now - lastReportAtMs < PROGRESS_INTERVAL_MS) return
+        const intervalSeconds = Math.max((now - lastReportAtMs) / 1000, 0.001)
+        const totalSeconds = Math.max((now - startedAtMs) / 1000, 0.001)
+        progressLine(
+            `scanned ${(scannedBytes / GIB).toFixed(2)} / ${(fileSize / GIB).toFixed(2)} GiB ` +
+            `(${fileSize ? ((scannedBytes / fileSize) * 100).toFixed(1) : '100.0'}%), entries=${result.entryCount}, ` +
+            `${((scannedBytes - lastReportBytes) / MIB / intervalSeconds).toFixed(0)} MB/s now, ` +
+            `${(scannedBytes / MIB / totalSeconds).toFixed(0)} MB/s avg`,
+        )
+        lastReportAtMs = now
+        lastReportBytes = scannedBytes
+    }
+    const reader = new SequentialReader(fd, fileSize, (scanned) => report(scanned, false))
+    const changed = () => new Error('the file changed or ended early during the scan')
+    const decoder = new TextDecoder()
+
+    while (reader.consumed < fileSize) {
+        const position = reader.consumed
+        if (position + 4 > fileSize) { result.truncatedTrailingEntry = true; break }
+        const nameLengthBytes = reader.take(4)
+        if (!nameLengthBytes) throw changed()
+        const nameLength = nameLengthBytes.readUInt32LE(0)
+        const nameEnd = position + 4 + nameLength
+        if (nameEnd + 4 > fileSize) { result.truncatedTrailingEntry = true; break }
+        let name: string | undefined
+        if (nameLength <= NAME_READ_LIMIT) {
+            const nameBytes = reader.take(nameLength)
+            if (!nameBytes) throw changed()
+            name = decoder.decode(nameBytes)
+        } else {
+            result.longNameEntries++
+            if (!reader.skip(nameLength)) throw changed()
+        }
+        const dataLengthBytes = reader.take(4)
+        if (!dataLengthBytes) throw changed()
+        const dataLength = dataLengthBytes.readUInt32LE(0)
+        const dataStart = nameEnd + 4
+        if (dataStart + dataLength > fileSize) { result.truncatedTrailingEntry = true; break }
+        if (name === ENCRYPTION_MARKER) { result.encryptionMarker = true; break }
+
+        result.entryCount++
+        const coldKey = name === undefined ? null : classify.coldKey(name)
+        if (name === 'database.risudat') {
+            const body = reader.take(dataLength)
+            if (!body) throw changed()
+            result.databaseBody = body
+            result.databaseCount++
+            result.entryBytes.database += dataLength
+        } else if (name !== undefined && classify.isInlay(name)) {
+            if (!reader.skip(dataLength)) throw changed()
+            result.inlayPartSizes.push(dataLength)
+            result.entryBytes.inlayPart += dataLength
+        } else if (coldKey) {
+            const unit: ColdUnit = {
+                ordinal: result.coldUnits.length,
+                key: coldKey,
+                length: dataLength,
+                parsed: false,
+                parseFailed: false,
+                notSplit: dataLength > PARSE_LIMIT_BYTES,
+                derivedShape: null,
+                pending: [],
+                messagesOver128KiBDelta: 0,
+                pointerChatsDelta: 0,
+            }
+            if (unit.notSplit) {
+                if (!reader.skip(dataLength)) throw changed()
+            } else {
+                const body = reader.take(dataLength)
+                if (!body) throw changed()
+                let value: unknown
+                try {
+                    value = JSON.parse(body.toString('utf8'))
+                    unit.parsed = true
+                } catch {
+                    unit.parseFailed = true
+                }
+                if (unit.parsed) measureColdUnit(unit, value)
+            }
+            result.coldUnits.push(unit)
+            result.entryBytes.coldUnit += dataLength
+        } else {
+            if (!reader.skip(dataLength)) throw changed()
+            result.assetSizes.push(dataLength)
+            result.entryBytes.asset += dataLength
+        }
+        report(reader.consumed, false)
+    }
+    report(reader.consumed, true)
+    return result
+}
+//#endregion
+
+function rssBytes(): number {
+    return process.memoryUsage().rss
+}
+
+let risuSave: typeof import('src/ts/storage/risuSave')
+let coldData: typeof import('src/ts/process/coldstorageData')
+let inlayCodec: typeof import('src/ts/drive/inlayBackupCodec')
+
+describe('real-size-report (read-only size census of a real .bin)', () => {
+    // Node's Buffer stays defined. generate-and-verify.harness.ts removes it
+    // while importing the codec because msgpackr's ENCODE path misbehaves with
+    // it present on some Node versions; this harness only decodes, and removing
+    // Buffer mid-import makes vitest's own async work throw. The decoded result
+    // is checked against a synthetic fixture instead.
+    beforeAll(async () => {
+        risuSave = await import('src/ts/storage/risuSave')
+        coldData = await import('src/ts/process/coldstorageData')
+        inlayCodec = await import('src/ts/drive/inlayBackupCodec')
+    }, 120_000)
+
+    it.skipIf(!BIN_PATH)(
+        'sizes every storage unit of the backup named by RISU_SIZE_BIN',
+        async () => {
+            const binPath = path.resolve(BIN_PATH as string)
+            expect(binPath).not.toBe(path.resolve(OUTPUT_PATH))
+
+            const startedAt = Date.now()
+            const memorySamples: { stage: string; rssBytes: number }[] = []
+            const sample = (stage: string) => memorySamples.push({ stage, rssBytes: rssBytes() })
+            sample('start')
+
+            const fd = fs.openSync(binPath, 'r')
+            const before = fs.fstatSync(fd)
+            const fileSize = before.size
+            const report: Rec = {}
+            let decodeError: string | null = null
+            try {
+                console.log(`[size-report] container bytes=${fileSize}`)
+                const walk = walkContainer(fd, fileSize, {
+                    coldKey: (name) => coldData.getColdStorageBackupKey(name),
+                    isInlay: (name) => inlayCodec.parseInlayEntryName(name) !== null,
+                })
+                sample('after container walk')
+
+                // --- Assets and inlay parts: sizes only, bodies never read ---
+                const assetKinds = new KindStats('bytes')
+                walk.assetSizes.forEach((size, i) => assetKinds.add(`asset#${i}`, size))
+                const assetSorted = [...walk.assetSizes].sort((a, b) => a - b)
+                const assetSummary = {
+                    count: walk.assetSizes.length,
+                    totalBytes: walk.entryBytes.asset,
+                    max: assetSorted.length ? assetSorted[assetSorted.length - 1] : 0,
+                    p50: percentile(assetSorted, 0.5),
+                    p95: percentile(assetSorted, 0.95),
+                    top10: topTen(assetKinds),
+                    over16MiB: assetSorted.filter((s) => s > 16 * MIB).length,
+                    over100MiB: assetSorted.filter((s) => s > 100 * MIB).length,
+                    over4GiB: assetSorted.filter((s) => s > 4 * GIB).length,
+                    note: 'asset entry length (u32 field, so never above 4 GiB - 1); over = strictly greater than; MiB/GiB are binary',
+                }
+                const inlayKinds = new KindStats('bytes')
+                walk.inlayPartSizes.forEach((size, i) => inlayKinds.add(`inlayPart#${i}`, size))
+
+                // --- Database entry: the last one wins, as in the restore pass ---
+                let databaseBytes = 0
+                let decodeFormat: 'block' | 'legacy' | 'none' = 'none'
+                let omittedBlocks = 0
+                let decodeMs = 0
+                let characterCount = 0
+                let stubCount = 0
+                const archivedRefs = { characterUnits: new Set<string>(), chatUnits: new Set<string>(), pluginUnits: new Set<string>() }
+                if (!walk.databaseBody) {
+                    decodeError = 'no database.risudat entry in the container'
+                } else {
+                    databaseBytes = walk.databaseBody.length
+                    try {
+                        // A plain Uint8Array view: no copy, and no Buffer-only behaviour in the decoder.
+                        let dbBytes: Uint8Array | null = new Uint8Array(walk.databaseBody.buffer, walk.databaseBody.byteOffset, walk.databaseBody.length)
+                        walk.databaseBody = null
+                        sample('database entry read')
+                        const decodeStart = Date.now()
+                        let decoded: Rec
+                        if (risuSave.isBlockFormatSave(dbBytes)) {
+                            decodeFormat = 'block'
+                            const salvaged = await risuSave.salvageRisuSave(dbBytes)
+                            omittedBlocks = salvaged.omitted.size
+                            decoded = salvaged.db as unknown as Rec
+                        } else {
+                            decodeFormat = 'legacy'
+                            decoded = (await risuSave.decodeRisuSave(dbBytes)) as unknown as Rec
+                        }
+                        dbBytes = null
+                        decodeMs = Date.now() - decodeStart
+                        sample('database decoded')
+                        console.log(`[size-report] database decoded format=${decodeFormat} ms=${decodeMs}`)
+
+                        // characters
+                        const characters = asArr(decoded.characters)
+                        characterCount = characters.length
+                        const characterSizes: number[] = []
+                        characters.forEach((cha, index) => {
+                            const ordinal = `character#${index}`
+                            const holder = asRec(cha)
+                            if (holder && typeof holder.coldstorage === 'string' && holder.coldstorage.length > 0) {
+                                stubCount++
+                                archivedRefs.characterUnits.add(holder.coldstorage)
+                                for (const key of asArr(holder.coldStoragedChats)) {
+                                    if (typeof key === 'string') archivedRefs.chatUnits.add(key)
+                                }
+                            }
+                            for (const chat of asArr(holder?.chats)) {
+                                const message = asArr(asRec(chat)?.message)
+                                const data = asRec(message[0])?.data
+                                if (typeof data === 'string' && data.startsWith(coldData.coldStorageHeader)) {
+                                    archivedRefs.chatUnits.add(data.slice(coldData.coldStorageHeader.length))
+                                }
+                            }
+                            if (isStub(cha)) {
+                                record('stubCharacter.whole', ordinal, jsonBytes(cha))
+                            } else {
+                                characterSizes.push(measureCharacter('character', ordinal, cha, 'chat'))
+                            }
+                        })
+                        scalars['characters.total (non-stub, sum of unit sizes)'] = {
+                            bytes: characterSizes.reduce((a, b) => a + b, 0),
+                            count: characterSizes.length,
+                        }
+                        for (const key of coldData.listColdPluginStorageKeys(decoded as never)) {
+                            archivedRefs.pluginUnits.add(key)
+                        }
+                        sample('characters measured')
+
+                        // modules
+                        const modulesTotal = measureArrayUnits('module', 'module', decoded.modules)
+                        scalars['modules.total'] = { bytes: modulesTotal, count: asArr(decoded.modules).length }
+
+                        // botPresets, loadouts, plugins
+                        scalars['botPresets.total'] = {
+                            bytes: measureArrayUnits('botPreset', 'botPreset', decoded.botPresets),
+                            count: asArr(decoded.botPresets).length,
+                        }
+                        scalars['loadouts.total'] = {
+                            bytes: measureArrayUnits('loadout', 'loadout', decoded.loadouts),
+                            count: asArr(decoded.loadouts).length,
+                        }
+                        scalars['plugins.total'] = {
+                            bytes: measureArrayUnits('plugin', 'plugin', decoded.plugins),
+                            count: asArr(decoded.plugins).length,
+                        }
+
+                        // pluginCustomStorage per key, and its exact total
+                        const pluginStorage = asRec(decoded.pluginCustomStorage)
+                        if (pluginStorage) {
+                            let totalBytes = 2
+                            let members = 0
+                            Object.keys(pluginStorage).forEach((key, index) => {
+                                const valueBytes = jsonBytes(pluginStorage[key])
+                                record('pluginStorageKey', `pluginStorageKey#${index}`, valueBytes)
+                                if (pluginStorage[key] !== undefined) {
+                                    totalBytes += utf8Length(JSON.stringify(key)) + 1 + valueBytes
+                                    members++
+                                }
+                            })
+                            scalars['pluginCustomStorage.total'] = { bytes: totalBytes + Math.max(members - 1, 0), count: Object.keys(pluginStorage).length }
+                        } else {
+                            scalars['pluginCustomStorage.total'] = { bytes: 0, count: 0 }
+                        }
+
+                        // config root, with its largest fields by ordinal only (names withheld)
+                        const configOmit = new Set(['characters', 'modules', 'botPresets', 'loadouts', 'plugins', 'pluginCustomStorage'])
+                        const configRoot = without(decoded, configOmit)
+                        const configFieldSizes = Object.keys(configRoot).map((key, index) => ({ ordinal: `configField#${index}`, size: jsonBytes(configRoot[key]) }))
+                        const configBytes = jsonBytes(configRoot)
+                        record('configRoot', 'configRoot', configBytes)
+                        for (const field of configFieldSizes) record('configRoot.field', field.ordinal, field.size)
+                        scalars['characterOrder (inside config root)'] = { bytes: jsonBytes(decoded.characterOrder) }
+                        scalars['configRoot'] = { bytes: configBytes, count: Object.keys(configRoot).length }
+                        sample('configuration measured')
+                    } catch (error) {
+                        decodeError = error instanceof Error ? `${error.name}: ${error.message}` : 'database decode failed'
+                    }
+                }
+
+                // --- Archived cold-storage units (upstream "stubs" point at these) ---
+                // Bodies were measured during the scan by their own shape; the
+                // database's references now fix each unit's class.
+                let coldParsed = 0
+                let coldNotSplit = 0
+                let coldParseFailed = 0
+                let coldDetailShapeMismatch = 0
+                for (const unit of walk.coldUnits) {
+                    const ordinal = `coldUnit#${unit.ordinal}`
+                    const declared = archivedRefs.pluginUnits.has(unit.key) ? 'plugin'
+                        : archivedRefs.characterUnits.has(unit.key) ? 'character'
+                            : archivedRefs.chatUnits.has(unit.key) ? 'chat' : null
+                    const shape: 'character' | 'chat' | 'plugin' | 'other' | 'unparsed' =
+                        declared ?? (unit.parsed ? unit.derivedShape ?? 'other' : 'unparsed')
+                    if (unit.parsed) coldParsed++
+                    if (unit.parseFailed) coldParseFailed++
+                    if (unit.notSplit) coldNotSplit++
+                    record(`coldUnit.${shape}`, ordinal, unit.length)
+                    record('coldUnit.all', ordinal, unit.length)
+                    if (unit.parsed && (shape === 'character' || shape === 'chat')) {
+                        if (shape === unit.derivedShape) {
+                            for (const pending of unit.pending) record(pending.kind, pending.ordinal, pending.size, pending.unit)
+                            messagesOver128KiB += unit.messagesOver128KiBDelta
+                            pointerChats += unit.pointerChatsDelta
+                        } else {
+                            coldDetailShapeMismatch++
+                        }
+                    }
+                    unit.pending = []
+                }                sample('cold units measured')
+
+                const after = fs.fstatSync(fd)
+                const heap = v8.getHeapStatistics()
+                const maxRssBytes = process.resourceUsage().maxRSS * 1024
+                Object.assign(report, {
+                    harness: {
+                        measure: 'UTF-8 byte length of the JSON serialisation of each piece (count kinds hold counts)',
+                        chunkCapBytes: CHUNK_CAP_BYTES,
+                        flagThresholdsBytes: { atOrOver50MiB: FLAG_50_MIB, atOrOver100MiB: FLAG_100_MIB },
+                        coldUnitParseLimitBytes: PARSE_LIMIT_BYTES,
+                        ordinals: 'character#N = 0-based index in the decoded characters array; assets and cold units by entry order in the file',
+                        generatedAt: new Date(startedAt).toISOString(),
+                        elapsedMs: Date.now() - startedAt,
+                        node: process.version,
+                    },
+                    container: {
+                        fileBytes: fileSize,
+                        entryCount: walk.entryCount,
+                        truncatedTrailingEntry: walk.truncatedTrailingEntry,
+                        encryptionMarkerPresent: walk.encryptionMarker,
+                        longNameEntries: walk.longNameEntries,
+                        entryClasses: {
+                            database: { count: walk.databaseCount, bytes: walk.entryBytes.database },
+                            coldUnit: { count: walk.coldUnits.length, bytes: walk.entryBytes.coldUnit },
+                            inlayPart: { count: walk.inlayPartSizes.length, bytes: walk.entryBytes.inlayPart },
+                            asset: { count: walk.assetSizes.length, bytes: walk.entryBytes.asset },
+                        },
+                    },
+                    database: {
+                        entryBytes: databaseBytes,
+                        decodeFormat,
+                        decodeMs,
+                        omittedBlocks,
+                        decodeError,
+                        characters: characterCount,
+                        stubCharacters: stubCount,
+                        pointerChatsSeen: pointerChats,
+                        messagesOver128KiB,
+                        unmeasurableValues,
+                        coldUnitsParsed: coldParsed,
+                        coldUnitsNotSplitOverLimit: coldNotSplit,
+                        coldUnitsParseFailed: coldParseFailed,
+                        coldUnitsDetailSkippedShapeMismatch: coldDetailShapeMismatch,
+                    },
+                    scalars,
+                    kinds: Object.fromEntries([...kinds.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, stats]) => [name, summarize(stats)])),
+                    assets: assetSummary,
+                    inlayParts: summarize(inlayKinds),
+                    flags: {
+                        atOrOver100MiB: flagged100.sort((a, b) => b.size - a.size),
+                        atOrOver50MiB: flagged50.sort((a, b) => b.size - a.size),
+                        note: 'every non-asset byte unit at or over the threshold; asset thresholds are reported under assets',
+                    },
+                    memory: {
+                        peakRssBytes: Math.max(maxRssBytes, ...memorySamples.map((s) => s.rssBytes)),
+                        samples: memorySamples,
+                        heapSizeLimitBytes: heap.heap_size_limit,
+                        nodeOptions: process.env.NODE_OPTIONS ?? null,
+                        advice: 'If the run ends with a heap out-of-memory error, rerun with NODE_OPTIONS=--max-old-space-size=<MiB>, e.g. 16384 or 32768 (the decoded database is held whole).',
+                    },
+                    sourceFileGuard: {
+                        sizeBefore: before.size,
+                        sizeAfter: after.size,
+                        mtimeMsBefore: before.mtimeMs,
+                        mtimeMsAfter: after.mtimeMs,
+                        unchanged: before.size === after.size && before.mtimeMs === after.mtimeMs,
+                    },
+                })
+            } finally {
+                fs.closeSync(fd)
+            }
+
+            fs.mkdirSync(OUTPUT_DIR, { recursive: true })
+            fs.writeFileSync(OUTPUT_PATH, JSON.stringify(report, null, 2))
+            printSummary(report)
+            console.log(`[size-report] wrote ${OUTPUT_PATH}`)
+            expect(decodeError).toBeNull()
+        },
+        TEST_TIMEOUT_MS,
+    )
+})
+
+function mib(bytes: number): string {
+    return (bytes / MIB).toFixed(2)
+}
+
+function sizeText(bytes: number): string {
+    return bytes >= MIB ? `${mib(bytes)} MiB` : `${(bytes / KIB).toFixed(1)} KiB`
+}
+
+function printSummary(report: Rec): void {
+    const kindsOut = asRec(report.kinds) ?? {}
+    const lines: string[] = ['', 'kind'.padEnd(34) + 'unit'.padEnd(7) + 'count'.padStart(9) + 'max'.padStart(14) + 'p50'.padStart(14) + 'p95'.padStart(14)]
+    for (const name of Object.keys(kindsOut)) {
+        const s = asRec(kindsOut[name])
+        if (!s) continue
+        const isBytes = s.unit === 'bytes'
+        const fmt = (n: unknown) => (isBytes ? sizeText(Number(n)) : String(n)).padStart(14)
+        lines.push(name.padEnd(34) + String(s.unit).padEnd(7) + String(s.count).padStart(9) + fmt(s.max) + fmt(s.p50) + fmt(s.p95))
+    }
+    const assets = asRec(report.assets)
+    if (assets) {
+        lines.push('', `assets: count=${assets.count} total=${mib(Number(assets.totalBytes))} MiB max=${mib(Number(assets.max))} MiB over16MiB=${assets.over16MiB} over100MiB=${assets.over100MiB} over4GiB=${assets.over4GiB}`)
+    }
+    const flags = asRec(report.flags)
+    lines.push(`units >= 50 MiB: ${asArr(flags?.atOrOver50MiB).length}; units >= 100 MiB: ${asArr(flags?.atOrOver100MiB).length}`)
+    const memory = asRec(report.memory)
+    lines.push(`peak RSS: ${mib(Number(memory?.peakRssBytes))} MiB; heap limit: ${mib(Number(memory?.heapSizeLimitBytes))} MiB`)
+    console.log(lines.join('\n'))
+}
