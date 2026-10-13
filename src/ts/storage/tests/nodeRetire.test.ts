@@ -112,7 +112,7 @@ async function snapshotKeys(fx: NodeServerFixture): Promise<string[]> {
     return Object.keys(JSON.parse(await readFile(snapshotPath(fx), 'utf-8')))
 }
 
-const unit = (name: string) => `alite/${name}`
+const unit = (name: string) => `store2/${name}`
 
 describe('retire', () => {
     test('removes the file, answers the bumped revisions with the echo, and the key then reads 0 and is not listed', async () => {
@@ -288,7 +288,7 @@ describe('retire', () => {
         await put(fx, inside)
         await put(fx, outside)
         const logBefore = await readFile(logPath(fx), 'utf-8')
-        for (const keys of [[outside], [inside, outside], ['alite']]) {
+        for (const keys of [[outside], [inside, outside], ['store2']]) {
             const reply = await removeChecked(fx, keys, { guard: [[commit, 1]] })
             expect(reply.status, keys.join()).toBe(400)
             expect(reply.headers.get('risu-storage-guarded')).toBe('1')

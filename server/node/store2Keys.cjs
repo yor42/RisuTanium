@@ -1,8 +1,8 @@
 // The key scope of the guarded retire operation. Retiring forgets a key's
 // revision entry, so it is only ever allowed for keys under this prefix, whose
 // names the client never writes twice. The client holds the same prefix in
-// `src/ts/storage/store/keyRules.ts` (`ALITE_PREFIX`); a table test runs both.
-const ALITE_PREFIX = 'alite/';
+// `src/ts/storage/store/keyRules.ts` (`STORE2_PREFIX`); a table test runs both.
+const STORE2_PREFIX = 'store2/';
 
 const HEX_PATTERN = /^[0-9a-f]+$/;
 
@@ -10,7 +10,7 @@ const HEX_PATTERN = /^[0-9a-f]+$/;
 // null. The hex is case-insensitive and must decode to UTF-8 that encodes back
 // to the same hex, so no two names reach one file through a lossy decode. The
 // bare prefix is not a key.
-function aliteKeyFromHex(hex) {
+function store2KeyFromHex(hex) {
     if (typeof hex !== 'string') {
         return null;
     }
@@ -22,10 +22,10 @@ function aliteKeyFromHex(hex) {
     if (Buffer.from(key, 'utf8').toString('hex') !== lower) {
         return null;
     }
-    if (!key.startsWith(ALITE_PREFIX) || key.length === ALITE_PREFIX.length) {
+    if (!key.startsWith(STORE2_PREFIX) || key.length === STORE2_PREFIX.length) {
         return null;
     }
     return key;
 }
 
-module.exports = { ALITE_PREFIX, aliteKeyFromHex };
+module.exports = { STORE2_PREFIX, store2KeyFromHex };

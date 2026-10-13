@@ -39,7 +39,7 @@ export type ProxyMode =
     | 'status-431'
     /** The real server applies the request, then the connection is cut before the answer. */
     | 'reset-after-apply'
-    /** The caps answer carries the marker but is not three booleans. */
+    /** The caps answer carries the marker but lacks two of the three flags. */
     | 'bad-caps'
 
 export interface GuardedProxy {

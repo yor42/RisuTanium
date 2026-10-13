@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test } from 'vitest'
 import type { ByteStore } from 'src/ts/storage/store/contract'
-import { ALITE_PREFIX } from 'src/ts/storage/store/keyRules'
+import { STORE2_PREFIX } from 'src/ts/storage/store/keyRules'
 import {
     StoreDeleteManyError,
     StoreInvalidConditionError,
@@ -382,7 +382,7 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 if (store.guarded === undefined) {
                     return
                 }
-                const victim = `${ALITE_PREFIX}${uniqueKey('retired')}`
+                const victim = `${STORE2_PREFIX}${uniqueKey('retired')}`
                 await store.write(COMMIT, bytesOf(1), 'unconditional')
                 const commitVersion = (await store.read(COMMIT)).version as number
                 const written = await store.write(victim, bytesOf(7), 'unconditional')
@@ -390,7 +390,7 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 const after = await store.read(victim)
                 expect(after.bytes).toBeNull()
                 expect(after.version).toBe(0)
-                expect(await store.list(ALITE_PREFIX)).not.toContain(victim)
+                expect(await store.list(STORE2_PREFIX)).not.toContain(victim)
                 const other = uniqueKey('guarded-other')
                 await expect(store.guarded.writeChecked(other, bytesOf(1), 'unconditional', [{ key: victim, version: written.version as number }])).rejects.toBeInstanceOf(StoreVersionConflictError)
                 await store.guarded.writeChecked(other, bytesOf(1), 'unconditional', [{ key: victim, version: 0 }])
@@ -401,7 +401,7 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 if (store.guarded === undefined) {
                     return
                 }
-                const victim = `${ALITE_PREFIX}${uniqueKey('survivor')}`
+                const victim = `${STORE2_PREFIX}${uniqueKey('survivor')}`
                 await store.write(COMMIT, bytesOf(1), 'unconditional')
                 const commitVersion = (await store.read(COMMIT)).version as number
                 await store.write(victim, bytesOf(7), 'unconditional')
@@ -416,7 +416,7 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                     return
                 }
                 const outside = uniqueKey('outside')
-                const inside = `${ALITE_PREFIX}${uniqueKey('inside')}`
+                const inside = `${STORE2_PREFIX}${uniqueKey('inside')}`
                 await store.write(outside, bytesOf(1), 'unconditional')
                 await store.write(inside, bytesOf(2), 'unconditional')
                 const before = harness.backendCalls()

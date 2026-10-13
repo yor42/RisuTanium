@@ -33,7 +33,7 @@ export const NODE_MAX_WRITE_KEY_BYTES = 117
  * The one top prefix of the A-lite key space. Garbage collection and the Node
  * server's retire operation reach only keys under it, so this is the whole
  * scope of anything that deletes by listing. The server holds the same prefix
- * in `server/node/aliteKeys.cjs`; a table test runs both.
+ * in `server/node/store2Keys.cjs`; a table test runs both.
  *
  * A key that is rewritten (the commit key above all) must live outside this
  * prefix: retiring forgets a key's revision, and a rewritten key that was
@@ -41,11 +41,11 @@ export const NODE_MAX_WRITE_KEY_BYTES = 117
  * from its first life. The prefix may be renamed until the stored format is
  * frozen; nothing outside tests writes under it before that.
  */
-export const ALITE_PREFIX = 'alite/'
+export const STORE2_PREFIX = 'store2/'
 
 /** Whether `key` is a key under the A-lite prefix (the bare prefix is not a key). */
-export function isAliteKey(key: string): boolean {
-    return nodeAddressableViolation(key) === null && key.startsWith(ALITE_PREFIX) && key.length > ALITE_PREFIX.length
+export function isStore2Key(key: string): boolean {
+    return nodeAddressableViolation(key) === null && key.startsWith(STORE2_PREFIX) && key.length > STORE2_PREFIX.length
 }
 
 /** The longest path segment `write` accepts on the desktop file system, in UTF-8 bytes. */

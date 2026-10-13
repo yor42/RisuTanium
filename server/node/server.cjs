@@ -17,7 +17,7 @@ const { WebSocketServer } = require('ws');
 const { NODE_BODY_LIMIT_BYTES } = require('./bodyLimit.cjs');
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
-const { aliteKeyFromHex } = require('./aliteKeys.cjs');
+const { store2KeyFromHex } = require('./store2Keys.cjs');
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 // The hub proxy forwards the request body as the client sent it, so it is
 // captured as raw bytes before any parser can replace it with a parsed value.
@@ -456,7 +456,7 @@ function parseRetire(req, removedKeys, checkOnly){
         return { refusal: { error: 'retire needs at least one check-only key' } };
     }
     for(const key of removedKeys){
-        if(aliteKeyFromHex(key) === null){
+        if(store2KeyFromHex(key) === null){
             return { refusal: { error: 'retire is limited to keys under the A-lite prefix' } };
         }
     }

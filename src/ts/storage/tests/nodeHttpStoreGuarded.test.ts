@@ -23,7 +23,7 @@ import {
     StoreVersionConflictError,
 } from 'src/ts/storage/store/errors'
 import { createNodeHttpStore, NodeHttpError, type FetchLike } from 'src/ts/storage/store/nodeHttpStore'
-import { ALITE_PREFIX } from 'src/ts/storage/store/keyRules'
+import { STORE2_PREFIX } from 'src/ts/storage/store/keyRules'
 import { startGuardedProxy, type GuardedProxy, type ProxyMode } from './nodeGuardedProxy'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from './nodeServerFixture'
 
@@ -122,8 +122,8 @@ describe('guarded operations against the real server', () => {
     test('writeChecked, removeChecked and retireChecked work, and every request is uncached, unredirected, authenticated and counted', async () => {
         const guarded = guardedOf()
         const commit = fresh('commit')
-        const unit = `${ALITE_PREFIX}${fresh('unit')}`
-        const garbage = `${ALITE_PREFIX}${fresh('garbage')}`
+        const unit = `${STORE2_PREFIX}${fresh('unit')}`
+        const garbage = `${STORE2_PREFIX}${fresh('garbage')}`
         const unitRevision = await rawWrite(unit)
         const garbageRevision = await rawWrite(garbage)
         const written = await guarded.writeChecked(commit, bytes(1), { ifVersion: 0 }, [{ key: unit, version: unitRevision }])
@@ -168,7 +168,7 @@ describe('guarded operations against the real server', () => {
 
     test('an absent check-only key passes at 0 and a retired one conflicts at its old version', async () => {
         const guarded = guardedOf()
-        const victim = `${ALITE_PREFIX}${fresh('victim')}`
+        const victim = `${STORE2_PREFIX}${fresh('victim')}`
         const commit = fresh('commit')
         await guarded.writeChecked(commit, bytes(1), 'unconditional', [])
         const revision = await rawWrite(victim)
@@ -185,8 +185,8 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
     test.each(NEVER_REACHES_HANDLER)('%s: every guarded call rejects with ServerLacksCapabilityError (mayHaveApplied false), the original routes are never requested, and the server is unchanged', async (mode) => {
         const guarded = guardedOf()
         const commit = fresh('commit')
-        const unit = `${ALITE_PREFIX}${fresh('unit')}`
-        const garbage = `${ALITE_PREFIX}${fresh('garbage')}`
+        const unit = `${STORE2_PREFIX}${fresh('unit')}`
+        const garbage = `${STORE2_PREFIX}${fresh('garbage')}`
         await rawWrite(unit)
         await rawWrite(garbage)
         proxy.setMode(mode)
@@ -231,7 +231,7 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
         }
         for (const mode of ['strip-marker', 'echo-wrong-retired', 'echo-wrong-check-only'] as const) {
             const commit = fresh('commit')
-            const victim = `${ALITE_PREFIX}${fresh('victim')}`
+            const victim = `${STORE2_PREFIX}${fresh('victim')}`
             await rawWrite(victim)
             proxy.setMode(mode)
             const error = await caught(guarded.retireChecked([{ key: victim, condition: 'unconditional' }], [{ key: commit, version: 0 }]))
@@ -274,7 +274,7 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
         }
         for (const mode of ['strip-retire', 'strip-retire-and-count'] as const) {
             const commit = fresh('commit')
-            const victim = `${ALITE_PREFIX}${fresh('victim')}`
+            const victim = `${STORE2_PREFIX}${fresh('victim')}`
             const victimRevision = await rawWrite(victim)
             proxy.setMode(mode)
             const error = await caught(guarded.retireChecked([{ key: victim, condition: 'unconditional' }], [{ key: commit, version: 0 }]))
@@ -291,12 +291,33 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
         expect(written.version).toBe(1)
     })
 
-    test('the capability answer must carry the marker and be exactly three booleans', async () => {
+    test('the capability answer must carry the marker and the three boolean flags', async () => {
         const guarded = guardedOf()
         for (const mode of ['bad-caps', 'strip-marker'] as const) {
             proxy.setMode(mode)
             const error = await caught(guarded.probe())
             expect(error, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((error as ServerLacksCapabilityError).capability).toBe('caps')
+            expect((error as ServerLacksCapabilityError).mayHaveApplied).toBe(false)
+        }
+    })
+
+    test('the capability answer accepts an extra flag and ignores it, and refuses a missing or non-boolean flag', async () => {
+        const answering = (body: Record<string, unknown>): FetchLike => async () => new Response(JSON.stringify(body), { status: 200, headers: { 'risu-storage-guarded': '1' } })
+        const extra = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: answering({ checkOnly: true, retire: false, pieces: true, listPrefix: true }) })
+        expect(await extra.guarded!.probe()).toEqual({ checkOnly: true, retire: false, pieces: true })
+        const refusedAnswers: Array<Record<string, unknown>> = [
+            { checkOnly: true, retire: true },
+            { checkOnly: true, pieces: false, listPrefix: true },
+            { retire: true, pieces: false, listPrefix: true },
+            { checkOnly: true, retire: 'false', pieces: true },
+            { checkOnly: 1, retire: true, pieces: true },
+            { checkOnly: true, retire: true, pieces: null },
+        ]
+        for (const answer of refusedAnswers) {
+            const store = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: answering(answer) })
+            const error = await caught(store.guarded!.probe())
+            expect(error, JSON.stringify(answer)).toBeInstanceOf(ServerLacksCapabilityError)
             expect((error as ServerLacksCapabilityError).capability).toBe('caps')
             expect((error as ServerLacksCapabilityError).mayHaveApplied).toBe(false)
         }
@@ -400,14 +421,14 @@ describe('key rules of the guarded calls', () => {
             [{ key: 'database/database.bin', condition: 'unconditional' as const }],
             [{ key: 'blocks/head', condition: 'unconditional' as const }],
             [{ key: 'assets/x.png', condition: 'unconditional' as const }],
-            [{ key: `${ALITE_PREFIX}ok`, condition: 'unconditional' as const }, { key: 'assets/x.png', condition: 'unconditional' as const }],
-            [{ key: ALITE_PREFIX, condition: 'unconditional' as const }],
+            [{ key: `${STORE2_PREFIX}ok`, condition: 'unconditional' as const }, { key: 'assets/x.png', condition: 'unconditional' as const }],
+            [{ key: STORE2_PREFIX, condition: 'unconditional' as const }],
             [],
         ]
         for (const entries of outside) {
             await expect(guarded.retireChecked(entries, guard)).rejects.toBeInstanceOf(StoreInvalidKeyError)
         }
-        await expect(guarded.retireChecked([{ key: `${ALITE_PREFIX}ok`, condition: 'unconditional' }], [])).rejects.toBeInstanceOf(StoreInvalidConditionError)
+        await expect(guarded.retireChecked([{ key: `${STORE2_PREFIX}ok`, condition: 'unconditional' }], [])).rejects.toBeInstanceOf(StoreInvalidConditionError)
         expect(sent).toEqual([])
     })
 

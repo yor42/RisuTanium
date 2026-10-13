@@ -11,7 +11,7 @@ import {
     type DeleteReportEntry,
 } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, versionOf } from './guards'
-import { ALITE_PREFIX, isAliteKey, nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolation } from './keyRules'
+import { STORE2_PREFIX, isStore2Key, nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolation } from './keyRules'
 
 /**
  * The byte store on the self-hosted Node server (`server/node/server.cjs`). The
@@ -466,8 +466,8 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         for (const entry of entries) {
             checkAddressable(entry.key)
             checkCondition(entry.condition, true)
-            if (retire && !isAliteKey(entry.key)) {
-                throw new StoreInvalidKeyError(entry.key, `retire reaches only keys under ${ALITE_PREFIX}`)
+            if (retire && !isStore2Key(entry.key)) {
+                throw new StoreInvalidKeyError(entry.key, `retire reaches only keys under ${STORE2_PREFIX}`)
             }
         }
         checkNoDuplicateKeys(entries)
@@ -521,9 +521,9 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                 keyCount: 0,
             })
             const body = answer.kind === 'ok' ? answer.body : {}
-            const keys = Object.keys(body)
-            if (keys.length !== 3 || typeof body.checkOnly !== 'boolean' || typeof body.retire !== 'boolean' || typeof body.pieces !== 'boolean') {
-                throw new ServerLacksCapabilityError('caps', 'the answer is not exactly three booleans', false)
+            // Flags the client does not know are ignored; the three it uses must be present and boolean.
+            if (typeof body.checkOnly !== 'boolean' || typeof body.retire !== 'boolean' || typeof body.pieces !== 'boolean') {
+                throw new ServerLacksCapabilityError('caps', 'the answer lacks a boolean checkOnly, retire or pieces flag', false)
             }
             return { checkOnly: body.checkOnly, retire: body.retire, pieces: body.pieces }
         },

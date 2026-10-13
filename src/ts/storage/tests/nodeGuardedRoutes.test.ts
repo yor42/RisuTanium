@@ -284,7 +284,7 @@ describe('write-checked', () => {
         })
 
         test('remove-checked: retire-count missing, non-zero without retire, or not matching the retire request is refused', async () => {
-            const victim = `alite/${fresh('count-retire')}`
+            const victim = `store2/${fresh('count-retire')}`
             const victimRevision = revisionOf(await plainWrite(victim, 'v'))
             const guard: CheckOnly = [['count/commit', 0]]
             const attempts: Array<Record<string, string | null>> = [
