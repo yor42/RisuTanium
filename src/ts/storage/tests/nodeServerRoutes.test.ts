@@ -134,12 +134,12 @@ describe('rate-limit buckets', () => {
         await caps.arrayBuffer()
         const write = await fetch(`${fixture.baseUrl}/api/write-checked`, {
             method: 'POST',
-            headers: { 'risu-auth': auth, 'file-path': hexOfKey('limit/g'), 'check-only-count': '0', 'content-type': 'application/octet-stream' },
+            headers: { 'risu-auth': auth, 'file-path': hexOfKey('limit/g'), 'check-only-count': '0', 'own-condition-count': '0', 'content-type': 'application/octet-stream' },
             body: new Uint8Array([1]),
         })
         await write.arrayBuffer()
         const remove = await fetch(`${fixture.baseUrl}/api/remove-checked`, {
-            headers: { 'risu-auth': auth, 'file-path': hexOfKey('limit/g'), 'check-only-count': '0', 'retire-count': '0' },
+            headers: { 'risu-auth': auth, 'file-path': hexOfKey('limit/g'), 'check-only-count': '0', 'retire-count': '0', 'own-condition-count': '0' },
         })
         await remove.arrayBuffer()
         for (const response of [caps, write, remove]) {

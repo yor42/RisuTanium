@@ -72,6 +72,7 @@ async function removeChecked(fx: NodeServerFixture, keys: string[], options: Ret
         'file-path': keys.map(hexOfKey).join('$$'),
         'check-only-count': String(guard.length),
         'retire-count': retire ? String(keys.length) : '0',
+        'own-condition-count': String(options.revisions?.length ?? 0),
     }
     if (guard.length > 0) {
         headers['check-only-path'] = guard.map(([key]) => hexOfKey(key)).join('$$')
@@ -131,6 +132,7 @@ describe('retire', () => {
             revision: 2,
             checkOnly: 1,
             retired: 2,
+            ownCondition: 2,
         })
         expect(reply.headers.get('risu-storage-guarded')).toBe('1')
         expect(await readState(fx, a)).toEqual({ revision: 0, exists: false })
@@ -360,6 +362,7 @@ describe('retire', () => {
             jobs.push(call(fx, '/api/write-checked', 'POST', {
                 'file-path': hexOfKey(`live/${i}`),
                 'check-only-count': '1',
+                'own-condition-count': '0',
                 'check-only-path': hexOfKey(commit),
                 'check-only-revision': '1',
             }, 'live'))

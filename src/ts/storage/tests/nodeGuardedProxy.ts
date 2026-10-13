@@ -30,6 +30,14 @@ export type ProxyMode =
     | 'strip-retire'
     /** The request without `retire` and `retire-count`. */
     | 'strip-retire-and-count'
+    /** The request without `if-match-revision`; `own-condition-count` stays. */
+    | 'strip-if-match'
+    /** The request without `if-match-revision` and `own-condition-count`. */
+    | 'strip-if-match-and-count'
+    /** The answer echoes one own condition too many. */
+    | 'echo-wrong-own-condition'
+    /** The answer carries no own-condition echo. */
+    | 'strip-own-condition-echo'
     /** The answer echoes one check-only key too many. */
     | 'echo-wrong-check-only'
     /** The answer echoes one retired key too few. */
@@ -121,6 +129,12 @@ export async function startGuardedProxy(targetBaseUrl: string): Promise<GuardedP
             if (mode === 'strip-check-only-and-count') {
                 delete headers['check-only-count']
             }
+            if (mode === 'strip-if-match' || mode === 'strip-if-match-and-count') {
+                delete headers['if-match-revision']
+            }
+            if (mode === 'strip-if-match-and-count') {
+                delete headers['own-condition-count']
+            }
             if (mode === 'strip-retire' || mode === 'strip-retire-and-count') {
                 delete headers.retire
             }
@@ -152,7 +166,7 @@ export async function startGuardedProxy(targetBaseUrl: string): Promise<GuardedP
         if (guardedPath && mode === 'bad-caps' && path === '/api/caps') {
             payload = Buffer.from(JSON.stringify({ checkOnly: true }))
         }
-        if (guardedPath && (mode === 'strip-revision' || mode === 'marker-no-map' || mode === 'echo-wrong-check-only' || mode === 'echo-wrong-retired') && upstream.ok) {
+        if (guardedPath && (mode === 'strip-revision' || mode === 'marker-no-map' || mode === 'echo-wrong-check-only' || mode === 'echo-wrong-retired' || mode === 'echo-wrong-own-condition' || mode === 'strip-own-condition-echo') && upstream.ok) {
             const json = JSON.parse(payload.toString('utf-8')) as Record<string, unknown>
             if (mode === 'strip-revision') {
                 delete json.revision
@@ -165,6 +179,12 @@ export async function startGuardedProxy(targetBaseUrl: string): Promise<GuardedP
             }
             if (mode === 'echo-wrong-retired' && typeof json.retired === 'number') {
                 json.retired = Math.max(0, json.retired - 1)
+            }
+            if (mode === 'echo-wrong-own-condition' && typeof json.ownCondition === 'number') {
+                json.ownCondition += 1
+            }
+            if (mode === 'strip-own-condition-echo') {
+                delete json.ownCondition
             }
             payload = Buffer.from(JSON.stringify(json))
         }

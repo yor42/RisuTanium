@@ -312,6 +312,8 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         body?: Uint8Array<ArrayBuffer>
         /** Check-only entries sent; the echo must equal it. `null` for a call that sends no counts (`caps`). */
         checkOnlyCount: number | null
+        /** Own keys that carry a version condition; the echo must equal it. Unused when `checkOnlyCount` is `null`. */
+        ownConditionCount: number
         /** Keys retired; the echo of a remove must equal it. `null` when the call is not a remove. */
         retiredCount: number | null
         /** Hex of every key the request named, mapped back to the key for a conflict. */
@@ -383,7 +385,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         }
         const body: Record<string, unknown> | null = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
         if (response.status === 400 && body?.code === 'guarded-count') {
-            throw lacks('the check-only or retire list was lost in transit (400)', false)
+            throw lacks('a check-only, retire or own-condition header was lost in transit (400)', false)
         }
         if (response.status === 409) {
             const hex = typeof body?.filePath === 'string' ? body.filePath.toLowerCase() : null
@@ -407,6 +409,9 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         }
         if (body.checkOnly !== call.checkOnlyCount) {
             throw refusedAnswer('check-only not applied')
+        }
+        if (body.ownCondition !== call.ownConditionCount) {
+            throw refusedAnswer('own condition not applied')
         }
         if (call.retiredCount !== null) {
             if (body.retired !== call.retiredCount) {
@@ -480,6 +485,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             'file-path': items.map((item) => item.hex).join('$$'),
             ...checkOnlyHeaders(checkOnly),
             'retire-count': retire ? String(entries.length) : '0',
+            'own-condition-count': String(items.filter((item) => item.version !== null).length),
         }
         if (retire) {
             headers.retire = '1'
@@ -495,6 +501,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             method: 'GET',
             headers,
             checkOnlyCount: checkOnly.length,
+            ownConditionCount: items.filter((item) => item.version !== null).length,
             retiredCount: retire ? entries.length : 0,
             keysByHex: new Map([...items.map((item) => [item.hex, item.key] as const), ...checkOnly.map((entry) => [hexOf(entry.key), entry.key] as const)]),
             removedHex: items.map((item) => item.hex),
@@ -515,6 +522,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                 method: 'GET',
                 headers: {},
                 checkOnlyCount: null,
+                ownConditionCount: 0,
                 retiredCount: null,
                 keysByHex: new Map(),
                 removedHex: [],
@@ -540,6 +548,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                 'content-type': 'application/octet-stream',
                 'file-path': hexOf(key),
                 ...checkOnlyHeaders(checkOnly),
+                'own-condition-count': versionOf(condition) === null ? '0' : '1',
             }
             const ifVersion = versionOf(condition)
             if (ifVersion !== null) {
@@ -553,6 +562,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                 headers,
                 body: bytes as Uint8Array<ArrayBuffer>,
                 checkOnlyCount: checkOnly.length,
+                ownConditionCount: versionOf(condition) === null ? 0 : 1,
                 retiredCount: null,
                 keysByHex: new Map(checkOnly.map((entry) => [hexOf(entry.key), entry.key] as const)),
                 removedHex: [],

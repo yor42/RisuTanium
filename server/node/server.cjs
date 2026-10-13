@@ -372,6 +372,12 @@ async function withFileWriteLocks(keys, fn){
 // refused before any lock or file work. Headers lost on the way (a proxy that
 // forwards only some of them) therefore turn into a refusal, never into an
 // unguarded success. The success body echoes what was enforced.
+//
+// The same holds for the request's own conditions: `own-condition-count` is the
+// number of its own keys that carry an `if-match-revision`, and a request whose
+// received `if-match-revision` does not yield that count is refused, so a proxy
+// that strips the condition cannot turn a conditional write or remove into an
+// unconditional one.
 const GUARDED_MARKER_HEADER = 'risu-storage-guarded';
 const strictHexPattern = /^(?:[0-9a-f]{2})+$/;
 const NO_CHECK_ONLY = Object.freeze({ paths: [], revisions: [] });
@@ -461,6 +467,20 @@ function parseRetire(req, removedKeys, checkOnly){
         }
     }
     return { retire: true };
+}
+
+// Checks the `own-condition-count` header of a guarded write or remove against
+// `enforced`, the number of its own keys the server will compare a revision for
+// (from the `if-match-revision` it received). Returns { count } or { refusal }.
+function parseOwnCondition(req, enforced){
+    const countHeader = req.headers['own-condition-count'];
+    if(typeof countHeader !== 'string' || !/^\d+$/.test(countHeader)){
+        return { refusal: countRefusal('own-condition-count is required and must be a non-negative integer') };
+    }
+    if(parseInt(countHeader, 10) !== enforced){
+        return { refusal: countRefusal('own-condition-count does not match the if-match-revision sent') };
+    }
+    return { count: enforced };
 }
 
 // Throws the revision-conflict error naming the first check-only key whose
@@ -1720,6 +1740,13 @@ async function handleRemove(req, res, next, guarded){
         res.status(400).send(retireRequest.refusal);
         return;
     }
+    const ownCondition = guarded
+        ? parseOwnCondition(req, ifMatchRevisions.filter((segment) => segment !== '').length)
+        : { count: 0 };
+    if(ownCondition.refusal){
+        res.status(400).send(ownCondition.refusal);
+        return;
+    }
 
     try {
         // All locks for every key in this batch are held for the ENTIRE
@@ -1851,6 +1878,7 @@ async function handleRemove(req, res, next, guarded){
                 revision: Math.max(...Object.values(committedRevisions)),
                 checkOnly: checkOnly.paths.length,
                 retired: retireRequest.retire ? filePaths.length : 0,
+                ownCondition: ownCondition.count,
             });
             return;
         }
@@ -1970,6 +1998,13 @@ async function handleWrite(req, res, next, guarded){
         res.status(400).send(checkOnly.refusal);
         return;
     }
+    const ownCondition = guarded
+        ? parseOwnCondition(req, ifMatchRevisionHeader !== undefined ? 1 : 0)
+        : { count: 0 };
+    if(ownCondition.refusal){
+        res.status(400).send(ownCondition.refusal);
+        return;
+    }
     // Without check-only keys this is exactly the single-key lock of the
     // original route.
     const withWriteLocks = checkOnly.paths.length === 0
@@ -2058,7 +2093,8 @@ async function handleWrite(req, res, next, guarded){
                 res.send({
                     success: true,
                     revision: newRevision,
-                    checkOnly: checkOnly.paths.length
+                    checkOnly: checkOnly.paths.length,
+                    ownCondition: ownCondition.count
                 });
                 return;
             }

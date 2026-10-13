@@ -147,6 +147,19 @@ describe('guarded operations against the real server', () => {
         expect(sent[1].headers).toMatchObject({ retire: '1', 'retire-count': '1', 'check-only-count': '1' })
         expect(sent[2].headers['retire-count']).toBe('0')
         expect(sent[2].headers.retire).toBeUndefined()
+        expect(sent.map((request) => request.headers['own-condition-count'])).toEqual(['1', '1', '0'])
+    })
+
+    test('a remove batch with mixed conditioned and unconditioned keys states and gets back the count of the conditioned ones', async () => {
+        const guarded = guardedOf()
+        const conditioned = fresh('conditioned')
+        const unconditioned = fresh('unconditioned')
+        const revision = await rawWrite(conditioned)
+        await rawWrite(unconditioned)
+        await guarded.removeChecked([{ key: conditioned, condition: { ifVersion: revision } }, { key: unconditioned, condition: 'unconditional' }], [])
+        expect(sent[sent.length - 1].headers['own-condition-count']).toBe('1')
+        expect((await rawState(conditioned)).exists).toBe(false)
+        expect((await rawState(unconditioned)).exists).toBe(false)
     })
 
     test('a mismatch is a version conflict naming the key that did not match', async () => {
@@ -284,6 +297,64 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
         }
     })
 
+    test('an own condition lost on the way gets the server\'s 400, with or without the count: refused with mayHaveApplied false and nothing changed on disk', async () => {
+        const guarded = guardedOf()
+        for (const mode of ['strip-if-match', 'strip-if-match-and-count'] as const) {
+            const commit = fresh('commit')
+            const target = fresh('target')
+            const victim = fresh('victim')
+            const retired = `${STORE2_PREFIX}${fresh('victim')}`
+            const targetRevision = await rawWrite(target)
+            const victimRevision = await rawWrite(victim)
+            const retiredRevision = await rawWrite(retired)
+            proxy.setMode(mode)
+            const staleWrite = await caught(guarded.writeChecked(target, bytes(1), { ifVersion: targetRevision + 7 }, []))
+            expect(staleWrite, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((staleWrite as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(false)
+            const createOnly = await caught(guarded.writeChecked(target, bytes(1), { ifVersion: 0 }, []))
+            expect(createOnly, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            const staleRemove = await caught(guarded.removeChecked([{ key: victim, condition: { ifVersion: victimRevision + 7 } }], []))
+            expect(staleRemove, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((staleRemove as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(false)
+            const staleRetire = await caught(guarded.retireChecked([{ key: retired, condition: { ifVersion: retiredRevision + 7 } }], [{ key: commit, version: 0 }]))
+            expect(staleRetire, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((staleRetire as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(false)
+            expect(await rawState(target)).toEqual({ exists: true, revision: targetRevision })
+            expect(await rawState(victim)).toEqual({ exists: true, revision: victimRevision })
+            expect(await rawState(retired)).toEqual({ exists: true, revision: retiredRevision })
+        }
+    })
+
+    test('an own-condition echo that is wrong or missing is refused with mayHaveApplied true, and the request did apply', async () => {
+        const guarded = guardedOf()
+        for (const mode of ['echo-wrong-own-condition', 'strip-own-condition-echo'] as const) {
+            const target = fresh('target')
+            proxy.setMode(mode)
+            const writeError = await caught(guarded.writeChecked(target, bytes(1), { ifVersion: 0 }, []))
+            expect(writeError, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((writeError as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(true)
+            expect((await rawState(target)).exists, `${mode} write applied`).toBe(true)
+            const victim = fresh('victim')
+            const victimRevision = await rawWrite(victim)
+            const removeError = await caught(guarded.removeChecked([{ key: victim, condition: { ifVersion: victimRevision } }], []))
+            expect(removeError, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((removeError as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(true)
+            expect((await rawState(victim)).exists, `${mode} remove applied`).toBe(false)
+            const retired = `${STORE2_PREFIX}${fresh('victim')}`
+            const retiredRevision = await rawWrite(retired)
+            const retireError = await caught(guarded.retireChecked([{ key: retired, condition: { ifVersion: retiredRevision } }], [{ key: fresh('commit'), version: 0 }]))
+            expect(retireError, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((retireError as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(true)
+        }
+    })
+
+    test('an unconditional request has no condition to strip and still works when only if-match-revision is stripped', async () => {
+        const guarded = guardedOf()
+        proxy.setMode('strip-if-match')
+        const written = await guarded.writeChecked(fresh('target'), bytes(1), 'unconditional', [])
+        expect(written.version).toBe(1)
+    })
+
     test('a request that has nothing to strip still works under the strip modes (zero check-only entries, count 0)', async () => {
         const guarded = guardedOf()
         proxy.setMode('strip-check-only')
@@ -353,8 +424,12 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
         const error = await caught(wrongCount.guarded!.writeChecked('k/1', bytes(1), 'unconditional', [{ key: 'k/2', version: 0 }]))
         expect(error).toBeInstanceOf(ServerLacksCapabilityError)
         expect((error as ServerLacksCapabilityError).mayHaveApplied).toBe(true)
-        const rightCount = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: stub({ success: true, revision: 4, checkOnly: 1 }) })
+        const rightCount = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: stub({ success: true, revision: 4, checkOnly: 1, ownCondition: 0 }) })
         expect((await rightCount.guarded!.writeChecked('k/1', bytes(1), 'unconditional', [{ key: 'k/2', version: 0 }])).version).toBe(4)
+        const noOwnEcho = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: stub({ success: true, revision: 4, checkOnly: 1 }) })
+        const missing = await caught(noOwnEcho.guarded!.writeChecked('k/1', bytes(1), 'unconditional', [{ key: 'k/2', version: 0 }]))
+        expect(missing).toBeInstanceOf(ServerLacksCapabilityError)
+        expect((missing as ServerLacksCapabilityError).mayHaveApplied).toBe(true)
     })
 })
 

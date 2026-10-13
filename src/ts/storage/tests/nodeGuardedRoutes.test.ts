@@ -68,11 +68,26 @@ function checkHeaders(checkOnly: CheckOnly, raw: Record<string, string | null> =
     return headers
 }
 
+function applyRaw(headers: Record<string, string>, raw: Record<string, string | null> = {}): void {
+    for (const [name, value] of Object.entries(raw)) {
+        if (value === null) {
+            delete headers[name]
+        } else {
+            headers[name] = value
+        }
+    }
+}
+
 function writeChecked(key: string, text: string, options: { ifMatch?: number, checkOnly?: CheckOnly, raw?: Record<string, string | null> } = {}): Promise<Reply> {
-    const headers: Record<string, string> = { 'file-path': hexOfKey(key), ...checkHeaders(options.checkOnly ?? [], options.raw) }
+    const headers: Record<string, string> = {
+        'file-path': hexOfKey(key),
+        'own-condition-count': options.ifMatch === undefined ? '0' : '1',
+        ...checkHeaders(options.checkOnly ?? [], options.raw),
+    }
     if (options.ifMatch !== undefined) {
         headers['if-match-revision'] = String(options.ifMatch)
     }
+    applyRaw(headers, options.raw)
     return send('/api/write-checked', 'POST', headers, new TextEncoder().encode(text))
 }
 
@@ -88,6 +103,7 @@ function removeChecked(keys: string[], options: RemoveOptions = {}): Promise<Rep
         'file-path': keys.map(hexOfKey).join('$$'),
         ...checkHeaders(options.checkOnly ?? [], options.raw),
         'retire-count': options.retire === true ? String(keys.length) : '0',
+        'own-condition-count': String((options.revisions ?? []).filter((revision) => revision !== null).length),
     }
     if (options.retire === true) {
         headers.retire = '1'
@@ -152,7 +168,7 @@ describe('write-checked', () => {
         const commit = fresh('commit')
         const reply = await writeChecked(commit, 'v1', { ifMatch: 0, checkOnly: [[unit, unitRevision]] })
         expect(reply.status).toBe(200)
-        expect(reply.json).toEqual({ success: true, revision: 1, checkOnly: 1 })
+        expect(reply.json).toEqual({ success: true, revision: 1, checkOnly: 1, ownCondition: 1 })
         expect(reply.headers.get('risu-storage-guarded')).toBe('1')
         expect(reply.headers.get('cache-control')).toMatch(/no-store/)
         expect((await readKey(commit)).text).toBe('v1')
@@ -238,7 +254,7 @@ describe('write-checked', () => {
 
         test('the password file name and an odd-length own key are refused', async () => {
             for (const path of ['__password', 'abc']) {
-                const reply = await send('/api/write-checked', 'POST', { 'file-path': path, 'check-only-count': '0' }, new TextEncoder().encode('x'))
+                const reply = await send('/api/write-checked', 'POST', { 'file-path': path, 'check-only-count': '0', 'own-condition-count': '0' }, new TextEncoder().encode('x'))
                 expect(reply.status, path).toBe(400)
                 expect(reply.headers.get('risu-storage-guarded')).toBe('1')
             }
@@ -343,6 +359,7 @@ describe('remove-checked', () => {
             revision: victimRevision + 1,
             checkOnly: 1,
             retired: 0,
+            ownCondition: 1,
         })
         expect(ok.headers.get('cache-control')).toMatch(/no-store/)
         expect((await readKey(victim)).exists).toBe(false)
@@ -376,6 +393,105 @@ describe('remove-checked', () => {
         const duplicate = await removeChecked([fresh('victim')], { checkOnly: [[commit, 1], [commit, 1]] })
         expect(duplicate.status).toBe(400)
         expect((await readKey(commit)).exists).toBe(true)
+    })
+})
+
+describe('own-condition-count', () => {
+    const countCases: Array<[label: string, value: string | null]> = [
+        ['missing', null],
+        ['empty', ''],
+        ['not a number', 'x'],
+        ['negative', '-1'],
+        ['fractional', '1.5'],
+    ]
+
+    test.each([...countCases, ['too low', '0'], ['too high', '2']] as Array<[string, string | null]>)('write-checked: a conditional write with the count %s answers 400 guarded-count and writes nothing', async (_label, value) => {
+        const key = fresh('own')
+        const base = revisionOf(await plainWrite(key, 'base'))
+        const reply = await writeChecked(key, 'SHOULD-NOT-LAND', { ifMatch: base, raw: { 'own-condition-count': value } })
+        expect(reply.status).toBe(400)
+        expect(reply.json?.code).toBe('guarded-count')
+        expect(reply.headers.get('risu-storage-guarded')).toBe('1')
+        expect(await readKey(key)).toEqual({ text: 'base', revision: base, exists: true })
+    })
+
+    test('write-checked: an unconditional write must state the count 0, and a count above 0 without a condition is refused', async () => {
+        const key = fresh('own')
+        const noCount = await writeChecked(key, 'x', { raw: { 'own-condition-count': null } })
+        expect(noCount.status).toBe(400)
+        const tooHigh = await writeChecked(key, 'x', { raw: { 'own-condition-count': '1' } })
+        expect(tooHigh.status).toBe(400)
+        expect(tooHigh.json?.code).toBe('guarded-count')
+        expect((await readKey(key)).exists).toBe(false)
+        const ok = await writeChecked(key, 'x')
+        expect(ok.status).toBe(200)
+        expect(ok.json?.ownCondition).toBe(0)
+    })
+
+    test('write-checked: a proxy that strips if-match-revision and keeps the count is refused, and so is one that strips both', async () => {
+        const key = fresh('own')
+        const base = revisionOf(await plainWrite(key, 'base'))
+        const stale = base + 5
+        for (const raw of [{ 'if-match-revision': null }, { 'if-match-revision': null, 'own-condition-count': null }]) {
+            const reply = await writeChecked(key, 'SHOULD-NOT-LAND', { ifMatch: stale, raw })
+            expect(reply.status, JSON.stringify(raw)).toBe(400)
+            expect(reply.json?.code ?? null, JSON.stringify(raw)).toBe('guarded-count')
+            expect(await readKey(key)).toEqual({ text: 'base', revision: base, exists: true })
+        }
+    })
+
+    test('write-checked: a create-only write (version 0) counts as a condition, echoes 1, and a stripped one is refused', async () => {
+        const key = fresh('own')
+        const stripped = await writeChecked(key, 'x', { ifMatch: 0, raw: { 'if-match-revision': null } })
+        expect(stripped.status).toBe(400)
+        expect((await readKey(key)).exists).toBe(false)
+        const created = await writeChecked(key, 'first', { ifMatch: 0 })
+        expect(created.status).toBe(200)
+        expect(created.json?.ownCondition).toBe(1)
+        const again = await writeChecked(key, 'second', { ifMatch: 0 })
+        expect(again.status).toBe(409)
+        expect((await readKey(key)).text).toBe('first')
+    })
+
+    test('remove-checked: a batch with mixed empty and non-empty segments counts only the non-empty ones and echoes it', async () => {
+        const a = fresh('own')
+        const b = fresh('own')
+        const c = fresh('own')
+        const ra = revisionOf(await plainWrite(a, 'a'))
+        revisionOf(await plainWrite(b, 'b'))
+        const rc = revisionOf(await plainWrite(c, 'c'))
+        for (const value of ['0', '1', '3', null]) {
+            const refused = await removeChecked([a, b, c], { revisions: [ra, null, rc], raw: { 'own-condition-count': value } })
+            expect(refused.status, String(value)).toBe(400)
+            expect(refused.json?.code, String(value)).toBe('guarded-count')
+        }
+        for (const key of [a, b, c]) {
+            expect((await readKey(key)).exists).toBe(true)
+        }
+        const ok = await removeChecked([a, b, c], { revisions: [ra, null, rc] })
+        expect(ok.status).toBe(200)
+        expect(ok.json?.ownCondition).toBe(2)
+    })
+
+    test('remove-checked: a proxy that strips if-match-revision and keeps the count is refused, and so is one that strips both', async () => {
+        const victim = fresh('own')
+        const revision = revisionOf(await plainWrite(victim, 'v'))
+        for (const raw of [{ 'if-match-revision': null }, { 'if-match-revision': null, 'own-condition-count': null }]) {
+            const reply = await removeChecked([victim], { revisions: [revision + 5], raw })
+            expect(reply.status, JSON.stringify(raw)).toBe(400)
+            expect(reply.json?.code, JSON.stringify(raw)).toBe('guarded-count')
+            expect((await readKey(victim)).exists, JSON.stringify(raw)).toBe(true)
+        }
+    })
+
+    test('remove-checked: a request with no condition states 0 and echoes 0', async () => {
+        const victim = fresh('own')
+        await plainWrite(victim, 'v')
+        const missing = await removeChecked([victim], { raw: { 'own-condition-count': null } })
+        expect(missing.status).toBe(400)
+        const ok = await removeChecked([victim])
+        expect(ok.status).toBe(200)
+        expect(ok.json?.ownCondition).toBe(0)
     })
 })
 
