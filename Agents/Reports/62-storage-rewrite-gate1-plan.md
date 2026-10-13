@@ -47,7 +47,7 @@ Following the instruction to prefer removing mechanisms, the plan dropped three 
   - unit refs: core, lore, scripts;
   - per chat `{id, core, chunks:[{key,count,bytes}], tailKey, messageCount}`;
   - `usesDisplayScripts`: whether the character has Lua editDisplay, a display trigger or index-dependent CBS (for `MC-284` 2's "wait only if used").
-  - Open before the freeze (C4): whether the entry also records asset references per character.
+  - C4 decided 2026-10-13 (`MC-289`): asset references are recorded per character as a separate list unit, not in the shard entry (A5.4 note).
 - The module index carries the same `usesDisplayScripts` flag per module.
 
 **Units:**
@@ -216,7 +216,7 @@ Dependencies: 0a → (1+3) → 2 → 4a+4b → 5 → (6+7) → 8. Stage 0b sits 
 **Freeze preconditions:**
 - independent re-verification or re-measure of the S0-8 root-write series and the S0-5b 16-shard re-run;
 - **Q-D** answered 2026-10-13 (the size script on real data; result in A6 "Settled"; ledger row 1741);
-- **C4** decided (whether asset references go into the shard entry);
+- **C4** decided 2026-10-13 (`MC-289`: a recorded per-character list, as its own unit; A5.4 note);
 - Q-C is settled (inside backups, `MC-288` 2), so `pluginStorage` is in the manifest.
 
 **Exit E1-1 (scratch, before the freeze).** `model.mjs` gains:
@@ -333,7 +333,7 @@ There is no item (e): the owner-claim protocol it modelled was removed.
 | `restoreAllColdCharacters` (`coldRestoreAll.ts:34`) | `plugins.svelte.ts:431` (V2.1) | Load every entity |
 | `preLoadChat` (`coldstorage.svelte.ts:763`) | `DefaultChatScreen.svelte:818` | Await chat completion (eager in 4a, lazy in 6) |
 | `read`/`setColdStorageItem` | `pluginColdStorage.ts`, `inlayCleanup.ts:530`, backup and restore | Per-key units; the inlay clean-up reads chunks |
-| `buildAssetKeepSet` → `resolveUncleanableChars` → `getColdStorageItem(cha.coldstorage)` (`globalApi.svelte.ts:2859-2914`) | Boot asset sweep (`bootstrap.ts:1191-1300`) | Read unloaded characters' units (key-only refs from core, lore, scripts and chat units, yielding). **The sweep's keep-set source changes.** Guard: an asset referenced only inside an unloaded character survives. Mutants: a stub-only scan; a sweep that silently stops (`complete=false`). See C4 |
+| `buildAssetKeepSet` → `resolveUncleanableChars` → `getColdStorageItem(cha.coldstorage)` (`globalApi.svelte.ts:2859-2914`) | Boot asset sweep (`bootstrap.ts:1191-1300`) | Read unloaded characters' units (key-only refs from core, lore, scripts and chat units, yielding). **The sweep's keep-set source changes.** Guard: an asset referenced only inside an unloaded character survives. Mutants: a stub-only scan; a sweep that silently stops (`complete=false`). See C4 (decided 2026-10-13, `MC-289`; A5.4 note corrects the premise) |
 | `retryLegacyColdChatLoad` (`DefaultChatScreen.svelte:228`) | Chat screen | Await chunk completion (no legacy pointers after import) |
 | `manualCleanup.ts:139`, `:224` | Manual clean-up | Reworked in stage 5 |
 | `bootstrap.ts:649` | Old boot | Replaced by the 4a boot table |
@@ -441,7 +441,7 @@ The "unavailable" failure (plain HTTP with no cold store) disappears.
 | Re-verified P5 or P6 fails | 1+3, 5 | Revisit the amendments before the freeze |
 | Real sizes: a unit nears 100 MiB on Node | 1+3 | Split further before the freeze (Q-D). **Not triggered (2026-10-13): the largest unit is 4.48 MiB, see A6 "Settled".** |
 | Upstream cannot restore fork stubs | 4b | Switch export to all-inline with the `MC-130` 4 warning |
-| A scan of unloaded characters makes the boot asset sweep slow | 4a | Yields; Note 9 check; C4 |
+| A scan of unloaded characters makes the boot asset sweep slow | 4a | Yields; Note 9 check; C4 (decided 2026-10-13, `MC-289`) |
 | The Lua-display trace contradicts the PLAUSIBLE reading | 6 | Back to the maintainer |
 | Lazy modules make first open worse than eager boot | 7 | Measure and report; `MC-283` 6 stands until the maintainer revisits it |
 | Garbage while GC is off (stage 4 to 5) | 4-5 | The dev-only GC action bounds it |
@@ -481,7 +481,8 @@ These are binding inputs to the Gate 1 named for each. They are not optional not
   - if the "direct install without the marker fence" mutant is not caught, treat it as a mutant-validity finding, not a protocol weakness, and do not reopen the design (advisor r3 note 3).
 - **A5.2 C1 (stage 4a+4b Gate 1).** The deletion snapshot rule in A2.4a.
 - **A5.3 C3 (stage 4 Gate 1, with Q3).** The stale-marker clear in stage 5's scope.
-- **A5.4 C4 (stage 1+3 freeze input; format-shaping).** Consider recording asset references per character in the shard entry at encode time, so the boot asset sweep does not read every unloaded character's units on each boot (`MC-130` and `MC-283` boot goals; today's `resolveUncleanableChars` reads every archived unit, `globalApi.svelte.ts:2859-2893`). Decide before the freeze. If not adopted, the boot-sweep risk row and the Note 9 check stand.
+- **A5.4 C4 (stage 1+3 freeze input; format-shaping).** Consider recording asset references per character in the shard entry at encode time, so the boot asset sweep does not read every unloaded character's units on each boot (`MC-130` and `MC-283` boot goals; today's `resolveUncleanableChars` reads every archived unit, `globalApi.svelte.ts:2859-2893`). Decide before the freeze. If not adopted, the boot-sweep risk row and the Note 9 check stand. (Decided and its premise corrected 2026-10-13; see the note below.)
+  - **Note, 2026-10-13 (C4 decided; `MC-289`; ledger row 1742).** The premise above is corrected: today's boot asset sweep never reads archived units; `bootstrap.ts` lines 1185 to 1187 switch the asset sweep off whenever any character is cold-stored, a sweep hold is set or an older main-file copy exists (orchestrator-verified; the C4 packet's other findings are TRACED, not independently verified). The maintainer decided that the startup asset clean-up runs after the rewrite, using a recorded per-character list of asset files ("Run it, using a list", `MC-289`). Measured on the real library (ledger row 1742): the largest character list is about 783 KB as base64url stems (1.21 MB as full keys) against the 256 KiB per-append budget (A2), so the list cannot sit inside the shard entry (INFERRED, the orchestrator's): it must be a separate per-character unit, and likewise per module, written only when that owner's asset fields change and named from the shard entry. The final design is the stage 1+3 plan's. **Binding stage 1+3 input:** a keep-set from the current manifest alone would delete assets that only an older retained or pinned manifest still needs, so the sweep must also keep those (`MC-289`).
 - **Editorial.** `epoch` is 16 bytes from `crypto.getRandomValues`. The fork-only `database.pre-blocks*` deletion is covered by M2 (A2.4a).
 - **Records before stage 0a.** M1 and M2 recorded as MC entries: done as `MC-286` and `MC-287`.
 
@@ -494,6 +495,7 @@ These are binding inputs to the Gate 1 named for each. They are not optional not
 - Q5: V2.1 keeps every module resident; a v3 `getDatabase` with modules awaits them (`MC-288` 3).
 - Q-B: on quota, drop the oldest snapshots one at a time with a one-time notice (`MC-288` 4).
 - Stage list approved; stage 0a may start (`MC-288` 1).
+- **C4, decided 2026-10-13 (`MC-289`):** the startup asset clean-up runs, using a recorded per-character list of asset files (option "Run it, using a list"). Placement and the retained-manifest keep rule: A5.4 note; sizes: ledger row 1742.
 - **Q-D, answered 2026-10-13 (the real-size census; ledger row 1741).** The maintainer ran `Agents/Tools/save-gen/real-size-report.harness.ts` on 2026-10-13 against a local copy of their real upstream `.bin`; the output is `Agents/Tools/output/real-size-report.json` (gitignored; sizes, counts and ordinals only). The measure is the UTF-8 bytes of each piece's JSON serialisation, so it is an upper-side measure of the stored units, which are compressed or encoded. Units: lore is `globalLore`; scripts are `customscript`, `triggerscript` and `virtualscript`; core is the character minus chats, lore and scripts; chat chunks are a greedy 128 KiB packing of whole messages. Numbers (VERIFIED: the maintainer's run output, scalars checked by the orchestrator against the JSON):
   - Container 32.24 GiB, 383,743 entries. The database entry is the legacy format, 62 MiB (65,143,738 bytes), decoded in 1,075 ms; peak RSS 944 MiB (the whole decode added about 570 MB). A first attempt from a NAS was seek-bound; the harness reads sequentially in 32 MiB chunks, and the rerun from local disk ran at about 2.5 GB/s overall (34.6 GB in 13.8 s, per the JSON's `elapsedMs`).
   - 485 characters, no stubs, no cold-storage units. Largest whole character 4.48 MiB (core max 2.12 MiB, lore max 3.92 MiB, scripts max 1.0 MiB); character p95 1.12 MiB; all characters together 132 MiB (138,319,559 bytes).
@@ -510,7 +512,6 @@ These are binding inputs to the Gate 1 named for each. They are not optional not
 
 - **Q3 (stage 4, with C3).** Foreign-marker prompt. With fresh owner ids, every crash mid-bulk on the web leads to this prompt. Recommended (not decided): show `startedAt` and a platform label; offer Wait (default) / Clear and continue; prompt rather than wait silently.
 - **Q9 (stage 5).** Point the orphan counter at assets only. Recommended (not decided).
-- **C4** (the asset references in the shard entry): an internal decision owed before the freeze.
 
 ### Inputs owed
 
@@ -591,7 +592,7 @@ These were accepted at Gate 1 and are not closed; each keeps its source label.
 - Whether `durability: 'strict'` is honoured by the Note 9's Chrome build.
 - Upstream's numbered-backup naming was not checked against upstream source (advisor r2 finding 3 and its UNCERTAINTY note; opus r2 R2-1 treats the files as upstream's backups without flagging this); the deletion rule is safe under either naming.
 - The editDisplay / display-trigger / CBS behaviour behind stage 6's "wait only if used" is PLAUSIBLE and untraced.
-- Real sizes (Q-D) answered 2026-10-13 (A6); still open: Q3, Q9 and C4's decision.
+- Real sizes (Q-D) answered 2026-10-13 (A6); C4 decided 2026-10-13 (`MC-289`, A5.4 and A6); still open: Q3 and Q9.
 - Whether CHORE-105 carries stage 0b: TODO(evidence).
 - The order in which the code-searcher packet and the round-1 verdicts arrived is not recorded.
 - The report's documentation claims were checked by `doc-verifier` (`[EDITORIAL]`, ledger row 1732); the plan's design claims remain as labelled above.
@@ -699,5 +700,5 @@ Gate 2 follow-up: M-AQ (only the first key's delete record appended) was killed,
 - **Merge:** `feat/alite` (`ebe3c77a9`) is not merged to `main`. When it merges is the maintainer's call; the timing is not stated in the sources given to this record (the orchestrator relays that the branch decision says at the latest after 4a+4b): TODO(evidence).
 - **Express ETag note (implementer's):** the literal table's ETag values are Express weak ETags of the JSON bodies; a different Express major could change them.
 - **Not exercised:** the old write temp-file failure path (review-only); M-AF and M-AI (review-only); nothing ran on a phone, a Pi or against a reverse proxy; the proxy modes are stubs.
-- **Stage 1+3 Gate 1 preparation:** Q-D, the real-size run, is done (2026-10-13; A6 "Settled", ledger row 1741). The rest started 2026-10-13: the P10 two-tab plain-HTTP probe, the S0-8 and S0-5b re-measure, the E1-1 model extension and the C4 sizing; none of these has a recorded result yet (see B4, B5, A6).
+- **Stage 1+3 Gate 1 preparation:** Q-D, the real-size run, is done (2026-10-13; A6 "Settled", ledger row 1741). The rest started 2026-10-13: the P10 two-tab plain-HTTP probe, the S0-8 and S0-5b re-measure, the E1-1 model extension and the C4 sizing (done: C4 decided 2026-10-13, `MC-289`, A5.4, ledger row 1742); apart from C4, none of these has a recorded result yet (see B4, B5, A6).
 - **Records:** this part was verified by `doc-verifier` `a76804465aa082c3d`: `[EDITORIAL]`, about 95 claims in 11 groups, 9 groups confirmed; two fixes applied (ledger row 1739 cell split, the C3 cross-reference to C8); 95k tokens (ledger row 1740).

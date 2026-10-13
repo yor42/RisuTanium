@@ -290,6 +290,124 @@ function summarize(stats: KindStats) {
 }
 //#endregion
 
+//#region asset references
+/**
+ * The key a reference value names: mirrors getBasename in
+ * src/ts/globalApi.svelte.ts, the normalisation getUncleanablesSync applies
+ * (that module is mocked here, so it is mirrored rather than imported). A
+ * non-string or empty value is no reference, as in addUncleanable.
+ */
+function refKey(value: unknown): string | null {
+    if (typeof value !== 'string' || value === '') return null
+    const parts = value.replace(/\\/g, '/').split('/')
+    return parts[parts.length - 1]
+}
+
+/**
+ * Adds the asset keys one character or group chat references, over the fields
+ * getUncleanablesSync scans: image, emotionImages[][1], additionalAssets[][1],
+ * vits.files values, gptSoVitsConfig.ref_audio_data.assetId and (non-group
+ * only) ccAssets[].uri.
+ */
+function collectCharacterRefs(cha: Rec | null, into: Set<string>): void {
+    if (!cha) return
+    const add = (value: unknown) => {
+        const key = refKey(value)
+        if (key !== null) into.add(key)
+    }
+    add(cha.image)
+    for (const em of asArr(cha.emotionImages)) add(asArr(em)[1])
+    for (const em of asArr(cha.additionalAssets)) add(asArr(em)[1])
+    const vitsFiles = asRec(asRec(cha.vits)?.files)
+    if (vitsFiles) for (const key of Object.keys(vitsFiles)) add(vitsFiles[key])
+    add(asRec(asRec(cha.gptSoVitsConfig)?.ref_audio_data)?.assetId)
+    if (cha.type !== 'group') for (const asset of asArr(cha.ccAssets)) add(asRec(asset)?.uri)
+}
+
+/** A module's (or a persona's embedded module's) references: assets[][1] and icon. */
+function collectModuleRefs(mod: Rec | null, into: Set<string>): void {
+    if (!mod) return
+    for (const asset of asArr(mod.assets)) {
+        const key = refKey(asArr(asset)[1])
+        if (key !== null) into.add(key)
+    }
+    const icon = refKey(mod.icon)
+    if (icon !== null) into.add(icon)
+}
+
+/** Persona icon and embedded module, as getUncleanablesSync scans them. */
+function collectPersonaRefs(persona: Rec | null, into: Set<string>): void {
+    if (!persona) return
+    const icon = refKey(persona.icon)
+    if (icon !== null) into.add(icon)
+    collectModuleRefs(asRec(persona.embeddedModule), into)
+}
+
+/** Database-level references: background, user icon, NAI and wavespeed images, characterOrder imgFile. */
+function collectDatabaseLevelRefs(decoded: Rec, into: Set<string>): void {
+    const values: unknown[] = [
+        decoded.customBackground,
+        decoded.userIcon,
+        asRec(decoded.NAIImgConfig)?.image,
+        asRec(decoded.NAIImgConfig)?.character_image,
+        asRec(decoded.wavespeedImage)?.reference_image,
+    ]
+    for (const item of asArr(decoded.characterOrder)) {
+        const holder = asRec(item)
+        if (holder && 'imgFile' in holder) values.push(holder.imgFile)
+    }
+    for (const value of values) {
+        const key = refKey(value)
+        if (key !== null) into.add(key)
+    }
+}
+
+/** An asset key named by a sha256 hex stem, with an optional extension. */
+const HASH_KEY = /^[0-9a-f]{64}(\.[A-Za-z0-9]+)?$/i
+/** JSON bytes of a base64url-encoded 32-byte digest as a string: 43 characters and two quotes. */
+const BASE64URL_SHA256_JSON_BYTES = 45
+
+/** JSON array sizes of one reference list under the two candidate encodings. */
+function encodedRefBytes(keys: Iterable<string>) {
+    const full: number[] = []
+    const hash: number[] = []
+    const nonHashFull: number[] = []
+    for (const key of keys) {
+        const size = jsonBytes(key)
+        full.push(size)
+        if (HASH_KEY.test(key)) hash.push(BASE64URL_SHA256_JSON_BYTES)
+        else nonHashFull.push(size)
+    }
+    return {
+        fullKeyJsonBytes: arrayBytesFrom(full),
+        hashKeyCount: hash.length,
+        base64urlStemJsonBytes: arrayBytesFrom(hash),
+        nonHashKeyCount: nonHashFull.length,
+        nonHashFullKeyJsonBytes: arrayBytesFrom(nonHashFull),
+    }
+}
+
+const REF_BUCKETS: readonly { label: string; min: number; max: number }[] = [
+    { label: '0', min: 0, max: 0 },
+    { label: '1', min: 1, max: 1 },
+    { label: '2-5', min: 2, max: 5 },
+    { label: '6-20', min: 6, max: 20 },
+    { label: '21-50', min: 21, max: 50 },
+    { label: '51-200', min: 51, max: 200 },
+    { label: '201-1000', min: 201, max: 1000 },
+    { label: '>1000', min: 1001, max: Infinity },
+]
+
+/** Count distribution of per-owner distinct reference counts, with total, histogram and top 10 by ordinal. */
+function refDistribution(stats: KindStats) {
+    const histogram: Record<string, number> = {}
+    for (const bucket of REF_BUCKETS) {
+        histogram[bucket.label] = stats.sizes.filter((n) => n >= bucket.min && n <= bucket.max).length
+    }
+    return { ...summarize(stats), total: stats.sizes.reduce((a, b) => a + b, 0), histogram }
+}
+//#endregion
+
 //#region unit measurement
 const CHARACTER_SCRIPT_KEYS = ['customscript', 'triggerscript', 'virtualscript'] as const
 const CHARACTER_SPLIT_OUT = new Set<string>(['chats', 'globalLore', ...CHARACTER_SCRIPT_KEYS])
@@ -458,6 +576,8 @@ interface ColdUnit {
     notSplit: boolean
     /** Shape read from the body; the class from the database is applied after it is decoded. */
     derivedShape: ColdShape | null
+    /** Asset keys of an archived character body; null when the body was not parsed or holds no character. */
+    refs: Set<string> | null
     pending: PendingRecord[]
     messagesOver128KiBDelta: number
     pointerChatsDelta: number
@@ -474,6 +594,8 @@ interface WalkResult {
     coldUnits: ColdUnit[]
     inlayPartSizes: number[]
     assetSizes: number[]
+    /** Entry name per asset, parallel to assetSizes; null for a name too long to decode. */
+    assetNames: (string | null)[]
     entryBytes: { database: number; coldUnit: number; inlayPart: number; asset: number }
 }
 
@@ -489,6 +611,8 @@ function measureColdUnit(unit: ColdUnit, value: unknown): void {
     recordSink = unit.pending
     try {
         if (shape === 'character') {
+            unit.refs = new Set<string>()
+            collectCharacterRefs(asRec(obj?.character), unit.refs)
             measureCharacter('archivedCharacter', ordinal, obj?.character, 'archivedChat')
         } else if (shape === 'chat') {
             const chat = Array.isArray(value) ? { message: value } : value
@@ -528,6 +652,7 @@ function walkContainer(
         coldUnits: [],
         inlayPartSizes: [],
         assetSizes: [],
+        assetNames: [],
         entryBytes: { database: 0, coldUnit: 0, inlayPart: 0, asset: 0 },
     }
     const startedAtMs = Date.now()
@@ -596,6 +721,7 @@ function walkContainer(
                 parseFailed: false,
                 notSplit: dataLength > PARSE_LIMIT_BYTES,
                 derivedShape: null,
+                refs: null,
                 pending: [],
                 messagesOver128KiBDelta: 0,
                 pointerChatsDelta: 0,
@@ -619,6 +745,7 @@ function walkContainer(
         } else {
             if (!reader.skip(dataLength)) throw changed()
             result.assetSizes.push(dataLength)
+            result.assetNames.push(name ?? null)
             result.entryBytes.asset += dataLength
         }
         report(reader.consumed, false)
@@ -699,6 +826,38 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                 let characterCount = 0
                 let stubCount = 0
                 const archivedRefs = { characterUnits: new Set<string>(), chatUnits: new Set<string>(), pluginUnits: new Set<string>() }
+                // Asset references (decision C4): per-owner distinct key sets; the
+                // container match is done once the database is decoded.
+                const refState = {
+                    decoded: false,
+                    characterStats: new KindStats('count'),
+                    moduleStats: new KindStats('count'),
+                    allRefs: new Set<string>(),
+                    characterBytes: { full: 0, fullMax: 0, hash: 0, hashMax: 0, hashKeys: 0, nonHashKeys: 0, nonHashFull: 0 },
+                    moduleBytes: { full: 0, fullMax: 0, hash: 0, hashMax: 0, hashKeys: 0, nonHashKeys: 0, nonHashFull: 0 },
+                    personaRefs: new Set<string>(),
+                    personaCount: 0,
+                    databaseLevelRefs: new Set<string>(),
+                    stubsWithoutArchivedRefs: 0,
+                    coldCharacterBodiesParsed: 0,
+                }
+                const addRefBytes = (acc: typeof refState.characterBytes, keys: Set<string>) => {
+                    const e = encodedRefBytes(keys)
+                    acc.full += e.fullKeyJsonBytes
+                    acc.fullMax = Math.max(acc.fullMax, e.fullKeyJsonBytes)
+                    acc.hash += e.base64urlStemJsonBytes
+                    acc.hashMax = Math.max(acc.hashMax, e.base64urlStemJsonBytes)
+                    acc.hashKeys += e.hashKeyCount
+                    acc.nonHashKeys += e.nonHashKeyCount
+                    acc.nonHashFull += e.nonHashFullKeyJsonBytes
+                }
+                const archivedCharacterRefs = new Map<string, Set<string>>()
+                for (const unit of walk.coldUnits) {
+                    if (unit.refs) {
+                        archivedCharacterRefs.set(unit.key, unit.refs)
+                        refState.coldCharacterBodiesParsed++
+                    }
+                }
                 if (!walk.databaseBody) {
                     decodeError = 'no database.risudat entry in the container'
                 } else {
@@ -745,6 +904,17 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                                     archivedRefs.chatUnits.add(data.slice(coldData.coldStorageHeader.length))
                                 }
                             }
+                            // A stub keeps its own fields and gains its archived body's references.
+                            const charRefs = new Set<string>()
+                            collectCharacterRefs(holder, charRefs)
+                            if (isStub(cha)) {
+                                const archived = archivedCharacterRefs.get(String(holder?.coldstorage))
+                                if (archived) for (const key of archived) charRefs.add(key)
+                                else refState.stubsWithoutArchivedRefs++
+                            }
+                            refState.characterStats.add(ordinal, charRefs.size)
+                            for (const key of charRefs) refState.allRefs.add(key)
+                            addRefBytes(refState.characterBytes, charRefs)
                             if (isStub(cha)) {
                                 record('stubCharacter.whole', ordinal, jsonBytes(cha))
                             } else {
@@ -763,6 +933,20 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                         // modules
                         const modulesTotal = measureArrayUnits('module', 'module', decoded.modules)
                         scalars['modules.total'] = { bytes: modulesTotal, count: asArr(decoded.modules).length }
+                        asArr(decoded.modules).forEach((mod, index) => {
+                            const moduleRefs = new Set<string>()
+                            collectModuleRefs(asRec(mod), moduleRefs)
+                            refState.moduleStats.add(`module#${index}`, moduleRefs.size)
+                            for (const key of moduleRefs) refState.allRefs.add(key)
+                            addRefBytes(refState.moduleBytes, moduleRefs)
+                        })
+                        const personas = asArr(decoded.personas)
+                        refState.personaCount = personas.length
+                        for (const persona of personas) collectPersonaRefs(asRec(persona), refState.personaRefs)
+                        collectDatabaseLevelRefs(decoded, refState.databaseLevelRefs)
+                        for (const key of refState.personaRefs) refState.allRefs.add(key)
+                        for (const key of refState.databaseLevelRefs) refState.allRefs.add(key)
+                        refState.decoded = true
 
                         // botPresets, loadouts, plugins
                         scalars['botPresets.total'] = {
@@ -842,6 +1026,80 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                     unit.pending = []
                 }                sample('cold units measured')
 
+                // --- Asset references against the container's asset entries ---
+                // Matching rule: LocalWriter.writeBackup stores each asset under
+                // getBasename(key) (the key is 'assets/<name>') and the restore
+                // pass writes 'assets/' + entry name back, so an asset entry is
+                // referenced exactly when its entry name equals a referenced key
+                // (refKey = getBasename of the stored reference value). Entries
+                // too long to decode have no name and are counted apart. The
+                // classification of entries as assets is the walk's: everything
+                // that is not the database, a cold unit or an inlay part.
+                let assetRefs: Rec | null = null
+                if (refState.decoded) {
+                    const entryNames = new Set<string>()
+                    const referenced = { count: 0, bytes: 0 }
+                    const unreferenced = { count: 0, bytes: 0 }
+                    const unnamed = { count: 0, bytes: 0 }
+                    walk.assetNames.forEach((name, i) => {
+                        const size = walk.assetSizes[i]
+                        const bucket = name === null ? unnamed : refState.allRefs.has(name) ? referenced : unreferenced
+                        bucket.count++
+                        bucket.bytes += size
+                        if (name !== null) entryNames.add(name)
+                    })
+                    let missing = 0
+                    let missingHashNamed = 0
+                    for (const key of refState.allRefs) {
+                        if (entryNames.has(key)) continue
+                        missing++
+                        if (HASH_KEY.test(key)) missingHashNamed++
+                    }
+                    const personaBytes = encodedRefBytes(refState.personaRefs)
+                    const databaseLevelBytes = encodedRefBytes(refState.databaseLevelRefs)
+                    const bytesOut = (acc: typeof refState.characterBytes) => ({
+                        fullKeyJsonBytes: { total: acc.full, maxPerOwner: acc.fullMax },
+                        base64urlStemJsonBytes: { total: acc.hash, maxPerOwner: acc.hashMax, hashKeyRefs: acc.hashKeys },
+                        nonHashKeyRefs: acc.nonHashKeys,
+                        nonHashFullKeyJsonBytes: acc.nonHashFull,
+                    })
+                    assetRefs = {
+                        rule: 'reference value -> getBasename -> key; an asset entry is referenced when its entry name equals a key; per-owner counts are distinct keys; a stub character adds its archived body\'s keys',
+                        characters: {
+                            distinctRefsPerCharacter: refDistribution(refState.characterStats),
+                            encodedBytesSummedOverCharacters: bytesOut(refState.characterBytes),
+                            stubsWithoutParsedArchivedBody: refState.stubsWithoutArchivedRefs,
+                            parsedArchivedCharacterBodies: refState.coldCharacterBodiesParsed,
+                        },
+                        modules: {
+                            distinctRefsPerModule: refDistribution(refState.moduleStats),
+                            encodedBytesSummedOverModules: bytesOut(refState.moduleBytes),
+                        },
+                        personas: {
+                            count: refState.personaCount,
+                            distinctRefs: refState.personaRefs.size,
+                            fullKeyJsonBytes: personaBytes.fullKeyJsonBytes,
+                            base64urlStemJsonBytes: personaBytes.base64urlStemJsonBytes,
+                        },
+                        databaseLevel: {
+                            distinctRefs: refState.databaseLevelRefs.size,
+                            fullKeyJsonBytes: databaseLevelBytes.fullKeyJsonBytes,
+                            base64urlStemJsonBytes: databaseLevelBytes.base64urlStemJsonBytes,
+                        },
+                        global: {
+                            distinctReferencedKeys: refState.allRefs.size,
+                            distinctAssetEntryNames: entryNames.size,
+                            referencedAssetEntries: referenced,
+                            unreferencedAssetEntries: unreferenced,
+                            assetEntriesWithUndecodedName: unnamed,
+                            referencedKeysMissingFromContainer: missing,
+                            referencedKeysMissingThatAreHashNamed: missingHashNamed,
+                            referenceSetComplete: refState.stubsWithoutArchivedRefs === 0,
+                        },
+                        notes: 'hash-named = 64 hex characters with an optional extension; base64url bytes are 45 per such key plus array punctuation (extension not stored); missing keys include references that are not asset keys (for example URLs)',
+                    }
+                }
+
                 const after = fs.fstatSync(fd)
                 const heap = v8.getHeapStatistics()
                 const maxRssBytes = process.resourceUsage().maxRSS * 1024
@@ -888,6 +1146,7 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                     scalars,
                     kinds: Object.fromEntries([...kinds.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, stats]) => [name, summarize(stats)])),
                     assets: assetSummary,
+                    assetRefs,
                     inlayParts: summarize(inlayKinds),
                     flags: {
                         atOrOver100MiB: flagged100.sort((a, b) => b.size - a.size),
@@ -944,6 +1203,29 @@ function printSummary(report: Rec): void {
     const assets = asRec(report.assets)
     if (assets) {
         lines.push('', `assets: count=${assets.count} total=${mib(Number(assets.totalBytes))} MiB max=${mib(Number(assets.max))} MiB over16MiB=${assets.over16MiB} over100MiB=${assets.over100MiB} over4GiB=${assets.over4GiB}`)
+    }
+    const refs = asRec(report.assetRefs)
+    if (refs) {
+        const dist = (value: unknown) => {
+            const d = asRec(value) ?? {}
+            return `n=${d.count} p50=${d.p50} p95=${d.p95} max=${d.max} total=${d.total}`
+        }
+        const chars = asRec(refs.characters)
+        const mods = asRec(refs.modules)
+        const glob = asRec(refs.global)
+        const charBytes = asRec(asRec(chars?.encodedBytesSummedOverCharacters)?.fullKeyJsonBytes)
+        const charHash = asRec(asRec(chars?.encodedBytesSummedOverCharacters)?.base64urlStemJsonBytes)
+        const referenced = asRec(glob?.referencedAssetEntries)
+        const unreferenced = asRec(glob?.unreferencedAssetEntries)
+        lines.push(
+            '',
+            `asset refs per character: ${dist(chars?.distinctRefsPerCharacter)}`,
+            `  histogram: ${JSON.stringify(asRec(asRec(chars?.distinctRefsPerCharacter)?.histogram))}`,
+            `  encoded, summed: full keys ${sizeText(Number(charBytes?.total))}; base64url stems ${sizeText(Number(charHash?.total))} (${charHash?.hashKeyRefs} hash refs, ${asRec(chars?.encodedBytesSummedOverCharacters)?.nonHashKeyRefs} non-hash refs); stubs without parsed archive body=${chars?.stubsWithoutParsedArchivedBody}`,
+            `asset refs per module: ${dist(mods?.distinctRefsPerModule)}`,
+            `asset refs personas: ${asRec(refs.personas)?.distinctRefs}; database-level: ${asRec(refs.databaseLevel)?.distinctRefs}`,
+            `asset refs global: distinct keys=${glob?.distinctReferencedKeys}; referenced entries=${referenced?.count} (${mib(Number(referenced?.bytes))} MiB); unreferenced entries=${unreferenced?.count} (${mib(Number(unreferenced?.bytes))} MiB); missing from container=${glob?.referencedKeysMissingFromContainer}; reference set complete=${glob?.referenceSetComplete}`,
+        )
     }
     const flags = asRec(report.flags)
     lines.push(`units >= 50 MiB: ${asArr(flags?.atOrOver50MiB).length}; units >= 100 MiB: ${asArr(flags?.atOrOver100MiB).length}`)

@@ -9731,6 +9731,31 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - **Binding items the maintainer was not asked about:** C1 (deletion from a persisted key list, `blocks/` last; 4a+4b Gate 1), C2 (recovery details; 1+3 Gate 1), C3 (stale foreign marker clear from the quota path and manual clean-up; stage 4 Gate 1, with Q3) and C4 (asset references in the shard entry; a 1+3 freeze input). They are gate inputs, not product decisions.
 - Item 2 takes effect on the manifest (the `pluginStorage` field) and on the freeze; the plan marks the commit cost per plugin write as within the S0-11 per-key budget, which is the plan's statement.
 
+### MC-289 — Main Campaign, 2026-10-13: startup asset clean-up runs in the rewrite, using a recorded list of each character's asset files (C4)
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, header "Boot cleanup"; question and option texts verbatim as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-13. The time of the answer is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's brief to the records pass of 2026-10-13 (the question, the two options and the answer "Run it, using a list (Recommended)"); the fact about today's sweep is `src/ts/bootstrap.ts` lines 1185 to 1187 (the `sweepAssets` condition), verified by the orchestrator and read by the records pass; the C4 packet is `storage\stage13prep\c4\packet.md` (investigator, session scratch; TRACED, not independently verified apart from that gate); the sizes are ledger row 1742.
+- **Reasoning:** none stated by the maintainer. The question gave the context: after the rewrite nearly every character is unloaded, today the startup asset sweep is switched off whenever any character is cold-stored, and only the manual "delete unused" button removes assets.
+- **Alternatives rejected:** option 2, "Manual button only".
+- **Amends:** none of the earlier entries' text. Settles the plan's C4 (Report 62 A5.4), the asset references per character, as a product choice; it also settles whether a startup asset clean-up exists after the rewrite. Applies `MC-130` and `MC-283` (boot goals) and `MC-288`.
+- **Related:** `MC-130`, `MC-283`, `MC-288`, Report 62 A5.4 and A6.
+
+**The question (`AskUserQuestion`, 2026-10-13, header "Boot cleanup", verbatim):** "After the rewrite, nearly every character is unloaded most of the time. Today, startup asset cleanup is switched off entirely when any character is unloaded (archived); only the manual "delete unused" button removes assets then. What should the rewrite do?"
+- Option 1, "Run it, using a list (Recommended)": "Each character's index entry lists its asset files, so startup cleanup can run without opening unloaded characters. It also keeps any asset an older snapshot still needs. Adds roughly 0.4–1.4 MB to the index; if a list is ever wrong, cleanup keeps files rather than deleting them."
+- Option 2, "Manual button only": "Keep today's rule: no automatic asset cleanup when characters are unloaded. Smaller index, but orphaned images pile up on disk until you press the button."
+
+**The answer:** "Run it, using a list (Recommended)".
+
+**What was decided:** after the rewrite, the startup asset clean-up runs, using a per-character list of asset files recorded at save time; it also keeps any asset an older snapshot still needs. Not chosen: option 2.
+
+**Scope note:** where the list is stored (inside the shard entry or as its own unit) is a technical choice for the stage 1+3 plan, not part of the decision. The measured list sizes (ledger row 1742) make an own unit necessary (the orchestrator's reading, INFERRED). The option text's "roughly 0.4–1.4 MB" was the estimate before measurement; measured on this library, the lists as base64url stems sum to 7.84 MiB over the characters (ledger row 1742).
+
+**Notes that are not the maintainer's words:**
+- Today's startup asset sweep is switched off whenever any character is cold-stored: the `sweepAssets` condition in `src/ts/bootstrap.ts` (line 1185 onward) requires that no character has `coldstorage`, no asset sweep hold is set and no older main-file copy exists (orchestrator-verified; read by the records pass). This corrects the premise of Report 62 A5.4, which said the boot sweep reads every archived unit.
+- The measured sizes and the orchestrator's reading that the list must be its own unit are in ledger row 1742 (the reading is INFERRED).
+
 ### MC-300 — Unload-2 session, 2026-10-12: the stage-1c measurement code is kept, compiled out of normal builds
 
 - **Tag:** decision (`AskUserQuestion` answer, by option label)
