@@ -1,6 +1,6 @@
 # Report 62 — The A-lite storage rewrite: the consolidated Gate 1 plan (v3 applied) and its gate record
 
-**STATUS (2026-10-13):** **Gate 1 of this plan PASSED** (senior-advisor round 3 `[APPROVE]`; `opus-reviewer` round 3 `[APPROVE]` with four binding carry-forward items, C1 to C4). The maintainer approved the stage list and answered the plugin-storage, lazy-module and quota questions in round G1 (`MC-288`). **Stage 0a is next. No stage has started and no application code was written or reviewed.** This report is the plan, not an implementation record; nothing in it is verified by running code.
+**STATUS (2026-10-13):** **Gate 1 of this plan PASSED** (senior-advisor round 3 `[APPROVE]`; `opus-reviewer` round 3 `[APPROVE]` with four binding carry-forward items, C1 to C4). The maintainer approved the stage list and answered the plugin-storage, lazy-module and quota questions in round G1 (`MC-288`). **Stage 0a was next when this report was written; it is done (2026-10-13, branch `feat/alite`, not merged), see Part C. No later stage has started.** Parts A and B are the plan and its Gate 1 record, not an implementation record; nothing in them is verified by running code. Part C records stage 0a.
 
 This report is a dated snapshot written on 2026-10-13 against `main` at `f26e1e457` (pushed). It consolidates plan v2 with every v3 change applied, the binding items of the Gate 1 disposition, and the maintainer's answers of 2026-10-13 (`MC-286` to `MC-288`), so a reader needs no other plan file. It is a documentation draft by `doc-writer`; `doc-verifier` returned `[EDITORIAL]` on it (ledger row 1732: about 120 claims, 116 VERIFIED, 2 WRONG fixed, 2 cosmetic applied). The plan's own claims are not re-verified by running code.
 
@@ -595,6 +595,100 @@ These were accepted at Gate 1 and are not closed; each keeps its source label.
 
 ## B7. Next steps and owners
 
-1. Stage 0a (guarded Node routes, retire, capabilities): Gates: `opus-reviewer` (the plan names no Gate 1 / Gate 2 split); whether the stage needs a further stage-level plan before Gate 1 is not stated in the sources: TODO(evidence).
+1. Stage 0a (guarded Node routes, retire, capabilities): done 2026-10-13 on `feat/alite`, see Part C (a stage-level plan was written and passed its own Gate 1, rounds 1 and 2, before implementation). Gates: `opus-reviewer`.
 2. Stages 1+3: Gate 1 with a `senior-advisor` challenge; C2 and C4 bind it; Q-D is the maintainer's action.
 3. The independent `doc-verifier` pass of this report and of the records of this pass is done (ledger row 1732, `[EDITORIAL]`, fixes applied).
+
+---
+
+# Part C. Stage 0a outcome (2026-10-13)
+
+Appended after the sections above; those sections are not rewritten. Where they say stage 0a is next or not started (the STATUS line, A7, B7 item 1), this part supersedes them for stage 0a. The stage 1+3 and later text is unchanged. Provenance: the stage's plan, verdict and handback files are session scratch (`S` below = `C:\Users\yor42\AppData\Local\Temp\claude\C--Projects-RisuAI\7373226a-26bd-41e1-bd9d-31e3becc2524\scratchpad\storage\stage0a`), outside the repository. Statements below are labelled by who checked them: the orchestrator checked the Gate 1 round 2 conditions against the plan text, the Gate 2 fixes by diff, the commit, and the locale diff (one inserted line per file); everything else is the named agent's own claim (the implementer's handback, a reviewer's verdict) and has not been independently re-run by this record.
+
+## C1. Commit, branch and gates
+
+- **Commit:** `ebe3c77a9` ("Stage 0a: guarded Node storage routes for the A-lite rewrite") on branch `feat/alite`, worktree `C:\Projects\RisuAI\.claude\worktrees\alite`, on top of `e7bbb5a2d`. `git show --stat` (read by this record): 23 files changed, 2,685 insertions, 23 deletions. **Not merged to `main`; `main` is unchanged at `e7bbb5a2d`.**
+- **Gate 1, round 1:** `opus-reviewer`, `[REJECT]` (`S\gate1-verdict.md`): one blocking finding (B1) and seven should-fix findings (S1 to S7) against plan v1 of the stage (kept as `S\plan-v1.md`; the orchestrator's brief to round 2 named it as the reviewed plan). The reviewer's own scope note: B1 is the only blocking item, S1 to S7 are plan amendments, and a targeted remediation review is enough. B1 is the "headers lost in transit" case: with both check-only headers treated as an empty list, a proxy that drops them gets a 200 with the marker and a numeric revision for a request that was never check-only guarded.
+- **Gate 1, round 2:** `opus-reviewer`, `[APPROVE WITH CONDITIONS]` (`S\gate1-verdict-r2.md`), a targeted re-review of plan v2 (kept as `S\plan-v2.md`): B1 and S1 to S7 resolved; new findings N1 to N3 and recommendation C3; three conditions (N1 applied; N2 and N3 test wording corrected; C3 adopted or recorded as an accepted limitation). The orchestrator adopted C3 and checked the conditions against the plan text; the plan became v3 (`S\plan.md`). The reviewer stated its execution as one scratch probe plus source reading.
+- **Gate 2:** `opus-reviewer`, `[EDITORIAL]` (`S\gate2-verdict.md`): server and client match plan v3; the handler extraction is pure; no false-success path and no silent-data-loss path found. Three editorial findings, E1 to E3 (below), applied and checked by the orchestrator by diff. The reviewer's own runs: nine node-route test files 246/246 passed on the edited server; against the pinned old server `nodeRoutesUnchanged` 4/4 passed and `nodeRetire` 15/15 failed; a partial-append mutant killed 3/3; `pnpm check` 0 errors.
+- **Reject streak:** one `[REJECT]` on this stage's Gate 1, then an approve with conditions; the three-round rule was not approached.
+
+## C2. What was built (the implementer's handback, `S\impl\handback.md`; the commit stat is the orchestrator's)
+
+- **Server** (`server/node/server.cjs`, new `server/node/aliteKeys.cjs`): `/api/write-checked`, `/api/remove-checked` and `/api/caps`; the original `/api/write` and `/api/remove` become `handleWrite` and `handleRemove` with `guarded=false`. Guarded routes require the `check-only-count` and `retire-count` headers (a lost or altered list is a 400 with `code:'guarded-count'` before any lock or file work), compare check-only keys inside the global revision transaction, carry the `risu-storage-guarded: 1` marker and `Cache-Control: no-store`, and echo the enforced `checkOnly` (and `retired`) counts. `retire` is accepted only on `/api/remove-checked`, only for keys under the prefix `alite/` (plan decision D3), runs inside the file write locks after the removal and appends a `{k,d:1}` delete record; the revision-log parser is normalising and start-up replay honours delete records in log order. A failed retire append answers 500 with the revisions.
+- **Client** (`src/ts/storage/store/nodeHttpStore.ts`, `contract.ts`, `errors.ts`, `keyRules.ts`): an optional `guarded` surface on the Node byte store (`probe`, `writeChecked`, `removeChecked`, `retireChecked`), which never falls back to the unguarded routes and never follows redirects; new errors `ServerLacksCapabilityError`, `StoreCheckListTooLongError` and `StoreOutcomeUnknownError`; pre-flight limits of 60 check-only keys and 8000 header bytes.
+- **UI string:** `errors.storageServerNeedsUpdate` in all seven locales. The translator drafted the six non-English strings and the coder applied them verbatim, because the write guard limits translators to the main checkout. The orchestrator checked the locale diff: one inserted line per file.
+- **Tests:** five new test files and edits to four existing ones (list in the commit; handback line counts for the new files: `nodeGuardedRoutes` 491, `nodeRetire` 361 at hand-in and 378 after the Gate 2 test, `nodeRoutesUnchanged` 201, `nodeHttpStoreGuarded` 423, `nodeAliteKeyRule` 63, plus the `nodeGuardedProxy.ts` helper).
+- **Not built, by plan:** no consumer. The boot and per-GC-pass `probe` call sites belong to stage 1+3 (plan section 11, deviation 3), and no UI path parks on the new string yet.
+
+## C3. Design decisions taken at Gate 1
+
+1. **C3 count headers (the reviewer's recommendation C3, adopted by the orchestrator).** `check-only-count` and `retire-count` are mandatory on the guarded routes (`0` allowed), so a proxy that strips custom headers gets a 400 and nothing is applied. This prevents B1 instead of detecting it afterwards. Residual stated in plan risk 3b: the old routes share the same exposure for `if-match-revision` (see C8).
+2. **Echo kept as defence in depth.** The success body still echoes `checkOnly` and `retired`, and the client requires them to equal what it sent, so a rewriting intermediary is caught too. The echo alone detects only after the server applied the request; the count header is what prevents it.
+3. **`ServerLacksCapabilityError.mayHaveApplied` (reviewer's N1, adopted).** A boolean saying whether the request may have been applied: true for a refused 2xx, false for a 404, 405, 3xx, refused count list, or caps refusal. A `true` is handled like `StoreOutcomeUnknownError` (re-read the commit key; GC abandons the pass). The park string no longer says "Nothing was changed.".
+4. **`StoreOutcomeUnknownError`.** New error thrown only after the request was sent, for a connection reset after send. The reviewer accepted the name in round 2 (S6): `errors.ts` had no uncertain-outcome class, and the name matches the existing `'unknown'` vocabulary. A reset is never typed as list-too-long (mutant M-AL).
+5. **Retire placement (S2) and failure plumbing (S3).** Retire runs inside the `withFileWriteLocks` callback, after the removal loop; a retire-append error carries `committedRevisions` so the existing handler answers 500 with `revisions`; a fault marker that fires only on an append containing `"d":1` exercises it.
+
+## C4. Deviations from the plan (handback deviations 1 to 7, plus 8) and from the earlier report text
+
+The handback numbers eight items; items 1 to 7 are deviations from plan v3, item 8 records that no change was needed.
+
+1. Replay tests (c) and (d) were labelled green on the old server in the plan; with the snapshot values used they are red on old (the old parser reads the snapshot value 5 where 0 or 3 is expected), so they are new-behaviour tests. Test (d) also kills mutant M-AK.
+2. `mayHaveApplied` is always false for caps refusals, and false for a 2xx `text/html` answer without the marker (an HTML page is a front end's answer). Any other unmarked 2xx, and every refused marked 2xx, is true. The plan's flat "any refused 2xx is true" conflicted with its own html-200 expectation. Gate 2 accepted this, and named one residual outside the repository: an intermediary that forwards the request and then replaces the answer with a page (for example an `error_page` mapping a 502 or 504 to a 200 page) would be reported `mayHaveApplied: false` after the server applied it; bounded by the commit key's compare-and-swap, out of the threat model, same class as risk 3b. The Gate 2 fix E2 documents this.
+3. The scratch S0-16 `compare.js` SHA-256 pair was not re-run. The literal table of original-route answers captured from the pinned old server (`S\impl\g1-capture.json`, 25 requests plus the revision log) is asserted on the old and the new server instead. The original write temp-file failure path cannot be injected and stays review-only (Gate 2 read it).
+4. One test not in the plan: a 409 whose marker was lost is refused ("marker-lost conflict"), because no planned test killed mutant M-AD.
+5. `parseRetire` validates the `retire` header value before the count checks (a value other than `1` is a plain 400, not a count refusal).
+6. A guarded remove with no `file-path` is a 400; the original route answers 200 with `revisions:{}`. Only the guarded route changed. Gate 2 note: maps to `NodeHttpError(400)`; the client refuses an empty list before sending.
+7. The normalised record parser drops unknown extra fields of bump records (`{k,r,x}` becomes `{k,r}`); no such record is ever written.
+8. `nodeServerFixture.ts` needed no change.
+
+Plan section 11 (the earlier deviations from this report's stage 0a text, labelled E1 in the plan) lists seven items plus one added in v3; they stand as listed there: (1) the client "reproducer" is relabelled guards plus mutants (no pre-fix client exists); (2) the "26 red / 13 pass on both" split does not carry over to the new-route design, measured counts replace it (C5 below); (3) the boot and per-GC-pass `probe` call sites move to stage 1+3; (4) "numeric revision on every guarded response" applies to 2xx only (non-2xx guarded responses carry the marker, and `currentRevision` on a 409); (5) success bodies gain `checkOnly` and `retired`, and guarded responses and `/api/caps` carry `Cache-Control: no-store`; (6) a failing retire append answers 500 with `revisions`; (7) `GUARDED_HEADER_BYTES` is 8000; (8, v3) the C3 headers, `mayHaveApplied`, and the string text without "Nothing was changed.".
+
+## C5. Measured counts (the implementer's runs against a pinned copy of the old server at `e7bbb5a2d`, `sha256 AC785277...81B2` per the handback; Gate 2 re-ran two of them)
+
+This report asked that the records carry measured counts. Environment: Windows 11, Node, vitest 4.1.11, localhost on an i9-class machine; nothing ran on a phone or Pi.
+
+| Test file | On the old server | On the new server | Note |
+|---|---|---|---|
+| `nodeGuardedRoutes.test.ts` (51 tests) | 50 failed, 1 passed | all pass | failures are `expected 404 to be 200/400/409` and body mismatches, not import errors; the 1 pass is the both-servers controls test |
+| `nodeRetire.test.ts` (15 tests at that run) | 15 failed, 0 passed (Gate 2 re-ran: 15/15 red) | all pass | replay cases (a) to (d) fail for the real reason (old parser value), not a 404 |
+| `nodeRoutesUnchanged.test.ts` (4 tests) | 4 passed | 4 passed | guard, not a reproducer; also 4/4 on the unmodified worktree before the edit (Gate 2 re-ran it on the old server: 4/4) |
+| Client and conformance, six files, 164 tests | 12 failed, 152 passed | all pass | 4 conformance S14, 7 in `nodeHttpStoreGuarded`, 1 `nodeServerRoutes` bucket test; the proxy-mode refusal tests pass on old (a correct client refuses; guards) |
+
+- The new client against the real old server refuses with `ServerLacksCapabilityError` (observed 404) and never reaches `/api/write` or `/api/remove` (handback, from failure messages).
+- "Numeric revision on every guarded response" was measured as stated in plan section 11 item 4: it is asserted on 2xx responses only; non-2xx guarded responses are asserted to carry the marker.
+- A 400-key request with the pre-flight limits lifted: Node answered 431, which the client typed as `StoreCheckListTooLongError`, with exactly one request (printed diagnostic in the implementer's run; a reset would be `StoreOutcomeUnknownError`, which the plan requires the test to distinguish).
+
+## C6. Mutant results (handback; Gate 2 re-ran only the partial-append mutant and the old-server runs above)
+
+Server mutants (scratch copies; runs over `nodeGuardedRoutes`, `nodeRetire`, `nodeRoutesUnchanged`, `nodeHttpStoreGuarded`, 92 tests): M-S (version-1 parser) killed, 5 failed; M-T (map entry deleted, no `d:1`) killed, 4; M-U (`d:1` appended, entry kept) killed, 8; M-V (retire outside prefix accepted) killed, 1; M-W (retire before removal) killed, 2; M-X (retire without check-only) killed, 1; M-AE (unsorted locks) killed, 1 (the 120-concurrent test, by timeout; the plan did not assume it); M-AG (absent check-only skipped instead of 0) killed, 2; M-AK (raw object returned, `{k,d:1,r:5}` deletes) killed, 1; M-AM (retire append error without `committedRevisions`) killed, 1; M-AN (server ignores the count headers) killed, 22.
+
+Client mutants (applied to the repository file with a backup and sha256-verified restore; `nodeHttpStoreGuarded` plus `nodeHttpStore`, 122 tests, baseline 122 passed): M-Y (falls back to old routes) killed, 9; M-Z (trusts a bare 200 without the marker) killed, 6; M-AA (marker without numeric revision) killed, 1; M-AB (retire without prefix assertion) killed, 2; M-AC1 (resend after 431) killed, 2; M-AC2 (resend after reset) killed, 1 (the first run of the mutant script had a syntax error and ran no tests; fixed and rerun); M-AD (409 without marker read as a conflict) killed, 1 (test added during implementation, deviation 4); M-AH (ignores the echo) killed, 2; M-AJ (follows redirects) killed, 2; M-AL (reset or unsent failure typed as list-too-long) killed, 2; M-AO (client omits count headers) killed, 11; M-AP (refused 2xx reported as `mayHaveApplied` false) killed, 2.
+
+Gate 2 follow-up: M-AQ (only the first key's delete record appended) was killed, 2 failed of 94 (the new two-key test and the racing-batches test). Gate 2 found it killed only by the racing-batches test (3 of 3 runs) before that test was added, and recommended the deterministic two-key test, which was added.
+
+**Review-only (no deterministic black-box interleave):** M-AF (check-only keys not joined into the lock set) and M-AI (retire after the locks are released). Gate 2 confirmed both placements by reading. Gate 2 also named an equivalent mutant (echo computed from the count header instead of the parsed list; the server enforces count equals parsed length).
+
+## C7. Gate 2 editorial fixes, test results, hygiene
+
+- **Fixes (checked by the orchestrator by diff):** E1 adds a `NodeHttpError` bullet to the `GuardedOperations` failure list in `contract.ts` and the same sentence to the `StoreOutcomeUnknownError` doc in `errors.ts` (a 5xx or an intermediary's status after send may have applied; handle like `StoreOutcomeUnknownError`; 400, 401, 403 and 429 applied nothing); E2 rewords the HTML-page comment in `guardedRequest` and the `ServerLacksCapabilityError` doc (see C4 item 2); E3 narrows the downgrade note in `server.cjs` to "may bring retired keys back (while the log still holds their bump records)". Plus the optional deterministic test (retire two keys, restart, both read 0 and neither is in the snapshot).
+- **Full `pnpm test` on the final snapshot** (`S\impl\full-test.txt`, exit 1): 712 files, 710 passed, 2 failed; 14,163 tests, 14,155 passed, 2 failed, 6 skipped. Both failures were 5 s timeouts under full-suite load: `assetFacade.test.ts` (a Tauri `saveAsset` reproducer) and `assetPieceSave.test.ts` (a `saveAsset` without `crypto.subtle` reproducer). The implementer's claim: both files pass alone (75/75 each, run twice), and neither imports a module this stage changed (grep: no `nodeHttpStore`, `nodeServerFixture`, `keyRules` or guarded); the `assetPieceSave` timeout matches the known flakiness item (CHORE-152 in the ledger and Roadmap). **Not re-run on `main`**; the evidence that they are load-sensitive rather than caused by 0a is the isolated passes and the absence of a shared import, not a before-and-after comparison.
+- **`pnpm check`:** 0 errors, 0 warnings on the final snapshot (implementer's run; Gate 2 also ran it).
+- **Hygiene:** per the handback and Gate 2, touched files are CRLF with equal CR and LF counts and no BOM; `node --check server/node/server.cjs` exit 0; no `any`.
+- **Known leftover:** the worktree shows `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` as modified, line endings only (vitest rewrote it; `git status --short` in the worktree read by this record). Left untouched and not part of the commit.
+
+## C8. Carried to stage 1+3 and later (binding inputs from plan section 12 and the Gate 2 notes)
+
+- **Risk 3b, restated (Gate 2 N1; the stage 1+3 plan must restate it):** a proxy that strips `if-match-revision` turns the own-key condition into an unconditional one. The count headers and the echo do not cover it. Pre-existing on the old routes; out of scope for 0a.
+- **Every commit-key write goes through `writeChecked`** (plan section 12, stage 1), including the recovery marker CAS and the abandon-clear, never the plain `write`; otherwise a marker could land on an old server before the guarded final CAS is refused.
+- **The commit key lives outside `alite/`** (plan section 12, S7, binding for the stage 1+3 freeze), or the server's retire check is extended to refuse it by name. Retirable means never rewritten.
+- **Probe call sites:** stage 1+3 names the boot and per-GC-pass `probe` call sites; GC handles `StoreOutcomeUnknownError` by abandoning the pass, and `StoreCheckListTooLongError` by switching to the bulk path where one exists. A `ServerLacksCapabilityError` with `mayHaveApplied: true` is handled like `StoreOutcomeUnknownError`.
+- **Prefix name:** `alite/` is the plan's pick (D3). If the maintainer prefers a neutral name, it must be decided before the stage 1+3 freeze.
+
+## C9. Open items
+
+- **Merge:** `feat/alite` (`ebe3c77a9`) is not merged to `main`. When it merges is the maintainer's call; the timing is not stated in the sources given to this record (the orchestrator relays that the branch decision says at the latest after 4a+4b): TODO(evidence).
+- **Express ETag note (implementer's):** the literal table's ETag values are Express weak ETags of the JSON bodies; a different Express major could change them.
+- **Not exercised:** the old write temp-file failure path (review-only); M-AF and M-AI (review-only); nothing ran on a phone, a Pi or against a reverse proxy; the proxy modes are stubs.
+- **Stage 1+3 Gate 1 preparation (not started):** Q-D real-size run (maintainer action, size-report script being written), the P10 two-tab plain-HTTP probe, re-verification of S0-8 and S0-5b, and the E1-1 model extension (see B4, B5, A6).
+- **Records:** this part was verified by `doc-verifier` `a76804465aa082c3d`: `[EDITORIAL]`, about 95 claims in 11 groups, 9 groups confirmed; two fixes applied (ledger row 1739 cell split, the C3 cross-reference to C8); 95k tokens (ledger row 1740).
