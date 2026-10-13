@@ -1,0 +1,592 @@
+# A-lite stages 1+3: the format build candidate. Gate 1 plan v3.4
+
+## Changes from v3.3 (orchestrator, from `review-opus-r3\conditions-check-2.md`)
+
+| # | Change | Source |
+|---|---|---|
+| J1 | Node per-batch fence check-only entry carries the revision from the pass-start fence read, absent included; the "absent compares as revision 0" claim is corrected; new test and mutant "absent fence checked at revision 0" | D1 (N1 partial) |
+| J2 | `priorFences?` added to the `FenceRecord` interface (vector F5 depends on it) | E1 |
+
+Draft by `investigator`, 2026-10-14, text amendment of `stage13\plan-v3.2.md` after the incremental conditions check on v3.2 (`opus-reviewer` `[APPROVE WITH CONDITIONS]`, `review-opus-r3\conditions-check.md`: C11 and C13 partial, new items N1 to N5, recommendation R-a). Documentation draft, not an implementation record. Nothing here ran as code except what the cited scratch results ran. Submitted for the targeted check of those items only.
+
+**Bases.** `main` at `cd426f6ac` (read-only). Worktree `C:\Projects\RisuAI\.claude\worktrees\alite`, `feat/alite`, stage 0a commit `ebe3c77a9`. `W:` = that worktree, `M:` = `main`. Rust, `tauriDurableWrite.ts`, `tauriByteTransport.ts`, `bootstrap.ts`, `globalApi.svelte.ts` identical on both.
+
+**Labels.** TRACED = read in source (by me, or in an earlier plan version). REVIEWER-READ = the reviewer's reading, cited from a review file, not reopened by me. MEASURED = a cited scratch result that ran. EXECUTED = a model run or scratch script. INFERRED / REASONED = reasoned, not run. TODO(evidence) = not found or not measured. AUTHOR-ONLY = a run by the author that the verifier did not repeat.
+
+**Names.** `store2/` prefix; top-level keys `store2-commit`, `store2-sweep` and (new) `store2-fence`. Library directory `src/ts/storage/store2/`. Stage 0a identifiers (`ALITE_PREFIX`, `isAliteKey`, `aliteKeys.cjs`) keep their spelling in citations until P0a.
+
+**Format-level conditions C1, C2, C3 are closed in this version (3.4c, 3.8d, 3.8c "Version rule"), before step 1a writes golden vectors.**
+
+---
+
+## Changes from v3.2 (each mapped to an item of `review-opus-r3\conditions-check.md`)
+
+| # | Change | Item |
+|---|---|---|
+| H1 | **Node never deletes an item whose `rev` is null.** At most 500 candidates (the HEAD cap) enter the record per Node pass and every recorded item has a non-null `rev`. X13 corrected: Node closes the re-save race for every recorded item; the cost is slow convergence on very large orphan sets (disclosed; P0b `&revisions=1` option) | **C11** / O1 |
+| H2 | Census row 2 corrected: `bootstrap.ts:1346` is inside the web/Node `remotes/` loop opened at `:1307` (READ this pass, `:1307-1349`): **Disabled** and added to the guard's mutant rows (now rows 2 to 10, 15) | **C13** / O2 |
+| H3 | A2.4a exemption timing corrected: it resumes at a normal boot after the commit key exists (Report 62 line 279) under the persisted key-list snapshot; the exemption covers the initial and the resumed run | **C13** / O2 |
+| H4 | Row 19 gains the legacy adapter primitives `nodeStorage.ts:238`, `autoStorage.ts:56`, `opfsStorage.ts:67`; row 4 notes the delete sits inside the reader `getDbBackups()` and the guard calls it | **C13** / O2 |
+| H5 | Row 16 re-read myself: `sweepAtomicWriteTemps` (`tauriAtomicWrite.ts:146-166`) skips every entry not matching `ATOMIC_TEMP_NAME_PATTERN` (`:154-156`) before `appFsRemove` at `:158`; `:82` is `removeQuietly` of a write's own temp (`:80-86`). **Confirmed: own temps only** | **C13** / O2 |
+| H6 | **Per-batch atomic check includes the fence version** (Node check-only on `store2-fence`, IndexedDB in-transaction read, Tauri under the mutex); the claim that no per-batch fence check is needed is removed; why it was false (Node silent damage, row 6) is stated | **N1** / O3 |
+| H7 | **Exit over an unparsable fence:** `keys` = the full listing, damaged bytes kept in `priorFences`; discard of an unparsable fence is a CAS delete at its revision or bytes; boot notice; vectors F5, F6 and a mutant, in 3.4c | **N2** / O4 |
+| H8 | Fence **version** per batch; body read once per pass and again only when the version changes; cost on Node stated (check-only is free, body read is a whole-file server read, megabytes) | **N3** / O6 |
+| H9 | **Tauri:** the exit waits for the fence write to report `flushed` before its marker CAS; the boot re-flush includes `store2-fence`; mutant | **N4** / O5 |
+| H10 | Candidates are **lower-cased before the type 21 `u` lookup**; test and mutant | **N5** / O6 |
+| H11 | The clause making every derived-list version bump Tier 2 is dropped: a bump is Tier 1 with refusal (3.1a, 3.8c) | **R-a** |
+| H12 | Section 7.4 added (tests and mutants for the above); Section 10 updated (fence vectors F1 to F6 in the 1a vectors; V1 gains the N1 window; unmeasured IDB per-batch fence cost; Node cap) | all |
+
+Unchanged from v3.2 (accepted by the conditions check): C1 to C10 and C12 as closed there, the type 21 body, the `store2-fence` frame and readers, the version rule, the boot table, S1 and S2.
+
+---
+
+## Changes from v3.1 (carried from v3.2)
+
+| # | Change | Condition / finding |
+|---|---|---|
+| G1 | **Fence moved out of the commit key** into its own top-level key `store2-fence` (outside `store2/`, never retired, never GC'd). Recovery and restore never write it. The `fence` field and the "every writer copies `fence`" rule are removed from the commit key and the manifest. Own frame (type 23). Readers: GC, sweeps, inlay cleanup, manual cleanup read it; **unparsable, too-new or unreadable = fenced, delete nothing**. Discard is a CAS delete from Settings. Golden vectors, V1 case, mutants. Corrects the sentence "only the Settings action clears" | **C1** / finding 1 (option b), ruling F1 |
+| G2 | **U13:** every recovery-screen exit (pick a candidate, re-conversion, `.bin` import, fresh start) writes or extends the fence **before** its marker CAS, so pre-existing data stays untouched until "discard old data". Applies to picking a candidate too | **C12** / findings 8, 11; maintainer U13 |
+| G3 | The fence record keeps the **prior commit key's bytes verbatim** (`priorCommit`), appended on every exit | **C12** / finding 8; ruling F8 |
+| G4 | Recovery screen: re-conversion (if the old files exist) and `.bin` import are **always offered**; "start a new empty profile" is offered while no candidate has passed validation in this session; a too-new candidate or key makes the screen read-only | **C5** / finding 2; ruling F2 |
+| G5 | **Type 21 (inlay list) body defined:** `{ v, u, h, o, x }` (uuids, asset hashes, other-shaped token ids, overflow flag), matching `IdMatcher` (`inlayCleanup.ts:229-279`); no silent cap; overflow marks the owner unknown so everything is kept; other-shaped candidates are deleted only when every owner is resident | **C2** / finding 4; ruling F4 |
+| G6 | **Version rule:** a derived list or unit whose `v` / `iv` is above this build's known version is unreadable; the pass reports incomplete and deletes nothing. Vector and mutant | **C3** / finding 5; ruling F5 |
+| G7 | S1 evidence relabelled **REASONED**: the model's candidate set is a superset with no standing-prefix exclusion, and no finished refuse run had a bulk. **V4** added to the pre-freeze variants | **C4** / finding 3; ruling F3 |
+| G8 | `seed` always re-runs after a crash (it needs no source); boot row 10 applies to `convert` only; a crashed fresh start resumes | **C6** / finding 9; ruling F9 |
+| G9 | A zero count is confirmed by a re-filtered `listStore2()` before any seed or conversion | **C7** / finding 13; ruling F13 |
+| G10 | Recovery-screen exits replace another tab's marker only through the foreign-clear path; a second fresh start writes a **superset** fence by CAS; mutant "fence replaced by a smaller list" | **C8** / finding 10; ruling F10 |
+| G11 | `refsOf` mutants generated from the schema table, including `fixed.config`, `statics`, `order`, `loadouts`, `moduleIndex` and the mark roots `current.key` / `retained[].key` / `pins[].key` | **C9** / finding 14; ruling F14 |
+| G12 | Sweep record more than **10 minutes** in the future (server time on Node) is treated as absent: replaced, nothing deleted | **C10** / finding 7; ruling F7 |
+| G13 | Guarded removes go **per asset with drop-and-retry**; a commit-key 409 is told apart from an asset 409; cost of the recording-pass HEAD stated (it reads the whole file); cap per pass; a cheaper revisions mode is listed as a P0b option | **C11** / finding 12; ruling F12 |
+| G14 | Binding 4a item covers **every profile opened by an A-lite build**, exempts the A2.4a cutover deletion, and carries the **call-site census** I ran with Grep (Section 3.8e), including `mainFileRename.ts`, `supersededUnits.ts` / `deleteColdStorageUnits`, `blockStore.ts` | **C13** / finding 6; ruling F6 |
+| G15 | Format hygiene: chunk tuple becomes `[tail, bytes, crc, count]`; empty chat defined; staged manifest key carries time digits `g-<stg16>-m<t7><r9>` (43 bytes, orders without body reads); manual-cleanup age rule; first-press button string note; `convertedFrom`/`convertedAt` status | findings 15, 16; ruling F15-F17 |
+| G16 | Editorial: header, X9 (round 3, not "second consecutive"), Section 6 "exactly" removed, fence-clear sentence corrected | finding 17 |
+| G17 | Section 10 rebuilt so MC-290 contents (U1 to U3, U7 to U13, U3 ruling, "refuse to open" equivalence, inlays in the legacy unit, fence suspension), measurements, freeze preconditions, stage 2 Gate 2 model work and later traces are all listed | coordinator brief |
+
+Unchanged from v3.1 and accepted by the reviewer (no text change except where above): S1 (staged manifests as candidates, no promotion commit), S2 (no `cx`), codec/type/reserved too-new, the 11-row boot table (with the changes above), the sweep record rule (with G12), `ModuleEntry.il` and `fixed.il`, the legacy unit, Node first-life revision, content-addressed re-save disclosure.
+
+---
+
+## 0. Refuted or corrected premises (read first)
+
+Carried from v3.1 with R-numbers; R1 to R22 unchanged unless noted. Table kept in full.
+
+| # | Premise | Finding | Label | Consequence |
+|---|---|---|---|---|
+| R1 | Flush status is a `write_durable` change | Three Rust paths flush directories best-effort: `M:src-tauri/src/durable_write.rs:269-280`, `M:src-tauri/src/chunked_io.rs:130-140`, `:176-180`, `M:src-tauri/src/asset_batch.rs:470-514` (`Outcome` `:59-73`). Android always chunks (`M:src/ts/storage/tauriByteTransport.ts:35`, `:110-113`, `:265-270`; `M:src-tauri/src/lib.rs:91-108`). `chunked_io.rs:152-158`: existing final key returns `Ok` with no flush; only piecewise asset saves pass `finalKey` (`tauriByteTransport.ts:185-192`, `:321-334`, REVIEWER-READ) | TRACED | L1 covers all three (4.5); `flushed = false` on the existing-final-key path |
+| R2 | `statics` has one writer | Two (`M:src/ts/process/index.svelte.ts:658`, `M:src/ts/characterCards.ts:267`) | TRACED | Own unit |
+| R3 | IndexedDB `list` is cheap | Whole-store cursor (`W:src/ts/storage/store/indexedDbStore.ts:367-370`, `has` `:372-375`); 56,365 ms at 386,850 keys vs 55 to 62 ms ranged (`remeasure\results.md` 86 to 87) | MEASURED | L2 |
+| R4 | A Node list is cheap | `/api/list` reads and decodes the whole folder (`W:server/node/server.cjs:1901-1925`); i9: p50 1.2 to 2.2 s, p95 3.2 to 3.6 s, 30,022,602 B, parse 127 to 206 ms, RSS 70 to 72 MB idle, 312 to 315 MB after one list, 658 to 713 MB after 30 (`nodelist\results.md`); bimodal; `readdir` p50 610 ms | MEASURED (raw packet, i9) | Prefix route + count (4.3); U9 limit |
+| R5 | A2 "under 60 ms" | p95 31.2 ms, 6/2,000 over 60 ms, max 93.2 ms (`results.md` 26 to 58) | MEASURED | A2 reads p95, maximum reported |
+| R6 | P5 "4 keys" | Only with per-send fields outside the root; 5 when an append adds an inlay id | MEASURED / INFERRED | 3.10 |
+| R7 | P6 "mark under 1 s" | Only with 8-concurrent or batched reads (`results.md` 72 to 74, 89 to 92) | MEASURED | Parallel mark reads |
+| R8 | Manifest lists modules and flat plugin storage | Per-commit tax | INFERRED | Module index, 16 buckets |
+| R9 | Asset list can sit in the shard entry | 783 KB / 964 KB largest; 7.84 MiB / 10.4 MB summed (ledger row 1742) | MEASURED | Own units |
+| R10 | Sweep can run after conversion while old files remain | Today's gate (`M:src/ts/bootstrap.ts:1185-1187`; `M:src/ts/storage/bootBlockLoad.ts:536-546`) | TRACED | Legacy unit |
+| R11 | Recovery window with `current` unnamed is harmless | F1 confirmed, 9 and 11 steps | EXECUTED | Refuse |
+| R12 | Keep-set safe under null `current` | Empty keep-set deletes all assets | REASONED | Refuse covers all deleters |
+| R13 | Tauri flush flag may be in-process | 27-step I1 violation with the flag lost (253,442 states) | EXECUTED | Re-flush on every load |
+| R14 | IDB in-transaction GC check never matters | True only under base and refuse | EXECUTED | Check stays |
+| R15 | `rec`/`cur` existence check fits K=60 | It does not | REASONED | Not adopted |
+| R16 | Commit key absence is covered by "parses / unparsable" | Not covered (REVIEWER-READ; model starts from committed `m/0`, `e1-1\model.mjs:98-105`) | REVIEWER-READ | 3.4b |
+| R17 | Too-new `fmt` is handled | Unknown codec / reserved / type were "damaged" (round 2) | REASONED | 3.3 classification |
+| R18 | Inlay clean-up not wired | Wired: `bootstrap.ts:1121`; `inlayCleanup.ts:640-685`; roots from `character.coldstorage` (`:569-577`); absent root unit is `settled` (`:536-539`). Keep rule: `IdMatcher` (`:229-279`) keeps a uuid on any uuid occurrence (`:262-267`), an asset-path id on its hash (`:269-273`), any other shape on a plain substring (`:274-278`); `UnitCollector` (`:300-323`) records uuids and asset hashes and gives up past `MAX_UNIT_IDS = 4096` (`:52`, `:319-321`); token ids are `.+?` (`M:src/ts/util/inlayTokens.ts:3`) (REVIEWER-READ) | REVIEWER-READ | 3.8d |
+| R19 | Sweep `h` regex covers asset names | Upper-case extensions, custom ids (`M:src/ts/globalApi.svelte.ts:569-582`, `:601`); web/Node compare exactly (`assetSweep.ts:130-133`, `:152`), Tauri lower-cases (`:91-105`) (REVIEWER-READ) | REVIEWER-READ | `assetRefKey` |
+| R20 | Legacy deleters harmless on a converted profile | `remotes/` cleanup, `manualCleanup`, `mainFileRename`, `supersededUnits`, `blockStore` delete keys named only by old backups; census in 3.8e | TRACED (Grep) + REVIEWER-READ | 3.8e |
+| R21 | Hard-coded `ifVersion: 0` creates the commit key | Revision is bumped before content is written (`W:server.cjs:1981-2016`, `:1544-1558`, REVIEWER-READ) | REVIEWER-READ | First-life create uses the observed revision |
+| R22 | Age record protects every uncommitted asset | Content-addressed re-save (`M:globalApi.svelte.ts:568-594`, REVIEWER-READ) | REVIEWER-READ | Disclosed; Node closes it |
+| R23 (new) | The fence can live in the commit key | Recovery from a damaged commit key cannot copy a field it cannot read: a second damage event after a fresh start would drop the fence and let GC delete the data U12 keeps (round 3 finding 1, REASONED) | REASONED | `store2-fence` (3.4c) |
+| R24 (new) | The recovery screen's exits are needed only at zero candidates | If every candidate fails its tree read the user is stuck, and `.bin` import (MC-223 upstream-to-fork) is unreachable while any candidate exists (finding 2, REASONED) | REASONED | 3.4b screen |
+| R25 (new) | A count of zero proves no `store2/` key | A count cannot be re-filtered; a wrong zero seeds over data (finding 13, REASONED) | REASONED | Confirm by list |
+| R26 (new) | "Derived by the existing collector" equals today's keep rule | The collector caps at 4096 ids and lacks other-shaped ids (R18) | REVIEWER-READ | Type 21 body (3.8d) |
+
+---
+
+## P0. Prerequisites before stage 1 starts (stage 0a follow-ups on `feat/alite`)
+
+Total 500 to 900 lines (INFERRED). Each has its own Gate 2 (`opus-reviewer`).
+
+- **P0a.** (i) Rename the prefix rule: `ALITE_PREFIX` / `isAliteKey` (`W:keyRules.ts:44-49`), `server/node/aliteKeys.cjs:5` and its use at `W:server.cjs:459`, and tests; new value `store2/`. (ii) Capability check: `W:nodeHttpStore.ts:523-527` rejects an answer that is not exactly three booleans; new rule: marker present, `checkOnly`, `retire`, `pieces` present and boolean, unknown keys ignored; tests with an extra and a missing flag. Must land before the server advertises `listPrefix`.
+- **P0b.** Own-condition marker for risk 3b: guarded write and remove routes require a header stating whether an own `if-match-revision` is present, 400 on mismatch, echoed, checked by the client. **P0b option (G13):** a revisions mode (`&revisions=1`) on the new list route, returning the in-memory revision of each listed key without reading file content; see 3.8c. It is an extension of the U3 route and needs MC-290 to cover it.
+- Both merge into `feat/alite` before step 1a. `/api/list-prefix` (4.3) is stage 1b work after P0a.
+- Not P0 items: Node `Date` header time (EXECUTED by the reviewer: Express 4.22.3 answers GET and HEAD with `date`, `x-risu-revision`, and a 404 also carries `date`) and the per-key `if-match-revision` on guarded remove (`W:nodeHttpStore.ts:462-508`, `W:server.cjs:1656`, `:1724-1766`). Behind nginx `Date` is nginx's own (INFERRED); it is still one clock for every device.
+
+---
+
+## 1. Problem, scope, decisions
+
+**Problem.** Stages 1+3 fix the stored format and build the protocol library, the three adapters and the codec, all unwired (Report 62 A2).
+
+**Freeze point.** Step 1a (`format/`) makes `fmt = 1` a **build candidate**; declared frozen at the stage 3 gate after: (i) the maintainer-run counts-only real-data census (8.3, including the inlay collector's scope and per-owner counts); (ii) model variants **V1 to V4** (Section 6). Amendment path before the declaration (3.1b): through `feat/alite`, updated golden vectors, one `opus-reviewer` round; no Gate 1 reopen unless a safety property is removed.
+
+**Decisions followed.** `MC-130` 1 to 4, `MC-132` 1 to 3, `MC-282` 3 and 5, `MC-283` 3 to 6, `MC-284` 1 to 3, `MC-286`, `MC-287`, `MC-288` 2 and 4, `MC-289` (amended by U9), `MC-011`, `MC-175`, `MC-223`. **MC-290 (pending record), contents:** U1 keep old files' assets; U2 names; U3 prefix list route (condition met, and the ruling: route, client fallback and re-filter, caps flag); U7 "ask again"; U8 shared live folder unsupported; U9 automatic sweep below a file-count limit; U10 newer format read-only + notice (for an unparseable `fmt` or unknown codec this equals the unchosen option "Refuse to open"); U11 keep inlays used by retained or pinned manifests; U12 fresh start behind a confirmation, damaged data untouched; **U13** every recovery-screen exit keeps the pre-existing data untouched until "discard old data".
+
+**Invariant I1 (restated).** Whenever the commit key names a `current`, that manifest, the retained and pinned manifests and every unit they name exist. While the commit key is **absent, unparsable, too-new or names no `current`**, nothing is deleted by any deleter (3.8c) and no ordinary commit, restore, pin or save-mine runs. **A key listed in a parsable `store2-fence` is never deleted; if `store2-fence` is unparsable, too-new or unreadable, no deleter deletes anything (3.4c).**
+
+---
+
+## 2. Premises, current status
+
+| # | Premise | Status | Evidence | If wrong |
+|---|---|---|---|---|
+| P1 | Byte-stable re-encode | VERIFIED small / T3 subset; T4 and 50-cycle AUTHOR-ONLY; no real-data run | Report 62 A1.3 | Census precondition |
+| P2 | Protocol safety | PARTIAL: E1-1 green at `faultCap=1` for the modelled sets (Section 6) | `verify.md` | V1 to V4 |
+| P3 | Additive server; positive marker | VERIFIED, implemented (0a) | `W:server.cjs:1890-1893`, `:2084`; `W:nodeHttpStore.ts:510-576` | — |
+| P4 | Retire keeps table at live count | Implemented | `W:aliteKeys.cjs:5` | — |
+| P5 | Append 4 keys, under 256 KiB, under 60 ms | **Re-measured, CONFIRMED with conditions** (R5, R6) | `results.md` 54 to 59 | 3.10 |
+| P6 | 16-shard mark under 1 s | **Re-measured, PARTIAL** (R7) | `results.md` 89 to 92 | 4.2, L2 |
+| P7 | Entity id shape | Dropped as a refusal: the converter mints `u` | advisor 6 | — |
+| P10 | IDB read-write transactions do not interleave across tabs | **Re-measured, CONFIRMED on plain HTTP**: desktop Chrome 155 86,180 transactions, Note 9 Chrome 154 22,691, zero interleaving, zero duplicate winners | `results.md` 101 to 115 | Adapter-only fallback. Hidden Android tab stopped completing callbacks after about a minute (`results.md` 118); frozen tab holding a transaction unobserved (X2) |
+| P12 | K about 60 | Node only; 64 to 66 measured | S0-16 | Pre-flight 60 keys / 8000 bytes (`W:nodeHttpStore.ts:58-71`, `:448-453`) |
+
+---
+
+## 3. The format (build candidate at 1a; frozen at the stage 3 gate)
+
+### 3.1 Evolution
+
+**3.1a Three tiers.**
+1. **Tier 1, harmless additive:** a new optional JSON field or trailing tuple element an older reader may ignore without risk. A Tier 1 field must stay correct, or be detectably stale, after any change by an older writer; otherwise it is Tier 2. Readers ignore unknown fields. **Writers copy unknown fields of every non-derived object at every level** (commit key, manifest including `fixed.*`, shard top level and entries, chat entries, module-index entries, the fence record); a writer that drops one is a defect, tested.
+2. **Tier 2, load-bearing additive:** anything a *deleter* must understand to avoid deleting live data: a new Ref position, a new asset- or inlay-bearing field, a new unit type that names other units (including a future chunk-index unit `cx`), a new `codec` or `type` value. The writer adds a token to `req` on the manifest and the commit key. An older build sees the unknown token: too-new. **A bump of a derived list's version (`v`, `iv`) is not Tier 2: it is Tier 1 with refusal** (v3.3): the version rule in 3.8c makes an older build treat a list with a higher version as unreadable and delete nothing, which is already safe; making it too-new would only cost availability.
+3. **Tier 3, format change:** rename, remove or re-meaning a field; key grammar, frame layout, CRC or hash rule, commit-key compare rule, Ref meaning; `fmt` bump; Gate 1 reopen after the declaration.
+Writer parameters are not format: chunk cap, shard and bucket counts, retention depth, which chat fields live in `core` or `st`.
+
+**3.1b Amendment path before the declaration.** Through `feat/alite`, update the golden vectors in `format/`, one `opus-reviewer` round, dated amendment. Not allowed without a Gate 1 reopen: removing a safety property (refuse list, `req`, `store2-fence`, key location outside the prefix).
+
+**3.1c Positional tuples.** Readers accept longer tuples and ignore trailing elements; new elements only appended; a trailing element a deleter needs is Tier 2. **Every Ref-bearing tuple begins with the Ref prefix `[tail, bytes, crc]`** (G15), so a generic Ref reader never mistakes a trailing field for `bytes`.
+
+### 3.2 Key grammar (lowercase only)
+
+- Prefix `store2/`, flat leaves. `store2-commit`, `store2-sweep` and `store2-fence` at top level, outside the prefix (retire is scoped to `store2/` after P0a; a retired key reads revision 0, which a CAS cannot tell from a first life: comment `W:keyRules.ts:33-43`). No key `store2` exists.
+- Ordinary keys `store2/<kind>-<id>`, `kind` in `m`, `s`, `u`. Alphabet **`0-9a-v`** (ordinal order equals numeric order).
+  - `m-<t7><r19>`: `t7` creation time in whole seconds, 7 digits big endian; `r19` random.
+  - `s-<r26>`, `u-<r26>`: 26 digits from 16 `crypto.getRandomValues` bytes.
+- Staged (bulk) keys `store2/g-<stg16>-<k><r16>` for `k` in `s|u`, and **`store2/g-<stg16>-m<t7><r9>` for manifests** (G15: time digits in the key, so staged manifests order without body reads, and recovery's "recognisable by key form without body reads" holds). `staging.prefix = store2/g-<stg16>-`.
+- Lengths: ordinary 35, staged 43 in both shapes (7 + 2 + 16 + 1 + 1 + 16, and 7 + 2 + 16 + 1 + 1 + 7 + 9). EXECUTED by the reviewer (`keycheck.mjs`): ordering and ordinary/staged lengths; `t7` reaches about the year 3058. 60 check-only entries are about 5.9 KB of the 8000-byte budget (INFERRED from `nodeHttpStore.ts:58-71`, `:448-453`). A test asserts every generated key is at most 48 bytes.
+- **Recovery candidates:** `^store2/m-` and completed staged manifests `^store2/g-<stg16>-m`, excluding any key under the **standing** `staging.prefix` of a parsed commit key. With an unparsable commit key no standing prefix is known, so all staged manifests are candidates; the read-only tree read validates a pick and fails loudly on a missing unit. Newest first by the time digits of either shape. No promotion commit exists.
+
+### 3.3 Frame
+
+```
+0  4  magic "RSAL"   4  1 fmt = 1   5  1 type   6  1 codec = 0 (UTF-8 JSON)   7  1 reserved = 0
+8  4  payload length u32 LE   12 4 CRC32 of bytes 0..11 u32 LE   16 n payload   16+n 4 CRC32 of payload u32 LE
+```
+CRC32 as `W:src/ts/storage/blockFrame.ts:35`; layout mirrors `blockFrame.ts:1-14`. Deterministic JSON payload. No compression in v1.
+
+**Classification.** A frame whose magic and header CRC are valid but whose `fmt` is above 1, or whose `codec`, `reserved` or `type` byte is outside this build's known set, is **too-new**, never damaged (boot, mark, recovery listing, load). Only a bad magic or a failed CRC is damaged.
+
+A **Ref** is `[tail, bytes, crc]`: `tail` = key without `store2/`; `bytes` = the stored (framed) length; `crc` = the stored payload CRC; with `codec != 0` they describe the stored bytes.
+
+Unit types: 1 commit, 2 manifest, 3 shard, 4 character core, 5 lore, 6 scripts, 7 chat core, 8 chat chunk, 9 module, 10 module index, 11 config root, 12 preset, 13 plugin, 14 plugin-storage value, 15 asset list, 16 order, 17 loadouts, 18 statics, 19 plugin-storage bucket, 20 legacy list, 21 inlay list, 22 sweep record, **23 fence record**.
+
+**`format/refsOf.ts`.** One schema table maps every unit type to its Ref positions; `refsOf(type, body)` is used by GC mark, recovery, keep-set walks and codec validation. A guard walks the table against the interfaces here; **mutants are generated from the table, one per row** (G11), covering at least: commit key `current.key`, `retained[].key`, `pins[].key`; manifest `shards[]`, `fixed.config`, `configAl`, `il`, `statics`, `order`, `loadouts`, `moduleIndex`, `presets[]`, `plugins[]`, `pluginStorage.refs[]`, `legacyKeep.unit`; shard `core`, `lore`, `scripts`, `al`, `il`, chat `core`, `chunks[]`; module index `unit`, `al`, `il`; bucket-body value refs. (The fence record names keys inline and has no Ref positions.)
+
+`assetRefKey(name)`: lower-cases the basename; for `<64 hex>.<ext>` in any case returns the hash stem; used by derivation and every sweep.
+
+### 3.4 Commit key `store2-commit` (type 1)
+
+```ts
+interface CommitKey {
+  fmt: 1
+  req: string[]                 // empty in v1; writers copy the union, never remove
+  seq: number
+  epoch: string                 // 26 digits (0-9a-v) from 16 CSPRNG bytes; new on every logical write
+  current:  null | { key: string, at: number }
+  retained: { key: string, at: number }[]        // at most 20, newest first
+  pins:     { key: string, reason: string }[]
+  staging:  null | { owner: string, prefix: string, startedAt: number, label: StagingLabel }
+  convertedFrom: null | string
+  convertedAt:   null | number
+}
+type StagingLabel = 'convert' | 'seed' | 'import' | 'restore' | 'recovery' | 'bulk'
+```
+- No `fence` field (G1). `req` of the commit key is the union of its writer's needs and the `req` of every manifest it names.
+- `current: null` is valid; written by recovery, conversion and seed markers (first life) and by any clear of such a marker (writes back exactly what it read; never synthesises a `current`).
+- Every logical write sets `seq` = base + 1 and a fresh `epoch`. Off Node the CAS compares full bytes (`W:headSwap.ts:89`; template `W:indexedDbStore.ts:504-557`); on Node `ifVersion` through `guarded.writeChecked` (`W:contract.ts:221`), none through `write`.
+- **First life.** The first write is a create using **the revision returned with the absence read** (normally 0; N > 0 after a server crash between revision bump and content write, R21): Node `ifVersion: <that revision>`; IndexedDB `add` in the transaction; Tauri under the mutex after an absence check. Test "absent, revision 1".
+- `owner` per-page-load random id (Tauri persists one). `convertedFrom` / `convertedAt` are copied into every write. **Nothing load-bearing is known to read them** (not traced: TODO(evidence)); recovery from a damaged key loses them. If the 4a trace finds no reader they are Tier 1.
+- **Golden vectors, commit key:** (1) non-null current, `req: []`; (2) null current, label `recovery`; (3) null current, label `convert`; (4) null current, `staging: null`; (5) `fmt = 2`; (6) `fmt = 1`, `req: ['x']`; (7) 20 retained entries and two pins; (8) valid header CRC with `codec = 1`; (9) valid header CRC with `reserved = 1`; (10) valid header CRC with an unknown `type`; (11) null current, label `import`; (12) null current, label `seed` with no upstream file (re-runs).
+
+### 3.4b Boot classification (complete table)
+
+Boot reads `store2-commit` and `store2-fence`. Every row's deleters refuse unless the row says "normal".
+
+| # | State | Action |
+|---|---|---|
+| 1 | Commit key absent and no `store2/` key | Report 62 boot table (convert / seed / fresh). "No `store2/` key" is established as follows: a ranged count of zero is **confirmed by a re-filtered `listStore2()`** (G9, R25); if the count is unsupported or fails, the list decides; **if the list fails, conversion and seeding are blocked and the answer is never read as zero**. A count above zero is row 2 |
+| 2 | Commit key absent, any `store2/` key exists | Recovery screen. Never conversion or seeding |
+| 3 | **Too new:** commit key, any manifest or unit read for a mark or load, or the fence record has `fmt > 1`, an unknown `codec` / `reserved` / `type`, or (commit key / manifest) an unknown `req` token | **Read-only with a notice** (U10): page storage mode `read-only` (honoured at `M:src/ts/bootstrap.ts:1171`). No commit, no recovery, no GC, no sweep, no inlay cleanup, no clear, no fresh start. Where the build cannot parse (higher `fmt`, unknown codec) it shows only the notice, which equals the unchosen U10 option "Refuse to open" (disclosed) |
+| 4 | Damaged (bad magic or CRC, bad JSON or schema, `fmt <= 1`, known codec and `req`) | Recovery screen |
+| 5 | Parses, `current` non-null, tree loads | Normal boot (a marker of another owner: normal boot, bulk rules of Report 62). A parsable `store2-fence`: normal with the 3.4c limits |
+| 6 | Parses, `current` non-null, but its manifest or a shard or index it needs is missing or fails CRC | Recovery screen; the marker CAS is made at the parsed key's bytes (off Node) or revision (Node); every deleter aborts by the closure rule |
+| 7 | Parses, `current` null, `staging: null` | Recovery screen |
+| 8 | Parses, `current` null, label `recovery` | Recovery screen |
+| 9 | Parses, `current` null, label **`seed`**, or label `convert` and the old upstream main file exists | Re-run that operation. **`seed` always re-runs** (it needs no source; this also resumes a crashed U12 fresh start; G8). On Tauri the device's own marker (persisted owner id) is start-up cleared first and the re-run follows in the same boot; a crash between lands in row 7. On the web a marker of another owner is cleared only through the foreign-clear path (Q3) |
+| 10 | Parses, `current` null, label **`convert`**, old file gone | Recovery screen |
+| 11 | Parses, `current` null, label `import`, `restore` or `bulk` | Recovery screen |
+
+**Recovery screen (G4, G2).**
+- Lists candidates (3.2), newest 50 with "show older"; each pick runs the read-only tree read.
+- **Always offered below the list:** (a) **re-run conversion** when an upstream main file exists; (b) **import a `.bin`** (MC-223 upstream-to-fork must stay reachable). (c) **"start a new empty profile"** behind a clear confirmation is offered **while no candidate has passed validation in this session** (the screen's initial state, so effectively whenever the user has not yet recovered), never when the state is too-new.
+- **Every exit writes or extends the fence first (U13).** Picking a candidate, (a), (b) and (c) each do step 1 of 3.4c before their marker CAS. Nothing is deleted by an exit.
+- The screen replaces another tab's marker (rows 8, 11, and a standing `convert`/`import` of another live tab) only through the foreign-clear path (G10).
+
+### 3.4c The fence: `store2-fence` (G1, G2, G3, G10; U12, U13)
+
+Format (in the freeze), top-level key, outside `store2/`, CAS'd like the commit key.
+
+```ts
+// frame type 23, JSON payload
+interface FenceRecord {
+  v: 1
+  at: number                                   // first creation
+  priorCommits: { at: number, bytes: string | null }[]   // base64url of the prior commit key's bytes, verbatim; null when the key was absent (row 2) or unreadable
+  keys: string[]                               // tails of every store2/ key that existed at any exit, union
+  priorFences?: { at: number, bytes: string }[] // Tier 1; base64url bytes of an unparsable fence an exit replaced (N2)
+}
+```
+- **Exit sequence** (every recovery-screen exit): (1) `listStore2()`; if the listing fails the exit is not offered. (2) **Create or extend `store2-fence` by CAS** (Node `writeChecked` with `ifVersion` of the fence read, or the revision returned with an absence read; IndexedDB transaction compare-and-put; Tauri under the mutex): `keys` := old `keys` ∪ the listing, `priorCommits` := old entries + the damaged commit key's bytes read verbatim (G3). A second exit writes a **superset** (G10); an attempt to write a smaller list is a defect (mutant). **On Tauri the exit waits here until the fence write reports `flushed` (N4).** (3) Only then the exit's marker CAS on `store2-commit` (label `recovery`, `convert`, `import` or `seed`). A crash between (2) and (3) leaves a fence over a damaged key, which only protects more. The fence is never written by recovery's marker, final CAS, or by restore (G1). The record has an optional `priorFences: { at, bytes }[]` (Tier 1) that holds the bytes of an unparsable fence an exit replaced.
+- **Readers (every deleter, at the start of a pass and before each batch it already re-checks):**
+  - absent → unfenced;
+  - parsable, `fmt` 1 → fenced: **GC treats every listed key as live** (never a candidate; new keys are collected normally); the **asset sweep, the inlay cleanup, manual cleanup and the Settings sweep button refuse** (suspended: protecting `assets/` and `inlays/` by name would need a snapshot of up to hundreds of thousands of names for a rare path; suspension is the safe superset);
+  - **unparsable, too-new or unreadable → treated as fenced and every deleter, GC included, deletes nothing** (it cannot know the keys). **Exit over an unparsable fence (N2):** the exit writes `keys` := the full `listStore2()` listing (a superset of every old fenced key, because nothing was deleted while the fence was unparsable and fenced keys were never deleted before) and keeps the damaged fence bytes verbatim in `priorFences`; it never reads the old `keys`.
+  **Per-batch atomic check (N1, N3; replaces the v3.2 claim that no per-batch fence check is needed, which was false for Node silent damage, where bytes change and the revision does not, and for row 6, where the key parses).** Every deleter's batch includes the fence's **version** in the same atomic step as its commit-key check: on Node a check-only entry on `store2-fence` in the guarded remove carrying the revision returned by the pass-start fence read, absent key included (the same rule as the first-life create). An absent fence that once existed sits at revision 2 or higher after a discard, because a guarded remove bumps the revision and keeps the entry and retire is refused outside `store2/` (`W:server.cjs:470`, `:1778-1843`; `W:nodeHttpStore.ts:469`); `W:contract.ts:177-184`'s compare-as-0 holds only for a never-written key. A fence that appears or changes makes the batch conflict; on IndexedDB the batch transaction reads the fence (presence by `count`; the body only when present); on Tauri under the mutex the fence is read. The fence **body** is read once per pass and re-read only when a batch conflicts on the fence version. Cost on Node: the check-only entry is a header comparison and reads no content, so it is free per batch; the one body read per pass is a whole-file read server-side (`W:server.cjs:1546-1551`), megabytes when the fence lists many keys; each fence change costs one more. On IndexedDB a present fence is cloned per batch of 25 (INFERRED up to a few MB; measure, with a sidecar stamp key as a stage 1 option if it matters). A conflicting batch deletes nothing and restarts the pass.
+- **Discard** is an explicit Settings action behind its own confirmation: a **CAS delete** of `store2-fence` (Node guarded remove with `if-match-revision` of the fence just read; IndexedDB transaction compare-and-delete; Tauri under the mutex) **at the revision or bytes just read, whether the fence is parsable or not (N2)**. A conflict (another tab extended the fence) re-reads and re-asks. After discard the old `store2/` keys are ordinary garbage and the sweeps resume (the sweep still applies the age rule, 3.8c). While the fence is unparsable, boot shows a "cleanup blocked" notice that offers this discard.
+- **Disk cost, disclosed (X16):** while a fence exists the sweep, inlay cleanup and manual cleanup are off, and the pre-exit `store2/` keys stay.
+- **Golden vectors, fence:** (F1) valid record with one prior commit; (F2) unparsable payload; (F3) `fmt = 2`; (F4) record whose `priorCommits[0].bytes` is null; **(F5) a record written by an exit over an unparsable fence: `keys` = the full listing and the damaged bytes kept in `priorFences`; (F6) the unparsable fence bytes themselves, to be discarded by CAS delete at those bytes.** **V1 case:** fresh start, then commit-key damage, then recovery: no pre-fence key is deleted; plus the window between a fence write and the marker CAS (N1). **Mutants:** GC deletes a fenced key; a sweep, inlay cleanup or manual cleanup runs with a fence; an unparsable or too-new fence treated as absent; a fence write replaces with a smaller key list; **an exit over an unparsable fence keeps fewer keys than the listing; the batch checks the fence only at pass start; marker CAS after an unflushed fence write (Tauri);** recovery or restore deletes or rewrites `store2-fence`; discard without CAS; an exit that writes its marker before its fence write; `priorCommits` dropped.
+
+### 3.5 Manifest (type 2, write-once)
+
+```ts
+interface Manifest {
+  fmt: 1; req: string[]; seq: number; createdAt: number
+  shardCount: number                      // 16
+  shards: Ref[]
+  fixed: {
+    config: Ref; configAl: [tail: string, bytes: number, crc: number, v: number]
+    il: [tail: string, bytes: number, crc: number, v: number]       // inlay ids of config, presets, loadouts, plugins, plugin-storage values
+    statics: Ref; order: Ref; loadouts: Ref; moduleIndex: Ref
+    presets: Ref[]; plugins: Ref[]
+    pluginStorage: { buckets: number, refs: Ref[] }       // 16
+    legacyKeep: null | { unit: Ref, v: number, files: { key: string, status: 'ok' | 'unreadable' | 'gone' }[] }
+  }
+}
+```
+No fence field. Encoded manifest stays under 16 KiB at the T4 counts plus the real counts (test). **Shard of a character: `crc32(utf8(u)) mod shardCount`, `u` minted by the converter, never derived from `chaId`.**
+
+### 3.6 Shard, entry, chats, chunks
+
+```ts
+interface Shard { v: 1, entries: ShardEntry[] }                       // sorted by u
+interface ShardEntry {
+  u: string
+  type: 'character' | 'group'; name: string; image?: string; chaId: string
+  lastInteraction?: number; trashTime?: number; characters?: string[]
+  creatorNotes: string                                                 // <= 500 chars, M:src/ts/process/coldCharacter.ts:35
+  chatPage: number; firstMsgIndex: number; tags?: string[]; creator?: string   // ColdStubFields minus chats and derived fields, M:coldCharacter.ts:44-62
+  core: Ref; lore: Ref | null; scripts: Ref | null
+  al: [tail: string, bytes: number, crc: number, v: number]
+  il: [tail: string, bytes: number, crc: number, v: number] | null
+  dsp: boolean
+  chats: ChatEntry[]
+}
+interface ChatEntry {
+  cid: string; core: Ref
+  chunks: [tail: string, bytes: number, crc: number, count: number][]   // required; oldest to newest; last = tail
+}
+```
+- **`chunks` is required** (no `cx`); an entry without it is refused. **Empty chat (G15):** every chat has at least one chunk; an empty chat has one chunk with `msgs: []` (`count` 0), which also carries `st`. A future chunk-index unit is a Tier 2 `req: ['cx']` change (basis for the concern, INFERRED, advisor: a 50k-message chat at 5.4 KB median is about 2,060 chunks, about 120 KB of refs in one entry; the maintainer's largest real chat has 7 chunks, Q-D).
+- Derived at load, not stored: `coldstorage` (= `u`), `coldStoragedChats`, `coldVersion`, `coldChatCount`. Placeholder chat never persisted; the codec refuses a stub (I9).
+- Chunk unit (type 8) `{ v: 1, msgs, st? }`, `st` only in the last chunk; sealed above **131,072 bytes**; a message is never split. Chat core (type 7) `{ v: 1, f }`; `f` carries the fields of `M:src/ts/storage/database.svelte.ts:1871-1895` including `hypaV3Data`, `supaMemoryData`, `localLore`, `bookmarks`, which grow with chat length. Reader builds `{ ...core.f, ...tailChunk.st, message }`; initial `st` = `lastMemory`, `scriptstate`, `suggestMessages`, `lastDate`; `isStreaming`, `reloadKeys` not stored. Measured: 2 KiB in the tail or shard entry costs about +2 KiB, 4 keys (`results.md` 29 to 30, 59); a T4 shard was 41.5 KiB (`results.md` 21).
+
+### 3.7 Module index
+
+`moduleIndex` (type 10) `{ v: 1, entries: ModuleEntry[] }`; `ModuleEntry { id, unit: Ref, al: [...], il: [...] | null, name, description, namespace?, icon?, hideIcon?, lowLevelAccess?, hasToggle, dsp }`; fields from `M:src/ts/process/modules.ts:30-46`. One unit per module (type 9).
+
+### 3.8 Asset, inlay and legacy lists
+
+**3.8a Asset lists.** Pure function of the owner's core fields and `ASSET_REF_V`: character fields `M:src/ts/globalApi.svelte.ts:2954-2993`; module `:2996-3008`; config-level refs (`:2942-2951`, `:3010-3034`) in `fixed.configAl`. Body (type 15) `{ v, h: string, l: string[] }`: `h` one string of concatenated 43-character base64url hash stems, sorted; `l` sorted unique lower-cased literal basenames. Re-derived on every encode of the owner, byte-compared, rewritten only on a difference. After a version bump an idle re-derivation commit rewrites stale lists in bounded batches. Sizes MEASURED (ledger row 1742): 783 KB / 964 KB largest, 7.84 MiB / 10.4 MB summed.
+
+**3.8b Legacy list (U1, U8).** One unit (type 20) holding the union over `database/database.bin` and every numbered backup present at conversion, with cold chains:
+```ts
+{ v: ASSET_REF_V, iv: IL_REF_V, files: { key: string, status: 'ok' | 'unreadable' }[], h: string, l: string[], i: InlayBody }   // i: same body as type 21
+```
+Manifest `legacyKeep` carries the mutable per-file status; the unit is immutable. Derivation at conversion decodes each old file in turn (yielding; `MC-130` 4 memory warning), reads the characters its cold chain reaches, runs the collectors, unions. Whether it also resolves `remotes/` pointers is INFERRED likely and untraced (TODO(evidence), 4a). An `unreadable` file blocks the sweep and cleanups by name; cleared by deleting the file, by the re-derivation job (idle, Retry in Settings, after a bump). `gone` only on a definite absence; an error keeps the status; `legacyKeep` released only when every file is `gone`. Size INFERRED about 18 to 35 MB. **Sharing one live folder with upstream after conversion is unsupported (U8)**; the conversion dialog says so. Fork-only: `legacyKeep: null`.
+
+**3.8c Sweep: fences, record, limit, consumers.**
+- **Version rule (G6, closes C3).** A list or legacy unit whose `v` or `iv` is **above** this build's known version is **unreadable**: the pass reports incomplete and deletes nothing. A `v` below the known version is derived from the owner's core or reported incomplete. **A bump of a derived list's version is Tier 1 with refusal (v3.3):** the refusal above is what protects the data, so a bump needs no `req` token and does not put older builds into the too-new state. Vector: a list with `v` one above known; mutant: a newer list read as complete.
+- **Keep-set** (asset sweep) = union over `{current} ∪ retained ∪ pins` of `configAl`, module `al`, character `al`, the legacy unit's `h`/`l`; plus resident live refs and `writtenThisPage`. Inlay cleanup uses `il`, module `il`, `fixed.il` and the legacy `i`, not the asset lists.
+- **Fences** (all must hold, else refuse and delete nothing): commit key parses with a non-null `current` and known `fmt` / `codec` / `req`; `staging` null; **`store2-fence` absent** (3.4c); every needed closure node readable (an unreadable or CRC-failing node aborts the pass); no legacy file `unreadable`; on Tauri the commit-key flush flag is clear; every bulk sets its marker before writing its first asset.
+- **Per-batch commit-key re-check** as GC: Node guarded remove with check-only `store2-commit == R`; IndexedDB one transaction re-reading the key; Tauri under the mutex; on a change the keep-set is rebuilt. **The same atomic step also carries the `store2-fence` version (3.4c per-batch atomic check, N1).**
+- **Node guarded removes go per asset with drop-and-retry (G13).** `/api/remove-checked` checks every precondition first and rejects the **whole** request on the first conflict, then bumps revisions and removes (`W:server.cjs:1724-1766`, `:1778-1815`, REVIEWER-READ); the client maps a 409 to `StoreVersionConflictError(key)` (`W:nodeHttpStore.ts:504-507`). Batch of up to 25 assets with `ifVersion` = the recorded `rev` each, plus the check-only commit key. On a conflict: if the named key is **`store2-commit`**, the keep-set is stale — rebuild and restart the pass; if it names an **asset**, drop that asset (it was re-saved) and retry the rest. With k re-saved assets in a batch that is k + 1 requests. Test: one re-saved asset in a batch of 25 deletes the other 24.
+- **Age record `store2-sweep` (type 22, plain write, not CAS'd; losing it only delays deletion):** `{ v, at, items: [basename, rev | null][] }`, full basenames.
+  - *Young* (`now - at < SWEEP_MIN_AGE`): do not write, delete nothing.
+  - **A record dated more than 10 minutes in the future (server `Date` on Node, device clock elsewhere) is treated as absent** (G12): write the fresh candidates with `at = now`, delete nothing. A smaller future skew counts as young.
+  - *Old:* delete the intersection (record ∩ fresh candidates) under a fresh keep-set, each deletion passing the fences; then replace the record with the fresh candidates minus the deleted, `at = now`, `rev` observed now.
+  - *Absent, unreadable or too-new:* write the fresh candidates with `at = now`, delete nothing.
+  - **Recording-pass cost and the Node revision rule (C11).** On Node `rev` comes from `HEAD /api/read`, which still reads the whole file server-side under its per-key lock (`W:server.cjs:1546-1551`, REVIEWER-READ): one full file read per candidate. Therefore, on Node: **at most 500 candidates (the HEAD cap) enter the record per pass, every recorded item has a non-null `rev`, and an item whose `rev` is null is never deleted**; an old record is only ever acted on through the revision condition. Cost, disclosed: with large orphan sets convergence is slow (500 candidates per pass, at most one deletion pass per age period). A cheaper option needs a server change and is a **P0b option**: a `&revisions=1` mode on `/api/list-prefix` returning revisions from the server''s in-memory table (no content reads); stage 0a has no such route (TRACED: `/api/list` returns names only, `W:server.cjs:1901-1925`). IndexedDB and Tauri have no revision: items there are deleted on age alone (R22 residual). Requests and bytes read are measured in 8.1(5).
+  - `SWEEP_MIN_AGE` = 24 hours, proposed (INFERRED; the debounce value is untraced; hidden Android tab stalled at least about a minute, `results.md` 118). Residuals disclosed: a tab uncommitted beyond the age; content-addressed re-save (R22) on IndexedDB and Tauri.
+  - **Manual clean-up (consumer 2) uses the same record and rule (G15)**; its button is hidden until stage 5 (Report 62 A2.4a), so it is a stage 5 item written down now. **A first press of the Settings sweep only records candidates and deletes nothing for 24 hours; the button's string says so** (translator list).
+- **U9.** `SWEEP_AUTO_LIMIT` per backend; above it the sweep runs only from a Settings button. **Default until measured: 50,000 files on every backend (orchestrator placeholder, not a measurement); the maintainer's 383k-file library is above it, so there the sweep is button-only until the number is measured.** Count: IndexedDB `count(IDBKeyRange)` over `assets/` (cost at 386k keys TODO(evidence)); Node `count=1` mode (old server or unrecognised answer = over the limit); Tauri the entry count of the `assets/` directory read. Amends `MC-289`.
+- **Consumers (each refuses as above; none treats "unknown" as "no refs"):** (1) startup asset sweep, both branches (`M:src/ts/bootstrap.ts:1194`, `:1207-1214`, `:1284-1304`); (2) manual clean-up asset-orphan delete (`M:src/ts/storage/manualCleanup.ts:166`, `:905`); (3) "run GC now" and idle GC; (4) inlay clean-up (`bootstrap.ts:1121`, `inlayCleanup.ts`); (5) Settings sweep button; (6) the A2.4a cutover deletion (exempt from the 3.8e prohibition, not from the fences on `assets/`/`inlays/`, which it never touches). Read-only users (`bootstrap.ts:1149`, `storageMaintenance.ts:20`, `:37`, `assetIntegrity.ts:87`) report "unknown".
+- The `sweepAssets` condition at `bootstrap.ts:1185-1187` is replaced for A-lite by these fences.
+
+**3.8d Inlays (U11).**
+- **Type 21 body (G5, closes C2):** `{ v: IL_REF_V, u: string[], h: string, o: string[], x?: true }` where `u` = sorted unique lower-case uuids (36 chars); `h` = concatenated 43-character base64url hash stems (asset-path ids and asset hashes, matched on the hash as `IdMatcher` does, `inlayCleanup.ts:269-273`); `o` = sorted unique literal token ids of any other shape (the token id is `.+?`, `inlayTokens.ts:3`; callers choose ids, `inlays.ts:107`, `:139`); `x: true` = overflow: the owner's inlay ids could not all be listed, the owner is **unknown**, and the inlay cleanup deletes nothing while any manifest in the keep-set has an unknown owner. **There is no silent cap:** the codec does not copy the collector's `MAX_UNIT_IDS = 4096` (`:52`, `:319-321`); a body is chunked into several units only by a later Tier 2 change, so for v1 a body larger than a unit-size parameter (default 8 MiB) sets `x` instead.
+- Collection rule: the ids that `IdMatcher` would keep (uuid occurrences, asset hashes, other-shaped literal ids), scanned over the owner's strings: per-character `il` (core, lore, scripts, all chats); per-module `il` on `ModuleEntry`; one `fixed.il` over config, presets, loadouts, plugins and plugin-storage values. Superset allowed on append and on a plugin-storage write (previous ∪ new ids); exact only on a full re-derivation.
+- **Conservative deletion rule.** An inlay candidate that is a uuid or asset-shaped is deleted only if absent from every `u` / `h` of the keep-set and from the resident database. **An other-shaped candidate is deleted only when every owner in the keep-set is resident (a full scan as today), otherwise it is kept.** Over-protection is the safe direction. **Candidates are lower-cased before the `u` lookup** (`IdMatcher` matches uuids case-insensitively but deletes the exact matched string from a case-sensitive set, `inlayCleanup.ts:213`, `:262-263`, REVIEWER-READ); lower-casing is a superset of today's match. Test with an upper-case token id.
+- U11: the keep-set includes these lists from retained and pinned manifests and the legacy `i`. Binding for 4a: redirect `inlayCleanup` (T2 `read`/`setColdStorageItem` row) before A-lite loads derived stubs, with a guard (an inlay referenced only by an unloaded character, module, or plugin value survives deletion of another chat) and the fences.
+- Tests: an asset-shaped id and an other-shaped id, each held only by an unloaded owner, survive; an owner with 5,000 ids survives (no cap); an `x` owner blocks deletion.
+
+**3.8e Binding 4a item: deleters outside `store2/`, `assets/`, `inlays/` (G14, closes C13).**
+- **Scope:** every profile opened by an A-lite build (converted, seeded, imported or fresh), not only converted ones. **Exemption (timing corrected):** the A2.4a cutover deletion (Report 62), under its own MC-287 rules and the C1 persisted key-list snapshot. It runs after the seed or conversion commit has landed and **resumes at a normal boot after the commit key exists** (Report 62 line 279, the "Commit key parses" row resumes an unfinished deletion), so the exemption covers the initial and the resumed run, deleting only keys in its snapshot and `blocks/` last.
+- The 4a Gate 1 derives the disabled list from this census and the guard test enumerates by the census, not by a hand list.
+- **Census run this pass:** Grep over `src/` (non-test files) for `.delete(` / `.deleteMany(` / `.removeItem(` / `deleteColdStorageUnits` / `removeFile` / `appFsRemove` with store-like receivers and `'unconditional'` / `{ ifVersion` arguments; four patterns; the list below is every store-key deletion site found. **Completeness PARTIAL:** receivers with unusual names, dynamic dispatch and Rust (`src-tauri`) temp-file removals were not enumerated (TODO(evidence)); `retireChecked` / `removeChecked` have no callers outside `nodeHttpStore.ts`. Dispositions are proposed.
+
+| # | Site | What it deletes | Disposition on an A-lite profile |
+|---|---|---|---|
+| 1 | `bootstrap.ts:1212` (Tauri), `:1301` (web/Node) | `assets/` keys (sweep) | Rewritten under 3.8c fences, age record, per-batch check |
+| 2 | `bootstrap.ts:1346` | **`remotes/` blocks in the web/Node loop** opened at `:1307` (`getRemoteSavePayloadName` `:1320`, `.meta` age rule `:1328-1335`); the variable is named `asset` but the keys are remote blocks, the twin of row 3 | **Disabled** (legacy keys; in the guard's mutant rows) |
+| 3 | `bootstrap.ts:1266-1267` | `remotes/` block and its `.meta` | **Disabled** (legacy keys; stage 8 removes) |
+| 4 | `globalApi.svelte.ts:2445`, **inside the reader `getDbBackups()`** (`:2429-2448`), which Report 62 4a reuses for snapshots | oldest numbered backup `database/dbbackup-*.bin` | **Disabled**: any caller of the reader triggers the delete, so the delete is removed from the reader and the guard calls `getDbBackups()` (retained manifests replace rotation; old backups are upstream data) |
+| 5 | `mainFileRename.ts:98`, `:114` | `database/database.bin` after copying (every block-store boot) | **Disabled** (A2.4a "delete nothing"; U1) |
+| 6 | `coldstorage.svelte.ts:425-469` (`deleteColdStorageUnits`, `deleteMany` at `:469`) | `coldstorage/` units | **Disabled**; callers `supersededUnits.ts:345` and `manualCleanup.ts:765` |
+| 7 | `process/memory/supersededUnits.ts` (K1 cold units) | `coldstorage/` | **Disabled** (re-archive path unwired at cutover) |
+| 8 | `blockStore.ts:646`, `:650`, `:1440`, `:1757` | `blocks/` generations, kept markers | **Unwired** at cutover (deleted in stage 8); the A2.4a cutover deletion is exempt |
+| 9 | `manualCleanup.ts:431`, `:435`, `:438` | block generation root, rest, marker | **Disabled**; reworked in stage 5 |
+| 10 | `manualCleanup.ts:535`, `:541`, `:551`, `:790` | cold units, older main file, groups of keys | **Disabled**; stage 5 rework reads units |
+| 11 | `manualCleanup.ts` asset-orphan path (`:905`) | `assets/` | Stage 5, under 3.8c fences and the age record |
+| 12 | `process/files/inlayStore.ts:306`, `:311`, `:360`, `:362` | `inlays/` keys (replaced body; user-deleted inlay) | Allowed inside `inlays/` (write-time replacement, explicit user delete); not a cleanup |
+| 13 | `process/files/inlays.ts:420`, `inlayCopy.ts:418` | legacy inlay store entries after copy | Outside the byte store; proposed keep (migration copies first); confirm at 4a |
+| 14 | `inlayCleanup.ts` (queued from `bootstrap.ts:1121`) | `inlays/` ids by scan | Redirect + fences (3.8d); binding 4a |
+| 15 | `opfsCopyBack.ts:211`, `:288`, `:301`, `:347`, `:357` | OPFS copy-back leftovers and flags | **Disabled once `store2-commit` exists** (runs before any A-lite key; INFERRED) |
+| 16 | `tauriAtomicWrite.ts:82` (`removeQuietly` of a write's own temp, read `:80-86`), `:158` (`sweepAtomicWriteTemps`; **READ this pass:** it skips every entry whose name does not match `ATOMIC_TEMP_NAME_PATTERN`, `:154-156`, and enters no symlink), `appFs.ts:73` | own `risu-write-*.tmp` temp files | Allowed (own temps only) |
+| 17 | `media/avatarThumb.ts:926` | thumbnail cache (separate store) | Not the byte store; unaffected |
+| 18 | `pluginSafeClass.ts:60`, `plugins.svelte.ts:931` | plugin storage entries | Plugin API; lives in units under A-lite; unaffected |
+| 19 | Adapter primitives: `tauriFilesStore.ts:99-101`, `:185`, `:197`; `indexedDbStore.ts:269`, `:347`; `opfsTransitionalStore.ts:58-70`; `nodeHttpStore.ts:318`; legacy adapters `nodeStorage.ts:238`, `autoStorage.ts:56`, `opfsStorage.ts:67` | any key | Primitives; gated by their callers |
+| 20 | Stage 2 GC, `removeBatch` (new) | `store2/` keys | Fences (3.8c) |
+| 21 | Discard action (new, 3.4c) | `store2-fence` | CAS delete from Settings |
+
+- **Guard test:** on a fixture holding `database/`, `coldstorage/`, `remotes/` and numbered backups, boot, a manual clean-up (including a call to `getDbBackups()`, which hosts the row 4 delete), a sweep and GC leave every such key; mutants: each disabled site run (rows 2 to 10, 15).
+
+### 3.9 Other fixed units
+
+Config, statics, order, loadouts, preset, plugin, plugin-storage value and bucket as before; plus legacy list (20), inlay list (21, 3.8d), sweep record (22), fence record (23, 3.4c). Plugin-storage key count N unmeasured (census); bucket count is a manifest field.
+
+### 3.10 What a commit writes
+
+Append: tail chunk, shard, manifest, commit = **4 keys; 5 when the append adds an inlay id** (the character's `il` unit is a new key). Switch 3; plugin-storage write 4 (5 with a new inlay id in `fixed.il`); idle statics 3. At a 128 KiB cap mean 106 KiB, max 169 KiB per append; 171.5 KiB with 2 KiB `st` (`results.md` 26, 29). Bulk when more than **59 new units** on Node and IndexedDB alike. A byte threshold returns only if the Note 9 strict-hold measurement at 1, 4, 16 MiB requires it.
+
+---
+
+## 4. Stage 1: protocol library and adapters
+
+### 4.1 and 4.2 Modules and backend interface
+
+`format/` (keys, frame, `refsOf`, `assetRefKey`, golden vectors) · `backend/{node,indexedDb,tauri}.ts` · `commit.ts` · `commitKey.ts` · `fence.ts` (**CAS read / extend / delete of `store2-fence`**, same primitives as the commit key) · `owner.ts` · `recovery.ts` · `errors.ts` · `probe.ts`. Backend: `readCommit`, `readFence`, `casFence`, `readUnits` (parallel 8 or batched), `listStore2`, `countPrefix`, `commitOrdinary`, `casCommit`, `putUnit`, `removeBatch`. Node call-site handling and probe call sites (`Store2Session.open()`, each `gcPass()`) as before.
+
+### 4.3 Node backend
+
+Unit upload `ifVersion: 0` for fresh unit ids (never reused). The commit key and the fence use the revision returned with the absence read for their first create. Ordinary commit with check-only on new units; bulk; P0b closes risk 3b at the edge. **`GET /api/list-prefix?prefix=` and `&count=1`** (third additive server change; MC-290 pending): same limiter and auth as `/api/list`, hex-prefix match case-insensitive, existing even-length-hex rule, same shape, `count=1` returns `{ success: true, count }`; optional `listPrefix: true` in `/api/caps` after P0a. Client: use it when supported; re-filter every response; non-success / 404 / HTML / other shape means unsupported and falls back to `/api/list` + `startsWith`. MEASURED (scratch prototype, i9): `store2/` list 148,528 B vs 30,022,602 B; p50 613 to 1,056 ms vs 1,168 to 2,186 ms; `readdir` floor p50 610 ms; `assets/` 935 to 3,122 ms.
+
+### 4.4 IndexedDB backend
+
+Own raw connection like `openDatabaseForHead` (`W:indexedDbStore.ts:575-611`); ordinary commit one strict `readwrite` transaction (`add` units, full-bytes compare, `put` commit key); first-life create via `add`; fence extend and delete as the same compare-and-write transaction; commit watchdog; GC and sweep batches of at most 25 in one strict transaction re-reading the commit key. **Bulk by unit count (more than 59 new units).** Strict-hold at 1, 4, 16 MiB: TODO before 1b Gate 2. **L2 (live path):** `list` and `has` range scan (`W:indexedDbStore.ts:367-375`); upper bound = prefix with its last UTF-16 unit incremented (EXECUTED by the reviewer: the bound of `store2/` is `store20`; `store2-commit`, `store2-sweep`, `store2-fence` sort below `store2/` and are outside the range). In-transaction GC check stays as insurance.
+
+### 4.5 Tauri backend
+
+Mutex; durable keys `store2/`, `store2-commit`, `store2-fence` via `isDurableKey` (`M:tauriDurableWrite.ts:44-46`, test `W:tests/tauriDurableWrite.test.ts:131`; `store2-sweep` is a plain write). **L1 (live path)** flush status on all three Rust paths, `flushed = false` for the existing-final-key path. **Re-flush on every page load** before any GC (identical-bytes rewrite under the mutex, no `seq`/`epoch` change) **of the commit key and of `store2-fence`** (N4); a reloaded page racing a dead page's in-flight write loses an unacknowledged commit, not I1 (REASONED; test); persistent failure surfaces a notice and GC and the sweep stay idle. **Fence ordering (N4):** an exit's marker CAS proceeds only after the `store2-fence` write reports `flushed === true` (re-flush or retry, with the flush-failure notice); otherwise a power loss could keep the marker and lose the fence. NTFS directory flush succeeds (reviewer EXECUTED in scratch; `durable_write.rs:187-196`); power loss after exit TODO(evidence). Per-batch GC mutex with re-compare (the model checked a whole pass; stage 2 test). **A2 escape ladder:** (a) defer directory flushes to one before the commit key, (b) best-effort units plus boot verification against the previous retained manifest, (c) pack-per-commit (Tier 3), measured on the Note 9 during 1a. Record for 4a: assets are not durable writes on Tauri (`tauriDurableWrite.ts:37-46`, REVIEWER-READ).
+
+### 4.6 Library functions and recovery
+
+- `Store2Session.open(store)`: backend from `getAppStoreKind()` (`W:store/appStore.ts:189-195`; `opfs-transitional` read-only, `appStore.ts:100-131`), probes Node, Tauri re-flush, reads commit key and fence, classifies per 3.4b.
+- `commit`, `restore` (always pushes `current`), `saveMine`, `pin`, admission, `abandonClear`: Report 62 A1.2; all refuse unless the key is known, parsed and has a `current`. **Restore never writes `store2-fence`.**
+- Bulk (import, restore, conversion, recovery, seed) sets its marker (with its label) before writing any asset or unit. No promotion commit exists.
+- Mark reads (stage 2): per distinct manifest in `current ∪ retained ∪ pins`: manifest, 16 shards, `moduleIndex`, 16 buckets, `configAl`, `fixed.il`; plus the fence record; deduplicated, parallel; unreadable node = abort; manifest `req` checked on read.
+- **Recovery:** (1) candidates per 3.2; (2) **fence exit step (3.4c) for every exit**, then read-only tree read, missing unit fails loudly; (3) marker CAS writes `{current: null, retained: [], pins: [], staging: {label: 'recovery', ...}}`, units re-written under staged keys, final CAS; a 409 at the marker re-reads and abandons if the key now parses with a current; (4) crash or any marker clear: the key parses with no current, the screen returns, nothing was deleted; (5) a recovery-screen exit replaces another tab's marker only through the foreign-clear path; several recovering tabs is liveness only, one wins by CAS; (6) disclosures: listing cost via the prefix route, whole library in memory (`MC-130` 4), empty `retained` afterwards.
+
+### 4.7 Changes outside `src/ts/storage/store2/`
+
+`contract.ts` (`WriteResult.flushed?`, `countPrefix`), `keyRules.ts`, `nodeHttpStore.ts` (list route, count, fallback), `server.cjs` (`/api/list-prefix`, caps flag), Tauri TS and Rust files, `indexedDbStore.ts`. **Live-path changes L1 and L2:** separate commits, own tests, review and device build; not "unwired".
+
+---
+
+## 5. Stage 3: unit codec
+
+As before, plus: inlay list derivation to the type 21 body (`fixed.il`, per-module, per-character, `x` overflow); legacy list derivation; converter mints `u`; unknown fields of `Database`, character, chat, message and module go to their unit verbatim and a guard round-trips an upstream `.bin` with unknown fields at each level (MC-175; nothing here changes `.bin` import or export; `MC-223` warning gap stays CHORE-129); `dsp` unsure means true. Gate 2 `opus-reviewer`; depends on `format/` only.
+
+---
+
+## 6. E1-1 results and model variants
+
+Source: `e1-1\results.md`, `results-2.md`, and `e1-1-verify\verify.md` (overrides). All EXECUTED in scratch, nothing in the repository. Fidelity: CONFIRMED with divergences, none hiding a violation in the base protocol as modelled.
+
+**Exit bound: `faultCap=1`, a scope bound, not a sound reduction. The full Report 62 A2 bounds (1 crash and 1 lost response per actor) were NOT exhausted.**
+
+**Provenance.** *Re-run by the independent verifier (identical counts):* Node f1 (94,119,831); "refuse" (83,978,143; also with web owner ids; 1,278,370 on a small foreign-clear set); "rec" (90,809,773); "cur" (93,099,449); IDB refuse with the check outside the transaction (5,161,140); the spot-checked mutants. *AUTHOR-ONLY re-runs (`F_*`, `results-2.md:39-40`):* IndexedDB 57,079,650; Tauri 34,371,907. *Never re-run:* `p_rec0` 9,973,029.
+
+**S1 evidence (G7): REASONED, not a model result.** The model's candidate set (`e1-1\model.mjs:1025`) is `m/` keys plus **every** staged manifest, with no standing-prefix exclusion: a superset of the plan's set, not equal to it. The refuse fix was exhausted on a reduced set with no bulk (`results-2.md:7`), so **no finished refuse run had a staged candidate**; `W_ri_refuse_wide` (`bulkA=1`) was inconclusive at about 6 % of seeds (`verify.md:129`); `q_bulk`, `N_rec_f1`, `I_nosm_f1` are unfinished (`verify.md:180`). The argument that S1 is sound (recovery holds the chosen tree in memory before its marker CAS and rewrites every unit under fresh keys; a GC batch built before a Node silent damage deletes only keys that were garbage at R; the standing-prefix exclusion only removes options) is the reviewer's and mine, REASONED.
+
+**Regions `k=1` cannot reach:** an uncertain bulk final CAS followed by a crash of the owner before its read; a lost response on R's marker CAS followed by R's crash; any two-fault combination. **Inconclusive at the 1,800 s cap:** `W_refuse_fclear_L2` (about 30 % of seeds), `W_refuse_rec2_L2` (18 %), `W_ri_refuse_wide` (6 %), `W_refuse_f2_L2` (stopped at 420 s). **Unfinished:** `q_bulk`, `N_rec_f1`, `I_nosm_f1`, `N_reload0`.
+
+**Divergences that matter:** D1 Tauri GC as a whole pass under one hold; D3 flat manifest; D4 foreign clear and web owner ids only in verifier runs; D5/D6 one recovery actor; D7 staged manifests modelled as candidates (superset, see above); D8 save-mine rewrites every unit; D9 no assets; D13 Tauri preset has no bulk or recovery; assumption 4 (`aclearNoRead` kills only through a retry at the 409's revision); assumption 11.
+
+**Not covered by any run:** concurrent recoveries; the two-level tree; Tauri bulk and recovery; a proxy stripping the CAS condition (P0b closes it at the edge); a real device's start-up clear of a recovery marker; the fence (3.4c).
+
+**Variants.**
+- **Before the freeze declaration:**
+  - **V1** no initial commit key: first write and conversion with `convert` / `seed` markers, crash at each step, GC and a second tab racing, **plus a fresh start from each failure state (absent key, damaged key, null current), and fresh start, then commit-key damage, then recovery with no pre-fence key deleted (G1)**.
+  - **V2** the deleter fence under a newer `req` token (cheap; near-tautological).
+  - **V3** the sweep fence: a second writer commits a character naming an asset after the sweep read R; a not-yet-committed asset; a content-addressed re-save of an orphan in an old record; the fence-set case.
+  - **V4 (G7)**: refuse + `bulkA=1` + one damage event (Node silent) + one recovery, **with staged manifests as candidates and the standing-prefix exclusion**, reduced set, exhausted; if inconclusive at the cap, report seed coverage as above.
+- **Before stage 2 Gate 2:** N2 (Tauri flag lost with the re-flush), `q_bulk`, `N_rec_f1`, `I_nosm_f1`, `N_reload0`, `faultCap=2` on a reduced set. Inconclusive runs block stage 2, not the freeze, unless a fix needs a field.
+- D6 (concurrent recoveries): no variant (refuse's safety does not depend on marker ownership).
+
+---
+
+## 7. Tests
+
+Labels: **reproducer** (fails on the relevant pre-fix base); **new behaviour**; **guard**; **diagnostic**.
+
+### 7.1 Stage 1
+
+| Test | Kind |
+|---|---|
+| Golden vectors for frame and every unit type; classification; commit-key vectors 1 to 12; fence vectors F1 to F4; manifest / unit with `fmt = 2` and unknown `req`; **a list with `v` one above known** | guard |
+| Frame with valid header CRC and unknown codec, reserved or type is too-new at boot, in a mark, in recovery listing, in a load; mutant "unknown codec treated as damaged" | new behaviour + mutant |
+| Ordinal key order across a digit boundary (both `m-` and `g-…-m`); key lengths 35 / 43; all keys at most 48 bytes; top-level keys are not `store2/` keys | guard |
+| **Boot table rows 1 to 11** including absent key + units (2); zero count confirmed by list ("count says 0, list names keys: row 2, no seed", G9); count unsupported falls back; failed list blocks conversion and seeding (1); commit key ok with unreadable current tree (6); null current with `staging: null` (7); labels `import`/`restore`/`bulk` (11); `convert` with the old file gone (10); **`seed` with no upstream file re-runs (9)**; Tauri start-up clear then re-run in one boot, and crash between (9 → 7) | new behaviour; mutants "absent key seeds", "null current treated as empty profile", "too-new treated as damaged", "zero count trusted" |
+| Node first-life create with "absent, revision 1" succeeds for the commit key and the fence | new behaviour + mutant |
+| **Recovery screen (G4):** every candidate fails the tree read → (a), (b), (c) all offered; `.bin` import offered while candidates exist; too-new makes the screen read-only with no fresh start | new behaviour |
+| **Fence (G1, G2, G10):** every exit (pick, re-conversion, `.bin` import, fresh start) creates or extends the fence before its marker CAS; second exit writes a superset; `priorCommits` keeps the damaged bytes verbatim; unparsable / too-new / unreadable fence stops every deleter including GC; GC never deletes a fenced key and collects new keys; sweep, inlay cleanup, manual cleanup refuse while fenced; recovery and restore never write the fence; discard is a CAS delete and a conflicting extension re-asks | new behaviour; mutants (3.4c) |
+| **V1-shaped integration:** fresh start, then commit-key damage, then recovery: no pre-fence key deleted | new behaviour |
+| Every deleter refuses on absent, unparsable, null-current, too-new, unreadable closure node, fenced (including after start-up, foreign and abandon clears) | new behaviour + mutants |
+| `req` mechanism: a writer copies unknown fields at every level and the union of `req`; unknown token = too-new; commit-key `req` ⊇ every named manifest's `req`; a Tier 1 hint made stale by an older writer is detected | new behaviour + mutants |
+| `refsOf` guard enumerates every Ref position; **one generated mutant per table row** (3.3 list, including `fixed.config`, `statics`, `order`, `loadouts`, `moduleIndex`, `current.key`, `retained[].key`, `pins[].key`) | new behaviour |
+| Positional tuples: longer tuples parse; chunk tuple `[tail, bytes, crc, count]` read by a generic Ref reader gives the right `bytes`; `codec != 0` Ref semantics | guard |
+| `ChatEntry` without `chunks` refuses; empty chat has one chunk with `msgs: []` | guard |
+| Recovery candidates: `m-` and completed staged `g-…-m` listed newest first by time digits with no body read; a **standing** staging prefix excluded; a staged pick read-only-validated; a staged manifest with a missing unit fails loudly | new behaviour; mutant "standing staged manifest offered" |
+| Recovery crash at each step then a GC pass then reboot: screen returns, every candidate still exists | new behaviour (mutant "GC does not refuse on null current") |
+| D6: two recovering tabs; the later never replaces a foreign marker except through the foreign-clear path (also for the screen's exits); one final CAS wins | new behaviour + mutant |
+| **L2** IndexedDB listing: keys visited by the cursor (or key-range bounds asserted), not request count | **reproducer** against today's `list`, then guard; device build |
+| `/api/list-prefix` server and client tests (fallback on 404 / HTML / 405, re-filter a lying answer, count unsupported = over limit); caps widening | new behaviour |
+| **L1** Rust flush status on the three paths, forced directory-flush failure, existing-final-key = false, reload with an in-flight write | new behaviour; Android build and Windows run |
+| Tauri boot re-flush on every page load; GC and sweep idle until success; persistent failure notice; `seq` / `epoch` unchanged | new behaviour + mutant |
+| Append key set: exactly tail, shard, manifest, commit when no inlay id is added; plus the character `il` unit (5 keys) when the set changes; under 256 KiB | new behaviour; mutant "per-send fields in config root" |
+| Backend conformance on three backends; commit-key write only through `casCommit` → `writeChecked` with the P0b header; retention, pins, restore, save-mine, abandon-clear, owner lifecycle | new behaviour + Report 62 mutants |
+| IndexedDB bulk by unit count; a 4.48 MiB core edit stays ordinary | new behaviour |
+| Stage 2 owns: per-batch Tauri GC interleaving | new behaviour |
+
+### 7.2 Stage 3
+
+| Test | Kind |
+|---|---|
+| Codec byte stability over T3, T4, T5, legacy shapes | guard |
+| Codec refuses a stub; converter mints `u`; shard from `crc32(u)`; non-uuid `chaId` converts | guard + mutant |
+| Switch writes no unit bytes (A1) | new behaviour |
+| Asset list pure; `assetRefKey` on `.PNG` and upper-case custom ids across web / Node / Tauri | guard |
+| Keep-set: union over current, retained, pinned; stale `v` derives or refuses; **`v` above known refuses**; CRC failure incomplete; refuses on `staging`, null current, unreadable legacy file, set fence | new behaviour + mutants |
+| **Sweep record rules:** young record never rewritten; new candidate never inherits an old `at`; old record deletes only the intersection then replaces the record with `at = now`; **record dated more than 10 minutes ahead is replaced and deletes nothing**, within 10 minutes counts as young; unreadable record treated as absent; Node time from the `Date` header and skewed device clocks agree; manual clean-up uses the same record | new behaviour + mutants |
+| **Node per-asset drop-and-retry:** one re-saved asset in a batch of 25 deletes the other 24; a `store2-commit` 409 rebuilds the keep-set, an asset 409 drops that asset; `rev` recorded for at most 500 candidates per pass | new behaviour + mutants |
+| Sweep races with a second writer: (a) commit naming asset X after R; (b) X written, not yet committed; per-batch fence | new behaviour + mutants |
+| Marker-before-asset: restore writes assets before its marker with a concurrent sweep | new behaviour + mutant |
+| `ASSET_REF_V` / `IL_REF_V` bump: sweep refuses or derives, idle re-derivation converges, legacy re-derivation converges | new behaviour |
+| Legacy: per-file status; an unreadable file blocks the sweep by name; deleting it clears; release only when all `gone`; `has` error keeps; older retained manifest still protects | new behaviour + mutants |
+| **Inlays (type 21 body):** uuid, asset-shaped and other-shaped ids each held only by an unloaded owner survive; 5,000 ids survive; `x` owner blocks deletion; other-shaped candidate kept unless every owner is resident; superset on append, exact on full re-derivation; token-only and cold-root mutants | new behaviour |
+| **Legacy deleters (3.8e):** converted, seeded, imported and fresh fixtures keep `database/`, `coldstorage/`, `remotes/` and numbered backups through boot, a manual clean-up and a sweep; A2.4a cutover deletion exempt | guard + mutants (rows 2 to 10, 15 each run) |
+| U9: count methods per backend; above the limit (default 50,000) the boot sweep does not start, the Settings button does | new behaviour |
+| Unknown fields at each level round-trip | guard |
+| Chunk sealing at 131,072 bytes, `st` only last | guard |
+
+### 7.3 Mutants that must fail
+
+Report 62 list (five controls; abandon-clear without id-and-prefix check; without the read after an uncertain final CAS, retrying at the 409's revision; restore drops `staging`; restore does not push `current`; save-mine drops `staging` or `pins`; mark ignores `pins`; GC ignores a staging prefix; off-Node reuse of earlier units; IndexedDB two transactions; IndexedDB GC check outside its transaction; Tauri commit-key before durable units; Tauri naming an unflushed unit; recovery without the marker fence; seq-only compare; retire outside the prefix; S0-13 v1 parser) plus earlier additions plus: any deleter running on absent / unparsable / null-current / too-new / fenced / unreadable-fence; unknown codec, reserved or type treated as damaged; absent key seeds; zero count trusted; a clear that synthesises a `current`; writer drops unknown fields or lowers `req`; the generated `refsOf` mutants (one per row); newer list `v` read as complete; sweep without the per-batch fence; sweep record rewritten while young; new candidate inheriting an old `at`; far-future record trusted; sweep with `staging` set; restore writes assets before its marker; case-sensitive `h` comparison; legacy list released early or on a `has` error, or sweep with an `unreadable` file; inlay cleanup via legacy cold roots; token-only `il`; capped `il`; other-shaped candidate deleted with a non-resident owner; legacy deleters running (3.8e rows); recovery or restore writing, deleting or shrinking `store2-fence`; an exit writing its marker before its fence; recovery marker replacing a foreign marker silently; Tauri GC or sweep before the re-flush or with a failed flush; client trusting an unfiltered `/api/list-prefix`; standing staged manifest offered as a candidate; hard-coded create revision on Node; guarded remove retried as a whole after an asset conflict.
+
+---
+
+### 7.4 Added in v3.3 (conditions check)
+
+| Test | Kind |
+|---|---|
+| Node: an item with `rev = null` is never deleted; at most 500 candidates enter the record per pass; every recorded Node item has a non-null `rev` | new behaviour + mutants |
+| Per-batch atomic check includes the fence version: Node check-only on the `store2-fence` revision read at pass start (absent included); IndexedDB batch transaction reads the fence (presence by `count`, body only when present); Tauri under the mutex. Scenario: GC reads "no fence", an exit writes the fence, the batch must conflict and delete nothing; with Node silent damage and with row 6 | new behaviour + mutant "fence checked at pass start only" |
+| Node: fence discarded earlier (absent at revision 2 or higher): GC and sweep batches carry that revision and delete normally | new behaviour + mutant "absent fence checked at revision 0" |
+| Fence body read once per pass and again only when a batch conflicts on the fence version | new behaviour |
+| Exit over an unparsable fence: `keys` = the full listing, the damaged fence bytes kept in `priorFences`; discard of an unparsable fence is a CAS delete at its revision or bytes; boot shows the "cleanup blocked" notice | new behaviour + mutant "exit over an unparsable fence keeps fewer keys than the listing" |
+| Tauri: the exit proceeds past the fence write only after it reports `flushed`; boot re-flush includes `store2-fence` | new behaviour + mutant "marker CAS after an unflushed fence write" |
+| Inlay candidate with an upper-case token id and a lower-case `u` entry survives (candidates lower-cased before the lookup) | new behaviour + mutant "case-sensitive `u` lookup" |
+| Guard rows: `bootstrap.ts:1346` (the web/Node `remotes/` loop) is in the disabled-site mutants; the `getDbBackups()` reader is the guard's entry for row 4 | guard + mutants |
+| A bump of a derived list's version is Tier 1 with refusal: an older build reads a list with a higher `v` as unreadable and deletes nothing; it is not too-new | new behaviour |
+
+## 8. Device checks, maintainer actions
+
+### 8.1 Device (Note 9, Windows desktop)
+1. IndexedDB strict commit with the real adapter (independent: p50 13.4, p95 31.2 ms, 6/2,000 over 60 ms, max 93.2 ms); strict hold at 1, 4 and 16 MiB (TODO before 1b Gate 2).
+2. During 1a: Tauri Android durable append cost on today's `write_durable` / `write_chunk` path (A2 ladder).
+3. L1 on an Android build and Windows; L2 on a Note 9 build.
+4. Range list vs old list at about 386k keys with the real adapter (independent: about 60 ms vs 56 s).
+5. Node `/api/list-prefix` and count from a Note 9 over LAN and a Pi-class host (sets `SWEEP_AUTO_LIMIT`); **the recording-pass cost of `HEAD /api/read` per candidate (requests, server bytes read, time) and the effect of the 500-candidate cap**; decides whether the P0b `&revisions=1` option is needed.
+6. Stage 2: P10 repeat with the real adapter and the hidden-tab stall; power-loss-after-exit of a failed directory flush (TODO(evidence)).
+7. Conversion of maintainer-class old files: legacy derivation time and peak memory.
+8. 4a device check: sweep memory and time.
+
+### 8.2 Stage 1b Gate 2 owes
+Items 1 (incl. byte-hold points), 3, 4, 5; Gate 2 tests of L1, L2.
+
+### 8.3 Maintainer actions (precondition of the freeze declaration)
+Counts-only real-data codec census with the existing `real-size-report.harness.ts` extended: residual normalisations, per-unit size maxima, chunks per chat (decides whether a `cx` unit is ever needed), `core.f` sizes, manifest and shard sizes, key counts of `pluginCustomStorage` and `_coldplugin`, the inlay collector's scope and per-owner inlay counts (characters, modules, config, plugin values; how many exceed 4,096). Sizes and ordinals only.
+
+---
+
+## 9. Risks, rollback, process
+
+| # | Risk | Response |
+|---|---|---|
+| X1 | A2 on Tauri Android fails | 8.1(2); ladder in 4.5 |
+| X2 | Hidden or frozen tab holds a readwrite transaction | Stage 2 device check; watchdog |
+| X3 | Format error found | Before the declaration: 3.1b; after: Gate 1 reopen |
+| X4 | Node list cost on weak hosts | Prefix route + count; U9 limit |
+| X5 | `strict` is a hint | Relaxing needs evidence |
+| X6 | Figures are best-case hardware | Never claim frame-budget compliance unqualified |
+| X7 | A per-send field written outside the tail | Byte-compare (I8); census |
+| X8 | Ref-bearing field added later | Tier 2 token; `refsOf` guard |
+| X9 | Review budget: round 3 approved with conditions after two rejections | A further rejection of the remediation goes to `senior-advisor` |
+| X10 | "Ask again" recovery; crashed web tab leaves a marker | Accepted (U7); Q3 wording stage 4 |
+| X11 | Legacy unit large (INFERRED 18 to 35 MB) | Written once; progress; 8.1(7) |
+| X12 | An unreadable legacy file blocks the sweep | Named in Settings; delete or retry |
+| X13 | Sweep age residuals: a tab stalled beyond the age; content-addressed re-save (R22) on IndexedDB and Tauri | Disclosed (3.8c). **On Node the re-save race is closed for every recorded item** (a Node item without a revision is never recorded or deleted); the cost is slow convergence on very large orphan sets (500 candidates per pass) |
+| X14 | Too-new with a higher `fmt` or unknown codec shows only a notice | Disclosed; equals "Refuse to open" |
+| X15 | L1, L2 live-path changes | Own tests, review, device builds; revert independently |
+| X16 | While `store2-fence` exists the sweep, inlay cleanup and manual cleanup are off and pre-exit keys stay | By design (U12, U13); cleared only by the Settings discard |
+| X17 | `HEAD /api/read` reads whole files; Express HEAD and `Date` confirmed in scratch, behind nginx `Date` is nginx's | Node HEAD cap of 500 per pass, which also caps how many candidates enter the record; P0b option; 8.1(5) |
+| X18 | The census (3.8e) is PARTIAL (Rust and unusual receivers not enumerated) | 4a Gate 1 completes it |
+
+**Rollback.** Unwired library: revert branches. L1, L2, the list route and the P0 follow-ups revert independently; nothing writes under `store2/` or the three top-level keys before 4a.
+
+**Worktrees and ownership.** P0a, P0b on `feat/alite`; 1a `feat/alite-fmt`; `feat/alite-s1` (1b incl. L1, L2, list route, `fence.ts`) and `feat/alite-s3` from merged 1a; one app-code writer each; Rust and `server.cjs` only in the stage 1 worktree; no merge to `main` before the maintainer says (Report 62 C9).
+
+**Size (INFERRED).** P0a + P0b 500 to 900 lines; stage 1 3,800 to 5,400 source, 5,500 to 8,200 tests, about 400 Rust; stage 3 2,800 to 4,000 source, 4,200 to 6,200 tests. Review rounds: this remediation round; Gate 2: P0a 1, P0b 1 to 2, 1a 1 to 2, 1b 4 to 6, stage 3 3 to 5.
+
+**Gates.** Gate 1: `senior-advisor` + `opus-reviewer`. Gate 2 each of P0a, P0b, 1a, 1b (with L1, L2), 3: `opus-reviewer`. Translator for the new strings: conversion dialog (U8), too-new notice (U10), Settings sweep button and **its first-press note "orphan files are removed on a later run after 24 hours"** (U9), unreadable-legacy notice, flush-failure notice, recovery-screen options and the fresh-start confirmation (U12), and the Settings "discard old data" action (U12, U13).
+
+---
+
+## 10. Open items
+
+**A. MC-290 contents to record (not yet recorded; the third additive server change and the `MC-289` amendment cite it as pending).**
+1. U1 keep old files' assets; U2 names `store2/`, `store2-commit`, and also `store2-sweep` and `store2-fence`; U3 prefix list route (condition met; ruling: route, client fallback with re-filter, caps flag, `count=1` mode); U7 "ask again"; U8 shared live folder unsupported; U9 limit-gated automatic sweep (default 50,000 until measured); U10 read-only + notice; U11 keep inlays of retained and pinned manifests; U12 fresh start; U13 keep damaged data on all recovery exits.
+2. **Disclosure to record:** for an unparseable `fmt` or an unknown codec the behaviour equals the unchosen U10 option "Refuse to open".
+3. **Applied by analogy, to confirm:** inlays of the old upstream files are in the legacy unit (U1 named assets only).
+4. **The fence's suspension** of the asset sweep, inlay cleanup and manual cleanup (rather than a name snapshot) is my proposal for U12/U13, labelled as such; U13 extends it to every exit.
+5. The P0b `&revisions=1` mode would extend the U3 route; confirm it is covered. Without it the Node recording cap makes large orphan sets converge slowly (3.8c).
+
+**B. Numbers still to be set by measurement.** `SWEEP_AUTO_LIMIT` (placeholder 50,000; the maintainer's library is above it); IndexedDB strict-hold at 1/4/16 MiB (TODO before 1b Gate 2) and whether a byte threshold is needed; `SWEEP_MIN_AGE` 24 h (proposal, basis INFERRED, debounce untraced); re-derivation batch size; the Node HEAD cap (500 per pass, which now also caps how many candidates enter the record); the 8 MiB unit-size parameter that sets `x`. **Unmeasured:** A2 on Tauri Android; IndexedDB `count(range)` at 386k keys; Node prefix, count and HEAD-per-candidate costs on a Pi and over LAN; the per-batch fence version check on IndexedDB when a large fence exists; legacy derivation time and memory; power loss reverting a key after exit (also for `store2-fence`); hidden or frozen tab holding a transaction.
+
+**C. Preconditions of the freeze declaration (stage 3 gate).** The maintainer's counts-only census (8.3, including inlay scope and counts above 4,096); model variants **V1 (with fresh start, damage, recovery and fence, and the fence-write-to-marker window of N1), V2, V3, V4**. C1 to C3 are closed before 1a writes golden vectors; the fence vectors F1 to F6 are part of 1a.
+
+**D. Stage 2 Gate 2 model work.** N2 (Tauri flag lost with the re-flush), `q_bulk`, `N_rec_f1`, `I_nosm_f1`, `N_reload0`, `faultCap=2` on a reduced set; unreached regions of Section 6 stay listed.
+
+**E. Later traces (4a unless noted).** Whether the legacy derivation resolves `remotes/` pointers; completion of the call-site census (Rust, unusual receivers; row 13 legacy inlay store; row 15 OPFS copy-back); whether anything reads `convertedFrom` / `convertedAt`; which chat fields are per-send in real use; the `usesDisplayScripts` trace (stage 6); save debounce value; `Chat.id` for `cid`; upstream stub restore (4b); manual clean-up age rule at stage 5.
+
+**F. Report 62 questions.** Q3 (also governs the foreign-clear prompt used by the recovery-screen exits and the `convert` / `seed` markers) and Q9.
+
+**G. Reviewer acceptances carried.** (a) a higher `fmt` or unknown codec shows only a notice: ACCEPTED, with the MC-290 disclosure; (b) the sweep age cannot protect a tab stalled beyond it: ACCEPTED as a stall residual; the content-addressed re-save is separate, disclosed, and now closed on Node for every recorded item; (c) recovery offers only `m-` and relies on promotion: moot under S1.

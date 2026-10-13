@@ -9756,6 +9756,153 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Today's startup asset sweep is switched off whenever any character is cold-stored: the `sweepAssets` condition in `src/ts/bootstrap.ts` (line 1185 onward) requires that no character has `coldstorage`, no asset sweep hold is set and no older main-file copy exists (orchestrator-verified; read by the records pass). This corrects the premise of Report 62 A5.4, which said the boot sweep reads every archived unit.
 - The measured sizes and the orchestrator's reading that the list must be its own unit are in ledger row 1742 (the reading is INFERRED).
 
+### MC-290 — Main Campaign, 2026-10-13 and 2026-10-14: stage 1+3 Gate 1 answers U1, U2, U3, U7 to U13 (old files' assets kept; names `store2/`; a prefix-only server list route; recovery "ask again"; shared folder unsupported; limit-gated automatic sweep; newer format read-only; old inlays kept; fresh start behind a confirmation; damaged data kept on every recovery exit)
+
+- **Tag:** decisions (`AskUserQuestion` answers, by option label; question and option texts verbatim as relayed by the orchestrator in `maintainer-answers-u.md`) and notes that are not the maintainer's words, labelled as such
+- **Date:** U1, U2, U3 and U7: 2026-10-13. U8 to U11: 2026-10-13, after Gate 1 round 1. U12: 2026-10-13, after Gate 1 round 2. U13: 2026-10-14, after Gate 1 round 3. The time of each answer is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's brief to the records pass of 2026-10-14 and the scratch file `storage\stage13\maintainer-answers-u.md` (verbatim questions, options and answers U1 to U3 and U7 to U13, the U3 outcome ruling, the U2 name pick). The plan these answers feed is `Agents/Tools/storage-model/plan-v3.4.md` (copied into the repository with the other evidence; Report 62 Part D). The U3 measurement is `Agents/Tools/storage-model/nodelist/results.md`; the F1 finding behind U7 is `Agents/Tools/storage-model/e1-1/results-2.md` and `Agents/Tools/storage-model/e1-1-verify/verify.md`; the findings behind U8 to U13 are `Agents/Tools/storage-model/reviews/`.
+- **Reasoning:** none stated by the maintainer, except where an option text carries it (quoted below).
+- **Alternatives rejected:** per item below.
+- **Amends:** `MC-289`, for libraries above the file-count limit (U9): `MC-289` says the startup asset clean-up runs; U9 makes it run automatically only below a file-count limit and, above it, only from a button in Settings. The limit is a placeholder of 50,000 until measured (see U9). No other earlier entry's text. Applies `MC-287` (old files stay on disk untouched) and `MC-289`.
+- **Related:** `MC-130`, `MC-175`, `MC-223`, `MC-283` to `MC-289`, `MC-091`, Report 62 Part D, ledger rows 1743 to 1750.
+
+**What was decided (summary):**
+1. **U1:** at conversion the app records the assets the old upstream files use and cleanup never deletes them.
+2. **U2:** a neutral on-disk name instead of `alite/`.
+3. **U3:** a prefix-only server list route may be added if the full listing is measured slow; the measurement was over the trigger.
+4. **U7:** after an interrupted recovery, the recovery screen comes back and the user picks again; cleanup waits.
+5. **U8:** sharing one live folder between upstream and the fork after conversion is unsupported, and the app says so.
+6. **U9:** the startup asset clean-up runs automatically below a file-count limit and only from a Settings button above it.
+7. **U10:** an older app version that finds a save written by a newer one shows the data read-only with a notice.
+8. **U11:** inlays that only older kept versions use are kept.
+9. **U12:** a fresh empty profile may be offered behind a confirmation in the worst case, with the damaged data untouched.
+10. **U13:** every recovery-screen exit keeps the earlier damaged data untouched until the user presses "discard old data" in Settings.
+
+#### U1 "Old files" (2026-10-13)
+
+**The question (`AskUserQuestion`, header "Old files", verbatim):** "When the new format first opens an upstream save, the old upstream files are kept on disk untouched (MC-287). Those old files point at assets too. Later, if you delete a character in the new format, its images may be needed only by the old files. What should startup cleanup do about the old files?"
+- Option 1, "Keep their assets (Recommended)": "At conversion, record the list of assets the old files use, and never let cleanup delete those. The old files stay fully usable (e.g. opening them in upstream). Costs some disk until you delete the old files yourself."
+- Option 2, "Pause cleanup while they exist": "Today's rule: no automatic cleanup at all while old files exist. For your profile that means cleanup effectively never runs until you remove them."
+- Option 3, "Ignore them": "Cleanup only protects what the new format uses. Smaller disk use, but the old files may end up pointing at deleted images."
+
+**The answer:** "Keep their assets (Recommended)".
+
+**What was decided:** at conversion the app records the list of assets the old upstream files use, and cleanup never deletes those. Not chosen: options 2 and 3.
+
+#### U2 "Names" (2026-10-13)
+
+**The question (verbatim):** "The new storage needs on-disk names for its folder and its commit file. The working names are `alite/` and `alite-commit`. Keep them, or use something neutral?"
+- Option 1, "Neutral name (Recommended)": "Something descriptive like `store2/` and `store2-commit`, so the name means something to anyone browsing the data folder later. Only changeable before the format is frozen."
+- Option 2, "Keep alite": "Keep the working names; they match all the plan and test documents."
+
+**The answer:** "Neutral name (Recommended)".
+
+**What was decided:** a neutral name. **The orchestrator's pick (not the maintainer's words):** `store2/` for the folder and `store2-commit` for the commit file, the example the option offered. Stage 0a's server prefix rule (`aliteKeys.cjs`, `keyRules.ts` on `feat/alite`) must be renamed in a 0a follow-up (P0a) before stage 1.
+
+**Note that is not the maintainer's words:** the plan also uses `store2-sweep` (the age record) and `store2-fence` (the fence record, U12 and U13) as top-level key names; those two names follow the pick by analogy and were not asked (plan `plan-v3.4.md` section 10 A.1). They change before the format freeze only.
+
+#### U3 "Server list" (2026-10-13)
+
+**The question (verbatim):** "On a Node server, listing stored files reads the whole data folder every time (about 383k files for you), and the cleanup lists often. If a measurement shows this is too slow, may I add one more server route that lists only one folder prefix? It is additive: old clients keep working, and an old server just lacks it."
+- Option 1, "Yes, if measured slow (Recommended)": "Add the prefix-only list route only if the measurement shows the full listing is too slow; otherwise leave the server as is."
+- Option 2, "No more server changes": "Keep the server as stage 0a left it; cleanup on Node pays the full listing cost (it would run less often instead)."
+
+**The answer:** "Yes, if measured slow (Recommended)".
+
+**What was decided:** the prefix-only list route is allowed if the measurement shows the full listing is too slow. Not chosen: option 2.
+
+**The orchestrator's outcome ruling (2026-10-13; not the maintainer's words).** Source: the `perf-analyzer` packet `a430721f0e6f3081e`, `Agents/Tools/storage-model/nodelist/results.md` (a raw packet, MEASURED; i9-13900KF best-case hardware, Windows 11, NTFS, Node v24.19.0, Defender not disabled, a fixture of 387,504 listed keys). Measured: unfiltered `/api/list` p50 1.2 to 2.2 s, p95 3.2 to 3.6 s, a 30,022,602-byte (about 30 MB) payload, client parse 127 to 206 ms (the ruling text says 130 to 210 ms), server RSS about +400 MB (idle 70 to 72 MB, after one list 312 to 315 MB). The 1 s trigger is exceeded on the median, so the condition of the answer is met. The packet's own verdict was "needed: NO (conditional on host)" with a lean toward yes if the new format lists `store2/` at boot; the ruling above is the orchestrator's. **Ruling:** add `GET /api/list-prefix?prefix=`, with the same limiter and `risu-auth` as `/api/list` and the same response shape, which decodes only hex names starting with `hex(utf8(prefix))` that pass the existing even-length-hex rule (case-insensitive compare). The client re-filters every response by the prefix; a non-success answer or a 404 means unsupported, and it falls back to `/api/list` plus `startsWith`; an optional `listPrefix: true` is advertised in `/api/caps`. This is stage 1 work. The plan adds a `count=1` mode that returns `{ success: true, count }` (the plan's addition, not part of the ruling text). It does not remove the readdir floor of about 0.6 s (p50 610 ms) and does not help the boot asset sweep, which needs the full list; its use is listing `store2/` at GC and recovery (148,528 bytes against 30,022,602 bytes per call, which matters on phones over a LAN). These timings are best-case hardware; a Pi-class host and a phone over LAN were not measured (TODO(evidence), plan 8.1(5)).
+
+#### U7 "Recovery fix" (2026-10-13)
+
+**Context:** asked after the model run E1-1 confirmed finding F1: a crash during recovery plus GC while `current` is null leaves the profile empty (a 12-step trace; `results-2.md`; the independent verifier confirmed it and found it broader, `verify.md`).
+
+**The question (verbatim):** "Recovery after damaged save data has a confirmed gap: if the app crashes while restoring a backup copy, the profile can open empty. All three fixes below close it in the model. They differ in what you'd see. Which behaviour do you want?"
+- Option 1, "Ask again (Recommended)": "If recovery is interrupted, the recovery screen comes back next start and you pick again. Cleanup pauses until recovery finishes. Simplest: no new saved field, no size limit."
+- Option 2, "Remember the pick": "Recovery remembers which copy you picked and finishes on its own next start. No repeat screen, but needs a new saved field plus an existence check that hits a 60-file limit on Node for big profiles (needs a fallback)."
+- Option 3, "Install pick at once": "Your pick becomes the live copy immediately. Other open tabs can keep saving on top of it during recovery, so the result may not be exactly what you picked. Same 60-file limit issue."
+
+**The answer:** "Ask again (Recommended)".
+
+**What was decided:** the model's fix candidate "refuse": cleanup refuses while the commit key names no current; boot treats "parses but no current" like an unparsable key and shows the recovery screen. Not chosen: options 2 and 3.
+
+#### U8 "Shared folder" (2026-10-13, Gate 1 round 1)
+
+**The question (verbatim):** "After the new format converts a Node server's data, could upstream RisuAI still be pointed at the same data folder? If it is, the new format's startup cleanup would see images upstream adds later as unused and delete them."
+- Option 1, "Unsupported, warn (Recommended)": "Sharing one live folder between upstream and the fork after conversion is unsupported; the app says so at conversion. Old files stay readable for copying/exporting, not for live use by upstream."
+- Option 2, "Protect newer files": "Cleanup never deletes assets newer than the fork's last save. Safer for sharing, but unused files from the fork itself also linger until the next save."
+- Option 3, "Pause cleanup": "No automatic cleanup while the old upstream files exist (today's rule). For your profile that means cleanup stays off until you delete them."
+
+**The answer:** "Unsupported, warn (Recommended)".
+
+**What was decided:** sharing one live folder between upstream and the fork after conversion is unsupported, and the conversion dialog says so. Not chosen: options 2 and 3.
+
+#### U9 "Big cleanup" (2026-10-13, Gate 1 round 1)
+
+**The question (verbatim):** "Startup asset cleanup lists every stored file. At your ~383k files that took 1-2 s and a 30 MB transfer on the fast PC; a Pi 3 server or a phone could stall or run out of memory. What should happen on big libraries?"
+- Option 1, "Auto, with size limit (Recommended)": "Runs automatically below a file-count limit (set by measurement); above it, it only runs when you press a button in Settings. Startup never stalls on huge libraries."
+- Option 2, "Always auto": "Runs at every startup regardless of size, in the background. Simplest, but may slow or crash low-end devices on huge libraries."
+- Option 3, "Button only": "Never runs on its own; you start it from Settings."
+
+**The answer:** "Auto, with size limit (Recommended)".
+
+**What was decided:** the startup asset clean-up runs automatically below a file-count limit and only from a Settings button above it. **This amends `MC-289`'s "run it" for libraries above the limit.** Not chosen: options 2 and 3.
+
+**Note that is not the maintainer's words:** the limit is to be set by measurement. Until then the plan uses a placeholder of 50,000 files on every backend, which is the orchestrator's number and not a measurement (INFERRED / placeholder); the maintainer's own library (383,742 asset entries, ledger row 1741) is above it, so there the sweep would be button-only until the number is measured. TODO(evidence): the measured limit (plan section 10 B; device check 8.1(5)).
+
+#### U10 "Newer save" (2026-10-13, Gate 1 round 1)
+
+**The question (verbatim):** "If an older copy of the app (a stale browser tab, an old desktop install, another device not yet updated) opens a save written by a newer version, what should it do?"
+- Option 1, "Read-only + notice (Recommended)": "It shows the data but refuses to save or clean up, and tells you to update. No risk of the old version overwriting or 'recovering' newer data."
+- Option 2, "Refuse to open": "It shows only an 'update the app' screen and does not load the data."
+
+**The answer:** "Read-only + notice (Recommended)".
+
+**What was decided:** an older app version that finds a save written by a newer version shows the data read-only with a notice; it does not save, clean up or recover. Not chosen: option 2.
+
+#### U11 "Old inlays" (2026-10-13, Gate 1 round 1)
+
+**The question (verbatim):** "The app keeps older saved versions of your profile for recovery. Should images inserted in chats (inlays) that only those older versions still use be kept?"
+- Option 1, "Keep them (Recommended)": "Same rule as character images: anything an older kept version uses is not deleted, so restoring an older version brings its chat images back. Uses more disk until those versions age out."
+- Option 2, "Only current": "Inlays are kept only if the current profile uses them. Less disk, but restoring an older version may show missing chat images."
+
+**The answer:** "Keep them (Recommended)".
+
+**What was decided:** inlays that an older kept version (a retained or pinned version) uses are not deleted. Not chosen: option 2.
+
+#### U12 "Dead end" (2026-10-13, after Gate 1 round 2 `[REJECT]`, `reviews/r2-review.md` finding 2)
+
+**The question (verbatim):** "Rare worst case: the save's commit file is damaged AND there's no earlier copy to recover, no old upstream file to re-convert from, and you have no .bin to import. What should the app offer?"
+- Option 1, "New profile, confirmed (Recommended)": "Offer 'start a new empty profile' behind a clear confirmation. The damaged data stays on disk untouched (nothing deleted), so it could still be rescued by hand later."
+- Option 2, "Stay read-only": "Never offer a fresh start; the app stays stuck on the recovery screen until a .bin is imported."
+
+**The answer:** "New profile, confirmed (Recommended)".
+
+**What was decided:** in that worst case the app offers "start a new empty profile" behind a clear confirmation; the damaged data stays on disk untouched. Not chosen: option 2.
+
+#### U13 "Keep damaged" (2026-10-14, after Gate 1 round 3 `[APPROVE WITH CONDITIONS]`, `reviews/r3-review.md` finding 11)
+
+**The question (verbatim):** "From the recovery screen you can also re-convert from the old upstream files or import a .bin. Afterwards, should the damaged data from before stay on disk untouched (like the fresh-start option), until you discard it in Settings?"
+- Option 1, "Keep it, all exits (Recommended)": "Every recovery-screen exit keeps the old damaged data untouched until you press 'discard old data'. Cleanup stays paused until then; one consistent rule."
+- Option 2, "Only for fresh start": "Re-conversion and .bin import rebuild a full profile, so the old damaged data is cleaned up normally afterwards. Frees disk sooner."
+
+**The answer:** "Keep it, all exits (Recommended)".
+
+**What was decided:** every recovery-screen exit (picking a candidate, re-conversion, `.bin` import, fresh start) keeps the earlier damaged data untouched until the user presses "discard old data" in Settings; cleanup stays paused until then. Not chosen: option 2.
+
+**Derived readings the plan flags for confirmation (not the maintainer's words; recorded so a later reader does not take them as asked):**
+- **Inlays of the old upstream files are in the U1 legacy unit.** U1's question and options name assets only. The orchestrator reads the chosen option's text "The old files stay fully usable" as covering the chat inlays those files use too, so the recorded legacy list also carries an inlay body (plan 3.8b). The plan labels this "applied by analogy, to confirm" (plan section 10 A.3). TODO(evidence): the maintainer has not confirmed this reading.
+- **The fence suspends all sweeps.** To honour U12 and U13, the plan writes a fence record (`store2-fence`) listing every `store2/` key that existed at a recovery-screen exit. Garbage collection never deletes a listed key, and the asset sweep, the inlay cleanup, the manual clean-up and the Settings sweep button are suspended while the fence exists (protecting `assets/` and `inlays/` by name would need a snapshot of up to hundreds of thousands of names). This suspension is the plan author's reading of U12 and U13. The round 3 reviewer judged it a faithful reading of U12 and added that it stays the author's proposal until recorded (`reviews/r3-review.md` section C, line 283); U13's chosen option text itself says "Cleanup stays paused until then". The disk cost is disclosed (plan X16).
+- **A newer `fmt` or an unknown codec can only show a notice.** U10 chose "Read-only + notice". Where this build cannot parse the save at all (a higher `fmt`, an unknown codec byte), a read-only state can show nothing but the notice, which equals the unchosen U10 option "Refuse to open". The plan discloses this (plan 3.4b row 3 and X14) and the round 3 reviewer accepted it with this disclosure (plan section 10 G(a)).
+
+**Not approved by this entry (open question for later):** the plan's P0b option of a `&revisions=1` list mode on the new list route, which would return each listed key's in-memory revision without reading file content (plan 3.8c, P0b). It extends the U3 route beyond the ruling above and needs the maintainer's coverage or a new question. Without it the Node recording pass is capped at 500 candidates per pass and large orphan sets converge slowly (plan 3.8c, X13). Do not treat U3 as covering it.
+
+**Notes that are not the maintainer's words:**
+- **Gate 1 of the stage 1+3 plan passed on 2026-10-14** after plan v1 (an internal draft), v2, v3, v3.1 to v3.4: `opus-reviewer` `[REJECT]` (round 1, plan v2, 17 findings), `[REJECT]` (round 2, plan v3, 10 findings), `[APPROVE WITH CONDITIONS]` (round 3, plan v3.1, conditions C1 to C13), then three incremental condition checks (plan v3.2 `[APPROVE WITH CONDITIONS]`, v3.3 `[APPROVE WITH CONDITIONS]`, v3.4 `[APPROVE]`); a `senior-advisor` challenge ran after round 1. Details: Report 62 Part D. The reviews are in `Agents/Tools/storage-model/reviews/`. A `doc-verifier` pass of the records of this batch had not run when this entry was written.
+- The two maintainer-run or maintainer-decided inputs still owed before the format freeze are the counts-only real-data census (plan 8.3) and the model variants V1 to V4 (plan section 6); neither is a product question.
+- The format is a build candidate at stage step 1a and is declared frozen at the stage 3 gate; the names in U2 change before that declaration only (plan section 1).
+
 ### MC-300 — Unload-2 session, 2026-10-12: the stage-1c measurement code is kept, compiled out of normal builds
 
 - **Tag:** decision (`AskUserQuestion` answer, by option label)
