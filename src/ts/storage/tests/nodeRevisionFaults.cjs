@@ -13,6 +13,14 @@
 //                        rename-attempts.txt.
 //   inject-read-fail     while present: reading __revisions.log fails with
 //                        EACCES.
+//   inject-rm-fail       one shot: the next removal of a key file in the save
+//                        directory (a name not starting with `__`) fails with
+//                        EIO; the marker is removed.
+//   inject-retire-append-fail
+//                        one shot: the next append to __revisions.log that
+//                        carries a delete record (`"d":1`) writes the first
+//                        half of its bytes, then fails; the marker is removed.
+//                        Appends of ordinary bumps are not affected.
 const fs = require('fs')
 const path = require('path')
 
@@ -34,7 +42,24 @@ fs.promises.appendFile = async function (file, data, ...rest) {
         await originalAppend.call(this, file, text.slice(0, Math.ceil(text.length / 2)), ...rest)
         throw Object.assign(new Error('injected append failure'), { code: 'EIO' })
     }
+    if (isRevisionLog(file) && hasMarker('inject-retire-append-fail') && String(data).includes('"d":1')) {
+        fs.unlinkSync(markerPath('inject-retire-append-fail'))
+        const text = String(data)
+        await originalAppend.call(this, file, text.slice(0, Math.ceil(text.length / 2)), ...rest)
+        throw Object.assign(new Error('injected retire append failure'), { code: 'EIO' })
+    }
     return originalAppend.call(this, file, data, ...rest)
+}
+
+const originalRm = fs.promises.rm
+fs.promises.rm = async function (target, ...rest) {
+    const name = path.basename(String(target))
+    const inSaveDir = path.basename(path.dirname(String(target))) === 'save' && !name.startsWith('__')
+    if (inSaveDir && hasMarker('inject-rm-fail')) {
+        fs.unlinkSync(markerPath('inject-rm-fail'))
+        throw Object.assign(new Error('injected rm failure'), { code: 'EIO' })
+    }
+    return originalRm.call(this, target, ...rest)
 }
 
 const originalRename = fs.promises.rename

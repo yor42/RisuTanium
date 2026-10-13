@@ -1,7 +1,17 @@
-import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
-import { StoreDeleteManyError, StoreError, StoreInvalidKeyError, StoreVersionConflictError, type DeleteReportEntry } from './errors'
+import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedCapabilities, GuardedOperations, ReadResult, StoreCondition, WriteResult } from './contract'
+import {
+    ServerLacksCapabilityError,
+    StoreCheckListTooLongError,
+    StoreDeleteManyError,
+    StoreError,
+    StoreInvalidConditionError,
+    StoreInvalidKeyError,
+    StoreOutcomeUnknownError,
+    StoreVersionConflictError,
+    type DeleteReportEntry,
+} from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, versionOf } from './guards'
-import { nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolation } from './keyRules'
+import { ALITE_PREFIX, isAliteKey, nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolation } from './keyRules'
 
 /**
  * The byte store on the self-hosted Node server (`server/node/server.cjs`). The
@@ -13,6 +23,16 @@ import { nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolati
  * - `/api/write` replaces the file through a temp file and a rename, and answers
  *   the new revision; `if-match-revision` makes it conditional.
  * - `/api/remove` takes `$$`-joined hex keys and positionally aligned revisions.
+ * - `/api/write-checked`, `/api/remove-checked` and `/api/caps` are the guarded
+ *   routes behind `guarded`: a write or removal that also compares other keys'
+ *   revisions in the same step, a removal that can also retire the keys, and the
+ *   server's capabilities. Every guarded answer carries `risu-storage-guarded: 1`,
+ *   a numeric revision and an echo of the checks it enforced; the client counts
+ *   what it sent in `check-only-count` and `retire-count`. Anything else (a 404
+ *   from an older server, an HTML page or a 405 from a proxy, a redirect, an
+ *   answer without the marker or with the wrong echo) is refused with
+ *   `ServerLacksCapabilityError`, and the client never falls back to the
+ *   original routes.
  * - `/api/asset/<hex>` serves an `assets/` key or an inlay body key to a web view that cannot send a
  *   header: the token rides in the query, so `urlFor` builds the whole URL from
  *   the key alone and reads nothing.
@@ -37,6 +57,19 @@ import { nodeAddressableViolation, nodeAssetRouteViolation, nodeCreatableViolati
  */
 const REQUEST_KEY_BYTES = 8000
 
+/** The header the server's guarded routes answer with. */
+const GUARDED_MARKER_HEADER = 'risu-storage-guarded'
+
+/**
+ * The most check-only keys one guarded request carries. The server's header
+ * limit holds about 64 keys of the longest size; proxies hold fewer, so a list
+ * that does not fit meets a 431 or a reset, which are typed errors.
+ */
+const CHECK_ONLY_MAX_KEYS = 60
+
+/** The most bytes the key and revision headers of one guarded request carry together; the same budget as a remove request. */
+const GUARDED_HEADER_BYTES = REQUEST_KEY_BYTES
+
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
 export interface NodeHttpStoreOptions {
@@ -53,6 +86,10 @@ export interface NodeHttpStoreOptions {
     baseUrl?: string
     /** Budget for the keys and revisions of one remove request; defaults to the production figure. */
     requestKeyBytes?: number
+    /** The most check-only keys one guarded request carries; defaults to the production figure. */
+    maxCheckOnlyKeys?: number
+    /** The most bytes the key and revision headers of one guarded request carry together; defaults to the production figure. */
+    guardedHeaderBytes?: number
     /** Waits `ms` between a rate-limited request and its retry; defaults to a timer. */
     sleep?: (ms: number) => Promise<void>
     /** The clock, in milliseconds, that bounds the total time one call spends on rate-limit retries; defaults to `Date.now`. */
@@ -134,6 +171,8 @@ interface RemoveItem {
 export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
     const baseUrl = options.baseUrl ?? ''
     const requestKeyBytes = options.requestKeyBytes ?? REQUEST_KEY_BYTES
+    const maxCheckOnlyKeys = options.maxCheckOnlyKeys ?? CHECK_ONLY_MAX_KEYS
+    const guardedHeaderBytes = options.guardedHeaderBytes ?? GUARDED_HEADER_BYTES
     const doFetch: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
 
     function checkAddressable(key: string): void {
@@ -264,8 +303,281 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         return { key: entry.key, hex: hexOf(entry.key), version: versionOf(entry.condition) }
     }
 
+    /** What a guarded request carries and expects back: the counts it echoes and the keys a 409 may name. */
+    interface GuardedCall {
+        operation: 'write-checked' | 'remove-checked' | 'caps'
+        capability: 'check-only' | 'retire' | 'caps'
+        method: 'GET' | 'POST'
+        headers: Record<string, string>
+        body?: Uint8Array<ArrayBuffer>
+        /** Check-only entries sent; the echo must equal it. `null` for a call that sends no counts (`caps`). */
+        checkOnlyCount: number | null
+        /** Keys retired; the echo of a remove must equal it. `null` when the call is not a remove. */
+        retiredCount: number | null
+        /** Hex of every key the request named, mapped back to the key for a conflict. */
+        keysByHex: Map<string, string>
+        /** Hex of the removed keys, whose `revisions` entries the answer must carry. */
+        removedHex: readonly string[]
+        /** The number of keys in the headers, for the list-too-long errors. */
+        keyCount: number
+    }
+
+    type GuardedAnswer =
+        | { kind: 'ok', body: Record<string, unknown> }
+        | { kind: 'conflict', hex: string | null, currentVersion: number | null }
+
+    /**
+     * One guarded request and the proof that it was applied as asked. Does not
+     * go through `send`: the redirect is never followed (a followed 307 would
+     * replay the request on an unguarded route), and whether the request left
+     * is tracked so a failure before it left is told from one after.
+     */
+    async function guardedRequest(call: GuardedCall): Promise<GuardedAnswer> {
+        const lacks = (observed: string, mayHaveApplied: boolean) => new ServerLacksCapabilityError(call.capability, observed, mayHaveApplied)
+        let requestSent = false
+        let response: Response
+        try {
+            response = await retryOnRateLimit(async () => {
+                requestSent = false
+                const auth = await options.authHeader()
+                requestSent = true
+                return await doFetch(`${baseUrl}/api/${call.operation}`, {
+                    method: call.method,
+                    cache: 'no-store',
+                    redirect: 'manual',
+                    headers: { ...call.headers, 'risu-auth': auth },
+                    body: call.body,
+                })
+            })
+        } catch (error) {
+            if (!requestSent) {
+                throw error
+            }
+            throw new StoreOutcomeUnknownError(call.operation, error)
+        }
+        if (response.status === 431) {
+            throw new StoreCheckListTooLongError(call.keyCount, true, false)
+        }
+        if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+            throw lacks(`redirect ${response.status}`, false)
+        }
+        if (response.headers.get(GUARDED_MARKER_HEADER) !== '1') {
+            if (response.ok) {
+                // The repository's own server and service worker never answer a guarded route with an HTML page, so a
+                // page is a front end's fallback and the guarded handler did not answer. An intermediary that forwards
+                // the request and then substitutes a page for the upstream answer is outside what this check covers.
+                // Any other 2xx without the marker may be the real handler's answer with the marker lost on the way.
+                const isPage = (response.headers.get('content-type') ?? '').toLowerCase().includes('text/html')
+                throw lacks(`${response.status} without the guarded marker`, call.operation !== 'caps' && !isPage)
+            }
+            if (response.status === 404 || response.status === 405 || response.status === 501 || response.status === 409) {
+                throw lacks(String(response.status), false)
+            }
+            throw new NodeHttpError(response.status, call.operation)
+        }
+        let parsed: unknown = null
+        try {
+            parsed = await response.json()
+        } catch {
+            parsed = null
+        }
+        const body: Record<string, unknown> | null = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+        if (response.status === 400 && body?.code === 'guarded-count') {
+            throw lacks('the check-only or retire list was lost in transit (400)', false)
+        }
+        if (response.status === 409) {
+            const hex = typeof body?.filePath === 'string' ? body.filePath.toLowerCase() : null
+            const currentVersion = typeof body?.currentRevision === 'number' ? body.currentRevision : null
+            return { kind: 'conflict', hex, currentVersion }
+        }
+        if (!response.ok) {
+            throw new NodeHttpError(response.status, call.operation)
+        }
+        // Only a read-only answer is exempt from the mayHaveApplied flag below: a probe applies nothing.
+        const refusedAnswer = (observed: string) => lacks(observed, call.operation !== 'caps')
+        if (body === null) {
+            throw refusedAnswer('the answer is not a JSON object')
+        }
+        if (call.checkOnlyCount === null) {
+            return { kind: 'ok', body }
+        }
+        const revision = body.revision
+        if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
+            throw refusedAnswer('marker without a numeric revision')
+        }
+        if (body.checkOnly !== call.checkOnlyCount) {
+            throw refusedAnswer('check-only not applied')
+        }
+        if (call.retiredCount !== null) {
+            if (body.retired !== call.retiredCount) {
+                throw new ServerLacksCapabilityError('retire', 'retire not applied', true)
+            }
+            const revisions = body.revisions
+            if (typeof revisions !== 'object' || revisions === null || call.removedHex.some((hex) => typeof (revisions as Record<string, unknown>)[hex] !== 'number')) {
+                throw refusedAnswer('marker without the revisions of the removed keys')
+            }
+        }
+        return { kind: 'ok', body }
+    }
+
+    function checkOnlyHeaders(checkOnly: readonly CheckOnlyEntry[]): Record<string, string> {
+        const headers: Record<string, string> = { 'check-only-count': String(checkOnly.length) }
+        if (checkOnly.length > 0) {
+            headers['check-only-path'] = checkOnly.map((entry) => hexOf(entry.key)).join('$$')
+            headers['check-only-revision'] = checkOnly.map((entry) => String(entry.version)).join('$$')
+        }
+        return headers
+    }
+
+    /** Refuses a check-only list that is malformed, repeats a key, or names a key the request itself writes or removes. */
+    function checkCheckOnly(checkOnly: readonly CheckOnlyEntry[], ownKeys: readonly string[]): void {
+        const seen = new Set<string>(ownKeys)
+        for (const entry of checkOnly) {
+            checkAddressable(entry.key)
+            if (typeof entry.version !== 'number' || !Number.isSafeInteger(entry.version) || entry.version < 0) {
+                throw new StoreInvalidConditionError('a check-only version is a non-negative integer')
+            }
+            if (seen.has(entry.key)) {
+                throw new StoreInvalidKeyError(entry.key, 'a check-only key is listed once and is not also a written or removed key')
+            }
+            seen.add(entry.key)
+        }
+    }
+
+    /** Refuses a request whose key lists cannot fit one request, before anything is sent. */
+    function checkListFits(keyCount: number, headerValues: readonly string[]): void {
+        const bytes = headerValues.reduce((sum, value) => sum + value.length, 0)
+        if (keyCount > maxCheckOnlyKeys || bytes > guardedHeaderBytes) {
+            throw new StoreCheckListTooLongError(keyCount, false, false)
+        }
+    }
+
+    function keyOfHex(call: GuardedCall, hex: string | null, fallback: string): string {
+        if (hex === null) {
+            return fallback
+        }
+        return call.keysByHex.get(hex) ?? fallback
+    }
+
+    async function guardedRemove(entries: readonly DeleteEntry[], checkOnly: readonly CheckOnlyEntry[], retire: boolean): Promise<void> {
+        if (entries.length === 0) {
+            throw new StoreInvalidKeyError('', 'a guarded remove names at least one key')
+        }
+        for (const entry of entries) {
+            checkAddressable(entry.key)
+            checkCondition(entry.condition, true)
+            if (retire && !isAliteKey(entry.key)) {
+                throw new StoreInvalidKeyError(entry.key, `retire reaches only keys under ${ALITE_PREFIX}`)
+            }
+        }
+        checkNoDuplicateKeys(entries)
+        if (retire && checkOnly.length === 0) {
+            throw new StoreInvalidConditionError('retire needs at least one check-only entry')
+        }
+        checkCheckOnly(checkOnly, entries.map((entry) => entry.key))
+        const items = entries.map(removeItemOf)
+        const headers: Record<string, string> = {
+            'file-path': items.map((item) => item.hex).join('$$'),
+            ...checkOnlyHeaders(checkOnly),
+            'retire-count': retire ? String(entries.length) : '0',
+        }
+        if (retire) {
+            headers.retire = '1'
+        }
+        if (items.some((item) => item.version !== null)) {
+            headers['if-match-revision'] = items.map((item) => item.version === null ? '' : String(item.version)).join('$$')
+        }
+        const keyCount = entries.length + checkOnly.length
+        checkListFits(keyCount, [headers['file-path'], headers['check-only-path'] ?? '', headers['check-only-revision'] ?? '', headers['if-match-revision'] ?? ''])
+        const call: GuardedCall = {
+            operation: 'remove-checked',
+            capability: retire ? 'retire' : 'check-only',
+            method: 'GET',
+            headers,
+            checkOnlyCount: checkOnly.length,
+            retiredCount: retire ? entries.length : 0,
+            keysByHex: new Map([...items.map((item) => [item.hex, item.key] as const), ...checkOnly.map((entry) => [hexOf(entry.key), entry.key] as const)]),
+            removedHex: items.map((item) => item.hex),
+            keyCount,
+        }
+        const answer = await guardedRequest(call)
+        if (answer.kind === 'conflict') {
+            // An empty key says the server named a key this request did not send.
+            throw new StoreVersionConflictError(keyOfHex(call, answer.hex, ''), answer.currentVersion)
+        }
+    }
+
+    const guarded: GuardedOperations = {
+        async probe(): Promise<GuardedCapabilities> {
+            const answer = await guardedRequest({
+                operation: 'caps',
+                capability: 'caps',
+                method: 'GET',
+                headers: {},
+                checkOnlyCount: null,
+                retiredCount: null,
+                keysByHex: new Map(),
+                removedHex: [],
+                keyCount: 0,
+            })
+            const body = answer.kind === 'ok' ? answer.body : {}
+            const keys = Object.keys(body)
+            if (keys.length !== 3 || typeof body.checkOnly !== 'boolean' || typeof body.retire !== 'boolean' || typeof body.pieces !== 'boolean') {
+                throw new ServerLacksCapabilityError('caps', 'the answer is not exactly three booleans', false)
+            }
+            return { checkOnly: body.checkOnly, retire: body.retire, pieces: body.pieces }
+        },
+
+        async writeChecked(key: string, bytes: Uint8Array, condition: StoreCondition, checkOnly: readonly CheckOnlyEntry[]): Promise<WriteResult> {
+            const reason = nodeAddressableViolation(key) ?? nodeCreatableViolation(key)
+            if (reason !== null) {
+                throw new StoreInvalidKeyError(key, reason)
+            }
+            checkCondition(condition, true)
+            checkBytes(bytes)
+            checkCheckOnly(checkOnly, [key])
+            const headers: Record<string, string> = {
+                'content-type': 'application/octet-stream',
+                'file-path': hexOf(key),
+                ...checkOnlyHeaders(checkOnly),
+            }
+            const ifVersion = versionOf(condition)
+            if (ifVersion !== null) {
+                headers['if-match-revision'] = String(ifVersion)
+            }
+            checkListFits(checkOnly.length, [headers['check-only-path'] ?? '', headers['check-only-revision'] ?? ''])
+            const call: GuardedCall = {
+                operation: 'write-checked',
+                capability: 'check-only',
+                method: 'POST',
+                headers,
+                body: bytes as Uint8Array<ArrayBuffer>,
+                checkOnlyCount: checkOnly.length,
+                retiredCount: null,
+                keysByHex: new Map(checkOnly.map((entry) => [hexOf(entry.key), entry.key] as const)),
+                removedHex: [],
+                keyCount: checkOnly.length,
+            }
+            const answer = await guardedRequest(call)
+            if (answer.kind === 'conflict') {
+                // A conflict without a check-only key's name is the written key's own.
+                throw new StoreVersionConflictError(keyOfHex(call, answer.hex, key), answer.currentVersion)
+            }
+            return { version: answer.body.revision as number }
+        },
+
+        async removeChecked(entries: readonly DeleteEntry[], checkOnly: readonly CheckOnlyEntry[]): Promise<void> {
+            await guardedRemove(entries, checkOnly, false)
+        },
+
+        async retireChecked(entries: readonly DeleteEntry[], checkOnly: readonly CheckOnlyEntry[]): Promise<void> {
+            await guardedRemove(entries, checkOnly, true)
+        },
+    }
+
     const store: ByteStore = {
         capabilities: { conditionalWrites: true },
+        guarded,
 
         async read(key: string): Promise<ReadResult> {
             checkAddressable(key)

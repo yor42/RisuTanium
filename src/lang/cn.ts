@@ -30,6 +30,7 @@ export const languageChinese = {
         "secretRefUnsupported": (name: string) => `环境变量 ${name} 无法在此处使用：此平台无法访问服务器的环境。`,
         "secretRefNotForeign": (name: string) => `环境变量 ${name} 只会发送给其对应的提供商，因此本次请求未使用它。`,
         "secretRefInRequest": (name: string) => `请求中仍包含环境变量引用 ${name}，该请求未被发送。`,
+        "storageServerNeedsUpdate": "此服务器版本过旧，不支持新的存储格式：必须先更新或重启后才能保存或清理。请重启 Node 服务器（如尚未更新，请先更新），然后重新加载此页面。",
         "coldStorageRestoreFailed": "无法加载冷存储数据。受影响角色的数据可能已永久丢失。",
         "coldStorageRestoreUnreadable": "暂时无法加载此角色。未做任何更改。请重试。",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

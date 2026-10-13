@@ -30,6 +30,7 @@ export const languageVietnamese = {
         "secretRefUnsupported": (name: string) => `Không thể dùng biến môi trường ${name} ở đây: nền tảng này không có quyền truy cập vào môi trường của máy chủ.`,
         "secretRefNotForeign": (name: string) => `Biến môi trường ${name} chỉ được gửi tới nhà cung cấp của chính nó, nên không được dùng cho yêu cầu này.`,
         "secretRefInRequest": (name: string) => `Yêu cầu vẫn còn chứa tham chiếu biến môi trường ${name}. Yêu cầu đã không được gửi.`,
+        "storageServerNeedsUpdate": "Máy chủ này quá cũ so với định dạng lưu trữ mới: cần cập nhật hoặc khởi động lại trước khi có thể lưu hoặc dọn dẹp. Hãy khởi động lại máy chủ Node (cập nhật trước nếu bạn chưa làm) rồi tải lại trang này.",
         "coldStorageRestoreFailed": "Không thể tải dữ liệu bộ nhớ lạnh. Dữ liệu của nhân vật bị ảnh hưởng có thể đã bị mất vĩnh viễn.",
         "coldStorageRestoreUnreadable": "Hiện không thể tải nhân vật này. Không có gì bị thay đổi. Hãy thử lại.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

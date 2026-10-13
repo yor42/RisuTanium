@@ -30,6 +30,7 @@ export const languageKorean = {
         "secretRefUnsupported": (name: string) => `환경 변수 ${name}은(는) 여기서 사용할 수 없습니다: 이 플랫폼은 서버의 환경에 접근할 수 없습니다.`,
         "secretRefNotForeign": (name: string) => `환경 변수 ${name}은(는) 해당 제공자에게만 전송되므로 이 요청에는 사용되지 않았습니다.`,
         "secretRefInRequest": (name: string) => `요청에 환경 변수 참조 ${name}이(가) 아직 남아 있습니다. 전송되지 않았습니다.`,
+        "storageServerNeedsUpdate": "이 서버는 새 저장소 형식을 지원하지 않는 이전 버전입니다. 저장하거나 정리하려면 먼저 서버를 업데이트하거나 다시 시작해야 합니다. Node 서버를 다시 시작(아직 업데이트하지 않았다면 먼저 업데이트)한 다음 이 페이지를 새로고침하세요.",
         "coldStorageRestoreFailed": "콜드 스토리지 데이터를 불러올 수 없습니다. 해당 캐릭터의 데이터가 영구적으로 손실되었을 수 있습니다.",
         "coldStorageRestoreUnreadable": "지금은 이 캐릭터를 불러올 수 없습니다. 변경된 내용은 없습니다. 다시 시도하세요.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

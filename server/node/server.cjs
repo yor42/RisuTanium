@@ -17,6 +17,7 @@ const { WebSocketServer } = require('ws');
 const { NODE_BODY_LIMIT_BYTES } = require('./bodyLimit.cjs');
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
+const { aliteKeyFromHex } = require('./aliteKeys.cjs');
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 // The hub proxy forwards the request body as the client sent it, so it is
 // captured as raw bytes before any parser can replace it with a parsed value.
@@ -49,15 +50,28 @@ if(existsSync(knownPublicKeysPath)){
 }
 
 // Per-file revision counters backing /api/write's optimistic-concurrency
-// check. The recovered value of a key is the maximum over the snapshot
-// (__revisions.json) and every valid record of the append log
-// (__revisions.log, one JSON record `{"k":<key>,"r":<revision>}` per bump,
-// each preceded by a newline so a torn tail can never merge into the next
-// record). A record is valid only when it parses and has own properties `k`
-// (a string) and `r` (a non-negative safe integer); anything else is skipped
-// and never lowers a revision. Replay is idempotent under max, so a process
-// crash at any point of a compaction recovers every revision that was ever
-// exposed to a client.
+// check. The state is the snapshot (__revisions.json) plus the append log
+// (__revisions.log, one JSON record per line, each preceded by a newline so a
+// torn tail can never merge into the next record). Two record shapes are
+// valid: a bump `{"k":<key>,"r":<revision>}` (a string `k`, a non-negative safe
+// integer `r`) and a delete `{"k":<key>,"d":1}`, which only a retire request on
+// /api/remove-checked writes. A record with both `d` and `r`, or any other
+// shape, is skipped and never lowers a revision.
+//
+// The recovered value of a key: if the log holds a delete record for it, the
+// maximum of the bump records after the last delete (0 if none); otherwise the
+// maximum of the snapshot and every bump record. A key with no entry reads 0.
+// A compaction renames the snapshot into place before the log is deleted and
+// appends are serialised with compaction, so the log always covers every record
+// after any delete it holds, and a crash at any point of a compaction recovers
+// every revision that was ever exposed to a client. The one exception is a
+// retired key: its entry is forgotten, and the client's invariant is that a
+// retired name is never written again.
+//
+// Downgrade: a server that predates delete records skips them as invalid, so
+// running it on a save written by this one may bring retired keys back (while
+// the log still holds their bump records) as tombstones at their bumped
+// revisions; it never lowers a revision.
 //
 // The in-memory map is a null-prototype object: a key such as `__proto__` or
 // `constructor` is data, never a property lookup through the prototype.
@@ -93,7 +107,9 @@ function raiseRevision(key, revision){
     }
 }
 
-// Returns the record's { k, r } when `line` is a valid revision record, else null.
+// Returns a normalised { k, r } (bump) or { k, d: 1 } (delete) when `line` is a
+// valid revision record, else null. The delete shape is checked first: a record
+// is never both, and the replay rule depends only on the fields returned here.
 function parseRevisionRecord(line){
     let record
     try {
@@ -101,13 +117,24 @@ function parseRevisionRecord(line){
     } catch (error) {
         return null
     }
-    if(typeof record !== 'object' || record === null || !Object.hasOwn(record, 'k') || !Object.hasOwn(record, 'r')){
+    if(typeof record !== 'object' || record === null || !Object.hasOwn(record, 'k')){
         return null
     }
-    if(typeof record.k !== 'string' || !isValidRevisionValue(record.r)){
+    if(typeof record.k !== 'string'){
         return null
     }
-    return record
+    const hasDelete = Object.hasOwn(record, 'd')
+    const hasRevision = Object.hasOwn(record, 'r')
+    if(hasDelete && hasRevision){
+        return null
+    }
+    if(hasDelete){
+        return record.d === 1 ? { k: record.k, d: 1 } : null
+    }
+    if(!hasRevision || !isValidRevisionValue(record.r)){
+        return null
+    }
+    return { k: record.k, r: record.r }
 }
 
 function revisionSnapshotTempPath(){
@@ -176,7 +203,11 @@ if(existsSync(revisionsLogPath)){
         if(lineEnd > lineStart){
             const record = parseRevisionRecord(logBytes.toString('utf-8', lineStart, lineEnd))
             if(record !== null){
-                raiseRevision(record.k, record.r)
+                if(record.d === 1){
+                    delete revisions[record.k]
+                } else {
+                    raiseRevision(record.k, record.r)
+                }
                 revisionLogRecords++
             }
         }
@@ -201,6 +232,16 @@ if(existsSync(revisionsLogPath)){
 // number of keys.
 async function appendRevisionRecords(keys){
     const data = keys.map((key) => '\n' + JSON.stringify({ k: key, r: revisions[key] })).join('')
+    await fs.appendFile(revisionsLogPath, data)
+    revisionLogRecords += keys.length
+}
+
+// Appends one delete record per key in `keys` to the revision log. Same
+// contract as appendRevisionRecords: callers must already be inside
+// withRevisionTransaction() below, and delete the keys' map entries only after
+// this resolves, so memory is never lower than what the log has acknowledged.
+async function appendRetireRecords(keys){
+    const data = keys.map((key) => '\n' + JSON.stringify({ k: key, d: 1 })).join('')
     await fs.appendFile(revisionsLogPath, data)
     revisionLogRecords += keys.length
 }
@@ -317,6 +358,124 @@ async function withFileWriteLocks(keys, fn){
         return await withFileWriteLock(sortedKeys[index], () => acquireNext(index + 1));
     }
     return await acquireNext(0);
+}
+
+// Guarded routes (/api/write-checked, /api/remove-checked, /api/caps). A
+// guarded request may name check-only keys: each joins the request's lock set
+// and its revision is compared inside the revision transaction before anything
+// is mutated, but the key itself is never written, removed or bumped. An absent
+// key compares as revision 0, so a check-only key at revision 1 or more fails
+// when it is absent or retired.
+//
+// The client counts what it sent: `check-only-count` (and `retire-count` on a
+// remove) must be present and equal the parsed lists, otherwise the request is
+// refused before any lock or file work. Headers lost on the way (a proxy that
+// forwards only some of them) therefore turn into a refusal, never into an
+// unguarded success. The success body echoes what was enforced.
+const GUARDED_MARKER_HEADER = 'risu-storage-guarded';
+const strictHexPattern = /^(?:[0-9a-f]{2})+$/;
+const NO_CHECK_ONLY = Object.freeze({ paths: [], revisions: [] });
+
+function markGuarded(res){
+    res.setHeader(GUARDED_MARKER_HEADER, '1');
+    res.setHeader('Cache-Control', 'no-store');
+}
+
+function countRefusal(error){
+    return { error, code: 'guarded-count' };
+}
+
+// Parses the check-only headers of a guarded request. Returns
+// { paths, revisions } or { refusal } (the body of a 400). `ownKeys` are the
+// keys the request writes or removes; none may also be a check-only key.
+function parseCheckOnly(req, ownKeys){
+    const countHeader = req.headers['check-only-count'];
+    if(typeof countHeader !== 'string' || !/^\d+$/.test(countHeader)){
+        return { refusal: countRefusal('check-only-count is required and must be a non-negative integer') };
+    }
+    const count = parseInt(countHeader, 10);
+    const pathHeader = req.headers['check-only-path'];
+    const revisionHeader = req.headers['check-only-revision'];
+    if(pathHeader === undefined && revisionHeader === undefined){
+        if(count !== 0){
+            return { refusal: countRefusal('check-only-count does not match the check-only keys sent') };
+        }
+        return NO_CHECK_ONLY;
+    }
+    if(pathHeader === undefined || revisionHeader === undefined){
+        return { refusal: { error: 'check-only-path and check-only-revision must be sent together' } };
+    }
+    const paths = pathHeader.split('$$').map((p) => p.toLowerCase());
+    const revisionSegments = revisionHeader.split('$$');
+    if(paths.length !== revisionSegments.length){
+        return { refusal: { error: 'check-only-revision segment count must match check-only-path' } };
+    }
+    for(let i = 0; i < paths.length; i++){
+        if(!strictHexPattern.test(paths[i])){
+            return { refusal: { error: 'Invaild check-only path' } };
+        }
+        if(!/^\d+$/.test(revisionSegments[i])){
+            return { refusal: { error: 'Invalid check-only-revision segment' } };
+        }
+    }
+    if(new Set(paths).size !== paths.length){
+        return { refusal: { error: 'Duplicate check-only-path entries are not allowed in one request' } };
+    }
+    for(const own of ownKeys){
+        if(paths.includes(own)){
+            return { refusal: { error: 'A check-only key must not also be a written or removed key' } };
+        }
+    }
+    if(paths.length !== count){
+        return { refusal: countRefusal('check-only-count does not match the check-only keys sent') };
+    }
+    return { paths, revisions: revisionSegments.map((r) => parseInt(r, 10)) };
+}
+
+// Parses the retire flag of a guarded remove. Returns { retire } or
+// { refusal }. Retiring is limited to keys under the A-lite prefix and always
+// needs at least one check-only key (the garbage collector's commit-key check).
+function parseRetire(req, removedKeys, checkOnly){
+    const retireHeader = req.headers['retire'];
+    const countHeader = req.headers['retire-count'];
+    if(retireHeader !== undefined && retireHeader !== '1'){
+        return { refusal: { error: 'retire must be 1 when present' } };
+    }
+    if(typeof countHeader !== 'string' || !/^\d+$/.test(countHeader)){
+        return { refusal: countRefusal('retire-count is required and must be a non-negative integer') };
+    }
+    const count = parseInt(countHeader, 10);
+    const retire = retireHeader === '1';
+    if(count !== (retire ? removedKeys.length : 0)){
+        return { refusal: countRefusal('retire-count does not match the retire request') };
+    }
+    if(!retire){
+        return { retire: false };
+    }
+    if(checkOnly.paths.length === 0){
+        return { refusal: { error: 'retire needs at least one check-only key' } };
+    }
+    for(const key of removedKeys){
+        if(aliteKeyFromHex(key) === null){
+            return { refusal: { error: 'retire is limited to keys under the A-lite prefix' } };
+        }
+    }
+    return { retire: true };
+}
+
+// Throws the revision-conflict error naming the first check-only key whose
+// current revision differs. Must run inside withRevisionTransaction.
+function assertCheckOnly(checkOnly){
+    for(let i = 0; i < checkOnly.paths.length; i++){
+        const currentRevision = revisions[checkOnly.paths[i]] ?? 0;
+        if(currentRevision !== checkOnly.revisions[i]){
+            const conflict = new Error('Revision conflict');
+            conflict.isRevisionConflict = true;
+            conflict.filePath = checkOnly.paths[i];
+            conflict.currentRevision = currentRevision;
+            throw conflict;
+        }
+    }
 }
 
 const hexRegex = /^[0-9a-fA-F]+$/;
@@ -1469,7 +1628,14 @@ app.get('/api/asset/:hex', assetRouteLimiter, async (req, res) => {
     });
 });
 
-app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
+// The body of /api/remove and /api/remove-checked. With `guarded` false it is
+// the original route: it reads neither the check-only nor the retire headers and
+// sets no marker. With `guarded` true it also compares the check-only keys,
+// optionally retires the removed keys, and answers what it enforced.
+async function handleRemove(req, res, next, guarded){
+    if(guarded){
+        markGuarded(res);
+    }
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1492,6 +1658,12 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
         ? req.headers['if-match-revision'].split('$$')
         : [];
 
+    if(guarded && filePaths.length === 0){
+        res.status(400).send({
+            error:'File path required'
+        });
+        return;
+    }
     for(const filePath of filePaths){
         if (!filePath) {
             res.status(400).send({
@@ -1499,7 +1671,7 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
             });
             return;
         }
-        if(!isHex(filePath)){
+        if(!isHex(filePath) || (guarded && !strictHexPattern.test(filePath))){
             res.status(400).send({
                 error:'Invaild Path'
             });
@@ -1536,6 +1708,19 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
         }
     }
 
+    // Everything a guarded request asked for is parsed and counted here, before
+    // any lock is taken or any file is touched.
+    const checkOnly = guarded ? parseCheckOnly(req, filePaths) : NO_CHECK_ONLY;
+    if(checkOnly.refusal){
+        res.status(400).send(checkOnly.refusal);
+        return;
+    }
+    const retireRequest = guarded ? parseRetire(req, filePaths, checkOnly) : { retire: false };
+    if(retireRequest.refusal){
+        res.status(400).send(retireRequest.refusal);
+        return;
+    }
+
     try {
         // All locks for every key in this batch are held for the ENTIRE
         // operation below — every precondition is checked first, and only
@@ -1544,7 +1729,7 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
         // say) would otherwise have already deleted key 1 by the time the
         // conflict is discovered, leaving the caller told "409, failed" while
         // some of the deletion had, in fact, already silently committed.
-        const committedRevisions = await withFileWriteLocks(filePaths, async () => {
+        const committedRevisions = await withFileWriteLocks([...filePaths, ...checkOnly.paths], async () => {
             // Precondition validation, revision bump, and persistence (with
             // rollback on a save failure) all happen inside
             // withRevisionTransaction — the same global queue /api/write uses
@@ -1578,6 +1763,7 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
                     // destroying content the deleting client never actually
                     // observed.
                 }
+                assertCheckOnly(checkOnly);
 
                 // Every precondition above passed — commit. Revisions are
                 // bumped (and persisted) for every key BEFORE any file is
@@ -1635,9 +1821,39 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
                 rmError.committedRevisions = newRevisions;
                 throw rmError;
             }
+            if(retireRequest.retire){
+                // Retiring forgets the keys' revision entries. It runs only after
+                // every file is gone (a removal that failed above retires nothing),
+                // while the per-key locks are still held (no write to a removed
+                // key can land first), and in the revision transaction like every
+                // other revision mutation. The records are appended before the map
+                // entries are dropped, so memory never sits below the log.
+                await withRevisionTransaction(async () => {
+                    try {
+                        await appendRetireRecords(filePaths);
+                    } catch (appendError) {
+                        appendError.committedRevisions = newRevisions;
+                        throw appendError;
+                    }
+                    for(const filePath of filePaths){
+                        delete revisions[filePath];
+                    }
+                    scheduleRevisionCompaction();
+                });
+            }
             return newRevisions;
         });
 
+        if(guarded){
+            res.send({
+                success: true,
+                revisions: committedRevisions,
+                revision: Math.max(...Object.values(committedRevisions)),
+                checkOnly: checkOnly.paths.length,
+                retired: retireRequest.retire ? filePaths.length : 0,
+            });
+            return;
+        }
         res.send({
             success: true,
             revisions: committedRevisions,
@@ -1668,6 +1884,18 @@ app.get('/api/remove', storageRouteLimiter, async (req, res, next) => {
         }
         next(error);
     }
+}
+
+app.get('/api/remove', storageRouteLimiter, (req, res, next) => handleRemove(req, res, next, false));
+app.get('/api/remove-checked', storageRouteLimiter, (req, res, next) => handleRemove(req, res, next, true));
+
+// What this server's guarded routes can do. The client reads it by shape.
+app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
+    markGuarded(res);
+    if(!await checkAuth(req, res)){
+        return;
+    }
+    res.send({ checkOnly: true, retire: true, pieces: false });
 });
 
 app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
@@ -1696,7 +1924,12 @@ app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
     }
 });
 
-app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
+// The body of /api/write and /api/write-checked; see handleRemove for what
+// `guarded` changes.
+async function handleWrite(req, res, next, guarded){
+    if(guarded){
+        markGuarded(res);
+    }
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1719,6 +1952,12 @@ app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
     // /api/read and /api/remove regardless of the case a given client
     // happens to send its hex encoding in.
     filePath = filePath.toLowerCase();
+    if(guarded && !strictHexPattern.test(filePath)){
+        res.status(400).send({
+            error:'Invaild Path'
+        });
+        return;
+    }
 
     // Optional: when the client sends this, it's asserting "I last read this
     // key at revision N" and wants the write rejected if that's gone stale —
@@ -1726,8 +1965,19 @@ app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
     // behavior unchanged (back-compat).
     const ifMatchRevisionHeader = req.headers['if-match-revision'];
 
+    const checkOnly = guarded ? parseCheckOnly(req, [filePath]) : NO_CHECK_ONLY;
+    if(checkOnly.refusal){
+        res.status(400).send(checkOnly.refusal);
+        return;
+    }
+    // Without check-only keys this is exactly the single-key lock of the
+    // original route.
+    const withWriteLocks = checkOnly.paths.length === 0
+        ? (fn) => withFileWriteLock(filePath, fn)
+        : (fn) => withFileWriteLocks([filePath, ...checkOnly.paths], fn);
+
     try {
-        await withFileWriteLock(filePath, async () => {
+        await withWriteLocks(async () => {
             // Revision is committed BEFORE content, not after — these are two
             // separate files (this one's own content, and the shared
             // revision log), so there's no way to rename both atomically
@@ -1760,6 +2010,7 @@ app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
                         throw conflict;
                     }
                 }
+                assertCheckOnly(checkOnly);
 
                 const bumped = currentRevision + 1;
                 revisions[filePath] = bumped;
@@ -1803,6 +2054,14 @@ app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
                 throw error;
             }
 
+            if(guarded){
+                res.send({
+                    success: true,
+                    revision: newRevision,
+                    checkOnly: checkOnly.paths.length
+                });
+                return;
+            }
             res.send({
                 success: true,
                 revision: newRevision
@@ -1812,13 +2071,17 @@ app.post('/api/write', storageRouteLimiter, async (req, res, next) => {
         if(error?.isRevisionConflict){
             res.status(409).send({
                 error: 'Revision conflict',
+                ...(guarded && error.filePath !== undefined ? { filePath: error.filePath } : {}),
                 currentRevision: error.currentRevision
             });
             return;
         }
         next(error);
     }
-});
+}
+
+app.post('/api/write', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, false));
+app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, true));
 
 async function getHttpsOptions() {
 
