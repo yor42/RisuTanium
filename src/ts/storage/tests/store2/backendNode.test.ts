@@ -86,6 +86,13 @@ async function rawWrite(fixture: NodeServerFixture, key: string, bytes: Uint8Arr
     expect(response.ok).toBe(true)
 }
 
+/** What the server itself reports for a key: its revision and whether it holds a value. */
+async function serverState(fixture: NodeServerFixture, key: string): Promise<{ revision: number, exists: boolean }> {
+    const response = await fetch(`${fixture.baseUrl}/api/read`, { headers: { 'file-path': hexOfKey(key), 'risu-auth': await fixture.authHeader() } })
+    await response.arrayBuffer()
+    return { revision: Number(response.headers.get('x-risu-revision')), exists: response.headers.get('x-risu-exists') === '1' }
+}
+
 function isWriteOf(request: Sent, key: string): boolean {
     return request.path === '/api/write-checked' && request.headers['file-path'] === hexOfKey(key)
 }
@@ -311,6 +318,77 @@ describe('node backend removal', () => {
         await backend.removeBatch([], commit.token, fence.token)
         await rawWrite(fixture, FENCE_KEY, bytesOf(1))
         await expect(backend.removeBatch([], commit.token, fence.token)).rejects.toBeInstanceOf(Store2FenceConflictError)
+    })
+
+    test('a collected unit is retired: the request says so, and the server then reads the key at revision 0 and does not list it', async () => {
+        const { backend, fixture, wire } = await open()
+        await backend.casCommit(await absentCommit(backend), bytesOf(1))
+        const keys = await seeded(backend, 3)
+        for (const key of keys) {
+            expect(await serverState(fixture, key)).toEqual({ revision: 1, exists: true })
+        }
+        const commit = await backend.readCommit()
+        const fence = await backend.readFence()
+        wire.sent.length = 0
+        await backend.removeBatch(keys, commit.token, fence.token)
+        const headers = wire.sent.find((request) => request.path === '/api/remove-checked')!.headers
+        expect(headers.retire).toBe('1')
+        expect(headers['retire-count']).toBe(String(keys.length))
+        for (const key of keys) {
+            expect(await serverState(fixture, key)).toEqual({ revision: 0, exists: false })
+        }
+        expect(await backend.listStore2()).toEqual([])
+    })
+
+    test('a late create-only upload of a collected unit still lands, which a plain removal would answer with a revision conflict', async () => {
+        const { backend, fixture } = await open()
+        await backend.casCommit(await absentCommit(backend), bytesOf(1))
+        const keys = await seeded(backend, 2)
+        await backend.removeBatch(keys, (await backend.readCommit()).token, (await backend.readFence()).token)
+        await backend.putUnit(keys[0], bytesOf(7))
+        expect([...(await backend.readUnits([keys[0]])).get(keys[0])!]).toEqual([7])
+        expect(await serverState(fixture, keys[0])).toEqual({ revision: 1, exists: true })
+    })
+
+    test('a conflicting commit key or fence retires nothing: every unit keeps its revision and its bytes', async () => {
+        const { backend, fixture } = await open()
+        await backend.casCommit(await absentCommit(backend), bytesOf(1))
+        const keys = await seeded(backend, 3)
+        const commit = await backend.readCommit()
+        const noFence = await backend.readFence()
+        await rawWrite(fixture, FENCE_KEY, bytesOf(1))
+        await expect(backend.removeBatch(keys, commit.token, noFence.token)).rejects.toBeInstanceOf(Store2FenceConflictError)
+        await rawWrite(fixture, COMMIT_KEY, bytesOf(2))
+        await expect(backend.removeBatch(keys, commit.token, (await backend.readFence()).token)).rejects.toBeInstanceOf(Store2CommitConflictError)
+        for (const key of keys) {
+            expect(await serverState(fixture, key)).toEqual({ revision: 1, exists: true })
+        }
+        expect(await backend.listStore2()).toEqual(keys)
+    })
+
+    test('the server refuses to retire a key outside the store2 prefix, and deletes nothing of that request', async () => {
+        const { backend, fixture } = await open()
+        await backend.casCommit(await absentCommit(backend), bytesOf(1))
+        const [unitName] = await seeded(backend, 1)
+        const outside = 'assets/outside'
+        await rawWrite(fixture, outside, bytesOf(1))
+        const response = await fetch(`${fixture.baseUrl}/api/remove-checked`, {
+            method: 'GET',
+            headers: {
+                'risu-auth': await fixture.authHeader(),
+                'file-path': [unitName, outside].map(hexOfKey).join('$$'),
+                'check-only-count': '1',
+                'check-only-path': hexOfKey(COMMIT_KEY),
+                'check-only-revision': String(revisionTokenOf((await backend.readCommit()).token).revision),
+                'retire-count': '2',
+                'own-condition-count': '0',
+                retire: '1',
+            },
+        })
+        await response.arrayBuffer()
+        expect(response.status).toBe(400)
+        expect(await serverState(fixture, outside)).toEqual({ revision: 1, exists: true })
+        expect(await serverState(fixture, unitName)).toEqual({ revision: 1, exists: true })
     })
 })
 
