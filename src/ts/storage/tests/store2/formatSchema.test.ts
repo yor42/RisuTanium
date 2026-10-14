@@ -250,6 +250,19 @@ describe('shard and chat shape', () => {
         expect(parseShard(empty).status).toBe('damaged')
     })
 
+    test('firstMsgIndex may be -1, the default of a new character; below -1 is damaged and chatPage stays at least 0', () => {
+        const withEntry = (name: 'firstMsgIndex' | 'chatPage', value: number): ReturnType<typeof parseShard> => {
+            const body = clone(vectorBody('type-03-shard'))
+            item(body, 'entries')[name] = value
+            return parseShard(body)
+        }
+        const faithful = withEntry('firstMsgIndex', -1)
+        expect(faithful.status).toBe('ok')
+        expect(faithful.status === 'ok' ? faithful.value.entries[0].firstMsgIndex : null).toBe(-1)
+        expect(withEntry('firstMsgIndex', -2).status).toBe('damaged')
+        expect(withEntry('chatPage', -1).status).toBe('damaged')
+    })
+
     test('an empty chat is one chunk with no messages and count 0', () => {
         const chunk = emptyChatChunk()
         expect(chunk).toEqual({ v: 1, msgs: [] })

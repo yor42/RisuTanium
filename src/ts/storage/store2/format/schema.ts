@@ -402,7 +402,7 @@ function readShardEntry(value: JsonValue, where: string): ShardEntry {
         chaId: str(o.chaId, `${where}.chaId`),
         creatorNotes: str(o.creatorNotes, `${where}.creatorNotes`),
         chatPage: int(o.chatPage, `${where}.chatPage`),
-        firstMsgIndex: int(o.firstMsgIndex, `${where}.firstMsgIndex`),
+        firstMsgIndex: int(o.firstMsgIndex, `${where}.firstMsgIndex`, -1),
         core: readTailedRef(o.core, `${where}.core`),
         lore: nullable(o.lore, (v) => readTailedRef(v, `${where}.lore`)),
         scripts: nullable(o.scripts, (v) => readTailedRef(v, `${where}.scripts`)),
