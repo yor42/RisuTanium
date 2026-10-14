@@ -19,16 +19,27 @@ const h = await vi.hoisted(async () => {
     const paths = (await import('src/ts/storage/tests/tauriPathFake')).createFakeTauriPaths()
     /** What a durable write reports for a key: `null` is a flushed directory. */
     const flush: { fault: ((key: string) => 'failed' | 'unreported' | null) | undefined } = { fault: undefined }
+    /** Every durable write as it starts and settles, with the most in flight at once; `before` can hold a write by key. */
+    const writes: { events: string[], inflight: number, peak: number, before: ((key: string) => Promise<void> | undefined) | undefined } = { events: [], inflight: 0, peak: 0, before: undefined }
     async function invoke(command: string, args?: unknown, options?: { headers?: Record<string, string> }): Promise<unknown> {
-        const answer = await desktop.invoke(command, args, options)
         if (command !== 'write_durable') {
-            return answer
+            return desktop.invoke(command, args, options)
         }
         const key = decodeURIComponent(options?.headers?.['x-risu-key'] ?? '')
+        writes.events.push(`start ${key}`)
+        writes.inflight++
+        writes.peak = Math.max(writes.peak, writes.inflight)
+        try {
+            await writes.before?.(key)
+            await desktop.invoke(command, args, options)
+        } finally {
+            writes.inflight--
+            writes.events.push(`end ${key}`)
+        }
         const fault = flush.fault?.(key) ?? null
         return fault === 'unreported' ? undefined : { flushed: fault === null }
     }
-    return { fs, desktop, bounded, paths, flush, invoke }
+    return { fs, desktop, bounded, paths, flush, writes, invoke }
 })
 
 vi.mock('@tauri-apps/plugin-fs', () => h.bounded.module)
@@ -57,6 +68,10 @@ function reset(): void {
     h.bounded.reset()
     h.paths.reset()
     h.flush.fault = undefined
+    h.writes.events.length = 0
+    h.writes.inflight = 0
+    h.writes.peak = 0
+    h.writes.before = undefined
     h.desktop.chunk.reportFlushes()
     h.fs.setPlatform('windows')
     resetByteTransportForTests()
@@ -102,9 +117,8 @@ describe('tauri backend', () => {
 
             expect(peek(COMMIT_KEY)).toEqual([9])
             expect(h.fs.durableLog).not.toContain(COMMIT_KEY)
-            // The unit that was reported unflushed was never named by a commit; the one after it was not attempted.
-            expect(h.fs.durableLog).toEqual([unitKey(1), unitKey(2)])
-            expect(peek(unitKey(3))).toBeNull()
+            // Units are written concurrently, so which siblings of the unflushed unit were written is not fixed.
+            expect(h.fs.durableLog).toContain(unitKey(2))
         })
 
         test('a commit whose units all report flushed writes the commit key last and returns the flush status of the commit key', async () => {
@@ -115,7 +129,8 @@ describe('tauri backend', () => {
             const result = await backend.commitOrdinary(await absentCommit(backend), [unit(1), unit(2)], bytesOf(5))
 
             expect(result).toEqual({ flushed: false })
-            expect(h.fs.durableLog).toEqual([unitKey(1), unitKey(2), COMMIT_KEY])
+            expect([...h.fs.durableLog].sort()).toEqual([COMMIT_KEY, unitKey(1), unitKey(2)].sort())
+            expect(h.fs.durableLog[h.fs.durableLog.length - 1]).toBe(COMMIT_KEY)
             expect(peek(COMMIT_KEY)).toEqual([5])
         })
 
@@ -177,6 +192,137 @@ describe('tauri backend', () => {
             expect(peek(unitKey(1))).toEqual([1])
             h.flush.fault = () => 'unreported'
             expect(await backend.putUnit(unitKey(2), bytesOf(1))).toEqual({ flushed: undefined })
+        })
+    })
+
+    describe('concurrent unit writes', () => {
+        const tick = (ms = 20): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+        const unitKeys = (count: number): string[] => Array.from({ length: count }, (_, i) => unitKey(i + 1))
+        const starts = (): string[] => h.writes.events.filter((event) => event.startsWith('start ')).map((event) => event.slice('start '.length))
+
+        /** Holds the durable write of each listed key until `release` is called for it. */
+        function hold(keys: readonly string[]): { release: (key: string) => void } {
+            const releases = new Map<string, () => void>()
+            h.writes.before = (key) => keys.includes(key) ? new Promise<void>((resolve) => { releases.set(key, resolve) }) : undefined
+            return { release: (key) => releases.get(key)?.() }
+        }
+
+        async function writeStarted(key: string): Promise<void> {
+            await vi.waitFor(() => expect(h.writes.events).toContain(`start ${key}`))
+        }
+
+        test.each(['casCommit', 'removeBatch'] as const)('a held unit write keeps the mutex: a queued %s does not start until every unit write has settled', async (queuedStep) => {
+            const { backend } = open()
+            const base = await absentCommit(backend)
+            const fence = await backend.readFence()
+            h.fs.failDurableWrites('disk full', (key) => key === unitKey(1))
+            const gate = hold([unitKey(2)])
+            const commit = backend.commitOrdinary(base, [unit(1), unit(2)], bytesOf(5)).catch((error: unknown) => error)
+            await writeStarted(unitKey(2))
+            const queued = queuedStep === 'casCommit' ? backend.casCommit(base, bytesOf(7)) : backend.removeBatch([], base, fence.token)
+            let queuedDone = false
+            void queued.then(() => { queuedDone = true }, () => { queuedDone = true })
+
+            await tick()
+            expect(queuedDone).toBe(false)
+
+            gate.release(unitKey(2))
+            expect(await commit).toBeInstanceOf(Store2BackendFailureError)
+            await queued
+            expect(queuedDone).toBe(true)
+        })
+
+        test('a failing unit with a slower sibling in flight: the sibling settles before the mutex is released and the commit key is untouched', async () => {
+            const { backend } = open()
+            const base = await absentCommit(backend)
+            const absent = await absentFence(backend)
+            h.fs.failDurableWrites('disk full', (key) => key === unitKey(2))
+            const gate = hold([unitKey(3)])
+            const commit = backend.commitOrdinary(base, [unit(1), unit(2), unit(3)], bytesOf(5)).catch((error: unknown) => error)
+            await writeStarted(unitKey(3))
+            const queued = backend.casFence(absent, bytesOf(8))
+
+            await tick()
+            expect(h.writes.events).not.toContain(`start ${FENCE_KEY}`)
+
+            gate.release(unitKey(3))
+            expect(await commit).toBeInstanceOf(Store2BackendFailureError)
+            await queued
+            expect(h.writes.events.indexOf(`end ${unitKey(3)}`)).toBeLessThan(h.writes.events.indexOf(`start ${FENCE_KEY}`))
+            expect(peek(COMMIT_KEY)).toBeNull()
+        })
+
+        test('the error names the first failing unit in input order, not the first to fail', async () => {
+            const { backend } = open()
+            h.fs.failDurableWrites('disk full', (key) => key === unitKey(1) || key === unitKey(2))
+            const gate = hold([unitKey(1)])
+            const commit = backend.commitOrdinary(await absentCommit(backend), [unit(1), unit(2)], bytesOf(5)).catch((error: unknown) => error)
+            await vi.waitFor(() => expect(h.writes.events).toContain(`end ${unitKey(2)}`))
+            gate.release(unitKey(1))
+
+            const error = await commit
+
+            expect(error).toBeInstanceOf(Store2BackendFailureError)
+            expect((error as Error).message).toContain(unitKey(1))
+            expect(peek(COMMIT_KEY)).toBeNull()
+        })
+
+        test.each([
+            ['failed', 'flush failed'],
+            ['unreported', 'flush was not reported'],
+        ] as const)('a unit whose flush is %s blocks the commit key and the error names that unit', async (fault, phrase) => {
+            const { backend } = open()
+            h.flush.fault = (key) => key === unitKey(1) ? fault : null
+
+            const error = await backend.commitOrdinary(await absentCommit(backend), [unit(1), unit(2), unit(3)], bytesOf(5)).catch((e: unknown) => e)
+
+            expect(error).toBeInstanceOf(Store2BackendFailureError)
+            expect((error as Error).message).toContain(unitKey(1))
+            expect((error as Error).message).toContain(phrase)
+            expect(h.fs.durableLog).not.toContain(COMMIT_KEY)
+            expect(peek(COMMIT_KEY)).toBeNull()
+        })
+
+        test('unit writes overlap, and at most four are in flight at once', async () => {
+            const { backend } = open()
+            h.writes.before = () => tick(5)
+
+            await backend.commitOrdinary(await absentCommit(backend), unitKeys(7).map((_, i) => unit(i + 1)), bytesOf(5))
+
+            expect(h.writes.peak).toBe(4)
+        })
+
+        test('after a failure no new unit write starts, while the writes already started are awaited', async () => {
+            const { backend } = open()
+            h.fs.failDurableWrites('disk full', (key) => key === unitKey(1))
+            const gate = hold(unitKeys(4).slice(1))
+            const commit = backend.commitOrdinary(await absentCommit(backend), unitKeys(7).map((_, i) => unit(i + 1)), bytesOf(5)).catch((error: unknown) => error)
+            await vi.waitFor(() => expect(h.writes.events).toContain(`end ${unitKey(1)}`))
+            await tick()
+            for (const key of unitKeys(4).slice(1)) {
+                gate.release(key)
+            }
+
+            expect(await commit).toBeInstanceOf(Store2BackendFailureError)
+
+            expect(starts()).toEqual(unitKeys(4))
+            expect(h.writes.inflight).toBe(0)
+            expect(peek(COMMIT_KEY)).toBeNull()
+        })
+
+        test('guard: when every unit settles flushed, the commit key is written last, after the last unit write has ended', async () => {
+            const { backend } = open()
+            h.writes.before = () => tick(5)
+
+            const result = await backend.commitOrdinary(await absentCommit(backend), unitKeys(7).map((_, i) => unit(i + 1)), bytesOf(5))
+
+            expect(result).toEqual({ flushed: true })
+            const commitStart = h.writes.events.indexOf(`start ${COMMIT_KEY}`)
+            for (const key of unitKeys(7)) {
+                expect(h.writes.events.indexOf(`end ${key}`)).toBeGreaterThanOrEqual(0)
+                expect(h.writes.events.indexOf(`end ${key}`)).toBeLessThan(commitStart)
+            }
+            expect(h.fs.durableLog[h.fs.durableLog.length - 1]).toBe(COMMIT_KEY)
         })
     })
 

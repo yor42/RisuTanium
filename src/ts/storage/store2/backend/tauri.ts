@@ -29,15 +29,21 @@ import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatch
  * reports no flush status resolves `flushed: false`, never `undefined`; units keep
  * the store's own report. `commitOrdinary` writes the commit key only after every unit write
  * reported `flushed === true`: a commit key must never name a unit whose
- * directory entry may not survive power loss. A unit write that reports `false`
- * or nothing stops the step before the commit key, and the commit key is
- * untouched. Units written before the stop remain on disk, named by no commit,
+ * directory entry may not survive power loss. Unit writes run concurrently, and
+ * the commit key is considered only after every write that started has settled.
+ * A unit write that rejects, reports `false` or reports nothing stops the step
+ * before the commit key, and the commit key is untouched. Units written before
+ * the stop remain on disk, named by no commit,
  * so this backend is not atomic across units. The re-flush of an unflushed unit
  * and of the commit key belongs to the protocol layer.
  */
 
 const READ_PARALLELISM = 8
+/** Unit writes of one commit in flight at once: a whole append (three or four units) in parallel, and few base64 payloads at a time on Android. */
+const UNIT_WRITE_PARALLELISM = 4
 const STORE2_PREFIX = 'store2/'
+
+type UnitOutcome = { status: 'written', flushed: boolean | undefined } | { status: 'failed', error: unknown } | { status: 'skipped' }
 
 const mutexChains = new WeakMap<ByteStore, Promise<void>>()
 
@@ -105,6 +111,35 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
         } catch (error) {
             throw report(error, `Writing ${key}`)
         }
+    }
+
+    /**
+     * Writes `units` `UNIT_WRITE_PARALLELISM` at a time and resolves only after every write that started has settled.
+     * After the first rejection or unflushed report no further write starts; a unit that never started is `skipped`.
+     * The outcomes are in unit order, and a unit before the first non-written one has always started.
+     * A rejection is a definite failure of the commit, because the commit key is not written after it.
+     */
+    async function writeUnits(units: readonly UnitWrite[]): Promise<UnitOutcome[]> {
+        const outcomes: UnitOutcome[] = units.map(() => ({ status: 'skipped' as const }))
+        let next = 0
+        let stopped = false
+        const worker = async (): Promise<void> => {
+            while (!stopped && next < units.length) {
+                const index = next++
+                try {
+                    const written = await writeKey(units[index].key, units[index].bytes, (error, what) => failureOf(error, what))
+                    outcomes[index] = { status: 'written', flushed: written.flushed }
+                    if (written.flushed !== true) {
+                        stopped = true
+                    }
+                } catch (error) {
+                    stopped = true
+                    outcomes[index] = { status: 'failed', error }
+                }
+            }
+        }
+        await Promise.all(Array.from({ length: Math.min(UNIT_WRITE_PARALLELISM, units.length) }, worker))
+        return outcomes
     }
 
     /** The compare-and-write (or compare-and-delete when `next` is null) of one top-level key, under the mutex. */
@@ -191,11 +226,14 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
                         throw new Store2OverwriteRefusedError(unit.key)
                     }
                 }
-                for (const unit of owned) {
-                    // The commit key is not written after a failed unit, so a rejection here is a definite failure of the commit.
-                    const written = await writeKey(unit.key, unit.bytes, (error, what) => failureOf(error, what))
-                    if (written.flushed !== true) {
-                        throw new Store2BackendFailureError(`The unit ${unit.key} was written but its flush ${written.flushed === false ? 'failed' : 'was not reported'}, so the commit key was not written.`)
+                // The mutex stays held until every started write has settled, so no other step sees a write still in flight.
+                const outcomes = await writeUnits(owned)
+                for (const [index, outcome] of outcomes.entries()) {
+                    if (outcome.status === 'failed') {
+                        throw outcome.error
+                    }
+                    if (outcome.status === 'written' && outcome.flushed !== true) {
+                        throw new Store2BackendFailureError(`The unit ${owned[index].key} was written but its flush ${outcome.flushed === false ? 'failed' : 'was not reported'}, so the commit key was not written.`)
                     }
                 }
                 return writeKey(COMMIT_KEY, ownedCommit, writeFailureOf)
