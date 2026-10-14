@@ -25,7 +25,9 @@ import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatch
  * `commitOrdinary` is a definite failure of the commit, because the commit key
  * is not written after it.
  *
- * Durability. `commitOrdinary` writes the commit key only after every unit write
+ * Durability. A write of `store2-commit` or `store2-fence` whose native command
+ * reports no flush status resolves `flushed: false`, never `undefined`; units keep
+ * the store's own report. `commitOrdinary` writes the commit key only after every unit write
  * reported `flushed === true`: a commit key must never name a unit whose
  * directory entry may not survive power loss. A unit write that reports `false`
  * or nothing stops the step before the commit key, and the commit key is
@@ -97,7 +99,9 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
     async function writeKey(key: string, bytes: Uint8Array, report: (error: unknown, what: string) => Error): Promise<Store2WriteResult> {
         try {
             const written = await store.write(key, bytes, 'unconditional')
-            return { flushed: written.flushed }
+            // A top-level write that reports no flush status is not known to be durable: the boot re-flush and the exit's
+            // marker ordering rely on `true` meaning the native command said so.
+            return { flushed: key === COMMIT_KEY || key === FENCE_KEY ? written.flushed === true : written.flushed }
         } catch (error) {
             throw report(error, `Writing ${key}`)
         }

@@ -124,6 +124,18 @@ describe('tauri backend', () => {
             expect(await backend.commitOrdinary(await absentCommit(backend), [unit(1)], bytesOf(5))).toEqual({ flushed: true })
         })
 
+        test('a commit key or fence write whose command reports no flush status is flushed false, while a unit keeps its unreported status', async () => {
+            const { backend } = open()
+            h.flush.fault = () => 'unreported'
+
+            expect(await backend.casCommit(await absentCommit(backend), bytesOf(1))).toEqual({ flushed: false })
+            expect(await backend.casFence(await absentFence(backend), bytesOf(2))).toEqual({ flushed: false })
+            expect(await backend.commitOrdinary((await backend.readCommit()).token, [], bytesOf(3))).toEqual({ flushed: false })
+            expect(await backend.putUnit(unitKey(1), bytesOf(4))).toEqual({ flushed: undefined })
+            expect(peek(COMMIT_KEY)).toEqual([3])
+            expect(peek(FENCE_KEY)).toEqual([2])
+        })
+
         test('a unit that already exists stops the commit before any write, and the commit key is unchanged', async () => {
             const { backend } = open()
             h.fs.plant(unitKey(2), bytesOf(1))
