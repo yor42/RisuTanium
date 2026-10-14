@@ -15,7 +15,8 @@ const h = await vi.hoisted(async () => {
     /** Every `write_chunk` as it starts and settles, with the most in flight at once; `before` can hold a write by key. */
     const writes: { events: string[], inflight: number, peak: number, before: ((key: string) => Promise<void> | undefined) | undefined } = { events: [], inflight: 0, peak: 0, before: undefined }
     async function invoke(command: string, args?: unknown): Promise<unknown> {
-        if (command !== 'write_chunk') {
+        // The store2 top-level keys go through the gated chunk command; it is held and ordered like `write_chunk`.
+        if (command !== 'write_chunk' && command !== 'store2_write_top_chunk') {
             return chunk.invoke(command, args)
         }
         const key = String((args as { key: string }).key)
@@ -47,8 +48,8 @@ const tick = (ms = 20): Promise<void> => new Promise((resolve) => setTimeout(res
 const unitKeys = (count: number): string[] => Array.from({ length: count }, (_, i) => unitKey(i + 1))
 const units = (count: number) => unitKeys(count).map((_, i) => unit(i + 1))
 
-function open(): Store2Backend {
-    return createTauriBackend(createTauriFilesStore({ platform: 'posix' }))
+async function open(): Promise<Store2Backend> {
+    return await createTauriBackend(createTauriFilesStore({ platform: 'posix' }))
 }
 
 describe('tauri backend, android transport', () => {
@@ -64,7 +65,7 @@ describe('tauri backend, android transport', () => {
     })
 
     test('unit writes overlap, at most four are in flight, and the commit key is written last after every unit write has ended', async () => {
-        const backend = open()
+        const backend = await open()
         h.writes.before = () => tick(5)
 
         const result = await backend.commitOrdinary(await absentCommit(backend), units(7), bytesOf(5))
@@ -78,7 +79,7 @@ describe('tauri backend, android transport', () => {
     })
 
     test('a failing unit with a slower sibling in flight: the sibling settles before the mutex is released and the commit key is untouched', async () => {
-        const backend = open()
+        const backend = await open()
         const base = await absentCommit(backend)
         const absent = await absentFence(backend)
         h.chunk.failWrites((call) => call.key === unitKey(2) ? 'disk full' : undefined)
@@ -99,7 +100,7 @@ describe('tauri backend, android transport', () => {
     })
 
     test('a unit whose directory flush failed blocks the commit key', async () => {
-        const backend = open()
+        const backend = await open()
         h.chunk.failFlushes((call) => call.key === unitKey(2))
 
         const error = await backend.commitOrdinary(await absentCommit(backend), units(3), bytesOf(5)).catch((e: unknown) => e)

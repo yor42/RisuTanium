@@ -564,12 +564,12 @@ describe('GC pass on the Tauri backend (desktop stand-ins)', () => {
         resetByteTransportForTests()
     })
 
-    function openTauri(): Store2Backend {
-        return createTauriBackend(createTauriFilesStore({ platform: 'windows' }))
+    async function openTauri(): Promise<Store2Backend> {
+        return await createTauriBackend(createTauriFilesStore({ platform: 'windows' }))
     }
 
     test('garbage is collected and the units of the current tree stay', async () => {
-        const backend = openTauri()
+        const backend = await openTauri()
         await seedStore(backend, env)
         const before = await backend.listStore2()
         const junk = [await orphan(backend), await orphan(backend)]
@@ -585,7 +585,7 @@ describe('GC pass on the Tauri backend (desktop stand-ins)', () => {
     })
 
     test('a commit landing between two batches conflicts the next one under the mutex, the pass rebuilds and the new units survive', async () => {
-        const backend = openTauri()
+        const backend = await openTauri()
         await seedStore(backend, env)
         const junk: string[] = []
         for (let i = 0; i < 30; i++) {
@@ -610,7 +610,7 @@ describe('GC pass on the Tauri backend (desktop stand-ins)', () => {
     })
 
     test('a commit landing between the mark and the batches is never deleted', async () => {
-        const backend = openTauri()
+        const backend = await openTauri()
         await seedStore(backend, env)
         const junk = await orphan(backend)
         let landed: string[] = []

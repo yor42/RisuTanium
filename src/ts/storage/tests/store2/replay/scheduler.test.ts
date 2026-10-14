@@ -12,7 +12,7 @@ import {
 import { newUnitKey } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import type { ByteStore } from 'src/ts/storage/store/contract'
-import { StoreDeleteManyError, StoreOutcomeUnknownError } from 'src/ts/storage/store/errors'
+import { StoreDeleteManyError, StoreOutcomeUnknownError, StoreStaleGenerationError } from 'src/ts/storage/store/errors'
 import { bytesOf } from '../backendConformance'
 import { createClock, testEnv } from '../commitFixtures'
 import {
@@ -30,6 +30,30 @@ function unitKeys(count: number, seed = 11): string[] {
 
 function stored(snapshot: Map<string, Uint8Array>, key: string): boolean {
     return snapshot.has(key)
+}
+
+/** The semantic store as a Tauri byte store: the page-generation gate over its plain write and deleteMany. Built once per rig, so the actors of a page share it. */
+function withGate(inner: ByteStore): ByteStore {
+    let generation = 0
+    const refuseStale = (gen: number): void => {
+        if (gen === 0 || gen !== generation) {
+            throw new StoreStaleGenerationError('not the current generation')
+        }
+    }
+    return {
+        ...inner,
+        pageGate: {
+            registerPage: async () => ++generation,
+            writeTop: async (gen, key, bytes) => {
+                refuseStale(gen)
+                return await inner.write(key, bytes, 'unconditional')
+            },
+            removeTop: async (gen, keys) => {
+                refuseStale(gen)
+                await inner.deleteMany(keys.map((key) => ({ key, condition: 'unconditional' as const })))
+            },
+        },
+    }
 }
 
 describe('determinism', () => {
@@ -538,10 +562,12 @@ describe('deleteMany faults on the ByteStore layer', () => {
             for (const key of keys) {
                 await rig.fake.store.write(key, bytesOf(1), 'unconditional')
             }
-            const scheduler = createScheduler({ seed: 2, faults: { mode: 'script', entries: [{ actor: 'a', write: 1, kind }] } })
+            // Write 1 of the actor is the page's registration; write 2 is the removal.
+            const scheduler = createScheduler({ seed: 2, faults: { mode: 'script', entries: [{ actor: 'a', write: 2, kind }] } })
+            const gated = withGate(rig.fake.store)
             let failure: unknown
             scheduler.spawn('a', async (actor) => {
-                const backend = createTauriBackend(actor.byteStore(rig.fake.store))
+                const backend = await createTauriBackend(actor.byteStore(gated))
                 try {
                     await backend.removeBatch(keys, (await backend.readCommit()).token, (await backend.readFence()).token)
                 } catch (error) {
@@ -562,8 +588,11 @@ describe('actors of one Tauri page', () => {
         let bothWon = 0
         for (const seed of SEEDS) {
             const rig = nodeRig()
+            const gated = withGate(rig.fake.store)
             const scheduler = createScheduler({ seed })
             const stores: ByteStore[] = []
+            // One backend per page, as in the app: a second registration would make the first backend stale.
+            let pageBackend: Promise<Store2Backend> | undefined
             let wins = 0
             // Both read the key before either writes, so only the mutex can keep them from both winning.
             let readers = 0
@@ -571,9 +600,10 @@ describe('actors of one Tauri page', () => {
             const bothRead = new Promise<void>((resolve) => { released = resolve })
             for (const id of ['a', 'b']) {
                 scheduler.spawn(id, async (actor) => {
-                    const store = actor.byteStore(rig.fake.store)
+                    const store = actor.byteStore(gated)
                     stores.push(store)
-                    const backend = createTauriBackend(store)
+                    pageBackend ??= createTauriBackend(store)
+                    const backend = await pageBackend
                     const read = await backend.readCommit()
                     if (++readers === 2) {
                         released()
@@ -616,14 +646,16 @@ describe('actors of one Tauri page', () => {
         let pageRetired = 0
         for (const seed of SEEDS.slice(0, 12)) {
             const rig = nodeRig()
-            const scheduler = createScheduler({ seed, faults: { mode: 'script', entries: [{ actor: 'a', write: 1, kind: 'crash-after-write' }] } })
+            const gated = withGate(rig.fake.store)
+            // Write 1 of actor a is the page's registration; write 2 is its unit write.
+            const scheduler = createScheduler({ seed, faults: { mode: 'script', entries: [{ actor: 'a', write: 2, kind: 'crash-after-write' }] } })
             const aKey = unitKeys(1, 60 + seed)[0]
             const bKeys = unitKeys(5, 80 + seed)
             scheduler.spawn('a', async (actor) => {
-                await createTauriBackend(actor.byteStore(rig.fake.store)).putUnit(aKey, bytesOf(1))
+                await (await createTauriBackend(actor.byteStore(gated))).putUnit(aKey, bytesOf(1))
             }, { page: 'p' })
             scheduler.spawn('b', async (actor) => {
-                const backend = createTauriBackend(actor.byteStore(rig.fake.store))
+                const backend = await createTauriBackend(actor.byteStore(gated))
                 for (const key of bKeys) {
                     await backend.putUnit(key, bytesOf(2))
                 }
@@ -644,6 +676,88 @@ describe('actors of one Tauri page', () => {
             }
         }
         expect(pageRetired).toBeGreaterThan(0)
+    })
+})
+
+describe('the gate capability of a ByteStore', () => {
+    const KEYS = unitKeys(2, 31).sort()
+
+    async function runGate(entries: FaultPlan, body: (store: ByteStore) => Promise<void>) {
+        const rig = nodeRig()
+        const scheduler = createScheduler({ seed: 3, faults: entries })
+        scheduler.spawn('a', async (actor) => {
+            await body(actor.byteStore(withGate(rig.fake.store)))
+        })
+        const result = await scheduler.run()
+        return { rig, scheduler, result }
+    }
+
+    test('registerPage, writeTop and removeTop are scheduled calls, and a store without a gate offers none', async () => {
+        const { scheduler, rig } = await runGate({ mode: 'none' }, async (store) => {
+            const gen = await store.pageGate!.registerPage()
+            await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(1))
+            await store.pageGate!.removeTop(gen, [KEYS[0]])
+        })
+        expect(scheduler.log.map((entry) => `${entry.op}:${entry.target}`)).toEqual(['registerPage:', `writeTop:${COMMIT_KEY}`, `removeTop:${KEYS[0]}`])
+        expect(rig.fake.peek(COMMIT_KEY).bytes).toEqual(bytesOf(1))
+
+        const plain = createScheduler({ seed: 1 })
+        let offered: unknown = 'unset'
+        plain.spawn('a', async (actor) => {
+            offered = actor.byteStore(nodeRig().fake.store).pageGate
+        })
+        await plain.run()
+        expect(offered).toBeUndefined()
+    })
+
+    test('a lost request of writeTop applies nothing, a lost response applies it, and both fail as the plain write does', async () => {
+        for (const kind of ['lost-request', 'lost-response'] as const) {
+            let failure: unknown
+            const { rig } = await runGate({ mode: 'script', entries: [{ actor: 'a', write: 2, kind }] }, async (store) => {
+                const gen = await store.pageGate!.registerPage()
+                try {
+                    await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(1))
+                } catch (error) {
+                    failure = error
+                }
+            })
+            expect(failure, kind).toBeInstanceOf(TypeError)
+            expect(rig.fake.peek(COMMIT_KEY).bytes !== null, kind).toBe(kind === 'lost-response')
+        }
+    })
+
+    test('a crash after writeTop applies it, retires the actor and leaves its later calls unsent', async () => {
+        const { rig, result } = await runGate({ mode: 'script', entries: [{ actor: 'a', write: 2, kind: 'crash-after-write' }] }, async (store) => {
+            const gen = await store.pageGate!.registerPage()
+            await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(1))
+            await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(2))
+        })
+        expect(result.actors.a.state).toBe('crashed')
+        expect(rig.fake.peek(COMMIT_KEY).bytes).toEqual(bytesOf(1))
+    })
+
+    test('a partial removal through removeTop reports per key like deleteMany', async () => {
+        let failure: unknown
+        const rig = nodeRig()
+        for (const key of KEYS) {
+            await rig.fake.store.write(key, bytesOf(1), 'unconditional')
+        }
+        const scheduler = createScheduler({ seed: 4, faults: { mode: 'script', entries: [{ actor: 'a', write: 2, kind: 'partial-removal' }] } })
+        scheduler.spawn('a', async (actor) => {
+            const store = actor.byteStore(withGate(rig.fake.store))
+            const gen = await store.pageGate!.registerPage()
+            try {
+                await store.pageGate!.removeTop(gen, KEYS)
+            } catch (error) {
+                failure = error
+            }
+        })
+        await scheduler.run()
+        expect(failure).toBeInstanceOf(StoreDeleteManyError)
+        const report = (failure as StoreDeleteManyError).report
+        expect(report.map((entry) => entry.key)).toEqual(KEYS)
+        expect(report.filter((entry) => entry.outcome === 'failed').length).toBeGreaterThan(0)
+        expect(report.filter((entry) => entry.outcome === 'failed').map((entry) => entry.key).sort()).toEqual(KEYS.filter((key) => rig.fake.peek(key).bytes !== null))
     })
 })
 

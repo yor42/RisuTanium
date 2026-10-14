@@ -20,7 +20,7 @@ const h = await vi.hoisted(async () => {
     const flush: { fault: ((key: string, call: number) => 'failed' | 'unreported' | null) | undefined, calls: Map<string, number> } = { fault: undefined, calls: new Map() }
     async function invoke(command: string, args?: unknown, options?: { headers?: Record<string, string> }): Promise<unknown> {
         const answer = await desktop.invoke(command, args, options)
-        if (command !== 'write_durable') {
+        if (command !== 'write_durable' && command !== 'store2_write_top_raw') {
             return answer
         }
         const key = decodeURIComponent(options?.headers?.['x-risu-key'] ?? '')
@@ -69,9 +69,9 @@ const clock = createClock()
 const env = testEnv(clock, 61)
 const OWNER = 'c'.repeat(26)
 
-function openTauri(): { store: ByteStore, backend: Store2Backend } {
+async function openTauri(): Promise<{ store: ByteStore, backend: Store2Backend }> {
     const store = createTauriFilesStore({ platform: 'windows' })
-    return { store, backend: createTauriBackend(store) }
+    return { store, backend: await createTauriBackend(store) }
 }
 
 function peek(key: string): number[] | null {
@@ -100,7 +100,7 @@ describe('Tauri re-flush on every page load', () => {
     beforeEach(reset)
 
     async function seeded(withFence: boolean): Promise<{ store: ByteStore, backend: Store2Backend }> {
-        const opened = openTauri()
+        const opened = await openTauri()
         await seedStore(opened.backend, env)
         if (withFence) {
             await plantFence(opened.backend, fenceBytes())
@@ -144,7 +144,7 @@ describe('Tauri re-flush on every page load', () => {
     })
 
     test('absent keys have nothing to re-flush', async () => {
-        const { store } = openTauri()
+        const { store } = await openTauri()
         h.fs.durableLog.length = 0
 
         const session = await Store2Session.open(store, { kind: 'tauri', upstreamMainFile: async () => false })
@@ -195,7 +195,7 @@ describe('Tauri re-flush on every page load', () => {
     })
 
     test('a failed re-flush writes no start-up clear', async () => {
-        const { store, backend } = openTauri()
+        const { store, backend } = await openTauri()
         await plantMarker(backend, 'seed', OWNER)
         const before = peek(COMMIT_KEY)
         h.flush.calls.clear()
@@ -232,7 +232,7 @@ describe('Tauri re-flush on every page load', () => {
         await seedStore(memory, env)
         const watched = hooked(memory)
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: watched.backend, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: watched.backend, upstreamMainFile: async () => false })
 
         expect(session.reflush).toBeNull()
         expect(watched.count('casCommit')).toBe(0)
@@ -247,7 +247,7 @@ describe('session decisions', () => {
         const memory = createMemoryBackend()
         await seedStore(memory, env)
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
 
         expect(session.decision).toEqual({ row: 5, mode: 'normal', fence: 'absent' })
         expect(session.tree?.status).toBe('ok')
@@ -255,7 +255,7 @@ describe('session decisions', () => {
     })
 
     test('an empty store with an upstream main file converts and without one seeds', async () => {
-        const { store } = openTauri()
+        const { store } = await openTauri()
         const converting = await Store2Session.open(store, { kind: 'indexeddb', backend: createMemoryBackend(), upstreamMainFile: async () => true })
         const seeding = await Store2Session.open(store, { kind: 'indexeddb', backend: createMemoryBackend(), upstreamMainFile: async () => false })
 
@@ -271,7 +271,7 @@ describe('session decisions', () => {
             }
         } })
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: failing.backend, upstreamMainFile: async () => true })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: failing.backend, upstreamMainFile: async () => true })
 
         expect(session.decision).toMatchObject({ row: 1, mode: 'blocked', reason: 'presence-unknown' })
     })
@@ -286,7 +286,7 @@ describe('session decisions', () => {
         }
         expect(stored.bytes).not.toBeNull()
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: orphan, upstreamMainFile: async () => true })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: orphan, upstreamMainFile: async () => true })
 
         expect(session.decision).toEqual({ row: 2, mode: 'recovery' })
     })
@@ -304,7 +304,7 @@ describe('session decisions', () => {
         }
         await partial.casCommit((await partial.readCommit()).token, (await memory.readCommit()).bytes as Uint8Array)
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: partial, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: partial, upstreamMainFile: async () => false })
 
         expect(manifestKeys).toHaveLength(1)
         expect(session.decision).toMatchObject({ row: 6, mode: 'recovery', tree: 'missing' })
@@ -319,7 +319,7 @@ describe('session decisions', () => {
         new DataView(newer.buffer).setUint32(12, crc32(newer.subarray(0, 12)), true)
         await memory.casCommit((await memory.readCommit()).token, newer)
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
 
         expect(session.decision).toMatchObject({ row: 3, mode: 'read-only', source: 'commit-key' })
         expect(await session.openGate('gc')).toMatchObject({ status: 'refused', reason: 'commit-too-new' })
@@ -333,14 +333,14 @@ describe('session decisions', () => {
             }
         } })
 
-        const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: failing.backend, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: failing.backend, upstreamMainFile: async () => false })
 
         expect(session.decision).toMatchObject({ row: null, mode: 'blocked', reason: 'commit-unreadable' })
         expect(session.commitRead).toBeNull()
     })
 
     test('the transitional OPFS store is read-only with no backend and every gate refuses', async () => {
-        const session = await Store2Session.open(openTauri().store, { kind: 'opfs-transitional', backend: createMemoryBackend(), upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'opfs-transitional', backend: createMemoryBackend(), upstreamMainFile: async () => false })
 
         expect(session.decision).toMatchObject({ row: null, mode: 'read-only', reason: 'opfs-transitional' })
         expect(session.backend).toBeNull()
@@ -348,14 +348,14 @@ describe('session decisions', () => {
     })
 
     test('a Node page whose store has no guarded operations is read-only', async () => {
-        const session = await Store2Session.open(openTauri().store, { kind: 'node', upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'node', upstreamMainFile: async () => false })
 
         expect(session.decision).toMatchObject({ row: null, mode: 'read-only', reason: 'backend-unavailable' })
     })
 
     describe('the start-up clear of row 9', () => {
         test('on Tauri the device\'s own marker is cleared at open and the re-run follows from the decision', async () => {
-            const { store, backend } = openTauri()
+            const { store, backend } = await openTauri()
             await plantMarker(backend, 'seed', OWNER)
 
             const session = await Store2Session.open(store, { kind: 'tauri', ownerStore: memoryOwnerStore(OWNER), upstreamMainFile: async () => false })
@@ -371,7 +371,7 @@ describe('session decisions', () => {
         })
 
         test('a marker of another owner is not cleared on Tauri', async () => {
-            const { store, backend } = openTauri()
+            const { store, backend } = await openTauri()
             await plantMarker(backend, 'seed', 'd'.repeat(26))
             const before = peek(COMMIT_KEY)
 
@@ -387,7 +387,7 @@ describe('session decisions', () => {
             await plantMarker(memory, 'seed', OWNER)
             const before = (await memory.readCommit()).bytes
 
-            const session = await Store2Session.open(openTauri().store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
+            const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
 
             expect(session.decision).toMatchObject({ row: 9, clear: 'foreign-path' })
             expect(session.startupClear).toBeNull()
@@ -396,7 +396,7 @@ describe('session decisions', () => {
 
         test('a persisted owner id is written once and read back on the next load', async () => {
             const owners = memoryOwnerStore(null)
-            const { store } = openTauri()
+            const { store } = await openTauri()
 
             const first = await Store2Session.open(store, { kind: 'tauri', ownerStore: owners, upstreamMainFile: async () => false })
             const second = await Store2Session.open(store, { kind: 'tauri', ownerStore: owners, upstreamMainFile: async () => false })

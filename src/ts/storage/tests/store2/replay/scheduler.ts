@@ -26,6 +26,10 @@
  * response and lost request both surface as a `StoreDeleteManyError` whose keys
  * are all `failed`, which the backend maps to an unknown outcome.
  *
+ * A store's `pageGate` capability (Tauri page generation) is wrapped like the other
+ * write paths: `registerPage` and `writeTop` can be lost, lost-response or crash,
+ * and `removeTop` behaves as a `deleteMany` (lost, partial removal, crash).
+ *
  * Actors of one Tauri page share one scheduled `ByteStore` per inner store (the
  * `page` option of `spawn`), so the backend's in-process mutex, which is keyed by
  * the store object, is shared as it is in the app. Each call is attributed to its
@@ -42,7 +46,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { crc32 } from 'src/ts/storage/blockFrame'
-import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedOperations, StoreCondition } from 'src/ts/storage/store/contract'
+import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedOperations, PageGateOperations, StoreCondition } from 'src/ts/storage/store/contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, StoreOutcomeUnknownError, type DeleteReportEntry } from 'src/ts/storage/store/errors'
 import { versionOf } from 'src/ts/storage/store/guards'
 import { Store2BackendError, Store2UnknownOutcomeError, checkUnitKeys, type CompareToken, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -500,6 +504,26 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 () => innerGuarded.retireChecked(entries, checkOnly),
             ),
         }
+        const innerGate = inner.pageGate
+        const gate: PageGateOperations | undefined = innerGate === undefined ? undefined : {
+            registerPage: () => request(actor, callSpec('registerPage', '', true, PLAIN_LOSS), () => innerGate.registerPage()),
+            writeTop: (generation, key, bytes) => request(
+                actor,
+                callSpec('writeTop', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect('unconditional'))),
+                () => innerGate.writeTop(generation, key, bytes),
+            ),
+            removeTop: (generation, keys) => {
+                const entries = keys.map((key): DeleteEntry => ({ key, condition: 'unconditional' }))
+                return request(
+                    actor,
+                    callSpec('removeTop', keysTarget(keys), true, deleteManyLoss(entries), { commitExpect: null, fenceExpect: keys.includes(FENCE_KEY) ? conditionExpect('unconditional') : null }, {
+                        entries,
+                        runSubset: (subset) => innerGate.removeTop(generation, subset.map((entry) => entry.key)),
+                    }),
+                    () => innerGate.removeTop(generation, keys),
+                )
+            },
+        }
         const store: ByteStore = {
             capabilities: inner.capabilities,
             read: (key) => request(actor, callSpec('read', key, false, null), () => inner.read(key)),
@@ -522,6 +546,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         }
         if (guarded !== undefined) {
             store.guarded = guarded
+        }
+        if (gate !== undefined) {
+            store.pageGate = gate
         }
         return store
     }

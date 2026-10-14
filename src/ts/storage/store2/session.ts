@@ -109,7 +109,11 @@ export interface SessionNotice {
 export interface Store2SessionOptions {
     /** The page store's kind; defaults to `getAppStoreKind()`. */
     kind?: AppStoreKind
-    /** Replaces the backend built for `kind` (the tests' seam); never consulted for `opfs-transitional`. */
+    /**
+     * Replaces the backend built for `kind` (the tests' seam); never consulted for `opfs-transitional`.
+     * A Tauri backend arrives already registered with the generation gate (`createTauriBackend` registers it): the
+     * caller owns that, and `open` registers nothing for an injected backend.
+     */
     backend?: Store2Backend
     /** Where the Tauri build keeps its owner id; without it a Tauri page uses a fresh id per load and has no device marker. */
     ownerStore?: OwnerIdStore
@@ -148,11 +152,19 @@ export interface Store2Session {
 
 const IDLE_REFLUSH = 'The commit key or the fence could not be flushed to stable storage this page load.'
 
-function createBackend(kind: AppStoreKind, store: ByteStore): Store2Backend | { unavailable: string } {
+async function createBackend(kind: AppStoreKind, store: ByteStore): Promise<Store2Backend | { unavailable: string }> {
     switch (kind) {
         case 'tauri':
-            // The one store object of the page: its mutex serialises every step of this backend.
-            return createTauriBackend(store)
+            // The one store object of the page: its mutex serialises every step of this backend. The factory also
+            // registers the page with the native generation gate, so this runs before the re-flush and every read.
+            try {
+                return await createTauriBackend(store)
+            } catch (error) {
+                if (error instanceof Store2BackendError) {
+                    return { unavailable: error.message }
+                }
+                throw error
+            }
         case 'node':
             try {
                 return createNodeBackend(store)
@@ -226,7 +238,7 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
     if (options.backend !== undefined) {
         backend = options.backend
     } else {
-        const made = createBackend(kind, store)
+        const made = await createBackend(kind, store)
         if ('unavailable' in made) {
             return readOnlySession(kind, 'backend-unavailable', made.unavailable, owner)
         }

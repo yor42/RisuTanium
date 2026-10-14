@@ -22,7 +22,8 @@ const h = await vi.hoisted(async () => {
     /** Every durable write as it starts and settles, with the most in flight at once; `before` can hold a write by key. */
     const writes: { events: string[], inflight: number, peak: number, before: ((key: string) => Promise<void> | undefined) | undefined } = { events: [], inflight: 0, peak: 0, before: undefined }
     async function invoke(command: string, args?: unknown, options?: { headers?: Record<string, string> }): Promise<unknown> {
-        if (command !== 'write_durable') {
+        // The store2 top-level keys go through the gated raw command; it is held and flushed like the durable one.
+        if (command !== 'write_durable' && command !== 'store2_write_top_raw') {
             return desktop.invoke(command, args, options)
         }
         const key = decodeURIComponent(options?.headers?.['x-risu-key'] ?? '')
@@ -52,6 +53,7 @@ import {
     Store2CommitConflictError,
     Store2FenceConflictError,
     Store2OverwriteRefusedError,
+    Store2StalePageError,
     Store2UnknownOutcomeError,
     createTauriBackend,
     type Store2Backend,
@@ -77,9 +79,9 @@ function reset(): void {
     resetByteTransportForTests()
 }
 
-function open(): { store: ByteStore, backend: Store2Backend } {
+async function open(): Promise<{ store: ByteStore, backend: Store2Backend }> {
     const store = createTauriFilesStore({ platform: 'windows' })
-    return { store, backend: createTauriBackend(store) }
+    return { store, backend: await createTauriBackend(store) }
 }
 
 function peek(key: string): number[] | null {
@@ -90,7 +92,7 @@ function peek(key: string): number[] | null {
 // Units are kept (an atomic step across units is not available: each unit is its own file), and compare is of full bytes.
 runBackendConformance('tauri (desktop transport)', async () => {
     reset()
-    const { backend } = open()
+    const { backend } = await open()
     return {
         backend,
         plant: async (key, bytes) => {
@@ -107,7 +109,7 @@ describe('tauri backend', () => {
 
     describe('durability gate in front of the commit key', () => {
         test.each(['failed', 'unreported'] as const)('a unit whose write is %s stops the commit before the commit key, which stays as it was', async (fault) => {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.casCommit(await absentCommit(backend), bytesOf(9))
             const base = await backend.readCommit()
             h.flush.fault = (key) => key === unitKey(2) ? fault : null
@@ -122,7 +124,7 @@ describe('tauri backend', () => {
         })
 
         test('a commit whose units all report flushed writes the commit key last and returns the flush status of the commit key', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.flush.fault = (key) => key === COMMIT_KEY ? 'failed' : null
             h.fs.durableLog.length = 0
 
@@ -135,12 +137,12 @@ describe('tauri backend', () => {
         })
 
         test('a commit whose units and commit key all flush reports flushed true', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             expect(await backend.commitOrdinary(await absentCommit(backend), [unit(1)], bytesOf(5))).toEqual({ flushed: true })
         })
 
         test('a commit key or fence write whose command reports no flush status is flushed false, while a unit keeps its unreported status', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.flush.fault = () => 'unreported'
 
             expect(await backend.casCommit(await absentCommit(backend), bytesOf(1))).toEqual({ flushed: false })
@@ -152,7 +154,7 @@ describe('tauri backend', () => {
         })
 
         test('a unit that already exists stops the commit before any write, and the commit key is unchanged', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.fs.plant(unitKey(2), bytesOf(1))
             h.fs.durableLog.length = 0
 
@@ -163,7 +165,7 @@ describe('tauri backend', () => {
         })
 
         test('a commit-key mismatch is reported before any unit is written', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             const stale = await absentCommit(backend)
             h.fs.plant(COMMIT_KEY, bytesOf(1))
             h.fs.durableLog.length = 0
@@ -174,7 +176,7 @@ describe('tauri backend', () => {
         })
 
         test('the store2 kinds go through the durable command and a plain key does not', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.commitOrdinary(await absentCommit(backend), [unit(1)], bytesOf(5))
             await backend.casFence(await absentFence(backend), bytesOf(6))
             await backend.putUnit(unitKey(2), bytesOf(7))
@@ -186,7 +188,7 @@ describe('tauri backend', () => {
         })
 
         test('putUnit refuses an existing key and returns the store flush status', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             expect(await backend.putUnit(unitKey(1), bytesOf(1))).toEqual({ flushed: true })
             await expect(backend.putUnit(unitKey(1), bytesOf(2))).rejects.toBeInstanceOf(Store2OverwriteRefusedError)
             expect(peek(unitKey(1))).toEqual([1])
@@ -212,7 +214,7 @@ describe('tauri backend', () => {
         }
 
         test.each(['casCommit', 'removeBatch'] as const)('a held unit write keeps the mutex: a queued %s does not start until every unit write has settled', async (queuedStep) => {
-            const { backend } = open()
+            const { backend } = await open()
             const base = await absentCommit(backend)
             const fence = await backend.readFence()
             h.fs.failDurableWrites('disk full', (key) => key === unitKey(1))
@@ -233,7 +235,7 @@ describe('tauri backend', () => {
         })
 
         test('a failing unit with a slower sibling in flight: the sibling settles before the mutex is released and the commit key is untouched', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             const base = await absentCommit(backend)
             const absent = await absentFence(backend)
             h.fs.failDurableWrites('disk full', (key) => key === unitKey(2))
@@ -253,7 +255,7 @@ describe('tauri backend', () => {
         })
 
         test('the error names the first failing unit in input order, not the first to fail', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.fs.failDurableWrites('disk full', (key) => key === unitKey(1) || key === unitKey(2))
             const gate = hold([unitKey(1)])
             const commit = backend.commitOrdinary(await absentCommit(backend), [unit(1), unit(2)], bytesOf(5)).catch((error: unknown) => error)
@@ -271,7 +273,7 @@ describe('tauri backend', () => {
             ['failed', 'flush failed'],
             ['unreported', 'flush was not reported'],
         ] as const)('a unit whose flush is %s blocks the commit key and the error names that unit', async (fault, phrase) => {
-            const { backend } = open()
+            const { backend } = await open()
             h.flush.fault = (key) => key === unitKey(1) ? fault : null
 
             const error = await backend.commitOrdinary(await absentCommit(backend), [unit(1), unit(2), unit(3)], bytesOf(5)).catch((e: unknown) => e)
@@ -284,7 +286,7 @@ describe('tauri backend', () => {
         })
 
         test('unit writes overlap, and at most four are in flight at once', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.writes.before = () => tick(5)
 
             await backend.commitOrdinary(await absentCommit(backend), unitKeys(7).map((_, i) => unit(i + 1)), bytesOf(5))
@@ -293,7 +295,7 @@ describe('tauri backend', () => {
         })
 
         test('after a failure no new unit write starts, while the writes already started are awaited', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.fs.failDurableWrites('disk full', (key) => key === unitKey(1))
             const gate = hold(unitKeys(4).slice(1))
             const commit = backend.commitOrdinary(await absentCommit(backend), unitKeys(7).map((_, i) => unit(i + 1)), bytesOf(5)).catch((error: unknown) => error)
@@ -311,7 +313,7 @@ describe('tauri backend', () => {
         })
 
         test('guard: when every unit settles flushed, the commit key is written last, after the last unit write has ended', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.writes.before = () => tick(5)
 
             const result = await backend.commitOrdinary(await absentCommit(backend), unitKeys(7).map((_, i) => unit(i + 1)), bytesOf(5))
@@ -328,7 +330,7 @@ describe('tauri backend', () => {
 
     describe('the mutex', () => {
         test('two concurrent casCommit calls on the same token: one wins, the other conflicts with the winner as current', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.casCommit(await absentCommit(backend), bytesOf(1))
             const base = (await backend.readCommit()).token
 
@@ -342,19 +344,24 @@ describe('tauri backend', () => {
             expect([...((lost?.reason as Store2CommitConflictError).current.bytes ?? [])]).toEqual(winner)
         })
 
-        test('two backends over one store object share the mutex', async () => {
+        test('a second backend over one store object makes the first stale: its decisive writes are refused and nothing it sends lands', async () => {
             const store = createTauriFilesStore({ platform: 'windows' })
-            const first = createTauriBackend(store)
-            const second = createTauriBackend(store)
+            const first = await createTauriBackend(store)
+            const second = await createTauriBackend(store)
             const base = await absentCommit(first)
 
             const settled = await Promise.allSettled([first.casCommit(base, bytesOf(2)), second.casCommit(base, bytesOf(3))])
 
-            expect(settled.map((s) => s.status).sort()).toEqual(['fulfilled', 'rejected'])
+            expect(settled.map((s) => s.status)).toEqual(['rejected', 'fulfilled'])
+            expect((settled[0] as PromiseRejectedResult).reason).toBeInstanceOf(Store2StalePageError)
+            expect(peek(COMMIT_KEY)).toEqual([3])
+            // Refused before the disk: the stale page's bytes never reached the file system, only the current page's write did.
+            expect(h.fs.durableLog).toEqual([COMMIT_KEY])
+            expect(h.desktop.topCalls.map((call) => call.gen)).toEqual([1, 2])
         })
 
         test('a commit and a concurrent casCommit from the same base do not both apply', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             const base = await absentCommit(backend)
 
             const settled = await Promise.allSettled([backend.commitOrdinary(base, [unit(1)], bytesOf(2)), backend.casCommit(base, bytesOf(3))])
@@ -363,7 +370,7 @@ describe('tauri backend', () => {
         })
 
         test('first life: a commit key that appeared between the read and the create conflicts and is not overwritten', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             const absent = await absentCommit(backend)
             h.fs.plant(COMMIT_KEY, bytesOf(4, 4))
 
@@ -375,7 +382,7 @@ describe('tauri backend', () => {
         })
 
         test('first life of the fence: a fence that appeared between the read and the create conflicts', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             const absent = await absentFence(backend)
             h.fs.plant(FENCE_KEY, bytesOf(8))
 
@@ -386,7 +393,7 @@ describe('tauri backend', () => {
 
     describe('removeBatch', () => {
         async function seeded(): Promise<{ backend: Store2Backend, commit: Awaited<ReturnType<Store2Backend['readCommit']>>, fence: Awaited<ReturnType<Store2Backend['readFence']>> }> {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.casCommit(await absentCommit(backend), bytesOf(1))
             await backend.putUnit(unitKey(1), bytesOf(1))
             await backend.putUnit(unitKey(2), bytesOf(2))
@@ -423,7 +430,7 @@ describe('tauri backend', () => {
 
     describe('tokens and outcomes', () => {
         test('a revision token is refused with a RangeError before anything is touched', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             const revision = { kind: 'revision', revision: 1, present: false } as const
             await expect(backend.casCommit(revision, bytesOf(1))).rejects.toBeInstanceOf(RangeError)
             await expect(backend.casFence(revision, null)).rejects.toBeInstanceOf(RangeError)
@@ -433,7 +440,7 @@ describe('tauri backend', () => {
         })
 
         test('a commit-key write that rejects is an unknown outcome and a unit write that rejects is a definite failure of the commit', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             h.fs.failDurableWrites('transport lost', (key) => key === COMMIT_KEY)
             await expect(backend.casCommit(await absentCommit(backend), bytesOf(1))).rejects.toBeInstanceOf(Store2UnknownOutcomeError)
             await expect(backend.commitOrdinary(await absentCommit(backend), [unit(1)], bytesOf(1))).rejects.toBeInstanceOf(Store2UnknownOutcomeError)
@@ -445,7 +452,7 @@ describe('tauri backend', () => {
         })
 
         test('a removeBatch whose later removal fails after an earlier one succeeded is an unknown outcome, not a definite failure', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.casCommit(await absentCommit(backend), bytesOf(1))
             await backend.putUnit(unitKey(1), bytesOf(1))
             await backend.putUnit(unitKey(2), bytesOf(2))
@@ -462,7 +469,7 @@ describe('tauri backend', () => {
         })
 
         test('a fence delete that rejects is an unknown outcome, not a definite failure', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.casFence(await absentFence(backend), bytesOf(6))
             const present = await backend.readFence()
             h.fs.failRemoves('transport lost', (path) => path.endsWith(FENCE_KEY))
@@ -474,7 +481,7 @@ describe('tauri backend', () => {
         })
 
         test('listStore2 and countPrefix leave out the top-level keys', async () => {
-            const { backend } = open()
+            const { backend } = await open()
             await backend.commitOrdinary(await absentCommit(backend), [unit(1), unit(2)], bytesOf(1))
             await backend.casFence(await absentFence(backend), bytesOf(2))
             h.fs.plant(SWEEP_KEY, bytesOf(1))

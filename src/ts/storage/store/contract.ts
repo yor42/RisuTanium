@@ -189,6 +189,42 @@ export interface ByteStore {
      * inside the same step as a write or a removal.
      */
     guarded?: GuardedOperations
+
+    /**
+     * The page-generation gate for the store2 decisive writes. Optional and
+     * Tauri only: every other adapter leaves it out.
+     */
+    pageGate?: PageGateOperations
+}
+
+/**
+ * What the Tauri shell's process-wide generation gate offers. A page registers once
+ * and presents the generation it was issued on every decisive call; the native side
+ * refuses a call whose generation is not the current one before it touches the disk,
+ * so a write of a page that died cannot land after a newer page registered.
+ *
+ * `registerPage` issues the generation; `writeTop` and `removeTop` are the decisive calls: each resolves only after the target holds the new bytes (or
+ * the keys are removed) under the native gate lock. Failures:
+ * - `StoreStaleGenerationError`: refused, nothing applied.
+ * - `StoreRegistrationTimeoutError` (`registerPage`): no generation was issued.
+ * - `StoreInvalidKeyError`: the key is not one the gate may change; nothing applied.
+ * - any other rejection may have been applied: the caller reads back.
+ * Only `store2-commit` and `store2-fence` are written, and only `store2/` keys and
+ * `store2-fence` are removed; the commit key is never removed.
+ */
+export interface PageGateOperations {
+    /** Issues the next generation (always above 0). Waits, bounded, for a decisive write still in flight. */
+    registerPage(): Promise<number>
+
+    /** Replaces the whole value of `key` under `generation`; `flushed` reports the directory flush as `write` does. */
+    writeTop(generation: number, key: string, bytes: Uint8Array): Promise<WriteResult>
+
+    /**
+     * Removes `keys` under one hold of the gate, an absent key counting as removed.
+     * Resolves when every key is removed; otherwise rejects with a
+     * `StoreDeleteManyError` that reports each key (`removed` or `failed`).
+     */
+    removeTop(generation: number, keys: readonly string[]): Promise<void>
 }
 
 /**

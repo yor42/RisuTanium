@@ -5,6 +5,7 @@ import { appDataDirectory, appFsExists, appFsMkdirAll, appFsRemove } from '../ap
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
 import { createChunkedWriter, MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
+import { registerPageGeneration, removeTopKeys, writeTopKey } from '../tauriGateTransport'
 import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
@@ -40,6 +41,10 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * Node store offers one too, for the keys its asset route serves). It is the
  * only store that offers `openWriter`, a write that
  * arrives in pieces over the chunk commands, so the caller never holds the whole file.
+ *
+ * It also offers `pageGate` (`tauriGateTransport.ts`): registration with the native
+ * page-generation gate and the generation-checked write and removal of the store2
+ * top-level keys, which the ungated commands refuse.
  */
 
 const APP_DATA = { baseDir: BaseDirectory.AppData }
@@ -220,6 +225,24 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
         openWriter(key: string): PieceWriter {
             checkCreatable(key)
             return createChunkedWriter(key, { durable: isDurableKey(key) })
+        },
+
+        pageGate: {
+            registerPage: registerPageGeneration,
+
+            async writeTop(generation: number, key: string, bytes: Uint8Array): Promise<WriteResult> {
+                checkCreatable(key)
+                checkBytes(bytes)
+                return { version: null, flushed: await writeTopKey(generation, key, bytes) }
+            },
+
+            async removeTop(generation: number, keys: readonly string[]): Promise<void> {
+                for (const key of keys) {
+                    checkAddressable(key)
+                }
+                checkNoDuplicateKeys(keys.map((key): DeleteEntry => ({ key, condition: 'unconditional' })))
+                await removeTopKeys(generation, keys)
+            },
         },
 
         async has(key: string): Promise<boolean> {

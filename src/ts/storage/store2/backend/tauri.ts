@@ -1,8 +1,8 @@
-import type { ByteStore } from '../../store/contract'
-import { StoreDeleteManyError, StoreInvalidKeyError } from '../../store/errors'
+import type { ByteStore, PageGateOperations } from '../../store/contract'
+import { StoreDeleteManyError, StoreInvalidKeyError, StoreRegistrationTimeoutError, StoreStaleGenerationError } from '../../store/errors'
 import { isStore2Key } from '../../store/keyRules'
 import { COMMIT_KEY, FENCE_KEY } from '../format/keys'
-import { Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2FenceConflictError, Store2OverwriteRefusedError, Store2UnknownOutcomeError } from './errors'
+import { Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2FenceConflictError, Store2OverwriteRefusedError, Store2StalePageError, Store2UnknownOutcomeError } from './errors'
 import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatches, type CompareToken, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite } from './types'
 
 /**
@@ -16,6 +16,19 @@ import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatch
  * as well); it is not atomic against a write that does not come through here.
  *
  * Compare tokens are byte tokens, compared in full under the mutex.
+ *
+ * The page-generation gate. The mutex cannot stop a write of a page that died and
+ * is still running in the native process: Tauri never cancels a running command.
+ * So the factory registers the page through `store.pageGate` and keeps the generation
+ * issued, and every top-level write (`store2-commit`, `store2-fence`) and every
+ * removal of a `store2/` key or the fence goes through `gate.writeTop` /
+ * `gate.removeTop` with it; the native side refuses a stale generation before
+ * touching the disk. There is no fallback to the ungated `write`, `delete` or
+ * `deleteMany` for those keys: a missing gate, a rejected registration or a
+ * registration timeout makes the factory fail. A registration after this one makes
+ * this backend stale: its first refused step is a definite failure
+ * (`Store2StalePageError`), and every later decisive step fails the same way
+ * without being sent. Unit writes and every read stay ungated.
  *
  * Outcomes. The store's own refusal of a key (`StoreInvalidKeyError`) happens
  * before anything is applied and is a definite failure. Any other rejection of a
@@ -85,7 +98,52 @@ function writeFailureOf(error: unknown, what: string): Error {
     return new Store2UnknownOutcomeError(`${what} may or may not have been applied.`, { cause: error })
 }
 
-export function createTauriBackend(store: ByteStore): Store2Backend {
+/**
+ * Builds the backend on `store` and registers the page with its gate, so every
+ * decisive step of the returned backend carries the generation issued here.
+ * Rejects with a `Store2BackendFailureError` when the store has no gate or the
+ * registration fails or times out.
+ */
+export async function createTauriBackend(store: ByteStore): Promise<Store2Backend> {
+    const offered = store.pageGate
+    if (offered === undefined) {
+        throw new Store2BackendFailureError('The byte store has no page-generation gate; the store2 Tauri backend needs it.')
+    }
+    const gate: PageGateOperations = offered
+    let generation: number
+    try {
+        generation = await gate.registerPage()
+    } catch (error) {
+        throw new Store2BackendFailureError(
+            error instanceof StoreRegistrationTimeoutError
+                ? 'A write of an earlier page still held the storage gate, so this page did not register.'
+                : 'The page could not register with the storage gate.',
+            { cause: error },
+        )
+    }
+    /** Set by the first refusal for a stale generation; this page is never current again. */
+    let stale = false
+
+    function staleError(what: string, cause?: unknown): Store2StalePageError {
+        return new Store2StalePageError(`${what} was refused: a newer page owns the store.`, cause === undefined ? undefined : { cause })
+    }
+
+    /** Refuses a decisive step before anything is sent once the page is known to be stale. */
+    function assertCurrent(what: string): void {
+        if (stale) {
+            throw staleError(what)
+        }
+    }
+
+    /** A stale-generation refusal as the backend's definite failure (and the page idles); any other error as it came. */
+    function noteStale(error: unknown, what: string): unknown {
+        if (error instanceof StoreStaleGenerationError) {
+            stale = true
+            return staleError(what, error)
+        }
+        return error
+    }
+
     async function readKey(key: string): Promise<Uint8Array | null> {
         try {
             return (await store.read(key)).bytes
@@ -103,13 +161,17 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
     }
 
     async function writeKey(key: string, bytes: Uint8Array, report: (error: unknown, what: string) => Error): Promise<Store2WriteResult> {
+        const top = key === COMMIT_KEY || key === FENCE_KEY
+        if (top) {
+            assertCurrent(`Writing ${key}`)
+        }
         try {
-            const written = await store.write(key, bytes, 'unconditional')
+            const written = top ? await gate.writeTop(generation, key, bytes) : await store.write(key, bytes, 'unconditional')
             // A top-level write that reports no flush status is not known to be durable: the boot re-flush and the exit's
             // marker ordering rely on `true` meaning the native command said so.
-            return { flushed: key === COMMIT_KEY || key === FENCE_KEY ? written.flushed === true : written.flushed }
+            return { flushed: top ? written.flushed === true : written.flushed }
         } catch (error) {
-            throw report(error, `Writing ${key}`)
+            throw report(top ? noteStale(error, `Writing ${key}`) : error, `Writing ${key}`)
         }
     }
 
@@ -147,6 +209,7 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
         bytesTokenOf(expected)
         const owned = next === null ? null : copyOf(next)
         return underMutex(store, async () => {
+            assertCurrent(`${owned === null ? 'Deleting' : 'Writing'} ${key}`)
             const current = await readKey(key)
             if (!tokenMatches(expected, current)) {
                 throw conflict(readOf(current))
@@ -156,9 +219,9 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
             }
             if (current !== null) {
                 try {
-                    await store.delete(key, 'unconditional')
+                    await gate.removeTop(generation, [key])
                 } catch (error) {
-                    throw writeFailureOf(error, `Deleting ${key}`)
+                    throw writeFailureOf(noteStale(error, `Deleting ${key}`), `Deleting ${key}`)
                 }
             }
             return { flushed: undefined }
@@ -217,6 +280,7 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
             const owned = units.map((unit) => ({ key: unit.key, bytes: copyOf(unit.bytes) }))
             const ownedCommit = copyOf(nextCommit)
             return underMutex(store, async () => {
+                assertCurrent(`Writing ${COMMIT_KEY}`)
                 const current = await readKey(COMMIT_KEY)
                 if (!tokenMatches(expectedCommit, current)) {
                     throw new Store2CommitConflictError(readOf(current))
@@ -257,6 +321,7 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
             bytesTokenOf(expectedFence)
             const owned = [...keys]
             return underMutex(store, async () => {
+                assertCurrent('Removing units')
                 const commit = await readKey(COMMIT_KEY)
                 if (!tokenMatches(expectedCommit, commit)) {
                     throw new Store2CommitConflictError(readOf(commit))
@@ -267,10 +332,15 @@ export function createTauriBackend(store: ByteStore): Store2Backend {
                 }
                 if (owned.length > 0) {
                     try {
-                        await store.deleteMany(owned.map((key) => ({ key, condition: 'unconditional' as const })))
+                        await gate.removeTop(generation, owned)
                     } catch (error) {
-                        // A partial removal is reported by the store as its own error; either way some keys may be gone.
-                        throw error instanceof StoreDeleteManyError ? new Store2UnknownOutcomeError('Some units may or may not have been removed.', { cause: error }) : failureOf(error, 'Removing units')
+                        const seen = noteStale(error, 'Removing units')
+                        if (seen instanceof Store2StalePageError || error instanceof StoreInvalidKeyError) {
+                            // Refused before anything was removed.
+                            throw failureOf(seen, 'Removing units')
+                        }
+                        // A partial removal is reported by the store as its own error; any other rejection may follow an applied removal. Either way some keys may be gone.
+                        throw new Store2UnknownOutcomeError(error instanceof StoreDeleteManyError ? 'Some units may or may not have been removed.' : 'Removing units may or may not have been applied.', { cause: error })
                     }
                 }
                 return { flushed: undefined }
