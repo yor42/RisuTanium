@@ -32,6 +32,25 @@ describe('asset list derivation, one field kind at a time', () => {
     })
 })
 
+describe('loadout icons in the config list', () => {
+    const icon = `assets/${HEX_A}.png`
+    const loadouts = [{ id: 'l1', icons: [icon, 'Custom-Icon.PNG', 5] }, { id: 'l2' }, 'not-a-loadout']
+
+    it('keeps icons of loadouts passed apart from the config root, as the codec holds them', () => {
+        const list = deriveConfigAssets({}, [], loadouts)
+        expect(listHolds(list, icon)).toBe(true)
+        expect(listHolds(list, 'Custom-Icon.PNG')).toBe(true)
+    })
+
+    it('keeps icons of loadouts carried by a whole old database', () => {
+        expect(listHolds(deriveConfigAssets({ loadouts }, []), icon)).toBe(true)
+    })
+
+    it('holds nothing for loadouts without icons', () => {
+        expect(deriveConfigAssets({}, [], [{ id: 'l' }, { icons: 'x' }])).toEqual({ v: ASSET_REF_V, h: '', l: [] })
+    })
+})
+
 describe('asset list against today\'s keep-set collector', () => {
     it('holds every basename the collector keeps on a database with every field kind', () => {
         const db = richDatabase()

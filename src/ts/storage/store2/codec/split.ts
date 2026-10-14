@@ -39,7 +39,9 @@ export function configFields(source: object): JsonObject {
     const rest: Record<string, unknown> = {}
     for (const key of Object.keys(source)) {
         if (!(CONFIG_PARTITIONED_FIELDS as readonly string[]).includes(key)) {
-            rest[key] = (source as Record<string, unknown>)[key]
+            Object.defineProperty(rest, key, {
+                value: (source as Record<string, unknown>)[key], enumerable: true, writable: true, configurable: true,
+            })
         }
     }
     return plainObject(rest, 'database')

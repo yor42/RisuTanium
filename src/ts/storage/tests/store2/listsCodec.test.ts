@@ -44,6 +44,7 @@ function build() {
             botPresets: [{ name: 'P', mainPrompt: inlayToken('preset-id') }],
             pluginCustomStorage: { key: { v: `assets/${HEX_A}` } },
             characterOrder: [{ imgFile: 'Folder.PNG', data: [] }],
+            loadouts: [{ id: 'l1', icons: ['Loadout-Icon.PNG'] }],
         }),
     }
 }
@@ -57,6 +58,7 @@ describe('the real derivation through the codec', () => {
         expect(listHeld(configAl, `assets/${HEX_C}.jpg`)).toBe(true)
         expect(configAl.l).toContain('user.png')
         expect(configAl.l).toContain('folder.png')
+        expect(configAl.l).toContain('loadout-icon.png')
         expect(configAl).toEqual(deriveConfigAssets(db as unknown as object, (db as unknown as Obj).characterOrder))
 
         const fixedIl = body<InlayList>(tree, tree.manifest.fixed.il, UNIT_TYPE.inlayList)

@@ -34,6 +34,17 @@ describe('unknown fields round trip (MC-175)', () => {
         expect((roundTrip(db).assembled as unknown as Obj).futureDatabaseField).toEqual({ ...FUTURE, level: 'database' })
     })
 
+    test('a top-level database key named __proto__ stays an own key of the config root and comes back', () => {
+        const source = JSON.parse(JSON.stringify(buildSmall(1))) as Obj
+        Object.defineProperty(source, '__proto__', { value: { kept: true }, enumerable: true, writable: true, configurable: true })
+        const db = asDatabase(source)
+        const f = bodyOf(unitOf(encodeWith(db), 'config')).f as Obj
+        expect(Object.prototype.hasOwnProperty.call(f, '__proto__')).toBe(true)
+        expect(Object.getOwnPropertyDescriptor(f, '__proto__')?.value).toEqual({ kept: true })
+        const assembled = roundTrip(db).assembled as unknown as Obj
+        expect(Object.getOwnPropertyDescriptor(assembled, '__proto__')?.value).toEqual({ kept: true })
+    })
+
     test('the character level: in the character core', () => {
         const { db } = databaseWithUnknownFields()
         const { first, assembled } = roundTrip(db)

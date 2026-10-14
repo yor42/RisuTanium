@@ -94,9 +94,16 @@ export function collectModuleAssets(collector: AssetRefCollector, module: object
 
 /**
  * Config-level fields: background, user icon, image-generation reference images,
- * persona icons and their embedded modules, and folder images in the character order.
+ * persona icons and their embedded modules, loadout icons, and folder images in the
+ * character order. The loadouts live outside the config root in the codec, so a
+ * caller holding them apart passes them; a whole old database carries its own.
  */
-export function collectConfigAssets(collector: AssetRefCollector, config: object, characterOrder: unknown): void {
+export function collectConfigAssets(
+    collector: AssetRefCollector,
+    config: object,
+    characterOrder: unknown,
+    loadouts: unknown = (config as PlainRecord).loadouts,
+): void {
     const db = config as PlainRecord
     collector.add(db.customBackground)
     collector.add(db.userIcon)
@@ -114,6 +121,16 @@ export function collectConfigAssets(collector: AssetRefCollector, config: object
             const embedded = recordOf(one.embeddedModule)
             if (embedded) {
                 collectModuleAssets(collector, embedded)
+            }
+        }
+    }
+    if (Array.isArray(loadouts)) {
+        for (const loadout of loadouts) {
+            const icons = recordOf(loadout)?.icons
+            if (Array.isArray(icons)) {
+                for (const icon of icons) {
+                    collector.add(icon)
+                }
             }
         }
     }
@@ -139,8 +156,8 @@ export function deriveModuleAssets(module: object): AssetList {
     return collector.toList()
 }
 
-export function deriveConfigAssets(config: object, characterOrder: unknown): AssetList {
+export function deriveConfigAssets(config: object, characterOrder: unknown, loadouts: unknown = (config as PlainRecord).loadouts): AssetList {
     const collector = new AssetRefCollector()
-    collectConfigAssets(collector, config, characterOrder)
+    collectConfigAssets(collector, config, characterOrder, loadouts)
     return collector.toList()
 }

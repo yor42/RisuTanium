@@ -10,7 +10,7 @@ import type { ListParams } from './params'
  */
 export function createListDerivation(params?: Partial<ListParams>): ListDerivation {
     return {
-        configAssets: (owner: ConfigOwner): AssetList => deriveConfigAssets(owner.config, owner.characterOrder),
+        configAssets: (owner: ConfigOwner): AssetList => deriveConfigAssets(owner.config, owner.characterOrder, owner.loadouts),
         configInlays: (owner: ConfigOwner): InlayList => deriveInlayList([
             owner.config, owner.presets, owner.plugins, owner.pluginStorage, owner.loadouts, owner.statics, owner.characterOrder,
         ], params),
