@@ -97,7 +97,7 @@ afterEach(async () => {
 runBackendConformance('indexedDb', async () => {
     await freshDatabase()
     return { backend: backendOf(), plant: (key, bytes) => plantRaw(key, bytes) }
-}, { compare: 'bytes' })
+}, { compare: 'bytes', atomicUnits: true })
 
 describe('IndexedDB backend: transactions', () => {
     test('the hazard is real here: a macrotask await inside a transaction leaves it inactive', async () => {
@@ -289,6 +289,20 @@ describe('IndexedDB backend: outcomes', () => {
         expect(error).toBeInstanceOf(Store2BackendFailureError)
         expect(error).not.toBeInstanceOf(Store2UnknownOutcomeError)
         vi.restoreAllMocks()
+        expect(await backend.listStore2()).toEqual([])
+        expect((await backend.readCommit()).bytes).toBeNull()
+    })
+})
+
+describe('IndexedDB backend: tokens', () => {
+    test('a revision token belongs to the Node backend and is refused with a RangeError, writing nothing', async () => {
+        await freshDatabase()
+        const backend = backendOf()
+        const revision = { kind: 'revision', revision: 0, present: false } as const
+        await expect(backend.casCommit(revision, bytesOf(1))).rejects.toBeInstanceOf(RangeError)
+        await expect(backend.casFence(revision, null)).rejects.toBeInstanceOf(RangeError)
+        await expect(backend.commitOrdinary(revision, [unit(1)], bytesOf(1))).rejects.toBeInstanceOf(RangeError)
+        await expect(backend.removeBatch([unitKey(1)], revision, revision)).rejects.toBeInstanceOf(RangeError)
         expect(await backend.listStore2()).toEqual([])
         expect((await backend.readCommit()).bytes).toBeNull()
     })

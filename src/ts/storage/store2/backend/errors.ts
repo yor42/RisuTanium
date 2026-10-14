@@ -14,6 +14,7 @@ export type Store2BackendErrorKind =
     | 'commit-conflict'
     | 'fence-conflict'
     | 'overwrite-refused'
+    | 'unit-conflict'
     | 'unknown-outcome'
     | 'backend-failure'
     | 'not-binary'
@@ -46,6 +47,19 @@ export class Store2OverwriteRefusedError extends Store2BackendError {
     constructor(readonly key: string) {
         super(`The unit ${key} already exists and is never overwritten.`)
         this.name = 'Store2OverwriteRefusedError'
+    }
+}
+
+/**
+ * A unit named by the step is not at the revision the step expected. The commit key (and, for a removal, the fence)
+ * matched; nothing was deleted and the commit key was not written. Units that a Node commit had already uploaded under
+ * fresh keys may remain as orphans that no commit names, so a caller may assume only that the commit did not happen.
+ */
+export class Store2UnitConflictError extends Store2BackendError {
+    readonly kind = 'unit-conflict'
+    constructor(readonly key: string) {
+        super(`The unit ${key} changed since the step expected it.`)
+        this.name = 'Store2UnitConflictError'
     }
 }
 

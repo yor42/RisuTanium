@@ -18,10 +18,18 @@ import { isStore2Key } from '../../store/keyRules'
  * backend returned (an absent key included), never from a hand-built value.
  * Off Node a compare is of the full bytes: a sequence number alone can match
  * while the bytes differ, so the token carries the bytes themselves, and `null`
- * is an absent key. A Node backend adds a revision variant; no other backend
- * accepts one.
+ * is an absent key. The Node backend compares a revision the server reports
+ * with each read instead (`present` says whether the key held a value, the
+ * revision of an absent key being the one its first create must present); it
+ * accepts only revision tokens and the other backends only byte tokens, each
+ * refusing the other kind with a `RangeError`.
  */
-export type CompareToken = { kind: 'bytes', bytes: Uint8Array | null }
+export type CompareToken =
+    | { kind: 'bytes', bytes: Uint8Array | null }
+    | { kind: 'revision', revision: number, present: boolean }
+
+export type BytesToken = Extract<CompareToken, { kind: 'bytes' }>
+export type RevisionToken = Extract<CompareToken, { kind: 'revision' }>
 
 /**
  * What a writing method resolves to. `flushed` is whether the backend knows the
@@ -102,12 +110,19 @@ export interface Store2Backend {
     /**
      * One atomic step that compares the commit key with `expectedCommit` and, only
      * when equal, creates every unit and writes `nextCommit`. Units are fresh keys
-     * never written before: a unit key that already has an entry fails the whole
-     * step and nothing is written. A commit-key mismatch writes no unit. Duplicate
-     * keys in `units` are a `RangeError`.
+     * never written before: a unit key that already has an entry means the commit
+     * key is not written. Duplicate keys in `units` are a `RangeError`.
+     *
+     * The commit key changes only when the step succeeds. Whether a failed step
+     * also leaves the units unwritten depends on the backend: the memory and
+     * IndexedDB backends are atomic across units, so a conflict or an existing unit
+     * writes no unit at all; the Node backend uploads each unit as its own request
+     * before the commit-key write, so a failed step may leave fresh units behind.
+     * Such a unit is named by no commit, and a retry uses new unit keys.
      *
      * @throws Store2CommitConflictError (mismatch checked first), then
-     *   Store2OverwriteRefusedError naming the existing key; nothing written.
+     *   Store2OverwriteRefusedError naming the existing key; the commit key is unchanged.
+     * @throws Store2UnitConflictError (Node) when a unit it uploaded changed before the commit-key write.
      * @throws Store2UnknownOutcomeError when the outcome is not known.
      */
     commitOrdinary(expectedCommit: CompareToken, units: readonly UnitWrite[], nextCommit: Uint8Array): Promise<Store2WriteResult>
@@ -146,12 +161,29 @@ export function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
     return true
 }
 
+/** The token of a byte-comparing backend; a revision token is refused before anything is touched. */
+export function bytesTokenOf(token: CompareToken): BytesToken {
+    if (token.kind !== 'bytes') {
+        throw new RangeError('This backend compares bytes and accepts no revision token.')
+    }
+    return token
+}
+
+/** The token of the revision-comparing Node backend; a byte token is refused before anything is touched. */
+export function revisionTokenOf(token: CompareToken): RevisionToken {
+    if (token.kind !== 'revision') {
+        throw new RangeError('This backend compares revisions and accepts no byte token.')
+    }
+    return token
+}
+
 /** Whether the stored bytes (null when absent) are what the token expected. */
 export function tokenMatches(expected: CompareToken, actual: Uint8Array | null): boolean {
-    if (expected.bytes === null || actual === null) {
-        return expected.bytes === actual
+    const wanted = bytesTokenOf(expected).bytes
+    if (wanted === null || actual === null) {
+        return wanted === actual
     }
-    return sameBytes(expected.bytes, actual)
+    return sameBytes(wanted, actual)
 }
 
 export function checkUnitKey(key: string): void {

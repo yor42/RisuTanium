@@ -5,7 +5,7 @@ import { absentCommit, absentFence, bytesOf, runBackendConformance, unit, unitKe
 runBackendConformance('memory', async () => {
     const backend = createMemoryBackend()
     return { backend, plant: async (key, bytes) => backend.poke(key, bytes) }
-}, { compare: 'bytes' })
+}, { compare: 'bytes', atomicUnits: true })
 
 describe('memory backend fault injection', () => {
     test('a failed call changes nothing and reports a definite failure', async () => {
@@ -77,6 +77,18 @@ describe('memory backend write results', () => {
             expect(result).toEqual({ flushed: undefined })
             expect('flushed' in result).toBe(true)
         }
+    })
+})
+
+describe('memory backend tokens', () => {
+    test('a revision token belongs to the Node backend and is refused with a RangeError, writing nothing', async () => {
+        const backend = createMemoryBackend()
+        const revision = { kind: 'revision', revision: 0, present: false } as const
+        await expect(backend.casCommit(revision, bytesOf(1))).rejects.toBeInstanceOf(RangeError)
+        await expect(backend.casFence(revision, null)).rejects.toBeInstanceOf(RangeError)
+        await expect(backend.commitOrdinary(revision, [unit(1)], bytesOf(1))).rejects.toBeInstanceOf(RangeError)
+        await expect(backend.removeBatch([unitKey(1)], revision, revision)).rejects.toBeInstanceOf(RangeError)
+        expect(backend.snapshot().size).toBe(0)
     })
 })
 

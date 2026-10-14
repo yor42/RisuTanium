@@ -1,5 +1,6 @@
 export * from './errors'
 export * from './indexedDb'
 export * from './memory'
+export * from './node'
 export * from './types'
 export * from './watchdog'

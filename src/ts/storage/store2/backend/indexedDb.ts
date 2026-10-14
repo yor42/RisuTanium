@@ -1,7 +1,7 @@
 import { bytesOfStoredValue, type HeadOpen, openDatabaseForHead, prefixRange, syncBytesOfStoredValue } from '../../store/indexedDbStore'
 import { COMMIT_KEY, FENCE_KEY } from '../format/keys'
 import { Store2BackendFailureError, Store2CommitConflictError, Store2FenceConflictError, Store2NotBinaryError, Store2OverwriteRefusedError, Store2UnknownOutcomeError } from './errors'
-import { checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatches, type CompareToken, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite } from './types'
+import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatches, type CompareToken, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite } from './types'
 import { armWatchdog, DEFAULT_TRANSACTION_WATCHDOG_MS } from './watchdog'
 
 /**
@@ -245,6 +245,7 @@ export function createIndexedDbBackend(options: IndexedDbBackendOptions = {}): I
 
     /** The first-life create (expected absent) or the compare-and-replace or compare-and-delete of one top-level key, in one transaction. */
     function compareAndSet(key: string, expected: CompareToken, next: Uint8Array | null, conflict: (current: Store2Read) => Error): Promise<Store2WriteResult> {
+        bytesTokenOf(expected)
         const owned = next === null ? null : copyOf(next)
         return withWriteConnection((database) => runTransaction<Store2WriteResult>(database, 'readwrite', (objects, control) => {
             readEntry(objects, key, (entry) => {
@@ -280,9 +281,9 @@ export function createIndexedDbBackend(options: IndexedDbBackendOptions = {}): I
             return readOf(await readBytes(FENCE_KEY))
         },
 
-        casCommit: (expected, next) => compareAndSet(COMMIT_KEY, expected, next, (current) => new Store2CommitConflictError(current)),
+        casCommit: async (expected, next) => compareAndSet(COMMIT_KEY, expected, next, (current) => new Store2CommitConflictError(current)),
 
-        casFence: (expected, next) => compareAndSet(FENCE_KEY, expected, next, (current) => new Store2FenceConflictError(current)),
+        casFence: async (expected, next) => compareAndSet(FENCE_KEY, expected, next, (current) => new Store2FenceConflictError(current)),
 
         async readUnits(keys) {
             checkUnitKeys(keys)
@@ -318,6 +319,7 @@ export function createIndexedDbBackend(options: IndexedDbBackendOptions = {}): I
 
         async commitOrdinary(expectedCommit, units: readonly UnitWrite[], nextCommit) {
             checkUnitKeys(units.map((unit) => unit.key))
+            bytesTokenOf(expectedCommit)
             const owned = units.map((unit) => ({ key: unit.key, bytes: copyOf(unit.bytes) }))
             const ownedCommit = copyOf(nextCommit)
             return withWriteConnection((database) => runTransaction<Store2WriteResult>(database, 'readwrite', (objects, control) => {
@@ -355,6 +357,8 @@ export function createIndexedDbBackend(options: IndexedDbBackendOptions = {}): I
 
         async removeBatch(keys, expectedCommit, expectedFence) {
             checkRemoveBatch(keys)
+            bytesTokenOf(expectedCommit)
+            bytesTokenOf(expectedFence)
             const owned = [...keys]
             return withWriteConnection((database) => runTransaction<Store2WriteResult>(database, 'readwrite', (objects, control) => {
                 // The commit key, and the fence by `count` first, then its body only when present.

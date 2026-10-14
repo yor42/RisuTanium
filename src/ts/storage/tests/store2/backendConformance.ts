@@ -26,6 +26,13 @@ export type BackendFixtureFactory = () => Promise<BackendFixture>
  */
 export interface BackendConformanceOptions {
     compare: 'bytes' | 'revision'
+    /**
+     * Whether `commitOrdinary` is atomic across units (memory, IndexedDB): a step
+     * that fails writes no unit. A backend that uploads units before the commit-key
+     * write (Node) may leave fresh units behind; the commit key is unchanged either
+     * way, and what it leaves is only units the step itself tried to write.
+     */
+    atomicUnits: boolean
 }
 
 /** The token of an absent commit key, as the backend reads it now; a token is never built by hand. */
@@ -65,6 +72,23 @@ async function contents(backend: Store2Backend, keys: readonly string[]): Promis
 }
 
 /**
+ * After a failed `commitOrdinary`: an atomic backend holds none of `attempted`
+ * (apart from what was there before, `existing`); a backend that uploads first may
+ * hold some, and each one it holds is exactly the unit the step tried to write.
+ */
+async function expectNoCommittedUnits(backend: Store2Backend, atomicUnits: boolean, attempted: readonly UnitWrite[], existing: ReadonlyMap<string, number[]> = new Map()): Promise<void> {
+    const found = await contents(backend, attempted.map((u) => u.key))
+    attempted.forEach((u, index) => {
+        const before = existing.get(u.key) ?? null
+        if (atomicUnits || before !== null) {
+            expect(found[index]).toEqual(before)
+        } else {
+            expect([null, [...u.bytes]]).toContainEqual(found[index])
+        }
+    })
+}
+
+/**
  * The behaviour every store2 backend has: atomic compare-and-write of the commit
  * key and the fence, all-or-nothing ordinary commits, create-only units and
  * guarded batch removal. The memory, IndexedDB, Node and Tauri backends each run
@@ -72,6 +96,7 @@ async function contents(backend: Store2Backend, keys: readonly string[]): Promis
  */
 export function runBackendConformance(name: string, makeFixture: BackendFixtureFactory, options: BackendConformanceOptions): void {
     const byteTokens = options.compare === 'bytes'
+    const { atomicUnits } = options
 
     describe(`store2 backend conformance: ${name}`, () => {
         describe('commit key', () => {
@@ -207,7 +232,7 @@ export function runBackendConformance(name: string, makeFixture: BackendFixtureF
                 expect([...(await backend.readCommit()).bytes!]).toEqual([9])
             })
 
-            test('a stale commit key conflicts, writes no unit and keeps the commit key', async () => {
+            test('a stale commit key conflicts and keeps the commit key (an atomic backend also writes no unit)', async () => {
                 const { backend } = await makeFixture()
                 await backend.casCommit(await absentCommit(backend), bytesOf(1))
                 const stale = await backend.readCommit()
@@ -216,19 +241,20 @@ export function runBackendConformance(name: string, makeFixture: BackendFixtureF
                 const error = await backend.commitOrdinary(stale.token, units, bytesOf(3)).catch((e: unknown) => e)
                 expect(error).toBeInstanceOf(Store2CommitConflictError)
                 expect([...(error as Store2CommitConflictError).current.bytes!]).toEqual([2])
-                expect(await contents(backend, units.map((u) => u.key))).toEqual([null, null])
+                await expectNoCommittedUnits(backend, atomicUnits, units)
                 expect([...(await backend.readCommit()).bytes!]).toEqual([2])
             })
 
-            test('an absent expectation against an existing commit key conflicts and writes no unit', async () => {
+            test('an absent expectation against an existing commit key conflicts and keeps the commit key', async () => {
                 const { backend } = await makeFixture()
                 const absent = await absentCommit(backend)
                 await backend.casCommit(absent, bytesOf(1))
                 await expect(backend.commitOrdinary(absent, [unit(1)], bytesOf(2))).rejects.toBeInstanceOf(Store2CommitConflictError)
-                expect(await contents(backend, [unitKey(1)])).toEqual([null])
+                await expectNoCommittedUnits(backend, atomicUnits, [unit(1)])
+                expect([...(await backend.readCommit()).bytes!]).toEqual([1])
             })
 
-            test('a unit key that already exists fails the whole step: no unit, no commit key', async () => {
+            test('a unit key that already exists fails the step: the commit key is unchanged and the existing unit is kept', async () => {
                 const { backend } = await makeFixture()
                 await backend.putUnit(unitKey(2), bytesOf(42))
                 await backend.casCommit(await absentCommit(backend), bytesOf(1))
@@ -236,7 +262,7 @@ export function runBackendConformance(name: string, makeFixture: BackendFixtureF
                 const error = await backend.commitOrdinary(base.token, [unit(1), unit(2), unit(3)], bytesOf(2)).catch((e: unknown) => e)
                 expect(error).toBeInstanceOf(Store2OverwriteRefusedError)
                 expect((error as Store2OverwriteRefusedError).key).toBe(unitKey(2))
-                expect(await contents(backend, [unitKey(1), unitKey(2), unitKey(3)])).toEqual([null, [42], null])
+                await expectNoCommittedUnits(backend, atomicUnits, [unit(1), unit(2), unit(3)], new Map([[unitKey(2), [42]]]))
                 expect([...(await backend.readCommit()).bytes!]).toEqual([1])
             })
 
