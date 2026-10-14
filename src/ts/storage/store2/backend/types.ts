@@ -117,7 +117,7 @@ export interface Store2Backend {
      * also leaves the units unwritten depends on the backend: the memory and
      * IndexedDB backends are atomic across units, so a conflict or an existing unit
      * writes no unit at all; the Node backend uploads each unit as its own request
-     * before the commit-key write, so a failed step may leave fresh units behind.
+     * before the commit-key write, and the Tauri backend writes each unit before the commit key, so a failed step may leave fresh units behind.
      * Such a unit is named by no commit, and a retry uses new unit keys.
      *
      * @throws Store2CommitConflictError (mismatch checked first), then

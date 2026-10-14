@@ -72,7 +72,7 @@ export class Store2UnknownOutcomeError extends Store2BackendError {
     }
 }
 
-/** The backend could not perform the step (no database, a failed or aborted transaction); nothing was written. */
+/** The backend could not perform the step (no database, a failed or aborted transaction); the commit key, the fence and every unit that existed are unchanged (a failed Tauri commit may leave fresh units behind). */
 export class Store2BackendFailureError extends Store2BackendError {
     readonly kind = 'backend-failure'
     constructor(message: string, options?: { cause?: unknown }) {
