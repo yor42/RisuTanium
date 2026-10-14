@@ -11,6 +11,7 @@ import {
 import { createCommitter, type AbandonResult, type Committer } from './commit'
 import { classifyCommitRead, type CommitRead } from './commitKey'
 import { readFenceVerdict, type FenceVerdict } from './fence'
+import { trackFlushes } from './flushTracker'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { freshOwnerId, persistedOwnerId, type ForeignClearHook, type OwnerIdStore } from './owner'
 import { readTree, type TreeRead } from './tree'
@@ -130,7 +131,7 @@ export interface Store2Session {
     readonly deviceOwner: boolean
     /** The Tauri re-flush; `null` on every other kind. */
     readonly reflush: ReflushResult | null
-    /** Why every deleter is idle this page load, or `null`. */
+    /** Why every deleter is idle right now, or `null`; read live, so a later unflushed Tauri top-level write sets it and a flushed one clears it. */
     readonly idleReason: string | null
     readonly notice: SessionNotice | null
     /** The commit key as classified for the decision; re-read after a start-up clear. */
@@ -234,7 +235,13 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
 
     // Before any other read or write: a commit key or fence that never reached stable storage is made durable first.
     const reflush = kind === 'tauri' ? await reflushTopLevel(backend, options.reflushAttempts) : null
-    const idleReason = reflush !== null && !reflush.ok ? IDLE_REFLUSH : null
+    const bootIdleReason = reflush !== null && !reflush.ok ? IDLE_REFLUSH : null
+    // From here every protocol write of a Tauri page goes through the tracker, so the idle state follows later unflushed writes.
+    const tracker = reflush === null ? null : trackFlushes(backend, { commit: reflush.commit === 'failed', fence: reflush.fence === 'failed' })
+    if (tracker !== null) {
+        backend = tracker.backend
+    }
+    const liveIdleReason = (): string | null => tracker !== null && tracker.unflushed() ? IDLE_REFLUSH : null
 
     const committer = createCommitter(backend, { owner: owner.id, env, foreignClear: options.foreignClear })
     const fence = await readFenceVerdict(backend)
@@ -268,7 +275,7 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
     })
 
     let startupClear: AbandonResult | null = null
-    if (idleReason === null && 'read' in read) {
+    if (bootIdleReason === null && 'read' in read) {
         startupClear = await runBootClear(committer, read.read, decision, owner.id)
         if (startupClear !== null) {
             read = await readCommitOrNull(backend)
@@ -283,15 +290,17 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
         ownerId: owner.id,
         deviceOwner: owner.device,
         reflush,
-        idleReason,
-        notice: idleReason === null ? null : { reason: 'reflush-failed', detail: idleReason },
+        get idleReason() {
+            return liveIdleReason()
+        },
+        notice: bootIdleReason === null ? null : { reason: 'reflush-failed', detail: bootIdleReason },
         commitRead: 'read' in read ? read.read : null,
         commit: 'read' in read ? read.commit : null,
         fence,
         presence,
         tree,
         startupClear,
-        openGate: (deleter, closure) => openDeleterGate(backend, deleter, { idleReason, closure }),
+        openGate: (deleter, closure) => openDeleterGate(backend, deleter, { idleReason: liveIdleReason(), closure }),
     }
 }
 
