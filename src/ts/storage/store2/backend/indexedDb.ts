@@ -1,4 +1,5 @@
 import { bytesOfStoredValue, type HeadOpen, openDatabaseForHead, prefixRange, syncBytesOfStoredValue } from '../../store/indexedDbStore'
+import { isStore2Key } from '../../store/keyRules'
 import { COMMIT_KEY, FENCE_KEY } from '../format/keys'
 import { Store2BackendFailureError, Store2CommitConflictError, Store2FenceConflictError, Store2NotBinaryError, Store2OverwriteRefusedError, Store2UnknownOutcomeError } from './errors'
 import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatches, type CompareToken, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite } from './types'
@@ -305,7 +306,8 @@ export function createIndexedDbBackend(options: IndexedDbBackendOptions = {}): I
                 const request = objects.getAllKeys(range)
                 request.onsuccess = () => control.succeed(request.result)
             }))
-            return (found ?? []).filter((key): key is string => typeof key === 'string')
+            // Only a well-formed unit key under `store2/` is a unit, which also leaves out the three top-level keys.
+            return [...new Set((found ?? []).filter((key): key is string => typeof key === 'string' && isStore2Key(key)))].sort()
         },
 
         async countPrefix(prefix) {

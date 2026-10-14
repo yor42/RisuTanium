@@ -99,6 +99,18 @@ runBackendConformance('indexedDb', async () => {
     return { backend: backendOf(), plant: (key, bytes) => plantRaw(key, bytes) }
 }, { compare: 'bytes', atomicUnits: true })
 
+describe('IndexedDB backend: listing', () => {
+    test('a key under store2/ that is not a well-formed unit key is not listed', async () => {
+        await freshDatabase()
+        const backend = backendOf()
+        await backend.putUnit(unitKey(1), bytesOf(1))
+        // A lone surrogate is not well-formed UTF-16, and the bare prefix names no unit.
+        await plantRaw('store2/\ud800', bytesOf(1))
+        await plantRaw('store2/', bytesOf(1))
+        expect(await backend.listStore2()).toEqual([unitKey(1)])
+    })
+})
+
 describe('IndexedDB backend: transactions', () => {
     test('the hazard is real here: a macrotask await inside a transaction leaves it inactive', async () => {
         await freshDatabase()
