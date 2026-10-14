@@ -130,7 +130,7 @@ export interface ByteStore {
     /**
      * Whether `key` holds a value. The value is never transferred to the caller.
      * The backend may still read it: the Node server reads the file to answer.
-     * IndexedDB checks the key list and loads no value; the desktop store checks
+     * IndexedDB looks the key up and loads no value; the desktop store checks
      * the path only.
      */
     has(key: string): Promise<boolean>

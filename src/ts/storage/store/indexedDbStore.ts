@@ -245,6 +245,104 @@ function createRawReader(): { get(key: string): Promise<unknown> } {
     }
 }
 
+/**
+ * The exclusive upper bound of the keys that start with `prefix`: the prefix
+ * with its last UTF-16 code unit incremented, which is how IndexedDB orders
+ * string keys. Trailing `U+FFFF` units cannot be incremented and are dropped
+ * first, since every key starting with them sorts below the bound that
+ * increments the unit before. `null` when no bound exists (empty prefix, or
+ * only `U+FFFF` units): the range then has no upper end.
+ */
+export function prefixUpperBound(prefix: string): string | null {
+    let end = prefix.length
+    while (end > 0 && prefix.charCodeAt(end - 1) === 0xFFFF) {
+        end--
+    }
+    if (end === 0) {
+        return null
+    }
+    return prefix.slice(0, end - 1) + String.fromCharCode(prefix.charCodeAt(end - 1) + 1)
+}
+
+/** The key range of every key that starts with `prefix`, or `undefined` for the whole store. */
+function prefixRange(prefix: string): IDBKeyRange | undefined {
+    if (prefix.length === 0) {
+        return undefined
+    }
+    const upper = prefixUpperBound(prefix)
+    return upper === null ? IDBKeyRange.lowerBound(prefix) : IDBKeyRange.bound(prefix, upper, false, true)
+}
+
+/** Ranged key reads and counts on a plain connection of their own; neither loads a value. */
+interface RangeReader {
+    /** The keys that start with `prefix`, or `null` when the database cannot be read this way (absent, or the open failed). */
+    keys(prefix: string): Promise<string[] | null>
+    /** How many keys start with `prefix`, or `null` when it cannot be counted this way. */
+    count(prefix: string): Promise<number | null>
+}
+
+function createRangeReader(): RangeReader {
+    let connection: IDBDatabase | undefined
+    let opening: Promise<IDBDatabase | null> | undefined
+
+    function connect(): Promise<IDBDatabase | null> {
+        if (connection !== undefined) {
+            return Promise.resolve(connection)
+        }
+        opening ??= openExistingDatabase((closed) => {
+            if (connection === closed) {
+                connection = undefined
+            }
+        }).then((database) => {
+            connection = database ?? undefined
+            opening = undefined
+            return database
+        })
+        return opening
+    }
+
+    /** A connection the browser closed is replaced once; any other failure is `null`. */
+    async function run<T>(request: (objects: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const database = await connect()
+            if (database === null) {
+                return null
+            }
+            try {
+                return await new Promise<T>((resolve, reject) => {
+                    const transaction = database.transaction(OBJECT_STORE_NAME, 'readonly')
+                    const pending = request(transaction.objectStore(OBJECT_STORE_NAME))
+                    pending.onsuccess = () => resolve(pending.result)
+                    pending.onerror = () => reject(pending.error)
+                    transaction.onabort = () => reject(transaction.error)
+                })
+            } catch (error) {
+                if (!isInvalidStateError(error)) {
+                    return null
+                }
+                if (connection === database) {
+                    connection = undefined
+                }
+                try {
+                    database.close()
+                } catch {
+                    // Already closed.
+                }
+            }
+        }
+        return null
+    }
+
+    return {
+        async keys(prefix: string): Promise<string[] | null> {
+            const found = await run((objects) => objects.getAllKeys(prefixRange(prefix)))
+            return found === null ? null : found.filter((key): key is string => typeof key === 'string')
+        },
+
+        count: (prefix: string) => run((objects) => objects.count(prefixRange(prefix))),
+    }
+}
+
 function blobTag(value: unknown): '[object Blob]' | '[object File]' | null {
     const tag = Object.prototype.toString.call(value)
     return tag === '[object Blob]' || tag === '[object File]' ? tag : null
@@ -272,6 +370,7 @@ export function createIndexedDbStore(): ByteStore {
     const probe = createEntryProbe()
     const entryExists = (key: string): Promise<boolean | null> => probe.exists(key)
     const rawReader = createRawReader()
+    const rangeReader = createRangeReader()
 
     function checkBlobKey(key: string): void {
         const reason = inlayBodyKeyViolation(key) ?? indexedDbCreatableViolation(key)
@@ -366,12 +465,19 @@ export function createIndexedDbStore(): ByteStore {
 
         async list(prefix: string): Promise<string[]> {
             checkAddressable(prefix)
-            return (await forage().keys()).filter((key) => key.startsWith(prefix))
+            // A ranged key read. Only when no plain connection can be had (no
+            // database yet, a failed open) does the whole key list answer,
+            // filtered to the prefix: the result is the same either way.
+            return await rangeReader.keys(prefix) ?? (await forage().keys()).filter((key) => key.startsWith(prefix))
+        },
+
+        async countPrefix(prefix: string): Promise<number | null> {
+            return rangeReader.count(prefix)
         },
 
         async has(key: string): Promise<boolean> {
             checkAddressable(key)
-            return (await forage().keys()).includes(key)
+            return await entryExists(key) ?? (await forage().keys()).includes(key)
         },
     }
 }
