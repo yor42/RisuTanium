@@ -40,6 +40,16 @@ import { STORE2_PREFIX, isStore2Key, nodeAddressableViolation, nodeAssetRouteVio
  *   even-length hex (case-insensitive). Write temps, the revision file and the
  *   server's other files are not in it. Two files whose hex differs only in
  *   letter case decode to the same key, which `list` returns once.
+ * - `/api/list-prefix?prefix=<hex>` answers the same names restricted to a hex
+ *   prefix; `list` uses it and filters every answer again by `startsWith`, so a
+ *   server that ignores the prefix still yields the right keys. With `&count=1`
+ *   it answers only `count`, which is what `countPrefix` reads. A 401, 403 or
+ *   429 rejects. A 5xx or a 400 (the server's own answer to a refused token, so
+ *   it says nothing about the route) falls back to `/api/list` for that call
+ *   only and is not remembered. A server without the route (404, 405, a page or
+ *   any other shape) is remembered for the store's lifetime: `list` then falls
+ *   back to `/api/list`, and `countPrefix` answers `null` (cannot count cheaply,
+ *   never zero) without listing.
  *
  * The version is the server's revision. The store holds no revision of its
  * own: `read` reports it, the caller keeps it and decides whether to pass it
@@ -585,6 +595,49 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         },
     }
 
+    /** Set once the server has shown it lacks `/api/list-prefix`; later lists go straight to `/api/list`. */
+    let listPrefixUnsupported = false
+
+    /**
+     * An auth failure or a rate limit that outlasted the retries is the caller's
+     * error, not a missing route. The repository's server refuses a token with
+     * 400, which `listByPrefixRoute` therefore must not remember either.
+     */
+    function isAuthOrRateRefusal(status: number): boolean {
+        return status === 401 || status === 403 || status === 429
+    }
+
+    async function jsonObjectOf(response: Response): Promise<Record<string, unknown> | null> {
+        try {
+            const parsed: unknown = await response.json()
+            return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+        } catch {
+            return null
+        }
+    }
+
+    /**
+     * The names `/api/list-prefix` answers for `prefix`, or `null` when the
+     * server does not offer the route (any other status, a page, another shape),
+     * in which case the caller lists everything. The names are unfiltered:
+     * the caller re-filters them. A missing route is remembered; a 5xx and a
+     * 400 are not, since a refused token or a transient fault may pass.
+     */
+    async function listByPrefixRoute(prefix: string): Promise<unknown[] | null> {
+        const response = await send(`/api/list-prefix?prefix=${hexOf(prefix)}`, { method: 'GET', headers: {} })
+        if (isAuthOrRateRefusal(response.status)) {
+            throw new NodeHttpError(response.status, 'list')
+        }
+        const body = response.ok ? await jsonObjectOf(response) : null
+        if (body !== null && body.success === true && Array.isArray(body.content)) {
+            return body.content
+        }
+        if (response.status < 500 && response.status !== 400) {
+            listPrefixUnsupported = true
+        }
+        return null
+    }
+
     const store: ByteStore = {
         capabilities: { conditionalWrites: true },
         guarded,
@@ -677,23 +730,44 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
 
         async list(prefix: string): Promise<string[]> {
             checkAddressable(prefix)
-            const response = await send('/api/list', { method: 'GET', headers: {} })
-            if (!response.ok) {
-                throw new NodeHttpError(response.status, 'list')
-            }
-            const body: { content?: unknown } = await response.json()
-            if (!Array.isArray(body.content)) {
-                throw new StoreError('The Node server did not answer with a list of names.')
+            let names = listPrefixUnsupported ? null : await listByPrefixRoute(prefix)
+            if (names === null) {
+                const response = await send('/api/list', { method: 'GET', headers: {} })
+                if (!response.ok) {
+                    throw new NodeHttpError(response.status, 'list')
+                }
+                const body: { content?: unknown } = await response.json()
+                if (!Array.isArray(body.content)) {
+                    throw new StoreError('The Node server did not answer with a list of names.')
+                }
+                names = body.content
             }
             // The server decodes hex names case-insensitively, so two files whose
-            // names differ only in hex letter case arrive as the same key.
+            // names differ only in hex letter case arrive as the same key. Every
+            // answer is filtered here whatever route produced it.
             const keys = new Set<string>()
-            for (const name of body.content) {
+            for (const name of names) {
                 if (typeof name === 'string' && name.startsWith(prefix)) {
                     keys.add(name)
                 }
             }
             return Array.from(keys)
+        },
+
+        async countPrefix(prefix: string): Promise<number | null> {
+            if (prefix !== '') {
+                checkAddressable(prefix)
+            }
+            if (listPrefixUnsupported) {
+                return null
+            }
+            const response = await send(`/api/list-prefix?prefix=${hexOf(prefix)}&count=1`, { method: 'GET', headers: {} })
+            if (isAuthOrRateRefusal(response.status)) {
+                throw new NodeHttpError(response.status, 'count')
+            }
+            const body = response.ok ? await jsonObjectOf(response) : null
+            const count = body?.success === true ? body.count : undefined
+            return typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null
         },
 
         async has(key: string): Promise<boolean> {

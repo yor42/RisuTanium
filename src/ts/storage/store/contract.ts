@@ -117,6 +117,17 @@ export interface ByteStore {
     list(prefix: string): Promise<string[]>
 
     /**
+     * How many keys start with `prefix` (empty allowed), without transferring
+     * the names. `null` means the backend cannot count cheaply or did not give
+     * a trustworthy number (an older server, an unrecognised answer). `null` is
+     * never zero: a limit check treats it as over the limit, and a caller that
+     * needs the answer lists. A count cannot be re-filtered the way a `list`
+     * answer is, so a caller that acts on zero confirms it with `list` first.
+     * Never falls back to listing.
+     */
+    countPrefix?(prefix: string): Promise<number | null>
+
+    /**
      * Whether `key` holds a value. The value is never transferred to the caller.
      * The backend may still read it: the Node server reads the file to answer.
      * IndexedDB checks the key list and loads no value; the desktop store checks

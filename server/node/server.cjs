@@ -1923,29 +1923,67 @@ app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
-    res.send({ checkOnly: true, retire: true, pieces: false });
+    res.send({ checkOnly: true, retire: true, pieces: false, listPrefix: true });
 });
+
+// Only whole, even-length hex names are keys. Everything else in the
+// directory (write temps `<hex>.tmp-<random>`, the revision snapshot
+// `__revisions.json`, its log `__revisions.log` and their temps,
+// `__password` and the other `__` files) is not a key. Decoding a `__`
+// file gives an empty name; decoding a write temp gives the key it was
+// written for, a second copy of an existing key or a phantom one when
+// no real file exists.
+const keyFileNamePattern = /^(?:[0-9a-fA-F]{2})+$/;
 
 app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
     try {
-        // Only whole, even-length hex names are keys. Everything else in the
-        // directory (write temps `<hex>.tmp-<random>`, the revision snapshot
-        // `__revisions.json`, its log `__revisions.log` and their temps,
-        // `__password` and the other `__` files) is not a key. Decoding a `__`
-        // file gives an empty name; decoding a write temp gives the key it was
-        // written for, a second copy of an existing key or a phantom one when
-        // no real file exists.
         const data = (await fs.readdir(path.join(savePath)))
-            .filter((v) => /^(?:[0-9a-fA-F]{2})+$/.test(v))
+            .filter((v) => keyFileNamePattern.test(v))
             .map((v) => {
                 return Buffer.from(v, 'hex').toString('utf-8')
             })
         res.send({
             success: true,
             content: data
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// The keys whose hex name starts with `prefix` (even-length hex, empty for all),
+// matched case-insensitively against the same key-file filter as /api/list. With
+// `count=1` only the number of matching files is answered.
+app.get('/api/list-prefix', storageRouteLimiter, async (req, res, next) => {
+    if(!await checkAuth(req, res)){
+        return;
+    }
+    const prefix = req.query.prefix;
+    if(typeof prefix !== 'string' || !/^(?:[0-9a-fA-F]{2})*$/.test(prefix)){
+        res.status(400).send({
+            success: false,
+            error: 'Invalid prefix'
+        });
+        return;
+    }
+    const countOnly = req.query.count === '1';
+    const lowerPrefix = prefix.toLowerCase();
+    try {
+        const matching = (await fs.readdir(path.join(savePath)))
+            .filter((v) => keyFileNamePattern.test(v) && v.toLowerCase().startsWith(lowerPrefix))
+        if(countOnly){
+            res.send({
+                success: true,
+                count: matching.length
+            });
+            return;
+        }
+        res.send({
+            success: true,
+            content: matching.map((v) => Buffer.from(v, 'hex').toString('utf-8'))
         });
     } catch (error) {
         next(error);

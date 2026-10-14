@@ -131,7 +131,7 @@ describe('Node HTTP store against the real server', () => {
         await store.deleteMany([{ key: 'cache/b', condition: 'unconditional' }])
 
         expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-            'POST /api/write', 'POST /api/write', 'GET /api/read', 'HEAD /api/read', 'GET /api/list', 'GET /api/remove', 'GET /api/remove',
+            'POST /api/write', 'POST /api/write', 'GET /api/read', 'HEAD /api/read', `GET /api/list-prefix?prefix=${hexOfKey('cache/')}`, 'GET /api/remove', 'GET /api/remove',
         ])
         expect(requests.map((request) => request.cache)).toEqual(Array(7).fill('no-store'))
     })
