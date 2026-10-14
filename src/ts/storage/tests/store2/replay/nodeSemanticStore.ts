@@ -14,8 +14,8 @@
  * client's proof of the server's echo guarantees; the unpatched servers that send
  * no echo are not modelled.
  *
- * The fake applies a request atomically even for readers; the real server's
- * readers can see a partly applied retire.
+ * The fake applies a request atomically even for listing; on the real server a read
+ * takes the per-key lock, so only a list or a count can see a partly applied retire.
  *
  * Test hooks live on the returned handle, never on the `ByteStore`.
  */
@@ -68,7 +68,7 @@ export interface NodeSemanticStore {
     list(prefix: string): string[]
     /** A file the server holds without a revision, the way upstream wrote it. */
     plant(key: string, bytes: Uint8Array): void
-    /** The requests that reached the server, in order. */
+    /** The requests that reached the server, in order; each read is a copy. */
     readonly log: readonly NodeOperation[]
     /** The next `times` requests of `operation` are applied and then answered with the loss of the reply. */
     loseReply(operation: LostReplyOperation, times?: number): void
@@ -460,7 +460,9 @@ export function createNodeSemanticStore(options: NodeSemanticOptions = {}): Node
         plant(key, bytes) {
             values.set(key, bytes.slice())
         },
-        log,
+        get log() {
+            return [...log]
+        },
         loseReply(operation, times = 1) {
             lost.set(operation, (lost.get(operation) ?? 0) + times)
         },

@@ -192,6 +192,31 @@ async function attempt(names: Names, run: () => Promise<unknown>): Promise<Recor
     }
 }
 
+const RESET_CODES: ReadonlySet<string> = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET'])
+
+/** The socket error code at the end of an error's `cause` chain, or null when the chain carries none of the reset codes. */
+function resetCodeOf(error: unknown): string | null {
+    let link: unknown = error
+    for (let depth = 0; depth < 8 && link instanceof Error; depth++) {
+        const code = (link as { code?: unknown }).code
+        if (typeof code === 'string' && RESET_CODES.has(code)) {
+            return code
+        }
+        link = link.cause
+    }
+    return null
+}
+
+/** `attempt`, also returning the error that was thrown. */
+async function attemptKeepingError(names: Names, run: () => Promise<unknown>): Promise<{ outcome: Record<string, unknown> | 'ok', error: unknown }> {
+    try {
+        await run()
+        return { outcome: 'ok', error: null }
+    } catch (error) {
+        return { outcome: describeError(error, names), error }
+    }
+}
+
 interface Observation {
     outcome: Record<string, unknown> | 'ok'
     after: Record<string, { bytes: number[] | null, revision: number | null }>
@@ -298,6 +323,20 @@ describe('differential: which conflict is reported first when several conditions
     })
 })
 
+describe('differential: removing a key that was never written', () => {
+    test('a plain delete and a removeChecked each leave a tombstone at revision 1, on the fake and on the real server', async () => {
+        const seen = await differ(async ({ store }, names) => {
+            const deleted = names.plain('deleted')
+            const removed = names.plain('removed')
+            await store.delete(deleted, 'unconditional')
+            await store.guarded!.removeChecked([{ key: removed, condition: 'unconditional' }], [])
+            return { outcome: 'ok', after: await stateOf(store, names, [deleted, removed]) }
+        })
+        expect(seen.after.deleted).toEqual({ bytes: null, revision: 1 })
+        expect(seen.after.removed).toEqual({ bytes: null, revision: 1 })
+    })
+})
+
 describe('differential: the error class of a lost reply', () => {
     test.each([
         ['write-checked', 'writeChecked'],
@@ -390,15 +429,23 @@ describe('differential: the error class of a 431', () => {
             const key = names.plain('key')
             await subject.store.write(key, bytesOf(1), 'unconditional')
             const guards = checkList(names, OVER)
-            const outcome = await attempt(names, () => method === 'writeChecked'
+            const { outcome, error } = await attemptKeepingError(names, () => method === 'writeChecked'
                 ? subject.store.guarded!.writeChecked(key, bytesOf(2), 'unconditional', guards)
                 : subject.store.guarded!.removeChecked([{ key, condition: 'unconditional' }], guards))
-            return { outcome, after: await stateOf(subject.store, names, [key]) }
+            return { outcome, error, after: await stateOf(subject.store, names, [key]) }
         }
         const fake = await run(fakeSubject(LARGE_LIMITS))
         const real = await run(realSubject(LARGE_LIMITS))
-        expect(real).toEqual(fake)
-        expect(real.outcome).toEqual({ name: 'StoreCheckListTooLongError', keyCount: method === 'writeChecked' ? OVER : OVER + 1, sent: true, mayHaveApplied: false })
+        const refused = { name: 'StoreCheckListTooLongError', keyCount: method === 'writeChecked' ? OVER : OVER + 1, sent: true, mayHaveApplied: false }
+        expect(fake.outcome).toEqual(refused)
+        // A 431 over a request that is still being written can surface as a reset instead of the refusal: the server
+        // answers and closes the socket. The client then reports an unknown outcome, which is safe because nothing applied.
+        if (resetCodeOf(real.error) === null) {
+            expect(real.outcome).toEqual(refused)
+        } else {
+            expect(real.outcome).toEqual({ name: 'StoreOutcomeUnknownError', operation: method === 'writeChecked' ? 'write-checked' : 'remove-checked' })
+        }
+        expect(real.after).toEqual(fake.after)
         expect(real.after.key.bytes).toEqual([1])
     })
 
@@ -428,18 +475,32 @@ describe('differential: the error class of a 431', () => {
         expect(real.outcome).toBe('ok')
     })
 
-    test('through createNodeBackend the 431 is a definite failure, not an unknown outcome', async () => {
+    test('through createNodeBackend the 431 is a definite failure, or an unknown outcome behind a socket reset, and the commit key is untouched', async () => {
         const run = async (subject: Subject) => {
             const names = new Names()
             const units = Array.from({ length: OVER }, (_, index) => unit(index))
             const commit = await subject.backend.readCommit()
-            const outcome = await attempt(names, () => subject.backend.commitOrdinary(commit.token, units, bytesOf(1)))
-            return outcome
+            const commitBefore = await subject.store.read(COMMIT_KEY)
+            const { outcome, error } = await attemptKeepingError(names, () => subject.backend.commitOrdinary(commit.token, units, bytesOf(1)))
+            const cause = error instanceof Error && error.cause !== undefined ? describeError(error.cause, names) : null
+            // The uploaded units may remain as orphans; the commit key is what must be untouched.
+            return { outcome, error, cause, commitBefore, commitAfter: await subject.store.read(COMMIT_KEY) }
         }
         const fake = await run(fakeSubject({ maxCheckOnlyKeys: 5000, guardedHeaderBytes: 10_000_000 }))
         const real = await run(realSubject(LARGE_LIMITS))
-        expect(fake).toEqual(real)
-        expect(real).toEqual({ name: 'Store2BackendFailureError' })
+        expect(fake.outcome).toEqual({ name: 'Store2BackendFailureError' })
+        expect(fake.cause).toEqual({ name: 'StoreCheckListTooLongError', keyCount: OVER, sent: true, mayHaveApplied: false })
+        // A 431 over a request that is still being written can surface as a reset instead of the refusal: the server
+        // answers and closes the socket. The client then reports an unknown outcome, which is safe because nothing applied.
+        if (resetCodeOf(real.error) === null) {
+            expect(real.outcome).toEqual(fake.outcome)
+            expect(real.cause).toEqual(fake.cause)
+        } else {
+            expect(real.outcome).toEqual({ name: 'Store2UnknownOutcomeError' })
+            expect(real.cause).toMatchObject({ name: 'StoreOutcomeUnknownError', operation: 'write-checked' })
+        }
+        expect(real.commitAfter).toEqual(real.commitBefore)
+        expect(fake.commitAfter).toEqual(fake.commitBefore)
     })
 })
 
