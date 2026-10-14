@@ -13,6 +13,14 @@
  * cold-storage entry that is parsed to split it into units; larger ones are
  * reported whole and flagged as not split.
  *
+ * The report also holds a `store2` section (store2-census.ts): the real unit
+ * codec and list derivation run over the decoded database, one owner at a time,
+ * with archived characters and chats re-attached from the cold units this pass
+ * retains. RISU_CENSUS_COLD_RETAIN_MIB (default 8192) caps the raw cold bodies
+ * kept for that (Buffers, outside the JS heap); units beyond it are counted as
+ * not retained and their owners skipped. RISU_SIZE_OUTPUT_DIR overrides the
+ * output directory (the synthetic fixture test uses it).
+ *
  * Guarantees:
  * - The input is opened read-only (`fs.openSync(..., 'r')`) and never written,
  *   renamed or touched. The only file written is
@@ -125,11 +133,13 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 //#endregion
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const OUTPUT_DIR = path.resolve(__dirname, '../output')
+const OUTPUT_DIR = process.env.RISU_SIZE_OUTPUT_DIR ? path.resolve(process.env.RISU_SIZE_OUTPUT_DIR) : path.resolve(__dirname, '../output')
 const OUTPUT_PATH = path.join(OUTPUT_DIR, 'real-size-report.json')
 
 const BIN_PATH = process.env.RISU_SIZE_BIN
 const PARSE_LIMIT_BYTES = (Number(process.env.RISU_SIZE_PARSE_LIMIT_MIB) || 256) * 1024 * 1024
+/** Cold-unit bodies the store2 census keeps in memory (as raw UTF-8 buffers, outside the JS heap). */
+const COLD_RETAIN_BYTES = (Number(process.env.RISU_CENSUS_COLD_RETAIN_MIB) || 8192) * 1024 * 1024
 const TEST_TIMEOUT_MS = 2 * 60 * 60 * 1000
 
 const KIB = 1024
@@ -581,6 +591,8 @@ interface ColdUnit {
     pending: PendingRecord[]
     messagesOver128KiBDelta: number
     pointerChatsDelta: number
+    /** Raw body kept for the store2 census when it parsed and fits the retention budget; released after the census. */
+    body: Buffer | null
 }
 
 interface WalkResult {
@@ -592,6 +604,7 @@ interface WalkResult {
     /** Body of the last database entry (the restore pass keeps the last); released once decoded. */
     databaseBody: Buffer | null
     coldUnits: ColdUnit[]
+    coldRetainedBytes: number
     inlayPartSizes: number[]
     assetSizes: number[]
     /** Entry name per asset, parallel to assetSizes; null for a name too long to decode. */
@@ -650,6 +663,7 @@ function walkContainer(
         databaseCount: 0,
         databaseBody: null,
         coldUnits: [],
+        coldRetainedBytes: 0,
         inlayPartSizes: [],
         assetSizes: [],
         assetNames: [],
@@ -725,6 +739,7 @@ function walkContainer(
                 pending: [],
                 messagesOver128KiBDelta: 0,
                 pointerChatsDelta: 0,
+                body: null,
             }
             if (unit.notSplit) {
                 if (!reader.skip(dataLength)) throw changed()
@@ -739,6 +754,10 @@ function walkContainer(
                     unit.parseFailed = true
                 }
                 if (unit.parsed) measureColdUnit(unit, value)
+                if (unit.parsed && result.coldRetainedBytes + dataLength <= COLD_RETAIN_BYTES) {
+                    unit.body = body
+                    result.coldRetainedBytes += dataLength
+                }
             }
             result.coldUnits.push(unit)
             result.entryBytes.coldUnit += dataLength
@@ -762,6 +781,7 @@ function rssBytes(): number {
 let risuSave: typeof import('src/ts/storage/risuSave')
 let coldData: typeof import('src/ts/process/coldstorageData')
 let inlayCodec: typeof import('src/ts/drive/inlayBackupCodec')
+let store2Census: typeof import('./store2-census')
 
 describe('real-size-report (read-only size census of a real .bin)', () => {
     // Node's Buffer stays defined. generate-and-verify.harness.ts removes it
@@ -773,6 +793,7 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
         risuSave = await import('src/ts/storage/risuSave')
         coldData = await import('src/ts/process/coldstorageData')
         inlayCodec = await import('src/ts/drive/inlayBackupCodec')
+        store2Census = await import('./store2-census')
     }, 120_000)
 
     it.skipIf(!BIN_PATH)(
@@ -791,6 +812,7 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
             const fileSize = before.size
             const report: Rec = {}
             let decodeError: string | null = null
+            let store2Section: Rec | null = null
             try {
                 console.log(`[size-report] container bytes=${fileSize}`)
                 const walk = walkContainer(fd, fileSize, {
@@ -990,6 +1012,44 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                         scalars['characterOrder (inside config root)'] = { bytes: jsonBytes(decoded.characterOrder) }
                         scalars['configRoot'] = { bytes: configBytes, count: Object.keys(configRoot).length }
                         sample('configuration measured')
+
+                        // store2 census: the real codec and list derivation over this database,
+                        // one owner at a time, with archived chats re-attached from the retained cold units.
+                        const coldByKey = new Map<string, ColdUnit>()
+                        for (const unit of walk.coldUnits) coldByKey.set(unit.key, unit)
+                        try {
+                            store2Section = await store2Census.runStore2Census({
+                                decoded,
+                                cold: {
+                                    read: (key) => {
+                                        const unit = coldByKey.get(key)
+                                        if (!unit) return { status: 'unavailable', reason: 'missing' }
+                                        if (unit.notSplit) return { status: 'unavailable', reason: 'over-parse-limit' }
+                                        if (unit.parseFailed) return { status: 'unavailable', reason: 'parse-failed' }
+                                        if (!unit.body) return { status: 'unavailable', reason: 'not-retained' }
+                                        try {
+                                            return { status: 'ok', value: JSON.parse(unit.body.toString('utf8')) }
+                                        } catch {
+                                            return { status: 'unavailable', reason: 'parse-failed' }
+                                        }
+                                    },
+                                },
+                                sample,
+                                progress: progressLine,
+                            })
+                            store2Section.coldRetention = {
+                                budgetBytes: COLD_RETAIN_BYTES,
+                                retainedBytes: walk.coldRetainedBytes,
+                                unitsRetained: walk.coldUnits.filter((unit) => unit.body).length,
+                                unitsNotRetainedOverBudget: walk.coldUnits.filter((unit) => unit.parsed && !unit.body).length,
+                            }
+                        } catch (error) {
+                            // Class name only: a codec message can name a character or key.
+                            store2Section = { failed: error instanceof Error ? error.name : 'non-error-thrown' }
+                        } finally {
+                            for (const unit of walk.coldUnits) unit.body = null
+                        }
+                        sample('store2 census done')
                     } catch (error) {
                         decodeError = error instanceof Error ? `${error.name}: ${error.message}` : 'database decode failed'
                     }
@@ -1147,6 +1207,7 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                     kinds: Object.fromEntries([...kinds.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, stats]) => [name, summarize(stats)])),
                     assets: assetSummary,
                     assetRefs,
+                    store2: store2Section,
                     inlayParts: summarize(inlayKinds),
                     flags: {
                         atOrOver100MiB: flagged100.sort((a, b) => b.size - a.size),
