@@ -150,12 +150,27 @@ function creatableRefusal(key: string): string | null {
     return tauriCreatableViolation(key) ?? tauriAddressableViolation(key, 'windows')
 }
 
-/** Turns the structured answer of `write_chunk_raw` into a return or a throw. */
-function settleRawOutcome(key: string, outcome: unknown): void {
+/**
+ * The directory-flush status a write command answered: `{ flushed: boolean }`,
+ * or the `flushed` of an `ok` outcome. `undefined` when the answer carries none
+ * (a command of an older shape answers nothing), never `true`.
+ */
+export function readFlushed(answer: unknown): boolean | undefined {
+    if (typeof answer === 'object' && answer !== null) {
+        const flushed = (answer as { flushed?: unknown }).flushed
+        if (typeof flushed === 'boolean') {
+            return flushed
+        }
+    }
+    return undefined
+}
+
+/** Turns the structured answer of `write_chunk_raw` into its flush status or a throw. */
+function settleRawOutcome(key: string, outcome: unknown): boolean | undefined {
     if (typeof outcome === 'object' && outcome !== null) {
         const item = outcome as { k?: unknown; reason?: unknown; message?: unknown }
         if (item.k === 'ok') {
-            return
+            return readFlushed(outcome)
         }
         if (item.k === 'invalid' && typeof item.reason === 'string') {
             throw new StoreInvalidKeyError(key, item.reason)
@@ -192,6 +207,15 @@ export interface ChunkedWriter {
     finish(finalKey?: string): Promise<void>
     /** Removes the temp file of an unfinished write. Never rejects; a no-op after `finish` resolved or after a failure already did so. */
     abort(): Promise<void>
+    /**
+     * After `finish` resolved on a durable write: `true` when every chunk's
+     * command reported that all of its directory flushes succeeded, `false` when
+     * any reported a failure or, with `finalKey`, kept an existing file (no flush
+     * happened for it). The bytes are written either way. `undefined` before
+     * `finish`, on a non-durable write, and when a command answered no status
+     * (an older shape); it is never `true` on a missing answer.
+     */
+    readonly flushed?: boolean | undefined
 }
 
 export interface ChunkedWriterOptions {
@@ -232,8 +256,11 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
     let failure: { error: unknown } | null = null
     let cleaned = false
     let completed = false
+    let anyUnflushed = false
+    let anyUnreported = false
 
-    async function sendChunk(piece: Uint8Array, last: boolean, finalKey: string | undefined): Promise<void> {
+    /** The flush status the command answered for one chunk; `undefined` when it answered none. */
+    async function sendChunk(piece: Uint8Array, last: boolean, finalKey: string | undefined): Promise<boolean | undefined> {
         if (kind === 'desktop' && !rawChunksUnavailable) {
             let outcome: unknown
             try {
@@ -253,20 +280,19 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
                 }
                 // Refused before any disk access: the same chunk goes again as base64.
                 rawChunksUnavailable = true
-                await sendBase64(piece, last, finalKey)
-                return
+                return await sendBase64(piece, last, finalKey)
             }
-            settleRawOutcome(key, outcome)
-            return
+            return settleRawOutcome(key, outcome)
         }
-        await sendBase64(piece, last, finalKey)
+        return await sendBase64(piece, last, finalKey)
     }
 
-    async function sendBase64(piece: Uint8Array, last: boolean, finalKey: string | undefined): Promise<void> {
-        await invoke<void>(WRITE_CHUNK_COMMAND, {
+    async function sendBase64(piece: Uint8Array, last: boolean, finalKey: string | undefined): Promise<boolean | undefined> {
+        const answer = await invoke<unknown>(WRITE_CHUNK_COMMAND, {
             key, id, offset, data: bytesToBase64(piece), last, durable,
             ...(last && finalKey !== undefined ? { finalKey } : {}),
         })
+        return readFlushed(answer)
     }
 
     async function removeTemp(): Promise<void> {
@@ -287,12 +313,18 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
         if (piece === null) {
             return
         }
+        let status: boolean | undefined
         try {
-            await sendChunk(piece, last, finalKey)
+            status = await sendChunk(piece, last, finalKey)
         } catch (error) {
             failure = { error }
             await removeTemp()
             throw error
+        }
+        if (status === false) {
+            anyUnflushed = true
+        } else if (status === undefined) {
+            anyUnreported = true
         }
         started = true
         offset += piece.length
@@ -308,6 +340,14 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
     }
 
     return {
+        get flushed(): boolean | undefined {
+            if (!durable || !completed) {
+                return undefined
+            }
+            // One failed flush decides the answer; a chunk that reported nothing leaves it unknown.
+            return anyUnflushed ? false : anyUnreported ? undefined : true
+        },
+
         async write(data: Uint8Array): Promise<void> {
             assertOpen()
             for (let start = 0; start < data.length; start += chunkBytes) {
@@ -349,17 +389,21 @@ export function createChunkedWriter(key: string, options: ChunkedWriterOptions):
 /**
  * Writes `bytes` to `key` (relative to AppData, without any `./` prefix) in
  * chunks, and replaces the file when the last chunk lands. A rejection means the
- * key holds its previous content, or stays absent.
+ * key holds its previous content, or stays absent. Resolves with the writer's
+ * `flushed` status: `false` when any chunk answered `false` (even if another
+ * answered nothing), otherwise `undefined` when the write is not durable or
+ * at least one chunk answered nothing, otherwise `true`.
  */
 export async function writeChunked(
     key: string,
     bytes: Uint8Array,
     durable: boolean,
     chunkBytes?: number,
-): Promise<void> {
+): Promise<boolean | undefined> {
     const writer = createChunkedWriter(key, { durable, chunkBytes })
     await writer.write(bytes)
     await writer.finish()
+    return writer.flushed
 }
 
 /** The file changed, vanished or answered short between two pieces of one read. */

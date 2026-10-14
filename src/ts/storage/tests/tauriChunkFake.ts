@@ -14,6 +14,11 @@
  *   renames the temp to `finalKey` instead, never creates the key, and removes
  *   the temp and succeeds when `finalKey` already holds a file; a `finalKey`
  *   on another chunk or in another folder fails and removes the temp.
+ *   By default `write_chunk` answers nothing, the shape of a command that
+ *   reports no flush status. After `reportFlushes()` it answers
+ *   `{ flushed: boolean }` as the Rust command does: `true`, `false` where
+ *   `failFlushes` says a directory flush failed, and `false` on the last chunk
+ *   that kept an existing `finalKey`.
  * - `abort_chunked` removes the temp and accepts a missing one.
  * - `read_range` answers the piece followed by the 56-byte trailer (size, then
  *   six identity words, little-endian u64) as an `ArrayBuffer`, and rejects a
@@ -41,6 +46,13 @@ export interface ChunkFault {
     (call: { key: string, offset: number, last: boolean, index: number }): string | undefined
 }
 
+export interface FlushCall {
+    key: string
+    offset: number
+    last: boolean
+    durable: boolean
+}
+
 export interface RangeHooks {
     /** Runs before each `read_range` is answered, with the 0-based index of the call since the last reset. */
     before?: (call: { key: string, offset: number, len: number, index: number }) => void
@@ -58,6 +70,8 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
     let rangeCalls = 0
     let writeFault: ChunkFault | undefined
     let abortFault: string | undefined
+    let reporting = false
+    let flushFault: ((call: FlushCall) => boolean) | undefined
     const hooks: RangeHooks = {}
     const ids = new WeakMap<Uint8Array, number>()
     let nextId = 1
@@ -107,7 +121,8 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         return directory === '' ? name : `${directory}/${name}`
     }
 
-    function writeChunk(args: Record<string, unknown>): void {
+    /** Whether every flush of the call succeeded, as the Rust command computes it: `false` for a kept existing `finalKey`. */
+    function writeChunk(args: Record<string, unknown>): boolean {
         const key = stringArg(args, 'key')
         const id = stringArg(args, 'id')
         const offset = numberArg(args, 'offset')
@@ -147,11 +162,12 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
                 throw `refused final key: ${finalKey} is not on the last chunk or not in the folder of ${key}`
             }
         }
+        const flushed = flushFault?.({ key, offset, last, durable: args.durable === true }) !== true
         if (last) {
             const destination = finalKey ?? key
             if (finalKey !== undefined && fs.files.has(finalKey)) {
                 fs.files.delete(temp)
-                return
+                return false
             }
             if (finalKey !== undefined && fs.directories.has(destination)) {
                 fs.files.delete(temp)
@@ -160,6 +176,7 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             fs.files.set(destination, next)
             fs.files.delete(temp)
         }
+        return flushed
     }
 
     function abortChunked(args: Record<string, unknown>): void {
@@ -255,8 +272,10 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             case 'app_fs_remove':
             case 'app_data_dir_path':
                 return await appFsCommand(command, named)
-            case 'write_chunk':
-                return writeChunk(named)
+            case 'write_chunk': {
+                const flushed = writeChunk(named)
+                return reporting ? { flushed } : undefined
+            }
             case 'abort_chunked':
                 return abortChunked(named)
             case 'read_range':
@@ -279,6 +298,14 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         failWrites(fault: ChunkFault | undefined): void {
             writeFault = fault
         },
+        /** `write_chunk` answers `{ flushed }` from now on, until the next reset. */
+        reportFlushes(on = true): void {
+            reporting = on
+        },
+        /** With `reportFlushes`, a call for which `fault` returns true answers `flushed: false`; the write still succeeds. */
+        failFlushes(fault: ((call: FlushCall) => boolean) | undefined): void {
+            flushFault = fault
+        },
         failAborts(error: string | undefined): void {
             abortFault = error
         },
@@ -288,6 +315,8 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             rangeCalls = 0
             writeFault = undefined
             abortFault = undefined
+            reporting = false
+            flushFault = undefined
             hooks.before = undefined
             hooks.limit = undefined
         },

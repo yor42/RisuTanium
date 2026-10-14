@@ -556,3 +556,50 @@ describe('the ranged reader on desktop', () => {
         await expect(reading).rejects.toBeInstanceOf(RangeReadChangedError)
     })
 })
+
+describe('the flush status of a durable desktop chunked write', () => {
+    test('a raw chunk outcome without a status leaves flushed absent, never true', async () => {
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBeUndefined()
+        expect(stored(KEY)).toEqual(Array.from(patterned(10)))
+    })
+
+    test('raw outcomes reporting clean flushes give true', async () => {
+        h.desktop.chunk.reportFlushes()
+
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(true)
+        expect(h.desktop.rawCalls.length).toBeGreaterThan(1)
+    })
+
+    test('a failed flush gives false and the bytes are still written', async () => {
+        h.desktop.chunk.reportFlushes()
+        h.desktop.chunk.failFlushes((call) => call.last)
+
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(false)
+        expect(stored(KEY)).toEqual(Array.from(patterned(10)))
+    })
+
+    test('the base64 fallback carries the status too', async () => {
+        h.desktop.refuseRawBodies()
+        h.desktop.chunk.reportFlushes()
+        h.desktop.chunk.failFlushes((call) => call.offset === 0)
+
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(false)
+    })
+
+    test('a non-durable raw write reports nothing even when the chunk command answers a status', async () => {
+        h.desktop.chunk.reportFlushes()
+
+        expect(await writeChunked(KEY, patterned(10), false, 4)).toBeUndefined()
+    })
+
+    test('a finalKey that already holds a file reports false', async () => {
+        h.desktop.chunk.reportFlushes()
+        h.fs.files.set('assets/final.png', Uint8Array.from([9]))
+        const writer = createChunkedWriter('assets/provisional.png', { durable: true, chunkBytes: 4 })
+
+        await writer.write(patterned(10))
+        await writer.finish('assets/final.png')
+
+        expect(writer.flushed).toBe(false)
+    })
+})

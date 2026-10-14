@@ -4,8 +4,9 @@
 //! A write goes to a new temp file in the target's own directory, is flushed to
 //! the file system (`sync_all`), and is renamed over the target. A reader sees
 //! the old file or the complete new one, never a partial one. After the rename
-//! the directory entry is flushed; that flush is best-effort (a failure is
-//! logged and the write still succeeds, because the rename has happened).
+//! the directory entry is flushed; that flush does not reject the write (the
+//! rename has happened) but a failure is logged and reported to the caller as
+//! `flushed = false`.
 //!
 //! The key rules repeat `creatableViolation` and `tauriCreatableViolation` in
 //! `src/ts/storage/store/keyRules.ts`, plus the traversal rules of
@@ -240,7 +241,10 @@ pub(crate) fn rename_with_retry<O: FileOps>(ops: &O, from: &Path, to: &Path) -> 
 /// Replaces the file at `target` with `bytes`, or creates it. `Err` means the
 /// target was not replaced and the temp file was removed where possible. `Ok`
 /// means the target holds `bytes` and the bytes were flushed before the rename.
-pub fn write_durable_with<O: FileOps>(ops: &O, target: &Path, bytes: &[u8]) -> Result<(), String> {
+/// The `bool` is whether every directory flush after the rename succeeded;
+/// `false` means the bytes are written but the directory entry may not survive
+/// power loss.
+pub fn write_durable_with<O: FileOps>(ops: &O, target: &Path, bytes: &[u8]) -> Result<bool, String> {
     let directory = target
         .parent()
         .ok_or_else(|| "the target has no parent directory".to_string())?;
@@ -266,19 +270,23 @@ pub fn write_durable_with<O: FileOps>(ops: &O, target: &Path, bytes: &[u8]) -> R
         let _ = ops.remove(&temp);
         return Err(format!("failed to rename {} to {}: {}", temp.display(), target.display(), error));
     }
+    let mut flushed = true;
     if let Err(error) = ops.sync_dir(directory) {
         eprintln!("directory flush after rename failed for {}: {}", directory.display(), error);
+        flushed = false;
     }
     // A directory created by this call has its own entry in its parent. Those
-    // flushes are best-effort like the one above.
+    // flushes are best-effort like the one above: a failure does not reject the
+    // write, it is reported by clearing the returned flush status.
     for dir in created {
         if let Some(parent) = dir.parent() {
             if let Err(error) = ops.sync_dir(parent) {
                 eprintln!("directory flush for a new directory failed for {}: {}", parent.display(), error);
+                flushed = false;
             }
         }
     }
-    Ok(())
+    Ok(flushed)
 }
 
 /// The bytes of a request body. A raw body is the bytes. A JSON body must be an
@@ -299,13 +307,14 @@ pub fn decode_body(body: &tauri::ipc::InvokeBody) -> Result<Vec<u8>, String> {
     }
 }
 
-pub fn write_durable(target: &Path, bytes: &[u8]) -> Result<(), String> {
+pub fn write_durable(target: &Path, bytes: &[u8]) -> Result<bool, String> {
     write_durable_with(&RealOps, target, bytes)
 }
 
 /// The command's whole job apart from reading the request: resolve the key
-/// under `base` and write durably.
-pub fn write_key_durable(base: &Path, key: &str, bytes: &[u8]) -> Result<(), String> {
+/// under `base` and write durably. The `bool` is the flush status of
+/// `write_durable_with`.
+pub fn write_key_durable(base: &Path, key: &str, bytes: &[u8]) -> Result<bool, String> {
     let target = resolve_key(base, key)?;
     write_durable(&target, bytes)
 }
@@ -327,6 +336,8 @@ mod tests {
         fail_rename: Cell<u32>,
         rename_error_code: i32,
         fail_sync_dir: bool,
+        /// The 1-based occurrence of `sync_dir` that fails; 0 means none.
+        fail_sync_dir_nth: Cell<u32>,
         steps: RefCell<Vec<&'static str>>,
         sleeps: RefCell<Vec<u64>>,
     }
@@ -338,6 +349,7 @@ mod tests {
                 fail_rename: Cell::new(0),
                 rename_error_code: 1,
                 fail_sync_dir: false,
+                fail_sync_dir_nth: Cell::new(0),
                 steps: RefCell::new(Vec::new()),
                 sleeps: RefCell::new(Vec::new()),
             }
@@ -376,7 +388,8 @@ mod tests {
         }
         fn sync_dir(&self, dir: &Path) -> io::Result<()> {
             self.steps.borrow_mut().push("sync_dir");
-            if self.fail_sync_dir {
+            let occurrence = self.steps.borrow().iter().filter(|s| **s == "sync_dir").count() as u32;
+            if self.fail_sync_dir || occurrence == self.fail_sync_dir_nth.get() {
                 return Err(io::Error::new(io::ErrorKind::Other, "flush failed"));
             }
             RealOps.sync_dir(dir)
@@ -408,8 +421,9 @@ mod tests {
         let target = dir.join("a.bin");
         let ops = Faulty::new();
 
-        write_durable_with(&ops, &target, b"new bytes").unwrap();
+        let flushed = write_durable_with(&ops, &target, b"new bytes").unwrap();
 
+        assert!(flushed);
         assert_eq!(fs::read(&target).unwrap(), b"new bytes");
         assert_eq!(*ops.steps.borrow(), vec!["create_synced", "rename", "sync_dir"]);
         assert_eq!(names_in(&dir), vec!["a.bin"]);
@@ -469,12 +483,27 @@ mod tests {
         let mut ops = Faulty::new();
         ops.fail_sync_dir = true;
 
-        write_durable_with(&ops, &target, b"new bytes").unwrap();
+        let flushed = write_durable_with(&ops, &target, b"new bytes").unwrap();
 
+        assert!(!flushed);
         assert_eq!(fs::read(&target).unwrap(), b"new bytes");
         assert_eq!(*ops.steps.borrow(), vec!["create_synced", "rename", "sync_dir"]);
         assert_eq!(names_in(&dir), vec!["a.bin"]);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_failed_flush_of_a_new_directorys_parent_reports_unflushed() {
+        let base = scratch("new-dir-flush-fails");
+        let target = base.join("blocks").join("x");
+        let ops = Faulty::new();
+        ops.fail_sync_dir_nth.set(2);
+
+        let flushed = write_durable_with(&ops, &target, b"bytes").unwrap();
+
+        assert!(!flushed);
+        assert_eq!(fs::read(&target).unwrap(), b"bytes");
+        fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

@@ -31,7 +31,8 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * Writes go through `writeFileAtomic`, so a failed write keeps the old file.
  * Block-store keys (`blocks/`), numbered backups and cold-storage units go
  * through `writeFileDurable` instead, which also flushes the bytes to the file
- * system before it resolves. The granted file system surface has no `stat` and no exclusive rename, so
+ * system before it resolves and reports in `WriteResult.flushed` whether the
+ * directory flush after the rename succeeded. The granted file system surface has no `stat` and no exclusive rename, so
  * this store cannot enforce `ifVersion` and reports `conditionalWrites: false`.
  *
  * It offers `urlFor`: the web view loads a file from the asset protocol by its
@@ -168,8 +169,8 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             checkBytes(bytes)
             if (isDurableKey(key)) {
                 // The command creates the directories itself.
-                await writeFileDurable(key, bytes)
-                return { version: null }
+                const flushed = await writeFileDurable(key, bytes)
+                return flushed === undefined ? { version: null } : { version: null, flushed }
             }
             const directory = parentDirectory(key)
             if (directory !== '') {

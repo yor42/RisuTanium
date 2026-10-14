@@ -8,7 +8,8 @@
 //! rename the target keeps its old bytes. For a durable key the file is flushed
 //! before the rename, the target directory after it, and every directory the
 //! write created is flushed into its parent, as `write_durable_with` does.
-//! Non-durable keys add no flush.
+//! A failed directory flush does not reject the write; the call that attempted
+//! it answers `false`. Non-durable keys add no flush.
 //!
 //! The write keys follow `resolve_key`; the read keys follow the addressable
 //! rules of `tauriAddressableViolation` in `src/ts/storage/store/keyRules.ts`,
@@ -66,6 +67,11 @@ fn discard_temp<O: FileOps>(ops: &O, temp: &Path) {
 /// unchanged. `Ok` with `last` means the target holds every chunk. A temp file
 /// that chunk 0 found already in place is not this write's file and is left alone.
 /// The commands call `write_chunk_final_with`; this is the same write without a final key.
+/// The `bool` is `false` when a directory flush of this call failed (chunk 0 flushes the
+/// parents of new directories, the last chunk the target directory); it is `true` when
+/// every flush this call attempted succeeded or the call attempted none, and it
+/// carries a meaning to the caller only for a durable write, as the AND of all of
+/// its chunks' answers.
 #[cfg(test)]
 pub fn write_chunk_with<O: FileOps>(
     ops: &O,
@@ -75,7 +81,7 @@ pub fn write_chunk_with<O: FileOps>(
     bytes: &[u8],
     last: bool,
     durable: bool,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     write_chunk_final_with(ops, target, temp_name, offset, bytes, last, durable, None)
 }
 
@@ -84,7 +90,8 @@ pub fn write_chunk_with<O: FileOps>(
 /// directory as `target`, so the rename stays in one directory and the abort and
 /// the boot sweep still find the temp. When `final_target` already holds a file
 /// the temp is removed and the call succeeds, so an existing file is never
-/// replaced. A `final_target` on a chunk that is not the last, or in another
+/// replaced; that call reports `false`, because no flush happened for the file
+/// it kept. A `final_target` on a chunk that is not the last, or in another
 /// directory, ends the write like any other failure.
 pub fn write_chunk_final_with<O: FileOps>(
     ops: &O,
@@ -95,11 +102,13 @@ pub fn write_chunk_final_with<O: FileOps>(
     last: bool,
     durable: bool,
     final_target: Option<&Path>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let directory = target
         .parent()
         .ok_or_else(|| "the target has no parent directory".to_string())?;
     let temp = directory.join(temp_name);
+    // Cleared by a failed directory flush of this call.
+    let mut flushed = true;
     if let Some(final_path) = final_target {
         let refusal = if !last {
             Some("a final key goes with the last chunk")
@@ -128,12 +137,14 @@ pub fn write_chunk_final_with<O: FileOps>(
         created.reverse();
         fs::create_dir_all(directory).map_err(|e| format!("failed to create {}: {}", directory.display(), e))?;
         if durable {
-            // A new directory has its own entry in its parent. The flush is
-            // best-effort like the one after the rename.
+            // A new directory has its own entry in its parent. The flush does
+            // not reject the write, like the one after the rename; chunk 0
+            // reports a failure through its status.
             for dir in created {
                 if let Some(parent) = dir.parent() {
                     if let Err(error) = ops.sync_dir(parent) {
                         eprintln!("directory flush for a new directory failed for {}: {}", parent.display(), error);
+                        flushed = false;
                     }
                 }
             }
@@ -147,14 +158,15 @@ pub fn write_chunk_final_with<O: FileOps>(
         return Err(format!("failed to write {}: {}", temp.display(), error));
     }
     if !last {
-        return Ok(());
+        return Ok(flushed);
     }
     let destination = final_target.unwrap_or(target);
     if final_target.is_some() {
         match ops.is_file(destination) {
             Ok(true) => {
+                // Nothing was flushed by this call for the existing file.
                 discard_temp(ops, &temp);
-                return Ok(());
+                return Ok(false);
             }
             Ok(false) => {}
             Err(error) => {
@@ -176,9 +188,10 @@ pub fn write_chunk_final_with<O: FileOps>(
     if durable {
         if let Err(error) = ops.sync_dir(directory) {
             eprintln!("directory flush after rename failed for {}: {}", directory.display(), error);
+            flushed = false;
         }
     }
-    Ok(())
+    Ok(flushed)
 }
 
 /// Removes the temp file of an unfinished write. A temp that is already gone is
@@ -209,7 +222,7 @@ pub fn write_chunk_key(
     last: bool,
     durable: bool,
     final_key: Option<&str>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let target = resolve_key(base, key)?;
     let temp_name = temp_name_for(id)?;
     let bytes = decode_chunk(data)?;
@@ -443,13 +456,15 @@ mod tests {
     }
 
     /// Writes `bytes` to `target` in chunks of `chunk` bytes; at least one chunk.
-    fn write_in_chunks<O: FileOps>(ops: &O, target: &Path, bytes: &[u8], chunk: usize, durable: bool) -> Result<(), String> {
+    /// The answer is the AND of every chunk's flush status.
+    fn write_in_chunks<O: FileOps>(ops: &O, target: &Path, bytes: &[u8], chunk: usize, durable: bool) -> Result<bool, String> {
         let mut offset = 0;
+        let mut flushed = true;
         loop {
             let end = (offset + chunk).min(bytes.len());
-            write_chunk_with(ops, target, TEMP, offset as u64, &bytes[offset..end], end == bytes.len(), durable)?;
+            flushed &= write_chunk_with(ops, target, TEMP, offset as u64, &bytes[offset..end], end == bytes.len(), durable)?;
             if end == bytes.len() {
-                return Ok(());
+                return Ok(flushed);
             }
             offset = end;
         }
@@ -479,8 +494,9 @@ mod tests {
         let target = dir.join("a.bin");
         let ops = Faulty::new();
 
-        write_in_chunks(&ops, &target, &patterned(10), 4, true).unwrap();
+        let flushed = write_in_chunks(&ops, &target, &patterned(10), 4, true).unwrap();
 
+        assert!(flushed);
         assert_eq!(
             *ops.steps.borrow(),
             vec!["create_empty", "append", "append", "append", "sync_file", "rename", "sync_dir"]
@@ -579,13 +595,42 @@ mod tests {
             let target = base.join("blocks").join("gen").join("x");
             let ops = Faulty::failing("sync_dir", nth);
 
-            write_in_chunks(&ops, &target, &patterned(9), 4, true).unwrap();
+            let flushed = write_in_chunks(&ops, &target, &patterned(9), 4, true).unwrap();
 
+            assert!(!flushed, "flush {}", nth);
             assert_eq!(ops.count("sync_dir"), 3);
             assert_eq!(fs::read(&target).unwrap(), patterned(9));
             assert_eq!(names_in(target.parent().unwrap()), vec!["x"]);
             fs::remove_dir_all(&base).unwrap();
         }
+    }
+
+    #[test]
+    fn a_failed_directory_flush_on_the_final_key_path_reports_unflushed_and_still_writes() {
+        let dir = scratch("final-flush-fails");
+        let target = dir.join("assets").join("provisional.png");
+        let final_path = dir.join("assets").join("final.png");
+        // Flush 1 is the new `assets` directory's parent, flush 2 the target directory.
+        let ops = Faulty::failing("sync_dir", 2);
+
+        let flushed = write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
+
+        assert!(!flushed);
+        assert_eq!(fs::read(&final_path).unwrap(), patterned(10));
+        assert_eq!(names_in(&dir.join("assets")), vec!["final.png"]);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_non_durable_write_attempts_no_flush_and_reports_no_failure() {
+        let dir = scratch("plain-status");
+        let ops = Faulty::failing("sync_dir", 1);
+
+        let flushed = write_in_chunks(&ops, &dir.join("new").join("a.bin"), &patterned(10), 4, false).unwrap();
+
+        assert!(flushed);
+        assert_eq!(ops.count("sync_dir"), 0);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -677,12 +722,13 @@ mod tests {
         chunk: usize,
         durable: bool,
         final_target: &Path,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let mut offset = 0;
+        let mut flushed = true;
         loop {
             let end = (offset + chunk).min(bytes.len());
             let last = end == bytes.len();
-            write_chunk_final_with(
+            flushed &= write_chunk_final_with(
                 ops,
                 target,
                 TEMP,
@@ -693,7 +739,7 @@ mod tests {
                 if last { Some(final_target) } else { None },
             )?;
             if last {
-                return Ok(());
+                return Ok(flushed);
             }
             offset = end;
         }
@@ -706,8 +752,9 @@ mod tests {
         let final_path = dir.join("assets").join("final.png");
         let ops = Faulty::new();
 
-        write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
+        let flushed = write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
 
+        assert!(flushed);
         assert_eq!(fs::read(&final_path).unwrap(), patterned(10));
         assert_eq!(names_in(&dir.join("assets")), vec!["final.png"]);
         let steps = ops.steps.borrow();
@@ -727,8 +774,9 @@ mod tests {
         fs::write(&final_path, b"already here").unwrap();
         let ops = Faulty::new();
 
-        write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
+        let flushed = write_in_chunks_final(&ops, &target, &patterned(10), 4, true, &final_path).unwrap();
 
+        assert!(!flushed, "no flush happened for the kept file");
         assert_eq!(fs::read(&final_path).unwrap(), b"already here");
         assert_eq!(names_in(&assets), vec!["final.png"]);
         assert_eq!(ops.count("rename"), 0);

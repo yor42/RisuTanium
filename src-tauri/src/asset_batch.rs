@@ -6,8 +6,9 @@
 //! flushed (`sync_all`), and is renamed over the target, so a reader sees the
 //! old file, no file, or the complete new one. After the renames the directory
 //! of every renamed file and the parent of every directory this call created
-//! are flushed (best effort, as in `durable_write`). A call that fails before
-//! any write (a body that is not raw, a malformed body) writes nothing.
+//! are flushed (a failure does not reject the write, as in `durable_write`; it
+//! is reported as `flushed: false` on each entry it affects). A call that fails
+//! before any write (a body that is not raw, a malformed body) writes nothing.
 //!
 //! Rules: a written key must start with `assets/`, pass the creatable rules of
 //! `durable_write::key_violation`, and pass the lexical guard. A read key must
@@ -54,10 +55,16 @@ pub const CHUNK_MAX: u64 = 4 * 1024 * 1024;
 /// The most file bytes one `get_assets_batch` response holds.
 pub const RESPONSE_MAX: u64 = CHUNK_MAX;
 
-/// What one frame of a write call came to.
+/// What one frame of a write call came to. `Ok` is a write that reports no
+/// flush status (a non-durable chunk). `Flushed` is a durable batch entry or a
+/// durable chunk, whether or not it is the last: `true` when every directory
+/// flush the entry depends on succeeded; `false` when one it depends on failed,
+/// or when none happened because the file was kept as is (an existing final
+/// key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Ok,
+    Flushed(bool),
     Invalid(String),
     Error(String),
 }
@@ -66,6 +73,7 @@ impl Outcome {
     fn to_json(&self) -> Value {
         match self {
             Outcome::Ok => json!({ "k": "ok" }),
+            Outcome::Flushed(flushed) => json!({ "k": "ok", "flushed": flushed }),
             Outcome::Invalid(reason) => json!({ "k": "invalid", "reason": reason }),
             Outcome::Error(message) => json!({ "k": "error", "message": message }),
         }
@@ -308,6 +316,8 @@ fn write_entries<O: FileOps + Sync>(ops: &O, base: &Path, entries: &[Entry<'_>],
 
     let dirs = DirState::new();
     let touched: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+    // The directory each written entry landed in, for its flush status.
+    let written_in: Mutex<Vec<Option<PathBuf>>> = Mutex::new(vec![None; entries.len()]);
     let results: Mutex<Vec<Option<Outcome>>> = Mutex::new(outcomes);
     let next = AtomicUsize::new(0);
     let workers = max_workers.max(1).min(groups.len()).max(1);
@@ -322,8 +332,9 @@ fn write_entries<O: FileOps + Sync>(ops: &O, base: &Path, entries: &[Entry<'_>],
                     let target = targets[index].as_ref().expect("a grouped entry has a target");
                     let outcome = match write_one(ops, &dirs, target, entries[index].data) {
                         Ok(directory) => {
+                            lock(&written_in)[index] = Some(directory.clone());
                             lock(&touched).insert(directory);
-                            Outcome::Ok
+                            Outcome::Flushed(true)
                         }
                         Err(message) => {
                             eprintln!("asset write failed for {}: {}", entries[index].key, message);
@@ -337,28 +348,60 @@ fn write_entries<O: FileOps + Sync>(ops: &O, base: &Path, entries: &[Entry<'_>],
     });
 
     // The renames are done. Flush each directory that received one, then the
-    // parent of each directory this call created; both are best effort.
-    let mut flushed: BTreeSet<PathBuf> = BTreeSet::new();
+    // parent of each directory this call created; a failure rejects nothing and
+    // is reported on the entries it affects. A directory is flushed once, and
+    // its result is kept for every entry that depends on it.
+    let mut flush_ok: HashMap<PathBuf, bool> = HashMap::new();
     for directory in lock(&touched).iter() {
-        if flushed.insert(directory.clone()) {
-            if let Err(error) = ops.sync_dir(directory) {
-                eprintln!("directory flush after rename failed for {}: {}", directory.display(), error);
+        if !flush_ok.contains_key(directory) {
+            let ok = match ops.sync_dir(directory) {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!("directory flush after rename failed for {}: {}", directory.display(), error);
+                    false
+                }
+            };
+            flush_ok.insert(directory.clone(), ok);
+        }
+    }
+    // Created directories whose entry in their parent may not survive.
+    let mut unflushed_created: Vec<PathBuf> = Vec::new();
+    for created in lock(&dirs.inner).created.iter() {
+        if let Some(parent) = created.parent() {
+            let ok = match flush_ok.get(parent) {
+                Some(ok) => *ok,
+                None => {
+                    let ok = match ops.sync_dir(parent) {
+                        Ok(()) => true,
+                        Err(error) => {
+                            eprintln!("directory flush for a new directory failed for {}: {}", parent.display(), error);
+                            false
+                        }
+                    };
+                    flush_ok.insert(parent.to_path_buf(), ok);
+                    ok
+                }
+            };
+            if !ok {
+                unflushed_created.push(created.clone());
             }
         }
     }
-    for created in lock(&dirs.inner).created.iter() {
-        if let Some(parent) = created.parent() {
-            if flushed.insert(parent.to_path_buf()) {
-                if let Err(error) = ops.sync_dir(parent) {
-                    eprintln!("directory flush for a new directory failed for {}: {}", parent.display(), error);
-                }
+    let mut finished = results
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let written_in = written_in.into_inner().unwrap_or_else(|poisoned| poisoned.into_inner());
+    for (index, directory) in written_in.iter().enumerate() {
+        if let Some(directory) = directory {
+            let unflushed = flush_ok.get(directory) == Some(&false)
+                || unflushed_created.iter().any(|created| directory.starts_with(created));
+            if unflushed {
+                finished[index] = Some(Outcome::Flushed(false));
             }
         }
     }
 
-    results
-        .into_inner()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    finished
         .into_iter()
         .map(|outcome| outcome.unwrap_or_else(|| Outcome::Error("the entry was not processed".to_string())))
         .collect()
@@ -508,7 +551,8 @@ pub fn write_chunk_raw_with<O: FileOps>(
         final_target.as_deref(),
     );
     match applied {
-        Ok(()) => Outcome::Ok,
+        Ok(flushed) if headers.durable => Outcome::Flushed(flushed),
+        Ok(_) => Outcome::Ok,
         Err(message) => Outcome::Error(message),
     }
 }
@@ -784,6 +828,8 @@ mod tests {
         fail_sync_payload: Option<Vec<u8>>,
         /// `rename` fails when the target's file name equals this.
         fail_rename_name: Option<String>,
+        /// `sync_dir` fails for exactly these directories.
+        fail_sync_dirs: Vec<PathBuf>,
         scramble: bool,
         created: Mutex<HashSet<PathBuf>>,
         dir_flushes: Mutex<Vec<PathBuf>>,
@@ -828,6 +874,9 @@ mod tests {
         }
         fn sync_dir(&self, dir: &Path) -> io::Result<()> {
             lock(&self.dir_flushes).push(dir.to_path_buf());
+            if self.fail_sync_dirs.iter().any(|failing| failing == dir) {
+                return Err(io::Error::new(io::ErrorKind::Other, "flush failed"));
+            }
             RealOps.sync_dir(dir)
         }
         fn remove(&self, path: &Path) -> io::Result<()> {
@@ -854,7 +903,7 @@ mod tests {
     fn a_well_formed_body_writes_every_file_and_answers_in_input_order() {
         let base = scratch("basic");
         let results = put(&base, &[("assets/a", b"one"), ("assets/d/e/b", b"two"), ("assets/c", b"")]);
-        assert_eq!(results, vec![Outcome::Ok, Outcome::Ok, Outcome::Ok]);
+        assert_eq!(results, vec![Outcome::Flushed(true), Outcome::Flushed(true), Outcome::Flushed(true)]);
         assert_eq!(fs::read(base.join("assets").join("a")).unwrap(), b"one");
         assert_eq!(fs::read(base.join("assets").join("d").join("e").join("b")).unwrap(), b"two");
         assert_eq!(fs::read(base.join("assets").join("c")).unwrap(), b"");
@@ -951,7 +1000,7 @@ mod tests {
         for (index, key) in refused.iter().enumerate() {
             assert!(matches!(results[index], Outcome::Invalid(_)), "should refuse {:?}: {:?}", key, results[index]);
         }
-        assert_eq!(results[refused.len()], Outcome::Ok);
+        assert_eq!(results[refused.len()], Outcome::Flushed(true));
         assert_eq!(tree(&base), vec!["assets/", "assets/ok"]);
         fs::remove_dir_all(&base).unwrap();
     }
@@ -973,9 +1022,9 @@ mod tests {
     fn a_refused_key_in_the_middle_does_not_stop_the_others_and_results_keep_input_order() {
         let base = scratch("mid");
         let results = put(&base, &[("assets/a", b"1"), ("blocks/x", b"2"), ("assets/c", b"3"), ("assets/.d", b"4")]);
-        assert_eq!(results[0], Outcome::Ok);
+        assert_eq!(results[0], Outcome::Flushed(true));
         assert!(matches!(results[1], Outcome::Invalid(_)));
-        assert_eq!(results[2], Outcome::Ok);
+        assert_eq!(results[2], Outcome::Flushed(true));
         assert!(matches!(results[3], Outcome::Invalid(_)));
         assert!(!base.join("blocks").exists());
         fs::remove_dir_all(&base).unwrap();
@@ -1040,7 +1089,7 @@ mod tests {
     fn assert_k_failed_others_fine(base: &Path, results: &[Outcome]) {
         assert!(matches!(results[2], Outcome::Error(_)), "{:?}", results[2]);
         for index in [0, 1, 3, 4] {
-            assert_eq!(results[index], Outcome::Ok);
+            assert_eq!(results[index], Outcome::Flushed(true));
         }
         let assets = base.join("assets");
         assert_eq!(fs::read(assets.join("d").join("k")).unwrap(), b"old bytes of k");
@@ -1112,7 +1161,7 @@ mod tests {
         }
         let base = scratch("retry");
         let outcomes = put_batch_with(&Blocked(AtomicUsize::new(0)), &base, &body(&[("assets/a", b"bytes")]), 1).unwrap();
-        assert_eq!(outcomes, vec![Outcome::Ok]);
+        assert_eq!(outcomes, vec![Outcome::Flushed(true)]);
         assert_eq!(fs::read(base.join("assets").join("a")).unwrap(), b"bytes");
         assert!(temps_in(&base).is_empty());
         fs::remove_dir_all(&base).unwrap();
@@ -1126,7 +1175,7 @@ mod tests {
         fs::write(assets.join("blocker"), b"i am a file").unwrap();
         let results = put(&base, &[("assets/blocker/x", b"1"), ("assets/y", b"2")]);
         assert!(matches!(results[0], Outcome::Error(_)), "{:?}", results[0]);
-        assert_eq!(results[1], Outcome::Ok);
+        assert_eq!(results[1], Outcome::Flushed(true));
         assert_eq!(fs::read(assets.join("blocker")).unwrap(), b"i am a file");
         assert!(temps_in(&base).is_empty());
         fs::remove_dir_all(&base).unwrap();
@@ -1140,7 +1189,7 @@ mod tests {
         fs::write(assets.join("a"), b"old").unwrap();
         let probe = Probe::default();
         let results = put_batch_with(&probe, &base, &body(&[("assets/a", b"new longer"), ("assets/b", b"b")]), 4).unwrap();
-        assert_eq!(results, vec![Outcome::Ok, Outcome::Ok]);
+        assert_eq!(results, vec![Outcome::Flushed(true), Outcome::Flushed(true)]);
         assert_eq!(fs::read(assets.join("a")).unwrap(), b"new longer");
         fs::remove_dir_all(&base).unwrap();
     }
@@ -1152,13 +1201,44 @@ mod tests {
         let base = scratch("flush");
         let probe = Probe::default();
         let results = put_batch_with(&probe, &base, &body(&[("assets/gen/x", b"bytes")]), 4).unwrap();
-        assert_eq!(results, vec![Outcome::Ok]);
+        assert_eq!(results, vec![Outcome::Flushed(true)]);
         // The target directory, then the parent of `assets` (the base) and `assets` itself.
         let flushes = lock(&probe.dir_flushes).clone();
         assert_eq!(flushes.len(), 1 + 2, "{:?}", flushes);
         assert!(flushes.contains(&base.join("assets").join("gen")));
         assert!(flushes.contains(&base));
         assert!(flushes.contains(&base.join("assets")));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_failed_directory_flush_marks_only_the_entries_that_depend_on_it() {
+        let base = scratch("flush-status");
+        fs::create_dir_all(base.join("assets").join("bad")).unwrap();
+        fs::create_dir_all(base.join("assets").join("good")).unwrap();
+        let probe = Probe { fail_sync_dirs: vec![base.join("assets").join("bad")], ..Probe::default() };
+        let entries = [("assets/bad/a", b"1".as_slice()), ("assets/good/b", b"2"), ("assets/bad/c", b"3")];
+
+        let results = put_batch_with(&probe, &base, &body(&entries), 4).unwrap();
+
+        assert_eq!(results, vec![Outcome::Flushed(false), Outcome::Flushed(true), Outcome::Flushed(false)]);
+        assert_eq!(fs::read(base.join("assets").join("bad").join("a")).unwrap(), b"1");
+        assert!(temps_in(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_failed_flush_of_a_new_directorys_parent_marks_the_entries_beneath_it() {
+        let base = scratch("flush-status-new");
+        fs::create_dir_all(base.join("assets")).unwrap();
+        // `assets/fresh` is new, so its entry lives in `assets`; `assets/old` is not new.
+        fs::create_dir_all(base.join("assets").join("old")).unwrap();
+        let probe = Probe { fail_sync_dirs: vec![base.join("assets")], ..Probe::default() };
+        let entries = [("assets/fresh/deep/a", b"1".as_slice()), ("assets/old/b", b"2")];
+
+        let results = put_batch_with(&probe, &base, &body(&entries), 4).unwrap();
+
+        assert_eq!(results, vec![Outcome::Flushed(false), Outcome::Flushed(true)]);
         fs::remove_dir_all(&base).unwrap();
     }
 
@@ -1206,7 +1286,7 @@ mod tests {
             if key.contains("bad") {
                 assert!(matches!(results[index], Outcome::Invalid(_)), "{}", key);
             } else {
-                assert_eq!(results[index], Outcome::Ok, "{}", key);
+                assert_eq!(results[index], Outcome::Flushed(true), "{}", key);
                 assert_eq!(fs::read(base.join(key)).unwrap(), *data);
             }
         }
@@ -1227,7 +1307,7 @@ mod tests {
             let refs: Vec<(&str, &[u8])> = entries.iter().map(|(k, d)| (k.as_str(), d.as_slice())).collect();
             let probe = Probe { scramble: true, ..Probe::default() };
             let results = put_batch_with(&probe, &base, &body(&refs), 4).unwrap();
-            assert!(results.iter().all(|r| *r == Outcome::Ok));
+            assert!(results.iter().all(|r| *r == Outcome::Flushed(true)));
             assert_eq!(fs::read(base.join("assets").join("dup")).unwrap(), format!("last{}", round).into_bytes());
         }
         assert!(temps_in(&base).is_empty());
@@ -1239,7 +1319,7 @@ mod tests {
         let base = scratch("case");
         let entries: Vec<(&str, &[u8])> = vec![("assets/Same", b"upper"), ("assets/same", b"lower")];
         let results = put(&base, &entries);
-        assert_eq!(results, vec![Outcome::Ok, Outcome::Ok]);
+        assert_eq!(results, vec![Outcome::Flushed(true), Outcome::Flushed(true)]);
         // On a case-insensitive file system the second write is what stays.
         let on_disk = tree(&base.join("assets"));
         if on_disk.len() == 1 {
@@ -1252,7 +1332,7 @@ mod tests {
     fn a_one_entry_batch_stores_the_data_and_refuses_a_bad_key() {
         let base = scratch("single");
         let big = [7u8; 300_000];
-        assert_eq!(put(&base, &[("assets/n/big", &big)]), vec![Outcome::Ok]);
+        assert_eq!(put(&base, &[("assets/n/big", &big)]), vec![Outcome::Flushed(true)]);
         assert_eq!(fs::read(base.join("assets").join("n").join("big")).unwrap(), vec![7u8; 300_000]);
         assert!(matches!(put(&base, &[("blocks/head", b"x")])[0], Outcome::Invalid(_)));
         assert!(!base.join("blocks").exists());
@@ -1265,11 +1345,13 @@ mod tests {
     #[test]
     fn the_json_shape_of_each_outcome_is_the_contract() {
         assert_eq!(Outcome::Ok.to_json(), json!({ "k": "ok" }));
+        assert_eq!(Outcome::Flushed(true).to_json(), json!({ "k": "ok", "flushed": true }));
+        assert_eq!(Outcome::Flushed(false).to_json(), json!({ "k": "ok", "flushed": false }));
         assert_eq!(Outcome::Invalid("r".into()).to_json(), json!({ "k": "invalid", "reason": "r" }));
         assert_eq!(Outcome::Error("m".into()).to_json(), json!({ "k": "error", "message": "m" }));
         let base = scratch("json");
         let value = put_assets_batch(&base, &body(&[("assets/a", b"1"), ("x", b"2")])).unwrap();
-        assert_eq!(value[0], json!({ "k": "ok" }));
+        assert_eq!(value[0], json!({ "k": "ok", "flushed": true }));
         assert_eq!(value[1]["k"], "invalid");
         fs::remove_dir_all(&base).unwrap();
     }
@@ -1418,7 +1500,7 @@ mod tests {
             let refs: Vec<(&str, &[u8])> = entries.iter().map(|(k, d)| (k.as_str(), d.as_slice())).collect();
             let probe = Probe { scramble: true, ..Probe::default() };
             let results = put_batch_with(&probe, &base, &body(&refs), 4).unwrap();
-            assert!(results.iter().all(|r| *r == Outcome::Ok));
+            assert!(results.iter().all(|r| *r == Outcome::Flushed(true)));
             // On a file system that treats the two names as one file, the later entry is what stays.
             let s = base.join("assets").join("s.png");
             let long_s = base.join("assets").join("\u{17f}.png");
@@ -1438,7 +1520,7 @@ mod tests {
         let base = scratch("roundtrip");
         let payload: Vec<u8> = (0..=255u8).cycle().take(100_000).collect();
         let entries: Vec<(&str, &[u8])> = vec![("assets/h1", &payload), ("assets/sub/h2", b"two"), ("assets/h3", b"")];
-        assert!(put(&base, &entries).iter().all(|r| *r == Outcome::Ok));
+        assert!(put(&base, &entries).iter().all(|r| *r == Outcome::Flushed(true)));
         let keys: Vec<String> = entries.iter().map(|(k, _)| k.to_string()).collect();
         let frames = read_frames(&get_assets_batch(&base, &keys));
         for (index, (_, data)) in entries.iter().enumerate() {
@@ -1718,6 +1800,8 @@ mod tests {
     #[derive(Default)]
     struct ChunkSteps {
         fail_append: Option<usize>,
+        /// The 1-based occurrence of `sync_dir` that fails.
+        fail_sync_dir: Option<usize>,
         steps: std::cell::RefCell<Vec<&'static str>>,
     }
 
@@ -1755,6 +1839,9 @@ mod tests {
         }
         fn sync_dir(&self, dir: &Path) -> io::Result<()> {
             self.note("sync_dir");
+            if self.fail_sync_dir == Some(self.count("sync_dir")) {
+                return Err(io::Error::new(io::ErrorKind::Other, "flush failed"));
+            }
             RealOps.sync_dir(dir)
         }
         fn remove(&self, path: &Path) -> io::Result<()> {
@@ -1774,7 +1861,7 @@ mod tests {
             let end = (offset + size).min(data.len());
             let headers = parsed(key, offset as u64, end == data.len(), durable);
             let outcome = write_chunk_raw_with(ops, base, &headers, &data[offset..end]);
-            let stop = outcome != Outcome::Ok || end == data.len();
+            let stop = matches!(outcome, Outcome::Error(_) | Outcome::Invalid(_)) || end == data.len();
             outcomes.push(outcome);
             if stop {
                 return outcomes;
@@ -1807,7 +1894,7 @@ mod tests {
         let base = scratch("chunks-durable");
         let ops = ChunkSteps::default();
         let outcomes = send_chunks(&ops, &base, "assets/d/z", &[1u8; 12], 5, true);
-        assert_eq!(outcomes, vec![Outcome::Ok; 3]);
+        assert_eq!(outcomes, vec![Outcome::Flushed(true); 3]);
         let steps = ops.steps.borrow();
         let at = |name: &str| steps.iter().position(|s| *s == name).unwrap();
         let last = |name: &str| steps.iter().rposition(|s| *s == name).unwrap();
@@ -1837,6 +1924,22 @@ mod tests {
             assert_eq!(fs::read(assets.join("t")).unwrap(), b"old bytes");
             assert!(temps_in(&base).is_empty(), "chunk {}", k);
             assert_eq!(ops.count("rename"), 0);
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_failed_directory_flush_on_a_durable_chunk_write_reports_unflushed_and_still_writes() {
+        // Flush 1 is the new `assets` directory's parent (chunk 0), flush 2 the target directory.
+        for nth in [1usize, 2] {
+            let base = scratch("chunks-flush-fails");
+            let ops = ChunkSteps { fail_sync_dir: Some(nth), ..ChunkSteps::default() };
+
+            let outcomes = send_chunks(&ops, &base, "assets/d/z", &[1u8; 12], 5, true);
+
+            assert_eq!(outcomes.len(), 3);
+            assert!(outcomes.iter().any(|o| *o == Outcome::Flushed(false)), "flush {}: {:?}", nth, outcomes);
+            assert_eq!(fs::read(base.join("assets").join("d").join("z")).unwrap(), vec![1u8; 12]);
             fs::remove_dir_all(&base).unwrap();
         }
     }
@@ -1931,6 +2034,21 @@ mod tests {
         assert_eq!(fs::read(assets.join("final.png")).unwrap(), b"already here");
         assert_eq!(ops.count("rename"), 0);
         assert_eq!(tree(&assets), vec!["final.png"]);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_durable_write_onto_an_existing_final_key_reports_unflushed() {
+        let base = scratch("chunks-final-exists-durable");
+        let assets = base.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("final.png"), b"already here").unwrap();
+        let headers = RawChunkHeaders { durable: true, ..parsed_final(PROVISIONAL, 0, true, FINAL) };
+
+        let outcome = write_chunk_raw_with(&ChunkSteps::default(), &base, &headers, b"abcd");
+
+        assert_eq!(outcome, Outcome::Flushed(false));
+        assert_eq!(fs::read(assets.join("final.png")).unwrap(), b"already here");
         fs::remove_dir_all(&base).unwrap();
     }
 

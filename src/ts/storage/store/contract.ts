@@ -63,6 +63,13 @@ export interface ReadResult {
 export interface WriteResult {
     /** The version the key has now; `null` on a store without conditional writes. */
     version: StoreVersion | null
+    /**
+     * Present only on stores that flush a write to disk. `false` means the bytes
+     * are written but the directory entry may not survive power loss (a directory
+     * flush failed, or none happened for an existing key kept as is). `true` means
+     * every flush succeeded. Absent means the store does not report it.
+     */
+    flushed?: boolean
 }
 
 export interface DeleteEntry {
@@ -117,9 +124,20 @@ export interface ByteStore {
     list(prefix: string): Promise<string[]>
 
     /**
+     * How many keys start with `prefix` (empty allowed), without transferring
+     * the names. `null` means the backend cannot count cheaply or did not give
+     * a trustworthy number (an older server, an unrecognised answer). `null` is
+     * never zero: a limit check treats it as over the limit, and a caller that
+     * needs the answer lists. A count cannot be re-filtered the way a `list`
+     * answer is, so a caller that acts on zero confirms it with `list` first.
+     * Never falls back to listing.
+     */
+    countPrefix?(prefix: string): Promise<number | null>
+
+    /**
      * Whether `key` holds a value. The value is never transferred to the caller.
      * The backend may still read it: the Node server reads the file to answer.
-     * IndexedDB checks the key list and loads no value; the desktop store checks
+     * IndexedDB looks the key up and loads no value; the desktop store checks
      * the path only.
      */
     has(key: string): Promise<boolean>

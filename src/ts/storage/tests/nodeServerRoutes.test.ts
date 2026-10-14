@@ -126,6 +126,20 @@ describe('rate-limit buckets', () => {
         expect(remaining(remove)).toBe(remaining(read) - 3)
     })
 
+    test('the prefix list route draws on the storage bucket, with and without count', async () => {
+        const read = await storageRead()
+        await read.arrayBuffer()
+        const auth = await fixture.authHeader()
+        const listed = await fetch(`${fixture.baseUrl}/api/list-prefix?prefix=`, { headers: { 'risu-auth': auth } })
+        await listed.arrayBuffer()
+        const counted = await fetch(`${fixture.baseUrl}/api/list-prefix?prefix=&count=1`, { headers: { 'risu-auth': auth } })
+        await counted.arrayBuffer()
+        for (const response of [listed, counted]) {
+            expect(Number(response.headers.get('ratelimit-limit'))).toBe(20000)
+        }
+        expect(remaining(counted)).toBe(remaining(read) - 2)
+    })
+
     test('the guarded routes and the capability route draw on the same storage bucket', async () => {
         const read = await storageRead()
         await read.arrayBuffer()

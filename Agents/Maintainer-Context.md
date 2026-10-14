@@ -9905,6 +9905,42 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - The two maintainer-run or maintainer-decided inputs still owed before the format freeze are the counts-only real-data census (plan 8.3) and the model variants V1 to V4 (plan section 6); neither is a product question.
 - The format is a build candidate at stage step 1a and is declared frozen at the stage 3 gate; the names in U2 change before that declaration only (plan section 1).
 
+### MC-291 — Main Campaign, 2026-10-14: when a picked recovery candidate is missing images or inlays, recovery shows the count and lets the user continue; a missing unit still fails loudly
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-14. The time of the answer is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's records evidence packet of 2026-10-14 (`records-evidence.md`, session scratch), "Maintainer decisions to record": the chosen option label "Warn, let me continue (Recommended)". The question text and the option texts are not in the packet: TODO(evidence). The plan text it feeds is plan v3.4 amendment 3 (commit `148921f35`, `Agents/Tools/storage-model/plan-v3.4.md`); the implementation is step 1b-6c (`6fb45990d`, `feat/alite-s1`, not merged); ledger rows 1761 to 1763.
+- **Reasoning:** none stated by the maintainer.
+- **Alternatives rejected:** not supplied in the packet (only the chosen label is): TODO(evidence).
+- **Amends:** none of the earlier entries' text. Settles an open point of the stage 1+3 plan's recovery section (4.6); applies `MC-290` U7, U12 and U13 (recovery screen and exits).
+- **Related:** `MC-290`, `MC-292`, `MC-175`, Report 62 Part D, ledger rows 1757 to 1766.
+
+**What was decided:** when the user picks a recovery candidate whose images or inlays are partly missing, recovery shows "missing N images/inlays" and lets the user continue. Missing images then render broken, like upstream. A missing unit (not an image or inlay) still fails loudly and the pick does not proceed. Chosen option: "Warn, let me continue (Recommended)".
+
+**Notes that are not the maintainer's words:**
+- The decision was already reflected in plan amendment 3 (commit `148921f35`) before this entry was written; the commit message of amendment 3 (`148921f35`) says "maintainer decision MC-291, to be recorded".
+- The count is taken after the fence write; how it is counted and shown is `MC-292` and the step 1b-6c commit message.
+
+### MC-292 — Main Campaign, 2026-10-14: the recovery inlay count is shown as "up to N inlays may be missing" (image counts stay exact; no save-format field); correction about two rare under-counts
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, as relayed by the orchestrator), a correction told to the maintainer afterwards, and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-14. The time of the answer and of the correction is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's records evidence packet of 2026-10-14 (`records-evidence.md`, session scratch): the chosen option label `Show it as "up to N" (Recommended)` over `Exact count, format change`; the reason given to the maintainer; the correction, sourced there to `g2b6c-recheck.md` E1 (the 1b-6c re-check by `opus-reviewer`, session scratch `risu-b715\s1b\`). The option texts are not in the packet: TODO(evidence). Implemented in step 1b-6c (`6fb45990d`, `feat/alite-s1`, not merged).
+- **Reasoning (as given to the maintainer by the orchestrator, per the packet):** inlay lists record every id-shaped token in chat text, so the count over-counts; image counts stay exact; no save-format field is needed.
+- **Alternatives rejected:** "Exact count, format change" (label as given in the packet; its text is not supplied: TODO(evidence)).
+- **Amends:** none of the earlier entries' text. Refines `MC-291` (how the count is shown).
+- **Related:** `MC-291`, `MC-290`, Report 62 Part D, ledger rows 1761 to 1763.
+
+**What was decided:** the recovery screen shows the inlay count as "up to N inlays may be missing". Image counts stay exact. No save-format field is added. Chosen option: `Show it as "up to N" (Recommended)`.
+
+**Correction told to the maintainer afterwards (the orchestrator's account, per the packet):** two rare cases can show a missing inlay as present: a record of the same hash under another extension, and a literal id differing only in letter case. Both need two stored records of the same content or name. The maintainer was offered the format change (the rejected option) and has not asked for it. Source: `g2b6c-recheck.md` E1.
+
+**Notes that are not the maintainer's words:**
+- The "up to N" count errs high and the two exceptions err low, so "up to N" is not a strict upper bound; the packet says plan amendment 4 (committed as `723f8504e`, `opus-reviewer` `[EDITORIAL]` applied) rewrites the plan's 4.6 sentence "never assumed present" to carry the wording and both exceptions.
+- Newer, below-version and overflow asset or inlay lists count as unknown, never as present (step 1b-6c commit message).
+
 ### MC-300 — Unload-2 session, 2026-10-12: the stage-1c measurement code is kept, compiled out of normal builds
 
 - **Tag:** decision (`AskUserQuestion` answer, by option label)
