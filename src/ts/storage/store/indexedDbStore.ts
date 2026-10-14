@@ -87,7 +87,7 @@ function isInvalidStateError(error: unknown): boolean {
 }
 
 /** The bytes of a stored value, or `null` when it is not binary data. Checks by tag so a value from another realm is still recognised. */
-async function bytesOfStoredValue(value: unknown): Promise<Uint8Array | null> {
+export async function bytesOfStoredValue(value: unknown): Promise<Uint8Array | null> {
     if (value instanceof Uint8Array) {
         return ownBytes(value)
     }
@@ -265,7 +265,7 @@ export function prefixUpperBound(prefix: string): string | null {
 }
 
 /** The key range of every key that starts with `prefix`, or `undefined` for the whole store. */
-function prefixRange(prefix: string): IDBKeyRange | undefined {
+export function prefixRange(prefix: string): IDBKeyRange | undefined {
     if (prefix.length === 0) {
         return undefined
     }
@@ -491,7 +491,7 @@ function isBlob(value: unknown): boolean {
  * for no entry, and `undefined` when the value is not binary data or needs an
  * asynchronous read (a Blob; see `isBlob`).
  */
-function syncBytesOfStoredValue(value: unknown): Uint8Array | null | undefined {
+export function syncBytesOfStoredValue(value: unknown): Uint8Array | null | undefined {
     if (value === undefined) {
         return null
     }
@@ -664,7 +664,7 @@ export function createIndexedDbHeadSwap(): HeadSwap {
     }
 }
 
-type HeadOpen =
+export type HeadOpen =
     | { kind: 'open', database: IDBDatabase }
     /** The database, or its object store, does not exist. Nothing was created. */
     | { kind: 'missing' }
@@ -678,7 +678,7 @@ type HeadOpen =
  * creates nothing: the upgrade an open of a missing database starts is
  * aborted.
  */
-function openDatabaseForHead(onClosed: (database: IDBDatabase) => void): Promise<HeadOpen> {
+export function openDatabaseForHead(onClosed: (database: IDBDatabase) => void): Promise<HeadOpen> {
     return new Promise((resolve) => {
         let request: IDBOpenDBRequest
         try {
