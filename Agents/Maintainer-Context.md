@@ -9941,6 +9941,86 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - The "up to N" count errs high and the two exceptions err low, so "up to N" is not a strict upper bound; the packet says plan amendment 4 (committed as `723f8504e`, `opus-reviewer` `[EDITORIAL]` applied) rewrites the plan's 4.6 sentence "never assumed present" to carry the wording and both exceptions.
 - Newer, below-version and overflow asset or inlay lists count as unknown, never as present (step 1b-6c commit message).
 
+### MC-293 — Main Campaign, 2026-10-14: the V4 model check (no plan-named set finished within the 1,800 s cap) is accepted as a known gap for the format freeze
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-14. The time of the answer is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's brief for the freeze records pass (`rec-freeze-brief.md`, session scratch), "Maintainer decisions, 2026-10-14": the chosen option label "Accept as known gap (Recommended)"; the question as the orchestrator relayed it was how the freeze treats the unfinished V4 model run (the question and option texts are not supplied beyond the labels: TODO(evidence)). The facts are from `risu-b715\v4\v4-results.md` and the decision packet `risu-b715\census\freeze-packet.md` item 1 and Question 1 (session scratch).
+- **Reasoning:** none stated by the maintainer.
+- **Alternatives rejected:** per the brief, a longer-cap re-run was offered; the packet's Question 1 also lists holding the freeze until a plan-named set exhausts. Option texts: TODO(evidence).
+- **Amends:** none of the earlier entries' text. Settles whether the open V4 precondition of the freeze declaration (plan section 6; Report 62 D8) blocks the freeze; applies `MC-290`'s freeze rules.
+- **Related:** `MC-290`, `MC-294`, `MC-295`, `MC-296`, Report 62 D8 and D9, plan v3.4 amendment 5, ledger rows 1764, 1773 and 1776.
+
+**What was decided:** the V4 model check (the refuse fix with a bulk, one silent damage and one recovery, staged manifests as candidates) is accepted as a known gap for the format freeze. Chosen option: "Accept as known gap (Recommended)". Safety property S1 therefore stays REASONED, supported by partial model evidence, and is not model-checked.
+
+**Notes that are not the maintainer's words:**
+- What was run (`v4-results.md`, EXECUTED by the model author, scratch only): no plan-named set finished within the 1,800 s cap. `v4` reached about 140M states and `v4`+`lost=0` about 113M states, both INCONCLUSIVE with no violation printed (exit 124). Only `lost=0, bulkData=1` finished among the non-degenerate sets: 32,298,023 states, 0 violations; the degenerate `v4t` (`lost=0, ordB=0`, B never acts) also finished, 128,327 states, 0 violations. That reduction does not cover lost-response regions or a 3-unit bulk, and the model has single faults and Node silent damage only. In that model the standing-prefix exclusion rule is never decisive for safety; its mutant is caught only through the "never replace a healthy key" check.
+- Wording correction to earlier records: Report 62 D9 (model and device results) and ledger row 1764 say the V4 reduced set "passed". That is inaccurate for any set the plan names; the accurate statement is the one above (found by the freeze packet's review, `risu-b715\census\freeze-review.md` F1). The earlier records are kept and corrected by dated notes, not rewritten.
+- A longer re-run was not run. The packet reports that the state table at `--bits 28` is about half used at 140M states, so a longer run may need more bits or may end with "table full" (UNCERTAIN; its tail size is unknown).
+- If a later run found a violation, the plan's 3.1b amendment path applies, with a format edit only if the fix needs a field (plan section 6).
+
+### MC-294 — Main Campaign, 2026-10-14: no second census on a backup containing archived (cold) data before the format freeze; the gap is accepted
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-14. The time of the answer is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's brief for the freeze records pass (`rec-freeze-brief.md`, session scratch): the chosen option label "No, accept the gap (Recommended)"; the question gist was whether to run the census on a second backup that has archived (cold) data. The question and option texts are not supplied beyond the labels: TODO(evidence). Facts from `risu-b715\census\census-summary.md` (verified `[EDITORIAL]`), `census\uf-review.md` and `census\freeze-packet.md` item 10 (session scratch).
+- **Reasoning:** none stated by the maintainer.
+- **Alternatives rejected:** per the packet's Question 3, running a second census on a backup with archived data before the freeze (a delay). Option text: TODO(evidence).
+- **Amends:** none of the earlier entries' text. Settles whether census coverage of archived data blocks the freeze declaration (plan 8.3).
+- **Related:** `MC-290`, `MC-293`, plan v3.4 8.3 and amendment 5, ledger rows 1772, 1773 and 1776.
+
+**What was decided:** no second census run on a backup containing archived (cold) data before the freeze; the gap is accepted. Chosen option: "No, accept the gap (Recommended)".
+
+**Notes that are not the maintainer's words:**
+- The census ran once, on the maintainer's backup, started by the orchestrator at the maintainer's request (per the brief; the copy was to be deleted by the maintainer, deletion not confirmed in the sources read here). Sizes and ordinals only, no content (`census-summary.md` section 4, MEASURED).
+- That backup holds no archived data: `database.decodeFormat` is "legacy", all 485 characters are inline, and `stubCharacters`, `pointerChatsSeen`, `coldUnitsParsed` and `coldPluginMappingKeys` are 0 (MEASURED). The census therefore says nothing about the cold re-attach path, stub refusal on real data or archived-chat sizes.
+- The packet's basis for "not a freeze blocker" (`freeze-packet.md` item 10, reviewer-confirmed in `freeze-review.md` F6): the format stores no cold-specific field (`coldstorage`, `coldStoragedChats`, `coldVersion` and `coldChatCount` are derived at load), the one decision archived chats could change is the `cx` chunk-index unit, which the plan classes as Tier 2 (addable after the freeze), and what rests only on fixtures is stage 4 converter code, not frozen format.
+- Other census results as summarised in `census-summary.md` (MEASURED): 485 of 485 owners encoded and none skipped (the earlier "417 / 485" reading was a progress print); largest framed unit 4,114,089 B (lore, 3.92 MiB), no unit above 8 MiB; 814 chats with at most 7 chunks; 23 owners above the old 4,096 inlay-id cap (8 characters, 15 modules), none written as overflow; manifest 3,125 B. No format change is indicated by the census. The `unknown-field` removals (characterCore 3, configRoot 1, pluginStorage 1,296) were reviewed for silent data loss by `opus-reviewer` (`uf-review.md`, `[EDITORIAL]`): every counted removal traces to an undefined-valued key that today's JSON save also drops (traced by exhaustion, not observed on the real data); the 147,145 B chunk above the 131,072 B cap is expected because the `st` field sits outside the cap.
+
+### MC-295 — Main Campaign, 2026-10-14: the `&revisions=1` server list mode is not approved now
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-14. The time of the answer is not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's brief for the freeze records pass (`rec-freeze-brief.md`, session scratch): the chosen option label "Not now (Recommended)". The question and option texts are not supplied beyond the label: TODO(evidence). Background from `risu-b715\census\freeze-packet.md` item 5 and Question 4.
+- **Reasoning:** none stated by the maintainer.
+- **Alternatives rejected:** per the packet's Question 4, approving the mode now (one server option, tests and a Gate 2). Option text: TODO(evidence).
+- **Amends:** none of the earlier entries' text. Answers the open question `MC-290` left ("`&revisions=1` not covered by this entry"); `MC-290` U3 stands as decided.
+- **Related:** `MC-290`, plan v3.4 amendment 5, Report 62 D8, ledger rows 1773 and 1776.
+
+**What was decided:** the optional `&revisions=1` mode on the Node list route (returning each listed key's server revision so a sweep need not HEAD each candidate) is not approved now. Chosen option: "Not now (Recommended)". This entry does not rule out a later request.
+
+**Notes that are not the maintainer's words:**
+- It is not a stored field (plan 3.8c, 10 A.5), so it is not a freeze blocker either way.
+- Context the packet gave (INFERRED, not measured): a HEAD reads the whole file (X17, confirmed in ledger row 1768); the Node HEAD recording pass is capped at 500 candidates per pass with a 24 h age, so a library of 383k orphans would need about 766 passes (arithmetic; cadence unknown); the maintainer's backup at the 2026-10-13 snapshot had all 383,742 assets referenced, which says little about accumulation under the new design.
+
+### MC-296 — Main Campaign, 2026-10-14: Android save speed before the format freeze: measured first, then the format is frozen without pack-per-commit; concurrent durable unit writes become stage 2 writer behaviour; about 125 ms on the Note 9 is a known gap
+
+- **Tag:** decision (three `AskUserQuestion` answers by option label, in sequence, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
+- **Date:** 2026-10-14. The times of the answers are not recorded in the source.
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the orchestrator's brief for the freeze records pass (`rec-freeze-brief.md`, session scratch): the three chosen option labels below, with the other options as named in the brief. The question and option texts are not supplied beyond the labels and the brief's paraphrase: TODO(evidence). The measurements are in `risu-b715\s1b\devC-results.md`, `devD-results.md` and `devE-results.md`; the background is `risu-b715\census\freeze-packet.md` item 3 and Question 2 (session scratch).
+- **Reasoning:** none stated by the maintainer.
+- **Alternatives rejected:** per item below.
+- **Amends:** none of the earlier entries' text. Settles the A2 (Android durable-append latency) ladder step (c), pack-per-commit, that the plan classes as Tier 3 and the only freeze-blocking path (plan 4.5).
+- **Related:** `MC-290`, `MC-293`, plan v3.4 4.5 and amendment 5, Report 62 D9, ledger rows 1765, 1775 and 1776.
+
+**What was decided (three questions, in sequence):**
+1. **Freeze without pack-per-commit? "Measure it first".** Other options offered, per the brief: freeze without it; add it now.
+2. **After the pack measurement (5-write append 211 ms to 115 ms in sequential blocks): "Test the writer fixes first".** Other options offered, per the brief: freeze without bundles; add bundles before freezing.
+3. **After the interleaved run (parallel unit writes save about as much as the pack, about 30 ms): "Freeze, write in parallel (Recommended)".** The format is frozen without bundles; concurrent durable unit writes become stage 2 writer behaviour; about 125 ms on the Note 9 is recorded as a known gap. Other options offered, per the brief: one more balanced run first; add bundles anyway.
+
+**Notes that are not the maintainer's words:**
+- All figures are one Samsung SM-N960N (Note 9), Android 10, one app launch per session, not generalised. Release-profile unsigned APK signed with a throwaway key, WebView 154.0.8037.106 (devC, OBSERVED); thermal state not recorded.
+- Release against debug (devC, MEASURED, two sessions): 4-write append p50 about 184 ms (185.7 and 182.8) against 279.1 on the debug build; 5-write about 207 ms (207.0 and 206.6) against 311.8; a small durable write about 18 to 23 ms.
+- Sequential blocks (devD, MEASURED): 5-write baseline p50 211.4 and 210.6 ms; pack plus commit 113.7 and 114.9 ms. The 4-write baseline is a mixture of a fast and a slow regime, so the 5-write comparison is the sounder one (the devD report's own reading).
+- Interleaved, 5 durable writes, p50 of two runs (devE, MEASURED): baseline 160.7 and 152.9 ms; one pack plus commit 126.9 and 121.7; four units written as concurrent durable calls then the commit key 131.8 and 122.2; non-durable units 151.9 and 144.8. No variant reaches the 60 ms target at p50 or p95. The saving against the baseline at p50 is about 31 to 34 ms for the pack and about 29 to 31 ms for concurrent writes. The sequential-block pack saving (about 96 ms) was not reproduced under interleaving.
+- Caveats the source reports: a shared fast window (about 40 to 55 percent faster, 2 to 3 s long) hits every variant at once, and a predecessor effect of 10 to 40 ms depends on which variant ran just before; the figures are therefore averages over mixed conditions, and the cause of both is unknown. Durability: concurrent unit writes still flush every unit file and its directory entry before the commit key is written, so invariant I1 is unchanged (devE); the non-durable variant would not, and was not chosen.
+- Per the amendment 5 review (`risu-b715\freeze\amend5-review.md`, `opus-reviewer` `[EDITORIAL]`, per the orchestrator's addendum; not opened by this pass): paired per rep the pack saved 38 and 34 ms against 28 and 28 ms for concurrent writes and is also better at p95; at p50 the two are comparable (34 and 31 against 29 and 31 ms). Concurrent unit writes change the merged stage 1b Tauri backend `commitOrdinary` (`src/ts/storage/store2/backend/tauri.ts`) and need their own Gate 2 when built, the commit key waiting until every unit write settles flushed; the Node backend already writes units in parallel.
+- Not measured (devE): raw-body IPC and the batch command, which the Android release build refused (see Live-State, 2026-10-14 freeze update); power-loss behaviour; other devices.
+- The sequence of choices is the maintainer's; the label "about 125 ms" is the brief's figure for the concurrent-write variant (devE p50 131.8 and 122.2 ms).
 ### MC-300 — Unload-2 session, 2026-10-12: the stage-1c measurement code is kept, compiled out of normal builds
 
 - **Tag:** decision (`AskUserQuestion` answer, by option label)
