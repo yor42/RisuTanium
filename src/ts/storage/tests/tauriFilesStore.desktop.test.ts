@@ -180,6 +180,19 @@ describe('Tauri files store on desktop', () => {
             expect(same(h.fs.files.get('blocks/gen/c/6162'), bytes)).toBe(true)
         })
 
+        test('a durable key above CHUNK_MAX carries the chunk flush status into WriteResult.flushed, and a plain key carries none', async () => {
+            const bytes = patterned(CAP + 1)
+            h.desktop.chunk.reportFlushes()
+
+            expect(await store().write('store2/u/abc', bytes, 'unconditional')).toEqual({ version: null, flushed: true })
+
+            h.desktop.chunk.failFlushes((call) => call.last)
+            expect(await store().write('blocks/gen/c/6162', bytes, 'unconditional')).toEqual({ version: null, flushed: false })
+
+            const plain = await store().write('assets/big.bin', patterned(CAP + 1), 'unconditional')
+            expect('flushed' in plain).toBe(false)
+        })
+
         test('a plain key of at most CHUNK_MAX bytes is written through the plugin with the ./ path, and the only command invoked creates its folder', async () => {
             await store().write('database/database.bin', patterned(CAP), 'unconditional')
 

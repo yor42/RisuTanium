@@ -31,6 +31,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import {
     bytesToBase64,
+    createChunkedWriter,
     isAndroidTransport,
     RangeReadChangedError,
     READ_PIECE_BYTES,
@@ -378,5 +379,76 @@ describe('readRanged', () => {
         }
 
         expect(Array.from(await readRanged('assets/x', 10))).toEqual([7, 8, 9])
+    })
+})
+
+describe('the flush status of a durable chunked write', () => {
+    test('a command that answers no status leaves flushed absent, never true', async () => {
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBeUndefined()
+        expect(stored(KEY)).toEqual(Array.from(patterned(10)))
+    })
+
+    test('every chunk reporting a clean flush gives true', async () => {
+        h.chunk.reportFlushes()
+
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(true)
+    })
+
+    test('a failed flush on the first chunk or on the last gives false and the bytes are still written', async () => {
+        h.chunk.reportFlushes()
+        for (const failing of [(call: { offset: number }) => call.offset === 0, (call: { last: boolean }) => call.last]) {
+            h.fs.reset()
+            h.chunk.failFlushes(failing)
+
+            expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(false)
+            expect(stored(KEY)).toEqual(Array.from(patterned(10)))
+        }
+    })
+
+    test('a non-durable write reports nothing even when the command answers a status', async () => {
+        h.chunk.reportFlushes()
+
+        expect(await writeChunked(KEY, patterned(10), false, 4)).toBeUndefined()
+    })
+
+    test('a finalKey that already holds a file is kept and reports false', async () => {
+        h.chunk.reportFlushes()
+        h.fs.files.set('assets/final.png', OLD)
+        const writer = createChunkedWriter('assets/provisional.png', { durable: true, chunkBytes: 4 })
+
+        await writer.write(patterned(10))
+        await writer.finish('assets/final.png')
+
+        expect(writer.flushed).toBe(false)
+        expect(stored('assets/final.png')).toEqual(Array.from(OLD))
+        expect(leftoverTemps()).toEqual([])
+    })
+
+    test('a clean write onto a new finalKey reports true, and flushed is absent before finish', async () => {
+        h.chunk.reportFlushes()
+        const writer = createChunkedWriter('assets/provisional.png', { durable: true, chunkBytes: 4 })
+
+        await writer.write(patterned(10))
+        expect(writer.flushed).toBeUndefined()
+        await writer.finish('assets/final.png')
+
+        expect(writer.flushed).toBe(true)
+    })
+
+    test('one chunk without a status leaves it unknown, and a reported failure still wins', async () => {
+        h.state.override = async (command, args) => {
+            const answer = await h.chunk.invoke(command, args)
+            const offset = (args as { offset?: number }).offset
+            if (command === 'write_chunk' && offset === 4) {
+                return undefined
+            }
+            return answer
+        }
+        h.chunk.reportFlushes()
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBeUndefined()
+
+        h.fs.reset()
+        h.chunk.failFlushes((call) => call.last)
+        expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(false)
     })
 })

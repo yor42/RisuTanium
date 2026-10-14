@@ -77,6 +77,23 @@ describe('Tauri files store on Android', () => {
         expect(h.fs.files.get('blocks/gen/c/6162')?.length).toBe(WRITE_CHUNK_BYTES + 5)
     })
 
+    test('a durable key carries the chunk flush status into WriteResult.flushed; an answer of the old shape leaves it absent', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        const bytes = patterned(WRITE_CHUNK_BYTES + 5)
+
+        const oldShape = await store.write('store2-commit', bytes, 'unconditional')
+        expect('flushed' in oldShape).toBe(false)
+
+        h.chunk.reportFlushes()
+        expect(await store.write('store2-fence', bytes, 'unconditional')).toEqual({ version: null, flushed: true })
+
+        h.chunk.failFlushes((call) => call.offset === 0)
+        expect(await store.write('blocks/gen/c/6162', bytes, 'unconditional')).toEqual({ version: null, flushed: false })
+
+        const plain = await store.write('store2-sweep', patterned(40), 'unconditional')
+        expect('flushed' in plain).toBe(false)
+    })
+
     test('a plain key is written as non-durable chunks of the bare key, without the plugin prefix', async () => {
         const store = createTauriFilesStore({ platform: 'posix' })
 

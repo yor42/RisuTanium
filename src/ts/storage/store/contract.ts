@@ -63,6 +63,13 @@ export interface ReadResult {
 export interface WriteResult {
     /** The version the key has now; `null` on a store without conditional writes. */
     version: StoreVersion | null
+    /**
+     * Present only on stores that flush a write to disk. `false` means the bytes
+     * are written but the directory entry may not survive power loss (a directory
+     * flush failed, or none happened for an existing key kept as is). `true` means
+     * every flush succeeded. Absent means the store does not report it.
+     */
+    flushed?: boolean
 }
 
 export interface DeleteEntry {

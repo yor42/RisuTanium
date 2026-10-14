@@ -67,9 +67,11 @@ fn read_env_secret(name: String) -> Result<String, String> {
 /// `x-risu-key` header (percent-encoded). The bytes are the raw request body on
 /// the custom-protocol IPC; a JSON array of byte values is also accepted, which is
 /// what the postMessage fallback sends. Any other body is rejected before
-/// the disk is touched. The file work runs on a blocking worker thread.
+/// the disk is touched. The file work runs on a blocking worker thread. The
+/// result is `{ "flushed": bool }`: `false` when a directory flush after the
+/// rename failed (the write still succeeded).
 #[tauri::command]
-async fn write_durable(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+async fn write_durable(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
     let raw_key = request
         .headers()
         .get(durable_write::KEY_HEADER)
@@ -78,16 +80,20 @@ async fn write_durable(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resu
     let key = durable_write::decode_key_header(raw_key)?;
     let bytes = durable_write::decode_body(request.body())?;
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || durable_write::write_key_durable(&base, &key, &bytes))
+    let flushed = tauri::async_runtime::spawn_blocking(move || durable_write::write_key_durable(&base, &key, &bytes))
         .await
-        .map_err(|e| format!("the write task failed: {}", e))?
+        .map_err(|e| format!("the write task failed: {}", e))??;
+    Ok(json!({ "flushed": flushed }))
 }
 
 /// One chunk of a file written under the app data directory: the page sends the
 /// chunks of one write in order under one write id (see `chunked_io`). `data` is
 /// the chunk's bytes as base64 text. The last chunk may carry `final_key`, the key
 /// the finished file takes instead of `key` (see `chunked_io::write_chunk_final_with`).
-/// The file work runs on a blocking worker thread.
+/// The file work runs on a blocking worker thread. The result is
+/// `{ "flushed": bool }`: `false` when a directory flush of this chunk failed or,
+/// on a last chunk with `final_key`, the file already existed and was kept.
+/// A caller combines the answers of all chunks of a durable write with AND.
 #[tauri::command]
 async fn write_chunk(
     app: AppHandle,
@@ -98,13 +104,14 @@ async fn write_chunk(
     last: bool,
     durable: bool,
     final_key: Option<String>,
-) -> Result<(), String> {
+) -> Result<Value, String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    let flushed = tauri::async_runtime::spawn_blocking(move || {
         chunked_io::write_chunk_key(&base, &key, &id, offset, &data, last, durable, final_key.as_deref())
     })
         .await
-        .map_err(|e| format!("the write task failed: {}", e))?
+        .map_err(|e| format!("the write task failed: {}", e))??;
+    Ok(json!({ "flushed": flushed }))
 }
 
 /// Removes the temp file of a chunked write that did not finish.
@@ -131,7 +138,8 @@ async fn read_range(app: AppHandle, key: String, offset: u64, len: u64) -> Resul
 
 /// Writes many asset files in one call. The body is raw frames
 /// `[u32 LE keyLen][key][u32 LE dataLen][bytes]`; the result is one outcome per
-/// frame in input order. A body that is not raw or is malformed is refused
+/// frame in input order, each `ok` with `flushed` (`false` when a directory
+/// flush it depends on failed). A body that is not raw or is malformed is refused
 /// before any write. The base directory is the app data directory; the page
 /// supplies no path.
 #[tauri::command]
@@ -147,7 +155,8 @@ async fn put_assets_batch(app: AppHandle, request: tauri::ipc::Request<'_>) -> R
 /// chunk bytes are the body, and `x-risu-key` (percent-encoded), `x-risu-id`,
 /// `x-risu-offset`, `x-risu-last` and `x-risu-durable` carry the rest, and the
 /// last chunk may add `x-risu-final-key` (percent-encoded) (see
-/// `asset_batch::write_chunk_raw`). The result is an outcome object; a refused
+/// `asset_batch::write_chunk_raw`). The result is an outcome object, with
+/// `flushed` on a durable write (see `asset_batch::Outcome`); a refused
 /// key is `invalid`. A body that is not raw is refused with `not-raw:` and a bad
 /// header with `malformed:`, both before the disk is touched.
 #[tauri::command]

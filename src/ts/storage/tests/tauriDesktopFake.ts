@@ -101,7 +101,7 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
         }
         rawCalls.push(call)
         try {
-            await chunk.invoke('write_chunk', {
+            const answer = await chunk.invoke('write_chunk', {
                 key: call.key,
                 id: call.id,
                 offset: call.offset,
@@ -110,7 +110,9 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
                 durable: call.durable,
                 ...(call.finalKey !== undefined ? { finalKey: call.finalKey } : {}),
             })
-            return { k: 'ok' }
+            // The Rust outcome carries `flushed` only for a durable write, and only when the chunk fake reports flushes.
+            const flushed = (answer as { flushed?: unknown } | undefined)?.flushed
+            return call.durable && typeof flushed === 'boolean' ? { k: 'ok', flushed } : { k: 'ok' }
         } catch (error) {
             const text = String(error)
             return text.startsWith('refused key') ? { k: 'invalid', reason: text } : { k: 'error', message: text }

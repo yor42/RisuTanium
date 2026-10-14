@@ -74,6 +74,22 @@ describe('writeFileDurable', () => {
 
         await expect(writeFileDurable('blocks/head', BYTES)).rejects.toBe('failed to rename (os error 5)')
     })
+
+    test('resolves with the flush status the command answered', async () => {
+        invokeMock.mockResolvedValue({ flushed: true })
+        expect(await writeFileDurable('blocks/head', BYTES)).toBe(true)
+
+        invokeMock.mockResolvedValue({ flushed: false })
+        expect(await writeFileDurable('blocks/head', BYTES)).toBe(false)
+    })
+
+    test('an answer of the old shape gives no status, never true', async () => {
+        for (const answer of [undefined, null, {}, { flushed: 'yes' }, { flushed: 1 }, true]) {
+            invokeMock.mockResolvedValue(answer)
+
+            expect(await writeFileDurable('blocks/head', BYTES)).toBeUndefined()
+        }
+    })
 })
 
 /** Every shape the key rules refuse, on both sides: the Rust test holds the same list. */
@@ -101,10 +117,15 @@ describe('key rules', () => {
 })
 
 describe('routing in the Tauri files store', () => {
-    const DURABLE = ['blocks/head', 'blocks/gen/root', 'blocks/gen/c/6162', 'database/dbbackup-17909517188.bin', 'coldstorage/unit-1', 'database/database.pre-blocks.bin', 'database/database.pre-blocks-2.bin']
+    const DURABLE = [
+        'blocks/head', 'blocks/gen/root', 'blocks/gen/c/6162', 'database/dbbackup-17909517188.bin', 'coldstorage/unit-1',
+        'database/database.pre-blocks.bin', 'database/database.pre-blocks-2.bin',
+        'store2/u/abc', 'store2-commit', 'store2-fence',
+    ]
     const PLAIN = [
         'database/database.bin', 'assets/abc123', 'remotes/x', 'database/dbbackup-x.bin',
         'database/dbbackup-1.bin.old', 'database/database.pre-blocks.txt', 'blocksx/y', 'coldstorage_unit.json', 'other/file',
+        'store2-sweep', 'store2', 'store2x/y', 'store2-commit/x', 'store2-fence.old',
     ]
 
     test.each(DURABLE)('%s goes to the durable command and not to the plain file write', async (key) => {
@@ -128,13 +149,41 @@ describe('routing in the Tauri files store', () => {
         expect(Array.from(fakeFs.files.get(key) ?? [])).toEqual(Array.from(BYTES))
     })
 
-    test('isDurableKey picks exactly the four kinds', () => {
+    test('isDurableKey picks exactly the durable kinds, the three store2 keys included and store2-sweep excluded', () => {
         for (const key of DURABLE) {
             expect(isDurableKey(key)).toBe(true)
         }
         for (const key of PLAIN) {
             expect(isDurableKey(key)).toBe(false)
         }
+    })
+
+    test('a durable store write carries the status the command answered into WriteResult.flushed', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+
+        invokeMock.mockResolvedValue({ flushed: true })
+        expect(await store.write('store2-commit', BYTES, 'unconditional')).toEqual({ version: null, flushed: true })
+
+        invokeMock.mockResolvedValue({ flushed: false })
+        expect(await store.write('store2/u/abc', BYTES, 'unconditional')).toEqual({ version: null, flushed: false })
+    })
+
+    test('a durable store write whose command answers no status has no flushed field', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+
+        const result = await store.write('blocks/head', BYTES, 'unconditional')
+
+        expect(result).toEqual({ version: null })
+        expect('flushed' in result).toBe(false)
+    })
+
+    test.each(PLAIN)('a plain write of %s has no flushed field', async (key) => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        invokeMock.mockResolvedValue({ flushed: true })
+
+        const result = await store.write(key, BYTES, 'unconditional')
+
+        expect('flushed' in result).toBe(false)
     })
 
     test('a command failure rejects the store write', async () => {
