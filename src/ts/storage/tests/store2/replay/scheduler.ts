@@ -30,6 +30,21 @@
  * write paths: `registerPage` and `writeTop` can be lost, lost-response or crash,
  * and `removeTop` behaves as a `deleteMany` (lost, partial removal, crash).
  *
+ * Delayed landing (scripted only): a crash that keeps the actor's decisive call
+ * instead of applying it, the way a native command outlives the page that sent it.
+ * The call lands in a step of its own, chosen like any other request, once its
+ * `landWhen` predicate holds, attributed to the dead actor and its operation.
+ *  - `ghost-queued`: the call has not reached the native lock. Its landing runs the
+ *    store's own call, so a gate that checks and applies as one step refuses it
+ *    when a later registration made it stale.
+ *  - `ghost-held`: the call took the lock and passed its check (`beginWriteTop` /
+ *    `beginRemoveTop` of a `TwoStepPageGate`) and applies at its landing. A
+ *    registration that arrives meanwhile waits for the lock, so a granted call
+ *    that stays blocked while a ghost holds the lock is parked and the run goes on
+ *    with other steps, among them the landing that frees it.
+ * A plain `write`, `delete` or `deleteMany` can only be `ghost-queued`: it takes no
+ * lock, which is how the ungated paths are modelled.
+ *
  * Actors of one Tauri page share one scheduled `ByteStore` per inner store (the
  * `page` option of `spawn`), so the backend's in-process mutex, which is keyed by
  * the store object, is shared as it is in the app. Each call is attributed to its
@@ -76,7 +91,29 @@ export type RawState = ReadonlyMap<string, RawEntry>
 
 // ---- What a step reports ----
 
-export type FaultKind = 'lost-response' | 'lost-request' | 'crash-after-write' | 'partial-removal'
+export type FaultKind = 'lost-response' | 'lost-request' | 'crash-after-write' | 'partial-removal' | 'ghost-queued' | 'ghost-held'
+
+function isGhostKind(kind: FaultKind | null): kind is 'ghost-queued' | 'ghost-held' {
+    return kind === 'ghost-queued' || kind === 'ghost-held'
+}
+
+/** The landing of a decisive call that holds the native lock: it applies the call and releases the lock; a one-shot. */
+export type Landing = () => Promise<unknown>
+
+/**
+ * A page gate whose decisive calls can also run in two steps, which is how a call
+ * that outlives its page is modelled: `begin*` takes the lock and makes the
+ * generation check in one step (rejecting with the stale-generation error when the
+ * check fails, with the lock released), and the returned landing applies and releases.
+ */
+export interface TwoStepPageGate extends PageGateOperations {
+    beginWriteTop(generation: number, key: string, bytes: Uint8Array): Promise<Landing>
+    beginRemoveTop(generation: number, keys: readonly string[]): Promise<Landing>
+}
+
+function isTwoStepGate(gate: PageGateOperations): gate is TwoStepPageGate {
+    return 'beginWriteTop' in gate && 'beginRemoveTop' in gate
+}
 export type EnvFault = 'damage-commit' | 'damage-fence'
 
 /** What the actor is doing, declared by the actor; the checker judges transitions of the commit key against it. */
@@ -133,11 +170,14 @@ export interface FaultBudget {
     crashPerActor: number
 }
 
-export interface ScriptedFault {
+/** Which call a scripted fault hits: the actor's nth granted write that can fault (1-based), or its nth call (1-based, the first by default) of an op (or of any op listed) and, when given, a target and the operation the actor declared. */
+export type ScriptedSelector = { write: number } | { op: string | readonly string[], target?: string, context?: OperationKind, nth?: number }
+
+export type ScriptedFault = ScriptedSelector & {
     actor: string
-    /** The actor's nth granted write that can fault, 1-based. */
-    write: number
     kind: FaultKind
+    /** A ghost kind only: the landing is a candidate step once this holds; absent means at once. */
+    landWhen?: () => boolean
 }
 
 export type FaultPlan =
@@ -211,6 +251,19 @@ interface CallSpec {
     fenceExpect: Expect | null
     /** A `deleteMany`: its entries and the call that removes only a subset of them, so a partial removal can happen. */
     removal: { entries: readonly DeleteEntry[], runSubset: (entries: readonly DeleteEntry[]) => Promise<void> } | null
+    /** A decisive write or removal: how it can outlive its actor. `begin` is null where the call takes no native lock. */
+    ghost: { queued: () => Promise<unknown>, begin: (() => Promise<Landing>) | null } | null
+}
+
+/** A decisive call kept after its actor crashed, waiting for its landing step. */
+interface Ghost {
+    id: number
+    actor: string
+    spec: CallSpec
+    context: ActorContext | null
+    kind: 'ghost-queued' | 'ghost-held'
+    land: () => Promise<unknown>
+    landWhen: () => boolean
 }
 
 interface Pending {
@@ -362,8 +415,9 @@ function callSpec(
     op: string, target: string, write: boolean, loss: LossSpec | null,
     expects: Pick<CallSpec, 'commitExpect' | 'fenceExpect'> = { commitExpect: null, fenceExpect: null },
     removal: CallSpec['removal'] = null,
+    ghost: CallSpec['ghost'] = null,
 ): CallSpec {
-    return { op, target, write, loss, ...expects, removal }
+    return { op, target, write, loss, ...expects, removal, ghost }
 }
 
 function keysTarget(keys: readonly string[]): string {
@@ -420,7 +474,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         const lost = new Map<string, number>()
         const crashes = new Map<string, number>()
         for (const entry of plan.entries) {
-            const counts = entry.kind === 'crash-after-write' ? crashes : lost
+            const counts = entry.kind === 'crash-after-write' || isGhostKind(entry.kind) ? crashes : lost
             counts.set(entry.actor, (counts.get(entry.actor) ?? 0) + 1)
         }
         for (const count of lost.values()) {
@@ -439,6 +493,11 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     const order: string[] = []
     let pending: Pending[] = []
     const envActions: EnvAction[] = []
+    const ghosts: Ghost[] = []
+    /** Per call-selected scripted fault, how many calls it matched so far. */
+    const selected = new Map<ScriptedFault, number>()
+    /** The scripted entry behind the fault `decideFault` last returned, or null. */
+    let scriptedHit: ScriptedFault | null = null
     const log: LogEntry[] = []
     const attribution = new AsyncLocalStorage<string>()
     const pageStores = new Map<string, WeakMap<ByteStore, ByteStore>>()
@@ -505,11 +564,15 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             ),
         }
         const innerGate = inner.pageGate
+        const twoStep = innerGate !== undefined && isTwoStepGate(innerGate) ? innerGate : null
         const gate: PageGateOperations | undefined = innerGate === undefined ? undefined : {
             registerPage: () => request(actor, callSpec('registerPage', '', true, PLAIN_LOSS), () => innerGate.registerPage()),
             writeTop: (generation, key, bytes) => request(
                 actor,
-                callSpec('writeTop', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect('unconditional'))),
+                callSpec('writeTop', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect('unconditional')), null, {
+                    queued: () => innerGate.writeTop(generation, key, bytes),
+                    begin: twoStep === null ? null : () => twoStep.beginWriteTop(generation, key, bytes),
+                }),
                 () => innerGate.writeTop(generation, key, bytes),
             ),
             removeTop: (generation, keys) => {
@@ -519,6 +582,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                     callSpec('removeTop', keysTarget(keys), true, deleteManyLoss(entries), { commitExpect: null, fenceExpect: keys.includes(FENCE_KEY) ? conditionExpect('unconditional') : null }, {
                         entries,
                         runSubset: (subset) => innerGate.removeTop(generation, subset.map((entry) => entry.key)),
+                    }, {
+                        queued: () => innerGate.removeTop(generation, keys),
+                        begin: twoStep === null ? null : () => twoStep.beginRemoveTop(generation, keys),
                     }),
                     () => innerGate.removeTop(generation, keys),
                 )
@@ -527,14 +593,14 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         const store: ByteStore = {
             capabilities: inner.capabilities,
             read: (key) => request(actor, callSpec('read', key, false, null), () => inner.read(key)),
-            write: (key, bytes, condition) => request(actor, callSpec('write', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition))), () => inner.write(key, bytes, condition)),
-            delete: (key, condition) => request(actor, callSpec('delete', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition))), () => inner.delete(key, condition)),
+            write: (key, bytes, condition) => request(actor, callSpec('write', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition)), null, { queued: () => inner.write(key, bytes, condition), begin: null }), () => inner.write(key, bytes, condition)),
+            delete: (key, condition) => request(actor, callSpec('delete', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition)), null, { queued: () => inner.delete(key, condition), begin: null }), () => inner.delete(key, condition)),
             deleteMany: (entries) => request(
                 actor,
                 callSpec('deleteMany', keysTarget(entries.map((entry) => entry.key)), true, deleteManyLoss(entries), undefined, {
                     entries,
                     runSubset: (subset) => inner.deleteMany(subset),
-                }),
+                }, { queued: () => inner.deleteMany(entries), begin: null }),
                 () => inner.deleteMany(entries),
             ),
             list: (prefix) => request(actor, callSpec('list', prefix, false, null), () => inner.list(prefix)),
@@ -554,17 +620,36 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     }
 
     function decideFault(entry: Pending, state: ActorState): FaultKind | null {
+        scriptedHit = null
         if (plan.mode === 'none') {
             return null
         }
         if (plan.mode === 'script') {
-            const hit = plan.entries.find((scripted) => scripted.actor === entry.actor && scripted.write === state.writes)
+            const hit = plan.entries.find((scripted) => {
+                if (scripted.actor !== entry.actor) {
+                    return false
+                }
+                if ('write' in scripted) {
+                    return scripted.write === state.writes
+                }
+                if (!(typeof scripted.op === 'string' ? [scripted.op] : scripted.op).includes(entry.spec.op)
+                    || (scripted.target !== undefined && scripted.target !== entry.spec.target)
+                    || (scripted.context !== undefined && scripted.context !== entry.context?.kind)) {
+                    return false
+                }
+                const seen = (selected.get(scripted) ?? 0) + 1
+                selected.set(scripted, seen)
+                return seen === (scripted.nth ?? 1)
+            })
             if (hit === undefined) {
                 return null
             }
+            scriptedHit = hit
             const impossible = hit.kind === 'crash-after-write' ? !entry.spec.write
                 : hit.kind === 'partial-removal' ? entry.spec.removal === null
-                    : entry.spec.loss === null
+                    : hit.kind === 'ghost-queued' ? entry.spec.ghost === null
+                        : hit.kind === 'ghost-held' ? entry.spec.ghost === null || entry.spec.ghost.begin === null
+                            : entry.spec.loss === null
             if (impossible) {
                 throw new RangeError(`The scripted ${hit.kind} of ${entry.actor} write ${state.writes} (${entry.spec.op}) cannot happen on that call.`)
             }
@@ -617,13 +702,13 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         if (fault === 'lost-response' || fault === 'lost-request' || fault === 'partial-removal') {
             state.lost++
         }
-        if (fault === 'crash-after-write') {
+        if (fault === 'crash-after-write' || isGhostKind(fault)) {
             state.crashes++
         }
         stepNo++
         const info: StepInfo = {
             step: stepNo, actor: entry.actor, kind: 'call', op: entry.spec.op, target: entry.spec.target,
-            applied: fault !== 'lost-request', fault, context: entry.context,
+            applied: fault !== 'lost-request' && !isGhostKind(fault), fault, context: entry.context,
             commitExpect: entry.spec.commitExpect, fenceExpect: entry.spec.fenceExpect,
         }
         const logEntry: LogEntry = { step: stepNo, actor: entry.actor, op: entry.spec.op, target: entry.spec.target, fault, outcome: 'ok' }
@@ -654,35 +739,97 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 : { key: each.key, outcome: 'failed', error: new TypeError('remove failed') })))
             return
         }
-        let value: unknown
-        let failure: unknown
-        let failed = false
-        try {
-            value = await entry.run()
-        } catch (error) {
-            failed = true
-            failure = error
-        }
-        if (fault === 'crash-after-write') {
-            logEntry.outcome = 'crash'
+        if ((fault === 'ghost-queued' || fault === 'ghost-held') && entry.spec.ghost !== null) {
+            const landWhen = scriptedHit?.landWhen ?? (() => true)
+            let landing: (() => Promise<unknown>) | null
+            if (fault === 'ghost-held' && entry.spec.ghost.begin !== null) {
+                try {
+                    landing = await entry.spec.ghost.begin()
+                } catch (error) {
+                    // The check at the lock failed: the call is over and nothing of it lands later.
+                    landing = null
+                    logEntry.outcome = `error:${errorName(error)}`
+                }
+            } else {
+                landing = entry.spec.ghost.queued
+            }
+            if (landing !== null) {
+                logEntry.outcome = fault
+                ghosts.push({ id: ++nextId, actor: entry.actor, spec: entry.spec, context: entry.context, kind: fault, land: landing, landWhen })
+            }
             options.onStep?.(info)
             retire(entry.actor)
             return
         }
-        if (fault === 'lost-response' && entry.spec.loss !== null) {
-            logEntry.outcome = 'lost-response'
+        const finish = (settled: { failed: false, value: unknown } | { failed: true, failure: unknown }): void => {
+            if (fault === 'crash-after-write') {
+                logEntry.outcome = 'crash'
+                options.onStep?.(info)
+                retire(entry.actor)
+                return
+            }
+            if (fault === 'lost-response' && entry.spec.loss !== null) {
+                logEntry.outcome = 'lost-response'
+                options.onStep?.(info)
+                entry.reject('failure' in settled && !entry.spec.loss.hides(settled.failure) ? settled.failure : entry.spec.loss.lost('response'))
+                return
+            }
+            if ('failure' in settled) {
+                logEntry.outcome = `error:${errorName(settled.failure)}`
+                options.onStep?.(info)
+                entry.reject(settled.failure)
+                return
+            }
             options.onStep?.(info)
-            entry.reject(failed && !entry.spec.loss.hides(failure) ? failure : entry.spec.loss.lost('response'))
+            entry.resolve(settled.value)
+        }
+        let started: Promise<unknown>
+        try {
+            started = entry.run()
+        } catch (error) {
+            started = Promise.reject(error)
+        }
+        const running = started.then(
+            (value): { failed: false, value: unknown } => ({ failed: false, value }),
+            (failure: unknown): { failed: true, failure: unknown } => ({ failed: true, failure }),
+        )
+        if (heldGhosts() === 0) {
+            finish(await running)
             return
         }
-        if (failed) {
-            logEntry.outcome = `error:${errorName(failure)}`
-            options.onStep?.(info)
-            entry.reject(failure)
+        // A call that waits for the lock a ghost holds is parked: the landing that frees it is a step of its own.
+        const first = await Promise.race([running, yieldMacrotask().then(() => null)])
+        if (first !== null) {
+            finish(first)
             return
         }
-        options.onStep?.(info)
-        entry.resolve(value)
+        logEntry.outcome = 'parked'
+        void running.then((settled) => {
+            logEntry.outcome = 'ok-after-wait'
+            finish(settled)
+        })
+    }
+
+    function heldGhosts(): number {
+        return ghosts.filter((ghost) => ghost.kind === 'ghost-held').length
+    }
+
+    async function land(ghost: Ghost): Promise<void> {
+        ghosts.splice(ghosts.indexOf(ghost), 1)
+        stepNo++
+        const logEntry: LogEntry = { step: stepNo, actor: ghost.actor, op: ghost.spec.op, target: ghost.spec.target, fault: ghost.kind, outcome: 'landed' }
+        log.push(logEntry)
+        let applied = true
+        try {
+            await ghost.land()
+        } catch (error) {
+            applied = false
+            logEntry.outcome = `refused:${errorName(error)}`
+        }
+        options.onStep?.({
+            step: stepNo, actor: ghost.actor, kind: 'call', op: ghost.spec.op, target: ghost.spec.target, applied, fault: ghost.kind,
+            context: ghost.context, commitExpect: ghost.spec.commitExpect, fenceExpect: ghost.spec.fenceExpect,
+        })
     }
 
     function takeEnvironment(action: EnvAction): void {
@@ -766,11 +913,13 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             const maxSteps = limit.maxSteps ?? 100_000
             for (;;) {
                 await yieldMacrotask()
-                const live = [...actors.values()].some((state) => state.status === 'running')
+                // A ghost still to land keeps the run going after every actor is over.
+                const live = ghosts.length > 0 || [...actors.values()].some((state) => state.status === 'running')
                 if (!live) {
                     return { status: 'finished', steps: stepNo, actors: report() }
                 }
-                if (pending.length === 0) {
+                const landable = ghosts.filter((ghost) => ghost.landWhen())
+                if (pending.length === 0 && landable.length === 0) {
                     return { status: 'stalled', steps: stepNo, actors: report() }
                 }
                 if (stepNo >= maxSteps) {
@@ -778,11 +927,14 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 }
                 const candidates: Candidate[] = [
                     ...pending.map((entry) => ({ id: entry.id, actor: entry.actor })),
+                    ...landable.map((ghost) => ({ id: ghost.id, actor: '$ghost' })),
                     ...envActions.map((action) => ({ id: action.id, actor: '$env' })),
                 ]
                 const chosen = policy.pick(candidates, stepNo + 1)
                 if (chosen.actor === '$env') {
                     takeEnvironment(envActions.find((action) => action.id === chosen.id)!)
+                } else if (chosen.actor === '$ghost') {
+                    await land(ghosts.find((ghost) => ghost.id === chosen.id)!)
                 } else {
                     await grant(pending.find((entry) => entry.id === chosen.id)!)
                 }
@@ -803,6 +955,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             for (const id of order) {
                 const state = stateOf(id)
                 parts.push(`@${id}=${state.calls}:${state.status}`)
+            }
+            for (const ghost of ghosts) {
+                parts.push(`^${ghost.actor}:${ghost.spec.op}:${ghost.spec.target}:${ghost.kind}`)
             }
             const text = parts.join('\n')
             return `${fnv1a(text, 0x811C9DC5).toString(16).padStart(8, '0')}${fnv1a(text, 0x01000193).toString(16).padStart(8, '0')}`

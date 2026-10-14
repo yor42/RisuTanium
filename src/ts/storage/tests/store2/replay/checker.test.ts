@@ -464,6 +464,74 @@ describe('one planted violation per property is reported as exactly that propert
         expect(step('a', 'casFence', { kind: 'fence-discard' })).toEqual([])
     })
 
+    describe('G1: a fence removal acts on the fence its actor last read', () => {
+        async function fenceStanding(): Promise<{ rig: NodeRig, step: ReturnType<typeof stepper>, listed: string }> {
+            const { rig } = await seeded()
+            const step = stepper(createChecker(rig.raw))
+            const listed = await orphan(rig)
+            await plantFenceKeys(rig.fake, [listed])
+            expect(step('a', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            return { rig, step, listed }
+        }
+
+        test('a discard after another actor rewrote the fence is reported', async () => {
+            const { rig, step, listed } = await fenceStanding()
+            expect(step('d', 'readFence', { kind: 'fence-discard' })).toEqual([])
+            await plantFenceKeys(rig.fake, [listed, await orphan(rig)])
+            expect(step('e', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            await rig.fake.store.delete(FENCE_KEY, 'unconditional')
+            const found = step('d', 'casFence', { kind: 'fence-discard' })
+            expect(propertiesOf(found)).toEqual(['G1'])
+            expect(found[0].actor).toBe('d')
+            expect(found[0].detail).toContain('removed a fence other than the one it read')
+        })
+
+        test('a discard of the fence the actor read is clean', async () => {
+            const { rig, step } = await fenceStanding()
+            expect(step('d', 'readFence', { kind: 'fence-discard' })).toEqual([])
+            await rig.fake.store.delete(FENCE_KEY, 'unconditional')
+            expect(step('d', 'casFence', { kind: 'fence-discard' })).toEqual([])
+        })
+
+        test('a ByteStore read of the fence key is the read the removal is judged against', async () => {
+            const { rig, step, listed } = await fenceStanding()
+            expect(step('d', 'read', { kind: 'fence-discard' }, { target: FENCE_KEY })).toEqual([])
+            await plantFenceKeys(rig.fake, [listed, await orphan(rig)])
+            expect(step('e', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            await rig.fake.store.delete(FENCE_KEY, 'unconditional')
+            expect(propertiesOf(step('d', 'removeTop', { kind: 'fence-discard' }))).toEqual(['G1'])
+        })
+
+        test('damage after the read is judged by amendment J: a discard of the damaged fence is clean', async () => {
+            const { rig, step } = await fenceStanding()
+            expect(step('d', 'readFence', { kind: 'fence-discard' })).toEqual([])
+            rig.fake.damage(FENCE_KEY, GARBAGE)
+            expect(step('$env', 'damage-fence', null, { kind: 'env', fault: 'damage-fence' })).toEqual([])
+            await rig.fake.store.delete(FENCE_KEY, 'unconditional')
+            expect(step('d', 'casFence', { kind: 'fence-discard' })).toEqual([])
+        })
+
+        test('A-B-A: the fence was rewritten and put back to the bytes the remover read: clean', async () => {
+            const { rig, step, listed } = await fenceStanding()
+            const read = rig.fake.peek(FENCE_KEY).bytes!
+            expect(step('d', 'readFence', { kind: 'fence-discard' })).toEqual([])
+            await plantFenceKeys(rig.fake, [listed, await orphan(rig)])
+            expect(step('e', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            await rig.fake.store.write(FENCE_KEY, read, 'unconditional')
+            step('e', 'casFence', { kind: 'fence-exit' })
+            await rig.fake.store.delete(FENCE_KEY, 'unconditional')
+            expect(step('d', 'casFence', { kind: 'fence-discard' })).toEqual([])
+        })
+
+        test('an actor that never read the fence is not reported by this rule', async () => {
+            const { rig, step, listed } = await fenceStanding()
+            await plantFenceKeys(rig.fake, [listed, await orphan(rig)])
+            expect(step('e', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            await rig.fake.store.delete(FENCE_KEY, 'unconditional')
+            expect(step('d', 'casFence', { kind: 'fence-discard' })).toEqual([])
+        })
+    })
+
     test('G1: a removal that presented a fence other than the stored one', async () => {
         const { rig } = await seeded()
         const step = stepper(createChecker(rig.raw))

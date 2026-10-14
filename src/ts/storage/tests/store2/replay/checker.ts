@@ -34,7 +34,11 @@
  *        while the fence is present but cannot be understood. The fence key itself
  *        is guarded as well: only a `fence-exit` writes it, only a `fence-discard`
  *        removes it, and a fence write or unit removal that presented a fence basis
- *        other than the stored one is reported. Read failures are not modelled, so
+ *        other than the stored one is reported. A fence removal by an actor whose last
+ *        read of the fence differs from the stored one, after a call rewrote the fence
+ *        since that read, is reported as well (a dead page's late discard); damage
+ *        alone never triggers it, and an actor that never read the fence is judged by
+ *        the discard rule only. Read failures are not modelled, so
  *        the unreadable-fence branch of the library is reached here only through
  *        damage.
  *  - G10 a fence write only grows its key list; over a damaged fence the list is
@@ -301,6 +305,9 @@ export function createChecker(read: () => RawState): Checker {
     // Per actor, the commit key and the fence as its most recent read observed them: the gate a deleter evaluated.
     const lastCommitRead = new Map<string, RawEntry>()
     const lastFenceRead = new Map<string, RawEntry>()
+    // How many calls have changed the fence so far, and the count at each actor's last fence read: damage is an environment step and is not counted.
+    let fenceCallChanges = 0
+    const fenceChangesAtRead = new Map<string, number>()
     const reported = new Set<string>()
     const violations: Violation[] = []
     let walked = false
@@ -436,6 +443,13 @@ export function createChecker(read: () => RawState): Checker {
             if (fenceBefore.bytes !== null && fenceAfter.bytes === null && kind !== 'fence-discard') {
                 report('G1', `the fence key was removed by ${info.actor} (${info.op}, ${kind ?? 'no operation'}), which is not a fence discard`)
             }
+            // A fence removal acts on the fence its actor last read. Only a call that rewrote the fence since that read
+            // counts (damage alone never does, amendment J); an actor that never read it is judged by the discard rule above.
+            const readOfFence = lastFenceRead.get(info.actor)
+            if (fenceBefore.bytes !== null && fenceAfter.bytes === null && readOfFence !== undefined
+                && fenceCallChanges > (fenceChangesAtRead.get(info.actor) ?? 0) && !sameOptionalBytes(readOfFence.bytes, fenceBefore.bytes)) {
+                report('G1', `${info.actor} (${info.op}) removed a fence other than the one it read`)
+            }
             // A call that changed the fence or removed units acted on the fence it presented.
             if (info.fenceExpect !== null && (fenceChanged || removed.length > 0) && !expectMatches(info.fenceExpect, fenceBefore)) {
                 report('G1', `${info.actor} (${info.op}) acted on a fence other than the one it presented`)
@@ -545,6 +559,10 @@ export function createChecker(read: () => RawState): Checker {
             }
             if (info.op === 'readFence' || (info.op === 'read' && info.target === FENCE_KEY)) {
                 lastFenceRead.set(info.actor, fenceAfter)
+                fenceChangesAtRead.set(info.actor, fenceCallChanges)
+            }
+            if (fenceChanged) {
+                fenceCallChanges++
             }
         }
         before = after
