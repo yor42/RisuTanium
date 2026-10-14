@@ -164,4 +164,71 @@ export interface ByteStore {
      * offers it; every other caller writes the whole value with `write`.
      */
     openWriter?(key: string): PieceWriter
+
+    /**
+     * Guarded operations. Optional and Node only: every other adapter leaves it
+     * out. The self-hosted Node server alone can compare other keys' revisions
+     * inside the same step as a write or a removal.
+     */
+    guarded?: GuardedOperations
+}
+
+/**
+ * A key whose version is only compared. It is never written, removed or bumped
+ * by the request that names it. A key that is absent, or was retired, compares
+ * as version 0 and so fails for any version of 1 or more.
+ */
+export interface CheckOnlyEntry {
+    key: string
+    version: StoreVersion
+}
+
+/** What the server's guarded routes can do. `pieces` is false until the chunked upload exists. */
+export interface GuardedCapabilities {
+    checkOnly: boolean
+    retire: boolean
+    pieces: boolean
+}
+
+/**
+ * Every call is fail-closed on its own: the server must answer with its marker,
+ * a numeric revision and an echo of exactly the checks the call sent, otherwise
+ * the call rejects with `ServerLacksCapabilityError` (`mayHaveApplied` says
+ * whether the request may have run). `probe` exists only so a page can park
+ * with a clear message at boot and at the start of a clean-up pass; it is not
+ * what makes a call safe.
+ *
+ * Failures:
+ * - `StoreVersionConflictError` names the key that did not match (a written or
+ *   removed key, or a check-only key) with its `currentVersion`; nothing was
+ *   changed.
+ * - `ServerLacksCapabilityError`: see above.
+ * - `StoreCheckListTooLongError`: more check-only keys than a request holds. Never
+ *   retried as it is.
+ * - `NodeHttpError` (Node adapter): any other status. A 5xx, or a status from an
+ *   intermediary, after the request was sent may have applied; handle it like
+ *   `StoreOutcomeUnknownError`. A 400, 401, 403 or 429 applied nothing (a refused
+ *   count list is a `ServerLacksCapabilityError`, not this).
+ * - `StoreOutcomeUnknownError`: the connection failed after the request was
+ *   sent. Re-read the commit key before anything; a collection pass is abandoned.
+ * - `StoreInvalidKeyError` and `StoreInvalidConditionError`, before any request.
+ */
+export interface GuardedOperations {
+    /** Asks the server for its capabilities. Not cached; rejects with `ServerLacksCapabilityError` unless the answer has the marker and the three booleans. */
+    probe(): Promise<GuardedCapabilities>
+
+    /** `write`, with `checkOnly` compared in the same step. */
+    writeChecked(key: string, bytes: Uint8Array, condition: StoreCondition, checkOnly: readonly CheckOnlyEntry[]): Promise<WriteResult>
+
+    /** One request that removes `entries` when every `checkOnly` entry still matches. The caller sizes the batch. */
+    removeChecked(entries: readonly DeleteEntry[], checkOnly: readonly CheckOnlyEntry[]): Promise<void>
+
+    /**
+     * Like `removeChecked`, and the removed keys are also forgotten by the
+     * server: afterwards each reads as version 0 and its name must never be
+     * written again. For garbage collection only: every key must be under the
+     * A-lite prefix and at least one check-only entry (the commit key) is
+     * required; otherwise it rejects before any request.
+     */
+    retireChecked(entries: readonly DeleteEntry[], checkOnly: readonly CheckOnlyEntry[]): Promise<void>
 }

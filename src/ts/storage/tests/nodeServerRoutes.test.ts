@@ -125,4 +125,26 @@ describe('rate-limit buckets', () => {
         }
         expect(remaining(remove)).toBe(remaining(read) - 3)
     })
+
+    test('the guarded routes and the capability route draw on the same storage bucket', async () => {
+        const read = await storageRead()
+        await read.arrayBuffer()
+        const auth = await fixture.authHeader()
+        const caps = await fetch(`${fixture.baseUrl}/api/caps`, { headers: { 'risu-auth': auth } })
+        await caps.arrayBuffer()
+        const write = await fetch(`${fixture.baseUrl}/api/write-checked`, {
+            method: 'POST',
+            headers: { 'risu-auth': auth, 'file-path': hexOfKey('limit/g'), 'check-only-count': '0', 'own-condition-count': '0', 'content-type': 'application/octet-stream' },
+            body: new Uint8Array([1]),
+        })
+        await write.arrayBuffer()
+        const remove = await fetch(`${fixture.baseUrl}/api/remove-checked`, {
+            headers: { 'risu-auth': auth, 'file-path': hexOfKey('limit/g'), 'check-only-count': '0', 'retire-count': '0', 'own-condition-count': '0' },
+        })
+        await remove.arrayBuffer()
+        for (const response of [caps, write, remove]) {
+            expect(Number(response.headers.get('ratelimit-limit'))).toBe(20000)
+        }
+        expect(remaining(remove)).toBe(remaining(read) - 3)
+    })
 })

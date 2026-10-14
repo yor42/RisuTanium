@@ -30,6 +30,7 @@ export const languageSpanish = {
         "secretRefUnsupported": (name: string) => `La variable de entorno ${name} no se puede usar aquí: esta plataforma no tiene acceso al entorno del servidor.`,
         "secretRefNotForeign": (name: string) => `La variable de entorno ${name} solo se envía a su propio proveedor, por lo que no se usó en esta solicitud.`,
         "secretRefInRequest": (name: string) => `Una solicitud aún contiene la referencia a la variable de entorno ${name}. No se envió.`,
+        "storageServerNeedsUpdate": "Este servidor es demasiado antiguo para el nuevo formato de almacenamiento: debe actualizarse o reiniciarse antes de poder guardar o limpiar. Reinicia el servidor Node (actualízalo primero si aún no lo has hecho) y luego recarga esta página.",
         "coldStorageRestoreFailed": "No se pudieron cargar los datos del almacenamiento frío. Los datos del personaje afectado pueden haberse perdido permanentemente.",
         "coldStorageRestoreUnreadable": "No se pudo cargar este personaje en este momento. No se cambió nada. Inténtalo de nuevo.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

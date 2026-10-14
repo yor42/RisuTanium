@@ -30,6 +30,7 @@ export const languageGerman = {
         "secretRefUnsupported": (name: string) => `Die Umgebungsvariable ${name} kann hier nicht verwendet werden: Diese Plattform hat keinen Zugriff auf die Umgebung des Servers.`,
         "secretRefNotForeign": (name: string) => `Die Umgebungsvariable ${name} wird nur an ihren eigenen Anbieter gesendet und wurde daher für diese Anfrage nicht verwendet.`,
         "secretRefInRequest": (name: string) => `Eine Anfrage enthält noch den Verweis auf die Umgebungsvariable ${name}. Sie wurde nicht gesendet.`,
+        "storageServerNeedsUpdate": "Dieser Server ist für das neue Speicherformat zu alt: Er muss aktualisiert oder neu gestartet werden, bevor er speichern oder aufräumen kann. Starten Sie den Node-Server neu (aktualisieren Sie ihn vorher, falls noch nicht geschehen) und laden Sie diese Seite dann neu.",
         "coldStorageRestoreFailed": "Kaltlagerdaten konnten nicht geladen werden. Die Daten des betroffenen Charakters können dauerhaft verloren sein.",
         "coldStorageRestoreUnreadable": "Dieser Charakter konnte gerade nicht geladen werden. Es wurde nichts verändert. Versuchen Sie es bitte erneut.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>

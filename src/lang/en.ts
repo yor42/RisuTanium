@@ -35,6 +35,7 @@ export const languageEnglish = {
             `Environment variable ${name} is only sent to its own provider, so it was not used for this request.`,
         secretRefInRequest: (name: string) =>
             `A request still contains the environment variable reference ${name}. It was not sent.`,
+        storageServerNeedsUpdate: "This server is too old for the new storage format: it must be updated or restarted before it can save or clean up. Restart the Node server (update it first if you have not), then reload this page.",
         coldStorageRestoreFailed: "Cold storage data could not be loaded. The affected character's data may be permanently lost.",
         coldStorageRestoreUnreadable: "This character could not be loaded right now. Nothing was changed. Please try again.",
         coldStorageNamedRestoreFailed: (characterName: string) =>

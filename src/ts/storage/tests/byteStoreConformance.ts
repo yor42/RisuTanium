@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, test } from 'vitest'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import { STORE2_PREFIX } from 'src/ts/storage/store/keyRules'
 import {
     StoreDeleteManyError,
     StoreInvalidConditionError,
@@ -41,6 +42,8 @@ export interface ConformanceHarness {
     offersUrlFor?: boolean
     /** Whether the adapter offers `writeBlob` and `readBlob`; an adapter that does not must leave both out. */
     offersBlobs?: boolean
+    /** Whether the adapter offers the guarded operations; an adapter that does not must leave `guarded` out. */
+    offersGuarded?: boolean
 }
 
 /** Keys that fail the shared rule for creating a key; every adapter's `write` must refuse them. */
@@ -349,6 +352,96 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 await expect(store.writeBlob(key, new Blob(['x']), 'unconditional')).rejects.toBeInstanceOf(StoreInvalidKeyError)
                 await expect(store.readBlob(key)).rejects.toBeInstanceOf(StoreInvalidKeyError)
                 expect(await store.has(key)).toBe(false)
+            })
+        })
+
+        describe('S14 guarded operations', () => {
+            const COMMIT = 'guarded-commit/head'
+
+            test('only an adapter that can compare other keys in the same step offers them', () => {
+                expect(typeof store.guarded).toBe(harness.offersGuarded === true ? 'object' : 'undefined')
+            })
+
+            test('an absent check-only key compares as version 0: it passes at 0 and fails at 1 or more, and the write does not happen', async () => {
+                if (store.guarded === undefined) {
+                    return
+                }
+                const absent = uniqueKey('guarded-absent')
+                const target = uniqueKey('guarded-target')
+                await store.guarded.writeChecked(target, bytesOf(1), 'unconditional', [{ key: absent, version: 0 }])
+                expect(await readBytes(store, target)).toEqual([1])
+                const refused = uniqueKey('guarded-refused')
+                const error = await store.guarded.writeChecked(refused, bytesOf(2), 'unconditional', [{ key: absent, version: 1 }]).catch((caught: unknown) => caught)
+                expect(error).toBeInstanceOf(StoreVersionConflictError)
+                expect((error as StoreVersionConflictError).key).toBe(absent)
+                expect((error as StoreVersionConflictError).currentVersion).toBe(0)
+                expect((await store.read(refused)).bytes).toBeNull()
+            })
+
+            test('a retired key reads as absent at version 0, is not listed, and a check-only against its old version conflicts', async () => {
+                if (store.guarded === undefined) {
+                    return
+                }
+                const victim = `${STORE2_PREFIX}${uniqueKey('retired')}`
+                await store.write(COMMIT, bytesOf(1), 'unconditional')
+                const commitVersion = (await store.read(COMMIT)).version as number
+                const written = await store.write(victim, bytesOf(7), 'unconditional')
+                await store.guarded.retireChecked([{ key: victim, condition: { ifVersion: written.version as number } }], [{ key: COMMIT, version: commitVersion }])
+                const after = await store.read(victim)
+                expect(after.bytes).toBeNull()
+                expect(after.version).toBe(0)
+                expect(await store.list(STORE2_PREFIX)).not.toContain(victim)
+                const other = uniqueKey('guarded-other')
+                await expect(store.guarded.writeChecked(other, bytesOf(1), 'unconditional', [{ key: victim, version: written.version as number }])).rejects.toBeInstanceOf(StoreVersionConflictError)
+                await store.guarded.writeChecked(other, bytesOf(1), 'unconditional', [{ key: victim, version: 0 }])
+                expect(await readBytes(store, other)).toEqual([1])
+            })
+
+            test('a stale check-only key stops a removal and the key survives', async () => {
+                if (store.guarded === undefined) {
+                    return
+                }
+                const victim = `${STORE2_PREFIX}${uniqueKey('survivor')}`
+                await store.write(COMMIT, bytesOf(1), 'unconditional')
+                const commitVersion = (await store.read(COMMIT)).version as number
+                await store.write(victim, bytesOf(7), 'unconditional')
+                const error = await store.guarded.retireChecked([{ key: victim, condition: 'unconditional' }], [{ key: COMMIT, version: commitVersion + 5 }]).catch((caught: unknown) => caught)
+                expect(error).toBeInstanceOf(StoreVersionConflictError)
+                expect((error as StoreVersionConflictError).key).toBe(COMMIT)
+                expect(await readBytes(store, victim)).toEqual([7])
+            })
+
+            test('retire outside the A-lite prefix, or without a check-only entry, is refused before any backend call and the key survives', async () => {
+                if (store.guarded === undefined) {
+                    return
+                }
+                const outside = uniqueKey('outside')
+                const inside = `${STORE2_PREFIX}${uniqueKey('inside')}`
+                await store.write(outside, bytesOf(1), 'unconditional')
+                await store.write(inside, bytesOf(2), 'unconditional')
+                const before = harness.backendCalls()
+                const guard = [{ key: COMMIT, version: 0 }]
+                await expect(store.guarded.retireChecked([{ key: outside, condition: 'unconditional' }], guard)).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                await expect(store.guarded.retireChecked([{ key: inside, condition: 'unconditional' }, { key: outside, condition: 'unconditional' }], guard)).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                await expect(store.guarded.retireChecked([{ key: inside, condition: 'unconditional' }], [])).rejects.toBeInstanceOf(StoreInvalidConditionError)
+                await expect(store.guarded.retireChecked([], guard)).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                expect(harness.backendCalls()).toBe(before)
+                expect(await readBytes(store, outside)).toEqual([1])
+                expect(await readBytes(store, inside)).toEqual([2])
+            })
+
+            test('a removal that is not a retire keeps the key\'s version above 0 as a tombstone', async () => {
+                if (store.guarded === undefined) {
+                    return
+                }
+                const victim = uniqueKey('plain-removed')
+                await store.write(COMMIT, bytesOf(1), 'unconditional')
+                const commitVersion = (await store.read(COMMIT)).version as number
+                const written = await store.write(victim, bytesOf(7), 'unconditional')
+                await store.guarded.removeChecked([{ key: victim, condition: { ifVersion: written.version as number } }], [{ key: COMMIT, version: commitVersion }])
+                const after = await store.read(victim)
+                expect(after.bytes).toBeNull()
+                expect(after.version).toBeGreaterThan(written.version as number)
             })
         })
 
