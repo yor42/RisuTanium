@@ -21,6 +21,7 @@ mod chunked_io;
 mod durable_write;
 mod env_secret;
 mod launch_inputs;
+mod store2_gate;
 use launch_inputs::LaunchInputs;
 use std::sync::Mutex;
 
@@ -168,6 +169,98 @@ async fn write_chunk_raw(app: AppHandle, request: tauri::ipc::Request<'_>) -> Re
         .map_err(|e| format!("the write task failed: {}", e))
 }
 
+/// Issues the page's store2 generation (see `store2_gate`). The wait for a write in
+/// flight is bounded; a timeout is the typed `registration-timeout:` error and
+/// issues nothing.
+#[tauri::command]
+async fn store2_register_page(app: AppHandle) -> Result<u64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<store2_gate::Store2Gate>()
+            .register(store2_gate::REGISTRATION_DEADLINE)
+    })
+    .await
+    .map_err(|e| format!("the registration task failed: {}", e))?
+}
+
+/// A whole `store2-commit` or `store2-fence` write as one raw call: the bytes are
+/// the body, `x-risu-key` (percent-encoded) and `x-risu-gen` carry the rest. A body
+/// that is not raw is refused with `not-raw:`. See `store2_gate` for the refusals.
+#[tauri::command]
+async fn store2_write_top_raw(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
+    let bytes = asset_batch::raw_body(request.body())?.to_vec();
+    let (gen, key) = store2_gate::top_write_headers(request.headers())?;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let flushed = tauri::async_runtime::spawn_blocking(move || {
+        store2_gate::write_top(&app.state::<store2_gate::Store2Gate>(), &base, gen, &key, &bytes)
+    })
+    .await
+    .map_err(|e| format!("the write task failed: {}", e))??;
+    Ok(json!({ "flushed": flushed }))
+}
+
+/// One chunk of a gated `store2-commit` or `store2-fence` write, as `write_chunk`
+/// sends it (base64) plus the generation and without a final key. Only the last
+/// chunk decides; see `store2_gate::write_top_chunk_with`.
+#[tauri::command]
+async fn store2_write_top_chunk(
+    app: AppHandle,
+    gen: u64,
+    key: String,
+    id: String,
+    offset: u64,
+    data: String,
+    last: bool,
+) -> Result<Value, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let flushed = tauri::async_runtime::spawn_blocking(move || {
+        store2_gate::write_top_chunk(&app.state::<store2_gate::Store2Gate>(), &base, gen, &key, &id, offset, &data, last)
+    })
+    .await
+    .map_err(|e| format!("the write task failed: {}", e))??;
+    Ok(json!({ "flushed": flushed }))
+}
+
+/// `store2_write_top_chunk` with a raw body, as `write_chunk_raw` sends a chunk
+/// plus `x-risu-gen`. `x-risu-durable` is required by the shared header parser
+/// and ignored (a gated write is always durable); a final key is refused.
+#[tauri::command]
+async fn store2_write_top_chunk_raw(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
+    let (headers, bytes) = asset_batch::parse_raw_chunk(request.headers(), request.body())?;
+    if headers.final_key.is_some() {
+        return Err("malformed: a gated chunk takes no final key".to_string());
+    }
+    let gen = store2_gate::generation_from_headers(request.headers())?;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let flushed = tauri::async_runtime::spawn_blocking(move || {
+        store2_gate::write_top_chunk_bytes(
+            &app.state::<store2_gate::Store2Gate>(),
+            &base,
+            gen,
+            &headers.key,
+            &headers.id,
+            headers.offset,
+            &bytes,
+            headers.last,
+        )
+    })
+    .await
+    .map_err(|e| format!("the write task failed: {}", e))??;
+    Ok(json!({ "flushed": flushed }))
+}
+
+/// Removes `store2/` keys and `store2-fence` under one hold of the gate; the
+/// result is one `{ key, outcome, error? }` entry per key. `store2-commit` is
+/// refused.
+#[tauri::command]
+async fn store2_remove(app: AppHandle, gen: u64, keys: Vec<String>) -> Result<Value, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        store2_gate::remove_with(&app.state::<store2_gate::Store2Gate>(), &base, gen, &keys)
+    })
+    .await
+    .map_err(|e| format!("the remove task failed: {}", e))?
+}
+
 /// Reads many asset files; the response is one frame per key in key order
 /// (`[u8 status][u32 LE len][bytes]`).
 #[tauri::command]
@@ -210,11 +303,12 @@ async fn app_fs_mkdir_all(app: AppHandle, key: String) -> Result<(), String> {
         .map_err(|e| format!("the mkdir task failed: {}", e))?
 }
 
-/// Removes the file, link or empty directory at `key`; see `app_fs::remove_key`.
+/// Removes the file, link or empty directory at `key`; see `app_fs::remove_key_guarded`,
+/// which refuses the keys that only the store2 gate removes.
 #[tauri::command]
 async fn app_fs_remove(app: AppHandle, key: String) -> Result<(), String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || app_fs::remove_key(&base, &key))
+    tauri::async_runtime::spawn_blocking(move || app_fs::remove_key_guarded(&base, &key))
         .await
         .map_err(|e| format!("the remove task failed: {}", e))?
 }
@@ -906,7 +1000,9 @@ pub fn run() {
     #[cfg(not(desktop))]
     let cold_launch = LaunchInputs::default();
 
-    let mut builder = tauri::Builder::default().manage(PendingLaunch(Mutex::new(cold_launch)));
+    let mut builder = tauri::Builder::default()
+        .manage(PendingLaunch(Mutex::new(cold_launch)))
+        .manage(store2_gate::Store2Gate::new());
 
     #[cfg(desktop)]
     {
@@ -950,6 +1046,11 @@ pub fn run() {
             write_durable,
             put_assets_batch,
             write_chunk_raw,
+            store2_register_page,
+            store2_write_top_raw,
+            store2_write_top_chunk,
+            store2_write_top_chunk_raw,
+            store2_remove,
             get_assets_batch,
             list_assets_sized,
             app_fs_exists,

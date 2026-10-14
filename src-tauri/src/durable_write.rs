@@ -315,6 +315,9 @@ pub fn write_durable(target: &Path, bytes: &[u8]) -> Result<bool, String> {
 /// under `base` and write durably. The `bool` is the flush status of
 /// `write_durable_with`.
 pub fn write_key_durable(base: &Path, key: &str, bytes: &[u8]) -> Result<bool, String> {
+    if let Some(reason) = crate::store2_gate::ungated_write_refusal(key) {
+        return Err(reason.to_string());
+    }
     let target = resolve_key(base, key)?;
     write_durable(&target, bytes)
 }
