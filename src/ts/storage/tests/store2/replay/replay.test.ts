@@ -48,6 +48,7 @@
  * such call. `nth` on a hold's `call` is for the only hold of a selector.
  */
 import { describe, expect, test } from 'vitest'
+import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { encodeUnit, newUnitKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import type { ExitResult } from 'src/ts/storage/store2/recovery'
@@ -90,6 +91,8 @@ type ProgramStep =
     | { do: 'fenceExit' }
     | { do: 'discardFence' }
     | { do: 'clearMarker' }
+    /** What a fresh read of the commit key shows: whether `current` and each `retained` entry is the seeded tree's manifest (`seed`) or another one (`other`). */
+    | { do: 'finalKey' }
     /** Waits until the nth applied step the match selects has been judged. */
     | { do: 'waitFor', match: StepMatch }
 
@@ -112,10 +115,15 @@ interface FaultSpec {
     nth?: number
 }
 
+/** The manifest a `remove-unit` step takes out, resolved from the commit key as it stands when the step is taken. */
+type LostManifest = 'seed' | 'current' | 'retained'
+
 interface EnvSpec {
     name: EnvFault
     /** Registered once a step the match selects has been judged; at the start when absent. */
     after?: StepMatch
+    /** For `remove-unit`: which manifest of the commit key goes (the first retained one, the current one, or the seeded tree's). */
+    unit?: LostManifest
 }
 
 export interface CorpusSchedule {
@@ -132,6 +140,8 @@ export interface CorpusSchedule {
     seeds: number[]
     /** The seeds the mutants of mutants are red under, when the holds leave the race open to the seed; all of seeds otherwise. */
     redSeeds?: number[]
+    /** Why `redSeeds` is narrower than seeds, when it is. */
+    redSeedsReason?: string
     policy?: PolicyConfig
     holds?: Array<{ call: CallHold['call'], until: StepMatch }>
     faults?: FaultSpec[]
@@ -199,6 +209,14 @@ async function runProgramStep(actor: ReplayActor, step: ProgramStep): Promise<st
             const outcome = await actor.clearMarker()
             return `clearMarker:${outcome.decision}${outcome.cleared === null ? '' : `:${outcomeLabel(outcome.cleared)}`}`
         }
+        case 'finalKey': {
+            const key = await actor.readKey()
+            if (key === null) {
+                return 'finalKey:unparsed'
+            }
+            const named = (manifest: string): string => (manifest === actor.rig.seedManifest ? 'seed' : 'other')
+            return `finalKey:current=${key.current === null ? 'none' : named(key.current.key)};retained=${key.retained.length === 0 ? 'none' : key.retained.map((entry) => named(entry.key)).join(',')}`
+        }
         case 'waitFor':
             await actor.rig.reached(step.match)
             return 'waitFor'
@@ -251,6 +269,28 @@ function seeded(actor: ReplayActor): string {
         throw new Error('The store was not seeded.')
     }
     return key
+}
+
+/** The key of the manifest a `remove-unit` step names, from the commit key as it stands now. */
+function lostManifestKey(rig: ReplayRig, unit: LostManifest | undefined): string {
+    if (unit === undefined) {
+        throw new Error('A remove-unit step names the manifest it removes.')
+    }
+    if (unit === 'seed') {
+        if (rig.seedManifest === null) {
+            throw new Error('The store was not seeded.')
+        }
+        return rig.seedManifest
+    }
+    const read = classifyCommitRead({ bytes: rig.hooks.peek(COMMIT_KEY) })
+    if (read.status !== 'parsed') {
+        throw new Error('The commit key does not parse: there is no manifest to name.')
+    }
+    const named = unit === 'current' ? read.value.current?.key : read.value.retained[0]?.key
+    if (named === undefined) {
+        throw new Error(`The commit key names no ${unit} manifest.`)
+    }
+    return named
 }
 
 export interface RunReport {
@@ -310,6 +350,10 @@ export async function runSchedule(spec: CorpusSchedule, seed: number): Promise<R
     for (const env of spec.env ?? []) {
         const register = (): void => {
             rig.scheduler.environment(env.name, env.name, () => {
+                if (env.name === 'remove-unit') {
+                    rig.hooks.remove(lostManifestKey(rig, env.unit))
+                    return
+                }
                 rig.hooks.plant(env.name === 'damage-commit' ? COMMIT_KEY : FENCE_KEY, GARBAGE)
             })
         }
@@ -373,7 +417,7 @@ describe('the corpus files', () => {
     })
 
     test('a mutant a schedule names is one of the property ids the checker reports, or an outcome mismatch', () => {
-        const properties: readonly string[] = ['I1', 'b', 'I2', 'I3', 'h', 'h2', 'G1', 'G10', 'i', 'p', 'r', 'I4', 'outcome']
+        const properties: readonly string[] = ['I1', 'b', 'I2', 'I3', 'h', 'h2', 'G1', 'G10', 'i', 'p', 'r', 'I4', 'INST', 'outcome']
         for (const [, spec] of schedules) {
             for (const [mutant, property] of Object.entries(spec.mutants ?? {})) {
                 expect(properties, `${spec.name}/${mutant}`).toContain(property)

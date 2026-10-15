@@ -12,7 +12,7 @@
  * pass of a healthy store takes more than one batch and a refusal is a refusal to
  * delete something.
  */
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { encodeUnit, newManifestKey, newUnitKey, UNIT_TYPE, type KeyEnv } from 'src/ts/storage/store2/format'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
@@ -29,6 +29,17 @@ import { createClock, testEnv } from '../commitFixtures'
 import { plantCandidateTree, type CandidateShape } from './replayFixtures'
 import type { StepInfo } from './scheduler'
 import type { ForeignClearHook } from 'src/ts/storage/store2/owner'
+
+// The install of the library, with its final compare-and-write skipped while the flag is set: the result still says installed.
+const installMutant = vi.hoisted(() => ({ skipFinalWrite: false }))
+vi.mock('src/ts/storage/store2/recoveryPick', async (importOriginal) => {
+    const original = await importOriginal<typeof import('src/ts/storage/store2/recoveryPick')>()
+    const installPick: typeof original.installPick = (ready, options) => original.installPick(
+        installMutant.skipFinalWrite ? { ...ready, backend: { ...ready.backend, casCommit: async () => ({ flushed: undefined }) } } : ready,
+        options,
+    )
+    return { ...original, installPick }
+})
 
 type RigFactory = (options: ReplayRigOptions) => Promise<ReplayRig>
 
@@ -652,6 +663,127 @@ describe('one Tauri page, one gate', () => {
         expect(outcome).toBe('failed')
         expect(rig.fake.generation).toBe(3)
         expect(rig.hooks.peek(COMMIT_KEY)).toEqual(before)
+        expect(rig.checker.violations).toEqual([])
+    })
+})
+
+// ---- The recovery screen's read ----
+
+describe.each(BACKENDS)('$variant: the recovery screen runs on the commit key read of the boot', ({ make }) => {
+    /** r boots, p commits after that, then r runs its exit; both are on one page, which is one session on Tauri. */
+    async function exitAfterPeerCommit(kind: 'exit' | 'pick'): Promise<{ label: string, rig: ReplayRig }> {
+        const rig = await make({ scheduler: { seed: 1 } })
+        let label = ''
+        rig.spawn('r', 10, async (actor) => {
+            await actor.open()
+            await rig.reached({ actor: 'p', op: ['writeChecked', 'writeTop'], target: '$commit', context: 'commit' })
+            label = kind === 'exit' ? outcomeLabel(await actor.runExit('seed')) : await pickAndInstall(actor)
+        }, { page: 'P' })
+        rig.spawn('p', 11, async (actor) => {
+            await actor.open()
+            await actor.commit('p')
+        }, { page: 'P' })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.status).toBe('finished')
+        expect(rig.checker.violations).toEqual([])
+        return { label, rig }
+    }
+
+    test('an exit after the key moved makes its marker write at the boot\'s token: it conflicts and the exit is abandoned', async () => {
+        const { label, rig } = await exitAfterPeerCommit('exit')
+        expect(label).toBe('abandoned')
+        // No marker was written: the key still names the peer's commit and no staging.
+        const key = classifyCommitRead({ bytes: rig.hooks.peek(COMMIT_KEY) })
+        expect(key.status === 'parsed' && key.value.staging).toBeNull()
+    })
+
+    test('a pick after the key moved is abandoned at the same token', async () => {
+        const { label } = await exitAfterPeerCommit('pick')
+        expect(label).toBe('pick:exit:abandoned')
+    })
+})
+
+describe.each(BACKENDS)('$variant: a recovery that answers conflict re-runs from the key the conflict carried', ({ make }) => {
+    /**
+     * r boots over a damaged commit key, p then heals it with an exit of its own (a marker that holds no `current`), and r
+     * runs its pick at the boot's token: that conflicts, and the key it finds holds no `current`, so the library answers
+     * `conflict` instead of abandoning.
+     */
+    async function pickAfterPeerExit(runs: number): Promise<{ labels: string[], rig: ReplayRig }> {
+        let candidate = ''
+        const rig = await make({
+            scheduler: { seed: 1 }, start: 'damaged-commit',
+            prepare: (hooks, env) => { candidate = plantCandidateTree(hooks.plant, env, {}) },
+        })
+        const labels: string[] = []
+        rig.spawn('r', 10, async (actor) => {
+            await actor.open()
+            await rig.reached({ actor: 'p', op: ['writeChecked', 'writeTop'], target: '$commit', context: 'recovery-begin' })
+            for (let run = 0; run < runs; run++) {
+                const picked = await actor.pickCandidate(candidate)
+                if (picked.status !== 'ready') {
+                    labels.push(`pick:${outcomeLabel(picked)}`)
+                    continue
+                }
+                labels.push(`pick:ready/install:${outcomeLabel(await actor.installPick(picked))}`)
+                break
+            }
+        }, { page: 'P', foreignClear: async () => true })
+        rig.spawn('p', 11, async (actor) => {
+            await actor.open()
+            expect(outcomeLabel(await actor.runExit('seed'))).toBe('marked:written')
+        }, { page: 'P', foreignClear: async () => true })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.status).toBe('finished')
+        expect(rig.checker.violations).toEqual([])
+        return { labels, rig }
+    }
+
+    test('the first run is a conflict, the second runs at the carried key and installs', async () => {
+        const { labels, rig } = await pickAfterPeerExit(2)
+        expect(labels).toEqual(['pick:exit:conflict', 'pick:ready/install:installed'])
+        const key = classifyCommitRead({ bytes: rig.hooks.peek(COMMIT_KEY) })
+        expect(key.status === 'parsed' && key.value.current).not.toBeNull()
+    })
+
+    test('a single run ends in the conflict the screen is to re-run (a compatibility guard: it passes with or without the re-run)', async () => {
+        const { labels } = await pickAfterPeerExit(1)
+        expect(labels).toEqual(['pick:exit:conflict'])
+    })
+})
+
+describe.each(BACKENDS)('$variant: an install the library reports as done must be a commit-key write the actor made', ({ make }) => {
+    async function installOnHealthy(): Promise<{ label: string, rig: ReplayRig }> {
+        let candidate = ''
+        const rig = await make({
+            scheduler: { seed: 1 }, start: 'healthy',
+            prepare: (hooks, env) => { candidate = plantCandidateTree(hooks.plant, env, {}) },
+        })
+        let label = ''
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            const picked = await actor.pickCandidate(candidate)
+            label = picked.status === 'ready' ? `install:${outcomeLabel(await actor.installPick(picked))}` : `pick:${outcomeLabel(picked)}`
+        }, { foreignClear: async () => true })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.status).toBe('finished')
+        return { label, rig }
+    }
+
+    test('an install whose final compare-and-write is skipped while it still reports installed is a finding', async () => {
+        installMutant.skipFinalWrite = true
+        try {
+            const { label, rig } = await installOnHealthy()
+            expect(label).toBe('install:installed')
+            expect(rig.checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+        } finally {
+            installMutant.skipFinalWrite = false
+        }
+    })
+
+    test('a real install is its own commit-key write and reports nothing (a compatibility guard: it passes without the check)', async () => {
+        const { label, rig } = await installOnHealthy()
+        expect(label).toBe('install:installed')
         expect(rig.checker.violations).toEqual([])
     })
 })

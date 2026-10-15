@@ -32,7 +32,7 @@ export const CORPUS_INDEX: readonly IndexEntry[] = [
     },
     {
         id: 'c409-02', model: 'base manifest read 404 => re-read commit key', kind: 'schedule', schedule: 'c409_02_base_manifest_404',
-        note: 'Boot reads the commit key and then the manifest it names, and does not read the key again: a missing manifest is the recovery screen, row 6 with the tree missing (a commit key that is stale by more than the retained list). The page is not asked to build on it.',
+        note: 'Boot reads the commit key and then the manifest it names, and does not read the key again: a missing manifest is the recovery screen, row 6 with the tree missing (a commit key that is stale by more than the retained list). The page is not asked to build on it. The recovery screen of that boot runs on the commit key the boot read: its marker write conflicts at that token because the key has moved on, and the exit is abandoned.',
     },
     {
         id: 'c409-03', model: 'commit CAS, commit key moved => park or reload, never rebuild on the peer index', kind: 'schedule', schedule: 'c409_03_commit_ck_moved',
@@ -75,8 +75,8 @@ export const CORPUS_INDEX: readonly IndexEntry[] = [
         note: 'Needs the Tauri flush fault of 2f-5.',
     },
     {
-        id: 'c409-13', model: 'GC manifest read 404 => abort the pass, re-list', kind: 'pending', schedule: 'c409_13_gc_manifest_read_404',
-        note: 'The model never reached it. The library has the branch (the mark refuses a missing manifest: mark-refused); the replay has no environment step that removes a unit, and the checker would report the removal as I1. Needs EnvFault remove-unit, a state hook and an I1 exemption for it.',
+        id: 'c409-13', model: 'GC manifest read 404 => abort the pass, re-list', kind: 'schedule', schedule: 'c409_13_gc_manifest_read_404',
+        note: 'The model never reached it. An environment step (remove-unit) takes the retained manifest out between the pass\'s commit-key read and its manifest reads; the mark finds it missing and refuses the pass (mark-refused) before any list or batch, so nothing is re-listed or deleted. The checker excuses only that step\'s keys from the I1 walk and keeps the lost manifest\'s tree protected while the commit key names it, so a pass that deletes inside it is I1.',
     },
     {
         id: 'c409-14', model: 'GC remove, commit key moved => re-read and retry', kind: 'schedule', schedule: 'c409_14_gc_remove_moved',
@@ -108,14 +108,22 @@ export const CORPUS_INDEX: readonly IndexEntry[] = [
     },
     {
         id: 'surprise-s3', model: 'a new 404 path: a peer rotates the manifest out and GC deletes it between the two reads', kind: 'schedule', schedule: 'surprise_s3_base_manifest_404_crash_rotate_gc',
-        note: 'Crash, a new page, twenty-one rotating commits, a pass; the manifest read finds the unit gone and boot decides the recovery screen.',
+        note: 'Crash, a new page, twenty-one rotating commits, a pass; the manifest read finds the unit gone and boot decides the recovery screen; the screen\'s marker write, made at the boot\'s commit key read, conflicts and the exit is abandoned.',
     },
     {
         id: 'surprise-s3c', model: 'the same 404 after a crash, damage and a recovery marker', kind: 'schedule', schedule: 'surprise_s3c_base_manifest_404_after_crash',
-        note: 'The distinct path is the recovery route: a recovery installs a staged copy, its fence is discarded and a pass deletes the old trees; boot decides the recovery screen. The model\'s damage and crash are not part of the path in the library.',
+        note: 'The distinct path is the recovery route: a recovery installs a staged copy, its fence is discarded and a pass deletes the old trees; boot decides the recovery screen, whose marker write at the boot\'s commit key read conflicts and abandons the exit. The model\'s damage and crash are not part of the path in the library.',
     },
     {
         id: 'surprise-s6', model: 'check-only unit mismatch with the commit key matching: the manifest is uploaded again', kind: 'schedule', schedule: 'surprise_s6_unit_mismatch_manifest_reupload',
         note: 'Part of the units is retired; the commit fails and the retry builds every unit again, the manifest under a fresh key.',
+    },
+    {
+        id: 'inst-lost-reply-peer-bulk-begin', model: 'driver check, not a model category: the install post-condition (INST) after a lost reply and a peer bulk-begin', kind: 'schedule', schedule: 'instLostReplyPeerBulkBegin',
+        note: 'Regression reproducer for the INST false positive. The final write applies and its reply is lost, a peer\'s bulk-begin rewrites the key keeping the same current, and the install is reported as installed with the peer\'s bytes; INST holds the actor\'s own write naming the manifest, so nothing is reported and the peer\'s bulk commits.',
+    },
+    {
+        id: 'inst-lost-request-control', model: 'driver check, not a model category: the install post-condition (INST) after a lost request', kind: 'schedule', schedule: 'instLostRequestControl',
+        note: 'Compatibility guard, green before and after the INST rule change. The final write is lost before it applies, the read-back shows the marker, the retry lands and the install is reported as installed with its own applied write behind it.',
     },
 ]

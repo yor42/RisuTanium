@@ -68,6 +68,8 @@ export interface NodeSemanticStore {
     list(prefix: string): string[]
     /** A file the server holds without a revision, the way upstream wrote it. */
     plant(key: string, bytes: Uint8Array): void
+    /** The file is gone without a request, as a loss in the file system would leave it: the value goes and the revision moves on, as a plain removal does. */
+    remove(key: string): void
     /** The requests that reached the server, in order; each read is a copy. */
     readonly log: readonly NodeOperation[]
     /** The next `times` requests of `operation` are applied and then answered with the loss of the reply. */
@@ -459,6 +461,11 @@ export function createNodeSemanticStore(options: NodeSemanticOptions = {}): Node
         list: listHeld,
         plant(key, bytes) {
             values.set(key, bytes.slice())
+        },
+        remove(key) {
+            if (values.delete(key)) {
+                revisions.set(key, revisionOf(key) + 1)
+            }
         },
         get log() {
             return [...log]

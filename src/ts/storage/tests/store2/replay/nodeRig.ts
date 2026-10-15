@@ -30,7 +30,7 @@ export async function createNodeReplayRig(options: NodeReplayRigOptions): Promis
     const parts: RigParts = {
         variant: 'node',
         raw: rawOfNodeSemantic(fake),
-        hooks: { peek: (key) => fake.peek(key).bytes, plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix) },
+        hooks: { peek: (key) => fake.peek(key).bytes, plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix), remove: (key) => fake.remove(key) },
         deviceOwner: false,
         pageStore: (handle) => handle.byteStore(fake.store),
         openBackend: async (store) => createNodeBackend(store),

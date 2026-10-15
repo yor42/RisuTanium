@@ -7,9 +7,9 @@
   "labels": {
     "F: exit step 1..3, marker (seed)": "f: open, recover: the exit's fence write over the empty fence, then its recovery marker over the damaged commit key",
     "ENV: commit key DAMAGED (silent)": "the start state damaged-commit: the damage is there before f's marker, not an environment step",
-    "H: boot; H: read commit key -> UNPARSABLE; H: exit step 1: list": "h: open, then the exit: its read of the commit key; in the old order its listing comes next, before the fence read",
+    "H: boot; H: read commit key -> UNPARSABLE; H: exit step 1: list": "h: open (its boot read is the damaged key), then the exit on that read; f's first staged unit is held until that boot read; in the old order its listing comes next, before the fence read",
     "F: upload u/F1.0; F: CRASH": "f: the first staged unit of its install, applied and then f is gone (crash-after-write)",
-    "F: boot; exit; marker; final commit CAS ok": "f2: open, recover: a second exit extends the fence with the listing that holds f's orphan unit, its marker, its install",
+    "F: boot; exit; marker; final commit CAS ok": "f2: waits for f's first staged unit, then opens (its boot read shows f's marker) and recovers: a second exit extends the fence with the listing that holds f's orphan unit, its marker, its install",
     "ENV: store2-fence DAMAGED (silent)": "environment step damage-fence, after f2's install is applied",
     "H: read store2-fence -> UNPARSABLE; H: exit step 2: CAS extend with the stale listing": "h: its read of the fence, held until the fence damage; in the old order it writes the listing it took before f's unit existed",
     "GC: pass; GC: remove [u/F1.0]": "g: a collection pass after h's fence write"
@@ -21,13 +21,13 @@
     { "name": "damage-fence", "after": { "actor": "f2", "op": "writeChecked", "target": "$commit", "context": "recovery-install" } }
   ],
   "holds": [
-    { "call": { "actor": "f", "op": "writeChecked", "target": "$unit", "context": "recovery-install" }, "until": { "actor": "h", "op": "read", "target": "$commit", "context": "recovery-begin" } },
+    { "call": { "actor": "f", "op": "writeChecked", "target": "$unit", "context": "recovery-install" }, "until": { "actor": "h", "op": "read", "target": "$commit" } },
     { "call": { "actor": "h", "op": "read", "target": "$fence", "context": "recovery-begin" }, "until": { "actor": "$env", "op": "damage-fence" } }
   ],
   "actors": [
     { "id": "f", "seed": 10, "program": [{ "do": "open" }, { "do": "recover" }] },
     { "id": "h", "seed": 11, "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }] },
-    { "id": "f2", "seed": 12, "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "f", "op": "writeChecked", "target": "$unit", "context": "recovery-install" } }, { "do": "recover" }] },
+    { "id": "f2", "seed": 12, "foreignClear": "yes", "program": [{ "do": "waitFor", "match": { "actor": "f", "op": "writeChecked", "target": "$unit", "context": "recovery-install" } }, { "do": "open" }, { "do": "recover" }] },
     { "id": "g", "seed": 13, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "h", "op": "writeChecked", "target": "$fence", "context": "fence-exit" } }, { "do": "gc" }] }
   ],
   "expect": {
@@ -35,7 +35,7 @@
     "outcomes": {
       "f": ["open"],
       "h": ["open", "exit:abandoned"],
-      "f2": ["open", "waitFor", "recover:installed:installed"],
+      "f2": ["waitFor", "open", "recover:installed:installed"],
       "g": ["open", "waitFor", "gc:done:0"]
     }
   },

@@ -1,0 +1,25 @@
+{
+  "name": "instLostReplyPeerBulkBegin",
+  "covers": "regression reproducer for the INST false positive: a recovery install's final write is applied and its reply lost, a peer's bulk-begin rewrites the commit key (current unchanged) before the read-back, and the install is reported as installed with the peer's bytes; INST judges the manifest the actor's own write named, not the bytes",
+  "variant": "node",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3, 4],
+  "faults": [
+    { "actor": "r", "kind": "lost-response", "op": "writeChecked", "target": "store2-commit", "context": "recovery-install" }
+  ],
+  "holds": [
+    { "call": { "actor": "r", "op": "read", "target": "$commit", "context": "recovery-install" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "r", "op": "read", "target": "$commit", "context": "recovery-install" } }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "program": [{ "do": "open" }, { "do": "recover" }, { "do": "finalKey" }] },
+    { "id": "b", "seed": 11, "program": [{ "do": "waitFor", "match": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "recovery-install" } }, { "do": "open" }, { "do": "bulk", "tag": "b" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "recover:installed:installed", "finalKey:current=other;retained=none"],
+      "b": ["waitFor", "open", "bulk:committed"]
+    }
+  },
+  "mutants": { "instBytesOnly": "INST" }
+}

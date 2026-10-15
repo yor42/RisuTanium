@@ -111,7 +111,7 @@ export async function createTauriReplayRig(options: TauriReplayRigOptions): Prom
     const parts: RigParts = {
         variant: 'tauri',
         raw: rawOfTauriSemantic(fake),
-        hooks: { peek: (key) => fake.peek(key), plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix) },
+        hooks: { peek: (key) => fake.peek(key), plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix), remove: (key) => fake.remove(key) },
         deviceOwner: true,
         pageStore: (handle) => handle.byteStore(fake.store),
         openBackend: (store) => createTauriBackend(store),

@@ -55,6 +55,8 @@ export interface TauriSemanticStore {
     list(prefix: string): string[]
     /** Puts a file in place without any request. */
     plant(key: string, bytes: Uint8Array): void
+    /** The file is gone without a request, as a loss in the file system would leave it. */
+    remove(key: string): void
     /** The generation the next decisive call must present. */
     readonly generation: number
     /** Whether a decisive call holds the lock right now. */
@@ -357,6 +359,9 @@ export function createTauriSemanticStore(options: TauriSemanticOptions = {}): Ta
         list: listHeld,
         plant(key, bytes) {
             values.set(key, bytes.slice())
+        },
+        remove(key) {
+            values.delete(key)
         },
         get generation() {
             return generation

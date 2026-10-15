@@ -14,13 +14,14 @@
     { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final", "nth": 1 }, "until": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "restore" } }
   ],
   "actors": [
-    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "bulk", "tag": "b" }] },
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "bulk", "tag": "b" }, { "do": "finalKey" }] },
     { "id": "r", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }, { "do": "restore", "to": "retained" }] }
   ],
   "expect": {
     "outcomes": {
-      "a": ["open", "commit:committed", "bulk:committed"],
+      "a": ["open", "commit:committed", "bulk:committed", "finalKey:current=other;retained=seed,other"],
       "r": ["open", "waitFor", "restore:committed"]
     }
-  }
+  },
+  "mutants": { "bulkFinalNoForcePush": "outcome" }
 }

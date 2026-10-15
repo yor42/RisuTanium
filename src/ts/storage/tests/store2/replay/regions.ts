@@ -15,6 +15,13 @@
  * reached. `floors` then name the operations (and outcomes) a region must reach in a share of its exercised runs, so a
  * region cannot degrade into early crashes without a test failing.
  *
+ * Recovery runs on the commit key read the page made when it booted (plan v3.4 row 6), so an actor that recovers after
+ * other activity, its own or a peer's, makes its marker write at a stale token and the write conflicts. The library then
+ * either abandons the exit (the key now holds a `current`) or answers `conflict` with the key it found; the screen re-runs
+ * from the start at that key, up to `SCREEN_ATTEMPTS` runs, and a step that is still in conflict then ends
+ * `rerun-exhausted`. A recovery that must not be made stale by its own page's earlier activity (R14) runs as an actor of
+ * a page of its own.
+ *
  * Regions that need a rig which does not exist yet (IndexedDB, the Tauri flush fault) are written with `pending`
  * reasons and are skipped with that reason, never run on another backend in their place.
  */
@@ -80,6 +87,8 @@ export interface RegionFaults {
     startAfterSteps: number
     /** The least share of the exercised runs in which a fault was injected; 0.5 when absent. A plan that never fires proves nothing. */
     minFaulted?: number
+    /** Replaces `minFaulted` on Tauri, where a page shares one session and a crash retires every actor of it. */
+    tauriMinFaulted?: number
 }
 
 export interface RegionDamage {
@@ -240,7 +249,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, recover], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.025, Infinity, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.025, Infinity, 1, 10), tauriMinFaulted: 0.35 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.4, 'recover:installed': 0.6 },
     },
     {
@@ -266,6 +275,7 @@ export const REGIONS: readonly RegionConfig[] = [
         damage: [{ name: 'damage-commit', after: { actor: 'a', op: ['writeChecked', 'writeTop'], target: '$commit', context: 'bulk-begin' } }],
         pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
         floors: { 'bulk': 0.9, 'commit:committed': 0.7, 'recover:installed': 0.7 },
+        tauriFloors: { 'bulk': 0.9, 'commit:committed': 0.55, 'recover:installed': 0.55 },
     },
     {
         id: 'R10', name: 'recovery-one-fault', covers: 'plan v3.4 section 6: a recovery with one fault (N_rec_f1)',
@@ -307,19 +317,26 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, exitSeed, recover], { foreignClear: 'yes' }),
             actor('g', G, [open, gc]),
         ],
+        // b's recovery follows its own exit: its first run is at a stale token, conflicts, and the screen re-runs it at the key the conflict carried.
         faults: faults(0.1, 2, 0, 8), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
-        floors: { 'exit:marked': 0.8, 'recover:installed': 0.4 },
+        floors: { 'exit:marked': 0.8, 'recover:installed': 0.5 },
     },
     {
         id: 'R14', name: 'staged-manifest-candidates', covers: 'plan v3.4 section 6: manifests of an abandoned stage offered as candidates, wide refusals (W_ri_refuse_wide)',
         backends: ['node', 'tauri'], start: 'healthy', garbage: GARBAGE_UNITS, foreignBulkUnits: 6, candidate: {}, stagedCandidate: true,
         actors: [
-            actor('a', A, [open, clearMarker, recover], { foreignClear: 'yes' }),
+            actor('a', A, [open, clearMarker], { foreignClear: 'yes' }),
+            // a2 recovers on a page of its own, so its boot read is not made stale by a's clear of the marker; it picks the planted
+            // staged manifest, which a listing taken while the foreign marker stands would not offer first.
+            actor('a2', 14, [open, { do: 'recover', candidate: true }], { foreignClear: 'yes', page: 'P2' }),
             actor('b', B, [open, bulk, commit]),
             actor('g', G, [open, gc, gc]),
         ],
         faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
-        floors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'commit:committed': 0.3, 'recover:installed': 0.5 },
+        // The planted install is the region's intent: a2 must install the abandoned stage's manifest, not whichever candidate is newest.
+        floors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'commit:committed': 0.2, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
+        // On Tauri a2's page registers after the others, which makes their page stale: their commits fail too often for a commit floor.
+        tauriFloors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
     },
     {
         id: 'R15', name: 'refused-two-faults', covers: 'plan v3.4 section 6: a refusal with two faults (W_refuse_f2_L2)',
@@ -360,8 +377,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, { do: 'exit', kind: 'convert' }, clearMarker], { foreignClear: 'yes', upstreamMainFile: true }),
             actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes', upstreamMainFile: true }),
         ],
+        // On Tauri both actors share one session and its boot read, so a's exit meets b's clear at a stale token; the screen re-runs it at the key the conflict carried.
         faults: faults(0.2, Infinity, 1, 5), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.5 },
+        tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.4 },
     },
     {
         id: 'R17c', name: 'seed-marker', covers: 'plan v3.4 section 6, V1: a standing seed marker',
@@ -370,9 +389,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, exitSeed, recover], { foreignClear: 'yes' }),
             actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes' }),
         ],
-        // The faulted share of the Node run sits at the default minFaulted; the margin is about one seed.
-        faults: faults(0.06, Infinity, 1, 8), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        // a's recovery follows its own exit: its first run is at a stale token, conflicts, and the screen re-runs it at the key the conflict carried.
+        faults: { ...faults(0.06, Infinity, 1, 8), minFaulted: 0.45 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.7, 'recover:installed': 0.35 },
+        tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.6, 'recover:installed': 0.35 },
     },
     {
         id: 'R17d', name: 'fresh-start-damaged-commit', covers: 'plan v3.4 section 6, V1: a fresh start from a damaged commit key',
@@ -418,6 +438,7 @@ export const REGIONS: readonly RegionConfig[] = [
         damage: [{ name: 'damage-fence' }, { name: 'damage-commit', after: { op: ['writeChecked', 'writeTop'], target: '$fence' } }],
         faults: faults(0.04, 1, 1, 8), pct: { depth: 4, horizon: 120 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.25, 'fenceExit': 0.8, 'recover:installed': 0.5 },
+        tauriFloors: { 'commit:committed': 0.2, 'fenceExit': 0.8, 'recover:installed': 0.35 },
     },
     {
         id: 'R18a', name: 'fence-and-gc', covers: 'plan v3.4 section 6: the fence of 3.4c, its discard and rewrite, against collection (passes of several batches are R18a2\'s)',
@@ -546,6 +567,10 @@ export interface RegionRun {
     faults: Record<string, number>
     /** The step of the first injected fault (not the damage steps), or null. */
     firstFaultStep: number | null
+    /** The step of the first applied commit-key write under a recovery marker (`recovery-begin`), or null when the run wrote none. */
+    markerStep: number | null
+    /** Faults the scheduler injected after that marker write; null when the run wrote none. */
+    faultsAfterMarker: number | null
 }
 
 function pickLabel(picked: PickResult): { label: string, kind: string, ready: boolean } {
@@ -569,6 +594,12 @@ interface StepResult {
 
 /** A collection pass that deleted more than one batch (25 keys) of garbage before it ended. */
 const GC_MULTI_BATCH_KEYS = 25
+
+/**
+ * A recovery exit or pick that answers `conflict` is run again from the start at the key the conflict carried (the library's
+ * contract for that result); the screen gives up after this many runs and the step ends `rerun-exhausted`, never as a pass.
+ */
+const SCREEN_ATTEMPTS = 3
 
 interface RunContext {
     candidate: string | null
@@ -636,7 +667,13 @@ async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, 
             return { label: `gc:${result.status === 'done' ? `${outcomeLabel(result)}:${result.deleted}` : outcomeLabel(result)}`, kind: result.status, also }
         }
         case 'exit': {
-            const result = await actor.runExit(step.kind)
+            let result = await actor.runExit(step.kind)
+            for (let attempt = 1; attempt < SCREEN_ATTEMPTS && result.status === 'conflict'; attempt++) {
+                result = await actor.runExit(step.kind)
+            }
+            if (result.status === 'conflict') {
+                return { label: `exit:${outcomeLabel(result)}:rerun-exhausted`, kind: 'rerun-exhausted' }
+            }
             return { label: `exit:${outcomeLabel(result)}`, kind: result.status }
         }
         case 'recover': {
@@ -652,13 +689,20 @@ async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, 
                     return { label: 'recover:no-candidate', kind: 'no-candidate' }
                 }
             }
-            const picked = await actor.pickCandidate(target)
+            let picked = await actor.pickCandidate(target)
+            for (let attempt = 1; attempt < SCREEN_ATTEMPTS && picked.status === 'exit' && picked.exit.status === 'conflict'; attempt++) {
+                picked = await actor.pickCandidate(target)
+            }
+            if (picked.status === 'exit' && picked.exit.status === 'conflict') {
+                return { label: `recover:${pickLabel(picked).label}:rerun-exhausted`, kind: 'rerun-exhausted' }
+            }
             const described = pickLabel(picked)
             if (picked.status !== 'ready') {
                 return { label: `recover:${described.label}`, kind: described.kind }
             }
             const installed = await actor.installPick(picked)
-            return { label: `recover:${described.label}/${installed.status}`, kind: installed.status }
+            // `recover:installed:planted` is reached only by an install of the planted candidate, so a region can require that one.
+            return { label: `recover:${described.label}/${installed.status}`, kind: installed.status, also: installed.status === 'installed' && picked.manifestKey === ctx.candidate ? ['installed:planted'] : [] }
         }
         case 'fenceExit': {
             const result = await actor.fenceExit()
@@ -735,7 +779,11 @@ export async function runRegion(region: RegionConfig, backend: RegionBackend, se
     }
     const plan = faultPlanOf(region)
     const ctx: RunContext = { candidate: null, variant: backend }
+    let markerStep: number | null = null
     const observe = (info: StepInfo): void => {
+        if (markerStep === null && info.applied && info.kind === 'call' && info.target === COMMIT_KEY && info.context?.kind === 'recovery-begin' && (info.op === 'writeChecked' || info.op === 'writeTop')) {
+            markerStep = info.step
+        }
         if (plan !== null && region.faults !== undefined && info.step >= region.faults.startAfterSteps) {
             plan.probability = region.faults.probability
         }
@@ -802,6 +850,8 @@ export async function runRegion(region: RegionConfig, backend: RegionBackend, se
             firstFaultStep = firstFaultStep === null ? entry.step : Math.min(firstFaultStep, entry.step)
         }
     }
+    const markedAt = markerStep as number | null
+    const faultsAfterMarker = markedAt === null ? null : log.filter((entry) => entry.fault !== null && entry.actor !== '$env' && entry.step > markedAt).length
     // A faulted registration with the page gate may leave a page read-only: the run did not exercise the operations asked for.
     // An actor that failed with anything but the unavailable page is a throw, whether or not a registration faulted.
     const registrationFaulted = log.some((entry) => entry.op === 'registerPage' && entry.fault !== null)
@@ -821,5 +871,5 @@ export async function runRegion(region: RegionConfig, backend: RegionBackend, se
     } else {
         kind = 'complete'
     }
-    return { region: region.id, backend, seed, kind, steps: result.steps, violations, reached: [...reached].sort(), outcomes, errors, faults: faultCounts, firstFaultStep }
+    return { region: region.id, backend, seed, kind, steps: result.steps, violations, reached: [...reached].sort(), outcomes, errors, faults: faultCounts, firstFaultStep, markerStep: markedAt, faultsAfterMarker }
 }

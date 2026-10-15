@@ -1,0 +1,19 @@
+{
+  "name": "instLostRequestControl",
+  "covers": "compatibility guard for INST: a recovery install's final write is lost before it applies, the read-back shows the marker, the library retries and its own write lands; the install is reported as installed and its own applied write names the manifest, so INST stays quiet (a library that takes an uncertain write as landed is red)",
+  "variant": "node",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3, 4],
+  "faults": [
+    { "actor": "r", "kind": "lost-request", "op": "writeChecked", "target": "store2-commit", "context": "recovery-install" }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "program": [{ "do": "open" }, { "do": "recover" }, { "do": "finalKey" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "recover:installed:installed", "finalKey:current=other;retained=none"]
+    }
+  },
+  "mutants": { "g5tUnknownAsInstalled": "INST" }
+}

@@ -765,6 +765,190 @@ describe('one planted violation per property is reported as exactly that propert
     })
 })
 
+describe('INST: an install reported as done is a commit-key write the actor made under its recovery install, naming the installed manifest', () => {
+    async function installWrite(): Promise<{ rig: NodeRig, checker: ReturnType<typeof createChecker>, manifest: string }> {
+        const { rig, manifest } = await seeded()
+        const checker = createChecker(rig.raw)
+        const step = stepper(checker)
+        await plantNextCommit(rig.fake, {}, env)
+        expect(step('a', 'casCommit', { kind: 'recovery-install', owner: 'a' })).toEqual([])
+        return { rig, checker, manifest }
+    }
+
+    test('its own applied write naming the key is clean, whatever bytes the key holds by now', async () => {
+        const { rig, checker, manifest } = await installWrite()
+        const step = stepper(checker)
+        // A peer rewrote the key keeping the same current: the bytes no longer equal the actor's write.
+        await plantNextCommit(rig.fake, {}, env)
+        step('b', 'casCommit', { kind: 'pin', owner: 'b' })
+        checker.installed('a', manifest)
+        expect(checker.violations).toEqual([])
+    })
+
+    test('its own write naming another manifest key does not satisfy the result', async () => {
+        const { checker, manifest } = await installWrite()
+        checker.installed('a', `${manifest}-other`)
+        expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+    })
+
+    test('a peer write naming the key does not satisfy the result', async () => {
+        const { checker, manifest } = await installWrite()
+        checker.installed('b', manifest)
+        expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+    })
+
+    test('a write under another context naming the key does not satisfy the result', async () => {
+        const { rig, manifest } = await seeded()
+        const checker = createChecker(rig.raw)
+        const step = stepper(checker)
+        await plantNextCommit(rig.fake, {}, env)
+        step('a', 'casCommit', { kind: 'commit', owner: 'a' })
+        checker.installed('a', manifest)
+        expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+    })
+
+    test('no write at all is reported', async () => {
+        const { rig, manifest } = await seeded()
+        const checker = createChecker(rig.raw)
+        checker.installed('a', manifest)
+        expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+    })
+
+    test('a recovery-install write that was not applied is not an install write', async () => {
+        const { rig, manifest } = await seeded()
+        const checker = createChecker(rig.raw)
+        const step = stepper(checker)
+        await plantNextCommit(rig.fake, {}, env)
+        step('a', 'casCommit', { kind: 'recovery-install', owner: 'a' }, { applied: false, fault: 'lost-request' })
+        checker.installed('a', manifest)
+        expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+    })
+})
+
+describe('an environment remove-unit step excuses its own keys from the I1 walk and nothing else', () => {
+    const lost = { kind: 'env', fault: 'remove-unit' } as const
+
+    test('a manifest the commit key names, taken out by the environment, is clean and stays clean', async () => {
+        const { rig, manifest } = await seeded()
+        const step = stepper(createChecker(rig.raw))
+        rig.fake.remove(manifest)
+        expect(step('$env', 'remove-unit', null, lost)).toEqual([])
+        expect(step('a', 'readCommit')).toEqual([])
+    })
+
+    test('the same removal by an actor is I1, whatever operation the actor declared', async () => {
+        for (const context of [null, { kind: 'gc' }, { kind: 'commit' }, { kind: 'restore' }] as const) {
+            const { rig, manifest } = await seeded()
+            const step = stepper(createChecker(rig.raw))
+            rig.fake.remove(manifest)
+            const found = step('a', 'delete', context)
+            expect(propertiesOf(found), JSON.stringify(context)).toContain('I1')
+            expect(found.some((violation) => violation.property === 'I1' && violation.detail.includes(manifest))).toBe(true)
+        }
+    })
+
+    test('a step of another environment kind that removed the unit is not excused', async () => {
+        const { rig, manifest } = await seeded()
+        const step = stepper(createChecker(rig.raw))
+        rig.fake.remove(manifest)
+        expect(propertiesOf(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' }))).toEqual(['I1'])
+    })
+
+    test('only the keys the step removed are excused: a unit an actor removes afterwards is still I1', async () => {
+        const { rig, manifest, units } = await seeded()
+        const step = stepper(createChecker(rig.raw))
+        const [lostUnit, victim] = units.filter((key) => key !== manifest)
+        rig.fake.remove(lostUnit)
+        expect(step('$env', 'remove-unit', null, lost)).toEqual([])
+        await rig.fake.store.delete(victim, 'unconditional')
+        const found = step('a', 'delete', { kind: 'commit' })
+        expect(propertiesOf(found)).toEqual(['I1'])
+        expect(found).toHaveLength(1)
+        expect(found[0].detail).toContain(victim)
+        expect(found[0].detail).not.toContain(lostUnit)
+    })
+
+    test('a unit only the lost manifest names stays protected while the commit key names it: a deletion there is I1, the removal alone is clean', async () => {
+        for (const deleted of [true, false]) {
+            const { rig, manifest: first, units: firstUnits } = await seeded()
+            await commitSecond(rig)
+            const victim = firstUnits.find((key) => key !== first)!
+            const step = stepper(createChecker(rig.raw))
+            step('g', 'readCommit', { kind: 'gc' })
+            rig.fake.remove(first)
+            expect(step('$env', 'remove-unit', null, lost), `deleted ${deleted}`).toEqual([])
+            if (deleted) {
+                await rig.fake.store.delete(victim, 'unconditional')
+            }
+            const found = step('g', 'delete', { kind: 'gc' })
+            expect(propertiesOf(found), `deleted ${deleted}`).toEqual(deleted ? ['I1'] : [])
+            if (deleted) {
+                expect(found.some((violation) => violation.detail.includes(victim) && violation.detail.includes(first))).toBe(true)
+            }
+        }
+    })
+
+    test('the protection ends once the commit key no longer names the lost manifest', async () => {
+        const { rig, manifest: first, units: firstUnits } = await seeded()
+        const second = await commitSecond(rig)
+        const victim = firstUnits.find((key) => key !== first)!
+        const step = stepper(createChecker(rig.raw))
+        rig.fake.remove(first)
+        expect(step('$env', 'remove-unit', null, lost)).toEqual([])
+        await plantNextCommit(rig.fake, { current: { key: second, at: 5 }, retained: [] }, env)
+        expect(step('a', 'writeChecked', { kind: 'commit', owner: 'a' })).toEqual([])
+        await rig.fake.store.delete(victim, 'unconditional')
+        expect(step('g', 'delete', { kind: 'gc' })).toEqual([])
+    })
+
+    test('a restore that installs a manifest naming the lost unit is still reported (b)', async () => {
+        const { rig, manifest: first, units: firstUnits } = await seeded()
+        const second = await commitSecond(rig)
+        const step = stepper(createChecker(rig.raw))
+        rig.fake.remove(firstUnits.find((key) => key !== first)!)
+        expect(step('$env', 'remove-unit', null, lost)).toEqual([])
+        await plantNextCommit(rig.fake, { current: { key: first, at: 5 }, retained: [{ key: second, at: 4 }] }, env)
+        expect(propertiesOf(step('a', 'restore', { kind: 'restore', owner: 'a' }))).toEqual(['b'])
+    })
+})
+
+describe('the commit key a backend conflict carried is the actor\'s commit read', () => {
+    const marker = (owner: string, prefix: string) => ({ owner, prefix, startedAt: 1, label: 'seed' as const })
+
+    /**
+     * a read the damaged key; b healed it with its own marker; a's compare then conflicted and the conflict carried that marker
+     * (or the conflict was hidden by a lost reply); the key was damaged again and a replaced it with its own marker.
+     */
+    async function replacementAfterConflict(carried: boolean): Promise<ReturnType<typeof stepper>> {
+        const { rig } = await seeded()
+        const planted = await plantNextCommit(rig.fake, { staging: marker('x', stagingPrefix(newStagingId(env))) }, env)
+        const step = stepper(createChecker(rig.raw))
+        rig.fake.damage(COMMIT_KEY, GARBAGE)
+        expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
+        expect(step('a', 'readCommit', { kind: 'recovery-begin', owner: 'a' })).toEqual([])
+        const healed = { ...planted, seq: planted.seq + 1, staging: marker('b', stagingPrefix(newStagingId(env))) }
+        await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, healed), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
+        expect(step('b', 'casCommit', { kind: 'recovery-begin', owner: 'b' })).toEqual([])
+        // a's compare fails on the healed key and changes nothing.
+        expect(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' }, carried ? { commitConflictRead: rig.fake.peek(COMMIT_KEY).bytes } : {})).toEqual([])
+        rig.fake.damage(COMMIT_KEY, GARBAGE)
+        expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
+        const replaced = { ...healed, seq: healed.seq + 1, staging: marker('a', stagingPrefix(newStagingId(env))) }
+        await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, replaced), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
+        return step
+    }
+
+    test('damage after a conflict read that parsed does not exempt the replacement from h2', async () => {
+        const step = await replacementAfterConflict(true)
+        expect(propertiesOf(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' }))).toEqual(['h2'])
+    })
+
+    test('a conflict a lost reply hid carries nothing: a\'s last read is still the damaged one, and the replacement is not judged', async () => {
+        const step = await replacementAfterConflict(false)
+        expect(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' })).toEqual([])
+    })
+})
+
 describe('a clean run of a trivial commit and collection reports no violation', () => {
     test('over the Node backend on the Node-semantics fake', async () => {
         const rig = nodeRig()

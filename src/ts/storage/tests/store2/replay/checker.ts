@@ -19,6 +19,11 @@
  *        recovery-screen exit listed by the fence (G1), not by a field of the
  *        commit key, and the candidate picked but not yet installed exists only in
  *        the recovering page's memory. Skipped while the commit key does not parse.
+ *        One exemption, for the refs walk only: a unit that an environment `remove-unit` step took out
+ *        is not reported as missing while it stays missing (a loss outside the protocol, whose reaction
+ *        a schedule asserts). The exemption names that step's keys alone; an actor's removal of the
+ *        same key is I1 whatever the actor declared, and so is a restore that installs a manifest
+ *        naming it (b).
  *  - b   a restore never installs a manifest naming a missing unit. Reported only
  *        for a restore; any other write that names a missing unit is I1.
  *  - I2  a unit key is never created twice, tombstones and retired keys included.
@@ -110,7 +115,13 @@ function commitAllowsDeletion(bytes: Uint8Array | null): boolean {
     return read.status === 'parsed' && read.value.current !== null
 }
 
-export type PropertyId ='I1' | 'b' | 'I2' | 'I3' | 'h' | 'h2' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4'
+/**
+ * `INST` is the driver's install post-condition: an actor's `installed` result must coincide with an applied commit-key write
+ * of that actor under a recovery install whose parsed `current.key` is the result's manifest key (see `Checker.installed`).
+ * Each install mints a fresh manifest key, so an earlier write cannot satisfy a later result and no time window is needed;
+ * the bytes may differ from the actor's write when a peer rewrote the key keeping the same current.
+ */
+export type PropertyId ='I1' | 'b' | 'I2' | 'I3' | 'h' | 'h2' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4' | 'INST'
 
 export interface Violation {
     property: PropertyId
@@ -132,6 +143,8 @@ export interface Checker {
     observe(info: StepInfo): Violation[]
     /** Records a yes; it counts for the steps observed after this call. */
     consent(event: ConsentEvent): void
+    /** Judges an install the actor was told succeeded: an applied commit-key write of the actor under its recovery install must have named `manifestKey` as current. */
+    installed(actor: string, manifestKey: string): void
     readonly violations: readonly Violation[]
 }
 
@@ -336,20 +349,27 @@ export function createChecker(read: () => RawState): Checker {
         return view.state === 'parsed' ? view.keys : null
     })()
     // Per actor, the commit key and the fence as its most recent read observed them: the gate a deleter evaluated.
-    // At the backend layer (memory, IndexedDB) the current value that a conflict reads inside casCommit is not recorded as a
-    // commit read. The h2 conjunction still judges every write over a parsable key, but a conflict read that parsed followed by
-    // damage before the write is not covered yet; the backend step (2f-5) must record that read.
+    // At the backend layer (memory, IndexedDB) a commit conflict carries the value the backend read inside the compare: no call
+    // of its own shows the actor that value, so the step reports it (`commitConflictRead`) and it is recorded as the actor's
+    // commit read like a `readCommit`. Over a ByteStore the conflict read is a call of its own and is recorded as such.
     const lastCommitRead = new Map<string, RawEntry>()
     const lastFenceRead = new Map<string, RawEntry>()
     // How many calls have changed the fence so far, and the count at each actor's last fence read: damage is an environment step and is not counted.
     let fenceCallChanges = 0
     const fenceChangesAtRead = new Map<string, number>()
+    // The unit keys an environment `remove-unit` step took out and that hold no value since: the one thing the I1 walk excuses.
+    const lostToEnvironment = new Set<string>()
+    // A manifest the commit key named when an environment step took it out, with the keys its walk reached just before: while the commit
+    // key still names it, those units stay protected, so a deletion inside the lost tree is not hidden by the tree being unreachable.
+    const lostTrees = new Map<string, string[]>()
     const reported = new Set<string>()
     const violations: Violation[] = []
     let walked = false
     // The consent log: each yes with the number of the last step observed when it was given, so a step is judged only against earlier consents.
     const consents: Array<ConsentEvent & { after: number }> = []
     let lastStep = 0
+    // Per actor, the commit key bytes each applied write under a recovery install left behind.
+    const installWrites = new Map<string, Uint8Array[]>()
 
     function observe(info: StepInfo): Violation[] {
         const after = read()
@@ -410,6 +430,22 @@ export function createChecker(read: () => RawState): Checker {
             }
         }
         unitsChanged = unitsChanged || removed.length > 0
+        // Only the environment's own step can excuse a missing unit; an actor's removal of the same key never does, whatever it declared.
+        if (info.kind === 'env' && info.fault === 'remove-unit') {
+            const standing = parsedCommitOf(entryOf(before, COMMIT_KEY).bytes) ?? lastGood
+            const named = new Set(standing === null ? [] : manifestsNamed(standing))
+            for (const key of removed) {
+                lostToEnvironment.add(key)
+                if (named.has(key)) {
+                    lostTrees.set(key, walkManifest(before, key).keys)
+                }
+            }
+        }
+        for (const key of lostToEnvironment) {
+            if (bytesOfKey(after, key) !== null) {
+                lostToEnvironment.delete(key)
+            }
+        }
 
         // The value a possibly damaged commit key stands for.
         const parsedBefore = parsedCommitOf(commitBefore.bytes)
@@ -453,6 +489,20 @@ export function createChecker(read: () => RawState): Checker {
                 }
             }
 
+            const standingAfter = parsedCommitOf(commitAfter.bytes) ?? lastGood
+            if (removed.length > 0 && standingAfter !== null) {
+                const stillNamed = new Set(manifestsNamed(standingAfter))
+                for (const [manifest, reached] of lostTrees) {
+                    if (!stillNamed.has(manifest)) {
+                        continue
+                    }
+                    for (const key of removed) {
+                        if (key !== manifest && reached.includes(key)) {
+                            report('I1', `${key}, reached from ${manifest} (lost to the environment, still named by the commit key), was removed by ${info.actor} (${info.op})`)
+                        }
+                    }
+                }
+            }
             if (removed.length > 0) {
                 const commitRead = lastCommitRead.get(info.actor)
                 const refusedAtRead = commitRead !== undefined && !commitAllowsDeletion(commitRead.bytes)
@@ -575,7 +625,7 @@ export function createChecker(read: () => RawState): Checker {
             for (const manifest of manifestsNamed(parsedAfter)) {
                 const walk = walkManifest(after, manifest)
                 for (const key of walk.missing) {
-                    if (!isRestoreReported(manifest, key)) {
+                    if (!isRestoreReported(manifest, key) && !lostToEnvironment.has(key)) {
                         report('I1', `${manifest} (named by the commit key) needs ${key}, which holds no value`, `${manifest}|${key}`)
                     }
                 }
@@ -604,6 +654,10 @@ export function createChecker(read: () => RawState): Checker {
             if (info.op === 'readCommit' || (info.op === 'read' && info.target === COMMIT_KEY)) {
                 lastCommitRead.set(info.actor, commitAfter)
             }
+            // The value a backend conflict carried is what the actor saw, whatever the key holds by now.
+            if (info.commitConflictRead !== undefined) {
+                lastCommitRead.set(info.actor, { bytes: info.commitConflictRead, revision: commitAfter.revision })
+            }
             if (info.op === 'readFence' || (info.op === 'read' && info.target === FENCE_KEY)) {
                 lastFenceRead.set(info.actor, fenceAfter)
                 fenceChangesAtRead.set(info.actor, fenceCallChanges)
@@ -612,10 +666,22 @@ export function createChecker(read: () => RawState): Checker {
                 fenceCallChanges++
             }
         }
+        if (isCall && info.applied && commitChanged && kind === 'recovery-install' && commitAfter.bytes !== null) {
+            const mine = installWrites.get(info.actor) ?? []
+            mine.push(commitAfter.bytes)
+            installWrites.set(info.actor, mine)
+        }
         before = after
         lastStep = info.step
         return found
     }
 
-    return { observe, violations, consent: (event) => { consents.push({ ...event, after: lastStep }) } }
+    function installed(actor: string, manifestKey: string): void {
+        if ((installWrites.get(actor) ?? []).some((written) => parsedCommitOf(written)?.current?.key === manifestKey)) {
+            return
+        }
+        violations.push({ property: 'INST', step: lastStep, actor, detail: `${actor} was told its install of ${manifestKey} succeeded, but no applied commit-key write of its recovery install named that manifest as current` })
+    }
+
+    return { observe, installed, violations, consent: (event) => { consents.push({ ...event, after: lastStep }) } }
 }

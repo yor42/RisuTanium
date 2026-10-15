@@ -110,6 +110,8 @@ export interface StateHooks {
     /** Puts the bytes in place; a Node key keeps its revision, which is how silent damage looks. */
     plant(key: string, bytes: Uint8Array): void
     list(prefix: string): string[]
+    /** Takes the key out of the store as the loss of a file would (the `remove-unit` environment step); the key reads as absent afterwards. */
+    remove(key: string): void
 }
 
 export interface RigParts {
@@ -731,6 +733,21 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                 const parsed = classifyCommitRead(read)
                 return { read, key: parsed.status === 'parsed' ? parsed.value : null }
             }
+            /**
+             * The commit key the recovery screen runs on: the read the page made when it booted (or after its start-up clear), which is
+             * what the app's screen holds while the user decides. The exit's marker write is then made at that read's token, so a key
+             * that moved since the boot conflicts there. An exit or pick that answers `conflict` hands the screen the key the conflict
+             * carried, and the screen's next run starts from that read. A page whose boot read failed booted `blocked`: it has no
+             * recovery screen, so there is nothing to run.
+             */
+            let screen: Store2Read | null = null
+            async function screenRead(): Promise<Store2Read> {
+                const held = screen ?? need().commitRead
+                if (held === null) {
+                    throw new Error('The page\'s boot read failed: there is no recovery screen.')
+                }
+                return held
+            }
             const actor: ReplayActor = {
                 id,
                 env,
@@ -794,6 +811,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                     }
                     sessions.delete(page)
                     resolved = null
+                    screen = null
                     return actor.open()
                 },
 
@@ -832,11 +850,15 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                     return listRecoveryCandidates(backendOf(), classifyCommitRead((await freshKey()).read))
                 }),
                 runExit: (kind) => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
-                    const { read } = await freshKey()
-                    return runExit(backendOf(), read, { kind, highestSeqRead: coreOf().highestSeq }, { owner: need().ownerId, env, foreignClear })
+                    const read = await screenRead()
+                    const exit = await runExit(backendOf(), read, { kind, highestSeqRead: coreOf().highestSeq }, { owner: need().ownerId, env, foreignClear })
+                    if (exit.status === 'conflict') {
+                        screen = exit.current
+                    }
+                    return exit
                 }),
                 pickCandidate: (manifestKey) => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
-                    const { read } = await freshKey()
+                    const read = await screenRead()
                     let target = manifestKey
                     if (target === undefined) {
                         const listed = await listRecoveryCandidates(backendOf(), classifyCommitRead(read))
@@ -845,7 +867,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                         }
                         target = listed.candidates[0]
                     }
-                    return pickCandidate(backendOf(), read, target, {
+                    const picked = await pickCandidate(backendOf(), read, target, {
                         owner: need().ownerId,
                         env,
                         foreignClear,
@@ -853,8 +875,19 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                         inlaysPresent: async (asked) => (actorOptions.present?.inlays === false ? new Set<string>() : new Set(asked)),
                         inlayPrefixesPresent: async (asked) => (actorOptions.present?.inlays === false ? new Set<string>() : new Set(asked)),
                     })
+                    if (picked.status === 'exit' && picked.exit.status === 'conflict') {
+                        screen = picked.exit.current
+                    }
+                    return picked
                 }),
-                installPick: (ready) => operation({ kind: 'recovery-install' }, 'recovery', () => installPick(ready, { confirm: true })),
+                installPick: (ready) => operation({ kind: 'recovery-install' }, 'recovery', async () => {
+                    const result = await installPick(ready, { confirm: true })
+                    // An install reported as done must be a write the checker saw this actor make, naming the manifest it installed.
+                    if (result.status === 'installed') {
+                        checker.installed(id, result.manifestKey)
+                    }
+                    return result
+                }),
 
                 declared: (context, intent, run) => operation(context, intent, () => run(need())),
 

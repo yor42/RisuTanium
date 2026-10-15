@@ -45,6 +45,9 @@ interface Summary {
     notExercised: Array<{ seed: number, detail: string }>
     /** Exercised runs in which the plan injected at least one fault. */
     faultedRuns: number
+    /** Exercised runs that wrote a recovery marker, and those among them with a fault after that write. */
+    markerRuns: number
+    faultAfterMarkerRuns: number
     /** Seeds whose outcome labels differ from the region's declared ones, when it declares them. */
     outcomeMismatches: number[]
     steps: number
@@ -61,6 +64,8 @@ function summarize(region: RegionConfig, backend: RegionBackend, runs: RegionRun
     const notExercised: Summary['notExercised'] = []
     const outcomeMismatches: number[] = []
     let faultedRuns = 0
+    let markerRuns = 0
+    let faultAfterMarkerRuns = 0
     let steps = 0
     for (const run of runs) {
         kinds[run.kind]++
@@ -70,6 +75,10 @@ function summarize(region: RegionConfig, backend: RegionBackend, runs: RegionRun
             faultedRuns++
         }
         steps += run.steps
+        if (run.kind !== 'not-exercised' && run.faultsAfterMarker !== null) {
+            markerRuns++
+            faultAfterMarkerRuns += run.faultsAfterMarker > 0 ? 1 : 0
+        }
         for (const key of run.reached) {
             reached[key] = (reached[key] ?? 0) + 1
         }
@@ -91,7 +100,7 @@ function summarize(region: RegionConfig, backend: RegionBackend, runs: RegionRun
             findings.push({ seed: run.seed, kind: run.kind, detail: run.errors.join(' | ') })
         }
     }
-    return { region: region.id, backend, runs: runs.length, kinds, reached, outcomes, faults, violations, findings, notExercised, faultedRuns, outcomeMismatches, steps, ms }
+    return { region: region.id, backend, runs: runs.length, kinds, reached, outcomes, faults, violations, findings, notExercised, faultedRuns, markerRuns, faultAfterMarkerRuns, outcomeMismatches, steps, ms }
 }
 
 describe.each(REGIONS)('region $id $name', (region) => {
@@ -128,7 +137,7 @@ describe.each(REGIONS)('region $id $name', (region) => {
                     expect(run.firstFaultStep === null || run.firstFaultStep > region.faults.startAfterSteps, `seed ${run.seed}: first fault at step ${run.firstFaultStep}`).toBe(true)
                 }
                 // And they did fire: a plan whose faults never happen would turn the region into a fault-free run.
-                expect(summary.faultedRuns / exercised.length, `a fault was injected in ${summary.faultedRuns} of ${exercised.length} exercised runs`).toBeGreaterThanOrEqual(region.faults.minFaulted ?? 0.5)
+                expect(summary.faultedRuns / exercised.length, `a fault was injected in ${summary.faultedRuns} of ${exercised.length} exercised runs`).toBeGreaterThanOrEqual((backend === 'tauri' ? region.faults.tauriMinFaulted : undefined) ?? region.faults.minFaulted ?? 0.5)
             } else {
                 expect(summary.faults).toEqual({})
             }

@@ -17,7 +17,7 @@ import { bytesOf } from '../backendConformance'
 import { createClock, testEnv } from '../commitFixtures'
 import {
     createRng, createScheduler, shuffleListing, splitReadUnits,
-    type FaultPlan, type PolicyConfig, type Scheduler,
+    type FaultPlan, type PolicyConfig, type Scheduler, type StepInfo,
 } from './scheduler'
 import { GARBAGE, nodeRig } from './replayFixtures'
 
@@ -212,6 +212,31 @@ describe('fault kinds on the Store2Backend layer', () => {
         })
         expect(failure).toBeInstanceOf(Store2UnknownOutcomeError)
         expect(memory.snapshot().get(COMMIT_KEY)).toEqual(bytesOf(1))
+    })
+
+    test('a commit conflict the actor saw is reported on its step with the commit key value it carried; one a lost response hid is not', async () => {
+        const steps: StepInfo[] = []
+        const memory = createMemoryBackend()
+        const scheduler = createScheduler({
+            seed: 1,
+            faults: { mode: 'script', entries: [{ actor: 'a', write: 3, kind: 'lost-response' }] },
+            onStep: (info) => steps.push(info),
+        })
+        scheduler.spawn('a', async (actor) => {
+            const backend = actor.backend(memory)
+            const stale = (await backend.readCommit()).token
+            await backend.casCommit(stale, bytesOf(1))
+            await backend.casCommit(stale, bytesOf(2)).catch(() => undefined)
+            await backend.casCommit(stale, bytesOf(3)).catch(() => undefined)
+        })
+        const result = await scheduler.run()
+
+        expect(result.status).toBe('finished')
+        const writes = steps.filter((info) => info.op === 'casCommit')
+        expect(writes).toHaveLength(3)
+        expect(writes[0].commitConflictRead).toBeUndefined()
+        expect(writes[1].commitConflictRead).toEqual(bytesOf(1))
+        expect(writes[2].commitConflictRead).toBeUndefined()
     })
 
     test('a crash after the write applies it, never resolves it and retires the actor; its later calls never happen', async () => {

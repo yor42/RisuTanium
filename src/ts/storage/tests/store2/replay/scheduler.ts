@@ -45,11 +45,15 @@
  * The native lock is modelled here as well as in the store: while a `ghost-held`
  * call holds it, a granted call that takes it (`registerPage`, `writeTop`,
  * `removeTop`, whatever fault it carries but a lost request) is parked without
- * being started, and a queued landing of such a call is not offered. The landing
- * that frees the lock then starts the parked calls in grant order, each as a step
- * of its own: the state it changes is judged under its own actor and operation,
- * never under the landing's. A run in which every way forward waits for a held
- * lock ends `stalled`, whatever overlap of held ghosts caused it.
+ * being started, and a queued landing of such a call is not offered. The lock is
+ * taken in arrival order: a lock-taking call granted while others wait parks
+ * behind them too. Once no held ghost has the lock the oldest parked call is a
+ * candidate step like any other request, so other actors' steps can come between
+ * the landing and the call: the state it changes is judged under its own actor
+ * and operation on a step number of its own, never under the landing's. A run in
+ * which every way forward waits for a held lock ends `stalled`, whatever overlap
+ * of held ghosts caused it, and so does a registration that waits for a landing
+ * that never comes.
  *
  * Actors of one Tauri page share one scheduled `ByteStore` per inner store (the
  * `page` option of `spawn`), so the backend's in-process mutex, which is keyed by
@@ -70,7 +74,7 @@ import { crc32 } from 'src/ts/storage/blockFrame'
 import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedOperations, PageGateOperations, StoreCondition } from 'src/ts/storage/store/contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, StoreOutcomeUnknownError, type DeleteReportEntry } from 'src/ts/storage/store/errors'
 import { versionOf } from 'src/ts/storage/store/guards'
-import { Store2BackendError, Store2UnknownOutcomeError, checkUnitKeys, type CompareToken, type Store2Backend } from 'src/ts/storage/store2/backend'
+import { Store2BackendError, Store2CommitConflictError, Store2UnknownOutcomeError, checkUnitKeys, type CompareToken, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 
 /** A seeded generator in [0, 1). */
@@ -120,7 +124,12 @@ export interface TwoStepPageGate extends PageGateOperations {
 function isTwoStepGate(gate: PageGateOperations): gate is TwoStepPageGate {
     return 'beginWriteTop' in gate && 'beginRemoveTop' in gate
 }
-export type EnvFault = 'damage-commit' | 'damage-fence'
+/**
+ * An environment step: silent damage of the commit key or the fence, or the loss of a unit
+ * (`remove-unit`: a file that is gone from the store without any actor removing it). Only a
+ * `remove-unit` step excuses the stored state from the I1 walk, and only for the keys it removed.
+ */
+export type EnvFault = 'damage-commit' | 'damage-fence' | 'remove-unit'
 
 /** What the actor is doing, declared by the actor; the checker judges transitions of the commit key against it. */
 export type OperationKind =
@@ -152,6 +161,12 @@ export interface StepInfo {
     commitExpect: Expect | null
     /** The fence basis the call presented; the checker compares it with the stored fence. */
     fenceExpect: Expect | null
+    /**
+     * Set on a backend-layer call that failed with a commit conflict the actor saw: the commit key bytes the conflict carried
+     * (null for an absent key). The backend reads the key inside the compare, so no call of its own shows the actor this value,
+     * and the checker counts it as the actor's commit read. Absent on every other step, and on a conflict a lost reply hid.
+     */
+    commitConflictRead?: Uint8Array | null
 }
 
 export interface LogEntry {
@@ -274,8 +289,9 @@ interface Ghost {
     landWhen: () => boolean
 }
 
-/** A granted call waiting for the lock a held ghost has: its step is finished by `resume` once the lock is free. */
+/** A granted call waiting for the lock a held ghost has: once the lock is free its `resume` is a candidate step of its own. */
 interface Parked {
+    id: number
     actor: string
     op: string
     target: string
@@ -796,6 +812,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 }
                 if ('failure' in settled) {
                     logEntry.outcome = `error:${errorName(settled.failure)}`
+                    if (settled.failure instanceof Store2CommitConflictError) {
+                        info.commitConflictRead = settled.failure.current.bytes
+                    }
                     options.onStep?.(info)
                     entry.reject(settled.failure)
                     return
@@ -815,15 +834,19 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             ))
         }
 
-        // A call that needs the lock a held ghost has waits for the landing that frees it, and then runs as a step of its own.
-        if (entry.spec.lock && fault !== 'ghost-queued' && heldGhosts() > 0) {
+        // A call that needs the lock waits behind a held ghost, and behind every call that already waits: the native lock is
+        // taken in arrival order. It runs as a step of its own once the lock is free and it is the oldest waiter.
+        if (entry.spec.lock && fault !== 'ghost-queued' && (heldGhosts() > 0 || parked.length > 0)) {
             logEntry.outcome = 'parked'
             parked.push({
+                id: ++nextId,
                 actor: entry.actor,
                 op: entry.spec.op,
                 target: entry.spec.target,
                 resume: async () => {
                     logEntry.outcome = 'ok-after-wait'
+                    // The resumption is a step of its own: judged on its own number, after everything applied before it.
+                    info.step = stepNo
                     await proceed()
                 },
             })
@@ -836,11 +859,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         return ghosts.filter((ghost) => ghost.kind === 'ghost-held').length
     }
 
-    /** Hands the lock to the parked calls in grant order, for as long as no held ghost has it. */
-    async function startParked(): Promise<void> {
-        while (parked.length > 0 && heldGhosts() === 0) {
-            await parked.shift()!.resume()
-        }
+    /** The oldest waiting call, once no held ghost has the lock: the only parked call that can start. */
+    function resumable(): Parked | null {
+        return parked.length > 0 && heldGhosts() === 0 ? parked[0] : null
     }
 
     async function land(ghost: Ghost): Promise<void> {
@@ -859,8 +880,13 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             step: stepNo, actor: ghost.actor, kind: 'call', op: ghost.spec.op, target: ghost.spec.target, applied, fault: ghost.kind,
             context: ghost.context, commitExpect: ghost.spec.commitExpect, fenceExpect: ghost.spec.fenceExpect,
         })
-        // The lock is free once the landing is judged; the calls that waited for it run after that, each judged on its own.
-        await startParked()
+    }
+
+    /** Starts the oldest waiting call as a step of its own; the landing that freed the lock was judged before, under its own actor. */
+    async function resumeParked(call: Parked): Promise<void> {
+        parked.splice(parked.indexOf(call), 1)
+        stepNo++
+        await call.resume()
     }
 
     function takeEnvironment(action: EnvAction): void {
@@ -944,15 +970,17 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             const maxSteps = limit.maxSteps ?? 100_000
             for (;;) {
                 await yieldMacrotask()
-                // A ghost still to land keeps the run going after every actor is over.
-                const live = ghosts.length > 0 || [...actors.values()].some((state) => state.status === 'running')
+                // A ghost still to land, or a granted call still to start, keeps the run going after every actor is over.
+                const live = ghosts.length > 0 || parked.length > 0 || [...actors.values()].some((state) => state.status === 'running')
                 if (!live) {
                     return { status: 'finished', steps: stepNo, actors: report() }
                 }
-                // A queued landing that needs the lock waits while a held ghost has it; a held landing is what frees it.
-                const landable = ghosts.filter((ghost) => ghost.landWhen() && !(ghost.kind === 'ghost-queued' && ghost.spec.lock && heldGhosts() > 0))
+                // A queued landing that needs the lock waits while a held ghost has it and behind the calls already waiting for it;
+                // a held landing is what frees it.
+                const landable = ghosts.filter((ghost) => ghost.landWhen() && !(ghost.kind === 'ghost-queued' && ghost.spec.lock && (heldGhosts() > 0 || parked.length > 0)))
+                const waiting = resumable()
                 // A registered environment step is a way forward: it is taken even when no call is pending.
-                if (pending.length === 0 && landable.length === 0 && envActions.length === 0) {
+                if (pending.length === 0 && landable.length === 0 && envActions.length === 0 && waiting === null) {
                     return { status: 'stalled', steps: stepNo, actors: report() }
                 }
                 if (stepNo >= maxSteps) {
@@ -962,9 +990,12 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                     ...pending.map((entry) => ({ id: entry.id, actor: entry.actor })),
                     ...landable.map((ghost) => ({ id: ghost.id, actor: '$ghost' })),
                     ...envActions.map((action) => ({ id: action.id, actor: '$env' })),
+                    ...(waiting === null ? [] : [{ id: waiting.id, actor: waiting.actor }]),
                 ]
                 const chosen = policy.pick(candidates, stepNo + 1)
-                if (chosen.actor === '$env') {
+                if (waiting !== null && chosen.id === waiting.id) {
+                    await resumeParked(waiting)
+                } else if (chosen.actor === '$env') {
                     takeEnvironment(envActions.find((action) => action.id === chosen.id)!)
                 } else if (chosen.actor === '$ghost') {
                     await land(ghosts.find((ghost) => ghost.id === chosen.id)!)
