@@ -24,6 +24,11 @@
  *        a schedule asserts). The exemption names that step's keys alone; an actor's removal of the
  *        same key is I1 whatever the actor declared, and so is a restore that installs a manifest
  *        naming it (b).
+ *        A Tauri restart that drops unflushed writes excuses nothing: a unit it dropped is missing for the walk,
+ *        so a dropped unit that the commit key standing after the restart names is I1, and a dropped unit nothing
+ *        names (an orphan) is clean. The commit key it puts back is judged like any stored key: the walk runs on
+ *        the older value. A restart's only allowance is I4's: it may put the commit key back to absent when its
+ *        first write never reached stable storage (I4 otherwise names actors' removals).
  *  - b   a restore never installs a manifest naming a missing unit. Reported only
  *        for a restore; any other write that names a missing unit is I1.
  *  - I2  a unit key is never created twice, tombstones and retired keys included.
@@ -121,7 +126,7 @@ function commitAllowsDeletion(bytes: Uint8Array | null): boolean {
  * Each install mints a fresh manifest key, so an earlier write cannot satisfy a later result and no time window is needed;
  * the bytes may differ from the actor's write when a peer rewrote the key keeping the same current.
  */
-export type PropertyId ='I1' | 'b' | 'I2' | 'I3' | 'h' | 'h2' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4' | 'INST'
+export type PropertyId = 'I1' | 'b' | 'I2' | 'I3' | 'h' | 'h2' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4' | 'INST'
 
 export interface Violation {
     property: PropertyId
@@ -431,6 +436,7 @@ export function createChecker(read: () => RawState): Checker {
         }
         unitsChanged = unitsChanged || removed.length > 0
         // Only the environment's own step can excuse a missing unit; an actor's removal of the same key never does, whatever it declared.
+        // A restart excuses nothing: a unit it dropped that the commit key names is missing for the walk like any other.
         if (info.kind === 'env' && info.fault === 'remove-unit') {
             const standing = parsedCommitOf(entryOf(before, COMMIT_KEY).bytes) ?? lastGood
             const named = new Set(standing === null ? [] : manifestsNamed(standing))
@@ -451,7 +457,8 @@ export function createChecker(read: () => RawState): Checker {
         const parsedBefore = parsedCommitOf(commitBefore.bytes)
         const viewBefore = parsedBefore ?? lastGood
 
-        if (commitBefore.bytes !== null && commitAfter.bytes === null) {
+        // A restart can put the commit key back to absent when its first write never reached stable storage; no actor removed it.
+        if (commitBefore.bytes !== null && commitAfter.bytes === null && !(info.kind === 'env' && info.fault === 'restart')) {
             report('I4', `the commit key was removed by ${info.actor} (${info.op})`)
         }
 

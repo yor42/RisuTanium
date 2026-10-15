@@ -20,6 +20,7 @@ import {
     type FaultPlan, type PolicyConfig, type Scheduler, type StepInfo,
 } from './scheduler'
 import { GARBAGE, nodeRig } from './replayFixtures'
+import { createTauriSemanticStore, type TauriSemanticStore } from './tauriSemanticStore'
 
 const clock = createClock()
 
@@ -912,5 +913,177 @@ describe('fingerprint', () => {
         const withCommit = scheduler.fingerprint(rig.raw())
         rig.fake.damage(COMMIT_KEY, bytesOf(2))
         expect(scheduler.fingerprint(rig.raw())).not.toBe(withCommit)
+    })
+})
+
+describe('flush faults and page restarts on the Tauri-semantics store', () => {
+    const FENCE = 'store2-fence'
+
+    async function runPage(options: { faults?: FaultPlan, unflushed?: boolean, seed?: number }, body: (store: ByteStore, fake: TauriSemanticStore, scheduler: Scheduler) => Promise<void>) {
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({
+            seed: options.seed ?? 1,
+            faults: options.faults,
+            ...(options.unflushed === false ? {} : { unflushed: (key: string) => fake.markUnflushed(key) }),
+        })
+        scheduler.spawn('a', async (actor) => {
+            await body(actor.byteStore(fake.store), fake, scheduler)
+        }, { page: 'p' })
+        const result = await scheduler.run()
+        return { fake, scheduler, result }
+    }
+
+    test('a scripted flush fault applies the write, reports flushed:false and tells the store; the next flushed write ends it', async () => {
+        const reports: Array<boolean | undefined> = []
+        const { fake, scheduler, result } = await runPage(
+            { faults: { mode: 'script', entries: [{ actor: 'a', kind: 'flush-fault', op: 'writeTop', target: COMMIT_KEY }] } },
+            async (store, fake) => {
+                const gen = await store.pageGate!.registerPage()
+                reports.push((await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(1))).flushed)
+                expect(fake.unflushed()).toEqual([COMMIT_KEY])
+                reports.push((await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(2))).flushed)
+            },
+        )
+        expect(result.status).toBe('finished')
+        expect(reports).toEqual([false, true])
+        expect(fake.peek(COMMIT_KEY)).toEqual(bytesOf(2))
+        expect(fake.unflushed()).toEqual([])
+        const entry = scheduler.log.find((each) => each.fault === 'flush-fault')
+        expect(entry).toMatchObject({ op: 'writeTop', target: COMMIT_KEY, outcome: 'flush-fault' })
+    })
+
+    test('the flush fault step is applied: the checker would see the written bytes on that very step', async () => {
+        const seen: StepInfo[] = []
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({
+            seed: 1,
+            faults: { mode: 'script', entries: [{ actor: 'a', kind: 'flush-fault', op: 'writeTop', target: FENCE }] },
+            unflushed: (key) => fake.markUnflushed(key),
+            onStep: (info) => { seen.push({ ...info }) },
+        })
+        scheduler.spawn('a', async (actor) => {
+            const store = actor.byteStore(fake.store)
+            await store.pageGate!.writeTop(await store.pageGate!.registerPage(), FENCE, bytesOf(1))
+        }, { page: 'p' })
+        await scheduler.run()
+        const step = seen.find((info) => info.fault === 'flush-fault')
+        expect(step).toMatchObject({ applied: true, kind: 'call', op: 'writeTop', target: FENCE })
+        expect(fake.peek(FENCE)).toEqual(bytesOf(1))
+    })
+
+    test('a flush fault on a store with no flush status fails the run instead of being skipped', async () => {
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({ seed: 1, faults: { mode: 'script', entries: [{ actor: 'a', kind: 'flush-fault', op: 'writeTop', target: COMMIT_KEY }] } })
+        scheduler.spawn('a', async (actor) => {
+            const store = actor.byteStore(fake.store)
+            await store.pageGate!.writeTop(await store.pageGate!.registerPage(), COMMIT_KEY, bytesOf(1))
+        }, { page: 'p' })
+        await expect(scheduler.run()).rejects.toThrow(/flush-fault/)
+    })
+
+    test('a scripted flush fault spends the lost-call budget', () => {
+        const entries = [
+            { actor: 'a', kind: 'flush-fault' as const, op: 'writeTop', target: COMMIT_KEY },
+            { actor: 'a', kind: 'lost-response' as const, op: 'writeTop', target: FENCE },
+        ]
+        expect(() => createScheduler({ seed: 1, faults: { mode: 'script', entries, budget: { lostPerActor: 1, crashPerActor: 0 } } })).toThrow(RangeError)
+    })
+
+    test('a random plan draws the flush fault only with flushFaults, and then within the lost-call budget', async () => {
+        async function kindsOf(flushFaults: boolean | undefined): Promise<string[]> {
+            const kinds: string[] = []
+            for (let seed = 1; seed <= 12; seed++) {
+                const { scheduler } = await runPage(
+                    { seed, faults: { mode: 'random', probability: 1, budget: { lostPerActor: 2, crashPerActor: 0 }, ...(flushFaults === undefined ? {} : { flushFaults }) } },
+                    async (store) => {
+                        const gen = await store.pageGate!.registerPage().catch(() => 0)
+                        for (let i = 0; i < 4; i++) {
+                            await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(i)).catch(() => undefined)
+                        }
+                    },
+                )
+                const faulted = scheduler.log.filter((entry) => entry.fault !== null)
+                expect(faulted.length, `seed ${seed}`).toBeLessThanOrEqual(2)
+                kinds.push(...faulted.map((entry) => entry.fault as string))
+            }
+            return kinds
+        }
+        expect(await kindsOf(undefined)).not.toContain('flush-fault')
+        expect(await kindsOf(false)).not.toContain('flush-fault')
+        expect(await kindsOf(true)).toContain('flush-fault')
+    })
+
+    test('restartPage is an environment step of its own: logged as $env, judged as restart, and its answer is the log outcome', async () => {
+        const seen: StepInfo[] = []
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({ seed: 1, onStep: (info) => { seen.push({ ...info }) } })
+        scheduler.spawn('a', async (actor) => {
+            await actor.restartPage(() => `dropped=${fake.restart(true).length}`)
+        }, { page: 'p' })
+        const result = await scheduler.run()
+        expect(result.actors.a.state).toBe('done')
+        expect(scheduler.log).toMatchObject([{ actor: '$env', op: 'restart', fault: 'restart', outcome: 'env:dropped=0' }])
+        expect(seen).toMatchObject([{ kind: 'env', actor: '$env', op: 'restart', fault: 'restart', applied: true, context: null }])
+    })
+
+    test('a restart retires the other actors of the page and drops their ungranted calls, and leaves another page alone', async () => {
+        let retiredCalls = 0
+        for (let seed = 1; seed <= 12; seed++) {
+            const fake = createTauriSemanticStore()
+            const scheduler = createScheduler({ seed })
+            let restarted = false
+            scheduler.spawn('a', async (actor) => {
+                await actor.restartPage(() => 'dropped=0')
+                restarted = true
+                // Calls after the restart still run: the restarting actor is the new page.
+                await actor.byteStore(fake.store).read('k/a')
+            }, { page: 'p' })
+            scheduler.spawn('b', async (actor) => {
+                const store = actor.byteStore(fake.store)
+                for (let i = 0; i < 6; i++) {
+                    await store.read('k/b')
+                    retiredCalls += restarted ? 1 : 0
+                }
+            }, { page: 'p' })
+            scheduler.spawn('c', async (actor) => {
+                const store = actor.byteStore(fake.store)
+                for (let i = 0; i < 3; i++) {
+                    await store.read('k/c')
+                }
+            }, { page: 'q' })
+            const result = await scheduler.run()
+            expect(result.status, `seed ${seed}`).toBe('finished')
+            expect(result.actors.a.state, `seed ${seed}`).toBe('done')
+            expect(['crashed', 'done'], `seed ${seed}`).toContain(result.actors.b.state)
+            expect(result.actors.c.state, `seed ${seed}`).toBe('done')
+        }
+        // A retired actor's call never resolves after the restart step, so none of b's reads completes once `restarted` is set.
+        expect(retiredCalls).toBe(0)
+    })
+
+    test('an actor of no page cannot restart one', async () => {
+        const scheduler = createScheduler({ seed: 1 })
+        let refusal = ''
+        scheduler.spawn('a', async (actor) => {
+            await actor.restartPage(() => 'dropped=0').catch((error: unknown) => { refusal = error instanceof RangeError ? error.message : 'other' })
+        })
+        await scheduler.run()
+        expect(refusal).toMatch(/no page/)
+    })
+
+    test('a flush fault, then a restart that drops it: the write is gone from the store', async () => {
+        const { fake, scheduler } = await runPage(
+            { faults: { mode: 'script', entries: [{ actor: 'a', kind: 'flush-fault', op: 'writeTop', target: COMMIT_KEY }] } },
+            async (store, fake) => {
+                const gen = await store.pageGate!.registerPage()
+                await store.pageGate!.writeTop(gen, COMMIT_KEY, bytesOf(1))
+                expect(fake.peek(COMMIT_KEY)).toEqual(bytesOf(1))
+            },
+        )
+        expect(fake.unflushed()).toEqual([COMMIT_KEY])
+        const dropped = fake.restart(true)
+        expect(dropped).toEqual([COMMIT_KEY])
+        expect(fake.peek(COMMIT_KEY)).toBeNull()
+        expect(scheduler.log.some((entry) => entry.fault === 'flush-fault')).toBe(true)
     })
 })

@@ -1,0 +1,19 @@
+{
+  "name": "tauriRestartDropsUnflushedFence",
+  "covers": "N4 with power loss: the fence write that was reported not flushed is dropped by the restart, so the new page finds no fence (nothing to re-flush) and the damaged commit key it started from; the exit can be run again from the start",
+  "variant": "tauri",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3],
+  "faults": [
+    { "actor": "r", "kind": "flush-fault", "op": "writeTop", "target": "store2-fence" }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "page": "p", "device": "d", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }, { "do": "restart" }, { "do": "reflush" }, { "do": "exit", "kind": "seed" }, { "do": "finalKey" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "exit:fence:not-durable", "restart:none", "reflush:commit=flushed,fence=absent,active", "exit:marked@seq=1", "finalKey:current=none;retained=none"]
+    }
+  },
+  "mutants": { "restartDropsNothing": "outcome", "topFlushMissingAsFlushed": "outcome" }
+}

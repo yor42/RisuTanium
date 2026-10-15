@@ -126,6 +126,10 @@ export interface RigParts {
     probe(store: ByteStore): (() => Promise<GuardedCapabilities>) | undefined
     /** Whether a page keeps its owner id on the device (Tauri). */
     readonly deviceOwner: boolean
+    /** Tauri: what a restart does to the store (drop the unflushed writes when asked, hand out a new store object); the dropped keys. */
+    readonly restart?: (drop: boolean) => string[]
+    /** Tauri: the store learns that a durable write was reported not flushed. */
+    readonly unflushed?: (key: string) => void
 }
 
 /**
@@ -244,8 +248,16 @@ export interface ReplayActor {
 
     /** `Store2Session.open` on the page's scheduled store: registration, re-flush, boot reads and the start-up clear. Once per page. */
     open(options?: { upstreamMainFile?: boolean }): Promise<Store2Session>
-    /** Tauri: the page is gone and a new one opens with the same owner store (start-up clear). Unflushed writes cannot be dropped: the fake store reports every durable write flushed. */
-    restart(): Promise<Store2Session>
+    /**
+     * Tauri: the page is gone and a new one opens on the same device with the same owner store, which runs the start-up clear.
+     * One environment step comes first: the page's other actors are retired, the unflushed writes are dropped from the store
+     * (unless `drop` is false: a restart with no power loss) and the new page gets a byte store object of its own, so its backend has a
+     * mutex of its own. Per-page state the old page held is gone with it: the recovery screen's read is discarded, and the
+     * screen of the new page runs on the new page's boot read (`session.commitRead`, taken after its start-up clear).
+     * The checker's record of the actor's own last reads stays and is replaced by the boot's, which reads the commit key and the
+     * fence before any deleter can run.
+     */
+    restart(options?: { drop?: boolean }): Promise<Store2Session>
 
     // Commits.
     /** One ordinary commit of a complete tree of `10 + extra` units besides the manifest. */
@@ -567,6 +579,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
     }
     const scheduler = createScheduler({
         ...options.scheduler,
+        ...(parts.unflushed === undefined ? {} : { unflushed: parts.unflushed }),
         onStep: (info) => {
             checker.observe(info)
             options.observe?.(info)
@@ -805,11 +818,14 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                         declare(own, null)
                     }
                 },
-                async restart() {
-                    if (!parts.deviceOwner) {
+                async restart(restartOptions = {}) {
+                    const restartDevice = parts.restart
+                    if (!parts.deviceOwner || restartDevice === undefined) {
                         throw new RangeError('A restart keeps the owner id of the device: Tauri only.')
                     }
+                    await coreOf().handle.restartPage(() => `dropped=${restartDevice(restartOptions.drop ?? true).length}`)
                     sessions.delete(page)
+                    stores.delete(page)
                     resolved = null
                     screen = null
                     return actor.open()

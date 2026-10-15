@@ -849,3 +849,134 @@ describe.each(BACKENDS)('$variant: every operation under injected faults', ({ ma
         expect(runs).toBe(4 * Object.keys(OPERATIONS).length * 12)
     }, 240_000)
 })
+
+// ---- Restart with a fresh mutex, dropped writes and the recovery screen ----
+
+describe('a Tauri restart is a new page', () => {
+    const never = { actor: 'nobody' }
+
+    test('a commit of the old page held in flight is retired by the restart and does not block the new page (the no-hold test below carries the fresh-mutex evidence)', async () => {
+        const rig = await createTauriReplayRig({
+            scheduler: { seed: 1 },
+            start: 'healthy',
+            // b's first unit upload is held for good, so b's commit holds the page's mutex when the page restarts.
+            holds: [{ call: { actor: 'b', op: 'write', target: '$unit' }, until: never }],
+        })
+        let after = ''
+        rig.spawn('b', 11, async (actor) => {
+            await actor.open()
+            await actor.commit('b')
+        }, { page: 'p', device: 'd' })
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            await rig.reached({ actor: 'b', op: 'write', target: '$unit', nth: 3 })
+            await actor.restart()
+            after = outcomeLabel((await actor.commit('after')).result)
+        }, { page: 'p', device: 'd' })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+
+        expect(result.status).toBe('finished')
+        expect(after).toBe('committed')
+        expect(result.actors.a.state).toBe('done')
+        // The old page is gone: b was retired by the restart, with its commit unfinished.
+        expect(result.actors.b.state).toBe('crashed')
+        expect(rig.checker.violations).toEqual([])
+    })
+
+    test('with no hold in the way: whichever step of its commit the old page stopped at, the new page\'s commit is not blocked by the old mutex', async () => {
+        let crashedMidCommit = 0
+        for (let seed = 1; seed <= 24; seed++) {
+            const rig = await createTauriReplayRig({ scheduler: { seed }, start: 'healthy' })
+            let after = ''
+            rig.spawn('b', 11, async (actor) => {
+                await actor.open()
+                await actor.commit('b')
+            }, { page: 'p', device: 'd' })
+            rig.spawn('a', 10, async (actor) => {
+                await actor.open()
+                // b's `has` of a unit key is made inside the commit's critical section of the page's backend.
+                await rig.reached({ actor: 'b', op: 'has' })
+                await actor.restart()
+                after = outcomeLabel((await actor.commit('after')).result)
+            }, { page: 'p', device: 'd' })
+            const result = await rig.run({ maxSteps: MAX_STEPS })
+
+            expect(`seed ${seed}: ${result.status} ${after}`).toBe(`seed ${seed}: finished committed`)
+            expect(rig.checker.violations, `seed ${seed}`).toEqual([])
+            crashedMidCommit += result.actors.b.state === 'crashed' ? 1 : 0
+        }
+        // The race is reached: the old page's commit was cut off in some runs.
+        expect(crashedMidCommit).toBeGreaterThan(0)
+    })
+    test('the restart is an environment step the checker saw, and it reports how many unflushed writes it dropped', async () => {
+        for (const [drop, dropped] of [[true, 1], [false, 0]] as const) {
+            const steps: StepInfo[] = []
+            const rig = await createTauriReplayRig({
+                scheduler: { seed: 1, faults: { mode: 'script', entries: [{ actor: 'a', kind: 'flush-fault', op: 'writeTop', target: COMMIT_KEY, context: 'commit' }] } },
+                start: 'healthy',
+                observe: (info) => steps.push(info),
+            })
+            const labels: string[] = []
+            rig.spawn('a', 10, async (actor) => {
+                await actor.open()
+                labels.push(outcomeLabel((await actor.commit('a')).result))
+                await actor.restart({ drop })
+                labels.push((await actor.readKey())?.current?.key === rig.seedManifest ? 'seed' : 'newer')
+            }, { page: 'p', device: 'd' })
+            const result = await rig.run({ maxSteps: MAX_STEPS })
+
+            expect(result.actors.a.state).toBe('done')
+            expect(labels).toEqual(['committed', drop ? 'seed' : 'newer'])
+            expect(steps.filter((step) => step.kind === 'env')).toMatchObject([{ actor: '$env', op: 'restart', fault: 'restart', applied: true }])
+            expect(rig.scheduler.log.filter((entry) => entry.op === 'restart').map((entry) => entry.outcome)).toEqual([`env:dropped=${dropped}`])
+            expect(rig.checker.violations).toEqual([])
+        }
+    })
+
+    test('the recovery screen of the new page runs on the new page\'s boot read, not on the read the old page held', async () => {
+        const rig = await createTauriReplayRig({ scheduler: { seed: 1 }, start: 'damaged-commit' })
+        const labels: string[] = []
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            labels.push(outcomeLabel(await actor.runExit('seed')))
+            // The marker is the page's own and the new page's start-up clear removes it; the old screen's read (the damaged key) is stale by then.
+            const session = await actor.restart()
+            labels.push(session.startupClear === null ? 'none' : session.startupClear.status)
+            labels.push(outcomeLabel(await actor.runExit('seed')))
+        }, { page: 'p', device: 'd' })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+
+        expect(result.actors.a.state).toBe('done')
+        expect(labels).toEqual(['marked:written', 'cleared', 'marked:written'])
+        expect(rig.checker.violations).toEqual([])
+    })
+
+    test('a bulk upload stops at a staged unit whose flush failed: the final key never names it, so the restart that drops it breaks nothing', async () => {
+        // Bulk and install both once discarded putUnit's `flushed`, so a staged unit reported unflushed was named by a final write that
+        // reported flushed. The restart drops that unit and the checker excuses no dropped unit, so the old behaviour is I1 here.
+        const rig = await createTauriReplayRig({
+            scheduler: { seed: 1, faults: { mode: 'script', entries: [{ actor: 'a', kind: 'flush-fault', op: 'write', context: 'bulk-begin', nth: 2 }] } },
+            start: 'healthy',
+        })
+        const held: { manifest: string | null, bulk: string } = { manifest: null, bulk: '' }
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            const { result } = await actor.bulkCommit('a')
+            held.bulk = outcomeLabel(result)
+            held.manifest = result.status === 'committed' ? result.manifestKey : null
+            await actor.restart()
+        }, { page: 'p', device: 'd' })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+
+        expect(result.actors.a.state).toBe('done')
+        expect(held.bulk).toBe('abandoned:upload-failed')
+        expect(held.manifest).toBeNull()
+        const lost = rig.scheduler.log.find((entry) => entry.fault === 'flush-fault')
+        expect(lost).toBeDefined()
+        const named = classifyCommitRead({ bytes: rig.hooks.peek(COMMIT_KEY) })
+        expect(named.status === 'parsed' && named.value.current?.key).toBe(rig.seedManifest)
+        expect(named.status === 'parsed' && named.value.staging).toBeNull()
+        expect(rig.hooks.peek(lost!.target)).toBeNull()
+        expect(rig.checker.violations).toEqual([])
+    })
+})

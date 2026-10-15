@@ -246,6 +246,28 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             await expectInvariant(raw)
         })
 
+        test('a unit upload that reports flushed false abandons the commit: no later upload, the manifest is never installed, and the only commit-key write after the marker is the clear', async () => {
+            const { raw, wrapped, clock, m0 } = await setup()
+            const unflushed: typeof wrapped.backend = {
+                ...wrapped.backend,
+                putUnit: async (key, bytes) => {
+                    const written = await wrapped.backend.putUnit(key, bytes)
+                    return wrapped.count('putUnit') === 3 ? { flushed: false } : written
+                },
+            }
+            const a = committerOf(unflushed, clock, 100)
+            const result = await a.commit(await a.readCommit(), treeRequest(BULK_MIN))
+            expect(result.status === 'abandoned' && result.reason).toBe('upload-failed')
+            expect(result.status === 'abandoned' && result.cleared?.status).toBe('cleared')
+            expect(result.status === 'abandoned' && result.cause).toBeInstanceOf(Store2BackendFailureError)
+            expect(wrapped.count('putUnit')).toBe(3)
+            expect(wrapped.count('casCommit')).toBe(2)
+            const key = await parsedCommit(raw)
+            expect(key.current?.key).toBe(m0)
+            expect(key.staging).toBeNull()
+            await expectInvariant(raw)
+        })
+
         test('a build that throws clears the marker and rethrows with the clear result', async () => {
             const { raw, a } = await setup()
             const failure = await a.commit(await a.readCommit(), {

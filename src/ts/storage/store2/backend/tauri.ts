@@ -38,9 +38,10 @@ import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatch
  * `commitOrdinary` is a definite failure of the commit, because the commit key
  * is not written after it.
  *
- * Durability. A write of `store2-commit` or `store2-fence` whose native command
- * reports no flush status resolves `flushed: false`, never `undefined`; units keep
- * the store's own report. `commitOrdinary` writes the commit key only after every unit write
+ * Durability. Every write whose native command reports no flush status resolves
+ * `flushed: false`, never `undefined`: a `store2-commit` or `store2-fence` write,
+ * and a `putUnit`. (A unit written inside `commitOrdinary` is held to the same rule.)
+ * `commitOrdinary` writes the commit key only after every unit write
  * reported `flushed === true`: a commit key must never name a unit whose
  * directory entry may not survive power loss. Unit writes run concurrently, and
  * the commit key is considered only after every write that started has settled.
@@ -297,7 +298,7 @@ export async function createTauriBackend(store: ByteStore): Promise<Store2Backen
                         throw outcome.error
                     }
                     if (outcome.status === 'written' && outcome.flushed !== true) {
-                        throw new Store2BackendFailureError(`The unit ${owned[index].key} was written but its flush ${outcome.flushed === false ? 'failed' : 'was not reported'}, so the commit key was not written.`)
+                        throw new Store2BackendFailureError(`The unit ${owned[index].key} was written but its flush ${outcome.flushed === false ? 'failed' : 'was not reported as done'}, so the commit key was not written.`)
                     }
                 }
                 return writeKey(COMMIT_KEY, ownedCommit, writeFailureOf)
@@ -311,7 +312,8 @@ export async function createTauriBackend(store: ByteStore): Promise<Store2Backen
                 if (await hasKey(key)) {
                     throw new Store2OverwriteRefusedError(key)
                 }
-                return writeKey(key, owned, writeFailureOf)
+                const written = await writeKey(key, owned, writeFailureOf)
+                return { flushed: written.flushed === true }
             })
         },
 

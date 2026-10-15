@@ -71,8 +71,8 @@ export const CORPUS_INDEX: readonly IndexEntry[] = [
         note: 'The pass refuses at the mark (mark-refused) before any list or batch. Damage after the pass\'s read is the amendment-J case, judged by the commit-key damage schedules.',
     },
     {
-        id: 'c409-12', model: 'GC refuses => unconfirmed commit-key flush', kind: 'pending', schedule: 'c409_12_gc_refuses_unflushed',
-        note: 'Needs the Tauri flush fault of 2f-5.',
+        id: 'c409-12', model: 'GC refuses => unconfirmed commit-key flush', kind: 'schedule', schedule: 'c409_12_gc_refuses_unflushed',
+        note: 'The commit\'s commit-key write reports flushed:false (the scheduler\'s flush fault), the page\'s flush tracker sets the idle reason and the pass refuses (refused:idle) with nothing deleted. A restart that drops the unflushed write puts back the first commit\'s commit key (current is the first commit\'s manifest and the seeded tree is retained, not the seeded key itself) and the tree it names is still stored; without the refusal the pass would have orphaned that tree (I1 at the restart).',
     },
     {
         id: 'c409-13', model: 'GC manifest read 404 => abort the pass, re-list', kind: 'schedule', schedule: 'c409_13_gc_manifest_read_404',
@@ -125,5 +125,9 @@ export const CORPUS_INDEX: readonly IndexEntry[] = [
     {
         id: 'inst-lost-request-control', model: 'driver check, not a model category: the install post-condition (INST) after a lost request', kind: 'schedule', schedule: 'instLostRequestControl',
         note: 'Compatibility guard, green before and after the INST rule change. The final write is lost before it applies, the read-back shows the marker, the retry lands and the install is reported as installed with its own applied write behind it.',
+    },
+    {
+        id: 'tauri-install-unit-unflushed', model: 'driver check, not a model category: a staged unit of a recovery install whose flush failed, then a restart', kind: 'schedule', schedule: 'tauriInstallUnitUnflushedThenRestart',
+        note: 'Regression reproducer. A staged unit write reports flushed:false; the install stops with upload-failed before its final write, so no commit key names the unit. The restart that drops the unit finds the recovery marker still standing and the checker, which excuses no dropped unit, reports nothing. Before the fix the install named the unit and the restart left a commit key naming a missing unit (I1).',
     },
 ]

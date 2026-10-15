@@ -1,7 +1,7 @@
 import {
-    Store2BackendError, Store2CommitConflictError, Store2NotBinaryError, Store2OverwriteRefusedError, Store2UnknownOutcomeError,
+    Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2NotBinaryError, Store2OverwriteRefusedError, Store2UnknownOutcomeError,
 } from './backend/errors'
-import { sameBytes, type Store2Backend, type Store2Read } from './backend/types'
+import { sameBytes, type Store2Backend, type Store2Read, type Store2WriteResult } from './backend/types'
 import { classifyCommitRead, nextCommitKey } from './commitKey'
 import {
     assetRefKey, decodeFrame, defaultKeyEnv, encodeUnit, keyOfTail, newStagedKey, newStagedManifestKey, parseStore2Key,
@@ -542,15 +542,16 @@ function stagingIdOf(prefix: string): string {
 /**
  * Puts `bytes` under a fresh key from `mint`. A refused put or a lost answer is
  * retried under a new key (the first may or may not exist, an orphan inside the
- * marker's prefix that the collector reaps); any other failure stops the install.
+ * marker's prefix that the collector reaps); any other failure, and a put whose
+ * flush failed, stops the install.
  */
 async function putFresh(backend: Store2Backend, bytes: Uint8Array, mint: () => string): Promise<string> {
     let last: Store2BackendError | null = null
     for (let attempt = 0; attempt < PUT_ATTEMPTS; attempt++) {
         const key = mint()
+        let written: Store2WriteResult
         try {
-            await backend.putUnit(key, bytes)
-            return key
+            written = await backend.putUnit(key, bytes)
         } catch (error) {
             if (error instanceof Store2OverwriteRefusedError || error instanceof Store2UnknownOutcomeError) {
                 last = error
@@ -561,6 +562,11 @@ async function putFresh(backend: Store2Backend, bytes: Uint8Array, mint: () => s
             }
             throw error
         }
+        if (written.flushed === false) {
+            // Not a key collision, so no retry: the final write must not name a unit that may not survive power loss.
+            throw new InstallStop({ status: 'upload-failed', cause: new Store2BackendFailureError(`The unit ${key} was written but its flush failed or was not reported as done, so the install stopped.`) })
+        }
+        return key
     }
     throw new InstallStop({ status: 'upload-failed', cause: last as Store2BackendError })
 }

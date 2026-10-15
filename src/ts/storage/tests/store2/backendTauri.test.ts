@@ -141,14 +141,14 @@ describe('tauri backend', () => {
             expect(await backend.commitOrdinary(await absentCommit(backend), [unit(1)], bytesOf(5))).toEqual({ flushed: true })
         })
 
-        test('a commit key or fence write whose command reports no flush status is flushed false, while a unit keeps its unreported status', async () => {
+        test('a commit key or fence write whose command reports no flush status or a unit write reports no flush status is flushed false', async () => {
             const { backend } = await open()
             h.flush.fault = () => 'unreported'
 
             expect(await backend.casCommit(await absentCommit(backend), bytesOf(1))).toEqual({ flushed: false })
             expect(await backend.casFence(await absentFence(backend), bytesOf(2))).toEqual({ flushed: false })
             expect(await backend.commitOrdinary((await backend.readCommit()).token, [], bytesOf(3))).toEqual({ flushed: false })
-            expect(await backend.putUnit(unitKey(1), bytesOf(4))).toEqual({ flushed: undefined })
+            expect(await backend.putUnit(unitKey(1), bytesOf(4))).toEqual({ flushed: false })
             expect(peek(COMMIT_KEY)).toEqual([3])
             expect(peek(FENCE_KEY)).toEqual([2])
         })
@@ -187,13 +187,13 @@ describe('tauri backend', () => {
             expect(h.fs.durableLog).not.toContain(SWEEP_KEY)
         })
 
-        test('putUnit refuses an existing key and returns the store flush status', async () => {
+        test('putUnit refuses an existing key and returns the store flush status, false when none is reported', async () => {
             const { backend } = await open()
             expect(await backend.putUnit(unitKey(1), bytesOf(1))).toEqual({ flushed: true })
             await expect(backend.putUnit(unitKey(1), bytesOf(2))).rejects.toBeInstanceOf(Store2OverwriteRefusedError)
             expect(peek(unitKey(1))).toEqual([1])
             h.flush.fault = () => 'unreported'
-            expect(await backend.putUnit(unitKey(2), bytesOf(1))).toEqual({ flushed: undefined })
+            expect(await backend.putUnit(unitKey(2), bytesOf(1))).toEqual({ flushed: false })
         })
     })
 

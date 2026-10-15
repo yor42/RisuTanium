@@ -1,0 +1,16 @@
+{
+  "name": "tauriRestartStartupClear",
+  "covers": "a page that restarts with its own seed marker standing: the new page opens with the same owner store, finds the marker as its own and its start-up clear removes it with no question; the exit's marker write was flushed, so the restart's drop leaves it",
+  "variant": "tauri",
+  "start": "healthy",
+  "seeds": [1, 2, 3],
+  "actors": [
+    { "id": "a", "seed": 10, "page": "p", "device": "d", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }, { "do": "restart" }, { "do": "decision" }, { "do": "finalKey" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "exit:marked@seq=2", "restart:cleared", "decision:9:rerun", "finalKey:current=none;retained=none"]
+    }
+  },
+  "mutants": { "skipStartupClear": "outcome" }
+}

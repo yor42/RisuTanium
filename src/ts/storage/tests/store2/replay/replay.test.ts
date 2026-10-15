@@ -85,8 +85,13 @@ type ProgramStep =
     | { do: 'pin' }
     /** Clears the marker the fresh read shows, naming its prefix. */
     | { do: 'abandonClear' }
-    /** Tauri: the page is gone and a new one opens on the same device. */
-    | { do: 'restart' }
+    /**
+     * Tauri: the page is gone and a new one opens on the same device. The unflushed writes are dropped first unless `drop` is
+     * false; the label names what the new page's start-up clear came to.
+     */
+    | { do: 'restart', drop?: boolean }
+    /** What the page's boot re-flush came to for the commit key and the fence, and whether the deleters are idle. */
+    | { do: 'reflush' }
     | { do: 'candidates' }
     | { do: 'fenceExit' }
     | { do: 'discardFence' }
@@ -119,7 +124,8 @@ interface FaultSpec {
 type LostManifest = 'seed' | 'current' | 'retained'
 
 interface EnvSpec {
-    name: EnvFault
+    /** A restart is an actor's step (`restart`), never a registered environment step. */
+    name: Exclude<EnvFault, 'restart'>
     /** Registered once a step the match selects has been judged; at the start when absent. */
     after?: StepMatch
     /** For `remove-unit`: which manifest of the commit key goes (the first retained one, the current one, or the seeded tree's). */
@@ -195,7 +201,9 @@ async function runProgramStep(actor: ReplayActor, step: ProgramStep): Promise<st
                 // An invalid pick says whether the exit's marker had landed before the tree read failed.
                 return `recover:pick:${outcomeLabel(picked)}${picked.status === 'invalid' ? (picked.marked === null ? ':unmarked' : ':marked') : ''}`
             }
-            return `recover:installed:${outcomeLabel(await actor.installPick(picked))}`
+            const installed = await actor.installPick(picked)
+            // An install whose final write did not reach stable storage says so; the install itself is applied.
+            return `recover:installed:${outcomeLabel(installed)}${installed.status === 'installed' && installed.flushed === false ? ':unflushed' : ''}`
         }
         case 'candidates': {
             const listed = await actor.listRecoveryCandidates()
@@ -256,9 +264,15 @@ async function runProgramStep(actor: ReplayActor, step: ProgramStep): Promise<st
             }
             return `abandonClear:${outcomeLabel(await actor.abandonClear(standing.prefix))}`
         }
-        case 'restart':
-            await actor.restart()
-            return 'restart'
+        case 'restart': {
+            const session = await actor.restart({ drop: step.drop })
+            return `restart:${session.startupClear === null ? 'none' : outcomeLabel(session.startupClear)}`
+        }
+        case 'reflush': {
+            const session = actor.session
+            const reflush = session.reflush
+            return reflush === null ? 'reflush:none' : `reflush:commit=${reflush.commit},fence=${reflush.fence},${session.idleReason === null ? 'active' : 'idle'}`
+        }
     }
 }
 

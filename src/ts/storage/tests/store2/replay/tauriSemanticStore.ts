@@ -22,6 +22,15 @@
  *    takes the lock and checks, and the landing that applies and releases, which is
  *    how the scheduler keeps a call that outlives its page (`TwoStepPageGate`).
  *
+ * Durability. Every durable write (`store2/` units, `store2-commit`, `store2-fence`)
+ * reports `flushed: true`. The scheduler's flush fault reports one write as not
+ * flushed through `markUnflushed`, the native layer's `flush.fault`: the write stays
+ * applied and visible, and the fake remembers what lay beneath it. A restart that
+ * drops unflushed writes puts that back (the older bytes, or no file at all), which is
+ * what a power loss between the write and its flush would leave. A later write of
+ * the same key replaces the unflushed one and rests on what lay beneath it, so a
+ * flushed write makes the key durable again. A removal is durable.
+ *
  * Test options, never part of production code: `gate: false` removes the gate (no
  * generation check, registration never waits), which is the app before the gate;
  * `bypass: 'allow'` lets the plain paths touch the gated keys, which is what a
@@ -46,6 +55,7 @@ export interface TauriSemanticOptions {
 }
 
 export interface TauriSemanticStore {
+    /** The page's byte store object; a restart replaces it, as a reload gives the page a new store object (and so a new backend mutex). */
     readonly store: ByteStore
     /** A copy of every key that holds bytes. */
     snapshot(): Map<string, Uint8Array>
@@ -57,6 +67,16 @@ export interface TauriSemanticStore {
     plant(key: string, bytes: Uint8Array): void
     /** The file is gone without a request, as a loss in the file system would leave it. */
     remove(key: string): void
+    /** The last write of the durable key is reported as not flushed (`flush.fault`): it stays applied until a restart drops it. */
+    markUnflushed(key: string): void
+    /** The keys whose last write is not known flushed, sorted. */
+    unflushed(): string[]
+    /**
+     * The page is gone and a new one starts on the same device. With `drop`, every unflushed write is dropped first (what lay
+     * beneath it is put back), and the dropped keys are returned, sorted. The native generation and lock stay; the store object
+     * is new, so the backend built on it has a mutex of its own.
+     */
+    restart(drop: boolean): string[]
     /** The generation the next decisive call must present. */
     readonly generation: number
     /** Whether a decisive call holds the lock right now. */
@@ -91,6 +111,10 @@ export function createTauriSemanticStore(options: TauriSemanticOptions = {}): Ta
     const platform: FilePlatform = options.platform ?? 'windows'
 
     const values = new Map<string, Uint8Array>()
+    // Per durable key, what lay beneath its last write: the bytes, or null for no file.
+    const beneath = new Map<string, Uint8Array | null>()
+    // The keys whose last write was reported not flushed, each with what lies beneath that write.
+    const notFlushed = new Map<string, Uint8Array | null>()
     let generation = 0
 
     // The native lock. A release hands the lock straight to the first waiter, so the lock never reads free in between.
@@ -169,9 +193,23 @@ export function createTauriSemanticStore(options: TauriSemanticOptions = {}): Ta
         checkCreatable(key)
     }
 
+    /** The key holds no file any more, and nothing of it is left to drop: a removal is durable. */
+    function forget(key: string): void {
+        values.delete(key)
+        beneath.delete(key)
+        notFlushed.delete(key)
+    }
+
     function applyWrite(key: string, bytes: Uint8Array): WriteResult {
+        if (!isDurable(key)) {
+            values.set(key, bytes.slice())
+            return { version: null }
+        }
+        // A write over an unflushed one rests on what lay beneath that one; a flushed write ends the key's unflushed state.
+        beneath.set(key, notFlushed.has(key) ? notFlushed.get(key) ?? null : values.get(key) ?? null)
+        notFlushed.delete(key)
         values.set(key, bytes.slice())
-        return isDurable(key) ? { version: null, flushed: true } : { version: null }
+        return { version: null, flushed: true }
     }
 
     /** The removal a gated call performs once it holds the lock and passed its check. */
@@ -180,7 +218,7 @@ export function createTauriSemanticStore(options: TauriSemanticOptions = {}): Ta
             if (tauriAddressableViolation(key, platform) !== null) {
                 return { key, outcome: 'failed', error: new TypeError('the path cannot be addressed') }
             }
-            values.delete(key)
+            forget(key)
             return { key, outcome: 'removed' }
         })
         if (report.some((entry) => entry.outcome !== 'removed')) {
@@ -291,65 +329,72 @@ export function createTauriSemanticStore(options: TauriSemanticOptions = {}): Ta
         }
     }
 
-    const store: ByteStore = {
-        capabilities: { conditionalWrites: false },
-        pageGate: gate,
+    /** A new store object over the same files and the same native side: the page's byte store after a reload. */
+    function makeStore(): ByteStore {
+        return {
+            capabilities: { conditionalWrites: false },
+            pageGate: gate,
 
-        async read(key: string): Promise<ReadResult> {
-            checkAddressable(key)
-            const bytes = values.get(key)
-            return { bytes: bytes === undefined ? null : bytes.slice(), version: null }
-        },
+            async read(key: string): Promise<ReadResult> {
+                checkAddressable(key)
+                const bytes = values.get(key)
+                return { bytes: bytes === undefined ? null : bytes.slice(), version: null }
+            },
 
-        async write(key: string, bytes: Uint8Array, condition: StoreCondition): Promise<WriteResult> {
-            checkCreatable(key)
-            checkCondition(condition, false)
-            checkBytes(bytes)
-            refuseGatedForPlain(key, false)
-            return applyWrite(key, bytes)
-        },
+            async write(key: string, bytes: Uint8Array, condition: StoreCondition): Promise<WriteResult> {
+                checkCreatable(key)
+                checkCondition(condition, false)
+                checkBytes(bytes)
+                refuseGatedForPlain(key, false)
+                return applyWrite(key, bytes)
+            },
 
-        async delete(key: string, condition: StoreCondition): Promise<void> {
-            checkAddressable(key)
-            checkCondition(condition, false)
-            refuseGatedForPlain(key, true)
-            values.delete(key)
-        },
+            async delete(key: string, condition: StoreCondition): Promise<void> {
+                checkAddressable(key)
+                checkCondition(condition, false)
+                refuseGatedForPlain(key, true)
+                forget(key)
+            },
 
-        async deleteMany(entries: readonly DeleteEntry[]): Promise<void> {
-            for (const entry of entries) {
-                checkAddressable(entry.key)
-                checkCondition(entry.condition, false)
-            }
-            checkNoDuplicateKeys(entries)
-            for (const entry of entries) {
-                refuseGatedForPlain(entry.key, true)
-            }
-            for (const entry of entries) {
-                values.delete(entry.key)
-            }
-        },
+            async deleteMany(entries: readonly DeleteEntry[]): Promise<void> {
+                for (const entry of entries) {
+                    checkAddressable(entry.key)
+                    checkCondition(entry.condition, false)
+                }
+                checkNoDuplicateKeys(entries)
+                for (const entry of entries) {
+                    refuseGatedForPlain(entry.key, true)
+                }
+                for (const entry of entries) {
+                    forget(entry.key)
+                }
+            },
 
-        async list(prefix: string): Promise<string[]> {
-            const reason = tauriAddressableViolation(prefix, platform, true)
-            if (reason !== null) {
-                throw new StoreInvalidKeyError(prefix, reason)
-            }
-            return listHeld(prefix)
-        },
+            async list(prefix: string): Promise<string[]> {
+                const reason = tauriAddressableViolation(prefix, platform, true)
+                if (reason !== null) {
+                    throw new StoreInvalidKeyError(prefix, reason)
+                }
+                return listHeld(prefix)
+            },
 
-        async has(key: string): Promise<boolean> {
-            checkAddressable(key)
-            return values.has(key)
-        },
+            async has(key: string): Promise<boolean> {
+                checkAddressable(key)
+                return values.has(key)
+            },
+        }
     }
+
+    let store = makeStore()
 
     function listHeld(prefix: string): string[] {
         return [...values.keys()].filter((key) => key.startsWith(prefix))
     }
 
     return {
-        store,
+        get store() {
+            return store
+        },
         snapshot() {
             return new Map([...values].map(([key, bytes]) => [key, bytes.slice()]))
         },
@@ -358,10 +403,39 @@ export function createTauriSemanticStore(options: TauriSemanticOptions = {}): Ta
         },
         list: listHeld,
         plant(key, bytes) {
+            // A planted file is state the run starts from: durable.
+            notFlushed.delete(key)
+            beneath.delete(key)
             values.set(key, bytes.slice())
         },
         remove(key) {
-            values.delete(key)
+            forget(key)
+        },
+        markUnflushed(key) {
+            if (!isDurable(key) || !values.has(key)) {
+                throw new RangeError(`${key} holds no durable write to report unflushed.`)
+            }
+            notFlushed.set(key, beneath.get(key) ?? null)
+        },
+        unflushed() {
+            return [...notFlushed.keys()].sort()
+        },
+        restart(drop) {
+            const dropped: string[] = []
+            if (drop) {
+                for (const [key, below] of notFlushed) {
+                    if (below === null) {
+                        values.delete(key)
+                    } else {
+                        values.set(key, below.slice())
+                    }
+                    beneath.delete(key)
+                    dropped.push(key)
+                }
+                notFlushed.clear()
+            }
+            store = makeStore()
+            return dropped.sort()
         },
         get generation() {
             return generation

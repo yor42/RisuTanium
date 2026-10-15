@@ -22,7 +22,7 @@
  * `rerun-exhausted`. A recovery that must not be made stale by its own page's earlier activity (R14) runs as an actor of
  * a page of its own.
  *
- * Regions that need a rig which does not exist yet (IndexedDB, the Tauri flush fault) are written with `pending`
+ * Regions that need a rig which does not exist yet (IndexedDB) are written with `pending`
  * reasons and are skipped with that reason, never run on another backend in their place.
  */
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
@@ -59,8 +59,8 @@ export type RegionStep =
     | { do: 'discardFence' }
     | { do: 'clearMarker' }
     | { do: 'abandonClear' }
-    /** Tauri: the page restarts on the same device. */
-    | { do: 'restart' }
+    /** Tauri: the page restarts on the same device; the unflushed writes are dropped first unless `drop` is false. */
+    | { do: 'restart', drop?: boolean }
     | { do: 'readKey' }
 
 export interface RegionActor {
@@ -89,10 +89,13 @@ export interface RegionFaults {
     minFaulted?: number
     /** Replaces `minFaulted` on Tauri, where a page shares one session and a crash retires every actor of it. */
     tauriMinFaulted?: number
+    /** Tauri: a durable write can also be reported not flushed (the flush fault, which spends the lost-call budget); the other kinds keep their draws without it. */
+    flush?: boolean
 }
 
 export interface RegionDamage {
-    name: EnvFault
+    /** A restart is an actor's step (`restart`), never a registered environment step. */
+    name: Exclude<EnvFault, 'restart'>
     /** Registered once a step the match selects has been judged; at the start when absent. */
     after?: StepMatch
 }
@@ -485,19 +488,30 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, admit, restore]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.02, Infinity, 1, 12), pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 36,
-        floors: { 'bulk:committed': 0.3, 'gc:done': 0.6, 'restore:committed': 0.6 },
+        faults: { ...faults(0.02, Infinity, 1, 12), flush: true }, pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 36,
+        // A bulk whose staged unit reports an unflushed write is abandoned, so the share that commits sits below what it would be if that
+        // report were ignored.
+        floors: { 'bulk:committed': 0.25, 'gc:done': 0.6, 'restore:committed': 0.6 },
     },
     {
         id: 'R18d', name: 'tauri-recovery', covers: 'plan v3.4 section 6: Tauri recovery, a restart of the page and the start-up clear',
         backends: ['tauri'], start: 'both-damaged', garbage: GARBAGE_UNITS,
         actors: [
-            actor('a', A, [open, recover, { do: 'restart' }, commit], { foreignClear: 'yes', device: 'phone' }),
-            actor('g', G, [open, gc]),
+            // a's seed exit leaves its own marker. The first restart drops the unflushed writes, retires g (the old page is gone), hands the
+            // new page a store object and so a backend mutex of its own, and the new page's start-up clear removes the marker. The new page
+            // recovers and commits (the writes whose flush the fault can fail) and restarts again, and the page after that collects.
+            actor('a', A, [open, exitSeed, { do: 'restart' }, recover, commit, commit, { do: 'restart' }, gc, commit], { foreignClear: 'yes', device: 'phone' }),
+            actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, Infinity, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
-        floors: {},
-        pending: { tauri: 'The restart with a fresh mutex and the flush fault are stage 2f-5; the smoke run restarts the page through its owner store only.' },
+        faults: { ...faults(0.08, Infinity, 1, 10), flush: true }, pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 36,
+        // A run is not exercised when any page registration with the gate is faulted (the page's, the new page's, or the one after a
+        // restart), whether the fault is a crash after the write or a lost request or response: about a quarter of the runs.
+        // A recovery install whose staged unit reports an unflushed write stops, and a commit key never names such a unit, so
+        // recover:installed and commit:committed sit below what they would be if that report were ignored.
+        // gc:done is the one floor below the 70 to 80 percent band of its measured rate (0.2 against 0.33); it is the share of runs
+        // where the collector's pass finishes after the last restart, which a handful of seeds decide.
+        minExercised: 0.6,
+        floors: { 'exit:marked': 0.55, 'restart': 0.7, 'restart:cleared': 0.55, 'restart:dropped': 0.22, 'recover:installed': 0.45, 'commit:committed': 0.28, 'gc:done': 0.2 },
     },
     {
         id: 'R18e', name: 'two-recoveries-one-tauri-page', covers: 'plan v3.4 section 6: two actors of one Tauri page both recovering',
@@ -724,12 +738,15 @@ async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, 
             const result = await actor.abandonClear(prefix)
             return { label: `abandonClear:${outcomeLabel(result)}`, kind: result.status }
         }
-        case 'restart':
+        case 'restart': {
             if (ctx.variant !== 'tauri') {
                 return { label: 'restart:not-tauri', kind: 'skipped' }
             }
-            await actor.restart()
-            return { label: 'restart', kind: 'done' }
+            // The kind is what the new page's start-up clear came to, so a floor can require that it ran.
+            const session = await actor.restart({ drop: step.drop })
+            const cleared = session.startupClear === null ? 'none' : outcomeLabel(session.startupClear)
+            return { label: `restart:${cleared}`, kind: cleared }
+        }
         case 'readKey': {
             const key = await actor.readKey()
             return { label: `readKey:${key === null ? 'unparsed' : 'parsed'}`, kind: key === null ? 'unparsed' : 'parsed' }
@@ -743,7 +760,7 @@ function faultPlanOf(region: RegionConfig): Extract<FaultPlan, { mode: 'random' 
     if (spec === undefined) {
         return null
     }
-    return { mode: 'random', probability: 0, budget: { lostPerActor: spec.lostPerActor, crashPerActor: spec.crashPerActor } }
+    return { mode: 'random', probability: 0, budget: { lostPerActor: spec.lostPerActor, crashPerActor: spec.crashPerActor }, ...(spec.flush === true ? { flushFaults: true } : {}) }
 }
 
 function rigOptionsOf(region: RegionConfig, seed: number, plan: Extract<FaultPlan, { mode: 'random' }> | null, ctx: RunContext, observe: (info: StepInfo) => void): ReplayRigOptions {
@@ -842,6 +859,10 @@ export async function runRegion(region: RegionConfig, backend: RegionBackend, se
         crashed = crashed || report.state === 'crashed'
     }
     const log = rig.scheduler.log
+    // `restart:dropped` is a restart that took at least one unflushed write out of the store: the fault and the restart met.
+    if (log.some((entry) => entry.op === 'restart' && entry.outcome !== 'env:dropped=0')) {
+        reached.add('restart:dropped')
+    }
     const faultCounts: Record<string, number> = {}
     let firstFaultStep: number | null = null
     for (const entry of log) {

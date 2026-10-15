@@ -1,0 +1,19 @@
+{
+  "name": "tauriInstallUnitUnflushedThenRestart",
+  "covers": "durability of a staged unit of a recovery install: a staged unit write that reports flushed:false stops the install with upload-failed before its final write, so no commit key ever names the unit; a restart that drops the unit leaves the recovery marker standing and the checker sees no unit missing",
+  "variant": "tauri",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3],
+  "faults": [
+    { "actor": "r", "kind": "flush-fault", "op": "write", "context": "recovery-install", "nth": 2 }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "page": "p", "device": "d", "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "recover" }, { "do": "restart" }, { "do": "decision" }, { "do": "finalKey" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "recover:installed:upload-failed", "restart:none", "decision:8:recovery", "finalKey:current=none;retained=none"]
+    }
+  },
+  "mutants": { "installIgnoresUnflushedUnit": "I1" }
+}

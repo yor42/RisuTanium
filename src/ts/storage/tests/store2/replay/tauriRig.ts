@@ -19,6 +19,10 @@
  * Pages are spawned with `spawnPage`: every actor of a page shares one scheduled
  * store, so the backend's in-process mutex is shared as it is in the app, and a
  * crash retires the whole page.
+ *
+ * The replay rig (`createTauriReplayRig`) also reports a flush fault to the store and
+ * restarts a page through the store's `restart`, which drops unflushed writes and hands
+ * the next page a new store object (the backend's mutex is keyed by it).
  */
 import { createTauriBackend } from 'src/ts/storage/store2/backend'
 import type { CommitResult } from 'src/ts/storage/store2/commit'
@@ -113,6 +117,8 @@ export async function createTauriReplayRig(options: TauriReplayRigOptions): Prom
         raw: rawOfTauriSemantic(fake),
         hooks: { peek: (key) => fake.peek(key), plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix), remove: (key) => fake.remove(key) },
         deviceOwner: true,
+        restart: (drop) => fake.restart(drop),
+        unflushed: (key) => fake.markUnflushed(key),
         pageStore: (handle) => handle.byteStore(fake.store),
         openBackend: (store) => createTauriBackend(store),
         probe: () => undefined,

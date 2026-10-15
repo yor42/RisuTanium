@@ -1028,3 +1028,84 @@ describe('a clean run of a trivial commit and collection reports no violation', 
         expect(faulted).toBeGreaterThan(0)
     })
 })
+
+describe('an environment restart excuses no dropped unit', () => {
+    const restart = { kind: 'env', fault: 'restart' } as const
+
+    test('a unit the commit key names, dropped by a restart, is I1, and a dropped unit nothing names is clean', async () => {
+        const { rig, manifest, units } = await seeded()
+        const stray = await orphan(rig)
+        const step = stepper(createChecker(rig.raw))
+        rig.fake.remove(stray)
+        expect(step('$env', 'restart', null, restart), 'a dropped orphan').toEqual([])
+        expect(step('a', 'readCommit')).toEqual([])
+        const named = units.find((key) => key !== manifest)!
+        rig.fake.remove(named)
+        const found = step('$env', 'restart', null, restart)
+        expect(propertiesOf(found), 'a dropped unit the commit key names').toEqual(['I1'])
+        expect(found[0].detail).toContain(named)
+    })
+
+    test('the same removal by an actor, even one labelled as a restart step of a call, is I1', async () => {
+        for (const extra of [{}, { fault: 'restart' as const }]) {
+            const { rig, manifest, units } = await seeded()
+            const step = stepper(createChecker(rig.raw))
+            const victim = units.find((key) => key !== manifest)!
+            rig.fake.remove(victim)
+            const found = step('a', 'delete', { kind: 'gc' }, extra)
+            expect(propertiesOf(found), JSON.stringify(extra)).toEqual(['I1'])
+            expect(found[0].detail).toContain(victim)
+        }
+    })
+
+    test('a restart that dropped an orphan does not hide a unit an actor removes afterwards: it is still I1', async () => {
+        const { rig, manifest, units } = await seeded()
+        const dropped = await orphan(rig)
+        const step = stepper(createChecker(rig.raw))
+        const victim = units.find((key) => key !== manifest)!
+        rig.fake.remove(dropped)
+        expect(step('$env', 'restart', null, restart)).toEqual([])
+        await rig.fake.store.delete(victim, 'unconditional')
+        const found = step('a', 'delete', { kind: 'commit' })
+        expect(propertiesOf(found)).toEqual(['I1'])
+        expect(found[0].detail).toContain(victim)
+        expect(found[0].detail).not.toContain(dropped)
+    })
+
+    test('a commit key a restart puts back is judged as stored: a unit that older key names and a deleter removed meanwhile is I1 at the restart', async () => {
+        for (const removedMeanwhile of [true, false]) {
+            const { rig, manifest: first, units: firstUnits } = await seeded()
+            const older = rig.fake.peek(COMMIT_KEY).bytes!
+            const second = await commitSecond(rig)
+            const victim = firstUnits.find((key) => key !== first)!
+            const step = stepper(createChecker(rig.raw))
+            // The newer commit key drops the first tree from the live set; the pass that follows may remove it.
+            await plantNextCommit(rig.fake, { current: { key: second, at: 5 }, retained: [] }, env)
+            expect(step('a', 'writeChecked', { kind: 'commit', owner: 'a' })).toEqual([])
+            step('g', 'readCommit', { kind: 'gc' })
+            if (removedMeanwhile) {
+                await rig.fake.store.delete(victim, 'unconditional')
+                expect(step('g', 'delete', { kind: 'gc' }), 'the removal is legal under the newer key').toEqual([])
+            }
+            rig.fake.damage(COMMIT_KEY, older)
+            const found = step('$env', 'restart', null, restart)
+            expect(propertiesOf(found), `removed meanwhile ${removedMeanwhile}`).toEqual(removedMeanwhile ? ['I1'] : [])
+            if (removedMeanwhile) {
+                expect(found[0].detail).toContain(victim)
+            }
+        }
+    })
+
+    test('a restart may put the commit key back to absent; an actor\'s removal and another environment step\'s are I4', async () => {
+        for (const [name, extra, expected] of [
+            ['restart', restart, []],
+            ['damage-commit', { kind: 'env', fault: 'damage-commit' } as const, ['I4']],
+            ['actor', {}, ['I4']],
+        ] as const) {
+            const { rig } = await seeded()
+            const step = stepper(createChecker(rig.raw))
+            rig.fake.remove(COMMIT_KEY)
+            expect(propertiesOf(step(name === 'actor' ? 'a' : '$env', name, null, extra)), name).toEqual(expected)
+        }
+    })
+})

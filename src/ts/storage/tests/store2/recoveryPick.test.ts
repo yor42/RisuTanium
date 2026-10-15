@@ -508,6 +508,34 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             expect(refused).toBe(1)
             expect((await closureOf(backend, result.manifestKey)).problems).toEqual([])
         })
+
+        test('a put that reports flushed false stops the install: no further upload, no commit-key write, and the marker stands', async () => {
+            const { backend, planted, read, clock } = await scene(index)
+            const probe = probes(allPresent(planted))
+            const recorded = hooked(backend, {})
+            let puts = 0
+            const unflushed: Store2Backend = {
+                ...recorded.backend,
+                putUnit: async (key, bytes) => {
+                    const written = await recorded.backend.putUnit(key, bytes)
+                    puts++
+                    return puts === 2 ? { flushed: false } : written
+                },
+            }
+            const ready = expectReady(await pickCandidate(unflushed, read, planted.manifestKey, options(clock, probe)))
+            const before = await parsedCommit(backend)
+            recorded.log.length = 0
+            const result = await installPick(ready, { confirm: true })
+            expect(result.status).toBe('upload-failed')
+            expect(result.status === 'upload-failed' && result.cause).toBeInstanceOf(Store2BackendFailureError)
+            expect(puts).toBe(2)
+            expect(recorded.log).not.toContain('casCommit')
+            expect(recorded.log).not.toContain('commitOrdinary')
+            const after = await parsedCommit(backend)
+            expect(after).toEqual(before)
+            expect(after.staging).not.toBeNull()
+            expect(after.current).toBeNull()
+        })
     })
 
     describe('the final compare-and-write', () => {

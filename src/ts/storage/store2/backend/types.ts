@@ -34,9 +34,11 @@ export type RevisionToken = Extract<CompareToken, { kind: 'revision' }>
 /**
  * What a writing method resolves to. `flushed` is whether the backend knows the
  * write reached stable storage: `true` or `false` when it reports, `undefined`
- * when it does not (IndexedDB and the memory backend never report, and are never
- * read as `true`). The protocol layer must treat `false` as "not durable"; what
- * to do about it is the protocol's policy, not the backend's.
+ * when it does not (IndexedDB, Node and the memory backend never report, and are
+ * never read as `true`). The Tauri backend never resolves `undefined` from a write
+ * that reaches the store: a missing report is `false`. The protocol layer must
+ * treat `false` as "not durable"; what to do about it is the protocol's policy,
+ * not the backend's.
  */
 export interface Store2WriteResult {
     flushed: boolean | undefined

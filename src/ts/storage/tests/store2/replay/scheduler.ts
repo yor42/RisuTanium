@@ -15,8 +15,17 @@
  *    the loss, as a dropped reply hides it on the wire.
  *  - lost request: the write does NOT apply and the call fails with the same
  *    unknown-outcome error, so the "did not land" branches are reached directly.
+ *  - flush fault (a Tauri durable write only): the write applies and reports
+ *    `flushed: false`, as the native layer's `flush.fault` does, and the scheduler
+ *    tells the store through `SchedulerOptions.unflushed`, so a restart can drop it.
+ *    It spends the lost-call budget, and a random plan draws it only with
+ *    `flushFaults: true`, so a plan without it keeps its draws.
  *  - damage of the commit key or the fence is an environment action taken in its
  *    own step.
+ *  - restart (`ActorHandle.restartPage`): the page of the calling actor is gone and a new
+ *    one starts. It is an environment step of its own, judged by the checker as
+ *    `restart`. The other actors of the page are retired as a crash retires them: calls
+ *    they had granted stay applied and calls not yet granted are dropped.
  *  - partial removal (a `deleteMany` only): a seeded subset of its keys is removed
  *    and the rest are reported failed, in a `StoreDeleteManyError` like the one the
  *    Tauri store throws after a rejected file removal.
@@ -71,9 +80,10 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { crc32 } from 'src/ts/storage/blockFrame'
-import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedOperations, PageGateOperations, StoreCondition } from 'src/ts/storage/store/contract'
+import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedOperations, PageGateOperations, StoreCondition, WriteResult } from 'src/ts/storage/store/contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, StoreOutcomeUnknownError, type DeleteReportEntry } from 'src/ts/storage/store/errors'
 import { versionOf } from 'src/ts/storage/store/guards'
+import { STORE2_PREFIX } from 'src/ts/storage/store/keyRules'
 import { Store2BackendError, Store2CommitConflictError, Store2UnknownOutcomeError, checkUnitKeys, type CompareToken, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 
@@ -101,7 +111,7 @@ export type RawState = ReadonlyMap<string, RawEntry>
 
 // ---- What a step reports ----
 
-export type FaultKind = 'lost-response' | 'lost-request' | 'crash-after-write' | 'partial-removal' | 'ghost-queued' | 'ghost-held'
+export type FaultKind = 'lost-response' | 'lost-request' | 'crash-after-write' | 'partial-removal' | 'ghost-queued' | 'ghost-held' | 'flush-fault'
 
 function isGhostKind(kind: FaultKind | null): kind is 'ghost-queued' | 'ghost-held' {
     return kind === 'ghost-queued' || kind === 'ghost-held'
@@ -125,11 +135,14 @@ function isTwoStepGate(gate: PageGateOperations): gate is TwoStepPageGate {
     return 'beginWriteTop' in gate && 'beginRemoveTop' in gate
 }
 /**
- * An environment step: silent damage of the commit key or the fence, or the loss of a unit
- * (`remove-unit`: a file that is gone from the store without any actor removing it). Only a
- * `remove-unit` step excuses the stored state from the I1 walk, and only for the keys it removed.
+ * An environment step: silent damage of the commit key or the fence, the loss of a unit
+ * (`remove-unit`: a file that is gone from the store without any actor removing it), or a
+ * page restart (`restart`: the writes that were not flushed are gone from the store when the
+ * restart drops them). Only a `remove-unit` or `restart` step excuses the stored state from the I1
+ * walk, and only for the units it removed; a restart also excuses the commit key it put back
+ * to absent from the never-removed rule (I4).
  */
-export type EnvFault = 'damage-commit' | 'damage-fence' | 'remove-unit'
+export type EnvFault = 'damage-commit' | 'damage-fence' | 'remove-unit' | 'restart'
 
 /** What the actor is doing, declared by the actor; the checker judges transitions of the commit key against it. */
 export type OperationKind =
@@ -203,7 +216,8 @@ export type ScriptedFault = ScriptedSelector & {
 
 export type FaultPlan =
     | { mode: 'none' }
-    | { mode: 'random', probability: number, budget: FaultBudget }
+    /** `flushFaults` adds the flush fault to the kinds a Tauri durable write can draw; it spends the lost-call budget. */
+    | { mode: 'random', probability: number, budget: FaultBudget, flushFaults?: boolean }
     /** `budget`, when given, is enforced over the entries when the scheduler is built. */
     | { mode: 'script', entries: readonly ScriptedFault[], budget?: FaultBudget }
 
@@ -213,6 +227,11 @@ export interface SchedulerOptions {
     faults?: FaultPlan
     /** Called after each step has applied and before the actor continues. */
     onStep?: (info: StepInfo) => void
+    /**
+     * A store that can report a write unflushed: called with the key of a durable write the scheduler reported `flushed: false`,
+     * before the actor continues. Absent on a store with no flush status, where no call is flushable and no flush fault exists.
+     */
+    unflushed?: (key: string) => void
 }
 
 export interface SpawnOptions {
@@ -226,6 +245,12 @@ export interface ActorHandle {
     setContext(context: ActorContext | null): void
     backend(inner: Store2Backend): Store2Backend
     byteStore(inner: ByteStore): ByteStore
+    /**
+     * The actor's page restarts: `apply` runs in an environment step of its own, its answer is the step's log outcome (nv:<answer>),
+     * and the call resolves once it has. Every other actor
+     * of the page is retired in that step. Only an actor of a page can restart it.
+     */
+    restartPage(apply: () => string): Promise<void>
 }
 
 export interface ActorReport {
@@ -276,6 +301,10 @@ interface CallSpec {
     ghost: { queued: () => Promise<unknown>, begin: (() => Promise<Landing>) | null } | null
     /** The call takes the native lock of the page gate: it cannot start while a held ghost has it. */
     lock: boolean
+    /** A durable write of a store that reports a flush status: it can be reported `flushed: false`. */
+    flush: boolean
+    /** Not a call of a layer: an environment step the actor brings about, taken in a step of its own. */
+    environment: { fault: EnvFault, apply: () => string } | null
 }
 
 /** A decisive call kept after its actor crashed, waiting for its landing step. */
@@ -449,8 +478,10 @@ function callSpec(
     removal: CallSpec['removal'] = null,
     ghost: CallSpec['ghost'] = null,
     lock = false,
+    flush = false,
+    environment: CallSpec['environment'] = null,
 ): CallSpec {
-    return { op, target, write, loss, ...expects, removal, ghost, lock }
+    return { op, target, write, loss, ...expects, removal, ghost, lock, flush, environment }
 }
 
 function keysTarget(keys: readonly string[]): string {
@@ -606,7 +637,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 callSpec('writeTop', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect('unconditional')), null, {
                     queued: () => innerGate.writeTop(generation, key, bytes),
                     begin: twoStep === null ? null : () => twoStep.beginWriteTop(generation, key, bytes),
-                }, true),
+                }, true, options.unflushed !== undefined),
                 () => innerGate.writeTop(generation, key, bytes),
             ),
             removeTop: (generation, keys) => {
@@ -627,7 +658,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         const store: ByteStore = {
             capabilities: inner.capabilities,
             read: (key) => request(actor, callSpec('read', key, false, null), () => inner.read(key)),
-            write: (key, bytes, condition) => request(actor, callSpec('write', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition)), null, { queued: () => inner.write(key, bytes, condition), begin: null }), () => inner.write(key, bytes, condition)),
+            write: (key, bytes, condition) => request(actor, callSpec('write', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition)), null, { queued: () => inner.write(key, bytes, condition), begin: null }, false, options.unflushed !== undefined && key.startsWith(STORE2_PREFIX)), () => inner.write(key, bytes, condition)),
             delete: (key, condition) => request(actor, callSpec('delete', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect(condition)), null, { queued: () => inner.delete(key, condition), begin: null }), () => inner.delete(key, condition)),
             deleteMany: (entries) => request(
                 actor,
@@ -683,7 +714,8 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 : hit.kind === 'partial-removal' ? entry.spec.removal === null
                     : hit.kind === 'ghost-queued' ? entry.spec.ghost === null
                         : hit.kind === 'ghost-held' ? entry.spec.ghost === null || entry.spec.ghost.begin === null
-                            : entry.spec.loss === null
+                            : hit.kind === 'flush-fault' ? !entry.spec.flush
+                                : entry.spec.loss === null
             if (impossible) {
                 throw new RangeError(`The scripted ${hit.kind} of ${entry.actor} write ${state.writes} (${entry.spec.op}) cannot happen on that call.`)
             }
@@ -698,6 +730,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         }
         if (entry.spec.write && state.crashes < plan.budget.crashPerActor) {
             kinds.push('crash-after-write')
+        }
+        if (plan.flushFaults === true && entry.spec.flush && state.lost < plan.budget.lostPerActor) {
+            kinds.push('flush-fault')
         }
         // Both draws are always taken so that a changed budget leaves the later draws where they were.
         const roll = faultRng()
@@ -728,12 +763,16 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     async function grant(entry: Pending): Promise<void> {
         const state = stateOf(entry.actor)
         pending = pending.filter((other) => other !== entry)
+        if (entry.spec.environment !== null) {
+            takePageEnvironment(entry, entry.spec.environment)
+            return
+        }
         state.calls++
         if (entry.spec.write) {
             state.writes++
         }
         const fault = entry.spec.write ? decideFault(entry, state) : null
-        if (fault === 'lost-response' || fault === 'lost-request' || fault === 'partial-removal') {
+        if (fault === 'lost-response' || fault === 'lost-request' || fault === 'partial-removal' || fault === 'flush-fault') {
             state.lost++
         }
         if (fault === 'crash-after-write' || isGhostKind(fault)) {
@@ -808,6 +847,14 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                     logEntry.outcome = 'lost-response'
                     options.onStep?.(info)
                     entry.reject('failure' in settled && !entry.spec.loss.hides(settled.failure) ? settled.failure : entry.spec.loss.lost('response'))
+                    return
+                }
+                if (fault === 'flush-fault' && !('failure' in settled)) {
+                    // The write applied; only its flush status says otherwise, and the store learns of it before anything else runs.
+                    options.unflushed?.(entry.spec.target)
+                    logEntry.outcome = 'flush-fault'
+                    options.onStep?.(info)
+                    entry.resolve({ ...(settled.value as WriteResult), flushed: false })
                     return
                 }
                 if ('failure' in settled) {
@@ -889,6 +936,29 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         await call.resume()
     }
 
+    /**
+     * An environment step the actor asked for: the other actors of its page are retired (the old page is gone, so their calls that were
+     * granted stay applied and the ones not yet granted never apply), `apply` runs, and the step is judged under the name `$env`, as a
+     * damage step is. The step is not a fault the plan injected, so a region does not count it as one.
+     */
+    function takePageEnvironment(entry: Pending, environment: NonNullable<CallSpec['environment']>): void {
+        stepNo++
+        const page = stateOf(entry.actor).page
+        for (const [id, state] of actors) {
+            if (id !== entry.actor && page !== null && state.page === page) {
+                state.status = 'crashed'
+            }
+        }
+        pending = pending.filter((other) => other.actor === entry.actor || stateOf(other.actor).status !== 'crashed')
+        const detail = environment.apply()
+        log.push({ step: stepNo, actor: '$env', op: entry.spec.op, target: '', fault: environment.fault, outcome: `env:${detail}` })
+        options.onStep?.({
+            step: stepNo, actor: '$env', kind: 'env', op: entry.spec.op, target: '', applied: true, fault: environment.fault,
+            context: null, commitExpect: null, fenceExpect: null,
+        })
+        entry.resolve(undefined)
+    }
+
     function takeEnvironment(action: EnvAction): void {
         envActions.splice(envActions.indexOf(action), 1)
         stepNo++
@@ -924,6 +994,21 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                     state.context = context === null ? null : { ...context }
                 },
                 backend: (inner) => backendFor(id, inner),
+                restartPage(apply) {
+                    if (page === null) {
+                        return Promise.reject(new RangeError(`Actor ${id} belongs to no page: there is nothing to restart.`))
+                    }
+                    if (state.status === 'crashed') {
+                        return new Promise<void>(() => {})
+                    }
+                    return new Promise<void>((resolve, reject) => {
+                        pending.push({
+                            id: ++nextId, actor: id, context: state.context, run: async () => undefined,
+                            spec: callSpec('restart', '', false, null, undefined, null, null, false, false, { fault: 'restart', apply }),
+                            resolve: resolve as (value: unknown) => void, reject,
+                        })
+                    })
+                },
                 byteStore(inner) {
                     if (page === null) {
                         return byteStoreFor(id, inner)
