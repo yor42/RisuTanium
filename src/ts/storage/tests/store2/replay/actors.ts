@@ -193,6 +193,11 @@ export interface ActorOptions {
     upstreamMainFile?: boolean
     /** The Q3 question for another owner's marker; absent means a foreign marker is never cleared. */
     foreignClear?: ForeignClearHook
+    /**
+     * What the page's presence probes (MC-291) answer for the asset files and inlay records a candidate's lists name:
+     * everything is present unless a kind is set to false, in which case none of it is.
+     */
+    present?: { assets?: boolean, inlays?: boolean }
 }
 
 export interface ReplayRig {
@@ -844,9 +849,9 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                         owner: need().ownerId,
                         env,
                         foreignClear,
-                        assetsPresent: async (asked) => new Set(asked),
-                        inlaysPresent: async (asked) => new Set(asked),
-                        inlayPrefixesPresent: async (asked) => new Set(asked),
+                        assetsPresent: async (asked) => (actorOptions.present?.assets === false ? new Set<string>() : new Set(asked)),
+                        inlaysPresent: async (asked) => (actorOptions.present?.inlays === false ? new Set<string>() : new Set(asked)),
+                        inlayPrefixesPresent: async (asked) => (actorOptions.present?.inlays === false ? new Set<string>() : new Set(asked)),
                     })
                 }),
                 installPick: (ready) => operation({ kind: 'recovery-install' }, 'recovery', () => installPick(ready, { confirm: true })),

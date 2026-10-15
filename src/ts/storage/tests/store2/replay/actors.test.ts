@@ -18,6 +18,7 @@ import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { runExit } from 'src/ts/storage/store2/recovery'
+import type { PickResult } from 'src/ts/storage/store2/recoveryPick'
 import type { SessionDecision, Store2Session } from 'src/ts/storage/store2/session'
 import {
     FOREIGN_OWNER, outcomeLabel, START_STATES, type ReplayActor, type ReplayRig, type ReplayRigOptions, type ReplayVariant, type StartState, type StateHooks,
@@ -25,6 +26,7 @@ import {
 import { createNodeReplayRig } from './nodeRig'
 import { createTauriReplayRig } from './tauriRig'
 import { createClock, testEnv } from '../commitFixtures'
+import { plantCandidateTree, type CandidateShape } from './replayFixtures'
 import type { StepInfo } from './scheduler'
 import type { ForeignClearHook } from 'src/ts/storage/store2/owner'
 
@@ -349,6 +351,54 @@ describe('the Tauri re-flush', () => {
         expect(flushed.map((step) => step.target).sort()).toEqual([COMMIT_KEY, FENCE_KEY])
         expect(flushed.map((step) => step.context?.kind)).toEqual(['read', 'read'])
         expect(rig.checker.violations).toEqual([])
+    })
+})
+
+// ---- The presence probes of a pick (MC-291) ----
+
+describe.each(BACKENDS)('$variant: the pick counts what the lists name and the store lacks', ({ make }) => {
+    const shape = { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] }
+
+    async function pickOf(candidate: CandidateShape, present: { assets?: boolean, inlays?: boolean }): Promise<PickResult> {
+        let key = ''
+        const rig = await make({
+            scheduler: { seed: 1 }, start: 'damaged-commit',
+            prepare: (hooks, env) => { key = plantCandidateTree(hooks.plant, env, candidate) },
+        })
+        const held: { picked: PickResult | null } = { picked: null }
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            held.picked = await actor.pickCandidate(key)
+        }, { foreignClear: async () => true, present })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.actors.a.state).toBe('done')
+        expect(rig.checker.violations).toEqual([])
+        if (held.picked === null) {
+            throw new Error('The pick did not finish.')
+        }
+        return held.picked
+    }
+
+    test.each([
+        ['everything present', {}, { missingImages: 0, missingInlays: 0 }],
+        ['no asset files', { assets: false }, { missingImages: 2, missingInlays: 0 }],
+        ['no inlay records', { inlays: false }, { missingImages: 0, missingInlays: 2 }],
+        ['neither', { assets: false, inlays: false }, { missingImages: 2, missingInlays: 2 }],
+    ] as const)('%s: a warning with the counts, and the pick is ready', async (_name, present, counts) => {
+        const picked = await pickOf(shape, present)
+        expect(picked.status).toBe('ready')
+        expect(picked.status === 'ready' && picked.counts).toMatchObject(counts)
+    })
+
+    test('a missing unit fails loudly with the key, and nothing is ready', async () => {
+        const picked = await pickOf({ ...shape, missingUnit: true }, {})
+        expect(picked.status).toBe('invalid')
+        expect(picked.status === 'invalid' && picked.problem.kind).toBe('missing')
+        // The one leaf the manifest names and the store lacks.
+        if (picked.status !== 'invalid' || picked.problem.kind !== 'missing') {
+            throw new Error('The pick was expected to be invalid with a missing key.')
+        }
+        expect(picked.problem.keys).toHaveLength(1)
     })
 })
 
