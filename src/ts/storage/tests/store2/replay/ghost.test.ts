@@ -41,9 +41,9 @@ import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { encodeUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import type { GcResult } from 'src/ts/storage/store2/gc/pass'
-import { createScheduler, type FaultPlan, type LogEntry, type RunResult, type ScriptedFault, type StepInfo } from './scheduler'
+import { createScheduler, type FaultPlan, type LogEntry, type OperationKind, type RunResult, type Scheduler, type ScriptedFault, type StepInfo } from './scheduler'
 import { createTauriRig, spawnPage, type TauriRig } from './tauriRig'
-import { createTauriSemanticStore, type TauriSemanticOptions } from './tauriSemanticStore'
+import { createTauriSemanticStore, type TauriSemanticOptions, type TauriSemanticStore } from './tauriSemanticStore'
 
 // ---- Scenario builders ----
 
@@ -430,5 +430,159 @@ describe('delayed landing', () => {
         expect(result.actors.p.state).toBe('crashed')
         // The kept write landed last, unconditionally.
         expect(fake.peek(COMMIT_KEY)).toEqual(Uint8Array.from([3]))
+    })
+})
+
+// ---- The lock a held ghost keeps ----
+
+describe('a held ghost keeps the native lock', () => {
+    const P_BYTES = Uint8Array.from([1, 1, 1])
+    const Q_BYTES = Uint8Array.from([2, 2, 2])
+
+    function plan(entries: ScriptedFault[]): FaultPlan {
+        return { mode: 'script', entries }
+    }
+
+    /** The first generation, issued by an actor that is not a ghost's page: the ghosts write at it. */
+    function registrar(fake: TauriSemanticStore, scheduler: Scheduler): Promise<number> {
+        return new Promise<number>((resolve) => {
+            scheduler.spawn('registrar', async (actor) => {
+                resolve(await actor.byteStore(fake.store).pageGate!.registerPage())
+            })
+        })
+    }
+
+    test('a parked writeTop is a step of its own: the landing is judged first, and the write is judged as its own actor and operation', async () => {
+        const fake = createTauriSemanticStore()
+        const seen: Array<{ actor: string, op: string, applied: boolean, context: OperationKind | null, stored: Uint8Array | null }> = []
+        let kept!: () => void
+        const keptStep = new Promise<void>((resolve) => { kept = resolve })
+        const scheduler = createScheduler({
+            seed: 1,
+            faults: plan([{ actor: 'p', op: 'writeTop', kind: 'ghost-held', landWhen: () => scheduler.log.some((entry) => entry.actor === 'q' && entry.op === 'writeTop') }]),
+            onStep: (info) => {
+                seen.push({ actor: info.actor, op: info.op, applied: info.applied, context: info.context?.kind ?? null, stored: fake.peek(COMMIT_KEY) })
+                if (info.fault === 'ghost-held') {
+                    kept()
+                }
+            },
+        })
+        const generation = registrar(fake, scheduler)
+        scheduler.spawn('p', async (actor) => {
+            actor.setContext({ kind: 'fence-exit', owner: 'p' })
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, P_BYTES)
+        }, { page: 'P' })
+        scheduler.spawn('q', async (actor) => {
+            await keptStep
+            actor.setContext({ kind: 'restore', owner: 'q' })
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, Q_BYTES)
+        })
+        const result = await scheduler.run()
+
+        expect(result.status).toBe('finished')
+        const writes = seen.filter((step) => step.op === 'writeTop')
+        expect(writes.map((step) => `${step.actor}:${step.applied}`)).toEqual(['p:false', 'p:true', 'q:true'])
+        // The landing is judged on the ghost's bytes alone, under the ghost's operation.
+        expect(writes[1]).toMatchObject({ context: 'fence-exit', stored: P_BYTES })
+        // The parked write is judged afterwards, on its own bytes, under its own operation.
+        expect(writes[2]).toMatchObject({ context: 'restore', stored: Q_BYTES })
+        expect(scheduler.log.find((entry) => entry.actor === 'q' && entry.op === 'writeTop')?.outcome).toBe('ok-after-wait')
+    })
+
+    test('overlapping held ghosts: the second begin waits for the first landing, then holds the lock itself', async () => {
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({
+            seed: 1,
+            faults: plan([
+                { actor: 'p1', op: 'writeTop', kind: 'ghost-held', landWhen: () => scheduler.log.some((entry) => entry.actor === 'p2' && entry.op === 'writeTop') },
+                { actor: 'p2', op: 'writeTop', kind: 'ghost-held' },
+            ]),
+        })
+        const generation = registrar(fake, scheduler)
+        scheduler.spawn('p1', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, P_BYTES)
+        }, { page: 'P1' })
+        scheduler.spawn('p2', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, Q_BYTES)
+        }, { page: 'P2' })
+        const result = await scheduler.run()
+
+        expect(result.status).toBe('finished')
+        const landed = scheduler.log.filter((entry) => entry.outcome === 'landed').map((entry) => entry.actor)
+        expect(landed).toEqual(['p1', 'p2'])
+        expect(fake.peek(COMMIT_KEY)).toEqual(Q_BYTES)
+        expect(fake.locked).toBe(false)
+    })
+
+    test('a begin that can never get the lock ends the run stalled instead of hanging it', async () => {
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({
+            seed: 1,
+            faults: plan([
+                { actor: 'p1', op: 'writeTop', kind: 'ghost-held', landWhen: () => false },
+                { actor: 'p2', op: 'writeTop', kind: 'ghost-held' },
+            ]),
+        })
+        const generation = registrar(fake, scheduler)
+        scheduler.spawn('p1', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, P_BYTES)
+        }, { page: 'P1' })
+        scheduler.spawn('p2', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, Q_BYTES)
+        }, { page: 'P2' })
+        const result = await scheduler.run()
+
+        expect(result.status).toBe('stalled')
+        expect(fake.peek(COMMIT_KEY)).toBeNull()
+        expect(fake.locked).toBe(true)
+    })
+
+    test('a queued landing that needs the lock is not offered while a held ghost has it: a mutual wait ends stalled', async () => {
+        const fake = createTauriSemanticStore()
+        const scheduler = createScheduler({
+            seed: 1,
+            faults: plan([
+                { actor: 'held', op: 'writeTop', kind: 'ghost-held', landWhen: () => scheduler.log.some((entry) => entry.actor === 'queued' && entry.outcome === 'landed') },
+                { actor: 'queued', op: 'writeTop', kind: 'ghost-queued' },
+            ]),
+        })
+        const generation = registrar(fake, scheduler)
+        scheduler.spawn('held', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, P_BYTES)
+        }, { page: 'H' })
+        scheduler.spawn('queued', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, Q_BYTES)
+        }, { page: 'Q' })
+        const result = await scheduler.run()
+
+        expect(result.status).toBe('stalled')
+        expect(fake.peek(COMMIT_KEY)).toBeNull()
+    })
+
+    test('a partial removal that needs the lock waits for the landing: stalled while the ghost never lands, nothing removed', async () => {
+        const fake = createTauriSemanticStore()
+        const keys = ['store2/k1', 'store2/k2', 'store2/k3', 'store2/k4']
+        for (const key of keys) {
+            fake.plant(key, Uint8Array.from([5]))
+        }
+        const scheduler = createScheduler({
+            seed: 3,
+            faults: plan([
+                { actor: 'held', op: 'writeTop', kind: 'ghost-held', landWhen: () => false },
+                { actor: 'remover', op: 'removeTop', kind: 'partial-removal' },
+            ]),
+        })
+        const generation = registrar(fake, scheduler)
+        scheduler.spawn('held', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.writeTop(await generation, COMMIT_KEY, P_BYTES)
+        }, { page: 'H' })
+        scheduler.spawn('remover', async (actor) => {
+            await actor.byteStore(fake.store).pageGate!.removeTop(await generation, keys)
+        })
+        const result = await scheduler.run()
+
+        expect(result.status).toBe('stalled')
+        expect(result.actors.remover.state).toBe('running')
+        expect(fake.list('store2/')).toEqual(keys)
     })
 })

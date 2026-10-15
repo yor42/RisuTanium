@@ -30,6 +30,18 @@
  *  - h   `staging` changes only by the transitions the writing operation allows,
  *        and no removal hits a standing staging prefix. While the commit key does
  *        not parse the transition is judged against the last value that did.
+ *  - h2  another owner's marker is never changed without the user's consent, whatever
+ *        the operation declared: a step that moves the commit key's `staging` from a
+ *        marker owned by X to null or to a marker of another owner or prefix needs a
+ *        consent recorded earlier for that very marker (owner and prefix) by the acting
+ *        actor (on a shared Tauri page, only that actor's own yes counts); a change by X's own
+ *        page needs none. Judged on every staging change,
+ *        so it does not depend on the label that the actor gave the write. The
+ *        consent log is written by the actor's foreign-clear hook wrapper through
+ *        `Checker.consent`, only for a yes; a no and a hook never called record nothing.
+ *        The marker is decoded from the stored bytes exactly as property h does, on
+ *        both backends; while the commit key does not parse it is judged against the
+ *        last value that did.
  *  - G1  no key a standing fence lists is removed, and nothing at all is removed
  *        while the fence is present but cannot be understood. The fence key itself
  *        is guarded as well: only a `fence-exit` writes it, only a `fence-discard`
@@ -87,7 +99,7 @@ function commitAllowsDeletion(bytes: Uint8Array | null): boolean {
     return read.status === 'parsed' && read.value.current !== null
 }
 
-export type PropertyId ='I1' | 'b' | 'I2' | 'I3' | 'h' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4'
+export type PropertyId ='I1' | 'b' | 'I2' | 'I3' | 'h' | 'h2' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4'
 
 export interface Violation {
     property: PropertyId
@@ -96,9 +108,19 @@ export interface Violation {
     detail: string
 }
 
+/** The user's yes to a foreign-clear question, as the acting page's hook wrapper reports it. */
+export interface ConsentEvent {
+    /** The actor whose call was running when the hook answered yes. */
+    page: string
+    owner: string
+    prefix: string
+}
+
 export interface Checker {
     /** Judges the step that just applied; returns the violations it found that were not reported before. */
     observe(info: StepInfo): Violation[]
+    /** Records a yes; it counts for the steps observed after this call. */
+    consent(event: ConsentEvent): void
     readonly violations: readonly Violation[]
 }
 
@@ -311,6 +333,9 @@ export function createChecker(read: () => RawState): Checker {
     const reported = new Set<string>()
     const violations: Violation[] = []
     let walked = false
+    // The consent log: each yes with the number of the last step observed when it was given, so a step is judged only against earlier consents.
+    const consents: Array<ConsentEvent & { after: number }> = []
+    let lastStep = 0
 
     function observe(info: StepInfo): Violation[] {
         const after = read()
@@ -488,6 +513,12 @@ export function createChecker(read: () => RawState): Checker {
             if (!sameJson(oldStaging, next.staging) && !stagingMayChange(kind, context, oldStaging, next.staging)) {
                 report('h', `${info.actor} (${kind ?? 'no operation'}) changed staging ${JSON.stringify(oldStaging)} to ${JSON.stringify(next.staging)}`)
             }
+            // Consent is judged on the marker's owner alone, never on the label of the write.
+            if (oldStaging !== null && (next.staging === null || next.staging.owner !== oldStaging.owner || next.staging.prefix !== oldStaging.prefix)
+                && context?.owner !== oldStaging.owner
+                && !consents.some((given) => given.page === info.actor && given.owner === oldStaging.owner && given.prefix === oldStaging.prefix && given.after < info.step)) {
+                report('h2', `${info.actor} (${kind ?? 'no operation'}) changed the marker of ${oldStaging.owner} (${oldStaging.prefix}) to ${JSON.stringify(next.staging)} without a consent`)
+            }
 
             const oldPins = base?.pins ?? []
             if ((kind === null || !PIN_KINDS.includes(kind)) && !sameJson(oldPins, next.pins)) {
@@ -566,8 +597,9 @@ export function createChecker(read: () => RawState): Checker {
             }
         }
         before = after
+        lastStep = info.step
         return found
     }
 
-    return { observe, violations }
+    return { observe, violations, consent: (event) => { consents.push({ ...event, after: lastStep }) } }
 }

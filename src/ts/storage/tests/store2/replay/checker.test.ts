@@ -245,7 +245,8 @@ describe('one planted violation per property is reported as exactly that propert
         await plantNextCommit(rig.fake, { staging: { owner: 'dead', prefix, startedAt: 1, label: 'bulk' } }, env)
         expect(step('dead', 'casCommit', { kind: 'bulk-begin', owner: 'dead' })).toEqual([])
         await plantNextCommit(rig.fake, { staging: null }, env)
-        expect(propertiesOf(step('a', 'casCommit', { kind: 'abandon-clear', owner: 'a', abandon: { owner: 'dead', prefix: `${prefix}x` } }))).toEqual(['h'])
+        // The label is wrong for the marker (h) and another owner's marker went with no consent (h2).
+        expect(propertiesOf(step('a', 'casCommit', { kind: 'abandon-clear', owner: 'a', abandon: { owner: 'dead', prefix: `${prefix}x` } }))).toEqual(['h', 'h2'])
     })
 
     test('h: a removal under a standing staging prefix, also while the commit key is damaged', async () => {
@@ -275,7 +276,63 @@ describe('one planted violation per property is reported as exactly that propert
         expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
         // Written at the stored (unchanged) revision: silent damage keeps it.
         await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, { ...marked, seq: marked.seq + 1, staging: null }), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
-        expect(propertiesOf(step('b', 'casCommit', { kind: 'commit', owner: 'b' }))).toEqual(['h'])
+        expect(propertiesOf(step('b', 'casCommit', { kind: 'commit', owner: 'b' }))).toEqual(['h', 'h2'])
+    })
+
+    describe('h2: another owner\'s marker changes only with a consent recorded for that marker', () => {
+        const marker = (owner: string, prefix: string) => ({ owner, prefix, startedAt: 1, label: 'seed' as const })
+
+        async function withMarker(owner: string): Promise<{ rig: NodeRig, prefix: string, step: ReturnType<typeof stepper>, checker: ReturnType<typeof createChecker> }> {
+            const { rig } = await seeded()
+            const prefix = stagingPrefix(newStagingId(env))
+            await plantNextCommit(rig.fake, { staging: marker(owner, prefix) }, env)
+            const checker = createChecker(rig.raw)
+            return { rig, prefix, step: stepper(checker), checker }
+        }
+
+        test('a foreign marker cleared with no consent is red, whatever label the write carries', async () => {
+            const { rig, step } = await withMarker('x')
+            await plantNextCommit(rig.fake, { staging: null }, env)
+            const found = step('a', 'casCommit', { kind: 'foreign-clear', owner: 'a' })
+            expect(propertiesOf(found)).toEqual(['h2'])
+            expect(found[0].detail).toContain('without a consent')
+        })
+
+        test('a foreign marker replaced by another one with no consent is red', async () => {
+            const { rig, step } = await withMarker('x')
+            await plantNextCommit(rig.fake, { staging: marker('a', stagingPrefix(newStagingId(env))) }, env)
+            expect(propertiesOf(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' }))).toEqual(['h2'])
+        })
+
+        test('the same change after a consent of the acting page for that marker is clean', async () => {
+            const { rig, prefix, step, checker } = await withMarker('x')
+            checker.consent({ page: 'a', owner: 'x', prefix })
+            await plantNextCommit(rig.fake, { staging: null }, env)
+            expect(step('a', 'casCommit', { kind: 'foreign-clear', owner: 'a' })).toEqual([])
+        })
+
+        test('a consent for another prefix, another owner or another page does not count', async () => {
+            const { rig, prefix, step, checker } = await withMarker('x')
+            checker.consent({ page: 'a', owner: 'x', prefix: `${prefix}other` })
+            checker.consent({ page: 'a', owner: 'y', prefix })
+            checker.consent({ page: 'b', owner: 'x', prefix })
+            await plantNextCommit(rig.fake, { staging: null }, env)
+            expect(propertiesOf(step('a', 'casCommit', { kind: 'foreign-clear', owner: 'a' }))).toEqual(['h2'])
+        })
+
+        test('a consent given after the change does not excuse it', async () => {
+            const { rig, prefix, step, checker } = await withMarker('x')
+            await plantNextCommit(rig.fake, { staging: null }, env)
+            const found = step('a', 'casCommit', { kind: 'foreign-clear', owner: 'a' })
+            checker.consent({ page: 'a', owner: 'x', prefix })
+            expect(propertiesOf(found)).toEqual(['h2'])
+        })
+
+        test('the owner\'s own change is clean without any consent', async () => {
+            const { rig, step } = await withMarker('x')
+            await plantNextCommit(rig.fake, { staging: null }, env)
+            expect(step('x', 'casCommit', { kind: 'start-clear', owner: 'x' })).toEqual([])
+        })
     })
 
     describe('amendment J: the deleter gate is judged at the deleter\'s own read', () => {

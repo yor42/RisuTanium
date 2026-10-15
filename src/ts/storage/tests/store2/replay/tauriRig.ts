@@ -28,6 +28,7 @@ import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { createChecker, type Checker } from './checker'
 import { createClock, seedStore, testEnv, treeRequest, type BuildRecord, type TestClock } from '../commitFixtures'
+import { assembleRig, seededStart, type ReplayRig, type ReplayRigOptions, type RigParts } from './actors'
 import {
     createScheduler, type ActorHandle, type RawState, type RunResult, type Scheduler, type SchedulerOptions, type StepInfo,
 } from './scheduler'
@@ -87,6 +88,36 @@ export async function createTauriRig(options: TauriRigOptions): Promise<TauriRig
         when: (predicate) => new Promise<void>((resolve) => { watchers.push({ predicate, resolve }) }),
         run: (limit) => scheduler.run(limit),
     }
+}
+
+export interface TauriReplayRigOptions extends ReplayRigOptions {
+    /** The store's test options; the gate is on by default. */
+    store?: TauriSemanticOptions
+}
+
+export type TauriReplayRig = ReplayRig & { readonly fake: TauriSemanticStore }
+
+/**
+ * The Tauri rig of the replay actors (`actors.ts`): a page is the actors that share
+ * its id, one session, one backend, one registration with the page gate. A page
+ * keeps its owner id in an in-memory owner store, so `restart` finds it again.
+ */
+export async function createTauriReplayRig(options: TauriReplayRigOptions): Promise<TauriReplayRig> {
+    const fake = createTauriSemanticStore(options.store)
+    const clock = createClock()
+    const start = options.start ?? 'healthy'
+    // The seeding page registers like any page and is stale as soon as the first real page does.
+    const seedManifest = seededStart(start) ? await seedStore(await createTauriBackend(fake.store), testEnv(clock, 1)) : null
+    const parts: RigParts = {
+        variant: 'tauri',
+        raw: rawOfTauriSemantic(fake),
+        hooks: { peek: (key) => fake.peek(key), plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix) },
+        deviceOwner: true,
+        pageStore: (handle) => handle.byteStore(fake.store),
+        openBackend: (store) => createTauriBackend(store),
+        probe: () => undefined,
+    }
+    return Object.assign(assembleRig({ parts, clock, seedManifest, options }), { fake })
 }
 
 /** What one page does, in the operations the checker judges: each one declares its context first. */

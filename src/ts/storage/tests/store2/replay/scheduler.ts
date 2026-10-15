@@ -38,12 +38,18 @@
  *    store's own call, so a gate that checks and applies as one step refuses it
  *    when a later registration made it stale.
  *  - `ghost-held`: the call took the lock and passed its check (`beginWriteTop` /
- *    `beginRemoveTop` of a `TwoStepPageGate`) and applies at its landing. A
- *    registration that arrives meanwhile waits for the lock, so a granted call
- *    that stays blocked while a ghost holds the lock is parked and the run goes on
- *    with other steps, among them the landing that frees it.
+ *    `beginRemoveTop` of a `TwoStepPageGate`) and applies at its landing.
  * A plain `write`, `delete` or `deleteMany` can only be `ghost-queued`: it takes no
  * lock, which is how the ungated paths are modelled.
+ *
+ * The native lock is modelled here as well as in the store: while a `ghost-held`
+ * call holds it, a granted call that takes it (`registerPage`, `writeTop`,
+ * `removeTop`, whatever fault it carries but a lost request) is parked without
+ * being started, and a queued landing of such a call is not offered. The landing
+ * that frees the lock then starts the parked calls in grant order, each as a step
+ * of its own: the state it changes is judged under its own actor and operation,
+ * never under the landing's. A run in which every way forward waits for a held
+ * lock ends `stalled`, whatever overlap of held ghosts caused it.
  *
  * Actors of one Tauri page share one scheduled `ByteStore` per inner store (the
  * `page` option of `spawn`), so the backend's in-process mutex, which is keyed by
@@ -253,6 +259,8 @@ interface CallSpec {
     removal: { entries: readonly DeleteEntry[], runSubset: (entries: readonly DeleteEntry[]) => Promise<void> } | null
     /** A decisive write or removal: how it can outlive its actor. `begin` is null where the call takes no native lock. */
     ghost: { queued: () => Promise<unknown>, begin: (() => Promise<Landing>) | null } | null
+    /** The call takes the native lock of the page gate: it cannot start while a held ghost has it. */
+    lock: boolean
 }
 
 /** A decisive call kept after its actor crashed, waiting for its landing step. */
@@ -264,6 +272,14 @@ interface Ghost {
     kind: 'ghost-queued' | 'ghost-held'
     land: () => Promise<unknown>
     landWhen: () => boolean
+}
+
+/** A granted call waiting for the lock a held ghost has: its step is finished by `resume` once the lock is free. */
+interface Parked {
+    actor: string
+    op: string
+    target: string
+    resume: () => Promise<void>
 }
 
 interface Pending {
@@ -416,8 +432,9 @@ function callSpec(
     expects: Pick<CallSpec, 'commitExpect' | 'fenceExpect'> = { commitExpect: null, fenceExpect: null },
     removal: CallSpec['removal'] = null,
     ghost: CallSpec['ghost'] = null,
+    lock = false,
 ): CallSpec {
-    return { op, target, write, loss, ...expects, removal, ghost }
+    return { op, target, write, loss, ...expects, removal, ghost, lock }
 }
 
 function keysTarget(keys: readonly string[]): string {
@@ -494,6 +511,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     let pending: Pending[] = []
     const envActions: EnvAction[] = []
     const ghosts: Ghost[] = []
+    const parked: Parked[] = []
     /** Per call-selected scripted fault, how many calls it matched so far. */
     const selected = new Map<ScriptedFault, number>()
     /** The scripted entry behind the fault `decideFault` last returned, or null. */
@@ -566,13 +584,13 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
         const innerGate = inner.pageGate
         const twoStep = innerGate !== undefined && isTwoStepGate(innerGate) ? innerGate : null
         const gate: PageGateOperations | undefined = innerGate === undefined ? undefined : {
-            registerPage: () => request(actor, callSpec('registerPage', '', true, PLAIN_LOSS), () => innerGate.registerPage()),
+            registerPage: () => request(actor, callSpec('registerPage', '', true, PLAIN_LOSS, undefined, null, null, true), () => innerGate.registerPage()),
             writeTop: (generation, key, bytes) => request(
                 actor,
                 callSpec('writeTop', key, true, PLAIN_LOSS, keyExpects(key, conditionExpect('unconditional')), null, {
                     queued: () => innerGate.writeTop(generation, key, bytes),
                     begin: twoStep === null ? null : () => twoStep.beginWriteTop(generation, key, bytes),
-                }),
+                }, true),
                 () => innerGate.writeTop(generation, key, bytes),
             ),
             removeTop: (generation, keys) => {
@@ -585,7 +603,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                     }, {
                         queued: () => innerGate.removeTop(generation, keys),
                         begin: twoStep === null ? null : () => twoStep.beginRemoveTop(generation, keys),
-                    }),
+                    }, true),
                     () => innerGate.removeTop(generation, keys),
                 )
             },
@@ -720,98 +738,109 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             entry.reject(entry.spec.loss.lost('request'))
             return
         }
-        if (fault === 'partial-removal' && entry.spec.removal !== null) {
-            // One key is always reported failed; each of the others is removed or not by a seeded coin.
-            const { entries, runSubset } = entry.spec.removal
-            const failedIndex = Math.floor(faultRng() * entries.length)
-            const removed = entries.filter((_, index) => index !== failedIndex && faultRng() < 0.5)
-            try {
-                if (removed.length > 0) {
-                    await runSubset(removed)
-                }
-            } catch {
-                // The subset is the part that went through; a refusal there leaves it untouched.
-            }
-            logEntry.outcome = 'partial-removal'
-            options.onStep?.(info)
-            entry.reject(new StoreDeleteManyError(entries.map((each): DeleteReportEntry => removed.includes(each)
-                ? { key: each.key, outcome: 'removed' }
-                : { key: each.key, outcome: 'failed', error: new TypeError('remove failed') })))
-            return
-        }
-        if ((fault === 'ghost-queued' || fault === 'ghost-held') && entry.spec.ghost !== null) {
-            const landWhen = scriptedHit?.landWhen ?? (() => true)
-            let landing: (() => Promise<unknown>) | null
-            if (fault === 'ghost-held' && entry.spec.ghost.begin !== null) {
+        // The rest of the step: what the call does once it holds the lock, when it takes one.
+        const proceed = async (): Promise<void> => {
+            if (fault === 'partial-removal' && entry.spec.removal !== null) {
+                // One key is always reported failed; each of the others is removed or not by a seeded coin.
+                const { entries, runSubset } = entry.spec.removal
+                const failedIndex = Math.floor(faultRng() * entries.length)
+                const removed = entries.filter((_, index) => index !== failedIndex && faultRng() < 0.5)
                 try {
-                    landing = await entry.spec.ghost.begin()
-                } catch (error) {
-                    // The check at the lock failed: the call is over and nothing of it lands later.
-                    landing = null
-                    logEntry.outcome = `error:${errorName(error)}`
+                    if (removed.length > 0) {
+                        await runSubset(removed)
+                    }
+                } catch {
+                    // The subset is the part that went through; a refusal there leaves it untouched.
                 }
-            } else {
-                landing = entry.spec.ghost.queued
+                logEntry.outcome = 'partial-removal'
+                options.onStep?.(info)
+                entry.reject(new StoreDeleteManyError(entries.map((each): DeleteReportEntry => removed.includes(each)
+                    ? { key: each.key, outcome: 'removed' }
+                    : { key: each.key, outcome: 'failed', error: new TypeError('remove failed') })))
+                return
             }
-            if (landing !== null) {
-                logEntry.outcome = fault
-                ghosts.push({ id: ++nextId, actor: entry.actor, spec: entry.spec, context: entry.context, kind: fault, land: landing, landWhen })
-            }
-            options.onStep?.(info)
-            retire(entry.actor)
-            return
-        }
-        const finish = (settled: { failed: false, value: unknown } | { failed: true, failure: unknown }): void => {
-            if (fault === 'crash-after-write') {
-                logEntry.outcome = 'crash'
+            if ((fault === 'ghost-queued' || fault === 'ghost-held') && entry.spec.ghost !== null) {
+                const landWhen = scriptedHit?.landWhen ?? (() => true)
+                let landing: (() => Promise<unknown>) | null
+                if (fault === 'ghost-held' && entry.spec.ghost.begin !== null) {
+                    try {
+                        landing = await entry.spec.ghost.begin()
+                    } catch (error) {
+                        // The check at the lock failed: the call is over and nothing of it lands later.
+                        landing = null
+                        logEntry.outcome = `error:${errorName(error)}`
+                    }
+                } else {
+                    landing = entry.spec.ghost.queued
+                }
+                if (landing !== null) {
+                    logEntry.outcome = fault
+                    ghosts.push({ id: ++nextId, actor: entry.actor, spec: entry.spec, context: entry.context, kind: fault, land: landing, landWhen })
+                }
                 options.onStep?.(info)
                 retire(entry.actor)
                 return
             }
-            if (fault === 'lost-response' && entry.spec.loss !== null) {
-                logEntry.outcome = 'lost-response'
+            const finish = (settled: { failed: false, value: unknown } | { failed: true, failure: unknown }): void => {
+                if (fault === 'crash-after-write') {
+                    logEntry.outcome = 'crash'
+                    options.onStep?.(info)
+                    retire(entry.actor)
+                    return
+                }
+                if (fault === 'lost-response' && entry.spec.loss !== null) {
+                    logEntry.outcome = 'lost-response'
+                    options.onStep?.(info)
+                    entry.reject('failure' in settled && !entry.spec.loss.hides(settled.failure) ? settled.failure : entry.spec.loss.lost('response'))
+                    return
+                }
+                if ('failure' in settled) {
+                    logEntry.outcome = `error:${errorName(settled.failure)}`
+                    options.onStep?.(info)
+                    entry.reject(settled.failure)
+                    return
+                }
                 options.onStep?.(info)
-                entry.reject('failure' in settled && !entry.spec.loss.hides(settled.failure) ? settled.failure : entry.spec.loss.lost('response'))
-                return
+                entry.resolve(settled.value)
             }
-            if ('failure' in settled) {
-                logEntry.outcome = `error:${errorName(settled.failure)}`
-                options.onStep?.(info)
-                entry.reject(settled.failure)
-                return
+            let started: Promise<unknown>
+            try {
+                started = entry.run()
+            } catch (error) {
+                started = Promise.reject(error)
             }
-            options.onStep?.(info)
-            entry.resolve(settled.value)
+            finish(await started.then(
+                (value): { failed: false, value: unknown } => ({ failed: false, value }),
+                (failure: unknown): { failed: true, failure: unknown } => ({ failed: true, failure }),
+            ))
         }
-        let started: Promise<unknown>
-        try {
-            started = entry.run()
-        } catch (error) {
-            started = Promise.reject(error)
-        }
-        const running = started.then(
-            (value): { failed: false, value: unknown } => ({ failed: false, value }),
-            (failure: unknown): { failed: true, failure: unknown } => ({ failed: true, failure }),
-        )
-        if (heldGhosts() === 0) {
-            finish(await running)
+
+        // A call that needs the lock a held ghost has waits for the landing that frees it, and then runs as a step of its own.
+        if (entry.spec.lock && fault !== 'ghost-queued' && heldGhosts() > 0) {
+            logEntry.outcome = 'parked'
+            parked.push({
+                actor: entry.actor,
+                op: entry.spec.op,
+                target: entry.spec.target,
+                resume: async () => {
+                    logEntry.outcome = 'ok-after-wait'
+                    await proceed()
+                },
+            })
             return
         }
-        // A call that waits for the lock a ghost holds is parked: the landing that frees it is a step of its own.
-        const first = await Promise.race([running, yieldMacrotask().then(() => null)])
-        if (first !== null) {
-            finish(first)
-            return
-        }
-        logEntry.outcome = 'parked'
-        void running.then((settled) => {
-            logEntry.outcome = 'ok-after-wait'
-            finish(settled)
-        })
+        await proceed()
     }
 
     function heldGhosts(): number {
         return ghosts.filter((ghost) => ghost.kind === 'ghost-held').length
+    }
+
+    /** Hands the lock to the parked calls in grant order, for as long as no held ghost has it. */
+    async function startParked(): Promise<void> {
+        while (parked.length > 0 && heldGhosts() === 0) {
+            await parked.shift()!.resume()
+        }
     }
 
     async function land(ghost: Ghost): Promise<void> {
@@ -830,6 +859,8 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             step: stepNo, actor: ghost.actor, kind: 'call', op: ghost.spec.op, target: ghost.spec.target, applied, fault: ghost.kind,
             context: ghost.context, commitExpect: ghost.spec.commitExpect, fenceExpect: ghost.spec.fenceExpect,
         })
+        // The lock is free once the landing is judged; the calls that waited for it run after that, each judged on its own.
+        await startParked()
     }
 
     function takeEnvironment(action: EnvAction): void {
@@ -918,7 +949,8 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 if (!live) {
                     return { status: 'finished', steps: stepNo, actors: report() }
                 }
-                const landable = ghosts.filter((ghost) => ghost.landWhen())
+                // A queued landing that needs the lock waits while a held ghost has it; a held landing is what frees it.
+                const landable = ghosts.filter((ghost) => ghost.landWhen() && !(ghost.kind === 'ghost-queued' && ghost.spec.lock && heldGhosts() > 0))
                 if (pending.length === 0 && landable.length === 0) {
                     return { status: 'stalled', steps: stepNo, actors: report() }
                 }
@@ -958,6 +990,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
             }
             for (const ghost of ghosts) {
                 parts.push(`^${ghost.actor}:${ghost.spec.op}:${ghost.spec.target}:${ghost.kind}`)
+            }
+            for (const call of parked) {
+                parts.push(`~${call.actor}:${call.op}:${call.target}`)
             }
             const text = parts.join('\n')
             return `${fnv1a(text, 0x811C9DC5).toString(16).padStart(8, '0')}${fnv1a(text, 0x01000193).toString(16).padStart(8, '0')}`
