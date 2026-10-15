@@ -1,0 +1,21 @@
+{
+  "name": "c409_13_gc_manifest_read_404",
+  "covers": "GC manifest read 404: a manifest the commit key names is deleted from the store between a collection pass's read of the commit key and its read of the manifests; the library's mark finds the manifest missing, the closure is not ok and the pass is refused (mark-refused) with nothing deleted, rather than re-listing",
+  "variant": "node",
+  "pending": {
+    "until": "an environment step that removes a unit",
+    "reason": "The only environment steps of the scheduler are the commit-key and fence damage (EnvFault) and the state hooks plant bytes (silent damage), never remove a key. Removing a named manifest by an actor is a deletion of a live unit, which the checker reports as I1 whatever the actor declares, and the removal by an environment step would be reported as I1 as well, because the checker has no exemption for an injected removal. The smallest coherent correction is an EnvFault remove-unit, a StateHooks.remove on both rigs and an I1 exemption for that environment step, as for the damage steps. The branch itself is covered by the mark and pass unit tests (gcMark, gcPass: closure-not-ok / mark-refused)."
+  },
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2, 3],
+  "labels": {
+    "GC: begin pass; GC: read commit key; ENV: delete a named manifest; GC: read manifests -> 404": "g: open, gc: the commit-key read, then the environment step that removes the retained manifest, then the manifest read that finds it missing (not expressible until the removal step exists)",
+    "GC manifest read 404 => abort pass, re-list": "g: gc:refused:mark-refused, nothing listed and nothing deleted"
+  },
+  "actors": [
+    { "id": "c", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "c" }] },
+    { "id": "g", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "c", "op": "writeChecked", "target": "$commit", "context": "commit" } }, { "do": "gc" }] }
+  ],
+  "expect": {}
+}

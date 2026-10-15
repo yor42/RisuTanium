@@ -1,0 +1,30 @@
+{
+  "name": "c409_14_gc_remove_moved",
+  "covers": "GC remove, commit key moved: a writer's commit lands after the pass has listed and before its batch; the batch carries the commit key the pass read, so it conflicts and deletes nothing, and the pass starts again from a fresh read of the commit key and deletes only what the new commit does not name",
+  "variant": "node",
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m": "a: open, commit: the eleven unit uploads",
+    "GC: begin pass; GC: list keys; GC: read commit key at R=v1": "gc: read commit key (R), mark, read fence, then list, held until a's uploads are applied: the eleven new units and the three garbage units are candidates",
+    "A: commit CAS ok -> v2": "a: the commit-key write, held until the list is applied",
+    "GC: remove [m/A1.1.g1,u/A1.0.g0] (check-only commit key == v1) -> 409 (now v2); re-list and retry": "gc: retireChecked of the fourteen candidates, held until a's commit is applied, conflicts on the commit key; the second round re-reads, marks from the new commit key and deletes the three garbage units"
+  },
+  "holds": [
+    { "call": { "actor": "gc", "op": "list" }, "until": { "actor": "a", "op": "writeChecked", "target": "$unit", "nth": 11 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "gc", "op": "list" } },
+    { "call": { "actor": "gc", "op": "retireChecked" }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }] },
+    { "id": "gc", "seed": 11, "program": [{ "do": "open" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:committed"],
+      "gc": ["open", "gc:done:3"]
+    }
+  },
+  "mutants": { "gcRetryNoReread": "I1" }
+}

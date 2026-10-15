@@ -34,6 +34,18 @@
  * Control (iii), the retention list in a separate key, is structurally excluded, not
  * caught: retention lives inside the commit key and the format is frozen, so there is no
  * second key whose write could be separated from the commit.
+ *
+ * Part (ii) maps the model's 409/404 categories and surprises to schedules (`corpusIndex.ts`):
+ * each schedule drives the library to the counterpart of the category and declares the
+ * reaction the library has there, which is not always the model's (the library judges a
+ * conflicted bulk final write again where the model parks, and a missing base manifest at boot
+ * is the recovery screen where the model re-reads the commit key). A mutant whose effect is a
+ * different answer rather than a broken property is named `outcome`.
+ *
+ * Several holds on one call selector (same actor, op, target and context) catch that
+ * selector's calls one each, in list order: a gate that has caught a call hands the next
+ * call to the next hold, so the list is how a schedule holds the first, second and third
+ * such call. `nth` on a hold's `call` is for the only hold of a selector.
  */
 import { describe, expect, test } from 'vitest'
 import { encodeUnit, newUnitKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
@@ -44,6 +56,7 @@ import {
     outcomeLabel, stepMatches, type CallHold, type ReplayActor, type ReplayRig, type ReplayRigOptions, type StartState, type StepMatch,
 } from './actors'
 import type { PropertyId } from './checker'
+import { CORPUS_INDEX } from './corpusIndex'
 import { createNodeReplayRig } from './nodeRig'
 import { GARBAGE } from './replayFixtures'
 import { createTauriReplayRig } from './tauriRig'
@@ -57,8 +70,22 @@ type ProgramStep =
     | { do: 'bulk', tag: string }
     | { do: 'gc' }
     | { do: 'exit', kind: 'convert' | 'import' | 'seed' }
-    /** The newest candidate is picked and installed. */
-    | { do: 'recover' }
+    /** The newest candidate is picked and installed, or the seeded tree's manifest when `pick` is `seed`. */
+    | { do: 'recover', pick?: 'seed' }
+    /** What the boot decided: the table row and mode of `Store2Session.open`. */
+    | { do: 'decision' }
+    /** What the start-up clear of the page's own marker came to at boot. */
+    | { do: 'startupClear' }
+    /** The clock moves past the admission interval and an ordinary commit follows, `times` times over. */
+    | { do: 'admit', tag: string, times?: number }
+    /** Restores the seeded tree's manifest, or the newest retained one, from a fresh read of the commit key. */
+    | { do: 'restore', to: 'seed' | 'retained' }
+    /** Pins the manifest the fresh read names as current. */
+    | { do: 'pin' }
+    /** Clears the marker the fresh read shows, naming its prefix. */
+    | { do: 'abandonClear' }
+    /** Tauri: the page is gone and a new one opens on the same device. */
+    | { do: 'restart' }
     | { do: 'candidates' }
     | { do: 'fenceExit' }
     | { do: 'discardFence' }
@@ -116,8 +143,11 @@ export interface CorpusSchedule {
         /** The outcome labels of each actor in order, when the holds fix them for every seed. */
         outcomes?: Record<string, string[]>
     }
-    /** Mutant id (of the scratch runner) to the property it must make the checker report on this schedule. */
-    mutants?: Record<string, PropertyId>
+    /**
+     * Mutant id (of the scratch runner) to the property it must make the checker report on this schedule; `outcome`
+     * names a mutant that changes what the library answers without breaking a property, so the declared outcomes differ.
+     */
+    mutants?: Record<string, PropertyId | 'outcome'>
     /** How the model's trace maps to the library's calls, for a control. */
     labels?: Record<string, string>
 }
@@ -150,9 +180,10 @@ async function runProgramStep(actor: ReplayActor, step: ProgramStep): Promise<st
             if (listed.status !== 'listed' || listed.candidates.length === 0) {
                 return 'recover:no-candidate'
             }
-            const picked = await actor.pickCandidate()
+            const picked = await actor.pickCandidate(step.pick === 'seed' ? seeded(actor) : undefined)
             if (picked.status !== 'ready') {
-                return `recover:pick:${outcomeLabel(picked)}`
+                // An invalid pick says whether the exit's marker had landed before the tree read failed.
+                return `recover:pick:${outcomeLabel(picked)}${picked.status === 'invalid' ? (picked.marked === null ? ':unmarked' : ':marked') : ''}`
             }
             return `recover:installed:${outcomeLabel(await actor.installPick(picked))}`
         }
@@ -171,7 +202,55 @@ async function runProgramStep(actor: ReplayActor, step: ProgramStep): Promise<st
         case 'waitFor':
             await actor.rig.reached(step.match)
             return 'waitFor'
+        case 'decision': {
+            const decision = actor.session.decision
+            return `decision:${decision.row === null ? 'none' : decision.row}:${decision.mode}${'tree' in decision ? `:${decision.tree}` : ''}`
+        }
+        case 'startupClear': {
+            const cleared = actor.session.startupClear
+            return `startupClear:${cleared === null ? 'none' : outcomeLabel(cleared)}`
+        }
+        case 'admit': {
+            const labels: string[] = []
+            for (let i = 0; i < (step.times ?? 1); i++) {
+                labels.push(outcomeLabel((await actor.admit(step.tag)).result))
+            }
+            return `admit:${labels.every((label) => label === labels[0]) ? `${labels[0]}*${labels.length}` : labels.join(',')}`
+        }
+        case 'restore': {
+            const key = step.to === 'seed' ? seeded(actor) : (await actor.readKey())?.retained[0]?.key
+            if (key === undefined) {
+                throw new Error('There is no manifest to restore.')
+            }
+            return `restore:${outcomeLabel(await actor.restore(key))}`
+        }
+        case 'pin': {
+            const named = (await actor.readKey())?.current
+            if (named === null || named === undefined) {
+                throw new Error('The commit key names no current manifest to pin.')
+            }
+            return `pin:${outcomeLabel(await actor.pin(named.key))}`
+        }
+        case 'abandonClear': {
+            const standing = (await actor.readKey())?.staging
+            if (standing === null || standing === undefined) {
+                return 'abandonClear:no-marker'
+            }
+            return `abandonClear:${outcomeLabel(await actor.abandonClear(standing.prefix))}`
+        }
+        case 'restart':
+            await actor.restart()
+            return 'restart'
     }
+}
+
+/** The manifest key of the seeded tree; a schedule that asks for it starts from a seeded store. */
+function seeded(actor: ReplayActor): string {
+    const key = actor.rig.seedManifest
+    if (key === null) {
+        throw new Error('The store was not seeded.')
+    }
+    return key
 }
 
 export interface RunReport {
@@ -293,8 +372,8 @@ describe('the corpus files', () => {
         }
     })
 
-    test('a mutant a schedule names is one of the property ids the checker reports', () => {
-        const properties: readonly string[] = ['I1', 'b', 'I2', 'I3', 'h', 'h2', 'G1', 'G10', 'i', 'p', 'r', 'I4']
+    test('a mutant a schedule names is one of the property ids the checker reports, or an outcome mismatch', () => {
+        const properties: readonly string[] = ['I1', 'b', 'I2', 'I3', 'h', 'h2', 'G1', 'G10', 'i', 'p', 'r', 'I4', 'outcome']
         for (const [, spec] of schedules) {
             for (const [mutant, property] of Object.entries(spec.mutants ?? {})) {
                 expect(properties, `${spec.name}/${mutant}`).toContain(property)
@@ -323,10 +402,43 @@ describe.each(schedules.map(([, spec]) => spec))('replay: $name', (spec) => {
     })
 })
 
-// Part (ii), the 409/404 categories and the model's surprises 1, 2, 3 and 6, comes from a separate exporter of the
-// model's first path per category; each category gets a schedule here, and a category with no library flow is listed
-// with the reason.
-test.todo('part (ii): one schedule per 409/404 category of the model, from the exporter')
+// Part (ii): the model's 409/404 categories and its surprises. Each is a schedule on the library's call order, a pending
+// schedule, or an entry without one that says why; nothing is dropped silently.
+describe('the model\'s categories and surprises (part ii)', () => {
+    const byName = new Map(schedules.map(([, spec]) => [spec.name, spec]))
+
+    test('every category and surprise has an entry, and every part (ii) file is an entry', () => {
+        const ids = CORPUS_INDEX.map((entry) => entry.id)
+        expect(new Set(ids).size).toBe(ids.length)
+        const categories = Array.from({ length: 18 }, (_, i) => `c409-${String(i + 1).padStart(2, '0')}`)
+        expect([...categories, 'surprise-s1', 'surprise-s2', 'surprise-s3', 'surprise-s3c', 'surprise-s6'].filter((id) => !ids.includes(id))).toEqual([])
+        const named = new Set(CORPUS_INDEX.flatMap((entry) => (entry.schedule === null ? [] : [entry.schedule])))
+        const part2 = schedules.map(([, spec]) => spec.name).filter((name) => name.startsWith('c409_') || name.startsWith('surprise_'))
+        expect(part2.filter((name) => !named.has(name))).toEqual([])
+    })
+
+    test('an entry\'s kind agrees with its corpus file, and an entry without a schedule says why', () => {
+        for (const entry of CORPUS_INDEX) {
+            expect(entry.note, entry.id).not.toBe('')
+            if (entry.kind === 'none') {
+                expect(entry.schedule, entry.id).toBeNull()
+                continue
+            }
+            const spec = byName.get(entry.schedule ?? '')
+            expect(spec, `${entry.id}: ${entry.schedule}`).toBeDefined()
+            expect(spec?.pending !== undefined, entry.id).toBe(entry.kind === 'pending')
+        }
+    })
+
+    test('a schedule of part (ii) asserts the library\'s outcomes', () => {
+        for (const entry of CORPUS_INDEX) {
+            const spec = byName.get(entry.schedule ?? '')
+            if (spec !== undefined && spec.pending === undefined) {
+                expect(Object.keys(spec.expect.outcomes ?? {}).length, spec.name).toBeGreaterThan(0)
+            }
+        }
+    })
+})
 
 // ---- The driver's own features ----
 
@@ -377,6 +489,22 @@ describe('holds and step matches', () => {
         })
         const result = await rig.run({ maxSteps: MAX_STEPS })
         expect(result.status).toBe('stalled')
+    })
+
+    test('holds on one call selector catch the matching calls in list order, one call each', async () => {
+        const never = { actor: 'nobody' }
+        const rig = await twoWriters([
+            { call: { actor: 'a', op: 'writeChecked', target: '$unit' }, until: never },
+            { call: { actor: 'a', op: 'writeChecked', target: '$unit' }, until: never },
+        ])
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            await actor.commit('a')
+        })
+        // The commit uploads eleven units: the first two calls are held, nine are applied, and the commit-key write never comes.
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.status).toBe('stalled')
+        expect(rig.scheduler.log.filter((entry) => entry.op === 'writeChecked' && entry.target !== COMMIT_KEY)).toHaveLength(9)
     })
 
     test('a hold applies to the nth matching call only', async () => {

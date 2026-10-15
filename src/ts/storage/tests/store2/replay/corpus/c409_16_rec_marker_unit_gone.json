@@ -1,0 +1,38 @@
+{
+  "name": "c409_16_rec_marker_unit_gone",
+  "covers": "recovery, chosen unit gone: the newest candidate is an orphan manifest; a collection pass that read the commit key before it was damaged retires the orphan after the recovery page has read its manifest; the exit's marker still lands, and the tree read that follows finds the units gone and fails loudly with them, before anything is installed",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "faults": [
+    { "actor": "b", "kind": "lost-request", "op": "writeChecked", "target": "store2-commit", "context": "commit" }
+  ],
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "g", "op": "list" } }
+  ],
+  "labels": {
+    "B: begin ordinary commit; B: upload u; B: upload m": "b: open, admit: the clock moves, then the eleven uploads; the commit-key write is lost before it applies, so the units are an orphan tree and the newest manifest",
+    "GC: pass: list, read commit key at R=v1, read manifests; mark done": "g: read commit key, mark, fence, list once b's units are applied: the orphan is a candidate",
+    "ENV: commit key DAMAGED (silent: revision unchanged, content unparsable)": "environment step damage-commit, after g's list",
+    "RECOVER: read commit key -> UNPARSABLE; candidate list; user picks m/B1.1.g1; read tree of m/B1.1.g1": "r: open, then recover once the damage is applied: it picks the newest candidate and reads its manifest",
+    "GC: remove [m/B1.1.g1] (check-only commit key == v1 ok)": "g: retireChecked of the orphan, held until r has read the manifest; the commit key's revision is unchanged by the silent damage, so the batch applies",
+    "RECOVER: marker CAS -> chosen manifest/unit gone (fails loudly); user picks another": "r: its read of the fence is held until the batch is applied; the exit then lists, writes the fence and the marker, and the tree read finds the units gone: recover:pick:invalid:marked"
+  },
+  "holds": [
+    { "call": { "actor": "g", "op": "retireChecked" }, "until": { "actor": "r", "op": "read", "target": "$unit", "context": "recovery-begin" } },
+    { "call": { "actor": "r", "op": "read", "target": "$fence", "context": "recovery-begin" }, "until": { "actor": "g", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "b", "seed": 10, "program": [{ "do": "open" }, { "do": "admit", "tag": "b" }] },
+    { "id": "g", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "b", "op": "writeChecked", "target": "$unit", "nth": 11 } }, { "do": "gc" }] },
+    { "id": "r", "seed": 12, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "recover" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "b": ["open", "admit:conflict*1"],
+      "g": ["open", "waitFor", "gc:done:11"],
+      "r": ["open", "waitFor", "recover:pick:invalid:marked"]
+    }
+  },
+  "mutants": { "pickIgnoresGoneUnit": "outcome" }
+}

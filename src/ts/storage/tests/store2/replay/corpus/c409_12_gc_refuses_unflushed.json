@@ -1,0 +1,20 @@
+{
+  "name": "c409_12_gc_refuses_unflushed",
+  "covers": "GC refuses, unconfirmed commit-key flush: on Tauri a commit's commit-key write reports that it was not flushed to stable storage, and a collection pass of that page refuses to delete anything while the commit key is unconfirmed",
+  "variant": "tauri",
+  "pending": {
+    "until": "2f-5",
+    "reason": "The Tauri semantic store reports every durable write flushed: it has no flush fault (the real backend tests drive the flush.fault hook of their own stand-in). The fault, a commit-key write that resolves flushed:false so that the session's idle reason is set, is the Tauri half of 2f-5. The schedule is written against the actor interface; its fault entry is not expressible until then and is not faked."
+  },
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2, 3],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m; A: commit CAS ok -> v2 [commit-key FLUSH FAILED]": "a: open, commit on the Tauri page, with the commit-key write reporting flushed:false (the fault to be added)",
+    "GC: begin pass; GC: list keys; GC: read commit key -> commit-key flush unconfirmed; GC REFUSES this pass": "a: gcPass on the same page: the session's idleReason is set, so the pass ends refused:idle before it reads anything, and deletes nothing"
+  },
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "gc" }] }
+  ],
+  "expect": {}
+}

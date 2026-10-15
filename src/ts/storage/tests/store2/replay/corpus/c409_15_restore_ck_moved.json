@@ -1,0 +1,29 @@
+{
+  "name": "c409_15_restore_ck_moved",
+  "covers": "restore CAS, commit key moved: a bulk page's marker lands between the restoring page's read of the commit key and its write; the restore reports a conflict and writes nothing, so the caller must read again and choose again",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m; A: commit CAS ok -> v2": "a: open, commit: a first commit, so the seeded manifest is retained",
+    "A: begin BULK commit #2": "a: bulk: its marker write (bulk-begin), held until r has read the commit key",
+    "RESTORE: begin restore; read commit key v2, retained=[m/0]; user chooses m/0": "r: open, restore of the newest retained manifest once a's commit is applied: its read of the commit key",
+    "A: BULK step 1: CAS marker -> v3": "a: the marker write, applied after r's read",
+    "RESTORE: restore CAS ifVersion v2 -> 409; re-read": "r: the restore's commit-key write, held until the marker is applied: restore:conflict"
+  },
+  "holds": [
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" }, "until": { "actor": "r", "op": "read", "target": "$commit", "context": "restore" } },
+    { "call": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "restore" }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "bulk", "tag": "b" }] },
+    { "id": "r", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" } }, { "do": "restore", "to": "retained" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:committed", "bulk:committed"],
+      "r": ["open", "waitFor", "restore:conflict"]
+    }
+  },
+  "mutants": { "restoreRetryAtPeerIndex": "I3" }
+}

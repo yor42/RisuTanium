@@ -1,0 +1,35 @@
+{
+  "name": "surprise_s3_base_manifest_404_crash_rotate_gc",
+  "covers": "surprise 3, its own shape: a page crashes in the middle of a commit, a new page of the device reads the commit key and, before it reads the manifest the key names, a peer rotates that manifest out of the retained list and a collection pass deletes it together with the crashed commit's orphan; the page's manifest read finds the unit gone and the boot decides the recovery screen",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2],
+  "faults": [
+    { "actor": "a1", "kind": "crash-after-write", "op": "writeChecked", "context": "commit", "nth": 1 }
+  ],
+  "labels": {
+    "A: begin ordinary commit; A: upload u/A1.0.g0; A: CRASH": "a1: open, commit: the first unit upload is applied and the page is gone; the orphan unit stays in the store",
+    "A: read commit key -> v1 cur=m/0 stg=null": "a2: a new page once a1 is gone: open reads the fence and the commit key (current is the seeded manifest) and then reads the manifest; that read is held",
+    "B: begin ordinary commit #1..#3; B: commit CAS ok": "b: twenty-one commits after a2's read, each after the retention admission interval; the twenty-first pushes the seeded manifest out of the retained list",
+    "GC: pass; GC: remove [m/0, u/A1.0.g0]": "g: a collection pass after b's last commit retires the seeded tree and the orphan; the pass releases a2's held read",
+    "A: read manifest m/0 -> missing; re-read commit key": "a2: the manifest read finds nothing; open classifies the boot as the recovery screen, row 6 with the tree missing"
+  },
+  "holds": [
+    { "call": { "actor": "a2", "op": "read", "target": "$unit" }, "until": { "actor": "g", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "a1", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }] },
+    { "id": "a2", "seed": 11, "program": [{ "do": "waitFor", "match": { "actor": "a1", "op": "writeChecked", "target": "$unit", "context": "commit" } }, { "do": "open" }, { "do": "decision" }] },
+    { "id": "b", "seed": 12, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a2", "op": "read", "target": "$commit" } }, { "do": "admit", "tag": "b", "times": 21 }] },
+    { "id": "g", "seed": 13, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 21 } }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "actors": { "a1": "crashed" },
+    "outcomes": {
+      "a1": ["open"],
+      "a2": ["waitFor", "open", "decision:6:recovery:missing"],
+      "b": ["open", "waitFor", "admit:committed*21"],
+      "g": ["open", "waitFor", "gc:done:12"]
+    }
+  }
+}

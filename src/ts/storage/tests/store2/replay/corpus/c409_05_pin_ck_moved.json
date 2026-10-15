@@ -1,0 +1,25 @@
+{
+  "name": "c409_05_pin_ck_moved",
+  "covers": "pin CAS, commit key moved: a peer's bulk marker lands between the pinning page's read of the commit key and its write; the pin reports a conflict and writes nothing",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin BULK commit #1; A: BULK step 1: CAS marker -> v2": "a: open, bulk: the marker write (bulk-begin), held until p has read the commit key",
+    "B: begin PIN of m/0; B: pin CAS -> 409; PARK": "p: open, pin: the pin's commit-key write, held until the marker is applied: pin:conflict"
+  },
+  "holds": [
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" }, "until": { "actor": "p", "op": "read", "target": "$commit", "context": "pin" } },
+    { "call": { "actor": "p", "op": "writeChecked", "target": "$commit", "context": "pin" }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "bulk", "tag": "a" }] },
+    { "id": "p", "seed": 11, "program": [{ "do": "open" }, { "do": "pin" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "bulk:committed"],
+      "p": ["open", "pin:conflict"]
+    }
+  }
+}

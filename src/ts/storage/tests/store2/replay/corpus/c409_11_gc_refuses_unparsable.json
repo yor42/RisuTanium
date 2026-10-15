@@ -1,0 +1,19 @@
+{
+  "name": "c409_11_gc_refuses_unparsable",
+  "covers": "GC refuses, unparsable commit key: a collection pass over a commit key that parses as nothing marks nothing and deletes nothing; the pass is refused at the mark",
+  "variant": "node",
+  "start": "damaged-commit",
+  "garbage": 3,
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "GC: begin pass; GC: list keys; ENV: commit key DAMAGED; GC: read commit key -> UNPARSABLE; GC REFUSES this pass": "start state damaged-commit: the pass reads the commit key first and the library's mark refuses it (commit-unusable) before any list or batch; damage that lands after the read is the amendment-J case of the commit-key damage schedules"
+  },
+  "actors": [
+    { "id": "g", "seed": 10, "program": [{ "do": "open" }, { "do": "decision" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "g": ["open", "decision:4:recovery", "gc:refused:mark-refused"]
+    }
+  }
+}

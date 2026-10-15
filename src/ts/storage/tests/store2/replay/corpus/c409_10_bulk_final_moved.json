@@ -1,0 +1,26 @@
+{
+  "name": "c409_10_bulk_final_moved",
+  "covers": "bulk final CAS, commit key moved: a confirmed foreign clear removes the bulk page's marker while its staged units are uploaded; the final write conflicts, the re-read shows the marker gone, and the bulk commit is abandoned with nothing written",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin BULK commit; A: BULK step 1: CAS marker; A: upload s/d0, s/d1, s/m": "a: open, bulk: the marker write, then the staged uploads",
+    "B: foreign clear of A's marker (user confirms)": "c: open, then once the marker stands, clearMarker with the hook answering yes: the clear is applied before a's final write",
+    "A: BULK final CAS -> 409 on commit key; PARK": "a: the final write (bulk-final), held until the clear is applied, conflicts; the re-read shows no marker of its own: bulk:abandoned:marker-lost"
+  },
+  "holds": [
+    { "call": { "actor": "c", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" }, "until": { "actor": "a", "op": "writeChecked", "target": "$unit", "nth": 62 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "c", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "bulk", "tag": "a" }] },
+    { "id": "c", "seed": 11, "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }, { "do": "clearMarker" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "bulk:abandoned:marker-lost"],
+      "c": ["open", "waitFor", "clearMarker:clear:cleared"]
+    }
+  }
+}

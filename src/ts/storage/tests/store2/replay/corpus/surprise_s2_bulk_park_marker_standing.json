@@ -1,0 +1,26 @@
+{
+  "name": "surprise_s2_bulk_park_marker_standing",
+  "covers": "surprise 2: a restore lands on the commit key while a bulk page's own marker stands; the page does not park with its marker left behind, it re-judges on a fresh read, finds its marker still there and lands its final write, which clears the marker",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m; A: commit CAS ok -> v2": "a: open, commit: a first commit, so the seeded manifest is retained",
+    "A: begin BULK commit #2; A: BULK step 1: CAS marker -> v3; A: upload s/d0, s/d1, s/m": "a: bulk: the marker write, then the staged uploads",
+    "RESTORE: begin restore; read commit key; restore CAS ifVersion v2: current := m/0": "r: open, restore of the newest retained manifest once the marker stands: its write lands on the commit key and keeps the marker",
+    "A: BULK final CAS -> 409 on commit key; PARK (own marker, if written, left standing)": "a: the final write (bulk-final), held until the restore is applied, conflicts; the re-read shows its own marker, so it is judged again and lands: bulk:committed"
+  },
+  "holds": [
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final", "nth": 1 }, "until": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "restore" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "bulk", "tag": "b" }] },
+    { "id": "r", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }, { "do": "restore", "to": "retained" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:committed", "bulk:committed"],
+      "r": ["open", "waitFor", "restore:committed"]
+    }
+  }
+}

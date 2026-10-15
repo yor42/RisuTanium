@@ -1,0 +1,41 @@
+{
+  "name": "c409_07_abandon_clear_moved",
+  "covers": "abandon-clear CAS, commit key moved: a peer's commits move the commit key under the bulk page's final write three times and then under each of the three attempts of its own-marker clear, so the marker is left standing and the bulk is reported abandoned; the page's explicit clear of that marker later conflicts once, judges again on a fresh read and lands a clear built from that read",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin BULK commit; A: BULK step 1: CAS marker -> v2; A: upload s/d0, s/d1, s/m": "a: open, bulk: the marker write, then the staged uploads",
+    "B: begin ordinary commit; B: commit CAS -> 409 on commit key; RELOAD": "b: once the marker stands, seven ordinary commits, each written after a's read that precedes one of a's seven commit-key writes and before that write",
+    "A: BULK final CAS -> 409 on commit key; ABANDON: clear my marker (id and prefix)": "a: the three final writes (bulk-final), each held until one of b's commits is applied; every re-read still shows a's own marker, so each is judged again until the attempts are spent",
+    "A: abandon-clear CAS -> 409; marker left standing; PARK": "a: the three attempts of the own-marker clear (abandon-clear) conflict the same way; the clear returns conflict and the marker stays: bulk:abandoned:rejudge-exhausted",
+    "A: abandon-clear: read commit key, staging matches my owner id and prefix": "a: the abandonClear step: a fresh read of the commit key, and a clear of the marker it shows; its first write is held until b's seventh commit is applied and conflicts, the second is judged on the fresh read and lands: abandonClear:cleared"
+  },
+  "holds": [
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin", "nth": 2 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin", "nth": 3 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin", "nth": 4 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin", "nth": 6 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin", "nth": 7 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin", "nth": 8 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "abandon-clear", "nth": 4 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 1 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 2 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 3 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "abandon-clear" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 4 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "abandon-clear" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 5 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "abandon-clear" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 6 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "abandon-clear" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit", "nth": 7 } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "bulk", "tag": "a" }, { "do": "abandonClear" }] },
+    { "id": "b", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }, { "do": "commit", "tag": "b" }, { "do": "commit", "tag": "b" }, { "do": "commit", "tag": "b" }, { "do": "commit", "tag": "b" }, { "do": "commit", "tag": "b" }, { "do": "commit", "tag": "b" }, { "do": "commit", "tag": "b" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "bulk:abandoned:rejudge-exhausted", "abandonClear:cleared"],
+      "b": ["open", "waitFor", "commit:committed", "commit:committed", "commit:committed", "commit:committed", "commit:committed", "commit:committed", "commit:committed"]
+    }
+  },
+  "mutants": { "abandonClearStaleBase": "I3" }
+}
