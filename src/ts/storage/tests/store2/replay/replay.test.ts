@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The replay corpus: hand-built schedules of the store2 protocol, each a JSON file in
- * `corpus/`, run over the real library on the scheduled Node and Tauri stores. A
+ * `corpus/`, run over the real library on the scheduled Node and Tauri stores and on the IndexedDB adapter. A
  * schedule names its actors and their programs (the operations of `ReplayActor`), the
  * start state, the calls to hold back until a step has been applied (`holds`), the
  * scripted faults, the environment damage and the seeds it runs under. The hold list
@@ -58,6 +58,7 @@ import {
 } from './actors'
 import type { PropertyId } from './checker'
 import { CORPUS_INDEX } from './corpusIndex'
+import { createIdbReplayRig } from './idbRig'
 import { createNodeReplayRig } from './nodeRig'
 import { GARBAGE } from './replayFixtures'
 import { createTauriReplayRig } from './tauriRig'
@@ -346,7 +347,7 @@ async function makeRig(spec: CorpusSchedule, seed: number): Promise<ReplayRig> {
     if (spec.variant === 'tauri') {
         return createTauriReplayRig(options)
     }
-    throw new Error(`The ${spec.variant} variant has no rig yet.`)
+    return createIdbReplayRig(options)
 }
 
 export async function runSchedule(spec: CorpusSchedule, seed: number): Promise<RunReport> {
@@ -414,7 +415,7 @@ describe('the corpus files', () => {
     test('a schedule that cannot run yet says until when and why; every other one has a rig', () => {
         for (const [, spec] of schedules) {
             if (spec.pending === undefined) {
-                expect(['node', 'tauri'], spec.name).toContain(spec.variant)
+                expect(['node', 'tauri', 'indexeddb'], spec.name).toContain(spec.variant)
             } else {
                 expect(spec.pending.until, spec.name).not.toBe('')
                 expect(spec.pending.reason, spec.name).not.toBe('')
@@ -460,6 +461,167 @@ describe.each(schedules.map(([, spec]) => spec))('replay: $name', (spec) => {
     })
 })
 
+// ---- Part (iv) and (v) on IndexedDB ----
+
+/**
+ * The corpus names its steps as the byte-store layer does (`writeChecked` of the commit key, `read` of the fence), which is
+ * how Node and Tauri are scheduled. IndexedDB is scheduled one layer up, at the `Store2Backend`, so the same step has another
+ * name there: an ordinary commit's commit-key write is `commitOrdinary` (units and key in one transaction), every other
+ * commit-key write is `casCommit`, a unit upload is `putUnit`, a batch removal `removeBatch`.
+ */
+function onBackend<Op extends string | readonly string[]>(selector: { op?: Op, target?: string, context?: OperationKind }): { op: Op | string | undefined, target: string | undefined } {
+    const { op, target, context } = selector
+    if (typeof op !== 'string') {
+        return { op, target }
+    }
+    if (op === 'read' && (target === '$commit' || target === '$fence')) {
+        return { op: target === '$commit' ? 'readCommit' : 'readFence', target: undefined }
+    }
+    if (op === 'writeChecked') {
+        // Under a recovery install every write but the last is a unit upload; a schedule that names no target means the first of them.
+        if (target === '$unit' || (target === undefined && context === 'recovery-install')) {
+            return { op: 'putUnit', target }
+        }
+        if (target === '$fence') {
+            return { op: 'casFence', target: undefined }
+        }
+        if (target === '$commit') {
+            return { op: context === 'commit' ? 'commitOrdinary' : 'casCommit', target: undefined }
+        }
+    }
+    if (op === 'retireChecked') {
+        return { op: 'removeBatch', target }
+    }
+    return { op, target }
+}
+
+function matchOnBackend(match: StepMatch): StepMatch {
+    return { ...match, ...onBackend(match) }
+}
+
+/**
+ * The (iv) and (v) schedules of the corpus that the format lets run on IndexedDB, as the same race in the backend's calls: the
+ * programs, the holds, the faults, the damage and the seeds are the Node schedule's with each step renamed. What the library
+ * answers there is asserted from the run (`expect.outcomes`), because IndexedDB's compare is by bytes, so a silent damage is
+ * not a value a stale page can write over, and a commit is one call, so the steps between a unit upload and the commit-key write
+ * do not exist. A Node mutant is a patch of Node's call order and is not carried over.
+ */
+const IDB_DERIVED_FROM = ['fenceAndCommitKeyDamage', 'commitKeyDamageRecoveryGc', 'commitKeyDamageHeal', 'v1N2Shape', 'v1N2ShapeDamaged'] as const
+
+/**
+ * What the library answers on IndexedDB where it differs from Node, schedule by schedule. All three differences come from one
+ * cause: the adapter compares the commit key by its bytes inside the write, so a silent damage is a different value to every tab
+ * that read the key before it, and no write lands over it. On Node the damage keeps the revision, so a stale page's write lands.
+ *  - fenceAndCommitKeyDamage: the recovery's marker write, made at the key the page read before the damage, conflicts (Node: lands);
+ *  - commitKeyDamageRecoveryGc: the collector's second batch conflicts on the commit key before it reaches the fence compare, so the
+ *    fence-conflict stop of Node does not occur, and the recovery's marker write conflicts as above;
+ *  - commitKeyDamageHeal: the held commit conflicts instead of healing the key, and the recovery over the damaged key lands its marker.
+ * The recovery step of the schedule is a single run, so the conflict is the step's answer; the screen's re-run at the key the
+ * conflict carried is the regions' (`runRegion`).
+ */
+const IDB_EXPECT: Record<string, { covers: string; expect: CorpusSchedule['expect'] }> = {
+    fenceAndCommitKeyDamage: {
+        covers: 'the recovery marker write at the key read before the silent damage conflicts on bytes, and the collector refuses the unparsable fence',
+        expect: {
+            outcomes: {
+                g: ['open', 'gc:refused:fence-unparsable'],
+                r: ['open', 'waitFor', 'recover:pick:exit:conflict'],
+            },
+        },
+    },
+    commitKeyDamageRecoveryGc: {
+        covers: 'the collector second batch conflicts on the damaged commit key and its rebuild refuses, and the recovery marker write conflicts on bytes',
+        expect: {
+            outcomes: {
+                g: ['open', 'gc:done:refused:25'],
+                r: ['open', 'waitFor', 'recover:pick:exit:conflict'],
+            },
+        },
+    },
+    commitKeyDamageHeal: {
+        covers: 'the held commit conflicts on bytes instead of healing the damaged key, and the recovery over the damaged key lands its marker',
+        expect: {
+            outcomes: {
+                h: ['open', 'commit:conflict'],
+                x: ['waitFor', 'open', 'exit:marked@seq=1'],
+            },
+        },
+    },
+}
+
+function idbVariantOf(spec: CorpusSchedule): CorpusSchedule {
+    return {
+        ...spec,
+        name: `${spec.name}@indexeddb`,
+        variant: 'indexeddb',
+        mutants: undefined,
+        labels: undefined,
+        redSeeds: undefined,
+        redSeedsReason: undefined,
+        holds: spec.holds?.map((hold) => ({ call: { ...hold.call, ...onBackend(hold.call) }, until: matchOnBackend(hold.until) })),
+        faults: spec.faults?.map((fault) => ({ ...fault, ...onBackend(fault) })),
+        env: spec.env?.map((env) => ({ ...env, after: env.after === undefined ? undefined : matchOnBackend(env.after) })),
+        actors: spec.actors.map((actor) => ({ ...actor, program: actor.program.map((step) => (step.do === 'waitFor' ? { ...step, match: matchOnBackend(step.match) } : step)) })),
+        covers: IDB_EXPECT[spec.name]?.covers ?? spec.covers,
+        expect: { ...spec.expect, ...IDB_EXPECT[spec.name]?.expect },
+    }
+}
+
+const idbSchedules = IDB_DERIVED_FROM.map((name) => {
+    const found = schedules.find(([, spec]) => spec.name === name)
+    if (found === undefined) {
+        throw new Error(`The corpus has no schedule ${name} to run on IndexedDB.`)
+    }
+    return idbVariantOf(found[1])
+})
+
+describe.each(idbSchedules)('replay on IndexedDB: $name', (spec) => {
+    test.each(spec.seeds)(`${spec.covers} (seed %i): no violation, the declared outcomes`, async (seed) => {
+        const report = await runSchedule(spec, seed)
+        expect(report.violations).toEqual([])
+        expect(report.status).toBe('finished')
+        const expected: Record<string, string> = {}
+        for (const actor of spec.actors) {
+            expected[actor.id] = spec.expect.actors?.[actor.id] ?? 'done'
+        }
+        expect(report.actors).toEqual(expected)
+        if (spec.expect.outcomes !== undefined) {
+            expect(report.outcomes).toEqual(spec.expect.outcomes)
+        }
+    })
+})
+// Part (iv): two tabs of one IndexedDB profile, each with a fresh page id. The interleaving is the seed's, so the outcomes are not
+// fixed per schedule; what holds on every seed is asserted, and that the seeds reach both the race and its absence.
+describe('part (iv) on IndexedDB: two tabs, two fresh ids', () => {
+    const found = schedules.find(([, spec]) => spec.name === 'idbTwoTabsFreshIds')
+
+    test('every seed finishes clean, one tab at least commits, the other commits or conflicts, and both collect', async () => {
+        expect(found).toBeDefined()
+        const spec = found![1]
+        expect(spec.pending).toBeUndefined()
+        expect(spec.variant).toBe('indexeddb')
+        let conflicts = 0
+        let bothCommitted = 0
+        for (const seed of spec.seeds) {
+            const report = await runSchedule(spec, seed)
+            expect(report.violations, `seed ${seed}`).toEqual([])
+            expect(report.status, `seed ${seed}`).toBe('finished')
+            expect(report.actors, `seed ${seed}`).toEqual({ t1: 'done', t2: 'done' })
+            const commits = Object.values(report.outcomes).map((labels) => labels[1])
+            for (const label of commits) {
+                expect(['commit:committed', 'commit:conflict'], `seed ${seed}`).toContain(label)
+            }
+            expect(commits, `seed ${seed}`).toContain('commit:committed')
+            for (const labels of Object.values(report.outcomes)) {
+                expect(labels[2].startsWith('gc:done:'), `seed ${seed}: ${labels[2]}`).toBe(true)
+            }
+            conflicts += commits.includes('commit:conflict') ? 1 : 0
+            bothCommitted += commits.every((label) => label === 'commit:committed') ? 1 : 0
+        }
+        expect(conflicts).toBeGreaterThan(0)
+        expect(bothCommitted).toBeGreaterThan(0)
+    })
+})
 // Part (ii): the model's 409/404 categories and its surprises. Each is a schedule on the library's call order, a pending
 // schedule, or an entry without one that says why; nothing is dropped silently.
 describe('the model\'s categories and surprises (part ii)', () => {

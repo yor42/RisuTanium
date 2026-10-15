@@ -22,14 +22,17 @@
  * `rerun-exhausted`. A recovery that must not be made stale by its own page's earlier activity (R14) runs as an actor of
  * a page of its own.
  *
- * Regions that need a rig which does not exist yet (IndexedDB) are written with `pending`
- * reasons and are skipped with that reason, never run on another backend in their place.
+ * A region that needs a rig a backend does not have is written with `pending` reasons and is skipped with that reason,
+ * never run on another backend in their place. A region runs on IndexedDB only where its program has no restart or flush step
+ * (those are Tauri's) and where one tab per actor is the page model: a tab has a connection of its own, as a Node actor has a
+ * client of its own, so the region's `page` names do not apply.
  */
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import type { PickResult } from 'src/ts/storage/store2/recoveryPick'
 import {
     FOREIGN_OWNER, outcomeLabel, PageUnavailableError, type ReplayActor, type ReplayRig, type ReplayRigOptions, type StartState, type StepMatch,
 } from './actors'
+import { createIdbReplayRig } from './idbRig'
 import { createNodeReplayRig } from './nodeRig'
 import type { EnvFault, FaultPlan, StepInfo } from './scheduler'
 import { createTauriReplayRig } from './tauriRig'
@@ -37,7 +40,7 @@ import { GARBAGE, plantCandidateTree, plantForeignBulk, plantGarbageUnits, type 
 
 // ---- The format of a region ----
 
-/** `indexeddb` is written into configs now and has no rig until stage 2f-5. */
+/** `indexeddb` schedules at the `Store2Backend` layer; its steps are backend calls, not byte-store calls. */
 export type RegionBackend = 'node' | 'tauri' | 'indexeddb'
 
 /** One operation of an actor's program: the `ReplayActor` operation of that name, run over the library. */
@@ -89,6 +92,8 @@ export interface RegionFaults {
     minFaulted?: number
     /** Replaces `minFaulted` on Tauri, where a page shares one session and a crash retires every actor of it. */
     tauriMinFaulted?: number
+    /** Replaces `minFaulted` on IndexedDB, where a write is one backend call and a run has far fewer writes to fault. */
+    idbMinFaulted?: number
     /** Tauri: a durable write can also be reported not flushed (the flush fault, which spends the lost-call budget); the other kinds keep their draws without it. */
     flush?: boolean
 }
@@ -98,6 +103,8 @@ export interface RegionDamage {
     name: Exclude<EnvFault, 'restart'>
     /** Registered once a step the match selects has been judged; at the start when absent. */
     after?: StepMatch
+    /** The same step on IndexedDB, where the calls are the backend's; `after` when absent. */
+    idbAfter?: StepMatch
 }
 
 export interface RegionConfig {
@@ -124,10 +131,14 @@ export interface RegionConfig {
     maxSteps: number
     /** How many fixed seeds the smoke file runs: 1 to `seeds`. */
     seeds: number
+    /** Replaces the smoke file's IndexedDB seed count (at most `seeds`). */
+    idbSeeds?: number
     /** Operation keys (`restore`, `restore:committed`, ...) to the least share of the exercised runs that must reach them. */
     floors: Record<string, number>
     /** Replaces `floors` on Tauri, where one crash retires the whole page. */
     tauriFloors?: Record<string, number>
+    /** Replaces `floors` on IndexedDB, where a commit is one atomic call and a tab's conflicts are decided by bytes. */
+    idbFloors?: Record<string, number>
     /** The least share of runs that are not `not-exercised`. */
     minExercised?: number
     /** Each actor's outcome labels in order, asserted for every run; only for a region that injects nothing. */
@@ -170,44 +181,45 @@ function faults(probability: number, lostPerActor: number, crashPerActor: number
     return { probability, lostPerActor, crashPerActor, startAfterSteps }
 }
 
-const IDB_PENDING = 'The IndexedDB rig (two connections, per-key reads) arrives in stage 2f-5.'
-
 // ---- The regions ----
 
 export const REGIONS: readonly RegionConfig[] = [
     {
         id: 'R1', name: 'reload-any-order-gc', covers: 'S0-5a: reload remedy, any-order collection and both devices committing (N_reload0, f_full_reload_any)',
-        backends: ['node', 'tauri'], start: 'healthy', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'healthy', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, commit, commit, admit, restore, commit]),
             actor('b', B, [open, commit, commit, commit]),
             actor('g', G, [open, gc, gc, gc]),
         ],
-        faults: faults(0.06, Infinity, 0, 14), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.06, Infinity, 0, 14), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.7, 'gc:done': 0.7, 'restore:committed': 0.6 },
+        idbFloors: { 'commit:committed': 0.75, 'gc:done': 0.75, 'restore:committed': 0.6 },
     },
     {
         id: 'R2', name: 'crash-a-any-order-gc', covers: 'S0-5a: a crash of any actor, including a writer, and any-order collection (a superset of the crash of one writer)',
-        backends: ['node', 'tauri'], start: 'healthy', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'healthy', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, bulk, commit, admit]),
             actor('b', B, [open, commit, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.01, 0, 1, 14), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.01, 0, 1, 14), idbMinFaulted: 0.3 }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
         floors: { 'bulk:committed': 0.3, 'gc:done': 0.5 },
+        idbFloors: { 'bulk:committed': 0.4, 'gc:done': 0.65 },
         tauriFloors: { 'bulk:committed': 0.2, 'gc:done': 0.4 },
     },
     {
         id: 'R3', name: 'writers-and-gc-crash-union', covers: 'S0-5a: the crash and loss union of two writers and a collector (ABGQ); samples a superset, a crash of any actor',
-        backends: ['node', 'tauri'], start: 'healthy', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'healthy', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, commit, bulk, commit]),
             actor('b', B, [open, commit, admit, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, 2, 1, 14), pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.03, 2, 1, 14), idbMinFaulted: 0.6 }, pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 36,
         floors: { 'admit:committed': 0.35, 'bulk': 0.4, 'gc:done': 0.6 },
+        idbFloors: { 'admit:committed': 0.7, 'bulk': 0.4, 'gc:done': 0.7 },
         tauriFloors: { 'admit:committed': 0.35, 'bulk': 0.35, 'gc:done': 0.5 },
     },
     {
@@ -292,13 +304,14 @@ export const REGIONS: readonly RegionConfig[] = [
     },
     {
         id: 'R11', name: 'indexeddb-bump-damage', covers: 'plan v3.4 section 6: IndexedDB, damage of the commit key with no state-machine help (I_nosm_f1)',
-        backends: ['indexeddb'], pending: { indexeddb: IDB_PENDING }, start: 'healthy', garbage: GARBAGE_UNITS,
+        backends: ['indexeddb'], start: 'healthy', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, commit, commit]),
             actor('b', B, [open, recover, commit], { foreignClear: 'yes' }),
         ],
-        faults: faults(0.1, 1, 0, 8), damage: [{ name: 'damage-commit' }], pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.1, 1, 0, 8), idbMinFaulted: 0.6 }, damage: [{ name: 'damage-commit' }], pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
         floors: {},
+        idbFloors: { 'commit:committed': 0.55, 'recover:installed': 0.45 },
     },
     {
         id: 'R12', name: 'refused-foreign-clear', covers: 'plan v3.4 section 6: a refused foreign clear with two lost calls (W_refuse_fclear_L2)',
@@ -365,99 +378,107 @@ export const REGIONS: readonly RegionConfig[] = [
     },
     {
         id: 'R17a', name: 'first-start-no-commit-key', covers: 'plan v3.4 section 6, V1: a start with no commit key',
-        backends: ['node', 'tauri'], start: 'no-commit-key', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'no-commit-key', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, exitSeed, commit]),
             actor('b', B, [open, exitSeed, gc]),
         ],
-        faults: faults(0.3, Infinity, 1, 5), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.3, Infinity, 1, 5), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'exit:marked': 0.6, 'gc': 0.7 },
+        idbFloors: { 'exit:marked': 0.6, 'gc': 0.65 },
     },
     {
         id: 'R17b', name: 'convert-marker', covers: 'plan v3.4 section 6, V1: a standing convert marker',
-        backends: ['node', 'tauri'], start: 'marker-convert', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'marker-convert', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, { do: 'exit', kind: 'convert' }, clearMarker], { foreignClear: 'yes', upstreamMainFile: true }),
             actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes', upstreamMainFile: true }),
         ],
         // On Tauri both actors share one session and its boot read, so a's exit meets b's clear at a stale token; the screen re-runs it at the key the conflict carried.
-        faults: faults(0.2, Infinity, 1, 5), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.2, Infinity, 1, 5), idbMinFaulted: 0.35 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.5 },
+        idbFloors: { 'clearMarker:clear': 0.75, 'exit:marked': 0.65 },
         tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.4 },
     },
     {
         id: 'R17c', name: 'seed-marker', covers: 'plan v3.4 section 6, V1: a standing seed marker',
-        backends: ['node', 'tauri'], start: 'marker-seed', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'marker-seed', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, exitSeed, recover], { foreignClear: 'yes' }),
             actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes' }),
         ],
         // a's recovery follows its own exit: its first run is at a stale token, conflicts, and the screen re-runs it at the key the conflict carried.
-        faults: { ...faults(0.06, Infinity, 1, 8), minFaulted: 0.45 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.06, Infinity, 1, 8), idbMinFaulted: 0.5, minFaulted: 0.45 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.7, 'recover:installed': 0.35 },
+        idbFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.75, 'recover:installed': 0.3 },
         tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.6, 'recover:installed': 0.35 },
     },
     {
         id: 'R17d', name: 'fresh-start-damaged-commit', covers: 'plan v3.4 section 6, V1: a fresh start from a damaged commit key',
-        backends: ['node', 'tauri'], start: 'damaged-commit', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-commit', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, recover, commit, admit], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, Infinity, 1, 8), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.03, Infinity, 1, 8), idbMinFaulted: 0.3 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'admit:committed': 0.35, 'commit:committed': 0.35, 'recover:installed': 0.6 },
+        idbFloors: { 'admit:committed': 0.5, 'commit:committed': 0.5, 'recover:installed': 0.5 },
     },
     {
         id: 'R17e', name: 'fresh-start-both-damaged', covers: 'plan v3.4 section 6, V1: a fresh start with the commit key and the fence both damaged',
-        backends: ['node', 'tauri'], start: 'both-damaged', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'both-damaged', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, recover, commit], { foreignClear: 'yes' }),
             actor('b', B, [open, fenceExit, recover], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, Infinity, 1, 8), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.03, Infinity, 1, 8), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.35, 'fenceExit': 0.8, 'recover:installed': 0.6 },
+        idbFloors: { 'commit:committed': 0.5, 'fenceExit': 0.75, 'recover:installed': 0.6 },
     },
     {
         id: 'R17f', name: 'fresh-start-damaged-fence', covers: 'plan v3.4 section 6, V1: a fresh start from a damaged fence',
-        backends: ['node', 'tauri'], start: 'damaged-fence', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-fence', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, fenceExit, discardFence, commit]),
             actor('g', G, [open, gc, gc]),
         ],
         // The faulted share of the Node run sits at the default minFaulted; the margin is about one seed.
-        faults: faults(0.05, Infinity, 1, 8), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.05, Infinity, 1, 8), idbMinFaulted: 0.2 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.4, 'discardFence': 0.8, 'fenceExit': 0.8 },
+        idbFloors: { 'commit:committed': 0.75, 'discardFence': 0.75, 'fenceExit': 0.75 },
     },
     // The N2 shape itself rests on `corpus/v1N2Shape.json` and the long runs of stage 2f-7; this region samples the damage around recoveries.
     {
         id: 'R17g', name: 'fence-and-commit-key-damage', covers: 'plan v3.4 section 6, V1: fence and commit-key damage around recoveries',
-        backends: ['node', 'tauri'], start: 'standing-fence', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'standing-fence', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, recover, commit], { foreignClear: 'yes' }),
             actor('b', B, [open, fenceExit, recover], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        damage: [{ name: 'damage-fence' }, { name: 'damage-commit', after: { op: ['writeChecked', 'writeTop'], target: '$fence' } }],
-        faults: faults(0.04, 1, 1, 8), pct: { depth: 4, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        damage: [{ name: 'damage-fence' }, { name: 'damage-commit', after: { op: ['writeChecked', 'writeTop'], target: '$fence' }, idbAfter: { op: 'casFence' } }],
+        faults: { ...faults(0.04, 1, 1, 8), idbMinFaulted: 0.45 }, pct: { depth: 4, horizon: 120 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.25, 'fenceExit': 0.8, 'recover:installed': 0.5 },
+        idbFloors: { 'commit:committed': 0.35, 'fenceExit': 0.65, 'recover:installed': 0.45 },
         tauriFloors: { 'commit:committed': 0.2, 'fenceExit': 0.8, 'recover:installed': 0.35 },
     },
     {
         id: 'R18a', name: 'fence-and-gc', covers: 'plan v3.4 section 6: the fence of 3.4c, its discard and rewrite, against collection (passes of several batches are R18a2\'s)',
-        backends: ['node', 'tauri'], start: 'standing-fence', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'standing-fence', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, fenceExit, discardFence, fenceExit]),
             actor('b', B, [open, commit, commit]),
             actor('g', G, [open, gc, gc]),
             actor('c', C, [open, gc]),
         ],
-        faults: faults(0.05, Infinity, 1, 10), pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.05, Infinity, 1, 10), idbMinFaulted: 0.25 }, pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.6, 'discardFence': 0.6, 'fenceExit': 0.6, 'gc:done': 0.7 },
+        idbFloors: { 'commit:committed': 0.7, 'discardFence': 0.7, 'fenceExit': 0.75, 'gc:done': 0.75 },
     },
     {
         id: 'R18a2', name: 'fence-between-gc-batches', covers: 'plan v3.4 section 6: a fence written while collection passes of several batches are between batches (G1)',
-        backends: ['node', 'tauri'], start: 'healthy', garbage: FENCE_GC_GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'healthy', garbage: FENCE_GC_GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, fenceExit]),
             actor('g', G, [open, gc, gc]),
@@ -466,19 +487,21 @@ export const REGIONS: readonly RegionConfig[] = [
         // moves the revision, so a later batch still conflicts. Without a discard the fence stays and the pass conflicts on both. Few change points leave a
         // window for the fence to land between two batches of the first pass; faults matter less here than the window, so fewer runs need one.
         // The faulted share of the Node run sits at minFaulted; the margin is about one seed.
-        faults: { ...faults(0.03, Infinity, 0, 10), minFaulted: 0.2 }, pct: { depth: 2, horizon: 45 }, maxSteps: 4000, seeds: 48,
+        faults: { ...faults(0.03, Infinity, 0, 10), idbMinFaulted: 0.1, minFaulted: 0.2 }, pct: { depth: 2, horizon: 45 }, maxSteps: 4000, seeds: 48,
         floors: { 'fenceExit': 0.7, 'gc:done': 0.7, 'gc:multi-batch': 0.2, 'gc:done:fence-conflict': 0.1 },
+        idbFloors: { 'fenceExit': 0.75, 'gc:done': 0.75, 'gc:multi-batch': 0.3, 'gc:done:fence-conflict': 0.1 },
     },
     {
         id: 'R18b', name: 'concurrent-recoveries', covers: 'plan v3.4 section 6: two pages recovering at once (separate pages on Node; on Tauri the second page makes the first stale)',
-        backends: ['node', 'tauri'], start: 'damaged-commit', garbage: GARBAGE_UNITS,
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-commit', garbage: GARBAGE_UNITS,
         actors: [
             actor('a', A, [open, recover, commit], { foreignClear: 'yes', page: 'pa' }),
             actor('b', B, [open, recover, commit], { foreignClear: 'yes', page: 'pb' }),
             actor('g', G, [open, gc, gc], { page: 'pb' }),
         ],
-        faults: faults(0.025, Infinity, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.025, Infinity, 1, 10), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
         floors: { 'commit:committed': 0.5, 'recover:installed': 0.6 },
+        idbFloors: { 'commit:committed': 0.6, 'recover:installed': 0.6 },
     },
     {
         id: 'R18c', name: 'tauri-bulk', covers: 'plan v3.4 section 6: Tauri bulk commits under the page mutex with a collector on the page',
@@ -525,7 +548,7 @@ export const REGIONS: readonly RegionConfig[] = [
     },
     {
         id: 'R18f', name: 'pick-all-present', covers: 'MC-291: a candidate whose lists name assets and inlays that are all present is picked and installed with no warning',
-        backends: ['node', 'tauri'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] },
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] },
         actors: [actor('a', A, [open, { do: 'recover', candidate: true }, commit], { foreignClear: 'yes' })],
         pct: { depth: 2, horizon: 80 }, maxSteps: 4000, seeds: 6,
         floors: { 'recover:installed': 1 },
@@ -533,7 +556,7 @@ export const REGIONS: readonly RegionConfig[] = [
     },
     {
         id: 'R18g', name: 'pick-missing-images', covers: 'MC-291: missing asset files are counted in a warning and the recovery continues',
-        backends: ['node', 'tauri'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] },
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] },
         actors: [actor('a', A, [open, { do: 'recover', candidate: true }, commit], { foreignClear: 'yes', present: { assets: false } })],
         pct: { depth: 2, horizon: 80 }, maxSteps: 4000, seeds: 6,
         floors: { 'recover:installed': 1 },
@@ -541,7 +564,7 @@ export const REGIONS: readonly RegionConfig[] = [
     },
     {
         id: 'R18h', name: 'pick-missing-inlays', covers: 'MC-291: missing inlay records are counted in a warning and the recovery continues',
-        backends: ['node', 'tauri'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] },
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { assets: ['a-one.png', 'a-two.png'], inlays: ['inlay-one', 'inlay-two'] },
         actors: [actor('a', A, [open, { do: 'recover', candidate: true }, commit], { foreignClear: 'yes', present: { inlays: false } })],
         pct: { depth: 2, horizon: 80 }, maxSteps: 4000, seeds: 6,
         floors: { 'recover:installed': 1 },
@@ -549,7 +572,7 @@ export const REGIONS: readonly RegionConfig[] = [
     },
     {
         id: 'R18i', name: 'pick-missing-unit', covers: 'MC-291: a candidate whose tree lacks a unit fails loudly and nothing is installed',
-        backends: ['node', 'tauri'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { missingUnit: true },
+        backends: ['node', 'tauri', 'indexeddb'], start: 'damaged-commit', garbage: GARBAGE_UNITS, candidate: { missingUnit: true },
         actors: [actor('a', A, [open, { do: 'recover', candidate: true }, commit], { foreignClear: 'yes' })],
         pct: { depth: 2, horizon: 80 }, maxSteps: 4000, seeds: 6,
         floors: { 'recover:invalid': 1 },
@@ -617,7 +640,7 @@ const SCREEN_ATTEMPTS = 3
 
 interface RunContext {
     candidate: string | null
-    variant: 'node' | 'tauri'
+    variant: RegionBackend
 }
 
 async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, index: number, ctx: RunContext): Promise<StepResult> {
@@ -791,14 +814,13 @@ function rigOptionsOf(region: RegionConfig, seed: number, plan: Extract<FaultPla
 }
 
 export async function runRegion(region: RegionConfig, backend: RegionBackend, seed: number): Promise<RegionRun> {
-    if (backend === 'indexeddb') {
-        throw new Error('The IndexedDB rig does not exist yet.')
-    }
     const plan = faultPlanOf(region)
     const ctx: RunContext = { candidate: null, variant: backend }
     let markerStep: number | null = null
     const observe = (info: StepInfo): void => {
-        if (markerStep === null && info.applied && info.kind === 'call' && info.target === COMMIT_KEY && info.context?.kind === 'recovery-begin' && (info.op === 'writeChecked' || info.op === 'writeTop')) {
+        // A byte-store layer names the commit key as the target of its write; the backend layer's commit-key write is its own op.
+        const commitWrite = backend === 'indexeddb' ? info.op === 'casCommit' : info.target === COMMIT_KEY && (info.op === 'writeChecked' || info.op === 'writeTop')
+        if (markerStep === null && info.applied && info.kind === 'call' && commitWrite && info.context?.kind === 'recovery-begin') {
             markerStep = info.step
         }
         if (plan !== null && region.faults !== undefined && info.step >= region.faults.startAfterSteps) {
@@ -806,7 +828,7 @@ export async function runRegion(region: RegionConfig, backend: RegionBackend, se
         }
     }
     const options = rigOptionsOf(region, seed, plan, ctx, observe)
-    const rig: ReplayRig = backend === 'node' ? await createNodeReplayRig(options) : await createTauriReplayRig(options)
+    const rig: ReplayRig = backend === 'node' ? await createNodeReplayRig(options) : backend === 'tauri' ? await createTauriReplayRig(options) : await createIdbReplayRig(options)
 
     const outcomes: Record<string, string[]> = {}
     const reached = new Set<string>()
@@ -834,10 +856,11 @@ export async function runRegion(region: RegionConfig, backend: RegionBackend, se
                 rig.hooks.plant(damage.name === 'damage-commit' ? COMMIT_KEY : FENCE_KEY, GARBAGE)
             })
         }
-        if (damage.after === undefined) {
+        const after = backend === 'indexeddb' ? damage.idbAfter ?? damage.after : damage.after
+        if (after === undefined) {
             register()
         } else {
-            void rig.reached(damage.after).then(register)
+            void rig.reached(after).then(register)
         }
     }
     const result = await rig.run({ maxSteps: region.maxSteps })

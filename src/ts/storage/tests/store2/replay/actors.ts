@@ -104,6 +104,9 @@ export class PageUnavailableError extends Error {
 
 export type ReplayVariant = 'node' | 'tauri'
 
+/** The variants a rig can have: the two ByteStore backends, and IndexedDB, which is scheduled at the `Store2Backend` layer. */
+export type RigVariant = ReplayVariant | 'indexeddb'
+
 /** Direct access to the stored state, with no request and no wrapper: how a test plants and reads. */
 export interface StateHooks {
     peek(key: string): Uint8Array | null
@@ -114,14 +117,21 @@ export interface StateHooks {
     remove(key: string): void
 }
 
+/** What a rig that schedules at the `Store2Backend` layer is given to build a page's backend. */
+export interface BackendScheduling {
+    readonly handle: ActorHandle
+    /** Puts the schedule's holds between the scheduler and the caller; the identity when the rig has none. Wrap the scheduled backend with it. */
+    hold(scheduled: Store2Backend): Store2Backend
+}
+
 export interface RigParts {
-    readonly variant: ReplayVariant
+    readonly variant: RigVariant
     readonly raw: () => RawState
     readonly hooks: StateHooks
-    /** The page's scheduled byte store: the actor's own on Node, the one the actors of a page share on Tauri. */
+    /** The page's scheduled byte store: the actor's own on Node, the one the actors of a page share on Tauri. Never used by a backend-layer rig. */
     pageStore(handle: ActorHandle): ByteStore
-    /** Opens the backend of one page on its scheduled store: the Tauri variant registers with the page gate. */
-    openBackend(store: ByteStore): Promise<Store2Backend>
+    /** Opens the backend of one page on its scheduled store: the Tauri variant registers with the page gate. A backend-layer rig schedules through `scheduling`. */
+    openBackend(store: ByteStore, scheduling: BackendScheduling): Promise<Store2Backend>
     /** The guarded probe of the page's scheduled store, where the variant has one (Node). */
     probe(store: ByteStore): (() => Promise<GuardedCapabilities>) | undefined
     /** Whether a page keeps its owner id on the device (Tauri). */
@@ -207,7 +217,7 @@ export interface ActorOptions {
 }
 
 export interface ReplayRig {
-    readonly variant: ReplayVariant
+    readonly variant: RigVariant
     readonly scheduler: Scheduler
     readonly checker: Checker
     readonly raw: () => RawState
@@ -518,6 +528,27 @@ function holdCalls(inner: ByteStore, gate: Gate): ByteStore {
     return store
 }
 
+/**
+ * A scheduled backend with every call passed through `gate` first, as `holdCalls` does for a byte store. Ops and targets are
+ * named as the scheduler names backend calls: a batch is `n=<count>` (a single key is the key), a commit-key or fence step has
+ * no target, and `readUnits` is named per key because the split under the hold has already made it one call per key.
+ */
+function holdBackendCalls(inner: Store2Backend, gate: Gate): Store2Backend {
+    return {
+        ...inner,
+        readCommit: () => waiting(gate('readCommit', ''), () => inner.readCommit()),
+        readFence: () => waiting(gate('readFence', ''), () => inner.readFence()),
+        casCommit: (expected, next) => waiting(gate('casCommit', ''), () => inner.casCommit(expected, next)),
+        casFence: (expected, next) => waiting(gate('casFence', ''), () => inner.casFence(expected, next)),
+        readUnits: (keys) => waiting(gate('readUnits', batchTarget(keys)), () => inner.readUnits(keys)),
+        listStore2: () => waiting(gate('listStore2', ''), () => inner.listStore2()),
+        countPrefix: (prefix) => waiting(gate('countPrefix', prefix), () => inner.countPrefix(prefix)),
+        commitOrdinary: (expected, units, next) => waiting(gate('commitOrdinary', `n=${units.length}`), () => inner.commitOrdinary(expected, units, next)),
+        putUnit: (key, bytes) => waiting(gate('putUnit', key), () => inner.putUnit(key, bytes)),
+        removeBatch: (keys, expectedCommit, expectedFence) => waiting(gate('removeBatch', batchTarget(keys)), () => inner.removeBatch(keys, expectedCommit, expectedFence)),
+    }
+}
+
 // ---- Assembly ----
 
 function plantStartState(parts: RigParts, state: StartState, env: KeyEnv, markerOwner: string): void {
@@ -785,7 +816,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                             const store = pageStoreOf(own.handle)
                             let opened: Store2Backend
                             try {
-                                opened = await parts.openBackend(store)
+                                opened = await parts.openBackend(store, { handle: own.handle, hold: (scheduled) => (holdCounts.length === 0 ? scheduled : holdBackendCalls(scheduled, gate)) })
                             } catch (error) {
                                 if (error instanceof Store2BackendError) {
                                     throw new PageUnavailableError(error)

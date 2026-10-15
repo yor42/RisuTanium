@@ -13,7 +13,7 @@
  * Every region prints one `PCT-SMOKE` line with its counts before it asserts, so a failing or mutated run still
  * reports what each seed did; `PCT_REPORT=1` also prints one `PCT-RUN` line per run.
  *
- * A region whose rig does not exist yet is skipped with the reason in its test name.
+ * A region with a pending reason for a backend is skipped with the reason in its test name.
  */
 import { describe, expect, test } from 'vitest'
 import { REGIONS, runRegion, type RegionBackend, type RegionConfig, type RegionRun, type RunKind } from './regions'
@@ -21,12 +21,28 @@ import { FIRST_ACTOR_SEED } from './actors'
 
 const KINDS: readonly RunKind[] = ['violation', 'stalled', 'max-steps', 'threw', 'not-exercised', 'crashed', 'complete']
 
-function seedsOf(region: RegionConfig): number[] {
-    return Array.from({ length: region.seeds }, (_, index) => index + 1)
+/** IndexedDB runs cost more each than the fakes of the other two; a region takes this many of its seeds there unless it says otherwise. */
+const IDB_SEEDS = 24
+
+function seedsOf(region: RegionConfig, backend: RegionBackend): number[] {
+    const count = backend === 'indexeddb' ? Math.min(region.seeds, region.idbSeeds ?? IDB_SEEDS) : region.seeds
+    return Array.from({ length: count }, (_, index) => index + 1)
 }
 
 function floorsOf(region: RegionConfig, backend: RegionBackend): Record<string, number> {
-    return backend === 'tauri' && region.tauriFloors !== undefined ? region.tauriFloors : region.floors
+    if (backend === 'tauri' && region.tauriFloors !== undefined) {
+        return region.tauriFloors
+    }
+    return backend === 'indexeddb' && region.idbFloors !== undefined ? region.idbFloors : region.floors
+}
+
+function minFaultedOf(region: RegionConfig, backend: RegionBackend): number {
+    const faults = region.faults
+    if (faults === undefined) {
+        return 0
+    }
+    const own = backend === 'tauri' ? faults.tauriMinFaulted : backend === 'indexeddb' ? faults.idbMinFaulted : undefined
+    return own ?? faults.minFaulted ?? 0.5
 }
 
 interface Summary {
@@ -113,7 +129,7 @@ describe.each(REGIONS)('region $id $name', (region) => {
         test(`${backend}: ${region.covers}`, async () => {
             const started = Date.now()
             const runs: RegionRun[] = []
-            for (const seed of seedsOf(region)) {
+            for (const seed of seedsOf(region, backend)) {
                 const run = await runRegion(region, backend, seed)
                 runs.push(run)
                 if (process.env.PCT_REPORT === '1') {
@@ -137,7 +153,7 @@ describe.each(REGIONS)('region $id $name', (region) => {
                     expect(run.firstFaultStep === null || run.firstFaultStep > region.faults.startAfterSteps, `seed ${run.seed}: first fault at step ${run.firstFaultStep}`).toBe(true)
                 }
                 // And they did fire: a plan whose faults never happen would turn the region into a fault-free run.
-                expect(summary.faultedRuns / exercised.length, `a fault was injected in ${summary.faultedRuns} of ${exercised.length} exercised runs`).toBeGreaterThanOrEqual((backend === 'tauri' ? region.faults.tauriMinFaulted : undefined) ?? region.faults.minFaulted ?? 0.5)
+                expect(summary.faultedRuns / exercised.length, `a fault was injected in ${summary.faultedRuns} of ${exercised.length} exercised runs`).toBeGreaterThanOrEqual(minFaultedOf(region, backend))
             } else {
                 expect(summary.faults).toEqual({})
             }

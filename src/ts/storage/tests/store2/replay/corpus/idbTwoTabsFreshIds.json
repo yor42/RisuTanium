@@ -2,16 +2,15 @@
   "name": "idbTwoTabsFreshIds",
   "covers": "part (iv): two tabs of one IndexedDB profile, each with a fresh page id, commit and collect against each other",
   "variant": "indexeddb",
-  "pending": {
-    "until": "2f-5",
-    "reason": "The replay has no IndexedDB rig: ReplayVariant is node or tauri, and the IDB variant (the real adapter over fake-indexeddb, two connections, readUnits split per key) is the work of 2f-5. The schedule is written against the actor interface and runs unchanged once the rig exists."
-  },
   "start": "healthy",
   "garbage": 3,
   "seeds": [1, 2, 3, 4],
+  "redSeeds": [1],
+  "redSeedsReason": "The interleaving is the seed's alone: only on seed 1 does the second tab's commit meet the first tab's commit-key write between its read and its write. On seeds 2 to 4 the tabs commit one after the other, so a commit that skips the compare overwrites nothing.",
   "actors": [
     { "id": "t1", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "t1" }, { "do": "gc" }] },
     { "id": "t2", "seed": 11, "program": [{ "do": "open" }, { "do": "commit", "tag": "t2" }, { "do": "gc" }] }
   ],
-  "expect": {}
+  "expect": {},
+  "mutants": { "idbCommitNoCompare": "I3" }
 }
