@@ -1,0 +1,27 @@
+{
+  "name": "fenceAndCommitKeyDamage",
+  "covers": "fence damage plus commit-key damage: a collection pass meets the unparsable fence, the commit key is damaged under it, and the recovery exit replaces the unparsable fence and marks over the damaged key",
+  "variant": "node",
+  "start": "damaged-fence",
+  "garbage": 5,
+  "seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  "labels": {
+    "GC pass: read commit key, mark, read fence -> unparsable": "g: open, gc: the gate refuses because the fence cannot be understood",
+    "ENV: commit key DAMAGED (silent)": "environment step damage-commit, after g's read of the fence",
+    "recovery exit: fence read unparsable, list, fence write with priorFences, marker over the damaged key": "r: open, then recover once the damage is applied"
+  },
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "g", "op": "read", "target": "$fence", "context": "gc" } }
+  ],
+  "actors": [
+    { "id": "g", "seed": 10, "program": [{ "do": "open" }, { "do": "gc" }] },
+    { "id": "r", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "recover" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "g": ["open", "gc:refused:fence-unparsable"],
+      "r": ["open", "waitFor", "recover:installed:installed"]
+    }
+  },
+  "mutants": { "gateIgnoresBlockedFence": "G1" }
+}

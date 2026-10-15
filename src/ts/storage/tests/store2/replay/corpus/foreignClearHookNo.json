@@ -1,0 +1,19 @@
+{
+  "name": "foreignClearHookNo",
+  "covers": "a foreign marker stands and the user answers no: neither the clear nor the recovery exit may touch it, whichever runs first",
+  "variant": "node",
+  "start": "marker-seed",
+  "seeds": [1, 2, 3, 4, 5, 6],
+  "policy": { "kind": "pct", "depth": 0, "horizon": 1 },
+  "actors": [
+    { "id": "a", "seed": 10, "foreignClear": "no", "program": [{ "do": "open" }, { "do": "clearMarker" }] },
+    { "id": "b", "seed": 11, "foreignClear": "no", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "clearMarker:leave"],
+      "b": ["open", "exit:foreign-marker"]
+    }
+  },
+  "mutants": { "decideClearOnNo": "h2" }
+}

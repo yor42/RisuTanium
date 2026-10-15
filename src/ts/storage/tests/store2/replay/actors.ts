@@ -26,18 +26,25 @@
  *    `fenceExpect` of a step vacuous;
  *  - actors of one Tauri page share one session, hence one backend and one
  *    registration with the page gate: a second registration on the same store makes
- *    the first page stale, by design.
+ *    the first page stale, by design;
+ *  - a hold (`ReplayRigOptions.holds`) keeps one call of an actor from reaching the
+ *    scheduler until a step has been applied, which is how a schedule fixes an
+ *    interleaving inside a library operation. A held call is not pending, so a run in
+ *    which every way forward waits for a hold ends `stalled`, and a schedule whose
+ *    hold can never be released says so instead of passing. A hold whose `until` lacks
+ *    a context can be released by an earlier, unintended step of the same op and target.
  *
  * A start state is planted straight into the store before the checker takes its
  * first snapshot.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { ByteStore, GuardedCapabilities } from 'src/ts/storage/store/contract'
+import type { ByteStore, GuardedCapabilities, GuardedOperations, PageGateOperations } from 'src/ts/storage/store/contract'
+import { isStore2Key } from 'src/ts/storage/store/keyRules'
 import { BULK_UNIT_THRESHOLD, Store2BackendError, type Store2Backend, type Store2Read } from 'src/ts/storage/store2/backend'
 import { ADMISSION_INTERVAL_MS, type AbandonResult, type CommitResult, type WriteResult } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import { discardFence, fenceExit, readFenceVerdict, type FenceDiscardResult, type FenceExitResult } from 'src/ts/storage/store2/fence'
-import { encodeUnit, newStagingId, stagingPrefix, tailOfKey, UNIT_TYPE, type CommitKey, type KeyEnv, type StagingLabel } from 'src/ts/storage/store2/format'
+import { encodeUnit, newStagingId, readUnit, stagingPrefix, tailOfKey, UNIT_TYPE, type CommitKey, type KeyEnv, type Manifest, type StagingLabel } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import { freshOwnerId, isOwnerId, type ForeignClearHook, type OwnerIdStore } from 'src/ts/storage/store2/owner'
@@ -48,7 +55,7 @@ import { createClock, treeRequest, testEnv, type BuildRecord, type TestClock } f
 import { createChecker, type Checker } from './checker'
 import { GARBAGE } from './replayFixtures'
 import {
-    createScheduler, type ActorContext, type ActorHandle, type RawState, type RunResult, type Scheduler, type SchedulerOptions, type StepInfo,
+    createScheduler, type ActorContext, type ActorHandle, type OperationKind, type RawState, type RunResult, type Scheduler, type SchedulerOptions, type StepInfo,
 } from './scheduler'
 
 // ---- Start states ----
@@ -119,10 +126,56 @@ export interface RigParts {
     readonly deviceOwner: boolean
 }
 
+/**
+ * Selects calls or applied steps by what they were: the actor, the layer's op, the key (or `n=<count>` of a batch)
+ * they targeted and the operation the actor had declared. `target` also takes the classes `$commit`, `$fence` and `$unit`
+ * (any store2 unit key). `nth` (1-based, the first by default) picks the nth match, and is ignored by `stepMatches`.
+ */
+export interface StepMatch {
+    actor?: string
+    op?: string | readonly string[]
+    target?: string
+    context?: OperationKind
+    nth?: number
+}
+
+/** Whether an applied step is one `match` selects; `nth` is the caller's to count. */
+export function stepMatches(info: StepInfo, match: StepMatch): boolean {
+    return info.applied && selects(match, info.actor, info.op, info.target, info.context === null ? null : info.context.kind)
+}
+
+function selects(match: StepMatch, actor: string, op: string, target: string, context: OperationKind | null): boolean {
+    if (match.actor !== undefined && match.actor !== actor) {
+        return false
+    }
+    if (match.op !== undefined && !(typeof match.op === 'string' ? [match.op] : match.op).includes(op)) {
+        return false
+    }
+    if (match.target !== undefined) {
+        const wanted = match.target
+        const hit = wanted === '$commit' ? target === COMMIT_KEY
+            : wanted === '$fence' ? target === FENCE_KEY
+                : wanted === '$unit' ? isStore2Key(target)
+                    : wanted === target
+        if (!hit) {
+            return false
+        }
+    }
+    return match.context === undefined || match.context === context
+}
+
+/** One call of an actor that waits, before the scheduler sees it, for the `until` step to have been applied. */
+export interface CallHold {
+    call: StepMatch & { actor: string }
+    until: StepMatch
+}
+
 export interface ReplayRigOptions {
     /** The scheduler's seed, policy and fault plan; the rig supplies `onStep`. */
     scheduler: Omit<SchedulerOptions, 'onStep'>
     start?: StartState
+    /** Calls kept back until a step has been applied; each hold applies to one call. */
+    holds?: readonly CallHold[]
     /** The owner of a standing marker; a foreign one by default. */
     markerOwner?: string
     /** Plants state before the start state and before the checker takes its first snapshot; the env is the rig's own. */
@@ -155,6 +208,8 @@ export interface ReplayRig {
     envOf(seed: number): KeyEnv
     /** Resolves once a step satisfying `predicate` has been applied and judged by the checker. */
     when(predicate: (info: StepInfo) => boolean): Promise<void>
+    /** Resolves once the `match.nth`th applied step `match` selects has been judged by the checker; at once when it already has. */
+    reached(match: StepMatch): Promise<void>
     spawn(id: string, seed: number, program: (actor: ReplayActor) => Promise<void>, options?: ActorOptions): ReplayActor
     run(limit?: { maxSteps?: number }): Promise<RunResult>
 }
@@ -271,6 +326,8 @@ interface ActorCore {
     lastKey: CommitKey | null
     /** The markers (owner|prefix) the foreign-clear hook said yes to. */
     consents: Set<string>
+    /** The highest `seq` of a manifest this actor has read, 0 when it read none: what a recovery exit carries as `highestSeqRead`. */
+    highestSeq: number
 }
 
 function markerId(marker: { owner: string, prefix: string }): string {
@@ -351,6 +408,21 @@ function labelWrites(inner: Store2Backend, current: () => ActorCore): Store2Back
             current().lastKey = parsed.status === 'parsed' ? parsed.value : null
             return read
         },
+        async readUnits(keys) {
+            const units = await inner.readUnits(keys)
+            const core = current()
+            for (const bytes of units.values()) {
+                if (bytes === null) {
+                    continue
+                }
+                // Only a manifest has a `seq`; a unit of another type reads as damaged for this type and is skipped.
+                const unit = readUnit(bytes, UNIT_TYPE.manifest)
+                if (unit.status === 'ok' || unit.status === 'stale') {
+                    core.highestSeq = Math.max(core.highestSeq, (unit.value.body as Manifest).seq)
+                }
+            }
+            return units
+        },
         async casCommit(expected, next) {
             const core = current()
             const parsed = classifyCommitRead({ bytes: next })
@@ -370,6 +442,61 @@ function labelWrites(inner: Store2Backend, current: () => ActorCore): Store2Back
             return labelled(core, context, () => inner.casFence(expected, next))
         },
     }
+}
+
+// ---- Holding calls back ----
+
+type Gate = (op: string, target: string) => Promise<void> | null
+
+async function waiting<T>(wait: Promise<void> | null, run: () => Promise<T>): Promise<T> {
+    if (wait !== null) {
+        await wait
+    }
+    return run()
+}
+
+function batchTarget(keys: readonly string[]): string {
+    return keys.length === 1 ? keys[0] : `n=${keys.length}`
+}
+
+/**
+ * A page's scheduled store with every call passed through `gate` first: a call the gate holds is not requested from the
+ * scheduler until the gate's promise resolves. Ops and targets are named as the scheduler names them.
+ */
+function holdCalls(inner: ByteStore, gate: Gate): ByteStore {
+    const innerGuarded = inner.guarded
+    const guarded: GuardedOperations | undefined = innerGuarded === undefined ? undefined : {
+        probe: () => waiting(gate('probe', ''), () => innerGuarded.probe()),
+        writeChecked: (key, bytes, condition, checkOnly) => waiting(gate('writeChecked', key), () => innerGuarded.writeChecked(key, bytes, condition, checkOnly)),
+        removeChecked: (entries, checkOnly) => waiting(gate('removeChecked', batchTarget(entries.map((entry) => entry.key))), () => innerGuarded.removeChecked(entries, checkOnly)),
+        retireChecked: (entries, checkOnly) => waiting(gate('retireChecked', batchTarget(entries.map((entry) => entry.key))), () => innerGuarded.retireChecked(entries, checkOnly)),
+    }
+    const innerGate = inner.pageGate
+    const pageGate: PageGateOperations | undefined = innerGate === undefined ? undefined : {
+        registerPage: () => waiting(gate('registerPage', ''), () => innerGate.registerPage()),
+        writeTop: (generation, key, bytes) => waiting(gate('writeTop', key), () => innerGate.writeTop(generation, key, bytes)),
+        removeTop: (generation, keys) => waiting(gate('removeTop', batchTarget(keys)), () => innerGate.removeTop(generation, keys)),
+    }
+    const store: ByteStore = {
+        ...inner,
+        read: (key) => waiting(gate('read', key), () => inner.read(key)),
+        write: (key, bytes, condition) => waiting(gate('write', key), () => inner.write(key, bytes, condition)),
+        delete: (key, condition) => waiting(gate('delete', key), () => inner.delete(key, condition)),
+        deleteMany: (entries) => waiting(gate('deleteMany', batchTarget(entries.map((entry) => entry.key))), () => inner.deleteMany(entries)),
+        list: (prefix) => waiting(gate('list', prefix), () => inner.list(prefix)),
+        has: (key) => waiting(gate('has', key), () => inner.has(key)),
+    }
+    const innerCount = inner.countPrefix
+    if (innerCount !== undefined) {
+        store.countPrefix = (prefix) => waiting(gate('countPrefix', prefix), () => innerCount.call(inner, prefix))
+    }
+    if (guarded !== undefined) {
+        store.guarded = guarded
+    }
+    if (pageGate !== undefined) {
+        store.pageGate = pageGate
+    }
+    return store
 }
 
 // ---- Assembly ----
@@ -425,11 +552,18 @@ export function assembleRig(input: AssembleInput): ReplayRig {
 
     const checker = createChecker(parts.raw)
     const watchers: Array<{ predicate: (info: StepInfo) => boolean, resolve: () => void }> = []
+    const judged: StepInfo[] = []
+    const reached = (match: StepMatch): Promise<void> => {
+        const wanted = match.nth ?? 1
+        const seen = (): boolean => judged.filter((info) => stepMatches(info, match)).length >= wanted
+        return seen() ? Promise.resolve() : new Promise<void>((resolve) => { watchers.push({ predicate: seen, resolve }) })
+    }
     const scheduler = createScheduler({
         ...options.scheduler,
         onStep: (info) => {
             checker.observe(info)
             options.observe?.(info)
+            judged.push(info)
             for (const watcher of watchers.filter((each) => each.predicate(info))) {
                 watchers.splice(watchers.indexOf(watcher), 1)
                 watcher.resolve()
@@ -448,6 +582,22 @@ export function assembleRig(input: AssembleInput): ReplayRig {
     const stores = new Map<string, ByteStore>()
     const ownerStores = new Map<string, { store: OwnerIdStore, value: () => string | null }>()
     const seeds = new Set<number>()
+    // Per hold, how many calls it has matched so far; it holds the call numbered `call.nth` (the first by default).
+    const holdCounts = (options.holds ?? []).map((hold) => ({ hold, seen: 0 }))
+    const gate: Gate = (op, target) => {
+        const core = currentCore()
+        const context = core.context === null ? null : core.context.kind
+        for (const state of holdCounts) {
+            if (!selects(state.hold.call, core.id, op, target, context)) {
+                continue
+            }
+            state.seen++
+            if (state.seen === (state.hold.call.nth ?? 1)) {
+                return reached(state.hold.until)
+            }
+        }
+        return null
+    }
 
     function ownerStoreOf(page: string): { store: OwnerIdStore, value: () => string | null } {
         let held = ownerStores.get(page)
@@ -473,6 +623,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
         seedManifest,
         envOf,
         when: (predicate) => new Promise<void>((resolve) => { watchers.push({ predicate, resolve }) }),
+        reached,
         run: (limit) => scheduler.run(limit),
         spawn(id, seed, program, actorOptions = {}) {
             if (seed < FIRST_ACTOR_SEED) {
@@ -515,7 +666,8 @@ export function assembleRig(input: AssembleInput): ReplayRig {
             const pageStoreOf = (handle: ActorHandle): ByteStore => {
                 let held = stores.get(page)
                 if (held === undefined) {
-                    held = parts.pageStore(handle)
+                    const scheduled = parts.pageStore(handle)
+                    held = holdCounts.length === 0 ? scheduled : holdCalls(scheduled, gate)
                     stores.set(page, held)
                 }
                 return held
@@ -676,7 +828,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                 }),
                 runExit: (kind) => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
                     const { read } = await freshKey()
-                    return runExit(backendOf(), read, { kind, highestSeqRead: 0 }, { owner: need().ownerId, env, foreignClear })
+                    return runExit(backendOf(), read, { kind, highestSeqRead: coreOf().highestSeq }, { owner: need().ownerId, env, foreignClear })
                 }),
                 pickCandidate: (manifestKey) => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
                     const { read } = await freshKey()
@@ -714,7 +866,7 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                 }),
             }
             scheduler.spawn(id, async (handle) => {
-                core = { id, handle, owner: '', context: null, intent: 'plain', ownPrefix: null, abandon: null, lastKey: null, consents: new Set<string>() }
+                core = { id, handle, owner: '', context: null, intent: 'plain', ownPrefix: null, abandon: null, lastKey: null, consents: new Set<string>(), highestSeq: 0 }
                 await calling.run(core, () => program(actor))
                 handle.setContext(null)
             }, parts.variant === 'tauri' ? { page } : {})

@@ -1,0 +1,32 @@
+{
+  "name": "offNodeNoMutex",
+  "covers": "control offNodeNoMutex: on Tauri, collection and a commit interleave when the backend's compare-then-write is not serialised",
+  "variant": "tauri",
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  "redSeeds": [2, 6, 9, 10, 12],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m": "a: open, commit: under the page's mutex, the eleven unit writes (write, one native call each)",
+    "GC: begin pass; GC: list keys": "gc: read commit key, mark, read fence, then list (held until the unit writes are applied)",
+    "GC: read commit key at R": "gc: the compare of removeBatch, the read of the commit key under the mutex",
+    "A: commit CAS ok": "a: writeTop of the commit key, held until the list is applied",
+    "GC: remove m (no precondition off Node)": "gc: removeTop of the candidates, held until a's commit write (context commit) is applied; without the context a's boot re-flush writeTop would release it early"
+  },
+  "holds": [
+    { "call": { "actor": "gc", "op": "list", "context": "gc" }, "until": { "actor": "a", "op": "write", "target": "$unit", "nth": 11 } },
+    { "call": { "actor": "a", "op": "writeTop", "target": "$commit", "context": "commit" }, "until": { "actor": "gc", "op": "list" } },
+    { "call": { "actor": "gc", "op": "removeTop" }, "until": { "actor": "a", "op": "writeTop", "target": "$commit", "context": "commit" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "page": "p", "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }] },
+    { "id": "gc", "seed": 11, "page": "p", "program": [{ "do": "open" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:committed"],
+      "gc": ["open", "gc:done:3"]
+    }
+  },
+  "mutants": { "offNodeNoMutex": "I1" }
+}

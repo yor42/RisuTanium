@@ -1,0 +1,30 @@
+{
+  "name": "c4",
+  "covers": "control c4: a collection pass deletes the staged units of a bulk commit that its marker no longer protects",
+  "variant": "node",
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2],
+  "labels": {
+    "A: begin BULK; A: upload s/d0, s/d1, s/m": "a: open, bulk: the marker write (bulk-begin), then 62 staged unit uploads under the marker's prefix",
+    "GC: begin; GC: list (5); GC: read commit key v1": "gc: read commit key (held until the marker is applied, so it is the marker's version), mark, read fence, then list (held until the 62nd staged upload is applied)",
+    "GC: remove s/m (check-only commit key == v1 ok)": "gc: retireChecked of the candidates; the library's candidates leave out the marker's prefix",
+    "A: commit CAS (check-only on d0, d1 only) ok -> v2": "a: the final write of the bulk commit (it carries no unit check on any backend), held until the first batch is applied"
+  },
+  "holds": [
+    { "call": { "actor": "gc", "op": "read", "target": "$commit", "context": "gc" }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } },
+    { "call": { "actor": "gc", "op": "list" }, "until": { "actor": "a", "op": "writeChecked", "target": "$unit", "nth": 62 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "gc", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "bulk", "tag": "b" }] },
+    { "id": "gc", "seed": 11, "program": [{ "do": "open" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "bulk:committed"],
+      "gc": ["open", "gc:done:3"]
+    }
+  },
+  "mutants": { "c4": "I1" }
+}

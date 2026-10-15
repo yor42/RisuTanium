@@ -1,0 +1,27 @@
+{
+  "name": "foreignClearHookNoDamageWindow",
+  "covers": "a foreign marker stands, the user answers no, and a silent commit-key damage could land between the exit's fence write and its marker write: the exit must not replace the marker, and a mutant that does is caught by h2 although the stored key is unparsable at the write",
+  "variant": "node",
+  "start": "marker-seed",
+  "seeds": [1, 2, 3, 4, 5, 6],
+  "labels": {
+    "B: read commit key (parses, foreign marker); hook answers no": "b: open, then the exit: the library stops at the foreign marker, so the damage step is never registered",
+    "ENV: commit key DAMAGED (silent) between the fence write and the marker write": "environment step damage-commit, after b's fence write; reached only by a mutant that ignores the no answer",
+    "B: marker CAS over the damaged key": "b: the marker write, held until the damage; the actor's last commit read parsed, so h2 judges it"
+  },
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "b", "op": "writeChecked", "target": "$fence" } }
+  ],
+  "holds": [
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit" }, "until": { "actor": "$env", "op": "damage-commit" } }
+  ],
+  "actors": [
+    { "id": "b", "seed": 11, "foreignClear": "no", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "b": ["open", "exit:foreign-marker"]
+    }
+  },
+  "mutants": { "decideClearOnNo": "h2" }
+}

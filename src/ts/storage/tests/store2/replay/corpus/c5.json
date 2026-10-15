@@ -1,0 +1,28 @@
+{
+  "name": "c5",
+  "covers": "control c5: a commit write compares at a fresh read of the commit key instead of the version its value was built from, over a bulk marker that landed in between",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2],
+  "labels": {
+    "B: begin ordinary commit; B: upload unit and manifest (built from base v1)": "b: open, commit: the read of the commit key (its base), the eleven unit uploads",
+    "A: BULK step 1: CAS marker staging=[A, s/A1.b0/] -> v2": "a: bulk, after b's read; its marker write (bulk-begin) is applied before b's commit-key write",
+    "B: fresh read of the commit key -> v2": "b: the second read of the commit key in the commit, which only the mutant makes (held until the marker is applied)",
+    "B: commit CAS ok -> v3 (built from v1, replaced v2)": "b: the commit-key write, held until the marker is applied; the library's write compares at the base version and conflicts"
+  },
+  "holds": [
+    { "call": { "actor": "b", "op": "read", "target": "$commit", "context": "commit", "nth": 2 }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" } }
+  ],
+  "actors": [
+    { "id": "b", "seed": 11, "program": [{ "do": "open" }, { "do": "commit", "tag": "b" }] },
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "b", "op": "read", "target": "$commit", "context": "commit" } }, { "do": "bulk", "tag": "a" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "b": ["open", "commit:conflict"],
+      "a": ["open", "waitFor", "bulk:committed"]
+    }
+  },
+  "mutants": { "c5": "I3" }
+}

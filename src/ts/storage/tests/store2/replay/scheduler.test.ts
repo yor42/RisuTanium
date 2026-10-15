@@ -417,6 +417,41 @@ describe('fault kinds on the ByteStore layer under the real Node backend', () =>
         expect(taken).toBe(false)
         expect(rig.fake.log).toEqual([])
     })
+
+    test('an environment step is a way forward: it is taken when no call is pending, instead of a stall', async () => {
+        const rig = nodeRig()
+        let damaged = false
+        let registered = false
+        let release = (): void => {}
+        const waitForDamage = new Promise<void>((resolve) => { release = resolve })
+        // The step is registered when a's read has been applied, and a has no further call: from then on
+        // nothing is pending, so the environment step is the only way forward.
+        const scheduler: Scheduler = createScheduler({
+            seed: 1,
+            onStep: (info) => {
+                if (info.actor === 'a' && !registered) {
+                    registered = true
+                    scheduler.environment('damage-commit', 'damage-commit', () => {
+                        rig.fake.damage(COMMIT_KEY, GARBAGE)
+                        damaged = true
+                        release()
+                    })
+                }
+            },
+        })
+        const [key] = unitKeys(1)
+        await rig.fake.store.write(COMMIT_KEY, bytesOf(1), 'unconditional')
+        scheduler.spawn('a', async (actor) => {
+            const store = actor.byteStore(rig.fake.store)
+            await store.read(key)
+            await waitForDamage
+        })
+        const result = await scheduler.run()
+        expect(result.status).toBe('finished')
+        expect(scheduler.log.map((entry) => `${entry.actor}:${entry.op}`)).toEqual(['a:read', '$env:damage-commit'])
+        expect(damaged).toBe(true)
+        expect(rig.fake.peek(COMMIT_KEY).bytes).toEqual(GARBAGE)
+    })
 })
 
 describe('PCT change points', () => {

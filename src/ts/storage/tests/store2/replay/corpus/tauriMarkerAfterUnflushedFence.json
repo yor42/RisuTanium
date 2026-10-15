@@ -1,0 +1,19 @@
+{
+  "name": "tauriMarkerAfterUnflushedFence",
+  "covers": "N4: on Tauri the recovery exit writes its marker only after the fence write reported flushed; a fence write that did not reach stable storage must stop the exit before the marker",
+  "variant": "tauri",
+  "pending": {
+    "until": "2f-5",
+    "reason": "The Tauri semantic store reports every durable write flushed: it has no flush fault (the real backend tests drive the `flush.fault` hook of their own stand-in). The fault, a fence write that resolves flushed:false, and the restart that drops unflushed writes are the Tauri half of 2f-5. The schedule is written against the actor interface; its fault entry is not expressible until then and is not faked."
+  },
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3],
+  "labels": {
+    "H9: the exit waits for the fence write to report flushed before its marker CAS": "r: exit seed: the fence write must report flushed:false (fault to be added), the exit must end 'fence:not-durable' and write no marker",
+    "N4: the flag is lost with the re-flush": "a Tauri restart after the unflushed fence write: the boot re-flush must include the fence"
+  },
+  "actors": [
+    { "id": "r", "seed": 10, "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }] }
+  ],
+  "expect": {}
+}

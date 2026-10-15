@@ -276,7 +276,8 @@ describe('one planted violation per property is reported as exactly that propert
         expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
         // Written at the stored (unchanged) revision: silent damage keeps it.
         await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, { ...marked, seq: marked.seq + 1, staging: null }), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
-        expect(propertiesOf(step('b', 'casCommit', { kind: 'commit', owner: 'b' }))).toEqual(['h', 'h2'])
+        // h judges against the value before the damage; h2 does not apply to a replacement of an unparsable key.
+        expect(propertiesOf(step('b', 'casCommit', { kind: 'commit', owner: 'b' }))).toEqual(['h'])
     })
 
     describe('h2: another owner\'s marker changes only with a consent recorded for that marker', () => {
@@ -326,6 +327,64 @@ describe('one planted violation per property is reported as exactly that propert
             const found = step('a', 'casCommit', { kind: 'foreign-clear', owner: 'a' })
             checker.consent({ page: 'a', owner: 'x', prefix })
             expect(propertiesOf(found)).toEqual(['h2'])
+        })
+
+        test('the damage rule: a foreign marker replaced while the stored commit key is damaged is not judged by h2', async () => {
+            const { rig } = await seeded()
+            const planted = await plantNextCommit(rig.fake, { staging: marker('x', stagingPrefix(newStagingId(env))) }, env)
+            const step = stepper(createChecker(rig.raw))
+            rig.fake.damage(COMMIT_KEY, GARBAGE)
+            expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
+            const replacement = marker('a', stagingPrefix(newStagingId(env)))
+            await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, { ...planted, seq: planted.seq + 1, staging: replacement }), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
+            expect(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' })).toEqual([])
+        })
+
+        async function damagedAfterMarker(readBeforeDamage: boolean) {
+            const { rig } = await seeded()
+            const planted = await plantNextCommit(rig.fake, { staging: marker('x', stagingPrefix(newStagingId(env))) }, env)
+            const step = stepper(createChecker(rig.raw))
+            if (readBeforeDamage) {
+                expect(step('a', 'readCommit', { kind: 'recovery-begin', owner: 'a' })).toEqual([])
+            }
+            rig.fake.damage(COMMIT_KEY, GARBAGE)
+            expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
+            if (!readBeforeDamage) {
+                expect(step('a', 'readCommit', { kind: 'recovery-begin', owner: 'a' })).toEqual([])
+            }
+            const replacement = marker('a', stagingPrefix(newStagingId(env)))
+            await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, { ...planted, seq: planted.seq + 1, staging: replacement }), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
+            return step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' })
+        }
+
+        test('the damage rule: a parsed read, then damage, then the foreign marker replaced is judged by h2', async () => {
+            expect(propertiesOf(await damagedAfterMarker(true))).toEqual(['h2'])
+        })
+
+        test('the damage rule: a read of the damaged key, then the foreign marker replaced, is not judged by h2', async () => {
+            expect(await damagedAfterMarker(false)).toEqual([])
+        })
+
+        test('the damage rule: a damaged read, a heal by another owner\'s marker, then a replacement with no re-read is judged by h2', async () => {
+            const { rig } = await seeded()
+            const planted = await plantNextCommit(rig.fake, { staging: marker('x', stagingPrefix(newStagingId(env))) }, env)
+            const step = stepper(createChecker(rig.raw))
+            rig.fake.damage(COMMIT_KEY, GARBAGE)
+            expect(step('$env', 'damage-commit', null, { kind: 'env', fault: 'damage-commit' })).toEqual([])
+            expect(step('a', 'readCommit', { kind: 'recovery-begin', owner: 'a' })).toEqual([])
+            const healed = { ...planted, seq: planted.seq + 1, staging: marker('b', stagingPrefix(newStagingId(env))) }
+            await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, healed), { ifVersion: rig.fake.peek(COMMIT_KEY).revision })
+            expect(step('b', 'casCommit', { kind: 'recovery-begin', owner: 'b' })).toEqual([])
+            // An unconditional write, as on a backend with no precondition: only h2 guards b's marker.
+            const replaced = { ...healed, seq: healed.seq + 1, staging: marker('a', stagingPrefix(newStagingId(env))) }
+            await rig.fake.store.write(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, replaced), 'unconditional')
+            expect(propertiesOf(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' }))).toEqual(['h2'])
+        })
+
+        test('the same replacement while the stored commit key parses is judged by h2', async () => {
+            const { rig, step } = await withMarker('x')
+            await plantNextCommit(rig.fake, { staging: marker('a', stagingPrefix(newStagingId(env))) }, env)
+            expect(propertiesOf(step('a', 'casCommit', { kind: 'recovery-begin', owner: 'a' }))).toEqual(['h2'])
         })
 
         test('the owner\'s own change is clean without any consent', async () => {

@@ -40,8 +40,19 @@
  *        consent log is written by the actor's foreign-clear hook wrapper through
  *        `Checker.consent`, only for a yes; a no and a hook never called record nothing.
  *        The marker is decoded from the stored bytes exactly as property h does, on
- *        both backends; while the commit key does not parse it is judged against the
- *        last value that did.
+ *        both backends. The h2 damage rule: h2 is exempt only when the stored commit key
+ *        just before the write is unparsable AND the acting actor's last recorded
+ *        commit-key read, if it has one, was also unparsable. Either one parsing means
+ *        h2 judges the write. Damage that lands after an actor's parsed read is judged
+ *        against the last value that parsed (the same idea as amendment J for deleter
+ *        gates), so silent damage between a read and a marker write cannot hide a
+ *        consent violation, and a heal by another owner's marker after an actor's
+ *        damaged read is judged as well, because the actor never saw that marker.
+ *        A replacement made over an unparsable key on the strength of an unparsable
+ *        read is not judged by h2 (property h still is, against the last value that
+ *        parsed): the library cannot ask the foreign-clear hook about a key it cannot
+ *        parse, a recovery over damage is the protocol's designed path, and the
+ *        abandoned device fails loudly at its next compare-and-set.
  *  - G1  no key a standing fence lists is removed, and nothing at all is removed
  *        while the fence is present but cannot be understood. The fence key itself
  *        is guarded as well: only a `fence-exit` writes it, only a `fence-discard`
@@ -108,7 +119,7 @@ export interface Violation {
     detail: string
 }
 
-/** The user's yes to a foreign-clear question, as the acting page's hook wrapper reports it. */
+/** The user's yes to a foreign-clear question, as the acting actor's hook wrapper reports it. */
 export interface ConsentEvent {
     /** The actor whose call was running when the hook answered yes. */
     page: string
@@ -325,6 +336,9 @@ export function createChecker(read: () => RawState): Checker {
         return view.state === 'parsed' ? view.keys : null
     })()
     // Per actor, the commit key and the fence as its most recent read observed them: the gate a deleter evaluated.
+    // At the backend layer (memory, IndexedDB) the current value that a conflict reads inside casCommit is not recorded as a
+    // commit read. The h2 conjunction still judges every write over a parsable key, but a conflict read that parsed followed by
+    // damage before the write is not covered yet; the backend step (2f-5) must record that read.
     const lastCommitRead = new Map<string, RawEntry>()
     const lastFenceRead = new Map<string, RawEntry>()
     // How many calls have changed the fence so far, and the count at each actor's last fence read: damage is an environment step and is not counted.
@@ -514,7 +528,9 @@ export function createChecker(read: () => RawState): Checker {
                 report('h', `${info.actor} (${kind ?? 'no operation'}) changed staging ${JSON.stringify(oldStaging)} to ${JSON.stringify(next.staging)}`)
             }
             // Consent is judged on the marker's owner alone, never on the label of the write.
-            if (oldStaging !== null && (next.staging === null || next.staging.owner !== oldStaging.owner || next.staging.prefix !== oldStaging.prefix)
+            const commitReadOfActor = lastCommitRead.get(info.actor)
+            const keyParsedForActor = parsedBefore !== null || (commitReadOfActor !== undefined && parsedCommitOf(commitReadOfActor.bytes) !== null)
+            if (keyParsedForActor && oldStaging !== null && (next.staging === null || next.staging.owner !== oldStaging.owner || next.staging.prefix !== oldStaging.prefix)
                 && context?.owner !== oldStaging.owner
                 && !consents.some((given) => given.page === info.actor && given.owner === oldStaging.owner && given.prefix === oldStaging.prefix && given.after < info.step)) {
                 report('h2', `${info.actor} (${kind ?? 'no operation'}) changed the marker of ${oldStaging.owner} (${oldStaging.prefix}) to ${JSON.stringify(next.staging)} without a consent`)

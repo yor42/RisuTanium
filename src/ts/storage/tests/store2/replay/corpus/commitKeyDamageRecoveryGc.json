@@ -1,0 +1,32 @@
+{
+  "name": "commitKeyDamageRecoveryGc",
+  "covers": "the commit key is damaged silently between two collection batches and a recovery exit starts: its fence listing covers the keys the second batch is about to delete",
+  "variant": "node",
+  "start": "healthy",
+  "garbage": 30,
+  "seeds": [1, 2, 3],
+  "labels": {
+    "GC pass: first batch of 25": "g: open, gc: the first retireChecked of the pass, applied before the damage",
+    "ENV: commit key DAMAGED (silent: the revision stays)": "environment step damage-commit, after g's first batch is applied",
+    "recovery exit: list, fence create, marker": "r: open, then recover once the damage is applied: the exit's fence write lists the five keys still standing, then its marker (held until g's second batch is applied)",
+    "GC pass: second batch of 5": "g: the second retireChecked, held until r's fence write is applied; it carries the fence version it read before the exit"
+  },
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "g", "op": "retireChecked", "nth": 1 } }
+  ],
+  "holds": [
+    { "call": { "actor": "g", "op": "retireChecked", "nth": 2 }, "until": { "actor": "r", "op": "writeChecked", "target": "$fence", "context": "fence-exit" } },
+    { "call": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "recovery-begin" }, "until": { "actor": "g", "op": "retireChecked", "nth": 2 } }
+  ],
+  "actors": [
+    { "id": "g", "seed": 10, "program": [{ "do": "open" }, { "do": "gc" }] },
+    { "id": "r", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "recover" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "g": ["open", "gc:done:fence-conflict:25"],
+      "r": ["open", "waitFor", "recover:installed:installed"]
+    }
+  },
+  "mutants": { "gcFenceAtStartOnly": "G1" }
+}

@@ -951,7 +951,8 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
                 }
                 // A queued landing that needs the lock waits while a held ghost has it; a held landing is what frees it.
                 const landable = ghosts.filter((ghost) => ghost.landWhen() && !(ghost.kind === 'ghost-queued' && ghost.spec.lock && heldGhosts() > 0))
-                if (pending.length === 0 && landable.length === 0) {
+                // A registered environment step is a way forward: it is taken even when no call is pending.
+                if (pending.length === 0 && landable.length === 0 && envActions.length === 0) {
                     return { status: 'stalled', steps: stepNo, actors: report() }
                 }
                 if (stepNo >= maxSteps) {

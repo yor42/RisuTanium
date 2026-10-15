@@ -1,0 +1,29 @@
+{
+  "name": "c2",
+  "covers": "control c2: a collection batch deletes a commit's uploaded units before its commit-key write lands, when that write does not carry the units' check",
+  "variant": "node",
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m": "a: open, commit: the eleven unit uploads (writeChecked, one request each)",
+    "GC: begin; GC: list; GC: read commit key v1": "gc: read commit key, mark, read fence, then list (held until the uploads are applied)",
+    "GC: remove m (check-only on the commit key == v1 ok)": "gc: retireChecked of the listed candidates; the commit key still is the one it read",
+    "A: commit CAS ok -> v2 (names the removed manifest)": "a: the commit-key write (writeChecked with the unit check-only), held until the removal is applied"
+  },
+  "holds": [
+    { "call": { "actor": "gc", "op": "list" }, "until": { "actor": "a", "op": "writeChecked", "target": "$unit", "nth": 11 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit" }, "until": { "actor": "gc", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }] },
+    { "id": "gc", "seed": 11, "program": [{ "do": "open" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:failed"],
+      "gc": ["open", "gc:done:14"]
+    }
+  },
+  "mutants": { "c2": "I1" }
+}
