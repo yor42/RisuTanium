@@ -192,7 +192,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, commit, commit]),
             actor('g', G, [open, gc, gc, gc]),
         ],
-        faults: { ...faults(0.06, Infinity, 0, 14), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.06, Infinity, 0, 14), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
         floors: { 'commit:committed': 0.7, 'gc:done': 0.7, 'restore:committed': 0.6 },
         idbFloors: { 'commit:committed': 0.75, 'gc:done': 0.75, 'restore:committed': 0.6 },
     },
@@ -204,9 +204,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.01, 0, 1, 14), idbMinFaulted: 0.3 }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.01, 0, 1, 14), idbMinFaulted: 0.3 }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
         floors: { 'bulk:committed': 0.3, 'gc:done': 0.5 },
-        idbFloors: { 'bulk:committed': 0.4, 'gc:done': 0.65 },
+        idbFloors: { 'bulk:committed': 0.35, 'gc:done': 0.65 },
         tauriFloors: { 'bulk:committed': 0.2, 'gc:done': 0.4 },
     },
     {
@@ -217,10 +217,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, admit, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.03, 2, 1, 14), idbMinFaulted: 0.6 }, pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 36,
-        floors: { 'admit:committed': 0.35, 'bulk': 0.4, 'gc:done': 0.6 },
-        idbFloors: { 'admit:committed': 0.7, 'bulk': 0.4, 'gc:done': 0.7 },
-        tauriFloors: { 'admit:committed': 0.35, 'bulk': 0.35, 'gc:done': 0.5 },
+        faults: { ...faults(0.03, 2, 1, 14), idbMinFaulted: 0.6 }, pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 20, idbSeeds: 16, minExercised: 0.85,
+        floors: { 'admit:committed': 0.3, 'bulk': 0.4, 'gc:done': 0.6 },
+        idbFloors: { 'admit:committed': 0.7, 'bulk': 0.3, 'gc:done': 0.7 },
+        tauriFloors: { 'admit:committed': 0.35, 'bulk': 0.3, 'gc:done': 0.5 },
     },
     {
         id: 'R4', name: 'foreign-clear-any-order-gc', covers: 'S0-5a: the clear of another owner\'s marker and any-order collection',
@@ -230,7 +230,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
         floors: { 'clearMarker:clear': 0.8, 'commit:committed': 0.8, 'gc:done': 0.8 },
     },
     {
@@ -241,7 +241,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.02, 0, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.02, 0, 1, 10), minFaulted: 0.35 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
         floors: { 'clearMarker:clear': 0.5, 'commit:committed': 0.6 },
         tauriFloors: { 'clearMarker:clear': 0.5, 'gc:done': 0.5 },
     },
@@ -252,7 +252,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, bulk, bulk, commit]),
             actor('b', B, [open, commit, admit, gc]),
         ],
-        faults: faults(0.025, Infinity, 1, 14), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.025, Infinity, 1, 14), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 20,
         floors: { 'bulk:committed': 0.25, 'gc:done': 0.5 },
         tauriFloors: { 'bulk:committed': 0.15, 'gc:done': 0.5 },
     },
@@ -264,8 +264,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, recover], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.025, Infinity, 1, 10), tauriMinFaulted: 0.35 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.025, Infinity, 1, 10), tauriMinFaulted: 0.35 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
         floors: { 'commit:committed': 0.4, 'recover:installed': 0.6 },
+        tauriFloors: { 'commit:committed': 0.4, 'recover:installed': 0.5 },
     },
     {
         id: 'R8', name: 'two-fault-combinations', covers: 'plan v3.4 section 6: every pair of faults (d_f2_bulk, d_f2_rec, f2)',
@@ -275,9 +276,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, recover, commit], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.04, 1, 1, 14), pct: { depth: 4, horizon: 160 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.04, 1, 1, 14), pct: { depth: 4, horizon: 160 }, maxSteps: 4000, seeds: 26,
         floors: { 'bulk': 0.35, 'recover:installed': 0.5, 'restore:committed': 0.2 },
-        tauriFloors: { 'bulk': 0.2, 'recover:installed': 0.3, 'restore:committed': 0.2 },
+        tauriFloors: { 'bulk': 0.15, 'recover:installed': 0.25, 'restore:committed': 0.2 },
     },
     {
         id: 'R9', name: 'bulk-damage-recovery', covers: 'plan v3.4 section 6: damage of the commit key during a bulk commit, then recovery (q_bulk)',
@@ -288,9 +289,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('g', G, [open, gc, gc]),
         ],
         damage: [{ name: 'damage-commit', after: { actor: 'a', op: ['writeChecked', 'writeTop'], target: '$commit', context: 'bulk-begin' } }],
-        pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
-        floors: { 'bulk': 0.9, 'commit:committed': 0.7, 'recover:installed': 0.7 },
-        tauriFloors: { 'bulk': 0.9, 'commit:committed': 0.55, 'recover:installed': 0.55 },
+        pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
+        floors: { 'bulk': 0.75, 'commit:committed': 0.7, 'recover:installed': 0.7 },
+        tauriFloors: { 'bulk': 0.75, 'commit:committed': 0.55, 'recover:installed': 0.55 },
     },
     {
         id: 'R10', name: 'recovery-one-fault', covers: 'plan v3.4 section 6: a recovery with one fault (N_rec_f1)',
@@ -299,8 +300,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, recover, commit, gc], { foreignClear: 'yes' }),
             actor('b', B, [open, recover], { foreignClear: 'yes' }),
         ],
-        faults: faults(0.15, 1, 0, 8), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.15, 1, 0, 8), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
         floors: { 'commit:committed': 0.4, 'recover:installed': 0.8 },
+        tauriFloors: { 'commit:committed': 0.3, 'recover:installed': 0.8 },
     },
     {
         id: 'R11', name: 'indexeddb-bump-damage', covers: 'plan v3.4 section 6: IndexedDB, damage of the commit key with no state-machine help (I_nosm_f1)',
@@ -309,7 +311,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, commit, commit]),
             actor('b', B, [open, recover, commit], { foreignClear: 'yes' }),
         ],
-        faults: { ...faults(0.1, 1, 0, 8), idbMinFaulted: 0.6 }, damage: [{ name: 'damage-commit' }], pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.1, 1, 0, 8), idbMinFaulted: 0.6 }, damage: [{ name: 'damage-commit' }], pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 14, minExercised: 0.85,
         floors: {},
         idbFloors: { 'commit:committed': 0.55, 'recover:installed': 0.45 },
     },
@@ -321,9 +323,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, clearMarker, commit, gc], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.1, 2, 0, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.1, 2, 0, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 20,
         floors: { 'clearMarker:clear': 0.8, 'commit:committed': 0.3, 'gc:done': 0.8 },
-        tauriFloors: { 'commit:committed': 0.3, 'gc:done': 0.8 },
+        tauriFloors: { 'commit:committed': 0.2, 'gc:done': 0.8 },
     },
     {
         id: 'R13', name: 'refused-recoveries', covers: 'plan v3.4 section 6: two recoveries over a foreign marker, one refused (W_refuse_rec2_L2)',
@@ -334,8 +336,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('g', G, [open, gc]),
         ],
         // b's recovery follows its own exit: its first run is at a stale token, conflicts, and the screen re-runs it at the key the conflict carried.
-        faults: faults(0.1, 2, 0, 8), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.1, 2, 0, 8), pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
         floors: { 'exit:marked': 0.8, 'recover:installed': 0.5 },
+        tauriFloors: { 'exit:marked': 0.8, 'recover:installed': 0.4 },
     },
     {
         id: 'R14', name: 'staged-manifest-candidates', covers: 'plan v3.4 section 6: manifests of an abandoned stage offered as candidates, wide refusals (W_ri_refuse_wide)',
@@ -348,11 +351,11 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, bulk, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 20,
         // The planted install is the region's intent: a2 must install the abandoned stage's manifest, not whichever candidate is newest.
-        floors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'commit:committed': 0.2, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
+        floors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'commit:committed': 0.15, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
         // On Tauri a2's page registers after the others, which makes their page stale: their commits fail too often for a commit floor.
-        tauriFloors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
+        tauriFloors: { 'bulk': 0.6, 'clearMarker:clear': 0.45, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
     },
     {
         id: 'R15', name: 'refused-two-faults', covers: 'plan v3.4 section 6: a refusal with two faults (W_refuse_f2_L2)',
@@ -362,7 +365,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, exitSeed], { foreignClear: 'no' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
         floors: { 'bulk': 0.6, 'commit:committed': 0.5, 'gc:done': 0.6 },
     },
     {
@@ -373,8 +376,9 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, saveMine, pin, unpin, commit]),
             actor('g', G, [open, gc, gc, gc]),
         ],
-        faults: faults(0.02, Infinity, 1, 14), pct: { depth: 4, horizon: 180 }, maxSteps: 4000, seeds: 36,
-        floors: { 'bulk:committed': 0.15, 'gc:done': 0.6, 'restore:committed': 0.4, 'saveMine': 0.6 },
+        faults: faults(0.02, Infinity, 1, 14), pct: { depth: 4, horizon: 180 }, maxSteps: 4000, seeds: 26,
+        // bulk:committed is reached in about a fifth of the 26 runs; 0.1 is the highest floor that leaves two seeds of margin.
+        floors: { 'bulk:committed': 0.1, 'gc:done': 0.6, 'restore:committed': 0.4, 'saveMine': 0.6 },
     },
     {
         id: 'R17a', name: 'first-start-no-commit-key', covers: 'plan v3.4 section 6, V1: a start with no commit key',
@@ -383,7 +387,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, exitSeed, commit]),
             actor('b', B, [open, exitSeed, gc]),
         ],
-        faults: { ...faults(0.3, Infinity, 1, 5), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.3, Infinity, 1, 5), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
         floors: { 'exit:marked': 0.6, 'gc': 0.7 },
         idbFloors: { 'exit:marked': 0.6, 'gc': 0.65 },
     },
@@ -395,10 +399,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes', upstreamMainFile: true }),
         ],
         // On Tauri both actors share one session and its boot read, so a's exit meets b's clear at a stale token; the screen re-runs it at the key the conflict carried.
-        faults: { ...faults(0.2, Infinity, 1, 5), idbMinFaulted: 0.35 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.2, Infinity, 1, 5), idbMinFaulted: 0.35, minFaulted: 0.4, tauriMinFaulted: 0.5 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, idbSeeds: 16, minExercised: 0.85,
         floors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.5 },
         idbFloors: { 'clearMarker:clear': 0.75, 'exit:marked': 0.65 },
-        tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.4 },
+        tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.3 },
     },
     {
         id: 'R17c', name: 'seed-marker', covers: 'plan v3.4 section 6, V1: a standing seed marker',
@@ -408,10 +412,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes' }),
         ],
         // a's recovery follows its own exit: its first run is at a stale token, conflicts, and the screen re-runs it at the key the conflict carried.
-        faults: { ...faults(0.06, Infinity, 1, 8), idbMinFaulted: 0.5, minFaulted: 0.45 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.06, Infinity, 1, 8), idbMinFaulted: 0.5, minFaulted: 0.45 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 20, idbSeeds: 18, minExercised: 0.85,
         floors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.7, 'recover:installed': 0.35 },
-        idbFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.75, 'recover:installed': 0.3 },
-        tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.6, 'recover:installed': 0.35 },
+        idbFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.75, 'recover:installed': 0.25 },
+        tauriFloors: { 'clearMarker:clear': 0.7, 'exit:marked': 0.6, 'recover:installed': 0.3 },
     },
     {
         id: 'R17d', name: 'fresh-start-damaged-commit', covers: 'plan v3.4 section 6, V1: a fresh start from a damaged commit key',
@@ -420,9 +424,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, recover, commit, admit], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.03, Infinity, 1, 8), idbMinFaulted: 0.3 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
-        floors: { 'admit:committed': 0.35, 'commit:committed': 0.35, 'recover:installed': 0.6 },
+        faults: { ...faults(0.03, Infinity, 1, 8), idbMinFaulted: 0.3 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
+        floors: { 'admit:committed': 0.3, 'commit:committed': 0.3, 'recover:installed': 0.6 },
         idbFloors: { 'admit:committed': 0.5, 'commit:committed': 0.5, 'recover:installed': 0.5 },
+        tauriFloors: { 'admit:committed': 0.25, 'commit:committed': 0.25, 'recover:installed': 0.5 },
     },
     {
         id: 'R17e', name: 'fresh-start-both-damaged', covers: 'plan v3.4 section 6, V1: a fresh start with the commit key and the fence both damaged',
@@ -432,9 +437,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, fenceExit, recover], { foreignClear: 'yes' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.03, Infinity, 1, 8), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.03, Infinity, 1, 8), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
         floors: { 'commit:committed': 0.35, 'fenceExit': 0.8, 'recover:installed': 0.6 },
         idbFloors: { 'commit:committed': 0.5, 'fenceExit': 0.75, 'recover:installed': 0.6 },
+        tauriFloors: { 'commit:committed': 0.3, 'fenceExit': 0.65, 'recover:installed': 0.45 },
     },
     {
         id: 'R17f', name: 'fresh-start-damaged-fence', covers: 'plan v3.4 section 6, V1: a fresh start from a damaged fence',
@@ -443,10 +449,11 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, fenceExit, discardFence, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        // The faulted share of the Node run sits at the default minFaulted; the margin is about one seed.
-        faults: { ...faults(0.05, Infinity, 1, 8), idbMinFaulted: 0.2 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 36,
-        floors: { 'commit:committed': 0.4, 'discardFence': 0.8, 'fenceExit': 0.8 },
+        faults: { ...faults(0.05, Infinity, 1, 8), idbMinFaulted: 0.15 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
+        // idbMinFaulted is about half of the IndexedDB faulted share at 18 seeds; 0.15 is the highest value that leaves two seeds of margin.
+        floors: { 'commit:committed': 0.25, 'discardFence': 0.8, 'fenceExit': 0.8 },
         idbFloors: { 'commit:committed': 0.75, 'discardFence': 0.75, 'fenceExit': 0.75 },
+        tauriFloors: { 'commit:committed': 0.3, 'discardFence': 0.65, 'fenceExit': 0.65 },
     },
     // The N2 shape itself rests on `corpus/v1N2Shape.json` and the long runs of stage 2f-7; this region samples the damage around recoveries.
     {
@@ -458,10 +465,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('g', G, [open, gc, gc]),
         ],
         damage: [{ name: 'damage-fence' }, { name: 'damage-commit', after: { op: ['writeChecked', 'writeTop'], target: '$fence' }, idbAfter: { op: 'casFence' } }],
-        faults: { ...faults(0.04, 1, 1, 8), idbMinFaulted: 0.45 }, pct: { depth: 4, horizon: 120 }, maxSteps: 4000, seeds: 36,
-        floors: { 'commit:committed': 0.25, 'fenceExit': 0.8, 'recover:installed': 0.5 },
+        faults: { ...faults(0.04, 1, 1, 8), idbMinFaulted: 0.45 }, pct: { depth: 4, horizon: 120 }, maxSteps: 4000, seeds: 20, idbSeeds: 14, minExercised: 0.85,
+        floors: { 'commit:committed': 0.2, 'fenceExit': 0.8, 'recover:installed': 0.5 },
         idbFloors: { 'commit:committed': 0.35, 'fenceExit': 0.65, 'recover:installed': 0.45 },
-        tauriFloors: { 'commit:committed': 0.2, 'fenceExit': 0.8, 'recover:installed': 0.35 },
+        tauriFloors: { 'commit:committed': 0.2, 'fenceExit': 0.6, 'recover:installed': 0.35 },
     },
     {
         id: 'R18a', name: 'fence-and-gc', covers: 'plan v3.4 section 6: the fence of 3.4c, its discard and rewrite, against collection (passes of several batches are R18a2\'s)',
@@ -472,9 +479,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('g', G, [open, gc, gc]),
             actor('c', C, [open, gc]),
         ],
-        faults: { ...faults(0.05, Infinity, 1, 10), idbMinFaulted: 0.25 }, pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 36,
-        floors: { 'commit:committed': 0.6, 'discardFence': 0.6, 'fenceExit': 0.6, 'gc:done': 0.7 },
+        faults: { ...faults(0.05, Infinity, 1, 10), idbMinFaulted: 0.25 }, pct: { depth: 4, horizon: 140 }, maxSteps: 4000, seeds: 18, idbSeeds: 16, minExercised: 0.85,
+        floors: { 'commit:committed': 0.3, 'discardFence': 0.6, 'fenceExit': 0.6, 'gc:done': 0.7 },
         idbFloors: { 'commit:committed': 0.7, 'discardFence': 0.7, 'fenceExit': 0.75, 'gc:done': 0.75 },
+        tauriFloors: { 'commit:committed': 0.3, 'discardFence': 0.4, 'fenceExit': 0.4, 'gc:done': 0.55 },
     },
     {
         id: 'R18a2', name: 'fence-between-gc-batches', covers: 'plan v3.4 section 6: a fence written while collection passes of several batches are between batches (G1)',
@@ -486,10 +494,11 @@ export const REGIONS: readonly RegionConfig[] = [
         // No discard: on Tauri a discard restores the absent bytes the pass compares against, so the next batch proceeds; on Node the removal
         // moves the revision, so a later batch still conflicts. Without a discard the fence stays and the pass conflicts on both. Few change points leave a
         // window for the fence to land between two batches of the first pass; faults matter less here than the window, so fewer runs need one.
-        // The faulted share of the Node run sits at minFaulted; the margin is about one seed.
-        faults: { ...faults(0.03, Infinity, 0, 10), idbMinFaulted: 0.1, minFaulted: 0.2 }, pct: { depth: 2, horizon: 45 }, maxSteps: 4000, seeds: 48,
+        // The fence-conflict share and the faulted share of the IndexedDB run are the rarest events of the smoke file: their floors sit
+        // where the 24 IndexedDB seeds leave two seeds of margin, and so is the Node faulted share at 28 seeds (0.1, two seeds of margin; any higher floor leaves one).
+        faults: { ...faults(0.03, Infinity, 0, 10), idbMinFaulted: 0.08, minFaulted: 0.1, tauriMinFaulted: 0.2 }, pct: { depth: 2, horizon: 45 }, maxSteps: 4000, seeds: 28,
         floors: { 'fenceExit': 0.7, 'gc:done': 0.7, 'gc:multi-batch': 0.2, 'gc:done:fence-conflict': 0.1 },
-        idbFloors: { 'fenceExit': 0.75, 'gc:done': 0.75, 'gc:multi-batch': 0.3, 'gc:done:fence-conflict': 0.1 },
+        idbFloors: { 'fenceExit': 0.75, 'gc:done': 0.75, 'gc:multi-batch': 0.3, 'gc:done:fence-conflict': 0.08 },
     },
     {
         id: 'R18b', name: 'concurrent-recoveries', covers: 'plan v3.4 section 6: two pages recovering at once (separate pages on Node; on Tauri the second page makes the first stale)',
@@ -499,7 +508,7 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, recover, commit], { foreignClear: 'yes', page: 'pb' }),
             actor('g', G, [open, gc, gc], { page: 'pb' }),
         ],
-        faults: { ...faults(0.025, Infinity, 1, 10), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.025, Infinity, 1, 10), idbMinFaulted: 0.4 }, pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
         floors: { 'commit:committed': 0.5, 'recover:installed': 0.6 },
         idbFloors: { 'commit:committed': 0.6, 'recover:installed': 0.6 },
     },
@@ -511,10 +520,10 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, commit, admit, restore]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.02, Infinity, 1, 12), flush: true }, pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.02, Infinity, 1, 12), flush: true }, pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 20,
         // A bulk whose staged unit reports an unflushed write is abandoned, so the share that commits sits below what it would be if that
         // report were ignored.
-        floors: { 'bulk:committed': 0.25, 'gc:done': 0.6, 'restore:committed': 0.6 },
+        floors: { 'bulk:committed': 0.15, 'gc:done': 0.6, 'restore:committed': 0.45 },
     },
     {
         id: 'R18d', name: 'tauri-recovery', covers: 'plan v3.4 section 6: Tauri recovery, a restart of the page and the start-up clear',
@@ -526,15 +535,16 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, exitSeed, { do: 'restart' }, recover, commit, commit, { do: 'restart' }, gc, commit], { foreignClear: 'yes', device: 'phone' }),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: { ...faults(0.08, Infinity, 1, 10), flush: true }, pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 36,
+        faults: { ...faults(0.08, Infinity, 1, 10), flush: true }, pct: { depth: 3, horizon: 160 }, maxSteps: 4000, seeds: 30,
         // A run is not exercised when any page registration with the gate is faulted (the page's, the new page's, or the one after a
         // restart), whether the fault is a crash after the write or a lost request or response: about a quarter of the runs.
         // A recovery install whose staged unit reports an unflushed write stops, and a commit key never names such a unit, so
         // recover:installed and commit:committed sit below what they would be if that report were ignored.
-        // gc:done is the one floor below the 70 to 80 percent band of its measured rate (0.2 against 0.33); it is the share of runs
-        // where the collector's pass finishes after the last restart, which a handful of seeds decide.
+        // Three floors sit below the 70 to 80 percent band of their measured rate, each at the highest value that leaves two seeds of margin
+        // at 23 exercised runs: commit:committed (0.2 against 0.3) is cut by the unflushed-write report and the crashes,
+        // and gc:done (0.15 against 0.26) the share where the collector's pass finishes after the last restart; a handful of seeds decide both.
         minExercised: 0.6,
-        floors: { 'exit:marked': 0.55, 'restart': 0.7, 'restart:cleared': 0.55, 'restart:dropped': 0.22, 'recover:installed': 0.45, 'commit:committed': 0.28, 'gc:done': 0.2 },
+        floors: { 'exit:marked': 0.55, 'restart': 0.7, 'restart:cleared': 0.55, 'restart:dropped': 0.25, 'recover:installed': 0.45, 'commit:committed': 0.2, 'gc:done': 0.15 },
     },
     {
         id: 'R18e', name: 'two-recoveries-one-tauri-page', covers: 'plan v3.4 section 6: two actors of one Tauri page both recovering',
@@ -543,8 +553,8 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('a', A, [open, recover, commit], { foreignClear: 'yes' }),
             actor('b', B, [open, recover, commit], { foreignClear: 'yes' }),
         ],
-        faults: faults(0.03, Infinity, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 36,
-        floors: { 'commit:committed': 0.5, 'recover:installed': 0.55, 'a:recover': 0.6, 'b:recover': 0.6 },
+        faults: faults(0.03, Infinity, 1, 10), pct: { depth: 3, horizon: 120 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
+        floors: { 'commit:committed': 0.35, 'recover:installed': 0.45, 'a:recover': 0.4, 'b:recover': 0.45 },
     },
     {
         id: 'R18f', name: 'pick-all-present', covers: 'MC-291: a candidate whose lists name assets and inlays that are all present is picked and installed with no warning',

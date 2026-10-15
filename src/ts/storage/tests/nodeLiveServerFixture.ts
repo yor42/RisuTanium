@@ -424,6 +424,9 @@ export interface EndState {
 export interface LiveReport {
     options: LiveOptions
     elapsedMs: number
+    /** How many extensions the main run needed before the collector had applied a batch, and their total length. */
+    extensions: number
+    extendedMs: number
     /** The shared tally: the main run and every observer check; collection and retire counts of the retire phase are in phaseCounts. */
     counts: Record<string, number>
     /** What the main run counted with the writers active, taken before the retire phase began. */
@@ -443,6 +446,9 @@ export interface LiveReport {
     endState: EndState
 }
 
+/** The main run is extended by at most this many times its length when the collector has applied no batch yet. */
+const MAX_EXTENSION_FACTOR = 3
+const EXTENSION_SLICE_MS = 5000
 const PARTIAL_RETIRE_TARGET = 3
 const PARTIAL_RETIRE_MAX_ROUNDS = 60
 /** How long after the server answers again a check that began during the restart may still report an unreachable server. */
@@ -621,6 +627,18 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     ]
     const restart = restartOnce()
     await pause(options.seconds * 1000)
+    // The collector must have applied a batch while the writers were active. When it has not, the writers and the collector keep
+    // running in short extensions, up to MAX_EXTENSION_FACTOR times the run length, before the run is judged; a run whose
+    // collector never applies a batch in that time is reported with its counts and fails the assertion on them.
+    const extensionBudgetMs = options.seconds * 1000 * MAX_EXTENSION_FACTOR
+    let extendedMs = 0
+    let extensions = 0
+    while (tally.get('gc:batches-applied') === 0 && extendedMs < extensionBudgetMs) {
+        const slice = Math.min(EXTENSION_SLICE_MS, extensionBudgetMs - extendedMs)
+        await pause(slice)
+        extendedMs += slice
+        extensions++
+    }
     running = false
     await Promise.all([...loops, restart])
     const mainCounts = tally.record()
@@ -711,6 +729,8 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     return {
         options,
         elapsedMs: Date.now() - startedAt,
+        extensions,
+        extendedMs,
         counts: tally.record(),
         mainCounts,
         phaseCounts: phaseTally.record(),

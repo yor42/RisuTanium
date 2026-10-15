@@ -12,7 +12,8 @@
  * that swaps the extracted build for the current script). The stub-proxy tests are
  * compatibility guards: any correct client passes them.
  *
- * Environment: RISU_LIVE_SECONDS (default 30) sets the length of the live run,
+ * Environment: RISU_LIVE_SECONDS (default 30) sets the length of the live run (extended in short
+ * slices, up to three times that length, while the collector has applied no batch),
  * RISU_LIVE_SEED its seed, RISU_LIVE_COMMITTERS (2 to 4, default 3) its writers.
  * The unpatched-server tests extract the earlier builds with `git show` into the
  * OS temp directory and are skipped, under a name that says why, when git or a
@@ -92,7 +93,9 @@ describe('a live run of several clients against one server', () => {
         // The run did protocol work and the observer judged it.
         expect(report.counts['commit:committed'] ?? 0).toBeGreaterThan(0)
 
-        // Collection applied batches while the writers were active, not only in the writer-free phase after them.
+        // Collection applied batches while the writers were active, not only in the writer-free phase after them. A main run whose
+        // collector had applied none at the end of its length was extended (up to three times that length) before this is judged.
+        expect(report.extendedMs).toBeLessThanOrEqual(LIVE_SECONDS * 1000 * 3)
         expect(report.mainCounts['gc:batches-applied'] ?? 0).toBeGreaterThan(0)
         expect(report.mainCounts['gc:keys-deleted'] ?? 0).toBeGreaterThan(0)
         expect(report.counts['observer:ok'] ?? 0).toBeGreaterThan(0)
@@ -123,7 +126,7 @@ describe('a live run of several clients against one server', () => {
         expect(end.lastGc !== null && end.lastGc.status === 'done' ? end.lastGc.stopped : 'refused').toBeUndefined()
         expect(end.listing).toEqual(end.wanted)
         expect(end.serverKeys).toEqual([COMMIT_KEY, ...end.wanted].sort())
-    }, (LIVE_SECONDS + 240) * 1000)
+    }, (LIVE_SECONDS * 4 + 240) * 1000)
 })
 
 // ---- the client's refusal of a stub proxy ----

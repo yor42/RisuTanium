@@ -123,6 +123,10 @@ export const CORPUS_INDEX: readonly IndexEntry[] = [
         note: 'Regression reproducer for the INST false positive. The final write applies and its reply is lost, a peer\'s bulk-begin rewrites the key keeping the same current, and the install is reported as installed with the peer\'s bytes; INST holds the actor\'s own write naming the manifest, so nothing is reported and the peer\'s bulk commits.',
     },
     {
+        id: 'inst-lost-reply-peer-bulk-begin-tauri', model: 'driver check, not a model category: the install post-condition (INST) after a lost reply and a peer bulk-begin, on the Tauri backend', kind: 'schedule', schedule: 'tauriInstLostReplyPeerBulkBegin',
+        note: 'Regression reproducer, the Tauri copy of inst-lost-reply-peer-bulk-begin. The compare-and-write reads the commit key under the mutex before its write, so the read-back is the install\'s second read of the key and the hold names it with nth.',
+    },
+    {
         id: 'inst-lost-request-control', model: 'driver check, not a model category: the install post-condition (INST) after a lost request', kind: 'schedule', schedule: 'instLostRequestControl',
         note: 'Compatibility guard, green before and after the INST rule change. The final write is lost before it applies, the read-back shows the marker, the retry lands and the install is reported as installed with its own applied write behind it.',
     },

@@ -775,25 +775,30 @@ describe('INST: an install reported as done is a commit-key write the actor made
         return { rig, checker, manifest }
     }
 
+    /** The commit-key bytes the store holds now: what a read-back after the install returns. */
+    async function held(rig: NodeRig): Promise<Uint8Array> {
+        return (await rig.fake.store.read(COMMIT_KEY)).bytes as Uint8Array
+    }
+
     test('its own applied write naming the key is clean, whatever bytes the key holds by now', async () => {
         const { rig, checker, manifest } = await installWrite()
         const step = stepper(checker)
         // A peer rewrote the key keeping the same current: the bytes no longer equal the actor's write.
         await plantNextCommit(rig.fake, {}, env)
         step('b', 'casCommit', { kind: 'pin', owner: 'b' })
-        checker.installed('a', manifest)
+        checker.installed('a', manifest, await held(rig))
         expect(checker.violations).toEqual([])
     })
 
     test('its own write naming another manifest key does not satisfy the result', async () => {
-        const { checker, manifest } = await installWrite()
-        checker.installed('a', `${manifest}-other`)
+        const { rig, checker, manifest } = await installWrite()
+        checker.installed('a', `${manifest}-other`, await held(rig))
         expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
     })
 
     test('a peer write naming the key does not satisfy the result', async () => {
-        const { checker, manifest } = await installWrite()
-        checker.installed('b', manifest)
+        const { rig, checker, manifest } = await installWrite()
+        checker.installed('b', manifest, await held(rig))
         expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
     })
 
@@ -803,14 +808,14 @@ describe('INST: an install reported as done is a commit-key write the actor made
         const step = stepper(checker)
         await plantNextCommit(rig.fake, {}, env)
         step('a', 'casCommit', { kind: 'commit', owner: 'a' })
-        checker.installed('a', manifest)
+        checker.installed('a', manifest, await held(rig))
         expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
     })
 
     test('no write at all is reported', async () => {
         const { rig, manifest } = await seeded()
         const checker = createChecker(rig.raw)
-        checker.installed('a', manifest)
+        checker.installed('a', manifest, await held(rig))
         expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
     })
 
@@ -820,8 +825,21 @@ describe('INST: an install reported as done is a commit-key write the actor made
         const step = stepper(checker)
         await plantNextCommit(rig.fake, {}, env)
         step('a', 'casCommit', { kind: 'recovery-install', owner: 'a' }, { applied: false, fault: 'lost-request' })
-        checker.installed('a', manifest)
+        checker.installed('a', manifest, await held(rig))
         expect(checker.violations.map((violation) => violation.property)).toEqual(['INST'])
+    })
+
+    test('its own applied write naming the key does not satisfy a result whose bytes name another current: the write was superseded', async () => {
+        const { rig, checker, manifest } = await installWrite()
+        const step = stepper(checker)
+        // A peer commit replaced the current after the actor's install write; the result reports what the read-back returned.
+        const second = await commitSecond(rig)
+        expect(second).not.toBe(manifest)
+        expect(step('b', 'casCommit')).toEqual([])
+        checker.installed('a', manifest, await held(rig))
+        const found = checker.violations
+        expect(found.map((violation) => violation.property)).toEqual(['INST'])
+        expect(found[0].detail).toContain('bytes of that result')
     })
 })
 

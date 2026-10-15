@@ -929,9 +929,9 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                 }),
                 installPick: (ready) => operation({ kind: 'recovery-install' }, 'recovery', async () => {
                     const result = await installPick(ready, { confirm: true })
-                    // An install reported as done must be a write the checker saw this actor make, naming the manifest it installed.
+                    // An install reported as done must be a write the checker saw this actor make, naming the manifest it installed, and the result's own bytes must name it too.
                     if (result.status === 'installed') {
-                        checker.installed(id, result.manifestKey)
+                        checker.installed(id, result.manifestKey, result.bytes)
                     }
                     return result
                 }),

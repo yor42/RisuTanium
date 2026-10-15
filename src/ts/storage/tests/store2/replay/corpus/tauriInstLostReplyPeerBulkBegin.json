@@ -1,0 +1,25 @@
+{
+  "name": "tauriInstLostReplyPeerBulkBegin",
+  "covers": "the Tauri copy of the INST lost-reply probe: a recovery install's final write is applied and its reply lost, a peer's bulk-begin rewrites the commit key (current unchanged) before the read-back, and the install is reported as installed with the peer's bytes; INST holds the actor's own write naming the manifest and the result's bytes naming it too, so nothing is reported. The compare-and-write reads the commit key under the mutex before its write, so the read-back is the actor's second recovery-install read and the hold names it with nth",
+  "variant": "tauri",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3, 4],
+  "faults": [
+    { "actor": "r", "kind": "lost-response", "op": "writeTop", "target": "store2-commit", "context": "recovery-install" }
+  ],
+  "holds": [
+    { "call": { "actor": "r", "op": "read", "target": "$commit", "context": "recovery-install", "nth": 2 }, "until": { "actor": "b", "op": "writeTop", "target": "$commit", "context": "bulk-begin" } },
+    { "call": { "actor": "b", "op": "writeTop", "target": "$commit", "context": "bulk-final" }, "until": { "actor": "r", "op": "read", "target": "$commit", "context": "recovery-install", "nth": 2 } }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "program": [{ "do": "open" }, { "do": "recover" }, { "do": "finalKey" }] },
+    { "id": "b", "seed": 11, "program": [{ "do": "waitFor", "match": { "actor": "r", "op": "writeTop", "target": "$commit", "context": "recovery-install" } }, { "do": "open" }, { "do": "bulk", "tag": "b" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "recover:installed:installed", "finalKey:current=other;retained=none"],
+      "b": ["waitFor", "open", "bulk:committed"]
+    }
+  },
+  "mutants": { "instBytesOnly": "INST" }
+}

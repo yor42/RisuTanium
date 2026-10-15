@@ -9,9 +9,10 @@ import { describe, expect, test } from 'vitest'
 import {
     createMemoryBackend, createNodeBackend, createTauriBackend, Store2CommitConflictError, Store2UnknownOutcomeError, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
-import { newUnitKey } from 'src/ts/storage/store2/format'
+import { newUnitKey, type KeyEnv } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import { isStore2Key } from 'src/ts/storage/store/keyRules'
 import { StoreDeleteManyError, StoreOutcomeUnknownError, StoreStaleGenerationError } from 'src/ts/storage/store/errors'
 import { bytesOf } from '../backendConformance'
 import { createClock, testEnv } from '../commitFixtures'
@@ -19,7 +20,9 @@ import {
     createRng, createScheduler, shuffleListing, splitReadUnits,
     type FaultPlan, type PolicyConfig, type Scheduler, type StepInfo,
 } from './scheduler'
-import { GARBAGE, nodeRig } from './replayFixtures'
+import { GARBAGE, nodeRig, plantGarbageUnits } from './replayFixtures'
+import { createNodeReplayRig } from './nodeRig'
+import { createTauriReplayRig } from './tauriRig'
 import { createTauriSemanticStore, type TauriSemanticStore } from './tauriSemanticStore'
 
 const clock = createClock()
@@ -875,6 +878,28 @@ describe('decorators', () => {
         expect(first).not.toEqual(sorted)
         expect(first).not.toEqual(other)
         expect([...first].sort()).toEqual(sorted)
+    })
+
+    test.each(['node', 'tauri'] as const)('the %s replay rig answers a listing as a seeded permutation of the sorted keys and loses none', async (variant) => {
+        const seen = new Set<string>()
+        for (const seed of [1, 2, 3, 4]) {
+            const options = { scheduler: { seed }, prepare: (hooks: { plant: (key: string, bytes: Uint8Array) => void }, env: KeyEnv) => plantGarbageUnits(hooks.plant, env, 60) }
+            const rig = variant === 'node' ? await createNodeReplayRig(options) : await createTauriReplayRig(options)
+            let listed: string[] = []
+            rig.spawn('t', 10, async (actor) => {
+                await actor.open()
+                listed = await actor.declared({ kind: 'read' }, 'plain', (session) => session.backend!.listStore2())
+            })
+            const result = await rig.run({ maxSteps: 20_000 })
+            expect(result.status).toBe('finished')
+            const sorted = rig.hooks.list('store2/').filter(isStore2Key).sort()
+            expect(sorted.length).toBeGreaterThan(60)
+            expect([...listed].sort()).toEqual(sorted)
+            expect(listed, `seed ${seed}`).not.toEqual(sorted)
+            seen.add(listed.join())
+        }
+        // The seed decides the permutation.
+        expect(seen.size).toBe(4)
     })
 
     test('the decorators pass every other method through unchanged', async () => {

@@ -1139,6 +1139,9 @@ export function splitReadUnits(inner: Store2Backend): Store2Backend {
     }
 }
 
+/** The salt of the listing shuffle's stream of a rig: it never shares draws with the scheduler's own. */
+export const LISTING_SALT = 0x5851F42D
+
 /** A seeded permutation of every `listStore2` answer: nothing may rely on the sorted order the real backends happen to give. */
 export function shuffleListing(inner: Store2Backend, rng: () => number): Store2Backend {
     return {

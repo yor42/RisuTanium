@@ -122,9 +122,11 @@ function commitAllowsDeletion(bytes: Uint8Array | null): boolean {
 
 /**
  * `INST` is the driver's install post-condition: an actor's `installed` result must coincide with an applied commit-key write
- * of that actor under a recovery install whose parsed `current.key` is the result's manifest key (see `Checker.installed`).
- * Each install mints a fresh manifest key, so an earlier write cannot satisfy a later result and no time window is needed;
- * the bytes may differ from the actor's write when a peer rewrote the key keeping the same current.
+ * of that actor under a recovery install whose parsed `current.key` is the result's manifest key, and the commit-key bytes the
+ * result itself carries must also parse with that `current.key` (see `Checker.installed`).
+ * Each install mints a fresh manifest key, so an earlier write cannot satisfy a later result and no time window is needed.
+ * The result's bytes may differ from the actor's write when a peer rewrote the key keeping the same current; they must not
+ * name another current, which is what an install whose own write was superseded would carry.
  */
 export type PropertyId = 'I1' | 'b' | 'I2' | 'I3' | 'h' | 'h2' | 'G1' | 'G10' | 'i' | 'p' | 'r' | 'I4' | 'INST'
 
@@ -148,8 +150,11 @@ export interface Checker {
     observe(info: StepInfo): Violation[]
     /** Records a yes; it counts for the steps observed after this call. */
     consent(event: ConsentEvent): void
-    /** Judges an install the actor was told succeeded: an applied commit-key write of the actor under its recovery install must have named `manifestKey` as current. */
-    installed(actor: string, manifestKey: string): void
+    /**
+     * Judges an install the actor was told succeeded: an applied commit-key write of the actor under its recovery install must have named
+     * `manifestKey` as current, and `resultBytes`, the commit-key bytes the install result carries, must name it too.
+     */
+    installed(actor: string, manifestKey: string, resultBytes: Uint8Array): void
     readonly violations: readonly Violation[]
 }
 
@@ -683,11 +688,16 @@ export function createChecker(read: () => RawState): Checker {
         return found
     }
 
-    function installed(actor: string, manifestKey: string): void {
-        if ((installWrites.get(actor) ?? []).some((written) => parsedCommitOf(written)?.current?.key === manifestKey)) {
+    function installed(actor: string, manifestKey: string, resultBytes: Uint8Array): void {
+        const written = (installWrites.get(actor) ?? []).some((bytes) => parsedCommitOf(bytes)?.current?.key === manifestKey)
+        if (!written) {
+            violations.push({ property: 'INST', step: lastStep, actor, detail: `${actor} was told its install of ${manifestKey} succeeded, but no applied commit-key write of its recovery install named that manifest as current` })
             return
         }
-        violations.push({ property: 'INST', step: lastStep, actor, detail: `${actor} was told its install of ${manifestKey} succeeded, but no applied commit-key write of its recovery install named that manifest as current` })
+        // A write of its own that a peer superseded leaves a different current in the bytes the result reports.
+        if (parsedCommitOf(resultBytes)?.current?.key !== manifestKey) {
+            violations.push({ property: 'INST', step: lastStep, actor, detail: `${actor} was told its install of ${manifestKey} succeeded, but the commit-key bytes of that result do not name it as current` })
+        }
     }
 
     return { observe, installed, violations, consent: (event) => { consents.push({ ...event, after: lastStep }) } }

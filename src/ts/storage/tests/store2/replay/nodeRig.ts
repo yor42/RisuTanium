@@ -13,6 +13,7 @@ import { createClock, seedStore, testEnv } from '../commitFixtures'
 import { assembleRig, seededStart, type ReplayRig, type ReplayRigOptions, type RigParts } from './actors'
 import { rawOfNodeSemantic } from './checker'
 import { createNodeSemanticStore, type NodeSemanticOptions, type NodeSemanticStore } from './nodeSemanticStore'
+import { createRng, LISTING_SALT, shuffleListing } from './scheduler'
 
 export interface NodeReplayRigOptions extends ReplayRigOptions {
     /** The fake server's own limits. */
@@ -27,13 +28,15 @@ export async function createNodeReplayRig(options: NodeReplayRigOptions): Promis
     const start = options.start ?? 'healthy'
     // The seeding backend is unscheduled; it writes a first tree and the commit key naming it.
     const seedManifest = seededStart(start) ? await seedStore(createNodeBackend(fake.store), testEnv(clock, 1)) : null
+    const listing = createRng(options.scheduler.seed ^ LISTING_SALT)
     const parts: RigParts = {
         variant: 'node',
         raw: rawOfNodeSemantic(fake),
         hooks: { peek: (key) => fake.peek(key).bytes, plant: (key, bytes) => fake.plant(key, bytes), list: (prefix) => fake.list(prefix), remove: (key) => fake.remove(key) },
         deviceOwner: false,
         pageStore: (handle) => handle.byteStore(fake.store),
-        openBackend: async (store) => createNodeBackend(store),
+        // The server's listing is sorted and nothing may rely on that: every tab's listing is shuffled by the rig's seeded stream.
+        openBackend: async (store) => shuffleListing(createNodeBackend(store), listing),
         probe: (store) => {
             const guarded = store.guarded
             return guarded === undefined ? undefined : () => guarded.probe()

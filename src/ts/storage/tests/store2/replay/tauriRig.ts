@@ -34,7 +34,7 @@ import { createChecker, type Checker } from './checker'
 import { createClock, seedStore, testEnv, treeRequest, type BuildRecord, type TestClock } from '../commitFixtures'
 import { assembleRig, seededStart, type ReplayRig, type ReplayRigOptions, type RigParts } from './actors'
 import {
-    createScheduler, type ActorHandle, type RawState, type RunResult, type Scheduler, type SchedulerOptions, type StepInfo,
+    createRng, createScheduler, LISTING_SALT, shuffleListing, type ActorHandle, type RawState, type RunResult, type Scheduler, type SchedulerOptions, type StepInfo,
 } from './scheduler'
 import { createTauriSemanticStore, rawOfTauriSemantic, type TauriSemanticOptions, type TauriSemanticStore } from './tauriSemanticStore'
 
@@ -112,6 +112,7 @@ export async function createTauriReplayRig(options: TauriReplayRigOptions): Prom
     const start = options.start ?? 'healthy'
     // The seeding page registers like any page and is stale as soon as the first real page does.
     const seedManifest = seededStart(start) ? await seedStore(await createTauriBackend(fake.store), testEnv(clock, 1)) : null
+    const listing = createRng(options.scheduler.seed ^ LISTING_SALT)
     const parts: RigParts = {
         variant: 'tauri',
         raw: rawOfTauriSemantic(fake),
@@ -120,7 +121,8 @@ export async function createTauriReplayRig(options: TauriReplayRigOptions): Prom
         restart: (drop) => fake.restart(drop),
         unflushed: (key) => fake.markUnflushed(key),
         pageStore: (handle) => handle.byteStore(fake.store),
-        openBackend: (store) => createTauriBackend(store),
+        // The backend's listing is sorted and nothing may rely on that: every page's listing is shuffled by the rig's seeded stream.
+        openBackend: async (store) => shuffleListing(await createTauriBackend(store), listing),
         probe: () => undefined,
     }
     return Object.assign(assembleRig({ parts, clock, seedManifest, options }), { fake })

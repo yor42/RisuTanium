@@ -1,6 +1,6 @@
 {
   "name": "instLostReplyPeerBulkBegin",
-  "covers": "regression reproducer for the INST false positive: a recovery install's final write is applied and its reply lost, a peer's bulk-begin rewrites the commit key (current unchanged) before the read-back, and the install is reported as installed with the peer's bytes; INST judges the manifest the actor's own write named, not the bytes",
+  "covers": "regression reproducer for the INST false positive: a recovery install's final write is applied and its reply lost, a peer's bulk-begin rewrites the commit key (current unchanged) before the read-back, and the install is reported as installed with the peer's bytes; INST requires both an applied recovery-install write by the actor naming the manifest and the result's own bytes parsing with that manifest as current",
   "variant": "node",
   "start": "damaged-commit",
   "seeds": [1, 2, 3, 4],
