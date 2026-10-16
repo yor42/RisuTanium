@@ -1,0 +1,32 @@
+{
+  "name": "commitKeyDamageHeal",
+  "covers": "heal: the commit key is damaged silently while a device holds the pre-damage base; the device's commit lands over the damage first and the recovery exit abandons",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3],
+  "labels": {
+    "H: read commit key (base); H: upload units": "h: open, commit: the read of the commit key (the base it holds), the eleven unit uploads",
+    "ENV: commit key DAMAGED (silent: the revision stays)": "environment step damage-commit, after h's read and before h's commit-key write",
+    "H: commit CAS at the base version ok (heals)": "h: the commit-key write, held until x has read the damaged key; on Node the damaged key has the revision h holds",
+    "X: recovery exit over the damaged key": "x: waits for the damage, then opens (its boot read is the damaged key) and runs the exit on that read: its fence write, then its marker write at the damaged key's version, held until h's write is applied",
+    "X: marker CAS conflicts; the key parses with a current -> abandon": "x: exit:abandoned, nothing of the marker landed"
+  },
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "h", "op": "read", "target": "$commit", "context": "commit" } }
+  ],
+  "holds": [
+    { "call": { "actor": "h", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "x", "op": "read", "target": "$commit" } },
+    { "call": { "actor": "x", "op": "writeChecked", "target": "$commit", "context": "recovery-begin" }, "until": { "actor": "h", "op": "writeChecked", "target": "$commit", "context": "commit" } }
+  ],
+  "actors": [
+    { "id": "h", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "h" }] },
+    { "id": "x", "seed": 11, "program": [{ "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "open" }, { "do": "exit", "kind": "seed" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "h": ["open", "commit:committed"],
+      "x": ["waitFor", "open", "exit:abandoned"]
+    }
+  },
+  "mutants": { "markerFreshToken": "I3" }
+}

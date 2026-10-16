@@ -1,0 +1,19 @@
+{
+  "name": "tauriInstallUnflushedThenRestart",
+  "covers": "durability of a recovery install: the final write applies and reports flushed:false, so the install is reported installed (INST judges that it was applied) with the flag, the page's deleters idle; a restart that drops the unflushed write puts the recovery marker back and the new page boots into the recovery screen, never into normal mode on an install that was lost",
+  "variant": "tauri",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3],
+  "faults": [
+    { "actor": "r", "kind": "flush-fault", "op": "writeTop", "target": "store2-commit", "context": "recovery-install" }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "page": "p", "device": "d", "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "recover" }, { "do": "gc" }, { "do": "restart" }, { "do": "decision" }, { "do": "finalKey" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "recover:installed:installed:unflushed", "gc:refused:idle", "restart:none", "decision:8:recovery", "finalKey:current=none;retained=none"]
+    }
+  },
+  "mutants": { "restartDropsNothing": "outcome", "topFlushMissingAsFlushed": "outcome" }
+}

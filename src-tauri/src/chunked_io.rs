@@ -16,6 +16,7 @@
 //! because the byte store reads keys that it would not create.
 
 use crate::durable_write::{is_temp_name, rename_with_retry, resolve_key, FileOps, RealOps};
+use crate::store2_gate::ungated_write_refusal;
 use base64::{engine::general_purpose, Engine as _};
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
@@ -45,7 +46,7 @@ pub fn temp_name_for(id: &str) -> Result<String, String> {
     }
 }
 
-fn decode_chunk(data: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_chunk(data: &str) -> Result<Vec<u8>, String> {
     if data.len() > MAX_CHUNK_BYTES / 3 * 4 + 4 {
         return Err("the chunk is larger than a chunk may be".to_string());
     }
@@ -223,6 +224,10 @@ pub fn write_chunk_key(
     durable: bool,
     final_key: Option<&str>,
 ) -> Result<bool, String> {
+    // The destination is checked on every chunk, so a refused write leaves no temp behind.
+    if let Some(reason) = ungated_write_refusal(final_key.unwrap_or(key)) {
+        return Err(reason.to_string());
+    }
     let target = resolve_key(base, key)?;
     let temp_name = temp_name_for(id)?;
     let bytes = decode_chunk(data)?;

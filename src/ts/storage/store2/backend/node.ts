@@ -270,8 +270,9 @@ export function createNodeBackend(store: ByteStore): Store2Backend {
                 return unreported()
             }
             try {
-                // The commit key is listed first: the server reports the first check that fails.
-                await guarded.removeChecked(
+                // The commit key is listed first: the server reports the first check that fails. A collected unit is retired,
+                // not merely removed: the server forgets its revision, so its revision map does not grow with every collection.
+                await guarded.retireChecked(
                     keys.map((key) => ({ key, condition: 'unconditional' as const })),
                     [{ key: COMMIT_KEY, version: commitToken.revision }, { key: FENCE_KEY, version: fenceToken.revision }],
                 )

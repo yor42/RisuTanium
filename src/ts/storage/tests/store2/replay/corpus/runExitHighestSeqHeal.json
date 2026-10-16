@@ -1,0 +1,32 @@
+{
+  "name": "runExitHighestSeqHeal",
+  "covers": "outcome-only guard (the mutant exitSeqZero changes the outcome, not a checker property) for heal lost: the recovery exit's marker lands over the damaged commit key first, with a seq above the highest manifest seq the actor read; the device holding the pre-damage base loses its write",
+  "variant": "node",
+  "start": "healthy",
+  "garbage": 1,
+  "seeds": [1, 2, 3],
+  "labels": {
+    "H: read commit key (base seq 1); H: upload units": "h: open, commit: the read of the commit key and the eleven unit uploads; x lists only after them",
+    "X: collection pass reads the manifest": "x: open, gc: its mark reads the seed manifest (seq 1), so the actor has read seq 1; it removes the garbage unit and the units h uploaded, which no commit key names",
+    "ENV: commit key DAMAGED (silent)": "environment step damage-commit, after x's batch is applied",
+    "X: exit: marker over the damaged key, seq = highest read + 1": "x: exit seed over the damaged key; its marker lands before h's write",
+    "H: commit CAS at the base version": "h: the commit-key write, held until x's marker is applied; it conflicts"
+  },
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "x", "op": "retireChecked" } }
+  ],
+  "holds": [
+    { "call": { "actor": "x", "op": "list", "context": "gc" }, "until": { "actor": "h", "op": "writeChecked", "target": "$unit", "nth": 11 } },
+    { "call": { "actor": "h", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "x", "op": "writeChecked", "target": "$commit", "context": "recovery-begin" } }
+  ],
+  "actors": [
+    { "id": "h", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "h" }] },
+    { "id": "x", "seed": 11, "program": [{ "do": "open" }, { "do": "gc" }, { "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "exit", "kind": "seed" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "h": ["open", "commit:conflict"],
+      "x": ["open", "gc:done:12", "waitFor", "exit:marked@seq=2"]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "surprise_s3c_base_manifest_404_after_crash",
+  "covers": "surprise 3, the recovery route: a page reads the commit key and, before it reads the manifest the key names, a recovery installs a staged copy under a new commit key, its fence is discarded and a collection pass deletes the old trees; the page's manifest read finds the unit gone, and the boot decides the recovery screen (row 6, tree missing) instead of building on the stale key",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: CRASH; A: read commit key -> v1 cur=m/0": "a: the page that reloads: open reads the fence and the commit key (current is the seeded manifest) and then reads the manifest; that read is held",
+    "B: ordinary commit": "b: a commit after a's read of the commit key; admit moves the clock, so its manifest is the newest candidate",
+    "RECOVER: read commit key; candidate list; user picks; marker CAS; install": "r: recover once b's commit is applied: the exit's fence write and marker, the tree read, the staged copy and the final write, which names the staged manifest and an empty retained list",
+    "GC: pass; GC: remove [m/0]": "g: once r has discarded the fence (a recovery's fence lists every key and keeps a pass from deleting them), a collection pass: read commit key, mark, fence, list, retire of the old trees; the pass is the step that releases a's held read",
+    "A: read manifest m/0 -> missing; re-read commit key": "a: the manifest read finds nothing; open classifies the boot as the recovery screen, row 6 with the tree missing",
+    "recovery screen of that boot": "a: recover, which runs on the commit key read the boot made: its marker write is made at that read's token, conflicts because r's install moved the key on, and the exit is abandoned (recover:pick:exit:abandoned). r opens only after b's commit, so that its own boot read is the key it installs over"
+  },
+  "holds": [
+    { "call": { "actor": "a", "op": "read", "target": "$unit" }, "until": { "actor": "g", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "decision" }, { "do": "recover" }] },
+    { "id": "b", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "read", "target": "$commit" } }, { "do": "admit", "tag": "b" }] },
+    { "id": "r", "seed": 12, "program": [{ "do": "waitFor", "match": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" } }, { "do": "open" }, { "do": "recover" }, { "do": "discardFence" }] },
+    { "id": "g", "seed": 13, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "r", "op": "removeChecked", "target": "$fence", "context": "fence-discard" } }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "decision:6:recovery:missing", "recover:pick:exit:abandoned"],
+      "b": ["open", "waitFor", "admit:committed*1"],
+      "r": ["waitFor", "open", "recover:installed:installed", "discardFence:discarded"],
+      "g": ["open", "waitFor", "gc:done:22"]
+    }
+  }
+}

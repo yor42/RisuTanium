@@ -1,0 +1,30 @@
+{
+  "name": "surprise_s6_unit_mismatch_manifest_reupload",
+  "covers": "surprise 6: a collection pass retires part of a writer's fresh units while the commit key matches; the manifest names retired units, so the retry re-uploads the manifest as well, under a fresh key, and the surviving unit of the first attempt stays an orphan that no commit names",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u/A1.0.g0; A: upload m/A1.1.g1": "a: open, commit: ten of the eleven unit uploads; the eleventh upload is held until the pass has listed",
+    "GC: begin pass; GC: list keys (4); GC: read commit key at R=v1; GC: read manifest(s) m/0; mark done": "gc: read commit key, mark, read fence, then list, held until the tenth upload is applied: ten new units are candidates, the eleventh is not yet there",
+    "GC: remove [u/A1.0.g0] (check-only commit key == v1 ok)": "gc: retireChecked of the ten candidates while the commit key is still the version the pass read",
+    "A: commit CAS -> 409 on unit u/A1.0.g0 (commit key matched); retry 1: re-upload under new key": "a: the commit-key write, held until the batch is applied, names a retired unit: commit:failed; the second commit step is the retry",
+    "A: upload u/A1.0.g2; A: upload m/A1.1.g3": "a: the retry builds the whole tree under fresh keys, the manifest among them: nothing of the first attempt is named again"
+  },
+  "holds": [
+    { "call": { "actor": "gc", "op": "list" }, "until": { "actor": "a", "op": "writeChecked", "target": "$unit", "nth": 10 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$unit", "context": "commit", "nth": 11 }, "until": { "actor": "gc", "op": "list" } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "gc", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "commit", "tag": "a" }] },
+    { "id": "gc", "seed": 11, "program": [{ "do": "open" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:failed", "commit:committed"],
+      "gc": ["open", "gc:done:10"]
+    }
+  },
+  "mutants": { "commitReusesUnitKeys": "I2" }
+}

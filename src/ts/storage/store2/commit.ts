@@ -1,5 +1,5 @@
 import {
-    Store2BackendError, Store2CommitConflictError, Store2UnknownOutcomeError,
+    Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2UnknownOutcomeError,
 } from './backend/errors'
 import {
     BULK_UNIT_THRESHOLD, sameBytes, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite,
@@ -458,7 +458,12 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         const manifestUnit: UnitWrite = { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }
         try {
             for (const unit of [...built.units, manifestUnit]) {
-                await backend.putUnit(unit.key, unit.bytes)
+                // A unit whose flush failed must not be named by the final write: it may not survive power loss.
+                const written = await backend.putUnit(unit.key, unit.bytes)
+                if (written.flushed === false) {
+                    const cause = new Store2BackendFailureError(`The unit ${unit.key} was written but its flush failed or was not reported as done, so the bulk commit was abandoned.`)
+                    return { status: 'abandoned', reason: 'upload-failed', cleared: await clearOwnMarker(prefix), cause }
+                }
             }
         } catch (error) {
             if (error instanceof Store2BackendError) {

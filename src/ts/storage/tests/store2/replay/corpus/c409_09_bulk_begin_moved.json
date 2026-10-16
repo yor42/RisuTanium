@@ -1,0 +1,26 @@
+{
+  "name": "c409_09_bulk_begin_moved",
+  "covers": "bulk begin CAS, commit key moved: a peer's ordinary commit lands between the bulk page's read of the commit key and its marker write; the bulk commit reports a conflict, writes no marker and uploads nothing",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin BULK commit": "a: open, bulk: its read of the commit key",
+    "B: begin ordinary commit; B: upload u; B: upload m; B: commit CAS ok -> v2": "b: open, commit: the eleven uploads and the commit-key write, held until a has read the commit key",
+    "A: BULK begin CAS -> 409 on commit key; PARK": "a: the marker write, held until b's commit is applied: bulk:conflict, the commit key keeps b's value"
+  },
+  "holds": [
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "a", "op": "read", "target": "$commit", "context": "bulk-begin" } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "bulk-begin" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "commit" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "bulk", "tag": "a" }] },
+    { "id": "b", "seed": 11, "program": [{ "do": "open" }, { "do": "commit", "tag": "b" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "bulk:conflict"],
+      "b": ["open", "commit:committed"]
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "c409_13_gc_manifest_read_404",
+  "covers": "GC manifest read 404: a manifest the commit key names is lost from the store between a collection pass's read of the commit key and its read of the manifests; the library's mark finds the manifest missing, the closure is not ok and the pass is refused (mark-refused) with nothing listed or deleted, rather than re-listing",
+  "variant": "node",
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2, 3],
+  "labels": {
+    "GC: begin pass; GC: read commit key; ENV: delete a named manifest; GC: read manifests -> 404": "g: open, gc: the commit-key read, then the environment step remove-unit that takes the retained manifest out, then the manifest reads (both held until it is applied) that find it missing",
+    "GC manifest read 404 => abort pass, re-list": "g: gc:refused:mark-refused, nothing listed and nothing deleted"
+  },
+  "env": [
+    { "name": "remove-unit", "unit": "retained", "after": { "actor": "g", "op": "read", "target": "$commit", "context": "gc" } }
+  ],
+  "holds": [
+    { "call": { "actor": "g", "op": "read", "target": "$unit", "context": "gc" }, "until": { "actor": "$env", "op": "remove-unit" } },
+    { "call": { "actor": "g", "op": "read", "target": "$unit", "context": "gc" }, "until": { "actor": "$env", "op": "remove-unit" } }
+  ],
+  "actors": [
+    { "id": "c", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "c" }] },
+    { "id": "g", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "c", "op": "writeChecked", "target": "$commit", "context": "commit" } }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "c": ["open", "commit:committed"],
+      "g": ["open", "waitFor", "gc:refused:mark-refused"]
+    }
+  },
+  "mutants": { "gcMissingManifestAsEmpty": "I1" }
+}

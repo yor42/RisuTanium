@@ -19,6 +19,33 @@ export class StoreInvalidKeyError extends StoreError {
     }
 }
 
+/**
+ * A call through the byte store's page-generation gate (`ByteStore.pageGate`) named a
+ * generation that is not the current one: a newer page registered since, or this
+ * page never registered. The native side refused it before touching the disk, so
+ * nothing was applied; like `StoreInvalidKeyError` it is a definite failure. A call
+ * that was re-sent after a failed first attempt may still have been applied by the
+ * earlier attempt, which is harmless because the refused page stops deciding.
+ */
+export class StoreStaleGenerationError extends StoreError {
+    constructor(public readonly detail: string) {
+        super(`The page's storage generation is not the current one: ${detail}`)
+        this.name = 'StoreStaleGenerationError'
+    }
+}
+
+/**
+ * Registering the page with the gate found a decisive write of an earlier page still
+ * holding it past the native deadline. No generation was issued and nothing was
+ * applied.
+ */
+export class StoreRegistrationTimeoutError extends StoreError {
+    constructor(public readonly detail: string) {
+        super(`The page could not register with the storage gate: ${detail}`)
+        this.name = 'StoreRegistrationTimeoutError'
+    }
+}
+
 /** The condition is not `'unconditional'` and not `{ ifVersion }` with a usable version. Raised before any backend call. */
 export class StoreInvalidConditionError extends StoreError {
     constructor(public readonly reason: string) {

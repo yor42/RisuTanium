@@ -1,0 +1,23 @@
+{
+  "name": "tauriMarkerAfterUnflushedFence",
+  "covers": "N4: on Tauri the recovery exit writes its marker only after the fence write reported flushed; a fence write that did not reach stable storage stops the exit before the marker, and a restart that keeps the file finds the fence again and its boot re-flush flushes it",
+  "variant": "tauri",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3],
+  "faults": [
+    { "actor": "r", "kind": "flush-fault", "op": "writeTop", "target": "store2-fence" }
+  ],
+  "labels": {
+    "H9: the exit waits for the fence write to report flushed before its marker CAS": "r: exit seed: the fence write reports flushed:false (the flush fault of the scheduler); the exit ends fence:not-durable and writes no marker, so the damaged commit key still stands",
+    "N4: the flag is lost with the re-flush": "r: a Tauri restart that keeps the unflushed fence file (no power loss): the new page's boot re-flush rewrites the commit key and the fence it finds, both report flushed, and the deleters are not idle"
+  },
+  "actors": [
+    { "id": "r", "seed": 10, "page": "p", "device": "d", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }, { "do": "finalKey" }, { "do": "restart", "drop": false }, { "do": "reflush" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "exit:fence:not-durable", "finalKey:unparsed", "restart:none", "reflush:commit=flushed,fence=flushed,active"]
+    }
+  },
+  "mutants": { "topFlushMissingAsFlushed": "outcome" }
+}

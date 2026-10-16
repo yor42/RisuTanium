@@ -1,0 +1,25 @@
+{
+  "name": "c409_12_gc_refuses_unflushed",
+  "covers": "GC refuses, unconfirmed commit-key flush: on Tauri a commit's commit-key write reports that it was not flushed to stable storage, a collection pass of that page refuses to delete anything while the commit key is unconfirmed, and the restart that drops the unflushed write finds the tree the older commit key names still there",
+  "variant": "tauri",
+  "start": "healthy",
+  "garbage": 3,
+  "seeds": [1, 2, 3],
+  "faults": [
+    { "actor": "a", "kind": "flush-fault", "op": "writeTop", "target": "store2-commit", "context": "commit", "nth": 2 }
+  ],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m; A: commit CAS ok -> v2 [commit-key FLUSH FAILED]": "a: open, a first commit (flushed) and a second commit whose commit-key write reports flushed:false (the flush fault of the scheduler); the second commit is committed and carries flushed:false, its key no longer names the first commit's tree, and the page's flush tracker sets the idle reason",
+    "GC: begin pass; GC: list keys; GC: read commit key -> commit-key flush unconfirmed; GC REFUSES this pass": "a: gcPass on the same page: the session's idleReason is set, so the pass ends refused:idle and deletes nothing (the library checks the flush after the mark's reads and before any list or batch)",
+    "restart that drops the unflushed commit key": "a: restart with the unflushed write dropped: the commit key is the first commit's again and that tree, which the unflushed newer key no longer names, is still stored; the second pass of the new page collects what no commit key names; the second commit carries 5 extra units, so the pass deletes 19 when that commit's tree is the orphan (dropped) and 14 when the first commit's is (nothing dropped)"
+  },
+  "actors": [
+    { "id": "a", "seed": 10, "page": "p", "device": "d", "program": [{ "do": "open" }, { "do": "commit", "tag": "a1" }, { "do": "commit", "tag": "a2", "extra": 5 }, { "do": "gc" }, { "do": "restart" }, { "do": "finalKey" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:committed", "commit:committed", "gc:refused:idle", "restart:none", "finalKey:current=other;retained=seed", "gc:done:19"]
+    }
+  },
+  "mutants": { "gcIgnoresUnconfirmedFlush": "I1", "topFlushMissingAsFlushed": "I1", "restartDropsNothing": "outcome" }
+}

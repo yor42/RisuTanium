@@ -22,6 +22,7 @@ use crate::chunked_io::{abort_chunk_with, temp_name_for, write_chunk_final_with,
 use crate::durable_write::{
     decode_key_header, is_temp_name, rename_with_retry, resolve_key, FileOps, RealOps, KEY_HEADER,
 };
+use crate::store2_gate::ungated_write_refusal;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -516,6 +517,10 @@ pub fn write_chunk_raw_with<O: FileOps>(
     headers: &RawChunkHeaders,
     bytes: &[u8],
 ) -> Outcome {
+    // The destination is checked on every chunk, so a refused write leaves no temp behind.
+    if let Some(reason) = ungated_write_refusal(headers.final_key.as_deref().unwrap_or(&headers.key)) {
+        return Outcome::Invalid(reason.to_string());
+    }
     if bytes.len() > MAX_CHUNK_BYTES {
         return Outcome::Error("the chunk is larger than a chunk may be".to_string());
     }

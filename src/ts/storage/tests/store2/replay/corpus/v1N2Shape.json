@@ -1,0 +1,46 @@
+{
+  "name": "v1N2Shape",
+  "covers": "V1's N2 violation shape, the model's literal form: two tabs, one crash, a silent commit-key damage after f's marker and a silent fence damage; a second tab recovers over the damaged commit key and a second exit writes its stale listing over the damaged fence",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4, 5, 6, 7, 8],
+  "redSeeds": [2, 3, 4, 5],
+  "redSeedsReason": "f's first staged unit is released by h's boot read, the only step of h common to the library's order and to the early-listing mutant before the listing; the boot read leaves no later step common to both orders, so on seeds 1, 6 and 7 f's unit lands before the mutant's listing and the listing already holds it. The mutant is a deterministic red on the four fixed seeds; v1N2ShapeDamaged carries the premise on all eight. A release on a pending request is a driver carry (stage 2f-7).",
+  "labels": {
+    "F: exit step 1..3, marker (seed)": "f: open, recover: the exit's fence write over the empty fence, then its recovery marker over the healthy commit key",
+    "ENV: commit key DAMAGED (silent)": "environment step damage-commit, after f's first install step: its marker is confirmed by then, so the damage never lands between the marker write and the read that confirms it",
+    "H: boot; H: read commit key -> UNPARSABLE; H: exit step 1: list": "h: waits for the damage, then opens (its boot read is the damaged key) and runs the exit on that read; in the old order its listing comes next, before the fence read",
+    "F: upload u/F1.0; F: CRASH": "f: the first staged unit of its install, applied and then f is gone (crash-after-write)",
+    "F: boot; exit; marker; final commit CAS ok": "f2: waits for f's first staged unit, then opens (its boot read shows f's marker) and recovers over the damaged commit key: a second exit extends the fence with the listing that holds f's orphan unit, its marker, its install; h2 does not judge a replacement of an unparsable key",
+    "ENV: store2-fence DAMAGED (silent)": "environment step damage-fence, after f2's install is applied",
+    "H: read store2-fence -> UNPARSABLE; H: exit step 2: CAS extend with the stale listing": "h: its read of the fence, held until the fence damage; in the old order it writes the listing it took before f's unit existed",
+    "GC: pass; GC: remove [u/F1.0]": "g: a collection pass after h's fence write"
+  },
+  "faults": [
+    { "actor": "f", "kind": "crash-after-write", "op": "writeChecked", "context": "recovery-install", "nth": 1 }
+  ],
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "f", "context": "recovery-install" } },
+    { "name": "damage-fence", "after": { "actor": "f2", "op": "writeChecked", "target": "$commit", "context": "recovery-install" } }
+  ],
+  "holds": [
+    { "call": { "actor": "f", "op": "writeChecked", "target": "$unit", "context": "recovery-install" }, "until": { "actor": "h", "op": "read", "target": "$commit" } },
+    { "call": { "actor": "h", "op": "read", "target": "$fence", "context": "recovery-begin" }, "until": { "actor": "$env", "op": "damage-fence" } }
+  ],
+  "actors": [
+    { "id": "f", "seed": 10, "program": [{ "do": "open" }, { "do": "recover" }] },
+    { "id": "h", "seed": 11, "foreignClear": "yes", "program": [{ "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "open" }, { "do": "exit", "kind": "seed" }] },
+    { "id": "f2", "seed": 12, "foreignClear": "yes", "program": [{ "do": "waitFor", "match": { "actor": "f", "op": "writeChecked", "target": "$unit", "context": "recovery-install" } }, { "do": "open" }, { "do": "recover" }] },
+    { "id": "g", "seed": 13, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "h", "op": "writeChecked", "target": "$fence", "context": "fence-exit" } }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "actors": { "f": "crashed" },
+    "outcomes": {
+      "f": ["open"],
+      "h": ["waitFor", "open", "exit:abandoned"],
+      "f2": ["waitFor", "open", "recover:installed:installed"],
+      "g": ["open", "waitFor", "gc:done:0"]
+    }
+  },
+  "mutants": { "listBeforeFenceRead": "G10" }
+}

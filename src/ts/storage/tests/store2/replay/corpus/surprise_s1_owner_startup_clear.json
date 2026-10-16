@@ -1,0 +1,25 @@
+{
+  "name": "surprise_s1_owner_startup_clear",
+  "covers": "surprise 1: the owner id survives a crash on a device; the page that reopens finds its own marker, still standing, and the boot clears it with its own id and prefix, with no question to the user",
+  "variant": "tauri",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "faults": [
+    { "actor": "a", "kind": "crash-after-write", "op": "writeTop", "target": "store2-commit", "context": "recovery-begin" }
+  ],
+  "labels": {
+    "A: begin BULK commit #1; A: BULK step 1: CAS marker staging=[A, s/A1.b0/] -> v2; A: CRASH": "a: open, exit seed: the fence write and then the marker write of a seed exit, which carries a's own owner id and applies, and the page is gone; the library's start-up clear is for a seed or convert marker, a bulk or recovery marker is never cleared at boot",
+    "A: read commit key -> v2 cur=m/0 stg=[A, s/A1.b0/]; A: owner start-up clear of own marker -> v3": "a2: a new page on the same device (the owner store is shared), open: the boot reads the marker as its own and its start-up clear lands; the session's decision is row 9 and the clear is reported cleared"
+  },
+  "actors": [
+    { "id": "a", "seed": 10, "page": "p", "device": "d", "program": [{ "do": "open" }, { "do": "exit", "kind": "seed" }] },
+    { "id": "a2", "seed": 11, "page": "p2", "device": "d", "program": [{ "do": "waitFor", "match": { "actor": "a", "op": "writeTop", "target": "$commit", "context": "recovery-begin" } }, { "do": "open" }, { "do": "startupClear" }, { "do": "decision" }] }
+  ],
+  "expect": {
+    "actors": { "a": "crashed" },
+    "outcomes": {
+      "a": ["open"],
+      "a2": ["waitFor", "open", "startupClear:cleared", "decision:9:rerun"]
+    }
+  }
+}

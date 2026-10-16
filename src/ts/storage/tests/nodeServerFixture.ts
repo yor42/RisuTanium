@@ -11,6 +11,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { FetchLike } from 'src/ts/storage/store/nodeHttpStore'
 
 // RISU_NODE_SERVER_SCRIPT points the fixture at another build of the server,
 // for running a test against an earlier version of server.cjs.
@@ -18,6 +19,7 @@ const SERVER_SCRIPT = process.env.RISU_NODE_SERVER_SCRIPT ?? fileURLToPath(new U
 if (process.env.RISU_NODE_SERVER_SCRIPT !== undefined) {
     console.warn(`nodeServerFixture: running the Node server from RISU_NODE_SERVER_SCRIPT=${SERVER_SCRIPT}`)
 }
+const REPO_NODE_MODULES = fileURLToPath(new URL('../../../../node_modules', import.meta.url))
 const READY_TIMEOUT_MS = 20_000
 const EXIT_TIMEOUT_MS = 5_000
 const READY_LINE = 'HTTP server is running'
@@ -88,6 +90,67 @@ export interface NodeServerOptions extends NodeServerLaunchOptions {
      * know.
      */
     provisioned?: boolean
+    /**
+     * Runs this file instead of the repository's `server/node/server.cjs`, for a
+     * test against an earlier build of the server extracted outside the tree. The
+     * script's own `require`s must sit beside it; its packages are found through
+     * `NODE_PATH`, which the fixture points at the repository's `node_modules`
+     * unless `env` sets its own.
+     */
+    serverScript?: string
+}
+
+/** The Node arguments that cap a request's header block at `bytes`; a larger one gets the server's own 431. */
+export function headerLimitArgs(bytes: number): string[] {
+    return [`--max-http-header-size=${bytes}`]
+}
+
+export interface ReplyDropPlan {
+    /** Names the kind a request is counted under; by default the route name after `/api/`. */
+    kindOf?: (url: string, init: RequestInit | undefined) => string
+    /** Per kind: whether the `nth` request (counted from 1) of that kind has its reply lost after the server applied it. */
+    drops: Readonly<Record<string, (nth: number) => boolean>>
+}
+
+export interface ReplyDropper {
+    /** The `fetch` to hand a store: a dropped reply is a rejected request, as a connection lost after the server acted. */
+    fetch: FetchLike
+    /** Requests started, per kind. */
+    readonly seen: ReadonlyMap<string, number>
+    /** Replies dropped, per kind. */
+    readonly dropped: ReadonlyMap<string, number>
+}
+
+function routeKindOf(url: string): string {
+    return new URL(url).pathname.replace(/^\/api\//, '')
+}
+
+/**
+ * A `fetch` over the real network that applies a request and then loses its reply:
+ * the real server completes the request, the answer is read to its end and thrown
+ * away, and the caller sees a transport failure. Only the kinds named in `plan.drops`
+ * are affected; counting is per kind, in the order requests start.
+ */
+export function createReplyDropper(plan: ReplyDropPlan): ReplyDropper {
+    const seen = new Map<string, number>()
+    const dropped = new Map<string, number>()
+    const kindOf = plan.kindOf ?? routeKindOf
+    return {
+        seen,
+        dropped,
+        fetch: async (url, init) => {
+            const kind = kindOf(url, init)
+            const nth = (seen.get(kind) ?? 0) + 1
+            seen.set(kind, nth)
+            const response = await globalThis.fetch(url, init)
+            if (plan.drops[kind]?.(nth) === true) {
+                await response.arrayBuffer().catch(() => undefined)
+                dropped.set(kind, (dropped.get(kind) ?? 0) + 1)
+                throw new TypeError('fetch failed: the reply was lost')
+            }
+            return response
+        },
+    }
 }
 
 export async function startNodeServer(options: NodeServerOptions = {}): Promise<NodeServerFixture> {
@@ -128,9 +191,9 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
 
     const launch = async () => {
         output = ''
-        child = spawn(process.execPath, [...(launchOptions.nodeArgs ?? []), SERVER_SCRIPT], {
+        child = spawn(process.execPath, [...(launchOptions.nodeArgs ?? []), options.serverScript ?? SERVER_SCRIPT], {
             cwd: workDir,
-            env: { ...process.env, PORT: String(port), ...launchOptions.env },
+            env: { ...process.env, PORT: String(port), ...(options.serverScript === undefined ? {} : { NODE_PATH: REPO_NODE_MODULES }), ...launchOptions.env },
             stdio: ['ignore', 'pipe', 'pipe'],
         })
         const running = child

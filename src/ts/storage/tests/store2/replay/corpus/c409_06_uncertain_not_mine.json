@@ -1,0 +1,28 @@
+{
+  "name": "c409_06_uncertain_not_mine",
+  "covers": "uncertain commit CAS, not mine: a commit's write is applied and its reply lost, a peer's restore lands on top before the read-back, and the commit reports a conflict because the stored key is not its own value",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "faults": [
+    { "actor": "a", "kind": "lost-response", "op": "writeChecked", "target": "store2-commit", "context": "commit" }
+  ],
+  "labels": {
+    "A: commit CAS applied -> v2, RESPONSE LOST": "a: open, commit: the commit-key write is applied and fails with the unknown-outcome error of the layer",
+    "RESTORE: begin restore; read commit key v2, retained=[m/0]; restore CAS ifVersion v2": "r: open, restore of the newest retained manifest once a's write is applied: its commit-key write lands before a's read-back",
+    "A: uncertain commit: read commit key -> my manifest is not current; PARK (node-conflict)": "a: the read-back of the commit key (its second read in the commit, held until the restore is applied) differs from its value: commit:conflict"
+  },
+  "holds": [
+    { "call": { "actor": "a", "op": "read", "target": "$commit", "context": "commit", "nth": 2 }, "until": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "restore" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }] },
+    { "id": "r", "seed": 11, "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" } }, { "do": "restore", "to": "retained" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:conflict"],
+      "r": ["open", "waitFor", "restore:committed"]
+    }
+  }
+}

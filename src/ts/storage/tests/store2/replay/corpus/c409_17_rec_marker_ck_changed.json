@@ -1,0 +1,32 @@
+{
+  "name": "c409_17_rec_marker_ck_changed",
+  "covers": "recovery marker CAS, commit key changed: a device that held the pre-damage base commits over the damaged commit key between the recovery page's read and its marker write; the marker write conflicts, the re-read parses with a current, and the recovery is abandoned",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m": "a: open, commit: its read of the commit key (the base it holds) and the eleven unit uploads",
+    "ENV: commit key DAMAGED (silent: revision unchanged, content unparsable)": "environment step damage-commit, after a's read of the commit key",
+    "RECOVER: boot: read commit key -> UNPARSABLE; recovery screen": "r: waits for the damage, then opens: its boot read of the commit key is the damaged one, and the recovery screen runs on that read",
+    "A: commit CAS ok -> v2": "a: the commit-key write, held until r has read the damaged key; on Node the damaged key has the revision a holds, so the write lands and heals the key",
+    "RECOVER: candidate list; marker CAS -> 409; re-read the commit key": "r: the exit's fence write, then the marker write at the damaged key's version, held until a's commit is applied: the compare fails and the re-read parses with a current: recover:pick:exit:abandoned"
+  },
+  "env": [
+    { "name": "damage-commit", "after": { "actor": "a", "op": "read", "target": "$commit", "context": "commit" } }
+  ],
+  "holds": [
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "r", "op": "read", "target": "$commit" } },
+    { "call": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "recovery-begin" }, "until": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }] },
+    { "id": "r", "seed": 11, "program": [{ "do": "waitFor", "match": { "actor": "$env", "op": "damage-commit" } }, { "do": "open" }, { "do": "recover" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:committed"],
+      "r": ["waitFor", "open", "recover:pick:exit:abandoned"]
+    }
+  },
+  "mutants": { "markerFreshToken": "I3" }
+}

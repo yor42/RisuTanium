@@ -6,7 +6,11 @@
  *   `write_chunk_raw` (raw body, headers, structured outcome), the three
  *   chunk commands and the `app_fs_*` / `app_data_dir_path` commands of
  *   `tauriChunkFake.ts` (a remove honours `failRemoves` of the fake file
- *   system, as the plugin's remove did), and `write_durable`. With a `cap`
+ *   system, as the plugin's remove did), and `write_durable`, and the page-generation
+ *   gate: `store2_write_top_raw` (a raw body, `x-risu-key` and `x-risu-gen`,
+ *   generation-checked and then written like `write_durable`) and
+ *   `store2_write_top_chunk_raw` over the chunk fake's gated base64 command, both
+ *   refusing a non-raw body with `not-raw:` after `refuseRawBodies`. With a `cap`
  *   it rejects any call whose file payload (request body, base64 `data`, or
  *   response bytes before the trailer) is above the cap, the way a per-call
  *   bound would fail it.
@@ -42,6 +46,16 @@ export interface RawChunkCall {
     finalKey?: string
 }
 
+export interface TopRawCall {
+    command: string
+    gen: number
+    key: string
+    id?: string
+    offset?: number
+    last?: boolean
+    size: number
+}
+
 function decodedLength(text: string): number {
     const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
     return (text.length * 3) / 4 - padding
@@ -63,6 +77,8 @@ function requestPayload(args: unknown): number {
 export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptions = {}) {
     const chunk = createChunkedInvoke(fs)
     const rawCalls: RawChunkCall[] = []
+    /** Every raw gated call (`store2_write_top_raw`, `store2_write_top_chunk_raw`) as it arrived, headers decoded. */
+    const topCalls: TopRawCall[] = []
     const commands: string[] = []
     /** The file payload of every call, request or response, in order. */
     const payloads: number[] = []
@@ -119,12 +135,74 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
         }
     }
 
+    /** The gate's refusal of a call that is not generation-current, as the Rust command words it. */
+    function generationOf(headers: Record<string, string> | undefined): number {
+        const text = header(headers, 'x-risu-gen')
+        if (!/^[0-9]+$/.test(text)) {
+            throw 'malformed: header x-risu-gen is a decimal number'
+        }
+        return Number(text)
+    }
+
+    /** `store2_write_top_raw`: the whole key as one raw body, generation-checked, then written the way `write_durable` writes. */
+    async function writeTopRaw(args: unknown, invokeOptions: DurableInvokeOptions | undefined): Promise<unknown> {
+        if (rawRefused || !(args instanceof Uint8Array)) {
+            throw 'not-raw: the body did not arrive as raw bytes'
+        }
+        const headers = invokeOptions?.headers
+        const key = decodeURIComponent(header(headers, 'x-risu-key'))
+        const gen = generationOf(headers)
+        topCalls.push({ command: 'store2_write_top_raw', gen, key, size: args.length })
+        if (key !== 'store2-commit' && key !== 'store2-fence') {
+            throw 'gate-key-refused: only store2-commit and store2-fence are written through the gate'
+        }
+        if (!chunk.isCurrent(gen)) {
+            throw 'stale-generation: this page\'s generation is not the current one; nothing was applied'
+        }
+        await fs.invoke('write_durable', args, { headers: { 'x-risu-key': encodeURIComponent(key) } })
+        return { flushed: true }
+    }
+
+    /** `store2_write_top_chunk_raw`: a raw chunk with the generation header, applied by the base64 gated chunk command. */
+    async function writeTopChunkRaw(args: unknown, invokeOptions: DurableInvokeOptions | undefined): Promise<unknown> {
+        if (rawRefused || !(args instanceof Uint8Array)) {
+            throw 'not-raw: the body did not arrive as raw bytes'
+        }
+        const headers = invokeOptions?.headers
+        const call = {
+            command: 'store2_write_top_chunk_raw',
+            gen: generationOf(headers),
+            key: decodeURIComponent(header(headers, 'x-risu-key')),
+            id: header(headers, 'x-risu-id'),
+            offset: Number(header(headers, 'x-risu-offset')),
+            last: header(headers, 'x-risu-last') === '1',
+            size: args.length,
+        }
+        header(headers, 'x-risu-durable')
+        if (headers?.['x-risu-final-key'] !== undefined) {
+            throw 'malformed: a gated chunk takes no final key'
+        }
+        topCalls.push(call)
+        return await chunk.invoke('store2_write_top_chunk', {
+            gen: call.gen,
+            key: call.key,
+            id: call.id,
+            offset: call.offset,
+            data: Buffer.from(args).toString('base64'),
+            last: call.last,
+        })
+    }
+
     async function invoke(command: string, args?: unknown, invokeOptions?: DurableInvokeOptions): Promise<unknown> {
         commands.push(command)
         check('request', requestPayload(args))
         switch (command) {
             case 'write_chunk_raw':
                 return await writeChunkRaw(args, invokeOptions)
+            case 'store2_write_top_raw':
+                return await writeTopRaw(args, invokeOptions)
+            case 'store2_write_top_chunk_raw':
+                return await writeTopChunkRaw(args, invokeOptions)
             case 'write_durable':
                 return await fs.invoke(command, args, invokeOptions)
             default: {
@@ -144,6 +222,7 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
         invoke,
         chunk,
         rawCalls,
+        topCalls,
         commands,
         payloads,
         /** The calls of one command, in order. */
@@ -160,6 +239,7 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
         reset(): void {
             chunk.reset()
             rawCalls.length = 0
+            topCalls.length = 0
             commands.length = 0
             payloads.length = 0
             rawRefused = false

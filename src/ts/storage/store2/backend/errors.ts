@@ -81,6 +81,19 @@ export class Store2BackendFailureError extends Store2BackendError {
     }
 }
 
+/**
+ * A newer page registered with the Tauri gate, so the native side refused this
+ * page's decisive write or removal before touching the disk: nothing was applied.
+ * A definite failure (a backend failure to every caller), and the backend that saw
+ * it refuses every later decisive step without sending it.
+ */
+export class Store2StalePageError extends Store2BackendFailureError {
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options)
+        this.name = 'Store2StalePageError'
+    }
+}
+
 /** An entry under a store2 key is not binary data. */
 export class Store2NotBinaryError extends Store2BackendError {
     readonly kind = 'not-binary'

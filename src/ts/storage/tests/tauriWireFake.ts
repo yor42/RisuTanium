@@ -14,7 +14,8 @@
  * plugin JavaScript (`{ path, options }`, `{ paths }`, header-carried write
  * bodies) over a `createFakeTauriFs` instance; every other command is an app
  * command and goes to `createDesktopInvoke` (`write_chunk_raw`,
- * `write_durable`, the chunk commands, `read_range`, `app_fs_*`). A plugin
+ * `write_durable`, the chunk commands, `read_range`, `app_fs_*`, and the
+ * generation gate's `store2_*` commands with their `x-risu-gen` header). A plugin
  * command nothing here models rejects and is still recorded, so a suite that
  * asserts on `calls` sees it either way.
  *

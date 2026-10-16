@@ -1,0 +1,28 @@
+{
+  "name": "c409_18_rec_final_moved",
+  "covers": "recovery final CAS, commit key moved: a confirmed foreign clear removes the recovery page's marker after its staged copy is written; the final write conflicts, the re-read does not name the install, and the install is abandoned with the old candidates and the staged copy left in place",
+  "variant": "node",
+  "start": "damaged-commit",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "RECOVER: read commit key -> UNPARSABLE; candidate list (1); user picks m/0; marker CAS: staging=[R, s/R0.0.b0/]": "r: open, recover over the damaged commit key: the fence write, the marker write, the tree read, the confirmed install",
+    "B: prompt shown: marker of owner R; user CONFIRMS; B: foreign clear of R's marker": "b: open, then once the marker stands, clearMarker with the hook answering yes: the clear is applied before r's final write",
+    "RECOVER: upload s/R0.0.b0/d0.g0; RECOVER: upload s/R0.0.b0/m.g1": "r: the staged re-write of every unit under the marker's prefix",
+    "RECOVER: final CAS -> 409; give up": "r: the final write (recovery-install), held until the clear is applied, conflicts at the marker's read-back token; the re-read names no manifest of the install: recover:installed:abandoned"
+  },
+  "holds": [
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" }, "until": { "actor": "r", "op": "writeChecked", "target": "$unit", "context": "recovery-install" } },
+    { "call": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "recovery-install" }, "until": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" } }
+  ],
+  "actors": [
+    { "id": "r", "seed": 10, "program": [{ "do": "open" }, { "do": "recover" }] },
+    { "id": "b", "seed": 11, "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "waitFor", "match": { "actor": "r", "op": "writeChecked", "target": "$commit", "context": "recovery-begin" } }, { "do": "clearMarker" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "r": ["open", "recover:installed:abandoned"],
+      "b": ["open", "waitFor", "clearMarker:clear:cleared"]
+    }
+  },
+  "mutants": { "finalFreshToken": "I3" }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "c409_04_commit_unit_mismatch",
+  "covers": "commit CAS, new unit mismatch: a collection pass retires the units a writer just uploaded while the commit key still matches; the writer's commit-key write reports the unit and the commit fails, and its retry builds the tree again under fresh keys",
+  "variant": "node",
+  "start": "healthy",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: begin ordinary commit; A: upload u; A: upload m": "a: open, commit: the eleven unit uploads (writeChecked, one request each)",
+    "GC: begin pass; GC: list keys; GC: read commit key at R=v1; GC: read manifests; mark done": "gc: read commit key, mark, read fence, then list (held until the uploads are applied): the eleven new units are candidates",
+    "GC: remove [m/A1.1.g1] (check-only commit key == v1 ok)": "gc: retireChecked of the candidates, applied while the commit key is still the version the pass read",
+    "A: commit CAS -> 409 on unit m/A1.1.g1 (commit key matched); retry 1: re-upload under new key": "a: the commit-key write (held until the batch is applied) names a retired unit: commit:failed; the second commit step is the retry, whose build mints fresh keys"
+  },
+  "holds": [
+    { "call": { "actor": "gc", "op": "list" }, "until": { "actor": "a", "op": "writeChecked", "target": "$unit", "nth": 11 } },
+    { "call": { "actor": "a", "op": "writeChecked", "target": "$commit", "context": "commit" }, "until": { "actor": "gc", "op": "retireChecked" } }
+  ],
+  "actors": [
+    { "id": "a", "seed": 10, "program": [{ "do": "open" }, { "do": "commit", "tag": "a" }, { "do": "commit", "tag": "a" }] },
+    { "id": "gc", "seed": 11, "program": [{ "do": "open" }, { "do": "gc" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "a": ["open", "commit:failed", "commit:committed"],
+      "gc": ["open", "gc:done:11"]
+    }
+  },
+  "mutants": { "commitReusesUnitKeys": "I2" }
+}

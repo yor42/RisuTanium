@@ -6,6 +6,7 @@
 //! before it touches the disk.
 
 use crate::chunked_io::resolve_addressable;
+use crate::store2_gate::ungated_remove_refusal;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -45,6 +46,16 @@ pub fn remove_key(base: &Path, key: &str) -> Result<(), String> {
         .file_type();
     let result = if kind.is_dir() { fs::remove_dir(&path) } else { remove_file_or_link(&path, &kind) };
     result.map_err(|e| format!("failed to remove {}: {}", path.display(), e))
+}
+
+/// `remove_key` for the ungated `app_fs_remove` command: the gated keys and the
+/// `store2/` keys are removed only through the store2 gate, except a temp file
+/// the sweep clears.
+pub fn remove_key_guarded(base: &Path, key: &str) -> Result<(), String> {
+    if let Some(reason) = ungated_remove_refusal(key) {
+        return Err(reason.to_string());
+    }
+    remove_key(base, key)
 }
 
 #[cfg(windows)]

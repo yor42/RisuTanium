@@ -1,0 +1,27 @@
+{
+  "name": "c409_08_foreign_clear",
+  "covers": "foreign clear CAS: two pages are asked about the same foreign marker and both users confirm; the first clear lands between the second page's read and its write, so the second page finds the marker gone and its clear ends with nothing written",
+  "variant": "node",
+  "start": "marker-seed",
+  "seeds": [1, 2, 3, 4],
+  "labels": {
+    "A: CRASH; A: read commit key -> marker standing": "start state marker-seed: a standing marker of an owner that no page of the run has",
+    "B: open foreign-marker prompt (read commit key); B: prompt shown, user CONFIRMS": "b: open, clearMarker: its read of the commit key, then the hook answers yes",
+    "A: owner start-up clear of own marker -> v3": "c: open, clearMarker: the same question answered yes; its clear is the first write and is held until b has read the commit key",
+    "B: foreign clear CAS -> 409; prompt closes": "b: the clear write, held until c's is applied, conflicts; the re-read shows no marker: clearMarker:clear:nothing"
+  },
+  "holds": [
+    { "call": { "actor": "c", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" }, "until": { "actor": "b", "op": "read", "target": "$commit", "context": "read", "nth": 2 } },
+    { "call": { "actor": "b", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" }, "until": { "actor": "c", "op": "writeChecked", "target": "$commit", "context": "foreign-clear" } }
+  ],
+  "actors": [
+    { "id": "b", "seed": 10, "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "clearMarker" }] },
+    { "id": "c", "seed": 11, "foreignClear": "yes", "program": [{ "do": "open" }, { "do": "clearMarker" }] }
+  ],
+  "expect": {
+    "outcomes": {
+      "b": ["open", "clearMarker:clear:nothing"],
+      "c": ["open", "clearMarker:clear:cleared"]
+    }
+  }
+}
