@@ -351,11 +351,13 @@ export const REGIONS: readonly RegionConfig[] = [
             actor('b', B, [open, bulk, commit]),
             actor('g', G, [open, gc, gc]),
         ],
-        faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 20,
+        faults: faults(0.03, 2, 1, 10), pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 40,
         // The planted install is the region's intent: a2 must install the abandoned stage's manifest, not whichever candidate is newest.
-        floors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'commit:committed': 0.15, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
+        // 'recover:invalid' is the run that reaches the outcome label 'recover:invalid:missing' (a2's picked candidate lacks a unit);
+        // it occurs on few seeds, so the 40 seeds are what give its floor a margin of at least 2 seeds on both backends.
+        floors: { 'bulk': 0.6, 'clearMarker:clear': 0.6, 'commit:committed': 0.2, 'recover:installed': 0.3, 'recover:installed:planted': 0.3, 'recover:invalid': 0.1 },
         // On Tauri a2's page registers after the others, which makes their page stale: their commits fail too often for a commit floor.
-        tauriFloors: { 'bulk': 0.6, 'clearMarker:clear': 0.45, 'recover:installed': 0.3, 'recover:installed:planted': 0.3 },
+        tauriFloors: { 'bulk': 0.6, 'clearMarker:clear': 0.45, 'recover:installed': 0.3, 'recover:installed:planted': 0.3, 'recover:invalid': 0.075 },
     },
     {
         id: 'R15', name: 'refused-two-faults', covers: 'plan v3.4 section 6: a refusal with two faults (W_refuse_f2_L2)',
