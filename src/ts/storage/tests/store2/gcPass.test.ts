@@ -39,11 +39,11 @@ import {
 } from 'src/ts/storage/store2/backend'
 import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import {
-    encodeUnit, newStagedKey, newStagingId, newUnitKey, refOfFrame, stagingPrefix, tailOfKey, UNIT_TYPE,
+    encodeUnit, newManifestKey, newShardKey, newStagedKey, newStagingId, newUnitKey, refOfFrame, stagingPrefix, tailOfKey, UNIT_TYPE,
 } from 'src/ts/storage/store2/format'
 import { gcPass, type GcDeps, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import {
-    committerOf, COMMIT_BACKENDS, createClock, expectInvariant, hooked, plantKey, seedStore, START_TIME, testEnv, treeRequest, buildTree,
+    committerOf, COMMIT_BACKENDS, createClock, expectInvariant, hooked, peerWrite, plantKey, seedStore, START_TIME, testEnv, treeRequest, buildTree,
     type BuildRecord, type OpenedBackend,
 } from './commitFixtures'
 import { plantFence, traced } from './fenceFixtures'
@@ -102,6 +102,30 @@ async function landCommit(backend: Store2Backend): Promise<string[]> {
     return record[0].keys
 }
 
+/**
+ * Stores a second complete tree and a commit key whose `pins` alone name it: `current` is the seed tree and
+ * `retained` is empty, so no manifest but the pin reaches the returned keys (the tree's own manifest included).
+ */
+async function pinOnlyTree(backend: Store2Backend): Promise<string[]> {
+    const record: BuildRecord[] = []
+    const built = buildTree(2, {
+        mint: { shard: () => newShardKey(env), unit: () => newUnitKey(env), manifest: () => newManifestKey(env) },
+        seq: 2,
+        now: START_TIME,
+    }, 'pinned', record)
+    for (const unit of [...built.units, { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }]) {
+        await backend.putUnit(unit.key, unit.bytes)
+    }
+    const next = await peerWrite(backend, env, {
+        retained: [],
+        pins: [{ key: built.manifest.key, reason: 'test' }],
+        manifests: [built.manifest.body],
+    })
+    expect(next.retained).toEqual([])
+    expect(next.pins.map(pin => pin.key)).toEqual([built.manifest.key])
+    return record[0].keys
+}
+
 function done(result: GcResult): Extract<GcResult, { status: 'done' }> {
     if (result.status !== 'done') {
         throw new Error(`The pass was refused: ${result.reason}.`)
@@ -156,6 +180,24 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             expect(await exists(backend, key)).toBe(true)
         }
         expect(await exists(backend, junk)).toBe(false)
+        await expectInvariant(backend)
+    })
+
+    test('a tree reached only by a pin keeps every unit and its manifest while unrelated dead units are deleted', async () => {
+        const { backend } = await seeded()
+        const seedKeys = await backend.listStore2()
+        const pinnedKeys = await pinOnlyTree(backend)
+        const junk = [await orphan(backend), await orphan(backend)]
+
+        const result = done(await gcPass(depsOf(backend, kind)))
+
+        expect(result).toEqual({ status: 'done', deleted: junk.length, batches: 1 })
+        for (const key of [...seedKeys, ...pinnedKeys]) {
+            expect(await exists(backend, key)).toBe(true)
+        }
+        for (const key of junk) {
+            expect(await exists(backend, key)).toBe(false)
+        }
         await expectInvariant(backend)
     })
 
@@ -578,6 +620,25 @@ describe('GC pass on the Tauri backend (desktop stand-ins)', () => {
 
         expect(result).toEqual({ status: 'done', deleted: 2, batches: 1 })
         expect(await backend.listStore2()).toEqual(before)
+        for (const key of junk) {
+            expect(await exists(backend, key)).toBe(false)
+        }
+        await expectInvariant(backend)
+    })
+
+    test('a tree reached only by a pin keeps every unit and its manifest while unrelated dead units are deleted', async () => {
+        const backend = await openTauri()
+        await seedStore(backend, env)
+        const seedKeys = await backend.listStore2()
+        const pinnedKeys = await pinOnlyTree(backend)
+        const junk = [await orphan(backend), await orphan(backend)]
+
+        const result = done(await gcPass(depsOf(backend, 'tauri')))
+
+        expect(result).toEqual({ status: 'done', deleted: junk.length, batches: 1 })
+        for (const key of [...seedKeys, ...pinnedKeys]) {
+            expect(await exists(backend, key)).toBe(true)
+        }
         for (const key of junk) {
             expect(await exists(backend, key)).toBe(false)
         }
