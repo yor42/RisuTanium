@@ -560,6 +560,55 @@ describe('one planted violation per property is reported as exactly that propert
         expect(found[0].detail).toContain('not a fence exit')
     })
 
+    describe('G1: the open re-flush writing back the fence bytes it read', () => {
+        async function readThenStand(): Promise<{ rig: NodeRig, step: ReturnType<typeof stepper>, listed: string, read: Uint8Array }> {
+            const { rig } = await seeded()
+            const step = stepper(createChecker(rig.raw))
+            const listed = await orphan(rig)
+            await plantFenceKeys(rig.fake, [listed])
+            expect(step('e', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            const read = rig.fake.peek(FENCE_KEY).bytes!
+            expect(step('a', 'read', { kind: 'read' }, { target: FENCE_KEY })).toEqual([])
+            return { rig, step, listed, read }
+        }
+
+        test('environment damage between the read and the write-back: not reported', async () => {
+            const { rig, step, read } = await readThenStand()
+            rig.fake.damage(FENCE_KEY, GARBAGE)
+            expect(step('$env', 'damage-fence', null, { kind: 'env', fault: 'damage-fence' })).toEqual([])
+            await rig.fake.store.write(FENCE_KEY, read, 'unconditional')
+            expect(step('a', 'writeTop', { kind: 'read' }, { target: FENCE_KEY })).toEqual([])
+        })
+
+        test('a fence write by a call after the read, then the write-back: reported', async () => {
+            const { rig, step, listed, read } = await readThenStand()
+            await plantFenceKeys(rig.fake, [listed, await orphan(rig)])
+            expect(step('e', 'casFence', { kind: 'fence-exit' })).toEqual([])
+            await rig.fake.store.write(FENCE_KEY, read, 'unconditional')
+            const found = step('a', 'writeTop', { kind: 'read' }, { target: FENCE_KEY })
+            expect(propertiesOf(found)).toContain('G1')
+            expect(found.find((violation) => violation.property === 'G1')!.detail).toContain('not a fence exit')
+        })
+
+        test('the same write-back under a context other than the open read: reported', async () => {
+            const { rig, step, read } = await readThenStand()
+            rig.fake.damage(FENCE_KEY, GARBAGE)
+            expect(step('$env', 'damage-fence', null, { kind: 'env', fault: 'damage-fence' })).toEqual([])
+            await rig.fake.store.write(FENCE_KEY, read, 'unconditional')
+            const found = step('a', 'writeTop', { kind: 'restore', owner: 'a' }, { target: FENCE_KEY })
+            expect(propertiesOf(found)).toContain('G1')
+            expect(found.find((violation) => violation.property === 'G1')!.detail).toContain('not a fence exit')
+        })
+
+        test('a rewrite of the same bytes that no environment step changed: reported', async () => {
+            const { rig, step, read } = await readThenStand()
+            await rig.fake.store.write(FENCE_KEY, read, 'unconditional')
+            const found = step('a', 'writeTop', { kind: 'read' }, { target: FENCE_KEY })
+            expect(propertiesOf(found)).toContain('G1')
+            expect(found.find((violation) => violation.property === 'G1')!.detail).toContain('not a fence exit')
+        })
+    })
+
     test('G1: the fence key is removed by an operation that is not a fence discard', async () => {
         const { rig } = await seeded()
         const step = stepper(createChecker(rig.raw))

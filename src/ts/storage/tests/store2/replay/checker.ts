@@ -538,7 +538,17 @@ export function createChecker(read: () => RawState): Checker {
             }
 
             // The fence key is written by an exit alone and removed by a discard alone.
-            if (fenceChanged && fenceAfter.bytes !== null && kind !== 'fence-exit') {
+            // The boot re-flush (declared context `read`) writes back the fence bytes it read itself. When an environment step changed
+            // the fence between its read and its native write, the write only undoes that change: no call changed the fence since the
+            // read (`fenceCallChanges` does not count environment steps), and the stored bytes differ from the read ones. A write-back
+            // over a call's fence write made after the read, a write-back under any other context, and a rewrite of unchanged bytes
+            // stay reported.
+            const ownFenceRead = lastFenceRead.get(info.actor)
+            const reflushOverDamage = kind === 'read' && ownFenceRead !== undefined
+                && sameOptionalBytes(fenceAfter.bytes, ownFenceRead.bytes)
+                && !sameOptionalBytes(fenceBefore.bytes, ownFenceRead.bytes)
+                && fenceCallChanges === (fenceChangesAtRead.get(info.actor) ?? 0)
+            if (fenceChanged && fenceAfter.bytes !== null && kind !== 'fence-exit' && !reflushOverDamage) {
                 report('G1', `the fence key was written by ${info.actor} (${info.op}, ${kind ?? 'no operation'}), which is not a fence exit`)
             }
             if (fenceBefore.bytes !== null && fenceAfter.bytes === null && kind !== 'fence-discard') {
