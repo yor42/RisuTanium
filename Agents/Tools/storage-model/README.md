@@ -1,6 +1,6 @@
-# Agents/Tools/storage-model — A-lite stage 1+3 Gate 1 evidence
+# Agents/Tools/storage-model — A-lite stage 1+3 Gate 1 evidence, plus the stage 2 replay record and tools
 
-Selected scratch evidence behind the A-lite stage 1+3 Gate 1 (passed 2026-10-14; `MC-290`, Report 62 Part D, ledger rows 1743 to 1750). Apparatus and records only. **Not application code and not part of any build.** Nothing in `src/` imports from here. Raw logs, patch scripts and base copies of the model were not kept; they stay in session scratch (temporary).
+Selected scratch evidence behind the A-lite stage 1+3 Gate 1 (passed 2026-10-14; `MC-290`, Report 62 Part D, ledger rows 1743 to 1750). Apparatus and records only; the stage 2 replay record (`stage2-replay-record.md`) and the stage 2 replay tools (`replay-tools/`) were added at the stage 2 closeout (2026-10-17). **Not application code and not part of any build.** Nothing in `src/` imports from here. Raw logs, patch scripts and base copies of the model were not kept; they stay in session scratch (temporary).
 
 **Paths inside the files refer to the original scratch layout.** Files cite `S\stage13\...`, `S\stage13prep\...`, `W:` / `M:` (the stage 0a worktree and `main`), and `logs\`, `patch*.cjs`, `model.base-*.mjs` that are not here. Read those as provenance, not as paths that exist in the repository. `S` = `C:\Users\yor42\AppData\Local\Temp\claude\C--Projects-RisuAI\7373226a-26bd-41e1-bd9d-31e3becc2524\scratchpad\storage\`.
 
@@ -12,7 +12,7 @@ Selected scratch evidence behind the A-lite stage 1+3 Gate 1 (passed 2026-10-14;
 
 | File | What it is | Author role / label |
 |---|---|---|
-| `plan-v3.4.md` | The approved stage 1+3 Gate 1 plan (CRLF, as written; 593 lines). Full format, protocol, deleter, boot-table, test and open-item text. Report 62 Part D summarises it. | `investigator` draft; orchestrator applied the v3.4 edits J1, J2 |
+| `plan-v3.4.md` | The approved stage 1+3 Gate 1 plan (CRLF, as written). Full format, protocol, deleter, boot-table, test and open-item text. Report 62 Part D summarises it. | `investigator` draft; orchestrator applied the v3.4 edits J1, J2 |
 | `reviews/r1-review.md` | Gate 1 round 1, `opus-reviewer`, plan v2: `[REJECT]` | independent review |
 | `reviews/r2-review.md` | Round 2, plan v3: `[REJECT]` | independent review |
 | `reviews/r3-review.md` | Round 3, plan v3.1: `[APPROVE WITH CONDITIONS]` (conditions C1 to C13) | independent review |
@@ -26,8 +26,10 @@ Selected scratch evidence behind the A-lite stage 1+3 Gate 1 (passed 2026-10-14;
 | `e1-1-verify/verify.md` | Independent verification of E1-1 (`deep-investigator`): F1 confirmed and wider, "refuse" fix holds, divergences D1 to D13 | independent; takes precedence |
 | `nodelist/results.md`, `bench.cjs` | Node `/api/list` at 387,504 keys (i9) and the scratch prefix-route prototype; the harness | `perf-analyzer`; raw packet, MEASURED |
 | `remeasure/results.md` | Independent re-measure of P5 (S0-8 root-write series), P6 (16-shard mark) and P10 (two-tab IndexedDB probe) | `perf-analyzer`; MEASURED, best-case hardware |
+| `stage2-replay-record.md` | The accepted stage 2 replay record (2026-10-17): 78 region/backend pairs, the R17g/Tauri finding and fix, mutant tables, device results, the final Gate 2 findings and the carries for stage 4a+4b. Sections 0 to 10 are the original scratch record; sections 11 to 16 were added at closeout. Input to the stage 4a+4b Gate 1. | `perf-analyzer` record, closeout additions by the records pass; MEASURED / OBSERVED / INFERRED labels as in the file |
+| `replay-tools/` | Portable copies of the stage 2 mutant runner, long PCT runner and flattened mutant definitions (nine files; its README gives usage, the scratch-name mapping and SHA-256). Run from the repository root; output goes to a scratch directory. | stage 2 closeout copy; smoke-run only (c4, markIgnoresPins, one PCT pair), not the full queue |
 
-The `.mjs`, `.cjs` and `.sh` files here are not tests: they do not match the `*.test.*` / `*.spec.*` globs and `pnpm test` does not discover them.
+The `.mjs`, `.cjs` and `.sh` files in `e1-1/` are not tests (no `*.test.*` name). `replay-tools/pct-worker.test.mjs` matches the default Vitest include and is skipped unless `L7_REGION` is set, so `pnpm test` reports it as one skipped file.
 
 ## Reproduce
 
