@@ -17,6 +17,17 @@ export type ChunkRef = [tail: string, bytes: number, crc: number, count: number,
 export type StagingLabel = 'convert' | 'seed' | 'import' | 'restore' | 'recovery' | 'bulk'
 export const STAGING_LABELS: readonly StagingLabel[] = ['convert', 'seed', 'import', 'restore', 'recovery', 'bulk']
 
+/**
+ * The conversion's snapshot of the old data: the store2 unit that lists it, that unit's digest (`unitDigest`) and the
+ * number of listed keys. A writer never points it at a manifest, so it is not a reference of the commit key
+ * (`REFS_TABLE`); the reader accepts any store2 key, and the GC mark keeps the unit by its own rule.
+ */
+export interface SnapshotPointer {
+    key: string
+    digest: string
+    count: number
+}
+
 /** Type 1. The manifests it names are named by full key, not by Ref. */
 export interface CommitKey {
     fmt: 1
@@ -29,6 +40,8 @@ export interface CommitKey {
     staging: null | { owner: string, prefix: string, startedAt: number, label: StagingLabel }
     convertedFrom: null | string
     convertedAt: null | number
+    /** Optional and omitted when absent; a malformed stored value reads as absent. */
+    snapshot?: SnapshotPointer
 }
 
 export interface LegacyKeepFile {

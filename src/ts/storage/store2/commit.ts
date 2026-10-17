@@ -36,7 +36,7 @@ const REJUDGE_ATTEMPTS = 3
 export type Refusal =
     | 'absent' | 'damaged' | 'too-new' | 'no-current'
     | 'marker-present' | 'bad-unit-set' | 'bad-manifest-key' | 'already-current' | 'tree-incomplete'
-    | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine'
+    | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine' | 'no-snapshot'
 
 export interface Refused {
     status: 'refused'
@@ -302,6 +302,8 @@ export interface Committer {
     saveMine(freshRead: Store2Read, request: CommitRequest): Promise<CommitResult>
     pin(read: Store2Read, key: string, reason: string): Promise<WriteResult>
     unpin(read: Store2Read, key: string): Promise<WriteResult>
+    /** The old-data deletion's completion write: one compare-and-write that drops the snapshot pointer and changes nothing else. Refuses a key with no pointer. */
+    dropSnapshot(read: Store2Read): Promise<WriteResult>
     abandonClear(read: Store2Read, owner: string, prefix: string): Promise<AbandonResult>
     /** Decides whether the marker on `read` may be cleared (own: yes; foreign: only through the hook) and clears it. */
     clearMarker(read: Store2Read): Promise<{ decision: ClearDecision, cleared: AbandonResult | null }>
@@ -658,6 +660,20 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
                 return refuse('not-pinned', `${key} is not pinned.`)
             }
             const next = nextCommitKey(base.key, { pins: base.key.pins.filter(pin => pin.key !== key) }, env)
+            const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
+            return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
+        },
+
+        async dropSnapshot(read) {
+            const parsed = baseOf(read)
+            if (parsed.status === 'refused') {
+                return parsed
+            }
+            const base = parsed.base
+            if (base.key.snapshot === undefined) {
+                return refuse('no-snapshot', 'The commit key holds no snapshot pointer.')
+            }
+            const next = nextCommitKey(base.key, { dropSnapshot: true }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },

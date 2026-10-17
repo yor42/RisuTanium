@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 import type { JsonObject } from '../../blockFrame'
 import {
@@ -25,7 +26,7 @@ describe('golden vector set', () => {
         for (const type of UNIT_TYPE_IDS) {
             expect(ids.some(id => id.startsWith(`type-${String(type).padStart(2, '0')}-`))).toBe(true)
         }
-        for (let n = 1; n <= 12; n++) {
+        for (let n = 1; n <= 14; n++) {
             expect(ids.some(id => id.startsWith(`commit-${String(n).padStart(2, '0')}-`))).toBe(true)
         }
         for (let n = 1; n <= 6; n++) {
@@ -91,6 +92,49 @@ describe('vector contents that carry meaning', () => {
         expect(parse('commit-12-null-current-seed').staging?.label).toBe('seed')
     })
 
+    test('new behaviour: the snapshot-pointer vector parses with its pointer; the malformed one parses as a normal key with none', () => {
+        const parse = (id: string): CommitKey => {
+            const read = readUnit(hexToBytes(byId(id).hex), 1)
+            if (read.status !== 'ok') {
+                throw new Error(`${id} did not parse: ${read.status}`)
+            }
+            return read.value.body as CommitKey
+        }
+        expect(parse('commit-13-snapshot-pointer').snapshot).toEqual({
+            key: 'store2/g-abcdefghijklmnop-u0123456789abcdef', digest: '0123456789abcdef0123456789abcdef', count: 3,
+        })
+        const malformed = parse('commit-14-snapshot-pointer-malformed')
+        expect(malformed.snapshot).toBeUndefined()
+        expect(Object.hasOwn(malformed, 'snapshot')).toBe(false)
+        expect(malformed).toMatchObject({ seq: 1, staging: null })
+        expect(malformed.current).not.toBeNull()
+    })
+
+    test('guard: every vector that predates the pointer keeps its committed bytes (SHA-256 prefix taken before the field existed) and holds no pointer', () => {
+        const committed: Record<string, string> = {
+            'type-01-commit': '4ecb092cc27f66e7',
+            'commit-01-current-req-empty': '4ecb092cc27f66e7',
+            'commit-02-null-current-recovery': '401fcdec2770e53b',
+            'commit-03-null-current-convert': '441befed8cde3b6b',
+            'commit-04-null-current-no-staging': '0f6e9b3dcdabc3a4',
+            'commit-05-fmt-2': '1e30b69999ca08ea',
+            'commit-05b-body-fmt-2': '15bf1cd56acc3825',
+            'commit-06-unknown-req': '2844dfc0d1c8debb',
+            'commit-07-20-retained-2-pins': '90465200d10d363e',
+            'commit-08-codec-1': '86d05910a112b31c',
+            'commit-09-reserved-1': '0f1f4779957f0a62',
+            'commit-10-unknown-type': 'c8492de3233d7e36',
+            'commit-11-null-current-import': 'fa248dd61b5e972c',
+            'commit-12-null-current-seed': 'e700fa94a304ced1',
+        }
+        for (const [id, prefix] of Object.entries(committed)) {
+            const bytes = Buffer.from(byId(id).hex, 'hex')
+            expect(createHash('sha256').update(bytes).digest('hex').startsWith(prefix), id).toBe(true)
+            expect(bytes.includes('snapshot'), id).toBe(false)
+        }
+        const commitIds = GOLDEN_VECTORS.map(vector => vector.id).filter(id => id.startsWith('commit-') && !id.startsWith('commit-13-') && !id.startsWith('commit-14-'))
+        expect(commitIds.sort()).toEqual(Object.keys(committed).filter(id => id.startsWith('commit-')).sort())
+    })
     test('fence vector F1 keeps the prior commit key verbatim and it still parses; F5 keeps the damaged fence bytes', () => {
         const f1 = payloadJson(hexToBytes(byId('fence-F1-one-prior-commit').hex)) as { priorCommits: { bytes: string }[] }
         const kept = new Uint8Array(Buffer.from(f1.priorCommits[0].bytes, 'base64url'))

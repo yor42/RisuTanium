@@ -8,7 +8,7 @@ import {
     STAGING_LABELS,
     type AssetList, type ChatChunk, type ChatCore, type ChatEntry, type ChunkRef, type CommitKey, type ContentBody,
     type FenceRecord, type InlayList, type LegacyKeepFile, type LegacyList, type ListRef, type Manifest, type ModuleEntry,
-    type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type StagingLabel, type SweepRecord,
+    type ModuleIndex, type PluginBucket, type Ref, type Shard, type SnapshotPointer, type ShardEntry, type StagingLabel, type SweepRecord,
     type UnitBody,
 } from './types'
 import { ASSET_REF_V, BODY_V, FRAME_FMT, IL_REF_V, KNOWN_REQ, UNIT_TYPE, type UnitType } from './versions'
@@ -64,7 +64,8 @@ function plain<T>(build: () => T): Parsed<T> {
 
 /** Field names each level of a non-derived object defines; everything else is an unknown field to keep. */
 export const KNOWN_FIELDS = {
-    commitKey: ['fmt', 'req', 'seq', 'epoch', 'current', 'retained', 'pins', 'staging', 'convertedFrom', 'convertedAt'],
+    commitKey: ['fmt', 'req', 'seq', 'epoch', 'current', 'retained', 'pins', 'staging', 'convertedFrom', 'convertedAt', 'snapshot'],
+    commitSnapshot: ['key', 'digest', 'count'],
     commitCurrent: ['key', 'at'],
     commitPin: ['key', 'reason'],
     commitStaging: ['owner', 'prefix', 'startedAt', 'label'],
@@ -258,6 +259,26 @@ function readStagingPrefix(value: JsonValue | undefined): string {
 
 // ---- Type 1: commit key ----
 
+const SNAPSHOT_DIGEST = /^[0-9a-f]{32}$/
+
+/**
+ * The snapshot pointer of a commit key, or `undefined` for an absent or malformed one. A pointer is a helper and never
+ * a reason to refuse the key, so nothing here throws: a malformed pointer reads as absent, nothing carries its bytes,
+ * and the next writer drops it. Members this build does not know stay on the parsed pointer.
+ */
+function readSnapshotPointer(value: JsonValue | undefined): SnapshotPointer | undefined {
+    if (!isPlainObject(value)) {
+        return undefined
+    }
+    const { key, digest, count } = value
+    if (typeof key !== 'string' || !isStore2Key(key)
+        || typeof digest !== 'string' || !SNAPSHOT_DIGEST.test(digest)
+        || typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+        return undefined
+    }
+    return { ...extras(value, KNOWN_FIELDS.commitSnapshot), key, digest, count }
+}
+
 function readCommitKey(raw: JsonObject): CommitKey {
     gateFmt(raw)
     const req = readReq(raw.req)
@@ -291,7 +312,7 @@ function readCommitKey(raw: JsonObject): CommitKey {
             label: label as StagingLabel,
         }
     })
-    return {
+    const key: CommitKey = {
         ...extras(raw, KNOWN_FIELDS.commitKey),
         fmt: 1,
         req,
@@ -304,6 +325,11 @@ function readCommitKey(raw: JsonObject): CommitKey {
         convertedFrom: nullable(raw.convertedFrom, (value) => str(value, 'convertedFrom')),
         convertedAt: nullable(raw.convertedAt, (value) => num(value, 'convertedAt')),
     }
+    const snapshot = readSnapshotPointer(raw.snapshot)
+    if (snapshot !== undefined) {
+        key.snapshot = snapshot
+    }
+    return key
 }
 
 export function parseCommitKey(value: JsonValue): Parsed<CommitKey> {
