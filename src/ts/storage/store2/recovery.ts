@@ -182,7 +182,7 @@ export type ExitResult =
  *    safety comes from the compare-and-write token and the fresh `epoch`, so a
  *    peer must treat any `epoch` change as a peer write.
  */
-function markerKey(commit: CommitRead, staging: Staging, seqFloor: number, env: KeyEnv): CommitKey {
+export function markerKey(commit: CommitRead, staging: Staging, seqFloor: number, env: KeyEnv): CommitKey {
     const change = { current: null, retained: [], pins: [], staging }
     switch (commit.status) {
         case 'parsed':
@@ -254,15 +254,21 @@ export async function runExit(backend: Store2Backend, commitRead: Store2Read, re
     return confirmMarker(backend, marker, markerBytes, { label, owner: options.owner, stagedPrefix, fence }, flushed)
 }
 
-interface Landed {
+/** What a landed marker carries besides the key reads; `fence` is `ExitFence` after an exit and `undefined` for a first-life marker, which never writes a fence. */
+export interface Landed<F = ExitFence> {
     label: StagingLabel
     owner: string
     stagedPrefix: string
-    fence: ExitFence
+    fence: F
 }
 
+/** What `confirmMarker` and `settleUnknown` answer: the marker landed with `landed`'s fields, or one of the exit's other outcomes. */
+export type MarkerOutcome<F = ExitFence> =
+    | (Omit<Extract<ExitResult, { status: 'marked' }>, 'fence'> & { fence: F })
+    | Extract<ExitResult, { status: 'conflict' | 'abandoned' | 'unknown' }>
+
 /** After a conflict: another tab's `current` ends this exit; anything else is for the screen to re-run. */
-async function judgeConflict(backend: Store2Backend): Promise<ExitResult> {
+export async function judgeConflict(backend: Store2Backend): Promise<Extract<ExitResult, { status: 'conflict' | 'abandoned' | 'unknown' }>> {
     let current: Store2Read
     try {
         current = await backend.readCommit()
@@ -280,9 +286,9 @@ async function judgeConflict(backend: Store2Backend): Promise<ExitResult> {
 }
 
 /** A write whose outcome is unknown is decided by reading the key back: this marker's bytes mean it landed. */
-async function settleUnknown(
-    backend: Store2Backend, marker: CommitKey, markerBytes: Uint8Array, landed: Landed, cause: Store2UnknownOutcomeError,
-): Promise<ExitResult> {
+export async function settleUnknown<F>(
+    backend: Store2Backend, marker: CommitKey, markerBytes: Uint8Array, landed: Landed<F>, cause: Store2UnknownOutcomeError,
+): Promise<MarkerOutcome<F>> {
     let read: Store2Read
     try {
         read = await backend.readCommit()
@@ -299,9 +305,9 @@ async function settleUnknown(
 }
 
 /** After a successful write: the commit key read back is the marker (a peer's later write is a conflict). */
-async function confirmMarker(
-    backend: Store2Backend, marker: CommitKey, markerBytes: Uint8Array, landed: Landed, flushed: boolean | undefined,
-): Promise<ExitResult> {
+export async function confirmMarker<F>(
+    backend: Store2Backend, marker: CommitKey, markerBytes: Uint8Array, landed: Landed<F>, flushed: boolean | undefined,
+): Promise<MarkerOutcome<F>> {
     let read: Store2Read
     try {
         read = await backend.readCommit()

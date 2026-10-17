@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
     Store2BackendFailureError, Store2CommitConflictError, Store2UnknownOutcomeError, type Store2Backend, type Store2Read,
 } from 'src/ts/storage/store2/backend'
-import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
+import { classifyCommitRead, firstCommitKey, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import { isStagingPrefix, type CommitKey } from 'src/ts/storage/store2/format'
 import {
     installPick, pickCandidate, unmappedRefPaths, type AssetsPresent, type InlayPrefixesPresent, type InlaysPresent, type PickReady, type PickResult,
@@ -453,6 +453,18 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             const result = await installed(ready)
             expect(await treeFingerprint(backend, result.manifestKey)).toEqual(await treeFingerprint(backend, planted.manifestKey))
             expect((await closureOf(backend, result.manifestKey)).problems).toEqual([])
+        })
+
+        test('guard: the install never stamps convertedFrom or convertedAt; the values the commit key already held are carried', async () => {
+            const { backend, planted, clock } = await scene(index)
+            await plantKey(backend, firstCommitKey({ current: null, staging: null, convertedFrom: 'database/database.bin', convertedAt: 7 }, testEnv(clock, 9)))
+            const p = probes(allPresent(planted))
+            const ready = expectReady(await pickCandidate(backend, await backend.readCommit(), planted.manifestKey, options(clock, p)))
+            const result = await installed(ready)
+            const stored = await parsedCommit(backend)
+            expect(stored.current?.key).toBe(result.manifestKey)
+            expect(stored.convertedFrom).toBe('database/database.bin')
+            expect(stored.convertedAt).toBe(7)
         })
 
         test('the install is refused without the confirmation', async () => {

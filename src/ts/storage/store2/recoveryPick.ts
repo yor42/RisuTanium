@@ -468,7 +468,7 @@ export type InstallResult =
     /** The final write's outcome is unknown even after reading back. */
     | { status: 'unknown', cause: Store2BackendError }
 
-class InstallStop extends Error {
+export class InstallStop extends Error {
     constructor(readonly result: InstallResult) {
         super('The install stopped.')
         this.name = 'InstallStop'
@@ -535,7 +535,7 @@ function withReplacedRefs<T extends UnitBody>(type: UnitType, body: T, replaced:
 }
 
 /** `staging.prefix` of the marker is `store2/g-<stg16>-`; the id between is what keys are minted under. */
-function stagingIdOf(prefix: string): string {
+export function stagingIdOf(prefix: string): string {
     return prefix.slice(STORE2_PREFIX.length + 'g-'.length, -1)
 }
 
@@ -644,14 +644,33 @@ function namesManifest(read: Store2Read, manifestKey: string): boolean {
     return classified.status === 'parsed' && classified.value.current?.key === manifestKey
 }
 
-async function finalWrite(ready: PickReady, manifestKey: string, manifest: Manifest): Promise<InstallResult> {
-    const { backend, env, marked } = ready
+/** What the final write needs of a standing marker: the marker's key and the read it was confirmed with (its compare token). A fenced `runExit` result and an unfenced first-life marker both fit. */
+export interface InstallBasis {
+    backend: Store2Backend
+    env: KeyEnv
+    marked: { marker: CommitKey, markerRead: Store2Read }
+}
+
+/** The conversion stamp an encoder-built install puts on the commit key. */
+export interface Converted {
+    from: string
+    at: number
+}
+
+/**
+ * The one final write of every install: a single compare-and-write at the marker's read-back token, never a fresh read,
+ * that names `manifestKey` as `current` and clears the marker. `converted`, when given, sets `convertedFrom` and
+ * `convertedAt`; otherwise the marker's values are carried.
+ */
+export async function finalWrite(basis: InstallBasis, manifestKey: string, manifest: Manifest, converted?: Converted): Promise<InstallResult> {
+    const { backend, env, marked } = basis
     const next = nextCommitKey(marked.marker, {
         current: { key: manifestKey, at: env.now() },
         retained: [],
         pins: [],
         staging: null,
         manifests: [manifest],
+        ...(converted === undefined ? {} : { convertedFrom: converted.from, convertedAt: converted.at }),
     }, env)
     const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
     // Every attempt compares at the marker's own read-back token, never at a fresh read.
