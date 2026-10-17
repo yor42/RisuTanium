@@ -1,0 +1,498 @@
+import { describe, expect, test } from 'vitest'
+import {
+    assembleDatabase, bucketOfKey, CodecInputError, encodeScoped, IDENTITY, previousFrom, shardOfU, SharedChaIdStubError, StubRefusedError,
+    unitsToWrite,
+    type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation,
+} from '../../store2/codec'
+import { buildColdStub } from '../../../process/coldCharacter'
+import type { character, Database } from '../../database.svelte'
+import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
+import {
+    bodyOf, buildSmall, buildT3, buildT4, buildLegacyCases, buildT5Chat, dbWithCharacters, asDatabase, encodeWith,
+    fakeLists, profileWithChats, seededEnv, sameBytes, type Obj,
+} from './codecFixtures'
+
+const NOW = 1_700_000_000_000
+
+function clone(db: Database): Obj {
+    return JSON.parse(JSON.stringify(db)) as Obj
+}
+
+function scopedOptions(seed: number, previous: EncodedTree | null, lists: ListDerivation = fakeLists): EncodeOptions {
+    return { env: seededEnv(seed), lists, seq: 2, createdAt: NOW, previous: previous === null ? null : previousFrom(previous) }
+}
+
+const EVERYTHING: EncodeScope = { modules: true, characters: 'all' }
+
+function written(tree: EncodedTree): string[] {
+    return unitsToWrite(tree).map(unit => unit.identity).sort()
+}
+
+function chaIdOf(db: Database, index: number): string {
+    return (db.characters[index] as { chaId: string }).chaId
+}
+
+function entryOf(tree: EncodedTree, chaId: string): ShardEntry {
+    for (const unit of tree.units) {
+        if (unit.type === UNIT_TYPE.shard) {
+            const found = (bodyOf(unit).entries as unknown as ShardEntry[]).find(entry => entry.chaId === chaId)
+            if (found !== undefined) {
+                return found
+            }
+        }
+    }
+    throw new Error(`No entry for ${chaId}`)
+}
+
+/** The entry of `chaId` as the next encode's previous shards hold it. */
+function indexEntry(tree: EncodedTree, chaId: string): ShardEntry {
+    for (const shard of tree.index.objects?.shards ?? []) {
+        const found = shard.entries.find(entry => entry.chaId === chaId)
+        if (found !== undefined) {
+            return found
+        }
+    }
+    throw new Error(`No indexed entry for ${chaId}`)
+}
+
+function counting(): { lists: ListDerivation, encoded: string[] } {
+    const encoded: string[] = []
+    return {
+        encoded,
+        lists: {
+            ...fakeLists,
+            characterAssets: (owner) => {
+                encoded.push(String(owner.chaId))
+                return fakeLists.characterAssets(owner)
+            },
+        },
+    }
+}
+
+describe('guard: with every character named the scoped encode is encodeDatabase, key for key', () => {
+    function expectSameTree(a: EncodedTree, b: EncodedTree): void {
+        expect(b.manifestKey).toBe(a.manifestKey)
+        expect(b.manifest).toEqual(a.manifest)
+        expect(b.units.map(unit => unit.identity)).toEqual(a.units.map(unit => unit.identity))
+        a.units.forEach((unit, index) => {
+            const other = b.units[index]
+            expect(other.key).toBe(unit.key)
+            expect(other.reused).toBe(unit.reused)
+            expect(other.digest).toBe(unit.digest)
+            expect(other.ref).toEqual(unit.ref)
+            expect(sameBytes(other.bytes, unit.bytes), `${unit.identity} bytes`).toBe(true)
+        })
+        expect([...b.index.units.keys()].sort()).toEqual([...a.index.units.keys()].sort())
+        expect([...b.index.entities]).toEqual([...a.index.entities])
+    }
+
+    async function compare(db: Database): Promise<void> {
+        const full = encodeWith(db)
+        const scoped = await encodeScoped(db, { env: seededEnv(1), lists: fakeLists, seq: 1, createdAt: NOW }, EVERYTHING)
+        expectSameTree(full, scoped)
+        // A second pass over a changed database, both against the same previous.
+        const next = clone(db)
+        const slot = (next.characters as Obj[])[0]
+        slot.personality = 'a later personality'
+        const nextDb = asDatabase(next)
+        const fullNext = encodeWith(nextDb, { env: seededEnv(2), previous: previousFrom(full), seq: 2 })
+        const scopedNext = await encodeScoped(nextDb, scopedOptions(2, full), EVERYTHING)
+        expectSameTree(fullNext, scopedNext)
+    }
+
+    test('small profile', async () => {
+        await compare(buildSmall(6))
+    })
+
+    test('T3 shape (500 characters, 164 modules)', async () => {
+        await compare(buildT3().db)
+    }, 120_000)
+
+    test('T4 shape (1000 characters)', async () => {
+        await compare(buildT4().db)
+    }, 120_000)
+
+    test('T5 shape (one long chat across several chunks)', async () => {
+        await compare(profileWithChats([buildT5Chat(1200, { at: 700, bytes: 200_000 })]))
+    }, 60_000)
+
+    test('every legacy case', async () => {
+        for (const legacy of buildLegacyCases()) {
+            await compare(dbWithCharacters([legacy.character]))
+        }
+    }, 60_000)
+})
+
+describe('new behaviour: an unnamed resident character is carried', () => {
+    test('its units and entry stay and nothing new is written for it', async () => {
+        const db = buildSmall(6)
+        const first = encodeWith(db)
+        const lists = counting()
+        const next = clone(db)
+        ;(next.characters as Obj[])[0].personality = 'edited'
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first, lists.lists), { modules: false, characters: new Set([chaIdOf(db, 0)]) })
+
+        expect(lists.encoded).toEqual([chaIdOf(db, 0)])
+        for (let index = 1; index < 6; index++) {
+            const chaId = chaIdOf(db, index)
+            const u = first.index.entities.get(`${chaId}#0`) as string
+            expect(tree.index.entities.get(`${chaId}#0`)).toBe(u)
+            for (const [identity, unit] of first.index.units) {
+                if (identity.includes(u)) {
+                    expect(tree.index.units.get(identity)?.key, identity).toBe(unit.key)
+                }
+            }
+            expect(tree.units.some(unit => unit.identity.includes(u))).toBe(false)
+            expect(indexEntry(tree, chaId)).toEqual(indexEntry(first, chaId))
+        }
+        const u0 = first.index.entities.get(`${chaIdOf(db, 0)}#0`) as string
+        expect(written(tree)).toEqual([`${IDENTITY.char}${u0}:core`, 'manifest', `shard:${shardOfU(u0)}`].sort())
+    })
+
+    test('an edit to an unnamed character is not encoded', async () => {
+        const db = buildSmall(3)
+        const first = encodeWith(db)
+        const next = clone(db)
+        ;((next.characters as Obj[])[1].chats as Obj[])[0].name = 'renamed'
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })
+        expect(written(tree)).toEqual(['manifest'])
+    })
+
+    test('carried units survive a second pass that names nothing', async () => {
+        const db = buildSmall(4)
+        const first = encodeWith(db)
+        const second = await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set([chaIdOf(db, 0)]) })
+        const third = await encodeScoped(db, scopedOptions(3, second), { modules: false, characters: new Set() })
+        expect(written(third)).toEqual(['manifest'])
+        expect([...third.index.units.keys()].sort()).toEqual([...first.index.units.keys()].sort())
+        for (const [identity, unit] of first.index.units) {
+            if (identity !== 'manifest') {
+                expect(third.index.units.get(identity)?.key, identity).toBe(unit.key)
+            }
+        }
+    })
+
+    test('a character the previous encoding does not hold cannot be carried', async () => {
+        const first = encodeWith(buildSmall(2))
+        await expect(encodeScoped(buildSmall(3), scopedOptions(2, first), { modules: false, characters: new Set() })).rejects.toThrow(CodecInputError)
+    })
+
+    test('carrying with no previous encoding is refused', async () => {
+        await expect(encodeScoped(buildSmall(2), scopedOptions(2, null), { modules: true, characters: new Set() })).rejects.toThrow(CodecInputError)
+        await expect(encodeScoped(buildSmall(2), scopedOptions(2, null), { modules: false, characters: 'all' })).rejects.toThrow(CodecInputError)
+    })
+
+    test('a deleted character and a deleted chat leave the next previous', async () => {
+        const db = buildSmall(4)
+        const first = encodeWith(db)
+        const next = clone(db)
+        const removed = chaIdOf(db, 3)
+        ;(next.characters as Obj[]).pop()
+        ;((next.characters as Obj[])[0].chats as Obj[]).pop()
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set([chaIdOf(db, 0)]) })
+        const gone = first.index.entities.get(`${removed}#0`) as string
+        expect([...tree.index.units.keys()].some(identity => identity.includes(gone))).toBe(false)
+        const u0 = first.index.entities.get(`${chaIdOf(db, 0)}#0`) as string
+        const chatUnits = (tree: EncodedTree) => [...tree.index.units.keys()].filter(identity => identity.startsWith(`${IDENTITY.chat}${u0}:`))
+        expect(chatUnits(first).length).toBeGreaterThan(chatUnits(tree).length)
+        expect(chatUnits(tree).length).toBe(2)
+    })
+})
+
+describe('new behaviour: a named character is re-encoded', () => {
+    test('one changed message reuses every unchanged chunk', async () => {
+        const chat = buildT5Chat(1200, undefined, 5000)
+        const db = profileWithChats([chat])
+        const first = encodeWith(db)
+        const u = first.index.entities.get(`${chaIdOf(db, 0)}#0`) as string
+        const chunkIdentities = [...first.index.units.keys()].filter(identity => identity.includes(':chunk:'))
+        expect(chunkIdentities.length).toBeGreaterThan(2)
+        const next = clone(db)
+        const messages = (((next.characters as Obj[])[0].chats as Obj[])[0].message as Obj[])
+        messages[messages.length - 1].data = 'a last word'
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set([chaIdOf(db, 0)]) })
+        const last = chunkIdentities.sort((a, b) => Number(a.split(':chunk:')[1]) - Number(b.split(':chunk:')[1])).at(-1)
+        const changed = written(tree).filter(identity => identity.startsWith(`${IDENTITY.chat}${u}:`))
+        expect(changed).toEqual([last])
+        for (const identity of chunkIdentities) {
+            if (identity !== last) {
+                expect(tree.units.find(unit => unit.identity === identity)?.reused, identity).toBe(true)
+            }
+        }
+    })
+})
+
+describe('new behaviour: modules', () => {
+    test('carried when not flagged, with the previous module index and units', async () => {
+        const db = buildSmall(3)
+        const first = encodeWith(db)
+        const next = clone(db)
+        ;(next.modules as Obj[])[0].description = 'changed but not flagged'
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })
+        expect(written(tree)).toEqual(['manifest'])
+        expect(tree.units.some(unit => unit.identity.startsWith(IDENTITY.module) || unit.identity === IDENTITY.moduleIndex)).toBe(false)
+        expect(tree.manifest.fixed.moduleIndex).toEqual(first.manifest.fixed.moduleIndex)
+        expect(tree.index.objects?.moduleIndex).toEqual(first.index.objects?.moduleIndex)
+        for (const [identity, unit] of first.index.units) {
+            if (identity.includes('module')) {
+                expect(tree.index.units.get(identity)?.key, identity).toBe(unit.key)
+            }
+        }
+    })
+
+    test('re-encoded when flagged', async () => {
+        const db = buildSmall(3)
+        const first = encodeWith(db)
+        const next = clone(db)
+        const module = (next.modules as Obj[])[0]
+        module.description = 'changed and flagged'
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: true, characters: new Set() })
+        expect(written(tree)).toEqual([`${IDENTITY.module}${module.id as string}#0`, IDENTITY.moduleIndex, 'manifest'].sort())
+    })
+
+    test('a deleted module leaves the next previous when flagged', async () => {
+        const db = buildSmall(3)
+        const first = encodeWith(db)
+        const next = clone(db)
+        const removed = ((next.modules as Obj[]).pop() as Obj).id as string
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: true, characters: new Set() })
+        expect([...tree.index.units.keys()].some(identity => identity.includes(removed))).toBe(false)
+        expect([...first.index.units.keys()].some(identity => identity.includes(removed))).toBe(true)
+    })
+})
+
+describe('new behaviour: whole-resident mode and yielding', () => {
+    test('whole-resident mode encodes every resident non-stub character', async () => {
+        const db = buildSmall(5)
+        const first = encodeWith(db)
+        const lists = counting()
+        await encodeScoped(db, scopedOptions(2, first, lists.lists), { modules: false, characters: 'all' })
+        expect(lists.encoded.sort()).toEqual([0, 1, 2, 3, 4].map(index => chaIdOf(db, index)).sort())
+    })
+
+    test('named mode encodes exactly the named ones', async () => {
+        const db = buildSmall(5)
+        const first = encodeWith(db)
+        const lists = counting()
+        await encodeScoped(db, scopedOptions(2, first, lists.lists), { modules: false, characters: new Set([chaIdOf(db, 1), chaIdOf(db, 3)]) })
+        expect(lists.encoded.sort()).toEqual([chaIdOf(db, 1), chaIdOf(db, 3)].sort())
+    })
+
+    test('yields once after each encoded character and never inside the codec on its own', async () => {
+        const db = buildSmall(5)
+        const first = encodeWith(db)
+        let yields = 0
+        const lists = counting()
+        const gate = { modules: false, characters: 'all' as const, yield: async () => { yields++ ; expect(yields).toBe(lists.encoded.length) } }
+        await encodeScoped(db, scopedOptions(2, first, lists.lists), gate)
+        expect(yields).toBe(5)
+
+        yields = 0
+        await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set([chaIdOf(db, 0)]), yield: async () => { yields++ } })
+        expect(yields).toBe(1)
+        yields = 0
+        await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set(), yield: async () => { yields++ } })
+        expect(yields).toBe(0)
+    })
+})
+
+describe('guard: dependency closure, each field changes the expected units and nothing else', () => {
+    const db = buildSmall(6)
+    const first = encodeWith(db)
+    const chaId = chaIdOf(db, 0)
+    const u = first.index.entities.get(`${chaId}#0`) as string
+    const shard = `shard:${shardOfU(u)}`
+    const chatId = (((db.characters[0] as unknown as { chats: { id: string }[] }).chats)[0]).id
+    const none = new Set<string>()
+    const named = new Set([chaId])
+
+    interface Case {
+        label: string
+        mutate: (db: Obj) => void
+        scope: EncodeScope
+        expected: string[]
+        /** Whether a full encode of the same database writes the same units; false where the scope deliberately carries. */
+        fullAgrees: boolean
+    }
+
+    const slot = (db: Obj): Obj => (db.characters as Obj[])[0]
+    const fixed = (label: string, mutate: (db: Obj) => void, expected: string[]): Case => ({
+        label, mutate, scope: { modules: false, characters: none }, expected: [...expected, 'manifest'].sort(), fullAgrees: true,
+    })
+    const owned = (label: string, mutate: (db: Obj) => void, expected: string[]): Case => ({
+        label, mutate, scope: { modules: false, characters: named }, expected: [...expected, shard, 'manifest'].sort(), fullAgrees: true,
+    })
+    const moduleId = (db0: Obj): string => (db0.modules as Obj[])[1].id as string
+
+    const cases: Case[] = [
+        fixed('a preset', d => { ((d.botPresets as Obj[])[1]).temperature = 999 }, ['preset:1']),
+        fixed('pluginV2', d => { ((d.pluginV2 as Obj[])[0]).enabled = false }, ['plugin:pluginV2:0']),
+        fixed('plugins', d => { ((d.plugins as Obj[])[1]).version = 9 }, ['plugin:plugins:1']),
+        fixed('characterOrder', d => { (d.characterOrder as string[]).reverse() }, ['order']),
+        fixed('statics', d => { d.statics = { messages: 99 } }, ['statics']),
+        fixed('loadouts', d => { d.loadouts = [{ name: 'one' }] }, ['loadouts']),
+        fixed('a plugin storage value', d => { ((d.pluginCustomStorage as Obj)['plugin-3'] as Obj).counter = 77 }, ['psv:plugin-3', `bucket:${bucketOfKey('plugin-3')}`]),
+        fixed('a config field', d => { d.username = 'Someone Else' }, ['config']),
+        { label: 'a module when flagged', mutate: d => { (d.modules as Obj[])[1].description = 'flagged edit' }, scope: { modules: true, characters: none },
+            expected: [`${IDENTITY.module}${moduleId(clone(db))}#0`, IDENTITY.moduleIndex, 'manifest'].sort(), fullAgrees: true },
+        { label: 'a module when not flagged', mutate: d => { (d.modules as Obj[])[1].description = 'unflagged edit' }, scope: { modules: false, characters: none },
+            expected: ['manifest'], fullAgrees: false },
+        owned('a character core field', d => { slot(d).personality = 'new personality' }, [`${IDENTITY.char}${u}:core`]),
+        owned('a character lore entry', d => { ((slot(d).globalLore as Obj[])[0]).content = 'new lore' }, [`${IDENTITY.char}${u}:lore`]),
+        owned('a character script', d => { slot(d).customscript = [{ comment: 'x', in: 'a', out: 'b', type: 'editinput' }] }, [`${IDENTITY.char}${u}:scripts`]),
+        owned('a chat message', d => { (((slot(d).chats as Obj[])[0].message as Obj[])[0]).data = 'edited message' }, [`${IDENTITY.chat}${u}:${chatId}:chunk:0`]),
+        owned('a chat core field', d => { (slot(d).chats as Obj[])[0].note = 'a note' }, [`${IDENTITY.chat}${u}:${chatId}:core`]),
+        owned('a moved field of a resident (trashTime)', d => { slot(d).trashTime = 4242 }, []),
+        {
+            label: 'a character field when it is not named', mutate: d => { slot(d).personality = 'unnamed edit' },
+            scope: { modules: false, characters: none }, expected: ['manifest'], fullAgrees: false,
+        },
+    ]
+
+    test.each(cases.map(one => [one.label, one] as const))('%s', async (_label, one) => {
+        const next = clone(db)
+        one.mutate(next)
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), one.scope)
+        expect(written(tree)).toEqual(one.expected)
+        if (one.fullAgrees) {
+            const full = encodeWith(asDatabase(next), { env: seededEnv(2), previous: previousFrom(first), seq: 2 })
+            expect(written(full)).toEqual(one.expected)
+        }
+    })
+})
+
+describe('stub guards (F2): the entry follows the stub, the body is never encoded', () => {
+    function stubbed(): { db: Database, first: EncodedTree, chaId: string, u: string } {
+        const db = buildSmall(3)
+        const first = encodeWith(db)
+        const chaId = chaIdOf(db, 1)
+        return { db, first, chaId, u: first.index.entities.get(`${chaId}#0`) as string }
+    }
+
+    function withStub(db: Database, chaId: string, trashTime: number | undefined, tweak: Obj = {}): Database {
+        const next = clone(db)
+        const characters = next.characters as Obj[]
+        const index = characters.findIndex(slot => slot.chaId === chaId)
+        const source = JSON.parse(JSON.stringify(characters[index])) as Obj
+        if (trashTime !== undefined) {
+            source.trashTime = trashTime
+        }
+        characters[index] = { ...(buildColdStub(source as unknown as character, 'unit-key', ['chat-a']) as unknown as Obj), ...tweak }
+        return asDatabase(next)
+    }
+
+    test('trashing a stub writes its trashTime into the entry and encodes no body', async () => {
+        const { db, first, chaId, u } = stubbed()
+        const lists = counting()
+        const tree = await encodeScoped(withStub(db, chaId, 1234), scopedOptions(2, first, lists.lists), { modules: false, characters: 'all' })
+        expect(indexEntry(tree, chaId).trashTime).toBe(1234)
+        expect(written(tree)).toEqual([`shard:${shardOfU(u)}`, 'manifest'].sort())
+        expect(lists.encoded).not.toContain(chaId)
+        const before = indexEntry(first, chaId)
+        expect({ ...indexEntry(tree, chaId), trashTime: undefined }).toEqual({ ...before, trashTime: undefined })
+    })
+
+    test('restoring a stub from trash clears the entry trashTime', async () => {
+        const { db, first, chaId } = stubbed()
+        const trashed = await encodeScoped(withStub(db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
+        expect(indexEntry(trashed, chaId).trashTime).toBe(1234)
+        const restored = await encodeScoped(withStub(db, chaId, undefined), scopedOptions(3, trashed), { modules: false, characters: new Set() })
+        expect(Object.hasOwn(indexEntry(restored, chaId), 'trashTime')).toBe(false)
+        expect(indexEntry(restored, chaId)).toEqual(indexEntry(first, chaId))
+        expect(entryOf(restored, chaId).trashTime).toBeUndefined()
+    })
+
+    test('the entry keeps the previous chat state and takes the stub\'s name and tags', async () => {
+        const { db, first, chaId } = stubbed()
+        const tree = await encodeScoped(withStub(db, chaId, undefined, { name: 'Renamed', tags: ['new-tag'], lastInteraction: 777 }), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const entry = indexEntry(tree, chaId)
+        const before = indexEntry(first, chaId)
+        expect(entry.name).toBe('Renamed')
+        expect(entry.tags).toEqual(['new-tag'])
+        expect(entry.lastInteraction).toBe(777)
+        expect(entry.chats).toEqual(before.chats)
+        expect(entry.core).toEqual(before.core)
+        expect(entry.chatPage).toBe(before.chatPage)
+        expect(entry.firstMsgIndex).toBe(before.firstMsgIndex)
+    })
+
+    test('a stub is never encoded even when named', async () => {
+        const { db, first, chaId } = stubbed()
+        const lists = counting()
+        await encodeScoped(withStub(db, chaId, 5), scopedOptions(2, first, lists.lists), { modules: false, characters: new Set([chaId]) })
+        expect(lists.encoded).not.toContain(chaId)
+    })
+
+    test('a stub the previous encoding does not hold is refused', async () => {
+        const { db, first } = stubbed()
+        const next = clone(db)
+        ;(next.characters as Obj[]).push({ ...(buildColdStub(JSON.parse(JSON.stringify((next.characters as Obj[])[0])) as unknown as character, 'k', []) as unknown as Obj), chaId: 'unknown-stub' })
+        await expect(encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })).rejects.toThrow(StubRefusedError)
+    })
+
+    test('the carried stub assembles with the previous body, so the shard entry never outruns its units', async () => {
+        const { db, first, chaId } = stubbed()
+        const tree = await encodeScoped(withStub(db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const units = new Map([...first.units, ...tree.units].map(unit => [unit.key, unit.bytes] as const))
+        const assembled = assembleDatabase(tree.manifest, { get: key => units.get(key) })
+        const slot = (assembled.characters as unknown as { chaId: string, trashTime?: number, chats: unknown[] }[]).find(one => one.chaId === chaId)
+        expect(slot?.trashTime).toBe(1234)
+        expect(slot?.chats.length).toBe(2)
+    })
+})
+
+describe('a shared chaId is never carried (reproducers of the duplicate-holder loss)', () => {
+    function duplicated(): { db: Database, first: EncodedTree, dup: string } {
+        const base = clone(buildSmall(3))
+        const chars = base.characters as Obj[]
+        chars[1] = { ...chars[1], chaId: chars[0].chaId as string, name: 'Second holder', personality: 'SECOND BODY' }
+        const db = asDatabase(base)
+        return { db, first: encodeWith(db), dup: chars[0].chaId as string }
+    }
+
+    function assembledFrom(first: EncodedTree, tree: EncodedTree): Obj[] {
+        const units = new Map([...first.units, ...tree.units].map(unit => [unit.key, unit.bytes] as const))
+        return assembleDatabase(tree.manifest, { get: key => units.get(key) }).characters as unknown as Obj[]
+    }
+
+    test('P1: the stub of a shared id is refused with the id named, not matched to the other holder\'s entry', async () => {
+        const { db, first, dup } = duplicated()
+        const next = clone(db)
+        const second = JSON.parse(JSON.stringify((next.characters as Obj[])[1])) as Obj
+        ;(next.characters as Obj[]).splice(0, 2, buildColdStub(second as unknown as character, 'k', []) as unknown as Obj)
+        const attempt = encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set([dup]) })
+        await expect(attempt).rejects.toThrow(SharedChaIdStubError)
+        await expect(attempt).rejects.toMatchObject({ chaId: dup })
+        await expect(attempt).rejects.toBeInstanceOf(CodecInputError)
+    })
+
+    test('a duplicate holder appended to a carried character: both are encoded, none is carried under the other\'s entry', async () => {
+        const db = buildSmall(3)
+        const first = encodeWith(db)
+        const next = clone(db)
+        const characters = next.characters as Obj[]
+        characters.push({ ...JSON.parse(JSON.stringify(characters[0])) as Obj, name: 'Copy', personality: 'COPY' })
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const stored = assembledFrom(first, tree)
+        expect(stored[0].personality).toBe((db.characters[0] as unknown as Obj).personality)
+        expect(stored[3].personality).toBe('COPY')
+        expect(stored[3].name).toBe('Copy')
+    })
+
+    test('P1b: with one holder deleted the survivor is encoded whole, never given the deleted holder\'s entry', async () => {
+        const { db, first } = duplicated()
+        const next = clone(db)
+        ;(next.characters as Obj[]).splice(0, 1)
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const survivor = assembledFrom(first, tree)[0]
+        expect(survivor.name).toBe('Second holder')
+        expect(survivor.personality).toBe('SECOND BODY')
+    })
+
+    test('two resident holders are both encoded though nothing names them', async () => {
+        const { db, first } = duplicated()
+        const lists = counting()
+        await encodeScoped(db, scopedOptions(2, first, lists.lists), { modules: false, characters: new Set() })
+        expect(lists.encoded.filter(chaId => chaId === chaIdOf(db, 0)).length).toBe(2)
+    })
+})

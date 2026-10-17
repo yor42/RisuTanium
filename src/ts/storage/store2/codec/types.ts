@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { AssetList, InlayList, KeyEnv, Manifest, ModuleIndex, Ref, Shard, UnitType } from '../format'
+import type { KeyMint } from '../commit'
 
 /**
  * Shared types of the unit codec: the pure translation between a `Database`
@@ -38,6 +39,17 @@ export class CodecInputError extends CodecError {
     constructor(message: string) {
         super('input', message)
         this.name = 'CodecInputError'
+    }
+}
+
+/**
+ * A cold-stub character shares its `chaId` with another character, so the shard entry it stands for cannot be told
+ * from the other holder's. A stub has no body to encode instead; the pass is refused until the ambiguity clears.
+ */
+export class SharedChaIdStubError extends CodecInputError {
+    constructor(public readonly chaId: string) {
+        super(`The character id ${chaId} is held by more than one character, so its stub cannot be matched to the entry it stands for.`)
+        this.name = 'SharedChaIdStubError'
     }
 }
 
@@ -99,7 +111,10 @@ export interface PreviousEncoding {
 export interface EncodedTree {
     manifestKey: string
     manifest: Manifest
-    /** Every unit of the tree, the manifest last. */
+    /**
+     * Every unit this encode produced, the manifest last. A unit a scoped encode carried without encoding it is not
+     * here; it is only in `index.units`.
+     */
     units: EncodedUnit[]
     /** Pass as `previous` of the next encode. */
     index: PreviousEncoding
@@ -141,6 +156,11 @@ export interface EncodeOptions {
     createdAt: number
     /** The earlier encoding to reuse keys from; absent on a first encode. */
     previous?: PreviousEncoding | null
+    /**
+     * The commit attempt's key mint. A unit that is not reused takes its key from here, so the keys of a tree built
+     * for a commit are exactly those the commit accepts; absent, keys come from `env` (conversion, goldens).
+     */
+    keys?: KeyMint
 }
 
 /** Where `assembleDatabase` reads unit bytes from. */

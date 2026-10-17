@@ -1,5 +1,6 @@
 import { encodeUnit, newManifestKey, newShardKey, newUnitKey, readRef, refOfFrame, UNIT_TYPE, type KeyEnv, type UnitType } from '../format'
 import { Sha256 } from '../../../assetHash'
+import type { KeyMint } from '../commit'
 import { CodecError, type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit } from './types'
 
 /** Which key shape a new unit gets. */
@@ -58,7 +59,7 @@ export class UnitSink {
     private readonly identities = new Set<string>()
     private readonly keys = new Set<string>()
 
-    constructor(private readonly env: KeyEnv, private readonly previous: PreviousEncoding | null) {
+    constructor(private readonly env: KeyEnv, private readonly previous: PreviousEncoding | null, private readonly mint?: KeyMint) {
         if (previous !== null) {
             for (const unit of previous.units.values()) {
                 this.keys.add(unit.key)
@@ -68,7 +69,9 @@ export class UnitSink {
 
     private freshKey(kind: UnitKeyKind): string {
         for (let attempt = 0; attempt < KEY_ATTEMPTS; attempt++) {
-            const key = kind === 'shard' ? newShardKey(this.env) : kind === 'manifest' ? newManifestKey(this.env) : newUnitKey(this.env)
+            const key = this.mint !== undefined
+                ? (kind === 'shard' ? this.mint.shard() : kind === 'manifest' ? this.mint.manifest() : this.mint.unit())
+                : (kind === 'shard' ? newShardKey(this.env) : kind === 'manifest' ? newManifestKey(this.env) : newUnitKey(this.env))
             if (!this.keys.has(key)) {
                 return key
             }
@@ -120,7 +123,8 @@ export function isUnchanged(tree: EncodedTree): boolean {
  * byte-for-byte comparison, at the memory cost of holding the whole encoding.
  */
 export function previousFrom(tree: EncodedTree, keepBytes = false): PreviousEncoding {
-    const units = new Map<string, ReusableUnit>()
+    // `index.units` also holds the units a scoped encode carried without encoding them; they have no bytes to keep.
+    const units = new Map<string, ReusableUnit>(tree.index.units)
     for (const unit of tree.units) {
         units.set(unit.identity, keepBytes
             ? { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest, bytes: unit.bytes }
