@@ -17,7 +17,7 @@ import type { GuardedOperations } from 'src/ts/storage/store/contract'
 import { StoreNotBinaryError } from 'src/ts/storage/store/errors'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
-import type { Store2BootNotice } from 'src/ts/storage/store2/bootActive'
+import type { Store2BootEnv, Store2BootNotice } from 'src/ts/storage/store2/bootActive'
 import { checkUnit, unitMapSource } from 'src/ts/storage/store2/codec'
 import { FRAME_HEADER_BYTES, keyOfRef, UNIT_TYPE, type Shard } from 'src/ts/storage/store2/format'
 import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
@@ -54,6 +54,7 @@ const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unkn
 const sleepForeverMock = vi.hoisted(() => vi.fn(async () => { }))
 const putBackMock = vi.hoisted(() => vi.fn())
 const recordCleanupMock = vi.hoisted(() => vi.fn())
+const readColdStorageItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<{ status: 'missing' }> => ({ status: 'missing' })))
 
 //#endregion
 
@@ -159,6 +160,10 @@ vi.mock(import('src/ts/process/modules'), () => ({
 vi.mock(import('src/ts/process/memory/characterPutBack'), () => ({
     startCharacterPutBack: putBackMock,
 }) as unknown as typeof import('src/ts/process/memory/characterPutBack'))
+
+vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
+    readColdStorageItem: readColdStorageItemMock,
+}) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
 vi.mock(import('src/ts/storage/startupCleanupState'), async (importOriginal) => ({
     ...await importOriginal(),
@@ -301,6 +306,11 @@ interface UiDouble extends Store2BootUi {
     flaggedAsked: (readonly FlaggedItem[])[]
     flaggedAnswer: 'continue' | 'decline' | 'earlier'
     recoveries: number
+    convertAsked: number
+    convertAnswer: boolean
+    declinedAsked: number
+    incompleteAsked: number
+    fromBackupAsked: number
 }
 
 function uiDouble(): UiDouble {
@@ -311,10 +321,34 @@ function uiDouble(): UiDouble {
         flaggedAsked: [],
         flaggedAnswer: 'continue',
         recoveries: 0,
+        convertAsked: 0,
+        convertAnswer: true,
+        declinedAsked: 0,
+        incompleteAsked: 0,
+        fromBackupAsked: 0,
         peer: createPeerDouble(),
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport(backups) { ui.offered.push(backups) },
+        async confirmConvert() {
+            ui.convertAsked += 1
+            return ui.convertAnswer
+        },
+        async declined() {
+            ui.declinedAsked += 1
+            return 'import'
+        },
+        async confirmConvertWithout() {
+            return 'decline'
+        },
+        async confirmFromBackup() {
+            ui.fromBackupAsked += 1
+            return 'convert'
+        },
+        async confirmIncomplete() {
+            ui.incompleteAsked += 1
+            return true
+        },
         async confirmFlaggedOpen(items) {
             ui.flaggedAsked.push(items)
             return ui.flaggedAnswer
@@ -450,6 +484,7 @@ beforeEach(() => {
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     putBackMock.mockReset()
     recordCleanupMock.mockReset()
+    readColdStorageItemMock.mockClear()
     dbState.current = baseDb()
     setDatabaseMock.mockClear()
     setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
@@ -696,10 +731,11 @@ describe('loadData(): a store2 profile whose chats have damaged cores', () => {
 })
 describe('loadData(): a boot the dispatch stops', () => {
     test.each([[false], [true]])('the profile is not installed, loadedStore stays unset, the page waits, and nothing is written (Tauri: %s)', async (tauri) => {
-        // A legacy main file with no store2 profile: the conversion is not available, so the dispatch stops.
+        // A legacy main file with no store2 profile whose conversion the user declines: the dispatch stops.
         const store = legacyStore()
         pruningBackups(store)
         const { loadData, loadedStore, ui } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, injectBackend: true, tauri })
+        ui.convertAnswer = false
 
         await loadData()
         await settle()
@@ -707,7 +743,9 @@ describe('loadData(): a boot the dispatch stops', () => {
         expect(get(loadedStore)).toBe(false)
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(sleepForeverMock).toHaveBeenCalledTimes(1)
-        expect(ui.notices).toEqual([{ name: 'convert-unavailable' }])
+        expect(ui.convertAsked).toBe(1)
+        expect(ui.declinedAsked).toBe(1)
+        expect(ui.notices).toEqual([])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(archive.opened).toBe(0)
         expect(getDbBackupsMock).not.toHaveBeenCalled()
@@ -719,8 +757,10 @@ describe('loadData(): a boot the dispatch stops', () => {
 describe('loadData(): the main file predicate the dispatch is given', () => {
     test('a main file that exists is a legacy profile to convert, never a store to seed', async () => {
         const { loadData, ui, backend } = await boot({ kind: 'indexeddb', injectBackend: true })
+        ui.convertAnswer = false
         await loadData()
-        expect(ui.notices).toEqual([{ name: 'convert-unavailable' }])
+        expect(ui.convertAsked).toBe(1)
+        expect(ui.notices).toEqual([])
         expect((await backend.readCommit()).bytes).toBeNull()
     })
 
@@ -734,8 +774,10 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
             return read(key)
         }
         const { loadData, ui, backend } = await boot({ kind: 'indexeddb', store, injectBackend: true })
+        ui.convertAnswer = false
         await loadData()
-        expect(ui.notices).toEqual([{ name: 'convert-unavailable' }])
+        expect(ui.convertAsked).toBe(1)
+        expect(ui.notices).toEqual([])
         expect(ui.blockedWith).toEqual([])
         expect((await backend.readCommit()).bytes).toBeNull()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
@@ -775,6 +817,89 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
         await loadData()
         expect(ui.blockedWith).toEqual([expect.objectContaining({ reason: 'main-file-unknown' })])
         expect(get(loadedStore)).toBe(false)
+        expect((await backend.readCommit()).bytes).toBeNull()
+    })
+})
+
+describe('loadData(): a legacy profile is converted through the real decoders', () => {
+    test.each([[false], [true]])('the strict decode of the main file converts it: the profile opens as store2, the old files and 21 backups stand untouched (Tauri: %s)', async (tauri) => {
+        const store = legacyStore()
+        pruningBackups(store)
+        const before = new Map(store.files)
+        const { loadData, alertStore, loadedStore, ui, backend } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, injectBackend: true, tauri })
+        acknowledgeNotices(alertStore)
+
+        await loadData()
+        await settle()
+
+        expect(ui.convertAsked).toBe(1)
+        expect(ui.incompleteAsked).toBe(0)
+        expect(get(loadedStore)).toBe(true)
+        expect(setDatabaseMock).toHaveBeenCalled()
+        expect((await backend.readCommit()).bytes).not.toBeNull()
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'store2' })
+        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
+        expect(getActiveStore2Save()).not.toBeNull()
+        // The memory backend never confirms a flush, so a Tauri page's re-flush is unconfirmed here; that is the only notice.
+        expect(ui.notices).toEqual(tauri ? [{ name: 'flush-unconfirmed' }] : [])
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(new Map(store.files).size).toBe(before.size + (tauri ? 1 : 0))
+        for (const [key, bytes] of before) {
+            expect(store.files.get(key)).toEqual(bytes)
+        }
+        expect(getDbBackupsMock, 'no backup pruning').not.toHaveBeenCalled()
+        expect(archive.opened).toBe(0)
+        expect(putBackMock).not.toHaveBeenCalled()
+    })
+
+    test('a main file that does not decode is converted from the newest numbered backup that does, and the notice names it', async () => {
+        const store = legacyStore()
+        store.files.set('database/database.bin', new Uint8Array([0, 1, 2, 3, 4, 5]))
+        const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'indexeddb', store, injectBackend: true })
+        acknowledgeNotices(alertStore)
+
+        await loadData()
+        await settle()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(ui.notices).toEqual([{ name: 'converted-from-backup', backup: BACKUP_TIMES[BACKUP_TIMES.length - 1] }])
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(store.files.get('database/database.bin')).toEqual(new Uint8Array([0, 1, 2, 3, 4, 5]))
+    })
+
+    test('the environment hands the dispatch the page\'s own cold-unit reader', async () => {
+        const store = legacyStore()
+        const unit = '00000000-0000-4000-8000-0000000000d1'
+        const { loadData } = await boot({ kind: 'indexeddb', store, injectBackend: true })
+        const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
+        const handed: { env: Store2BootEnv | null } = { env: null }
+        registerStore2Boot(async (env) => {
+            handed.env = env
+            return { kind: 'stopped' }
+        })
+
+        await loadData()
+
+        expect(handed.env).not.toBeNull()
+        expect(await handed.env?.readColdStorageItem(unit)).toEqual({ status: 'missing' })
+        expect(readColdStorageItemMock).toHaveBeenCalledWith(unit)
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+    })
+
+    test('when nothing decodes the page stops with a named block and nothing is written', async () => {
+        const store = createMemoryByteStore()
+        store.files.set('database/database.bin', new Uint8Array([0, 1, 2, 3, 4, 5]))
+        store.files.set('database/dbbackup-1700000000000.bin', new Uint8Array([9, 9, 9]))
+        const { loadData, loadedStore, ui, backend } = await boot({ kind: 'indexeddb', store, injectBackend: true })
+
+        await loadData()
+        await settle()
+
+        expect(get(loadedStore)).toBe(false)
+        expect(ui.blockedWith).toEqual([expect.objectContaining({ reason: 'convert-lenient-failed' })])
+        expect(sleepForeverMock).toHaveBeenCalledTimes(1)
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect((await backend.readCommit()).bytes).toBeNull()
     })
 })

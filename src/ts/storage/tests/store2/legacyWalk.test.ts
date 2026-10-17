@@ -37,7 +37,7 @@ import { legacyRefsOfDatabase } from 'src/ts/storage/store2/legacy/refs'
 import { LegacyReadError } from 'src/ts/storage/store2/legacy/resolve'
 import { collectLegacyColdKeys } from 'src/ts/storage/store2/legacy/walk'
 import { resolveLegacyTree } from 'src/ts/storage/store2/legacy/resolve'
-import { ALL_GOLDENS, DEEP, deepChain, ID, loadGolden, readerOver, type StoredUnit } from './legacyFixtures'
+import { ALL_GOLDENS, DEEP, deepChain, ID, loadGolden, readerOver, unitValue, type StoredUnit } from './legacyFixtures'
 
 const KEYS = {
     'fork-full.bin': [ID.stubBlob, ID.blobChatUnit, ID.inlineChatUnit, ID.pluginUnit],
@@ -177,6 +177,46 @@ describe('new behaviour: any error means no answer', () => {
         const keys = await collectLegacyColdKeys([golden.tree], readerOver(units))
 
         expect(sorted(keys)).toEqual(sorted(KEYS['fork-full.bin']))
+    })
+})
+
+describe('new behaviour: the visit callback and per-file calls', () => {
+    test('visit sees the key and parsed body of every unit read successfully, and nothing for a missing or unparsable one', async () => {
+        const golden = await loadGolden('fork-full.bin')
+        const units = new Map<string, StoredUnit>(golden.units)
+        units.delete(ID.inlineChatUnit)
+        const visited: [string, unknown][] = []
+
+        await collectLegacyColdKeys([golden.tree], readerOver(units), (key, value) => { visited.push([key, value]) })
+
+        expect(visited.map(([key]) => key).sort()).toEqual([ID.stubBlob, ID.blobChatUnit].sort())
+        for (const [key, value] of visited) {
+            expect(value).toEqual(unitValue(golden, key))
+        }
+    })
+
+    test('without a visit callback the walk answers exactly as before', async () => {
+        const golden = await loadGolden('fork-full.bin')
+
+        const plain = await collectLegacyColdKeys([golden.tree], readerOver(golden.units))
+        const visited = await collectLegacyColdKeys([golden.tree], readerOver(golden.units), () => { })
+
+        expect(sorted(visited)).toEqual(sorted(plain))
+    })
+
+    test('one call per file keeps its own state: a unit two files share is read and visited once for each, and one file\'s failure leaves the other\'s answer intact', async () => {
+        const golden = await loadGolden('fork-full.bin')
+        const reader = readerOver(golden.units)
+        const seen: string[] = []
+
+        const first = await collectLegacyColdKeys([golden.tree], reader, key => { seen.push(key) })
+        const second = await collectLegacyColdKeys([golden.tree], reader, key => { seen.push(key) })
+
+        expect(sorted(first)).toEqual(sorted(second))
+        expect(seen.filter(key => key === ID.stubBlob)).toHaveLength(2)
+        const failing = readerOver(golden.units, { errorKeys: new Set([ID.blobChatUnit]) })
+        await expect(collectLegacyColdKeys([golden.tree], failing)).rejects.toBeInstanceOf(LegacyReadError)
+        expect(sorted(await collectLegacyColdKeys([golden.tree], readerOver(golden.units)))).toEqual(sorted(first))
     })
 })
 

@@ -1,6 +1,7 @@
 import type { Database } from '../database.svelte'
 import type { ByteStore } from '../store/contract'
 import type { TooNewSource } from './boot'
+import type { ColdUnitRead } from './legacy/storeReader'
 import type { Store2Session } from './session'
 
 /**
@@ -29,6 +30,8 @@ export interface Store2BootEnv {
     upstreamMainFile: () => Promise<boolean>
     /** The numbered backups, newest first, without pruning anything. */
     listBackupTimes: () => Promise<number[]>
+    /** The page's three-way cold-unit reader: the old cold-storage units a conversion resolves pointers through. */
+    readColdStorageItem: (key: string) => Promise<ColdUnitRead>
 }
 
 /** Why a legacy profile is opened without any write. */
@@ -42,7 +45,8 @@ export type Store2BootNotice =
     | { name: 'flush-unconfirmed' }
     | { name: 'too-new', source: TooNewSource, detail: string }
     | { name: 'server-capability' | 'backend-unavailable', detail: string }
-    | { name: 'convert-unavailable' }
+    /** The main file did not decode strictly; the profile was converted from the numbered backup `backup` (its time). */
+    | { name: 'converted-from-backup', backup: number }
 
 /**
  * What the dispatch decided.

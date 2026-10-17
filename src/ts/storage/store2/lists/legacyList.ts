@@ -30,49 +30,111 @@ export interface ReadableLegacyFile {
 
 export type LegacyFileInput = UnreadableLegacyFile | ReadableLegacyFile
 
-export function deriveLegacyList(files: readonly LegacyFileInput[], params?: Partial<ListParams>): LegacyList {
-    const resolved = resolveListParams(params)
-    const keys = new Set<string>()
-    for (const file of files) {
-        if (keys.has(file.key)) {
-            throw new RangeError(`Legacy file ${file.key} is listed twice.`)
-        }
-        keys.add(file.key)
+/** What a readable file adds after its own tree: the cold payloads its chain reached, one at a time. */
+export interface LegacyFileScan {
+    /** A full character the file's cold chain reached. */
+    coldCharacter(character: object): void
+    /** Any other readable cold payload; scanned for inlay ids only. */
+    coldValue(value: unknown): void
+    /** The file could not be read to its end: it is listed unreadable. What it already added stays in the list (a superset keeps more). */
+    fail(): void
+}
+
+/**
+ * The legacy list built one file at a time. Only the reference collectors are kept between files, never a decoded
+ * tree, so a caller can decode, scan and drop each old file in turn. `deriveLegacyList` is this builder run over files
+ * already in hand, so the two cannot disagree.
+ */
+export class LegacyListBuilder {
+    private readonly resolved: ListParams
+    private readonly listed = new Map<string, 'ok' | 'unreadable'>()
+    private readonly assets = new AssetRefCollector()
+    private readonly inlays = new InlayIdCollector()
+
+    constructor(params?: Partial<ListParams>) {
+        this.resolved = resolveListParams(params)
     }
-    const assets = new AssetRefCollector()
-    const inlays = new InlayIdCollector()
-    for (const file of files) {
-        if (file.status !== 'ok') {
-            continue
+
+    private reserve(key: string, status: 'ok' | 'unreadable'): void {
+        if (this.listed.has(key)) {
+            throw new RangeError(`Legacy file ${key} is listed twice.`)
         }
-        const db = file.database as Record<string, unknown>
-        collectConfigAssets(assets, file.database, db.characterOrder)
+        this.listed.set(key, status)
+    }
+
+    /** An old file the caller could not decode: listed, and contributes nothing. */
+    addUnreadable(key: string): void {
+        this.reserve(key, 'unreadable')
+    }
+
+    /** A readable old file: its own tree is scanned now, its cold payloads through the returned scan. */
+    beginFile(key: string, database: object): LegacyFileScan {
+        // Listed unreadable until the scan of its own tree has finished, so a tree that throws is never listed ok.
+        this.reserve(key, 'unreadable')
+        const db = database as Record<string, unknown>
+        collectConfigAssets(this.assets, database, db.characterOrder)
         const characters = Array.isArray(db.characters) ? db.characters : []
-        for (const character of [...characters, ...(file.coldCharacters ?? [])]) {
+        for (const character of characters) {
             if (isPlainRecord(character)) {
-                collectCharacterAssets(assets, character)
+                collectCharacterAssets(this.assets, character)
             }
         }
         if (Array.isArray(db.modules)) {
             for (const module of db.modules) {
                 if (isPlainRecord(module)) {
-                    collectModuleAssets(assets, module)
+                    collectModuleAssets(this.assets, module)
                 }
             }
         }
-        inlays.addAll(file.database)
-        inlays.addAll(file.coldCharacters)
-        inlays.addAll(file.coldValues)
+        this.inlays.addAll(database)
+        this.listed.set(key, 'ok')
+        return {
+            coldCharacter: (character) => {
+                if (isPlainRecord(character)) {
+                    collectCharacterAssets(this.assets, character)
+                }
+                this.inlays.addAll(character)
+            },
+            coldValue: (value) => this.inlays.addAll(value),
+            fail: () => {
+                this.listed.set(key, 'unreadable')
+            },
+        }
     }
-    const list = assets.toList()
-    return {
-        v: ASSET_REF_V,
-        iv: IL_REF_V,
-        files: [...files]
-            .sort((a, b) => compareCodeUnits(a.key, b.key))
-            .map(file => ({ key: file.key, status: file.status })),
-        h: list.h,
-        l: sortedUnique(list.l),
-        i: inlayListOf(inlays, resolved),
+
+    add(file: LegacyFileInput): void {
+        if (file.status !== 'ok') {
+            this.addUnreadable(file.key)
+            return
+        }
+        const scan = this.beginFile(file.key, file.database)
+        for (const character of file.coldCharacters ?? []) {
+            scan.coldCharacter(character)
+        }
+        for (const value of file.coldValues ?? []) {
+            scan.coldValue(value)
+        }
     }
+
+    build(): LegacyList {
+        const list = this.assets.toList()
+        return {
+            v: ASSET_REF_V,
+            iv: IL_REF_V,
+            files: [...this.listed]
+                .sort((a, b) => compareCodeUnits(a[0], b[0]))
+                .map(([key, status]) => ({ key, status })),
+            h: list.h,
+            l: sortedUnique(list.l),
+            i: inlayListOf(this.inlays, this.resolved),
+        }
+    }
+}
+
+export function deriveLegacyList(files: readonly LegacyFileInput[], params?: Partial<ListParams>): LegacyList {
+    const builder = new LegacyListBuilder(params)
+    for (const file of files) {
+        builder.add(file)
+    }
+    return builder.build()
 }

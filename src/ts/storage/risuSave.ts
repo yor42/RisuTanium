@@ -1034,6 +1034,18 @@ function salvageKindOfName(name: string): SalvageOmittedKind {
     }
 }
 
+/**
+ * A strict decode could not read a remote file the save points at. The store failing says nothing about whether the file
+ * decodes, so a caller that falls back to another copy on a decode failure must not do so for this. The message is the
+ * original error's; the original is `cause`.
+ */
+export class RisuSaveReadError extends Error {
+    constructor(public readonly fileName: string, cause: unknown) {
+        super(cause instanceof Error ? cause.message : String(cause), { cause })
+        this.name = 'RisuSaveReadError'
+    }
+}
+
 export class RisuSaveDecoder {
     private blocks: {
         name: string;
@@ -1269,7 +1281,7 @@ export class RisuSaveDecoder {
                             remoteData = (await (await getAppStore()).read(fileName)).bytes;
                         } catch (error) {
                             if(this.strict){
-                                throw error;
+                                throw new RisuSaveReadError(fileName, error);
                             }
                             if(this.salvage){
                                 this.recordOmitted(this.blocks[key].name, 'character', error);

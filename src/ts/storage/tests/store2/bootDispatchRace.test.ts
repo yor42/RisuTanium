@@ -54,6 +54,11 @@ function uiDouble() {
         notice(notice: Store2BootNotice) { ui.notices.push(notice) },
         async blocked(blocked: { reason: string, detail: string }) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport() { },
+        async confirmConvert() { return false },
+        async declined() { return 'import' as const },
+        async confirmConvertWithout() { return 'decline' as const },
+        async confirmFromBackup() { return 'decline' as const },
+        async confirmIncomplete() { return false },
         async confirmFlaggedOpen() { return 'decline' as const },
         async foreignMarker() {
             ui.onForeign()
@@ -107,6 +112,7 @@ function tauriRig(): TauriRig {
         dispatch: (options = {}) => dispatchStore2Boot({
             store,
             upstreamMainFile: async () => typeof options.mainFile === 'function' ? options.mainFile() : options.mainFile ?? false,
+            readColdStorageItem: async () => ({ status: 'missing' }),
             listBackupTimes: async () => [],
         }, { ui, kind: 'tauri', keyEnv: testEnv(createClock(), 600), lists: fakeLists }),
         writes: () => store.writes.filter(key => key !== OWNER_KEY),

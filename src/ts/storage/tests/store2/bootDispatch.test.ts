@@ -11,6 +11,7 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import type { Database } from 'src/ts/storage/database.svelte'
+import { fingerprintMainFile } from 'src/ts/storage/mainFileFingerprint'
 import { getPageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { getPageStorageMode, resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
@@ -24,13 +25,17 @@ import { dispatchStore2Boot, type Store2BootUi } from 'src/ts/storage/store2/boo
 import { assembleDatabase, encodeScoped, unitMapSource, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
 import { firstCommitKey, nextCommitKey, classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import {
-    encodeUnit, FRAME_HEADER_BYTES, keyOfRef, newManifestKey, newStagingId, stagingPrefix, UNIT_TYPE,
+    encodeUnit, FRAME_HEADER_BYTES, keyOfRef, newManifestKey, newStagingId, readUnit, stagingPrefix, UNIT_TYPE,
     type KeyEnv, type Manifest, type Ref, type ShardEntry, type StagingLabel,
 } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { freshOwnerId, isOwnerId, type Staging } from 'src/ts/storage/store2/owner'
 import { OWNER_KEY } from 'src/ts/storage/store2/ownerStore'
 import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
+import type { LegacyDecoders } from 'src/ts/storage/store2/legacy/convert'
+import type { SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
+import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
+import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
 import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import type { Store2Session } from 'src/ts/storage/store2/session'
@@ -122,6 +127,48 @@ function tooNewFrame(bytes: Uint8Array): Uint8Array {
     return out
 }
 
+// ---- the legacy trees a conversion decodes ----
+
+const STUB_UNIT = '00000000-0000-4000-8000-0000000000a1'
+
+/** A legacy tree the codec encodes as it is: two characters, no pointer. */
+function legacyTree(): Database {
+    return JSON.parse(JSON.stringify(buildSmall(2))) as Database
+}
+
+/** The same tree plus an archived character whose unit the page does not hold. */
+function legacyTreeWithMissingStub(): Database {
+    const tree = legacyTree() as unknown as { characters: Obj[] }
+    tree.characters.push({ chaId: 'stub-cha', name: 'Stub', type: 'character', coldstorage: STUB_UNIT, coldStoragedChats: [], chats: [] })
+    return tree as unknown as Database
+}
+
+/**
+ * Decoders keyed by the first byte of a file: a tree decodes, `'bad'` (or an unlisted byte) does not. The lenient decoder
+ * answers lenient when given and fails otherwise.
+ */
+function decodersOf(table: Record<number, Database | 'bad' | 'unreadable'>, lenient?: { tree: Database, skipped: SkippedLegacyEntry[] }): LegacyDecoders {
+    return {
+        async strict(bytes) {
+            const entry = table[bytes[0]]
+            if (entry === 'unreadable') {
+                // What the save decoder throws when the store cannot be read.
+                throw Object.assign(new Error('the disk failed'), { name: 'RisuSaveReadError' })
+            }
+            if (entry === undefined || entry === 'bad') {
+                throw new Error('The file does not decode.')
+            }
+            return JSON.parse(JSON.stringify(entry)) as Database
+        },
+        async lenient() {
+            if (lenient === undefined) {
+                throw new Error('The file does not decode, even leniently.')
+            }
+            return { tree: JSON.parse(JSON.stringify(lenient.tree)) as Database, skipped: lenient.skipped }
+        },
+    }
+}
+
 // ---- the rig ----
 
 interface UiDouble extends Store2BootUi {
@@ -131,6 +178,22 @@ interface UiDouble extends Store2BootUi {
     recoveries: { decision: Parameters<Store2BootUi['recovery']>[0]['decision'], session: Store2Session }[]
     foreignAsked: Staging[]
     foreignAnswer: 'wait' | 'clear'
+    /** The conversion confirmations asked, and the answers given in order (the last one repeats). */
+    convertAsked: { mainFileBytes: number | null }[]
+    convertAnswers: boolean[]
+    /** The decline screens shown, and the answers given in order (the last one repeats). */
+    declinedAsked: number
+    declinedAnswers: ('convert' | 'import')[]
+    /** The lenient-conversion prompts asked (the skipped blocks named), and the answers given in order (the last one repeats). */
+    convertWithoutAsked: (readonly SkippedLegacyEntry[])[]
+    convertWithoutAnswers: ('convert' | 'decline')[]
+    /** The backup times asked about, and the answers given in order (the last one repeats). */
+    fromBackupAsked: number[]
+    fromBackupAnswers: ('convert' | 'decline')[]
+    /** The incomplete-data prompts asked, each with the commit key's bytes at the moment it was asked, and the answers given in order. */
+    incompleteAsked: { items: readonly IncompleteItem[], commitKeyAtPrompt: Uint8Array | null }[]
+    incompleteAnswers: boolean[]
+    commitKeyProbe: (() => Promise<Uint8Array | null>) | null
     /** The flagged-open prompts asked, each with whether the save context was already active when it was asked. */
     flaggedAsked: { items: readonly FlaggedItem[], activeAtPrompt: boolean }[]
     flaggedAnswer: 'continue' | 'decline' | 'earlier' | 'never'
@@ -145,12 +208,43 @@ function uiDouble(): UiDouble {
         recoveries: [],
         foreignAsked: [],
         foreignAnswer: 'wait',
+        convertAsked: [],
+        convertAnswers: [true],
+        declinedAsked: 0,
+        declinedAnswers: ['import'],
+        convertWithoutAsked: [],
+        convertWithoutAnswers: ['convert'],
+        fromBackupAsked: [],
+        fromBackupAnswers: ['convert'],
+        incompleteAsked: [],
+        incompleteAnswers: [true],
+        commitKeyProbe: null,
         flaggedAsked: [],
         flaggedAnswer: 'continue',
         peer: createPeerDouble(),
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport(backups) { ui.offered.push(backups) },
+        async confirmConvert(info) {
+            ui.convertAsked.push(info)
+            return ui.convertAnswers[Math.min(ui.convertAsked.length, ui.convertAnswers.length) - 1]
+        },
+        async declined() {
+            ui.declinedAsked += 1
+            return ui.declinedAnswers[Math.min(ui.declinedAsked, ui.declinedAnswers.length) - 1]
+        },
+        async confirmFromBackup(backup) {
+            ui.fromBackupAsked.push(backup)
+            return ui.fromBackupAnswers[Math.min(ui.fromBackupAsked.length, ui.fromBackupAnswers.length) - 1]
+        },
+        async confirmConvertWithout(skipped) {
+            ui.convertWithoutAsked.push(skipped)
+            return ui.convertWithoutAnswers[Math.min(ui.convertWithoutAsked.length, ui.convertWithoutAnswers.length) - 1]
+        },
+        async confirmIncomplete(items) {
+            ui.incompleteAsked.push({ items, commitKeyAtPrompt: ui.commitKeyProbe === null ? null : await ui.commitKeyProbe() })
+            return ui.incompleteAnswers[Math.min(ui.incompleteAsked.length, ui.incompleteAnswers.length) - 1]
+        },
         async confirmFlaggedOpen(items) {
             ui.flaggedAsked.push({ items, activeAtPrompt: getActiveStore2Save() !== null })
             if (ui.flaggedAnswer === 'never') {
@@ -173,6 +267,7 @@ interface BackendHooks {
     beforeCasCommit?: (call: number) => void | Promise<void>
     beforeReadCommit?: (call: number) => void | Promise<void>
     afterListStore2?: (call: number) => void | Promise<void>
+    beforePutUnit?: (call: number, key: string) => void | Promise<void>
     /** Every write result carries `flushed: true`, as a Tauri backend that confirms its flushes does. */
     flushed?: boolean
     failCountAndList?: boolean
@@ -182,12 +277,12 @@ interface Logged {
     backend: Store2Backend
     /** Every write call the page made, in order. */
     writes: string[]
-    calls: { readUnits: number, readCommit: number, casCommit: number, listStore2: number }
+    calls: { readUnits: number, readCommit: number, casCommit: number, listStore2: number, putUnit: number }
 }
 
 function logged(memory: MemoryBackend, hooks: BackendHooks = {}): Logged {
     const writes: string[] = []
-    const calls = { readUnits: 0, readCommit: 0, casCommit: 0, listStore2: 0 }
+    const calls = { readUnits: 0, readCommit: 0, casCommit: 0, listStore2: 0, putUnit: 0 }
     const confirm = (result: Store2WriteResult): Store2WriteResult => hooks.flushed === true ? { flushed: true } : result
     const backend: Store2Backend = {
         ...memory,
@@ -233,6 +328,8 @@ function logged(memory: MemoryBackend, hooks: BackendHooks = {}): Logged {
             return confirm(await memory.commitOrdinary(expected, units, next))
         },
         async putUnit(key, bytes) {
+            calls.putUnit += 1
+            await hooks.beforePutUnit?.(calls.putUnit, key)
             writes.push(`putUnit ${key}`)
             return confirm(await memory.putUnit(key, bytes))
         },
@@ -268,6 +365,10 @@ interface RigOptions {
     lists?: ListDerivation
     maxRounds?: number
     keyEnv?: KeyEnv
+    /** The decoders of a conversion, in place of the real ones. */
+    decoders?: LegacyDecoders
+    /** The old cold-storage units the page's reader answers from; an absent key is missing. */
+    coldUnits?: ReadonlyMap<string, ColdUnitRead>
 }
 
 function rig(options: RigOptions = {}): Rig {
@@ -284,10 +385,12 @@ function rig(options: RigOptions = {}): Rig {
         store.files.set('database/database.bin', new Uint8Array([1, 2, 3]))
     }
     const ui = uiDouble()
+    ui.commitKeyProbe = async () => (await memory.readCommit()).bytes
     const logs: Logged[] = []
     const dispatch = () => dispatchStore2Boot({
         store,
         upstreamMainFile: typeof mainFile === 'function' ? mainFile : async () => mainFile,
+        readColdStorageItem: async (key) => options.coldUnits?.get(key) ?? { status: 'missing' },
         listBackupTimes: async () => {
             if (backups === 'unlistable') {
                 throw new Error('the backup listing failed')
@@ -310,6 +413,7 @@ function rig(options: RigOptions = {}): Rig {
         keyEnv: options.keyEnv ?? testEnv(createClock(), 9001),
         lists: options.lists ?? fakeLists,
         maxRounds: options.maxRounds,
+        decoders: options.decoders,
     })
     return {
         memory,
@@ -933,10 +1037,13 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
         expect((await test.memory.readCommit()).bytes).toBeNull()
     })
 
-    test('with a main file the conversion is not available yet: the notice, a stop, and nothing written', async () => {
+    test('with a main file that the user declines to convert: the question is asked, the page stops, and nothing is written', async () => {
         const test = rig({ mainFile: true })
+        test.ui.convertAnswers = [false]
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.notices).toEqual([{ name: 'convert-unavailable' }])
+        expect(test.ui.convertAsked).toEqual([{ mainFileBytes: null }])
+        expect(test.ui.declinedAsked).toBe(1)
+        expect(test.ui.notices).toEqual([])
         expect(test.allWrites()).toEqual([])
         expect(test.store.files.get('database/database.bin')).toEqual(new Uint8Array([1, 2, 3]))
         expect((await test.memory.readCommit()).bytes).toBeNull()
@@ -945,6 +1052,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
 
     test('a Tauri page that declines to convert writes nothing but its owner id, which is well formed', async () => {
         const test = rig({ mainFile: true, kind: 'tauri', hooks: { flushed: true } })
+        test.ui.convertAnswers = [false]
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
         expect(test.allWrites()).toEqual([])
         expect(test.store.writes).toEqual([OWNER_KEY])
@@ -1018,6 +1126,251 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
     })
 })
 
+// ---- row 1: the conversion of a legacy profile ----
+
+describe('new behaviour: row 1, a legacy profile is converted', () => {
+    async function storedManifest(memory: MemoryBackend): Promise<Manifest> {
+        const key = (await currentKey(memory)).current
+        if (key === null) {
+            throw new Error('No manifest is current.')
+        }
+        const parsed = readUnit(memory.snapshot().get(key.key) as Uint8Array, UNIT_TYPE.manifest)
+        if (parsed.status !== 'ok') {
+            throw new Error('The manifest does not parse.')
+        }
+        return parsed.value.body as Manifest
+    }
+
+    function statusOf(files: readonly { key: string, status: string }[]): Record<string, string> {
+        return Object.fromEntries(files.map(file => [file.key, file.status]))
+    }
+
+    test('it asks first, writes the tree and the legacy list, leaves every old file as it was and opens the profile', async () => {
+        const test = rig({ mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
+        const before = new Map(test.store.files)
+        let writesAtQuestion: string[] | null = null
+        const ask = test.ui.confirmConvert
+        test.ui.confirmConvert = async (info) => {
+            writesAtQuestion = test.allWrites()
+            return ask(info)
+        }
+        const result = expectStoreResult(await test.dispatch())
+
+        expect(writesAtQuestion).toEqual([])
+        expect(test.ui.convertAsked).toEqual([{ mainFileBytes: null }])
+        expect(test.ui.fromBackupAsked).toEqual([])
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+        expect(new Map(test.store.files)).toEqual(before)
+        const key = await currentKey(test.memory)
+        expect(key.staging).toBeNull()
+        expect(key.convertedFrom).toBe(fingerprintMainFile(new Uint8Array([1, 2, 3])))
+        const keep = (await storedManifest(test.memory)).fixed.legacyKeep
+        expect(keep).not.toBeNull()
+        expect(keep?.files.map(file => file.key)).toEqual([
+            'database/database.bin',
+            ...[...BACKUP_TIMES].sort().map(time => `database/dbbackup-${time}.bin`),
+        ].sort())
+        expect(new Set(keep?.files.map(file => file.status))).toEqual(new Set(['ok']))
+        const list = readUnit(test.memory.snapshot().get(keyOfRef(keep!.unit)) as Uint8Array, UNIT_TYPE.legacyList)
+        expect(list.status).toBe('ok')
+        expect(getActiveStore2Save()).not.toBeNull()
+        expect(getPageStorageMode()).toEqual({ kind: 'store2' })
+    })
+
+    test('a decline offers the choice again: converting after all asks once more, and an import answer stops with nothing written', async () => {
+        const again = rig({ mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
+        again.ui.convertAnswers = [false, true]
+        again.ui.declinedAnswers = ['convert']
+        expectStoreResult(await again.dispatch())
+        expect(again.ui.convertAsked).toHaveLength(2)
+        expect(again.ui.declinedAsked).toBe(1)
+
+        resetStore2SaveForTest()
+        const imported = rig({ mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
+        imported.ui.convertAnswers = [false]
+        imported.ui.declinedAnswers = ['import']
+        expect(await imported.dispatch()).toEqual({ kind: 'stopped' })
+        expect(imported.allWrites()).toEqual([])
+        expect((await imported.memory.readCommit()).bytes).toBeNull()
+        expect(getActiveStore2Save()).toBeNull()
+    })
+
+    test('a main file that does not decode strictly converts from the newest numbered backup that does, and says which', async () => {
+        const times = [100, 200, 300]
+        const test = rig({ mainFile: true, backups: times, decoders: decodersOf({ 1: 'bad', 8: legacyTree(), 9: 'bad' }) })
+        test.store.files.set('database/dbbackup-300.bin', new Uint8Array([9]))
+        test.store.files.set('database/dbbackup-200.bin', new Uint8Array([8]))
+        const result = expectStoreResult(await test.dispatch())
+
+        expect(test.ui.fromBackupAsked).toEqual([200])
+        expect(result.notices).toContainEqual({ name: 'converted-from-backup', backup: 200 })
+        expect(test.ui.notices).toContainEqual({ name: 'converted-from-backup', backup: 200 })
+        expect((await currentKey(test.memory)).convertedFrom).toBe(fingerprintMainFile(new Uint8Array([8])))
+        const keep = (await storedManifest(test.memory)).fixed.legacyKeep
+        expect(Object.fromEntries((keep?.files ?? []).map(file => [file.key, file.status]))).toEqual({
+            'database/database.bin': 'unreadable',
+            'database/dbbackup-100.bin': 'unreadable',
+            'database/dbbackup-200.bin': 'ok',
+            'database/dbbackup-300.bin': 'unreadable',
+        })
+        expect(test.store.deletes).toEqual([])
+        expect(test.store.writes).toEqual([])
+    })
+
+    test('declining to convert from a backup writes nothing but the owner id, offers the choice, and asks again at the next start', async () => {
+        const times = [100, 200]
+        const make = (memory?: MemoryBackend) => {
+            const test = rig({ memory, mainFile: true, kind: 'tauri', hooks: { flushed: true }, backups: times, decoders: decodersOf({ 1: 'bad', 8: legacyTree() }) })
+            test.store.files.set('database/dbbackup-200.bin', new Uint8Array([8]))
+            return test
+        }
+        const first = make()
+        first.ui.fromBackupAnswers = ['decline']
+        const before = new Map(first.store.files)
+
+        expect(await first.dispatch()).toEqual({ kind: 'stopped' })
+
+        expect(first.ui.fromBackupAsked).toEqual([200])
+        expect(first.ui.incompleteAsked).toEqual([])
+        expect(first.ui.declinedAsked).toBe(1)
+        expect(first.allWrites()).toEqual([])
+        expect((await first.memory.readCommit()).bytes).toBeNull()
+        const after = new Map(first.store.files)
+        expect(after.delete(OWNER_KEY)).toBe(true)
+        expect(after).toEqual(before)
+
+        resetStore2SaveForTest()
+        const again = make(first.memory)
+        again.ui.fromBackupAnswers = ['decline']
+        expect(await again.dispatch()).toEqual({ kind: 'stopped' })
+        expect(again.ui.fromBackupAsked).toEqual([200])
+    })
+
+    test('when the main file and every backup fail, "convert without these" is asked with each skipped block named, and agreeing installs with the main file unreadable', async () => {
+        const skipped: SkippedLegacyEntry[] = [
+            { name: 'cha-lost-1', kind: 'character', reason: 'block is missing' },
+            { name: 'cha-lost-2', kind: 'character', reason: 'block is damaged' },
+        ]
+        const test = rig({ mainFile: true, backups: [100, 200], decoders: decodersOf({ 1: 'bad' }, { tree: legacyTree(), skipped }) })
+        const result = expectStoreResult(await test.dispatch())
+
+        expect(test.ui.convertWithoutAsked).toEqual([skipped])
+        expect(test.ui.convertAsked).toHaveLength(1)
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
+        expect((await currentKey(test.memory)).convertedFrom).toBe(fingerprintMainFile(new Uint8Array([1, 2, 3])))
+        const keep = (await storedManifest(test.memory)).fixed.legacyKeep
+        expect(statusOf(keep?.files ?? [])).toEqual({
+            'database/database.bin': 'unreadable', 'database/dbbackup-100.bin': 'unreadable', 'database/dbbackup-200.bin': 'unreadable',
+        })
+        expect(test.ui.blockedWith).toEqual([])
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+    })
+
+    test('declining "convert without these" writes nothing, offers the choice, and is asked again at the next start', async () => {
+        const skipped: SkippedLegacyEntry[] = [{ name: 'cha-lost-1', kind: 'character', reason: 'block is missing' }]
+        const test = rig({ mainFile: true, kind: 'tauri', hooks: { flushed: true }, backups: [100], decoders: decodersOf({ 1: 'bad' }, { tree: legacyTree(), skipped }) })
+        test.ui.convertWithoutAnswers = ['decline']
+        const before = new Map(test.store.files)
+
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+
+        expect(test.ui.declinedAsked).toBe(1)
+        expect(test.allWrites()).toEqual([])
+        expect((await test.memory.readCommit()).bytes).toBeNull()
+        const after = new Map(test.store.files)
+        expect(after.delete(OWNER_KEY)).toBe(true)
+        expect(after).toEqual(before)
+        expect(getActiveStore2Save()).toBeNull()
+
+        resetStore2SaveForTest()
+        const again = rig({ memory: test.memory, mainFile: true, backups: [100], decoders: decodersOf({ 1: 'bad' }, { tree: legacyTree(), skipped }) })
+        again.ui.convertWithoutAnswers = ['decline']
+        expect(await again.dispatch()).toEqual({ kind: 'stopped' })
+        expect(again.ui.convertWithoutAsked).toEqual([skipped])
+    })
+
+    test('a main file whose decode cannot read the store blocks: no backup is tried, no prompt is shown and nothing is written', async () => {
+        const test = rig({ mainFile: true, backups: [100, 200], decoders: decodersOf({ 1: 'unreadable' }, { tree: legacyTree(), skipped: [] }) })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([{ reason: 'convert-read-failed', detail: 'the disk failed' }])
+        expect(test.ui.convertWithoutAsked).toEqual([])
+        expect(test.store.reads).toEqual(['database/database.bin'])
+        expect(test.allWrites()).toEqual([])
+        expect((await test.memory.readCommit()).bytes).toBeNull()
+        expect(getActiveStore2Save()).toBeNull()
+    })
+
+    test('a lenient decode that fails is a block, with nothing written', async () => {
+        const test = rig({ mainFile: true, backups: [100], decoders: decodersOf({ 1: 'bad' }) })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.convertWithoutAsked).toEqual([])
+        expect(test.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'convert-lenient-failed' })])
+        expect(test.allWrites()).toEqual([])
+        expect((await test.memory.readCommit()).bytes).toBeNull()
+    })
+    test('what could not be brought in is asked about before the marker; accepting installs a placeholder, declining writes nothing', async () => {
+        const accepted = rig({ mainFile: true, decoders: decodersOf({ 1: legacyTreeWithMissingStub() }) })
+        const result = expectStoreResult(await accepted.dispatch())
+        expect(accepted.ui.incompleteAsked).toHaveLength(1)
+        expect(accepted.ui.incompleteAsked[0].commitKeyAtPrompt).toBeNull()
+        expect(accepted.ui.incompleteAsked[0].items).toEqual([expect.objectContaining({ kind: 'character', chaId: 'stub-cha', key: STUB_UNIT, reason: 'missing' })])
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1', 'Stub'])
+
+        resetStore2SaveForTest()
+        const declined = rig({ mainFile: true, decoders: decodersOf({ 1: legacyTreeWithMissingStub() }) })
+        declined.ui.incompleteAnswers = [false]
+        expect(await declined.dispatch()).toEqual({ kind: 'stopped' })
+        expect(declined.ui.declinedAsked).toBe(1)
+        expect(declined.allWrites()).toEqual([])
+        expect((await declined.memory.readCommit()).bytes).toBeNull()
+        expect(getActiveStore2Save()).toBeNull()
+    })
+
+    test('a cold unit that cannot be read at all aborts the conversion before anything is written', async () => {
+        const test = rig({
+            mainFile: true,
+            decoders: decodersOf({ 1: legacyTreeWithMissingStub() }),
+            coldUnits: new Map([[STUB_UNIT, { status: 'error', error: new Error('the disk failed') }]]),
+        })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'convert-read-failed' })])
+        expect(test.ui.incompleteAsked).toEqual([])
+        expect(test.allWrites()).toEqual([])
+        expect((await test.memory.readCommit()).bytes).toBeNull()
+    })
+
+    test('a marker that cannot be written blocks with nothing staged', async () => {
+        const test = rig({
+            mainFile: true,
+            decoders: decodersOf({ 1: legacyTree() }),
+            hooks: { beforeCasCommit: () => { throw new Store2BackendFailureError('the marker write was refused') } },
+        })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'marker-failed' })])
+        expect(test.logs.flatMap(entry => entry.writes)).toEqual([])
+        expect((await test.memory.readCommit()).bytes).toBeNull()
+    })
+
+    test('a unit upload that fails after the marker leaves the marker standing and no current manifest', async () => {
+        const test = rig({
+            mainFile: true,
+            decoders: decodersOf({ 1: legacyTree() }),
+            hooks: { beforePutUnit: () => { throw new Store2BackendFailureError('the unit write failed') } },
+        })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'install-upload-failed' })])
+        const key = await currentKey(test.memory)
+        expect(key.current).toBeNull()
+        expect(key.staging).toMatchObject({ label: 'convert' })
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+        expect(getActiveStore2Save()).toBeNull()
+    })
+})
+
 // ---- row 9: a marker that was left standing ----
 
 describe('new behaviour: row 9, a seed or convert marker that was left standing', () => {
@@ -1041,18 +1394,77 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         expect(test.store.writes).toEqual([])
     })
 
-    test('this device\'s own convert marker is cleared and the conversion, which is not available yet, stops with nothing else written', async () => {
+    test('this device\'s own convert marker is cleared and the conversion re-runs in the same boot, without a second confirmation', async () => {
         const memory = createMemoryBackend()
         await putCommitKey(memory, await markerKey('convert', device))
-        const test = tauriRig(memory, { mainFile: true })
-        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.notices).toEqual([{ name: 'convert-unavailable' }])
+        const test = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
+        const result = expectStoreResult(await test.dispatch())
+        expect(test.ui.convertAsked).toEqual([])
+        expect(test.ui.declinedAsked).toBe(0)
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
         const key = await currentKey(memory)
-        // Row 7 now: no current manifest and no marker, so the next start shows the recovery screen.
+        expect(key.current).not.toBeNull()
+        expect(key.staging).toBeNull()
+        expect(key.convertedFrom).toBe(fingerprintMainFile(new Uint8Array([1, 2, 3])))
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+    })
+
+    test('this device\'s own convert marker asks about converting from a backup again, though not the convert confirmation', async () => {
+        const memory = createMemoryBackend()
+        await putCommitKey(memory, await markerKey('convert', device))
+        const test = tauriRig(memory, { mainFile: true, backups: [100], decoders: decodersOf({ 1: 'bad', 8: legacyTree() }) })
+        test.store.files.set('database/dbbackup-100.bin', new Uint8Array([8]))
+        expectStoreResult(await test.dispatch())
+        expect(test.ui.convertAsked).toEqual([])
+        expect(test.ui.fromBackupAsked).toEqual([100])
+    })
+
+    test('this device\'s own convert marker with nothing decoding strictly reaches "convert without these" without the convert confirmation', async () => {
+        const memory = createMemoryBackend()
+        await putCommitKey(memory, await markerKey('convert', device))
+        const skipped: SkippedLegacyEntry[] = [{ name: 'cha-lost-1', kind: 'character', reason: 'block is missing' }]
+        const test = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: 'bad' }, { tree: legacyTree(), skipped }) })
+        expectStoreResult(await test.dispatch())
+        expect(test.ui.convertAsked).toEqual([])
+        expect(test.ui.convertWithoutAsked).toEqual([skipped])
+        expect((await currentKey(memory)).current).not.toBeNull()
+    })
+    test('after this device\'s own convert marker is cleared, a declined incomplete-data question leaves row 7: the next start shows the recovery screen', async () => {
+        const memory = createMemoryBackend()
+        await putCommitKey(memory, await markerKey('convert', device))
+        const first = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTreeWithMissingStub() }) })
+        first.ui.incompleteAnswers = [false]
+        expect(await first.dispatch()).toEqual({ kind: 'stopped' })
+        expect(first.ui.convertAsked).toEqual([])
+        expect(first.ui.incompleteAsked).toHaveLength(1)
+        const key = await currentKey(memory)
         expect(key.current).toBeNull()
         expect(key.staging).toBeNull()
-        // The boot re-flush rewrites the commit key with the bytes it holds, then the start-up clear writes the cleared key.
-        expect(test.logs[0].writes).toEqual(['casCommit', 'casCommit'])
+        const second = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTreeWithMissingStub() }) })
+        expect(await second.dispatch()).toEqual({ kind: 'stopped' })
+        expect(second.ui.recoveries.map(request => request.decision.row)).toEqual([7])
+        expect(second.ui.incompleteAsked).toEqual([])
+    })
+
+    test('a crash after the marker and before the final write: the next start is row 9 own and re-runs the conversion without asking again', async () => {
+        const memory = createMemoryBackend()
+        const first = tauriRig(memory, {
+            mainFile: true,
+            decoders: decodersOf({ 1: legacyTree() }),
+            hooks: { flushed: true, beforePutUnit: () => { throw new Store2BackendFailureError('the unit write failed') } },
+        })
+        expect(await first.dispatch()).toEqual({ kind: 'stopped' })
+        expect(first.ui.convertAsked).toHaveLength(1)
+        expect(first.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'install-upload-failed' })])
+        const standing = await currentKey(memory)
+        expect(standing.current).toBeNull()
+        expect(standing.staging).toMatchObject({ label: 'convert', owner: device })
+        const second = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
+        const result = expectStoreResult(await second.dispatch())
+        expect(second.ui.convertAsked).toEqual([])
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
+        expect((await currentKey(memory)).current).not.toBeNull()
     })
 
     test('an own marker whose clear came to nothing or lost to a peer is classified again', async () => {
@@ -1154,6 +1566,7 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
         const dispatch = () => dispatchStore2Boot({
             store: test.store,
             upstreamMainFile: typeof mainFile === 'function' ? mainFile : async () => mainFile,
+            readColdStorageItem: async () => ({ status: 'missing' }),
             listBackupTimes: async () => [...BACKUP_TIMES],
         }, { ui: test.ui, kind })
         if (options.capable !== 'none') {

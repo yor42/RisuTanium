@@ -16,6 +16,9 @@ import type { Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
 import { probeNumberedBackups, seedStore2Profile } from './bootSeed'
 import { setStore2BootSession, type Store2BootEnv, type Store2BootNotice, type Store2BootResult } from './bootActive'
+import { convertLegacyProfile, convertLegacyWithout, type LegacyDecoders } from './legacy/convert'
+import type { SkippedLegacyEntry } from './legacy/lenient'
+import type { IncompleteItem, ResolveOptions } from './legacy/resolve'
 import { createLeafFallback, type FlaggedItem, type LeafFallback } from './leafFallback'
 import { createOwnerIdStore } from './ownerStore'
 import { CommitKeyRecheckError, readTreeBytes } from './treeBytes'
@@ -49,6 +52,21 @@ export interface Store2BootUi {
     blocked(blocked: { reason: string, detail: string }): Promise<void>
     /** No main file but numbered backups: the backups are the profile, never seeded over. */
     offerRestoreOrImport(backups: readonly number[]): Promise<void>
+    /** A legacy profile is about to be converted. `false` declines: nothing is written. */
+    confirmConvert(info: { mainFileBytes: number | null }): Promise<boolean>
+    /** After a decline: convert after all, or import a backup instead (not available yet, so the dispatch stops). */
+    declined(): Promise<'convert' | 'import'>
+    /**
+     * Nothing decodes strictly. Converting from a lenient read leaves out the blocks named here (possibly none); the person
+     * must agree before the marker. `decline` writes nothing and the question comes back at the next start.
+     */
+    confirmConvertWithout(skipped: readonly SkippedLegacyEntry[]): Promise<'convert' | 'decline'>
+    /**
+     * The main file does not decode strictly and the numbered backup `backup` (its time) does. Asked before the marker and before the incomplete-data question; `decline` writes nothing and the question comes back at the next start.
+     */
+    confirmFromBackup(backup: number): Promise<'convert' | 'decline'>
+    /** What the conversion could not bring in, asked before the marker. `false` declines: nothing is written. */
+    confirmIncomplete(items: readonly IncompleteItem[]): Promise<boolean>
     /**
      * A tree whose listed leaves are damaged or missing. `continue` opens the profile with those parts empty (the first
      * save keeps that state); `decline` stops and asks again at the next start; `earlier` shows the recovery screen with
@@ -74,6 +92,10 @@ export interface Store2DispatchDeps {
     maxRounds?: number
     /** The clock that stamps a load-error message; the wall clock by default. */
     now?: () => number
+    /** The decoders of a conversion, in place of the real ones (the tests' seam). */
+    decoders?: LegacyDecoders
+    /** The ids and clock of a conversion's placeholder characters (the tests' seam). */
+    resolve?: ResolveOptions
 }
 
 /** The state a round hands the next: open a new session and classify again. */
@@ -225,6 +247,76 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         return openStored(session, outcome.manifestKey, { fence: 'absent' })
     }
 
+    /**
+     * The conversion of a legacy profile. Row 1 asks first; an own row-9 re-run does not (the standing marker records the
+     * earlier consent). A decline writes nothing and is offered again; the question about what could not be brought in is
+     * asked in both cases, before the marker.
+     */
+    async function convertRow(session: Store2Session, ask: boolean): Promise<Round> {
+        const backend = session.backend
+        if (backend === null) {
+            return stop('no-backend', 'The session has no backend.')
+        }
+        const granted = firstLifeGrant(session)
+        if (granted.status === 'refused') {
+            return stop('first-life-refused', granted.detail)
+        }
+        const hooks = {
+            confirmIncomplete: (items: readonly IncompleteItem[]) => ui.confirmIncomplete(items),
+            confirmFromBackup: async (backup: number) => await ui.confirmFromBackup(backup) === 'convert',
+        }
+        for (;;) {
+            if (ask && !(await ui.confirmConvert({ mainFileBytes: null }))) {
+                if (await ui.declined() === 'import') {
+                    return { kind: 'stopped' }
+                }
+                continue
+            }
+            const request = {
+                store: env.store,
+                listBackupTimes: env.listBackupTimes,
+                readColdStorageItem: env.readColdStorageItem,
+                backend,
+                grant: granted.grant,
+                owner: session.ownerId,
+                lists,
+                env: keyEnv,
+                decoders: deps.decoders,
+                resolve: deps.resolve,
+            }
+            let result = await convertLegacyProfile(request, hooks)
+            if (result.status === 'all-failed') {
+                // Nothing decodes strictly: converting from a lenient read is the person's choice, asked with every skipped block named.
+                result = await convertLegacyWithout(request, {
+                    ...hooks,
+                    confirmSkipped: async (skipped) => await ui.confirmConvertWithout(skipped) === 'convert',
+                })
+            }
+            switch (result.status) {
+                case 'declined':
+                    if (await ui.declined() === 'import') {
+                        return { kind: 'stopped' }
+                    }
+                    continue
+                case 'reclassify':
+                    return RECLASSIFY
+                case 'blocked':
+                    return stop(result.reason, result.detail)
+                case 'installed':
+                    if (result.flushed !== true && session.reflush !== null) {
+                        const reflushed = await reflushTopLevel(backend)
+                        if (!reflushed.ok) {
+                            raise({ name: 'flush-unconfirmed' })
+                        }
+                    }
+                    if (result.fromBackup !== null) {
+                        raise({ name: 'converted-from-backup', backup: result.fromBackup })
+                    }
+                    return openStored(session, result.manifestKey, { fence: 'absent' })
+            }
+        }
+    }
+
     /** A page whose store2 backend is not available: the legacy profile may be read, never written, and never over a store2 profile. */
     async function readOnlyRow(session: Store2Session, reason: 'opfs-transitional' | 'server-capability' | 'backend-unavailable', detail: string): Promise<Round> {
         if (reason === 'opfs-transitional') {
@@ -288,8 +380,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         switch (decision.row) {
             case 1:
                 if (decision.action === 'convert') {
-                    raise({ name: 'convert-unavailable' })
-                    return { kind: 'stopped' }
+                    return convertRow(session, true)
                 }
                 return seed(session, true)
             case 3:
@@ -318,8 +409,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                     return stop('own-marker-not-cleared', 'This page\'s own marker could not be cleared, so nothing is re-run.')
                 }
                 if (decision.operation === 'convert') {
-                    raise({ name: 'convert-unavailable' })
-                    return { kind: 'stopped' }
+                    return convertRow(session, false)
                 }
                 return seed(session, false)
             }
@@ -371,6 +461,23 @@ export function createProductionBootUi(): Store2BootUi {
         offerRestoreOrImport: (backups) => {
             console.warn('[store2 boot] backups exist', backups)
             return open<void>()
+        },
+        confirmConvert: (info) => {
+            console.warn('[store2 boot] conversion needs confirmation', info)
+            return open<boolean>()
+        },
+        declined: () => open<'convert' | 'import'>(),
+        confirmFromBackup: (backup) => {
+            console.warn('[store2 boot] converting from a backup', backup)
+            return open<'convert' | 'decline'>()
+        },
+        confirmConvertWithout: (skipped) => {
+            console.warn('[store2 boot] nothing decodes strictly', skipped)
+            return open<'convert' | 'decline'>()
+        },
+        confirmIncomplete: (items) => {
+            console.warn('[store2 boot] conversion is incomplete', items)
+            return open<boolean>()
         },
         confirmFlaggedOpen: (items) => {
             console.warn('[store2 boot] incomplete profile', items)

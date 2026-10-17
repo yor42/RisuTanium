@@ -618,8 +618,8 @@ type Store2BootOutcome = Store2BootResult | { kind: 'unregistered' }
 
 /**
  * Asks the registered store2 boot what this page's profile is, before the legacy boot opens its archive session or
- * reads anything. The environment is the page's own store and the two questions the dispatch cannot answer itself; the
- * numbered-backup listing never prunes.
+ * reads anything. The environment is the page's own store and the questions the dispatch cannot answer itself (whether a
+ * main file exists, the numbered backups, the old cold units); the numbered-backup listing never prunes.
  */
 async function runStore2Boot(): Promise<Store2BootOutcome> {
     const boot = getStore2Boot()
@@ -627,7 +627,13 @@ async function runStore2Boot(): Promise<Store2BootOutcome> {
         return { kind: 'unregistered' }
     }
     const store = await getAppStore()
-    return boot({ store, upstreamMainFile: () => store.has(LEGACY_MAIN_FILE_KEY), listBackupTimes })
+    return boot({ store, upstreamMainFile: () => store.has(LEGACY_MAIN_FILE_KEY), listBackupTimes, readColdStorageItem: readColdUnitForConversion })
+}
+
+/** The page's cold-unit reader, loaded when a conversion first reads a unit, so a page that never converts does not load the module. */
+async function readColdUnitForConversion(key: string) {
+    const { readColdStorageItem } = await import('./process/coldstorage.svelte')
+    return readColdStorageItem(key)
 }
 
 /**
