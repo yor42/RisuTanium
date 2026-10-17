@@ -42,12 +42,22 @@ describe('refuseOnReadOnlyPage', () => {
         expect(alertError).toHaveBeenCalledWith(language.opfsReadOnlyNotice)
     })
 
-    test('reproducer: a page the boot made read-only on a store that is not OPFS refuses too', async () => {
+    test('reproducer: a page the boot made read-only on a store that is not OPFS refuses too, in the neutral words', async () => {
         selection.answer = false
         setPageStorageMode({ kind: 'read-only' })
 
         expect(await refuseOnReadOnlyPage()).toBe(true)
         expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)
+    })
+
+    test('guard (passes before and after): the OPFS page also sets the read-only mode, and it keeps its own words (the store is asked first)', async () => {
+        selection.answer = true
+        setPageStorageMode({ kind: 'read-only' })
+
+        expect(await refuseOnReadOnlyPage()).toBe(true)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(language.opfsReadOnlyNotice)
     })
 
     test('reproducer: the page mode decides even when the store selection cannot be had', async () => {
@@ -55,6 +65,7 @@ describe('refuseOnReadOnlyPage', () => {
         setPageStorageMode({ kind: 'read-only' })
 
         expect(await refuseOnReadOnlyPage()).toBe(true)
+        expect(alertError).toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)
     })
 
     test.each([

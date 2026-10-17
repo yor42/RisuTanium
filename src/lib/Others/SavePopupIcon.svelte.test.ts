@@ -58,6 +58,17 @@ vi.mock(
         }) as unknown as typeof import('src/ts/alert'),
 )
 
+const storeKind = vi.hoisted(() => ({ opfs: false, throws: false }))
+
+vi.mock(import('src/ts/storage/store/appStore'), () => ({
+    pageStoreIsOpfsTransitional: async () => {
+        if (storeKind.throws) {
+            throw new Error('the store could not be selected')
+        }
+        return storeKind.opfs
+    },
+}) as unknown as typeof import('src/ts/storage/store/appStore'))
+
 //#endregion
 
 import { DBState, savingStoppedReason as savingStoppedReasonStore, frozenSaveKeysStore as frozenSaveKeysStoreMock } from '../../ts/stores.svelte'
@@ -86,6 +97,8 @@ beforeEach(() => {
     alertMdSpy.mockReset()
     alertNormalSpy.mockReset()
     stopDetail.value = ''
+    storeKind.opfs = false
+    storeKind.throws = false
     resetPageStorageModeForTests()
 })
 
@@ -100,6 +113,7 @@ describe('SavePopupIcon shows nothing when nothing is wrong', () => {
 
 describe('SavePopupIcon -- the read-only page and the stop reasons of the block store', () => {
     test('a page that runs from OPFS this time shows a button that says it does not save', async () => {
+        storeKind.opfs = true
         setPageStorageMode({ kind: 'read-only' })
         const { target, app } = mountIcon()
         flushSync()
@@ -107,15 +121,15 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
         const button = target.querySelector('button')
         expect(button).not.toBeNull()
         button!.click()
-        flushSync()
+        await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
 
-        expect(alertNormalSpy).toHaveBeenCalledTimes(1)
         expect(alertNormalSpy.mock.calls[0][0]).toBe(language.opfsReadOnlyNotice)
 
         await teardown(target, app)
     })
 
     test('a page whose mode becomes read-only after the icon was created shows the button then', async () => {
+        storeKind.opfs = true
         const { target, app } = mountIcon()
         flushSync()
         expect(target.querySelector('button')).toBeNull()
@@ -126,7 +140,37 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
         const button = target.querySelector('button')
         expect(button).not.toBeNull()
         button!.click()
+        await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
         expect(alertNormalSpy.mock.calls[0][0]).toBe(language.opfsReadOnlyNotice)
+
+        await teardown(target, app)
+    })
+
+    test('reproducer: a page the store2 boot opened read-only on a store that is not OPFS gets the neutral words, not the OPFS ones', async () => {
+        storeKind.opfs = false
+        setPageStorageMode({ kind: 'read-only' })
+        const { target, app } = mountIcon()
+        flushSync()
+
+        target.querySelector('button')!.click()
+        await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
+
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.store2Boot.readOnlyRefusal)
+        expect(alertNormalSpy.mock.calls[0][0]).not.toBe(language.opfsReadOnlyNotice)
+
+        await teardown(target, app)
+    })
+
+    test('reproducer: a store selection that cannot be had is not OPFS, so the neutral words are used', async () => {
+        storeKind.throws = true
+        setPageStorageMode({ kind: 'read-only' })
+        const { target, app } = mountIcon()
+        flushSync()
+
+        target.querySelector('button')!.click()
+        await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
+
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.store2Boot.readOnlyRefusal)
 
         await teardown(target, app)
     })

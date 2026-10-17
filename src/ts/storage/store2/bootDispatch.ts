@@ -1,9 +1,8 @@
-import { markAppInitiatedReload } from '../../reloadGuard'
 import type { Database } from '../database.svelte'
 import { disablePageBlockOwner } from '../pageBlockOwner'
 import { setPageStorageMode } from '../pageStorageMode'
 import type { AppStoreKind } from '../store/appStore'
-import type { Store2Backend } from './backend/types'
+import type { CompareToken, Store2Backend, UnitWrite } from './backend/types'
 import type { SessionDecision } from './session'
 import { reflushTopLevel, Store2Session } from './session'
 import { activateStore2Save } from './saveActive'
@@ -15,7 +14,7 @@ import { firstLifeGrant } from './firstLife'
 import type { Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
 import { probeNumberedBackups, seedStore2Profile } from './bootSeed'
-import { setStore2BootSession, type Store2BootEnv, type Store2BootNotice, type Store2BootResult } from './bootActive'
+import { BLOCKED_REASONS, setStore2BootSession, type BlockedReason, type Store2BootEnv, type Store2BootNotice, type Store2BootResult, type Store2LegacyReadOnlyReason } from './bootActive'
 import { convertLegacyProfile, convertLegacyWithout, type LegacyDecoders } from './legacy/convert'
 import type { SkippedLegacyEntry } from './legacy/lenient'
 import type { IncompleteItem, ResolveOptions } from './legacy/resolve'
@@ -48,12 +47,17 @@ const MAX_ROUNDS = 3
 export interface Store2BootUi {
     /** Informational: never awaited. */
     notice(notice: Store2BootNotice): void
-    /** A boot that cannot continue and has nothing to offer: the page stays on its loading screen. */
-    blocked(blocked: { reason: string, detail: string }): Promise<void>
+    /**
+     * A boot that cannot continue and has nothing to offer: the port says why and the page stays where it is.
+     * `mayHaveWritten` is true when this boot may already have written: any mutating call on the session's backend made
+     * through the dispatch (an install included), a later classification round (it follows an action of an earlier one) and
+     * a re-run that follows this page's own cleared marker. "Nothing was changed" is shown only when it is false.
+     */
+    blocked(blocked: { reason: BlockedReason, detail: string, mayHaveWritten: boolean }): Promise<void>
     /** No main file but numbered backups: the backups are the profile, never seeded over. */
     offerRestoreOrImport(backups: readonly number[]): Promise<void>
     /** A legacy profile is about to be converted. `false` declines: nothing is written. */
-    confirmConvert(info: { mainFileBytes: number | null }): Promise<boolean>
+    confirmConvert(): Promise<boolean>
     /** After a decline: convert after all, or import a backup instead (not available yet, so the dispatch stops). */
     declined(): Promise<'convert' | 'import'>
     /**
@@ -76,7 +80,7 @@ export interface Store2BootUi {
     /** A marker of another owner stands: wait for it, or clear it. */
     foreignMarker(marker: Staging): Promise<'wait' | 'clear'>
     /** The recovery screen, with the whole current session. */
-    recovery(request: { decision: SessionDecision, session: Store2Session }): Promise<void>
+    recovery(request: { decision: SessionDecision, session: Store2Session, env: Store2BootEnv }): Promise<void>
     peer: Store2PeerHandler
 }
 
@@ -98,6 +102,13 @@ export interface Store2DispatchDeps {
     resolve?: ResolveOptions
 }
 
+const KNOWN_BLOCKED_REASONS: ReadonlySet<string> = new Set<string>(BLOCKED_REASONS)
+
+/** The converter and the seed report their reason as a plain string; a reason outside the union is shown as unclassified, never as a reassurance. */
+function blockedReasonOf(reason: string): BlockedReason {
+    return KNOWN_BLOCKED_REASONS.has(reason) ? reason as BlockedReason : 'unclassified'
+}
+
 /** The state a round hands the next: open a new session and classify again. */
 interface Reclassify {
     kind: 'reclassify'
@@ -109,6 +120,41 @@ const RECLASSIFY: Reclassify = { kind: 'reclassify' }
 
 const STORE2_COMMIT_KEY = 'store2-commit'
 
+/**
+ * The backend with every mutating method announcing itself first, so that "this boot may have written" follows from the
+ * writes made through it and not from a list of the paths that write. Reads pass straight through. A new mutating method on
+ * `Store2Backend` must be added here.
+ */
+export function recordingBackend(backend: Store2Backend, onWrite: () => void): Store2Backend {
+    return {
+        readCommit: () => backend.readCommit(),
+        readFence: () => backend.readFence(),
+        readUnits: (keys: readonly string[]) => backend.readUnits(keys),
+        listStore2: () => backend.listStore2(),
+        countPrefix: (prefix: string) => backend.countPrefix(prefix),
+        casCommit: (expected: CompareToken, next: Uint8Array) => {
+            onWrite()
+            return backend.casCommit(expected, next)
+        },
+        casFence: (expected: CompareToken, next: Uint8Array | null) => {
+            onWrite()
+            return backend.casFence(expected, next)
+        },
+        commitOrdinary: (expectedCommit: CompareToken, units: readonly UnitWrite[], nextCommit: Uint8Array) => {
+            onWrite()
+            return backend.commitOrdinary(expectedCommit, units, nextCommit)
+        },
+        putUnit: (key: string, bytes: Uint8Array) => {
+            onWrite()
+            return backend.putUnit(key, bytes)
+        },
+        removeBatch: (keys: readonly string[], expectedCommit: CompareToken, expectedFence: CompareToken) => {
+            onWrite()
+            return backend.removeBatch(keys, expectedCommit, expectedFence)
+        },
+    }
+}
+
 export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2DispatchDeps): Promise<Store2BootResult> {
     const { ui } = deps
     const keyEnv = deps.keyEnv ?? defaultKeyEnv
@@ -117,26 +163,33 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
     const notices: Store2BootNotice[] = []
     // The user's answer to the foreign-marker question, read by the committer's hook when the dispatch asks it to clear.
     const foreign = { clear: false }
+    // Set by any mutating call through `backendOf`, by an earlier round and by this page clearing its own standing marker; never reset within a boot.
+    let mayHaveWritten = false
 
     function raise(notice: Store2BootNotice): void {
         notices.push(notice)
         ui.notice(notice)
     }
 
-    async function stop(reason: string, detail: string): Promise<Store2BootResult> {
-        await ui.blocked({ reason, detail })
+    async function stop(reason: BlockedReason, detail: string): Promise<Store2BootResult> {
+        await ui.blocked({ reason, detail, mayHaveWritten })
         return { kind: 'stopped' }
     }
 
-    function legacyReadOnly(reason: 'opfs-transitional' | 'server-capability' | 'backend-unavailable'): Store2BootResult {
+    function legacyReadOnly(reason: Store2LegacyReadOnlyReason): Store2BootResult {
         // No later caller may build a block owner: the legacy profile is only read.
         disablePageBlockOwner()
-        return { kind: 'legacy-readonly', reason }
+        return { kind: 'legacy-readonly', reason, notices: [...notices] }
+    }
+
+    /** The session's backend as every dispatch path uses it: a mutating call on it sets `mayHaveWritten`. */
+    function backendOf(session: Store2Session): Store2Backend | null {
+        return session.backend === null ? null : recordingBackend(session.backend, () => { mayHaveWritten = true })
     }
 
     /** Reads the tree of `manifestKey` and opens it: the load path shared by a normal boot and a fresh install. */
     async function openStored(session: Store2Session, manifestKey: string, decision: { fence: 'absent' | 'fenced' | 'blocked' }): Promise<Round> {
-        const backend = session.backend
+        const backend = backendOf(session)
         if (backend === null) {
             return stop('no-backend', 'The session has no backend.')
         }
@@ -162,6 +215,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 await ui.recovery({
                     decision: { row: 6, mode: 'recovery', tree: read.tree, keys: read.keys },
                     session,
+                    env,
                 })
                 return { kind: 'stopped' }
             case 'ok':
@@ -190,6 +244,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 await ui.recovery({
                     decision: { row: 6, mode: 'recovery', tree: read.flagged.every(leaf => leaf.why === 'missing') ? 'missing' : 'damaged', keys: read.flagged.map(leaf => leaf.key) },
                     session,
+                    env,
                 })
             }
             if (answer !== 'continue') {
@@ -210,7 +265,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
 
     /** The first-life seed: the backups are looked at first, and only an empty store is ever seeded. */
     async function seed(session: Store2Session, allowBackupOffer: boolean): Promise<Round> {
-        const backend = session.backend
+        const backend = backendOf(session)
         if (backend === null) {
             return stop('no-backend', 'The session has no backend.')
         }
@@ -233,8 +288,9 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             case 'reclassify':
                 return RECLASSIFY
             case 'blocked':
-                return stop(outcome.reason, outcome.detail)
+                return stop(blockedReasonOf(outcome.reason), outcome.detail)
             case 'installed':
+                mayHaveWritten = true
                 break
         }
         if (outcome.flushed !== true && session.reflush !== null) {
@@ -253,7 +309,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
      * asked in both cases, before the marker.
      */
     async function convertRow(session: Store2Session, ask: boolean): Promise<Round> {
-        const backend = session.backend
+        const backend = backendOf(session)
         if (backend === null) {
             return stop('no-backend', 'The session has no backend.')
         }
@@ -266,7 +322,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             confirmFromBackup: async (backup: number) => await ui.confirmFromBackup(backup) === 'convert',
         }
         for (;;) {
-            if (ask && !(await ui.confirmConvert({ mainFileBytes: null }))) {
+            if (ask && !(await ui.confirmConvert())) {
                 if (await ui.declined() === 'import') {
                     return { kind: 'stopped' }
                 }
@@ -301,8 +357,9 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 case 'reclassify':
                     return RECLASSIFY
                 case 'blocked':
-                    return stop(result.reason, result.detail)
+                    return stop(blockedReasonOf(result.reason), result.detail)
                 case 'installed':
+                    mayHaveWritten = true
                     if (result.flushed !== true && session.reflush !== null) {
                         const reflushed = await reflushTopLevel(backend)
                         if (!reflushed.ok) {
@@ -408,6 +465,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                     }
                     return stop('own-marker-not-cleared', 'This page\'s own marker could not be cleared, so nothing is re-run.')
                 }
+                mayHaveWritten = true
                 if (decision.operation === 'convert') {
                     return convertRow(session, false)
                 }
@@ -420,7 +478,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             case 8:
             case 10:
             case 11:
-                await ui.recovery({ decision, session })
+                await ui.recovery({ decision, session, env })
                 return { kind: 'stopped' }
         }
     }
@@ -428,6 +486,9 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
     for (let number = 1; number <= rounds; number++) {
         // The earlier session, with its backend and committer, is dropped before the next registers.
         setStore2BootSession(null)
+        if (number > 1) {
+            mayHaveWritten = true
+        }
         const session = await Store2Session.open(env.store, {
             kind: deps.kind,
             backend: deps.backend === undefined ? undefined : await deps.backend(),
@@ -444,58 +505,4 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         }
     }
     return stop('reclassify-exhausted', `The boot was classified ${rounds} times and the store kept moving.`)
-}
-
-/**
- * The port of a build that has no screens yet: notices are logged, every prompt stays open and so leaves the page on
- * its loading screen with nothing written, and the reload action is the real one. Unshippable by design.
- */
-export function createProductionBootUi(): Store2BootUi {
-    const open = <T>(): Promise<T> => new Promise<T>(() => { })
-    return {
-        notice: (notice) => console.warn('[store2 boot]', notice),
-        blocked: (blocked) => {
-            console.error('[store2 boot] blocked', blocked)
-            return open<void>()
-        },
-        offerRestoreOrImport: (backups) => {
-            console.warn('[store2 boot] backups exist', backups)
-            return open<void>()
-        },
-        confirmConvert: (info) => {
-            console.warn('[store2 boot] conversion needs confirmation', info)
-            return open<boolean>()
-        },
-        declined: () => open<'convert' | 'import'>(),
-        confirmFromBackup: (backup) => {
-            console.warn('[store2 boot] converting from a backup', backup)
-            return open<'convert' | 'decline'>()
-        },
-        confirmConvertWithout: (skipped) => {
-            console.warn('[store2 boot] nothing decodes strictly', skipped)
-            return open<'convert' | 'decline'>()
-        },
-        confirmIncomplete: (items) => {
-            console.warn('[store2 boot] conversion is incomplete', items)
-            return open<boolean>()
-        },
-        confirmFlaggedOpen: (items) => {
-            console.warn('[store2 boot] incomplete profile', items)
-            return open<'continue' | 'decline' | 'earlier'>()
-        },
-        foreignMarker: () => open<'wait' | 'clear'>(),
-        recovery: (request) => {
-            console.warn('[store2 boot] recovery', request.decision)
-            return open<void>()
-        },
-        peer: {
-            parkedClean: (prompt) => console.warn('[store2 boot] parked', prompt),
-            decide: () => open(),
-            exportThisTab: () => Promise.reject(new Error('The export is not available in this build.')),
-            reload: () => {
-                markAppInitiatedReload()
-                location.reload()
-            },
-        },
-    }
 }

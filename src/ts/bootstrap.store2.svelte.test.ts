@@ -301,7 +301,7 @@ dbState.baseline = baseDb
 
 interface UiDouble extends Store2BootUi {
     notices: Store2BootNotice[]
-    blockedWith: { reason: string, detail: string }[]
+    blockedWith: { reason: string, detail: string, mayHaveWritten: boolean }[]
     offered: (readonly number[])[]
     flaggedAsked: (readonly FlaggedItem[])[]
     flaggedAnswer: 'continue' | 'decline' | 'earlier'
@@ -513,6 +513,12 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         store.guarded = guardedOps(false)
         const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'node', store })
         const { language } = await import('src/lang')
+        const installedWhenPosted: number[] = []
+        alertStore.subscribe((value) => {
+            if (value.type === 'normal') {
+                installedWhenPosted.push(setDatabaseMock.mock.calls.length)
+            }
+        })
         const shown = acknowledgeNotices(alertStore)
 
         await loadData()
@@ -524,6 +530,9 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(archive.opened).toBe(0)
         expect(archive.disabled).toBe(1)
         expect(ui.notices).toEqual([expect.objectContaining({ name: 'server-capability' })])
+        // The page, not the port, tells the person: exactly one notice, posted after the database (and its language) is installed.
+        expect(shown).toEqual([language.store2Boot.noticeServerCapability])
+        expect(installedWhenPosted).toEqual([1])
         expect(shown).not.toContain(language.opfsReadOnlyNotice)
         const { canBootArchive } = await import('src/ts/process/memory/bootArchiveState')
         expect(canBootArchive()).toBe(false)
@@ -540,7 +549,8 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
     test('a Node page with no guarded operations at all: the same, with the other named notice', async () => {
         const store = legacyStore()
         const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'node', store })
-        acknowledgeNotices(alertStore)
+        const { language } = await import('src/lang')
+        const shown = acknowledgeNotices(alertStore)
 
         await loadData()
 
@@ -548,6 +558,7 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(archive.opened).toBe(0)
         expect(ui.notices).toEqual([expect.objectContaining({ name: 'backend-unavailable' })])
+        expect(shown).toEqual([language.store2Boot.noticeBackendUnavailable])
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
     })
@@ -751,6 +762,37 @@ describe('loadData(): a boot the dispatch stops', () => {
         expect(getDbBackupsMock).not.toHaveBeenCalled()
         expect(backupTimesOf(store)).toHaveLength(21)
         expect(saveDbMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('loadData(): a boot that throws after the person answered (reproducer)', () => {
+    test('the answered "Working" screen does not stay up: the error is reported and no boot screen is left', async () => {
+        const { loadData, loadedStore, alertStore } = await boot({ kind: 'indexeddb', unregistered: true })
+        const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
+        const { askBootScreen, getBootScreen, pressBootButton } = await import('src/ts/storage/store2/ui/bootScreen.svelte')
+        const { ANSWER_GUARD_MS } = await import('src/ts/alertPrompts')
+        registerStore2Boot(async () => {
+            const answered = askBootScreen({ title: 'Q', paragraphs: [], lists: [], details: null, buttons: [{ key: 'yes', label: 'Yes' }], focus: null })
+            await new Promise<void>(resolve => setTimeout(resolve, ANSWER_GUARD_MS + 20))
+            pressBootButton('yes')
+            await answered
+            expect(getBootScreen()?.answered).toBe(true)
+            throw new Error('the dispatch threw after the answer')
+        })
+        const shown: string[] = []
+        alertStore.subscribe((value) => {
+            if (value.type !== 'none') {
+                shown.push(value.msg)
+                queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
+            }
+        })
+
+        await loadData().catch(() => { })
+        await settle()
+
+        expect(get(loadedStore)).toBe(false)
+        expect(shown.join('\n')).toContain('the dispatch threw after the answer')
+        expect(getBootScreen()).toBeNull()
     })
 })
 

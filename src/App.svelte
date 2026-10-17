@@ -36,6 +36,8 @@
     import CustomSidebarConfig from './lib/Others/CustomSidebarConfig.svelte';
     import { RISU_APP_INTERNAL_DRAG_TYPE } from './ts/dragTypes';
     import { isAndroidTransport } from './ts/storage/tauriByteTransport';
+    import BootScreen from './lib/Others/BootScreen.svelte';
+    import { getBootScreen } from './ts/storage/store2/ui/bootScreen.svelte';
 
 
   
@@ -118,6 +120,8 @@
     <AlertInertScope>
     {#if !import.meta.env.VITE_RISU_LEGAL_CONFIGURED}
         <Legal />
+    {:else if getBootScreen() !== null && !$loadedStore}
+        <BootScreen />
     {:else if aprilFools}
 
         <div class="bg-[#212121] w-full h-screen min-h-screen text-black flex relative">

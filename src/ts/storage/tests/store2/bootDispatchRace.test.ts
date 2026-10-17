@@ -46,13 +46,13 @@ interface TauriRig {
 function uiDouble() {
     const ui = {
         notices: [] as Store2BootNotice[],
-        blockedWith: [] as { reason: string, detail: string }[],
+        blockedWith: [] as { reason: string, detail: string, mayHaveWritten: boolean }[],
         recoveries: [] as { row: number | null, session: Store2Session }[],
         foreignAnswer: 'clear' as 'wait' | 'clear',
         onForeign: (): void => { },
         peer: createPeerDouble(),
         notice(notice: Store2BootNotice) { ui.notices.push(notice) },
-        async blocked(blocked: { reason: string, detail: string }) { ui.blockedWith.push(blocked) },
+        async blocked(blocked: { reason: string, detail: string, mayHaveWritten: boolean }) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport() { },
         async confirmConvert() { return false },
         async declined() { return 'import' as const },
@@ -244,7 +244,7 @@ describe('new behaviour: a registration that times out after this boot already r
         // The main file is not there for the first look and is there for the second.
         let asked = 0
         const result = await rig.dispatch({ mainFile: () => { asked += 1; return asked > 1 } })
-        expect(result).toEqual({ kind: 'legacy-readonly', reason: 'backend-unavailable' })
+        expect(result).toEqual({ kind: 'legacy-readonly', reason: 'backend-unavailable', notices: [expect.objectContaining({ name: 'backend-unavailable' })] })
         expect(rig.ui.notices).toEqual([expect.objectContaining({ name: 'backend-unavailable' })])
         expect(rig.writes()).toEqual([])
         expect(rig.store.files.has(COMMIT_KEY)).toBe(false)

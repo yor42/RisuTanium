@@ -12,7 +12,8 @@ import { installBackGuard } from "./ts/backHandlers";
 import { alertToast } from "./ts/alert";
 import { language } from "./lang";
 import { registerStore2Boot } from "./ts/storage/store2/bootActive";
-import { createProductionBootUi, dispatchStore2Boot } from "./ts/storage/store2/bootDispatch";
+import { dispatchStore2Boot } from "./ts/storage/store2/bootDispatch";
+import { createProductionBootUi } from "./ts/storage/store2/ui/productionBootUi";
 
 window.addEventListener('vite:preloadError', (event) => {
     console.error("Chunk load error detected:", event);

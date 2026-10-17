@@ -8,8 +8,8 @@ import type { Store2Session } from './session'
  * The seam that keeps the store2 boot unreachable until the page registers it. `bootstrap.ts` asks `getStore2Boot()`
  * right after the page store is ready and before it opens the legacy boot archive session: `null` runs the legacy boot
  * exactly as before, a function runs the store2 boot and its answer decides whether the legacy boot runs at all. `main.ts`
- * registers the real dispatch. This module holds two variables and imports types only, so the dispatch's module graph is
- * loaded only by a page that registers it.
+ * registers the real dispatch. This module holds two variables and the list of blocked reasons, and imports types only, so the dispatch's
+ * module graph is loaded only by a page that registers it.
  *
  * Ghost-write rule for the deleters that still reach the store from a store2 page (their rewrite belongs to the
  * collection stage; this module only records the rule they follow). The Tauri gate refuses only `store2-commit`,
@@ -49,15 +49,50 @@ export type Store2BootNotice =
     | { name: 'converted-from-backup', backup: number }
 
 /**
+ * Why a boot stops with nothing to offer. Every producer in the dispatch names one of these; the port's text table is
+ * keyed by it, so a reason added here without text fails the type check. `unclassified` is the dispatch's answer to a
+ * reason string that a converter or seed outcome reports outside this list: the port says it cannot tell what was written.
+ */
+export const BLOCKED_REASONS = [
+    'no-backend',
+    'commit-key-unreadable',
+    'commit-unreadable',
+    'tree-unreadable',
+    'main-file-unknown',
+    'backups-unlistable',
+    'store2-profile-unwritable',
+    'no-profile-unwritable',
+    'first-life-refused',
+    'assemble-failed',
+    'convert-read-failed',
+    'convert-main-unreadable',
+    'convert-lenient-failed',
+    'presence-unknown',
+    'marker-failed',
+    'reclassify-exhausted',
+    'own-marker-not-cleared',
+    'foreign-marker-unreadable',
+    'foreign-clear-failed',
+    'install-unknown',
+    'install-invalid',
+    'install-failed',
+    'install-upload-failed',
+    'unclassified',
+] as const
+
+export type BlockedReason = typeof BLOCKED_REASONS[number]
+
+/**
  * What the dispatch decided.
  *   store2:          a store2 profile is open. `database` is installed by the shared boot tail; the legacy boot is skipped.
  *   legacy-readonly: the legacy profile is opened by the legacy read path, with no archive pass, no block owner and no
- *                    write other than the Tauri owner id that opening the session stores. `reason` says which store condition caused it.
+ *                    write other than the Tauri owner id that opening the session stores. `reason` says which store condition caused it;
+ *                    `notices` are the notices the dispatch raised on the way (the page posts them once the database is installed).
  *   stopped:         nothing is installed and `loadedStore` stays unset; the dispatch has shown why through its UI port.
  */
 export type Store2BootResult =
     | { kind: 'store2', database: Database, session: Store2Session, notices: readonly Store2BootNotice[] }
-    | { kind: 'legacy-readonly', reason: Store2LegacyReadOnlyReason }
+    | { kind: 'legacy-readonly', reason: Store2LegacyReadOnlyReason, notices: readonly Store2BootNotice[] }
     | { kind: 'stopped' }
 
 export type Store2Boot = (env: Store2BootEnv) => Promise<Store2BootResult>

@@ -54,7 +54,9 @@ import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { disabledBootArchiveSession, openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
-import { getStore2Boot, type Store2BootResult } from "./storage/store2/bootActive";
+import { getStore2Boot, type Store2BootNotice, type Store2BootResult } from "./storage/store2/bootActive";
+import { clearBootScreen } from "./storage/store2/ui/bootScreen.svelte";
+import { noticeText } from "./storage/store2/ui/bootText";
 import { LEGACY_MAIN_FILE_KEY } from "./storage/blockKeys";
 import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
 import { hasEnabledV21Plugin } from "./plugins/v21Plugins";
@@ -115,6 +117,8 @@ export async function loadData() {
         // file that could not be moved aside, a read-only page), posted before
         // the archive pass's, once each.
         const bootNotices: BootNotice[] = []
+        // The notices the store2 boot dispatch raised, posted after the database is installed so they are in its language.
+        let store2Notices: readonly Store2BootNotice[] = []
         // What the character list of the installed tree needed before it was
         // installed: entries that are not characters left out, ids that are
         // missing or cannot be saved replaced. Told once, after the install.
@@ -142,6 +146,9 @@ export async function loadData() {
                 if (store2Boot.kind === 'stopped') {
                     await sleepForever()
                     return
+                }
+                if (store2Boot.kind === 'store2' || store2Boot.kind === 'legacy-readonly') {
+                    store2Notices = store2Boot.notices
                 }
                 if (store2Boot.kind === 'store2') {
                     await installStore2Profile(store2Boot, bootRepairs)
@@ -246,6 +253,7 @@ export async function loadData() {
                         }
                     }
                 }
+                await postStore2Notices(store2Notices)
                 await postBootNotices(bootNotices)
                 await postArchiveNotices(archiveNotices)
                 LoadingStatusState.text = "Checking Update..."
@@ -267,6 +275,9 @@ export async function loadData() {
                 if (store2Boot.kind === 'stopped') {
                     await sleepForever()
                     return
+                }
+                if (store2Boot.kind === 'store2' || store2Boot.kind === 'legacy-readonly') {
+                    store2Notices = store2Boot.notices
                 }
                 // Whether the profile was read from the page's own store, so the OPFS leftovers of a completed copy back may go.
                 let mainFileLoaded = false
@@ -424,6 +435,7 @@ export async function loadData() {
                 // notice above (each is awaited, so none overwrites another in the
                 // single alert slot) and come before anything else that can post
                 // an alert.
+                await postStore2Notices(store2Notices)
                 await postBootNotices(bootNotices)
                 await postArchiveNotices(archiveNotices)
 
@@ -627,7 +639,19 @@ async function runStore2Boot(): Promise<Store2BootOutcome> {
         return { kind: 'unregistered' }
     }
     const store = await getAppStore()
-    return boot({ store, upstreamMainFile: () => store.has(LEGACY_MAIN_FILE_KEY), listBackupTimes, readColdStorageItem: readColdUnitForConversion })
+    let result: Store2BootResult
+    try {
+        result = await boot({ store, upstreamMainFile: () => store.has(LEGACY_MAIN_FILE_KEY), listBackupTimes, readColdStorageItem: readColdUnitForConversion })
+    } catch (error) {
+        // A throw after an answer leaves the "Working" screen up; the page reports the error and must not keep telling the person to wait.
+        clearBootScreen()
+        throw error
+    }
+    if (result.kind !== 'stopped') {
+        // The boot goes on: whatever screen it showed has done its work, and the page must not keep it over the app.
+        clearBootScreen()
+    }
+    return result
 }
 
 /** The page's cold-unit reader, loaded when a conversion first reads a unit, so a page that never converts does not load the module. */
@@ -830,6 +854,23 @@ async function postBootNotices(notices: readonly BootNotice[]) {
         }
         posted.add(notice.kind)
         alertNormal(bootNoticeText(notice))
+        await waitForAlertCleared()
+    }
+}
+
+/**
+ * Posts each notice the store2 boot raised once, in order, awaiting its acknowledgement before the next. It runs after
+ * the database is installed, so the text is in the database's language; a notice that ended the boot has no text here.
+ */
+async function postStore2Notices(notices: readonly Store2BootNotice[]) {
+    const posted = new Set<Store2BootNotice['name']>()
+    for (const notice of notices) {
+        const text = noticeText(notice)
+        if (text === null || posted.has(notice.name)) {
+            continue
+        }
+        posted.add(notice.name)
+        alertNormal(text)
         await waitForAlertCleared()
     }
 }

@@ -20,8 +20,8 @@ import {
     createMemoryBackend, Store2BackendFailureError, Store2UnknownOutcomeError,
     type MemoryBackend, type Store2Backend, type Store2WriteResult,
 } from 'src/ts/storage/store2/backend'
-import { getStore2BootSession, resetStore2BootForTest, type Store2BootNotice, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
-import { dispatchStore2Boot, type Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
+import { getStore2BootSession, resetStore2BootForTest, type BlockedReason, type Store2BootEnv, type Store2BootNotice, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
+import { dispatchStore2Boot, recordingBackend, type Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import { assembleDatabase, encodeScoped, unitMapSource, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
 import { firstCommitKey, nextCommitKey, classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import {
@@ -39,6 +39,8 @@ import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
 import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import type { Store2Session } from 'src/ts/storage/store2/session'
+import { BLOCKED_TABLE, blockedScreen } from 'src/ts/storage/store2/ui/bootText'
+import { language } from 'src/lang'
 import { createClock, createPeerDouble, seedTree, testEnv, type PeerDouble } from '../store2SaveKit'
 import { buildSmall, chat, fakeLists, message, mulberry32, prosePool, type Obj } from './codecFixtures'
 
@@ -173,13 +175,13 @@ function decodersOf(table: Record<number, Database | 'bad' | 'unreadable'>, leni
 
 interface UiDouble extends Store2BootUi {
     notices: Store2BootNotice[]
-    blockedWith: { reason: string, detail: string }[]
+    blockedWith: { reason: BlockedReason, detail: string, mayHaveWritten: boolean }[]
     offered: (readonly number[])[]
-    recoveries: { decision: Parameters<Store2BootUi['recovery']>[0]['decision'], session: Store2Session }[]
+    recoveries: { decision: Parameters<Store2BootUi['recovery']>[0]['decision'], session: Store2Session, env: Store2BootEnv }[]
     foreignAsked: Staging[]
     foreignAnswer: 'wait' | 'clear'
     /** The conversion confirmations asked, and the answers given in order (the last one repeats). */
-    convertAsked: { mainFileBytes: number | null }[]
+    convertAsked: number
     convertAnswers: boolean[]
     /** The decline screens shown, and the answers given in order (the last one repeats). */
     declinedAsked: number
@@ -208,7 +210,7 @@ function uiDouble(): UiDouble {
         recoveries: [],
         foreignAsked: [],
         foreignAnswer: 'wait',
-        convertAsked: [],
+        convertAsked: 0,
         convertAnswers: [true],
         declinedAsked: 0,
         declinedAnswers: ['import'],
@@ -225,9 +227,9 @@ function uiDouble(): UiDouble {
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport(backups) { ui.offered.push(backups) },
-        async confirmConvert(info) {
-            ui.convertAsked.push(info)
-            return ui.convertAnswers[Math.min(ui.convertAsked.length, ui.convertAnswers.length) - 1]
+        async confirmConvert() {
+            ui.convertAsked += 1
+            return ui.convertAnswers[Math.min(ui.convertAsked, ui.convertAnswers.length) - 1]
         },
         async declined() {
             ui.declinedAsked += 1
@@ -781,7 +783,7 @@ describe('new behaviour: the re-read of the commit key before a finding is acted
             hooks: { beforeReadUnits: (_call, keys) => { if (keys.includes(leaf)) { throw new Store2BackendFailureError('the disk went away') } } },
         })
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.blockedWith).toEqual([{ reason: 'tree-unreadable', detail: 'the disk went away' }])
+        expect(test.ui.blockedWith).toEqual([{ reason: 'tree-unreadable', detail: 'the disk went away', mayHaveWritten: false }])
         expect(test.ui.notices).toEqual([])
         expect(getActiveStore2Save()).toBeNull()
         expect(test.allWrites()).toEqual([])
@@ -933,6 +935,7 @@ describe('new behaviour: the recovery rows hand the whole current session to the
         expect(test.ui.recoveries).toHaveLength(1)
         expect(test.ui.recoveries[0].decision.row).toBe(row)
         expect(test.ui.recoveries[0].session).toBe(getStore2BootSession())
+        expect(test.ui.recoveries[0].env.store).toBe(test.store)
         expect(test.ui.blockedWith).toEqual([])
         expect(getActiveStore2Save()).toBeNull()
         expect(test.allWrites()).toEqual([])
@@ -1031,7 +1034,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
     test('a backup listing that fails is a block, never read as no backups, and nothing is seeded', async () => {
         const test = rig({ backups: 'unlistable' })
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.blockedWith).toEqual([{ reason: 'backups-unlistable', detail: 'the backup listing failed' }])
+        expect(test.ui.blockedWith).toEqual([{ reason: 'backups-unlistable', detail: 'the backup listing failed', mayHaveWritten: false }])
         expect(test.allWrites()).toEqual([])
         expect(test.ui.offered).toEqual([])
         expect((await test.memory.readCommit()).bytes).toBeNull()
@@ -1041,7 +1044,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
         const test = rig({ mainFile: true })
         test.ui.convertAnswers = [false]
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.convertAsked).toEqual([{ mainFileBytes: null }])
+        expect(test.ui.convertAsked).toBe(1)
         expect(test.ui.declinedAsked).toBe(1)
         expect(test.ui.notices).toEqual([])
         expect(test.allWrites()).toEqual([])
@@ -1150,14 +1153,14 @@ describe('new behaviour: row 1, a legacy profile is converted', () => {
         const before = new Map(test.store.files)
         let writesAtQuestion: string[] | null = null
         const ask = test.ui.confirmConvert
-        test.ui.confirmConvert = async (info) => {
+        test.ui.confirmConvert = async () => {
             writesAtQuestion = test.allWrites()
-            return ask(info)
+            return ask()
         }
         const result = expectStoreResult(await test.dispatch())
 
         expect(writesAtQuestion).toEqual([])
-        expect(test.ui.convertAsked).toEqual([{ mainFileBytes: null }])
+        expect(test.ui.convertAsked).toBe(1)
         expect(test.ui.fromBackupAsked).toEqual([])
         expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
         expect(test.store.writes).toEqual([])
@@ -1184,7 +1187,7 @@ describe('new behaviour: row 1, a legacy profile is converted', () => {
         again.ui.convertAnswers = [false, true]
         again.ui.declinedAnswers = ['convert']
         expectStoreResult(await again.dispatch())
-        expect(again.ui.convertAsked).toHaveLength(2)
+        expect(again.ui.convertAsked).toBe(2)
         expect(again.ui.declinedAsked).toBe(1)
 
         resetStore2SaveForTest()
@@ -1257,7 +1260,7 @@ describe('new behaviour: row 1, a legacy profile is converted', () => {
         const result = expectStoreResult(await test.dispatch())
 
         expect(test.ui.convertWithoutAsked).toEqual([skipped])
-        expect(test.ui.convertAsked).toHaveLength(1)
+        expect(test.ui.convertAsked).toBe(1)
         expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
         expect((await currentKey(test.memory)).convertedFrom).toBe(fingerprintMainFile(new Uint8Array([1, 2, 3])))
         const keep = (await storedManifest(test.memory)).fixed.legacyKeep
@@ -1295,7 +1298,7 @@ describe('new behaviour: row 1, a legacy profile is converted', () => {
     test('a main file whose decode cannot read the store blocks: no backup is tried, no prompt is shown and nothing is written', async () => {
         const test = rig({ mainFile: true, backups: [100, 200], decoders: decodersOf({ 1: 'unreadable' }, { tree: legacyTree(), skipped: [] }) })
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.blockedWith).toEqual([{ reason: 'convert-read-failed', detail: 'the disk failed' }])
+        expect(test.ui.blockedWith).toEqual([{ reason: 'convert-read-failed', detail: 'the disk failed', mayHaveWritten: false }])
         expect(test.ui.convertWithoutAsked).toEqual([])
         expect(test.store.reads).toEqual(['database/database.bin'])
         expect(test.allWrites()).toEqual([])
@@ -1399,7 +1402,7 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         await putCommitKey(memory, await markerKey('convert', device))
         const test = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
         const result = expectStoreResult(await test.dispatch())
-        expect(test.ui.convertAsked).toEqual([])
+        expect(test.ui.convertAsked).toBe(0)
         expect(test.ui.declinedAsked).toBe(0)
         expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
         const key = await currentKey(memory)
@@ -1416,7 +1419,7 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         const test = tauriRig(memory, { mainFile: true, backups: [100], decoders: decodersOf({ 1: 'bad', 8: legacyTree() }) })
         test.store.files.set('database/dbbackup-100.bin', new Uint8Array([8]))
         expectStoreResult(await test.dispatch())
-        expect(test.ui.convertAsked).toEqual([])
+        expect(test.ui.convertAsked).toBe(0)
         expect(test.ui.fromBackupAsked).toEqual([100])
     })
 
@@ -1426,7 +1429,7 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         const skipped: SkippedLegacyEntry[] = [{ name: 'cha-lost-1', kind: 'character', reason: 'block is missing' }]
         const test = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: 'bad' }, { tree: legacyTree(), skipped }) })
         expectStoreResult(await test.dispatch())
-        expect(test.ui.convertAsked).toEqual([])
+        expect(test.ui.convertAsked).toBe(0)
         expect(test.ui.convertWithoutAsked).toEqual([skipped])
         expect((await currentKey(memory)).current).not.toBeNull()
     })
@@ -1436,7 +1439,7 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         const first = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTreeWithMissingStub() }) })
         first.ui.incompleteAnswers = [false]
         expect(await first.dispatch()).toEqual({ kind: 'stopped' })
-        expect(first.ui.convertAsked).toEqual([])
+        expect(first.ui.convertAsked).toBe(0)
         expect(first.ui.incompleteAsked).toHaveLength(1)
         const key = await currentKey(memory)
         expect(key.current).toBeNull()
@@ -1455,14 +1458,14 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
             hooks: { flushed: true, beforePutUnit: () => { throw new Store2BackendFailureError('the unit write failed') } },
         })
         expect(await first.dispatch()).toEqual({ kind: 'stopped' })
-        expect(first.ui.convertAsked).toHaveLength(1)
+        expect(first.ui.convertAsked).toBe(1)
         expect(first.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'install-upload-failed' })])
         const standing = await currentKey(memory)
         expect(standing.current).toBeNull()
         expect(standing.staging).toMatchObject({ label: 'convert', owner: device })
         const second = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
         const result = expectStoreResult(await second.dispatch())
-        expect(second.ui.convertAsked).toEqual([])
+        expect(second.ui.convertAsked).toBe(0)
         expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
         expect((await currentKey(memory)).current).not.toBeNull()
     })
@@ -1538,6 +1541,108 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         expect(test.logs.flatMap(entry => entry.writes)).toEqual(['casCommit'])
     })
 
+    test('reproducer: a foreign marker cleared on "clear" and then a read failure in the next round reports that the boot may have written', async () => {
+        const memory = createMemoryBackend()
+        await putCommitKey(memory, await markerKey('seed', freshOwnerId(testEnv(createClock(), 57))))
+        const test = rig({
+            memory,
+            backups: [],
+            hooks: round => round === 2 ? { beforeReadCommit: () => { throw new Store2BackendFailureError('the commit key is unreadable') } } : {},
+        })
+        test.ui.foreignAnswer = 'clear'
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.rounds()).toBe(2)
+        expect(test.ui.blockedWith).toHaveLength(1)
+        const blocked = test.ui.blockedWith[0]
+        expect(BLOCKED_TABLE[blocked.reason].beforeWrite).toBe(true)
+        expect(blocked.mayHaveWritten).toBe(true)
+        // The marker was cleared in round 1, so the screen must not say that nothing was changed.
+        expect(blockedScreen(blocked).paragraphs).not.toContain(language.store2Boot.blockedNothingChanged)
+        expect(test.logs.flatMap(entry => entry.writes)).toEqual(['casCommit'])
+    })
+
+    test('reproducer: this device\'s own marker cleared at start-up and then a before-write failure reports that the boot may have written', async () => {
+        const memory = createMemoryBackend()
+        await putCommitKey(memory, await markerKey('convert', device))
+        const test = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: 'unreadable' }, { tree: legacyTree(), skipped: [] }) })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.rounds()).toBe(1)
+        expect(test.ui.blockedWith).toEqual([{ reason: 'convert-read-failed', detail: 'the disk failed', mayHaveWritten: true }])
+        expect(blockedScreen(test.ui.blockedWith[0]).paragraphs).not.toContain(language.store2Boot.blockedNothingChanged)
+        expect((await currentKey(memory)).staging).toBeNull()
+    })
+
+    test('reproducer: a seed that landed and then a tree read failure reports that the boot may have written', async () => {
+        const test = rig({
+            backups: [],
+            hooks: { beforeReadUnits: () => { if (test.logs[0].calls.casCommit > 0) { throw new Store2BackendFailureError('the disk went away') } } },
+        })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.notices.map(notice => notice.name)).toEqual(['seeded'])
+        expect(test.ui.blockedWith).toEqual([{ reason: 'tree-unreadable', detail: 'the disk went away', mayHaveWritten: true }])
+        expect(blockedScreen(test.ui.blockedWith[0]).paragraphs).not.toContain(language.store2Boot.blockedNothingChanged)
+        expect((await currentKey(test.memory)).current).not.toBeNull()
+    })
+
+    test('reproducer: a conversion that landed and then a tree read failure reports that the boot may have written', async () => {
+        const test = rig({
+            mainFile: true,
+            decoders: decodersOf({ 1: legacyTree() }),
+            hooks: { beforeReadUnits: () => { if (test.logs[0].calls.casCommit > 0) { throw new Store2BackendFailureError('the disk went away') } } },
+        })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([{ reason: 'tree-unreadable', detail: 'the disk went away', mayHaveWritten: true }])
+        expect(blockedScreen(test.ui.blockedWith[0]).paragraphs).not.toContain(language.store2Boot.blockedNothingChanged)
+        expect((await currentKey(test.memory)).current).not.toBeNull()
+    })
+
+    test('guard: a lone commit-key write attempt before a before-write stop clears the reassurance (the wrapper, not an install branch)', async () => {
+        const test = rig({
+            backups: [],
+            hooks: { beforeCasCommit: () => { throw new Store2BackendFailureError('the marker write failed') } },
+        })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([{ reason: 'marker-failed', detail: 'the marker write failed', mayHaveWritten: true }])
+        expect(BLOCKED_TABLE['marker-failed'].beforeWrite).toBe(true)
+        expect(blockedScreen(test.ui.blockedWith[0]).paragraphs).not.toContain(language.store2Boot.blockedNothingChanged)
+    })
+
+    test('the recording wrapper marks every mutating method before it delegates, and no read', async () => {
+        const reads: (() => Promise<unknown>)[] = [
+            () => backendOf().readCommit(),
+            () => backendOf().readFence(),
+            () => backendOf().readUnits([]),
+            () => backendOf().listStore2(),
+            () => backendOf().countPrefix('store2/'),
+        ]
+        let writes = 0
+        let wrapped = recordingBackend(createMemoryBackend(), () => { writes += 1 })
+        function backendOf(): Store2Backend {
+            return wrapped
+        }
+        for (const read of reads) {
+            await read()
+        }
+        expect(writes).toBe(0)
+
+        const token = (await wrapped.readCommit()).token
+        const fenceToken = (await wrapped.readFence()).token
+        const unit = 'store2/00000000-0000-4000-8000-0000000000b1'
+        const mutating: [string, () => Promise<unknown>][] = [
+            ['casCommit', () => wrapped.casCommit(token, new Uint8Array([1]))],
+            ['casFence', () => wrapped.casFence(fenceToken, new Uint8Array([1]))],
+            ['commitOrdinary', () => wrapped.commitOrdinary(token, [{ key: unit, bytes: new Uint8Array([1]) }], new Uint8Array([1]))],
+            ['putUnit', () => wrapped.putUnit(unit, new Uint8Array([1]))],
+            ['removeBatch', () => wrapped.removeBatch([unit], token, fenceToken)],
+        ]
+        for (const [name, write] of mutating) {
+            wrapped = recordingBackend(createMemoryBackend(), () => { writes += 1 })
+            writes = 0
+            await write().catch(() => undefined)
+            expect(writes, name).toBe(1)
+        }
+    })
+
     test('a web page whose reload gave it a fresh owner id meets its own earlier marker as a foreign one', async () => {
         const memory = createMemoryBackend()
         await putCommitKey(memory, await markerKey('seed', device))
@@ -1577,7 +1682,7 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
 
     test('the transitional OPFS page hands the legacy profile back read-only without a store2 read or notice', async () => {
         const test = unavailableRig('opfs-transitional')
-        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'opfs-transitional' })
+        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'opfs-transitional', notices: [] })
         expect(test.ui.notices).toEqual([])
         expect(test.store.reads).toEqual([])
         expect(await getPageBlockOwner()).toBeNull()
@@ -1585,7 +1690,7 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
 
     test('a Node server without the check-only route, with no store2 commit key and a main file, is read-only legacy with its named notice and no block owner', async () => {
         const test = unavailableRig('node', { capable: false })
-        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'server-capability' })
+        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'server-capability', notices: [expect.objectContaining({ name: 'server-capability' })] })
         expect(test.ui.notices).toEqual([expect.objectContaining({ name: 'server-capability' })])
         expect(await getPageBlockOwner()).toBeNull()
         expect(test.store.reads).toContain('store2-commit')
@@ -1595,7 +1700,7 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
 
     test('a Node page with no guarded operations at all is unavailable, with the other named notice', async () => {
         const test = unavailableRig('node', { capable: 'none' })
-        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'backend-unavailable' })
+        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'backend-unavailable', notices: [expect.objectContaining({ name: 'backend-unavailable' })] })
         expect(test.ui.notices).toEqual([expect.objectContaining({ name: 'backend-unavailable' })])
     })
 

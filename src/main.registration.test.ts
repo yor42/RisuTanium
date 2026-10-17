@@ -35,6 +35,8 @@ vi.mock('./ts/alert', () => ({ alertToast: vi.fn() }))
 vi.mock('./lang', () => ({ language: { alerts: { pressBackAgainToQuit: 'press back again' } } }))
 vi.mock('./ts/storage/store2/bootDispatch', () => ({
     dispatchStore2Boot: seen.dispatch,
+}))
+vi.mock('./ts/storage/store2/ui/productionBootUi', () => ({
     createProductionBootUi: () => seen.ui,
 }))
 

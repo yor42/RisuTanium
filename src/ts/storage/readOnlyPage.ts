@@ -15,18 +15,26 @@ import { pageStoreIsOpfsTransitional } from './store/appStore'
  * An answer that cannot be had (the store selection failed, a test double
  * without the selection) is not "read-only": those writers fail on their own
  * terms. The page mode is held by the page itself, so it decides first.
+ *
+ * The words depend on the cause. The OPFS page is read-only for a reason that
+ * a restart can fix, and it also sets the read-only mode, so the store is
+ * asked first and the OPFS notice wins; any other read-only page (opened
+ * read-only by the store2 boot) gets the neutral refusal.
  */
 export async function refuseOnReadOnlyPage(): Promise<boolean> {
-    let readOnly = getPageStorageMode().kind === 'read-only'
-    if (!readOnly) {
-        try {
-            readOnly = await pageStoreIsOpfsTransitional()
-        } catch {
-            readOnly = false
-        }
+    const modeReadOnly = getPageStorageMode().kind === 'read-only'
+    let opfs: boolean
+    try {
+        opfs = await pageStoreIsOpfsTransitional()
+    } catch {
+        opfs = false
     }
-    if (readOnly) {
+    if (opfs) {
         alertError(language.opfsReadOnlyNotice)
+        return true
     }
-    return readOnly
+    if (modeReadOnly) {
+        alertError(language.store2Boot.readOnlyRefusal)
+    }
+    return modeReadOnly
 }

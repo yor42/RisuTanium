@@ -271,8 +271,15 @@ export function legacyRetryStateFor(result: RetryLegacyColdChatLoadResult): Lega
  * (`'missing'`, `'unavailable'`, `'damaged'`) the button is hidden and the text
  * names the case; only `'retryFailed'` adds the try-later line. Exhaustive over
  * the state.
+ *
+ * A store2 page has no cold-storage unit to read again: the error text there
+ * marks a chat whose stored copy was damaged, so the notice never offers Retry
+ * and says the earlier messages could not be read, whatever the state.
  */
-export function legacyRetryView(state: LegacyRetryState | undefined): { text: string, detail: string | null, showRetry: boolean } {
+export function legacyRetryView(state: LegacyRetryState | undefined, pageIsStore2: boolean = false): { text: string, detail: string | null, showRetry: boolean } {
+    if (pageIsStore2) {
+        return { text: language.errors.coldStorageLegacyChatDamaged, detail: null, showRetry: false }
+    }
     switch (state) {
         case 'missing':
             return { text: language.errors.coldStorageLegacyChatDataMissing, detail: null, showRetry: false }
