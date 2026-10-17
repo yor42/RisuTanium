@@ -280,6 +280,15 @@ There is no item (e): the owner-claim protocol it modelled was removed.
 
 ### Stage 4a: cutover, part 1 (merged to `main` together with 4b, so `.bin` never breaks)
 
+**(Updated 2026-10-17, stage 4a and 4b Gate 1, plan v3.4 amendment 7 and `MC-299`.)** The joint Gate 1 of stages 4a and 4b is `[APPROVE]` after two revisions (`opus-reviewer` `[REJECT]` F1 to F10, `[REJECT]` N1 and N2, then `[APPROVE]`, with a `senior-advisor` challenge first; sources under `C:\Users\yor42\AppData\Local\Temp\risu-b715\s4\`: `scope-4a.md`, `scope-4b.md`, `advisor.md`, `g1-review.md`, `g1-recheck.md`, `g1-recheck2.md`; ledger rows 1792 to 1802). The corrected protocol text is **plan v3.4 amendment 7** (`Agents/Tools/storage-model/plan-v3.4.md`, 3.1b) and the maintainer's decisions are **`MC-299`**. The original text below is kept; where it conflicts with amendment 7, amendment 7 wins. Superseded or incomplete text:
+- **Boot table, "Convert through the bulk path"** (rows with no commit key): the merged library cannot do it (`baseOf` refuses an absent key and `current: null`, `bulk()` refuses a standing marker); a first-life installer with an unfenced marker replaces it (amendment 7, "First-life installer"), and `MC-299` 1 to 4 set the confirmation, decode policy and backup rows. The same applies to the 4b import line "tree → units through the bulk path": an import over a parsed profile uses the bulk path with its rejudge, an encoder-built first-life tree uses the installer.
+- **T1 row 1** (entity id = the cold uuid): replaced by "mint `u` always; export mints a fresh uuid per unloaded character per export" (amendment 7, "T1 row 1 aligned to P7"). **T1 row 3** stands as written and is restated with its guards (amendment 7, "T1 row 3 restored").
+- **T3 row "6a generic top-level effect: config root without `statics`"** and the row text **"chunks covering the changed indices"**: replaced by the fixed group re-encoded and digest-compared every pass and chunk selection by `UnitSink` reuse (amendment 7, "Save path"); modules follow `tracker.modules`.
+- **A2.4a "a key-only variant of `collectColdStorageBackupPayloads`"**: replaced by a new fail-whole key-only walk in a shared legacy-tree module, not built on that function.
+- **T2 table:** it lacks the cold-unit writers and several readers listed in `scope-4a.md` Q4 "T2 misses" (summarised in amendment 7, "T2 table").
+- **C1 (binding):** the snapshot persistence choice is a Tier 1 commit-key pointer `{key, digest, count}` (amendment 7, "Format amendment").
+- **"V2.1 keeps everything resident"** stays true; the rest of "Open and unload" is replaced by the boot-residency text of amendment 7.
+
 **Boot table:**
 
 | Store state | Action |
