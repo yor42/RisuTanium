@@ -9,7 +9,8 @@ import {
 
 /**
  * The GC mark: the set of store keys a collector must keep, from ONE read of the
- * commit key. Every manifest the commit key names (`current`, `retained`, `pins`)
+ * commit key. The commit key's snapshot pointer, when it has one, also keeps its unit live (by its own rule, not as a
+ * manifest). Every manifest the commit key names (`current`, `retained`, `pins`)
  * is read and validated once; the live set is those manifests, every unit they
  * name, and every unit their shards, module index and plugin-storage buckets
  * name. A leaf (core, chunk, preset, plugin, value, list) is live by being named
@@ -90,6 +91,12 @@ export async function markLiveKeys(backend: Store2Backend, commitRead: Store2Rea
             if (!manifestKeys.includes(key)) {
                 manifestKeys.push(key)
             }
+        }
+        // The snapshot unit is kept by this rule alone. It is never a manifest, so it must not enter `refsOf` or
+        // `manifestKeys`: a unit key among the manifests would make every mark refuse. A malformed pointer already
+        // reads as absent, and a pointer whose unit is absent or unreadable keeps nothing and deletes nothing.
+        if (commit.snapshot !== undefined) {
+            live.add(commit.snapshot.key)
         }
     } catch (error) {
         if (error instanceof TypeError) {

@@ -1,5 +1,6 @@
 import type { AppStoreKind } from '../store/appStore'
 import type { ByteStore } from '../store/contract'
+import { ServerLacksCapabilityError } from '../store/errors'
 import {
     createIndexedDbBackend, createNodeBackend, createTauriBackend, Store2BackendError,
     type Store2Backend, type Store2Read, type Store2WriteResult,
@@ -93,7 +94,7 @@ export async function reflushTopLevel(backend: Store2Backend, attempts: number =
 
 // ---- Session ----
 
-export type SessionReadOnlyReason = 'opfs-transitional' | 'backend-unavailable'
+export type SessionReadOnlyReason = 'opfs-transitional' | 'backend-unavailable' | 'server-capability'
 
 /** A boot decision, or the read-only state of a page whose store2 backend is not available. */
 export type SessionDecision =
@@ -213,6 +214,29 @@ function readOnlySession(kind: AppStoreKind, reason: SessionReadOnlyReason, deta
     }
 }
 
+/**
+ * The Node server's capability probe at open. The store2 writes and the collector need the server's check-only and retire
+ * routes (the same predicate the collector's own probe applies). A server without them (the probe says so, or refuses
+ * with `ServerLacksCapabilityError`) opens read-only with `server-capability`. A probe that fails any other way cannot
+ * show the capability is there, so the page is read-only as for any unreachable backend (`backend-unavailable`).
+ * Returns the read-only reason, or `null` when the capability is present.
+ */
+async function probeNodeCapability(store: ByteStore): Promise<{ reason: SessionReadOnlyReason, detail: string } | null> {
+    if (store.guarded === undefined) {
+        return { reason: 'backend-unavailable', detail: 'The byte store has no guarded operations; the store2 Node backend needs them.' }
+    }
+    try {
+        const caps = await store.guarded.probe()
+        if (!caps.checkOnly || !caps.retire) {
+            return { reason: 'server-capability', detail: 'The Node server lacks check-only or retire.' }
+        }
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : 'The capability probe failed.'
+        return { reason: error instanceof ServerLacksCapabilityError ? 'server-capability' : 'backend-unavailable', detail }
+    }
+    return null
+}
+
 async function readCommitOrNull(backend: Store2Backend): Promise<{ read: Store2Read, commit: CommitRead } | { reason: string }> {
     try {
         const read = await backend.readCommit()
@@ -243,6 +267,12 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
             return readOnlySession(kind, 'backend-unavailable', made.unavailable, owner)
         }
         backend = made
+    }
+    if (kind === 'node') {
+        const missing = await probeNodeCapability(store)
+        if (missing !== null) {
+            return readOnlySession(kind, missing.reason, missing.detail, owner)
+        }
     }
 
     // Before any other read or write: a commit key or fence that never reached stable storage is made durable first.

@@ -36,7 +36,7 @@ const REJUDGE_ATTEMPTS = 3
 export type Refusal =
     | 'absent' | 'damaged' | 'too-new' | 'no-current'
     | 'marker-present' | 'bad-unit-set' | 'bad-manifest-key' | 'already-current' | 'tree-incomplete'
-    | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine'
+    | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine' | 'no-snapshot'
 
 export interface Refused {
     status: 'refused'
@@ -302,9 +302,58 @@ export interface Committer {
     saveMine(freshRead: Store2Read, request: CommitRequest): Promise<CommitResult>
     pin(read: Store2Read, key: string, reason: string): Promise<WriteResult>
     unpin(read: Store2Read, key: string): Promise<WriteResult>
+    /** The old-data deletion's completion write: one compare-and-write that drops the snapshot pointer and changes nothing else. Refuses a key with no pointer. */
+    dropSnapshot(read: Store2Read): Promise<WriteResult>
     abandonClear(read: Store2Read, owner: string, prefix: string): Promise<AbandonResult>
     /** Decides whether the marker on `read` may be cleared (own: yes; foreign: only through the hook) and clears it. */
     clearMarker(read: Store2Read): Promise<{ decision: ClearDecision, cleared: AbandonResult | null }>
+}
+
+/**
+ * The mint of one build attempt and the set of keys it issued. A null `stagingId` mints ordinary keys; a staging id mints
+ * keys inside that marker's prefix, which is the only place a staged build may write.
+ */
+export function createKeyMint(env: KeyEnv, stagingId: string | null): { mint: KeyMint, issued: Set<string> } {
+    const issued = new Set<string>()
+    const issue = (key: string): string => {
+        issued.add(key)
+        return key
+    }
+    const mint: KeyMint = stagingId === null
+        ? {
+            shard: () => issue(newShardKey(env)),
+            unit: () => issue(newUnitKey(env)),
+            manifest: () => issue(newManifestKey(env)),
+        }
+        : {
+            shard: () => issue(newStagedKey(stagingId, 's', env)),
+            unit: () => issue(newStagedKey(stagingId, 'u', env)),
+            manifest: () => issue(newStagedManifestKey(stagingId, env)),
+        }
+    return { mint, issued }
+}
+
+/** Whether a built commit is exactly the declared set of units under keys this attempt issued. */
+export function checkBuiltUnits(built: BuiltCommit, issued: ReadonlySet<string>, declared: number, staged: boolean): Refused | null {
+    const refused = (reason: Refusal, detail: string): Refused => ({ status: 'refused', reason, detail })
+    if (built.units.length + 1 !== declared) {
+        return refused('bad-unit-set', `The request declared ${declared} new units but built ${built.units.length + 1}.`)
+    }
+    const manifestShape = parseStore2Key(built.manifest.key)
+    if (manifestShape === null || manifestShape.shape !== (staged ? 'staged-manifest' : 'manifest')) {
+        return refused('bad-manifest-key', 'The manifest key is not a manifest key of this commit.')
+    }
+    const keys = new Set<string>()
+    for (const key of [built.manifest.key, ...built.units.map(unit => unit.key)]) {
+        if (!issued.has(key)) {
+            return refused('bad-unit-set', `${key} was not issued by this attempt's key mint.`)
+        }
+        if (keys.has(key)) {
+            return refused('bad-unit-set', `${key} appears twice.`)
+        }
+        keys.add(key)
+    }
+    return null
 }
 
 export function createCommitter(backend: Store2Backend, options: CommitterOptions): Committer {
@@ -344,45 +393,11 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
     }
 
     function createMint(stagingId: string | null): { mint: KeyMint, issued: Set<string> } {
-        const issued = new Set<string>()
-        const issue = (key: string): string => {
-            issued.add(key)
-            return key
-        }
-        const mint: KeyMint = stagingId === null
-            ? {
-                shard: () => issue(newShardKey(env)),
-                unit: () => issue(newUnitKey(env)),
-                manifest: () => issue(newManifestKey(env)),
-            }
-            : {
-                shard: () => issue(newStagedKey(stagingId, 's', env)),
-                unit: () => issue(newStagedKey(stagingId, 'u', env)),
-                manifest: () => issue(newStagedManifestKey(stagingId, env)),
-            }
-        return { mint, issued }
+        return createKeyMint(env, stagingId)
     }
 
-    /** Whether a built commit is exactly the declared set of units under keys this attempt issued. */
     function checkBuilt(built: BuiltCommit, issued: ReadonlySet<string>, declared: number, staged: boolean): Refused | null {
-        if (built.units.length + 1 !== declared) {
-            return refuse('bad-unit-set', `The request declared ${declared} new units but built ${built.units.length + 1}.`)
-        }
-        const manifestShape = parseStore2Key(built.manifest.key)
-        if (manifestShape === null || manifestShape.shape !== (staged ? 'staged-manifest' : 'manifest')) {
-            return refuse('bad-manifest-key', 'The manifest key is not a manifest key of this commit.')
-        }
-        const keys = new Set<string>()
-        for (const key of [built.manifest.key, ...built.units.map(unit => unit.key)]) {
-            if (!issued.has(key)) {
-                return refuse('bad-unit-set', `${key} was not issued by this attempt's key mint.`)
-            }
-            if (keys.has(key)) {
-                return refuse('bad-unit-set', `${key} appears twice.`)
-            }
-            keys.add(key)
-        }
-        return null
+        return checkBuiltUnits(built, issued, declared, staged)
     }
 
     async function ordinary(base: Base, request: CommitRequest, force: boolean): Promise<CommitResult> {
@@ -645,6 +660,20 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
                 return refuse('not-pinned', `${key} is not pinned.`)
             }
             const next = nextCommitKey(base.key, { pins: base.key.pins.filter(pin => pin.key !== key) }, env)
+            const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
+            return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
+        },
+
+        async dropSnapshot(read) {
+            const parsed = baseOf(read)
+            if (parsed.status === 'refused') {
+                return parsed
+            }
+            const base = parsed.base
+            if (base.key.snapshot === undefined) {
+                return refuse('no-snapshot', 'The commit key holds no snapshot pointer.')
+            }
+            const next = nextCommitKey(base.key, { dropSnapshot: true }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },

@@ -185,7 +185,12 @@ describe('the region configs', () => {
 
     test('every region plants more than one collection batch (25 keys) of garbage, and every pending backend names its reason', () => {
         for (const region of REGIONS) {
-            expect(region.garbage, region.id).toBeGreaterThan(25)
+            // A first-life region (start `no-commit-key`) plants none: any store2 unit makes the boot row 2, not row 1.
+            if (region.start === 'no-commit-key' && region.garbage === 0) {
+                expect(region.actors.some((actor) => actor.program.some((step) => step.do === 'firstLife')), region.id).toBe(true)
+            } else {
+                expect(region.garbage, region.id).toBeGreaterThan(25)
+            }
             for (const backend of Object.keys(region.pending ?? {})) {
                 expect(region.backends, region.id).toContain(backend)
                 expect(region.pending?.[backend as RegionBackend], region.id).not.toBe('')

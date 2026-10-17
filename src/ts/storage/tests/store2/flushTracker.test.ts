@@ -8,6 +8,7 @@
  */
 import { describe, expect, test } from 'vitest'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
+import type { ByteStore, GuardedOperations } from 'src/ts/storage/store/contract'
 import { createFakeStore } from '../blockStoreHarness'
 import {
     Store2BackendFailureError, Store2UnknownOutcomeError, createMemoryBackend, type Store2Backend, type Store2WriteResult,
@@ -51,8 +52,18 @@ function flushedScript(): Script {
     return { commit: { flushed: true }, fence: { flushed: true } }
 }
 
+/** A Node page needs the server's guarded operations: the open probe reports the full capability set. */
+const NODE_GUARDED: GuardedOperations = {
+    probe: async () => ({ checkOnly: true, retire: true, pieces: false }),
+    writeChecked: async () => { throw new Error('not used') },
+    removeChecked: async () => { throw new Error('not used') },
+    retireChecked: async () => { throw new Error('not used') },
+}
+
 async function openSession(backend: Store2Backend, kind: AppStoreKind = 'tauri'): Promise<Store2Session> {
-    return Store2Session.open(createFakeStore({ versioned: false }), { kind, backend, env, reflushAttempts: 1, upstreamMainFile: async () => false })
+    const base = createFakeStore({ versioned: false })
+    const store: ByteStore = kind === 'node' ? { ...base, guarded: NODE_GUARDED } : base
+    return Store2Session.open(store, { kind, backend, env, reflushAttempts: 1, upstreamMainFile: async () => false })
 }
 
 function backendOf(session: Store2Session): Store2Backend {

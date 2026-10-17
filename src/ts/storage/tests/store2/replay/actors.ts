@@ -49,6 +49,7 @@ import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import { freshOwnerId, isOwnerId, type ForeignClearHook, type OwnerIdStore } from 'src/ts/storage/store2/owner'
 import { listRecoveryCandidates, runExit, type CandidateListing, type ExitKind, type ExitResult } from 'src/ts/storage/store2/recovery'
+import { firstLifeGrant, firstLifeInstall, installBuilt, type FirstLifeRefusal, type FirstLifeResult } from 'src/ts/storage/store2/firstLife'
 import { installPick, pickCandidate, type InstallResult, type PickReady, type PickResult } from 'src/ts/storage/store2/recoveryPick'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, treeRequest, testEnv, type BuildRecord, type TestClock } from '../commitFixtures'
@@ -248,6 +249,8 @@ export interface ClearOutcome {
     cleared: AbandonResult | null
 }
 
+export type FirstLifeOutcome = { status: 'refused', reason: FirstLifeRefusal } | FirstLifeResult
+
 /** The operations of an actor. Each declares its context first and returns the library's own result. */
 export interface ReplayActor {
     readonly id: string
@@ -299,6 +302,13 @@ export interface ReplayActor {
     /** Picks a candidate up to the confirmation; the newest listed one by default. */
     pickCandidate(manifestKey?: string): Promise<PickResult>
     installPick(ready: PickReady): Promise<InstallResult>
+    /**
+     * First-life install on the page's boot facts: the unfenced marker and the staged install of a complete tree of `10 + extra` units
+     * (the seed or convert label comes from the boot decision). A boot that is not first life answers `refused`.
+     */
+    firstLife(tag: string, extra?: number, convertedFrom?: string): Promise<FirstLifeOutcome>
+    /** The shared installer on a marker a fenced `runExit` wrote: the same tree shape as `firstLife`. */
+    installAfterExit(marked: Extract<ExitResult, { status: 'marked' }>, tag: string, extra?: number): Promise<InstallResult>
 
     /**
      * A call the library never makes, under a declared operation and intent: how a test proves that the
@@ -930,6 +940,26 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                 installPick: (ready) => operation({ kind: 'recovery-install' }, 'recovery', async () => {
                     const result = await installPick(ready, { confirm: true })
                     // An install reported as done must be a write the checker saw this actor make, naming the manifest it installed, and the result's own bytes must name it too.
+                    if (result.status === 'installed') {
+                        checker.installed(id, result.manifestKey, result.bytes)
+                    }
+                    return result
+                }),
+
+                firstLife: (tag, extra = 0, convertedFrom = 'seed') => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
+                    const session = need()
+                    const grant = firstLifeGrant({ decision: session.decision, commitRead: session.commitRead, startupClear: session.startupClear })
+                    if (grant.status === 'refused') {
+                        return { status: 'refused', reason: grant.reason }
+                    }
+                    const result = await firstLifeInstall(backendOf(), grant.grant, { ...treeRequest(extra, { tag }), convertedFrom }, { owner: session.ownerId, env })
+                    if (result.status === 'installed') {
+                        checker.installed(id, result.manifestKey, result.bytes)
+                    }
+                    return result
+                }),
+                installAfterExit: (marked, tag, extra = 0) => operation({ kind: 'recovery-install' }, 'recovery', async () => {
+                    const result = await installBuilt({ backend: backendOf(), env, marked }, { ...treeRequest(extra, { tag }), convertedFrom: 'seed' })
                     if (result.status === 'installed') {
                         checker.installed(id, result.manifestKey, result.bytes)
                     }

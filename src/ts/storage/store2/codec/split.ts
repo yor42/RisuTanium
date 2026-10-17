@@ -3,7 +3,7 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     randomId26, UNIT_TYPE,
-    type ChatEntry, type ListRef, type ModuleEntry, type PluginBucket, type Ref, type ShardEntry, type UnitType,
+    type ChatEntry, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type ShardEntry, type UnitType,
 } from '../format'
 import {
     CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
@@ -21,7 +21,7 @@ import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, SH
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
     CodecInputError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
-    type PreviousEncoding,
+    type PreviousEncoding, type ReusableUnit,
 } from './types'
 
 /**
@@ -33,6 +33,23 @@ import {
  */
 
 type Slot = character | groupChat
+
+/**
+ * The leading part of the identities that belong to one character or to the
+ * module set. A carry decides by these prefixes which previous units an encode
+ * that did not touch their owner keeps, so every identity built below starts
+ * with one of them.
+ */
+export const IDENTITY = {
+    char: 'char:',
+    chat: 'chat:',
+    alChar: 'al:char:',
+    ilChar: 'il:char:',
+    module: 'module:',
+    alModule: 'al:module:',
+    ilModule: 'il:module:',
+    moduleIndex: 'moduleIndex',
+} as const
 
 /** The config fields of a database: every field outside `CONFIG_PARTITIONED_FIELDS`, unknown fields included. */
 export function configFields(source: object): JsonObject {
@@ -103,19 +120,27 @@ function handleOf(chaId: string, occurrence: number): string {
     return `${chaId}#${occurrence}`
 }
 
-class Encoder {
+export class Encoder {
     readonly sink: UnitSink
     readonly entities = new Map<string, string>()
+    /** The bodies of the units that name other units by Ref (shards, plugin-storage buckets, the module index, the manifest), by identity. A rekey rewrites these. */
+    readonly parents = new Map<string, { type: UnitType, body: object }>()
     /** Entity id to the chat handles of that character that come from a unique real chat id. */
     readonly stableChats = new Map<string, Set<string>>()
     private readonly occurrences = new Map<string, number>()
     private readonly usedU = new Set<string>()
 
     constructor(readonly options: EncodeOptions, readonly previous: PreviousEncoding | null) {
-        this.sink = new UnitSink(options.env, previous)
+        this.sink = new UnitSink(options.env, previous, options.keys)
     }
 
     put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
+        return this.sink.put(identity, type, body, kind)
+    }
+
+    /** `put` for a unit whose body holds Refs of other units. */
+    putParent(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
+        this.parents.set(identity, { type, body })
         return this.sink.put(identity, type, body, kind)
     }
 
@@ -130,10 +155,23 @@ class Encoder {
     }
 
     mintU(chaId: string): string {
+        return this.claimU(chaId, true)
+    }
+
+    /** The entity id the previous encoding holds for this character; a character it does not hold cannot be carried. */
+    carriedU(chaId: string): string {
+        return this.claimU(chaId, false)
+    }
+
+    private claimU(chaId: string, mayMint: boolean): string {
         const occurrence = this.occurrences.get(chaId) ?? 0
         this.occurrences.set(chaId, occurrence + 1)
         const handle = handleOf(chaId, occurrence)
-        const u = this.previous?.entities.get(handle) ?? randomId26(this.options.env)
+        const known = this.previous?.entities.get(handle)
+        if (known === undefined && !mayMint) {
+            throw new CodecInputError(`The character ${chaId} is carried from the previous encoding, which does not hold it.`)
+        }
+        const u = known ?? randomId26(this.options.env)
         if (this.usedU.has(u)) {
             throw new CodecInputError(`The entity id ${u} is used by two characters.`)
         }
@@ -161,7 +199,7 @@ function chatHandle(chat: JsonObject, index: number, used: Set<string>, idCounts
     return { cid, stable: stable && cid === chat.id }
 }
 
-function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardEntry {
+export function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardEntry {
     const where = `characters[${position}]`
     if (typeof slot !== 'object' || slot === null) {
         throw new CodecInputError(`${where} is not an object.`)
@@ -186,18 +224,18 @@ function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardE
     if (absent.length > 0) {
         coreBody.a = absent
     }
-    const core = encoder.put(`char:${u}:core`, UNIT_TYPE.characterCore, coreBody)
+    const core = encoder.put(`${IDENTITY.char}${u}:core`, UNIT_TYPE.characterCore, coreBody)
     const loreFields = pickFields(owner, LORE_FIELDS)
     const lore = Object.keys(loreFields).length === 0 ? null
-        : encoder.put(`char:${u}:lore`, UNIT_TYPE.lore, { v: 1, f: loreFields } satisfies FieldBagBody)
+        : encoder.put(`${IDENTITY.char}${u}:lore`, UNIT_TYPE.lore, { v: 1, f: loreFields } satisfies FieldBagBody)
     const scriptFields = pickFields(owner, SCRIPT_FIELDS)
     const scripts = Object.keys(scriptFields).length === 0 ? null
-        : encoder.put(`char:${u}:scripts`, UNIT_TYPE.scripts, { v: 1, f: scriptFields } satisfies FieldBagBody)
+        : encoder.put(`${IDENTITY.char}${u}:scripts`, UNIT_TYPE.scripts, { v: 1, f: scriptFields } satisfies FieldBagBody)
 
     const lists: ListDerivation = encoder.options.lists
-    const al = encoder.putAssetList(`al:char:${u}`, lists.characterAssets(listOwner))
+    const al = encoder.putAssetList(`${IDENTITY.alChar}${u}`, lists.characterAssets(listOwner))
     const inlays = lists.characterInlays(listOwner)
-    const il = inlays === null ? null : encoder.putInlayList(`il:char:${u}`, inlays)
+    const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilChar}${u}`, inlays)
 
     const used = new Set<string>()
     const idCounts = new Map<string, number>()
@@ -213,9 +251,9 @@ function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardE
         if (stable) {
             stableCids.add(cid)
         }
-        const coreUnit = encoder.put(`chat:${u}:${cid}:core`, UNIT_TYPE.chatCore, one.core)
+        const coreUnit = encoder.put(`${IDENTITY.chat}${u}:${cid}:core`, UNIT_TYPE.chatCore, one.core)
         const chunks = one.chunks.map((chunk, k) => {
-            const unit = encoder.put(`chat:${u}:${cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk)
+            const unit = encoder.put(`${IDENTITY.chat}${u}:${cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk)
             return chunkRefTuple(unit.ref, chunk.msgs.length)
         })
         return { cid, core: refTuple(coreUnit.ref), chunks }
@@ -257,7 +295,7 @@ function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardE
     return entry
 }
 
-function encodePlugins(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
+export function encodePlugins(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
     const refs: Ref[] = []
     const plain: JsonObject[] = []
     for (const list of PLUGIN_LISTS) {
@@ -276,7 +314,7 @@ function encodePlugins(db: Database, encoder: Encoder): { refs: Ref[], plain: Js
  * `_coldplugin` mapping names stay in cold storage; the converter must bring
  * them into units so a restore rolls plugin storage back with the backup.
  */
-function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject } {
+export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject } {
     const storage = plainObject(db.pluginCustomStorage ?? {}, 'pluginCustomStorage')
     const groups = groupKeysIntoBuckets(Object.keys(storage), PLUGIN_STORAGE_BUCKETS)
     const refs = groups.map((keys, bucket) => {
@@ -285,12 +323,12 @@ function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref[], pla
             return { k: key, ref: refTuple(encoder.put(`psv:${key}`, UNIT_TYPE.pluginStorageValue, body).ref) }
         })
         const bucketBody: PluginBucket = { v: 1, entries }
-        return refTuple(encoder.put(`bucket:${bucket}`, UNIT_TYPE.pluginStorageBucket, bucketBody).ref)
+        return refTuple(encoder.putParent(`bucket:${bucket}`, UNIT_TYPE.pluginStorageBucket, bucketBody).ref)
     })
     return { refs, plain: storage }
 }
 
-function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
+export function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
     const seen = new Map<string, number>()
     return listOrEmpty(db.modules, 'modules').map((raw, index) => {
         const module = plainObject(raw, `modules[${index}]`)
@@ -298,10 +336,10 @@ function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
         const occurrence = seen.get(fields.id) ?? 0
         seen.set(fields.id, occurrence + 1)
         const handle = `${fields.id}#${occurrence}`
-        const unit = encoder.put(`module:${handle}`, UNIT_TYPE.module, moduleBodyOf(module))
-        const al = encoder.putAssetList(`al:module:${handle}`, encoder.options.lists.moduleAssets(module))
+        const unit = encoder.put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(module))
+        const al = encoder.putAssetList(`${IDENTITY.alModule}${handle}`, encoder.options.lists.moduleAssets(module))
         const inlays = encoder.options.lists.moduleInlays(module)
-        const il = inlays === null ? null : encoder.putInlayList(`il:module:${handle}`, inlays)
+        const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilModule}${handle}`, inlays)
         return { ...fields, unit: refTuple(unit.ref), al, il }
     })
 }
@@ -313,6 +351,16 @@ function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
  * `reused` are already stored under the same key.
  */
 export function encodeDatabase(db: Database, options: EncodeOptions): EncodedTree {
+    checkDatabase(db, options)
+    const encoder = new Encoder(options, options.previous ?? null)
+    const front = encodeFront(db, encoder)
+    const moduleSet = encodeModuleSet(db, encoder)
+    const entries = db.characters.map((slot, position) => encodeCharacter(slot, position, encoder))
+    return finishTree(db, encoder, front, moduleSet, entries, new Map())
+}
+
+/** Refuses the inputs no encode can work with. */
+export function checkDatabase(db: Database, options: EncodeOptions): void {
     if (typeof options.lists !== 'object' || options.lists === null) {
         throw new TypeError('encodeDatabase needs the asset and inlay list derivation; there is no default.')
     }
@@ -322,8 +370,17 @@ export function encodeDatabase(db: Database, options: EncodeOptions): EncodedTre
     if (!Array.isArray(db.botPresets)) {
         throw new CodecInputError('botPresets is not a list.')
     }
-    const encoder = new Encoder(options, options.previous ?? null)
+}
 
+/** The units of the first part of the tree: presets, plugins and plugin storage. */
+export interface FrontParts {
+    presets: Ref[]
+    presetPlain: JsonObject[]
+    plugins: { refs: Ref[], plain: JsonObject[] }
+    pluginStorage: { refs: Ref[], plain: JsonObject }
+}
+
+export function encodeFront(db: Database, encoder: Encoder): FrontParts {
     const presets: Ref[] = []
     const presetPlain: JsonObject[] = []
     db.botPresets.forEach((preset, index) => {
@@ -334,13 +391,36 @@ export function encodeDatabase(db: Database, options: EncodeOptions): EncodedTre
     })
     const plugins = encodePlugins(db, encoder)
     const pluginStorage = encodePluginStorage(db, encoder)
-    const moduleEntries = encodeModules(db, encoder)
-    const moduleIndexBody = carryModuleIndex(encoder.previous?.objects?.moduleIndex, { v: 1, entries: moduleEntries })
-    const moduleIndex = encoder.put('moduleIndex', UNIT_TYPE.moduleIndex, moduleIndexBody)
+    return { presets, presetPlain, plugins, pluginStorage }
+}
 
-    const entries = db.characters.map((slot, position) => encodeCharacter(slot, position, encoder))
+/** The module index as the manifest names it and as the next encode carries unknown fields from it. */
+export interface ModuleSet {
+    body: ModuleIndex
+    ref: Ref
+}
+
+/** Encodes the modules and the module index. */
+export function encodeModuleSet(db: Database, encoder: Encoder): ModuleSet {
+    const moduleEntries = encodeModules(db, encoder)
+    const body = carryModuleIndex(encoder.previous?.objects?.moduleIndex, { v: 1, entries: moduleEntries })
+    const unit = encoder.putParent(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, body)
+    return { body, ref: refTuple(unit.ref) }
+}
+
+/**
+ * Completes the tree from the parts the caller produced: the shards of `entries`,
+ * the fixed units and the manifest. `carried` are the previous units this
+ * encode kept without encoding them; they are part of the next `previous`.
+ */
+export function finishTree(
+    db: Database, encoder: Encoder, front: FrontParts, moduleSet: ModuleSet, entries: ShardEntry[],
+    carried: ReadonlyMap<string, ReusableUnit>,
+): EncodedTree {
+    const options = encoder.options
+    const { presets, presetPlain, plugins, pluginStorage } = front
     const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, SHARD_COUNT), encoder.stableChats)
-    const shards = shardBodies.map((shard, index) => refTuple(encoder.put(`shard:${index}`, UNIT_TYPE.shard, shard, 'shard').ref))
+    const shards = shardBodies.map((shard, index) => refTuple(encoder.putParent(`shard:${index}`, UNIT_TYPE.shard, shard, 'shard').ref))
 
     const loadoutItems = listOrEmpty(db.loadouts, 'loadouts').map((item) => toPlainJson(item) ?? null)
     const loadouts = encoder.put('loadouts', UNIT_TYPE.loadouts, { v: 1, items: loadoutItems } satisfies LoadoutsBody)
@@ -378,22 +458,27 @@ export function encodeDatabase(db: Database, options: EncodeOptions): EncodedTre
         statics: refTuple(staticsUnit.ref),
         order: refTuple(order.ref),
         loadouts: refTuple(loadouts.ref),
-        moduleIndex: refTuple(moduleIndex.ref),
+        moduleIndex: refTuple(moduleSet.ref),
         presets,
         plugins: plugins.refs,
         pluginStorageRefs: pluginStorage.refs,
     }))
+    encoder.parents.set('manifest', { type: UNIT_TYPE.manifest, body: manifest })
     const manifestUnit = encoder.sink.putFresh('manifest', UNIT_TYPE.manifest, manifest, 'manifest')
 
     const units = encoder.sink.units
+    const indexUnits = new Map<string, ReusableUnit>(carried)
+    for (const unit of units) {
+        indexUnits.set(unit.identity, { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
+    }
     return {
         manifestKey: manifestUnit.key,
         manifest,
         units,
         index: {
-            units: new Map(units.map(unit => [unit.identity, { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest }])),
+            units: indexUnits,
             entities: encoder.entities,
-            objects: { manifest, shards: shardBodies, moduleIndex: moduleIndexBody },
+            objects: { manifest, shards: shardBodies, moduleIndex: moduleSet.body },
         },
     }
 }

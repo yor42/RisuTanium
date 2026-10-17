@@ -56,6 +56,10 @@ export type RegionStep =
     | { do: 'unpin' }
     | { do: 'gc' }
     | { do: 'exit', kind: 'convert' | 'import' | 'seed' }
+    /** First-life install on the page's boot facts: the unfenced marker and the staged install (`refused` when the boot is not first life). */
+    | { do: 'firstLife' }
+    /** The fenced exit of that kind, and the shared installer on its marker. */
+    | { do: 'exitInstall', kind: 'convert' | 'import' | 'seed' }
     /** Lists the candidates and picks and installs the newest, or the planted candidate with `candidate: true`. */
     | { do: 'recover', candidate?: boolean }
     | { do: 'fenceExit' }
@@ -116,7 +120,7 @@ export interface RegionConfig {
     /** Why a backend of `backends` does not run yet. */
     pending?: Partial<Record<RegionBackend, string>>
     start: StartState
-    /** Unreferenced units planted before the run; more than one batch of a collection pass. */
+    /** Unreferenced units planted before the run; more than one batch of a collection pass. Zero only for a first-life region: any store2 unit makes boot row 2, not row 1. */
     garbage: number
     /** Another owner's unfinished bulk commit stands at the start, with this many staged units. */
     foreignBulkUnits?: number
@@ -174,6 +178,7 @@ const gc: RegionStep = { do: 'gc' }
 const recover: RegionStep = { do: 'recover' }
 const exitSeed: RegionStep = { do: 'exit', kind: 'seed' }
 const clearMarker: RegionStep = { do: 'clearMarker' }
+const firstLife: RegionStep = { do: 'firstLife' }
 const fenceExit: RegionStep = { do: 'fenceExit' }
 const discardFence: RegionStep = { do: 'discardFence' }
 
@@ -183,6 +188,8 @@ function faults(probability: number, lostPerActor: number, crashPerActor: number
 
 // ---- The regions ----
 
+// Floors are fitted to the shipped seed set (seeds 1 to N, a deterministic run): they stop a region from degrading, and a longer seed
+// run can sit below one. R19d's `restart:cleared` floor is 0.3 because the share over 80 seeds is 0.37.
 export const REGIONS: readonly RegionConfig[] = [
     {
         id: 'R1', name: 'reload-any-order-gc', covers: 'S0-5a: reload remedy, any-order collection and both devices committing (N_reload0, f_full_reload_any)',
@@ -591,6 +598,49 @@ export const REGIONS: readonly RegionConfig[] = [
         // The marker stands after the failed pick, so the commit that follows names no current to commit over.
         outcomes: { a: ['open', 'recover:invalid:missing', 'commit:refused:no-current'] },
     },
+    {
+        id: 'R19a', name: 'first-life-two-tabs', covers: 'plan v3.4 amendment 7 (R1): two tabs racing first life on an absent commit key; the unfenced marker, one install wins',
+        backends: ['node', 'tauri', 'indexeddb'], start: 'no-commit-key', garbage: 0,
+        // The loser's outcome is a marker conflict or the row-1 re-check refusing because the winner's units are already stored; both are `not-marked`.
+        // A deeper PCT schedule with change points in the first 30 steps interleaves the two opens with the first writes; at the default depth
+        // the loser always boots after the winner's marker and only the foreign-marker refusal is sampled.
+        actors: [
+            actor('a', A, [open, firstLife, commit]),
+            actor('b', B, [open, firstLife, gc]),
+        ],
+        faults: { ...faults(0.03, Infinity, 1, 5), minFaulted: 0.35, idbMinFaulted: 0.3 }, pct: { depth: 6, horizon: 30 }, maxSteps: 4000, seeds: 30, idbSeeds: 24, minExercised: 0.85,
+        floors: { 'firstLife:installed': 0.3, 'firstLife:not-marked': 0.2 },
+        tauriFloors: { 'firstLife:installed': 0.3, 'firstLife:not-marked': 0.6 },
+    },
+    {
+        id: 'R19b', name: 'first-life-seed-after-marker', covers: 'plan v3.4 amendment 7 (R1): the shared installer on the fenced marker of a seed exit over a standing seed marker',
+        backends: ['node', 'tauri', 'indexeddb'], start: 'marker-seed', garbage: GARBAGE_UNITS,
+        actors: [
+            actor('a', A, [open, { do: 'exitInstall', kind: 'seed' }, commit], { foreignClear: 'yes' }),
+            actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes' }),
+        ],
+        faults: { ...faults(0.02, Infinity, 1, 8), minFaulted: 0.3, idbMinFaulted: 0.25 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
+        floors: { 'exitInstall:installed': 0.3, 'exitInstall:abandoned': 0.1 },
+    },
+    {
+        id: 'R19c', name: 'first-life-convert-after-marker', covers: 'plan v3.4 amendment 7 (R1): the shared installer on the fenced marker of a convert exit over a standing convert marker',
+        backends: ['node', 'tauri', 'indexeddb'], start: 'marker-convert', garbage: GARBAGE_UNITS,
+        actors: [
+            actor('a', A, [open, { do: 'exitInstall', kind: 'convert' }, commit], { foreignClear: 'yes', upstreamMainFile: true }),
+            actor('b', B, [open, clearMarker, gc], { foreignClear: 'yes', upstreamMainFile: true }),
+        ],
+        faults: { ...faults(0.02, Infinity, 1, 8), minFaulted: 0.3, idbMinFaulted: 0.25 }, pct: { depth: 3, horizon: 100 }, maxSteps: 4000, seeds: 18, idbSeeds: 14, minExercised: 0.85,
+        floors: { 'exitInstall:installed': 0.3, 'exitInstall:abandoned': 0.1 },
+    },
+    {
+        id: 'R19d', name: 'first-life-tauri-crash-mid-install', covers: 'plan v3.4 amendment 7 (R1): Tauri first life interrupted by an unflushed write and a restart that drops it; the new page clears its own marker and installs again',
+        backends: ['tauri'], start: 'no-commit-key', garbage: 0,
+        actors: [
+            actor('a', A, [open, firstLife, { do: 'restart' }, firstLife, commit], { device: 'phone' }),
+        ],
+        faults: { ...faults(0.08, Infinity, 1, 6), flush: true }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 24, minExercised: 0.6,
+        floors: { 'restart:cleared': 0.3, 'firstLife:installed': 0.25, 'firstLife:upload-failed': 0.4 },
+    },
 ]
 
 // ---- Running a region ----
@@ -724,6 +774,27 @@ async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, 
                 return { label: `exit:${outcomeLabel(result)}:rerun-exhausted`, kind: 'rerun-exhausted' }
             }
             return { label: `exit:${outcomeLabel(result)}`, kind: result.status }
+        }
+        case 'firstLife': {
+            const result = await actor.firstLife(tag)
+            if (result.status === 'refused') {
+                return { label: `firstLife:refused:${result.reason}`, kind: 'refused' }
+            }
+            if (result.status === 'not-marked') {
+                return { label: `firstLife:not-marked:${result.marker.status}`, kind: 'not-marked', also: [`not-marked:${result.marker.status}`] }
+            }
+            return { label: `firstLife:${outcomeLabel(result)}`, kind: result.status }
+        }
+        case 'exitInstall': {
+            let exit = await actor.runExit(step.kind)
+            for (let attempt = 1; attempt < SCREEN_ATTEMPTS && exit.status === 'conflict'; attempt++) {
+                exit = await actor.runExit(step.kind)
+            }
+            if (exit.status !== 'marked') {
+                return { label: `exitInstall:${outcomeLabel(exit)}`, kind: exit.status }
+            }
+            const installed = await actor.installAfterExit(exit, tag)
+            return { label: `exitInstall:marked/${installed.status}`, kind: installed.status }
         }
         case 'recover': {
             let target: string | undefined

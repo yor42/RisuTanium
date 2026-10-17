@@ -51,6 +51,14 @@ export interface CommitKeyChange {
     staging?: CommitKey['staging']
     convertedFrom?: CommitKey['convertedFrom']
     convertedAt?: CommitKey['convertedAt']
+    /** Sets the snapshot pointer; left out, the base's pointer is carried. */
+    snapshot?: CommitKey['snapshot']
+    /**
+     * The explicit drop member: removes the snapshot pointer from the written key. Only the old-data deletion's
+     * completion write passes it; no other writer ever drops a pointer, so a pointer whose snapshot unit is absent,
+     * unparsable or digest-mismatched stays on the key and is a no-op (it deletes nothing and keeps nothing live).
+     */
+    dropSnapshot?: boolean
     /** The writer's own `req` needs. */
     req?: readonly string[]
     /** Every manifest the new key names (`current`, `retained`, `pins`): their `req` joins the key's. */
@@ -63,6 +71,21 @@ function cloneList<T extends object>(list: readonly T[]): T[] {
 
 function cloneOrNull<T extends object>(value: T | null): T | null {
     return value === null ? null : { ...value }
+}
+
+/**
+ * The snapshot pointer a write publishes: the change's own, else a copy of the base's (nested members copied whole), or
+ * none. The property is omitted when there is no pointer, never written as `null`. A malformed stored pointer already
+ * reads as absent, so its bytes are never carried and the next writer drops them.
+ */
+function applySnapshot(next: CommitKey, base: CommitKey | null, change: CommitKeyChange): void {
+    if (change.snapshot !== undefined && change.dropSnapshot === true) {
+        throw new TypeError('A write either sets or drops the snapshot pointer, not both.')
+    }
+    const pointer = change.dropSnapshot === true ? undefined : change.snapshot ?? base?.snapshot
+    if (pointer !== undefined) {
+        next.snapshot = { ...pointer }
+    }
 }
 
 /**
@@ -86,6 +109,7 @@ export function nextCommitKey(base: CommitKey, change: CommitKeyChange, env: Pic
         convertedFrom: change.convertedFrom === undefined ? base.convertedFrom : change.convertedFrom,
         convertedAt: change.convertedAt === undefined ? base.convertedAt : change.convertedAt,
     }
+    applySnapshot(next, base, change)
     return carryUnknownFields(base, next, KNOWN_FIELDS.commitKey)
 }
 
@@ -97,7 +121,7 @@ export interface FirstCommitKey extends CommitKeyChange {
 
 /** The first commit key of a store: `seq` 1, a fresh `epoch`, nothing retained or pinned unless given. */
 export function firstCommitKey(first: FirstCommitKey, env: Pick<KeyEnv, 'random'> = defaultKeyEnv): CommitKey {
-    return {
+    const key: CommitKey = {
         fmt: 1,
         req: commitKeyReq(first.req ?? [], first.manifests ?? []),
         seq: 1,
@@ -109,4 +133,6 @@ export function firstCommitKey(first: FirstCommitKey, env: Pick<KeyEnv, 'random'
         convertedFrom: first.convertedFrom ?? null,
         convertedAt: first.convertedAt ?? null,
     }
+    applySnapshot(key, null, first)
+    return key
 }
