@@ -292,7 +292,7 @@ export async function openBootArchiveSession(host: BootArchiveHost, deps?: BootA
             resolved = await createProductionBootArchiveDeps(host)
         } catch (error) {
             console.error('The boot archive pass is unavailable:', error)
-            return disabledSession()
+            return disabledBootArchiveSession()
         }
     }
     return await createSession(host, resolved)
@@ -302,7 +302,11 @@ function installUntouched(tree: Database): BootArchiveOutcome {
     return { kind: 'install', tree, noteBytes: null, notices: [] }
 }
 
-function disabledSession(): BootArchiveSession {
+/**
+ * A session that archives nothing, holds nothing and writes nothing: `run` installs the tree it is given. A page that
+ * must not write the legacy store opens this instead of a capable session.
+ */
+export function disabledBootArchiveSession(): BootArchiveSession {
     return {
         canArchive: false,
         async run(input) {

@@ -15,13 +15,17 @@ import { writable } from 'svelte/store'
  *   boot drops the bytes after the decode, and every whole-state replace this
  *   page makes while no head exists passes it, so the converted head names the
  *   file the rename finish may move aside.
- * - `read-only`: the page runs from OPFS this time. Nothing is written.
+ * - `store2`: the profile is a store2 tree this page opened. Saves are store2 commits; no write goes to the legacy
+ *   block or main-file store.
+ * - `read-only`: nothing is written this page load (the page runs from OPFS, or the boot found a store it must not
+ *   write).
  * - `unset`: boot has not decided yet.
  */
 export type PageStorageMode =
     | { kind: 'unset' }
     | { kind: 'block' }
     | { kind: 'legacy', convertedFrom: string | null }
+    | { kind: 'store2' }
     | { kind: 'read-only' }
 
 let mode: PageStorageMode = { kind: 'unset' }

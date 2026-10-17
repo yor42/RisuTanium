@@ -3,7 +3,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
     Store2BackendFailureError, Store2StalePageError, Store2UnknownOutcomeError,
 } from '../../store2/backend'
-import { createCommitter, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
+import { createCommitter, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
+import { classifyCommitRead } from '../../store2/commitKey'
+import { encodeUnit, UNIT_TYPE, type CommitKey } from '../../store2/format'
 import type { Store2Read } from '../../store2/backend'
 import type { ListDerivation } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
@@ -492,6 +494,88 @@ describe('new behaviour: result mapping', () => {
         expect(kit.peer.asked[0]).toMatchObject({ reason: 'replaced', offers: ['reload'] })
         expect(loop.failures).toEqual([])
         healthy(loop)
+    })
+
+    describe('a marker-present refusal whose own-marker clear comes to a stale page', () => {
+        /**
+         * The kit's committer whose base read carries a standing bulk marker of this page load, whose commits are scripted
+         * and whose clear answers `clear`. `clears` counts the clears the loop asked for.
+         */
+        function withOwnMarker(kit: Store2Kit, steps: Script, clear: (read: Store2Read) => Promise<AbandonResult>): { clears: number } {
+            const real = kit.committer
+            const seen = { clears: 0 }
+            const scripted: Committer = {
+                ...real,
+                async readCommit() {
+                    const read = await real.readCommit()
+                    const parsed = classifyCommitRead(read)
+                    // The marker stands only while scripted commits remain: once they run out the real committer sees a plain base.
+                    if (parsed.status !== 'parsed' || steps.length === 0) {
+                        return read
+                    }
+                    const marked: CommitKey = { ...parsed.value, staging: { owner: real.owner, prefix: 'store2/g-0000000000000001-', startedAt: 1, label: 'bulk' } }
+                    return { ...read, bytes: encodeUnit(UNIT_TYPE.commit, marked) }
+                },
+                async commit(read, request) {
+                    const step = steps.shift()
+                    return step === undefined ? real.commit(read, request) : step(read, request)
+                },
+                async abandonClear(read) {
+                    seen.clears += 1
+                    return clear(read)
+                },
+            }
+            kit.context.session = { ...kit.context.session, committer: scripted }
+            return seen
+        }
+
+        const markerPresent = async () => ({ status: 'refused', reason: 'marker-present', detail: 'a marker stands' }) as CommitResult
+
+        test.each([
+            ['failed', 'reworded cause one', (cause: Store2StalePageError): AbandonResult => ({ status: 'failed', cause })],
+            ['unknown', 'a different wording', (cause: Store2StalePageError): AbandonResult => ({ status: 'unknown', cause })],
+        ])('reproducer: a clear that %s with a stale page cause parks as replaced and asks, never retried', async (_label, message, result) => {
+            const { db, kit } = await edited()
+            const seen = withOwnMarker(kit, Array.from({ length: 8 }, () => markerPresent), async () => result(new Store2StalePageError(message)))
+            const loop = runLoop(kit, db)
+            chars(db)[0].personality = 'unsaved'
+            loop.mark(chaIdOf(db, 0))
+            await until(() => kit.peer.asked.length === 1, 'the replaced prompt', 4000)
+            expect(kit.peer.asked[0]).toMatchObject({ reason: 'replaced', offers: ['reload'] })
+            expect(loop.failures).toEqual([])
+            expect(seen.clears).toBe(1)
+            healthy(loop)
+        })
+
+        test('guard: a clear that fails for another backend reason keeps the quiet retry and the next pass saves', async () => {
+            const { db, kit } = await edited()
+            withOwnMarker(kit, [markerPresent], async () => ({ status: 'failed', cause: new Store2BackendFailureError('down') }))
+            const loop = runLoop(kit, db)
+            chars(db)[0].personality = 'after the retry'
+            loop.mark(chaIdOf(db, 0))
+            await savedBy(loop)
+            expect(kit.peer.asked).toEqual([])
+            expect(loop.failures).toEqual([])
+            healthy(loop)
+        })
+
+        test('guard: a cleared marker is retried and the next pass saves', async () => {
+            const { db, kit } = await edited()
+            withOwnMarker(kit, [markerPresent], async (read) => {
+                const parsed = classifyCommitRead(read)
+                if (parsed.status !== 'parsed') {
+                    throw new Error('The base read is not a commit key.')
+                }
+                return { status: 'cleared', value: parsed.value, bytes: read.bytes as Uint8Array }
+            })
+            const loop = runLoop(kit, db)
+            chars(db)[0].personality = 'after the clear'
+            loop.mark(chaIdOf(db, 0))
+            await savedBy(loop)
+            expect(kit.peer.asked).toEqual([])
+            expect(loop.failures).toEqual([])
+            healthy(loop)
+        })
     })
 
     describe('the real committer over a bulk pass', () => {

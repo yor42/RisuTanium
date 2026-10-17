@@ -1,0 +1,170 @@
+// @vitest-environment node
+import { describe, expect, test } from 'vitest'
+import {
+    createMemoryBackend, Store2BackendFailureError, type MemoryBackend, type Store2Backend,
+} from 'src/ts/storage/store2/backend'
+import { emptySeedProfile, probeNumberedBackups, seedStore2Profile } from 'src/ts/storage/store2/bootSeed'
+import { assembleDatabase } from 'src/ts/storage/store2/codec'
+import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
+import { firstLifeGrant, type FirstLifeGrant } from 'src/ts/storage/store2/firstLife'
+import { readUnit, UNIT_TYPE, type Manifest } from 'src/ts/storage/store2/format'
+import { freshOwnerId } from 'src/ts/storage/store2/owner'
+import { createClock, testEnv } from '../store2SaveKit'
+import { fakeLists } from './codecFixtures'
+
+/**
+ * The seed driver of the boot dispatch: the empty profile, the probe that decides whether seeding is allowed, and what
+ * the first-life install came to. Labels: new behaviour (the driver is new).
+ */
+
+const clock = createClock()
+const env = testEnv(clock, 4711)
+const owner = freshOwnerId(testEnv(clock, 4712))
+
+async function grantOf(backend: Store2Backend): Promise<FirstLifeGrant> {
+    const result = firstLifeGrant({
+        decision: { row: 1, mode: 'first-life', action: 'seed' },
+        commitRead: await backend.readCommit(),
+        startupClear: null,
+    })
+    if (result.status !== 'granted') {
+        throw new Error(`No grant: ${result.detail}`)
+    }
+    return result.grant
+}
+
+/** The backend with named calls failing definitely, counted from 1 per method. */
+function failing(memory: MemoryBackend, fails: Partial<Record<'countPrefix' | 'listStore2' | 'putUnit' | 'casCommit', number[]>>): Store2Backend {
+    const counts: Record<string, number> = {}
+    function gate(name: keyof typeof fails): void {
+        counts[name] = (counts[name] ?? 0) + 1
+        if (fails[name]?.includes(counts[name])) {
+            throw new Store2BackendFailureError(`${name} ${counts[name]} failed`)
+        }
+    }
+    return {
+        ...memory,
+        countPrefix: async (prefix) => { gate('countPrefix'); return memory.countPrefix(prefix) },
+        listStore2: async () => { gate('listStore2'); return memory.listStore2() },
+        putUnit: async (key, bytes) => { gate('putUnit'); return memory.putUnit(key, bytes) },
+        casCommit: async (expected, next) => { gate('casCommit'); return memory.casCommit(expected, next) },
+    }
+}
+
+describe('new behaviour: the empty profile', () => {
+    test('it holds the containers every save holds and nothing else', () => {
+        expect(emptySeedProfile()).toEqual({
+            characters: [], botPresets: [], modules: [], loadouts: [], plugins: [], pluginCustomStorage: {},
+        })
+    })
+
+    test('each call hands out a fresh object', () => {
+        const a = emptySeedProfile()
+        const b = emptySeedProfile()
+        expect(a).not.toBe(b)
+        expect(a.characters).not.toBe(b.characters)
+    })
+})
+
+describe('new behaviour: the probe for numbered backups', () => {
+    test('no backup is none', async () => {
+        expect(await probeNumberedBackups(async () => [])).toEqual({ status: 'none' })
+    })
+
+    test('backups are returned as listed, newest first', async () => {
+        expect(await probeNumberedBackups(async () => [30, 20, 10])).toEqual({ status: 'some', backups: [30, 20, 10] })
+    })
+
+    test('a listing that fails is unknown, with its reason, and is never read as none', async () => {
+        const probe = await probeNumberedBackups(async () => { throw new Error('listing refused') })
+        expect(probe).toEqual({ status: 'unknown', reason: 'listing refused' })
+    })
+
+    test('a listing that rejects with something that is not an Error is still unknown', async () => {
+        const probe = await probeNumberedBackups(() => Promise.reject('plain text'))
+        expect(probe).toEqual({ status: 'unknown', reason: 'plain text' })
+    })
+})
+
+describe('new behaviour: the first-life install of the empty profile', () => {
+    test('it installs a tree that assembles to the empty profile, under the marker\'s owner, converted from "seed"', async () => {
+        const memory = createMemoryBackend()
+        const outcome = await seedStore2Profile(memory, await grantOf(memory), { owner, lists: fakeLists, env })
+        expect(outcome.status).toBe('installed')
+        if (outcome.status !== 'installed') {
+            return
+        }
+        const key = classifyCommitRead(await memory.readCommit())
+        if (key.status !== 'parsed') {
+            throw new Error('The commit key does not parse.')
+        }
+        expect(key.value.current?.key).toBe(outcome.manifestKey)
+        expect(key.value.staging).toBeNull()
+        expect(key.value.convertedFrom).toBe('seed')
+        const stored = memory.snapshot()
+        const manifest = readUnit(stored.get(outcome.manifestKey) as Uint8Array, UNIT_TYPE.manifest)
+        if (manifest.status !== 'ok') {
+            throw new Error('The manifest does not parse.')
+        }
+        const database = assembleDatabase(manifest.value.body as Manifest, { get: unit => stored.get(unit) })
+        expect(database).toMatchObject({ characters: [], botPresets: [], modules: [], loadouts: [], plugins: [], pluginCustomStorage: {} })
+    })
+
+    test('a store that already holds a unit is never seeded over: the boot is classified again, and nothing is written', async () => {
+        const memory = createMemoryBackend()
+        const grant = await grantOf(memory)
+        memory.poke('store2/a-unit-a-peer-wrote', new Uint8Array([1]))
+        const before = memory.snapshot()
+        const outcome = await seedStore2Profile(memory, grant, { owner, lists: fakeLists, env })
+        expect(outcome).toEqual({ status: 'reclassify' })
+        expect([...memory.snapshot().keys()]).toEqual([...before.keys()])
+        expect((await memory.readCommit()).bytes).toBeNull()
+    })
+
+    test('a peer that installed first makes the boot classify again, and the peer\'s profile stands', async () => {
+        const memory = createMemoryBackend()
+        const stale = await grantOf(memory)
+        const peer = await seedStore2Profile(memory, await grantOf(memory), { owner: freshOwnerId(testEnv(clock, 99)), lists: fakeLists, env: testEnv(clock, 98) })
+        expect(peer.status).toBe('installed')
+        const before = (await memory.readCommit()).bytes
+        // The first page still holds its absence read: its marker write loses the compare-and-write.
+        const outcome = await seedStore2Profile(memory, stale, { owner, lists: fakeLists, env })
+        expect(outcome).toEqual({ status: 'reclassify' })
+        expect((await memory.readCommit()).bytes).toEqual(before)
+    })
+
+    test('a store2 listing that fails before the marker blocks as presence-unknown and writes nothing', async () => {
+        const memory = createMemoryBackend()
+        const backend = failing(memory, { countPrefix: [1], listStore2: [1] })
+        const outcome = await seedStore2Profile(backend, await grantOf(memory), { owner, lists: fakeLists, env })
+        expect(outcome).toMatchObject({ status: 'blocked', reason: 'presence-unknown' })
+        expect((await memory.readCommit()).bytes).toBeNull()
+        expect(memory.snapshot().size).toBe(0)
+    })
+
+    test('a marker write that fails definitely blocks as marker-failed and writes nothing', async () => {
+        const memory = createMemoryBackend()
+        const backend = failing(memory, { casCommit: [1] })
+        const outcome = await seedStore2Profile(backend, await grantOf(memory), { owner, lists: fakeLists, env })
+        expect(outcome).toMatchObject({ status: 'blocked', reason: 'marker-failed' })
+        expect(memory.snapshot().size).toBe(0)
+    })
+
+    test('a staged unit that cannot be put blocks, leaving the marker standing and no current manifest', async () => {
+        const memory = createMemoryBackend()
+        const backend = failing(memory, { putUnit: [1] })
+        const outcome = await seedStore2Profile(backend, await grantOf(memory), { owner, lists: fakeLists, env })
+        expect(outcome).toMatchObject({ status: 'blocked', reason: 'install-upload-failed' })
+        const key = classifyCommitRead(await memory.readCommit())
+        expect(key.status === 'parsed' && key.value.current === null && key.value.staging !== null && key.value.staging.label === 'seed').toBe(true)
+    })
+
+    test('a final write that fails definitely blocks as install-failed with the marker standing', async () => {
+        const memory = createMemoryBackend()
+        const backend = failing(memory, { casCommit: [2] })
+        const outcome = await seedStore2Profile(backend, await grantOf(memory), { owner, lists: fakeLists, env })
+        expect(outcome).toMatchObject({ status: 'blocked', reason: 'install-failed' })
+        const key = classifyCommitRead(await memory.readCommit())
+        expect(key.status === 'parsed' && key.value.current === null && key.value.staging !== null).toBe(true)
+    })
+})

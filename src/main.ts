@@ -11,6 +11,8 @@ import { mount } from "svelte";
 import { installBackGuard } from "./ts/backHandlers";
 import { alertToast } from "./ts/alert";
 import { language } from "./lang";
+import { registerStore2Boot } from "./ts/storage/store2/bootActive";
+import { createProductionBootUi, dispatchStore2Boot } from "./ts/storage/store2/bootDispatch";
 
 window.addEventListener('vite:preloadError', (event) => {
     console.error("Chunk load error detected:", event);
@@ -22,6 +24,7 @@ let app = mount(App, {
     target: document.getElementById("app"),
 });
 installBackGuard({ showToast: () => alertToast(language.alerts.pressBackAgainToQuit) })
+registerStore2Boot((env) => dispatchStore2Boot(env, { ui: createProductionBootUi() }))
 loadData()
 initHotkey()
 startKeepAliveService()

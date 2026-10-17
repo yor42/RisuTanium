@@ -444,6 +444,15 @@ describe('storage pressure and page state', () => {
         expect(h.keysCalls).toBe(0)
     })
 
+    test('reproducer: a page the boot made read-only on a store that is not OPFS runs no copy and writes nothing', async () => {
+        injectAppStore(appStore, 'node')
+        setPageStorageMode({ kind: 'read-only' })
+        h.legacy.set('a', legacyImage('a'))
+        await expect(runInlayCopy(env)).resolves.toBe('not-run')
+        expect(appStore.writes).toEqual([])
+        expect(h.keysCalls).toBe(0)
+    })
+
     test('a page whose other tab holds the copy does nothing', async () => {
         h.legacy.set('a', legacyImage('a'))
         await expect(runInlayCopy({ ...env, withTabLock: async () => false })).resolves.toBe('busy')

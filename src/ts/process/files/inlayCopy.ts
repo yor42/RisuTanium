@@ -194,7 +194,7 @@ export async function runInlayCopy(env: InlayCopyEnvironment = browserEnvironmen
             return 'settled'
         }
         const store = await getAppStore()
-        if (await pageStoreIsOpfsTransitional()) {
+        if (await pageStoreIsOpfsTransitional() || getPageStorageMode().kind === 'read-only') {
             return 'not-run'
         }
         let outcome: InlayCopyOutcome = 'not-run'

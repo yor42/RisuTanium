@@ -34,11 +34,20 @@ describe('the storage mode', () => {
         ['a legacy page that read no file', { kind: 'legacy', convertedFrom: null } as const],
         ['a block page', { kind: 'block' } as const],
         ['a read-only page', { kind: 'read-only' } as const],
+        ['a store2 page', { kind: 'store2' } as const],
         ['a page boot has not decided for', { kind: 'unset' } as const],
     ])('%s has no fingerprint to pass', (_label, mode) => {
         setPageStorageMode(mode)
 
         expect(pendingConvertedFrom()).toBeUndefined()
+    })
+
+    test('a store2 page is a mode of its own: neither a block page nor a read-only one', () => {
+        setPageStorageMode({ kind: 'store2' })
+
+        expect(getPageStorageMode()).toEqual({ kind: 'store2' })
+        expect(getPageStorageMode().kind).not.toBe('read-only')
+        expect(getPageStorageMode().kind).not.toBe('block')
     })
 
     test('a won conversion moves a legacy page to a block page, after which no fingerprint is offered', () => {

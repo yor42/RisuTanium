@@ -4,7 +4,7 @@ import { createYieldBudget } from '../saveYield'
 import { Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
 import { isColdStub, SharedChaIdStubError } from './codec'
-import type { CommitResult, Committer } from './commit'
+import type { AbandonResult, CommitResult, Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
@@ -67,7 +67,11 @@ export class Store2NotFlushedError extends Error {
     }
 }
 
-/** A commit refused for a reason that points at the code, not at the data or a peer. */
+/**
+ * A commit refused for a reason the loop cannot resolve by retrying quietly: a refusal that points at the code, or a
+ * run of retries that does not end (a peer's marker that stands, a conflict that keeps landing first), reported once the
+ * quiet retries are spent.
+ */
 export class Store2CommitRefusedError extends Error {
     constructor(readonly reason: string, detail: string) {
         super(`The commit was refused (${reason}): ${detail}`)
@@ -458,17 +462,21 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    /** Clears the bulk marker on `read` when this page load set it; a foreign marker stands and keeps the data marked. */
-    async function clearOwnMarker(read: Store2Read): Promise<void> {
+    /**
+     * Clears the bulk marker on `read` when this page load set it; a foreign marker stands and keeps the data marked.
+     * Answers what the clear came to, or `null` when no clear ran or it threw.
+     */
+    async function clearOwnMarker(read: Store2Read): Promise<AbandonResult | null> {
         const classified = classifyCommitRead(read)
         const staging = classified.status === 'parsed' ? classified.value.staging : null
         if (staging === null || staging.owner !== committer.owner) {
-            return
+            return null
         }
         try {
-            await committer.abandonClear(read, staging.owner, staging.prefix)
+            return await committer.abandonClear(read, staging.owner, staging.prefix)
         } catch (error) {
             console.error(error)
+            return null
         }
     }
 
@@ -494,7 +502,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const result = saveMine ? await committer.saveMine(read, request) : await committer.commit(read, request)
         if (result.status === 'refused' && result.reason === 'marker-present') {
             // A marker of this page load that an earlier bulk could not clear would refuse every later bulk.
-            await clearOwnMarker(read)
+            const cleared = await clearOwnMarker(read)
+            // A clear refused because a newer page owns the generation never succeeds on this page: it is replaced, not retried.
+            if ((cleared?.status === 'failed' || cleared?.status === 'unknown') && cleared.cause instanceof Store2StalePageError) {
+                return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
+            }
         }
         return outcomeOf(result, plan, run)
     }
