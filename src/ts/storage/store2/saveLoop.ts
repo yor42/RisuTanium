@@ -1,0 +1,616 @@
+import type { Database } from '../database.svelte'
+import type { toSaveType } from '../risuSave'
+import { createYieldBudget } from '../saveYield'
+import { Store2StalePageError } from './backend/errors'
+import type { Store2Read } from './backend/types'
+import { isColdStub, SharedChaIdStubError } from './codec'
+import type { CommitResult, Committer } from './commit'
+import { classifyCommitRead } from './commitKey'
+import type { CommitKey } from './format'
+import type { Store2SaveContext } from './saveActive'
+import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
+
+/**
+ * The save loop of a store2 session: the loop `saveDb()` runs when a session is active. It keeps the block-profile
+ * loop's marks, debounce, hide path and read-only mode, and replaces what a store2 commit makes unnecessary: the held
+ * and frozen indicator, the block-era stale-copy prompts and the numbered backups.
+ *
+ * One pass, under the page's write lock: the marks are snapshotted and trimmed, the commit key is read as the base,
+ * the base is judged (a pending attempt is adopted or left, a foreign `current` parks the loop), the pass is planned
+ * over the acknowledged encoding, and the plan is committed, or skipped when it changed nothing. A pending attempt is
+ * resolved against the base read before the plan is made, and nothing adopts while a plan is in flight: one task owns
+ * the encoder.
+ *
+ * Marks are cleared only by taking the snapshot, never afterwards: a mark set while a pass runs lands in the live
+ * tracker and reaches the next pass, and a snapshot that did not commit is folded back.
+ */
+
+export type PeerOffer = 'reload' | 'save-mine' | 'export-first'
+
+/** What the person is asked when the page is parked on a commit it did not make. */
+export interface PeerParkPrompt {
+    reason: 'peer-commit' | 'replaced'
+    unsaved: boolean
+    /** The default first: it always starts with 'reload'. */
+    offers: readonly PeerOffer[]
+    /** Why 'save-mine' is not offered, for the wording the screen chooses. */
+    saveMineUnavailable?: 'node' | 'replaced' | 'unloaded-characters'
+}
+
+export interface Store2PeerHandler {
+    /** Parked with nothing unsaved: only the reload action exists. Nothing is awaited. */
+    parkedClean(prompt: PeerParkPrompt): void
+    /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
+    decide(prompt: PeerParkPrompt): Promise<PeerOffer>
+    /**
+     * Node's 'export-first': a .bin of this tab's state, then the reload. The export reads this tab's own unit
+     * references, and nothing here pins them: an unloaded character is read from the units this tab's acknowledged
+     * manifest names, which the collector does not delete while it is not built (stage 5). The export must read
+     * `manifestKey` again, and tell the person when a unit it needs is gone.
+     */
+    exportThisTab(manifestKey: string): Promise<void>
+    reload(): void
+}
+
+export interface IdleNetOptions {
+    intervalMs: number
+}
+
+/** The idle net's default cadence: one resident character per tick. */
+export const IDLE_NET_INTERVAL_MS = 2000
+
+/** A commit landed but its backend could not confirm it reached stable storage: the person is told, and the next pass commits again. */
+export class Store2NotFlushedError extends Error {
+    constructor() {
+        super('The data was saved but the storage did not confirm that it reached the disk; saving again.')
+        this.name = 'Store2NotFlushedError'
+    }
+}
+
+/** A commit refused for a reason that points at the code, not at the data or a peer. */
+export class Store2CommitRefusedError extends Error {
+    constructor(readonly reason: string, detail: string) {
+        super(`The commit was refused (${reason}): ${detail}`)
+        this.name = 'Store2CommitRefusedError'
+    }
+}
+
+/** The marks of one pass, taken at its start. `whole` is the full-reload flag as it stood. */
+export interface Store2Snapshot {
+    toSave: toSaveType
+    whole: boolean
+}
+
+/** What the loop needs from the page: the shared marks and flags, the page's own state and effects. `saveDbStore2` builds it. */
+export interface Store2LoopPort {
+    /** The live tracker the mark paths write into. */
+    tracker: toSaveType
+    /** The full-reload flag: the five triggers that need every resident character encoded. */
+    reloadFlag: { state: boolean }
+    getDatabase(): Database
+    /** Folds a snapshot back into a live tracker without discarding what accumulated since. */
+    mergeBack(live: toSaveType, snapshot: toSaveType): void
+    /** The live character check; a repair requests its own pass. */
+    liveCheck(): void
+    /** Releases expired draft registrations; runs every iteration. */
+    sweep(): void
+    /** A pass is due: a debounce elapsed, a save was requested now, or a failed pass asked again. */
+    isDue(): boolean
+    /** The page holds edits that no commit has taken. */
+    isDirty(): boolean
+    /** A pass that carries marks begins: the save indicator is on and the due flag is consumed. */
+    beginIteration(): void
+    endIteration(): void
+    /** The snapshot was taken: the page counts as clean until the next mark. */
+    snapshotTaken(): void
+    /** Marks the page dirty and asks for another pass. */
+    requestPass(): void
+    /** The pass's data is in the store (or the store already held it): next-commit callbacks fire. */
+    saved(): void
+    /** Tells the other tabs a commit landed. */
+    broadcast(epoch: string): void
+    /** A peer announced a save since the last call; clears the flag. */
+    peerHeard(): boolean
+    /** Parks the saving state with a reason that has a string; the empty reason clears it. */
+    setStopped(reason: string, detail?: string): void
+    /** Tells the person a save failed; answers how long the loop waits before it tries again. */
+    reportFailure(error: unknown, attempts: number): number
+    /** Runs `run` while holding the write lock that every whole-state writer shares. */
+    withWriteLock<T>(run: () => Promise<T>): Promise<T>
+    /** A sleep that a save request ends early. */
+    wait(ms: number): Promise<void>
+    sleep(ms: number): Promise<unknown>
+    sleepForever(): Promise<never>
+    now(): number
+}
+
+/** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
+export function takeStore2Snapshot(port: Pick<Store2LoopPort, 'tracker' | 'reloadFlag' | 'snapshotTaken'>): Store2Snapshot {
+    const { tracker, reloadFlag } = port
+    const toSave: toSaveType = {
+        character: [...tracker.character],
+        chat: tracker.chat.map(([chaId, chatId]): [string, string] => [chaId, chatId]),
+        botPreset: tracker.botPreset,
+        modules: tracker.modules,
+        loadouts: tracker.loadouts,
+        plugins: tracker.plugins,
+        pluginCustomStorage: tracker.pluginCustomStorage,
+    }
+    port.snapshotTaken()
+    tracker.character = tracker.character.length === 0 ? [] : [tracker.character[0]]
+    tracker.chat = tracker.chat.length === 0 ? [] : [tracker.chat[0]]
+    tracker.botPreset = false
+    tracker.modules = false
+    tracker.loadouts = false
+    tracker.plugins = false
+    tracker.pluginCustomStorage = false
+    // Cleared before the awaits that follow: a request that arrives during the pass wins.
+    const whole = reloadFlag.state
+    reloadFlag.state = false
+    return { toSave, whole }
+}
+
+/** The chaIds of the resident, non-stub characters in list order. */
+function residentChaIds(db: Database): string[] {
+    if (!Array.isArray(db.characters)) {
+        return []
+    }
+    const out: string[] = []
+    for (const slot of db.characters) {
+        if (typeof slot === 'object' && slot !== null && !isColdStub(slot)) {
+            out.push(String((slot as { chaId?: unknown }).chaId ?? ''))
+        }
+    }
+    return out
+}
+
+function presentChaIds(db: Database): Set<string> {
+    const out = new Set<string>()
+    if (Array.isArray(db.characters)) {
+        for (const slot of db.characters) {
+            if (typeof slot === 'object' && slot !== null) {
+                out.add(String((slot as { chaId?: unknown }).chaId ?? ''))
+            }
+        }
+    }
+    return out
+}
+
+type Judged =
+    | { kind: 'ok' }
+    | { kind: 'stop', reason: 'peer-commit' | 'replaced', key: CommitKey | null, revision: boolean }
+
+/** A parked loop: what it is parked on, and what has been told or asked. */
+interface Park {
+    reason: 'peer-commit' | 'replaced'
+    /** The epoch the commit key held when the park was judged; Save mine's consent covers this one only. */
+    epoch: string | null
+    /** The base still names this page's acknowledged manifest (current, retained or pinned). */
+    namedMine: boolean
+    /** The base is compared by revision (Node). */
+    revision: boolean
+    asked: boolean
+    noticed: boolean
+}
+
+type Outcome =
+    | { kind: 'saved', wrote: boolean }
+    /** The pass did not land and nothing says it never will: counted, and reported when it persists. */
+    | { kind: 'retry', reason: string, detail: string }
+    | { kind: 'park', park: Park }
+    | { kind: 'not-flushed' }
+
+/** The failures that name the page's own state as stale for good: only a reload ends them. */
+const REPLACED_REFUSALS: ReadonlySet<string> = new Set(['absent', 'no-current', 'damaged', 'too-new'])
+
+/** Consecutive retries the loop makes without a report; the next one goes through the failure path. */
+const QUIET_RETRIES = 2
+
+/** The longest wait the loop adds after repeated reports of a commit that lands but is not confirmed durable. */
+const NOT_FLUSHED_BACKOFF_MAX_MS = 60_000
+
+/** The wait before the next attempt after `attempts` reports: the port's own wait up to the fifth, doubling after it. */
+export function backedOffWait(wait: number, attempts: number): number {
+    return attempts <= 5 ? wait : Math.min(wait * 2 ** (attempts - 5), NOT_FLUSHED_BACKOFF_MAX_MS)
+}
+
+export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPort): Promise<never> {
+    const sessionCommitter = context.session.committer
+    if (sessionCommitter === null) {
+        return Promise.reject(new Store2CommitRefusedError('no-committer', 'The session has no committer.'))
+    }
+    const committer: Committer = sessionCommitter
+    const encoder = createSaveEncoder({ previous: context.previous, lists: context.lists, env: context.env })
+    const netMs = context.idleNet === null ? null : (context.idleNet?.intervalMs ?? IDLE_NET_INTERVAL_MS)
+
+    let savetrys = 0
+    let retries = 0
+    let park: Park | null = null
+    /** The epoch the person agreed to overwrite with Save mine. */
+    let consent: string | null = null
+    /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
+    let forced = false
+    let peerSignal = false
+    let netIndex = 0
+    let lastNetAt = port.now()
+
+    function namedByBase(key: CommitKey): boolean {
+        const mine = encoder.manifestKey
+        return key.current?.key === mine || key.retained.some(entry => entry.key === mine) || key.pins.some(pin => pin.key === mine)
+    }
+
+    /** Whether the page may save over this base. A pending attempt that is the base's `current` is adopted here, before any plan. */
+    function judge(read: Store2Read): Judged {
+        const classified = classifyCommitRead(read)
+        const revision = read.token.kind === 'revision'
+        if (classified.status !== 'parsed' || classified.value.current === null) {
+            return { kind: 'stop', reason: 'replaced', key: classified.status === 'parsed' ? classified.value : null, revision }
+        }
+        const current = classified.value.current.key
+        if (current === encoder.manifestKey || encoder.adoptIfCurrent(current)) {
+            return { kind: 'ok' }
+        }
+        return { kind: 'stop', reason: 'peer-commit', key: classified.value, revision }
+    }
+
+    function parkOf(judged: Extract<Judged, { kind: 'stop' }>): Park {
+        return {
+            reason: judged.reason,
+            epoch: judged.key?.epoch ?? null,
+            namedMine: judged.key === null ? false : namedByBase(judged.key),
+            revision: judged.revision,
+            asked: false,
+            noticed: false,
+        }
+    }
+
+    function setPark(next: Park): void {
+        consent = null
+        park = next
+        if (next.reason === 'replaced') {
+            port.setStopped('replaced')
+        }
+    }
+
+    function promptOf(parked: Park, unsaved: boolean): PeerParkPrompt {
+        if (parked.reason === 'replaced') {
+            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'replaced' }
+        }
+        if (context.session.kind === 'node' || parked.revision) {
+            return unsaved
+                ? { reason: parked.reason, unsaved, offers: ['reload', 'export-first'], saveMineUnavailable: 'node' }
+                : { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'node' }
+        }
+        if (!unsaved) {
+            return { reason: parked.reason, unsaved, offers: ['reload'] }
+        }
+        if (encoder.hasStubs(port.getDatabase()) && !parked.namedMine) {
+            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'unloaded-characters' }
+        }
+        return { reason: parked.reason, unsaved, offers: ['reload', 'save-mine'] }
+    }
+
+    /** Reads the base and re-judges a parked loop: a base that is the page's again unparks, a newer one is asked about afresh. */
+    async function recheckPark(parked: Park): Promise<void> {
+        let read: Store2Read
+        try {
+            read = await port.withWriteLock(() => committer.readCommit())
+        } catch (error) {
+            console.error(error)
+            return
+        }
+        const judged = judge(read)
+        if (judged.kind === 'ok') {
+            park = null
+            port.setStopped('')
+            return
+        }
+        const next = parkOf(judged)
+        if (next.epoch === parked.epoch && next.reason === parked.reason) {
+            return
+        }
+        next.noticed = parked.noticed
+        setPark(next)
+    }
+
+    async function settlePark(): Promise<void> {
+        let parked = park
+        if (parked === null) {
+            return
+        }
+        if (peerSignal) {
+            peerSignal = false
+            await recheckPark(parked)
+            parked = park
+            if (parked === null) {
+                return
+            }
+        }
+        if (!port.isDirty()) {
+            if (!parked.noticed) {
+                parked.noticed = true
+                context.peer.parkedClean(promptOf(parked, false))
+            }
+            return
+        }
+        if (parked.asked) {
+            return
+        }
+        parked.asked = true
+        const prompt = promptOf(parked, true)
+        let answer: PeerOffer
+        try {
+            answer = await context.peer.decide(prompt)
+        } catch (error) {
+            parked.asked = false
+            port.reportFailure(error, 1)
+            await port.sleep(1000)
+            return
+        }
+        const choice: PeerOffer = prompt.offers.includes(answer) ? answer : 'reload'
+        if (choice === 'save-mine' && parked.epoch !== null) {
+            consent = parked.epoch
+            park = null
+            port.setStopped('')
+            port.requestPass()
+            return
+        }
+        if (choice === 'export-first') {
+            try {
+                await context.peer.exportThisTab(encoder.manifestKey)
+            } catch (error) {
+                // The person keeps an in-app action: the question is asked again after the wait.
+                parked.asked = false
+                await port.sleep(port.reportFailure(error, 5))
+                return
+            }
+        }
+        context.peer.reload()
+        await port.sleepForever()
+    }
+
+    function marksOf(snapshot: Store2Snapshot, db: Database): Set<string> {
+        const present = presentChaIds(db)
+        const marked = new Set<string>()
+        for (const chaId of snapshot.toSave.character) {
+            if (typeof chaId === 'string' && present.has(chaId)) {
+                marked.add(chaId)
+            }
+        }
+        return marked
+    }
+
+    function requestOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean): SavePassRequest {
+        const budget = createYieldBudget()
+        const yielding = { yield: () => budget.maybeYield() }
+        if (snapshot !== null) {
+            return { marked: marksOf(snapshot, db), modules: snapshot.toSave.modules, whole: snapshot.whole, rewriteAll, ...yielding }
+        }
+        const residents = residentChaIds(db)
+        if (residents.length === 0) {
+            return { marked: new Set(), modules: true, whole: false, net: { chaId: null, modules: true }, ...yielding }
+        }
+        const index = netIndex % residents.length
+        netIndex = (index + 1) % residents.length
+        return { marked: new Set(), modules: false, whole: false, net: { chaId: residents[index], modules: index === 0 }, ...yielding }
+    }
+
+    async function planOf(db: Database, request: SavePassRequest): Promise<SavePlan> {
+        try {
+            return await encoder.plan(db, request)
+        } catch (error) {
+            if (!(error instanceof SharedChaIdStubError) || context.loadStub === undefined) {
+                throw error
+            }
+            // The stub the shared id holds is loaded, and the pass is planned once more over the live list. A pass
+            // that stays blocked is a failed save the person is told about.
+            if (!await context.loadStub(error.chaId)) {
+                throw error
+            }
+            return await encoder.plan(port.getDatabase(), { ...request, marked: new Set([...request.marked, error.chaId]) })
+        }
+    }
+
+    function outcomeOf(result: CommitResult, plan: SavePlan, flags: { landed: boolean }): Outcome {
+        switch (result.status) {
+            case 'committed':
+                flags.landed = true
+                plan.acknowledge()
+                consent = null
+                port.broadcast(result.value.epoch)
+                // The commit landed and is the acknowledged encoding; only its durability is unconfirmed.
+                if (result.flushed === false) {
+                    return { kind: 'not-flushed' }
+                }
+                forced = false
+                savetrys = 0
+                return { kind: 'saved', wrote: true }
+            case 'conflict': {
+                const judged = judge(result.current)
+                return judged.kind === 'ok'
+                    ? { kind: 'retry', reason: 'conflict', detail: 'A peer\'s write kept landing first.' }
+                    : { kind: 'park', park: parkOf(judged) }
+            }
+            case 'failed':
+                if (result.cause instanceof Store2StalePageError) {
+                    return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
+                }
+                throw result.cause
+            case 'abandoned':
+                if (result.cause === undefined) {
+                    return { kind: 'retry', reason: result.reason, detail: 'The bulk commit did not land.' }
+                }
+                if (result.cause instanceof Store2StalePageError) {
+                    return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
+                }
+                throw result.cause
+            case 'unknown':
+                plan.keepAsPending()
+                throw result.cause
+            case 'refused':
+                if (REPLACED_REFUSALS.has(result.reason)) {
+                    return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
+                }
+                if (result.reason === 'marker-present') {
+                    return { kind: 'retry', reason: result.reason, detail: result.detail }
+                }
+                throw new Store2CommitRefusedError(result.reason, result.detail)
+        }
+    }
+
+    /** Clears the bulk marker on `read` when this page load set it; a foreign marker stands and keeps the data marked. */
+    async function clearOwnMarker(read: Store2Read): Promise<void> {
+        const classified = classifyCommitRead(read)
+        const staging = classified.status === 'parsed' ? classified.value.staging : null
+        if (staging === null || staging.owner !== committer.owner) {
+            return
+        }
+        try {
+            await committer.abandonClear(read, staging.owner, staging.prefix)
+        } catch (error) {
+            console.error(error)
+        }
+    }
+
+    async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean }, tick: boolean): Promise<Outcome> {
+        run.snapshot = tick ? null : takeStore2Snapshot(port)
+        const read = await committer.readCommit()
+        peerSignal = false
+        const judged = judge(read)
+        if (judged.kind === 'stop' && !(consent !== null && judged.reason === 'peer-commit' && judged.key?.epoch === consent)) {
+            return { kind: 'park', park: parkOf(judged) }
+        }
+        const saveMine = judged.kind === 'stop'
+        if (!saveMine) {
+            consent = null
+        }
+        const db = port.getDatabase()
+        const plan = await planOf(db, requestOf(run.snapshot, db, saveMine))
+        // A page that is asked to overwrite a peer's commit has something to write even when it changed nothing.
+        if (plan.unchanged && !forced && !saveMine) {
+            return { kind: 'saved', wrote: false }
+        }
+        const request = plan.commitRequest()
+        const result = saveMine ? await committer.saveMine(read, request) : await committer.commit(read, request)
+        if (result.status === 'refused' && result.reason === 'marker-present') {
+            // A marker of this page load that an earlier bulk could not clear would refuse every later bulk.
+            await clearOwnMarker(read)
+        }
+        return outcomeOf(result, plan, run)
+    }
+
+    function foldBack(snapshot: Store2Snapshot | null): void {
+        if (snapshot === null) {
+            return
+        }
+        port.mergeBack(port.tracker, snapshot.toSave)
+        if (snapshot.whole) {
+            port.reloadFlag.state = true
+        }
+        port.requestPass()
+    }
+
+    async function pass(tick: boolean): Promise<void> {
+        const run: { snapshot: Store2Snapshot | null, landed: boolean } = { snapshot: null, landed: false }
+        if (!tick) {
+            port.beginIteration()
+        }
+        try {
+            const outcome = await port.withWriteLock(() => attemptOf(run, tick))
+            switch (outcome.kind) {
+                case 'saved':
+                    retries = 0
+                    if (!tick || outcome.wrote) {
+                        port.saved()
+                    }
+                    break
+                case 'retry':
+                    retries += 1
+                    foldBack(run.snapshot)
+                    if (retries <= QUIET_RETRIES) {
+                        await port.sleep(1000)
+                        break
+                    }
+                    // A run of retries that does not end is a failed save: the person is told and the attempts are counted.
+                    savetrys += 1
+                    await port.sleep(port.reportFailure(new Store2CommitRefusedError(outcome.reason, outcome.detail), savetrys))
+                    break
+                case 'park':
+                    retries = 0
+                    foldBack(run.snapshot)
+                    setPark(outcome.park)
+                    break
+                case 'not-flushed':
+                    // The snapshot's data is in the store: nothing is folded back, and the next pass writes again.
+                    forced = true
+                    savetrys += 1
+                    port.requestPass()
+                    await port.sleep(backedOffWait(port.reportFailure(new Store2NotFlushedError(), savetrys), savetrys))
+                    break
+            }
+        } catch (error) {
+            retries = 0
+            if (!run.landed) {
+                savetrys += 1
+                foldBack(run.snapshot)
+                await port.sleep(port.reportFailure(error, savetrys))
+            } else {
+                await port.sleep(port.reportFailure(error, 5))
+            }
+        } finally {
+            if (!tick) {
+                port.endIteration()
+            }
+        }
+    }
+
+    async function checkPeer(): Promise<void> {
+        peerSignal = false
+        try {
+            const read = await port.withWriteLock(() => committer.readCommit())
+            const judged = judge(read)
+            if (judged.kind === 'stop') {
+                setPark(parkOf(judged))
+            }
+        } catch (error) {
+            console.error(error)
+            peerSignal = true
+            await port.sleep(1000)
+        }
+    }
+
+    async function loop(): Promise<never> {
+        await port.wait(1000)
+        while (true) {
+            port.sweep()
+            if (port.peerHeard()) {
+                peerSignal = true
+            }
+            port.liveCheck()
+            if (park !== null) {
+                await settlePark()
+                if (park !== null) {
+                    await port.wait(500)
+                    continue
+                }
+            }
+            if (port.isDue()) {
+                await pass(false)
+                await port.wait(500)
+                continue
+            }
+            if (peerSignal) {
+                await checkPeer()
+                await port.wait(500)
+                continue
+            }
+            if (netMs !== null && port.now() - lastNetAt >= netMs) {
+                lastNetAt = port.now()
+                await pass(true)
+            }
+            await port.wait(500)
+        }
+    }
+
+    return loop()
+}

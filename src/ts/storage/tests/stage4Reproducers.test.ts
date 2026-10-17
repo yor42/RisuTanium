@@ -1,41 +1,45 @@
 /**
  * Reproducers for the save path of the storage rewrite: each states the
- * property the rewritten save path has and is marked `test.fails` while the
- * block-store save loop is the one wired in, so the suite stays green. The
- * rewrite's cutover turns each into a plain `test`.
+ * property the rewritten save path has. Tests 1, 3, 4 and 5 run over a store2
+ * session (the store2 save loop is wired behind saveDb()) and are plain
+ * `test`s; the Node snapshot test is `test.fails` until the restore-point
+ * rewrite makes its property hold.
  *
- * Tests 1, 3, 4 and 5 read one seam: the bytes and keys the page writes into its
- * byte store (the world's recording store, through `write`, `pageGate.writeTop`
- * and `guarded.writeChecked`), outside the numbered backups. The Node snapshot test reads
- * `getDbBackups()` instead. No assertion names a block key or a loop internal.
+ * Tests 1, 3, 4 and 5 read one seam: the bytes and write calls the page makes
+ * into its store2 backend (the kit's counting wrapper). The Node snapshot test
+ * reads getDbBackups() instead. No assertion names a loop internal.
  *
- * Notes for the flips:
- * - A1: at the flip also assert that no unit key is written (shard, manifest and
- *   commit key only); the 66 KiB bound alone does not catch a small re-encoded unit.
+ * Notes:
+ * - A1 also asserts that no unit besides a shard and the manifest is written;
+ *   the 66 KiB bound alone does not catch a small re-encoded unit.
  * - Node snapshot: flips at the restore-point rewrite, which may change the
- *   return shape of `getDbBackups()`.
- * - Archived open: the fixture is legacy (a `coldstorage` mock and `buildColdStub`)
- *   and must be rebuilt through the kit when flipped. Its zero-write expectation
- *   requires the commit to be skipped when no unit or manifest changed.
- * - `test.fails` also passes on a setup failure or a timeout, so each flip must
+ *   return shape of getDbBackups().
+ * - Archived open: the store is seeded from the full database and the live
+ *   database holds the stub; the legacy coldstorage mock serves the restore.
+ *   Its zero-write expectation holds because the commit is skipped when no unit
+ *   changed. The unload half of the fixture stays with the put-back step.
+ * - `test.fails` also passes on a setup failure or a timeout, so a flip must
  *   re-run the test as a plain `test`.
  *
- * This file drives the REAL, unmocked `saveDb()` loop, `RisuSaveEncoder`, the
- * page's block-store owner and, where an edit must be noticed, the real
- * `registerDbChangeEffects` over a reactive `DBState`, against an in-memory byte
- * store (see `saveLoopWorld.ts`). A mocked success here is not evidence of
- * native backend behaviour. The Node size limit is lowered through the limit
- * module, as `globalApi.nodeSizeGuard.svelte.test.ts` does, so a small database
- * is "over" it.
+ * This file drives the REAL, unmocked saveDb() loop, the store2 save loop and,
+ * where an edit must be noticed, the real `registerDbChangeEffects` over a
+ * reactive DBState, against an in-memory store (see saveLoopWorld.ts and
+ * store2SaveKit.ts). A mocked success here is not evidence of native backend
+ * behaviour. The Node size limit is lowered through the limit module, as
+ * globalApi.nodeSizeGuard.svelte.test.ts does, so a small database is "over"
+ * it.
  *
- * Labels: all five are regression reproducers (they fail on the block-store
- * save loop and are expected to pass on the rewritten one).
+ * Labels: tests 1, 3, 4 and 5 are regression reproducers (they fail on the
+ * block-store save loop and pass on the store2 loop); the Node snapshot test
+ * is a regression reproducer that still fails today.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { incompressible, makeCharacter, makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { startStore2, store2Boot, type Hooks, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
+import type { Database } from 'src/ts/storage/database.svelte'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 
 vi.setConfig({ testTimeout: 40_000 })
@@ -118,15 +122,20 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-/** Every write the page makes into its store from now on, with its length; the numbered backups and their record are not saves. */
-function meterWrites(w: World) {
-    return meterStore(w.store)
+/** Every write call the page makes into its store2 backend from now on, with its length. */
+function meterWrites(k: Store2Kit) {
+    k.counted.reset()
+    return {
+        saved: () => k.counted.writes.map((write) => ({ key: write.key, bytes: write.bytes })),
+        savedBytes: () => k.counted.savedBytes(),
+    }
 }
 
 /**
  * Wraps, in place, `write` and, when the store has them, `pageGate.writeTop` and
- * `guarded.writeChecked` (store2 looks each up on the nested object per call;
- * the fake store has neither object today).
+ * `guarded.writeChecked` (a store2 backend of the Tauri and Node builds reaches
+ * the byte store through the nested objects; the in-memory backend of the
+ * store2 suites does not).
  */
 function meterStore(store: ByteStore) {
     const writes: Array<{ key: string, bytes: number }> = []
@@ -160,6 +169,8 @@ function meterStore(store: ByteStore) {
 
 interface ReactiveWorld {
     w: World
+    /** The store2 session the page saves into. */
+    k: Store2Kit
     /** The database the loop and the change effects read, as the application holds it: a reactive proxy. */
     db: Entry
     stores: typeof import('src/ts/stores.svelte')
@@ -167,16 +178,21 @@ interface ReactiveWorld {
     flush(): void
 }
 
-/** Starts the loop over a reactive `DBState`, as the application runs, so the real change effects see edits. */
-async function startReactive(): Promise<ReactiveWorld> {
-    const w = await kit.startWorld({ kind: 'tauri', startLoop: false })
+/**
+ * Starts the loop of a store2 session over a reactive `DBState`, as the application runs, so the real change effects
+ * see edits. The store is seeded from `seed` when given (the full database of an archived character), else from the
+ * live database.
+ */
+async function startReactive(seed?: Database, hooks?: Hooks): Promise<ReactiveWorld> {
+    const k = await startStore2({ db: seed ?? h.db as unknown as Database, hooks })
+    const w = await kit.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     const { flushSync } = await import('svelte')
     ;(stores.DBState as { db: unknown }).db = h.db
     h.db = (stores.DBState as { db: unknown }).db as Entry
     w.start()
     await sleepReal(150)
-    return { w, db: h.db, stores, flush: flushSync }
+    return { w, k, db: h.db, stores, flush: flushSync }
 }
 
 describe('guard: the write meter sees every write path of a store', () => {
@@ -206,15 +222,16 @@ describe('guard: the write meter sees every write path of a store', () => {
 
 describe('the rewritten save path writes in proportion to what changed', () => {
     // A switch between unedited characters writes only the small constant part of a commit, never a character's bytes.
-    test.fails('A1: switching to an unedited character (its last-interaction time moves) writes no character bytes', async () => {
+    test('A1: switching to an unedited character (its last-interaction time moves) writes no character bytes', async () => {
         const db = makeDb('p', ['a', 'b'])
         for (const character of db.characters as Entry[]) {
             ;((character.chats as Entry[])[0]).note = incompressible(300_000)
         }
         h.db = db
-        const { w, db: live, stores, flush } = await startReactive()
+        const { w, k, db: live, stores, flush } = await startReactive()
         await settled(w)
-        const meter = meterWrites(w)
+        const meter = meterWrites(k)
+        const before = k.memory.snapshot()
 
         await nextCommit(w, () => {
             stores.selectedCharID.set(1)
@@ -225,6 +242,8 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         // The shard must persist the moved time, so something is written, and only the constant part of a commit.
         expect(meter.savedBytes()).toBeGreaterThan(0)
         expect(meter.savedBytes()).toBeLessThan(66 * 1024)
+        // No unit but the entry's shard and the manifest is written.
+        expect(k.writtenSince(before)).toEqual(['manifest', 'shard'])
     })
 
     // A restore point still exists when the database is over the Node body limit (flips at the restore-point rewrite).
@@ -244,7 +263,7 @@ describe('the rewritten save path writes in proportion to what changed', () => {
     })
 
     // Editing one plugin-storage key writes about that key's data, not the whole storage.
-    test.fails('pluginStorage: editing one key writes only that key, not the whole storage', async () => {
+    test('pluginStorage: editing one key writes only that key, not the whole storage', async () => {
         const db = makeDb('p', ['a'])
         const storage: Record<string, string> = {}
         for (let i = 0; i < 12; i++) {
@@ -252,9 +271,9 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         }
         db.pluginCustomStorage = storage
         h.db = db
-        const { w, db: live, flush } = await startReactive()
+        const { w, k, db: live, flush } = await startReactive()
         await settled(w)
-        const meter = meterWrites(w)
+        const meter = meterWrites(k)
 
         await nextCommit(w, () => {
             ;(live.pluginCustomStorage as Record<string, string>)['key-5'] = `edited-${incompressible(BLOCK - 7)}`
@@ -267,20 +286,21 @@ describe('the rewritten save path writes in proportion to what changed', () => {
     })
 
     // Editing one module writes about that module's bytes, not every module's.
-    test.fails('module edit: editing one module writes about that module, not every module', async () => {
+    test('module edit: editing one module writes about that module, not every module', async () => {
         const db = makeDb('p', ['a'])
         db.modules = Array.from({ length: 12 }, (_, i) => ({
             id: `module-${i}`,
             name: `module ${i}`,
-            description: incompressible(BLOCK).replace(/^./, String(i % 10)),
+            // The bulk is in a field the module index does not list: the index carries every module's description.
+            lorebook: [{ key: 'k', comment: 'c', content: incompressible(BLOCK).replace(/^./, String(i % 10)) }],
         }))
         h.db = db
-        const { w, db: live, flush } = await startReactive()
+        const { w, k, db: live, flush } = await startReactive()
         await settled(w)
-        const meter = meterWrites(w)
+        const meter = meterWrites(k)
 
         await nextCommit(w, () => {
-            ;(live.modules as Entry[])[3].description = `edited-${incompressible(BLOCK - 7)}`
+            ;((live.modules as Entry[])[3].lorebook as Entry[])[0].content = `edited-${incompressible(BLOCK - 7)}`
             flush()
         })
 
@@ -290,16 +310,27 @@ describe('the rewritten save path writes in proportion to what changed', () => {
     })
 
     // Opening an archived character without editing it changes nothing the store holds.
-    test.fails('archived character first open: restoring it without an edit writes nothing', async () => {
+    test('archived character first open: restoring it without an edit writes nothing', async () => {
         const full = makeCharacter('x')
         full.chats = [{ id: 'x-chat', message: [{ role: 'char', data: incompressible(50_000), time: 1 }], note: '', name: '', localLore: [] }]
         units.set('unit-x', { character: full })
+        // The store holds the full database; the page holds the archived character as its stub.
+        const stored = makeDb('p', ['y'])
+        ;(stored.characters as unknown[]).unshift(JSON.parse(JSON.stringify(full)))
         const db = makeDb('p', ['y'])
         ;(db.characters as unknown[]).unshift(buildColdStub(full as never, 'unit-x', []))
         h.db = db
-        const { w, db: live, flush } = await startReactive()
+        let baseReads = 0
+        const { w, k, db: live, flush } = await startReactive(stored as unknown as Database, {
+            before: (name) => {
+                if (name === 'readCommit') {
+                    baseReads += 1
+                }
+            },
+        })
         await settled(w)
-        const meter = meterWrites(w)
+        const meter = meterWrites(k)
+        const readsBefore = baseReads
         const { restoreColdCharacter } = await import('src/ts/process/coldCharacterRestore')
         const slot = (live.characters as Entry[]).find((c) => c.chaId === 'x')!
 
@@ -309,6 +340,12 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         await sleepReal(100)
         await settled(w)
 
+        // Positive control: the store2 session is active and its loop ran a pass over the restore (it read the base
+        // commit key), and the old byte store received no write. Without it an idle or absent loop passes the test.
+        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
+        expect(getActiveStore2Save()).not.toBeNull()
+        expect(baseReads).toBeGreaterThan(readsBefore)
+        expect(w.store.ops.filter((op) => op.kind === 'write' || op.kind === 'delete')).toEqual([])
         expect(meter.saved()).toEqual([])
     })
 })

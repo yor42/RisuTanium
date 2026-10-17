@@ -42,7 +42,9 @@ export interface SavePlan {
     readonly newUnits: number
     /**
      * No unit but the manifest would be written: the pass changed nothing and the commit can be skipped. Never true
-     * while an attempt is pending: its write may have landed, so a pass that reverts it must commit.
+     * while an attempt is pending: its write may have landed, so a pass that reverts it must commit. Nor is it ever true
+     * when the acknowledged encoding moved while the plan was made: the plan compared against a base that is no longer
+     * the store's, so its acknowledgement throws instead of the pass being skipped.
      */
     readonly unchanged: boolean
     /** The commit request of this plan; its build runs `finalize` under the attempt's own mint and keeps that tree. */
@@ -167,7 +169,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             let built: EncodedTree | null = null
             return {
                 newUnits: scoped.newUnits,
-                unchanged: scoped.unchanged && pending === null,
+                unchanged: scoped.unchanged && pending === null && previous === base,
                 commitRequest: () => ({
                     newUnits: scoped.newUnits,
                     build: (context) => {

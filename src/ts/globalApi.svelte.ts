@@ -26,6 +26,8 @@ import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
 import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
+import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
+import type { Store2LoopPort } from "./storage/store2/saveLoop";
 import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
@@ -1528,11 +1530,184 @@ function describeParkedData(error: SaveParkError | BlockSetGateError): string {
     return error.kind === 'character-not-object' ? describeBlockForPerson(error.what) : language.saveBlockLabel(error.what)
 }
 
+/**
+ * The save loop of a page with an active store2 session: the same marks, debounce, boot window, hide path and
+ * peer channel as `saveDb()`, with the loop's own passes in `store2/saveLoop`. The synchronous prefix (the marks
+ * and the effects) runs before the first await, so no mark can race the install; the loop module is loaded after
+ * it, so a page without a session never loads it.
+ */
+async function saveDbStore2(active: Store2SaveContext): Promise<never> {
+    let changed = false
+    let dirtySinceLastSave = false
+    let peerHeard = false
+    const sessionID = v4()
+    let channel: BroadcastChannel | undefined
+    if (window.BroadcastChannel) {
+        channel = new BroadcastChannel('risu-db')
+        channel.onmessage = (ev) => {
+            const message = parseStore2Broadcast(ev.data)
+            if (message === null || message.sessionID === sessionID) {
+                return
+            }
+            peerHeard = true
+            peerSaveCount += 1
+        }
+    }
+
+    const changeTracker: toSaveType = {
+        character: [],
+        chat: [],
+        botPreset: false,
+        modules: false,
+        loadouts: false,
+        plugins: false,
+        pluginCustomStorage: false
+    }
+    const scheduler = createSaveScheduler({
+        debounceMs: 500,
+        sleep,
+        hooks: {
+            onMark: (markDirty) => {
+                saveMarkCount += 1
+                if (markDirty) {
+                    dirtySinceLastSave = true
+                }
+            },
+            onDue: () => {
+                changed = true
+            },
+            onRequestNow: () => {
+                saveMarkCount += 1
+                dirtySinceLastSave = true
+                changed = true
+            },
+        },
+    })
+    saveLoopPending = () => changed || scheduler.debouncePending() || dirtySinceLastSave
+    function saveTimeoutExecute(markDirty = true) {
+        scheduler.schedule(markDirty)
+    }
+
+    // The boot window still counts what the effects below cannot see; with no encoder to initialise it is empty
+    // unless a boot-time import wrote before it closed.
+    const bootWindow = openBootWindow({
+        getCharacters: () => getDatabase()?.characters,
+        markUnsaved: () => saveTimeoutExecute(true)
+    })
+    installCharacterSaveMarks({ tracker: changeTracker, schedule: () => saveTimeoutExecute() })
+    requestSaveNowImpl = () => scheduler.requestNow()
+    const bootWindowAnswer = bootWindow.close()
+    $effect.root(() => {
+        registerDbChangeEffects({
+            tracker: changeTracker,
+            markChanged: saveTimeoutExecute,
+        })
+    })
+    for (const chaId of bootWindowAnswer.selectedChaIds) {
+        appendIfAbsent(changeTracker, chaId)
+    }
+    if (bootWindowAnswer.unsaved) {
+        saveTimeoutExecute(true)
+    }
+
+    const { runStore2SaveLoop } = await import('./storage/store2/saveLoop')
+    const port: Store2LoopPort = {
+        tracker: changeTracker,
+        reloadFlag: requiresFullEncoderReload,
+        getDatabase,
+        mergeBack: mergeUnsavedChanges,
+        liveCheck() {
+            // Held ids are not a hold here: any string id is a legal store2 chaId. A repair sets the full-reload flag itself.
+            if (liveCharacterCheck().repaired) {
+                saveMarkCount += 1
+                dirtySinceLastSave = true
+                changed = true
+            }
+        },
+        sweep: () => sweepDraftRegistrations(),
+        isDue: () => changed,
+        isDirty: () => dirtySinceLastSave,
+        beginIteration() {
+            saving.state = true
+            changed = false
+            lastIterationCommitted = false
+        },
+        endIteration() {
+            saving.state = false
+        },
+        snapshotTaken() {
+            dirtySinceLastSave = false
+            snapshotMarkCount = saveMarkCount
+        },
+        requestPass() {
+            dirtySinceLastSave = true
+            saveMarkCount += 1
+            changed = true
+        },
+        saved() {
+            lastIterationCommitted = true
+            fireNextCommitCallbacks()
+        },
+        broadcast(epoch) {
+            try {
+                channel?.postMessage({ sessionID, epoch })
+            } catch (error) {
+                // A failed notification must never fail a save that succeeded.
+                console.error(error)
+            }
+        },
+        peerHeard() {
+            const heard = peerHeard
+            peerHeard = false
+            return heard
+        },
+        setStopped(reason, detail = '') {
+            savingStoppedDetail = detail
+            saving.state = false
+            savingStoppedReason.set(reason)
+        },
+        reportFailure(error, attempts) {
+            if (isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)) {
+                alertToast('Your browser storage is full — free up space (delete old chats, characters, or backups) and try again. Your latest edits could not be saved.')
+                console.error(error)
+                return 5000
+            }
+            if (attempts === 1) {
+                alertToast('Failed to save data, retrying…')
+            }
+            if (attempts > 4) {
+                alertError(error instanceof Error ? error : String(error))
+            } else {
+                console.error(error)
+            }
+            return 1000
+        },
+        async withWriteLock(run) {
+            const release = await dbWriteLock.acquire()
+            try {
+                return await run()
+            } finally {
+                release()
+            }
+        },
+        wait: (ms) => scheduler.wait(ms),
+        sleep,
+        sleepForever,
+        now: () => Date.now(),
+    }
+    return await runStore2SaveLoop(active, port)
+}
+
 export async function saveDb() {
     // A page that runs from OPFS this time saves nothing. This check and the
     // character-save-mark install below happen before the first await.
     if (getPageStorageMode().kind === 'read-only') {
         return
+    }
+    // A page with an active store2 session saves through its own loop; every other page runs the loop below.
+    const store2Save = getActiveStore2Save()
+    if (store2Save !== null) {
+        return saveDbStore2(store2Save)
     }
     let changed = false
     let otherTabSaved = false

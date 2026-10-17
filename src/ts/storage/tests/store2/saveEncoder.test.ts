@@ -629,7 +629,7 @@ describe('new behaviour: a pending attempt keeps the next plan from reporting un
         return asDatabase(next)
     }
 
-    test('edit, keepAsPending, revert: the next plan is not unchanged and commits', async () => {
+    test('edit, keepAsPending, revert: the next plan is not unchanged', async () => {
         const db = buildSmall(3)
         const encoder = encoderOf(previousFrom(encodeWith(db)))
         const first = await encoder.plan(edited(db), request())
@@ -695,5 +695,27 @@ describe('new behaviour: a pending attempt keeps the next plan from reporting un
         await early.commitRequest().build(attemptOf(2).context)
         expect(encoder.adoptIfCurrent(built.manifest.key)).toBe(true)
         expect(() => early.acknowledge()).toThrow(SavePlanError)
+    })
+
+    test('new behaviour: an adoption during a yield never yields an unchanged plan, and its acknowledgement throws', async () => {
+        const db = buildSmall(4)
+        const encoder = encoderOf(previousFrom(encodeWith(db)))
+        const first = await encoder.plan(edited(db), request())
+        const built = await first.commitRequest().build(attemptOf(1).context)
+        first.keepAsPending()
+        let adopted = false
+        const straddled = await encoder.plan(db, request({
+            whole: true,
+            yield: async () => {
+                if (!adopted) {
+                    adopted = true
+                    expect(encoder.adoptIfCurrent(built.manifest.key)).toBe(true)
+                }
+            },
+        }))
+        expect(adopted).toBe(true)
+        expect(straddled.unchanged).toBe(false)
+        await straddled.commitRequest().build(attemptOf(2).context)
+        expect(() => straddled.acknowledge()).toThrow(SavePlanError)
     })
 })
