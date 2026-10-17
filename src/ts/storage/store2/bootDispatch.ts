@@ -14,7 +14,7 @@ import { firstLifeGrant } from './firstLife'
 import type { Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
 import { probeNumberedBackups, seedStore2Profile } from './bootSeed'
-import { BLOCKED_REASONS, setStore2BootSession, type BlockedReason, type Store2BootEnv, type Store2BootNotice, type Store2BootResult, type Store2LegacyReadOnlyReason } from './bootActive'
+import { setStore2BootSession, type BlockedReason, type Store2BootEnv, type Store2BootNotice, type Store2BootResult, type Store2LegacyReadOnlyReason } from './bootActive'
 import { convertLegacyProfile, convertLegacyWithout, type LegacyDecoders } from './legacy/convert'
 import type { SkippedLegacyEntry } from './legacy/lenient'
 import type { IncompleteItem, ResolveOptions } from './legacy/resolve'
@@ -100,13 +100,6 @@ export interface Store2DispatchDeps {
     decoders?: LegacyDecoders
     /** The ids and clock of a conversion's placeholder characters (the tests' seam). */
     resolve?: ResolveOptions
-}
-
-const KNOWN_BLOCKED_REASONS: ReadonlySet<string> = new Set<string>(BLOCKED_REASONS)
-
-/** The converter and the seed report their reason as a plain string; a reason outside the union is shown as unclassified, never as a reassurance. */
-function blockedReasonOf(reason: string): BlockedReason {
-    return KNOWN_BLOCKED_REASONS.has(reason) ? reason as BlockedReason : 'unclassified'
 }
 
 /** The state a round hands the next: open a new session and classify again. */
@@ -283,12 +276,14 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         if (granted.status === 'refused') {
             return stop('first-life-refused', granted.detail)
         }
-        const outcome = await seedStore2Profile(backend, granted.grant, { owner: session.ownerId, lists, env: keyEnv })
+        const outcome = await seedStore2Profile(backend, { kind: 'first-life', grant: granted.grant }, { owner: session.ownerId, lists, env: keyEnv })
         switch (outcome.status) {
             case 'reclassify':
                 return RECLASSIFY
             case 'blocked':
-                return stop(blockedReasonOf(outcome.reason), outcome.detail)
+                return stop(outcome.reason, outcome.detail)
+            case 'exit':
+                throw new TypeError('A first-life seed has no exit outcome.')
             case 'installed':
                 mayHaveWritten = true
                 break
@@ -333,7 +328,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 listBackupTimes: env.listBackupTimes,
                 readColdStorageItem: env.readColdStorageItem,
                 backend,
-                grant: granted.grant,
+                entry: { kind: 'first-life' as const, grant: granted.grant },
                 owner: session.ownerId,
                 lists,
                 env: keyEnv,
@@ -357,7 +352,9 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 case 'reclassify':
                     return RECLASSIFY
                 case 'blocked':
-                    return stop(blockedReasonOf(result.reason), result.detail)
+                    return stop(result.reason, result.detail)
+                case 'exit':
+                    throw new TypeError('A first-life conversion has no exit outcome.')
                 case 'installed':
                     mayHaveWritten = true
                     if (result.flushed !== true && session.reflush !== null) {

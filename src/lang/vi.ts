@@ -2597,7 +2597,6 @@ export const languageVietnamese = {
         blockedExhausted: "Một tab khác hoặc một thao tác chưa hoàn tất liên tục thay đổi bộ nhớ lưu trữ của bạn.",
         blockedStanding: "Một thao tác chưa hoàn tất vẫn đang được ghi trong bộ nhớ lưu trữ của bạn. Hãy đóng các tab khác và tải lại.",
         blockedInstall: "Việc thiết lập bộ nhớ lưu trữ mới đã bắt đầu nhưng chưa hoàn tất. Không có gì bị xóa. RisuTanium sẽ quyết định cần làm gì vào lần khởi động tiếp theo.",
-        blockedUnknown: "RisuTanium không thể tiếp tục và không thể biết liệu có gì đã bị thay đổi hay không. Hãy tải lại trang.",
         tooNewTitle: "Dữ liệu này cần một phiên bản RisuTanium mới hơn",
         tooNewBody: "Dữ liệu đã lưu của bạn được ghi bởi một phiên bản RisuTanium mới hơn phiên bản này. RisuTanium đã không mở nó và không thay đổi gì. Hãy cập nhật RisuTanium, rồi tải lại.",
         readOnlyRefusal: "RisuTanium đã mở dữ liệu của bạn ở chế độ chỉ đọc trên trang này, nên không thể thực hiện thao tác này và không có gì bị thay đổi. Dữ liệu của bạn không bị mất.",

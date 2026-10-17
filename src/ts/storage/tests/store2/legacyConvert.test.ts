@@ -5,6 +5,7 @@ import { coldStorageHeader } from 'src/ts/process/coldstorageData'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { fingerprintMainFile } from 'src/ts/storage/mainFileFingerprint'
 import { createMemoryBackend, Store2BackendFailureError, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
+import { classifyBoot, runBootClear } from 'src/ts/storage/store2/boot'
 import { assembleDatabase } from 'src/ts/storage/store2/codec'
 import { firstLifeGrant } from 'src/ts/storage/store2/firstLife'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
@@ -19,6 +20,7 @@ import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { createClock, testEnv } from '../store2SaveKit'
 import { buildSmall, fakeLists, type Obj } from './codecFixtures'
+import { committerOf } from './commitFixtures'
 import { inlayToken, UUID_A, UUID_B } from './listsFixtures'
 import { encodeAndAssemble, ID, readerOver, type StoredUnit } from './legacyFixtures'
 
@@ -148,7 +150,7 @@ async function rig(options: RigOptions): Promise<Rig> {
                 .sort((a, b) => b - a),
             readColdStorageItem,
             backend: memory,
-            grant: granted.grant,
+            entry: { kind: 'first-life', grant: granted.grant },
             owner,
             lists: fakeLists,
             env,
@@ -675,5 +677,235 @@ describe('new behaviour: failure points', () => {
         const key = await commitKeyOf(test.memory)
         expect(key.current).toBeNull()
         expect(key.staging).toMatchObject({ label: 'convert' })
+    })
+})
+
+const DAMAGED_COMMIT = Uint8Array.from([0, 1, 2, 250, 251, 252, 253, 254, 255, 62, 63])
+
+interface Recorded {
+    backend: Store2Backend
+    /** Every mutating backend call in order, by method name. */
+    writes: string[]
+    /** What the commit key and the fence held right after each commit-key write that landed. */
+    markers: { label: string | null, owner: string | null, fenceHeld: boolean }[]
+}
+
+/** The backend with every mutating call recorded. */
+function recording(memory: MemoryBackend): Recorded {
+    const writes: string[] = []
+    const markers: Recorded['markers'] = []
+    const backend: Store2Backend = {
+        ...memory,
+        casCommit: async (expected, next) => {
+            writes.push('casCommit')
+            const result = await memory.casCommit(expected, next)
+            const key = classifyCommitRead(await memory.readCommit())
+            markers.push({
+                label: key.status === 'parsed' ? key.value.staging?.label ?? null : null,
+                owner: key.status === 'parsed' ? key.value.staging?.owner ?? null : null,
+                fenceHeld: (await memory.readFence()).bytes !== null,
+            })
+            return result
+        },
+        casFence: async (expected, next) => { writes.push('casFence'); return memory.casFence(expected, next) },
+        putUnit: async (key, bytes) => { writes.push('putUnit'); return memory.putUnit(key, bytes) },
+        commitOrdinary: async (expected, units, next) => { writes.push('commitOrdinary'); return memory.commitOrdinary(expected, units, next) },
+        removeBatch: async (keys, expectedCommit, expectedFence) => { writes.push('removeBatch'); return memory.removeBatch(keys, expectedCommit, expectedFence) },
+    }
+    return { backend, writes, markers }
+}
+
+/** Everything the backend holds, as bytes: two equal states are byte-identical stores. */
+async function storeState(memory: MemoryBackend) {
+    return { units: new Map(memory.snapshot()), commit: (await memory.readCommit()).bytes, fence: (await memory.readFence()).bytes }
+}
+
+/** A recovery state (a damaged commit key) with the rig's request switched to the fenced `exit` entry over the key as read. */
+async function exitRig(options: RigOptions) {
+    const test = await rig(options)
+    const plant = await test.memory.readCommit()
+    await test.memory.casCommit(plant.token, DAMAGED_COMMIT)
+    const commitRead = await test.memory.readCommit()
+    const recorded = recording(test.memory)
+    test.request.backend = recorded.backend
+    test.request.entry = { kind: 'exit', commitRead }
+    return { test, recorded, commitRead }
+}
+
+describe('new behaviour: the fenced exit entry', () => {
+    const units = new Map<string, StoredUnit>([[CHAT_UNIT, chatUnit('kept')]])
+
+    test('the fence is written before the marker, the marker is a convert marker of the request owner, and the tree is installed under its prefix', async () => {
+        const { test, recorded } = await exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, units })
+        const before = new Map(test.store.files)
+
+        const result = installed(await convertLegacyProfile(test.request, accept))
+
+        expect(recorded.writes.indexOf('casFence')).toBeGreaterThanOrEqual(0)
+        expect(recorded.writes.indexOf('casFence')).toBeLessThan(recorded.writes.indexOf('casCommit'))
+        expect(recorded.markers[0]).toEqual({ label: 'convert', owner: test.grantOwner, fenceHeld: true })
+        const key = await commitKeyOf(test.memory)
+        expect(key.current?.key).toBe(result.manifestKey)
+        expect(key.staging).toBeNull()
+        expect(key.convertedFrom).toBe(fingerprintMainFile(new Uint8Array([1, 2, 3])))
+        const stored = await storedTree(test.memory)
+        expect(assembleDatabase(stored.manifest, stored.source)).toMatchObject({ characters: expect.any(Array) })
+        expect(statusOf((await storedLegacyKeep(test.memory)).keep.files)).toEqual({ [MAIN]: 'ok' })
+        expect(new Map(test.store.files)).toEqual(before)
+        expect(test.store.writes).toEqual([])
+    })
+
+    test('a convert-without install goes the same way: fence, then marker, then the tree', async () => {
+        const skipped: SkippedLegacyEntry[] = [{ name: 'cha-lost-1', kind: 'character', reason: 'block is missing' }]
+        const { test, recorded } = await exitRig({ trees: {}, mainByte: 1, lenient: { tree: treeWithColdChat(CHAT_UNIT), skipped }, units })
+
+        installed(await convertLegacyWithout(test.request, accept))
+
+        expect(recorded.writes.indexOf('casFence')).toBeLessThan(recorded.writes.indexOf('casCommit'))
+        expect(recorded.markers[0]).toMatchObject({ label: 'convert', fenceHeld: true })
+        expect((await commitKeyOf(test.memory)).current).not.toBeNull()
+    })
+
+    test('a decline at the backup question leaves the store byte-identical and writes nothing', async () => {
+        const { test, recorded } = await exitRig({ trees: { 1: 'bad', 8: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, backups: { 100: 8 }, units })
+        const before = await storeState(test.memory)
+        let asked = 0
+
+        const result = await convertLegacyProfile(test.request, { ...accept, async confirmFromBackup() { asked += 1; return false } })
+
+        expect(asked).toBe(1)
+        expect(result).toEqual({ status: 'declined' })
+        expect(recorded.writes).toEqual([])
+        expect(await storeState(test.memory)).toEqual(before)
+    })
+
+    test('a decline at the incomplete-data question leaves the store byte-identical and writes nothing', async () => {
+        const { test, recorded } = await exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1 })
+        const before = await storeState(test.memory)
+        let asked = 0
+
+        const result = await convertLegacyProfile(test.request, { ...accept, async confirmIncomplete() { asked += 1; return false } })
+
+        expect(asked).toBe(1)
+        expect(result).toEqual({ status: 'declined' })
+        expect(recorded.writes).toEqual([])
+        expect(await storeState(test.memory)).toEqual(before)
+    })
+
+    test('a decline at the skipped-blocks question leaves the store byte-identical and writes nothing', async () => {
+        const skipped: SkippedLegacyEntry[] = [{ name: 'cha-lost-1', kind: 'character', reason: 'block is missing' }]
+        const { test, recorded } = await exitRig({ trees: {}, mainByte: 1, lenient: { tree: treeWithColdChat(CHAT_UNIT), skipped }, units })
+        const before = await storeState(test.memory)
+        let asked = 0
+
+        const result = await convertLegacyWithout(test.request, { ...accept, async confirmSkipped() { asked += 1; return false } })
+
+        expect(asked).toBe(1)
+        expect(result).toEqual({ status: 'declined' })
+        expect(recorded.writes).toEqual([])
+        expect(await storeState(test.memory)).toEqual(before)
+    })
+
+    test('every question is answered before the fence is written', async () => {
+        const { test, recorded } = await exitRig({ trees: { 1: 'bad', 8: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, backups: { 100: 8 } })
+        const writesAtQuestion: number[] = []
+
+        installed(await convertLegacyProfile(test.request, {
+            async confirmFromBackup() { writesAtQuestion.push(recorded.writes.length); return true },
+            async confirmIncomplete() { writesAtQuestion.push(recorded.writes.length); return true },
+        }))
+
+        expect(writesAtQuestion).toEqual([0, 0])
+    })
+
+    test.each([
+        ['convert-read-failed', async () => exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, units, faults: { errorKeys: new Set([CHAT_UNIT]) } }), 'strict'],
+        ['convert-main-unreadable', async () => exitRig({ trees: {}, lenient: { tree: treeWithColdChat(CHAT_UNIT), skipped: [] } }), 'without'],
+        ['convert-lenient-failed', async () => exitRig({ trees: {}, mainByte: 1 }), 'without'],
+        ['backups-unlistable', async () => {
+            const rigged = await exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, units })
+            rigged.test.request.listBackupTimes = async () => { throw new Error('the listing failed') }
+            return rigged
+        }, 'strict'],
+    ] as const)('a %s block before the marker leaves the store byte-identical and writes nothing', async (reason, make, route) => {
+        const { test, recorded } = await make()
+        const before = await storeState(test.memory)
+
+        const result = route === 'strict' ? await convertLegacyProfile(test.request, accept) : await convertLegacyWithout(test.request, accept)
+
+        expect(result).toMatchObject({ status: 'blocked', reason })
+        expect(recorded.writes).toEqual([])
+        expect(await storeState(test.memory)).toEqual(before)
+    })
+
+    test('an exit that does not end marked is passed through: nothing is staged and the other writer\'s key stands', async () => {
+        const { test, recorded, commitRead } = await exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1 })
+        // A peer moves the commit key after the screen read it: the marker's compare-and-write is refused.
+        const peerBytes = Uint8Array.from([9, 9, 9, 250, 251, 252, 253, 254, 255, 62, 63])
+        await test.memory.casCommit(commitRead.token, peerBytes)
+
+        const result = await convertLegacyProfile(test.request, accept)
+
+        expect(result).toMatchObject({ status: 'exit', exit: { status: 'conflict' } })
+        // The fence and the refused marker write are all this attempt did; no unit was staged.
+        expect(recorded.writes).toEqual(['casFence', 'casCommit'])
+        expect((await test.memory.readCommit()).bytes).toEqual(peerBytes)
+    })
+
+    test('a unit write that fails after the marker blocks with the fenced convert marker standing and no current manifest', async () => {
+        const { test, recorded } = await exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, units })
+        test.request.backend = { ...recorded.backend, putUnit: async () => { throw new Store2BackendFailureError('the put failed') } }
+
+        const result = await convertLegacyProfile(test.request, accept)
+
+        expect(result).toEqual({ status: 'blocked', reason: 'install-upload-failed', detail: expect.any(String) })
+        const key = await commitKeyOf(test.memory)
+        expect(key.current).toBeNull()
+        expect(key.staging).toMatchObject({ label: 'convert', owner: test.grantOwner })
+        expect((await test.memory.readFence()).bytes).not.toBeNull()
+    })
+
+    test('the first-life entry still writes no fence', async () => {
+        const test = await rig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, units })
+        const recorded = recording(test.memory)
+        test.request.backend = recorded.backend
+
+        installed(await convertLegacyProfile(test.request, accept))
+
+        expect(recorded.writes).not.toContain('casFence')
+        expect((await test.memory.readFence()).bytes).toBeNull()
+    })
+
+    test('Tauri: a fenced convert exit interrupted after the marker is cleared at the next start and re-run through row 9', async () => {
+        const { test } = await exitRig({ trees: { 1: treeWithColdChat(CHAT_UNIT) }, mainByte: 1, units })
+        const interrupted = test.request.backend
+        test.request.backend = { ...interrupted, putUnit: async () => { throw new Store2BackendFailureError('the page went away') } }
+        expect(await convertLegacyProfile(test.request, accept)).toMatchObject({ status: 'blocked', reason: 'install-upload-failed' })
+        const fenceLeft = (await test.memory.readFence()).bytes
+        expect(fenceLeft).not.toBeNull()
+
+        // The next start on a device that keeps its owner id: row 9 with the device's own convert marker.
+        const read = await test.memory.readCommit()
+        const decision = classifyBoot({
+            commit: classifyCommitRead(read),
+            fence: { state: 'absent', token: { kind: 'bytes', bytes: null } },
+            presence: null,
+            tree: null,
+            upstreamMainFile: true,
+            ownerId: test.grantOwner,
+            deviceOwner: true,
+        })
+        expect(decision).toMatchObject({ row: 9, mode: 'rerun', operation: 'convert', clear: 'own' })
+        const cleared = await runBootClear(committerOf(test.memory, createClock(), 7, { owner: test.grantOwner }), read, decision, test.grantOwner)
+        expect(cleared?.status).toBe('cleared')
+        const granted = firstLifeGrant({ decision, commitRead: await test.memory.readCommit(), startupClear: cleared })
+        if (granted.status !== 'granted') {
+            throw new Error(`The cleared marker was refused: ${granted.reason}`)
+        }
+
+        const rerun = installed(await convertLegacyProfile({ ...test.request, backend: test.memory, entry: { kind: 'first-life', grant: granted.grant } }, accept))
+
+        expect((await commitKeyOf(test.memory)).current?.key).toBe(rerun.manifestKey)
+        expect((await test.memory.readFence()).bytes).toEqual(fenceLeft)
     })
 })

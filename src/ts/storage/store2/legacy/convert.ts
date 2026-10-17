@@ -3,12 +3,15 @@ import { LEGACY_MAIN_FILE_KEY } from '../../blockKeys'
 import { fingerprintMainFile } from '../../mainFileFingerprint'
 import type { ByteStore } from '../../store/contract'
 import { StoreNotBinaryError } from '../../store/errors'
-import type { Store2Backend } from '../backend/types'
+import type { Store2Backend, Store2Read } from '../backend/types'
+import type { BlockedReason } from '../bootActive'
 import type { ListDerivation } from '../codec/types'
-import { firstLifeInstall, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
-import { encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
+import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
+import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
 import { LegacyListBuilder } from '../lists/legacyList'
 import type { ListParams } from '../lists/params'
+import type { ForeignClearHook } from '../owner'
+import { runExit, type ExitResult } from '../recovery'
 import { planWholeTreeInstall } from './install'
 import type { LenientLegacyDecode, SkippedLegacyEntry } from './lenient'
 import { legacyPluginRefs } from './refs'
@@ -22,11 +25,11 @@ import { collectLegacyColdKeys } from './walk'
  * The conversion of a legacy profile into a store2 tree (plan v3.4 amendment 7, MC-299 items 1, 2, 7, 8 and 10): decode
  * the old main file strictly, fall back to the numbered backups newest first, resolve every cold-storage pointer, ask
  * about what could not be brought in, list the old files so none is deleted on a partial answer, and install the tree
- * through the first-life installer.
+ * through the shared installer, under a first-life marker or a fenced recovery-exit marker (`ConvertEntry`).
  *
  * Invariants:
- *  - Nothing is written before the installer's marker. Every refusal, decline and read failure before it leaves the
- *    store as it was.
+ *  - Nothing is written before every question is answered. The first write is then the marker on the first-life entry
+ *    and the fence on the `exit` entry. Every refusal, decline and read failure before it leaves the store as it was.
  *  - The old files are never written, renamed or deleted here. The new tree names them (`fixed.legacyKeep`) so a later
  *    deletion can see which of them it has fully read.
  *  - A file the conversion did not read to its end is listed `unreadable`, never `ok`: a keep set trusts an `ok` file's
@@ -48,6 +51,15 @@ const defaultDecoders: LegacyDecoders = {
     lenient: async (bytes) => (await import('./lenient')).decodeLegacyLenient(bytes),
 }
 
+/**
+ * How the install gets its marker. `first-life`: the unfenced marker of a boot-row grant. `exit`: a fenced recovery
+ * exit over `commitRead`, the compare basis of the marker; `foreignClear` is the question for another owner's standing
+ * marker. Either way the marker is written only after every question has been answered.
+ */
+export type ConvertEntry =
+    | { kind: 'first-life', grant: FirstLifeGrant }
+    | { kind: 'exit', commitRead: Store2Read, foreignClear?: ForeignClearHook | null }
+
 export interface ConvertRequest {
     /** The page's byte store: the old files are read from it and never written to it. */
     store: ByteStore
@@ -56,7 +68,7 @@ export interface ConvertRequest {
     /** The three-way cold-unit reader of the page. */
     readColdStorageItem: (key: string) => Promise<ColdUnitRead>
     backend: Store2Backend
-    grant: FirstLifeGrant
+    entry: ConvertEntry
     /** The marker's owner. */
     owner: string
     lists: ListDerivation
@@ -96,7 +108,9 @@ export type ConvertResult =
     /** The marker or the final write did not land and the store may have moved: classify the boot again. */
     | { status: 'reclassify' }
     /** Nothing more is attempted this boot. A marker or staged units it left are the next boot's to classify. */
-    | { status: 'blocked', reason: string, detail: string }
+    | { status: 'blocked', reason: BlockedReason, detail: string }
+    /** An `exit` entry only: the fenced exit did not end `marked`. Every question was answered first. No marker landed, except that after `unknown` it may have. */
+    | { status: 'exit', exit: Exclude<ExitResult, { status: 'marked' }> }
 
 type ConvertOrigin =
     | { kind: 'main' }
@@ -122,7 +136,7 @@ function messageOf(error: unknown): string {
 /** A result that is not the all-failed one: the lenient route has no strict decode left to fail. */
 type SettledResult = Exclude<ConvertResult, { status: 'all-failed' }>
 
-function blocked(reason: string, detail: string): SettledResult {
+function blocked(reason: BlockedReason, detail: string): SettledResult {
     return { status: 'blocked', reason, detail }
 }
 
@@ -232,7 +246,7 @@ async function listFile(builder: LegacyListBuilder, key: string, tree: Database,
 /** The legacy list of every old file present, or the reason the backups cannot be enumerated. */
 async function buildLegacyList(
     request: ConvertRequest, decoders: LegacyDecoders, reader: LegacyEntryReader, source: DecodedSource,
-): Promise<{ list: LegacyList } | { reason: string, detail: string }> {
+): Promise<{ list: LegacyList } | { reason: BlockedReason, detail: string }> {
     const builder = new LegacyListBuilder(request.listParams)
     if (source.origin.kind === 'main' && source.tree !== null) {
         await listFile(builder, LEGACY_MAIN_FILE_KEY, source.tree, reader)
@@ -323,6 +337,26 @@ function resultOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked' 
     }
 }
 
+/**
+ * The marker and the install, on the request's entry. The `exit` entry reaches `runExit` only from here, after every
+ * question: a fence or marker is written only for an answer already given. A fenced marker that landed is installed by
+ * the same `installBuilt` as a first-life one; any other exit outcome is passed through, with nothing of the install written.
+ */
+async function installOnEntry(
+    request: ConvertRequest, install: BuiltInstall,
+): Promise<FirstLifeResult | Extract<ConvertResult, { status: 'exit' }>> {
+    const { entry } = request
+    if (entry.kind === 'first-life') {
+        return firstLifeInstall(request.backend, entry.grant, install, { owner: request.owner, env: request.env })
+    }
+    const env: KeyEnv = { ...defaultKeyEnv, ...request.env }
+    const exit = await runExit(request.backend, entry.commitRead, { kind: 'convert' }, { owner: request.owner, env, foreignClear: entry.foreignClear })
+    if (exit.status !== 'marked') {
+        return { status: 'exit', exit }
+    }
+    return installBuilt({ backend: request.backend, env, marked: exit }, install)
+}
+
 /** Steps 4 to 7 of the conversion over a decoded source: resolve, ask, list, install. */
 async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, decoders: LegacyDecoders, source: DecodedSource): Promise<SettledResult> {
     const reader = createLegacyStoreReader(request.readColdStorageItem)
@@ -350,10 +384,10 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
         env: request.env,
         convertedFrom: source.fingerprint,
     })
-    const result = await firstLifeInstall(request.backend, request.grant, withLegacyKeep(plan, listed.list), {
-        owner: request.owner,
-        env: request.env,
-    })
+    const result = await installOnEntry(request, withLegacyKeep(plan, listed.list))
+    if (result.status === 'exit') {
+        return result
+    }
     return resultOfInstall(result, source.origin)
 }
 

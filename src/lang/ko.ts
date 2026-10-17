@@ -2597,7 +2597,6 @@ export const languageKorean = {
         blockedExhausted: "다른 탭 또는 완료되지 않은 작업이 저장소를 계속 변경했습니다.",
         blockedStanding: "완료되지 않은 작업이 아직 저장소에 기록되어 있습니다. 다른 탭을 닫고 새로고침하세요.",
         blockedInstall: "새 저장소 설정을 시작했지만 끝내지 못했습니다. 삭제된 것은 없습니다. RisuTanium이 다음에 시작할 때 어떻게 할지 결정합니다.",
-        blockedUnknown: "RisuTanium이 계속할 수 없으며, 무언가 변경되었는지도 알 수 없습니다. 페이지를 새로고침하세요.",
         tooNewTitle: "이 데이터에는 더 최신 RisuTanium이 필요합니다",
         tooNewBody: "저장된 데이터가 현재 버전보다 더 새로운 RisuTanium으로 작성되었습니다. RisuTanium이 데이터를 열지 않았으며 아무것도 변경하지 않았습니다. RisuTanium을 업데이트한 다음 새로고침하세요.",
         readOnlyRefusal: "RisuTanium이 이 페이지에서 데이터를 읽기 전용으로 열었으므로 이 작업은 사용할 수 없으며 아무것도 변경되지 않았습니다. 데이터는 사라지지 않았습니다.",

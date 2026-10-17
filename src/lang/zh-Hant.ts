@@ -2642,7 +2642,6 @@ export const languageChineseTraditional = {
         "blockedExhausted": "另一個分頁或一項未完成的操作一直在更改您的儲存空間。",
         "blockedStanding": "您的儲存空間中仍記錄著一項未完成的操作。請關閉其他分頁並重新載入。",
         "blockedInstall": "新儲存空間的設定已開始但未完成。沒有任何內容被刪除。RisuTanium 會在下次啟動時決定如何處理。",
-        "blockedUnknown": "RisuTanium 無法繼續，也無法確定是否有內容被更改。請重新載入頁面。",
         "tooNewTitle": "此資料需要較新版本的 RisuTanium",
         "tooNewBody": "您已儲存的資料由比目前版本更新的 RisuTanium 寫入。RisuTanium 沒有開啟它，也沒有更改任何內容。請更新 RisuTanium，然後重新載入。",
         "readOnlyRefusal": "RisuTanium 在此頁面上以唯讀方式開啟了您的資料，因此無法執行此操作，也沒有更改任何內容。您的資料沒有遺失。",

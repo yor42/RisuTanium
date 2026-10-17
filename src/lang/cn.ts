@@ -2597,7 +2597,6 @@ export const languageChinese = {
         "blockedExhausted": "另一个标签页或一项未完成的操作一直在更改您的存储。",
         "blockedStanding": "您的存储中仍记录着一项未完成的操作。请关闭其他标签页并重新加载。",
         "blockedInstall": "新存储的设置已开始但未完成。没有任何内容被删除。RisuTanium 会在下次启动时决定如何处理。",
-        "blockedUnknown": "RisuTanium 无法继续，也无法确定是否有内容被更改。请重新加载页面。",
         "tooNewTitle": "此数据需要更新版本的 RisuTanium",
         "tooNewBody": "您已保存的数据由比当前版本更新的 RisuTanium 写入。RisuTanium 没有打开它，也没有更改任何内容。请更新 RisuTanium，然后重新加载。",
         "readOnlyRefusal": "RisuTanium 在此页面上以只读方式打开了您的数据，因此无法执行此操作，也没有更改任何内容。您的数据没有丢失。",

@@ -280,7 +280,7 @@ describe('blocked reasons', () => {
 
     test('every reason has an entry, and the table has no entry the union does not', () => {
         expect(Object.keys(BLOCKED_TABLE).sort()).toEqual([...BLOCKED_REASONS].sort())
-        expect(BLOCKED_REASONS).toHaveLength(24)
+        expect(BLOCKED_REASONS).not.toContain('unclassified')
     })
 
     test.each(BLOCKED_REASONS)('%s: "Nothing was changed." appears only where the reason is before-write and the boot cannot have written', (reason) => {
@@ -306,11 +306,6 @@ describe('blocked reasons', () => {
             expect(model.paragraphs).toEqual([language.store2Boot.blockedInstall])
         }
         expect(language.store2Boot.blockedInstall).toBe('Setting up the new storage started but did not finish. Nothing was deleted. RisuTanium decides what to do the next time it starts.')
-    })
-
-    test('a reason the converter reports outside the union is unclassified and says it cannot tell what was written', () => {
-        const model = blockedScreen({ reason: 'unclassified', detail: 'weird', mayHaveWritten: false })
-        expect(model.paragraphs).toEqual([language.store2Boot.blockedUnknown])
     })
 })
 

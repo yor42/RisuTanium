@@ -1,9 +1,12 @@
 import type { Database } from '../database.svelte'
-import type { Store2Backend } from './backend/types'
+import type { Store2Backend, Store2Read } from './backend/types'
+import type { BlockedReason } from './bootActive'
 import type { ListDerivation } from './codec'
-import { firstLifeInstall, type FirstLifeGrant, type FirstLifeResult } from './firstLife'
-import type { KeyEnv } from './format'
+import { firstLifeInstall, installBuilt, type FirstLifeGrant, type FirstLifeResult } from './firstLife'
+import { defaultKeyEnv, type KeyEnv } from './format'
 import { planWholeTreeInstall } from './legacy/install'
+import type { ForeignClearHook } from './owner'
+import { runExit, type ExitResult } from './recovery'
 
 /**
  * The seed driver of the boot dispatch: the first-life install of an empty profile, and the probe that decides whether
@@ -46,7 +49,17 @@ export async function probeNumberedBackups(list: () => Promise<number[]>): Promi
 export type SeedOutcome =
     | { status: 'installed', manifestKey: string, flushed: boolean | undefined }
     | { status: 'reclassify' }
-    | { status: 'blocked', reason: string, detail: string }
+    | { status: 'blocked', reason: BlockedReason, detail: string }
+    /** An `exit` entry only: the fenced exit did not end `marked`. No marker landed, except that after `unknown` it may have. */
+    | { status: 'exit', exit: Exclude<ExitResult, { status: 'marked' }> }
+
+/**
+ * How the seed gets its marker: the unfenced marker of a first-life grant, or a fenced recovery exit over `commitRead`
+ * (the compare basis of the marker; `foreignClear` is the question for another owner's standing marker).
+ */
+export type SeedEntry =
+    | { kind: 'first-life', grant: FirstLifeGrant }
+    | { kind: 'exit', commitRead: Store2Read, foreignClear?: ForeignClearHook | null }
 
 export interface SeedOptions {
     owner: string
@@ -73,10 +86,24 @@ function outcomeOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked'
     }
 }
 
-/** Installs the empty profile under `grant`: the unfenced marker, the staged tree and the one final compare-and-write. */
-export async function seedStore2Profile(backend: Store2Backend, grant: FirstLifeGrant, options: SeedOptions): Promise<SeedOutcome> {
+/**
+ * Installs the empty profile under `entry`: the marker (unfenced on a grant, fenced on an exit), the staged tree and the
+ * one final compare-and-write. On the `exit` entry the fenced exit is the first write; a fence that does not end
+ * `written`, or any other non-`marked` outcome, is passed through with nothing staged.
+ */
+export async function seedStore2Profile(backend: Store2Backend, entry: SeedEntry, options: SeedOptions): Promise<SeedOutcome> {
     const request = await planWholeTreeInstall(emptySeedProfile(), { lists: options.lists, env: options.env, convertedFrom: 'seed' })
-    const result = await firstLifeInstall(backend, grant, request, { owner: options.owner, env: options.env })
+    let result: FirstLifeResult
+    if (entry.kind === 'first-life') {
+        result = await firstLifeInstall(backend, entry.grant, request, { owner: options.owner, env: options.env })
+    } else {
+        const env: KeyEnv = { ...defaultKeyEnv, ...options.env }
+        const exit = await runExit(backend, entry.commitRead, { kind: 'seed' }, { owner: options.owner, env, foreignClear: entry.foreignClear })
+        if (exit.status !== 'marked') {
+            return { status: 'exit', exit }
+        }
+        result = await installBuilt({ backend, env, marked: exit }, request)
+    }
     switch (result.status) {
         case 'installed':
             return { status: 'installed', manifestKey: result.manifestKey, flushed: result.flushed }

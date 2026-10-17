@@ -25,8 +25,12 @@ import type { SessionDecision } from './session'
  * `store2/` again immediately before the marker write and refuses unless the store holds no unit (units cannot appear under
  * an absent commit key, so the answer cannot go stale before the write). The row-9 grant checks that the cleared bytes
  * decode to the cleared value and that the key read back parses as `current: null, staging: null`.
- * Every other state (a standing recovery state, a parsed key with a `current`, a foreign marker, a damaged or too-new
- * key) is refused, because the fence is what makes a marker over such a state safe; that path is `runExit`.
+ * Every other state (a standing marker, a parsed key with a `current`, a foreign marker, a damaged or too-new key) is
+ * refused, because the fence is what makes a marker over such a state safe; that path is `runExit`. A standing marker
+ * of this page's own device that its start-up clear removed is the row-9 state, and that clear only removes a convert or seed marker: a
+ * convert or seed that a fenced `runExit` marker left behind on a device that keeps its owner id is re-run through
+ * this grant, without the question, because the marker already recorded the consent. Its fence stays and still stops
+ * the sweeps.
  *
  * `installBuilt` is the one installer of an encoder-built tree. It serves the first-life marker and a fenced `runExit`
  * marker alike. Nothing is written outside the marker's staging prefix before the final write, and the final write

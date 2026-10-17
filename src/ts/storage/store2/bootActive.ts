@@ -50,8 +50,8 @@ export type Store2BootNotice =
 
 /**
  * Why a boot stops with nothing to offer. Every producer in the dispatch names one of these; the port's text table is
- * keyed by it, so a reason added here without text fails the type check. `unclassified` is the dispatch's answer to a
- * reason string that a converter or seed outcome reports outside this list: the port says it cannot tell what was written.
+ * keyed by it, so a reason added here without text fails the type check. The converter and seed outcomes type their
+ * `reason` as this union, so a producer cannot report one outside it.
  */
 export const BLOCKED_REASONS = [
     'no-backend',
@@ -77,7 +77,6 @@ export const BLOCKED_REASONS = [
     'install-invalid',
     'install-failed',
     'install-upload-failed',
-    'unclassified',
 ] as const
 
 export type BlockedReason = typeof BLOCKED_REASONS[number]

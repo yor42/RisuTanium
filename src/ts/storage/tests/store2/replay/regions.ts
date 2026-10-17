@@ -675,7 +675,11 @@ export interface RegionRun {
 function pickLabel(picked: PickResult): { label: string, kind: string, ready: boolean } {
     switch (picked.status) {
         case 'ready':
-            return { label: `ready:img${picked.counts.missingImages}:inl${picked.counts.missingInlays}`, kind: 'ready', ready: true }
+            return {
+                label: picked.counts.checked ? `ready:img${picked.counts.missingImages}:inl${picked.counts.missingInlays}` : 'ready:unchecked',
+                kind: 'ready',
+                ready: true,
+            }
         case 'invalid':
             return { label: `invalid:${picked.problem.kind}`, kind: 'invalid', ready: false }
         case 'exit':

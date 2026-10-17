@@ -269,18 +269,37 @@ export type InlaysPresent = (metaKeys: readonly string[]) => Promise<Set<string>
  */
 export type InlayPrefixesPresent = (prefixes: readonly string[]) => Promise<Set<string>>
 
-export interface MissingCounts {
-    /** Distinct asset names the tree's asset lists name that no `assets/` entry matches. */
-    missingImages: number
-    /** Distinct inlay ids (compared lower-cased) and distinct inlay hash stems the tree's inlay lists name that have no metadata record. */
-    missingInlays: number
-    /**
-     * Lists whose content cannot be trusted and so are neither assumed present nor counted missing: a list of a
-     * newer version, a list below this build's version, and an inlay list marked overflow (its owner's ids are
-     * incomplete; the ids it does list are still counted).
-     */
-    unknownLists: number
+/**
+ * A presence probe could not answer. `list-failed`: the store's listing rejected (any error, because no store types its
+ * listing failures). `skipped`: the person skipped the check. The pick turns this, and nothing else, into an unchecked
+ * result; any other error a probe throws is a defect and propagates.
+ */
+export class PresenceProbeError extends Error {
+    constructor(readonly reason: 'list-failed' | 'skipped', readonly cause?: unknown) {
+        super(reason === 'skipped' ? 'The presence check was skipped.' : 'The presence listing failed.')
+        this.name = 'PresenceProbeError'
+    }
 }
+
+/**
+ * `unknownLists`, in both arms, counts lists whose content cannot be trusted and so are neither assumed present nor
+ * counted missing: a list of a newer version, a list below this build's version, and an inlay list marked overflow (its
+ * owner's ids are incomplete; the ids it does list are still counted). It comes from the closure walk, not from a probe.
+ */
+export type MissingCounts =
+    | {
+        checked: true
+        /** Distinct asset names the tree's asset lists name that no `assets/` entry matches. */
+        missingImages: number
+        /** Distinct inlay ids (compared lower-cased) and distinct inlay hash stems the tree's inlay lists name that have no metadata record. */
+        missingInlays: number
+        unknownLists: number
+    }
+    /** The presence check did not complete, so no count exists: a partial pair is not expressible. */
+    | {
+        checked: false
+        unknownLists: number
+    }
 
 /** Hex of a 43-character base64url hash stem, the form `assetRefKey` reduces `<hex>.<ext>` to. */
 function stemToHex(stem: string): string {
@@ -444,10 +463,18 @@ export async function pickCandidate(backend: Store2Backend, commitRead: Store2Re
         throw error
     }
 
-    const counts: MissingCounts = {
-        missingImages: await countMissing(collector.assetKeys, options.assetsPresent),
-        missingInlays: await countMissing(collector.inlayKeys, options.inlaysPresent) + await countMissing(collector.inlayPrefixes, options.inlayPrefixesPresent),
-        unknownLists: collector.unknownLists,
+    // The first probe failure ends the check: the result is unchecked even when the images were already counted, so no
+    // count is ever a partial pair. Only a PresenceProbeError is read this way; any other error is a defect and escapes.
+    let counts: MissingCounts
+    try {
+        const missingImages = await countMissing(collector.assetKeys, options.assetsPresent)
+        const missingInlays = await countMissing(collector.inlayKeys, options.inlaysPresent) + await countMissing(collector.inlayPrefixes, options.inlayPrefixesPresent)
+        counts = { checked: true, missingImages, missingInlays, unknownLists: collector.unknownLists }
+    } catch (error) {
+        if (!(error instanceof PresenceProbeError)) {
+            throw error
+        }
+        counts = { checked: false, unknownLists: collector.unknownLists }
     }
     return { status: 'ready', manifestKey, manifestSeq: manifest.body.seq, units: collector.units, counts, marked: exit, backend, env }
 }
@@ -457,7 +484,7 @@ export async function pickCandidate(backend: Store2Backend, commitRead: Store2Re
 export type InstallResult =
     /** `current` is the new manifest and the marker is cleared. `flushed` is the final write's report. */
     | { status: 'installed', manifestKey: string, value: CommitKey, bytes: Uint8Array, flushed: boolean | undefined }
-    /** The commit key changed under the final write and does not name this install's manifest: the old candidates and the staged copies remain, the recovery screen returns. */
+    /** The commit key changed under the final write and does not name this install's manifest: the old candidates and the staged copies remain, and the recovery screen stops: it makes no further call. */
     | { status: 'abandoned', current: Store2Read }
     /** A unit of the tree went missing or unusable between the validation and the re-write; nothing was installed. */
     | { status: 'invalid', problem: PickProblem }

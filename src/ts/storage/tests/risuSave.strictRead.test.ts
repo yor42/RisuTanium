@@ -158,7 +158,7 @@ describe('new behaviour: the conversion with the real decoder', () => {
             listBackupTimes: async () => [100],
             readColdStorageItem: async () => ({ status: 'missing' }),
             backend: memory,
-            grant: granted.grant,
+            entry: { kind: 'first-life', grant: granted.grant },
             owner: freshOwnerId(testEnv(createClock(), 1)),
             lists: fakeLists,
         }, { confirmIncomplete: async () => true, confirmFromBackup: async () => true })

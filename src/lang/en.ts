@@ -2742,7 +2742,6 @@ export const languageEnglish = {
         blockedExhausted: "Another tab or an unfinished operation kept changing your storage.",
         blockedStanding: "An unfinished operation is still recorded in your storage. Close other tabs and reload.",
         blockedInstall: "Setting up the new storage started but did not finish. Nothing was deleted. RisuTanium decides what to do the next time it starts.",
-        blockedUnknown: "RisuTanium could not continue and cannot tell whether anything was changed. Reload the page.",
         tooNewTitle: "This data needs a newer RisuTanium",
         tooNewBody: "Your saved data was written by a newer version of RisuTanium than this one. RisuTanium did not open it and changed nothing. Update RisuTanium, then reload.",
         readOnlyRefusal: "RisuTanium opened your data read-only on this page, so this action is not available and nothing was changed. Your data is not lost.",

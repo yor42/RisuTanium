@@ -393,7 +393,7 @@ export function tooNewScreen(): BootScreenModel {
     return terminal(text.tooNewTitle, [text.tooNewBody], null, 'reload')
 }
 
-type BlockedKind = 'read' | 'unwritable' | 'refused' | 'markerFailed' | 'exhausted' | 'standing' | 'install' | 'unknown'
+type BlockedKind = 'read' | 'unwritable' | 'refused' | 'markerFailed' | 'exhausted' | 'standing' | 'install'
 
 /**
  * What each reason says and whether the reason itself implies that nothing was written. "Nothing was changed" is added
@@ -426,7 +426,6 @@ export const BLOCKED_TABLE: Readonly<Record<BlockedReason, { kind: BlockedKind, 
     'install-invalid': { kind: 'install', beforeWrite: false },
     'install-failed': { kind: 'install', beforeWrite: false },
     'install-upload-failed': { kind: 'install', beforeWrite: false },
-    'unclassified': { kind: 'unknown', beforeWrite: false },
 }
 
 function blockedKindText(kind: BlockedKind): string {
@@ -446,8 +445,6 @@ function blockedKindText(kind: BlockedKind): string {
             return text.blockedStanding
         case 'install':
             return text.blockedInstall
-        case 'unknown':
-            return text.blockedUnknown
     }
 }
 

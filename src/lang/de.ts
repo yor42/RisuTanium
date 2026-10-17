@@ -2599,7 +2599,6 @@ export const languageGerman = {
         "blockedExhausted": "Ein anderer Tab oder ein unvollendeter Vorgang hat Ihren Speicher immer wieder verändert.",
         "blockedStanding": "In Ihrem Speicher ist noch ein unvollendeter Vorgang vermerkt. Schließen Sie andere Tabs und laden Sie neu.",
         "blockedInstall": "Die Einrichtung des neuen Speichers wurde begonnen, aber nicht abgeschlossen. Es wurde nichts gelöscht. RisuTanium entscheidet beim nächsten Start, was zu tun ist.",
-        "blockedUnknown": "RisuTanium konnte nicht fortfahren und kann nicht feststellen, ob etwas geändert wurde. Laden Sie die Seite neu.",
         "tooNewTitle": "Diese Daten erfordern ein neueres RisuTanium",
         "tooNewBody": "Ihre gespeicherten Daten wurden von einer neueren RisuTanium-Version als dieser geschrieben. RisuTanium hat sie nicht geöffnet und nichts geändert. Aktualisieren Sie RisuTanium und laden Sie dann neu.",
         "readOnlyRefusal": "RisuTanium hat Ihre Daten auf dieser Seite schreibgeschützt geöffnet, daher ist diese Aktion nicht verfügbar, und es wurde nichts geändert. Ihre Daten sind nicht verloren.",

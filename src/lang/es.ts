@@ -2599,7 +2599,6 @@ export const languageSpanish = {
         blockedExhausted: "Otra pestaña o una operación sin terminar siguió cambiando tu almacenamiento.",
         blockedStanding: "Aún hay una operación sin terminar registrada en tu almacenamiento. Cierra las demás pestañas y recarga.",
         blockedInstall: "La preparación del nuevo almacenamiento comenzó pero no terminó. No se eliminó nada. RisuTanium decide qué hacer la próxima vez que se inicie.",
-        blockedUnknown: "RisuTanium no pudo continuar y no puede saber si se cambió algo. Recarga la página.",
         tooNewTitle: "Estos datos requieren una versión más reciente de RisuTanium",
         tooNewBody: "Tus datos guardados fueron escritos por una versión de RisuTanium más reciente que esta. RisuTanium no los abrió y no cambió nada. Actualiza RisuTanium y luego recarga.",
         readOnlyRefusal: "RisuTanium abrió tus datos en modo de solo lectura en esta página, por lo que esta acción no está disponible y no se cambió nada. Tus datos no se han perdido.",
