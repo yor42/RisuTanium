@@ -54,6 +54,7 @@ function uiDouble() {
         notice(notice: Store2BootNotice) { ui.notices.push(notice) },
         async blocked(blocked: { reason: string, detail: string }) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport() { },
+        async confirmFlaggedOpen() { return 'decline' as const },
         async foreignMarker() {
             ui.onForeign()
             return ui.foreignAnswer

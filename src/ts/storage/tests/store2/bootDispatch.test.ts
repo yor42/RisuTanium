@@ -21,7 +21,7 @@ import {
 } from 'src/ts/storage/store2/backend'
 import { getStore2BootSession, resetStore2BootForTest, type Store2BootNotice, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
 import { dispatchStore2Boot, type Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
-import { assembleDatabase, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
+import { assembleDatabase, encodeScoped, unitMapSource, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
 import { firstCommitKey, nextCommitKey, classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import {
     encodeUnit, FRAME_HEADER_BYTES, keyOfRef, newManifestKey, newStagingId, stagingPrefix, UNIT_TYPE,
@@ -30,6 +30,7 @@ import {
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { freshOwnerId, isOwnerId, type Staging } from 'src/ts/storage/store2/owner'
 import { OWNER_KEY } from 'src/ts/storage/store2/ownerStore'
+import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
 import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import type { Store2Session } from 'src/ts/storage/store2/session'
@@ -130,6 +131,9 @@ interface UiDouble extends Store2BootUi {
     recoveries: { decision: Parameters<Store2BootUi['recovery']>[0]['decision'], session: Store2Session }[]
     foreignAsked: Staging[]
     foreignAnswer: 'wait' | 'clear'
+    /** The flagged-open prompts asked, each with whether the save context was already active when it was asked. */
+    flaggedAsked: { items: readonly FlaggedItem[], activeAtPrompt: boolean }[]
+    flaggedAnswer: 'continue' | 'decline' | 'earlier' | 'never'
     peer: PeerDouble
 }
 
@@ -141,10 +145,19 @@ function uiDouble(): UiDouble {
         recoveries: [],
         foreignAsked: [],
         foreignAnswer: 'wait',
+        flaggedAsked: [],
+        flaggedAnswer: 'continue',
         peer: createPeerDouble(),
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport(backups) { ui.offered.push(backups) },
+        async confirmFlaggedOpen(items) {
+            ui.flaggedAsked.push({ items, activeAtPrompt: getActiveStore2Save() !== null })
+            if (ui.flaggedAnswer === 'never') {
+                return new Promise<never>(() => { })
+            }
+            return ui.flaggedAnswer
+        },
         async foreignMarker(marker) {
             ui.foreignAsked.push(marker)
             return ui.foreignAnswer
@@ -475,40 +488,156 @@ describe('new behaviour: row 3, a format this build does not understand', () => 
     })
 })
 
-// ---- the flagged-leaf interim and the structure route ----
+// ---- the flagged-leaf confirm gate and the structure route ----
 
-describe('new behaviour: a tree with a leaf that fails the unit check, before the fallback exists', () => {
+describe('new behaviour: row 5 with a damaged or missing leaf, the confirm gate', () => {
     const KINDS = [0, 1, 2, 3, 4, 5, 6, 7]
 
-    test.each(KINDS)('leaf case %i: the boot stops with the unavailable notice, opens nothing and writes nothing', async (index) => {
+    test.each(KINDS)('leaf case %i, continue: the profile opens after the question, the other characters are as stored and nothing is written', async (index) => {
         const world = await seedWorld(richProfile())
         const [label, key] = leafKeys(world)[index]
         world.memory.poke(key, flipPayload(stored(world, key)))
         const test = rig({ memory: world.memory })
-        expect(await test.dispatch(), label).toEqual({ kind: 'stopped' })
-        expect(test.ui.notices).toEqual([expect.objectContaining({ name: 'incomplete-unavailable' })])
-        const notice = test.ui.notices[0]
-        if (notice.name !== 'incomplete-unavailable') {
-            return
+        const result = expectStoreResult(await test.dispatch())
+        expect(test.ui.flaggedAsked, label).toHaveLength(1)
+        expect(test.ui.flaggedAsked[0].items.map(item => item.key)).toEqual([key])
+        expect(test.ui.flaggedAsked[0].items[0].name).toBe('Small 0')
+        expect(test.ui.flaggedAsked[0].activeAtPrompt, 'the save loop is not active while the question is open').toBe(false)
+        expect(getActiveStore2Save()?.session).toBe(result.session)
+        expect(getPageStorageMode()).toEqual({ kind: 'store2' })
+        expect(test.ui.recoveries).toEqual([])
+        expect(test.ui.blockedWith).toEqual([])
+        expect(test.ui.notices).toEqual([])
+        expect(test.allWrites()).toEqual([])
+        const intact = assembleDatabase(world.tree.manifest, unitMapSource(world.tree.units)) as unknown as { characters: Obj[] }
+        const opened = result.database as unknown as { characters: Obj[] }
+        expect(opened.characters).toHaveLength(intact.characters.length)
+        expect(opened.characters.slice(1)).toEqual(intact.characters.slice(1))
+    })
+
+    test('a missing leaf is the same question', async () => {
+        const world = await seedWorld(richProfile())
+        const key = leafKeys(world)[6][1]
+        world.memory.poke(key, null)
+        const test = rig({ memory: world.memory })
+        expectStoreResult(await test.dispatch())
+        expect(test.ui.flaggedAsked.map(asked => asked.items.map(item => [item.key, item.why]))).toEqual([[[key, 'missing']]])
+    })
+
+    test('decline: stopped, nothing opened, nothing written, the save loop never active, and the question comes again at the next start', async () => {
+        const world = await seedWorld(richProfile())
+        const key = leafKeys(world)[2][1]
+        world.memory.poke(key, flipPayload(stored(world, key)))
+        const test = rig({ memory: world.memory })
+        test.ui.flaggedAnswer = 'decline'
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.flaggedAsked).toHaveLength(1)
+        expect(getActiveStore2Save()).toBeNull()
+        expect(getPageStorageMode()).not.toEqual({ kind: 'store2' })
+        expect(test.ui.recoveries).toEqual([])
+        expect(test.ui.blockedWith).toEqual([])
+        expect(test.allWrites()).toEqual([])
+        expect(test.store.writes.filter(written => written !== OWNER_KEY)).toEqual([])
+        expect(test.store.deletes).toEqual([])
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.flaggedAsked).toHaveLength(2)
+        expect(test.allWrites()).toEqual([])
+    })
+
+    test('earlier: the recovery screen gets the current session before anything is written, then the boot stops without opening or activating anything', async () => {
+        const world = await seedWorld(richProfile())
+        const key = leafKeys(world)[6][1]
+        world.memory.poke(key, flipPayload(stored(world, key)))
+        const test = rig({ memory: world.memory })
+        test.ui.flaggedAnswer = 'earlier'
+        let writesAtRecovery = -1
+        let activeAtRecovery = true
+        test.ui.recovery = async (request) => {
+            writesAtRecovery = test.allWrites().length
+            activeAtRecovery = getActiveStore2Save() !== null
+            test.ui.recoveries.push(request)
         }
-        expect(notice.items.map(item => item.key)).toEqual([key])
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.recoveries).toHaveLength(1)
+        const request = test.ui.recoveries[0]
+        expect(request.decision).toEqual({ row: 6, mode: 'recovery', tree: 'damaged', keys: [key] })
+        expect(request.session, 'the session the tree was read with, not a re-opened one').toBe(getStore2BootSession())
+        expect(test.rounds()).toBe(1)
+        expect(writesAtRecovery).toBe(0)
+        expect(activeAtRecovery).toBe(false)
         expect(getActiveStore2Save()).toBeNull()
         expect(getPageStorageMode()).not.toEqual({ kind: 'store2' })
         expect(test.allWrites()).toEqual([])
-        expect(test.ui.blockedWith).toEqual([])
-        expect(test.ui.recoveries).toEqual([])
     })
 
-    test('a missing leaf is the same stop', async () => {
+    test('earlier over a missing unit names the tree as missing', async () => {
         const world = await seedWorld(richProfile())
-        world.memory.poke(leafKeys(world)[6][1], null)
+        const key = leafKeys(world)[6][1]
+        world.memory.poke(key, null)
         const test = rig({ memory: world.memory })
+        test.ui.flaggedAnswer = 'earlier'
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
-        expect(test.ui.notices[0]).toMatchObject({ name: 'incomplete-unavailable' })
-        expect(getActiveStore2Save()).toBeNull()
+        expect(test.ui.recoveries[0].decision).toEqual({ row: 6, mode: 'recovery', tree: 'missing', keys: [key] })
+    })
+
+    test('a question that is never answered leaves the profile closed: with the idle interval long past, nothing is written and the save loop is not active', async () => {
+        vi.useFakeTimers()
+        try {
+            const world = await seedWorld(richProfile())
+            const key = leafKeys(world)[0][1]
+            world.memory.poke(key, flipPayload(stored(world, key)))
+            const test = rig({ memory: world.memory })
+            test.ui.flaggedAnswer = 'never'
+            void test.dispatch()
+            await vi.advanceTimersByTimeAsync(10_000)
+            expect(test.ui.flaggedAsked).toHaveLength(1)
+            expect(getActiveStore2Save()).toBeNull()
+            expect(test.allWrites()).toEqual([])
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    test('after continue the first save rewrites the flagged chunk of the long chat and nothing outside that chat, and the stored tree still names the damaged key', async () => {
+        const world = await seedWorld(richProfile())
+        const [, key] = leafKeys(world)[6]
+        world.memory.poke(key, flipPayload(stored(world, key)))
+        const test = rig({ memory: world.memory })
+        const result = expectStoreResult(await test.dispatch())
+        const active = getActiveStore2Save()
+        if (active === null) {
+            throw new Error('No save context.')
+        }
+        const chaIds = (result.database as unknown as { characters: Obj[] }).characters.map(one => String(one.chaId))
+        const next = await encodeScoped(result.database, {
+            env: testEnv(createClock(), 777), lists: fakeLists, seq: 2, createdAt: 1_700_000_000_000, previous: active.previous,
+        }, { modules: false, characters: new Set(chaIds) })
+        const first = entryBody(world).find(entry => entry.chaId === chaIds[0]) as ShardEntry
+        const prefix = `chat:${first.u}:${first.chats[2].cid}:`
+        const storedKeys = new Set(world.tree.units.map(unit => unit.key))
+        const rewritten = next.units.filter(unit => !storedKeys.has(unit.key)).map(unit => unit.identity)
+        const chunks = rewritten.filter(identity => identity.startsWith(`${prefix}chunk:`))
+        // The chunk holding the load-error message is rewritten; how many follow it depends on how the messages re-pack.
+        expect(chunks.length).toBeGreaterThan(0)
+        expect(chunks.length).toBeLessThanOrEqual(first.chats[2].chunks.length)
+        expect(next.units.map(unit => unit.key)).not.toContain(key)
+        expect(rewritten.filter(identity => identity.startsWith('chat:') && !identity.startsWith(prefix))).toEqual([])
+        expect(rewritten.filter(identity => identity.startsWith('char:') || identity.startsWith('al:') || identity.startsWith('il:'))).toEqual([])
     })
 })
 
+describe('new behaviour: a tree with a leaf that fails the unit check is not a recovery, a backend failure is not a flag', () => {
+    test('a too-new leaf and a damaged leaf in one read: the too-new unit wins and the question is never asked', async () => {
+        const world = await seedWorld(richProfile())
+        const keys = leafKeys(world)
+        world.memory.poke(keys[0][1], tooNewFrame(stored(world, keys[0][1])))
+        world.memory.poke(keys[6][1], flipPayload(stored(world, keys[6][1])))
+        const test = rig({ memory: world.memory })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.notices).toEqual([expect.objectContaining({ name: 'too-new', source: 'tree' })])
+        expect(test.ui.flaggedAsked).toEqual([])
+    })
+})
 describe('new behaviour: the re-read of the commit key before a finding is acted on', () => {
     test('a structure failure goes to the recovery screen only after the commit key is read again unchanged', async () => {
         const world = await seedWorld()
@@ -599,9 +728,8 @@ describe('new behaviour: the re-read of the commit key before a finding is acted
         expect(test.allWrites()).toEqual([])
     })
 
-    test('an unflagged corruption found only by assembly is a block, not an error that reaches the generic catch', async () => {
-        const world = await seedWorld()
-        // An order unit that names an entity no shard lists: every unit passes its own check, the tree does not assemble.
+    /** An order unit that names an entity no shard lists: every unit passes its own check, the tree does not assemble. */
+    function makeUnassemblable(world: World): void {
         const orderKey = keyOfRef(world.tree.manifest.fixed.order)
         const orderUnit = world.tree.units.find(unit => unit.key === orderKey)
         if (orderUnit === undefined) {
@@ -614,9 +742,27 @@ describe('new behaviour: the re-read of the commit key before a finding is acted
         manifest.fixed.order = [manifest.fixed.order[0], rewritten.length, new DataView(rewritten.buffer, rewritten.byteOffset + rewritten.length - 4, 4).getUint32(0, true)]
         world.memory.poke(orderKey, rewritten)
         world.memory.poke(world.manifestKey, encodeUnit(UNIT_TYPE.manifest, manifest))
+    }
+
+    test('an unflagged corruption found only by assembly is a block, not an error that reaches the generic catch', async () => {
+        const world = await seedWorld()
+        makeUnassemblable(world)
         const test = rig({ memory: world.memory })
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
         expect(test.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'assemble-failed' })])
+        expect(getActiveStore2Save()).toBeNull()
+        expect(test.allWrites()).toEqual([])
+    })
+
+    test('the same with a flagged leaf, so the fallback assembles: still a block, the question is never asked and the loop never starts', async () => {
+        const world = await seedWorld(richProfile())
+        const leaf = leafKeys(world)[6][1]
+        world.memory.poke(leaf, flipPayload(stored(world, leaf)))
+        makeUnassemblable(world)
+        const test = rig({ memory: world.memory })
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(test.ui.blockedWith).toEqual([expect.objectContaining({ reason: 'assemble-failed' })])
+        expect(test.ui.flaggedAsked).toEqual([])
         expect(getActiveStore2Save()).toBeNull()
         expect(test.allWrites()).toEqual([])
     })

@@ -16,6 +16,7 @@ import type { Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
 import { probeNumberedBackups, seedStore2Profile } from './bootSeed'
 import { setStore2BootSession, type Store2BootEnv, type Store2BootNotice, type Store2BootResult } from './bootActive'
+import { createLeafFallback, type FlaggedItem, type LeafFallback } from './leafFallback'
 import { createOwnerIdStore } from './ownerStore'
 import { CommitKeyRecheckError, readTreeBytes } from './treeBytes'
 
@@ -31,7 +32,10 @@ import { CommitKeyRecheckError, readTreeBytes } from './treeBytes'
  *    the native gate makes an earlier backend stale the moment a later one registers. Activation, the recovery request
  *    and `getStore2BootSession()` only ever see the newest session.
  *  - A re-classification happens at most `MAX_ROUNDS` times per boot; running out is a named block, never a loop.
- *  - `activateStore2Save` is called only when the database is about to be handed back as the open profile.
+ *  - `activateStore2Save` is called only when the database is about to be handed back as the open profile. A tree with
+ *    damaged or missing leaves is opened only after the user answers `continue`: the save loop re-encodes on its own
+ *    schedule and would otherwise persist the fallback unasked. `decline` and `earlier` write nothing, open nothing and
+ *    never activate the loop.
  */
 
 /** Sessions the dispatch opens at most in one boot. */
@@ -45,6 +49,12 @@ export interface Store2BootUi {
     blocked(blocked: { reason: string, detail: string }): Promise<void>
     /** No main file but numbered backups: the backups are the profile, never seeded over. */
     offerRestoreOrImport(backups: readonly number[]): Promise<void>
+    /**
+     * A tree whose listed leaves are damaged or missing. `continue` opens the profile with those parts empty (the first
+     * save keeps that state); `decline` stops and asks again at the next start; `earlier` shows the recovery screen with
+     * the whole current session so an older saved version can be picked before anything is saved over.
+     */
+    confirmFlaggedOpen(items: readonly FlaggedItem[]): Promise<'continue' | 'decline' | 'earlier'>
     /** A marker of another owner stands: wait for it, or clear it. */
     foreignMarker(marker: Staging): Promise<'wait' | 'clear'>
     /** The recovery screen, with the whole current session. */
@@ -62,6 +72,8 @@ export interface Store2DispatchDeps {
     lists?: ListDerivation
     reflushAttempts?: number
     maxRounds?: number
+    /** The clock that stamps a load-error message; the wall clock by default. */
+    now?: () => number
 }
 
 /** The state a round hands the next: open a new session and classify again. */
@@ -133,21 +145,34 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             case 'ok':
                 break
         }
-        if (read.flagged.length > 0) {
-            // Interim: a tree with damaged or missing leaves cannot be opened yet, and nothing is written.
-            raise({ name: 'incomplete-unavailable', items: read.flagged })
-            return { kind: 'stopped' }
-        }
         let database: Database
         let previous
+        let fallback: LeafFallback | null = null
         try {
-            database = assembleDatabase(read.tree.manifest, read.tree.source)
+            if (read.flagged.length > 0) {
+                fallback = createLeafFallback(read.flagged, deps.now ?? Date.now)
+                database = assembleDatabase(read.tree.manifest, read.tree.source, { character: fallback.character })
+            } else {
+                database = assembleDatabase(read.tree.manifest, read.tree.source)
+            }
             previous = previousOfTree(read.tree)
         } catch (error) {
             if (error instanceof CodecAssembleError) {
                 return stop('assemble-failed', error.message)
             }
             throw error
+        }
+        if (fallback !== null) {
+            const answer = await ui.confirmFlaggedOpen(fallback.items())
+            if (answer === 'earlier') {
+                await ui.recovery({
+                    decision: { row: 6, mode: 'recovery', tree: read.flagged.every(leaf => leaf.why === 'missing') ? 'missing' : 'damaged', keys: read.flagged.map(leaf => leaf.key) },
+                    session,
+                })
+            }
+            if (answer !== 'continue') {
+                return { kind: 'stopped' }
+            }
         }
         if (session.notice !== null) {
             raise({ name: 'reflush-failed', detail: session.notice.detail })
@@ -346,6 +371,10 @@ export function createProductionBootUi(): Store2BootUi {
         offerRestoreOrImport: (backups) => {
             console.warn('[store2 boot] backups exist', backups)
             return open<void>()
+        },
+        confirmFlaggedOpen: (items) => {
+            console.warn('[store2 boot] incomplete profile', items)
+            return open<'continue' | 'decline' | 'earlier'>()
         },
         foreignMarker: () => open<'wait' | 'clear'>(),
         recovery: (request) => {

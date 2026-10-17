@@ -2,7 +2,6 @@ import type { Database } from '../database.svelte'
 import type { ByteStore } from '../store/contract'
 import type { TooNewSource } from './boot'
 import type { Store2Session } from './session'
-import type { FlaggedLeaf } from './treeBytes'
 
 /**
  * The seam that keeps the store2 boot unreachable until the page registers it. `bootstrap.ts` asks `getStore2Boot()`
@@ -44,8 +43,6 @@ export type Store2BootNotice =
     | { name: 'too-new', source: TooNewSource, detail: string }
     | { name: 'server-capability' | 'backend-unavailable', detail: string }
     | { name: 'convert-unavailable' }
-    /** A tree has leaves that failed the unit check; the build cannot open it yet and writes nothing. */
-    | { name: 'incomplete-unavailable', items: readonly FlaggedLeaf[] }
 
 /**
  * What the dispatch decided.

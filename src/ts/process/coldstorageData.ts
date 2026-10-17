@@ -20,11 +20,12 @@ const coldStorageLoadErrorSuffix = ']'
  * backup) can still hold a chat whose `message[0]` was overwritten with this
  * legacy error text instead.
  *
- * This builder has no production caller of its own. It is kept only as the
+ * The store2 leaf fallback (`storage/store2/leafFallback.ts`) writes this text
+ * into a chat whose unit is damaged or missing. The builder is the
  * counterpart of `matchColdStorageLoadErrorKey` -- the two share the same
- * prefix/suffix constants so they cannot drift apart -- and is used by
- * tests to build a chat already holding this legacy text, standing in for
- * an install that hit a failed read under the old behaviour.
+ * prefix/suffix constants so they cannot drift apart -- and tests also use it
+ * to build a chat already holding this legacy text, standing in for an
+ * install that hit a failed read under the old behaviour.
  * `listRecoverableErrorKeysFromDb` calls `matchColdStorageLoadErrorKey`
  * directly rather than this builder, and the chat-screen notice for a
  * failed read is chosen by `coldChatNoticeText` below from the

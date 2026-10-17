@@ -18,6 +18,9 @@ import { StoreNotBinaryError } from 'src/ts/storage/store/errors'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import type { Store2BootNotice } from 'src/ts/storage/store2/bootActive'
+import { checkUnit, unitMapSource } from 'src/ts/storage/store2/codec'
+import { FRAME_HEADER_BYTES, keyOfRef, UNIT_TYPE, type Shard } from 'src/ts/storage/store2/format'
+import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
 import { buildSmall, fakeLists } from 'src/ts/storage/tests/store2/codecFixtures'
 import { createClock, seedTree, testEnv, createPeerDouble } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -104,7 +107,8 @@ vi.mock(import('src/ts/update'), () => ({
 }) as unknown as typeof import('src/ts/update'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
-    DBState: { db: {} as Record<string, unknown> },
+    // The database the boot installed, so the id repair of the boot tail acts on the installed characters.
+    DBState: { get db() { return dbState.current } },
     LoadingStatusState: { text: '' },
     MobileGUI: writable(false),
     botMakerMode: writable(false),
@@ -294,6 +298,9 @@ interface UiDouble extends Store2BootUi {
     notices: Store2BootNotice[]
     blockedWith: { reason: string, detail: string }[]
     offered: (readonly number[])[]
+    flaggedAsked: (readonly FlaggedItem[])[]
+    flaggedAnswer: 'continue' | 'decline' | 'earlier'
+    recoveries: number
 }
 
 function uiDouble(): UiDouble {
@@ -301,12 +308,19 @@ function uiDouble(): UiDouble {
         notices: [],
         blockedWith: [],
         offered: [],
+        flaggedAsked: [],
+        flaggedAnswer: 'continue',
+        recoveries: 0,
         peer: createPeerDouble(),
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
         async offerRestoreOrImport(backups) { ui.offered.push(backups) },
+        async confirmFlaggedOpen(items) {
+            ui.flaggedAsked.push(items)
+            return ui.flaggedAnswer
+        },
         async foreignMarker() { return 'wait' },
-        async recovery() { },
+        async recovery() { ui.recoveries += 1 },
     }
     return ui
 }
@@ -596,6 +610,90 @@ describe('loadData(): a normal store2 profile', () => {
     })
 })
 
+describe('loadData(): a store2 profile whose chats have damaged cores', () => {
+    function flipPayload(bytes: Uint8Array): Uint8Array {
+        const out = new Uint8Array(bytes)
+        out[FRAME_HEADER_BYTES + 1] ^= 0xff
+        return out
+    }
+
+    /** One character with a stable-id chat and a chat with no id (positional handle), both cores damaged. */
+    async function damagedRig(answer: 'continue' | 'decline' | 'earlier') {
+        const store = legacyStore()
+        const run = await boot({ kind: 'indexeddb', store, injectBackend: true })
+        run.ui.flaggedAnswer = answer
+        const db = JSON.parse(JSON.stringify(buildSmall(1))) as { characters: { chats: { id: string }[] }[] }
+        const stableId = db.characters[0].chats[0].id
+        db.characters[0].chats[1].id = ''
+        const seeded = await seedTree(run.backend, db as unknown as Database, testEnv(createClock(), 4242), fakeLists)
+        const source = unitMapSource(seeded.tree.units)
+        const entries = seeded.tree.manifest.shards.flatMap((ref) => {
+            const checked = checkUnit(source, ref, UNIT_TYPE.shard)
+            return checked.status === 'ok' ? (checked.body as Shard).entries : []
+        })
+        const entry = entries[0]
+        expect(entry.chats.map(chat => chat.cid)).toEqual([stableId, '~1'])
+        for (const chat of entry.chats) {
+            const key = keyOfRef(chat.core)
+            run.backend.poke(key, flipPayload(run.backend.snapshot().get(key) as Uint8Array))
+        }
+        return { ...run, store, stableId }
+    }
+
+    test('continue: the profile opens, the stable chat keeps its id, and the positional chat is given a fresh one', async () => {
+        const { loadData, alertStore, loadedStore, ui, store, stableId } = await damagedRig('continue')
+        acknowledgeNotices(alertStore)
+
+        await loadData()
+        await settle()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(ui.flaggedAsked).toHaveLength(1)
+        expect(ui.flaggedAsked[0].map(item => item.name)).toEqual(['Small 0', 'Small 0'])
+        const installed = setDatabaseMock.mock.calls[0][0] as { characters: { chats: { id: string, message: { data: string }[] }[] }[] }
+        const [stable, positional] = installed.characters[0].chats
+        expect(stable.id).toBe(stableId)
+        expect(positional.id).toEqual(expect.any(String))
+        expect(positional.id).not.toBe('')
+        expect(positional.id.startsWith('~')).toBe(false)
+        expect(stable.message[0].data.startsWith('[Cold storage data could not be loaded. Key: ')).toBe(true)
+        expect(positional.message[0].data.startsWith('[Cold storage data could not be loaded. Key: ')).toBe(true)
+        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
+        expect(getActiveStore2Save()).not.toBeNull()
+        expect(saveDbMock).toHaveBeenCalled()
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+    })
+
+    test('decline: the page waits, nothing is installed, nothing is written and the save loop never starts', async () => {
+        const { loadData, loadedStore, ui, store } = await damagedRig('decline')
+
+        await loadData()
+        await settle()
+
+        expect(ui.flaggedAsked).toHaveLength(1)
+        expect(get(loadedStore)).toBe(false)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(sleepForeverMock).toHaveBeenCalledTimes(1)
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(saveDbMock).not.toHaveBeenCalled()
+        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
+        expect(getActiveStore2Save()).toBeNull()
+    })
+
+    test('earlier: the recovery screen is shown, the page waits, and nothing is installed or written', async () => {
+        const { loadData, loadedStore, ui, store } = await damagedRig('earlier')
+
+        await loadData()
+        await settle()
+
+        expect(ui.recoveries).toBe(1)
+        expect(get(loadedStore)).toBe(false)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(sleepForeverMock).toHaveBeenCalledTimes(1)
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(saveDbMock).not.toHaveBeenCalled()
+    })
+})
 describe('loadData(): a boot the dispatch stops', () => {
     test.each([[false], [true]])('the profile is not installed, loadedStore stays unset, the page waits, and nothing is written (Tauri: %s)', async (tauri) => {
         // A legacy main file with no store2 profile: the conversion is not available, so the dispatch stops.

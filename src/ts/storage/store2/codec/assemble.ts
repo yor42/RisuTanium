@@ -96,6 +96,9 @@ function readChecked(source: UnitSource, ref: Ref, type: UnitType, where: string
     }
 }
 
+/** `readChecked` for a caller that assembles part of an entity itself: the same Ref check and the same thrown messages. */
+export { readChecked as readCheckedUnit }
+
 /** A content unit's body; `readChecked` has already proved its type, and the content types parse to this shape. */
 function readContent(source: UnitSource, ref: Ref, type: UnitType, where: string): ContentBody {
     return readChecked(source, ref, type, where) as ContentBody
@@ -107,7 +110,8 @@ function copyInto(target: JsonObject, bag: JsonObject): void {
     }
 }
 
-function movedValueOf(entry: ShardEntry, name: typeof ENTRY_MOVED_FIELDS[number]): JsonValue | undefined {
+/** The value a shard entry holds for one of the fields it takes out of the core, or undefined when it holds none. */
+export function movedValueOf(entry: ShardEntry, name: typeof ENTRY_MOVED_FIELDS[number]): JsonValue | undefined {
     switch (name) {
         case 'lastInteraction': return entry.lastInteraction
         case 'trashTime': return entry.trashTime
@@ -187,8 +191,14 @@ function assemblePluginStorage(manifest: Manifest, source: UnitSource): JsonObje
     return storage
 }
 
+export interface AssembleOptions {
+    /** Builds one entity in place of `assembleCharacter`; called once per entity, in `order` order. Absent: `assembleCharacter`. */
+    character?: (entry: ShardEntry, source: UnitSource) => JsonObject
+}
+
 /** The database the manifest and its units describe. Characters come back in `characters` order, fully loaded. */
-export function assembleDatabase(manifest: Manifest, source: UnitSource): Database {
+export function assembleDatabase(manifest: Manifest, source: UnitSource, options: AssembleOptions = {}): Database {
+    const assembleEntity = options.character ?? assembleCharacter
     const fixed = manifest.fixed
     const database: JsonObject = {}
     copyInto(database, readObjectField(readContent(source, fixed.config, UNIT_TYPE.configRoot, 'config'), 'f', 'config'))
@@ -229,7 +239,7 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource): Databa
             throw new CodecAssembleError(`The order names entity ${u}, which no shard lists.`)
         }
         entries.delete(u)
-        return assembleCharacter(entry, source)
+        return assembleEntity(entry, source)
     })
     if (entries.size > 0) {
         throw new CodecAssembleError(`${entries.size} shard entries are not in the order unit.`)
