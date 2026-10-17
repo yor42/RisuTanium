@@ -32,7 +32,8 @@ export interface ManifestParts {
  * `next` with the fields of the previous manifest this build does not know, at
  * the top level, in `fixed` and in `fixed.pluginStorage`, and with the union of
  * both `req` lists: a writer never drops a field or a requirement a newer build
- * added.
+ * added. A previous keep set (`fixed.legacyKeep`) is carried whole, unknown fields
+ * inside it included, when `next` has none.
  */
 export function carryManifest(prev: Manifest | undefined, next: Manifest): Manifest {
     if (prev === undefined) {
@@ -41,15 +42,18 @@ export function carryManifest(prev: Manifest | undefined, next: Manifest): Manif
     carryUnknownFields(prev, next, KNOWN_FIELDS.manifest)
     carryUnknownFields(prev.fixed, next.fixed, KNOWN_FIELDS.manifestFixed)
     carryUnknownFields(prev.fixed.pluginStorage, next.fixed.pluginStorage, KNOWN_FIELDS.manifestPluginStorage)
+    if (next.fixed.legacyKeep === null && prev.fixed.legacyKeep !== null) {
+        next.fixed.legacyKeep = structuredClone(prev.fixed.legacyKeep)
+    }
     next.req = unionReq(next.req, prev.req)
     return next
 }
 
 /**
- * The manifest body. `legacyKeep` is written null: the legacy list belongs to
- * the conversion step, which must take it from the previous manifest (carrying
- * the unknown fields inside it) before the codec is wired, because a re-encode
- * here erases a previous keep set.
+ * The manifest body. `legacyKeep` is written null here; a re-encode carries the
+ * previous keep set (`carryManifest`), so no plain encode ever releases it to
+ * null. Setting, replacing or releasing it is an explicit step that writes the
+ * next manifest's `legacyKeep` itself (the conversion, the clearing of the old data).
  */
 export function buildManifest(parts: ManifestParts): Manifest {
     return {

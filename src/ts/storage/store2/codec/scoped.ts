@@ -173,10 +173,10 @@ function carriedUnits(previous: PreviousEncoding | null, carriedOwners: Readonly
  * The `chaId`s held by more than one character of `db`, or by more than one handle of the previous encoding. The
  * entity id of a repeated id is matched by occurrence, which a deletion or a reorder of the holders shifts.
  */
-function ambiguousChaIds(db: Database, previous: PreviousEncoding | null): Set<string> {
+function ambiguousChaIds(characters: readonly Slot[], previous: PreviousEncoding | null): Set<string> {
     const ambiguous = new Set<string>()
     const seen = new Set<string>()
-    for (const slot of db.characters) {
+    for (const slot of characters) {
         const chaId = String((slot as { chaId?: unknown } | null)?.chaId ?? '')
         if (seen.has(chaId)) {
             ambiguous.add(chaId)
@@ -208,9 +208,14 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     }
     const entries: ShardEntry[] = []
     const carriedOwners = new Set<string>()
-    const ambiguous = ambiguousChaIds(db, previous)
-    for (let position = 0; position < db.characters.length; position++) {
-        const slot = db.characters[position]
+    // One consistent character list per pass: `db.characters` is read here, before any await, and never again. A
+    // list edit during a yield (splice, reassign, unshift) reaches the next pass, so the committed tree holds exactly
+    // this list. Each slot is encoded synchronously on its turn; an edit inside a slot after its turn is the next
+    // pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
+    const characters: readonly Slot[] = [...db.characters]
+    const ambiguous = ambiguousChaIds(characters, previous)
+    for (let position = 0; position < characters.length; position++) {
+        const slot = characters[position]
         if (typeof slot !== 'object' || slot === null) {
             throw new CodecInputError(`characters[${position}] is not an object.`)
         }
