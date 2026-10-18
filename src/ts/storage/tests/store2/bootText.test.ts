@@ -14,10 +14,13 @@ import type { SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
 import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
 import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
 import {
-    BLOCKED_TABLE, BOOT_LANGUAGES, backupDate, blockedScreen, bootLanguage, confirmConvertScreen, confirmConvertWithoutScreen,
+    BLOCKED_TABLE, BOOT_LANGUAGES, backupDate, blockedBeforeWrite, blockedScreen, bootLanguage, confirmConvertScreen, confirmConvertWithoutScreen,
     confirmFlaggedOpenScreen, confirmFromBackupScreen, confirmIncompleteScreen, declinedScreen, displayName, flaggedLists,
-    foreignMarkerScreen, incompleteList, noticeText, offerScreen, skippedList, stoppedScreen, tooNewScreen,
-    type BootQuestion,
+    foreignMarkerScreen, incompleteList, noticeText, offerScreen, pickButtonKey, pickedManifestKey, recoveryBlockedBeforeWriteScreen,
+    recoveryChangedScreen, recoveryCheckingScreen, recoveryFreshScreen, recoveryInstalledScreen, recoveryInstallScreen,
+    recoveryNoticeScreen, recoveryOffersScreen, recoveryPickScreen, recoveryUnconfirmedScreen, recoveryUnexpectedScreen,
+    recoveryTooNewScreen, recoveryWaitScreen, recoveryWorkingScreen, skippedList, stoppedScreen, tooNewScreen,
+    type BootQuestion, type BootScreenModel, type RecoveryNotice,
 } from 'src/ts/storage/store2/ui/bootText'
 
 beforeEach(() => {
@@ -347,5 +350,164 @@ describe('terminal screens and notices', () => {
     test('the seeded notice tells the person an empty profile was created (W3-Q4)', () => {
         expect(noticeText({ name: 'seeded' })).toBe(language.store2Boot.noticeSeeded)
         expect(language.store2Boot.noticeSeeded).toMatch(/new empty profile/)
+    })
+})
+
+describe('the recovery screens', () => {
+    const text = () => language.store2Boot
+    const MANIFEST = 'store2/m-0000a1234567890123456789ab'
+
+    test('the saved versions are rows keyed by their store key; every other key is not a row', () => {
+        expect(pickedManifestKey(pickButtonKey(MANIFEST))).toBe(MANIFEST)
+        expect(pickedManifestKey('recoveryShowOlder')).toBeNull()
+        const model = recoveryOffersScreen({ shown: [MANIFEST, 'store2/zzz'], hasOlder: true, listFailed: null, offers: { convert: true, freshStart: true } })
+        expect(model.rows?.map((row) => row.key)).toEqual([pickButtonKey(MANIFEST), pickButtonKey('store2/zzz')])
+        expect(model.rows?.[1].label).toBe(text().recoverySavedUnknownTime)
+        expect(model.rows?.[0].label).toMatch(/^Saved /)
+        expect(model.focus).toBeNull()
+    })
+
+    test('the offers appear only when the controller offers them, in a fixed order, and a failed listing says so', () => {
+        const all = recoveryOffersScreen({ shown: [], hasOlder: true, listFailed: null, offers: { convert: true, freshStart: true } })
+        expect(all.buttons.map((button) => button.key)).toEqual(['recoveryShowOlder', 'recoveryConvertOffer', 'recoveryFreshOffer'])
+        const none = recoveryOffersScreen({ shown: [], hasOlder: false, listFailed: null, offers: { convert: false, freshStart: false } })
+        expect(none.buttons).toEqual([])
+        expect(none.paragraphs).toContain(text().recoveryNoCandidates)
+        const failed = recoveryOffersScreen({ shown: [], hasOlder: false, listFailed: 'the listing failed', offers: { convert: false, freshStart: true } })
+        expect(failed.paragraphs).toContain(text().recoveryListFailed)
+        expect(failed.paragraphs).not.toContain(text().recoveryNoCandidates)
+        expect(failed.details).toBe('the listing failed')
+    })
+
+    test('every confirmation has Cancel first and focused, and only the second button agrees', () => {
+        const questions: [string, BootQuestion<boolean>, string][] = [
+            ['pick', recoveryPickScreen(MANIFEST), 'recoveryPickGo'],
+            ['install', recoveryInstallScreen({ checked: true, missingImages: 0, missingInlays: 0, unknownLists: 0 }, null), 'recoveryInstallGo'],
+            ['fresh', recoveryFreshScreen(), 'recoveryFreshGo'],
+        ]
+        for (const [name, question, go] of questions) {
+            expect(keysOf(question), name).toEqual(['recoveryCancel', go])
+            expect(question.model.focus, name).toBe('recoveryCancel')
+            expect(question.answers, name).toEqual({ recoveryCancel: false, [go]: true })
+        }
+        expect(recoveryPickScreen(MANIFEST).model.paragraphs).toEqual([text().recoveryPickBody])
+        expect(recoveryFreshScreen().model.paragraphs).toEqual([text().recoveryFreshBody])
+    })
+
+    test('the checking screen has Skip from its first frame, nothing else, and focus on the heading', () => {
+        const model = recoveryCheckingScreen()
+        expect(model.buttons).toEqual([{ key: 'recoveryCheckSkip', label: text().recoveryCheckSkip }])
+        expect(model.focus).toBeNull()
+        expect(model.paragraphs).toEqual([text().recoveryChecking])
+    })
+
+    describe('the install confirmation in its states', () => {
+        test('counted: exact images, "up to" inlays, and no uncertainty sentence when every list was read', () => {
+            const model = recoveryInstallScreen({ checked: true, missingImages: 3, missingInlays: 2, unknownLists: 0 }, null).model
+            expect(model.paragraphs).toEqual([text().recoveryInstallBody, '3 images this version refers to could not be found.', 'Up to 2 inlays this version refers to could not be found.'])
+        })
+
+        test('counted with nothing missing says so, in words', () => {
+            const model = recoveryInstallScreen({ checked: true, missingImages: 0, missingInlays: 0, unknownLists: 0 }, null).model
+            expect(model.paragraphs.slice(1)).toEqual([text().recoveryMissingImages(0), text().recoveryMissingInlays(0)])
+            expect(text().recoveryMissingImages(1)).toBe('1 image this version refers to could not be found.')
+            expect(text().recoveryMissingInlays(1)).toBe('Up to 1 inlay this version refers to could not be found.')
+        })
+
+        test('counted with lists that could not be checked adds the sentence and says the counts may be incomplete', () => {
+            const model = recoveryInstallScreen({ checked: true, missingImages: 1, missingInlays: 1, unknownLists: 4 }, null).model
+            expect(model.paragraphs.slice(-2)).toEqual([text().recoveryUnknownLists(4), text().recoveryCountsPartial])
+        })
+
+        test('skipped: only the skipped sentence, never the could-not-check one; no number is shown', () => {
+            const model = recoveryInstallScreen({ checked: false, unknownLists: 0 }, 'skipped').model
+            expect(model.paragraphs).toEqual([text().recoveryInstallBody, text().recoveryCountsSkipped])
+            expect(model.paragraphs.join(' ')).not.toMatch(/\d/)
+        })
+
+        test('could not check: only the could-not-check sentence, no number, and install is still the second button', () => {
+            const question = recoveryInstallScreen({ checked: false, unknownLists: 0 }, 'list-failed')
+            expect(question.model.paragraphs).toEqual([text().recoveryInstallBody, text().recoveryCountsUnchecked])
+            expect(question.model.paragraphs.join(' ')).not.toMatch(/\d/)
+            expect(question.answers.recoveryInstallGo).toBe(true)
+            // An unchecked result with no recorded cause is told as a failure, never as a skip.
+            expect(recoveryInstallScreen({ checked: false, unknownLists: 0 }, null).model.paragraphs).not.toContain(text().recoveryCountsSkipped)
+        })
+
+        test('unchecked with lists that could not be checked names them but does not call the (absent) counts incomplete', () => {
+            const model = recoveryInstallScreen({ checked: false, unknownLists: 2 }, 'list-failed').model
+            expect(model.paragraphs).toContain(text().recoveryUnknownLists(2))
+            expect(model.paragraphs).not.toContain(text().recoveryCountsPartial)
+        })
+    })
+
+    test('the ended screens have Reload as their only button, focus on it, and the texts the design names', () => {
+        const ended: [string, BootScreenModel, string[]][] = [
+            ['changed', recoveryChangedScreen(), ['This profile may have been changed somewhere else. Reload to continue.']],
+            ['unexpected', recoveryUnexpectedScreen('boom'), [text().recoveryUnexpected]],
+            ['unconfirmed', recoveryUnconfirmedScreen(), [text().recoveryUnknown]],
+            ['wait', recoveryWaitScreen(), [text().recoveryWaitBody]],
+            ['too new', recoveryTooNewScreen(), [text().recoveryTooNewBody]],
+        ]
+        for (const [name, model, paragraphs] of ended) {
+            expect(model.buttons.map((button) => button.key), name).toEqual(['reload'])
+            expect(model.focus, name).toBe('reload')
+            expect(model.paragraphs, name).toEqual(paragraphs)
+        }
+        expect(recoveryUnexpectedScreen('boom').details).toContain('boom')
+        expect(text().recoveryUnexpected).not.toMatch(/nothing was changed/i)
+        expect(text().recoveryUnknown).not.toMatch(/nothing was changed/i)
+        for (const body of [text().recoveryWaitBody, text().recoveryTooNewBody]) {
+            expect(body).not.toMatch(/nothing was changed|changed nothing/i)
+        }
+        expect(recoveryWaitScreen().title).toBe(text().recoveryStoppedTitle)
+        expect(recoveryTooNewScreen().title).toBe(text().tooNewTitle)
+    })
+
+    test('the working and installed screens have no button', () => {
+        expect(recoveryWorkingScreen().buttons).toEqual([])
+        expect(recoveryInstalledScreen().buttons).toEqual([])
+    })
+
+    test('the notice screens: Back first and focused, and Try again only where a retry is safe', () => {
+        const retryable: RecoveryNotice[] = [{ kind: 'fence-not-durable' }, { kind: 'fence-failed' }, { kind: 'exit-failed' }, { kind: 'install-failed', detail: 'd' }]
+        for (const notice of retryable) {
+            const question = recoveryNoticeScreen(notice)
+            expect(keysOf(question), notice.kind).toEqual(['recoveryBack', 'recoveryRetry'])
+            expect(question.model.focus, notice.kind).toBe('recoveryBack')
+        }
+        const final: RecoveryNotice[] = [
+            { kind: 'not-offered', reason: 'listing-failed', detail: 'd' },
+            { kind: 'problem', problem: { kind: 'missing', keys: ['k'] }, markerStands: false },
+        ]
+        for (const notice of final) {
+            expect(keysOf(recoveryNoticeScreen(notice)), notice.kind).toEqual(['recoveryBack'])
+        }
+    })
+
+    test('a problem names its kind, adds that the profile stays in recovery only when a marker stands, and lists keys in English', () => {
+        const missing = { kind: 'missing', keys: Array.from({ length: 25 }, (_, index) => `store2/u-${index}`) } as const
+        const standing = recoveryNoticeScreen({ kind: 'problem', problem: missing, markerStands: true }).model
+        expect(standing.paragraphs).toEqual([text().recoveryProblemMissing, text().recoveryStaysInRecovery])
+        expect(standing.details).toContain('store2/u-0')
+        expect(standing.details).toContain('and 5 more')
+        const none = recoveryNoticeScreen({ kind: 'problem', problem: { kind: 'damaged', key: 'store2/u-x', reason: 'bad frame' }, markerStands: false }).model
+        expect(none.paragraphs).toEqual([text().recoveryProblemDamaged])
+        expect(none.details).toContain('bad frame')
+    })
+
+    test('a stop before the marker names its reason and that this step wrote nothing, and never "Nothing was changed"', () => {
+        const model = recoveryBlockedBeforeWriteScreen({ reason: 'convert-read-failed', detail: 'x' }).model
+        expect(model.paragraphs).toEqual([text().blockedRead, text().recoveryStepNothingWritten])
+        expect(model.paragraphs).not.toContain(text().blockedNothingChanged)
+        expect(model.buttons.map((button) => button.key)).toEqual(['recoveryBack'])
+    })
+
+    test('whether a reason is a before-write one is read from the table, one answer per reason', () => {
+        for (const reason of BLOCKED_REASONS) {
+            expect(blockedBeforeWrite(reason), reason).toBe(BLOCKED_TABLE[reason].beforeWrite)
+        }
+        expect(blockedBeforeWrite('convert-read-failed')).toBe(true)
+        expect(blockedBeforeWrite('install-failed')).toBe(false)
     })
 })

@@ -177,7 +177,7 @@ interface UiDouble extends Store2BootUi {
     notices: Store2BootNotice[]
     blockedWith: { reason: BlockedReason, detail: string, mayHaveWritten: boolean }[]
     offered: (readonly number[])[]
-    recoveries: { decision: Parameters<Store2BootUi['recovery']>[0]['decision'], session: Store2Session, env: Store2BootEnv }[]
+    recoveries: Parameters<Store2BootUi['recovery']>[0][]
     foreignAsked: Staging[]
     foreignAnswer: 'wait' | 'clear'
     /** The conversion confirmations asked, and the answers given in order (the last one repeats). */
@@ -353,6 +353,8 @@ interface Rig {
     /** Sessions the dispatch opened (one backend per round). */
     rounds(): number
     dispatch(): Promise<Store2BootResult>
+    /** What the dispatch was given for the recovery request's `keyEnv`, `lists` and `decoders`. */
+    given: { keyEnv: KeyEnv, lists: ListDerivation, decoders: LegacyDecoders | undefined }
     /** Every write the page made to the backend or the page store, the owner id excepted. */
     allWrites(): string[]
 }
@@ -389,6 +391,7 @@ function rig(options: RigOptions = {}): Rig {
     const ui = uiDouble()
     ui.commitKeyProbe = async () => (await memory.readCommit()).bytes
     const logs: Logged[] = []
+    const given = { keyEnv: options.keyEnv ?? testEnv(createClock(), 9001), lists: options.lists ?? fakeLists, decoders: options.decoders }
     const dispatch = () => dispatchStore2Boot({
         store,
         upstreamMainFile: typeof mainFile === 'function' ? mainFile : async () => mainFile,
@@ -412,10 +415,10 @@ function rig(options: RigOptions = {}): Rig {
             logs.push(entry)
             return entry.backend
         },
-        keyEnv: options.keyEnv ?? testEnv(createClock(), 9001),
-        lists: options.lists ?? fakeLists,
+        keyEnv: given.keyEnv,
+        lists: given.lists,
         maxRounds: options.maxRounds,
-        decoders: options.decoders,
+        decoders: given.decoders,
     })
     return {
         memory,
@@ -424,6 +427,7 @@ function rig(options: RigOptions = {}): Rig {
         logs,
         rounds: () => logs.length,
         dispatch,
+        given,
         allWrites: () => [
             ...logs.flatMap(entry => entry.writes),
             ...store.writes.filter(key => key !== OWNER_KEY).map(key => `store write ${key}`),
@@ -458,6 +462,14 @@ function expectStoreResult(result: Store2BootResult): Extract<Store2BootResult, 
         throw new Error(`The dispatch answered ${result.kind}.`)
     }
     return result
+}
+
+/** The recovery request carries everything a pick, a conversion or a seed over the session needs. */
+function expectFullRequest(test: Rig, request: Parameters<Store2BootUi['recovery']>[0]): void {
+    expect(request.lists).toBe(test.given.lists)
+    expect(request.keyEnv).toBe(test.given.keyEnv)
+    expect(request.decoders).toBe(test.given.decoders)
+    expect(request.env.store).toBe(test.store)
 }
 
 beforeEach(() => {
@@ -654,7 +666,7 @@ describe('new behaviour: row 5 with a damaged or missing leaf, the confirm gate'
         const world = await seedWorld(richProfile())
         const key = leafKeys(world)[6][1]
         world.memory.poke(key, flipPayload(stored(world, key)))
-        const test = rig({ memory: world.memory })
+        const test = rig({ memory: world.memory, decoders: decodersOf({}) })
         test.ui.flaggedAnswer = 'earlier'
         let writesAtRecovery = -1
         let activeAtRecovery = true
@@ -666,6 +678,7 @@ describe('new behaviour: row 5 with a damaged or missing leaf, the confirm gate'
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
         expect(test.ui.recoveries).toHaveLength(1)
         const request = test.ui.recoveries[0]
+        expectFullRequest(test, request)
         expect(request.decision).toEqual({ row: 6, mode: 'recovery', tree: 'damaged', keys: [key] })
         expect(request.session, 'the session the tree was read with, not a re-opened one').toBe(getStore2BootSession())
         expect(test.rounds()).toBe(1)
@@ -750,7 +763,7 @@ describe('new behaviour: the re-read of the commit key before a finding is acted
         const key = keyOfRef(world.tree.manifest.fixed.order)
         world.memory.poke(key, flipPayload(stored(world, key)))
         let readsAtRecovery = -1
-        const test = rig({ memory: world.memory })
+        const test = rig({ memory: world.memory, decoders: decodersOf({}) })
         test.ui.recovery = async (request) => {
             readsAtRecovery = test.logs[0].calls.readCommit
             test.ui.recoveries.push(request)
@@ -758,6 +771,7 @@ describe('new behaviour: the re-read of the commit key before a finding is acted
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
         expect(test.ui.recoveries).toHaveLength(1)
         const request = test.ui.recoveries[0]
+        expectFullRequest(test, request)
         expect(request.decision).toMatchObject({ row: 6, mode: 'recovery', tree: 'damaged', keys: [key] })
         expect(request.session).toBe(getStore2BootSession())
         // The session read the commit key once to classify, and treeBytes read it again before the recovery screen.
@@ -930,9 +944,10 @@ describe('new behaviour: the recovery rows hand the whole current session to the
     test.each(cases)('%s', async (_label, row, arrange) => {
         const { memory, mainFile } = await arrange()
         const before = memory.snapshot()
-        const test = rig({ memory, mainFile })
+        const test = rig({ memory, mainFile, decoders: decodersOf({}) })
         expect(await test.dispatch()).toEqual({ kind: 'stopped' })
         expect(test.ui.recoveries).toHaveLength(1)
+        expectFullRequest(test, test.ui.recoveries[0])
         expect(test.ui.recoveries[0].decision.row).toBe(row)
         expect(test.ui.recoveries[0].session).toBe(getStore2BootSession())
         expect(test.ui.recoveries[0].env.store).toBe(test.store)

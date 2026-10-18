@@ -43,6 +43,22 @@ import { CommitKeyRecheckError, readTreeBytes } from './treeBytes'
 /** Sessions the dispatch opens at most in one boot. */
 const MAX_ROUNDS = 3
 
+/**
+ * What the recovery screen is given: the whole current session, and everything a pick, a conversion or a seed over it
+ * needs. The staged-unit and marker clock is `keyEnv.now`; the owner id is `session.ownerId`.
+ */
+export interface Store2RecoveryRequest {
+    decision: SessionDecision
+    session: Store2Session
+    env: Store2BootEnv
+    lists: ListDerivation
+    keyEnv: KeyEnv
+    /** The tests' seam of a conversion. */
+    decoders?: LegacyDecoders
+    /** The tests' seam of a conversion. */
+    resolve?: ResolveOptions
+}
+
 /** What the dispatch shows. W3 supplies the screens; the dispatch only calls these. */
 export interface Store2BootUi {
     /** Informational: never awaited. */
@@ -80,7 +96,7 @@ export interface Store2BootUi {
     /** A marker of another owner stands: wait for it, or clear it. */
     foreignMarker(marker: Staging): Promise<'wait' | 'clear'>
     /** The recovery screen, with the whole current session. */
-    recovery(request: { decision: SessionDecision, session: Store2Session, env: Store2BootEnv }): Promise<void>
+    recovery(request: Store2RecoveryRequest): Promise<void>
     peer: Store2PeerHandler
 }
 
@@ -175,6 +191,10 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         return { kind: 'legacy-readonly', reason, notices: [...notices] }
     }
 
+    function recoveryRequest(decision: SessionDecision, session: Store2Session): Store2RecoveryRequest {
+        return { decision, session, env, lists, keyEnv, decoders: deps.decoders, resolve: deps.resolve }
+    }
+
     /** The session's backend as every dispatch path uses it: a mutating call on it sets `mayHaveWritten`. */
     function backendOf(session: Store2Session): Store2Backend | null {
         return session.backend === null ? null : recordingBackend(session.backend, () => { mayHaveWritten = true })
@@ -205,11 +225,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 raise({ name: 'too-new', source: 'tree', detail: read.reason })
                 return { kind: 'stopped' }
             case 'structure':
-                await ui.recovery({
-                    decision: { row: 6, mode: 'recovery', tree: read.tree, keys: read.keys },
-                    session,
-                    env,
-                })
+                await ui.recovery(recoveryRequest({ row: 6, mode: 'recovery', tree: read.tree, keys: read.keys }, session))
                 return { kind: 'stopped' }
             case 'ok':
                 break
@@ -234,11 +250,10 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         if (fallback !== null) {
             const answer = await ui.confirmFlaggedOpen(fallback.items())
             if (answer === 'earlier') {
-                await ui.recovery({
-                    decision: { row: 6, mode: 'recovery', tree: read.flagged.every(leaf => leaf.why === 'missing') ? 'missing' : 'damaged', keys: read.flagged.map(leaf => leaf.key) },
+                await ui.recovery(recoveryRequest(
+                    { row: 6, mode: 'recovery', tree: read.flagged.every(leaf => leaf.why === 'missing') ? 'missing' : 'damaged', keys: read.flagged.map(leaf => leaf.key) },
                     session,
-                    env,
-                })
+                ))
             }
             if (answer !== 'continue') {
                 return { kind: 'stopped' }
@@ -475,7 +490,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             case 8:
             case 10:
             case 11:
-                await ui.recovery({ decision, session, env })
+                await ui.recovery(recoveryRequest(decision, session))
                 return { kind: 'stopped' }
         }
     }

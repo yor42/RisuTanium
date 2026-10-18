@@ -19,9 +19,14 @@ import { ANSWER_GUARD_MS } from 'src/ts/alertPrompts'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
-import { createMemoryBackend } from 'src/ts/storage/store2/backend'
+import type { Database } from 'src/ts/storage/database.svelte'
+import { createMemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
 import { dispatchStore2Boot } from 'src/ts/storage/store2/bootDispatch'
+import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
+import { encodeUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
+import type { LegacyDecoders } from 'src/ts/storage/store2/legacy/convert'
 import { resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import type { Staging } from 'src/ts/storage/store2/owner'
 import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
@@ -30,7 +35,8 @@ import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
 import { getBootScreen, pressBootButton, resetBootScreenForTests, type BootScreenView } from 'src/ts/storage/store2/ui/bootScreen.svelte'
 import { createProductionBootUi } from 'src/ts/storage/store2/ui/productionBootUi'
 import { createClock, testEnv } from '../store2SaveKit'
-import { fakeLists } from './codecFixtures'
+import { buildSmall, fakeLists } from './codecFixtures'
+import { plantTree } from './recoveryFixtures'
 
 /**
  * The production port (`store2/ui/productionBootUi.ts`): one screen per prompt, the mapped answer, and a terminal screen
@@ -311,5 +317,100 @@ describe('the real dispatch with the production port, over rows of the boot tabl
         clearInterval(timer)
         expect(seen.length).toBeGreaterThan(0)
         expect(seen.every((view) => view !== null)).toBe(true)
+    })
+})
+
+describe('the real dispatch with the production port, over a damaged commit key (the recovery screen)', () => {
+    const DAMAGED_COMMIT = Uint8Array.from([0, 1, 2, 250, 251, 252, 253, 254, 255, 62, 63])
+    const decoders: LegacyDecoders = {
+        async strict() { return JSON.parse(JSON.stringify(buildSmall(2))) as Database },
+        async lenient() { throw new Error('The file does not decode, even leniently.') },
+    }
+
+    async function recoveryRig(options: { mainFile: boolean }) {
+        const clock = createClock()
+        const memory = createMemoryBackend()
+        const planted = await plantTree(memory, testEnv(clock, 100), { seq: 5 })
+        memory.poke(COMMIT_KEY, DAMAGED_COMMIT)
+        const store = createMemoryByteStore()
+        if (options.mainFile) {
+            store.files.set('database/database.bin', new Uint8Array([1, 2, 3]))
+        }
+        let commitWrites = 0
+        const backend: Store2Backend = {
+            ...memory,
+            casCommit: (expected, next) => { commitWrites += 1; return memory.casCommit(expected, next) },
+        }
+        const reload = vi.fn()
+        const ui = createProductionBootUi({ reload, browserLanguage: 'en-US' })
+        let settled = false
+        const result = dispatchStore2Boot({
+            store,
+            upstreamMainFile: async () => options.mainFile,
+            listBackupTimes: async () => [],
+            readColdStorageItem: async () => ({ status: 'missing' }),
+        }, { ui, kind: 'indexeddb', backend: async () => backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders })
+        void result.then(() => { settled = true })
+        return { memory, planted, reload, commitWrites: () => commitWrites, settled: () => settled }
+    }
+
+    test('the recovery screen lists the saved versions, writes nothing and keeps the boot waiting', async () => {
+        const t = await recoveryRig({ mainFile: false })
+        const view = await screenAfter(null)
+        expect(view.model.title).toBe(text().recoveryTitle)
+        expect(view.model.rows).toHaveLength(1)
+        expect(view.model.rows?.[0].key).toBe(`pick:${t.planted.manifestKey}`)
+        expect(t.commitWrites()).toBe(0)
+        await sleep(60)
+        expect(t.settled()).toBe(false)
+        expect(getBootScreen()?.model).toBe(view.model)
+    })
+
+    test('a conversion pressed twice runs once: the second press finds the question already answered', async () => {
+        const t = await recoveryRig({ mainFile: true })
+        const offers = await screenAfter(null)
+        expect(keys(offers)).toContain('recoveryConvertOffer')
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('recoveryConvertOffer')
+        const confirm = await screenAfter(offers)
+        expect(confirm.model.title).toBe(text().convertTitle)
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('convertYes')
+        pressBootButton('convertYes')
+        await vi.waitFor(() => expect(t.reload).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        // The marker and the final write: a second conversion would add two more.
+        expect(t.commitWrites()).toBe(2)
+        expect(getBootScreen()?.model.title).toBe(text().recoveryInstalledTitle)
+        expect(t.settled()).toBe(false)
+    })
+
+    test('an ended screen stays: a change made elsewhere before the install stops the screen, Reload reloads, and the boot never settles', async () => {
+        const t = await recoveryRig({ mainFile: false })
+        const offers = await screenAfter(null)
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton(`pick:${t.planted.manifestKey}`)
+        const confirm = await screenAfter(offers)
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('recoveryPickGo')
+        await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryInstallTitle), { timeout: 5000 })
+        expect(getBootScreen()?.model).not.toBe(confirm.model)
+
+        // Another tab clears the marker: the install's compare-and-write finds the key changed.
+        const cleared = classifyCommitRead(await t.memory.readCommit())
+        if (cleared.status !== 'parsed') {
+            throw new Error('The screen did not write its marker.')
+        }
+        t.memory.poke(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, nextCommitKey(cleared.value, { current: null, retained: [], pins: [], staging: null }, testEnv(createClock(), 4040))))
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('recoveryInstallGo')
+        await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryStoppedTitle), { timeout: 5000 })
+        expect(getBootScreen()?.model.paragraphs).toEqual([text().recoveryChanged])
+        expect(keys(getBootScreen()!)).toEqual(['reload'])
+
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('reload')
+        expect(t.reload).toHaveBeenCalledTimes(1)
+        expect(getBootScreen()).not.toBeNull()
+        expect(t.settled()).toBe(false)
     })
 })

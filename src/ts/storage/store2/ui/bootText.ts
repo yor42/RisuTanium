@@ -1,10 +1,13 @@
 import { language } from 'src/lang'
+import { parseStore2Key } from '../format'
 import type { StagingLabel } from '../format/types'
 import type { Staging } from '../owner'
 import type { BlockedReason, Store2BootNotice } from '../bootActive'
 import type { SkippedLegacyEntry } from '../legacy/lenient'
 import type { IncompleteItem } from '../legacy/resolve'
 import type { FlaggedItem } from '../leafFallback'
+import type { ScreenOffers } from '../recovery'
+import type { MissingCounts, PickProblem } from '../recoveryPick'
 import type { CharacterPart } from '../treeBytes'
 
 /**
@@ -40,6 +43,8 @@ export interface BootScreenModel {
     buttons: readonly BootButton[]
     /** The key of the button that takes initial focus; `null` puts focus on the heading. */
     focus: string | null
+    /** The saved versions the recovery screen lists, one button each in DOM order; absent on every other screen. */
+    rows?: readonly BootButton[]
 }
 
 /** A screen that waits for one of its buttons; `answers` maps each button key to what the dispatch is told. */
@@ -453,6 +458,279 @@ export function blockedScreen(blocked: { reason: BlockedReason, detail: string, 
     const entry = BLOCKED_TABLE[blocked.reason]
     const paragraphs = entry.beforeWrite && !blocked.mayHaveWritten ? [blockedKindText(entry.kind), text.blockedNothingChanged] : [blockedKindText(entry.kind)]
     return terminal(text.blockedTitle, paragraphs, `${text.blockedDetailsHeading}: ${blocked.reason}: ${blocked.detail}`, 'reload')
+}
+
+//#endregion
+
+//#region recovery
+
+/** The button key of a saved version row is this prefix and the version's store key. */
+const PICK_PREFIX = 'pick:'
+
+export function pickButtonKey(manifestKey: string): string {
+    return PICK_PREFIX + manifestKey
+}
+
+/** The store key a saved-version button stands for, or null for any other button. */
+export function pickedManifestKey(buttonKey: string): string | null {
+    return buttonKey.startsWith(PICK_PREFIX) ? buttonKey.slice(PICK_PREFIX.length) : null
+}
+
+/** The time digits of a manifest key are whole seconds; a key of no known form has no date. */
+function savedDate(manifestKey: string): string | null {
+    const shape = parseStore2Key(manifestKey)
+    return shape !== null && (shape.shape === 'manifest' || shape.shape === 'staged-manifest') ? formatTime(shape.seconds * 1000) : null
+}
+
+function savedLabel(manifestKey: string): string {
+    const text = language.store2Boot
+    const date = savedDate(manifestKey)
+    return date === null ? text.recoverySavedUnknownTime : text.recoverySavedLine(date)
+}
+
+export interface RecoveryOffersInput {
+    /** The saved versions listed so far, newest first. */
+    shown: readonly string[]
+    /** Whether older ones remain behind "Show older versions". */
+    hasOlder: boolean
+    /** The English detail when listing the saved versions failed; null when it did not. */
+    listFailed: string | null
+    offers: Pick<ScreenOffers, 'convert' | 'freshStart'>
+}
+
+/** The recovery screen proper. Every button only opens a confirmation, so focus goes to the heading. */
+export function recoveryOffersScreen(input: RecoveryOffersInput): BootScreenModel {
+    const text = language.store2Boot
+    const paragraphs = [text.recoveryBody]
+    if (input.listFailed !== null) {
+        paragraphs.push(text.recoveryListFailed)
+    } else if (input.shown.length === 0) {
+        paragraphs.push(text.recoveryNoCandidates)
+    }
+    const buttons: BootButton[] = []
+    if (input.hasOlder) {
+        buttons.push({ key: 'recoveryShowOlder', label: text.recoveryShowOlder })
+    }
+    if (input.offers.convert) {
+        buttons.push({ key: 'recoveryConvertOffer', label: text.recoveryConvertOffer })
+    }
+    if (input.offers.freshStart) {
+        buttons.push({ key: 'recoveryFreshOffer', label: text.recoveryFreshOffer })
+    }
+    return {
+        title: text.recoveryTitle,
+        paragraphs,
+        lists: [],
+        details: input.listFailed,
+        buttons,
+        focus: null,
+        rows: input.shown.map((key) => ({ key: pickButtonKey(key), label: savedLabel(key) })),
+    }
+}
+
+/** A confirmation: Cancel first and focused (it writes nothing), the action second. */
+function recoveryConfirm(title: string, paragraphs: readonly string[], goKey: string, goLabel: string): BootQuestion<boolean> {
+    const text = language.store2Boot
+    return {
+        model: {
+            title,
+            paragraphs,
+            lists: [],
+            details: null,
+            buttons: [{ key: 'recoveryCancel', label: text.recoveryCancel }, { key: goKey, label: goLabel }],
+            focus: 'recoveryCancel',
+        },
+        answers: { recoveryCancel: false, [goKey]: true },
+    }
+}
+
+/** Asked before the first pick writes anything, and while this screen holds no marker of its own. */
+export function recoveryPickScreen(manifestKey: string): BootQuestion<boolean> {
+    const text = language.store2Boot
+    const title = text.recoveryPickTitle(savedDate(manifestKey) ?? text.recoverySavedUnknownTime)
+    return recoveryConfirm(title, [text.recoveryPickBody], 'recoveryPickGo', text.recoveryPickGo)
+}
+
+/** The wait for a pick: no answer writes. Skip is there from the first frame, and there is no Cancel, which would drop the marker the pick writes. */
+export function recoveryCheckingScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return {
+        title: text.recoveryCheckingTitle,
+        paragraphs: [text.recoveryChecking],
+        lists: [],
+        details: null,
+        buttons: [{ key: 'recoveryCheckSkip', label: text.recoveryCheckSkip }],
+        focus: null,
+    }
+}
+
+/**
+ * The confirmation before the install. An unchecked result has no number to show, so it is never rendered as one; the
+ * lists that could not be checked are named whether or not the counts exist.
+ */
+export function recoveryInstallScreen(counts: MissingCounts, cause: 'skipped' | 'list-failed' | null): BootQuestion<boolean> {
+    const text = language.store2Boot
+    const paragraphs: string[] = [text.recoveryInstallBody]
+    if (counts.checked) {
+        paragraphs.push(text.recoveryMissingImages(counts.missingImages), text.recoveryMissingInlays(counts.missingInlays))
+    } else {
+        paragraphs.push(cause === 'skipped' ? text.recoveryCountsSkipped : text.recoveryCountsUnchecked)
+    }
+    if (counts.unknownLists > 0) {
+        paragraphs.push(text.recoveryUnknownLists(counts.unknownLists))
+        if (counts.checked) {
+            paragraphs.push(text.recoveryCountsPartial)
+        }
+    }
+    return recoveryConfirm(text.recoveryInstallTitle, paragraphs, 'recoveryInstallGo', text.recoveryInstallGo)
+}
+
+export function recoveryFreshScreen(): BootQuestion<boolean> {
+    const text = language.store2Boot
+    return recoveryConfirm(text.recoveryFreshTitle, [text.recoveryFreshBody], 'recoveryFreshGo', text.recoveryFreshGo)
+}
+
+/** A convert or a seed that is running: nothing to press. */
+export function recoveryWorkingScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return { title: text.recoveryWorkingTitle, paragraphs: [text.working], lists: [], details: null, buttons: [], focus: null }
+}
+
+export function recoveryInstalledScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return { title: text.recoveryInstalledTitle, paragraphs: [text.recoveryInstalledBody], lists: [], details: null, buttons: [], focus: null }
+}
+
+/** The screen stops writing and asks for a reload: another writer may have changed the profile, or the key moved under a write that did not land. */
+export function recoveryChangedScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return terminal(text.recoveryStoppedTitle, [text.recoveryChanged], null, 'reload')
+}
+
+/** Makes no claim that nothing was written: a marker may have landed. The English message goes under Details. */
+export function recoveryUnexpectedScreen(message: string): BootScreenModel {
+    const text = language.store2Boot
+    return terminal(text.recoveryStoppedTitle, [text.recoveryUnexpected], `${text.blockedDetailsHeading}: ${message}`, 'reload')
+}
+
+/** The person chose to wait for another operation. An earlier step on this screen may have written, so no claim that nothing changed. */
+export function recoveryWaitScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return terminal(text.recoveryStoppedTitle, [text.recoveryWaitBody], null, 'reload')
+}
+
+/** Data from a newer version. An earlier step on this screen may have written, so no claim that nothing changed. */
+export function recoveryTooNewScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return terminal(text.tooNewTitle, [text.recoveryTooNewBody], null, 'reload')
+}
+
+export function recoveryUnconfirmedScreen(): BootScreenModel {
+    const text = language.store2Boot
+    return terminal(text.recoveryStoppedTitle, [text.recoveryUnknown], null, 'reload')
+}
+
+/** A problem the person can act on, with what the step left behind named in its text. */
+export type RecoveryNotice =
+    | { kind: 'fence-not-durable' }
+    | { kind: 'fence-failed' }
+    | { kind: 'exit-failed' }
+    | { kind: 'not-offered', reason: 'listing-failed' | 'fence-unreadable', detail: string }
+    | { kind: 'install-failed', detail: string }
+    | { kind: 'problem', problem: PickProblem, markerStands: boolean }
+
+function problemText(problem: PickProblem): string {
+    const text = language.store2Boot
+    switch (problem.kind) {
+        case 'missing':
+            return text.recoveryProblemMissing
+        case 'damaged':
+            return text.recoveryProblemDamaged
+        case 'too-new':
+            return text.recoveryProblemTooNew
+        case 'unreadable':
+            return text.recoveryProblemUnreadable
+    }
+}
+
+const PROBLEM_KEYS_SHOWN = 20
+
+/** English diagnostic text for a problem: internal store keys, never user data. */
+function problemDetails(problem: PickProblem): string {
+    switch (problem.kind) {
+        case 'missing': {
+            const more = problem.keys.length - PROBLEM_KEYS_SHOWN
+            return `${problem.keys.slice(0, PROBLEM_KEYS_SHOWN).join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+        }
+        case 'damaged':
+        case 'too-new':
+            return `${problem.key}: ${problem.reason}`
+        case 'unreadable':
+            return problem.cause.message
+    }
+}
+
+/**
+ * A screen that ends in "Back" (nothing more to do) or, where a retry is safe, "Back" and "Try again". Back is first and
+ * takes focus: it writes nothing.
+ */
+export function recoveryNoticeScreen(notice: RecoveryNotice): BootQuestion<'back' | 'retry'> {
+    const text = language.store2Boot
+    const back: BootButton = { key: 'recoveryBack', label: text.recoveryBack }
+    const retry: BootButton = { key: 'recoveryRetry', label: text.recoveryRetry }
+    const answers: Record<string, 'back' | 'retry'> = { recoveryBack: 'back', recoveryRetry: 'retry' }
+    const screen = (title: string, paragraphs: readonly string[], details: string | null, retryable: boolean): BootQuestion<'back' | 'retry'> => ({
+        model: { title, paragraphs, lists: [], details, buttons: retryable ? [back, retry] : [back], focus: 'recoveryBack' },
+        answers,
+    })
+    switch (notice.kind) {
+        case 'fence-not-durable':
+            return screen(text.recoveryResultTitle, [text.recoveryFenceNotDurable], null, true)
+        case 'fence-failed':
+            return screen(text.recoveryResultTitle, [text.recoveryFenceFailed], null, true)
+        case 'exit-failed':
+            return screen(text.recoveryResultTitle, [text.recoveryExitFailed], null, true)
+        case 'not-offered':
+            return screen(
+                text.recoveryResultTitle,
+                [notice.reason === 'listing-failed' ? text.recoveryNotOfferedListing : text.recoveryNotOfferedFence],
+                `${text.blockedDetailsHeading}: ${notice.detail}`,
+                false,
+            )
+        case 'install-failed':
+            return screen(text.recoveryResultTitle, [text.recoveryInstallFailed, text.recoveryStaysInRecovery], `${text.blockedDetailsHeading}: ${notice.detail}`, true)
+        case 'problem':
+            return screen(
+                text.recoveryProblemTitle,
+                notice.markerStands ? [problemText(notice.problem), text.recoveryStaysInRecovery] : [problemText(notice.problem)],
+                `${text.blockedDetailsHeading}: ${problemDetails(notice.problem)}`,
+                false,
+            )
+    }
+}
+
+/** Whether a blocked reason implies that nothing was written: the test of the conversion and seed result handler. */
+export function blockedBeforeWrite(reason: BlockedReason): boolean {
+    return BLOCKED_TABLE[reason].beforeWrite
+}
+
+/**
+ * A conversion or seed that stopped before any write of its own: the reason, and that this step wrote nothing. The shared
+ * "Nothing was changed" is not used, because an earlier pick on the same screen may have written its marker.
+ */
+export function recoveryBlockedBeforeWriteScreen(blocked: { reason: BlockedReason, detail: string }): BootQuestion<'back'> {
+    const text = language.store2Boot
+    return {
+        model: {
+            title: text.blockedTitle,
+            paragraphs: [blockedKindText(BLOCKED_TABLE[blocked.reason].kind), text.recoveryStepNothingWritten],
+            lists: [],
+            details: `${text.blockedDetailsHeading}: ${blocked.reason}: ${blocked.detail}`,
+            buttons: [{ key: 'recoveryBack', label: text.recoveryOk }],
+            focus: 'recoveryBack',
+        },
+        answers: { recoveryBack: 'back' },
+    }
 }
 
 //#endregion

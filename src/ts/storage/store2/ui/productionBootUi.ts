@@ -7,10 +7,11 @@ import {
     confirmIncompleteScreen, declinedScreen, foreignMarkerScreen, offerScreen, stoppedScreen, tooNewScreen, blockedScreen,
     type BootQuestion, type BootScreenModel,
 } from './bootText'
+import { runRecovery } from './recoveryController'
 
 /**
  * The port the page registers for the store2 boot: every prompt is a boot screen, and a boot that stops leaves a screen
- * up. `recovery` and `peer` are still the placeholders of a build without those screens.
+ * up. `peer` is still the placeholder of a build without that screen.
  *
  * Invariants:
  *  - The language is set from the browser before any screen is built, because the screens read it at build time.
@@ -118,8 +119,13 @@ export function createProductionBootUi(options: ProductionBootUiOptions = {}): S
             return answer
         },
         recovery: (request) => {
-            console.warn('[store2 boot] recovery', request.decision)
-            return open<void>()
+            ensureLanguage()
+            return runRecovery(request, {
+                ask: askBootScreen,
+                show: (model) => showTerminalBootScreen(model, () => { }),
+                terminal,
+                reload,
+            })
         },
         peer: {
             parkedClean: (prompt) => console.warn('[store2 boot] parked', prompt),

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { language } from 'src/lang'
     import { getBootScreen, pressBootButton } from 'src/ts/storage/store2/ui/bootScreen.svelte'
+    import RecoveryScreen from './RecoveryScreen.svelte'
 
     // Names in the lists are the user's own text: they are only ever rendered as text nodes, never as markup.
     const view = $derived(getBootScreen())
@@ -38,6 +39,9 @@
                         {/each}
                     </ul>
                 {/each}
+                {#if view.model.rows !== undefined}
+                    <RecoveryScreen rows={view.model.rows} disabled={view.answered} />
+                {/if}
                 {#if view.model.details !== null}
                     <p class="text-xs text-textcolor2 whitespace-pre-wrap wrap-break-word">{view.model.details}</p>
                 {/if}
