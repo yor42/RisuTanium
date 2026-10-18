@@ -74,8 +74,9 @@ import { buildSmall, fakeLists, seededEnv, type Obj } from 'src/ts/storage/tests
  * character through the cold-storage reader, which answers from the residency; a character it cannot read whole makes
  * the set of kept inlays incomplete, so nothing is deleted. Each case but the last takes its candidates from a character
  * removed whole or from a stub read through the reader, asserts that the candidate set is not empty, and pairs a kept
- * inlay with one that must go (or an unreadable stub with nothing deleted). The last case, labelled `guard:`, has no
- * candidates and passes without the redirect. The memory backend is a stand-in for the page's store.
+ * inlay with one found unreferenced (or an unreadable stub with nothing deleted). A store2 page deletes no inlay at all
+ * (`inlayCleanup.store2Refusal.test.ts`), so the unreferenced inlay is counted, not removed. The last case, labelled
+ * `guard:`, has no candidates and passes without the redirect. The memory backend is a stand-in for the page's store.
  */
 
 const NOW = 1_700_000_000_000
@@ -83,6 +84,8 @@ const token = (id: string) => `{{inlayed::${id}}}`
 const X = 'aaaaaaaa-0000-4000-8000-0000000000a1'
 const Y = 'aaaaaaaa-0000-4000-8000-0000000000a2'
 const W = 'aaaaaaaa-0000-4000-8000-0000000000a3'
+/** What the batch reports when a store2 page refuses to delete: the reader redirect is still exercised, the deletion is not. */
+const STORE2_REFUSAL = 'inlay deletion is off on this page'
 
 interface Page {
     memory: MemoryBackend
@@ -182,15 +185,15 @@ afterEach(() => {
 })
 
 describe('the clean-up reads an unloaded character through the reader', () => {
-    test('an inlay that a stub still shows is kept, and one that nothing shows is deleted', async () => {
+    test('an inlay that a stub still shows is kept, and one that nothing shows is found unreferenced but not deleted on a store2 page', async () => {
         // The removed character shows X and Y; the stub shows Y.
         const page = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
 
         const log = await runCleanup([page.removed])
 
         expect(log.candidates).toBe(2)
-        expect(deleted()).toEqual([X])
-        expect(log).toMatchObject({ kept: 1, deleted: 1, skipped: null })
+        expect(deleted()).toEqual([])
+        expect(log).toMatchObject({ kept: 1, deleted: 0, skipped: STORE2_REFUSAL })
     })
 
     test('a stub purged from the trash gives its inlays as candidates, and another stub keeps the one it shows', async () => {
@@ -198,7 +201,8 @@ describe('the clean-up reads an unloaded character through the reader', () => {
         const log = await runCleanup([stubFromEntry(page.removedEntry) as unknown as Obj])
 
         expect(log.candidates).toBe(2)
-        expect(deleted()).toEqual([X])
+        expect(log.kept).toBe(1)
+        expect(deleted()).toEqual([])
     })
 
     test('a stub with an absent chunk makes the walk incomplete: nothing is deleted although another of its chats is intact and shows the inlay', async () => {
@@ -242,7 +246,7 @@ describe('a summary of a store2 entity is never remembered (N4)', () => {
         const first = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
         const stubU = first.stubs[0].u
         expect((await runCleanup([first.removed])).kept).toBe(1)
-        expect(deleted()).toEqual([X])
+        expect(deleted()).toEqual([])
         vi.mocked(removeInlayAsset).mockClear()
         resetResidencyForTest()
 
@@ -252,8 +256,8 @@ describe('a summary of a store2 entity is never remembered (N4)', () => {
         const log = await runCleanup([second.removed])
 
         expect(log.candidates).toBe(2)
-        expect(deleted()).toEqual([X])
-        expect(log).toMatchObject({ kept: 1, deleted: 1 })
+        expect(deleted()).toEqual([])
+        expect(log).toMatchObject({ kept: 1, deleted: 0 })
     })
 })
 
@@ -283,7 +287,7 @@ describe('the boot purge, with the residency registered as the boot registers it
         const log = await runCleanup([purged])
 
         expect(log.candidates).toBe(2)
-        expect(deleted()).toEqual([X])
-        expect(log).toMatchObject({ kept: 1, deleted: 1, skipped: null })
+        expect(deleted()).toEqual([])
+        expect(log).toMatchObject({ kept: 1, deleted: 0, skipped: STORE2_REFUSAL })
     })
 })

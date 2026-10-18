@@ -27,7 +27,7 @@ import {
     type BootLoadUi,
     type BootNotice,
 } from "./storage/bootBlockLoad";
-import { getPageStorageMode, isAssetSweepHeld, setPageStorageMode } from "./storage/pageStorageMode";
+import { getPageStorageMode, isAssetSweepHeld, recordsLoadTimeListing, setPageStorageMode, startsLegacyStartupCleanup } from "./storage/pageStorageMode";
 import { fingerprintMainFile } from "./storage/mainFileFingerprint";
 import { dropRisuSaveCache } from "./storage/risuSaveCacheDrop";
 import { updateAnimationSpeed } from "./gui/animation";
@@ -525,7 +525,9 @@ export async function loadData() {
             // listing has settled before that can happen.
             LoadingStatusState.text = "Listing Stored Files..."
             try {
-                await recordLoadTimeListing()
+                if (recordsLoadTimeListing()) {
+                    await recordLoadTimeListing()
+                }
             } catch (error) { }
 
             // The restore-all count only matters while a V2.1 plugin is enabled
@@ -596,8 +598,8 @@ export async function loadData() {
             // Recording attaches handlers to the promise, which marks a failure
             // as handled so it never reaches the `unhandledrejection` handler;
             // it is reported here the same way. The call stays un-awaited.
-            // The legacy clean-up reads and deletes block-era keys; a store2 page owns none, and its collection is not this.
-            if (getPageStorageMode().kind !== 'store2') {
+            // The legacy clean-up reads and deletes block-era keys; only a legacy or block page owns them, and a store2 page's collection is not this.
+            if (startsLegacyStartupCleanup()) {
                 const startupCleanup = cleanChunks()
                 recordStartupCleanup(startupCleanup)
                 startupCleanup.catch((error) => {

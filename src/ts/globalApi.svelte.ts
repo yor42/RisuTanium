@@ -41,7 +41,7 @@ import { SaveParkError, heldSaveStore, type HeldSaveInfo } from "./storage/saveH
 import { isCharacterEntry, isMissingCharacterId, isUsableCharacterId } from "./storage/characterIds";
 import { FILE_HEADER_V1 } from "./storage/blockFrame";
 import { getPageBlockOwner } from "./storage/pageBlockOwner";
-import { getPageStorageMode } from "./storage/pageStorageMode";
+import { getPageStorageMode, pageRunsLegacyDeleters } from "./storage/pageStorageMode";
 import { packedForLayout, performSaveStep, type SaveStep } from "./storage/saveStep";
 import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
@@ -2615,7 +2615,8 @@ export async function getDbBackups() {
         }
     }
     backups.sort((a, b) => b.time - a.time)
-    while (backups.length > 20) {
+    // Only a legacy or block page owns the numbered backups it prunes; every other page lists them and deletes none.
+    while (pageRunsLegacyDeleters() && backups.length > 20) {
         // Unconditional: another tab removing the same oldest backup first is
         // not an error, and a backup is never overwritten, so there is no newer
         // value of it to protect.

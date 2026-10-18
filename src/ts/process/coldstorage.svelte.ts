@@ -18,6 +18,7 @@ import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./co
 import { beginChokePoint } from "./memory/busyActions"
 import { noteReadSize, noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 import { getResidency, isEntityUnitKey, noteResidencyRead } from "../storage/store2/residencyActive"
+import { getPageStorageMode, pageRunsLegacyDeleters } from "../storage/pageStorageMode"
 
 export {
     coldStorageHeader,
@@ -546,6 +547,11 @@ export async function listColdStorageItems():Promise<{items:string[]}> {
  * and nothing that only stores or loads cold data needs it.
  */
 export async function cleanColdStorage(){
+    // A read-only page goes on to `runManualCleanup`, which tells the person why; a store2 or undecided page stops here.
+    if (!pageRunsLegacyDeleters() && getPageStorageMode().kind !== 'read-only') {
+        console.warn('The manual clean-up is not available on this page.')
+        return
+    }
     const { runManualCleanup } = await import("../storage/manualCleanup")
     await runManualCleanup()
 }

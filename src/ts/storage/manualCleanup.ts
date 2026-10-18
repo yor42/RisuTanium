@@ -28,6 +28,7 @@ import { fingerprintMainFile, isPreBlocksKey } from "./mainFileFingerprint"
 import { compareWithMainFileRecord } from "./mainFileRecord"
 import { getPageBlockOwner } from "./pageBlockOwner"
 import { decodeRisuSave } from "./risuSave"
+import { pageRunsLegacyDeleters } from "./pageStorageMode"
 import { refuseOnReadOnlyPage } from "./readOnlyPage"
 import { getAppStore } from "./store/appStore"
 import type { ByteStore } from "./store/contract"
@@ -933,6 +934,14 @@ async function cleanExclusively(own: BusyHandle): Promise<void> {
  * is checked as well: it cannot hold a lock, so it counts as no Web Locks.
  */
 export async function runManualCleanup(): Promise<void> {
+    // Only a legacy or block page owns what this clean-up deletes. A read-only page gets its usual words; a store2 or
+    // undecided page returns before any read (the Settings button is hidden there, so this is the backstop).
+    if (!pageRunsLegacyDeleters()) {
+        if (!await refuseOnReadOnlyPage()) {
+            console.warn('The manual clean-up is not available on this page.')
+        }
+        return
+    }
     // A page that runs from OPFS this time writes nothing: the clean-up is refused before it reads or deletes anything.
     if (await refuseOnReadOnlyPage()) {
         return

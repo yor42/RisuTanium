@@ -8,12 +8,17 @@ import {
     getPageStorageMode,
     holdAssetSweep,
     isAssetSweepHeld,
+    modeRunsLegacyDeleters,
     noteMainFileLeftOverLimit,
+    pageRunsLegacyDeleters,
     pendingConvertedFrom,
+    recordsLoadTimeListing,
     resetPageStorageModeForTests,
     setPageStorageMode,
+    startsLegacyStartupCleanup,
     takeMainFileLeftOverLimit,
 } from 'src/ts/storage/pageStorageMode'
+import type { PageStorageMode } from 'src/ts/storage/pageStorageMode'
 
 beforeEach(() => {
     resetPageStorageModeForTests()
@@ -56,6 +61,32 @@ describe('the storage mode', () => {
 
         expect(getPageStorageMode()).toEqual({ kind: 'block' })
         expect(pendingConvertedFrom()).toBeUndefined()
+    })
+})
+
+/**
+ * Labels: guard (the predicate and the two boot decisions are new functions, so no case can fail on the base for the
+ * intended reason). The `read-only` and `unset` rows kill a predicate written as `kind !== 'store2'`.
+ */
+describe('which pages may run the legacy deleters', () => {
+    const modes: Array<[string, PageStorageMode, boolean]> = [
+        ['a legacy page', { kind: 'legacy', convertedFrom: null }, true],
+        ['a block page', { kind: 'block' }, true],
+        ['a store2 page', { kind: 'store2' }, false],
+        ['a read-only page', { kind: 'read-only' }, false],
+        ['a page boot has not decided for', { kind: 'unset' }, false],
+    ]
+
+    test.each(modes)('%s: the mode answers %s', (_label, mode, expected) => {
+        expect(modeRunsLegacyDeleters(mode)).toBe(expected)
+    })
+
+    test.each(modes)('%s: the page, the startup clean-up and the load-time listing follow the mode', (_label, mode, expected) => {
+        setPageStorageMode(mode)
+
+        expect(pageRunsLegacyDeleters()).toBe(expected)
+        expect(startsLegacyStartupCleanup()).toBe(expected)
+        expect(recordsLoadTimeListing()).toBe(expected)
     })
 })
 

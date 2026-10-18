@@ -53,6 +53,38 @@ export function pendingConvertedFrom(): string | undefined {
     return mode.kind === 'legacy' && mode.convertedFrom !== null ? mode.convertedFrom : undefined
 }
 
+/**
+ * Whether a page in this mode may run the deleters of the block and main-file
+ * era: the numbered-backup prune, the manual clean-up, the startup clean-up and
+ * the boot listing that feeds it. Only `legacy` and `block` pages own the keys
+ * those deleters remove. A `store2` page owns different keys and a `read-only`
+ * page writes nothing; an `unset` page has not been decided yet, so it must not
+ * delete either. Callers test this positive answer, never `kind !== 'store2'`:
+ * a mode added later stays refused until it is named here.
+ */
+export function modeRunsLegacyDeleters(candidate: PageStorageMode): boolean {
+    return candidate.kind === 'legacy' || candidate.kind === 'block'
+}
+
+/** `modeRunsLegacyDeleters` for this page's current mode. */
+export function pageRunsLegacyDeleters(): boolean {
+    return modeRunsLegacyDeleters(mode)
+}
+
+/** Whether boot starts the legacy startup clean-up (remote blocks and the asset sweep) on this page. */
+export function startsLegacyStartupCleanup(): boolean {
+    return pageRunsLegacyDeleters()
+}
+
+/**
+ * Whether boot records the load-time listing of units and assets. Its only
+ * consumer is the manual clean-up, so a page that refuses that clean-up does
+ * not pay for the listing.
+ */
+export function recordsLoadTimeListing(): boolean {
+    return pageRunsLegacyDeleters()
+}
+
 // -- the startup asset sweep --------------------------------------------------
 
 /**
