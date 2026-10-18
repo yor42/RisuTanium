@@ -580,8 +580,8 @@ export async function loadData() {
             selectedCharID.set(-1)
             startObserveDom()
             assignIds()
-            // A store2 page has no stubs and no cold-storage put-back: it keeps every character resident.
-            if (getPageStorageMode().kind !== 'read-only' && getPageStorageMode().kind !== 'store2') {
+            // A store2 page starts the put-back too: it unloads a loaded, unchanged character through the residency, not the cold-storage re-archive.
+            if (getPageStorageMode().kind !== 'read-only') {
                 try {
                     startCharacterPutBack()
                 } catch (error) {

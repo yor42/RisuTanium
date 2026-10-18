@@ -18,8 +18,9 @@
  *   database holds the stub of its entity; the real cold-storage reader loads the
  *   character from the store2 units (the residency the kit registers). The
  *   zero-write expectations hold because the load hydrates the units' digests and
- *   tells the identity tracker the installed object is not new. The unload half of
- *   the fixture stays with the put-back step.
+ *   tells the identity tracker the installed object is not new. The unload half
+ *   starts the real put-back in the world's graph: once the page moves on, the
+ *   unchanged loaded character is a stub again and nothing is written.
  * - `test.fails` also passes on a setup failure or a timeout, so a flip must
  *   re-run the test as a plain `test`.
  *
@@ -38,7 +39,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { incompressible, makeCharacter, makeDb } from 'src/ts/storage/tests/saveLoopSupport'
-import { createWorldKit, nextCommit, settled, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
+import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { stubFromEntry } from 'src/ts/storage/store2/codec'
 import { startStore2, store2Boot, type Hooks, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -317,7 +318,7 @@ describe('the rewritten save path writes in proportion to what changed', () => {
      * The store is seeded from the full database; the page holds the character as the stub of its entity and booted it as a
      * stub (its units were not read, so they carry no digest). The real cold-storage reader serves the load.
      */
-    async function startArchivedOpen(): Promise<ReactiveWorld & { baseReads: () => number, slot: () => Entry, restore: () => Promise<{ status: string }> }> {
+    async function startArchivedOpen(onBefore?: Hooks['before']): Promise<ReactiveWorld & { baseReads: () => number, slot: () => Entry, restore: () => Promise<{ status: string }> }> {
         const full = makeCharacter('x')
         full.chats = [{ id: 'x-chat', message: [{ role: 'char', data: incompressible(50_000), time: 1 }], note: '', name: '', localLore: [] }]
         const stored = makeDb('p', ['y'])
@@ -331,10 +332,11 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         })
         let reads = 0
         const world = await startReactive(stored as unknown as Database, {
-            before: (name) => {
+            before: (name, count) => {
                 if (name === 'readCommit') {
                     reads += 1
                 }
+                return onBefore?.(name, count)
             },
         }, (started) => {
             // The page holds the stub of the entity the seeded tree holds for the character.
@@ -405,5 +407,202 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         expect(outcome.status).toBe('restored')
         expect(open.w.api.isSaveClean()).toBe(true)
         expect(open.baseReads()).toBe(readsBefore)
+    })
+
+    /** Starts the put-back in the world's graph, as the boot does after the database is installed. */
+    async function startPutBack(): Promise<() => void> {
+        const { startCharacterPutBack } = await import('src/ts/process/memory/characterPutBack')
+        return startCharacterPutBack()
+    }
+
+    const indexOf = (open: ReactiveWorld, chaId: string): number => (open.db.characters as Entry[]).findIndex((c) => c.chaId === chaId)
+
+    const isStub = (open: { slot: () => Entry }): boolean => typeof open.slot().coldstorage === 'string'
+    const xData = (open: { slot: () => Entry }): Entry => ((open.slot().chats as Entry[])[0].message as Entry[])[0]
+
+    /**
+     * Leaves the loaded character 'x' behind in the way that makes it a put-back candidate while a save is still
+     * pending, so its unload waits for the commit: the resident 'y' is edited and marked, the selection goes home.
+     * `atCommit` runs when the pass has committed and before the put-back's own callback (it is registered first): an
+     * in-place edit that nothing marked and no pass encoded.
+     */
+    function moveOnWhileUnsaved(open: ReactiveWorld, atCommit?: () => void): void {
+        if (atCommit !== undefined) {
+            open.w.api.afterNextSaveCommit(atCommit)
+        }
+        ;(open.db.characters as Entry[])[indexOf(open, 'y')].name = 'y renamed'
+        open.w.marks.markCharacterForSave('y')
+        open.stores.selectedCharID.set(-1)
+        open.flush()
+    }
+
+    // Diagnostic: the put-back waits for a save commit after a selection change and arms no timer of its own. This is
+    // the premise: the selected-character effect marks a pass on a selection alone, and that pass, though it writes
+    // nothing, ends in a commit.
+    test('observation: selecting a character without an edit is followed by a save commit that writes nothing', async () => {
+        const open = await startArchivedOpen()
+        await open.restore()
+        await settled(open.w)
+        const meter = meterWrites(open.k)
+        let commits = 0
+        open.w.api.afterNextSaveCommit(() => { commits += 1 })
+
+        open.stores.selectedCharID.set(indexOf(open, 'x'))
+        open.flush()
+        await until(() => commits > 0, 'the commit that follows a selection')
+        await settled(open.w)
+
+        expect(commits).toBe(1)
+        expect(meter.saved()).toEqual([])
+    })
+
+    // S0 test 5, the unload half. Regression reproducer: on the W4b-1 base nothing turns the loaded character back into a stub.
+    test('archived character unload: after the page moves on, the unchanged loaded character is a stub again, with no unit written and the shard unchanged', async () => {
+        const open = await startArchivedOpen()
+        const stop = await startPutBack()
+        await open.restore()
+        open.stores.selectedCharID.set(indexOf(open, 'x'))
+        open.flush()
+        await sleepReal(100)
+        await settled(open.w)
+        expect(isStub(open), 'the selected character stays loaded').toBe(false)
+        const meter = meterWrites(open.k)
+        const before = open.k.memory.snapshot()
+
+        open.stores.selectedCharID.set(-1)
+        open.flush()
+        await until(() => isStub(open), 'the character to be unloaded')
+        await sleepReal(200)
+        await settled(open.w)
+
+        expect(open.slot().coldstorage).toBe(open.k.context.previous.entities.get('x#0'))
+        expect(meter.saved()).toEqual([])
+        expect(open.k.writtenSince(before)).toEqual([])
+        stop()
+    })
+
+    // R4b: with a save pending the unload waits for the commit and then happens.
+    test('R4b: a clean loaded character is unloaded after the next commit', async () => {
+        const open = await startArchivedOpen()
+        const stop = await startPutBack()
+        await open.restore()
+        open.stores.selectedCharID.set(indexOf(open, 'x'))
+        open.flush()
+        await sleepReal(100)
+        await settled(open.w)
+
+        await nextCommit(open.w, () => moveOnWhileUnsaved(open))
+        await until(() => isStub(open), 'the character to be unloaded after the commit')
+        await settled(open.w)
+
+        expect((await open.k.saved()).characters.map((c) => (c as unknown as Entry).chaId)).toEqual(['x', 'y'])
+        stop()
+    })
+
+    // A9a: an edit that lands between a pass's encode and its acknowledgement is not in the acknowledged encoding.
+    test('A9a: an unmarked edit between a pass\'s encode and its commit keeps the character loaded, and the next pass saves the edit', async () => {
+        let edit: (() => void) | null = null
+        const open = await startArchivedOpen((name) => {
+            if (name === 'commitOrdinary' && edit !== null) {
+                const run = edit
+                edit = null
+                run()
+            }
+        })
+        const stop = await startPutBack()
+        await open.restore()
+        open.stores.selectedCharID.set(indexOf(open, 'x'))
+        open.flush()
+        await sleepReal(100)
+        await settled(open.w)
+
+        edit = () => { xData(open).data = 'edited between encode and commit' }
+        await nextCommit(open.w, () => {
+            open.w.marks.markCharacterForSave('x')
+            moveOnWhileUnsaved(open)
+        })
+        await until(() => isStub(open), 'the character to be unloaded once its edit is saved')
+        await settled(open.w)
+
+        expect(edit).toBeNull()
+        const saved = (await open.k.saved()).characters.find((c) => (c as unknown as Entry).chaId === 'x') as unknown as Entry
+        expect(((saved.chats as Entry[])[0].message as Entry[])[0].data).toBe('edited between encode and commit')
+        stop()
+    })
+
+    // A9b: nothing marked this edit, and no pass encoded the character since.
+    test('A9b: an unmarked edit of a loaded character that is not selected keeps it loaded until the edit is saved', async () => {
+        const open = await startArchivedOpen()
+        const stop = await startPutBack()
+        await open.restore()
+        open.stores.selectedCharID.set(indexOf(open, 'x'))
+        open.flush()
+        await sleepReal(100)
+        await settled(open.w)
+
+        await nextCommit(open.w, () => moveOnWhileUnsaved(open, () => { xData(open).data = 'edited while not selected' }))
+        await until(() => isStub(open), 'the character to be unloaded once its edit is saved')
+        await settled(open.w)
+
+        const saved = (await open.k.saved()).characters.find((c) => (c as unknown as Entry).chaId === 'x') as unknown as Entry
+        expect(((saved.chats as Entry[])[0].message as Entry[])[0].data).toBe('edited while not selected')
+        stop()
+    })
+
+    // A9c: `chatPage` lives in the entry only; a verdict over the units alone would miss it.
+    test('A9c: an unmarked chatPage edit of a loaded character keeps it loaded until the shard holds it', async () => {
+        const open = await startArchivedOpen()
+        const stop = await startPutBack()
+        await open.restore()
+        open.stores.selectedCharID.set(indexOf(open, 'x'))
+        open.flush()
+        await sleepReal(100)
+        await settled(open.w)
+
+        await nextCommit(open.w, () => moveOnWhileUnsaved(open, () => { open.slot().chatPage = 3 }))
+        await until(() => isStub(open), 'the character to be unloaded once its edit is saved')
+        await settled(open.w)
+
+        const saved = (await open.k.saved()).characters.find((c) => (c as unknown as Entry).chaId === 'x') as unknown as Entry
+        expect(saved.chatPage).toBe(3)
+        stop()
+    })
+
+    // W4-Q2: only a character the load path installed is a candidate. Compatibility guard: it also passes without the
+    // unload engine; the port test in characterPutBackStore2 is the reproducer.
+    test('guard W4-Q2: a resident character that was not loaded from the store is never judged or unloaded', async () => {
+        const open = await startArchivedOpen()
+        const stop = await startPutBack()
+        const verdict = vi.spyOn(open.k.residency, 'verdict')
+        const resident = (open.db.characters as Entry[])[indexOf(open, 'y')]
+
+        open.stores.selectedCharID.set(indexOf(open, 'y'))
+        open.flush()
+        await sleepReal(100)
+        open.stores.selectedCharID.set(-1)
+        open.flush()
+        await sleepReal(300)
+        await settled(open.w)
+
+        expect((open.db.characters as Entry[])[indexOf(open, 'y')]).toBe(resident)
+        expect(resident.coldstorage).toBeUndefined()
+        expect(verdict).not.toHaveBeenCalled()
+        stop()
+    })
+
+    // N2: a save attempt of unknown outcome may have landed with units the acknowledged encoding does not hold.
+    test('N2: while a save attempt of unknown outcome is pending, no character is judged', async () => {
+        const { createResidency } = await import('src/ts/storage/store2/residency')
+        const k = await startStore2({ db: makeDb('p', ['a', 'b']) as unknown as Database })
+        const slot = JSON.parse(JSON.stringify(k.seedDb.characters[0])) as Database['characters'][number]
+        const settledResidency = createResidency({ backend: k.counted.backend, context: { encoder: k.encoder, lists: k.context.lists, env: k.context.env } })
+        let pendingKey: string | null = null
+        const encoder = Object.create(k.encoder, { pendingKey: { get: () => pendingKey } }) as typeof k.encoder
+        const residency = createResidency({ backend: k.counted.backend, context: { encoder, lists: k.context.lists, env: k.context.env } })
+
+        expect(settledResidency.verdict(slot), 'positive control: nothing pending').toBe('clean')
+        expect(residency.verdict(slot), 'positive control: nothing pending').toBe('clean')
+        pendingKey = 'a manifest key'
+        expect(residency.verdict(slot)).toBe('unknown')
     })
 })

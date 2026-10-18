@@ -18,6 +18,16 @@
  * when re-archiving may run: it is marked dirty and left to
  * `characterRearchive.ts`, which writes its new unit. The put-back never
  * fingerprints a dirty-marked record again.
+ *
+ * On a page with a store2 residency (`runFireStore2`) the same selection logic
+ * unloads a character that residency loaded this session. What decides is the
+ * residency's verdict against the acknowledged encoding, not a fingerprint, and
+ * the stub comes from that encoding. The verdict and the swap run in one
+ * synchronous task: an edit between them would be lost. A dirty verdict marks
+ * the character so that the next pass writes it, and a later commit judges it
+ * again, at most `MAX_DIRTY_VERDICTS` times. A character created or imported
+ * this session was not loaded, has no record and stays resident. A large
+ * character is judged only when the page is quiet (`putBackQuiet.ts`).
  */
 
 import { get } from 'svelte/store'
@@ -26,14 +36,19 @@ import { DBState, selectedCharID } from '../../stores.svelte'
 import { afterNextSaveCommit } from '../../globalApi.svelte'
 import { markCharacterForSave } from '../../storage/characterSaveMarks'
 import { hasEnabledV21Plugin } from '../../plugins/v21Plugins'
+import type { Residency } from '../../storage/store2/residency'
+import { getResidency } from '../../storage/store2/residencyActive'
 import { isWriting } from '../chatOrigin'
 import {
     contentFingerprint,
     differingKeys,
+    dropLoaded,
     dropRetained,
     findChaIdHolders,
+    hasLoaded,
     hasRetained,
     isDirtyRecord,
+    loadedRecordOf,
     noteDirtyRecord,
     pruneRetained,
     rawRefOf,
@@ -61,11 +76,18 @@ import {
     type FireOutcome,
     type PutBackReason,
 } from './putBackMeasure'
-import { clearRestoredBytes } from './restoredBytes'
+import { startQuietTrigger, type QuietTrigger } from './putBackQuiet'
+import { clearRestoredBytes, restoredBytesOf } from './restoredBytes'
 
 /** One `fire` swaps at most one character, fingerprints at most this many, and stops starting a fingerprint after `MAX_FIRE_MS`. */
 const MAX_FINGERPRINTS_PER_FIRE = 3
 const MAX_FIRE_MS = 8
+
+/** A character whose last read was larger than this is judged only when the page is quiet. */
+const LARGE_BYTES = 1024 * 1024
+
+/** Dirty verdicts a character may collect before the store2 put-back leaves it loaded; a selection of it starts the count again. */
+const MAX_DIRTY_VERDICTS = 3
 
 /*
  * Only a swap's own mark guarantees another commit. After a stop with no swap
@@ -90,6 +112,11 @@ export function getPutBackCounters(): Readonly<Record<PutBackReason, number>> {
 
 /** The `chaId`s waiting for the next commit; checked again, in full, when it comes. */
 const pending = new Set<string>()
+/** Store2 only: the large candidates, which wait for the quiet trigger instead of the next commit. */
+const deferredLarge = new Set<string>()
+/** Store2 only: the dirty verdicts each character has had since it was last selected. */
+const dirtyVerdicts = new Map<string, number>()
+let quiet: QuietTrigger | null = null
 let currentChaId: string | null = null
 let previousChaId: string | null = null
 let armed = false
@@ -98,13 +125,14 @@ let tripwireArmed = false
 /** Takes `chaId` out of `pending`, recording how long it waited and why it left. */
 function leave(chaId: string, exit: CandidateExit): void {
     pending.delete(chaId)
+    deferredLarge.delete(chaId)
     if (MEASURE) {
         noteCandidateExit(chaId, exit)
     }
 }
 
 function clearPending(exit: CandidateExit): void {
-    for (const chaId of [...pending]) {
+    for (const chaId of [...pending, ...deferredLarge]) {
         leave(chaId, exit)
     }
 }
@@ -207,6 +235,10 @@ function fire(): void {
 
 function runFire(): FireOutcome {
     armed = false
+    const residency = getResidency()
+    if (residency !== null) {
+        return runFireStore2(residency, false)
+    }
     if (!putBackMayRun()) {
         clearPending('cleared-early')
         return 'empty'
@@ -297,6 +329,154 @@ function runFire(): FireOutcome {
     return dropped ? 'kept-only' : 'empty'
 }
 
+function armQuiet(): void {
+    quiet?.arm()
+}
+
+/** Asks for the quiet trigger once the next commit has landed: nothing guarantees one, but a swap or a dirty mark always makes one. */
+function armQuietAfterCommit(): void {
+    afterNextSaveCommit(armQuiet)
+}
+
+/** The quiet trigger's callback: the store2 fire over the large candidates. */
+function fireQuiet(): void {
+    const residency = getResidency()
+    if (residency === null) {
+        deferredLarge.clear()
+        return
+    }
+    runFireStore2(residency, true)
+}
+
+/**
+ * The store2 fire. It runs the checks of the legacy `runFire` in the same order, then judges each candidate by the
+ * residency's verdict and swaps in the stub the acknowledged encoding gives. `quietRun` takes the candidates from
+ * `deferredLarge` instead of `pending`; the foreground never judges a large character.
+ */
+function runFireStore2(residency: Residency, quietRun: boolean): FireOutcome {
+    const candidates = quietRun ? deferredLarge : pending
+    const wait = quietRun ? armQuietAfterCommit : arm
+    if (!putBackMayRun()) {
+        clearPending('cleared-early')
+        return 'empty'
+    }
+    if (isBusy() || anyChokePointInFlight()) {
+        count('busy')
+        wait()
+        return 'busy'
+    }
+    const characters = DBState.db?.characters
+    if (!Array.isArray(characters)) {
+        clearPending('cleared-early')
+        return 'empty'
+    }
+    pruneRetained()
+    const keep = putBackKeepSet()
+    const startedAt = performance.now()
+    let verdicts = 0
+    let deferredWriting = false
+    let dropped = false
+    for (const chaId of [...candidates]) {
+        if (keep.has(chaId)) {
+            leave(chaId, 'kept')
+            count('kept')
+            dropped = true
+            continue
+        }
+        const holders = findChaIdHolders(chaId)
+        const loaded = holders.length === 1 ? loadedRecordOf(characters[holders[0]]) : undefined
+        if (!loaded) {
+            leave(chaId, 'gone')
+            count('gone')
+            dropped = true
+            continue
+        }
+        if (isWriting({ chaId })) {
+            count('writing')
+            deferredWriting = true
+            continue
+        }
+        if (!quietRun && restoredBytesOf(chaId) > LARGE_BYTES) {
+            // Not a verdict: it counts toward nothing.
+            pending.delete(chaId)
+            deferredLarge.add(chaId)
+            continue
+        }
+        if (verdicts >= MAX_FINGERPRINTS_PER_FIRE || performance.now() - startedAt >= MAX_FIRE_MS) {
+            break
+        }
+        verdicts += 1
+        // No await from the verdict to the swap.
+        const index = holders[0]
+        const verdict = residency.verdict(characters[index])
+        const stub = verdict === 'clean' ? residency.stubFor(characters[index]) : null
+        if (stub !== null) {
+            // The stub is the plain object the database assembly gives for an entity: a boundary into the typed list.
+            characters[index] = stub as unknown as typeof characters[number]
+            dropLoaded(loaded)
+            // The stub is carried, so this pass writes nothing; it only guarantees a commit for the callbacks.
+            markCharacterForSave(chaId)
+            clearRestoredBytes(chaId)
+            dirtyVerdicts.delete(chaId)
+            leave(chaId, 'swap')
+            count('clean')
+            break
+        }
+        if (verdict === 'dirty') {
+            markCharacterForSave(chaId)
+            const dirty = (dirtyVerdicts.get(chaId) ?? 0) + 1
+            dirtyVerdicts.set(chaId, dirty)
+            count('dirty')
+            if (dirty >= MAX_DIRTY_VERDICTS) {
+                leave(chaId, 'dirty')
+            }
+            continue
+        }
+        // The acknowledged encoding cannot answer for it (a shared id, an outcome not yet known): it stays loaded.
+        leave(chaId, 'gone')
+        count('gone')
+        dropped = true
+    }
+    if (candidates.size > 0) {
+        wait()
+    }
+    if (!quietRun && deferredLarge.size > 0) {
+        armQuiet()
+    }
+    if (verdicts > 0) {
+        return 'fingerprinted'
+    }
+    if (deferredWriting) {
+        return 'writing'
+    }
+    return dropped ? 'kept-only' : 'empty'
+}
+
+/** Adds the loaded characters outside the keep-set to the pending set and waits for the next commit. */
+function collectStore2Candidates(chaId: string | null): void {
+    if (chaId !== null) {
+        dirtyVerdicts.delete(chaId)
+    }
+    if (!hasLoaded() || !putBackMayRun()) {
+        return
+    }
+    const keep = putBackKeepSet()
+    for (const cha of DBState.db.characters) {
+        const record = loadedRecordOf(cha)
+        if (record && !keep.has(record.chaId) && (dirtyVerdicts.get(record.chaId) ?? 0) < MAX_DIRTY_VERDICTS) {
+            pending.add(record.chaId)
+            if (MEASURE) {
+                noteCandidate(record.chaId)
+            }
+        }
+    }
+    if (pending.size > 0) {
+        // A selection change runs the selected-character effect, which marks a pass, so a commit follows even when
+        // nothing was edited.
+        arm()
+    }
+}
+
 /** Adds every retained character outside the keep-set to the pending set and waits for the next commit. */
 function onSelection(index: number): void {
     const chaId = chaIdAt(index)
@@ -309,6 +489,10 @@ function onSelection(index: number): void {
     rearchiveOnSelection()
     if (chaId !== null) {
         leave(chaId, 'cleared-selection')
+    }
+    if (getResidency() !== null) {
+        collectStore2Candidates(chaId)
+        return
     }
     if (!hasRetained() || !putBackMayRun()) {
         return
@@ -334,14 +518,29 @@ function onSelection(index: number): void {
  */
 export function startCharacterPutBack(): () => void {
     currentChaId = chaIdAt(get(selectedCharID))
-    // Before the subscription below, which calls `onSelection` at once.
-    startCharacterRearchive({ keepSet: putBackKeepSet, armTripwire: MEASURE ? armTripwire : undefined })
+    // A store2 page has no re-archive: its characters leave memory only through the residency.
+    if (getResidency() === null) {
+        // Before the subscription below, which calls `onSelection` at once.
+        startCharacterRearchive({ keepSet: putBackKeepSet, armTripwire: MEASURE ? armTripwire : undefined })
+    } else {
+        quiet?.stop()
+        quiet = startQuietTrigger(fireQuiet)
+    }
     // The body runs untracked: a selection set from inside an effect would
     // otherwise make that effect depend on every character read here.
-    return selectedCharID.subscribe((index) => untrack(() => onSelection(index)))
+    const unsubscribe = selectedCharID.subscribe((index) => untrack(() => onSelection(index)))
+    return () => {
+        unsubscribe()
+        quiet?.stop()
+        quiet = null
+    }
 }
 
 export function resetPutBackForTest(): void {
+    quiet?.stop()
+    quiet = null
+    deferredLarge.clear()
+    dirtyVerdicts.clear()
     pending.clear()
     currentChaId = null
     previousChaId = null

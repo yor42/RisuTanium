@@ -371,6 +371,23 @@ describe('new behaviour: a stub that shares its id with a resident character', (
         expect((await page.k.saved()).characters[0]).toMatchObject({ personality: 'saved with the retry' })
     })
 
+    // Compatibility guard (it also holds on the red base, where the verdict already exists): the put-back leaves a shared id
+    // alone twice over. The engine refuses a chaId with two holders (`characterPutBackStore2.svelte.test.ts`), and the
+    // verdict answers `unknown` for an id whose handle `#1` the acknowledged encoding holds.
+    test('after the retry saved both holders, the verdict is unknown for each, so neither could be unloaded', async () => {
+        const page = await sharedPage(async () => true)
+        await commitAfter(page, () => {
+            characters(page.db)[0].personality = 'saved with the retry'
+            page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        })
+        const shared = characters(page.db)[1].chaId
+        const holders = characters(page.db).filter((slot) => slot.chaId === shared)
+
+        expect(holders.length).toBe(2)
+        expect(page.k.residency.verdict(holders[0] as unknown as character)).toBe('unknown')
+        expect(page.k.residency.verdict(holders[1] as unknown as character)).toBe('unknown')
+    })
+
     test('a stub that stays unloaded blocks the save and the person is told through the save-failure path', async () => {
         const page = await sharedPage(async () => false)
         const { alertError, alertToast } = await import('src/ts/alert')

@@ -43,6 +43,7 @@ export interface Residency {
     /**
      * Whether the resident character `slot` is the acknowledged one: clean means every unit is the acknowledged unit and the
      * entry agrees outside `lastInteraction` and `trashTime`, which survive an unload only because `stubFor(slot)` carries them.
+     * `unknown` for every character while a save attempt of unknown outcome is pending (`SaveEncoder.pendingKey`).
      */
     verdict(slot: Slot): AcknowledgedVerdict
     /** The stub of the acknowledged entry of `slot`, with the fields a stub may change taken from `slot`; null when the encoding cannot stand a stub in for it. */
@@ -121,7 +122,9 @@ export function createResidency(options: ResidencyOptions): Residency {
             return read
         },
         hydrate,
-        verdict: slot => characterMatchesAcknowledged(slot, { env, lists, previous: encoder.acknowledged() }),
+        // A save attempt whose outcome is unknown may have landed with newer units than the acknowledged encoding holds, so
+        // the acknowledged encoding is not yet what a stub made from it would be carried against: no character is judged then.
+        verdict: slot => encoder.pendingKey === null ? characterMatchesAcknowledged(slot, { env, lists, previous: encoder.acknowledged() }) : 'unknown',
         stubFor(slot) {
             const previous = encoder.acknowledged()
             const chaId = String((slot as { chaId?: unknown }).chaId ?? '')

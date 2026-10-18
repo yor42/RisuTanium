@@ -649,7 +649,8 @@ describe('loadData(): a normal store2 profile', () => {
         expect(archive.disabled).toBe(0)
         const { canBootArchive } = await import('src/ts/process/memory/bootArchiveState')
         expect(canBootArchive()).toBe(false)
-        expect(putBackMock, 'no cold-storage put-back').not.toHaveBeenCalled()
+        // The profile has stubs, so the put-back that unloads a loaded character runs on this page.
+        expect(putBackMock, 'the store2 put-back starts').toHaveBeenCalledTimes(1)
         expect(recordCleanupMock, 'no legacy clean-up').not.toHaveBeenCalled()
         expect(getDbBackupsMock, 'no backup pruning').not.toHaveBeenCalled()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
@@ -897,7 +898,7 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         }
         expect(getDbBackupsMock, 'no backup pruning').not.toHaveBeenCalled()
         expect(archive.opened).toBe(0)
-        expect(putBackMock).not.toHaveBeenCalled()
+        expect(putBackMock, 'the store2 put-back starts on a converted profile too').toHaveBeenCalledTimes(1)
     })
 
     test('a main file that does not decode is converted from the newest numbered backup that does, and the notice names it', async () => {
