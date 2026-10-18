@@ -3,10 +3,11 @@ import type { character, groupChat } from '../database.svelte'
 import type { Store2Backend } from './backend/types'
 import {
     assembleCharacter, characterMatchesAcknowledged, CodecAssembleError, overlayStub, stubFromEntry,
-    type AcknowledgedVerdict, type ListDerivation, type UnitSource,
+    type AcknowledgedVerdict, type UnitSource,
 } from './codec'
-import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
+import { defaultKeyEnv, type ShardEntry } from './format'
 import { hydrateEntityDigests } from './previousOfTree'
+import type { Store2SaveContext } from './saveActive'
 import type { SaveEncoder } from './saveEncoder'
 import { readEntityBytes } from './treeBytes'
 
@@ -35,6 +36,11 @@ export interface Residency {
     /** `readCharacter`, then gives the units just read their digests in place, so the loaded character is reused whole by its first pass. */
     load(u: string): Promise<ResidencyRead>
     /**
+     * Gives the units of a read made earlier by `readCharacter` their digests in place. A unit whose key or Ref is no
+     * longer the acknowledged encoding's is left as it is, so a read that went stale hydrates nothing it should not.
+     */
+    hydrate(read: Extract<ResidencyRead, { status: 'ok' }>): void
+    /**
      * Whether the resident character `slot` is the acknowledged one: clean means every unit is the acknowledged unit and the
      * entry agrees outside `lastInteraction` and `trashTime`, which survive an unload only because `stubFor(slot)` carries them.
      */
@@ -45,14 +51,17 @@ export interface Residency {
 
 export interface ResidencyOptions {
     backend: Store2Backend
-    encoder: SaveEncoder
-    lists: ListDerivation
-    env?: KeyEnv
+    /**
+     * The context the save loop runs with (`activateStore2Save`). The residency takes its encoder, list derivation and key
+     * environment from it and has no copies of its own, so a verdict is judged by the very encoding and lists the next pass uses.
+     */
+    context: Pick<Store2SaveContext, 'lists' | 'env'> & { encoder: SaveEncoder }
 }
 
 export function createResidency(options: ResidencyOptions): Residency {
-    const { backend, encoder, lists } = options
-    const env = options.env ?? defaultKeyEnv
+    const { backend } = options
+    const { encoder, lists } = options.context
+    const env = options.context.env ?? defaultKeyEnv
     // Entries by `u`, rebuilt only when the acknowledged encoding's shards are a different array.
     let indexedShards: unknown = null
     let entries = new Map<string, ShardEntry>()
@@ -97,16 +106,21 @@ export function createResidency(options: ResidencyOptions): Residency {
         }
     }
 
+    function hydrate(read: Extract<ResidencyRead, { status: 'ok' }>): void {
+        hydrateEntityDigests(encoder.acknowledged(), read.entry, read.source)
+    }
+
     return {
         entryOf,
         readCharacter,
         async load(u) {
             const read = await readCharacter(u)
             if (read.status === 'ok') {
-                hydrateEntityDigests(encoder.acknowledged(), read.entry, read.source)
+                hydrate(read)
             }
             return read
         },
+        hydrate,
         verdict: slot => characterMatchesAcknowledged(slot, { env, lists, previous: encoder.acknowledged() }),
         stubFor(slot) {
             const previous = encoder.acknowledged()

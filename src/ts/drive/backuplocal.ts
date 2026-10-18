@@ -25,6 +25,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
+import { collectBackupColdStorage, inlinedCharacter, lateSettledKeys, type BackupColdStorage } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
@@ -53,13 +54,14 @@ function getBasename(data:string){
  * unit is absent, or its key is one a restore could not place). The caller writes the returned units before the
  * database entry.
  */
-async function encodeDatabaseWithLateColdStorage(db: Database, collected: ColdStorageBackupCollection){
-    const { tree: dbWithoutAccount, notice: repairNotice } = await exportCopyOf(db)
+async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage){
+    const { tree: dbWithoutAccount, notice: repairNotice } = await exportCopyOf(db, cold.inlined)
     const lateRoots = listColdBackupRoots(dbWithoutAccount)
     const dbData = encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
+    // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
     const late = await collectColdStorageBackupPayloads(dbWithoutAccount, {
         roots: lateRoots,
-        settledKeys: collected.settledKeys,
+        settledKeys: lateSettledKeys(cold.collected, cold.failedKeys),
     })
     return { dbData, late, repairNotice }
 }
@@ -72,11 +74,16 @@ async function encodeDatabaseWithLateColdStorage(db: Database, collected: ColdSt
  * an id that cannot be saved is replaced with the lists that named it following,
  * and an archived character takes back the id its unit records, or, when the
  * unit cannot name one, a new id (its archived content then cannot be restored
- * from this export). The export is never refused; `notice` says what was done.
+ * from this export). A stub of a store2 entity is replaced by the whole character
+ * read for it (`inlined`, `drive/exportInline.ts`). The export is never refused;
+ * `notice` says what was done.
  */
-async function exportCopyOf(db: Database): Promise<{ tree: Database, notice: string | null }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>): Promise<{ tree: Database, notice: string | null }> {
     const plain = { ...db, account: undefined }
-    const list: unknown = db.characters
+    if (inlined.size > 0 && Array.isArray(db.characters)) {
+        plain.characters = db.characters.map((slot) => inlinedCharacter(slot, inlined))
+    }
+    const list: unknown = plain.characters
     if (!Array.isArray(list) || list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId))) {
         return { tree: plain, notice: null }
     }
@@ -348,9 +355,9 @@ export function SaveLocalBackup(){
 async function writeLocalBackup(session: ExportSession){
     alertWait("Saving local backup...")
     const db = getDatabase()
-    const coldStoragePayloads = await collectColdStorageBackupPayloads(db)
-    const unavailableColdStorageKeys = [...coldStoragePayloads.missingKeys, ...coldStoragePayloads.invalidKeys]
-    if(!await confirmIncompleteColdStorageOperation(db, unavailableColdStorageKeys, 'backup', coldStoragePayloads.owners)){
+    const cold = await collectBackupColdStorage(db)
+    const coldStoragePayloads = cold.collected
+    if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', coldStoragePayloads.owners)){
         return
     }
 
@@ -478,7 +485,7 @@ async function writeLocalBackup(session: ExportSession){
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, coldStoragePayloads)
+    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, cold)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
@@ -562,9 +569,9 @@ export async function SavePartialLocalBackup(){
 async function writePartialLocalBackup(session: ExportSession){
     alertWait("Saving partial local backup...")
     const db = getDatabase()
-    const coldStoragePayloads = await collectColdStorageBackupPayloads(db)
-    const unavailableColdStorageKeys = [...coldStoragePayloads.missingKeys, ...coldStoragePayloads.invalidKeys]
-    if(!await confirmIncompleteColdStorageOperation(db, unavailableColdStorageKeys, 'backup', coldStoragePayloads.owners)){
+    const cold = await collectBackupColdStorage(db)
+    const coldStoragePayloads = cold.collected
+    if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', coldStoragePayloads.owners)){
         return
     }
 
@@ -684,7 +691,7 @@ async function writePartialLocalBackup(session: ExportSession){
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, coldStoragePayloads)
+    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, cold)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)

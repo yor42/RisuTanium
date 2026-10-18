@@ -13,7 +13,10 @@ import { assembleDatabase, encodeDatabase, previousFrom, type EncodedTree, type 
 import { createCommitter, type Committer } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
-import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
+import { createResidency, type Residency } from 'src/ts/storage/store2/residency'
+import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
+import { createSaveEncoder, type SaveEncoder } from 'src/ts/storage/store2/saveEncoder'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import {
     encodeUnit, readUnit, UNIT_TYPE, type CommitKey, type KeyEnv, type Manifest,
 } from 'src/ts/storage/store2/format'
@@ -244,6 +247,11 @@ export interface Store2StartOptions {
     lists?: ListDerivation
     peer?: PeerDouble
     loadStub?: Store2SaveContext['loadStub']
+    /**
+     * The `chaId`s the page boots as stubs: the acknowledged encoding is read the way a boot reads it, so their units
+     * carry no digest. Absent, the encoding is the one the seed was encoded as, every unit with its digest.
+     */
+    stubs?: readonly string[]
     /** Off unless named: an idle tick is a pass the suites do not ask for. */
     idleNet?: IdleNetOptions | null
 }
@@ -254,6 +262,13 @@ export interface Store2Kit {
     clock: TestClock
     committer: Committer
     context: Store2SaveContext
+    /**
+     * The encoder the loop saves through and the residency over it. `store2Boot` replaces both with ones made in the
+     * world's own module graph (an error class of another graph is not the loop's, so the loop's retry on a stub that shares
+     * its id would not recognise it) and carries the encoder in `context`, as the boot dispatch does.
+     */
+    encoder: SaveEncoder
+    residency: Residency
     peer: PeerDouble
     seeded: SeededTree
     /** A copy of the database the first tree holds. */
@@ -277,15 +292,31 @@ export async function startStore2(options: Store2StartOptions): Promise<Store2Ki
     counted.reset()
     const committer = committerOf(counted.backend, clock, 777, freshOwnerId(testEnv(clock, 778)))
     const peer = options.peer ?? createPeerDouble()
+    const env = testEnv(clock, 99)
+    let previous = previousFrom(seeded.tree)
+    if (options.stubs !== undefined) {
+        // As a boot reads it: the units of a stub are not read, so they carry no digest until a load hydrates them.
+        const stubIds = new Set(options.stubs)
+        const read = await readTreeBytes(counted.memory, seeded.manifestKey, {
+            resident: input => new Set(input.entries.filter(entry => !stubIds.has(entry.chaId)).map(entry => entry.u)),
+        })
+        if (read.status !== 'ok') {
+            throw new Error(`The seeded tree read ${read.status}.`)
+        }
+        previous = previousOfTree(read.tree)
+    }
     const context: Store2SaveContext = {
         session: { kind: options.kind ?? 'tauri', committer },
-        previous: previousFrom(seeded.tree),
+        previous,
         lists,
-        env: testEnv(clock, 99),
+        env,
         peer,
         loadStub: options.loadStub,
         idleNet: options.idleNet ?? null,
     }
+    // Created here for a suite that runs the loop in its own module graph; `store2Boot` replaces both with the world's own.
+    const encoder = createSaveEncoder({ previous, lists, env })
+    const residency = createResidency({ backend: counted.backend, context: { encoder, lists, env } })
     async function commitKey(): Promise<CommitKey> {
         return parsedCommit(counted.memory)
     }
@@ -295,6 +326,8 @@ export async function startStore2(options: Store2StartOptions): Promise<Store2Ki
         clock,
         committer,
         context,
+        encoder,
+        residency,
         peer,
         seeded,
         seedDb,
@@ -353,6 +386,15 @@ export async function peerPin(kit: Store2Kit, seed = 4711): Promise<CommitKey> {
 export function store2Boot(kit: Store2Kit): (world: World) => Promise<void> {
     return async (world) => {
         const { activateStore2Save } = await import('src/ts/storage/store2/saveActive')
+        const { registerResidency } = await import('src/ts/storage/store2/residencyActive')
+        const { createResidency: createWorldResidency } = await import('src/ts/storage/store2/residency')
+        const { createSaveEncoder: createWorldEncoder } = await import('src/ts/storage/store2/saveEncoder')
+        const { previous, lists, env } = kit.context
+        kit.encoder = createWorldEncoder({ previous, lists, env })
+        kit.context.encoder = kit.encoder
+        kit.residency = createWorldResidency({ backend: kit.counted.backend, context: { encoder: kit.encoder, lists, env } })
+        // As the dispatch will: the residency is registered before the save context is activated.
+        registerResidency(kit.residency)
         activateStore2Save(kit.context)
         world.pageMode.setPageStorageMode({ kind: 'block' })
     }

@@ -70,9 +70,10 @@ async function bootOf(source: Database, options: { backend?: (memory: MemoryBack
     })
     const previous = previousOfTree(read.tree)
     const entries = (previous.objects?.shards ?? []).flatMap(shard => shard.entries)
-    const encoder = createSaveEncoder({ previous, lists, env: seededEnv(77), now: () => NOW })
+    const context = { lists, env: seededEnv(77), encoder: createSaveEncoder({ previous, lists, env: seededEnv(77), now: () => NOW }) }
+    const { encoder } = context
     const backend = options.backend?.(memory) ?? memory
-    const residency = createResidency({ backend, encoder, lists, env: seededEnv(78) })
+    const residency = createResidency({ backend, context })
     const full = await readTreeBytes(memory, seeded.manifestKey)
     if (full.status !== 'ok') {
         throw new Error('The full read failed.')
@@ -410,5 +411,27 @@ describe('new behaviour: the residency follows the latest acknowledged encoding'
         expect(stub.name).toBe('Renamed and saved')
         const again = await booted.residency.readCharacter(entry.u)
         expect(again.status === 'ok' ? again.value.character.name : null).toBe('Renamed and saved')
+    })
+})
+
+describe('new behaviour: the residency works over the save loop\'s own context', () => {
+    test('a verdict derives its lists from the context it was created with, and a hydrate of an earlier read makes the copy clean', async () => {
+        let derivations = 0
+        const counting: ListDerivation = {
+            ...fakeLists,
+            characterAssets: (character) => { derivations += 1; return fakeLists.characterAssets(character) },
+        }
+        const booted = await bootOf(archiving(), { lists: counting })
+        const entry = entryOf(booted, 0)
+        const copy = await booted.residency.readCharacter(entry.u)
+        if (copy.status !== 'ok') {
+            throw new Error('The copy read failed.')
+        }
+        expect(booted.residency.verdict(copy.value.character as unknown as character)).toBe('unknown')
+
+        booted.residency.hydrate(copy)
+        derivations = 0
+        expect(booted.residency.verdict(copy.value.character as unknown as character)).toBe('clean')
+        expect(derivations).toBeGreaterThan(0)
     })
 })

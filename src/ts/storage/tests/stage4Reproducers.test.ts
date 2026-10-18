@@ -15,9 +15,11 @@
  * - Node snapshot: flips at the restore-point rewrite, which may change the
  *   return shape of getDbBackups().
  * - Archived open: the store is seeded from the full database and the live
- *   database holds the stub; the legacy coldstorage mock serves the restore.
- *   Its zero-write expectation holds because the commit is skipped when no unit
- *   changed. The unload half of the fixture stays with the put-back step.
+ *   database holds the stub of its entity; the real cold-storage reader loads the
+ *   character from the store2 units (the residency the kit registers). The
+ *   zero-write expectations hold because the load hydrates the units' digests and
+ *   tells the identity tracker the installed object is not new. The unload half of
+ *   the fixture stays with the put-back step.
  * - `test.fails` also passes on a setup failure or a timeout, so a flip must
  *   re-run the test as a plain `test`.
  *
@@ -37,7 +39,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { incompressible, makeCharacter, makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { stubFromEntry } from 'src/ts/storage/store2/codec'
 import { startStore2, store2Boot, type Hooks, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -119,6 +121,7 @@ afterEach(() => {
     kit.parkAll()
     vi.doMock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }))
     vi.doUnmock('src/ts/storage/nodeBodyLimit')
+    vi.doUnmock('src/ts/process/index.svelte')
     vi.restoreAllMocks()
 })
 
@@ -183,8 +186,8 @@ interface ReactiveWorld {
  * see edits. The store is seeded from `seed` when given (the full database of an archived character), else from the
  * live database.
  */
-async function startReactive(seed?: Database, hooks?: Hooks, beforeStart?: (k: Store2Kit) => void): Promise<ReactiveWorld> {
-    const k = await startStore2({ db: seed ?? h.db as unknown as Database, hooks })
+async function startReactive(seed?: Database, hooks?: Hooks, beforeStart?: (k: Store2Kit) => void, stubs?: readonly string[]): Promise<ReactiveWorld> {
+    const k = await startStore2({ db: seed ?? h.db as unknown as Database, hooks, stubs })
     const w = await kit.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     const { flushSync } = await import('svelte')
@@ -310,49 +313,97 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         expect(meter.savedBytes()).toBeLessThan(2 * BLOCK)
     })
 
-    // Opening an archived character without editing it changes nothing the store holds.
-    test('archived character first open: restoring it without an edit writes nothing', async () => {
+    /**
+     * The store is seeded from the full database; the page holds the character as the stub of its entity and booted it as a
+     * stub (its units were not read, so they carry no digest). The real cold-storage reader serves the load.
+     */
+    async function startArchivedOpen(): Promise<ReactiveWorld & { baseReads: () => number, slot: () => Entry, restore: () => Promise<{ status: string }> }> {
         const full = makeCharacter('x')
         full.chats = [{ id: 'x-chat', message: [{ role: 'char', data: incompressible(50_000), time: 1 }], note: '', name: '', localLore: [] }]
-        units.set('unit-x', { character: full })
-        // The store holds the full database; the page holds the archived character as its stub.
         const stored = makeDb('p', ['y'])
         ;(stored.characters as unknown[]).unshift(JSON.parse(JSON.stringify(full)))
-        const db = makeDb('p', ['y'])
-        ;(db.characters as unknown[]).unshift(buildColdStub(full as never, 'unit-x', []))
-        h.db = db
-        let baseReads = 0
-        const { w, k, db: live, flush } = await startReactive(stored as unknown as Database, {
+        h.db = makeDb('p', ['y'])
+        vi.doUnmock('src/ts/process/coldstorage.svelte')
+        // The reader pulls in the chat pipeline for `doingChat` only; the world's graph gets that store alone.
+        vi.doMock('src/ts/process/index.svelte', async () => {
+            const { writable } = await import('svelte/store')
+            return { doingChat: writable(false) } as unknown as typeof import('src/ts/process/index.svelte')
+        })
+        let reads = 0
+        const world = await startReactive(stored as unknown as Database, {
             before: (name) => {
                 if (name === 'readCommit') {
-                    baseReads += 1
+                    reads += 1
                 }
             },
         }, (started) => {
-            // The stub names the entity the seeded tree holds for the character (a pass refuses any other), and the
-            // legacy mock serves the restore under that name.
+            // The page holds the stub of the entity the seeded tree holds for the character.
             const u = started.context.previous.entities.get('x#0') as string
-            ;(h.db.characters as Entry[])[0].coldstorage = u
-            units.set(u, { character: full })
-        })
-        await settled(w)
-        const meter = meterWrites(k)
-        const readsBefore = baseReads
-        const { restoreColdCharacter } = await import('src/ts/process/coldCharacterRestore')
-        const slot = (live.characters as Entry[]).find((c) => c.chaId === 'x')!
+            const entry = started.residency.entryOf(u)
+            if (entry === null) {
+                throw new Error('The seeded tree holds no entity for the character.')
+            }
+            ;(h.db.characters as Entry[]).unshift(stubFromEntry(entry) as Entry)
+        }, ['x'])
+        await settled(world.w)
+        const slot = () => (world.db.characters as Entry[]).find((c) => c.chaId === 'x')!
+        return {
+            ...world,
+            baseReads: () => reads,
+            slot,
+            restore: async () => {
+                const { restoreColdCharacter } = await import('src/ts/process/coldCharacterRestore')
+                const outcome = await restoreColdCharacter(slot() as never, { byChaId: true, quiet: true })
+                world.flush()
+                await sleepReal(100)
+                await settled(world.w)
+                return outcome
+            },
+        }
+    }
 
-        const outcome = await restoreColdCharacter(slot as never, { byChaId: true, quiet: true })
-        flush()
+    // Loading an archived character without editing it changes nothing the store holds, and a pass over it that does run
+    // reuses every unit. Regression reproducer: the load is refused where the reader has no redirect to store2 units, and
+    // the second half writes the whole character where the load does not hydrate the units' digests.
+    test('archived character first open: loading it without an edit writes nothing, and the first pass over it reuses its units', async () => {
+        const open = await startArchivedOpen()
+        const meter = meterWrites(open.k)
+        const stub = open.slot()
+        expect(stub.coldstorage).toBeDefined()
+
+        const outcome = await open.restore()
+
         expect(outcome.status).toBe('restored')
-        await sleepReal(100)
-        await settled(w)
+        const loaded = open.slot()
+        expect(loaded).not.toBe(stub)
+        expect(loaded.coldstorage).toBeUndefined()
+        expect(((loaded.chats as Entry[])[0].message as Entry[])[0].data).toHaveLength(50_000)
+        expect(open.w.store.ops.filter((op) => op.kind === 'write' || op.kind === 'delete')).toEqual([])
+        expect(meter.saved()).toEqual([])
 
-        // Positive control: the store2 session is active and its loop ran a pass over the restore (it read the base
-        // commit key), and the old byte store received no write. Without it an idle or absent loop passes the test.
+        // Positive control and the hydration check: a pass over the loaded character runs (it reads the base commit key)
+        // and writes no unit, because each unit of the load is the acknowledged one.
         const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
         expect(getActiveStore2Save()).not.toBeNull()
-        expect(baseReads).toBeGreaterThan(readsBefore)
-        expect(w.store.ops.filter((op) => op.kind === 'write' || op.kind === 'delete')).toEqual([])
+        const readsBefore = open.baseReads()
+        open.w.marks.markCharacterForSave('x')
+        await sleepReal(100)
+        await settled(open.w)
+        expect(open.baseReads()).toBeGreaterThan(readsBefore)
         expect(meter.saved()).toEqual([])
+    })
+
+    // The installed object is the entity's own character, not a new one: the identity tracker must raise no mark and no pass.
+    test('archived character first open: the load of an unedited character raises no mark and no pass', async () => {
+        const open = await startArchivedOpen()
+        const readsBefore = open.baseReads()
+
+        const outcome = await open.restore()
+        await sleepReal(300)
+        await settled(open.w)
+
+        expect(outcome.status).toBe('restored')
+        expect(open.w.api.isSaveClean()).toBe(true)
+        expect(open.baseReads()).toBe(readsBefore)
     })
 })
