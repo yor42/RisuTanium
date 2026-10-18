@@ -1,19 +1,24 @@
 /**
  * Reproducers for the save path of the storage rewrite: each states the
- * property the rewritten save path has. Tests 1, 3, 4 and 5 run over a store2
- * session (the store2 save loop is wired behind saveDb()) and are plain
- * `test`s; the Node snapshot test is `test.fails` until the restore-point
- * rewrite makes its property hold.
+ * property the rewritten save path has. Every test runs over a store2 session
+ * (the store2 save loop is wired behind saveDb()) and is a plain `test`.
  *
  * Tests 1, 3, 4 and 5 read one seam: the bytes and write calls the page makes
  * into its store2 backend (the kit's counting wrapper). The Node snapshot test
- * reads getDbBackups() instead. No assertion names a loop internal.
+ * reads the restore points the commit key names (`listRestorePoints`). No
+ * assertion names a loop internal.
  *
  * Notes:
  * - A1 also asserts that no unit besides a shard and the manifest is written;
  *   the 66 KiB bound alone does not catch a small re-encoded unit.
- * - Node snapshot: flips at the restore-point rewrite, which may change the
- *   return shape of getDbBackups().
+ * - Node snapshot: a compatibility guard plus a list-API test, not a regression
+ *   reproducer. The store2 commit path has no size gate, so the property holds by
+ *   construction and the size-limit mock is inert on it. It is falsified by a
+ *   list that returns nothing (list API) and by a restore that never pushes the
+ *   previous current (commit operation). The restore's forced-push flag alone is
+ *   guarded by commit.test.ts ("pushes the previous current when other retained
+ *   entries keep the admission window closed") and by the window-closed guard in
+ *   restorePoints.test.ts.
  * - Archived open: the store is seeded from the full database and the live
  *   database holds the stub of its entity; the real cold-storage reader loads the
  *   character from the store2 units (the residency the kit registers). The
@@ -34,7 +39,7 @@
  *
  * Labels: tests 1, 3, 4 and 5 are regression reproducers (they fail on the
  * block-store save loop and pass on the store2 loop); the Node snapshot test
- * is a regression reproducer that still fails today.
+ * is a compatibility guard (it passes on the store2 path by construction).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
@@ -44,6 +49,9 @@ import { stubFromEntry } from 'src/ts/storage/store2/codec'
 import { startStore2, store2Boot, type Hooks, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import type { AppStoreKind } from 'src/ts/storage/store/appStore'
+import { ADMISSION_INTERVAL_MS } from 'src/ts/storage/store2/commit'
+import { listRestorePoints, restorePoint } from 'src/ts/storage/store2/restorePoints'
 import {
     removePluginStorageValue, writePluginStorageValue, writePluginUnitToDb, type PluginColdStorageDb,
 } from 'src/ts/plugins/apiV3/pluginColdStorage'
@@ -190,9 +198,9 @@ interface ReactiveWorld {
  * see edits. The store is seeded from `seed` when given (the full database of an archived character), else from the
  * live database.
  */
-async function startReactive(seed?: Database, hooks?: Hooks, beforeStart?: (k: Store2Kit) => void, stubs?: readonly string[]): Promise<ReactiveWorld> {
-    const k = await startStore2({ db: seed ?? h.db as unknown as Database, hooks, stubs })
-    const w = await kit.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
+async function startReactive(seed?: Database, hooks?: Hooks, beforeStart?: (k: Store2Kit) => void, stubs?: readonly string[], kind?: AppStoreKind): Promise<ReactiveWorld> {
+    const k = await startStore2({ db: seed ?? h.db as unknown as Database, hooks, stubs, kind })
+    const w = await kit.startWorld({ kind: kind ?? 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     const { flushSync } = await import('svelte')
     ;(stores.DBState as { db: unknown }).db = h.db
@@ -254,20 +262,50 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         expect(k.writtenSince(before)).toEqual(['manifest', 'shard'])
     })
 
-    // A restore point still exists when the database is over the Node body limit (flips at the restore-point rewrite).
-    test.fails('Node snapshot: a database over the Node size limit still gets its restore point', async () => {
+    // Compatibility guard: a restore point still exists when the database is over the Node body limit. It passes on the
+    // store2 path by construction (no size gate in the commit path), and the in-memory backend means "Node" is the session
+    // kind only; the list and restore API is what the mutants falsify.
+    test('Node snapshot: a database over the Node size limit still gets its restore point', async () => {
         vi.doMock('src/ts/platform', () => ({ isTauri: false, isNodeServer: true, isIOS: () => false }))
         vi.doMock('src/ts/storage/nodeBodyLimit', () => ({ NODE_BODY_LIMIT_BYTES: NODE_TEST_LIMIT }))
         const characters = Array.from({ length: 30 }, (_, i) => `many-${i}`)
         h.db = makeDb('first', characters)
-        const w = await kit.startWorld({ kind: 'node' })
-        const before = (await w.api.getDbBackups()).length
-        await nextCommit(w, () => {
-            h.db!.mainPrompt = 'second'
-            w.marks.markCharacterForSave('many-0')
+        const { w, k, db: live, flush } = await startReactive(undefined, undefined, undefined, undefined, 'node')
+        await settled(w)
+        const backend = k.counted.backend
+        const points = async () => {
+            const listed = await listRestorePoints(backend, await backend.readCommit())
+            if (listed.status !== 'ok') {
+                throw new Error(`The restore points could not be listed: ${listed.status}.`)
+            }
+            return listed.rows.map((row) => row.key)
+        }
+        const seededJson = JSON.stringify(await k.saved())
+        const edit = (prompt: string) => nextCommit(w, () => {
+            live.mainPrompt = prompt
+            flush()
         })
 
-        expect((await w.api.getDbBackups()).length - before).toBe(1)
+        expect(await points(), 'the seed install leaves nothing retained').toEqual([])
+
+        await edit('second')
+        expect(await points()).toEqual([k.seeded.manifestKey])
+
+        // Inside the admission window the previous current is not retained again; past it, it is.
+        await edit('third')
+        expect(await points()).toEqual([k.seeded.manifestKey])
+        k.clock.advance(ADMISSION_INTERVAL_MS + 1)
+        await edit('fourth')
+        const afterWindow = await points()
+        expect(afterWindow).toHaveLength(2)
+        expect(afterWindow[1]).toBe(k.seeded.manifestKey)
+
+        // Restoring the seed brings back the seeded database and keeps what was current as a restore point.
+        const before = (await k.commitKey()).current?.key as string
+        const outcome = await restorePoint(k.committer, backend, k.seeded.manifestKey)
+        expect(outcome.status).toBe('restored')
+        expect(JSON.stringify(await k.saved())).toBe(seededJson)
+        expect(await points()).toContain(before)
     })
 
     // Editing one plugin-storage key writes about that key's data, not the whole storage.
