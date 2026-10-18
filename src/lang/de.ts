@@ -2134,6 +2134,10 @@ export const languageGerman = {
     "saveDamagedRetry": "Erneut versuchen",
     "saveDamagedUnconfirmed": "RisuAI konnte nicht bestätigen, welcher Speicherstand der aktuelle ist. Laden Sie die Seite neu, um zu sehen, welcher geladen wurde.",
     "saveDamagedTooLarge": "Dieses Backup ist zu groß, um es in einem Stück auf diesen Server zu laden. Es wurde nichts verändert.",
+    "saveRetrying": "Speichern der Daten fehlgeschlagen, neuer Versuch…",
+    "saveStorageFull": "Der Browser-Speicher ist voll — geben Sie Speicherplatz frei (löschen Sie alte Chats, Charaktere oder Backups) und versuchen Sie es erneut. Ihre letzten Änderungen konnten nicht gespeichert werden.",
+    "saveEscalated": "RisuTanium kann Ihre Änderungen weiterhin nicht speichern. Sie existieren nur in diesem Tab. Sichern Sie Ihre Daten jetzt, wenn möglich, und laden Sie dann neu.",
+    "saveNotFlushed": "Ihre letzten Änderungen wurden geschrieben, aber der Speicher konnte nicht bestätigen, dass sie auf der Festplatte angekommen sind. RisuTanium speichert erneut.",
     "saveSeedBlocked": (found: string[]) => `RisuAI hat keinen aktuellen Speicherstand gefunden, aber ältere Daten (${found.map((kind) => kind === 'head' ? 'einen Speicherzeiger' : kind === 'main-file' ? 'eine alte Speicherdatei' : kind === 'pre-blocks' ? 'eine Kopie einer alten Speicherdatei' : 'Backups').join(', ')}). Es legt darüber kein leeres Profil an und hat nichts verändert.`,
     "saveSeedFailed": "RisuAI konnte den ersten Speicherstand nicht anlegen und hat deshalb nichts geöffnet und nichts verändert. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "saveLeftoverNotice": "RisuAI hat nicht verwendete Speicherdaten gefunden, die ein unterbrochenes Speichern oder Wiederherstellen zurückgelassen hat. Sie schaden nicht. Sie können sie in der Bereinigung in den Einstellungen entfernen.",
@@ -2663,6 +2667,21 @@ export const languageGerman = {
         "recoveryProblemMissing": "Ein Teil dieser Version fehlt.",
         "recoveryProblemDamaged": "Ein Teil dieser Version ist beschädigt.",
         "recoveryProblemTooNew": "Diese Version wurde von einer neueren RisuTanium-Version geschrieben.",
-        "recoveryProblemUnreadable": "RisuTanium konnte diese Version nicht lesen."
+        "recoveryProblemUnreadable": "RisuTanium konnte diese Version nicht lesen.",
+        "peerCommitTitle": "Ein anderer Tab hat Änderungen gespeichert. Dieser Tab hat Änderungen, die nicht gespeichert sind.",
+        "peerReplacedTitle": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert, daher kann dieser Tab nicht mehr speichern. Dieser Tab hat Änderungen, die nicht gespeichert sind.",
+        "peerReload": "Neu laden (die ungespeicherten Änderungen dieses Tabs gehen verloren)",
+        "peerSaveMine": "Meine speichern (die Version dieses Tabs ersetzt die Änderung des anderen Tabs)",
+        "peerExportFirst": "Diesen Tab zuerst exportieren, dann neu laden",
+        "peerNoSaveNode": "Dieses Server-Setup kann einen Tab nicht über einen anderen speichern.",
+        "peerNoSaveReplaced": "Nachdem Ihre gespeicherten Daten außerhalb dieses Tabs geändert wurden, kann die Version dieses Tabs nicht darüber gespeichert werden.",
+        "peerNoSaveUnloaded": "Dieser Tab hält nicht alle Charaktere im Arbeitsspeicher, daher kann seine Version die Änderung des anderen Tabs nicht ersetzen.",
+        "peerReloadOnly": "Neu laden",
+        "peerKeepReading": "Weiterlesen (dieser Tab kann nicht speichern)",
+        "peerCleanCommit": "Ein anderer Tab hat Änderungen an Ihren Daten gespeichert. Laden Sie neu, um sie zu sehen. In diesem Tab ist nichts ungespeichert.",
+        "peerCleanReplaced": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. In diesem Tab ist nichts ungespeichert.",
+        "peerCleanCommitDrafts": "Ein anderer Tab hat Änderungen an Ihren Daten gespeichert. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
+        "peerCleanReplacedDrafts": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
+        "peerReloadDrafts": "Neu laden (nicht abgeschlossener Text und Bearbeitungen gehen verloren)"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

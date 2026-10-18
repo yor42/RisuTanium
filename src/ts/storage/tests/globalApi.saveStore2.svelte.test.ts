@@ -376,6 +376,24 @@ describe('new behaviour: a stub that shares its id with a resident character', (
     })
 })
 
+describe('new behaviour: a commit the storage could not confirm is reported in plain words with the technical text apart', () => {
+    test('the toast at the first failure and, after the fifth, an error alert whose sub-message carries the technical text', async () => {
+        const page = await startPage(small(), {
+            // The backend reports every commit as written but not flushed: the loop's own not-flushed route, not a thrown error.
+            hooks: { flushed: (name) => name === 'commitOrdinary' ? false : undefined },
+        })
+        const { alertToast, alertStore } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const setAlert = vi.spyOn(alertStore, 'set')
+        characters(page.db)[0].personality = 'unflushed edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        await until(() => setAlert.mock.calls.some(([alert]) => alert.type === 'error'), 'the error alert after the fifth failed pass', 20000)
+        expect(vi.mocked(alertToast)).toHaveBeenCalledWith(language.saveNotFlushed)
+        const shown = setAlert.mock.calls.map(([alert]) => alert).find((alert) => alert.type === 'error')
+        expect(shown).toMatchObject({ type: 'error', msg: language.saveNotFlushed })
+        expect(shown?.submsg).toContain('did not confirm')
+    })
+})
 describe('new behaviour: a peer\'s commit parks the page and the person decides', () => {
     function broadcastFromPeer(epoch: string | null) {
         h.channels.at(-1)!.onmessage?.({ data: epoch === null ? 'a peer tab' : { sessionID: 'a peer tab', epoch } })
@@ -402,6 +420,28 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         await until(() => page.k.peer.clean.length >= 1, 'the notice', 6000)
         expect(page.k.peer.clean[0]).toMatchObject({ unsaved: false, offers: ['reload'] })
         expect(page.k.peer.asked).toEqual([])
+    })
+
+    test('typed text is reported as drafts and never as a dirty edit: the page asks nothing and the live state follows the registrations', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const key = await peerCommit(page.k, (peerDb) => { (peerDb.characters as unknown as Entry[])[3].personality = 'the peer edit' })
+        broadcastFromPeer(key.epoch)
+        await until(() => page.k.peer.clean.length >= 1, 'the notice', 6000)
+        const live = page.k.peer.live[0]
+        // The page's module graph is rebuilt per test, so the registry is imported after the page started.
+        const { COMPOSER_DRAFT_KIND, registerDraft, unregisterDraft } = await import('src/ts/localDrafts')
+        expect(live()).toEqual({ parked: true, dirty: false, drafts: false })
+        registerDraft('composer-under-test', COMPOSER_DRAFT_KIND)
+        try {
+            expect(live()).toEqual({ parked: true, dirty: false, drafts: true })
+            // Several loop iterations later the draft has still not routed the tab to the unsaved question.
+            await sleepReal(60)
+            expect(page.k.peer.asked).toEqual([])
+        } finally {
+            unregisterDraft('composer-under-test')
+        }
+        expect(live()).toEqual({ parked: true, dirty: false, drafts: false })
     })
 
     test('on Node: Reload or export this tab first, never Save mine', async () => {

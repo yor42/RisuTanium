@@ -7,11 +7,12 @@ import {
     confirmIncompleteScreen, declinedScreen, foreignMarkerScreen, offerScreen, stoppedScreen, tooNewScreen, blockedScreen,
     type BootQuestion, type BootScreenModel,
 } from './bootText'
+import { createPeerUi } from './peerUi'
 import { runRecovery } from './recoveryController'
 
 /**
  * The port the page registers for the store2 boot: every prompt is a boot screen, and a boot that stops leaves a screen
- * up. `peer` is still the placeholder of a build without that screen.
+ * up. `peer` is the in-session prompt of a parked page (`peerUi.ts`); it does not set the language.
  *
  * Invariants:
  *  - The language is set from the browser before any screen is built, because the screens read it at build time.
@@ -44,7 +45,6 @@ function pageLanguage(): string | null {
 export function createProductionBootUi(options: ProductionBootUiOptions = {}): Store2BootUi {
     const reload = options.reload ?? pageReload
     const importAvailable = options.importAvailable ?? false
-    const open = <T>(): Promise<T> => new Promise<T>(() => { })
     let languageSet = false
 
     function ensureLanguage(): void {
@@ -127,11 +127,6 @@ export function createProductionBootUi(options: ProductionBootUiOptions = {}): S
                 reload,
             })
         },
-        peer: {
-            parkedClean: (prompt) => console.warn('[store2 boot] parked', prompt),
-            decide: () => open(),
-            exportThisTab: () => Promise.reject(new Error('The export is not available in this build.')),
-            reload: pageReload,
-        },
+        peer: createPeerUi({ reload }),
     }
 }

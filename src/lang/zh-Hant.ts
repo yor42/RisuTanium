@@ -2177,6 +2177,10 @@ export const languageChineseTraditional = {
     "saveDamagedRetry": "重試",
     "saveDamagedUnconfirmed": "RisuAI 無法確認哪一個存檔是目前的存檔。請重新載入頁面，查看載入的是哪一個。",
     "saveDamagedTooLarge": "此備份過大，無法一次性載入到此伺服器上。未變更任何內容。",
+    "saveRetrying": "資料儲存失敗，正在重試…",
+    "saveStorageFull": "瀏覽器儲存空間已滿 — 請釋放空間（刪除舊聊天、角色或備份）後重試。您最新的編輯未能儲存。",
+    "saveEscalated": "RisuTanium 仍然無法儲存您的變更。這些變更只存在於此分頁中。如有可能，請立即備份您的資料，然後重新載入。",
+    "saveNotFlushed": "您最新的變更已寫入，但儲存空間無法確認這些變更已抵達磁碟。RisuTanium 將再次儲存。",
     "saveSeedBlocked": (found: string[]) => `RisuAI 沒有找到目前的存檔，但找到了較舊的資料（${found.map((kind) => kind === 'head' ? '存檔指標' : kind === 'main-file' ? '舊存檔檔案' : kind === 'pre-blocks' ? '舊存檔檔案的副本' : '備份').join('、')}）。它不會在這些資料之上啟動一個空白設定檔，並且沒有變更任何內容。`,
     "saveSeedFailed": "RisuAI 無法建立第一個存檔，因此沒有開啟任何內容，也沒有變更任何內容。請重新載入頁面後再試一次。",
     "saveLeftoverNotice": "RisuAI 發現了因儲存或還原被中斷而遺留的未使用存檔資料。這些資料無害，您可以在設定中的清理裡將其移除。",
@@ -2706,6 +2710,21 @@ export const languageChineseTraditional = {
         "recoveryProblemMissing": "此版本缺少一部分。",
         "recoveryProblemDamaged": "此版本有一部分已損毀。",
         "recoveryProblemTooNew": "此版本由更新的 RisuTanium 寫入。",
-        "recoveryProblemUnreadable": "RisuTanium 無法讀取此版本。"
+        "recoveryProblemUnreadable": "RisuTanium 無法讀取此版本。",
+        "peerCommitTitle": "另一個分頁儲存了變更。此分頁有尚未儲存的變更。",
+        "peerReplacedTitle": "您已儲存的資料在此分頁之外被變更，因此此分頁無法再儲存。此分頁有尚未儲存的變更。",
+        "peerReload": "重新載入（此分頁未儲存的變更將遺失）",
+        "peerSaveMine": "儲存我的（此分頁的版本將取代另一個分頁的變更）",
+        "peerExportFirst": "先匯出此分頁，再重新載入",
+        "peerNoSaveNode": "此伺服器設定無法將一個分頁的內容覆蓋儲存到另一個分頁之上。",
+        "peerNoSaveReplaced": "已儲存的資料在此分頁之外被變更後，無法再用此分頁的版本覆蓋儲存。",
+        "peerNoSaveUnloaded": "此分頁沒有在記憶體中保留所有角色，因此其版本無法取代另一個分頁的變更。",
+        "peerReloadOnly": "重新載入",
+        "peerKeepReading": "繼續閱讀（此分頁無法儲存）",
+        "peerCleanCommit": "另一個分頁儲存了對您資料的變更。重新載入即可查看。此分頁中沒有未儲存的內容。",
+        "peerCleanReplaced": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中沒有未儲存的內容。",
+        "peerCleanCommitDrafts": "另一個分頁儲存了對您資料的變更。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
+        "peerCleanReplacedDrafts": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
+        "peerReloadDrafts": "重新載入（未完成的文字和編輯將遺失）"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

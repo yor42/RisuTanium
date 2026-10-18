@@ -18,7 +18,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { MobileGUI, botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
-import { alertConfirm, alertError, alertMd, alertSelect, alertToast, waitAlert } from "./alert";
+import { alertConfirm, alertError, alertMd, alertSelect, alertStore, alertToast, waitAlert } from "./alert";
 import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
 import { characterURLImport, hubURL } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
@@ -1611,6 +1611,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
     }
 
     const { runStore2SaveLoop } = await import('./storage/store2/saveLoop')
+    const { describeSaveFailure } = await import('./storage/store2/ui/peerUi')
     const port: Store2LoopPort = {
         tracker: changeTracker,
         reloadFlag: requiresFullEncoderReload,
@@ -1627,6 +1628,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         sweep: () => sweepDraftRegistrations(),
         isDue: () => changed,
         isDirty: () => dirtySinceLastSave,
+        hasDrafts: () => hasLocalDrafts(),
         beginIteration() {
             saving.state = true
             changed = false
@@ -1667,20 +1669,20 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             savingStoppedReason.set(reason)
         },
         reportFailure(error, attempts) {
-            if (isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)) {
-                alertToast('Your browser storage is full — free up space (delete old chats, characters, or backups) and try again. Your latest edits could not be saved.')
+            const storageFull = isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)
+            const report = describeSaveFailure(error, attempts, storageFull)
+            if (report.toast !== null) {
+                alertToast(report.toast)
+            }
+            if (report.alert !== null) {
                 console.error(error)
-                return 5000
-            }
-            if (attempts === 1) {
-                alertToast('Failed to save data, retrying…')
-            }
-            if (attempts > 4) {
+                alertStore.set({ type: 'error', msg: report.alert.msg, submsg: report.alert.submsg })
+            } else if (report.showRaw) {
                 alertError(error instanceof Error ? error : String(error))
             } else {
                 console.error(error)
             }
-            return 1000
+            return report.waitMs
         },
         async withWriteLock(run) {
             const release = await dbWriteLock.acquire()

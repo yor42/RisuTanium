@@ -37,9 +37,25 @@ export interface PeerParkPrompt {
     saveMineUnavailable?: 'node' | 'replaced' | 'unloaded-characters'
 }
 
+/** What a clean prompt reads when its Reload is pressed: the loop's live state, never a copy taken when it was asked. */
+export interface PeerLiveState {
+    /** The page is still parked; once the loop unparks, the prompt's Reload does nothing. */
+    parked: boolean
+    /** Edits that no commit has taken: the unsaved question belongs to the loop's `decide`. */
+    dirty: boolean
+    /** Typed text outside the database (composer, an open edit): a reload discards it. */
+    drafts: boolean
+}
+
 export interface Store2PeerHandler {
-    /** Parked with nothing unsaved: only the reload action exists. Nothing is awaited. */
-    parkedClean(prompt: PeerParkPrompt): void
+    /**
+     * Parked with nothing unsaved: only the reload action exists. Nothing is awaited. The prompt may be answered long
+     * after the tab was found clean, so `live()` is read when Reload is pressed. Reload reloads only while the page is
+     * still parked and not dirty. A tab that has become dirty reloads nothing and the prompt closes; the loop then asks
+     * `decide` with the unsaved wording, on its next iteration at the latest, because `asked` is still false. Typed text
+     * is not a dirty edit: it never reaches `decide`, so the prompt itself warns that a reload discards it.
+     */
+    parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState): void
     /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
     decide(prompt: PeerParkPrompt): Promise<PeerOffer>
     /**
@@ -102,6 +118,8 @@ export interface Store2LoopPort {
     isDue(): boolean
     /** The page holds edits that no commit has taken. */
     isDirty(): boolean
+    /** Typed text no commit has taken (composer, an open edit). Not a dirty edit: it never routes a tab to `decide`. */
+    hasDrafts(): boolean
     /** A pass that carries marks begins: the save indicator is on and the due flag is consumed. */
     beginIteration(): void
     endIteration(): void
@@ -333,7 +351,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (!port.isDirty()) {
             if (!parked.noticed) {
                 parked.noticed = true
-                context.peer.parkedClean(promptOf(parked, false))
+                context.peer.parkedClean(promptOf(parked, false), () => ({
+                    parked: park !== null,
+                    dirty: port.isDirty(),
+                    drafts: port.hasDrafts(),
+                }))
             }
             return
         }

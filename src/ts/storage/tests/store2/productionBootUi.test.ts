@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 
 // MOCKED: the alert store `alertPrompts` reads for the guard constant, and the page store selection the dispatch reaches
 // only through the legacy block owner it disables (the selection drags in the app's boot chain).
@@ -12,10 +12,23 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStoreKind: async () => { throw new Error('The page store is not selected in this test.') },
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
+// MOCKED: `alertSelect`, so the in-session peer prompt needs no application chain; it asks through the real prompt controller
+// and builds the message as `alertSelect` does.
+vi.mock(import('src/ts/alert'), async () => {
+    const { askPrompt } = await import('src/ts/alertPrompts')
+    return {
+        alertSelect: async (msg: string[], display?: string) => await askPrompt({
+            type: 'select',
+            msg: display !== undefined ? `__DISPLAY__${display}||${msg.join('||')}` : msg.join('||'),
+        }),
+    } as unknown as typeof import('src/ts/alert')
+})
+
 import { changeLanguage, language } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageKorean } from 'src/lang/ko'
-import { ANSWER_GUARD_MS } from 'src/ts/alertPrompts'
+import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
+import { alertStore } from 'src/ts/stores.svelte'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
@@ -61,6 +74,10 @@ async function screenAfter(previous: BootScreenView | null): Promise<BootScreenV
         expect(shown !== null && shown.model !== previous?.model).toBe(true)
     })
     return getBootScreen()!
+}
+
+function getAlert() {
+    return get(alertStore)
 }
 
 function keys(view: BootScreenView): string[] {
@@ -412,5 +429,54 @@ describe('the real dispatch with the production port, over a damaged commit key 
         expect(t.reload).toHaveBeenCalledTimes(1)
         expect(getBootScreen()).not.toBeNull()
         expect(t.settled()).toBe(false)
+    })
+})
+
+describe('the in-session peer port', () => {
+    const peerPrompt = { reason: 'peer-commit', unsaved: true, offers: ['reload', 'save-mine'] } as const
+
+    beforeEach(() => {
+        resetAlertPromptsForTests()
+        alertStore.set({ type: 'none', msg: '' })
+    })
+
+    afterEach(() => {
+        resetAlertPromptsForTests()
+        alertStore.set({ type: 'none', msg: '' })
+    })
+
+    test('decide asks through the alert prompt and returns the offer of the button pressed', async () => {
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        const answer = ui.peer.decide({ ...peerPrompt })
+        await vi.waitFor(() => expect(getAlert().type).toBe('select'))
+        expect(getAlert().msg).toContain(text().peerSaveMine)
+        await sleep(ANSWER_GUARD_MS + 40)
+        alertStore.set({ type: 'none', msg: '1' })
+        await expect(answer).resolves.toBe('save-mine')
+    })
+
+    test('the page reload is the port\'s reload', () => {
+        const reload = vi.fn()
+        const ui = createProductionBootUi({ reload, browserLanguage: 'ko-KR' })
+        ui.peer.reload()
+        expect(reload).toHaveBeenCalledTimes(1)
+    })
+
+    test('the peer prompts do not touch the boot language: decide and parkedClean leave the database language as it is', async () => {
+        changeLanguage('en')
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'ko-KR' })
+        void ui.peer.decide({ ...peerPrompt })
+        await vi.waitFor(() => expect(getAlert().type).toBe('select'))
+        expect(language).toBe(languageEnglish)
+        expect(language).not.toBe(languageKorean)
+        expect(getAlert().msg).toContain(text().peerSaveMine)
+        await sleep(ANSWER_GUARD_MS + 40)
+        alertStore.set({ type: 'none', msg: '0' })
+
+        await vi.waitFor(() => expect(getAlert().type).toBe('none'))
+        ui.peer.parkedClean({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }, () => ({ parked: true, dirty: false, drafts: false }))
+        await vi.waitFor(() => expect(getAlert().type).toBe('select'))
+        expect(language).toBe(languageEnglish)
+        expect(getAlert().msg).toContain(text().peerKeepReading)
     })
 })

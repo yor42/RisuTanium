@@ -43,7 +43,7 @@ interface Loop {
     db: Database
     tracker: toSaveType
     reloadFlag: { state: boolean }
-    state: { due: boolean, dirty: boolean, saved: number, saving: boolean, stopped: string, peerHeard: boolean, marks: number }
+    state: { due: boolean, dirty: boolean, saved: number, saving: boolean, stopped: string, peerHeard: boolean, marks: number, drafts: boolean }
     failures: Array<{ error: unknown, attempts: number }>
     /** The waits the loop asked for through `sleep`, in order. */
     sleeps: number[]
@@ -94,7 +94,7 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
     const reloadFlag = { state: false }
     const loop: Loop = {
         kit, db, tracker, reloadFlag,
-        state: { due: false, dirty: false, saved: 0, saving: false, stopped: '', peerHeard: false, marks: 0 },
+        state: { due: false, dirty: false, saved: 0, saving: false, stopped: '', peerHeard: false, marks: 0, drafts: false },
         failures: [],
         sleeps: [],
         broadcasts: [],
@@ -128,6 +128,7 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         sweep: () => {},
         isDue: () => loop.state.due,
         isDirty: () => loop.state.dirty,
+        hasDrafts: () => loop.state.drafts,
         beginIteration() {
             loop.state.saving = true
             loop.state.due = false
@@ -791,6 +792,26 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         healthy(loop)
     })
 
+    test('the clean prompt\'s live state reads the park, the dirty flag and the drafts when it is called: a tab that gains an edit after the notice ends in the unsaved question', async () => {
+        const { db, kit, loop } = await startPeerWorld()
+        await peerCommit(kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+        loop.state.peerHeard = true
+        await until(() => kit.peer.clean.length === 1, 'the notice', 4000)
+        expect(kit.peer.live).toHaveLength(1)
+        expect(kit.peer.live[0]()).toEqual({ parked: true, dirty: false, drafts: false })
+        loop.state.drafts = true
+        expect(kit.peer.live[0]()).toEqual({ parked: true, dirty: false, drafts: true })
+        loop.state.drafts = false
+        chars(db)[0].personality = 'late edit'
+        loop.mark(chaIdOf(db, 0))
+        // The state handed over earlier now sees the edit, so a Reload pressed on the clean prompt would do nothing.
+        expect(kit.peer.live[0]()).toMatchObject({ parked: true, dirty: true })
+        // The loop's next settle asks with the unsaved wording: `asked` was still false after the clean notice.
+        await until(() => kit.peer.asked.length === 1, 'the unsaved question', 4000)
+        expect(kit.peer.asked[0]).toMatchObject({ unsaved: true, offers: ['reload', 'save-mine'] })
+        healthy(loop)
+    })
+
     test('Save mine overwrites the peer commit: the store holds this page\'s whole state afterwards', async () => {
         const peer: PeerDouble = createPeerDouble('save-mine')
         const { db, kit, loop } = await parkedDirty({ peer })
@@ -857,6 +878,8 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         expect(restored.status).toBe('committed')
         loop.state.peerHeard = true
         await until(() => loop.state.stopped === '' && kit.peer.clean.length === 1, 'the recheck', 4000)
+        // The clean prompt still on screen reads the unpark: its Reload must do nothing.
+        await until(() => !kit.peer.live[0]().parked, 'the unpark', 4000)
         chars(db)[0].personality = 'after the restore'
         loop.mark(chaIdOf(db, 0))
         await savedBy(loop)

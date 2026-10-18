@@ -2132,6 +2132,10 @@ export const languageChinese = {
     "saveDamagedRetry": "重试",
     "saveDamagedUnconfirmed": "RisuAI 无法确认哪个存档是当前存档。请重新加载页面，查看加载的是哪一个。",
     "saveDamagedTooLarge": "此备份过大，无法一次性加载到此服务器上。未更改任何内容。",
+    "saveRetrying": "数据保存失败，正在重试…",
+    "saveStorageFull": "浏览器存储空间已满 — 请释放空间（删除旧聊天、角色或备份）后重试。您最新的编辑未能保存。",
+    "saveEscalated": "RisuTanium 仍然无法保存您的更改。这些更改只存在于此标签页中。如有可能，请立即备份您的数据，然后重新加载。",
+    "saveNotFlushed": "您最新的更改已写入，但存储无法确认这些更改已到达磁盘。RisuTanium 将再次保存。",
     "saveSeedBlocked": (found: string[]) => `RisuAI 没有找到当前存档，但找到了较旧的数据（${found.map((kind) => kind === 'head' ? '存档指针' : kind === 'main-file' ? '旧存档文件' : kind === 'pre-blocks' ? '旧存档文件的副本' : '备份').join('、')}）。它不会在这些数据之上启动一个空白配置，并且没有更改任何内容。`,
     "saveSeedFailed": "RisuAI 无法创建第一个存档，因此没有打开任何内容，也没有更改任何内容。请重新加载页面后重试。",
     "saveLeftoverNotice": "RisuAI 发现了因保存或恢复被中断而遗留的未使用存档数据。这些数据无害，您可以在设置中的清理里将其删除。",
@@ -2661,6 +2665,21 @@ export const languageChinese = {
         "recoveryProblemMissing": "此版本缺少一部分。",
         "recoveryProblemDamaged": "此版本有一部分已损坏。",
         "recoveryProblemTooNew": "此版本由更新的 RisuTanium 写入。",
-        "recoveryProblemUnreadable": "RisuTanium 无法读取此版本。"
+        "recoveryProblemUnreadable": "RisuTanium 无法读取此版本。",
+        "peerCommitTitle": "另一个标签页保存了更改。此标签页有尚未保存的更改。",
+        "peerReplacedTitle": "您已保存的数据在此标签页之外被更改，因此此标签页无法再保存。此标签页有尚未保存的更改。",
+        "peerReload": "重新加载（此标签页未保存的更改将丢失）",
+        "peerSaveMine": "保存我的（此标签页的版本将取代另一个标签页的更改）",
+        "peerExportFirst": "先导出此标签页，再重新加载",
+        "peerNoSaveNode": "此服务器配置无法将一个标签页的内容覆盖保存到另一个标签页之上。",
+        "peerNoSaveReplaced": "已保存的数据在此标签页之外被更改后，无法再用此标签页的版本覆盖保存。",
+        "peerNoSaveUnloaded": "此标签页没有在内存中保留所有角色，因此其版本无法取代另一个标签页的更改。",
+        "peerReloadOnly": "重新加载",
+        "peerKeepReading": "继续阅读（此标签页无法保存）",
+        "peerCleanCommit": "另一个标签页保存了对您数据的更改。重新加载即可查看。此标签页中没有未保存的内容。",
+        "peerCleanReplaced": "您已保存的数据在此标签页之外被更改。请重新加载以继续。此标签页中没有未保存的内容。",
+        "peerCleanCommitDrafts": "另一个标签页保存了对您数据的更改。此标签页中有尚未完成的文本或编辑，重新加载会将其丢弃。",
+        "peerCleanReplacedDrafts": "您已保存的数据在此标签页之外被更改。请重新加载以继续。此标签页中有尚未完成的文本或编辑，重新加载会将其丢弃。",
+        "peerReloadDrafts": "重新加载（未完成的文本和编辑将丢失）"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

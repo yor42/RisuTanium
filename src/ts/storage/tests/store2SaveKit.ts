@@ -7,7 +7,7 @@
  */
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import {
-    createMemoryBackend, type MemoryBackend, type Store2Backend,
+    createMemoryBackend, type MemoryBackend, type Store2Backend, type Store2WriteResult,
 } from 'src/ts/storage/store2/backend'
 import { assembleDatabase, encodeDatabase, previousFrom, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
 import { createCommitter, type Committer } from 'src/ts/storage/store2/commit'
@@ -18,7 +18,7 @@ import {
     encodeUnit, readUnit, UNIT_TYPE, type CommitKey, type KeyEnv, type Manifest,
 } from 'src/ts/storage/store2/format'
 import type { Store2SaveContext } from 'src/ts/storage/store2/saveActive'
-import type { IdleNetOptions, PeerOffer, PeerParkPrompt, Store2PeerHandler } from 'src/ts/storage/store2/saveLoop'
+import type { IdleNetOptions, PeerLiveState, PeerOffer, PeerParkPrompt, Store2PeerHandler } from 'src/ts/storage/store2/saveLoop'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { World } from './saveLoopWorld'
@@ -60,6 +60,8 @@ export interface Hooks {
     before?: (name: string, count: number) => Promise<void> | void
     /** Runs after the call completed; throwing loses its response after it was applied. */
     after?: (name: string, count: number) => Promise<void> | void
+    /** What a completed write call reports as its `flushed`; `undefined` leaves the backend's own report. */
+    flushed?: (name: string) => boolean | undefined
 }
 
 /** The backend with every call passing the hooks; everything else is delegated unchanged. */
@@ -76,6 +78,11 @@ function hooked(inner: Store2Backend, hooks: Hooks): Store2Backend {
         await hooks.after?.(name, done)
         return result
     }
+    async function runWrite(name: string, body: () => Promise<Store2WriteResult>): Promise<Store2WriteResult> {
+        const result = await run(name, body)
+        const reported = hooks.flushed?.(name)
+        return reported === undefined ? result : { ...result, flushed: reported }
+    }
     return {
         readCommit: () => run('readCommit', () => inner.readCommit()),
         readFence: () => run('readFence', () => inner.readFence()),
@@ -84,7 +91,7 @@ function hooked(inner: Store2Backend, hooks: Hooks): Store2Backend {
         readUnits: (keys) => run('readUnits', () => inner.readUnits(keys)),
         listStore2: () => run('listStore2', () => inner.listStore2()),
         countPrefix: (prefix) => run('countPrefix', () => inner.countPrefix(prefix)),
-        commitOrdinary: (expectedCommit, units, nextCommit) => run('commitOrdinary', () => inner.commitOrdinary(expectedCommit, units, nextCommit)),
+        commitOrdinary: (expectedCommit, units, nextCommit) => runWrite('commitOrdinary', () => inner.commitOrdinary(expectedCommit, units, nextCommit)),
         putUnit: (key, bytes) => run('putUnit', () => inner.putUnit(key, bytes)),
         removeBatch: (keys, expectedCommit, expectedFence) => run('removeBatch', () => inner.removeBatch(keys, expectedCommit, expectedFence)),
     }
@@ -167,6 +174,8 @@ export function countedBackend(options: { hooks?: Hooks } = {}): CountedBackend 
 /** A peer handler that records what it was told and answers every question with `answer`. */
 export interface PeerDouble extends Store2PeerHandler {
     clean: PeerParkPrompt[]
+    /** The live state read each `parkedClean` call was given, in call order. */
+    live: Array<() => PeerLiveState>
     asked: PeerParkPrompt[]
     reloads: number
     exports: string[]
@@ -180,14 +189,16 @@ export interface PeerDouble extends Store2PeerHandler {
 export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
     const double: PeerDouble = {
         clean: [],
+        live: [],
         asked: [],
         reloads: 0,
         exports: [],
         answer,
         hold: null,
         exportFails: false,
-        parkedClean(prompt) {
+        parkedClean(prompt, live) {
             double.clean.push(prompt)
+            double.live.push(live)
         },
         async decide(prompt) {
             double.asked.push(prompt)
