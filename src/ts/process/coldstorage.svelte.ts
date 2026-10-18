@@ -376,6 +376,11 @@ async function compressColdStorageValue(value:any):Promise<Uint8Array | null> {
  * them apart.
  */
 export async function writeColdStorageUnit(key:string, value:any):Promise<'written' | 'too-large' | 'failed'> {
+    // A store2 page keeps every unit inside its own snapshots; a legacy unit written here would sit outside all of them.
+    if (getResidency() !== null) {
+        console.error('Cold storage write refused: this page stores its data in store2, which has no legacy cold units.')
+        return 'failed'
+    }
     // A key that cannot be a storage name is a failed write, decided before
     // anything is compressed or any backend is asked. The key itself is not
     // logged: it may be arbitrarily long.
@@ -460,6 +465,11 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
  * deletion has outdated.
  */
 export async function deleteColdStorageUnits(keys: readonly string[]): Promise<{ key: string, error: unknown }[]> {
+    if (getResidency() !== null) {
+        console.error('Cold storage delete refused: this page stores its data in store2, which has no legacy cold units.')
+        const error = new Error('Legacy cold units cannot be deleted on a store2 page.')
+        return keys.map((key) => ({ key, error }))
+    }
     const endUnitWrites = beginUnitWrites(keys)
     try {
         return await deleteColdStorageUnitsNow(keys)

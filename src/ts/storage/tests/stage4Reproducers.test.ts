@@ -44,6 +44,9 @@ import { stubFromEntry } from 'src/ts/storage/store2/codec'
 import { startStore2, store2Boot, type Hooks, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import {
+    removePluginStorageValue, writePluginStorageValue, writePluginUnitToDb, type PluginColdStorageDb,
+} from 'src/ts/plugins/apiV3/pluginColdStorage'
 
 vi.setConfig({ testTimeout: 40_000 })
 
@@ -288,6 +291,71 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         // The edit is persisted (at least the edited key's data) and nothing else is.
         expect(meter.savedBytes()).toBeGreaterThanOrEqual(BLOCK)
         expect(meter.savedBytes()).toBeLessThan(2 * BLOCK)
+    })
+
+    /** A store2 page's plugin storage: twelve slots, each a unit id in `_coldplugin` and a value under that id. */
+    function pluginSlotsDb() {
+        const db = makeDb('p', ['a'])
+        const storage: Record<string, unknown> = { _coldplugin: {} as Record<string, string> }
+        for (let i = 0; i < 12; i++) {
+            ;(storage._coldplugin as Record<string, string>)[`slot-${i}`] = `unit-${i}`
+            storage[`unit-${i}`] = incompressible(BLOCK).replace(/^./, String(i % 10))
+        }
+        db.pluginCustomStorage = storage
+        return db
+    }
+
+    // Plugin storage on a store2 page (W4c): `pluginStorage.setItem` lands in the entry's own unit, and a save pass writes
+    // that unit and no other. New behaviour over the injected writer (it does not exist on the base); the wiring in
+    // `v3.svelte.ts` that selects it is the reproducer in `pluginStorageStore2.svelte.test.ts`.
+    test('pluginStorage on store2: setItem of one slot persists exactly that key\'s unit and writes no cold unit', async () => {
+        h.db = pluginSlotsDb()
+        const { w, k, db: live, flush } = await startReactive()
+        await settled(w)
+        const meter = meterWrites(k)
+        const edited = `edited-${incompressible(BLOCK - 7)}`
+
+        const liveDb = live as PluginColdStorageDb
+        let write: Promise<void> = Promise.resolve()
+        await nextCommit(w, () => {
+            write = writePluginStorageValue(liveDb, () => liveDb, 'slot-5', edited, writePluginUnitToDb(() => liveDb), () => 'unused').then(flush)
+        })
+        await write
+
+        expect(meter.savedBytes()).toBeGreaterThanOrEqual(BLOCK)
+        expect(meter.savedBytes()).toBeLessThan(2 * BLOCK)
+        const saved = (await k.saved()).pluginCustomStorage as Record<string, unknown>
+        expect(saved['unit-5']).toBe(edited)
+        expect(saved['unit-4']).toBe((h.db as unknown as Database).pluginCustomStorage['unit-4'])
+        expect(Object.keys(saved)).toHaveLength(13)
+        expect(units.size, 'no legacy cold unit is written').toBe(0)
+    })
+
+    // A new slot adds its map entry and one value; removing a slot removes both from the saved tree.
+    test('pluginStorage on store2: a new slot and a removed slot are both persisted', async () => {
+        h.db = pluginSlotsDb()
+        const { w, k, db: live, flush } = await startReactive()
+        await settled(w)
+        const liveDb = live as PluginColdStorageDb
+
+        let write: Promise<void> = Promise.resolve()
+        await nextCommit(w, () => {
+            write = writePluginStorageValue(liveDb, () => liveDb, 'fresh', { n: 1 }, writePluginUnitToDb(() => liveDb), () => 'unit-fresh').then(flush)
+        })
+        await write
+        const afterAdd = (await k.saved()).pluginCustomStorage as Record<string, unknown>
+        expect(afterAdd['unit-fresh']).toEqual({ n: 1 })
+        expect((afterAdd._coldplugin as Record<string, string>).fresh).toBe('unit-fresh')
+
+        await nextCommit(w, () => {
+            removePluginStorageValue(liveDb, 'slot-3', true)
+            flush()
+        })
+        const afterRemove = (await k.saved()).pluginCustomStorage as Record<string, unknown>
+        expect(Object.hasOwn(afterRemove, 'unit-3')).toBe(false)
+        expect(Object.hasOwn(afterRemove._coldplugin as Record<string, string>, 'slot-3')).toBe(false)
+        expect(afterRemove['unit-fresh']).toEqual({ n: 1 })
+        expect(units.size).toBe(0)
     })
 
     // Editing one module writes about that module's bytes, not every module's.

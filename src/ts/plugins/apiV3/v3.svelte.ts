@@ -27,7 +27,8 @@ import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/c
 import { incomingCharacterRefusal } from "../stubDowngrade";
 import { singleCharacterProblem } from "../characterWriteCheck";
 import { isColdChat } from "src/ts/process/coldstorageData";
-import { readPluginStorageValue, writePluginStorageValue } from "./pluginColdStorage";
+import { clearPluginStorageValues, readPluginStorageValue, readPluginUnitFromDb, removePluginStorageValue, writePluginStorageValue, writePluginUnitToDb } from "./pluginColdStorage";
+import { getResidency } from "src/ts/storage/store2/residencyActive";
 import { getInlayAsset } from "src/ts/process/files/inlays";
 import { getLLMCache, searchLLMCache } from "src/ts/translator/translator";
 import { hasher, risuChatParser, type CbsConditions } from "src/ts/parser/parser.svelte";
@@ -1416,7 +1417,9 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return v;
         },
         //pluginStorage is coldstorage-backed for v3: values live in cold storage,
-        //db.pluginCustomStorage._coldplugin only keeps the key -> coldstorage id map
+        //db.pluginCustomStorage._coldplugin only keeps the key -> coldstorage id map.
+        //On a store2 page (a residency is registered) the values live in
+        //db.pluginCustomStorage[<id>] instead and no legacy cold unit is read or written.
         //
         //CHORE-07 stage 7c-1 (plan §5.2 item 2): both getItem and setItem can
         //now reject on a storage failure -- this is specific to this fork,
@@ -1427,21 +1430,16 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         //dependency graph -- these two are thin wrappers over the real
         //`getDatabase`/`readColdStorageItem`/`setColdStorageItem`/`v4`.
         _getPluginStorage: async (key: string) => {
-            return await readPluginStorageValue(getDatabase(), key, readColdStorageItem)
+            return await readPluginStorageValue(getDatabase(), key, getResidency() !== null ? readPluginUnitFromDb(getDatabase) : readColdStorageItem)
         },
         _setPluginStorage: async (key: string, value: any) => {
-            await writePluginStorageValue(getDatabase(), getDatabase, key, value, setColdStorageItem, v4)
+            await writePluginStorageValue(getDatabase(), getDatabase, key, value, getResidency() !== null ? writePluginUnitToDb(getDatabase) : setColdStorageItem, v4)
         },
         _removePluginStorage: async (key: string) => {
-            const db = getDatabase()
-            if(db.pluginCustomStorage?._coldplugin){
-                delete db.pluginCustomStorage._coldplugin[key]
-            }
+            removePluginStorageValue(getDatabase(), key, getResidency() !== null)
         },
         _clearPluginStorage: async () => {
-            const db = getDatabase()
-            db.pluginCustomStorage ??= {}
-            db.pluginCustomStorage._coldplugin = {}
+            clearPluginStorageValues(getDatabase(), getResidency() !== null)
         },
         _keyPluginStorage: async (index: number) => {
             const db = getDatabase()

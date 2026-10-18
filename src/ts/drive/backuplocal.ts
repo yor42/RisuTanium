@@ -25,7 +25,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { collectBackupColdStorage, inlinedCharacter, lateSettledKeys, type BackupColdStorage } from "./exportInline";
+import { collectBackupColdStorage, inlinedCharacter, lateSettledKeys, mergePluginStorage, pluginStorageForExport, type BackupColdStorage } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
@@ -55,14 +55,18 @@ function getBasename(data:string){
  * database entry.
  */
 async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage){
-    const { tree: dbWithoutAccount, notice: repairNotice } = await exportCopyOf(db, cold.inlined)
-    const lateRoots = listColdBackupRoots(dbWithoutAccount)
+    const { tree: exportCopy, notice: repairNotice } = await exportCopyOf(db, cold.inlined)
+    // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
+    const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
+    const dbWithoutAccount = plugin.tree
+    const lateRoots = listColdBackupRoots(dbWithoutAccount).filter((root) => !plugin.ids.has(root.key))
     const dbData = encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
     // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
-    const late = await collectColdStorageBackupPayloads(dbWithoutAccount, {
+    const lateCollected = await collectColdStorageBackupPayloads(dbWithoutAccount, {
         roots: lateRoots,
         settledKeys: lateSettledKeys(cold.collected, cold.failedKeys),
     })
+    const late = mergePluginStorage(lateCollected, plugin)
     return { dbData, late, repairNotice }
 }
 
