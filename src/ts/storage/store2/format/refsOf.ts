@@ -66,7 +66,7 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.pluginStorageBucket, path: 'entries[].ref', mode: 'ref' },
 ]
 
-/** Unit types that name no other unit. The fence record names keys inline and is not a reference. */
+/** Unit types that name no other unit. The fence record and the deletion snapshot name keys inline, which are not references. */
 export const UNITS_WITHOUT_REFS: readonly UnitType[] = UNIT_TYPE_IDS.filter(
     type => !REFS_TABLE.some(row => row.type === type),
 )

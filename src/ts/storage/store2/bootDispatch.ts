@@ -339,7 +339,9 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         if (granted.status === 'refused') {
             return stop('first-life-refused', granted.detail)
         }
-        const outcome = await seedStore2Profile(backend, { kind: 'first-life', grant: granted.grant }, { owner: session.ownerId, lists, env: keyEnv })
+        const outcome = await seedStore2Profile(backend, { kind: 'first-life', grant: granted.grant }, {
+            owner: session.ownerId, lists, env: keyEnv, oldData: { store: env.store, listBackupTimes: env.listBackupTimes },
+        })
         switch (outcome.status) {
             case 'reclassify':
                 return RECLASSIFY

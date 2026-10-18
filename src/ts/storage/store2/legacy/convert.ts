@@ -10,6 +10,7 @@ import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant,
 import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
 import { LegacyListBuilder } from '../lists/legacyList'
 import type { ListParams } from '../lists/params'
+import { planOldDataSnapshot, withSnapshot, type WalkedLegacy } from '../oldData/plan'
 import type { ForeignClearHook } from '../owner'
 import { runExit, type ExitResult } from '../recovery'
 import { planWholeTreeInstall } from './install'
@@ -31,7 +32,8 @@ import { collectLegacyColdKeys } from './walk'
  *  - Nothing is written before every question is answered. The first write is then the marker on the first-life entry
  *    and the fence on the `exit` entry. Every refusal, decline and read failure before it leaves the store as it was.
  *  - The old files are never written, renamed or deleted here. The new tree names them (`fixed.legacyKeep`) so a later
- *    deletion can see which of them it has fully read.
+ *    deletion can see which of them it has fully read, and the install carries the list of old fork-format keys that
+ *    later deletion may remove (`oldData/plan.ts`), persisted with the tree and before its final write.
  *  - A file the conversion did not read to its end is listed `unreadable`, never `ok`: a keep set trusts an `ok` file's
  *    references. The main file is `unreadable` whenever the tree came from a backup or from the lenient decode, because
  *    a file that did not decode strictly may hold references nobody read.
@@ -212,9 +214,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Adds one old file to the list: its own tree, then every cold unit its chain reaches and every plugin value, each
- * scanned as it is read. A failure at any point lists the file `unreadable` and never escapes.
+ * scanned as it is read. A failure at any point lists the file `unreadable` and never escapes. The unit ids the file's
+ * walk reached are added to `coldKeys`, the union over every walked file that the deletion plan excludes.
  */
-async function listFile(builder: LegacyListBuilder, key: string, tree: Database, reader: LegacyEntryReader): Promise<void> {
+async function listFile(builder: LegacyListBuilder, key: string, tree: Database, reader: LegacyEntryReader, coldKeys: Set<string>): Promise<void> {
     let scan
     try {
         scan = builder.beginFile(key, tree)
@@ -222,13 +225,16 @@ async function listFile(builder: LegacyListBuilder, key: string, tree: Database,
         return
     }
     try {
-        await collectLegacyColdKeys([tree], reader, (_unit, value) => {
+        const reached = await collectLegacyColdKeys([tree], reader, (_unit, value) => {
             scan.coldValue(value)
             const character = isRecord(value) ? value.character : undefined
             if (isRecord(character)) {
                 scan.coldCharacter(character)
             }
         })
+        for (const unit of reached) {
+            coldKeys.add(unit)
+        }
         for (const ref of legacyPluginRefs(tree)) {
             const read = await readLegacyUnit(reader, ref.key, 'plugin')
             if (read.status === 'unparsable') {
@@ -243,13 +249,14 @@ async function listFile(builder: LegacyListBuilder, key: string, tree: Database,
     }
 }
 
-/** The legacy list of every old file present, or the reason the backups cannot be enumerated. */
+/** The legacy list of every old file present with the union of the unit ids their walks reached, or the reason the backups cannot be enumerated. */
 async function buildLegacyList(
     request: ConvertRequest, decoders: LegacyDecoders, reader: LegacyEntryReader, source: DecodedSource,
-): Promise<{ list: LegacyList } | { reason: BlockedReason, detail: string }> {
+): Promise<WalkedLegacy | { reason: BlockedReason, detail: string }> {
     const builder = new LegacyListBuilder(request.listParams)
+    const coldKeys = new Set<string>()
     if (source.origin.kind === 'main' && source.tree !== null) {
-        await listFile(builder, LEGACY_MAIN_FILE_KEY, source.tree, reader)
+        await listFile(builder, LEGACY_MAIN_FILE_KEY, source.tree, reader, coldKeys)
     } else {
         builder.addUnreadable(LEGACY_MAIN_FILE_KEY)
     }
@@ -273,9 +280,9 @@ async function buildLegacyList(
             builder.addUnreadable(key)
             continue
         }
-        await listFile(builder, key, tree, reader)
+        await listFile(builder, key, tree, reader, coldKeys)
     }
-    return { list: builder.build() }
+    return { list: builder.build(), coldKeys }
 }
 
 /** The install request with the legacy list as one more unit and the manifest's `legacyKeep` naming it. */
@@ -384,7 +391,9 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
         env: request.env,
         convertedFrom: source.fingerprint,
     })
-    const result = await installOnEntry(request, withLegacyKeep(plan, listed.list))
+    // The kind of the deletion snapshot comes from what the store holds now and from this attempt's walks, never from the entry.
+    const snapshot = await planOldDataSnapshot({ store: request.store, listBackupTimes: request.listBackupTimes }, listed)
+    const result = await installOnEntry(request, withSnapshot(withLegacyKeep(plan, listed.list), snapshot))
     if (result.status === 'exit') {
         return result
     }

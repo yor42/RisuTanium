@@ -5,6 +5,7 @@ import type { ListDerivation } from './codec'
 import { firstLifeInstall, installBuilt, type FirstLifeGrant, type FirstLifeResult } from './firstLife'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { planWholeTreeInstall } from './legacy/install'
+import { planOldDataSnapshot, withSnapshot, type OldDataSource } from './oldData/plan'
 import type { ForeignClearHook } from './owner'
 import { runExit, type ExitResult } from './recovery'
 
@@ -65,6 +66,11 @@ export interface SeedOptions {
     owner: string
     lists: ListDerivation
     env?: KeyEnv
+    /**
+     * The store the old fork-format files are listed in. The seed's deletion snapshot is planned from what this store
+     * holds, never from the seed's entry; without it the seed writes no snapshot (nothing is ever deleted unplanned).
+     */
+    oldData?: OldDataSource
 }
 
 /**
@@ -92,7 +98,10 @@ function outcomeOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked'
  * `written`, or any other non-`marked` outcome, is passed through with nothing staged.
  */
 export async function seedStore2Profile(backend: Store2Backend, entry: SeedEntry, options: SeedOptions): Promise<SeedOutcome> {
-    const request = await planWholeTreeInstall(emptySeedProfile(), { lists: options.lists, env: options.env, convertedFrom: 'seed' })
+    const tree = await planWholeTreeInstall(emptySeedProfile(), { lists: options.lists, env: options.env, convertedFrom: 'seed' })
+    // A seed walks no upstream file, so the plan lists a `coldstorage/` key only when the store holds no upstream file at all.
+    const snapshot = options.oldData === undefined ? null : await planOldDataSnapshot(options.oldData, null)
+    const request = withSnapshot(tree, snapshot)
     let result: FirstLifeResult
     if (entry.kind === 'first-life') {
         result = await firstLifeInstall(backend, entry.grant, request, { owner: options.owner, env: options.env })

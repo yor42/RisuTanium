@@ -222,7 +222,9 @@ async function putBuilt(backend: Store2Backend, key: string, bytes: Uint8Array):
  * Installs an encoder-built tree on a standing marker. Every unit is written under a key of the marker's staging
  * mint (an unminted key, or one outside the prefix, is refused before anything is written), the manifest last, and
  * then one compare-and-write at the marker's read-back token installs `current`, clears the marker, empties
- * `retained` and `pins` and stamps `convertedFrom` and `convertedAt`. A build that throws propagates with the marker
+ * `retained` and `pins`, stamps `convertedFrom` and `convertedAt` and, when the build carries one, sets the pointer to
+ * its deletion snapshot. The snapshot unit is one of the units written before the manifest, and a unit whose flush
+ * is not confirmed stops the install before the final write. A build that throws propagates with the marker
  * standing. Every outcome of the writes, including a failed read-back after the final write (`unknown`), is an
  * `InstallResult`; an `InstallStop` never escapes.
  */
@@ -239,7 +241,7 @@ export async function installBuilt(basis: BuiltInstallBasis, request: BuiltInsta
             await putBuilt(backend, unit.key, unit.bytes)
         }
         await putBuilt(backend, built.manifest.key, encodeUnit(UNIT_TYPE.manifest, built.manifest.body))
-        return await finalWrite(basis, built.manifest.key, built.manifest.body, { from: request.convertedFrom, at: env.now() })
+        return await finalWrite(basis, built.manifest.key, built.manifest.body, { from: request.convertedFrom, at: env.now() }, built.snapshot)
     } catch (error) {
         if (error instanceof InstallStop) {
             return error.result

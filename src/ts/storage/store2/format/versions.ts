@@ -50,6 +50,7 @@ export const UNIT_TYPE = {
     inlayList: 21,
     sweepRecord: 22,
     fenceRecord: 23,
+    deletionSnapshot: 24,
 } as const
 
 export type UnitType = typeof UNIT_TYPE[keyof typeof UNIT_TYPE]

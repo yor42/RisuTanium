@@ -8,7 +8,7 @@ import { classifyCommitRead, nextCommitKey, RETAINED_MAX } from './commitKey'
 import {
     defaultKeyEnv, encodeUnit, newManifestKey, newShardKey, newStagedKey, newStagedManifestKey, newStagingId,
     newUnitKey, parseStore2Key, readUnit, refOfFrame, refsOf, stagingPrefix, UNIT_TYPE, type CommitKey, type KeyEnv,
-    type Manifest, type StagingLabel, type UnitType,
+    type Manifest, type SnapshotPointer, type StagingLabel, type UnitType,
 } from './format'
 import { decideClear, type ClearDecision, type ForeignClearHook, type Staging } from './owner'
 
@@ -36,7 +36,7 @@ const REJUDGE_ATTEMPTS = 3
 export type Refusal =
     | 'absent' | 'damaged' | 'too-new' | 'no-current'
     | 'marker-present' | 'bad-unit-set' | 'bad-manifest-key' | 'already-current' | 'tree-incomplete'
-    | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine' | 'no-snapshot'
+    | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine' | 'no-snapshot' | 'snapshot-mismatch' | 'staging'
 
 export interface Refused {
     status: 'refused'
@@ -126,6 +126,11 @@ export interface BuiltCommit {
     /** The new units other than the manifest, each under a key the mint issued. */
     units: UnitWrite[]
     manifest: ManifestWrite
+    /**
+     * The pointer to the old-data deletion snapshot among `units`. Only an installer (`installBuilt`) puts it on the
+     * commit key; the ordinary and bulk commits ignore it, because no other write sets a pointer.
+     */
+    snapshot?: SnapshotPointer
 }
 
 export interface CommitRequest {
@@ -302,8 +307,13 @@ export interface Committer {
     saveMine(freshRead: Store2Read, request: CommitRequest): Promise<CommitResult>
     pin(read: Store2Read, key: string, reason: string): Promise<WriteResult>
     unpin(read: Store2Read, key: string): Promise<WriteResult>
-    /** The old-data deletion's completion write: one compare-and-write that drops the snapshot pointer and changes nothing else. Refuses a key with no pointer. */
-    dropSnapshot(read: Store2Read): Promise<WriteResult>
+    /**
+     * The old-data deletion's completion write: one compare-and-write that drops the snapshot pointer and changes nothing
+     * else. Refuses a key with no pointer (`no-snapshot`), a pointer that differs from `expected` by key, digest or count
+     * (`snapshot-mismatch`, so a retry on a fresh read never drops a newer conversion's pointer) and a key with a marker
+     * standing (`staging`, so the drop never moves the token a peer's bulk final write compares against).
+     */
+    dropSnapshot(read: Store2Read, expected: SnapshotPointer): Promise<WriteResult>
     abandonClear(read: Store2Read, owner: string, prefix: string): Promise<AbandonResult>
     /** Decides whether the marker on `read` may be cleared (own: yes; foreign: only through the hook) and clears it. */
     clearMarker(read: Store2Read): Promise<{ decision: ClearDecision, cleared: AbandonResult | null }>
@@ -664,14 +674,21 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },
 
-        async dropSnapshot(read) {
+        async dropSnapshot(read, expected) {
             const parsed = baseOf(read)
             if (parsed.status === 'refused') {
                 return parsed
             }
             const base = parsed.base
-            if (base.key.snapshot === undefined) {
+            if (base.key.staging !== null) {
+                return refuse('staging', 'A marker stands on the commit key.')
+            }
+            const held = base.key.snapshot
+            if (held === undefined) {
                 return refuse('no-snapshot', 'The commit key holds no snapshot pointer.')
+            }
+            if (held.key !== expected.key || held.digest !== expected.digest || held.count !== expected.count) {
+                return refuse('snapshot-mismatch', 'The commit key holds another snapshot pointer than the one expected.')
             }
             const next = nextCommitKey(base.key, { dropSnapshot: true }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)

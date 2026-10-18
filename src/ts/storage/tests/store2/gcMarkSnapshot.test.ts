@@ -173,7 +173,7 @@ describe('gcPass honours the pointer', () => {
         expect(await exists(fx.backend, fx.unitKey)).toBe(true)
 
         // The completion write drops the pointer; only then is the unit garbage.
-        expect((await committer.dropSnapshot(await committer.readCommit())).status).toBe('committed')
+        expect((await committer.dropSnapshot(await committer.readCommit(), fx.pointer)).status).toBe('committed')
         const collected = await pass(fx)
         expect(collected).toMatchObject({ status: 'done' })
         expect(await exists(fx.backend, fx.unitKey)).toBe(false)

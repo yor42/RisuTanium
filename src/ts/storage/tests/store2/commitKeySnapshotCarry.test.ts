@@ -231,7 +231,7 @@ describe('the pointer survives every writer over a parsed key', () => {
 describe('setting a pointer over an existing one', () => {
     const NEWER: SnapshotPointer = { key: 'store2/g-ponmlkjihgfedcba-u0123456789abcdef', digest: 'fedcba9876543210fedcba9876543210', count: 9 }
 
-    test('mutant "the old pointer wins": a change that sets a pointer replaces the base\'s pointer, and the stored key holds only the new one', async () => {
+    test('guard (passes before and after; red under the mutant "the old pointer wins", L4 R10): a change that sets a pointer replaces the base\'s pointer, and the stored key holds only the new one', async () => {
         const w = await world(11)
         const base = await parsedCommit(w.backend)
         expect(base.snapshot?.key).toBe(POINTER.key)
@@ -254,7 +254,7 @@ describe('the drop member', () => {
         const w = await world(9)
         const before = await parsedCommit(w.backend)
         const committer = committerOf(w.backend, w.clock, 21, { owner: ME })
-        const result = await committer.dropSnapshot(await committer.readCommit())
+        const result = await committer.dropSnapshot(await committer.readCommit(), POINTER)
         expect(result.status).toBe('committed')
         const after = await parsedCommit(w.backend)
         expect(Object.hasOwn(after, 'snapshot')).toBe(false)
@@ -268,7 +268,7 @@ describe('the drop member', () => {
         await seedStore(backend, testEnv(clock, 10))
         const recording = recordingCas(backend)
         const committer = committerOf(recording.backend, clock, 22, { owner: ME })
-        const result = await committer.dropSnapshot(await committer.readCommit())
+        const result = await committer.dropSnapshot(await committer.readCommit(), POINTER)
         expect(result).toMatchObject({ status: 'refused', reason: 'no-snapshot' })
         expect(recording.written).toEqual([])
     })

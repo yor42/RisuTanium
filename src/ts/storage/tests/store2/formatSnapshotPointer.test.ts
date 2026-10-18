@@ -91,6 +91,30 @@ describe('reading the snapshot pointer', () => {
         }
     })
 
+    const NOT_A_UNIT_KEY: readonly (readonly [string, string])[] = [
+        ['a manifest key', 'store2/m-0000001aaaaaaaaaaaaaaaaaaa'],
+        ['a staged manifest key', 'store2/g-abcdefghijklmnop-m0000001aaaaaaaaa'],
+        ['a shard key', 'store2/s-aaaaaaaaaaaaaaaaaaaaaaaaaa'],
+        ['a traversal spelling', 'store2/../x'],
+        ['a store2 key of no generated shape', 'store2/x'],
+    ]
+
+    test.each(NOT_A_UNIT_KEY)('reproducer (A1; red on the base, which accepted any store2 key): %s reads as absent and the key is ok', (_name, key) => {
+        const parsed = parseCommitKey(withSnapshot({ ...POINTER, key }))
+        expect(parsed.status).toBe('ok')
+        if (parsed.status === 'ok') {
+            expect(Object.hasOwn(parsed.value, 'snapshot')).toBe(false)
+        }
+    })
+
+    test.each([
+        ['an ordinary unit key', 'store2/u-0123456789abcdefghijklmnop'],
+        ['a staged unit key', 'store2/g-abcdefghijklmnop-u0123456789abcdef'],
+    ])('guard (passes before and after A1; the L4 pointer vector stays valid): %s is accepted', (_name, key) => {
+        const parsed = parseCommitKey(withSnapshot({ ...POINTER, key }))
+        expect(parsed.status === 'ok' ? parsed.value.snapshot?.key : null).toBe(key)
+    })
+
     test('guard: readCommitKey never throws on a malformed pointer through the framed read either', () => {
         for (const [, value] of MALFORMED) {
             const bytes = encodeUnit(UNIT_TYPE.commit, withSnapshot(value))

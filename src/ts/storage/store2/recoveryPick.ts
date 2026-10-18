@@ -6,7 +6,7 @@ import { classifyCommitRead, nextCommitKey } from './commitKey'
 import {
     assetRefKey, decodeFrame, defaultKeyEnv, encodeUnit, keyOfTail, newStagedKey, newStagedManifestKey, parseStore2Key,
     readUnit, refOfFrame, refsOf, REFS_TABLE, splitHashStems, UNIT_TYPE,
-    type AssetList, type CommitKey, type InlayList, type KeyEnv, type Manifest, type Ref, type RefTarget, type UnitBody, type UnitType,
+    type AssetList, type CommitKey, type InlayList, type KeyEnv, type Manifest, type Ref, type RefTarget, type SnapshotPointer, type UnitBody, type UnitType,
 } from './format'
 import { INLAY_META_PREFIX, encodeInlayId } from '../../process/files/inlayKeys'
 import { STORE2_PREFIX } from '../store/keyRules'
@@ -687,9 +687,10 @@ export interface Converted {
 /**
  * The one final write of every install: a single compare-and-write at the marker's read-back token, never a fresh read,
  * that names `manifestKey` as `current` and clears the marker. `converted`, when given, sets `convertedFrom` and
- * `convertedAt`; otherwise the marker's values are carried.
+ * `convertedAt`; otherwise the marker's values are carried. `snapshot`, when given, is the pointer to the old-data
+ * deletion snapshot this install wrote (it replaces a pointer the marker carried); otherwise the marker's pointer is carried.
  */
-export async function finalWrite(basis: InstallBasis, manifestKey: string, manifest: Manifest, converted?: Converted): Promise<InstallResult> {
+export async function finalWrite(basis: InstallBasis, manifestKey: string, manifest: Manifest, converted?: Converted, snapshot?: SnapshotPointer): Promise<InstallResult> {
     const { backend, env, marked } = basis
     const next = nextCommitKey(marked.marker, {
         current: { key: manifestKey, at: env.now() },
@@ -698,6 +699,7 @@ export async function finalWrite(basis: InstallBasis, manifestKey: string, manif
         staging: null,
         manifests: [manifest],
         ...(converted === undefined ? {} : { convertedFrom: converted.from, convertedAt: converted.at }),
+        ...(snapshot === undefined ? {} : { snapshot }),
     }, env)
     const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
     // Every attempt compares at the marker's own read-back token, never at a fresh read.

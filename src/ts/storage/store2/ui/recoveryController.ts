@@ -312,7 +312,7 @@ async function drive(request: Store2RecoveryRequest, port: RecoveryPort, calls: 
         for (;;) {
             port.show(recoveryWorkingScreen())
             const entry = { kind: 'exit' as const, commitRead: basis, foreignClear: foreignQuestion(() => port.show(recoveryWorkingScreen())) }
-            const outcome = await safeCall(() => calls.seed(backend, entry, { owner, lists, env: keyEnv }))
+            const outcome = await safeCall(() => calls.seed(backend, entry, { owner, lists, env: keyEnv, oldData: { store: env.store, listBackupTimes: env.listBackupTimes } }))
             if (await onEntryResult(outcome) === 'back') {
                 return
             }
