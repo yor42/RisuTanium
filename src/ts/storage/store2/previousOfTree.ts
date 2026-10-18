@@ -51,6 +51,51 @@ function moduleHandles(index: ModuleIndex): string[] {
     })
 }
 
+/**
+ * Every unit one shard entry names, as `register` takes it: the identity the encoder gives the unit, its type and its
+ * Ref. The boot registration and a later hydration of one loaded entity walk the entry through this one function, so
+ * they cannot disagree on which identity a unit has.
+ */
+export function registerEntityUnits(entry: ShardEntry, register: (identity: string, type: UnitType, ref: Ref) => unknown): void {
+    register(`${IDENTITY.char}${entry.u}:core`, UNIT_TYPE.characterCore, entry.core)
+    if (entry.lore !== null) {
+        register(`${IDENTITY.char}${entry.u}:lore`, UNIT_TYPE.lore, entry.lore)
+    }
+    if (entry.scripts !== null) {
+        register(`${IDENTITY.char}${entry.u}:scripts`, UNIT_TYPE.scripts, entry.scripts)
+    }
+    register(`${IDENTITY.alChar}${entry.u}`, UNIT_TYPE.assetList, entry.al)
+    if (entry.il !== null) {
+        register(`${IDENTITY.ilChar}${entry.u}`, UNIT_TYPE.inlayList, entry.il)
+    }
+    for (const chat of entry.chats) {
+        register(`${IDENTITY.chat}${entry.u}:${chat.cid}:core`, UNIT_TYPE.chatCore, chat.core)
+        chat.chunks.forEach((chunk, k) => register(`${IDENTITY.chat}${entry.u}:${chat.cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk))
+    }
+}
+
+/**
+ * Gives the units of a loaded entity the digests the boot did not compute, in place: the objects of `previous` are the
+ * ones the save encoder holds and carries across commits, and replacing them would throw its acknowledgement. A unit
+ * is hydrated only when `previous` holds it under this identity with the same key, length and checksum as the entry's
+ * Ref, and `source` holds bytes that are that unit; a unit that moved, or that is absent or damaged, stays as it was.
+ * The digest is a pure function of the bytes behind a key that is never written twice, so a second call changes
+ * nothing.
+ */
+export function hydrateEntityDigests(previous: PreviousEncoding, entry: ShardEntry, source: UnitSource): void {
+    registerEntityUnits(entry, (identity, type, ref) => {
+        const unit = previous.units.get(identity)
+        if (unit === undefined || unit.digest !== undefined || unit.type !== type || unit.key !== keyOfRef(ref)
+            || unit.ref[1] !== ref[1] || unit.ref[2] !== ref[2]) {
+            return
+        }
+        const bytes = checkedBytes(source, ref)
+        if (bytes !== undefined) {
+            unit.digest = unitDigest(bytes)
+        }
+    })
+}
+
 export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions = {}): PreviousEncoding {
     const { manifestKey, manifest, source } = tree
     const keepBytes = options.keepBytes === true
@@ -144,21 +189,7 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
         shards.push(shard)
         for (const entry of shard.entries) {
             entries.set(entry.u, entry)
-            register(`${IDENTITY.char}${entry.u}:core`, UNIT_TYPE.characterCore, entry.core)
-            if (entry.lore !== null) {
-                register(`${IDENTITY.char}${entry.u}:lore`, UNIT_TYPE.lore, entry.lore)
-            }
-            if (entry.scripts !== null) {
-                register(`${IDENTITY.char}${entry.u}:scripts`, UNIT_TYPE.scripts, entry.scripts)
-            }
-            register(`${IDENTITY.alChar}${entry.u}`, UNIT_TYPE.assetList, entry.al)
-            if (entry.il !== null) {
-                register(`${IDENTITY.ilChar}${entry.u}`, UNIT_TYPE.inlayList, entry.il)
-            }
-            for (const chat of entry.chats) {
-                register(`${IDENTITY.chat}${entry.u}:${chat.cid}:core`, UNIT_TYPE.chatCore, chat.core)
-                chat.chunks.forEach((chunk, k) => register(`${IDENTITY.chat}${entry.u}:${chat.cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk))
-            }
+            registerEntityUnits(entry, register)
         }
     })
 

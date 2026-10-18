@@ -323,7 +323,14 @@ describe('guard: dependency closure through the real loop, each field changes th
         const live = JSON.parse(JSON.stringify(db)) as Database
         const source = JSON.parse(JSON.stringify(characters(live as unknown as Entry)[1])) as Entry
         characters(live as unknown as Entry)[1] = buildColdStub(source as unknown as character, 'unit-key', ['chat-a']) as unknown as Entry
-        const page = await startPage(db, { live })
+        const page = await startPage(db, {
+            live,
+            // The stub names the entity the seeded tree holds for the character, which is the only stub a pass carries.
+            beforeStart: (started) => {
+                const stub = characters(started.db)[1]
+                stub.coldstorage = started.k.context.previous.entities.get(`${String(stub.chaId)}#0`)
+            },
+        })
         const written = await commitAfter(page, () => {
             characters(page.db)[1].trashTime = 1234
             page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)

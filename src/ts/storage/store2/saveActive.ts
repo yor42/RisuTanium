@@ -1,5 +1,6 @@
 import type { ListDerivation, PreviousEncoding } from './codec'
 import type { KeyEnv } from './format'
+import type { SaveEncoder } from './saveEncoder'
 import type { IdleNetOptions, Store2PeerHandler } from './saveLoop'
 import type { Store2Session } from './session'
 
@@ -15,6 +16,12 @@ export interface Store2SaveContext {
     session: Pick<Store2Session, 'kind' | 'committer'>
     /** The acknowledged encoding of the tree the page booted from. */
     previous: PreviousEncoding
+    /**
+     * The encoder the loop saves through, created by the dispatch so that a residency shares the loop's acknowledged
+     * encoding. Absent, the loop creates its own from `previous`, `lists` and `env`; present, those three are the
+     * ones the encoder was created with.
+     */
+    encoder?: SaveEncoder
     lists: ListDerivation
     env?: KeyEnv
     peer: Store2PeerHandler

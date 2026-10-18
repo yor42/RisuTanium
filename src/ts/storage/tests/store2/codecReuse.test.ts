@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 import { crc32 } from '../../blockFrame'
 import {
-    assembleDatabase, encodeDatabase, isUnchanged, shardOfU, unitMapSource, unitsToWrite,
-    type EncodedTree, type ListDerivation, type PreviousEncoding,
+    assembleDatabase, encodeDatabase, isUnchanged, shardOfU, unitMapSource, UnitNotReusedError, UnitSink, unitsToWrite,
+    type EncodedTree, type ListDerivation, type PreviousEncoding, type ReusableUnit,
 } from '../../store2/codec'
 import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
 import type { Database } from '../../database.svelte'
@@ -333,5 +333,86 @@ describe('the list derivation is injected and required', () => {
         expect(out).toContain(`al:char:${u0}`)
         expect(out).toContain(`char:${u0}:core`)
         expect(out.filter(name => name.startsWith('al:') && name !== `al:char:${u0}`)).toEqual([])
+    })
+})
+
+describe('new behaviour: a reuse-only sink checks reuse and mints nothing', () => {
+    /** A units map that counts how often it is iterated, by any of the ways a copy of its keys would. */
+    class IterationCountingMap<K, V> extends Map<K, V> {
+        iterations = 0
+        override [Symbol.iterator](): MapIterator<[K, V]> {
+            this.iterations++
+            return super[Symbol.iterator]()
+        }
+        override values(): MapIterator<V> {
+            this.iterations++
+            return super.values()
+        }
+        override keys(): MapIterator<K> {
+            this.iterations++
+            return super.keys()
+        }
+        override entries(): MapIterator<[K, V]> {
+            this.iterations++
+            return super.entries()
+        }
+        override forEach(callback: (value: V, key: K, map: Map<K, V>) => void, thisArg?: unknown): void {
+            this.iterations++
+            super.forEach(callback, thisArg)
+        }
+    }
+
+    const first = encodeWith(buildSmall(3))
+    const loadouts = unitOf(first, 'loadouts')
+    const loadoutsBody = bodyOf(loadouts)
+
+    function countedPrevious(): { previous: PreviousEncoding, units: IterationCountingMap<string, ReusableUnit> } {
+        const units = new IterationCountingMap<string, ReusableUnit>(previousFrom(first).units)
+        units.iterations = 0
+        return { previous: { ...previousFrom(first), units }, units }
+    }
+
+    test('a unit that is the previous encoding\'s is reused under its key', () => {
+        const sink = new UnitSink(seededEnv(1), previousFrom(first), undefined, { reuseOnly: true })
+        const unit = sink.put('loadouts', UNIT_TYPE.loadouts, loadoutsBody)
+        expect(unit.reused).toBe(true)
+        expect(unit.key).toBe(loadouts.key)
+    })
+
+    test('the first unit that differs ends the encode, whether it is put or put fresh', () => {
+        const sink = new UnitSink(seededEnv(1), previousFrom(first), undefined, { reuseOnly: true })
+        expect(() => sink.put('loadouts', UNIT_TYPE.loadouts, { ...loadoutsBody, items: ['changed'] })).toThrow(UnitNotReusedError)
+        expect(() => sink.put('a unit the previous does not hold', UNIT_TYPE.loadouts, loadoutsBody)).toThrow(UnitNotReusedError)
+        expect(() => sink.putFresh('manifest', UNIT_TYPE.loadouts, loadoutsBody, 'manifest')).toThrow(UnitNotReusedError)
+        expect(sink.units).toEqual([])
+    })
+
+    test('a previous unit without a digest is not reused', () => {
+        const previous = previousFrom(first)
+        const units = new Map(previous.units)
+        const held = units.get('loadouts') as ReusableUnit
+        units.set('loadouts', { key: held.key, type: held.type, ref: held.ref })
+        const sink = new UnitSink(seededEnv(1), { ...previous, units }, undefined, { reuseOnly: true })
+        expect(() => sink.put('loadouts', UNIT_TYPE.loadouts, loadoutsBody)).toThrow(UnitNotReusedError)
+    })
+
+    test('its constructor and its reuse checks never iterate the previous units; the ordinary sink does', () => {
+        const reuseOnly = countedPrevious()
+        const sink = new UnitSink(seededEnv(1), reuseOnly.previous, undefined, { reuseOnly: true })
+        sink.put('loadouts', UNIT_TYPE.loadouts, loadoutsBody)
+        expect(() => sink.put('loadouts', UNIT_TYPE.loadouts, { ...loadoutsBody, items: ['changed'] })).toThrow(UnitNotReusedError)
+        expect(reuseOnly.units.iterations).toBe(0)
+
+        const ordinary = countedPrevious()
+        new UnitSink(seededEnv(1), ordinary.previous)
+        expect(ordinary.units.iterations).toBeGreaterThan(0)
+    })
+
+    test('the ordinary sink still mints a fresh key for a changed unit (the option changes nothing for it)', () => {
+        // A seed other than the one the previous encoding was made with, whose keys it would draw again.
+        const sink = new UnitSink(seededEnv(2), previousFrom(first))
+        const unit = sink.put('loadouts', UNIT_TYPE.loadouts, { ...loadoutsBody, items: ['changed'] })
+        expect(unit.reused).toBe(false)
+        expect(unit.key).not.toBe(loadouts.key)
     })
 })

@@ -183,13 +183,14 @@ interface ReactiveWorld {
  * see edits. The store is seeded from `seed` when given (the full database of an archived character), else from the
  * live database.
  */
-async function startReactive(seed?: Database, hooks?: Hooks): Promise<ReactiveWorld> {
+async function startReactive(seed?: Database, hooks?: Hooks, beforeStart?: (k: Store2Kit) => void): Promise<ReactiveWorld> {
     const k = await startStore2({ db: seed ?? h.db as unknown as Database, hooks })
     const w = await kit.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     const { flushSync } = await import('svelte')
     ;(stores.DBState as { db: unknown }).db = h.db
     h.db = (stores.DBState as { db: unknown }).db as Entry
+    beforeStart?.(k)
     w.start()
     await sleepReal(150)
     return { w, k, db: h.db, stores, flush: flushSync }
@@ -327,6 +328,12 @@ describe('the rewritten save path writes in proportion to what changed', () => {
                     baseReads += 1
                 }
             },
+        }, (started) => {
+            // The stub names the entity the seeded tree holds for the character (a pass refuses any other), and the
+            // legacy mock serves the restore under that name.
+            const u = started.context.previous.entities.get('x#0') as string
+            ;(h.db.characters as Entry[])[0].coldstorage = u
+            units.set(u, { character: full })
         })
         await settled(w)
         const meter = meterWrites(k)

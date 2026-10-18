@@ -58,6 +58,7 @@ async function commitPass(encoder: SaveEncoder, db: Database, extra: Partial<Sav
     return { plan, written, issued }
 }
 
+/** `db` with the character `chaId` replaced by the stub that names the entity the default-seeded encoding of `db` gives it. */
 function withStub(db: Database, chaId: string, trashTime: number | undefined): Database {
     const next = clone(db)
     const characters = next.characters as Obj[]
@@ -66,7 +67,8 @@ function withStub(db: Database, chaId: string, trashTime: number | undefined): D
     if (trashTime !== undefined) {
         source.trashTime = trashTime
     }
-    characters[index] = buildColdStub(source as unknown as character, 'unit-key', ['chat-a']) as unknown as Obj
+    const u = encodeWith(db).index.entities.get(`${chaId}#0`) as string
+    characters[index] = buildColdStub(source as unknown as character, u, ['chat-a']) as unknown as Obj
     return asDatabase(next)
 }
 

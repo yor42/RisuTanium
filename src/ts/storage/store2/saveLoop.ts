@@ -3,7 +3,7 @@ import type { toSaveType } from '../risuSave'
 import { createYieldBudget } from '../saveYield'
 import { Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
-import { isColdStub, SharedChaIdStubError } from './codec'
+import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
 import type { AbandonResult, CommitResult, Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
@@ -242,7 +242,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         return Promise.reject(new Store2CommitRefusedError('no-committer', 'The session has no committer.'))
     }
     const committer: Committer = sessionCommitter
-    const encoder = createSaveEncoder({ previous: context.previous, lists: context.lists, env: context.env })
+    const encoder = context.encoder ?? createSaveEncoder({ previous: context.previous, lists: context.lists, env: context.env })
     const netMs = context.idleNet === null ? null : (context.idleNet?.intervalMs ?? IDLE_NET_INTERVAL_MS)
 
     let savetrys = 0
@@ -425,11 +425,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         try {
             return await encoder.plan(db, request)
         } catch (error) {
-            if (!(error instanceof SharedChaIdStubError) || context.loadStub === undefined) {
+            const loadable = error instanceof SharedChaIdStubError || (error instanceof StubRefusedError && error.kind === 'character')
+            if (!loadable || context.loadStub === undefined) {
                 throw error
             }
-            // The stub the shared id holds is loaded, and the pass is planned once more over the live list. A pass
-            // that stays blocked is a failed save the person is told about.
+            // The stub that shares its id, or that names units its entry no longer holds, is loaded, and the pass is
+            // planned once more over the live list. A pass that stays blocked is a failed save the person is told about.
             if (!await context.loadStub(error.chaId)) {
                 throw error
             }

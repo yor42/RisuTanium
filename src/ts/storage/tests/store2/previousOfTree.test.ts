@@ -2,11 +2,12 @@
 import { describe, expect, test } from 'vitest'
 import {
     assembleDatabase, CodecAssembleError, encodeScoped, IDENTITY, previousFrom, unitDigest, unitMapSource,
-    type EncodedTree, type PreviousEncoding, type UnitSource,
+    type EncodedTree, type PreviousEncoding, type ReusableUnit, type UnitSource,
 } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
-import { previousOfTree, type StoredTree } from '../../store2/previousOfTree'
+import { hydrateEntityDigests, previousOfTree, registerEntityUnits, type StoredTree } from '../../store2/previousOfTree'
 import { createSaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
+import { keyOfRef, type ShardEntry } from '../../store2/format'
 import type { character, Database } from '../../database.svelte'
 import {
     asDatabase, buildSmall, buildT3, encodeWith, fakeLists, seededEnv, type Obj,
@@ -170,7 +171,7 @@ describe('new behaviour: digests, kept bytes and units the boot did not read', (
         }
         const source = clone(db)
         const slot = JSON.parse(JSON.stringify((source.characters as Obj[])[1])) as Obj
-        ;(source.characters as Obj[])[1] = buildColdStub(slot as unknown as character, 'unit-key', ['chat-a']) as unknown as Obj
+        ;(source.characters as Obj[])[1] = buildColdStub(slot as unknown as character, u, ['chat-a']) as unknown as Obj
         const plan = await encoderOver(previous).plan(asDatabase(source), NOTHING_MARKED)
         expect(plan.unchanged).toBe(true)
     })
@@ -241,5 +242,130 @@ describe('new behaviour: the units a carry and the entity ids read are required'
         const store = new Map(first.units.map(unit => [unit.key, unit.bytes] as const))
         store.set(shard?.key ?? '', bytes)
         expect(() => previousOfTree(storedOf(first, { get: key => store.get(key) }))).toThrow(CodecAssembleError)
+    })
+})
+
+describe('new behaviour: hydrating the digests of a loaded entity', () => {
+    const db = buildSmall(4)
+    const first = encodeWith(db)
+    const shards = first.index.objects?.shards ?? []
+    const entryOfIndex = (index: number): ShardEntry => {
+        const u = first.index.entities.get(`${(db.characters[index] as { chaId: string }).chaId}#0`) as string
+        return shards.flatMap(shard => shard.entries).find(entry => entry.u === u) as ShardEntry
+    }
+    const entry = entryOfIndex(1)
+    const other = entryOfIndex(2)
+    const ownedBy = (u: string) => (identity: string): boolean => identity.includes(u) && !identity.startsWith('shard')
+    const unread = (identity: string): boolean => ownedBy(entry.u)(identity) || ownedBy(other.u)(identity)
+    const everything = unitMapSource(first.units)
+
+    function previousBeforeLoad(): PreviousEncoding {
+        return previousOfTree(storedOf(first, sourceWithout(first, unread)))
+    }
+
+    function ownIdentities(): string[] {
+        return first.units.filter(unit => ownedBy(entry.u)(unit.identity)).map(unit => unit.identity).sort()
+    }
+
+    test('registerEntityUnits names exactly the identities the encoder gives the entity\'s units', () => {
+        const named: string[] = []
+        registerEntityUnits(entry, identity => named.push(identity))
+        expect(named.sort()).toEqual(ownIdentities())
+    })
+
+    test('every unit of the entity gets the digest of its bytes, in place, and nothing else changes', () => {
+        const previous = previousBeforeLoad()
+        const objects = new Map(ownIdentities().map(identity => [identity, previous.units.get(identity)] as const))
+        const outside = new Map([...previous.units].filter(([identity]) => !ownIdentities().includes(identity)).map(([identity, unit]) => [identity, { ...unit }] as const))
+        expect(ownIdentities().every(identity => previous.units.get(identity)?.digest === undefined)).toBe(true)
+        hydrateEntityDigests(previous, entry, everything)
+        for (const unit of first.units.filter(candidate => ownedBy(entry.u)(candidate.identity))) {
+            const held = previous.units.get(unit.identity)
+            expect(held, unit.identity).toBe(objects.get(unit.identity))
+            expect(held?.digest, unit.identity).toBe(unitDigest(unit.bytes))
+            expect(held?.key, unit.identity).toBe(unit.key)
+        }
+        for (const [identity, before] of outside) {
+            expect(previous.units.get(identity), identity).toEqual(before)
+        }
+    })
+
+    test('a second hydration changes nothing, and a unit that already has a digest keeps it', () => {
+        const previous = previousBeforeLoad()
+        hydrateEntityDigests(previous, entry, everything)
+        const snapshot = new Map([...previous.units].map(([identity, unit]) => [identity, { ...unit }] as const))
+        hydrateEntityDigests(previous, entry, everything)
+        expect(new Map([...previous.units].map(([identity, unit]) => [identity, { ...unit }] as const))).toEqual(snapshot)
+        const core = previous.units.get(`${IDENTITY.char}${entry.u}:core`) as ReusableUnit
+        core.digest = 'kept'
+        hydrateEntityDigests(previous, entry, everything)
+        expect(core.digest).toBe('kept')
+    })
+
+    test('an entity that was not hydrated keeps its units digest-less', () => {
+        const previous = previousBeforeLoad()
+        hydrateEntityDigests(previous, entry, everything)
+        expect(first.units.filter(unit => ownedBy(other.u)(unit.identity)).every(unit => previous.units.get(unit.identity)?.digest === undefined)).toBe(true)
+    })
+
+    test('a unit is hydrated only when the key and the Ref match and the bytes are that unit', () => {
+        const core = `${IDENTITY.char}${entry.u}:core`
+        const lore = `${IDENTITY.char}${entry.u}:lore`
+        const scripts = `${IDENTITY.char}${entry.u}:scripts`
+        const previous = previousBeforeLoad()
+        // The entry's Ref for the core disagrees with the unit the encoding holds: the checksum differs.
+        const moved: ShardEntry = { ...entry, core: [entry.core[0], entry.core[1], entry.core[2] ^ 1] }
+        // The bytes of the lore are damaged in the source.
+        const lorebytes = new Uint8Array(first.units.find(unit => unit.identity === lore)?.bytes ?? [])
+        lorebytes[lorebytes.length - 1] ^= 0xff
+        const loreKey = first.units.find(unit => unit.identity === lore)?.key
+        // The previous encoding holds another key for the scripts than the entry names.
+        ;(previous.units.get(scripts) as ReusableUnit).key = 'a-key-the-entry-does-not-name'
+        hydrateEntityDigests(previous, moved, { get: key => (key === loreKey ? lorebytes : everything.get(key)) })
+        expect(previous.units.get(core)?.digest).toBeUndefined()
+        expect(previous.units.get(lore)?.digest).toBeUndefined()
+        expect(previous.units.get(scripts)?.digest).toBeUndefined()
+        expect(previous.units.get(scripts)?.key).toBe('a-key-the-entry-does-not-name')
+        expect(previous.units.get(`${IDENTITY.alChar}${entry.u}`)?.digest).toBeDefined()
+    })
+
+    test('a unit under the same key whose Ref length or checksum differs from the entry\'s is not hydrated, though the bytes match the entry', () => {
+        const core = `${IDENTITY.char}${entry.u}:core`
+        const scripts = `${IDENTITY.char}${entry.u}:scripts`
+        const previous = previousBeforeLoad()
+        const heldCore = previous.units.get(core) as ReusableUnit
+        const heldScripts = previous.units.get(scripts) as ReusableUnit
+        // The encoding's own Refs disagree with the entry's (and with the stored bytes), the keys agree.
+        heldCore.ref = [heldCore.ref[0], heldCore.ref[1] + 1, heldCore.ref[2]]
+        heldScripts.ref = [heldScripts.ref[0], heldScripts.ref[1], heldScripts.ref[2] ^ 1]
+        hydrateEntityDigests(previous, entry, everything)
+        expect(heldCore.key).toBe(keyOfRef(entry.core))
+        expect(heldCore.digest).toBeUndefined()
+        expect(heldScripts.digest).toBeUndefined()
+        expect(previous.units.get(`${IDENTITY.alChar}${entry.u}`)?.digest).toBeDefined()
+    })
+
+    test('a unit the source does not hold stays as it was', () => {
+        const previous = previousBeforeLoad()
+        hydrateEntityDigests(previous, entry, sourceWithout(first, identity => identity === `${IDENTITY.char}${entry.u}:core`))
+        expect(previous.units.get(`${IDENTITY.char}${entry.u}:core`)?.digest).toBeUndefined()
+        expect(previous.units.get(`${IDENTITY.char}${entry.u}:lore`)?.digest).toBeDefined()
+    })
+
+    test('a pass over the loaded character writes nothing once hydrated, and rewrites it whole before', async () => {
+        const decoded = assembleDatabase(first.manifest, everything)
+        const chaId = (decoded.characters[1] as unknown as { chaId: string }).chaId
+        const marked: SavePassRequest = { ...NOTHING_MARKED, marked: new Set([chaId]) }
+
+        const cold = previousBeforeLoad()
+        const before = await encoderOver(cold).plan(decoded, marked)
+        expect(before.unchanged).toBe(false)
+        expect(before.newUnits).toBeGreaterThan(ownIdentities().length)
+
+        const hydrated = previousBeforeLoad()
+        hydrateEntityDigests(hydrated, entry, everything)
+        const after = await encoderOver(hydrated).plan(decoded, marked)
+        expect(after.newUnits).toBe(1)
+        expect(after.unchanged).toBe(true)
     })
 })

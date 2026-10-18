@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'vitest'
-import { COLD_POINTER_HEADER, encodeDatabase, StubRefusedError, assertChatNotPointer, isColdStub } from '../../store2/codec'
-import { coldStorageHeader } from '../../../process/coldstorageData'
-import { buildColdStub } from '../../../process/coldCharacter'
-import type { character } from '../../database.svelte'
 import {
-    asDatabase, buildSmall, dbWithCharacters, encodeWith, fakeLists, roundTrip, seededEnv, type Obj,
+    COLD_POINTER_HEADER, encodeDatabase, StubRefusedError, assertChatNotPointer, isColdStub, overlayStub, stubFromEntry,
+    type EncodedTree,
+} from '../../store2/codec'
+import { coldStorageHeader } from '../../../process/coldstorageData'
+import { buildColdStub, COLD_STUB_VERSION } from '../../../process/coldCharacter'
+import type { character } from '../../database.svelte'
+import type { ShardEntry } from '../../store2/format'
+import {
+    asDatabase, buildLegacyCases, buildSmall, dbWithCharacters, encodeWith, fakeLists, roundTrip, seededEnv, type Obj,
 } from './codecFixtures'
 
 function loaded(index: number, chaId = `c${index}`): Obj {
@@ -91,5 +95,88 @@ describe('the codec refuses a stub (I9)', () => {
             env: seededEnv(1), lists: counting, seq: 1, createdAt: 1,
         })).toThrow(StubRefusedError)
         expect(calls).toBe(0)
+    })
+})
+
+function entriesOf(tree: EncodedTree): ShardEntry[] {
+    return (tree.index.objects?.shards ?? []).flatMap(shard => shard.entries)
+}
+
+function entryOfChaId(tree: EncodedTree, chaId: string): ShardEntry {
+    const entry = entriesOf(tree).find(candidate => candidate.chaId === chaId)
+    if (entry === undefined) {
+        throw new Error(`No entry for ${chaId}`)
+    }
+    return entry
+}
+
+describe('new behaviour: stubFromEntry builds the stub a shard entry stands for', () => {
+    function stubCase(tweak: (slot: Obj) => void): { entry: ShardEntry, source: Obj, stub: Obj } {
+        const slot = loaded(0, 'stubbed')
+        tweak(slot)
+        const entry = entryOfChaId(encodeWith(dbWithCharacters([slot])), 'stubbed')
+        return { entry, source: slot, stub: stubFromEntry(entry) as Obj }
+    }
+
+    test.each([
+        ['a plain character', () => undefined],
+        ['a trashed character', (slot: Obj) => { slot.trashTime = 1234 }],
+        ['a character with an image and a last interaction', (slot: Obj) => { slot.image = 'portrait.png'; slot.lastInteraction = 99 }],
+        ['a group', (slot: Obj) => { slot.type = 'group'; slot.characters = ['m1', 'm2'] }],
+        ['a character with tags and an edited creator', (slot: Obj) => { slot.tags = ['a', 'b']; slot.additionalData = { creator: 'edited' } }],
+    ] as const)('%s: the field set is the one buildColdStub gives, apart from the dummy chat', (_label, tweak) => {
+        const { entry, source, stub } = stubCase(tweak)
+        const reference = buildColdStub(source as unknown as character, entry.u, []) as unknown as Obj
+        const { chats: stubChats, ...stubFields } = stub
+        const { chats: referenceChats, ...referenceFields } = reference
+        expect(stubFields).toEqual(referenceFields)
+        expect(stubChats).toHaveLength(1)
+        expect(referenceChats).toHaveLength(1)
+        expect(isColdStub(stub)).toBe(true)
+    })
+
+    test('the stub names the entry\'s entity, counts its chats and is no pointer chat', () => {
+        const { entry, stub } = stubCase(() => undefined)
+        expect(stub.coldstorage).toBe(entry.u)
+        expect(stub.coldChatCount).toBe(entry.chats.length)
+        expect(entry.chats.length).toBeGreaterThan(1)
+        expect(stub.coldStoragedChats).toEqual([])
+        expect(stub.coldVersion).toBe(COLD_STUB_VERSION)
+        expect(stub.chatPage).toBe(0)
+        expect(stub.firstMsgIndex).toBe(0)
+        const [dummy] = stub.chats as Obj[]
+        expect((dummy.message as Obj[])[0].data).toBe('')
+    })
+
+    test('a trashed entry keeps its trashTime and an untrashed one has none', () => {
+        expect(stubCase(slot => { slot.trashTime = 1234 }).stub.trashTime).toBe(1234)
+        expect(Object.hasOwn(stubCase(() => undefined).stub, 'trashTime')).toBe(false)
+    })
+
+    test('a group stub carries its members and no tags, a character stub the opposite', () => {
+        const group = stubCase(slot => { slot.type = 'group'; slot.characters = ['m1', 'm2'] }).stub
+        expect(group.characters).toEqual(['m1', 'm2'])
+        expect(Object.hasOwn(group, 'tags')).toBe(false)
+        const single = stubCase(() => undefined).stub
+        expect(Object.hasOwn(single, 'characters')).toBe(false)
+        expect(single.tags).toEqual(['synthetic', 'profiling'])
+    })
+
+    test('the overlay of a stub over its own entry is the entry, over every legacy and edge shape (fixed point)', () => {
+        const long = 'x'.repeat(620)
+        const extra = [
+            { label: 'multilingual notes', character: { ...loaded(0, 'multi'), creatorNotes: '# `en`\nHello\n# `ko`\n안녕' } },
+            { label: 'notes cut at the limit', character: { ...loaded(0, 'long'), creatorNotes: long } },
+            { label: 'notes cut inside a surrogate pair', character: { ...loaded(0, 'pair'), creatorNotes: `${'y'.repeat(499)}\u{1F600}tail` } },
+        ]
+        let shapes = 0
+        for (const { label, character } of [...buildLegacyCases(), ...extra]) {
+            const tree = encodeWith(dbWithCharacters([character]))
+            const entry = entriesOf(tree)[0]
+            const stub = stubFromEntry(entry)
+            expect(overlayStub(entry, stub as unknown as character), label).toEqual(entry)
+            shapes++
+        }
+        expect(shapes).toBeGreaterThanOrEqual(39)
     })
 })

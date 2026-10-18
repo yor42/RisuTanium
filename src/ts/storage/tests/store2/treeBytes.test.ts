@@ -16,7 +16,7 @@ import {
 } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
-import { CommitKeyRecheckError, readTreeBytes, type FlaggedLeaf } from 'src/ts/storage/store2/treeBytes'
+import { CommitKeyRecheckError, readEntityBytes, readTreeBytes, type FlaggedLeaf, type ResidentPlanInput } from 'src/ts/storage/store2/treeBytes'
 import { createClock, seedTree, testEnv, type TestClock } from '../store2SaveKit'
 import { buildSmall, chat, fakeLists, message, mulberry32, prosePool, type Obj } from './codecFixtures'
 
@@ -287,7 +287,7 @@ describe('new behaviour: the intact tree is read whole and its bytes are kept', 
     test('an entry left out by the resident filter has none of its units read and none flagged; the fixed units are still read', async () => {
         const entry = richEntry(world)
         const residents = new Set(entriesOf(world).filter(candidate => candidate.u !== entry.u).map(candidate => candidate.u))
-        const read = await readTreeBytes(world.memory, world.manifestKey, { resident: candidate => residents.has(candidate.u) })
+        const read = await readTreeBytes(world.memory, world.manifestKey, { resident: () => residents })
         if (read.status !== 'ok') {
             throw new Error('The tree did not read ok.')
         }
@@ -681,5 +681,149 @@ describe('guard: detection and assembly share one predicate', () => {
             expect((await readTreeBytes(world.memory, world.manifestKey)).status).toBe('too-new')
             expect(assembles()).toBe(false)
         })
+    })
+})
+
+describe('new behaviour: the residency planner sees the whole tree before any leaf is read', () => {
+    test('it is called once with every entry, the checked config fields and the checked plugin bodies, after the fixed units were read', async () => {
+        const entry = richEntry(world)
+        const asked: string[][] = []
+        const inputs: ResidentPlanInput[] = []
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { asked.push([...keys]) } })
+        const read = await readTreeBytes(spy.backend, world.manifestKey, {
+            resident: (input) => {
+                inputs.push(input)
+                // Nothing of any entity has been requested when the planner runs.
+                expect(asked.flat()).not.toContain(keyOfRef(entry.core))
+                expect(asked.flat()).toContain(keyOfRef(world.tree.manifest.fixed.config))
+                return new Set(input.entries.map(candidate => candidate.u))
+            },
+        })
+        expect(read.status).toBe('ok')
+        expect(inputs).toHaveLength(1)
+        expect(inputs[0].entries.map(candidate => candidate.u).sort()).toEqual(entriesOf(world).map(candidate => candidate.u).sort())
+        expect(inputs[0].config?.username).toBe((world.db as unknown as Obj).username)
+        expect(inputs[0].plugins.length).toBe(world.tree.manifest.fixed.plugins.length)
+        expect(inputs[0].plugins.every(body => body.list === 'plugins' || body.list === 'pluginV2')).toBe(true)
+    })
+
+    test('an entry the planner leaves out has none of its leaves requested from the backend and none flagged, even if one is damaged', async () => {
+        const entry = richEntry(world)
+        const leafKeys = leafCases(world).map(leaf => leaf.key)
+        const asked: string[] = []
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { asked.push(...keys) } })
+        const damaged = leafCases(world)[0].key
+        const read = await withUnit(world, damaged, null, () => readTreeBytes(spy.backend, world.manifestKey, {
+            resident: input => new Set(input.entries.filter(candidate => candidate.u !== entry.u).map(candidate => candidate.u)),
+        }))
+        expect(read.status).toBe('ok')
+        if (read.status === 'ok') {
+            expect(read.flagged).toEqual([])
+        }
+        expect(asked.filter(key => leafKeys.includes(key))).toEqual([])
+        // The other entries' leaves were read.
+        const other = entriesOf(world).find(candidate => candidate.u !== entry.u) as ShardEntry
+        expect(asked).toContain(keyOfRef(other.core))
+    })
+
+    test('an entry the planner keeps is read and flagged as before', async () => {
+        const damaged = leafCases(world)[0].key
+        const read = await withUnit(world, damaged, null, () => readTreeBytes(world.memory, world.manifestKey, {
+            resident: input => new Set(input.entries.map(candidate => candidate.u)),
+        }))
+        expect(read.status === 'ok' ? flaggedKeys(read.flagged) : []).toEqual([damaged])
+    })
+})
+
+describe('new behaviour: readEntityBytes reads one entity under the damage rules of the boot read', () => {
+    test('an intact entity: ok, with the bytes of exactly its units and their total length', async () => {
+        const entry = richEntry(world)
+        const asked: string[] = []
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { asked.push(...keys) } })
+        const read = await readEntityBytes(spy.backend, entry)
+        if (read.status !== 'ok') {
+            throw new Error(`The intact entity read ${read.status}.`)
+        }
+        const keys = leafCases(world).map(leaf => leaf.key)
+        for (const key of keys) {
+            expect(read.source.get(key)).toBeDefined()
+        }
+        expect([...new Set(asked)].sort()).toEqual(
+            [entry.core, entry.lore, entry.scripts, entry.al, entry.il, ...entry.chats.flatMap(chat => [chat.core, ...chat.chunks])]
+                .flatMap(ref => (ref === null ? [] : [keyOfRef(ref)])).sort(),
+        )
+        const total = [...new Set(asked)].reduce((sum, key) => sum + (world.memory.snapshot().get(key) as Uint8Array).length, 0)
+        expect(read.bytes).toBe(total)
+    })
+
+    test('every damage a leaf can take is flagged exactly as the boot read flags it, and the entity is damaged', async () => {
+        const entry = richEntry(world)
+        let compared = 0
+        for (const leaf of leafCases(world)) {
+            for (const damage of DAMAGES) {
+                const original = world.memory.snapshot().get(leaf.key) as Uint8Array
+                const bytes = damage.apply(original, unitTypeOf(world, leaf.key))
+                const boot = await withUnit(world, leaf.key, bytes, () => readTreeBytes(world.memory, world.manifestKey))
+                const entity = await withUnit(world, leaf.key, bytes, () => readEntityBytes(world.memory, entry))
+                expect(boot.status, `${leaf.label}: ${damage.name}`).toBe('ok')
+                expect(entity.status, `${leaf.label}: ${damage.name}`).toBe('damaged')
+                if (boot.status === 'ok' && entity.status === 'damaged') {
+                    expect(entity.flagged, `${leaf.label}: ${damage.name}`).toEqual(boot.flagged)
+                    expect(entity.flagged[0].why).toBe(damage.why)
+                }
+                compared++
+            }
+        }
+        expect(compared).toBe(leafCases(world).length * DAMAGES.length)
+    })
+
+    test('a chunk that holds a different number of messages than its Ref says is damaged, as in the boot read', async () => {
+        const entry = richEntry(world)
+        const longChat = entry.chats[2]
+        const chunks = longChat.chunks.map((chunk, index) => (index === 1 ? [chunk[0], chunk[1], chunk[2], chunk[3] + 1] as typeof chunk : chunk))
+        const entity = await readEntityBytes(world.memory, { ...entry, chats: entry.chats.map((chat, index) => (index === 2 ? { ...chat, chunks } : chat)) })
+        expect(entity).toMatchObject({ status: 'damaged', flagged: [expect.objectContaining({ kind: 'chat', part: 'chunk', why: 'damaged', key: keyOfRef(longChat.chunks[1]) })] })
+    })
+
+    test('a unit a newer build wrote is too-new, as in the boot read', async () => {
+        const entry = richEntry(world)
+        for (const leaf of leafCases(world)) {
+            const bytes = tooNewFrame(world.memory.snapshot().get(leaf.key) as Uint8Array)
+            const boot = await withUnit(world, leaf.key, bytes, () => readTreeBytes(world.memory, world.manifestKey))
+            const entity = await withUnit(world, leaf.key, bytes, () => readEntityBytes(world.memory, entry))
+            expect(boot, leaf.label).toMatchObject({ status: 'too-new', keys: [leaf.key] })
+            expect(entity, leaf.label).toMatchObject({ status: 'too-new', keys: [leaf.key] })
+        }
+    })
+
+    test('a stored entry that is not binary data is damaged, the rest of the entity is still judged', async () => {
+        const entry = richEntry(world)
+        const key = keyOfRef(entry.chats[0].core)
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { if (keys.includes(key)) { throw new Store2NotBinaryError(key) } } })
+        const entity = await readEntityBytes(spy.backend, entry)
+        expect(entity).toMatchObject({ status: 'damaged', flagged: [expect.objectContaining({ key, why: 'damaged' })] })
+    })
+
+    test('a failing backend is unreadable, never damage', async () => {
+        world.memory.injectFault(1, 'fail')
+        const entity = await readEntityBytes(world.memory, richEntry(world))
+        expect(entity.status).toBe('unreadable')
+        if (entity.status === 'unreadable') {
+            expect(entity.cause).toBeInstanceOf(Store2BackendFailureError)
+        }
+        expect((await readEntityBytes(world.memory, richEntry(world))).status).toBe('ok')
+    })
+
+    test('a read that spans several batches hands the thread back between them', async () => {
+        const db = buildSmall(1) as unknown as Obj
+        const rng = mulberry32(5)
+        const pool = prosePool(rng, 10, 50, 120)
+        const slot = (db.characters as Obj[])[0]
+        slot.chats = Array.from({ length: 150 }, (_, index) => chat(rng, index, [message(rng, pool, 0, 80 + index)]))
+        const many = await seedWorld(db as unknown as Database)
+        let yielded = 0
+        const read = await readEntityBytes(many.memory, entriesOf(many)[0], { yield: async () => { yielded += 1 } })
+        expect(read.status).toBe('ok')
+        expect(yielded).toBeGreaterThanOrEqual(1)
     })
 })

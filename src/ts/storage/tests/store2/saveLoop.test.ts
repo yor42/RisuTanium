@@ -9,6 +9,7 @@ import { encodeUnit, UNIT_TYPE, type CommitKey } from '../../store2/format'
 import type { Store2Read } from '../../store2/backend'
 import type { ListDerivation } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
+import { createSaveEncoder } from '../../store2/saveEncoder'
 import { backedOffWait, runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
 import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
@@ -1109,6 +1110,98 @@ describe('new behaviour: a stub that shares its id with a resident character', (
         loop.mark(chaIdOf(live, 0))
         await until(() => loop.failures.length >= 1, 'a report', 4000)
         expect((loop.failures[0].error as Error).name).toBe('SharedChaIdStubError')
+        healthy(loop)
+    })
+})
+
+describe('new behaviour: a stub that names units its entry no longer holds', () => {
+    /** A live list whose second character is a stub naming something other than its entity. */
+    function foreignStubWorld(): { db: Database, live: Database, resident: Entry } {
+        const db = clone(buildSmall(4))
+        const live = clone(db)
+        const resident = JSON.parse(JSON.stringify(chars(db)[1])) as Entry
+        chars(live)[1] = buildColdStub(resident as unknown as character, 'a-key-the-entry-does-not-name', ['chat-a']) as unknown as Entry
+        return { db, live, resident }
+    }
+
+    test('the stub is loaded through the loader and the pass is retried once', async () => {
+        const { db, live, resident } = foreignStubWorld()
+        const kit = await startStore2({ db })
+        const loaded: string[] = []
+        kit.context.loadStub = async (chaId) => {
+            loaded.push(chaId)
+            chars(live)[1] = resident
+            return true
+        }
+        const loop = runLoop(kit, live)
+        chars(live)[0].personality = 'saved with the retry'
+        loop.mark(chaIdOf(live, 0))
+        await savedBy(loop)
+        expect(loaded).toEqual([chaIdOf(db, 1)])
+        expect((await kit.saved()).characters[0]).toMatchObject({ personality: 'saved with the retry' })
+        expect(loop.failures).toEqual([])
+        healthy(loop)
+    })
+
+    test('a chat pointer is not loadable that way: the refusal stands and the loader is not asked', async () => {
+        const db = clone(buildSmall(4))
+        const live = clone(db)
+        ;((chars(live)[1].chats as Entry[])[0].message as Entry[])[0].data = 'COLDSTORAGEsome-key'
+        const kit = await startStore2({ db })
+        let asked = 0
+        kit.context.loadStub = async () => {
+            asked += 1
+            return true
+        }
+        const loop = runLoop(kit, live)
+        loop.mark(chaIdOf(live, 1))
+        await until(() => loop.failures.length >= 1, 'a report', 4000)
+        expect((loop.failures[0].error as Error).name).toBe('StubRefusedError')
+        expect(asked).toBe(0)
+        healthy(loop)
+    })
+
+    test('a stub that cannot be loaded keeps the save blocked, and without a loader the refusal is reported as it is', async () => {
+        const { db, live } = foreignStubWorld()
+        const kit = await startStore2({ db })
+        let calls = 0
+        kit.context.loadStub = async () => {
+            calls += 1
+            return false
+        }
+        const loop = runLoop(kit, live)
+        loop.mark(chaIdOf(live, 0))
+        await until(() => loop.failures.length >= 1, 'a report', 4000)
+        expect((loop.failures[0].error as Error).name).toBe('StubRefusedError')
+        expect(calls).toBeGreaterThanOrEqual(1)
+        expect(loop.state.saved).toBe(0)
+        expect(kit.counted.writeCalls()).toBe(0)
+        healthy(loop)
+
+        const { db: db2, live: live2 } = foreignStubWorld()
+        const bare = await startStore2({ db: db2 })
+        const bareLoop = runLoop(bare, live2)
+        bareLoop.mark(chaIdOf(live2, 0))
+        await until(() => bareLoop.failures.length >= 1, 'a report', 4000)
+        expect((bareLoop.failures[0].error as Error).name).toBe('StubRefusedError')
+        healthy(bareLoop)
+    })
+})
+
+describe('new behaviour: the loop saves through the encoder the context carries', () => {
+    test('a pass moves the carried encoder\'s acknowledged encoding, and the one the loop would have made stays out of it', async () => {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db })
+        const encoder = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
+        const before = encoder.manifestKey
+        kit.context.encoder = encoder
+        const live = clone(db)
+        const loop = runLoop(kit, live)
+        chars(live)[1].personality = 'saved through the carried encoder'
+        loop.mark(chaIdOf(live, 1))
+        await savedBy(loop)
+        expect(encoder.manifestKey).not.toBe(before)
+        expect((await kit.saved()).characters[1]).toMatchObject({ personality: 'saved through the carried encoder' })
         healthy(loop)
     })
 })
