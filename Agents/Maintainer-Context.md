@@ -10232,3 +10232,146 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 2. **Older copies: "Wait while they exist (Recommended)".** Question as asked: "Most profiles converted to the new save format keep a one-time 'pre-conversion' copy (and sometimes older save generations) until you run manual cleanup. Those copies may still point at old archive files, and checking them means fully decoding them. What should deletion do while such copies exist?" Option text: "Don't delete any old archive file while such copies exist. Safe and cheap, but on most converted profiles deletion won't run until you've run the manual cleanup once." Alternative rejected: "Decode them once".
 3. **Import batch: "Yes, don't count it (Recommended)".** Question as asked: "During a batch card import, a card too big for the Node server will no longer count toward the 'stop the batch after two failures in a row' rule (matching your stage 2 answer). OK?" Option text: "Too-big cards just import loaded; the rest of the batch keeps archiving." Alternative rejected: "Keep counting it". This amends `MC-303` item 3 for that one case.
 4. **Device pause: "Yes, stay off (Recommended)".** Question as asked: "If the startup archive pass has paused itself on this device after repeated failures, should stage 2 also stay off?" Option text: "One pause covers both; a device that can't archive at startup doesn't keep trying during use." Alternative rejected: "No, separate".
+
+### MC-309 — Stage 4 session, 2026-10-17: stage 4a-W step W2 answers (additions to MC-299: own row 9 converts without a second confirmation; a missing or damaged leaf opens the profile; the flagged-open prompt offers continue, decline or an earlier saved version; a numbered-backup read error stops; the app asks before converting from a backup)
+
+- **Tag:** decisions (`AskUserQuestion` answers in the stage 4 session; option labels quoted only where the source quotes them)
+- **Date:** 2026-10-17
+- **Sweep ref:** none (stated directly this session)
+- **Source:** the stage 4 session's `AskUserQuestion` answers as recorded in the orchestrator's W2 rulings file (job scratch `s4\job-tmp\w2-decisions.md`, sections marked "maintainer"). The ledger rows are in the 1812 to 1863 range (stage 4a-W W1 to W5). W1 contains no maintainer answer (its file records only orchestrator rulings); the first W-step answer is W2's.
+- **Reasoning:** as given per item. Where the source gives none, none is stated.
+- **Alternatives rejected:** not recorded except where an item names one.
+- **Related:** `MC-299` (the source marks items 1 to 5 as additions to it; items 2, 7 and 10 are the ones it cites in the later W2b rulings).
+
+**What was decided (maintainer):**
+1. **Own row 9 convert (W2 Q7).** After the start-up clear of the row 9 own marker finishes, the app converts without a second confirmation; the standing marker records the earlier consent. Recorded in the source as an `MC-299` addition. Option label not recorded.
+2. **Missing or damaged leaf at a normal row 5 boot (G1 finding 7).** The profile opens and does not go to the recovery screen. A missing or damaged chat gets the legacy load-error text and is named in the incomplete-data prompt; a missing or damaged character becomes the F3 placeholder (name, `chaId`, `trashTime` and `image` from the shard entry) and is named. Retained manifests keep the earlier copy for restore. A backend read failure still blocks. Option label not recorded. The source's "tail kept" wording for chats is the orchestrator's shorthand, corrected by orchestrator ruling to "empty fields plus the load-error message, every readable chunk kept" (not a maintainer statement).
+3. **Only part of a character missing or damaged (N2).** When only a character's lore, scripts, `al` or `il` is missing or damaged and the core reads, the character and all its chats load; only that part opens empty and is named in the incomplete-data notice. Option label not recorded.
+4. **Row 5 confirm before saving.** A flagged row 5 boot waits for `confirmIncomplete(items)` before the save loop starts. Continue opens as ruled; decline returns `stopped`, writes nothing and asks again at the next start (the `MC-299` 10 shape). Option label not recorded.
+5. **Row 5 confirm, third answer.** The flagged-boot prompt offers continue, decline, or open an earlier saved version (the recovery screen with the whole session, as at row 6, so a retained manifest can be picked before the damaged state is saved over). The prompt text says older copies are kept only until clean-up. Option label not recorded.
+6. **Backup read error: "Stop, ask again".** A storage read error on a numbered backup during the fallback blocks the conversion, as for the main file: nothing is written and the next start retries. Only a decode failure moves on to the next backup. This reverses an earlier orchestrator ruling that skipped an unreadable backup. The list phase is unchanged (a backup read error there lists the file `unreadable`).
+7. **Convert from a backup: "Ask before backup".** When the main file fails the strict decode and a numbered backup decodes, the app asks before the marker, naming the backup and its date (`confirmFromBackup`). Decline writes nothing and asks again at the next start. The recorded reason: an out-of-memory `RangeError` cannot be told apart from damage, so the fallback must never use older data silently. The `converted-from-backup` notice after install stays.
+8. **Process choice at the W2 Gate 1 recheck 3 `[REJECT]` (streak 4, after the advisor escalation).** The maintainer chose to fix locally, run a narrow recheck and hold no second advisor round (the source says "Maintainer chose"; option label not recorded).
+
+**Orchestrator rulings in the same file (not maintainer decisions):** Q1 to Q6, Q8 to Q19, the senior-advisor direction (one fallback invariant, amendment A-R6 `codec/assemble.ts` override, then A-R8 `checkUnit`), the Tauri owner-id exemption, the native gate re-registration finding, the W2b amendments to `src/ts/storage/risuSave.ts` (`RisuSaveReadError`) and the W2b carries. Plan-affecting items are in the plan v3.4 amendment 7 dated note of 2026-10-19.
+
+### MC-310 — Stage 4 session, 2026-10-17: stage 4a-W step W3 first batch (boot prompts: foreign-marker wording, phone-memory note, language, new-profile notice, default button, conversion promise, unreadable names)
+
+- **Tag:** decisions (`AskUserQuestion` answers; option labels not recorded)
+- **Date:** 2026-10-17
+- **Sweep ref:** none
+- **Source:** the W3 rulings file (job scratch `s4\job-tmp\w3-decisions.md`, section "Maintainer"). The labels of the chosen options are not recorded there.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** none recorded.
+- **Related:** `MC-299` (items 1 and 2, 7, 10), `MC-162`.
+
+**What was decided (maintainer):**
+1. **W3-Q1:** the foreign-marker prompt shows the operation name and start time; Wait is the default.
+2. **W3-Q2:** the phone-memory note is a fixed sentence; `mainFileBytes` is dropped from the port.
+3. **W3-Q3:** boot prompts use the browser's language, with English as the fallback.
+4. **W3-Q4:** a one-time "new empty profile created" notice after a first-life seed.
+5. **W3-Q5:** on the flagged-open prompt, "Stop, change nothing" is the default button.
+6. **W3-Q6:** the conversion promise reads "your old files are kept; this step does not delete them".
+7. **W3-Q7:** a skipped character with no readable name is listed by its id plus "name unavailable"; its real name is shown wherever it is readable.
+
+**Orchestrator rulings in the same file (not maintainer decisions):** an orchestrator "Q8" (W3 covers the escalation wording only; cadence and the mid-session foreign route go to W5), Q9 (import action behind an optional seam until B3), Q10 (the six-locale pass lands with W3a; the translator guard is main-only, so strings are relayed via scratch), X4 (boot prompts wait behind Legal when `VITE_RISU_LEGAL_CONFIGURED` is unset; nothing is written while they wait) and the W3a/W3b split. These orchestrator Q8 to Q10 share numbers with the maintainer's later W3-Q8 to Q10 in `MC-311`; the source numbers them twice.
+
+### MC-311 — Stage 4 session, 2026-10-17 to 2026-10-18: stage 4a-W step W3 later answers (convert default "Not now"; recovery pick confirmation; recovery convert and seed exits; no go-back after the first pick; "could not check" counts; stop on a changed profile; product name RisuTanium)
+
+- **Tag:** decisions (`AskUserQuestion` answers; option labels not recorded)
+- **Date:** 2026-10-17 (W3-Q8 to Q10, after the W3 Gate 1 `[REJECT]`), 2026-10-18 (the rest)
+- **Sweep ref:** none
+- **Source:** the W3 rulings file (job scratch `s4\job-tmp\w3-decisions.md`, the sections "Maintainer" under Gate 1 REJECT, revision 1 answers, Gate 1 recheck, Gate 1 recheck 3 and "Product name").
+- **Reasoning:** as stated per item; W3-Q14 is the maintainer's simplification after a revision loop (four consecutive `[REJECT]`s, one after the advisor).
+- **Alternatives rejected:** the controller net's in-screen re-read and rebuild and the `reclassify` row (replaced by W3-Q14).
+- **Related:** `MC-310`, `MC-299` (items 2, 7, 10), `MC-291` (counts are advisory), `MC-162` item 1.
+
+**What was decided (maintainer):**
+1. **W3-Q8:** on `confirmConvert` the default button is "Not now", which writes nothing and asks again.
+2. **W3-Q9:** the recovery screen asks for confirmation before the first pick; the confirmation says plainly that a pick puts the profile in recovery until a version is installed; nothing is written before the person agrees. Later picks pass the latest `markerRead` and every `ExitResult` status is handled.
+3. **W3-Q10:** W3b builds the convert and seed recovery exits; `legacy/convert.ts` is amended so every question is asked first, and only then `runExit` and `installBuilt` run. `MC-299` items 2, 7 and 10 hold on that route.
+4. **W3-Q11 (2026-10-18):** no go-back exit after the first pick; the pick confirmation discloses that the profile stays in recovery until a version is installed.
+5. **W3-Q13 (2026-10-18):** if the presence listing fails or is too slow, install is still allowed with the text "could not check" in place of the counts. The counts are advisory (`MC-291`) and install keeps its own confirmation.
+6. **W3-Q14 (2026-10-18):** when the recovery screen sees that anything else changed the saved state (`conflict`, `abandoned`, a re-read that no longer holds our own marker), or hits any unexpected error, it stops, writes nothing more and shows "This profile was changed somewhere else. Reload to continue." (the unexpected-error variant has its own wording). No in-screen re-read or rebuild; the reload re-runs the normal start-up dispatch. An orchestrator accuracy tweak later made the `conflict` text "may have been changed somewhere else" (not a maintainer statement).
+7. **Product name (2026-10-18):** the new store2 boot and recovery strings name the product "RisuTanium", not "RisuAI" (`MC-162` item 1). The orchestrator applied this to the English `store2Boot` block (32 replacements) and one test literal; W3b and W3c strings follow the rule. Older English strings outside these blocks are unchanged and are a separate question.
+
+**Orchestrator rulings in the same file (not maintainer decisions):** W3-Q12 (until B4 a Node tab with unsaved edits is offered Reload only), the senior-advisor direction for revision 3 (typed `PresenceProbeError`, nullable counts, skip in the probe module), revisions 3 and 4, the W3a copy defaults (presented to the maintainer with the English block before translation; the maintainer's reading is not recorded), the `mayHaveWritten` derivation, the W3b-2 remediation rulings F1 to F7.
+
+### MC-312 — Stage 4 session, 2026-10-18: stage 4a-W step W3c answer (a parked tab with only typed text gets a warning and may still reload)
+
+- **Tag:** decision (`AskUserQuestion` answer)
+- **Date:** 2026-10-18
+- **Sweep ref:** none
+- **Source:** the W3 rulings file, section "W3c Gate 2 recheck" (W3-Q15).
+- **Reasoning:** the reviewer proposed counting drafts as dirty; the orchestrator rejected it because the dialog would then offer "Save mine", which overwrites the peer's commit although this tab's data did not change.
+- **Alternatives rejected:** counting typed text as unsaved data (offers "Save mine"); the source does not list the other options.
+- **Related:** `MC-299` (peer-commit prompt), `MC-091` (scope amendment of `saveLoop.ts` `parkedClean` / `stillClean()`).
+
+**What was decided (maintainer):**
+1. **W3-Q15: "Warn, then allow (Recommended)".** A parked tab with no unsaved data changes but with typed text gets the clean prompt with draft wording: the text says this tab has text not sent yet and that reloading discards it; the buttons are "Reload (your typed text is lost)" and "Keep reading". If typed text or edits appear after the prompt opened, Reload does nothing: when dirty, the prompt closes and the normal choice asks; when only new drafts appear, the prompt is asked again with the draft wording. The orchestrator later widened the wording to "text or an edit you have not finished" and the button to "Reload (unfinished text and edits are lost)" (reviewer wording; not a new maintainer decision).
+
+### MC-313 — Stage 4 session, 2026-10-18: stage 4a-W step W4 design answers (a damaged unit refuses to open; only store-loaded characters unload; large characters unload when idle; inlay clean-up through the reader redirect)
+
+- **Tag:** decisions (`AskUserQuestion` answers; the source states all four were answered with the recommended default; labels not recorded)
+- **Date:** 2026-10-18
+- **Sweep ref:** none
+- **Source:** the W4 rulings file (job scratch `s4\job-tmp\w4-decisions.md`, "Maintainer answers (2026-10-18), on the design"), on the design `%TEMP%\risu-b715\s4\w4\w4-design.md`.
+- **Reasoning:** none stated beyond the recommended default.
+- **Alternatives rejected:** "partial open" is named as excluded in item 1.
+- **Related:** `MC-146` (wording), `MC-268` (keep-set), `MC-175`.
+
+**What was decided (maintainer):**
+1. **W4-Q1 (recommended):** a damaged or missing unit when a stub is opened refuses to open with the `MC-146` wording; nothing is changed and other characters keep working; there is no partial open.
+2. **W4-Q2 (recommended):** only characters loaded from the store this session may unload; a character created or imported this session stays resident until the next start.
+3. **W4-Q3 (recommended):** a character whose last read was over about 1 MiB unloads only when the page is idle or hidden; the fire-time re-encode never runs in the foreground for it.
+4. **W4-Q4 (recommended):** inlay clean-up until W5 is corrected through the reader redirect: the clean-up reads each unloaded character once per run and nothing in use is deleted. W4b may not land without this inlay guard.
+
+### MC-314 — Stage 4 session, 2026-10-18: stage 4a-W step W4 post-Gate-1 answers (a parked dirty tab is offered Reload only while stubs exist; boot no longer checks unloaded characters; the idle definition)
+
+- **Tag:** decisions (`AskUserQuestion` answers; the source states "all recommended defaults"; labels not recorded)
+- **Date:** 2026-10-18
+- **Sweep ref:** none
+- **Source:** the W4 rulings file, "Maintainer answers after Gate 1", after the `opus-reviewer` Gate 1 `[REJECT]` (verdict `s4\job-tmp\w4-g1.md`).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "load the stubs, then Save mine" is deferred to W6/B3 for revisit, not rejected.
+- **Related:** `MC-313`, `MC-299` (peer-commit prompt) and the plan's OQ3 refusal.
+
+**What was decided (maintainer):**
+1. **W4-Q5 (recommended; Gate 1 item P1):** while stubs exist, a parked dirty tab is offered Reload only (the OQ3 refusal stands). Revisit "load the stubs, then Save mine" at W6/B3.
+2. **W4-Q6 (recommended; P3):** boot no longer checks unloaded characters for damage. Opening one is refused (W4-Q1); the W6 restore list is the way back.
+3. **W4-Q7 (recommended; P4):** "idle" for W4-Q3 means the tab is hidden after its save has committed, or 30 s without input (idle callback with a timer fallback).
+
+**Open maintainer wording (not decided):** Gate 2 of W4b-1b (N3) reported that the `archiveCharactersNotice` English text says characters load "only when you open that character", which is not true for V2.1 users (restore-all loads every character at boot). It was reported to the maintainer and not changed; no answer is recorded.
+
+### MC-315 — Stage 4 session, 2026-10-18: stage 4a-W step W5 first batch (C1 deletion also on Node servers; no notice on removal; inlay clean-up keeps what a saved version shows; no automatic asset clean-up above 50,000 assets)
+
+- **Tag:** decisions (`AskUserQuestion` answers; the source states all recommended defaults; labels not recorded)
+- **Date:** 2026-10-18
+- **Sweep ref:** none
+- **Source:** the W5 rulings file (job scratch `s4\job-tmp\w5-decisions.md`, "Maintainer answers (2026-10-18, AskUserQuestion, all recommended defaults)").
+- **Reasoning:** none stated beyond the recommended default.
+- **Alternatives rejected:** none recorded.
+- **Related:** `MC-287`, `MC-308` item 1 (amended for C1 only), `MC-288`, `MC-289`.
+
+**What was decided (maintainer):**
+1. **W5-Q2:** the cutover deletion (C1) runs on Node servers too, with the same rules: only listed old-format keys, paced, stops on a peer marker or fence. **This supersedes `MC-308` item 1 for C1 only**; `MC-308` item 1 was about the retired re-archive writer. A device still on an old fork build sees missing old data until it updates.
+2. **W5-Q4:** no notice when the old-format files are removed.
+3. **W5-Q5:** inlay clean-up keeps any inlay a retained or pinned save point (or the legacy `i`) still shows (design rule U11); most chat-delete clean-ups become no-ops and nothing reclaims that space until stage 5.
+4. **W5-Q6:** above the U9 limit (50,000 assets; the maintainer has about 383k) nothing is reclaimed automatically in 4a; the Settings clean-up button stays hidden until stage 5.
+
+### MC-316 — Stage 4 session, 2026-10-18: stage 4a-W step W5 second batch (a fork-only profile deletes `database/database.pre-blocks*` per MC-287; no inlay deletion on store2 pages until stage 5; the asset sweep is dry-run only in 4a)
+
+- **Tag:** decisions (`AskUserQuestion` answers)
+- **Date:** 2026-10-18
+- **Sweep ref:** none
+- **Source:** the W5 rulings file, "Maintainer answers, second batch (2026-10-18, AskUserQuestion)". W5-Q1 was first held by the orchestrator as covered by `MC-287` and asked after all at the senior-advisor's flag.
+- **Reasoning:** none stated.
+- **Alternatives rejected:** for W5-Q1 the maintainer declined the recommended option (keep).
+- **Related:** `MC-287`, `MC-288`, `MC-289` (stays open after 4a), `MC-175`.
+
+**What was decided (maintainer):**
+1. **W5-Q1: "Delete per MC-287" (NOT the recommended option; the maintainer declined the recommended keep).** C1 on a fork-only profile deletes `database/database.pre-blocks*` with the rest of the fork-format data.
+2. **W5-Q7 (recommended):** no inlay deletions on store2 pages until stage 5. The U11 keep-set is built now; the delete call lands with the stage 5 sweep.
+3. **W5-Q8 (recommended):** the asset sweep is dry-run only in 4a. Removal moves to stage 5 (`MC-288` places "clean-up on" there). **`MC-289` stays open after 4a:** no asset removal and no store2 inlay deletion until stage 5.
+
+**Orchestrator and advisor rulings in the same file (not maintainer decisions):** W5-Q3 (first C1 run on a boot that did not install, confirmed by the advisor), the senior-advisor `[REVISE]` challenge (type 24 `deletionSnapshot` as the only coherent carrier, corrections A to C, W5d removal out of 4a), the W5 scope order (W5c, W5a, W5b, W5d1 with W5e), and the Gate 1 revision (deletion kind from store observation, phases as separate calls).
