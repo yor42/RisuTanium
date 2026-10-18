@@ -236,6 +236,17 @@ export function backedOffWait(wait: number, attempts: number): number {
     return attempts <= 5 ? wait : Math.min(wait * 2 ** (attempts - 5), NOT_FLUSHED_BACKOFF_MAX_MS)
 }
 
+/** Reads the running loop's parked state; `null` until a loop starts on this page. */
+let readParked: (() => boolean) | null = null
+
+/**
+ * Whether this page's save loop is parked on a commit it did not make. A read only: it changes nothing, and answers
+ * `false` while no loop runs (a read-only or legacy page has none).
+ */
+export function isSaveLoopParked(): boolean {
+    return readParked !== null && readParked()
+}
+
 export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPort): Promise<never> {
     const sessionCommitter = context.session.committer
     if (sessionCommitter === null) {
@@ -248,6 +259,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let savetrys = 0
     let retries = 0
     let park: Park | null = null
+    readParked = () => park !== null
     /** The epoch the person agreed to overwrite with Save mine. */
     let consent: string | null = null
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */

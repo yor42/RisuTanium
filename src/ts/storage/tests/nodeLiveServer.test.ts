@@ -19,6 +19,7 @@
  * OS temp directory and are skipped, under a name that says why, when git or a
  * commit is not available.
  */
+import { readFile, writeFile } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { ServerLacksCapabilityError, StoreCheckListTooLongError, StoreOutcomeUnknownError } from 'src/ts/storage/store/errors'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -34,9 +35,9 @@ import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { startGuardedProxy, type GuardedProxy } from './nodeGuardedProxy'
-import { headerLimitArgs, startNodeServer, type NodeServerFixture } from './nodeServerFixture'
+import { hexOfKey, headerLimitArgs, startNodeServer, type NodeServerFixture } from './nodeServerFixture'
 import {
-    createObserver, extractServer, gitHistoryUnavailable, openLiveClient, RESTART_MARGIN_MS, RetireWindow, runLiveWorkload, saveDirectoryContents, Tally,
+    createObserver, extractServer, gitHistoryUnavailable, guardedKindOf, openLiveClient, RESTART_MARGIN_MS, RetireWindow, runLiveWorkload, saveDirectoryContents, Tally,
     type ExtractedServer, type Observer,
 } from './nodeLiveServerFixture'
 import { buildTree, treeRequest, type BuildRecord } from './store2/commitFixtures'
@@ -240,6 +241,113 @@ describe('a real 431 from the server\'s own header limit', () => {
         for (const unit of units) {
             expect((await store.read(unit.key)).bytes).toEqual(bytes(7))
         }
+    }, 120_000)
+})
+
+// ---- a real 429 ----
+
+const CURRENT_BUILD_UNAVAILABLE = gitHistoryUnavailable(['HEAD'])
+const describeLimited = CURRENT_BUILD_UNAVAILABLE === null ? describe : describe.skip
+
+// The storage routes' limiter, found by its name and not by its figure: the asset limiter beside it has the same one.
+const STORAGE_LIMITER_MAX = /(const storageRouteLimiter = rateLimit\(\{[^}]*?)max: 20000,/
+
+describeLimited(CURRENT_BUILD_UNAVAILABLE === null ? 'a real 429 from the server\'s storage limiter' : `a real 429 from the server's storage limiter (skipped: ${CURRENT_BUILD_UNAVAILABLE})`, () => {
+    let extracted: ExtractedServer | undefined
+    let fixture: NodeServerFixture | undefined
+
+    afterAll(async () => {
+        await fixture?.stop()
+        await extracted?.dispose()
+    }, 30_000)
+
+    test('a removal or a mark read that is answered 429 past the client\'s retries stops the pass with nothing deleted, and I1 holds', async () => {
+        // The current server, extracted read-only from git into a temporary directory, with the storage limiter alone refusing
+        // every request that carries a test header. Nothing under `server/node/` changes.
+        extracted = await extractServer('HEAD')
+        const original = await readFile(extracted.script, 'utf8')
+        expect(original.match(/max: 20000,/g)).toHaveLength(2)
+        const patched = original.replace(STORAGE_LIMITER_MAX, '$1max: (req) => (req.headers[\'x-test-deny\'] === \'1\' ? 0 : 20000),')
+        expect(patched).not.toBe(original)
+        expect(patched.match(/max: 20000,/g)).toHaveLength(1)
+        await writeFile(extracted.script, patched)
+        const live = await startNodeServer({ serverScript: extracted.script })
+        fixture = live
+
+        const env = defaultKeyEnv
+        const seeded = await buildSeed(openLiveClient(live, 'direct', env).store, env)
+        const watcher = createNodeHttpStore({ baseUrl: live.baseUrl, authHeader: () => live.authHeader() })
+        const observer = createObserver(watcher, new RetireWindow(), new Tally())
+        await observer.check('seed')
+
+        const deny = { removals: false, unitReads: false }
+        const counts = { answered429: 0, slept: 0 }
+        const topLevel = new Set([hexOfKey(COMMIT_KEY), hexOfKey(FENCE_KEY)])
+        const denying: FetchLike = async (url, init) => {
+            const kind = guardedKindOf(url, init)
+            const headers = new Headers(init?.headers)
+            const targeted = (deny.removals && kind === 'remove-checked') || (deny.unitReads && kind === 'read' && !topLevel.has(headers.get('file-path') ?? ''))
+            if (targeted) {
+                headers.set('x-test-deny', '1')
+            }
+            const response = await fetch(url, { ...init, headers })
+            if (response.status === 429) {
+                counts.answered429++
+            }
+            return response
+        }
+        // The client retries a 429; its wait is injected, so the five tries are spent at once and the last 429 reaches the caller.
+        const store = createNodeHttpStore({
+            baseUrl: live.baseUrl,
+            authHeader: () => live.authHeader(),
+            fetch: denying,
+            sleep: async () => { counts.slept++ },
+        })
+        const guarded = store.guarded
+        if (guarded === undefined) {
+            throw new Error('The Node store offers no guarded operations.')
+        }
+        const backend = createNodeBackend(store)
+        const pass = () => gcPass({ backend, kind: 'node', idleReason: () => null, probe: () => guarded.probe() })
+        const expectI1 = async (label: string) => {
+            await observer.check(label)
+            expect(observer.violations).toEqual([])
+            const outcome = await observer.snapshot()
+            expect(outcome.status).toBe('stable')
+            expect(outcome.status === 'stable' ? outcome.snapshot.missing : null).toEqual([])
+        }
+        const before = await saveDirectoryContents(live)
+        const commitBefore = (await watcher.read(COMMIT_KEY)).bytes
+
+        // The removal batch is refused: a definite failure, and the first batch deleted nothing.
+        deny.removals = true
+        const removalAnswers = counts.answered429
+        const refusedRemoval = await pass()
+        expect(counts.answered429 - removalAnswers).toBeGreaterThanOrEqual(5)
+        expect(counts.slept).toBeGreaterThanOrEqual(4)
+        expect(refusedRemoval).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'backend-failure' })
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        expect(await saveDirectoryContents(live)).toEqual(before)
+        await expectI1('after the refused removal')
+
+        // The mark's unit reads are refused: the pass is refused before any batch.
+        deny.removals = false
+        deny.unitReads = true
+        const readAnswers = counts.answered429
+        const refusedMark = await pass()
+        expect(counts.answered429 - readAnswers).toBeGreaterThanOrEqual(5)
+        expect(refusedMark).toMatchObject({ status: 'refused', reason: 'mark-refused' })
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        expect(await saveDirectoryContents(live)).toEqual(before)
+        await expectI1('after the refused mark')
+
+        // Control: the same client and server, nothing refused, collect exactly the two orphans.
+        deny.unitReads = false
+        expect(await pass()).toEqual({ status: 'done', deleted: seeded.orphans.length, batches: 1 })
+        for (const key of seeded.orphans) {
+            expect((await watcher.read(key)).bytes).toBeNull()
+        }
+        await expectI1('after the control pass')
     }, 120_000)
 })
 

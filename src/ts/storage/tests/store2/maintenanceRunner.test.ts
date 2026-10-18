@@ -28,7 +28,7 @@ import {
     encodeUnit, newUnitKey, UNIT_TYPE, type DeletionSnapshot, type SnapshotPointer,
 } from 'src/ts/storage/store2/format'
 import { bootDidNotInstall, resetMaintenanceForTests, startStore2Maintenance, type MaintenanceEnv } from 'src/ts/storage/store2/maintenance'
-import type { OldDataDeletionResult } from 'src/ts/storage/store2/oldData/delete'
+import { NODE_BATCH_PACE_MS, type OldDataDeletionResult } from 'src/ts/storage/store2/oldData/delete'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, parsedCommit, peerWrite, seedStore, testEnv } from './commitFixtures'
 
@@ -263,6 +263,46 @@ describe('the step', () => {
         expect(deletion).toHaveBeenCalledTimes(1)
         ended.resolve(COMPLETED)
         await getStartupCleanup()
+    })
+})
+
+describe('the pace the runner gives the deletion', () => {
+    /** The ready session read as a Node page: the runner reads only its decision and kind. */
+    async function readyAs(kind: Store2Session['kind']): Promise<Store2Session> {
+        const { session } = await openSession('ready')
+        return Object.create(session, { kind: { value: kind } }) as Store2Session
+    }
+
+    async function paceGiven(session: Store2Session): Promise<(() => Promise<void>) | undefined> {
+        const trigger = fakeTrigger()
+        const deletion = vi.fn(async () => COMPLETED)
+        startStore2Maintenance(noStore, { session: () => session, startTrigger: trigger.start, deletion })
+        trigger.fire()
+        await vi.waitFor(() => expect(deletion).toHaveBeenCalledTimes(1))
+        await getStartupCleanup()
+        const deps = (deletion.mock.calls[0] as unknown as [unknown, { pace?: () => Promise<void> }])[1]
+        return deps.pace
+    }
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    test('reproducer: a Node page gives the deletion the Node floor between batches', async () => {
+        const pace = await paceGiven(await readyAs('node'))
+        expect(pace).toBeDefined()
+        vi.useFakeTimers()
+
+        let waited = false
+        void pace?.().then(() => { waited = true })
+        await vi.advanceTimersByTimeAsync(NODE_BATCH_PACE_MS - 1)
+        expect(waited).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(waited).toBe(true)
+    })
+
+    test.each<Store2Session['kind']>(['indexeddb', 'tauri'])('guard: a %s page gives no pace (the deletion only yields, as before)', async kind => {
+        expect(await paceGiven(await readyAs(kind))).toBeUndefined()
     })
 })
 

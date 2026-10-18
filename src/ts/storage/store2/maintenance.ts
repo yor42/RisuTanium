@@ -4,8 +4,9 @@ import type { ByteStore } from '../store/contract'
 import { getPageStorageMode } from '../pageStorageMode'
 import { recordStartupCleanup } from '../startupCleanupState'
 import { getStore2BootSession } from './bootActive'
-import { runOldDataDeletion } from './oldData/delete'
+import { batchPaceOf, runOldDataDeletion } from './oldData/delete'
 import type { Store2Session } from './session'
+import { installGcMeasure } from './gc/gcMeasure'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
 
 /**
@@ -23,6 +24,8 @@ import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
  * - It shows nothing to the person.
  *
  * A measurement build also installs the sweep dry run (`sweep/dryRunMeasure.ts`) on any store2 page; it deletes and writes nothing.
+ * It installs the collector run (`gc/gcMeasure.ts`) too, which deletes only on an explicit `confirm: true` and refuses while this
+ * step is active.
  */
 
 /** What the page gives the runner: its byte store and the non-pruning numbered-backup listing. */
@@ -53,7 +56,9 @@ async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: ty
     stepActive = true
     const step = (async () => {
         try {
-            await deletion(session, { store: await env.store(), listBackupTimes: env.listBackupTimes })
+            // A Node server draws every request on one budget: its batches keep the floor between them.
+            const pace = session.kind === 'node' ? batchPaceOf('node') : undefined
+            await deletion(session, { store: await env.store(), listBackupTimes: env.listBackupTimes, pace })
         } catch (error) {
             console.error(error)
         } finally {
@@ -75,8 +80,10 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
         }
         const session = (seams.session ?? getStore2BootSession)()
         if (MEASURE && session !== null) {
-            // The sweep dry run is a development action: this branch folds away in a normal build and takes the module with it.
+            // The sweep dry run and the collector run are development actions: this branch folds away in a normal build and
+            // takes both modules with it.
             installSweepDryRunMeasure({ session, store: env.store })
+            installGcMeasure({ session, store: env.store, deletionActive: () => stepActive })
         }
         if (session === null || !bootDidNotInstall(session)) {
             return null

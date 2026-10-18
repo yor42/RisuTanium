@@ -12,7 +12,7 @@
  * proves nothing by itself; a "reproducer" is red under the mutant named in the hand-back that removes the rule it pins,
  * a "guard" pins a rule that is also upheld by another layer.
  */
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { createMemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { openDeleterGate } from 'src/ts/storage/store2/boot'
@@ -22,7 +22,9 @@ import { createCommitter, type Committer } from 'src/ts/storage/store2/commit'
 import {
     encodeUnit, newStagingId, newUnitKey, stagingPrefix, tailOfKey, UNIT_TYPE, type DeletionSnapshot, type KeyEnv, type SnapshotPointer,
 } from 'src/ts/storage/store2/format'
-import { runOldDataDeletion, type OldDataDeletionResult, type OldDataSession } from 'src/ts/storage/store2/oldData/delete'
+import {
+    batchPaceOf, NODE_BATCH_PACE_MS, runOldDataDeletion, type OldDataDeletionResult, type OldDataSession,
+} from 'src/ts/storage/store2/oldData/delete'
 import { backupNamesOf } from 'src/ts/storage/store2/oldData/plan'
 import type { DeleteEntry } from 'src/ts/storage/store/contract'
 import { StoreDeleteManyError, StoreInvalidKeyError } from 'src/ts/storage/store/errors'
@@ -267,6 +269,59 @@ describe('a snapshot is deleted in order and the pointer is dropped', () => {
         const after = await parsedCommit(world.backend)
         expect(after.current?.key).not.toBe(currentBefore?.key)
         expect(after.snapshot).toBeUndefined()
+    })
+})
+
+describe('pacing between the removal requests', () => {
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    test('reproducer: the pace hook runs before every request after the first, across the phases, and not before the first', async () => {
+        const blocks = manyBlocks(45)
+        putFiles(world, [...blocks, HEAD])
+        await plant(world, bodyOf('fork-format-only', [HEAD, ...blocks], { main: true, backups: [] }))
+        const events: string[] = []
+        world.faults.before = () => { events.push('delete') }
+
+        const result = await run(world, { pace: async () => { events.push('pace') } })
+
+        expect(result).toMatchObject({ status: 'completed', deleted: 46 })
+        expect(events).toEqual(['delete', 'pace', 'delete', 'pace', 'delete', 'pace', 'delete'])
+    })
+
+    test('guard: without a pace hook the run asks for nothing between requests (today\'s behaviour)', async () => {
+        const blocks = manyBlocks(45)
+        putFiles(world, [...blocks, HEAD])
+        await plant(world, bodyOf('fork-format-only', [HEAD, ...blocks], { main: true, backups: [] }))
+
+        // Fake timers: a hidden timer-based default pace would hold the later calls back.
+        vi.useFakeTimers()
+        const running = run(world)
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(world.calls).toHaveLength(4)
+        expect(await running).toMatchObject({ status: 'completed', deleted: 46 })
+    })
+
+    test('reproducer: a Node run with the Node pace waits the floor between requests (fake timers)', async () => {
+        vi.useFakeTimers()
+        const blocks = manyBlocks(45)
+        putFiles(world, [...blocks, HEAD])
+        await plant(world, bodyOf('fork-format-only', [HEAD, ...blocks], { main: true, backups: [] }))
+
+        const running = run(world, { pace: batchPaceOf('node') })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(world.calls).toHaveLength(1)
+
+        await vi.advanceTimersByTimeAsync(NODE_BATCH_PACE_MS - 1)
+        expect(world.calls).toHaveLength(1)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(world.calls).toHaveLength(2)
+
+        await vi.advanceTimersByTimeAsync(NODE_BATCH_PACE_MS * 2)
+        expect(await running).toMatchObject({ status: 'completed', deleted: 46 })
+        expect(world.calls).toHaveLength(4)
     })
 })
 

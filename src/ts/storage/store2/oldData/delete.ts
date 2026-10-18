@@ -46,6 +46,8 @@ export interface OldDataDeletionDeps {
     listBackupTimes: () => Promise<number[]>
     /** One turn to the event loop between batches. */
     yieldTurn?: () => Promise<void>
+    /** Awaited before every `deleteMany` after the first of the run, so a server with a request budget is not driven at full speed; none by default. */
+    pace?: () => Promise<void>
     /** Where the one warning of an unusable snapshot or a failed store goes. */
     warn?: (message: string) => void
     /** Production callers never pass this; it replaces only the type 24 parse (digest, count, allowlist and duplicate checks still run). */
@@ -70,6 +72,24 @@ export type OldDataDeletionResult =
 
 const COLD_PREFIX = 'coldstorage/'
 const DROP_ATTEMPTS = 3
+
+/**
+ * The least wait between two removal batches on a Node server: at most 10 batch requests a second, about 3% of the
+ * server's storage request budget of 20,000 a minute, so a long deletion leaves the page's own saves their share.
+ */
+export const NODE_BATCH_PACE_MS = 100
+
+/**
+ * The pause a collector or deleter takes between removal batches on a store of `kind`: the Node floor on a server
+ * with a request budget, one event-loop turn elsewhere (no network there). `sleep` replaces the timer, for tests.
+ */
+export function batchPaceOf(kind: AppStoreKind, sleep: (ms: number) => Promise<void> = defaultSleep): () => Promise<void> {
+    return kind === 'node' ? () => sleep(NODE_BATCH_PACE_MS) : yieldToEventLoop
+}
+
+function defaultSleep(ms: number): Promise<void> {
+    return new Promise<void>(resolve => setTimeout(resolve, ms))
+}
 
 type Phase = 'coldstorage' | 'pre-blocks' | 'blocks' | 'head'
 
@@ -182,6 +202,8 @@ export async function runOldDataDeletion(session: OldDataSession, deps: OldDataD
     let deleted = 0
     let abandoned = 0
     let refusedKeyWarned = false
+    /** `deleteMany` calls started in this run, across the phases. */
+    let requestsSent = 0
 
     function stopped(reason: StopReason): OldDataDeletionResult {
         return { status: 'stopped', reason, deleted }
@@ -216,6 +238,9 @@ export async function runOldDataDeletion(session: OldDataSession, deps: OldDataD
         while (rest.length > 0) {
             const batch = rest.slice(0, size)
             await yieldTurn()
+            if (requestsSent > 0 && deps.pace !== undefined) {
+                await deps.pace()
+            }
             let verdict: StopReason | null
             try {
                 verdict = await allowed()
@@ -226,6 +251,7 @@ export async function runOldDataDeletion(session: OldDataSession, deps: OldDataD
             if (verdict !== null) {
                 return stopped(verdict)
             }
+            requestsSent++
             try {
                 await deps.store.deleteMany(batch.map(key => ({ key, condition: 'unconditional' as const })))
             } catch (error) {
