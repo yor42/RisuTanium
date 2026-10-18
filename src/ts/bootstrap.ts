@@ -55,6 +55,7 @@ import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainF
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { disabledBootArchiveSession, openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
 import { getStore2Boot, type Store2BootNotice, type Store2BootResult } from "./storage/store2/bootActive";
+import { startStore2Maintenance } from "./storage/store2/maintenance";
 import { clearBootScreen } from "./storage/store2/ui/bootScreen.svelte";
 import { noticeText } from "./storage/store2/ui/bootText";
 import { LEGACY_MAIN_FILE_KEY } from "./storage/blockKeys";
@@ -606,6 +607,10 @@ export async function loadData() {
                     console.error(error)
                     alertError(error)
                 })
+            } else {
+                // A store2 page that found its profile ready deletes the old-format files after its first quiet moment; the runner
+                // starts nothing on any other page, keeps its own try/catch and is never awaited.
+                startStore2Maintenance({ store: getAppStore, listBackupTimes })
             }
             // Detached: its own store, its own try/catch, never awaited so a
             // slow or failing sweep can't hold up boot.

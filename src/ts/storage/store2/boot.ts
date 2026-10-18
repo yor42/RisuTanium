@@ -211,7 +211,7 @@ export async function runBootClear(
 
 // ---- Deleter gate ----
 
-export type DeleterKind = 'gc' | 'sweep' | 'inlay-cleanup' | 'manual-cleanup'
+export type DeleterKind = 'gc' | 'sweep' | 'inlay-cleanup' | 'manual-cleanup' | 'cutover'
 
 export type GateRefusal =
     | 'idle'
@@ -264,10 +264,11 @@ function refuse(reason: GateRefusal, detail: string): GateRefused {
  * Whether a deleter may start. Every deleter refuses an idle session, an absent,
  * unparsable, too-new or unreadable commit key, a commit key with no `current`,
  * an unparsable, too-new or unreadable fence, and an unreadable closure node. A
- * parsable fence stops the asset sweep, the inlay cleanup and manual cleanup, and
- * leaves a GC pass open with the fence's keys live. A standing `staging` marker of
- * any owner also stops those three, because a bulk writes assets before any list
- * names them; a GC pass stays open and carries the marker's prefix in `commit.staging`.
+ * parsable fence stops the asset sweep, the inlay cleanup, manual cleanup and the
+ * cutover deletion of old-format files, and leaves a GC pass open with the fence's
+ * keys live. A standing `staging` marker of any owner also stops those four, because
+ * a bulk writes assets before any list names them; a GC pass stays open and carries
+ * the marker's prefix in `commit.staging`.
  */
 export function evaluateDeleterGate(input: GateInput): GateResult {
     if (input.idleReason !== null) {

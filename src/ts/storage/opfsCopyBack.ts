@@ -48,6 +48,8 @@ export const COPYBACK_CLEANUP_KEY = 'opfs_copyback_cleanup!'
 const MOVE_COMPLETE_KEY = 'migrated'
 /** The main file's store key; the same value as `MAIN_FILE_KEY` in `store/appStore.ts`, which imports this module. */
 const MAIN_FILE_KEY = 'database/database.bin'
+/** The store2 commit key: a profile that holds it is converted, as one that holds the block head is, even after the old-data deletion removed the head. */
+const STORE2_COMMIT_KEY = 'store2-commit'
 
 export type FallbackReason = 'tab' | 'space' | 'noIndexedDb' | 'error'
 
@@ -193,8 +195,8 @@ async function classify(env: CopyBackEnvironment, indexedDb: IndexedDbHandle, pr
         return 'indexeddb-current'
     }
     const mainPresent = await entryPresent(probe, indexedDb, MAIN_FILE_KEY)
-    // A converted profile holds a head and no main file.
-    const headPresent = await entryPresent(probe, indexedDb, HEAD_KEY)
+    // A converted profile holds a head or a store2 commit key and no main file; the old-data deletion removes the head.
+    const headPresent = await entryPresent(probe, indexedDb, HEAD_KEY) || await entryPresent(probe, indexedDb, STORE2_COMMIT_KEY)
     const moveComplete = await entryPresent(probe, indexedDb, MOVE_COMPLETE_KEY)
     if ((mainPresent || headPresent) && !moveComplete) {
         clearFlag(env)
@@ -423,6 +425,9 @@ export async function runLeftoverCleanup(env: CopyBackEnvironment): Promise<'ski
                 // The copied-back main file was converted since: IndexedDB holds the head and no main file, and the
                 // OPFS copy is the stale pre-conversion save.
                 present = await probe.exists(HEAD_KEY)
+                if (present === false) {
+                    present = await probe.exists(STORE2_COMMIT_KEY)
+                }
             }
             if (present === null) {
                 unresolved++

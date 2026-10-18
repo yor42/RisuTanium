@@ -84,8 +84,9 @@ export function assertNotStub(slot: object, chaId: string): void {
  * legacy load-error chat (first message `[Cold storage data could not be loaded.
  * Key: ...]`) is not a pointer: it is encoded verbatim, because refusing it
  * would block converting a chat whose content cannot be loaded and its text is
- * kept exactly. The `coldstorage/` key that text names stays protected because
- * A-lite never deletes `coldstorage/`.
+ * kept exactly. The `coldstorage/` key that text names stays because the old-data
+ * deletion never lists a key in the legacy walk's exclusion set, and the walk
+ * records the load-error key there.
  */
 export function assertChatNotPointer(chat: JsonObject, chaId: string, chatIndex: number): void {
     if (isColdPointerChat(chat)) {

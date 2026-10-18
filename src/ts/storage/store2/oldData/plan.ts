@@ -60,8 +60,11 @@ export function backupNamesOf(times: readonly number[]): string[] {
     return Array.from(new Set(times.map(time => `${NUMBERED_BACKUP_PREFIX}${time}.bin`))).sort(compareCodeUnits)
 }
 
-/** Reads the store; any probe that fails becomes `unknown`, and a failed listing becomes no listing. */
-export async function observeOldData(source: OldDataSource): Promise<OldDataObservation> {
+/**
+ * The upstream files the store holds right now: the main file and the numbered backups. The plan takes this observation,
+ * and the pass that deletes takes it again through this same function, so the two compare in one form.
+ */
+export async function observeUpstream(source: Pick<OldDataSource, 'store' | 'listBackupTimes'>): Promise<Pick<OldDataObservation, 'mainFile' | 'backups'>> {
     let mainFile: OldDataObservation['mainFile']
     try {
         mainFile = await source.store.has(LEGACY_MAIN_FILE_KEY)
@@ -74,6 +77,25 @@ export async function observeOldData(source: OldDataSource): Promise<OldDataObse
     } catch {
         backups = 'unknown'
     }
+    return { mainFile, backups }
+}
+
+/**
+ * Whether the upstream files the store holds now are the ones a plan recorded: the main file's presence the same, and the
+ * numbered-backup names equal as sets. An unknown probe is a difference.
+ */
+export function upstreamMatches(recorded: DeletionSnapshot['upstream'], seen: Pick<OldDataObservation, 'mainFile' | 'backups'>): boolean {
+    if (seen.mainFile === 'unknown' || seen.backups === 'unknown' || seen.mainFile !== recorded.main) {
+        return false
+    }
+    const now = backupNamesOf(seen.backups)
+    const then = new Set(recorded.backups)
+    return now.length === then.size && now.every(name => then.has(name))
+}
+
+/** Reads the store; any probe that fails becomes `unknown`, and a failed listing becomes no listing. */
+export async function observeOldData(source: OldDataSource): Promise<OldDataObservation> {
+    const { mainFile, backups } = await observeUpstream(source)
     let listing: OldDataObservation['listing']
     try {
         const blocks = await source.store.list(BLOCKS_PREFIX)
