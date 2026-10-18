@@ -339,12 +339,17 @@ describe('terminal screens and notices', () => {
             { name: 'server-capability', detail: 'd' },
             { name: 'backend-unavailable', detail: 'd' },
             { name: 'converted-from-backup', backup: 17_000_000_000 },
+            { name: 'archive-enabled' },
         ]
         const texts = notices.map((notice) => noticeText(notice))
         expect(texts.every((text) => typeof text === 'string' && text.length > 0)).toBe(true)
         expect(new Set(texts).size).toBe(notices.length)
         expect(noticeText({ name: 'too-new', source: 'tree', detail: 'd' })).toBeNull()
         expect(texts[6]).toContain(backupDate(17_000_000_000))
+    })
+
+    test('the archiving notice is the text the block store\'s boot pass has always shown, with no string of its own', () => {
+        expect(noticeText({ name: 'archive-enabled' })).toBe(language.archiveCharactersNotice(language.settings, language.advancedSettings, language.coldStorage))
     })
 
     test('the seeded notice tells the person an empty profile was created (W3-Q4)', () => {

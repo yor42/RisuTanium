@@ -38,6 +38,7 @@ import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
 import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
 import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
+import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import { BLOCKED_TABLE, blockedScreen } from 'src/ts/storage/store2/ui/bootText'
 import { language } from 'src/lang'
@@ -73,9 +74,14 @@ function richProfile(): Database {
     return db as unknown as Database
 }
 
-async function seedWorld(db: Database = buildSmall(2)): Promise<World> {
+/**
+ * A world holds its characters resident: the setting is off, so the rows below are judged over whole characters. The
+ * boot's own stubs are the subject of `bootResidency.test.ts`.
+ */
+async function seedWorld(source: Database = buildSmall(2)): Promise<World> {
     const memory = createMemoryBackend()
     const env = testEnv(createClock(), 4242)
+    const db = { ...source, archiveCharacters: false } as Database
     const seeded = await seedTree(memory, JSON.parse(JSON.stringify(db)) as Database, env, fakeLists)
     return { memory, db, tree: seeded.tree, manifestKey: seeded.manifestKey, env }
 }
@@ -474,6 +480,7 @@ function expectFullRequest(test: Rig, request: Parameters<Store2BootUi['recovery
 
 beforeEach(() => {
     resetStore2SaveForTest()
+    resetResidencyForTest()
     resetStore2BootForTest()
     resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
@@ -481,6 +488,7 @@ beforeEach(() => {
 
 afterEach(() => {
     resetStore2SaveForTest()
+    resetResidencyForTest()
     resetStore2BootForTest()
     resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
@@ -965,7 +973,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
         const test = rig({ backups: [] })
         const result = expectStoreResult(await test.dispatch())
         expect(result.database).toMatchObject({ characters: [], botPresets: [], modules: [], loadouts: [], plugins: [], pluginCustomStorage: {} })
-        expect(test.ui.notices).toEqual([{ name: 'seeded' }])
+        expect(test.ui.notices).toEqual([{ name: 'seeded' }, { name: 'archive-enabled' }])
         const key = await currentKey(test.memory)
         expect(key.current).not.toBeNull()
         expect(key.staging).toBeNull()
@@ -984,7 +992,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
         // The memory backend reports no flush at all (undefined), which is not a confirmation.
         const test = rig({ backups: [], kind: 'tauri' })
         const result = expectStoreResult(await test.dispatch())
-        expect(test.ui.notices.map(notice => notice.name)).toEqual(['flush-unconfirmed', 'seeded'])
+        expect(test.ui.notices.map(notice => notice.name)).toEqual(['flush-unconfirmed', 'seeded', 'archive-enabled'])
         const writes = test.logs[0].writes
         const commitWrites = writes.filter(write => write === 'casCommit').length
         // The marker, the final write, and the re-flush's rewrites of the same bytes.
@@ -995,7 +1003,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
     test('a Tauri install whose writes are all confirmed flushed is not flushed again and says nothing about it', async () => {
         const test = rig({ backups: [], kind: 'tauri', hooks: { flushed: true } })
         const result = expectStoreResult(await test.dispatch())
-        expect(test.ui.notices).toEqual([{ name: 'seeded' }])
+        expect(test.ui.notices).toEqual([{ name: 'seeded' }, { name: 'archive-enabled' }])
         expect(test.logs[0].writes.filter(write => write === 'casCommit')).toHaveLength(2)
         expect(result.session.idleReason).toBeNull()
     })

@@ -25,6 +25,8 @@ import type { IdleNetOptions, PeerLiveState, PeerOffer, PeerParkPrompt, Store2Pe
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { World } from './saveLoopWorld'
+import type { Store2BootNotice, Store2BootResult } from 'src/ts/storage/store2/bootActive'
+import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import { fakeLists } from './store2/codecFixtures'
 
 export { fakeLists }
@@ -124,6 +126,8 @@ export interface CountedBackend {
     backend: Store2Backend
     memory: MemoryBackend
     writes: WriteRecord[]
+    /** Every unit key the page asked the backend to read, in order. */
+    reads: string[]
     /** The write calls so far (a commit is one call whatever the units it carries). */
     writeCalls(): number
     /** The bytes the page wrote so far, units and commit keys. */
@@ -135,6 +139,7 @@ export function countedBackend(options: { hooks?: Hooks } = {}): CountedBackend 
     const memory = createMemoryBackend()
     const inner: Store2Backend = options.hooks === undefined ? memory : hooked(memory, options.hooks)
     const writes: WriteRecord[] = []
+    const reads: string[] = []
     const backend: Store2Backend = {
         readCommit: () => inner.readCommit(),
         readFence: () => inner.readFence(),
@@ -143,7 +148,10 @@ export function countedBackend(options: { hooks?: Hooks } = {}): CountedBackend 
             return inner.casCommit(expected, next)
         },
         casFence: (expected, next) => inner.casFence(expected, next),
-        readUnits: keys => inner.readUnits(keys),
+        readUnits: (keys) => {
+            reads.push(...keys)
+            return inner.readUnits(keys)
+        },
         listStore2: () => inner.listStore2(),
         countPrefix: prefix => inner.countPrefix(prefix),
         commitOrdinary: (expected, units, next) => {
@@ -168,9 +176,13 @@ export function countedBackend(options: { hooks?: Hooks } = {}): CountedBackend 
         backend,
         memory,
         writes,
+        reads,
         writeCalls: () => writes.length,
         savedBytes: () => writes.reduce((sum, write) => sum + write.bytes, 0),
-        reset: () => { writes.length = 0 },
+        reset: () => {
+            writes.length = 0
+            reads.length = 0
+        },
     }
 }
 
@@ -281,6 +293,21 @@ export interface Store2Kit {
     writtenSince(mark: Map<string, Uint8Array>): string[]
 }
 
+/** The database the store's current manifest assembles to. */
+export async function savedDatabase(memory: MemoryBackend): Promise<Database> {
+    const key = await parsedCommit(memory)
+    const entries = memory.snapshot()
+    const manifestBytes = entries.get((key.current as { key: string }).key)
+    if (manifestBytes === undefined) {
+        throw new Error('The current manifest is not stored.')
+    }
+    const manifest = readUnit(manifestBytes, UNIT_TYPE.manifest)
+    if (manifest.status !== 'ok') {
+        throw new Error(`The current manifest is ${manifest.status}.`)
+    }
+    return assembleDatabase(manifest.value.body as Manifest, { get: unitKey => entries.get(unitKey) })
+}
+
 const TYPE_NAME: ReadonlyMap<number, string> = new Map(Object.entries(UNIT_TYPE).map(([name, id]) => [id, name]))
 
 export async function startStore2(options: Store2StartOptions): Promise<Store2Kit> {
@@ -332,19 +359,7 @@ export async function startStore2(options: Store2StartOptions): Promise<Store2Ki
         seeded,
         seedDb,
         commitKey,
-        async saved() {
-            const key = await commitKey()
-            const entries = counted.memory.snapshot()
-            const manifestBytes = entries.get((key.current as { key: string }).key)
-            if (manifestBytes === undefined) {
-                throw new Error('The current manifest is not stored.')
-            }
-            const manifest = readUnit(manifestBytes, UNIT_TYPE.manifest)
-            if (manifest.status !== 'ok') {
-                throw new Error(`The current manifest is ${manifest.status}.`)
-            }
-            return assembleDatabase(manifest.value.body as Manifest, { get: unitKey => entries.get(unitKey) })
-        },
+        saved: () => savedDatabase(counted.memory),
         writtenSince(mark) {
             const names: string[] = []
             for (const [key, bytes] of counted.memory.snapshot()) {
@@ -391,11 +406,53 @@ export function store2Boot(kit: Store2Kit): (world: World) => Promise<void> {
         const { createSaveEncoder: createWorldEncoder } = await import('src/ts/storage/store2/saveEncoder')
         const { previous, lists, env } = kit.context
         kit.encoder = createWorldEncoder({ previous, lists, env })
-        kit.context.encoder = kit.encoder
-        kit.residency = createWorldResidency({ backend: kit.counted.backend, context: { encoder: kit.encoder, lists, env } })
-        // As the dispatch will: the residency is registered before the save context is activated.
+        // As the dispatch does: the residency and the loop are given the same context object.
+        const context = Object.assign(kit.context, { encoder: kit.encoder })
+        kit.residency = createWorldResidency({ backend: kit.counted.backend, context })
+        // The residency is registered before the save context is activated.
         registerResidency(kit.residency)
         activateStore2Save(kit.context)
         world.pageMode.setPageStorageMode({ kind: 'block' })
     }
+}
+
+/** What `bootThroughDispatch` returns: the boot's answer and everything its UI port was told. */
+export interface DispatchedBoot {
+    result: Store2BootResult
+    notices: Store2BootNotice[]
+    peer: PeerDouble
+}
+
+/**
+ * Boots the store2 profile that `backend` holds through the real dispatch, with a UI port that declines every question (a flagged-leaf question too, unless lagged says continue),
+ * so a test sees what a page would: the database it installs, the residency and save context it registers, the notices it
+ * raises. The dispatch loads in the caller's own module graph on first use. Backups, the main file and the legacy cold
+ * units are all absent. Mocked storage here says nothing about a native backend.
+ */
+export async function bootThroughDispatch(backend: Store2Backend, options: { lists?: ListDerivation, env?: KeyEnv, kind?: AppStoreKind, flagged?: 'continue' | 'decline' } = {}): Promise<DispatchedBoot> {
+    const { dispatchStore2Boot } = await import('src/ts/storage/store2/bootDispatch')
+    const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
+    const notices: Store2BootNotice[] = []
+    const peer = createPeerDouble()
+    const ui: Store2BootUi = {
+        notice: (notice) => { notices.push(notice) },
+        blocked: async () => { },
+        offerRestoreOrImport: async () => { },
+        confirmConvert: async () => false,
+        declined: async () => 'import',
+        confirmConvertWithout: async () => 'decline',
+        confirmFromBackup: async () => 'decline',
+        confirmIncomplete: async () => false,
+        confirmFlaggedOpen: async () => options.flagged ?? 'decline',
+        foreignMarker: async () => 'wait',
+        recovery: async () => { },
+        peer,
+    }
+    const result = await dispatchStore2Boot({
+        store: createMemoryByteStore(),
+        upstreamMainFile: async () => false,
+        readColdStorageItem: async () => ({ status: 'missing' }),
+        listBackupTimes: async () => [],
+    }, { ui, kind: options.kind ?? 'indexeddb', backend: async () => backend, keyEnv: options.env, lists: options.lists ?? fakeLists })
+    return { result, notices, peer }
 }

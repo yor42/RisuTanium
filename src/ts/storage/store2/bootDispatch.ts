@@ -5,9 +5,13 @@ import type { AppStoreKind } from '../store/appStore'
 import type { CompareToken, Store2Backend, UnitWrite } from './backend/types'
 import type { SessionDecision } from './session'
 import { reflushTopLevel, Store2Session } from './session'
-import { activateStore2Save } from './saveActive'
+import { activateStore2Save, type Store2SaveContext } from './saveActive'
 import type { Store2PeerHandler } from './saveLoop'
-import { assembleDatabase, CodecAssembleError, type ListDerivation } from './codec'
+import { createSaveEncoder, type SaveEncoder } from './saveEncoder'
+import { createResidency } from './residency'
+import { registerResidency } from './residencyActive'
+import { residentSetOf } from './residencyPolicy'
+import { assembleCharacter, assembleDatabase, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
 import { createListDerivation } from './lists/derive'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { firstLifeGrant } from './firstLife'
@@ -130,6 +134,20 @@ const RECLASSIFY: Reclassify = { kind: 'reclassify' }
 const STORE2_COMMIT_KEY = 'store2-commit'
 
 /**
+ * The save loop's `loadStub`: loads every stub that holds `chaId` through the restore facade, which reads the units
+ * through the registered residency. The restore and character modules load on first use, so a page that never meets a
+ * stub does not load them. True when no stub of that id is left in the list.
+ */
+async function loadStubsOf(chaId: string): Promise<boolean> {
+    const [{ DBState }, { restoreColdCharacter }] = await Promise.all([import('../../stores.svelte'), import('../../process/coldCharacterRestore')])
+    const stubsOf = () => (DBState.db?.characters ?? []).filter((cha) => cha?.chaId === chaId && cha.coldstorage)
+    for (const stub of stubsOf()) {
+        await restoreColdCharacter(stub, { quiet: true })
+    }
+    return stubsOf().length === 0
+}
+
+/**
  * The backend with every mutating method announcing itself first, so that "this boot may have written" follows from the
  * writes made through it and not from a list of the paths that write. Reads pass straight through. A new mutating method on
  * `Store2Backend` must be added here.
@@ -206,9 +224,16 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         if (backend === null) {
             return stop('no-backend', 'The session has no backend.')
         }
+        // What the resident planner decided: the entities it left resident.
+        const planned: { resident: ReadonlySet<string> | null } = { resident: null }
         let read
         try {
-            read = await readTreeBytes(backend, manifestKey)
+            read = await readTreeBytes(backend, manifestKey, {
+                resident: (input) => {
+                    planned.resident = residentSetOf(input)
+                    return planned.resident
+                },
+            })
         } catch (error) {
             if (error instanceof CommitKeyRecheckError) {
                 return stop('commit-key-unreadable', error.message)
@@ -236,10 +261,13 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         try {
             if (read.flagged.length > 0) {
                 fallback = createLeafFallback(read.flagged, deps.now ?? Date.now)
-                database = assembleDatabase(read.tree.manifest, read.tree.source, { character: fallback.character })
-            } else {
-                database = assembleDatabase(read.tree.manifest, read.tree.source)
             }
+            // An entity the planner left out is a stub that names its units; its units were not read, so nothing of it is assembled.
+            const resident = planned.resident
+            const assembleWhole = fallback?.character ?? assembleCharacter
+            database = assembleDatabase(read.tree.manifest, read.tree.source, {
+                character: (entry, source) => resident === null || resident.has(entry.u) ? assembleWhole(entry, source) : stubFromEntry(entry),
+            })
             previous = previousOfTree(read.tree)
         } catch (error) {
             if (error instanceof CodecAssembleError) {
@@ -265,8 +293,28 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         if (decision.fence === 'blocked') {
             raise({ name: 'cleanup-blocked' })
         }
+        if (fallback === null && database.archiveCharacters === undefined) {
+            // The first boot where the setting is absent turns archiving on and says so once, whether or not any character became a stub (MC-149 3);
+            // an explicit false stays false and is not told. A boot that opened over damaged leaves is not a complete reading, as the block store's
+            // pass does not run on a decode that was not strict, so it neither writes the setting nor tells. The next pass saves the setting.
+            database.archiveCharacters = true
+            raise({ name: 'archive-enabled' })
+        }
         disablePageBlockOwner()
-        activateStore2Save({ session, previous, lists, env: keyEnv, peer: ui.peer })
+        // One context object serves the residency and the save loop, so the encoding a verdict is judged by is the one the
+        // next pass compares with. The residency is registered before the loop is activated and before the database is
+        // handed back, and neither the encoder, the lists nor the environment are replaced afterwards.
+        const context: Store2SaveContext & { encoder: SaveEncoder } = {
+            session,
+            previous,
+            encoder: createSaveEncoder({ previous, lists, env: keyEnv }),
+            lists,
+            env: keyEnv,
+            peer: ui.peer,
+            loadStub: loadStubsOf,
+        }
+        registerResidency(createResidency({ backend, context }))
+        activateStore2Save(context)
         setPageStorageMode({ kind: 'store2' })
         return { kind: 'store2', database, session, notices }
     }

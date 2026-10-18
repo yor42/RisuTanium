@@ -407,11 +407,17 @@ interface Page {
 }
 
 /** A store2 page: the first character resident, the others stubs of their entities, the residency registered. */
-async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Backend } = {}): Promise<Page> {
+async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Backend, group?: boolean } = {}): Promise<Page> {
     const memory = createMemoryBackend()
     const clock = createClock()
     const env = testEnv(clock, 4242)
     const fixture = { ...(shortened(buildSmall(3)) as Obj), archiveCharacters: true } as unknown as Database
+    if (options.group === true) {
+        // A group of the first two characters. The boot policy opens a group with a usable id as a stub, like any character.
+        const characters = fixture.characters as unknown as Obj[]
+        characters.push({ ...JSON.parse(JSON.stringify(characters[2])) as Obj, type: 'group', chaId: 'group-one', name: 'Group One', characters: [characters[0].chaId, characters[1].chaId], characterTalks: [0.5, 0.5], characterActive: [true, true] })
+        ;(fixture as unknown as Obj).characterOrder = characters.map(slot => slot.chaId)
+    }
     const seeded = await seedTree(memory, JSON.parse(JSON.stringify(fixture)) as Database, env, fakeLists)
     const residentId = (fixture.characters[0] as unknown as Obj).chaId
     const read = await readTreeBytes(memory, seeded.manifestKey, {
@@ -651,6 +657,34 @@ describe.each([
         expect(exported[1].chaId).toBe('someone-else')
         expect(exported[1].coldstorage).toBe(u)
         expect((await upstreamReadable()).entityPayloads).toEqual([])
+    })
+
+    test('a group that is a stub is exported whole, with its members, chats and talk lists, and imports whole into another profile', async () => {
+        const page = await pageOf({ group: true })
+        const groupIndex = page.entries.length - 1
+        expect(page.entries[groupIndex].chaId).toBe('group-one')
+        expect((page.db.characters[groupIndex] as unknown as Obj).coldstorage).toBe(page.entries[groupIndex].u)
+
+        await run()
+
+        expect(backupPrompts()).toEqual([])
+        const exported = await exportedCharacters()
+        expect(exported.map((character) => character.chaId)).toEqual(page.entries.map((entry) => entry.chaId))
+        const group = exported[groupIndex]
+        const whole = wholeOf(page, page.entries[groupIndex])
+        expect(group.coldstorage).toBeUndefined()
+        expect(group.type).toBe('group')
+        expect(group.characters).toEqual(whole.characters)
+        expect(group.characterTalks).toEqual(whole.characterTalks)
+        expect((group.chats as Obj[]).map((chat) => chat.message)).toEqual((whole.chats as Obj[]).map((chat) => chat.message))
+        expect(await upstreamReadable()).toEqual({ entityPayloads: [], danglingStubs: [] })
+
+        resetResidencyForTest()
+        injectRestoreStore(createForageBackedStore(forageOverMap(new Map())))
+        await loadBackupBytes(concat(backupSink.writes))
+        const installed = vi.mocked(setDatabase).mock.calls[0][0] as unknown as { characters: Array<Record<string, unknown>> }
+        expect(installed.characters[groupIndex]).toMatchObject({ type: 'group', chaId: 'group-one', name: 'Group One', characters: whole.characters })
+        expect(installed.characters.every((character) => character.coldstorage === undefined)).toBe(true)
     })
 
     test('guard: a page with no stub exports every character as it is, with no entity payload', async () => {

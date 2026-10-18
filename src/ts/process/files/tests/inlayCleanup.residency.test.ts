@@ -61,7 +61,12 @@ import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { queueInlayCleanupForCharacters, getInlayCleanupState } from 'src/ts/process/files/inlayCleanup'
 import { removeInlayAsset } from 'src/ts/process/files/inlays'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
-import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
+import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
+import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
+import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
+import { getResidency } from 'src/ts/storage/store2/residencyActive'
+import { resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
+import { bootThroughDispatch, createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall, fakeLists, seededEnv, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 
 /**
@@ -145,10 +150,18 @@ async function runCleanup(removed: Obj[]): Promise<Record<string, unknown>> {
 
 const deleted = () => vi.mocked(removeInlayAsset).mock.calls.map(call => call[0])
 
+function resetPage(): void {
+    resetResidencyForTest()
+    resetStore2SaveForTest()
+    resetStore2BootForTest()
+    resetPageBlockOwnerForTests()
+    resetPageStorageModeForTests()
+}
+
 beforeEach(() => {
     logs = []
     vi.mocked(removeInlayAsset).mockClear()
-    resetResidencyForTest()
+    resetPage()
     infoSpy = vi.spyOn(console, 'info').mockImplementation((...args: unknown[]) => {
         if (args[0] === 'inlay cleanup') {
             logs.push({ ...(args[1] as Record<string, unknown>) })
@@ -163,7 +176,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    resetResidencyForTest()
+    resetPage()
     infoSpy.mockRestore()
     vi.restoreAllMocks()
 })
@@ -241,5 +254,36 @@ describe('a summary of a store2 entity is never remembered (N4)', () => {
         expect(log.candidates).toBe(2)
         expect(deleted()).toEqual([X])
         expect(log).toMatchObject({ kept: 1, deleted: 1 })
+    })
+})
+
+describe('the boot purge, with the residency registered as the boot registers it', () => {
+    test('a trash-due stub purged while another stub shows an inlay keeps that inlay, and the candidates are not empty', async () => {
+        // Three stubs: the purged one shows X and Y, the next shows Y only.
+        const memory = createMemoryBackend()
+        const source = { ...(buildSmall(3) as unknown as Obj), archiveCharacters: true } as unknown as Database
+        const shown = [`${token(X)} ${token(Y)}`, token(Y), '']
+        shown.forEach((text, index) => {
+            const message = (((source.characters[index] as unknown as Obj).chats as Obj[])[0].message as Obj[])[0]
+            message.data = `${message.data as string} ${text}`
+        })
+        await seedTree(memory, JSON.parse(JSON.stringify(source)) as Database, testEnv(createClock(), 4242), fakeLists)
+        const boot = await bootThroughDispatch(memory)
+        if (boot.result.kind !== 'store2') {
+            throw new Error(`The boot answered ${boot.result.kind}.`)
+        }
+        expect(getResidency()).not.toBeNull()
+        const stubs = boot.result.database.characters
+        expect(stubs.every(slot => typeof slot.coldstorage === 'string')).toBe(true)
+        h.db = boot.result.database as unknown as Record<string, unknown>
+        const purged = stubs.find(slot => slot.chaId === (source.characters[0] as unknown as Obj).chaId) as unknown as Obj
+        // `checkNewFormat` purges the trash-due stub and queues its clean-up; the other stubs stay in the list.
+        h.db.characters = stubs.filter(slot => slot !== (purged as unknown))
+
+        const log = await runCleanup([purged])
+
+        expect(log.candidates).toBe(2)
+        expect(deleted()).toEqual([X])
+        expect(log).toMatchObject({ kept: 1, deleted: 1, skipped: null })
     })
 })

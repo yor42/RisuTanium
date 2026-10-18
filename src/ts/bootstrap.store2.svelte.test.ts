@@ -637,6 +637,10 @@ describe('loadData(): a normal store2 profile', () => {
         expect(setDatabaseMock).toHaveBeenCalled()
         const installed = setDatabaseMock.mock.calls[0][0] as { characters: { name: string }[] }
         expect(installed.characters.map(character => character.name)).toEqual(['Small 0', 'Small 1'])
+        // The profile never chose archiving, so its characters open as stubs that name their units, and a residency is registered to load them.
+        expect(installed.characters.every(character => typeof (character as { coldstorage?: unknown }).coldstorage === 'string')).toBe(true)
+        const { getResidency } = await import('src/ts/storage/store2/residencyActive')
+        expect(getResidency()).not.toBeNull()
         const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
         expect(getActiveStore2Save()).not.toBeNull()
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
@@ -668,7 +672,8 @@ describe('loadData(): a store2 profile whose chats have damaged cores', () => {
         const store = legacyStore()
         const run = await boot({ kind: 'indexeddb', store, injectBackend: true })
         run.ui.flaggedAnswer = answer
-        const db = JSON.parse(JSON.stringify(buildSmall(1))) as { characters: { chats: { id: string }[] }[] }
+        // Archiving is off so that the character is resident: only a resident character's leaves are read and flagged.
+        const db = JSON.parse(JSON.stringify({ ...buildSmall(1), archiveCharacters: false })) as { characters: { chats: { id: string }[] }[] }
         const stableId = db.characters[0].chats[0].id
         db.characters[0].chats[1].id = ''
         const seeded = await seedTree(run.backend, db as unknown as Database, testEnv(createClock(), 4242), fakeLists)
@@ -830,7 +835,7 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
         const { loadData, alertStore, loadedStore, ui, backend } = await boot({ kind: 'indexeddb', store, injectBackend: true })
         acknowledgeNotices(alertStore)
         await loadData()
-        expect(ui.notices).toEqual([{ name: 'seeded' }])
+        expect(ui.notices).toEqual([{ name: 'seeded' }, { name: 'archive-enabled' }])
         expect(get(loadedStore)).toBe(true)
         expect((await backend.readCommit()).bytes).not.toBeNull()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
@@ -884,7 +889,7 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
         expect(getActiveStore2Save()).not.toBeNull()
         // The memory backend never confirms a flush, so a Tauri page's re-flush is unconfirmed here; that is the only notice.
-        expect(ui.notices).toEqual(tauri ? [{ name: 'flush-unconfirmed' }] : [])
+        expect(ui.notices).toEqual(tauri ? [{ name: 'flush-unconfirmed' }, { name: 'archive-enabled' }] : [{ name: 'archive-enabled' }])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(new Map(store.files).size).toBe(before.size + (tauri ? 1 : 0))
         for (const [key, bytes] of before) {
@@ -905,7 +910,7 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         await settle()
 
         expect(get(loadedStore)).toBe(true)
-        expect(ui.notices).toEqual([{ name: 'converted-from-backup', backup: BACKUP_TIMES[BACKUP_TIMES.length - 1] }])
+        expect(ui.notices).toEqual([{ name: 'converted-from-backup', backup: BACKUP_TIMES[BACKUP_TIMES.length - 1] }, { name: 'archive-enabled' }])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(store.files.get('database/database.bin')).toEqual(new Uint8Array([0, 1, 2, 3, 4, 5]))
     })
@@ -960,5 +965,19 @@ describe('loadData(): a page that registered no dispatch boots the legacy profil
         expect(sleepForeverMock).not.toHaveBeenCalled()
         expect(putBackMock).toHaveBeenCalled()
         expect(recordCleanupMock).toHaveBeenCalled()
+    })
+
+    test('no residency is registered, no save context is active and the installed profile holds no store2 stub', async () => {
+        const store = legacyStore()
+        const { loadData } = await boot({ kind: 'tauri', store, unregistered: true })
+
+        await loadData()
+
+        const { getResidency } = await import('src/ts/storage/store2/residencyActive')
+        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
+        expect(getResidency()).toBeNull()
+        expect(getActiveStore2Save()).toBeNull()
+        const installed = setDatabaseMock.mock.calls[0][0] as { characters: { coldstorage?: unknown }[] }
+        expect(installed.characters.some(character => character.coldstorage !== undefined)).toBe(false)
     })
 })

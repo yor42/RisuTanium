@@ -758,6 +758,9 @@ export function noticeText(notice: Store2BootNotice): string | null {
             return text.noticeServerCapability
         case 'backend-unavailable':
             return text.noticeBackendUnavailable
+        case 'archive-enabled':
+            // The text the block store's boot pass has always shown when it turns the setting on.
+            return language.archiveCharactersNotice(language.settings, language.advancedSettings, language.coldStorage)
         case 'too-new':
             return null
     }
