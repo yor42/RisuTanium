@@ -1,4 +1,10 @@
 export { assetKeyOf, type AssetKey } from './assetKey'
+export { createBackendClosureReader, type BackendClosureReader } from './backendReader'
+export {
+    runSweepDryRun, DEFAULT_SAMPLE,
+    type AgeRecordReport, type AssetsReport, type CandidateSummary, type InlaysReport, type KeepSetReport,
+    type SweepDryRunEnv, type SweepDryRunReport, type SweepDryRunSession,
+} from './dryRun'
 export { decideAge, type AgeCandidate, type AgeDecision, type AgeInput, type AgePhase, type BackendKind, type Deletion, type RecordRead } from './ageRecord'
 export {
     checkFences, decideBatch,

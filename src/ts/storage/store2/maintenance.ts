@@ -1,3 +1,4 @@
+import { MEASURE } from '../../process/memory/measureFlag'
 import { startQuietTrigger, type QuietTrigger } from '../../process/memory/putBackQuiet'
 import type { ByteStore } from '../store/contract'
 import { getPageStorageMode } from '../pageStorageMode'
@@ -5,6 +6,7 @@ import { recordStartupCleanup } from '../startupCleanupState'
 import { getStore2BootSession } from './bootActive'
 import { runOldDataDeletion } from './oldData/delete'
 import type { Store2Session } from './session'
+import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
@@ -19,6 +21,8 @@ import type { Store2Session } from './session'
  * - The step is registered as the startup clean-up when it starts, so a backup load that waits on the startup clean-up
  *   waits for this step to end and no longer; the registered promise always settles and never rejects.
  * - It shows nothing to the person.
+ *
+ * A measurement build also installs the sweep dry run (`sweep/dryRunMeasure.ts`) on any store2 page; it deletes and writes nothing.
  */
 
 /** What the page gives the runner: its byte store and the non-pruning numbered-backup listing. */
@@ -70,6 +74,10 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
             return null
         }
         const session = (seams.session ?? getStore2BootSession)()
+        if (MEASURE && session !== null) {
+            // The sweep dry run is a development action: this branch folds away in a normal build and takes the module with it.
+            installSweepDryRunMeasure({ session, store: env.store })
+        }
         if (session === null || !bootDidNotInstall(session)) {
             return null
         }
