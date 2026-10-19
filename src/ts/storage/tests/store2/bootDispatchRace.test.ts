@@ -53,7 +53,7 @@ function uiDouble() {
         peer: createPeerDouble(),
         notice(notice: Store2BootNotice) { ui.notices.push(notice) },
         async blocked(blocked: { reason: string, detail: string, mayHaveWritten: boolean }) { ui.blockedWith.push(blocked) },
-        async offerRestoreOrImport() { },
+        async offerRestoreOrImport() { return 'import' as const },
         async confirmConvert() { return false },
         async declined() { return 'import' as const },
         async confirmConvertWithout() { return 'decline' as const },

@@ -14,7 +14,8 @@ import { createListDerivation } from '../storage/store2/lists'
 import { importLegacyTree, type ImportOutcome, type ImportSource } from '../storage/store2/legacy/importTree'
 import type { LegacyEntryReader } from '../storage/store2/legacy/resolve'
 import { BinFileChangedError, ColdEntryIndex, createBinEntryReader } from '../storage/store2/legacy/binReader'
-import { createLegacyStoreReader } from '../storage/store2/legacy/storeReader'
+import { createLegacyStoreReader, type ColdUnitRead } from '../storage/store2/legacy/storeReader'
+import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/bootImport'
 import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
@@ -229,8 +230,8 @@ export async function readBinDatabase(file: Blob, entry: BackupIndexEntry): Prom
 }
 
 /** The cold-storage units of a `.bin`: the file's own entries first, the page's legacy unit for an id the file holds no accepted entry for. */
-export function createBinImportReader(file: Blob, index: ColdEntryIndex): LegacyEntryReader {
-    return createBinEntryReader({ file, index, fallback: createLegacyStoreReader(readColdStorageItem) })
+export function createBinImportReader(file: Blob, index: ColdEntryIndex, readFallback: (key: string) => Promise<ColdUnitRead> = readColdStorageItem): LegacyEntryReader {
+    return createBinEntryReader({ file, index, fallback: createLegacyStoreReader(readFallback) })
 }
 
 // ---- decode and its confirmations ----
@@ -472,6 +473,55 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 return unconfirmed()
             }
         }
+    }
+}
+
+/**
+ * The boot-time commit of a decoded `.bin`: the boot's installer (`target.install`) over a decode of the database
+ * entry, with the same incomplete-items question as the page import. A decline or a refusal shows its message and ends
+ * `cancelled` (nothing was written); everything the installer decided past the questions is passed to the dispatch.
+ * No page, write lock or reload is involved: the dispatch opens the installed profile itself.
+ */
+export async function commitBootImport(request: {
+    target: BootImportTarget
+    decode(): Promise<Database>
+    reader: LegacyEntryReader
+}): Promise<BootImportEnd> {
+    let source: ImportSource
+    try {
+        source = { tree: await request.decode() }
+    } catch (error) {
+        console.error(error)
+        alertError(language.internalBackupUnreadable)
+        return { kind: 'cancelled' }
+    }
+    noteImportPhase('decoded, boot')
+    const result = await request.target.install(source, request.reader, {
+        async confirmIncomplete(items) {
+            return await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))
+        },
+    })
+    noteImportPhase(`boot import ${result.status}`)
+    switch (result.status) {
+        case 'declined':
+            return { kind: 'cancelled' }
+        case 'read-failed': {
+            console.error(result.error)
+            const cause = result.error.cause
+            alertError(cause instanceof BinFileChangedError ? binChangeText(cause) : language.store2ImportReadFailed)
+            return { kind: 'cancelled' }
+        }
+        case 'repair-refused':
+            alertError(language.restoreRefusedArchivedId(result.refusals[0].name))
+            return { kind: 'cancelled' }
+        case 'unsavable':
+            alertError(language.restoreRefusedUnsavable(result.detail))
+            return { kind: 'cancelled' }
+        case 'installed':
+        case 'reclassify':
+        case 'blocked':
+        case 'exit':
+            return { kind: 'finished', result }
     }
 }
 

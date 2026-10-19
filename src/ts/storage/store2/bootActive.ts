@@ -47,6 +47,8 @@ export type Store2BootNotice =
     | { name: 'server-capability' | 'backend-unavailable', detail: string }
     /** The main file did not decode strictly; the profile was converted from the numbered backup `backup` (its time). */
     | { name: 'converted-from-backup', backup: number }
+    /** The profile was restored from the numbered backup `backup` (its time) because there was no main file; `newest` is the newest backup, which differs when an older one was the first to decode. */
+    | { name: 'restored-from-backup', backup: number, newest: number }
     /** The first boot where `archiveCharacters` was absent: the setting was written `true`, whether or not any character became a stub (MC-149 3). An explicit `false` is never told. */
     | { name: 'archive-enabled' }
 

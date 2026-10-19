@@ -421,6 +421,25 @@ describe('new behaviour: the replaced manifest\'s keep set travels with the impo
         expect(outcome.manifestKey).toBe(imported.fixed.legacyKeep ? (await parsedCommit(test.memory)).current?.key : '')
         await expectInvariant(test.memory)
     })
+
+    test('new behaviour: an explicit keep list REPLACES the carried one, and names every file of the base keep set so replacing drops no protection', async () => {
+        const test = await withKeepingBase()
+        const base = test.baseManifest.fixed.legacyKeep
+        const explicit = listOf(['database/database.bin', 'unreadable'], ['database/dbbackup-100.bin', 'unreadable'], ['database/dbbackup-200.bin', 'unreadable'])
+        // The precondition of replacing instead of merging: every file the base keep set names is in the explicit list.
+        const explicitKeys = new Set(explicit.files.map(file => file.key))
+        expect(base?.files.length).toBeGreaterThan(0)
+        for (const file of base?.files ?? []) {
+            expect(explicitKeys.has(file.key), file.key).toBe(true)
+        }
+        committedOf(await importLegacyTree(test.request(await loadGolden('upstream-full.bin'), { legacyKeep: explicit }), accept))
+        const imported = await currentManifest(test.memory)
+        // Replaced, not merged: the explicit entries only (a merge would keep the base entries' unknown field), and the unit is the explicit list's.
+        expect(imported.fixed.legacyKeep?.files).toEqual(explicit.files.map(file => ({ key: file.key, status: file.status })))
+        expect(canonicalJson(imported.fixed.legacyKeep)).not.toBe(canonicalJson(base))
+        const stored = readUnit(test.memory.snapshot().get(keyOfRef(imported.fixed.legacyKeep!.unit)) as Uint8Array, UNIT_TYPE.legacyList)
+        expect(stored.status === 'ok' && canonicalJson(stored.value.body)).toBe(canonicalJson(explicit))
+    })
 })
 
 describe('new behaviour: the plan reuses nothing from the profile it replaces', () => {

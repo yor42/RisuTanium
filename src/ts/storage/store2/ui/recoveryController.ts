@@ -8,6 +8,7 @@ import {
 } from '../recovery'
 import { installPick, pickCandidate, type PickReady } from '../recoveryPick'
 import { seedStore2Profile, type SeedOutcome } from '../bootSeed'
+import { createBootImportTarget, type BootImportFinish } from '../legacy/bootImport'
 import {
     convertLegacyProfile, convertLegacyWithout, type ConvertResult, type ConvertStrictHooks, type ConvertWithoutHooks,
 } from '../legacy/convert'
@@ -15,7 +16,7 @@ import {
     blockedBeforeWrite, blockedScreen, confirmConvertScreen, confirmConvertWithoutScreen, confirmFromBackupScreen, confirmIncompleteScreen,
     foreignMarkerScreen, pickedManifestKey, recoveryBlockedBeforeWriteScreen,
     recoveryChangedScreen, recoveryCheckingScreen, recoveryFreshScreen, recoveryInstalledScreen, recoveryInstallScreen,
-    recoveryNoticeScreen, recoveryOffersScreen, recoveryPickScreen, recoveryUnconfirmedScreen, recoveryUnexpectedScreen,
+    recoveryNoticeScreen, recoveryOffersScreen, recoveryOlderBackupScreen, recoveryPickScreen, recoveryRestoreScreen, recoveryUnconfirmedScreen, recoveryUnexpectedScreen,
     recoveryTooNewScreen, recoveryWaitScreen, recoveryWorkingScreen,
     type BootQuestion, type BootScreenModel,
 } from './bootText'
@@ -85,7 +86,7 @@ function unreachable(value: never): never {
     throw new TypeError(`Unhandled recovery result: ${JSON.stringify(value)}`)
 }
 
-type EntryResult = Exclude<ConvertResult, { status: 'all-failed' }> | SeedOutcome
+type EntryResult = Exclude<ConvertResult, { status: 'all-failed' }> | SeedOutcome | BootImportFinish
 type Next = 'back' | 'retry'
 
 async function drive(request: Store2RecoveryRequest, port: RecoveryPort, calls: RecoveryCalls, backend: Store2Backend, initial: Store2Read): Promise<never> {
@@ -333,12 +334,86 @@ async function drive(request: Store2RecoveryRequest, port: RecoveryPort, calls: 
     } catch {
         upstreamMainFile = null
     }
+    let backups: number[]
+    try {
+        backups = await env.listBackupTimes()
+    } catch {
+        backups = []
+    }
     let shown = CANDIDATE_PAGE_SIZE
+
+    /** The `.bin` import over the exit: the file flow runs the questions, and the fenced marker is written only after them. */
+    async function importFlow(): Promise<void> {
+        const importBackup = request.importBackup
+        if (importBackup === undefined) {
+            return
+        }
+        for (;;) {
+            const target = createBootImportTarget({
+                backend,
+                entry: { kind: 'exit', commitRead: basis, foreignClear: foreignQuestion(() => port.show(recoveryWorkingScreen())) },
+                owner,
+                lists,
+                env: keyEnv,
+                resolve: request.resolve,
+                oldData: { store: env.store, listBackupTimes: env.listBackupTimes },
+                upstreamMainFile: env.upstreamMainFile,
+            }, env.readColdStorageItem)
+            const end = await safeCall(() => importBackup(target))
+            if (end.kind === 'cancelled') {
+                return
+            }
+            if (await onEntryResult(end.result) === 'back') {
+                return
+            }
+        }
+    }
+
+    /** "Restore the newest backup" over the exit: the strict conversion of the newest backup that decodes. Nothing decoding is a stop, never the lenient read of a main file. */
+    async function restoreFlow(): Promise<void> {
+        if (backups.length === 0) {
+            return
+        }
+        const newest = Math.max(...backups)
+        if (!(await question(recoveryRestoreScreen(newest, upstreamMainFile)))) {
+            return
+        }
+        for (;;) {
+            port.show(recoveryWorkingScreen())
+            const restoreRequest = {
+                store: env.store,
+                listBackupTimes: env.listBackupTimes,
+                readColdStorageItem: env.readColdStorageItem,
+                backend,
+                entry: { kind: 'exit' as const, commitRead: basis, foreignClear: foreignQuestion(() => port.show(recoveryWorkingScreen())) },
+                owner,
+                lists,
+                env: keyEnv,
+                decoders: request.decoders,
+                resolve: request.resolve,
+            }
+            const hooks: ConvertStrictHooks = {
+                confirmIncomplete: (items) => question(confirmIncompleteScreen(items)),
+                // The person agreed to the newest; an older one is named and asked about before the conversion writes.
+                confirmFromBackup: async (backup) => backup === newest || await question(recoveryOlderBackupScreen(newest, backup)),
+            }
+            const result = await safeCall(() => calls.convert(restoreRequest, hooks))
+            if (result.status === 'all-failed') {
+                await question(recoveryBlockedBeforeWriteScreen({ reason: 'convert-read-failed', detail: 'No numbered backup decodes strictly.' }))
+                return
+            }
+            if (await onEntryResult(result) === 'back') {
+                return
+            }
+        }
+    }
 
     for (;;) {
         const page = candidatePage(candidates, 0, shown)
-        const offers = screenOffers({ tooNew: false, candidateCount: candidates.length, upstreamMainFile, candidatePassed })
-        const key = await port.ask(recoveryOffersScreen({ shown: page.keys, hasOlder: page.nextOffset !== null, listFailed, offers }))
+        const offers = screenOffers({ tooNew: false, candidateCount: candidates.length, upstreamMainFile, numberedBackups: backups.length > 0, candidatePassed })
+        // The import button exists only where the page has a file flow to run it.
+        const shownOffers = { ...offers, import: offers.import && request.importBackup !== undefined }
+        const key = await port.ask(recoveryOffersScreen({ shown: page.keys, hasOlder: page.nextOffset !== null, listFailed, offers: shownOffers }))
         const picked = pickedManifestKey(key)
         if (picked !== null) {
             if (!page.keys.includes(picked)) {
@@ -353,6 +428,12 @@ async function drive(request: Store2RecoveryRequest, port: RecoveryPort, calls: 
                 break
             case 'recoveryConvertOffer':
                 await convertFlow()
+                break
+            case 'recoveryRestoreOffer':
+                await restoreFlow()
+                break
+            case 'recoveryImportOffer':
+                await importFlow()
                 break
             case 'recoveryFreshOffer':
                 await freshFlow()

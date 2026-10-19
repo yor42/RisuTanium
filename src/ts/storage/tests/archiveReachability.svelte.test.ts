@@ -300,7 +300,7 @@ function uiDouble(): Store2BootUi {
         peer: createPeerDouble(),
         notice(notice) { notices.push(notice) },
         async blocked() { },
-        async offerRestoreOrImport() { },
+        async offerRestoreOrImport() { return 'import' },
         async confirmConvert() { return true },
         async declined() { return 'import' },
         async confirmConvertWithout() { return 'decline' },

@@ -447,7 +447,7 @@ export async function bootThroughDispatch(backend: Store2Backend, options: { lis
     const ui: Store2BootUi = {
         notice: (notice) => { notices.push(notice) },
         blocked: async () => { },
-        offerRestoreOrImport: async () => { },
+        offerRestoreOrImport: async () => 'import',
         confirmConvert: async () => false,
         declined: async () => 'import',
         confirmConvertWithout: async () => 'decline',

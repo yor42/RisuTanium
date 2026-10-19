@@ -118,7 +118,7 @@ describe('each prompt shows its screen and returns the answer of the button pres
     const cases: [string, (ui: ReturnType<typeof createProductionBootUi>) => Promise<unknown>, () => string, string, unknown][] = [
         ['confirmConvert', (ui) => ui.confirmConvert(), () => text().convertTitle, 'convertYes', true],
         ['confirmConvert (Not now)', (ui) => ui.confirmConvert(), () => text().convertTitle, 'convertNo', false],
-        ['declined', (ui) => ui.declined(), () => text().declinedTitle, 'declinedConvert', 'convert'],
+        ['declined', (ui) => ui.declined(false), () => text().declinedTitle, 'declinedConvert', 'convert'],
         ['confirmFromBackup', (ui) => ui.confirmFromBackup(17_000_000_000), () => text().fromBackupTitle, 'fromBackupYes', 'convert'],
         ['confirmConvertWithout', (ui) => ui.confirmConvertWithout(skipped), () => text().withoutTitle, 'withoutNo', 'decline'],
         ['confirmIncomplete', (ui) => ui.confirmIncomplete(incomplete), () => text().incompleteTitle, 'incompleteYes', true],
@@ -180,15 +180,35 @@ describe('an answer that stops the boot leaves the "nothing was changed" screen 
         expect(getBootScreen()).not.toBeNull()
     })
 
-    test('declined import (when the page can act on it) ends on the same screen', async () => {
-        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US', importAvailable: true })
-        const answer = ui.declined()
+    test('the declined screen shows the import button when the boot can import, and the answer goes to the dispatch (no terminal screen)', async () => {
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        const answer = ui.declined(true)
         const question = await screenAfter(null)
         expect(keys(question)).toEqual(['declinedConvert', 'declinedImport'])
         await sleep(ANSWER_GUARD_MS + 40)
         pressBootButton('declinedImport')
         await expect(answer).resolves.toBe('import')
-        expect(getBootScreen()?.model.title).toBe(text().stoppedTitle)
+        expect(getBootScreen()?.model).toBe(question.model)
+    })
+
+    test('the declined screen hides the import button when the boot cannot import', async () => {
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        void ui.declined(false)
+        expect(keys(await screenAfter(null))).toEqual(['declinedConvert'])
+    })
+
+    test.each([
+        ['offerRestoreNewest', 'restore-newest'],
+        ['offerImport', 'import'],
+    ] as const)('the backups offer shows two buttons and %s answers %s', async (button, expected) => {
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        const answer = ui.offerRestoreOrImport([300, 200])
+        const question = await screenAfter(null)
+        expect(question.model.title).toBe(text().offerTitle)
+        expect(keys(question)).toEqual(['offerRestoreNewest', 'offerImport'])
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton(button)
+        await expect(answer).resolves.toBe(expected)
     })
 
     test('guard: an answer that goes on (continue, clear, convert) shows no terminal screen', async () => {
@@ -218,18 +238,12 @@ describe('terminal results', () => {
         expect(getBootScreen()!.model.paragraphs).toEqual([text().blockedInstall])
     })
 
-    test('offerRestoreOrImport shows the backups screen and resolves', async () => {
-        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
-        await ui.offerRestoreOrImport([300, 200])
-        expect(getBootScreen()?.model.title).toBe(text().offerTitle)
-    })
-
     test('only the notice that ends the boot is a screen: too-new shows, the others change nothing', () => {
         const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
         for (const notice of [
             { name: 'seeded' }, { name: 'cleanup-blocked' }, { name: 'flush-unconfirmed' },
             { name: 'reflush-failed', detail: 'd' }, { name: 'server-capability', detail: 'd' },
-            { name: 'backend-unavailable', detail: 'd' }, { name: 'converted-from-backup', backup: 1 },
+            { name: 'backend-unavailable', detail: 'd' }, { name: 'converted-from-backup', backup: 1 }, { name: 'restored-from-backup', backup: 1, newest: 2 },
         ] as const) {
             ui.notice(notice)
             expect(getBootScreen(), notice.name).toBeNull()
@@ -309,13 +323,43 @@ describe('the real dispatch with the production port, over rows of the boot tabl
         expect(writes()).toEqual({ backendChanged: false, store: [], deletes: [] })
     })
 
-    test('row 1, no main file but numbered backups: the backups screen, nothing seeded, and the boot stops on it', async () => {
+    test('row 1, no main file but numbered backups: the two-button offer, nothing seeded, nothing written before an answer; a boot with no file flow stops on "import"', async () => {
         const store = legacyStore({ mainFile: false, backups: BACKUPS })
         const { result, writes } = run(store, false, async () => [...BACKUPS])
+        const question = await screenAfter(null)
+
+        expect(question.model.title).toBe(text().offerTitle)
+        expect(keys(question)).toEqual(['offerRestoreNewest', 'offerImport'])
+        expect(writes()).toEqual({ backendChanged: false, store: [], deletes: [] })
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('offerImport')
 
         await expect(result).resolves.toEqual({ kind: 'stopped' })
-        expect(getBootScreen()?.model.title).toBe(text().offerTitle)
         expect(writes()).toEqual({ backendChanged: false, store: [], deletes: [] })
+    })
+
+    test('row 1, a legacy main file, declined: with a file flow the decline screen offers the import, and an import that backs out shows it again, writing nothing', async () => {
+        const store = legacyStore({ mainFile: true, backups: BACKUPS })
+        const backend = createMemoryBackend()
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        const importBackup = vi.fn(async () => ({ kind: 'cancelled' as const }))
+        void dispatchStore2Boot({
+            store,
+            upstreamMainFile: async () => true,
+            listBackupTimes: async () => [...BACKUPS],
+            readColdStorageItem: async () => ({ status: 'missing' }),
+        }, { ui, kind: 'indexeddb', backend: async () => backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists, importBackup })
+        const question = await screenAfter(null)
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('convertNo')
+        const declined = await screenAfter(question)
+        expect(keys(declined)).toEqual(['declinedConvert', 'declinedImport'])
+        await sleep(ANSWER_GUARD_MS + 40)
+        pressBootButton('declinedImport')
+        await vi.waitFor(() => expect(importBackup).toHaveBeenCalledTimes(1))
+        const again = await screenAfter(declined)
+        expect(keys(again)).toEqual(['declinedConvert', 'declinedImport'])
+        expect(store.writes.filter((key) => key !== OWNER_KEY)).toEqual([])
     })
 
     test('a boot that cannot continue ends on the blocked screen with the reassurance for a read failure', async () => {

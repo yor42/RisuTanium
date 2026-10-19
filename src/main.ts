@@ -25,7 +25,11 @@ let app = mount(App, {
     target: document.getElementById("app"),
 });
 installBackGuard({ showToast: () => alertToast(language.alerts.pressBackAgainToQuit) })
-registerStore2Boot((env) => dispatchStore2Boot(env, { ui: createProductionBootUi() }))
+// The import flow is loaded on first use: a boot that never imports does not load the backup code.
+registerStore2Boot((env) => dispatchStore2Boot(env, {
+    ui: createProductionBootUi(),
+    importBackup: async (target) => (await import("./ts/drive/backuplocal")).loadBackupAtBoot(target),
+}))
 loadData()
 initHotkey()
 startKeepAliveService()

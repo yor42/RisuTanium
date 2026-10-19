@@ -51,9 +51,24 @@ export interface FirstLifeGrant {
     readonly source: 'absent-row-1' | 'own-row-9-clear'
     /** `convert` when an upstream main file exists (or the cleared marker was a conversion), `seed` otherwise. */
     readonly kind: 'convert' | 'seed'
+    /**
+     * The staging label the marker carries. It is `kind` unless a row-1 caller overrode it (`FirstLifeLabel`): the label
+     * is what the caller is about to install, because it decides how a crashed install classifies at the next boot.
+     */
+    readonly label: StagingLabel
     /** The read the marker is written at: the absence read, or the read of the cleared key. */
     readonly read: Store2Read
 }
+
+/**
+ * The label a row-1 caller installs under when it is not the boot decision's own: `convert` for a restore of the newest
+ * numbered backup (a crash classifies as row 10), `import` for a `.bin` import (a crash classifies as row 11). Neither
+ * may classify as row 9, whose re-run would seed an empty profile over the backups.
+ */
+export type FirstLifeLabel = Extract<StagingLabel, 'convert' | 'import'>
+
+/** The boot decision of row 1 over an absent key: the only decision a label override may accompany. */
+export type Row1FirstLifeDecision = Extract<SessionDecision, { row: 1, mode: 'first-life' }>
 
 /** What `firstLifeGrant` reads: the boot decision, the page's read of the commit key and the result of its start-up clear. A `Store2Session` has all three. */
 export interface FirstLifeFacts {
@@ -64,7 +79,7 @@ export interface FirstLifeFacts {
 
 export type FirstLifeRefusal =
     | 'not-first-life' | 'read-missing' | 'key-present'
-    | 'foreign-marker' | 'not-cleared' | 'key-changed'
+    | 'foreign-marker' | 'not-cleared' | 'key-changed' | 'label-not-row-1'
 
 export type GrantResult =
     | { status: 'granted', grant: FirstLifeGrant }
@@ -74,16 +89,29 @@ function refused(reason: FirstLifeRefusal, detail: string): GrantResult {
     return { status: 'refused', reason, detail }
 }
 
-function granted(source: FirstLifeGrant['source'], kind: FirstLifeGrant['kind'], read: Store2Read): GrantResult {
-    return { status: 'granted', grant: { [GRANT_BRAND]: true, source, kind, read } }
+function granted(source: FirstLifeGrant['source'], kind: FirstLifeGrant['kind'], label: StagingLabel, read: Store2Read): GrantResult {
+    return { status: 'granted', grant: { [GRANT_BRAND]: true, source, kind, label, read } }
+}
+
+/** The facts of a row-1 grant: the decision is narrowed, so a label override cannot be passed with a row-9 decision. */
+export interface Row1FirstLifeFacts extends FirstLifeFacts {
+    decision: Row1FirstLifeDecision
 }
 
 /**
  * The grant for an unfenced marker, or the reason there is none. Only boot row 1 over an absence read, and boot
  * row 9 with this page's own marker cleared by this page's start-up clear, are accepted.
+ *
+ * `options.label` overrides the marker's label on a row-1 grant only; the overload makes it a type error with any other
+ * decision, and a row-9 decision that reaches it anyway is refused at run time (`label-not-row-1`).
  */
-export function firstLifeGrant(facts: FirstLifeFacts): GrantResult {
+export function firstLifeGrant(facts: FirstLifeFacts): GrantResult
+export function firstLifeGrant(facts: Row1FirstLifeFacts, options: { label: FirstLifeLabel }): GrantResult
+export function firstLifeGrant(facts: FirstLifeFacts, options?: { label: FirstLifeLabel }): GrantResult {
     const { decision, commitRead, startupClear } = facts
+    if (options !== undefined && !(decision.row === 1 && decision.mode === 'first-life')) {
+        return refused('label-not-row-1', 'A label override is accepted only on a boot row 1 grant.')
+    }
     if (decision.row === 1 && decision.mode === 'first-life') {
         if (commitRead === null) {
             return refused('read-missing', 'The commit key read is missing.')
@@ -91,7 +119,7 @@ export function firstLifeGrant(facts: FirstLifeFacts): GrantResult {
         if (classifyCommitRead(commitRead).status !== 'absent') {
             return refused('key-present', 'The commit key is not absent.')
         }
-        return granted('absent-row-1', decision.action, commitRead)
+        return granted('absent-row-1', decision.action, options?.label ?? decision.action, commitRead)
     }
     if (decision.row === 9 && decision.mode === 'rerun') {
         if (decision.clear !== 'own') {
@@ -109,7 +137,7 @@ export function firstLifeGrant(facts: FirstLifeFacts): GrantResult {
             || decoded.status !== 'parsed' || JSON.stringify(decoded.value) !== JSON.stringify(startupClear.value)) {
             return refused('not-cleared', 'The cleared bytes are not the cleared state this page\'s start-up clear reported.')
         }
-        return granted('own-row-9-clear', decision.operation, commitRead)
+        return granted('own-row-9-clear', decision.operation, decision.operation, commitRead)
     }
     return refused('not-first-life', `Boot row ${decision.row ?? 'none'} is not a first-life state.`)
 }
@@ -142,11 +170,6 @@ export type FirstLifeMarkerResult =
     /** The marker write failed definitely; the commit key was not changed. */
     | { status: 'failed', cause: Store2BackendError }
 
-const LABELS: Readonly<Record<FirstLifeGrant['kind'], StagingLabel>> = {
-    convert: 'convert',
-    seed: 'seed',
-}
-
 /**
  * Compare-and-writes the marker at the grant's read: `current: null`, empty `retained` and `pins`, a fresh staged
  * prefix, `seq` 1 over an absent key and one above the cleared key otherwise. No fence is read or written. A
@@ -163,7 +186,7 @@ export async function writeFirstLifeMarker(
             return { status: 'refused', reason: presence.status === 'some' ? 'store-not-empty' : 'presence-unknown' }
         }
     }
-    const label = LABELS[grant.kind]
+    const label = grant.label
     const stagedPrefix = stagingPrefix(newStagingId(env))
     const staging: Staging = { owner: options.owner, prefix: stagedPrefix, startedAt: env.now(), label }
     const marker = markerKey(classifyCommitRead(grant.read), staging, 0, env)

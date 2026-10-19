@@ -8,6 +8,21 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStoreKind: async () => { throw new Error('The page store is not selected in this test.') },
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
+// The tree library of a boot import repairs characters through app modules that need a browser; the dispatch protocol under
+// test is the entry, the grant label and the outcome, so the library is a stand-in that plans the small tree with the
+// conversion's planner. The real library is covered in `bootImport.test.ts`.
+vi.mock(import('src/ts/storage/store2/legacy/importTree'), async () => {
+    const { planWholeTreeInstall } = await import('src/ts/storage/store2/legacy/install')
+    const { buildSmall: small, fakeLists: lists } = await import('./codecFixtures')
+    return {
+        prepareImport: async (request: { source: { tree: unknown } }) => {
+            request.source.tree = null
+            return { plan: await planWholeTreeInstall(JSON.parse(JSON.stringify(small(2))), { lists, convertedFrom: 'import' }), repair: { dropped: 0, changed: 0, recovered: 0 } }
+        },
+        buildImport: (plan: { newUnits: number, build: unknown }) => ({ newUnits: plan.newUnits, build: plan.build }),
+    } as never
+})
+
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -32,6 +47,7 @@ import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { freshOwnerId, isOwnerId, type Staging } from 'src/ts/storage/store2/owner'
 import { OWNER_KEY } from 'src/ts/storage/store2/ownerStore'
 import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
+import type { BootImportEnd, BootImportTarget } from 'src/ts/storage/store2/legacy/bootImport'
 import type { LegacyDecoders } from 'src/ts/storage/store2/legacy/convert'
 import type { SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
 import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
@@ -183,6 +199,7 @@ interface UiDouble extends Store2BootUi {
     notices: Store2BootNotice[]
     blockedWith: { reason: BlockedReason, detail: string, mayHaveWritten: boolean }[]
     offered: (readonly number[])[]
+    offerAnswer: 'restore-newest' | 'import'
     recoveries: Parameters<Store2BootUi['recovery']>[0][]
     foreignAsked: Staging[]
     foreignAnswer: 'wait' | 'clear'
@@ -213,6 +230,7 @@ function uiDouble(): UiDouble {
         notices: [],
         blockedWith: [],
         offered: [],
+        offerAnswer: 'import',
         recoveries: [],
         foreignAsked: [],
         foreignAnswer: 'wait',
@@ -232,7 +250,7 @@ function uiDouble(): UiDouble {
         peer: createPeerDouble(),
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
-        async offerRestoreOrImport(backups) { ui.offered.push(backups) },
+        async offerRestoreOrImport(backups) { ui.offered.push(backups); return ui.offerAnswer },
         async confirmConvert() {
             ui.convertAsked += 1
             return ui.convertAnswers[Math.min(ui.convertAsked, ui.convertAnswers.length) - 1]
@@ -379,6 +397,8 @@ interface RigOptions {
     decoders?: LegacyDecoders
     /** The old cold-storage units the page's reader answers from; an absent key is missing. */
     coldUnits?: ReadonlyMap<string, ColdUnitRead>
+    /** The page's file flow for a `.bin` import; absent, the boot offers none. */
+    importBackup?: (target: BootImportTarget) => Promise<BootImportEnd>
 }
 
 function rig(options: RigOptions = {}): Rig {
@@ -425,6 +445,7 @@ function rig(options: RigOptions = {}): Rig {
         lists: given.lists,
         maxRounds: options.maxRounds,
         decoders: given.decoders,
+        importBackup: options.importBackup,
     })
     return {
         memory,
@@ -1399,6 +1420,145 @@ describe('new behaviour: row 1, a legacy profile is converted', () => {
 
 // ---- row 9: a marker that was left standing ----
 
+describe('new behaviour: row 1 offers, restore the newest backup or import a file (B3c)', () => {
+    const TIMES = [100, 200, 300]
+
+    /** The label of the standing marker at each unit write: the label a crash would be classified by. */
+    function labelProbe(memory: MemoryBackend): { seen: (string | null)[], hooks: BackendHooks } {
+        const seen: (string | null)[] = []
+        return {
+            seen,
+            hooks: {
+                beforePutUnit: async () => {
+                    const parsed = classifyCommitRead(await memory.readCommit())
+                    seen.push(parsed.status === 'parsed' && parsed.value.staging !== null ? parsed.value.staging.label : null)
+                },
+            },
+        }
+    }
+
+    function finish(result: Awaited<ReturnType<BootImportTarget['install']>>): BootImportEnd {
+        return result.status === 'installed' || result.status === 'reclassify' || result.status === 'blocked' || result.status === 'exit'
+            ? { kind: 'finished', result } : { kind: 'cancelled' }
+    }
+
+    const RESOLVED_READER = { read: async () => ({ status: 'missing' as const }) }
+    const acceptHooks = { confirmIncomplete: async () => true }
+
+    test('restore the newest backup: the marker is labelled convert (a crash is row 10), the main-file question is never asked, and the notice names the backup', async () => {
+        const memory = createMemoryBackend()
+        const probe = labelProbe(memory)
+        const test = rig({ memory, mainFile: false, backups: TIMES, decoders: decodersOf({ 9: legacyTree() }), hooks: probe.hooks })
+        test.store.files.set('database/dbbackup-300.bin', new Uint8Array([9]))
+        test.ui.offerAnswer = 'restore-newest'
+        const result = expectStoreResult(await test.dispatch())
+
+        expect(test.ui.offered).toEqual([[300, 200, 100]])
+        expect(new Set(probe.seen)).toEqual(new Set(['convert']))
+        expect(test.ui.fromBackupAsked).toEqual([])
+        expect(result.notices).toContainEqual({ name: 'restored-from-backup', backup: 300, newest: 300 })
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+    })
+
+    test('restore the newest backup, falling back to an older one: the notice names the backup used and the newest (MC-299 8)', async () => {
+        const test = rig({ mainFile: false, backups: TIMES, decoders: decodersOf({ 9: 'bad', 8: legacyTree() }) })
+        test.store.files.set('database/dbbackup-300.bin', new Uint8Array([9]))
+        test.store.files.set('database/dbbackup-200.bin', new Uint8Array([8]))
+        test.ui.offerAnswer = 'restore-newest'
+        const result = expectStoreResult(await test.dispatch())
+
+        expect(result.notices).toContainEqual({ name: 'restored-from-backup', backup: 200, newest: 300 })
+        expect(test.ui.fromBackupAsked).toEqual([])
+    })
+
+    test('restore the newest backup when none decodes strictly: a stop before any write, and the lenient main-file conversion is never tried (C7)', async () => {
+        const lenient = vi.fn(async () => { throw new Error('The lenient decode must not run.') })
+        const decoders: LegacyDecoders = { ...decodersOf({}), lenient }
+        const test = rig({ mainFile: false, backups: TIMES, decoders })
+        test.ui.offerAnswer = 'restore-newest'
+
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(lenient).not.toHaveBeenCalled()
+        expect(test.ui.convertWithoutAsked).toEqual([])
+        expect(test.ui.blockedWith.map(blocked => blocked.reason)).toEqual(['convert-read-failed'])
+        expect(test.allWrites()).toEqual([])
+        expect((await test.memory.readCommit()).bytes).toBeNull()
+    })
+
+    test('importing a file at the backups offer: the marker is labelled import (a crash is row 11), the profile opens, and no old file is touched', async () => {
+        const memory = createMemoryBackend()
+        const probe = labelProbe(memory)
+        const targets: BootImportTarget[] = []
+        const test = rig({
+            memory, mainFile: false, backups: TIMES, hooks: probe.hooks,
+            importBackup: async (target) => {
+                targets.push(target)
+                return finish(await target.install({ tree: legacyTree() }, RESOLVED_READER, acceptHooks))
+            },
+        })
+        const result = expectStoreResult(await test.dispatch())
+
+        expect(targets).toHaveLength(1)
+        expect(new Set(probe.seen)).toEqual(new Set(['import']))
+        expect((await currentKey(test.memory)).convertedFrom).toBe('import')
+        expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+    })
+
+    test('an import that backs out asks the offer again; nothing is written until a flow installs', async () => {
+        const calls: number[] = []
+        const test = rig({
+            mainFile: false, backups: TIMES,
+            importBackup: async () => {
+                calls.push(calls.length)
+                return calls.length === 1
+                    ? { kind: 'cancelled' }
+                    : { kind: 'finished', result: { status: 'blocked', reason: 'install-failed', detail: 'x' } }
+            },
+        })
+
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(calls).toHaveLength(2)
+        expect(test.ui.offered).toHaveLength(2)
+        expect(test.ui.blockedWith.map(blocked => blocked.reason)).toEqual(['install-failed'])
+        expect(test.allWrites()).toEqual([])
+    })
+
+    test('a declined conversion offers the import when the page has a file flow, and the import is labelled import', async () => {
+        const memory = createMemoryBackend()
+        const probe = labelProbe(memory)
+        const asked: boolean[] = []
+        const test = rig({
+            memory, mainFile: true, hooks: probe.hooks, decoders: decodersOf({ 1: legacyTree() }),
+            importBackup: async (target) => finish(await target.install({ tree: legacyTree() }, RESOLVED_READER, acceptHooks)),
+        })
+        const ask = test.ui.declined
+        test.ui.declined = async (importAvailable: boolean) => { asked.push(importAvailable); return ask(importAvailable) }
+        test.ui.convertAnswers = [false]
+        test.ui.declinedAnswers = ['import']
+        expectStoreResult(await test.dispatch())
+
+        expect(asked).toEqual([true])
+        expect(new Set(probe.seen)).toEqual(new Set(['import']))
+    })
+
+    test('without a file flow the declined screen is told the import is unavailable', async () => {
+        const asked: boolean[] = []
+        const test = rig({ mainFile: true, decoders: decodersOf({ 1: legacyTree() }) })
+        const ask = test.ui.declined
+        test.ui.declined = async (importAvailable: boolean) => { asked.push(importAvailable); return ask(importAvailable) }
+        test.ui.convertAnswers = [false]
+        test.ui.declinedAnswers = ['import']
+
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(asked).toEqual([false])
+        expect(test.allWrites()).toEqual([])
+    })
+})
+
 describe('new behaviour: row 9, a seed or convert marker that was left standing', () => {
     const device = freshOwnerId(testEnv(createClock(), 1234))
 
@@ -1471,6 +1631,21 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         expect(await second.dispatch()).toEqual({ kind: 'stopped' })
         expect(second.ui.recoveries.map(request => request.decision.row)).toEqual([7])
         expect(second.ui.incompleteAsked).toEqual([])
+    })
+
+    test('the row-9 declined screen is told the import is unavailable even when the page has a file flow: a re-run cannot import under a first-life marker', async () => {
+        const memory = createMemoryBackend()
+        await putCommitKey(memory, await markerKey('convert', device))
+        const importBackup = vi.fn(async () => ({ kind: 'cancelled' as const }))
+        const test = tauriRig(memory, { mainFile: true, decoders: decodersOf({ 1: legacyTreeWithMissingStub() }), importBackup })
+        const asked: boolean[] = []
+        const ask = test.ui.declined
+        test.ui.declined = async (importAvailable: boolean) => { asked.push(importAvailable); return ask(importAvailable) }
+        test.ui.incompleteAnswers = [false]
+        test.ui.declinedAnswers = ['import']
+        expect(await test.dispatch()).toEqual({ kind: 'stopped' })
+        expect(asked).toEqual([false])
+        expect(importBackup).not.toHaveBeenCalled()
     })
 
     test('a crash after the marker and before the final write: the next start is row 9 own and re-runs the conversion without asking again', async () => {

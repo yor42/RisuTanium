@@ -6,6 +6,7 @@ import { StoreNotBinaryError } from '../../store/errors'
 import type { Store2Backend, Store2Read } from '../backend/types'
 import type { BlockedReason } from '../bootActive'
 import type { ListDerivation } from '../codec/types'
+import type { BuildContext, BuiltCommit } from '../commit'
 import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
 import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
 import { LegacyListBuilder } from '../lists/legacyList'
@@ -285,8 +286,11 @@ async function buildLegacyList(
     return { list: builder.build(), coldKeys }
 }
 
-/** The install request with the legacy list as one more unit and the manifest's `legacyKeep` naming it. */
-function withLegacyKeep(install: BuiltInstall, list: LegacyList): BuiltInstall {
+/**
+ * The install request with the legacy list as one more unit and the manifest's `legacyKeep` naming it. The list replaces
+ * whatever keep set the built manifest already carries. Shared by the conversion, the boot import and `buildImport`.
+ */
+export function withLegacyKeep<T extends { newUnits: number, build(context: BuildContext): BuiltCommit | Promise<BuiltCommit> }>(install: T, list: LegacyList): T {
     return {
         ...install,
         newUnits: install.newUnits + 1,

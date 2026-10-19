@@ -329,7 +329,7 @@ function uiDouble(): UiDouble {
         peer: createPeerDouble(),
         notice(notice) { ui.notices.push(notice) },
         async blocked(blocked) { ui.blockedWith.push(blocked) },
-        async offerRestoreOrImport(backups) { ui.offered.push(backups) },
+        async offerRestoreOrImport(backups) { ui.offered.push(backups); return 'import' },
         async confirmConvert() {
             ui.convertAsked += 1
             return ui.convertAnswer

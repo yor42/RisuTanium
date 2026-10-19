@@ -387,10 +387,24 @@ export function stoppedScreen(): BootScreenModel {
     return terminal(text.stoppedTitle, [text.stoppedBody], null, 'reload')
 }
 
-export function offerScreen(backups: readonly number[]): BootScreenModel {
+/**
+ * No main file but numbered backups (MC-299 3). Both buttons act, so focus goes to the heading. The text never claims
+ * that a main file existed.
+ */
+export function offerScreen(backups: readonly number[]): BootQuestion<'restore-newest' | 'import'> {
     const text = language.store2Boot
     const newest = backups.length > 0 ? Math.max(...backups) : 0
-    return terminal(text.offerTitle, [text.offerBody(backups.length, backupDate(newest))], null, null)
+    return {
+        model: {
+            title: text.offerTitle,
+            paragraphs: [text.offerBody(backups.length, backupDate(newest))],
+            lists: [],
+            details: null,
+            buttons: [{ key: 'offerRestoreNewest', label: text.offerRestoreNewest(backupDate(newest)) }, { key: 'offerImport', label: text.offerImport }],
+            focus: null,
+        },
+        answers: { offerRestoreNewest: 'restore-newest', offerImport: 'import' },
+    }
 }
 
 export function tooNewScreen(): BootScreenModel {
@@ -495,7 +509,8 @@ export interface RecoveryOffersInput {
     hasOlder: boolean
     /** The English detail when listing the saved versions failed; null when it did not. */
     listFailed: string | null
-    offers: Pick<ScreenOffers, 'convert' | 'freshStart'>
+    /** `restoreNewest` and `import` are absent (no button) for a caller that offers neither. */
+    offers: Pick<ScreenOffers, 'convert' | 'freshStart'> & Partial<Pick<ScreenOffers, 'restoreNewest' | 'import'>>
 }
 
 /** The recovery screen proper. Every button only opens a confirmation, so focus goes to the heading. */
@@ -511,8 +526,13 @@ export function recoveryOffersScreen(input: RecoveryOffersInput): BootScreenMode
     if (input.hasOlder) {
         buttons.push({ key: 'recoveryShowOlder', label: text.recoveryShowOlder })
     }
-    if (input.offers.convert) {
+    if (input.offers.restoreNewest) {
+        buttons.push({ key: 'recoveryRestoreOffer', label: text.recoveryRestoreOffer })
+    } else if (input.offers.convert) {
         buttons.push({ key: 'recoveryConvertOffer', label: text.recoveryConvertOffer })
+    }
+    if (input.offers.import) {
+        buttons.push({ key: 'recoveryImportOffer', label: text.recoveryImportOffer })
     }
     if (input.offers.freshStart) {
         buttons.push({ key: 'recoveryFreshOffer', label: text.recoveryFreshOffer })
@@ -583,6 +603,19 @@ export function recoveryInstallScreen(counts: MissingCounts, cause: 'skipped' | 
         }
     }
     return recoveryConfirm(text.recoveryInstallTitle, paragraphs, 'recoveryInstallGo', text.recoveryInstallGo)
+}
+
+/** Asked before the restore of the newest backup writes anything. The body claims no missing main file unless the page said so: an unknown answer gets the neutral body. */
+export function recoveryRestoreScreen(newest: number, mainFile: boolean | null): BootQuestion<boolean> {
+    const text = language.store2Boot
+    const body = mainFile === null ? text.recoveryRestoreBodyUnknown : text.recoveryRestoreBody
+    return recoveryConfirm(text.recoveryRestoreTitle(backupDate(newest)), [body], 'recoveryRestoreGo', text.recoveryRestoreGo)
+}
+
+/** Asked inside the restore, before anything is written, when the newest backup cannot be read: names both dates. Declining writes nothing. */
+export function recoveryOlderBackupScreen(newest: number, used: number): BootQuestion<boolean> {
+    const text = language.store2Boot
+    return recoveryConfirm(text.recoveryOlderTitle(backupDate(used)), [text.recoveryOlderBody(backupDate(newest), backupDate(used))], 'recoveryOlderGo', text.recoveryOlderGo)
 }
 
 export function recoveryFreshScreen(): BootQuestion<boolean> {
@@ -754,6 +787,10 @@ export function noticeText(notice: Store2BootNotice): string | null {
             return text.noticeFlushUnconfirmed
         case 'converted-from-backup':
             return text.noticeConvertedFromBackup(backupDate(notice.backup))
+        case 'restored-from-backup':
+            return notice.backup === notice.newest
+                ? text.noticeRestoredFromBackup(backupDate(notice.backup))
+                : text.noticeRestoredFromOlderBackup(backupDate(notice.backup), backupDate(notice.newest))
         case 'server-capability':
             return text.noticeServerCapability
         case 'backend-unavailable':

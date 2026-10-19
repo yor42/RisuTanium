@@ -29,8 +29,6 @@ export interface ProductionBootUiOptions {
     reload?: () => void
     /** The browser language tag; `navigator.language` by default. */
     browserLanguage?: string | null
-    /** Whether the page can act on a "restore from a backup file" answer. Nothing can yet, so the button is hidden. */
-    importAvailable?: boolean
 }
 
 function pageReload(): void {
@@ -44,7 +42,6 @@ function pageLanguage(): string | null {
 
 export function createProductionBootUi(options: ProductionBootUiOptions = {}): Store2BootUi {
     const reload = options.reload ?? pageReload
-    const importAvailable = options.importAvailable ?? false
     let languageSet = false
 
     function ensureLanguage(): void {
@@ -88,19 +85,9 @@ export function createProductionBootUi(options: ProductionBootUiOptions = {}): S
             terminal(blockedScreen(blocked))
             return Promise.resolve()
         },
-        offerRestoreOrImport: (backups) => {
-            ensureLanguage()
-            terminal(offerScreen(backups))
-            return Promise.resolve()
-        },
+        offerRestoreOrImport: (backups) => ask(() => offerScreen(backups)),
         confirmConvert: () => ask(confirmConvertScreen),
-        declined: async () => {
-            const answer = await ask(() => declinedScreen(importAvailable))
-            if (answer === 'import') {
-                stopped()
-            }
-            return answer
-        },
+        declined: (importAvailable) => ask(() => declinedScreen(importAvailable)),
         confirmFromBackup: (backup) => ask(() => confirmFromBackupScreen(backup)),
         confirmConvertWithout: (skipped) => ask(() => confirmConvertWithoutScreen(skipped)),
         confirmIncomplete: (items) => ask(() => confirmIncompleteScreen(items)),

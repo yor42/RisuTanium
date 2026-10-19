@@ -11,7 +11,7 @@ import { Store2BackendFailureError, Store2CommitConflictError, Store2UnknownOutc
 import { classifyBoot, probeStore2Presence, runBootClear } from 'src/ts/storage/store2/boot'
 import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import {
-    firstLifeGrant, firstLifeInstall, installBuilt, writeFirstLifeMarker, type FirstLifeFacts, type FirstLifeGrant, type FirstLifeResult,
+    firstLifeGrant, firstLifeInstall, installBuilt, writeFirstLifeMarker, type FirstLifeFacts, type FirstLifeGrant, type FirstLifeResult, type Row1FirstLifeFacts,
 } from 'src/ts/storage/store2/firstLife'
 import { encodeUnit, newManifestKey, newShardKey, newUnitKey, UNIT_TYPE, type CommitKey } from 'src/ts/storage/store2/format'
 import { runExit } from 'src/ts/storage/store2/recovery'
@@ -506,5 +506,80 @@ describe('the marker key', () => {
         expect(first.marker.seq).toBe(1)
         expect(first.fence).toBeUndefined()
         expect(Array.from((await backend.readCommit()).bytes as Uint8Array)).toEqual(Array.from(encodeUnit(UNIT_TYPE.commit, first.marker)))
+    })
+})
+
+describe('the label of a row-1 grant (B3c)', () => {
+    /** The facts of a page that booted into row 1, with the decision narrowed so a label override may accompany it. */
+    async function rowOneFacts(backend: Store2Backend, clock: TestClock, upstreamMainFile: boolean): Promise<Row1FirstLifeFacts> {
+        const facts = await factsOf(backend, clock, { upstreamMainFile })
+        const { decision } = facts
+        if (!(decision.row === 1 && decision.mode === 'first-life')) {
+            throw new Error('The boot is not row 1.')
+        }
+        return { decision, commitRead: facts.commitRead, startupClear: facts.startupClear }
+    }
+
+    async function labelOfMarker(backend: Store2Backend, clock: TestClock, grant: FirstLifeGrant): Promise<string | null> {
+        const marked = await writeFirstLifeMarker(backend, grant, { owner: ME, env: testEnv(clock, 11) })
+        expect(marked.status).toBe('marked')
+        const stored = classifyCommitRead(await backend.readCommit())
+        return stored.status === 'parsed' && stored.value.staging !== null ? stored.value.staging.label : null
+    }
+
+    test.each([
+        ['seed boot, no override: a marker labelled seed', false, undefined, 'seed'],
+        ['convert boot, no override: a marker labelled convert', true, undefined, 'convert'],
+        ['seed boot, restore of the newest backup: a marker labelled convert', false, 'convert', 'convert'],
+        ['seed boot, .bin import: a marker labelled import', false, 'import', 'import'],
+        ['convert boot, .bin import: a marker labelled import', true, 'import', 'import'],
+    ] as const)('new behaviour: %s', async (_name, mainFile, label, expected) => {
+        const backend = await openBackend(0)
+        const clock = createClock()
+        const facts = await rowOneFacts(backend, clock, mainFile)
+        const granted = label === undefined ? firstLifeGrant(facts) : firstLifeGrant(facts, { label })
+        expect(granted.status).toBe('granted')
+        if (granted.status !== 'granted') {
+            return
+        }
+        expect(granted.grant.label).toBe(expected)
+        expect(await labelOfMarker(backend, clock, granted.grant)).toBe(expected)
+    })
+
+    test('new behaviour: a crashed import marker is boot row 11 and a crashed restore marker is row 10, never the row-9 seed re-run', async () => {
+        for (const [label, row] of [['import', 11], ['convert', 10]] as const) {
+            const backend = await openBackend(0)
+            const clock = createClock()
+            const granted = firstLifeGrant(await rowOneFacts(backend, clock, false), { label })
+            if (granted.status !== 'granted') {
+                throw new Error('No grant.')
+            }
+            expect(await labelOfMarker(backend, clock, granted.grant)).toBe(label)
+            // The same device boots again with the marker standing and its owner id kept (Tauri).
+            const rebooted = await factsOf(backend, clock, { owner: ME, deviceOwner: true, upstreamMainFile: false })
+            expect(rebooted.decision.row, label).toBe(row)
+        }
+        // The default grant of the same boot is the hazard: a seed marker classifies as the row-9 re-run.
+        const backend = await openBackend(0)
+        const clock = createClock()
+        const plain = firstLifeGrant(await rowOneFacts(backend, clock, false))
+        if (plain.status !== 'granted') {
+            throw new Error('No grant.')
+        }
+        await labelOfMarker(backend, clock, plain.grant)
+        expect((await factsOf(backend, clock, { owner: ME, deviceOwner: true, upstreamMainFile: false })).decision.row).toBe(9)
+    })
+
+    test('new behaviour: a label override with a row-9 decision is refused at run time and does not type-check', async () => {
+        const backend = await openBackend(0)
+        const clock = createClock()
+        await plantKey(backend, markerOf(ME, 'seed'))
+        const facts = await factsOf(backend, clock, { owner: ME, deviceOwner: true })
+        expect(facts.decision).toMatchObject({ row: 9, clear: 'own' })
+        // @ts-expect-error a row-9 decision is not a row-1 decision, so the overload with a label does not accept it
+        const refused = firstLifeGrant(facts, { label: 'import' })
+        expect(refused).toMatchObject({ status: 'refused', reason: 'label-not-row-1' })
+        // Without the override the same facts still grant the row-9 re-run, labelled as the marker was.
+        expect(grantOf(facts).label).toBe('seed')
     })
 })

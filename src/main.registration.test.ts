@@ -13,6 +13,7 @@ const seen = vi.hoisted(() => ({
     dispatch: vi.fn(async (_env: unknown, _deps: unknown) => ({ kind: 'stopped' as const })),
     ui: { marker: 'the production port' },
     readSeam: null as null | (() => boolean),
+    loadBackupAtBoot: vi.fn(async (_target: unknown) => ({ kind: 'cancelled' as const })),
 }))
 
 vi.mock('./ts/polyfill', () => ({}))
@@ -36,6 +37,7 @@ vi.mock('./lang', () => ({ language: { alerts: { pressBackAgainToQuit: 'press ba
 vi.mock('./ts/storage/store2/bootDispatch', () => ({
     dispatchStore2Boot: seen.dispatch,
 }))
+vi.mock('./ts/drive/backuplocal', () => ({ loadBackupAtBoot: seen.loadBackupAtBoot }))
 vi.mock('./ts/storage/store2/ui/productionBootUi', () => ({
     createProductionBootUi: () => seen.ui,
 }))
@@ -70,7 +72,17 @@ describe('new behaviour: the entry module registers the store2 boot', () => {
         const result = await boot?.(env as unknown as Parameters<NonNullable<typeof boot>>[0])
         expect(result).toEqual({ kind: 'stopped' })
         expect(seen.dispatch).toHaveBeenCalledTimes(1)
-        expect(seen.dispatch).toHaveBeenCalledWith(env, { ui: seen.ui })
+        expect(seen.dispatch).toHaveBeenCalledWith(env, { ui: seen.ui, importBackup: expect.any(Function) })
+    })
+
+    test('new behaviour: the dispatch is given the .bin file flow, which loads the backup code only when an import runs and hands it the target', async () => {
+        const active = await loadEntry()
+        await active.getStore2Boot()?.({} as unknown as Parameters<NonNullable<ReturnType<typeof active.getStore2Boot>>>[0])
+        const deps = seen.dispatch.mock.calls[0][1] as { importBackup: (target: unknown) => Promise<unknown> }
+        expect(seen.loadBackupAtBoot).not.toHaveBeenCalled()
+        const target = { install: vi.fn(), readColdStorageItem: vi.fn() }
+        await expect(deps.importBackup(target)).resolves.toEqual({ kind: 'cancelled' })
+        expect(seen.loadBackupAtBoot).toHaveBeenCalledWith(target)
     })
 
     test('guard: nothing is registered before the entry module has run', async () => {

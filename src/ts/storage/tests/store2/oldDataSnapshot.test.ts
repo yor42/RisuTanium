@@ -399,7 +399,7 @@ describe('the callers hand the planner the page\'s store', () => {
         return {
             notice: () => { },
             blocked: async () => { },
-            offerRestoreOrImport: async () => { },
+            offerRestoreOrImport: async () => 'import',
             confirmConvert: async () => false,
             declined: async () => 'import',
             confirmConvertWithout: async () => 'decline',

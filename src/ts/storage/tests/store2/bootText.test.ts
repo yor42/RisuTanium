@@ -18,7 +18,7 @@ import {
     confirmFlaggedOpenScreen, confirmFromBackupScreen, confirmIncompleteScreen, declinedScreen, displayName, flaggedLists,
     foreignMarkerScreen, incompleteList, noticeText, offerScreen, pickButtonKey, pickedManifestKey, recoveryBlockedBeforeWriteScreen,
     recoveryChangedScreen, recoveryCheckingScreen, recoveryFreshScreen, recoveryInstalledScreen, recoveryInstallScreen,
-    recoveryNoticeScreen, recoveryOffersScreen, recoveryPickScreen, recoveryUnconfirmedScreen, recoveryUnexpectedScreen,
+    recoveryNoticeScreen, recoveryOffersScreen, recoveryOlderBackupScreen, recoveryPickScreen, recoveryRestoreScreen, recoveryUnconfirmedScreen, recoveryUnexpectedScreen,
     recoveryTooNewScreen, recoveryWaitScreen, recoveryWorkingScreen, skippedList, stoppedScreen, tooNewScreen,
     type BootQuestion, type BootScreenModel, type RecoveryNotice,
 } from 'src/ts/storage/store2/ui/bootText'
@@ -313,19 +313,27 @@ describe('blocked reasons', () => {
 })
 
 describe('terminal screens and notices', () => {
-    test('the stopped, offer and too-new screens each have one Reload button; only the offer screen focuses the heading', () => {
+    test('the stopped and too-new screens each have one Reload button', () => {
         expect(stoppedScreen().buttons).toEqual([{ key: 'reload', label: language.store2Boot.reload }])
         expect(stoppedScreen().focus).toBe('reload')
         expect(tooNewScreen().focus).toBe('reload')
+    })
+
+    test('the offer screen (MC-299 3, B3-Q2) has two acting buttons, focuses the heading and never claims a main file existed', () => {
         const offer = offerScreen([100, 300, 200])
-        expect(offer.buttons.map((button) => button.key)).toEqual(['reload'])
-        expect(offer.focus).toBeNull()
-        expect(offer.paragraphs[0]).toBe(language.store2Boot.offerBody(3, backupDate(300)))
-        expect(offer.paragraphs[0]).toContain('3 backup files')
+        expect(offer.model.buttons).toEqual([
+            { key: 'offerRestoreNewest', label: language.store2Boot.offerRestoreNewest(backupDate(300)) },
+            { key: 'offerImport', label: language.store2Boot.offerImport },
+        ])
+        expect(offer.answers).toEqual({ offerRestoreNewest: 'restore-newest', offerImport: 'import' })
+        expect(offer.model.focus).toBeNull()
+        expect(offer.model.paragraphs[0]).toBe(language.store2Boot.offerBody(3, backupDate(300)))
+        expect(offer.model.paragraphs[0]).toContain('3 backup files')
+        expect(offer.model.paragraphs.join(' ')).not.toMatch(/main (save )?file (could not|was)/i)
     })
 
     test('the offer screen says "1 backup file" for a single backup', () => {
-        const body = offerScreen([300]).paragraphs[0]
+        const body = offerScreen([300]).model.paragraphs[0]
         expect(body).toContain('1 backup file ')
         expect(body).not.toContain('backup files')
     })
@@ -340,12 +348,19 @@ describe('terminal screens and notices', () => {
             { name: 'backend-unavailable', detail: 'd' },
             { name: 'converted-from-backup', backup: 17_000_000_000 },
             { name: 'archive-enabled' },
+            { name: 'restored-from-backup', backup: 17_000_000_000, newest: 17_000_000_000 },
+            { name: 'restored-from-backup', backup: 16_000_000_000, newest: 17_000_000_000 },
         ]
         const texts = notices.map((notice) => noticeText(notice))
         expect(texts.every((text) => typeof text === 'string' && text.length > 0)).toBe(true)
         expect(new Set(texts).size).toBe(notices.length)
         expect(noticeText({ name: 'too-new', source: 'tree', detail: 'd' })).toBeNull()
         expect(texts[6]).toContain(backupDate(17_000_000_000))
+        // MC-299 8: a restore names the backup used, and an older one is named as a fallback from the newest.
+        expect(texts[8]).toContain(backupDate(17_000_000_000))
+        expect(texts[9]).toContain(backupDate(16_000_000_000))
+        expect(texts[9]).toContain(backupDate(17_000_000_000))
+        expect(texts[8]).not.toMatch(/main save file could not be read/)
     })
 
     test('the archiving notice is the text the block store\'s boot pass has always shown, with no string of its own', () => {
@@ -382,6 +397,32 @@ describe('the recovery screens', () => {
         expect(failed.paragraphs).toContain(text().recoveryListFailed)
         expect(failed.paragraphs).not.toContain(text().recoveryNoCandidates)
         expect(failed.details).toBe('the listing failed')
+    })
+
+    test('the restore-newest offer replaces the convert offer, and the import button follows it (B3-Q6)', () => {
+        const restore = recoveryOffersScreen({ shown: [], hasOlder: false, listFailed: null, offers: { convert: true, restoreNewest: true, import: true, freshStart: true } })
+        expect(restore.buttons.map((button) => button.key)).toEqual(['recoveryRestoreOffer', 'recoveryImportOffer', 'recoveryFreshOffer'])
+        const convert = recoveryOffersScreen({ shown: [], hasOlder: false, listFailed: null, offers: { convert: true, restoreNewest: false, import: true, freshStart: false } })
+        expect(convert.buttons.map((button) => button.key)).toEqual(['recoveryConvertOffer', 'recoveryImportOffer'])
+    })
+
+    test('the restore confirmation names the newest backup, never claims a main file existed, and has Cancel first and focused', () => {
+        const question = recoveryRestoreScreen(17_000_000_000, false)
+        expect(keysOf(question)).toEqual(['recoveryCancel', 'recoveryRestoreGo'])
+        expect(question.model.focus).toBe('recoveryCancel')
+        expect(question.model.title).toContain(backupDate(17_000_000_000))
+        expect(question.model.paragraphs.join(' ')).not.toMatch(/main save file could not be read/)
+    })
+
+    test('the restore confirmation says "no main save file" only when that is known, and the older-backup question names both dates', () => {
+        expect(recoveryRestoreScreen(17_000_000_000, false).model.paragraphs.join(' ')).toContain('no main save file')
+        expect(recoveryRestoreScreen(17_000_000_000, null).model.paragraphs.join(' ')).not.toContain('no main save file')
+        const older = recoveryOlderBackupScreen(17_000_000_000, 16_000_000_000)
+        expect(keysOf(older)).toEqual(['recoveryCancel', 'recoveryOlderGo'])
+        expect(older.model.focus).toBe('recoveryCancel')
+        const shown = JSON.stringify(older.model)
+        expect(shown).toContain(backupDate(17_000_000_000))
+        expect(shown).toContain(backupDate(16_000_000_000))
     })
 
     test('every confirmation has Cancel first and focused, and only the second button agrees', () => {

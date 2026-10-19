@@ -14,11 +14,12 @@ import { residentSetOf } from './residencyPolicy'
 import { assembleCharacter, assembleDatabase, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
 import { createListDerivation } from './lists/derive'
 import { defaultKeyEnv, type KeyEnv } from './format'
-import { firstLifeGrant } from './firstLife'
+import { firstLifeGrant, type FirstLifeLabel, type GrantResult } from './firstLife'
 import type { Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
 import { probeNumberedBackups, seedStore2Profile } from './bootSeed'
 import { setStore2BootSession, type BlockedReason, type Store2BootEnv, type Store2BootNotice, type Store2BootResult, type Store2LegacyReadOnlyReason } from './bootActive'
+import { createBootImportTarget, type BootImportEnd, type BootImportTarget } from './legacy/bootImport'
 import { convertLegacyProfile, convertLegacyWithout, type LegacyDecoders } from './legacy/convert'
 import type { SkippedLegacyEntry } from './legacy/lenient'
 import type { IncompleteItem, ResolveOptions } from './legacy/resolve'
@@ -61,6 +62,8 @@ export interface Store2RecoveryRequest {
     decoders?: LegacyDecoders
     /** The tests' seam of a conversion. */
     resolve?: ResolveOptions
+    /** Runs the picker and the file flow of a `.bin` import with the given installer; absent, the boot offers no import. */
+    importBackup?: (target: BootImportTarget) => Promise<BootImportEnd>
 }
 
 /** What the dispatch shows. W3 supplies the screens; the dispatch only calls these. */
@@ -74,12 +77,15 @@ export interface Store2BootUi {
      * a re-run that follows this page's own cleared marker. "Nothing was changed" is shown only when it is false.
      */
     blocked(blocked: { reason: BlockedReason, detail: string, mayHaveWritten: boolean }): Promise<void>
-    /** No main file but numbered backups: the backups are the profile, never seeded over. */
-    offerRestoreOrImport(backups: readonly number[]): Promise<void>
+    /**
+     * No main file but numbered backups: the backups are the profile, never seeded over. The person restores the newest
+     * backup or a backup file; the screen is asked again after either backs out.
+     */
+    offerRestoreOrImport(backups: readonly number[]): Promise<'restore-newest' | 'import'>
     /** A legacy profile is about to be converted. `false` declines: nothing is written. */
     confirmConvert(): Promise<boolean>
-    /** After a decline: convert after all, or import a backup instead (not available yet, so the dispatch stops). */
-    declined(): Promise<'convert' | 'import'>
+    /** After a decline: convert after all, or import a backup file instead. `importAvailable` is false when the boot cannot import (a re-run of this page's own conversion). */
+    declined(importAvailable: boolean): Promise<'convert' | 'import'>
     /**
      * Nothing decodes strictly. Converting from a lenient read leaves out the blocks named here (possibly none); the person
      * must agree before the marker. `decline` writes nothing and the question comes back at the next start.
@@ -120,6 +126,8 @@ export interface Store2DispatchDeps {
     decoders?: LegacyDecoders
     /** The ids and clock of a conversion's placeholder characters (the tests' seam). */
     resolve?: ResolveOptions
+    /** The page's file flow for a `.bin` import (`loadBackupAtBoot`); absent, no import is offered. */
+    importBackup?: (target: BootImportTarget) => Promise<BootImportEnd>
 }
 
 /** The state a round hands the next: open a new session and classify again. */
@@ -210,7 +218,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
     }
 
     function recoveryRequest(decision: SessionDecision, session: Store2Session): Store2RecoveryRequest {
-        return { decision, session, env, lists, keyEnv, decoders: deps.decoders, resolve: deps.resolve }
+        return { decision, session, env, lists, keyEnv, decoders: deps.decoders, resolve: deps.resolve, importBackup: deps.importBackup }
     }
 
     /** The session's backend as every dispatch path uses it: a mutating call on it sets `mayHaveWritten`. */
@@ -319,6 +327,112 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         return { kind: 'store2', database, session, notices }
     }
 
+    /**
+     * The row-1 grant with a label override. Only a row-1 decision can carry one: a restore or an import that crashes
+     * after its marker must classify as row 10 or row 11, never as the row 9 re-run that seeds an empty profile.
+     */
+    function labelledGrant(session: Store2Session, label: FirstLifeLabel): GrantResult {
+        const decision = session.decision
+        if (!(decision.row === 1 && decision.mode === 'first-life')) {
+            return { status: 'refused', reason: 'label-not-row-1', detail: `Boot row ${decision.row ?? 'none'} cannot restore or import under a first-life marker.` }
+        }
+        return firstLifeGrant({ decision, commitRead: session.commitRead, startupClear: session.startupClear }, { label })
+    }
+
+    /** After an install: the re-flush a Tauri page owes when the write was not confirmed, then the installed profile opens. */
+    async function openInstalled(session: Store2Session, backend: Store2Backend, installed: { manifestKey: string, flushed: boolean | undefined }): Promise<Round> {
+        mayHaveWritten = true
+        if (installed.flushed !== true && session.reflush !== null) {
+            const reflushed = await reflushTopLevel(backend)
+            if (!reflushed.ok) {
+                raise({ name: 'flush-unconfirmed' })
+            }
+        }
+        return openStored(session, installed.manifestKey, { fence: 'absent' })
+    }
+
+    /**
+     * A `.bin` import at row 1 (the offer screen, the declined conversion). The marker is labelled `import`. `null`:
+     * the person backed out or a refusal was shown, nothing was installed, and the caller asks again.
+     */
+    async function importFromFile(session: Store2Session, backend: Store2Backend): Promise<Round | null> {
+        if (deps.importBackup === undefined) {
+            return { kind: 'stopped' }
+        }
+        const granted = labelledGrant(session, 'import')
+        if (granted.status === 'refused') {
+            return stop('first-life-refused', granted.detail)
+        }
+        const target = createBootImportTarget({
+            backend, entry: { kind: 'first-life', grant: granted.grant }, owner: session.ownerId, lists, env: keyEnv,
+            resolve: deps.resolve, oldData: { store: env.store, listBackupTimes: env.listBackupTimes }, upstreamMainFile: env.upstreamMainFile,
+        }, env.readColdStorageItem)
+        const end = await deps.importBackup(target)
+        if (end.kind === 'cancelled') {
+            // The picked file's assets may already be copied.
+            mayHaveWritten = true
+            return null
+        }
+        const result = end.result
+        switch (result.status) {
+            case 'reclassify':
+                return RECLASSIFY
+            case 'blocked':
+                return stop(result.reason, result.detail)
+            case 'exit':
+                throw new TypeError('A first-life import has no exit outcome.')
+            case 'installed':
+                return openInstalled(session, backend, result)
+        }
+    }
+
+    /**
+     * "Restore the newest backup" when there is no main file: the strict conversion of the newest numbered backup that
+     * decodes, under a marker labelled `convert` (a crash classifies as row 10). The person chose the newest backup
+     * already, so only what could not be brought in is asked; the notice names the backup that was used, and says so when
+     * it is not the newest. Nothing decodes strictly: that is a stop, never the lenient read of a main file that is not there.
+     * `null`: declined, ask again.
+     */
+    async function restoreNewest(session: Store2Session, backend: Store2Backend, backups: readonly number[]): Promise<Round | null> {
+        const granted = labelledGrant(session, 'convert')
+        if (granted.status === 'refused') {
+            return stop('first-life-refused', granted.detail)
+        }
+        const newest = Math.max(...backups)
+        const result = await convertLegacyProfile({
+            store: env.store,
+            listBackupTimes: env.listBackupTimes,
+            readColdStorageItem: env.readColdStorageItem,
+            backend,
+            entry: { kind: 'first-life', grant: granted.grant },
+            owner: session.ownerId,
+            lists,
+            env: keyEnv,
+            decoders: deps.decoders,
+            resolve: deps.resolve,
+        }, {
+            confirmIncomplete: (items) => ui.confirmIncomplete(items),
+            confirmFromBackup: async () => true,
+        })
+        switch (result.status) {
+            case 'declined':
+                return null
+            case 'all-failed':
+                return stop('convert-read-failed', 'No numbered backup decodes strictly.')
+            case 'reclassify':
+                return RECLASSIFY
+            case 'blocked':
+                return stop(result.reason, result.detail)
+            case 'exit':
+                throw new TypeError('A first-life restore has no exit outcome.')
+            case 'installed':
+                if (result.fromBackup !== null) {
+                    raise({ name: 'restored-from-backup', backup: result.fromBackup, newest })
+                }
+                return openInstalled(session, backend, result)
+        }
+    }
+
     /** The first-life seed: the backups are looked at first, and only an empty store is ever seeded. */
     async function seed(session: Store2Session, allowBackupOffer: boolean): Promise<Round> {
         const backend = backendOf(session)
@@ -331,8 +445,16 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 return stop('backups-unlistable', probe.reason)
             }
             if (probe.status === 'some') {
-                await ui.offerRestoreOrImport(probe.backups)
-                return { kind: 'stopped' }
+                // The person restores the newest backup or a backup file; backing out of either asks again.
+                for (;;) {
+                    const answer = await ui.offerRestoreOrImport(probe.backups)
+                    const next = answer === 'import'
+                        ? await importFromFile(session, backend)
+                        : await restoreNewest(session, backend, probe.backups)
+                    if (next !== null) {
+                        return next
+                    }
+                }
             }
         }
         const granted = firstLifeGrant(session)
@@ -381,10 +503,24 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             confirmIncomplete: (items: readonly IncompleteItem[]) => ui.confirmIncomplete(items),
             confirmFromBackup: async (backup: number) => await ui.confirmFromBackup(backup) === 'convert',
         }
+        /** After a decline: `null` converts after all; an import that backs out shows the question again. */
+        async function declinedFlow(): Promise<Round | null> {
+            for (;;) {
+                // A re-run of this page's own conversion (row 9) is not row 1, so it cannot import under a first-life marker.
+                if (await ui.declined(ask && deps.importBackup !== undefined) === 'convert') {
+                    return null
+                }
+                const next = ask ? await importFromFile(session, backend) : { kind: 'stopped' as const }
+                if (next !== null) {
+                    return next
+                }
+            }
+        }
         for (;;) {
             if (ask && !(await ui.confirmConvert())) {
-                if (await ui.declined() === 'import') {
-                    return { kind: 'stopped' }
+                const next = await declinedFlow()
+                if (next !== null) {
+                    return next
                 }
                 continue
             }
@@ -409,11 +545,13 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 })
             }
             switch (result.status) {
-                case 'declined':
-                    if (await ui.declined() === 'import') {
-                        return { kind: 'stopped' }
+                case 'declined': {
+                    const next = await declinedFlow()
+                    if (next !== null) {
+                        return next
                     }
                     continue
+                }
                 case 'reclassify':
                     return RECLASSIFY
                 case 'blocked':

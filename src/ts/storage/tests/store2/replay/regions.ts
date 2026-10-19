@@ -27,6 +27,7 @@
  * (those are Tauri's) and where one tab per actor is the page model: a tab has a connection of its own, as a Node actor has a
  * client of its own, so the region's `page` names do not apply.
  */
+import type { FirstLifeLabel } from 'src/ts/storage/store2/firstLife'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import type { PickResult } from 'src/ts/storage/store2/recoveryPick'
 import {
@@ -56,8 +57,11 @@ export type RegionStep =
     | { do: 'unpin' }
     | { do: 'gc' }
     | { do: 'exit', kind: 'convert' | 'import' | 'seed' }
-    /** First-life install on the page's boot facts: the unfenced marker and the staged install (`refused` when the boot is not first life). */
-    | { do: 'firstLife' }
+    /**
+     * First-life install on the page's boot facts: the unfenced marker and the staged install (`refused` when the boot is not first life).
+     * `label` is a boot restore (`convert`) or a boot `.bin` import (`import`): the marker carries it, so a crash classifies as row 10 or 11.
+     */
+    | { do: 'firstLife', label?: FirstLifeLabel }
     /** The fenced exit of that kind, and the shared installer on its marker. */
     | { do: 'exitInstall', kind: 'convert' | 'import' | 'seed' }
     /** Lists the candidates and picks and installs the newest, or the planted candidate with `candidate: true`. */
@@ -641,6 +645,26 @@ export const REGIONS: readonly RegionConfig[] = [
         faults: { ...faults(0.08, Infinity, 1, 6), flush: true }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 24, minExercised: 0.6,
         floors: { 'restart:cleared': 0.3, 'firstLife:installed': 0.25, 'firstLife:upload-failed': 0.4 },
     },
+    {
+        id: 'R19e', name: 'boot-import-tauri-crash-mid-install', covers: 'B3c: a Tauri boot .bin import (first-life marker labelled import) interrupted by an unflushed write and a restart that drops it classifies as row 11 and is never cleared and re-run as a seed (row 9)',
+        backends: ['tauri'], start: 'no-commit-key', garbage: 0,
+        actors: [
+            // After the restart the page holds the import's own marker (or the finished install): a grant is refused either way, and the
+            // start-up clear of the new page never removes the marker, which only a row-9 seed or convert marker would allow.
+            actor('a', A, [open, { do: 'firstLife', label: 'import' }, { do: 'restart' }, firstLife], { device: 'phone' }),
+        ],
+        faults: { ...faults(0.08, Infinity, 1, 6), flush: true }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 24, minExercised: 0.6,
+        floors: { 'restart': 0.7, 'firstLife:upload-failed': 0.4, 'firstLife:refused': 0.7 },
+    },
+    {
+        id: 'R19f', name: 'boot-restore-tauri-crash-mid-install', covers: 'B3c: a Tauri boot restore of the newest backup (first-life marker labelled convert, no main file) interrupted by an unflushed write and a restart that drops it classifies as row 10 and is never cleared and re-run as a seed (row 9)',
+        backends: ['tauri'], start: 'no-commit-key', garbage: 0,
+        actors: [
+            actor('a', A, [open, { do: 'firstLife', label: 'convert' }, { do: 'restart' }, firstLife], { device: 'phone' }),
+        ],
+        faults: { ...faults(0.08, Infinity, 1, 6), flush: true }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 24, minExercised: 0.6,
+        floors: { 'restart': 0.7, 'firstLife:upload-failed': 0.4, 'firstLife:refused': 0.7 },
+    },
 ]
 
 // ---- Running a region ----
@@ -780,7 +804,7 @@ async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, 
             return { label: `exit:${outcomeLabel(result)}`, kind: result.status }
         }
         case 'firstLife': {
-            const result = await actor.firstLife(tag)
+            const result = await actor.firstLife(tag, undefined, undefined, step.label)
             if (result.status === 'refused') {
                 return { label: `firstLife:refused:${result.reason}`, kind: 'refused' }
             }

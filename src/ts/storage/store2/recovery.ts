@@ -74,6 +74,8 @@ export interface OfferInput {
     candidateCount: number
     /** Whether the upstream main file exists; `null` when that could not be checked. */
     upstreamMainFile: boolean | null
+    /** Whether the store holds a numbered backup; false when none or when that could not be checked. */
+    numberedBackups: boolean
     /** Whether any candidate passed its validation in this session. */
     candidatePassed: boolean
 }
@@ -82,8 +84,10 @@ export interface ScreenOffers {
     readOnly: boolean
     /** Picking a listed candidate. */
     pick: boolean
-    /** (a) re-run the conversion. */
+    /** (a) re-run the conversion: offered while the old data holds a main file or numbered backups (MC-299 3). */
     convert: boolean
+    /** The conversion with no main file to speak of: the offer is worded as "restore the newest backup". Implies `convert`. */
+    restoreNewest: boolean
     /** (b) import a `.bin`. */
     import: boolean
     /** (c) start a new empty profile, behind its own confirmation. */
@@ -93,17 +97,19 @@ export interface ScreenOffers {
 /**
  * What the screen offers (G4). A `.bin` import is offered whatever the
  * candidates are, so an upstream backup stays reachable when every candidate
- * fails; the conversion only while an upstream main file exists; a fresh start
- * only until a candidate has passed validation. A too-new state offers nothing.
+ * fails; the conversion only while an upstream main file or a numbered backup
+ * exists; a fresh start only until a candidate has passed validation. A too-new
+ * state offers nothing.
  */
 export function screenOffers(input: OfferInput): ScreenOffers {
     if (input.tooNew) {
-        return { readOnly: true, pick: false, convert: false, import: false, freshStart: false }
+        return { readOnly: true, pick: false, convert: false, restoreNewest: false, import: false, freshStart: false }
     }
     return {
         readOnly: false,
         pick: input.candidateCount > 0,
-        convert: input.upstreamMainFile === true,
+        convert: input.upstreamMainFile === true || input.numberedBackups,
+        restoreNewest: input.upstreamMainFile !== true && input.numberedBackups,
         import: true,
         freshStart: !input.candidatePassed,
     }

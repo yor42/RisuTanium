@@ -40,7 +40,8 @@ import { reloadOntoRestoredState } from "./internalBackup";
 import { saveFirst, SAVE_FIRST_BOUND_MS } from "./storeRestore";
 import { getPageStorageMode } from "../storage/pageStorageMode";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
-import { announceStore2Import, binChangeText, checkStore2Import, commitStore2Import, confirmDatabaseSize, confirmLeftOut, createBinImportReader, decodeBinDatabase, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
+import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
+import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmDatabaseSize, confirmLeftOut, createBinImportReader, decodeBinDatabase, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -946,7 +947,9 @@ function shownSkippedNames(names: readonly string[]): string[] {
  * guard that asks about unsaved edits once.
  */
 interface Store2BinImport {
-    target: Store2ImportTarget;
+    /** The page's committer and backend; null on a boot import, whose installer is `boot`. */
+    target: Store2ImportTarget | null;
+    boot: BootImportTarget | null;
     index: ColdEntryIndex;
     entry: BackupIndexEntry;
     databaseBytes: Uint8Array | null;
@@ -980,18 +983,37 @@ function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays:
     return notices;
 }
 
-export function LoadLocalBackup(){
+/** A `.bin` import at start-up: the boot's installer, and the callback that ends the flow with what it came to. */
+interface BootBinRun {
+    target: BootImportTarget;
+    done: (end: BootImportEnd) => void;
+}
+
+/**
+ * The start-up import of a `.bin`: the same file flow as the Settings restore, with the boot's installer as its target.
+ * Resolves once the flow ends however it ends; `cancelled` means nothing was written and the boot may ask again.
+ */
+export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEnd> {
+    return new Promise<BootImportEnd>((resolve) => {
+        LoadLocalBackup({ target, done: resolve });
+    });
+}
+
+export function LoadLocalBackup(boot?: BootBinRun){
     // A restore replaces the database under any work still writing into it.
     // It is refused before the picker opens, again when the picker returns,
     // and again immediately before the database write, since work can start
     // during any of the waits in between.
     if (refuseBackupLoadWhileBusy()) {
+        boot?.done({ kind: 'cancelled' });
         return;
     }
     try {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.bin';
+        // What a boot import came to; `cancelled` until the boot's installer answers.
+        let bootEnd: BootImportEnd = { kind: 'cancelled' };
         const restoreSelectedFile = async (busy: BusyHandle) => {
             if (!input.files || input.files.length === 0) {
                 input.remove();
@@ -1013,8 +1035,11 @@ export function LoadLocalBackup(){
             // tail below. Every precondition that can be known now is checked
             // before the file is read: the session, the committer, a bulk marker
             // of another page, and this tab's unsaved edits are saved first.
+            // The import target decides how cold-storage entries are handled, not the residency: a boot
+            // import (`boot`) has no page mode yet and must still never write a legacy unit, because the
+            // old upstream profile's units of the same ids are still the store's.
             let store2Target: Store2ImportTarget | null = null;
-            if (getPageStorageMode().kind === 'store2') {
+            if (boot === undefined && getPageStorageMode().kind === 'store2') {
                 store2Target = await checkStore2Import();
                 if (store2Target === null) {
                     return;
@@ -1060,7 +1085,7 @@ export function LoadLocalBackup(){
             // now so that it is decoded, and a large one announced, before the
             // first asset is written.
             let store2Import: Store2BinImport | null = null;
-            if (store2Target !== null) {
+            if (store2Target !== null || boot !== undefined) {
                 alertWait('Checking local backup...');
                 try {
                     const scan = await scanBinForImport(file, backupEntries);
@@ -1068,7 +1093,7 @@ export function LoadLocalBackup(){
                         alertError('Failed, Is file corrupted?');
                         return;
                     }
-                    store2Import = { target: store2Target, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
+                    store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
                     noteImportPhase('scanned');
                 } catch (e) {
                     console.error(e);
@@ -1178,7 +1203,7 @@ export function LoadLocalBackup(){
             try {
                 // With the tab lock held, the edits this tab could not save are
                 // asked about before the copy, not after hours of it.
-                if (store2Import !== null && releaseExclusiveHold && !await store2Import.guard.check()) {
+                if (store2Import !== null && store2Import.boot === null && releaseExclusiveHold && !await store2Import.guard.check()) {
                     return;
                 }
                 let pendingDatabase: Uint8Array | null = null;
@@ -1442,6 +1467,21 @@ export function LoadLocalBackup(){
                     if (!releaseExclusiveHold) {
                         releaseDbWriteLock = await dbWriteLock.acquire();
                     }
+                    if (store2Import.boot !== null) {
+                        // A boot import has no earlier saved state and no page to reload: the dispatch opens what was installed.
+                        alertWait('Loading backup...');
+                        bootEnd = await commitBootImport({
+                            target: store2Import.boot,
+                            decode: async () => (await decodeBinDatabase(databaseBytes)).tree,
+                            reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
+                        });
+                        alertStore.set({ type: 'none', msg: '' });
+                        return;
+                    }
+                    if (store2Import.target === null) {
+                        alertError('Failed, Is file corrupted?');
+                        return;
+                    }
                     if (!await store2Import.guard.check()) {
                         return;
                     }
@@ -1700,12 +1740,18 @@ export function LoadLocalBackup(){
                 await restoreSelectedFile(busy);
             } finally {
                 busy.end();
+                boot?.done(bootEnd);
             }
         };
+        // A cancelled picker never fires `change`; a boot import must still end so the boot can ask again.
+        if (boot !== undefined) {
+            input.addEventListener('cancel', () => boot.done({ kind: 'cancelled' }));
+        }
 
         input.click();
     } catch (error) {
         console.error(error);
         alertError('Failed, Is file corrupted?')
+        boot?.done({ kind: 'cancelled' });
     }
 }

@@ -11,8 +11,9 @@ import { builtCommitOf, planScopedEncode, type ScopedPlan } from '../codec/scope
 import { carryManifest } from '../codec/manifest'
 import { CodecError, type ListDerivation } from '../codec/types'
 import {
-    defaultKeyEnv, encodeUnit, readUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList, type Manifest,
+    defaultKeyEnv, readUnit, UNIT_TYPE, type KeyEnv, type LegacyList, type Manifest,
 } from '../format'
+import { withLegacyKeep } from './convert'
 import {
     LegacyReadError, readLegacyUnit, resolveLegacyTree, type IncompleteItem, type LegacyEntryReader, type ResolvedLegacyTree,
     type ResolveOptions,
@@ -111,25 +112,16 @@ export interface ImportBuild {
  * boot, which add their own `convertedFrom` or label.
  */
 export function buildImport(plan: ScopedPlan, keep: ImportKeep = {}): ImportBuild {
-    const list = keep.list
-    return {
-        newUnits: plan.newUnits + (list === undefined ? 0 : 1),
+    const carried: ImportBuild = {
+        newUnits: plan.newUnits,
         build(context) {
             const built = builtCommitOf(plan.finalize(context))
             built.manifest.body = carryManifest(keep.base, built.manifest.body)
-            if (list !== undefined) {
-                const key = context.mint.unit()
-                const bytes = encodeUnit(UNIT_TYPE.legacyList, list)
-                built.units.push({ key, bytes })
-                built.manifest.body.fixed.legacyKeep = {
-                    unit: refOfFrame(key, bytes),
-                    v: list.v,
-                    files: list.files.map(file => ({ key: file.key, status: file.status })),
-                }
-            }
             return built
         },
     }
+    // An explicit list replaces the carried keep set (it is written after the carry), through the conversion's own wrapper.
+    return keep.list === undefined ? carried : withLegacyKeep(carried, keep.list)
 }
 
 /** The character an archived character's unit holds, read through `reader`; null when the unit cannot supply one. A failed read rejects. */
@@ -224,7 +216,22 @@ async function baseManifestOf(backend: Store2Backend, read: Store2Read): Promise
     return { status: 'ok', manifest: unit.value.body as Manifest }
 }
 
-export async function importLegacyTree(request: ImportRequest, hooks: ImportHooks): Promise<ImportOutcome> {
+/** The plan of a tree that was repaired, resolved and confirmed, with the summary of the repairs. */
+export interface PreparedImport {
+    plan: ScopedPlan
+    repair: RepairSummary
+}
+
+/** What `prepareImport` ends in before any write: everything of `ImportOutcome` that is decided without the commit key. */
+export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-failed' | 'repair-refused' | 'unsavable' }>
+
+/**
+ * Steps 1 to 3 of the import, shared by the page commit and the boot installer: repairs, resolve, the incomplete-data
+ * question, the plan. Nothing is written. The decoded tree is released once resolved.
+ */
+export async function prepareImport(
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve'>, hooks: ImportHooks,
+): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
         throw new TypeError('The decoded tree was already released.')
@@ -258,6 +265,15 @@ export async function importLegacyTree(request: ImportRequest, hooks: ImportHook
     if ('status' in plan) {
         return plan
     }
+    return { plan, repair }
+}
+
+export async function importLegacyTree(request: ImportRequest, hooks: ImportHooks): Promise<ImportOutcome> {
+    const prepared = await prepareImport(request, hooks)
+    if ('status' in prepared) {
+        return prepared
+    }
+    const { plan, repair } = prepared
 
     // The base is read from the very commit-key read the commit is made over.
     let read: Store2Read

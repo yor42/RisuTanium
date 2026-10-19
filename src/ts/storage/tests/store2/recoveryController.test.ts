@@ -8,6 +8,21 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStoreKind: async () => { throw new Error('The page store is not selected in this test.') },
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
+// The tree library behind a boot import repairs characters through app modules that need a browser; the protocol under test
+// here is the screen and the exit, so the library is a stand-in that plans the small tree with the conversion's planner.
+// The real library is covered where a browser environment exists (`bootImport.test.ts`).
+vi.mock(import('src/ts/storage/store2/legacy/importTree'), async () => {
+    const { planWholeTreeInstall } = await import('src/ts/storage/store2/legacy/install')
+    const { buildSmall: small, fakeLists: lists } = await import('./codecFixtures')
+    return {
+        prepareImport: async (request: { source: { tree: unknown } }) => {
+            request.source.tree = null
+            return { plan: await planWholeTreeInstall(JSON.parse(JSON.stringify(small(2))), { lists, convertedFrom: 'import' }), repair: { dropped: 0, changed: 0, recovered: 0 } }
+        },
+        buildImport: (plan: { newUnits: number, build: unknown }) => ({ newUnits: plan.newUnits, build: plan.build }),
+    } as never
+})
+
 import { changeLanguage, language } from 'src/lang'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
@@ -31,7 +46,7 @@ import { listRecoveryCandidates, type ExitResult } from 'src/ts/storage/store2/r
 import { installPick, pickCandidate, type InstallResult, type PickResult } from 'src/ts/storage/store2/recoveryPick'
 import { resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import { Store2Session } from 'src/ts/storage/store2/session'
-import { pickButtonKey, type BootScreenModel } from 'src/ts/storage/store2/ui/bootText'
+import { backupDate, pickButtonKey, type BootScreenModel } from 'src/ts/storage/store2/ui/bootText'
 import { runRecovery, type RecoveryCalls, type RecoveryPort } from 'src/ts/storage/store2/ui/recoveryController'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createClock, createPeerDouble, testEnv } from '../store2SaveKit'
@@ -161,6 +176,11 @@ interface RigOptions {
     legacy?: boolean
     calls?: Partial<RecoveryCalls>
     trees?: number
+    /** Numbered backups the store reports, newest first; each is planted as bytes the fake decoder reads. */
+    backups?: number[]
+    /** The page's file flow for a `.bin` import; absent, the screen offers no import. */
+    importBackup?: Store2RecoveryRequest['importBackup']
+    decoders?: LegacyDecoders
     listStore?: (prefix: string) => Promise<string[]>
 }
 
@@ -225,7 +245,7 @@ async function rig(options: RigOptions = {}): Promise<Rig> {
     const ui: Store2BootUi = {
         notice: () => { },
         blocked: async () => { },
-        offerRestoreOrImport: async () => { },
+        offerRestoreOrImport: async () => 'import',
         confirmConvert: async () => { throw new Error('Not asked.') },
         declined: async () => { throw new Error('Not asked.') },
         confirmFromBackup: async () => { throw new Error('Not asked.') },
@@ -240,11 +260,15 @@ async function rig(options: RigOptions = {}): Promise<Rig> {
     const bootEnv = {
         store,
         upstreamMainFile: async () => mainFile,
-        listBackupTimes: async () => [],
+        listBackupTimes: async () => options.backups ?? [],
         readColdStorageItem: async () => ({ status: 'missing' as const }),
     }
+    for (const backup of options.backups ?? []) {
+        store.files.set(`database/dbbackup-${backup}.bin`, new Uint8Array([4, 5, 6]))
+    }
     await dispatchStore2Boot(bootEnv, {
-        ui, kind, backend: async () => trace.backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders: LEGACY_DECODERS,
+        ui, kind, backend: async () => trace.backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders: options.decoders ?? LEGACY_DECODERS,
+        importBackup: options.importBackup,
     })
     expect(requests).toHaveLength(1)
     const request = requests[0]
@@ -1314,5 +1338,162 @@ describe('the reload path: the next start classifies what each ended screen left
         expect(Array.from(await t.commitKey() as Uint8Array)).toEqual(Array.from(before as Uint8Array))
         expect((await t.reboot('indexeddb')).decision.row).toBe(4)
         expect([...keysBefore].filter((key) => !new Set(t.memory.snapshot().keys()).has(key))).toEqual([])
+    })
+})
+
+describe('the recovery screen restores the newest backup and imports a backup file (B3c, B3-Q6)', () => {
+    const IMPORT_READER = { read: async () => ({ status: 'missing' as const }) }
+    const hooks = { confirmIncomplete: async () => true }
+
+    test('new behaviour: without a file flow the screen has no import button', async () => {
+        const t = await rig()
+        t.start()
+        await t.toOffers()
+        expect(keysOf(t.port.current)).not.toContain('recoveryImportOffer')
+    })
+
+    test('new behaviour: the import button is there with a file flow, and a flow that backs out returns to the offers having written nothing', async () => {
+        const importBackup = vi.fn(async () => ({ kind: 'cancelled' as const }))
+        const t = await rig({ importBackup })
+        t.start()
+        await t.toOffers()
+        expect(keysOf(t.port.current)).toContain('recoveryImportOffer')
+        await t.port.press('recoveryImportOffer')
+        await t.toOffers()
+        expect(importBackup).toHaveBeenCalledTimes(1)
+        expect(writesIn(t.trace.log)).toBe(0)
+    })
+
+    test('new behaviour: an import over the screen runs the fenced exit labelled import, installs and reloads; the first write follows the questions', async () => {
+        let labelOnInstall: string | null = null
+        const t = await rig({
+            importBackup: async (target) => {
+                const result = await target.install({ tree: legacyTree() }, IMPORT_READER, hooks)
+                return result.status === 'installed' || result.status === 'reclassify' || result.status === 'blocked' || result.status === 'exit'
+                    ? { kind: 'finished', result } : { kind: 'cancelled' }
+            },
+        })
+        t.start()
+        await t.toOffers()
+        await t.port.press('recoveryImportOffer')
+        await until(() => expect(t.port.reloads).toBe(1))
+        const key = classifyCommitRead({ bytes: await t.commitKey() })
+        expect(key.status).toBe('parsed')
+        if (key.status === 'parsed') {
+            labelOnInstall = key.value.staging === null ? 'cleared' : key.value.staging.label
+            expect(key.value.current).not.toBeNull()
+            expect(key.value.convertedFrom).toBe('import')
+        }
+        expect(labelOnInstall).toBe('cleared')
+    })
+
+    test('new behaviour: numbered backups with no main file offer "Restore the newest backup" in place of the convert offer', async () => {
+        const t = await rig({ backups: [200, 300] })
+        t.start()
+        await t.toOffers()
+        expect(keysOf(t.port.current)).toContain('recoveryRestoreOffer')
+        expect(keysOf(t.port.current)).not.toContain('recoveryConvertOffer')
+    })
+
+    test('new behaviour: restoring the newest backup asks first, converts under the fenced exit and reloads, never asking the main-file question', async () => {
+        const t = await rig({ backups: [300, 200] })
+        t.start()
+        await t.toOffers()
+        await t.port.press('recoveryRestoreOffer')
+        await until(() => expect(t.port.current.title).toBe(text().recoveryRestoreTitle(backupDate(300))))
+        expect(t.counts.convert).toBe(0)
+        await t.port.press('recoveryRestoreGo')
+        await until(() => expect(t.port.reloads).toBe(1))
+        expect(t.counts.convert).toBe(1)
+        expect(t.counts.convertWithout).toBe(0)
+        expect(t.port.screens.map((screen) => screen.title)).not.toContain(text().fromBackupTitle)
+    })
+
+    test('new behaviour (C7): when no backup decodes strictly the restore stops before any write and never chains into the lenient main-file conversion', async () => {
+        const t = await rig({
+            backups: [200, 300],
+            decoders: { strict: async () => { throw new Error('does not decode') }, lenient: async () => { throw new Error('must not be called') } },
+        })
+        t.start()
+        await t.toOffers()
+        await t.port.press('recoveryRestoreOffer')
+        await t.port.press('recoveryRestoreGo')
+        await until(() => expect(t.port.current.title).toBe(text().blockedTitle))
+        expect(t.counts.convertWithout).toBe(0)
+        expect(writesIn(t.trace.log)).toBe(0)
+        await t.port.press('recoveryBack')
+        await t.toOffers()
+    })
+
+    /** Decoders whose first strict read fails: the newest of two backups does not decode, the older one does. */
+    function newestFailsDecoders(): LegacyDecoders {
+        let calls = 0
+        return {
+            strict: async () => {
+                calls++
+                if (calls === 1) {
+                    throw new Error('the newest does not decode')
+                }
+                return legacyTree()
+            },
+            lenient: async () => { throw new Error('must not be called') },
+        }
+    }
+
+    test('new behaviour (MC-299 8, C7): when the newest backup cannot be read the restore names both dates and asks before anything is written, then restores the older one', async () => {
+        const t = await rig({ backups: [17_000_000_000, 16_000_000_000], decoders: newestFailsDecoders() })
+        t.start()
+        await t.toOffers()
+        await t.port.press('recoveryRestoreOffer')
+        await t.port.press('recoveryRestoreGo')
+        await until(() => expect(t.port.current.title).toBe(text().recoveryOlderTitle(backupDate(16_000_000_000))))
+        expect(JSON.stringify(t.port.current)).toContain(backupDate(17_000_000_000))
+        expect(writesIn(t.trace.log), 'nothing is written while the question is up').toBe(0)
+        expect(t.port.reloads).toBe(0)
+        await t.port.press('recoveryOlderGo')
+        await until(() => expect(t.port.reloads).toBe(1))
+        expect(JSON.stringify(t.port.screens)).toContain(backupDate(16_000_000_000))
+    })
+
+    test('new behaviour: declining the older backup writes nothing, reloads nothing and returns to the offers', async () => {
+        const t = await rig({ backups: [17_000_000_000, 16_000_000_000], decoders: newestFailsDecoders() })
+        t.start()
+        await t.toOffers()
+        await t.port.press('recoveryRestoreOffer')
+        await t.port.press('recoveryRestoreGo')
+        await until(() => expect(t.port.current.title).toBe(text().recoveryOlderTitle(backupDate(16_000_000_000))))
+        await t.port.press('recoveryCancel')
+        await t.toOffers()
+        expect(writesIn(t.trace.log)).toBe(0)
+        expect(t.port.reloads).toBe(0)
+        expect(keysOf(t.port.current)).toContain('recoveryRestoreOffer')
+    })
+
+    test('new behaviour: when the newest backup is the one used, no older-backup question is asked', async () => {
+        const t = await rig({ backups: [17_000_000_000, 16_000_000_000] })
+        t.start()
+        await t.toOffers()
+        await t.port.press('recoveryRestoreOffer')
+        await t.port.press('recoveryRestoreGo')
+        await until(() => expect(t.port.reloads).toBe(1))
+        expect(t.port.screens.map((screen) => screen.title)).not.toContain(text().recoveryOlderTitle(backupDate(16_000_000_000)))
+    })
+
+    test('new behaviour: the restore body claims no missing main file when it is unknown whether one exists', async () => {
+        const unknown = await rig({ backups: [200, 300] })
+        unknown.request.env.upstreamMainFile = async () => { throw new Error('the main file could not be checked') }
+        unknown.start()
+        await unknown.toOffers()
+        await unknown.port.press('recoveryRestoreOffer')
+        await until(() => expect(unknown.port.current.title).toBe(text().recoveryRestoreTitle(backupDate(300))))
+        expect(unknown.port.current.paragraphs).toEqual([text().recoveryRestoreBodyUnknown])
+        expect(text().recoveryRestoreBodyUnknown).not.toContain('no main save file')
+
+        const missing = await rig({ backups: [200, 300] })
+        missing.start()
+        await missing.toOffers()
+        await missing.port.press('recoveryRestoreOffer')
+        await until(() => expect(missing.port.current.title).toBe(text().recoveryRestoreTitle(backupDate(300))))
+        expect(missing.port.current.paragraphs).toEqual([text().recoveryRestoreBody])
     })
 })
