@@ -2067,6 +2067,10 @@ export const languageEnglish = {
         `${asset === null ? 'The backup failed.' : `The backup stopped because ${asset} changed or could not be read while it was being saved.`} The backup file is incomplete and could not be deleted by the app. Do not use it: delete it yourself, then run the backup again.`,
     backupFailedAssetTooLarge: (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `The backup stopped because ${asset} is too large for a backup entry (the limit is about 4.29 GB), so it cannot be saved. ${file === 'untouched' ? 'Nothing was written to the file.' : file === 'deleted' ? 'The backup file was incomplete, so it was deleted.' : 'The backup file is incomplete and could not be deleted by the app. Do not use it: delete it yourself.'} The backup cannot include that asset until it is removed or made smaller, and running the backup again fails the same way.`,
+    backupOversizeConfirm: (items: string[]) =>
+        `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so they cannot be saved in it. Create the backup without them? Nothing has been written yet.\n\n${items.join('\n')}`,
+    backupOversizeLeftOut: (items: string[]) =>
+        `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupFailedNothingWritten: () =>
         "The backup failed before anything was written to the file. Run the backup again.",
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",

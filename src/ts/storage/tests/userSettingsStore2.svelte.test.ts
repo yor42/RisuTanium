@@ -6,7 +6,7 @@
  * store2 page keeps (save, partial save, load, internal load, dataset) stay. The two backstops behind the hidden button
  * are in `exportAsDatasetStore2.test.ts`, which runs the real functions.
  *
- * Both tests are compatibility guards (B5 G5): they hold before and after the B4 changes. The legacy-page test is the
+ * These are guards (B5 G5): the button follows the page storage mode, whatever the backup export does. The legacy-page test is the
  * control that shows the button is findable, so a hidden button on store2 is a result and not a selector miss.
  *
  * MOCKED: every module the component calls into (backup, restore, dataset, clean-up, alerts), the platform and the

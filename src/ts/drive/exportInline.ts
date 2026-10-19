@@ -72,6 +72,8 @@ export function inlineKeyOf(u: string, chaId: unknown): string {
 /** A stub's character as the unit entry of this export: the minted uuid the exported stub names, and the entry's bytes. */
 export interface MintedStubEntry {
     uuid: string
+    /** The character's name, for the prompt that names an entry too large for the file. */
+    name: string
     payload: ColdStorageBackupPayload
 }
 
@@ -93,7 +95,7 @@ function stubUnitEntry(character: Slot): MintedStubEntry | null {
         return null
     }
     const uuid = uuidv4()
-    return { uuid, payload: { key: uuid, backupName: getColdStorageBackupName(uuid), encoded } }
+    return { uuid, name: character.name, payload: { key: uuid, backupName: getColdStorageBackupName(uuid), encoded } }
 }
 
 /**
@@ -330,6 +332,64 @@ export function mergePluginStorage(collected: ColdStorageBackupCollection, plugi
         owners: owners.size > 0 ? owners : undefined,
         settledKeys: new Set([...(collected.settledKeys ?? []), ...plugin.ids]),
     }
+}
+
+/**
+ * The size at which a backup entry no longer fits: 4 GiB, 2^32 bytes. The container states an entry's length in 32 bits
+ * (`encodeBackupEntryHeader` in `exportWriters.ts`, and `LocalWriter.writeBackup`, which throws above 0xFFFFFFFF), and
+ * upstream's `LocalWriter.writeBackup` writes `new Uint32Array([data.byteLength])`, which wraps a length of 2^32 or more
+ * into a smaller one that no reader can parse. So an item of exactly this many bytes or more cannot be saved.
+ *
+ * Known limit: only what is sized before the writer opens is checked: the in-memory payloads of the first collection and
+ * the stub entries, and, where the desktop listing gives sizes (a full backup on Tauri), the assets. On the web, on
+ * Node and in the partial writer an asset's size is unknown until it is read, and the database entry and late payloads
+ * are encoded after the writer opens, so an item of this size there still fails the whole export loudly, as before.
+ * Sizing them earlier is a stage 0b carry (chunked Node upload changes what a Node page can hold).
+ */
+export const UPSTREAM_HARD_LIMIT_BYTES = 0x100000000
+
+/** An item the backup cannot carry because it is `size` bytes: its name for the prompt, and its size. */
+export interface OversizeItem {
+    name: string
+    size: number
+}
+
+/**
+ * `cold` without the units and stub entries of `limitBytes` or more, and the items left out. A unit left out is settled
+ * (the late collection does not carry it either) and is missing from the file; a stub whose entry is left out stays the
+ * page's own stub in the file and is imported as a placeholder, like an entity that could not be read. `cold` itself when
+ * nothing is too large.
+ */
+export function leaveOutOversizePayloads(cold: BackupColdStorage, limitBytes: number = UPSTREAM_HARD_LIMIT_BYTES): { cold: BackupColdStorage, items: OversizeItem[] } {
+    const items: OversizeItem[] = []
+    const droppedKeys: string[] = []
+    const payloads = cold.collected.payloads.filter((payload) => {
+        if (payload.encoded.byteLength < limitBytes) {
+            return true
+        }
+        droppedKeys.push(payload.key)
+        items.push({ name: cold.collected.owners?.get(payload.key)?.join(', ') ?? `Cold storage unit ${payload.key}`, size: payload.encoded.byteLength })
+        return false
+    })
+    const stubEntries = new Map<string, MintedStubEntry>()
+    const failedKeys = [...cold.failedKeys]
+    for (const [key, entry] of cold.stubEntries) {
+        if (entry.payload.encoded.byteLength < limitBytes) {
+            stubEntries.set(key, entry)
+            continue
+        }
+        items.push({ name: entry.name, size: entry.payload.encoded.byteLength })
+        failedKeys.push(key.split('\u0000')[0])
+    }
+    if (items.length === 0) {
+        return { cold, items }
+    }
+    const collected: ColdStorageBackupCollection = {
+        ...cold.collected,
+        payloads,
+        settledKeys: new Set([...(cold.collected.settledKeys ?? []), ...droppedKeys]),
+    }
+    return { cold: { ...cold, collected, stubEntries, failedKeys }, items }
 }
 
 /**

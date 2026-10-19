@@ -25,7 +25,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry } from "./exportInline";
+import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
@@ -286,7 +286,7 @@ interface ExportSession {
 }
 
 /** What the person was asked, or what was refused, when an export ended without writing a file. */
-export type ExportDeclinedCause = 'incomplete-data-declined' | 'save-dialog-cancelled' | 'partial-explanation-declined'
+export type ExportDeclinedCause = 'incomplete-data-declined' | 'save-dialog-cancelled' | 'partial-explanation-declined' | 'oversize-declined'
 
 /**
  * How an export ended. `saved`: the file was written and closed; `notices` holds the
@@ -300,8 +300,37 @@ export type ExportOutcome =
     | { status: 'declined', cause: ExportDeclinedCause }
     | { status: 'failed', cause: unknown }
 
-/** Options for a full or partial export; `ExportCollectionOptions` decides how stubs of a store2 page are carried. */
-export type BackupExportOptions = ExportCollectionOptions
+/**
+ * Options for a full or partial export. `ExportCollectionOptions` decides how stubs of a store2 page are carried;
+ * `limitBytes` is the size at which an item is named and left out (`UPSTREAM_HARD_LIMIT_BYTES`), which a test lowers to
+ * exercise the pre-flight without 4 GiB of data.
+ */
+export interface BackupExportOptions extends ExportCollectionOptions {
+    limitBytes?: number
+}
+
+/** `bytes` as GiB with two decimals, for the prompt that names an item too large for the file. */
+function formatGiB(bytes: number): string {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`
+}
+
+const describeOversize = (name: string, size: number): string => `${name} (${formatGiB(size)})`
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the items that are too large for it. `true` when
+ * there are none or the person confirms. Declining writes nothing: the writer has not been opened.
+ */
+async function confirmLeaveOut(items: readonly string[]): Promise<boolean> {
+    return items.length === 0 || await alertConfirm(language.backupOversizeConfirm([...items]))
+}
+
+/** The left-out items as the prompt and the final report name them. */
+function oversizeNames(assets: ReadonlyMap<string, { charName: string, assetName: string }>, oversizeAssets: readonly SizedAssetKey[], payloads: readonly OversizeItem[]): string[] {
+    return [
+        ...oversizeAssets.map((item) => describeOversize(describeBackupAsset(assets, item.key), item.size)),
+        ...payloads.map((item) => describeOversize(item.name, item.size)),
+    ]
+}
 
 /**
  * Runs a full or partial export so that no failure of it ends unreported: the
@@ -396,19 +425,10 @@ export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<Expo
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     alertWait("Saving local backup...")
     const db = getDatabase()
-    const cold = await collectBackupColdStorage(db, options)
-    const coldStoragePayloads = cold.collected
-    if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', coldStoragePayloads.owners)){
+    let cold = await collectBackupColdStorage(db, options)
+    if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', cold.collected.owners)){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
-
-    const writer = new LocalWriter()
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()))
-    if(!r){
-        alertError('Failed')
-        return { status: 'declined', cause: 'save-dialog-cancelled' }
-    }
-    session.writer = writer
 
     const assetMap = new Map<string, { charName: string, assetName: string }>()
     session.describeAsset = (key) => describeBackupAsset(assetMap, key)
@@ -459,7 +479,34 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     // atomic write; a dangling link is not listed. A key that reads as absent or
     // fails to read is reported as missing and the backup goes on.
     const store = await getAppStore()
-    const listing = await listAssetsForBackup(store)
+    let listing = await listAssetsForBackup(store)
+
+    // Before the writer opens, name everything a backup entry cannot hold and ask. Assets are sized only where the
+    // desktop listing gives sizes; the units and stub entries are sized from the bytes already in memory. Declining
+    // writes nothing. Continuing leaves the items out, and the asset keys and sizes are filtered in one step because the
+    // batch reader below finds an asset by its index in the sized list.
+    const limitBytes = options.limitBytes ?? UPSTREAM_HARD_LIMIT_BYTES
+    const oversizeAssets = listing.sized?.filter((item) => item.size >= limitBytes) ?? []
+    const oversizePayloads = leaveOutOversizePayloads(cold, limitBytes)
+    const leftOut = oversizeNames(assetMap, oversizeAssets, oversizePayloads.items)
+    if (!await confirmLeaveOut(leftOut)) {
+        return { status: 'declined', cause: 'oversize-declined' }
+    }
+    cold = oversizePayloads.cold
+    const coldStoragePayloads = cold.collected
+    if (listing.sized !== null && oversizeAssets.length > 0) {
+        const sized = listing.sized.filter((item) => item.size < limitBytes)
+        listing = { keys: sized.map((item) => item.key), sized }
+    }
+
+    const writer = new LocalWriter()
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()))
+    if(!r){
+        alertError('Failed')
+        return { status: 'declined', cause: 'save-dialog-cancelled' }
+    }
+    session.writer = writer
+
     const assetKeys = listing.keys
     // On the desktop the assets are read ahead of the writer in batches, and any
     // asset a batch did not deliver whole (or every asset, when there is no
@@ -545,10 +592,10 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
     const leftOutInlayNames = inlayResult.leftOut.map((left) => left.id)
-    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice) {
+    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice || leftOut.length > 0) {
         let message = missingAssets.length > 0
             ? 'Backup Successful, but the following assets were missing and skipped:\n\n'
-            : (lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted)
+            : (lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || leftOut.length > 0)
                 ? 'Backup Successful, but some data could not be included:\n\n'
                 : 'Backup Successful.\n\n'
         for (const key of missingAssets) {
@@ -577,6 +624,9 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         }
         if (repairNotice) {
             message += (message.endsWith('\n') ? '\n' : '\n\n') + repairNotice
+        }
+        if (leftOut.length > 0) {
+            message += (message.endsWith('\n') ? '\n' : '\n\n') + language.backupOversizeLeftOut(leftOut)
         }
         alertMd(message)
         return { status: 'saved', notices: [message] }
@@ -616,11 +666,20 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     alertWait("Saving partial local backup...")
     const db = getDatabase()
-    const cold = await collectBackupColdStorage(db, options)
-    const coldStoragePayloads = cold.collected
-    if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', coldStoragePayloads.owners)){
+    const collected = await collectBackupColdStorage(db, options)
+    if(!await confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners)){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+
+    // Before the writer opens, name the units and stub entries a backup entry cannot hold and ask. The partial backup
+    // lists no asset sizes, so an asset of 4 GiB or more still fails the export when it is reached, as before.
+    const oversizePayloads = leaveOutOversizePayloads(collected, options.limitBytes ?? UPSTREAM_HARD_LIMIT_BYTES)
+    const leftOut = oversizeNames(new Map(), [], oversizePayloads.items)
+    if (!await confirmLeaveOut(leftOut)) {
+        return { status: 'declined', cause: 'oversize-declined' }
+    }
+    const cold = oversizePayloads.cold
+    const coldStoragePayloads = cold.collected
 
     const writer = new LocalWriter()
     const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true))
@@ -756,10 +815,10 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     await writer.close()
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
-    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice) {
+    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice || leftOut.length > 0) {
         let message = missingAssets.length > 0
             ? 'Partial backup successful, but the following profile images were missing and skipped:\n\n'
-            : lateColdStorageReport
+            : (lateColdStorageReport || leftOut.length > 0)
                 ? 'Partial backup successful, but some data could not be included:\n\n'
                 : 'Partial backup successful.\n\n'
         for (const key of missingAssets) {
@@ -776,6 +835,9 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
         message += lateColdStorageReport
         if (repairNotice) {
             message += `\n\n${repairNotice}`
+        }
+        if (leftOut.length > 0) {
+            message += `\n\n${language.backupOversizeLeftOut(leftOut)}`
         }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
         alertMd(message)
