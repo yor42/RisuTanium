@@ -20,6 +20,7 @@ import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { MEASURE } from '../process/memory/measureFlag'
+import { pushImportPhase } from './importPhaseRing'
 import type { BusyHandle } from '../process/memory/busyActions'
 import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, type BackupIndexEntry } from './backupContainer'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
@@ -59,10 +60,14 @@ export interface Store2ImportTarget {
 
 const IMPORT_MEASURE_KEY = 'risu-measure-import'
 
+/** The copy loop notes a phase once per this many entries visited. */
+export const IMPORT_COPY_PHASE_EVERY = 5000
+
 /**
  * Measurement builds only (`MEASURE`), and only when `localStorage` says `on` under `risu-measure-import`: logs the
- * phase, the time since the page started and, where the engine reports it, the JS heap in use. A normal build folds the
- * condition away and logs nothing; the hook decides nothing.
+ * phase, the time since the page started and, where the engine reports it, the JS heap in use, and records the same in
+ * the `__risuImportPhases` ring (importPhaseRing.ts), the only output on a built page. A normal build folds the
+ * condition away and logs and records nothing; the hook decides nothing.
  */
 export function noteImportPhase(phase: string): void {
     if (!MEASURE) {
@@ -76,7 +81,9 @@ export function noteImportPhase(phase: string): void {
         return
     }
     const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize
-    console.info(`[import-measure] ${phase} t=${Math.round(performance.now())}ms heap=${heap === undefined ? 'n/a' : `${Math.round(heap / (1024 * 1024))}MiB`}`)
+    const t = Math.round(performance.now())
+    console.info(`[import-measure] ${phase} t=${t}ms heap=${heap === undefined ? 'n/a' : `${Math.round(heap / (1024 * 1024))}MiB`}`)
+    pushImportPhase(phase, t, heap === undefined ? null : Math.round(heap / (1024 * 1024)))
 }
 
 /**

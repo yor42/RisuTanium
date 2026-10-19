@@ -6,6 +6,7 @@ import { recordStartupCleanup } from '../startupCleanupState'
 import { getStore2BootSession } from './bootActive'
 import { batchPaceOf, runOldDataDeletion } from './oldData/delete'
 import type { Store2Session } from './session'
+import { installImportBench } from '../../drive/importBench'
 import { installGcMeasure } from './gc/gcMeasure'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
 
@@ -84,6 +85,7 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
             // takes both modules with it.
             installSweepDryRunMeasure({ session, store: env.store })
             installGcMeasure({ session, store: env.store, deletionActive: () => stepActive })
+            installImportBench()
         }
         if (session === null || !bootDidNotInstall(session)) {
             return null

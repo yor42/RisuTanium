@@ -41,7 +41,7 @@ import { saveFirst, SAVE_FIRST_BOUND_MS } from "./storeRestore";
 import { getPageStorageMode } from "../storage/pageStorageMode";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
 import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
-import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmDatabaseSize, confirmLeftOut, createBinImportReader, decodeBinDatabase, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
+import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmDatabaseSize, confirmLeftOut, createBinImportReader, decodeBinDatabase, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -1069,6 +1069,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 });
                 hasEncryptionMarker = walk.hasMarker;
                 backupEntries = walk.entries;
+                noteImportPhase(`walked, ${backupEntries.length} entries`);
             } catch (e) {
                 console.error(e);
                 alertError(language.backupFileUnreadable);
@@ -1230,10 +1231,15 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 const streamLargeAssets = assetPipeline !== null || await desktopStreamingUsable();
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
+                let visitedEntries = 0;
                 try {
                     for (const entry of backupEntries) {
                         if (assetPipeline?.failure) {
                             break;
+                        }
+                        visitedEntries++;
+                        if (visitedEntries % IMPORT_COPY_PHASE_EVERY === 0) {
+                            noteImportPhase(`copy ${visitedEntries} of ${backupEntries.length} entries`);
                         }
                         const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
                         const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
@@ -1470,6 +1476,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                     if (store2Import.boot !== null) {
                         // A boot import has no earlier saved state and no page to reload: the dispatch opens what was installed.
                         alertWait('Loading backup...');
+                        noteImportPhase('loading backup, boot');
                         bootEnd = await commitBootImport({
                             target: store2Import.boot,
                             decode: async () => (await decodeBinDatabase(databaseBytes)).tree,
@@ -1486,6 +1493,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                         return;
                     }
                     alertWait('Loading backup...');
+                    noteImportPhase('loading backup');
                     const end = await commitStore2Import({
                         target: store2Import.target,
                         busy,
