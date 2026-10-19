@@ -1435,7 +1435,6 @@ describe('an export of assets above CHUNK_MAX', () => {
         backupSink.failRemove = true
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
-console.log('DBG', desktop.commands.slice(-12), eventLog.events.slice(-12));
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(`'assets/big.bin'`))

@@ -1,5 +1,5 @@
-//! Batched asset I/O under `<app data>/assets/` for the desktop .bin restore
-//! and export. Keys are store keys (`assets/<name>`), never paths: the base is
+//! Batched asset I/O under `<app data>/assets/` for the desktop and Android .bin
+//! restore and the desktop export. Keys are store keys (`assets/<name>`), never paths: the base is
 //! always the app data directory.
 //!
 //! Writes: every file goes to a new temp file in its target's directory, is
@@ -23,6 +23,7 @@ use crate::durable_write::{
     decode_key_header, is_temp_name, rename_with_retry, resolve_key, FileOps, RealOps, KEY_HEADER,
 };
 use crate::store2_gate::ungated_write_refusal;
+use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -426,6 +427,34 @@ pub fn put_batch_with<O: FileOps + Sync>(
 pub fn put_assets_batch(base: &Path, body: &[u8]) -> Result<Value, String> {
     let outcomes = put_batch_with(&RealOps, base, body, MAX_WORKERS)?;
     Ok(Value::Array(outcomes.iter().map(Outcome::to_json).collect()))
+}
+
+/// The most bytes a base64 batch body may hold once decoded. A page batch is at
+/// most its own byte budget of entries plus 8 bytes and the key per frame.
+pub const MAX_B64_BODY_BYTES: usize = 8 * 1024 * 1024;
+
+/// The frame body that `encoded` (standard base64, no whitespace) carries, or an
+/// error with nothing decoded past the size cap.
+pub fn decode_b64_body(encoded: &str) -> Result<Vec<u8>, String> {
+    if encoded.len() > MAX_B64_BODY_BYTES / 3 * 4 + 4 {
+        return Err("the batch is larger than a batch may be".to_string());
+    }
+    let body = general_purpose::STANDARD
+        .decode(encoded.as_bytes())
+        .map_err(|e| format!("the batch is not valid base64: {}", e))?;
+    if body.len() > MAX_B64_BODY_BYTES {
+        return Err("the batch is larger than a batch may be".to_string());
+    }
+    Ok(body)
+}
+
+/// `put_assets_batch` for a page whose bridge cannot deliver a raw body (the
+/// Android app sends bytes as a JSON array): the body is the standard base64 of
+/// the same frames. Invalid base64 is a whole-call error and nothing is written;
+/// every other rule, outcome and flush is that of `put_assets_batch`.
+pub fn put_assets_batch_b64(base: &Path, encoded: &str) -> Result<Value, String> {
+    let body = decode_b64_body(encoded)?;
+    put_assets_batch(base, &body)
 }
 
 // ---------------------------------------------------------------------------
@@ -1358,6 +1387,128 @@ mod tests {
         let value = put_assets_batch(&base, &body(&[("assets/a", b"1"), ("x", b"2")])).unwrap();
         assert_eq!(value[0], json!({ "k": "ok", "flushed": true }));
         assert_eq!(value[1]["k"], "invalid");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // ----- base64 body ------------------------------------------------------------
+
+    fn b64(bytes: &[u8]) -> String {
+        general_purpose::STANDARD.encode(bytes)
+    }
+
+    #[test]
+    fn a_base64_body_gives_the_outcomes_and_files_of_the_raw_body() {
+        let entries: [(&str, &[u8]); 4] = [("assets/a", b"one"), ("assets/d/e/b", b"two"), ("blocks/x", b"no"), ("assets/c", b"")];
+        let raw_base = scratch("b64-raw");
+        let b64_base = scratch("b64-enc");
+        let raw = put_assets_batch(&raw_base, &body(&entries)).unwrap();
+        let encoded = put_assets_batch_b64(&b64_base, &b64(&body(&entries))).unwrap();
+        assert_eq!(raw, encoded);
+        assert_eq!(tree(&raw_base), tree(&b64_base));
+        assert_eq!(fs::read(b64_base.join("assets").join("d").join("e").join("b")).unwrap(), b"two");
+        assert!(!b64_base.join("blocks").exists());
+        fs::remove_dir_all(&raw_base).unwrap();
+        fs::remove_dir_all(&b64_base).unwrap();
+    }
+
+    #[test]
+    fn an_invalid_base64_body_is_a_call_error_and_nothing_is_written() {
+        let base = scratch("b64-bad");
+        let good = b64(&body(&[("assets/a", b"abc")]));
+        let url_safe = general_purpose::URL_SAFE.encode(body(&[("assets/a", &[0xFB, 0xFF, 0xFE][..])]));
+        assert!(url_safe.contains('-') || url_safe.contains('_'), "the fixture must differ from the standard alphabet");
+        let cases = [
+            format!("{} ", good),
+            format!("{}\n", good),
+            format!("{}!", good),
+            good[..good.len() - 1].to_string(),
+            url_safe,
+        ];
+        for case in &cases {
+            let error = put_assets_batch_b64(&base, case).unwrap_err();
+            assert!(error.contains("base64"), "{}", error);
+        }
+        assert!(tree(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_malformed_frame_body_in_base64_is_a_call_error_and_nothing_is_written() {
+        let base = scratch("b64-malformed");
+        let mut cut = frame("assets/b", b"abcdef");
+        cut.truncate(cut.len() - 2);
+        let encoded = b64(&[frame("assets/a", b"abc"), cut].concat());
+        assert!(put_assets_batch_b64(&base, &encoded).unwrap_err().starts_with("malformed:"));
+        assert!(tree(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_base64_body_above_the_cap_is_refused_before_anything_is_written() {
+        let base = scratch("b64-cap");
+        let encoded = b64(&vec![0u8; MAX_B64_BODY_BYTES + 1]);
+        assert!(put_assets_batch_b64(&base, &encoded).unwrap_err().contains("larger"));
+        let huge = "A".repeat(MAX_B64_BODY_BYTES / 3 * 4 + 8);
+        assert!(put_assets_batch_b64(&base, &huge).unwrap_err().contains("larger"));
+        assert!(tree(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn an_oversize_encoded_string_is_refused_before_it_is_decoded() {
+        // Not base64 at all: a decode would answer "not valid base64", so the size answer
+        // proves the encoded length was checked first.
+        let junk = "!".repeat(MAX_B64_BODY_BYTES / 3 * 4 + 8);
+        assert!(decode_b64_body(&junk).unwrap_err().contains("larger"));
+    }
+
+    #[test]
+    fn a_failed_frame_in_a_base64_batch_spares_the_frames_before_and_after_it() {
+        let base = scratch("b64-partial");
+        let probe = Probe { fail_rename_name: Some("f3".to_string()), ..Probe::default() };
+        let entries: Vec<(String, Vec<u8>)> = (1..=6).map(|n| (format!("assets/f{}", n), format!("payload {}", n).into_bytes())).collect();
+        let refs: Vec<(&str, &[u8])> = entries.iter().map(|(k, d)| (k.as_str(), d.as_slice())).collect();
+        let decoded = decode_b64_body(&b64(&body(&refs))).unwrap();
+        let results = put_batch_with(&probe, &base, &decoded, 4).unwrap();
+        assert_eq!(results.len(), 6);
+        for (index, result) in results.iter().enumerate() {
+            if index == 2 {
+                assert!(matches!(result, Outcome::Error(_)), "{:?}", result);
+            } else {
+                assert_eq!(*result, Outcome::Flushed(true), "frame {}", index + 1);
+            }
+        }
+        for n in [1, 2, 4, 5, 6] {
+            assert_eq!(fs::read(base.join("assets").join(format!("f{}", n))).unwrap(), format!("payload {}", n).into_bytes());
+        }
+        assert!(!base.join("assets").join("f3").exists());
+        assert!(temps_in(&base).is_empty(), "{:?}", temps_in(&base));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // ----- key rules shared with the page -------------------------------------------
+
+    /// The key a parity case names: `{fill}` in `key` stands for `fill` repeated `times` times.
+    fn parity_key(case: &Value) -> String {
+        let key = case["key"].as_str().unwrap();
+        match case["fill"].as_str() {
+            Some(fill) => key.replace("{fill}", &fill.repeat(case["times"].as_u64().unwrap() as usize)),
+            None => key.to_string(),
+        }
+    }
+
+    #[test]
+    fn the_key_rules_give_the_answers_of_the_table_the_page_tests_share() {
+        let table: Value = serde_json::from_str(include_str!("../../src/ts/storage/tests/assetKeyParity.json")).unwrap();
+        let cases = table.as_array().unwrap();
+        assert!(cases.len() >= 30);
+        let base = scratch("parity");
+        for case in cases {
+            let key = parity_key(case);
+            let outcome = put_batch_with(&Probe::default(), &base, &body(&[(key.as_str(), b"x")]), 1).unwrap().remove(0);
+            let accepted = !matches!(outcome, Outcome::Invalid(_));
+            assert_eq!(accepted, case["accept"].as_bool().unwrap(), "{:?} ({}) gave {:?}", key, case["why"], outcome);
+        }
         fs::remove_dir_all(&base).unwrap();
     }
 

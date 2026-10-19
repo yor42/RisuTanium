@@ -9,9 +9,10 @@ import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSav
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
-import { isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
-import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, type RangedPiece } from "../storage/tauriByteTransport";
-import { ExportAssetReader, RestoreAssetPipeline, streamAssetEntry, type StreamedAssetEntry } from "./assetBatchPipeline";
+import { assetBatchWriteMode, isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
+import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, transportKind, WRITE_CHUNK_BYTES, type RangedPiece } from "../storage/tauriByteTransport";
+import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
+import { ASSET_BATCH_MAX_ENTRIES, ExportAssetReader, RestoreAssetPipeline, streamAssetEntry, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
@@ -171,9 +172,29 @@ async function desktopStreamingUsable(): Promise<boolean> {
     }
 }
 
-/** The restore's asset writer on the desktop, or `null` where every asset goes through the store one call at a time. */
+/**
+ * The Android pipeline's limits. A call carries at most one Android chunk of
+ * entry bytes as base64 text through the JSON bridge, and two calls overlap.
+ */
+const ANDROID_ASSET_BATCH_LIMITS = {
+    batchBytes: WRITE_CHUNK_BYTES,
+    budgetBytes: 8 * 1024 * 1024,
+    maxEntries: ASSET_BATCH_MAX_ENTRIES,
+    maxFlights: 2,
+}
+
+/** The restore's asset writer on the desktop and on Android, or `null` where every asset goes through the store one call at a time. */
 async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
-    if (!await assetBatchUsable()) {
+    // The raw mode is `isAssetBatchAvailable()` (the same test the export readers use); the base64 mode is Android's alone.
+    const mode: AssetBatchWriteMode = isAssetBatchAvailable() ? 'raw' : assetBatchWriteMode() === 'b64' ? 'b64' : 'none'
+    if (mode === 'none') {
+        return null
+    }
+    try {
+        if (await getAppStoreKind() !== 'tauri') {
+            return null
+        }
+    } catch {
         return null
     }
     const store = await getAppStore()
@@ -188,6 +209,14 @@ async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null
             throw error
         }
     }
+    if (mode === 'b64') {
+        const limits = ANDROID_ASSET_BATCH_LIMITS
+        return new RestoreAssetPipeline({
+            writeBatch: (entries) => writeAssetBatchB64(entries, limits.batchBytes),
+            writeEntry,
+            openStream: openAssetStream,
+        }, limits)
+    }
     return new RestoreAssetPipeline({
         writeBatch: (entries) => writeAssetBatch(entries, CHUNK_MAX),
         writeEntry,
@@ -195,8 +224,20 @@ async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null
     })
 }
 
-/** A durable chunked write of an asset key; throws `StoreInvalidKeyError` for a name the store refuses. */
+/**
+ * A durable chunked write of an asset key. A name the store refuses throws
+ * `StoreInvalidKeyError` before chunk 0: off Android the chunked writer applies
+ * the key rule itself, and on Android (whose writer leaves the rule to the
+ * native command) it is applied here, the rule `tauriFilesStore` uses for the
+ * posix page store.
+ */
 function openAssetStream(key: string) {
+    if (transportKind() === 'android') {
+        const reason = tauriAddressableViolation(key, 'posix') ?? tauriCreatableViolation(key)
+        if (reason !== null) {
+            throw new StoreInvalidKeyError(key, reason)
+        }
+    }
     return createChunkedWriter(key, { durable: true })
 }
 
@@ -1225,7 +1266,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 // marker stops the restore, and so does any header that differs
                 // from the index or a body that cannot be read.
                 //
-                // On the desktop the assets go out in byte-budgeted batches that
+                // On the desktop and on Android the assets go out in byte-budgeted batches that
                 // overlap the reading of later entries. Every way out of the
                 // pass -- a stop with a message, a throw, an error answered by a
                 // batch, the end of the entries -- first waits for every batch
@@ -1323,11 +1364,13 @@ export function LoadLocalBackup(boot?: BootBinRun){
                             await yieldBudget.maybeYield();
                             continue;
                         }
-                        // Where streamLargeAssets holds (the desktop), an asset above
-                        // CHUNK_MAX is copied to the store in slices of at most
-                        // CHUNK_MAX and is never read whole. The database and the
+                        // Where streamLargeAssets holds (the desktop, and Android with
+                        // a pipeline), an asset above the pipeline's batch size
+                        // (CHUNK_MAX without a pipeline) is copied to the store in
+                        // slices and is never read whole, and is never handed to
+                        // `add`, which refuses it. The database and the
                         // cold-storage entries are decoded as a whole, and read whole.
-                        if (streamLargeAssets && entry.dataLength > CHUNK_MAX
+                        if (streamLargeAssets && entry.dataLength > (assetPipeline?.batchBytes ?? CHUNK_MAX)
                                 && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
                             const assetKey = 'assets/' + name;
                             noteAssetWrittenThisPage(assetKey);

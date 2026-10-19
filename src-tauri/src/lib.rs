@@ -152,6 +152,20 @@ async fn put_assets_batch(app: AppHandle, request: tauri::ipc::Request<'_>) -> R
         .map_err(|e| format!("the write task failed: {}", e))?
 }
 
+/// `put_assets_batch` for the Android app, whose bridge sends a byte array as
+/// JSON and so cannot deliver a raw body: `body` is the standard base64 of the
+/// same frames. Invalid base64, a body above the batch cap and a malformed body
+/// are refused before any write; the outcomes, key rules and flushes are those of
+/// `put_assets_batch`. The base directory is the app data directory; the page
+/// supplies no path.
+#[tauri::command]
+async fn put_assets_batch_b64(app: AppHandle, body: String) -> Result<Value, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || asset_batch::put_assets_batch_b64(&base, &body))
+        .await
+        .map_err(|e| format!("the write task failed: {}", e))?
+}
+
 /// One chunk of a file written under the app data directory, as a raw body: the
 /// chunk bytes are the body, and `x-risu-key` (percent-encoded), `x-risu-id`,
 /// `x-risu-offset`, `x-risu-last` and `x-risu-durable` carry the rest, and the
@@ -1045,6 +1059,7 @@ pub fn run() {
             read_env_secret,
             write_durable,
             put_assets_batch,
+            put_assets_batch_b64,
             write_chunk_raw,
             store2_register_page,
             store2_write_top_raw,

@@ -188,6 +188,11 @@ export class RestoreAssetPipeline {
         this.limits = { ...DEFAULT_LIMITS, ...limits }
     }
 
+    /** The most entry bytes one batch carries; an entry above it is streamed, never added. */
+    get batchBytes(): number {
+        return this.limits.batchBytes
+    }
+
     /** The first failure seen, if any. */
     get failure(): { error: unknown } | null {
         return this.failed
