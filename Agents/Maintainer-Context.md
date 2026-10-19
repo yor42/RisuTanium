@@ -10375,3 +10375,30 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 3. **W5-Q8 (recommended):** the asset sweep is dry-run only in 4a. Removal moves to stage 5 (`MC-288` places "clean-up on" there). **`MC-289` stays open after 4a:** no asset removal and no store2 inlay deletion until stage 5.
 
 **Orchestrator and advisor rulings in the same file (not maintainer decisions):** W5-Q3 (first C1 run on a boot that did not install, confirmed by the advisor), the senior-advisor `[REVISE]` challenge (type 24 `deletionSnapshot` as the only coherent carrier, corrections A to C, W5d removal out of 4a), the W5 scope order (W5c, W5a, W5b, W5d1 with W5e), and the Gate 1 revision (deletion kind from store observation, phases as separate calls).
+
+### MC-317 — Stage 4 session, 2026-10-19: stage 4a-W step W6 answers (restore saves first; confirmations only before the picker plus one when the tab is still unsaved; rows labelled by date only; an empty list explains when a version is kept)
+
+- **Tag:** decisions (`AskUserQuestion` answers; the four chosen options were the ones marked "(Recommended)")
+- **Date:** 2026-10-19
+- **Sweep ref:** none
+- **Source:** the W6 rulings file (job scratch `s4\job-tmp\w6-decisions.md`), section "Maintainer answers (AskUserQuestion, 2026-10-19; all "(Recommended)")". The option labels below are quoted from that section; the text after each label is that file's summary of the option. The verbatim question and option texts are not in the file: `TODO(evidence)`. The ledger rows are 1864 to 1881.
+- **Reasoning:** none stated by the maintainer.
+- **Alternatives rejected:** the other options of each question; their labels are not recorded (`TODO(evidence)`).
+- **Related:** `MC-299` 4 and 9, `MC-183`, `MC-314`, `MC-091`, `MC-300`, `MC-175`.
+
+**What was decided (maintainer):**
+1. **W6-Q2, row label: "Date only (Recommended)".** Each restore-point row shows the manifest `createdAt`, falling back to the commit-key entry's `at`; no prefix. The word "Old" is reserved for the numbered-backup rows that B3 adds (those rows stay hidden until B3).
+2. **W6-Q3, unsaved edits at restore: "Save first (Recommended)".** The restore tries to save first, bounded to 10 seconds; the pre-restore state is kept automatically as a restore point; a warning appears only if the tab still cannot be saved clean.
+3. **W6-Q4, confirmations: "Existing + dirty only (Recommended)".** The two existing confirmations before the picker are kept; one post-pick confirmation appears only when the tab is dirty.
+4. **W6-Q6, empty list: "Explain (Recommended)".** The empty-list message says that a restore point is kept after the next save more than 5 minutes after the last.
+
+**Notes that are not the maintainer's words:**
+- **W6-Q1, `getDbBackups` shape: orchestrator ruling "R1".** `listRestorePoints` is added; `getDbBackups` (legacy and block pages only) is left unchanged. Reason given in the source: its mixed time units (ticks versus milliseconds) and 29 test files that mock `number[]`. This replaces the plan's literal "`getDbBackups` rewrite" (scope-4a S6); the W6 Gate 1 reviewer found R1 sound (ledger row 1865). Not a maintainer decision.
+- **W6-Q5, dev GC action: orchestrator ruling.** No dry run; the real run sits behind `confirm: true`, in the MEASURE pattern (as W5d1), and `__risuGcNow` is in the release-dist `FORBIDDEN_MARKERS`.
+- **W4-Q5 (`MC-314`) revisited: orchestrator ruling.** A parked dirty tab stays Reload-only; W6 does not make "load the stubs, then Save mine" feasible. Revisit at the stage 5 grace rule.
+- **W4-Q6 wording: orchestrator ruling.** Narrowed in the records to "a restore point helps only if it holds a different, intact unit for that character".
+- **`MC-183` item 4 against `MC-299` 4: orchestrator ruling.** `MC-299` governs on store2 pages (restore points first; numbered backups listed separately, labelled old, from B3). `MC-183` item 4 (the pre-load numbered backup for every load) stays for the legacy path.
+- **Staging: orchestrator ruling.** W6a (library and the S0 reproducer 2 re-seam), W6c (dev GC, pacing, 429), W6b (page flow, picker, strings, then the translator), in the order W6a, W6c, W6b.
+- **W6b English strings for the unconfirmed, bulk-marker and empty-list messages (Gate 2 E4, E5, E6): orchestrator rulings, awaiting the maintainer's English review.** The texts as built in `src/lang/en.ts` at `586ce49ee`: `store2RestoreUnconfirmed` "RisuAI could not confirm whether the earlier version was restored. Neither version is lost either way. Reload the page to see which one is in use."; `store2RestoreBulkMarker` "Another save is still in progress or did not finish, so nothing was restored. Try again later."; `store2RestoreNone` "There is no earlier saved version to go back to yet. Your changes are saved automatically, and an earlier version is kept at most once every 5 minutes." **The empty-list text departs from the W6-Q6 sentence:** the W6b hand-back states that on an empty `retained` list the first change is kept immediately, so "after the next save more than 5 minutes after the last" is not exactly what the commit rule does. The Korean `store2RestoreUnconfirmed` contains the literal "어느 쪽이든 두 버전 모두 사라지지 않습니다", which the maintainer may adjust.
+- **The kept confirmations still say "All datas will be lost!".** W6-Q4 keeps the two pre-picker confirmations; on a store2 page the pre-restore state is kept, so the English text no longer fits. The W6 Gate 1 reviewer flagged it (F11e). No change was made; the maintainer's English review is pending.
+- **Tauri `flushed:false`: orchestrator ruling.** The person is told and the page reloads (the next boot re-flushes the commit key), replacing the design's "do not reload".
