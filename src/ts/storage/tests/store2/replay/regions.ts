@@ -49,6 +49,9 @@ export type RegionStep =
     | { do: 'open' }
     | { do: 'commit', extra?: number }
     | { do: 'bulk' }
+    /** A commit with `force`, ordinary or bulk (the commit of a `.bin` import): the previous `current` enters `retained` whatever the admission interval says. */
+    | { do: 'commitForced', extra?: number }
+    | { do: 'bulkForced' }
     | { do: 'saveMine' }
     | { do: 'admit' }
     /** Restores the first retained manifest; nothing is restored (and the step is `no-target`) when nothing is retained. */
@@ -665,6 +668,17 @@ export const REGIONS: readonly RegionConfig[] = [
         faults: { ...faults(0.08, Infinity, 1, 6), flush: true }, pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 24, minExercised: 0.6,
         floors: { 'restart': 0.7, 'firstLife:upload-failed': 0.4, 'firstLife:refused': 0.7 },
     },
+    {
+        id: 'R20', name: 'forced-import-commit-over-peer', covers: 'B3a: the commit of a .bin import (bulk, force) and an ordinary forced commit, with a peer committing ordinarily while the import\'s marker stands; the replaced and the peer\'s manifests are kept in retained',
+        backends: ['node', 'tauri', 'indexeddb'], start: 'healthy', garbage: GARBAGE_UNITS,
+        actors: [
+            actor('a', A, [open, commit, { do: 'bulkForced' }, { do: 'commitForced' }]),
+            actor('b', B, [open, commit, commit, admit]),
+            actor('g', G, [open, gc, gc]),
+        ],
+        pct: { depth: 3, horizon: 140 }, maxSteps: 4000, seeds: 18, minExercised: 0.85,
+        floors: { 'bulkForced:committed': 0.6, 'commitForced:committed': 0.6, 'gc:done': 0.7 },
+    },
 ]
 
 // ---- Running a region ----
@@ -746,6 +760,14 @@ async function runStep(actor: ReplayActor, spec: RegionActor, step: RegionStep, 
         case 'bulk': {
             const { result } = await actor.bulkCommit(tag)
             return { label: `bulk:${outcomeLabel(result)}`, kind: result.status }
+        }
+        case 'commitForced': {
+            const { result } = await actor.forcedCommit(tag, step.extra)
+            return { label: `commitForced:${outcomeLabel(result)}`, kind: result.status }
+        }
+        case 'bulkForced': {
+            const { result } = await actor.forcedBulkCommit(tag)
+            return { label: `bulkForced:${outcomeLabel(result)}`, kind: result.status }
         }
         case 'saveMine': {
             const { result } = await actor.saveMine(tag)

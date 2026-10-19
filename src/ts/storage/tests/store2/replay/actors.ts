@@ -277,6 +277,10 @@ export interface ReplayActor {
     commit(tag: string, extra?: number): Promise<CommitOutcome>
     /** A bulk commit: its marker, the staged upload, the final write. */
     bulkCommit(tag: string): Promise<CommitOutcome>
+    /** An ordinary commit that replaces the whole profile (`force`): the previous `current` enters `retained` whatever the admission interval says. */
+    forcedCommit(tag: string, extra?: number): Promise<CommitOutcome>
+    /** A bulk commit with `force`, as the commit of a `.bin` import is. */
+    forcedBulkCommit(tag: string): Promise<CommitOutcome>
     /** The save-mine commit over a fresh read; refused on Node. */
     saveMine(tag: string, extra?: number): Promise<CommitOutcome>
     restore(manifestKey: string): Promise<WriteResult>
@@ -772,12 +776,12 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                     finish()
                 }
             }
-            async function commitOf(kind: 'commit' | 'save-mine' | 'bulk-begin', intent: OperationIntent, tag: string, extra: number, fresh: boolean): Promise<CommitOutcome> {
+            async function commitOf(kind: 'commit' | 'save-mine' | 'bulk-begin', intent: OperationIntent, tag: string, extra: number, fresh: boolean, force = false): Promise<CommitOutcome> {
                 return operation({ kind }, intent, async () => {
                     const committer = committerOf()
                     const record: BuildRecord[] = []
                     const read = await committer.readCommit()
-                    const request = treeRequest(extra, { tag, record })
+                    const request = { ...treeRequest(extra, { tag, record }), ...(force ? { force: true } : {}) }
                     const result = fresh ? await committer.saveMine(read, request) : await committer.commit(read, request)
                     return { result, keys: record.length === 0 ? [] : record[record.length - 1].keys }
                 })
@@ -874,6 +878,8 @@ export function assembleRig(input: AssembleInput): ReplayRig {
 
                 commit: (tag, extra = 0) => commitOf('commit', 'plain', tag, extra, false),
                 bulkCommit: (tag) => commitOf('bulk-begin', 'bulk', tag, BULK_EXTRA, false),
+                forcedCommit: (tag, extra = 0) => commitOf('commit', 'plain', tag, extra, false, true),
+                forcedBulkCommit: (tag) => commitOf('bulk-begin', 'bulk', tag, BULK_EXTRA, false, true),
                 saveMine: (tag, extra = 0) => commitOf('save-mine', 'plain', tag, extra, true),
                 restore: (manifestKey) => operation({ kind: 'restore' }, 'plain', async () => committerOf().restore(await committerOf().readCommit(), manifestKey)),
                 pin: (key, reason = 'keep') => operation({ kind: 'pin' }, 'plain', async () => committerOf().pin(await committerOf().readCommit(), key, reason)),
