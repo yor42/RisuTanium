@@ -22,7 +22,7 @@ import { buildRestoreSet, completeRestoredTree, currentCharacterNames, leftOutQu
 import { repairCharacterTree } from "../storage/characterTreeRepair";
 import { isCharacterEntry, isUsableCharacterId } from "../storage/characterIds";
 import { repairDatabaseIds } from "../process/chatIds";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
@@ -1718,15 +1718,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                     await releaseExclusiveHold(true);
                 }
                 markAppInitiatedReload();
-                if (isTauri) {
-                    await relaunch();
-                } else {
-                    // history.replaceState drops any query string, keeping
-                    // any fragment, and location.reload() always performs a
-                    // full reload, whatever the current URL looks like.
-                    history.replaceState(null, '', location.pathname + location.hash);
-                    location.reload();
-                }
+                await reloadAfterRestore();
             } catch (error) {
                 console.error(error);
                 if (restoreInstalled) {

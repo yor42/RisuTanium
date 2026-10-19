@@ -11,7 +11,7 @@ import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { getPageBlockOwner } from "../storage/pageBlockOwner";
 import { getAppStore, MAIN_FILE_KEY } from "../storage/store/appStore";
 import { getStartupCleanup } from "../storage/startupCleanupState";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
@@ -191,14 +191,7 @@ export async function reloadOntoRestoredState(releaseExclusiveHold: ExclusiveHol
         await releaseExclusiveHold(true)
     }
     markAppInitiatedReload()
-    if (isTauri) {
-        await relaunch()
-    } else {
-        // replaceState drops any query string and keeps the fragment;
-        // location.reload() always performs a full reload.
-        history.replaceState(null, '', location.pathname + location.hash)
-        location.reload()
-    }
+    await reloadAfterRestore()
 }
 
 export async function loadInternalBackup() {
