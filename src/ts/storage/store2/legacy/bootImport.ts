@@ -161,6 +161,15 @@ export function createBootImportTarget(
     }
 }
 
+/** The boot's own copy of importTree.ts's `notePhase`, which this module cannot import statically: an observer never decides the import. */
+function notePhase(hooks: ImportHooks, phase: string): void {
+    try {
+        hooks.onPhase?.(phase)
+    } catch {
+        // An observer that fails is ignored.
+    }
+}
+
 export async function bootImportLegacyTree(request: BootImportRequest, hooks: ImportHooks): Promise<BootImportResult> {
     if (request.entry.kind === 'first-life' && request.entry.grant.label !== 'import') {
         throw new TypeError('A boot import installs under a grant labelled import.')
@@ -181,6 +190,7 @@ export async function bootImportLegacyTree(request: BootImportRequest, hooks: Im
     const snapshot = await planOldDataSnapshot(request.oldData, null)
     const install = withSnapshot(keep.status === 'none' ? base : withLegacyKeep(base, keep.list), snapshot)
     const env: KeyEnv = { ...defaultKeyEnv, ...request.env }
+    notePhase(hooks, 'import commit start')
     if (request.entry.kind === 'first-life') {
         return resultOfInstall(await firstLifeInstall(request.backend, request.entry.grant, install, { owner: request.owner, env }), prepared.repair)
     }

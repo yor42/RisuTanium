@@ -42,7 +42,7 @@ import { saveFirst, SAVE_FIRST_BOUND_MS } from "./storeRestore";
 import { getPageStorageMode } from "../storage/pageStorageMode";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
 import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
-import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmDatabaseSize, confirmLeftOut, createBinImportReader, decodeBinDatabase, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
+import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, decodeBinDatabase, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -1146,7 +1146,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 }
                 store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
                 noteImportPhase('scanned');
-                if (!await confirmDatabaseSize(store2Import.entry.dataLength)) {
+                if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength)) {
                     return;
                 }
             }

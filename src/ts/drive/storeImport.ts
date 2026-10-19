@@ -20,6 +20,8 @@ import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { MEASURE } from '../process/memory/measureFlag'
 import { pushImportPhase } from './importPhaseRing'
+import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeSpaceBytes, importGigabytesText, roundImportMinutes } from './importEstimate'
+import { transportKind } from '../storage/tauriByteTransport'
 import type { BusyHandle } from '../process/memory/busyActions'
 import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_INDEX_SHORT_NAME_BYTES, type BackupIndexEntry } from './backupContainer'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
@@ -290,6 +292,24 @@ export async function confirmDatabaseSize(byteLength: number, threshold: number 
     return await alertConfirm(language.store2ImportSizeWarning(Math.ceil(byteLength / (1024 * 1024))))
 }
 
+/**
+ * The one question before an import writes anything, asked once the file is walked and its database entry located. A
+ * store2 page on an Android phone with more than `IMPORT_TIME_WARNING_BYTES` of assets gets the time and space notice,
+ * which carries the database-size sentence when the database is over the size threshold too (one prompt, not two).
+ * Everything else keeps `confirmDatabaseSize` and its text. The notice belongs to store2 pages only: the block and
+ * legacy page modes are fork-local transitional storage modes with no commit tail to estimate, and keep their prompts
+ * (block-mode helpers are removed in stage 8). False when the person declines; nothing has been written.
+ */
+export async function confirmImportScale(fileSize: number, entries: number, databaseBytes: number): Promise<boolean> {
+    const assetBytes = importAssetBytes(fileSize, databaseBytes)
+    if (transportKind() !== 'android' || assetBytes <= IMPORT_TIME_WARNING_BYTES) {
+        return await confirmDatabaseSize(databaseBytes)
+    }
+    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, databaseBytes))
+    const databaseMegabytes = databaseBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(databaseBytes / (1024 * 1024)) : null
+    return await alertConfirm(language.store2ImportTimeWarning(entries, minutes, importGigabytesText(importFreeSpaceBytes(assetBytes)), databaseMegabytes))
+}
+
 /** The MC-183 question: names every block the file lacks. Nothing to ask when none was left out; false when the person declines. */
 export async function confirmLeftOut(omitted: ReadonlyMap<string, SalvageOmittedBlock>): Promise<boolean> {
     const lines = describeOmitted(omitted, currentCharacterNames())
@@ -406,6 +426,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
             outcome = await importLegacyTree(
                 { source, reader: request.reader, committer, backend: request.target.backend, lists: getActiveStore2Save()?.lists ?? createListDerivation() },
                 {
+                    onPhase: (phase) => noteImportPhase(`${phase}, attempt ${attempt}`),
                     async confirmIncomplete(items) {
                         const signature = JSON.stringify(items)
                         if (answered.has(signature)) {
@@ -501,6 +522,7 @@ export async function commitBootImport(request: {
     }
     noteImportPhase('decoded, boot')
     const result = await request.target.install(source, request.reader, {
+        onPhase: noteImportPhase,
         async confirmIncomplete(items) {
             return await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))
         },

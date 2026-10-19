@@ -72,6 +72,17 @@ export interface ImportRequest {
 export interface ImportHooks {
     /** What the resolve could not bring in. `false` declines: nothing is written. */
     confirmIncomplete(items: readonly IncompleteItem[]): Promise<boolean>
+    /** Observes the import's phases. Synchronous and return value ignored: it can neither delay nor fail the import. */
+    onPhase?(phase: string): void
+}
+
+/** Calls `hooks.onPhase` without awaiting it and without letting it throw: an observer never decides the import's outcome. */
+export function notePhase(hooks: ImportHooks, phase: string): void {
+    try {
+        hooks.onPhase?.(phase)
+    } catch {
+        // An observer that fails is ignored.
+    }
 }
 
 /**
@@ -245,7 +256,9 @@ export async function prepareImport(
             return { status: 'repair-refused', refusals: repaired.refusals }
         }
         repair = repaired.summary
+        notePhase(hooks, 'import repaired')
         const resolved = await resolveLegacyTree(tree, request.reader, request.resolve)
+        notePhase(hooks, 'import resolved')
         incomplete = resolved.incomplete
         hold.resolved = resolved
     } catch (error) {
@@ -265,6 +278,7 @@ export async function prepareImport(
     if ('status' in plan) {
         return plan
     }
+    notePhase(hooks, `import planned, ${plan.newUnits} units`)
     return { plan, repair }
 }
 
@@ -294,6 +308,7 @@ export async function importLegacyTree(request: ImportRequest, hooks: ImportHook
         return { status: 'base-unreadable', detail: base.detail }
     }
     const built = buildImport(plan, { base: base.status === 'ok' ? base.manifest : undefined, list: request.legacyKeep })
+    notePhase(hooks, 'import commit start')
     const result = await request.committer.commit(read, { newUnits: built.newUnits, build: built.build, label: 'import', force: true })
     return result.status === 'committed' ? { ...result, repair } : result
 }
