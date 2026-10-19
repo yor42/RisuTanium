@@ -2198,6 +2198,18 @@ export const languageChinese = {
             : '未找到可在本次读取之前保留为备份副本的当前已保存数据。')
         + '如果继续，您将无法从备份列表中回到当前已保存的状态。要在没有备份副本的情况下继续吗？',
     "internalBackupLoadedNoCopy": "备份已读取。正在刷新应用。",
+    "store2RestoreNone": "目前还没有可回退的更早保存版本。您的更改会自动保存，更早的版本每 5 分钟最多保留一次。",
+    "store2RestoreDateUnknown": "日期未知",
+    "store2RestoreRowDamaged": (when: string) => `${when}（已损坏）`,
+    "store2RestoreSaving": "正在先保存您的最新更改...",
+    "store2RestoreUnsavedConfirm": "此标签页自上次保存以来所做的更改无法先行保存。如果继续，这些更改将会丢失，因为您选择的版本会替换已保存的内容。要继续吗？",
+    "store2RestoreListChanged": "该保存版本已不在列表中，或已是正在使用的版本，因此没有恢复任何内容。请重新打开列表查看可用的版本。",
+    "store2RestoreBulkMarker": "另一项保存仍在进行或未能完成，因此没有恢复任何内容。请稍后再试。",
+    "store2RestoreIncomplete": (missing: number) =>
+        `该保存版本不完整（缺少 ${missing} 个部分）。没有更改任何内容。`,
+    "store2RestoreUnconfirmed": "RisuAI 无法确认更早的版本是否已恢复。无论哪种情况，两个版本都不会丢失。请重新加载页面以查看正在使用的是哪个版本。",
+    "store2RestoreNotFlushed": "更早的版本已恢复，但设备未确认已将其写入磁盘。应用现在将重新加载，并在启动时完成写入。",
+    "store2RestoreDone": "更早的版本已恢复。您之前使用的版本仍保留在列表中。正在刷新应用。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用备份替换已损坏的已保存数据时，数据的较旧已保存副本被保留下来，而没有被删除（创建于 ${dates}）。仅被它们使用的图片和归档数据仍受保护，因此只要这些副本存在，就无法运行清理。\n\n是否删除这些较旧的副本，然后进行清理？删除后无法恢复。选择“取消”则保留它们，此时不会运行清理。`,

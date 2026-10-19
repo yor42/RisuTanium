@@ -2198,6 +2198,18 @@ export const languageVietnamese = {
             : 'Không tìm thấy dữ liệu đã lưu hiện tại để giữ lại làm bản sao lưu trước lần tải này. ')
         + 'Nếu tiếp tục, bạn sẽ không thể quay lại trạng thái đang được lưu hiện giờ từ danh sách sao lưu. Tiếp tục mà không có bản sao lưu?',
     internalBackupLoadedNoCopy: "Đã tải bản sao lưu. Đang làm mới ứng dụng.",
+    store2RestoreNone: "Hiện chưa có phiên bản đã lưu trước đó nào để quay lại. Các thay đổi của bạn được lưu tự động, và một phiên bản trước đó được giữ lại tối đa 5 phút một lần.",
+    store2RestoreDateUnknown: "không rõ ngày",
+    store2RestoreRowDamaged: (when: string) => `${when} (bị hỏng)`,
+    store2RestoreSaving: "Đang lưu trước các thay đổi mới nhất của bạn...",
+    store2RestoreUnsavedConfirm: "Các thay đổi được thực hiện trong tab này kể từ lần lưu gần nhất không thể được lưu trước. Nếu bạn tiếp tục, chúng sẽ bị mất, vì phiên bản bạn chọn sẽ thay thế những gì đã lưu. Tiếp tục?",
+    store2RestoreListChanged: "Phiên bản đã lưu đó không còn trong danh sách, hoặc đã là phiên bản đang dùng, nên không có gì được khôi phục. Hãy mở lại danh sách để xem những phiên bản hiện có.",
+    store2RestoreBulkMarker: "Một lần lưu khác vẫn đang diễn ra hoặc chưa hoàn tất, nên không có gì được khôi phục. Hãy thử lại sau.",
+    store2RestoreIncomplete: (missing: number) =>
+        `Phiên bản đã lưu đó không đầy đủ (thiếu ${missing} phần). Không có gì bị thay đổi.`,
+    store2RestoreUnconfirmed: "RisuAI không thể xác nhận phiên bản trước đó đã được khôi phục hay chưa. Dù theo cách nào, không phiên bản nào bị mất. Hãy tải lại trang để xem phiên bản nào đang được dùng.",
+    store2RestoreNotFlushed: "Phiên bản trước đó đã được khôi phục, nhưng thiết bị chưa xác nhận đã ghi nó vào ổ đĩa. Ứng dụng sẽ tải lại ngay bây giờ và hoàn tất việc ghi khi khởi động.",
+    store2RestoreDone: "Phiên bản trước đó đã được khôi phục. Phiên bản bạn dùng trước đó vẫn được giữ trong danh sách. Đang làm mới ứng dụng.",
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Khi một bản lưu bị hỏng được thay thế từ bản sao lưu, các bản sao dữ liệu đã lưu cũ hơn được để riêng ra thay vì bị xóa (được tạo ${dates}). Hình ảnh và dữ liệu lưu trữ chỉ chúng sử dụng vẫn được bảo vệ, nên việc dọn dẹp không thể chạy khi chúng còn tồn tại.\n\nXóa các bản sao cũ này rồi dọn dẹp? Không thể khôi phục chúng. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ không chạy.`,

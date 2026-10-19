@@ -2243,6 +2243,18 @@ export const languageChineseTraditional = {
             : '找不到可在本次載入之前保留為備份副本的目前已儲存資料。')
         + '如果繼續，您將無法從備份清單回到目前已儲存的狀態。要在沒有備份副本的情況下繼續嗎？',
     "internalBackupLoadedNoCopy": "備份已載入。正在重新整理應用程式。",
+    "store2RestoreNone": "目前還沒有可回復的較早儲存版本。您的變更會自動儲存，較早的版本每 5 分鐘最多保留一次。",
+    "store2RestoreDateUnknown": "日期未知",
+    "store2RestoreRowDamaged": (when: string) => `${when}（已損毀）`,
+    "store2RestoreSaving": "正在先儲存您的最新變更...",
+    "store2RestoreUnsavedConfirm": "此分頁自上次儲存以來所做的變更無法先行儲存。如果繼續，這些變更將會遺失，因為您選擇的版本會取代已儲存的內容。要繼續嗎？",
+    "store2RestoreListChanged": "該儲存版本已不在清單中，或已是正在使用的版本，因此沒有還原任何內容。請重新開啟清單查看可用的版本。",
+    "store2RestoreBulkMarker": "另一項儲存仍在進行或未能完成，因此沒有還原任何內容。請稍後再試。",
+    "store2RestoreIncomplete": (missing: number) =>
+        `該儲存版本不完整（缺少 ${missing} 個部分）。沒有變更任何內容。`,
+    "store2RestoreUnconfirmed": "RisuAI 無法確認較早的版本是否已還原。無論哪種情況，兩個版本都不會遺失。請重新載入頁面以查看正在使用的是哪個版本。",
+    "store2RestoreNotFlushed": "較早的版本已還原，但裝置未確認已將其寫入磁碟。應用程式現在將重新載入，並在啟動時完成寫入。",
+    "store2RestoreDone": "較早的版本已還原。您之前使用的版本仍保留在清單中。正在重新整理應用程式。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用備份取代已損毀的已儲存資料時，資料的較舊已儲存副本被保留下來，而沒有被刪除（建立於 ${dates}）。僅被它們使用的圖片和封存資料仍受保護，因此只要這些副本存在，就無法執行清理。\n\n是否刪除這些較舊的副本，然後進行清理？刪除後無法復原。選擇「取消」則保留它們，此時不會執行清理。`,

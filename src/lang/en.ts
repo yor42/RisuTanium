@@ -2337,6 +2337,18 @@ export const languageEnglish = {
             : 'No current saved data was found to keep as a backup copy before this load. ')
         + 'If you continue, you cannot go back to what is saved now from the backup list. Continue without a backup copy?',
     internalBackupLoadedNoCopy: "The backup was loaded. Refreshing your app.",
+    store2RestoreNone: "There is no earlier saved version to go back to yet. Your changes are saved automatically, and an earlier version is kept at most once every 5 minutes.",
+    store2RestoreDateUnknown: "unknown date",
+    store2RestoreRowDamaged: (when: string) => `${when} (damaged)`,
+    store2RestoreSaving: "Saving your latest changes first...",
+    store2RestoreUnsavedConfirm: "Changes made in this tab since it last saved could not be saved first. If you continue, they are lost, because the version you pick replaces what is saved. Continue?",
+    store2RestoreListChanged: "That saved version is no longer in the list, or it is already the one in use, so nothing was restored. Open the list again to see what is available.",
+    store2RestoreBulkMarker: "Another save is still in progress or did not finish, so nothing was restored. Try again later.",
+    store2RestoreIncomplete: (missing: number) =>
+        `That saved version is incomplete (${missing} ${missing === 1 ? 'part' : 'parts'} missing). Nothing was changed.`,
+    store2RestoreUnconfirmed: "RisuAI could not confirm whether the earlier version was restored. Neither version is lost either way. Reload the page to see which one is in use.",
+    store2RestoreNotFlushed: "The earlier version was restored, but the device did not confirm that it was written to disk. The app reloads now and finishes writing it when it starts.",
+    store2RestoreDone: "The earlier version was restored. The version you had before is kept in the list. Refreshing your app.",
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,

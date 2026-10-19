@@ -19,6 +19,8 @@ import { beginBusy, type BusyHandle } from "../process/memory/busyActions";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
 import { buildRestoreSet, completeRestoredTree, currentCharacterNames, repairRestoredCharacters, replaceWithRestoredSet } from "./restoreReplace";
 import { describeBlockForPerson } from "../globalApi.svelte";
+import { getPageStorageMode } from "../storage/pageStorageMode";
+import { loadStoreRestorePoint, type ExclusiveHoldRelease } from "./storeRestore";
 
 const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
 
@@ -175,7 +177,37 @@ async function keepCurrentState(): Promise<UndoCopy> {
     return { kind: 'kept' }
 }
 
+/**
+ * The tail every restore shares once the restored state has landed: the hold's
+ * Web Lock part is released first so other tabs can proceed, and before the
+ * reload is marked app-initiated, because the release can queue behind another
+ * tab's exclusive request for longer than the mark lives, and an expired mark
+ * lets the "Leave site?" guard stop the reload. The write lock part stays closed
+ * (`keepWriteLock`): a save from this page's pre-restore state must never
+ * overwrite the restored profile.
+ */
+export async function reloadOntoRestoredState(releaseExclusiveHold: ExclusiveHoldRelease | null): Promise<void> {
+    if (releaseExclusiveHold) {
+        await releaseExclusiveHold(true)
+    }
+    markAppInitiatedReload()
+    if (isTauri) {
+        await relaunch()
+    } else {
+        // replaceState drops any query string and keeps the fragment;
+        // location.reload() always performs a full reload.
+        history.replaceState(null, '', location.pathname + location.hash)
+        location.reload()
+    }
+}
+
 export async function loadInternalBackup() {
+
+    // A store2 page keeps no numbered backups: it restores one of its own restore
+    // points, and never reads or rebuilds a numbered backup.
+    if (getPageStorageMode().kind === 'store2') {
+        return await loadStoreRestorePoint({ reload: reloadOntoRestoredState })
+    }
 
     // Refused before anything is asked, again when the picker returns, and
     // again immediately before the write: work can start during any wait
@@ -371,23 +403,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             await alertNormalWait(rebuilt.notice)
         }
         alertWait(undoCopy.kind === 'kept' ? language.internalBackupLoaded : language.internalBackupLoadedNoCopy)
-        // The hold's Web Lock part is released first so other tabs can
-        // proceed, and before the reload is marked app-initiated: the release
-        // can queue behind another tab's exclusive request for longer than the
-        // mark lives, and an expired mark lets the "Leave site?" guard stop the
-        // reload. The write lock part stays closed (`keepWriteLock`).
-        if (releaseExclusiveHold) {
-            await releaseExclusiveHold(true)
-        }
-        markAppInitiatedReload()
-        if (isTauri) {
-            await relaunch()
-        } else {
-            // replaceState drops any query string and keeps the fragment;
-            // location.reload() always performs a full reload.
-            history.replaceState(null, '', location.pathname + location.hash)
-            location.reload()
-        }
+        await reloadOntoRestoredState(releaseExclusiveHold)
     } catch (error) {
         console.error(error)
         if (restoreLanded) {

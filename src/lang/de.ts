@@ -2200,6 +2200,18 @@ export const languageGerman = {
             : 'Es wurden keine aktuell gespeicherten Daten gefunden, die vor diesem Laden als Backup-Kopie aufbewahrt werden könnten. ')
         + 'Wenn Sie fortfahren, können Sie aus der Backup-Liste nicht mehr zum jetzt gespeicherten Stand zurückkehren. Ohne Backup-Kopie fortfahren?',
     "internalBackupLoadedNoCopy": "Das Backup wurde geladen. Die App wird neu geladen.",
+    "store2RestoreNone": "Es gibt noch keine frühere gespeicherte Version, zu der Sie zurückkehren könnten. Ihre Änderungen werden automatisch gespeichert, und eine frühere Version wird höchstens alle 5 Minuten aufbewahrt.",
+    "store2RestoreDateUnknown": "Datum unbekannt",
+    "store2RestoreRowDamaged": (when: string) => `${when} (beschädigt)`,
+    "store2RestoreSaving": "Ihre neuesten Änderungen werden zuerst gespeichert...",
+    "store2RestoreUnsavedConfirm": "Änderungen, die in diesem Tab seit dem letzten Speichern vorgenommen wurden, konnten nicht vorher gespeichert werden. Wenn Sie fortfahren, gehen sie verloren, weil die gewählte Version das ersetzt, was gespeichert ist. Fortfahren?",
+    "store2RestoreListChanged": "Diese gespeicherte Version ist nicht mehr in der Liste oder bereits die aktuell verwendete, daher wurde nichts wiederhergestellt. Öffnen Sie die Liste erneut, um zu sehen, was verfügbar ist.",
+    "store2RestoreBulkMarker": "Ein anderer Speichervorgang läuft noch oder wurde nicht abgeschlossen, daher wurde nichts wiederhergestellt. Versuchen Sie es später erneut.",
+    "store2RestoreIncomplete": (missing: number) =>
+        `Diese gespeicherte Version ist unvollständig (${missing} ${missing === 1 ? 'Teil fehlt' : 'Teile fehlen'}). Es wurde nichts geändert.`,
+    "store2RestoreUnconfirmed": "RisuAI konnte nicht bestätigen, ob die frühere Version wiederhergestellt wurde. In beiden Fällen geht keine der beiden Versionen verloren. Laden Sie die Seite neu, um zu sehen, welche Version verwendet wird.",
+    "store2RestoreNotFlushed": "Die frühere Version wurde wiederhergestellt, aber das Gerät hat nicht bestätigt, dass sie auf den Datenträger geschrieben wurde. Die App wird jetzt neu geladen und schließt das Schreiben beim Start ab.",
+    "store2RestoreDone": "Die frühere Version wurde wiederhergestellt. Die Version, die Sie zuvor hatten, bleibt in der Liste erhalten. Die App wird neu geladen.",
     "coldStorageCleanupDateUnknown": "Datum unbekannt",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `Als ein beschädigter Speicherstand aus einem Backup ersetzt wurde, wurden die älteren gespeicherten Kopien Ihrer Daten beiseitegelegt, statt gelöscht zu werden (erstellt: ${dates}). Bilder und archivierte Daten, die nur von ihnen verwendet werden, sind weiterhin geschützt, daher kann die Bereinigung nicht ausgeführt werden, solange sie existieren.\n\nDiese älteren Kopien löschen und dann bereinigen? Sie können nicht wiederhergestellt werden. Wählen Sie Abbrechen, um sie zu behalten; die Bereinigung wird dann nicht ausgeführt.`,

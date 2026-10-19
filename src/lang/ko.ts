@@ -2198,6 +2198,18 @@ export const languageKorean = {
             : '이번에 불러오기 전에 백업 사본으로 보관할 현재 저장된 데이터를 찾을 수 없습니다. ')
         + '계속하면 백업 목록에서 지금 저장된 상태로 되돌릴 수 없습니다. 백업 사본 없이 계속하시겠습니까?',
     internalBackupLoadedNoCopy: "백업을 불러왔습니다. 앱을 새로 고치는 중입니다.",
+    store2RestoreNone: "아직 되돌아갈 이전 저장 버전이 없습니다. 변경 사항은 자동으로 저장되며, 이전 버전은 5분에 최대 한 번만 보관됩니다.",
+    store2RestoreDateUnknown: "날짜 알 수 없음",
+    store2RestoreRowDamaged: (when: string) => `${when} (손상됨)`,
+    store2RestoreSaving: "먼저 최신 변경 사항을 저장하는 중입니다...",
+    store2RestoreUnsavedConfirm: "이 탭에서 마지막으로 저장한 이후의 변경 사항을 먼저 저장하지 못했습니다. 계속하면 해당 변경 사항이 사라집니다. 선택한 버전이 현재 저장된 데이터를 대체하기 때문입니다. 계속하시겠습니까?",
+    store2RestoreListChanged: "해당 저장 버전이 목록에 더 이상 없거나 이미 사용 중인 버전이어서 아무것도 복원되지 않았습니다. 목록을 다시 열어 사용 가능한 버전을 확인하세요.",
+    store2RestoreBulkMarker: "다른 저장이 아직 진행 중이거나 끝나지 않아 아무것도 복원되지 않았습니다. 나중에 다시 시도하세요.",
+    store2RestoreIncomplete: (missing: number) =>
+        `해당 저장 버전이 불완전합니다 (${missing}개 부분 누락). 아무것도 변경되지 않았습니다.`,
+    store2RestoreUnconfirmed: "RisuAI가 이전 버전이 복원되었는지 확인하지 못했습니다. 어느 쪽이든 두 버전 모두 사라지지 않습니다. 페이지를 새로고침하여 어느 버전이 사용 중인지 확인하세요.",
+    store2RestoreNotFlushed: "이전 버전을 복원했지만, 기기에서 디스크에 기록되었다는 확인을 받지 못했습니다. 앱을 지금 새로고침하며, 시작할 때 기록을 마무리합니다.",
+    store2RestoreDone: "이전 버전을 복원했습니다. 이전에 사용하던 버전은 목록에 보관되어 있습니다. 앱을 새로 고치는 중입니다.",
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `손상된 저장 데이터를 백업으로 교체할 때, 이전에 저장된 데이터 사본이 삭제되지 않고 따로 보관되었습니다(생성: ${dates}). 이 사본만 사용하는 이미지와 보관된 데이터는 계속 보호되므로, 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.\n\n이 이전 사본을 삭제한 뒤 정리하시겠습니까? 삭제한 사본은 복구할 수 없습니다. 취소를 선택하면 사본을 유지하며, 이 경우 정리는 실행되지 않습니다.`,

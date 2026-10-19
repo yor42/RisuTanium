@@ -2200,6 +2200,18 @@ export const languageSpanish = {
             : 'No se encontraron datos guardados actuales para conservar como copia de respaldo antes de esta carga. ')
         + 'Si continúas, no podrás volver desde la lista de respaldos a lo que está guardado ahora. ¿Continuar sin copia de respaldo?',
     internalBackupLoadedNoCopy: "Se cargó el respaldo. Actualizando la aplicación.",
+    store2RestoreNone: "Todavía no hay ninguna versión guardada anterior a la que volver. Tus cambios se guardan automáticamente, y se conserva una versión anterior como máximo una vez cada 5 minutos.",
+    store2RestoreDateUnknown: "fecha desconocida",
+    store2RestoreRowDamaged: (when: string) => `${when} (dañada)`,
+    store2RestoreSaving: "Guardando primero tus últimos cambios...",
+    store2RestoreUnsavedConfirm: "Los cambios hechos en esta pestaña desde la última vez que guardó no se pudieron guardar antes. Si continúas, se perderán, porque la versión que elijas sustituye a lo que está guardado. ¿Continuar?",
+    store2RestoreListChanged: "Esa versión guardada ya no está en la lista, o ya es la que está en uso, por lo que no se restauró nada. Abre la lista de nuevo para ver qué hay disponible.",
+    store2RestoreBulkMarker: "Otro guardado sigue en curso o no terminó, por lo que no se restauró nada. Inténtalo de nuevo más tarde.",
+    store2RestoreIncomplete: (missing: number) =>
+        `Esa versión guardada está incompleta (${missing === 1 ? 'falta 1 parte' : `faltan ${missing} partes`}). No se cambió nada.`,
+    store2RestoreUnconfirmed: "RisuAI no pudo confirmar si la versión anterior se restauró. En cualquier caso, no se pierde ninguna de las dos versiones. Recarga la página para ver cuál está en uso.",
+    store2RestoreNotFlushed: "La versión anterior se restauró, pero el dispositivo no confirmó que se escribiera en el disco. La aplicación se recarga ahora y termina de escribirla al iniciarse.",
+    store2RestoreDone: "La versión anterior se restauró. La versión que tenías antes se conserva en la lista. Actualizando la aplicación.",
     coldStorageCleanupDateUnknown: "fecha desconocida",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Cuando se reemplazó un guardado dañado desde un respaldo, las copias guardadas más antiguas de tus datos se apartaron en lugar de eliminarse (creadas: ${dates}). Las imágenes y los datos archivados que solo ellas usan siguen protegidos, por lo que la limpieza no se puede ejecutar mientras existan.\n\n¿Eliminar estas copias antiguas y luego limpiar? No se pueden recuperar. Elige Cancelar para conservarlas; la limpieza entonces no se ejecuta.`,
