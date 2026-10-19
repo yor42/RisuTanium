@@ -144,6 +144,8 @@ export interface CommitRequest {
     build(context: BuildContext): BuiltCommit | Promise<BuiltCommit>
     /** The marker label of a bulk commit; `bulk` when absent. */
     label?: StagingLabel
+    /** A replacement of the whole profile always keeps the state it replaces: the previous `current` enters `retained` whatever the admission interval says. */
+    force?: boolean
 }
 
 export interface CommitterOptions {
@@ -506,7 +508,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             const now = env.now()
             const next = nextCommitKey(heldKey, {
                 current: { key: built.manifest.key, at: now },
-                retained: nextRetained(heldKey, now, heldKey.current?.key !== markerKey.current?.key),
+                retained: nextRetained(heldKey, now, request.force === true || heldKey.current?.key !== markerKey.current?.key),
                 staging: null,
                 manifests: [built.manifest.body],
             }, env)
@@ -595,7 +597,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (parsed.status === 'refused') {
                 return parsed
             }
-            return request.newUnits > BULK_UNIT_THRESHOLD ? bulk(parsed.base, request) : ordinary(parsed.base, request, false)
+            return request.newUnits > BULK_UNIT_THRESHOLD ? bulk(parsed.base, request) : ordinary(parsed.base, request, request.force === true)
         },
 
         async restore(read, manifestKey) {
