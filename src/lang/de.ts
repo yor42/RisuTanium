@@ -1933,6 +1933,10 @@ export const languageGerman = {
         `${asset === null ? 'Das Backup ist fehlgeschlagen.' : `Das Backup wurde abgebrochen, weil sich ${asset} während des Speicherns geändert hat oder nicht gelesen werden konnte.`} Die Backup-Datei ist unvollständig und konnte von der App nicht gelöscht werden. Verwenden Sie sie nicht: Löschen Sie sie selbst und führen Sie das Backup dann erneut aus.`,
     "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `Das Backup wurde abgebrochen, weil ${asset} für einen Backup-Eintrag zu groß ist (das Limit liegt bei etwa 4,29 GB) und daher nicht gespeichert werden kann. ${file === 'untouched' ? 'Es wurde nichts in die Datei geschrieben.' : file === 'deleted' ? 'Die Backup-Datei war unvollständig und wurde daher gelöscht.' : 'Die Backup-Datei ist unvollständig und konnte von der App nicht gelöscht werden. Verwenden Sie sie nicht: Löschen Sie sie selbst.'} Das Backup kann dieses Asset nicht enthalten, solange es nicht entfernt oder verkleinert wird, und ein erneutes Ausführen des Backups schlägt auf dieselbe Weise fehl.`,
+    "backupOversizeConfirm": (items: string[]) =>
+        `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher können sie darin nicht gespeichert werden. Backup ohne sie erstellen? Es wurde noch nichts geschrieben.\n\n${items.join('\n')}`,
+    "backupOversizeLeftOut": (items: string[]) =>
+        `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "Das Backup ist fehlgeschlagen, bevor etwas in die Datei geschrieben wurde. Führen Sie das Backup erneut aus.",
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
@@ -2212,6 +2216,18 @@ export const languageGerman = {
     "store2RestoreUnconfirmed": "RisuAI konnte nicht bestätigen, ob die frühere Version wiederhergestellt wurde. In beiden Fällen geht keine der beiden Versionen verloren. Laden Sie die Seite neu, um zu sehen, welche Version verwendet wird.",
     "store2RestoreNotFlushed": "Die frühere Version wurde wiederhergestellt, aber das Gerät hat nicht bestätigt, dass sie auf den Datenträger geschrieben wurde. Die App wird jetzt neu geladen und schließt das Schreiben beim Start ab.",
     "store2RestoreDone": "Die frühere Version wurde wiederhergestellt. Die Version, die Sie zuvor hatten, bleibt in der Liste erhalten. Die App wird neu geladen.",
+    "store2RestoreOldRow": (when: string) => `Alt: ${when}`,
+    "store2ImportSizeWarning": (megabytes: number) =>
+        `Die Datenbank in diesem Backup ist etwa ${megabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone oder einem anderen kleinen Gerät der Speicher ausgehen und es kann anhalten. Ihre gespeicherten Daten werden erst geändert, wenn der Import abgeschlossen ist. Fortfahren?`,
+    "store2ImportIncompleteConfirm": (items: string) =>
+        `Einige Daten in diesem Backup konnten nicht vollständig übernommen werden:\n\n${items}\n\nDiese Teile sind nach dem Import leer oder fehlen. Die Daten, die Sie jetzt haben, bleiben in der Liste der früheren gespeicherten Versionen erhalten. Trotzdem importieren?`,
+    "store2ImportReadFailed": "Ein Teil des Backups oder Ihrer gespeicherten Daten konnte nicht gelesen werden, daher wurde nichts importiert. Ihre aktuellen Daten wurden nicht geändert.",
+    "store2ImportRefused": "Ihre gespeicherten Daten können derzeit nicht als Grundlage für einen Import verwendet werden, daher wurde nichts importiert. Ihre aktuellen Daten wurden nicht geändert.",
+    "store2ImportTooNew": "Ihre gespeicherten Daten wurden von einer neueren Version von RisuAI geschrieben, daher wurde nichts importiert. Aktualisieren Sie die App und versuchen Sie es erneut. Ihre aktuellen Daten wurden nicht geändert.",
+    "store2ImportAbandoned": "Der Import wurde nicht vollständig geschrieben, daher wurde nichts importiert und Ihre aktuellen Daten wurden nicht geändert. Versuchen Sie es erneut; wenn es weiterhin fehlschlägt, prüfen Sie, ob auf dem Gerät freier Speicherplatz vorhanden ist.",
+    "store2ImportUnconfirmed": "RisuAI konnte nicht bestätigen, ob das Backup importiert wurde. In beiden Fällen bleiben Ihre früheren Daten erhalten. Laden Sie die Seite neu, um zu sehen, welche Daten in Verwendung sind.",
+    "store2ImportNotFlushed": "Das Backup wurde importiert, aber das Gerät hat nicht bestätigt, dass es auf die Festplatte geschrieben wurde. Die App wird jetzt neu geladen und schließt das Schreiben beim Start ab.",
+    "store2ImportDone": "Das Backup wurde importiert. Die Daten, die Sie zuvor hatten, bleiben in der Liste der früheren gespeicherten Versionen erhalten und werden dort wie jede andere Version mit der Zeit entfernt. Die App wird neu geladen.",
     "coldStorageCleanupDateUnknown": "Datum unbekannt",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `Als ein beschädigter Speicherstand aus einem Backup ersetzt wurde, wurden die älteren gespeicherten Kopien Ihrer Daten beiseitegelegt, statt gelöscht zu werden (erstellt: ${dates}). Bilder und archivierte Daten, die nur von ihnen verwendet werden, sind weiterhin geschützt, daher kann die Bereinigung nicht ausgeführt werden, solange sie existieren.\n\nDiese älteren Kopien löschen und dann bereinigen? Sie können nicht wiederhergestellt werden. Wählen Sie Abbrechen, um sie zu behalten; die Bereinigung wird dann nicht ausgeführt.`,
@@ -2625,6 +2641,19 @@ export const languageGerman = {
         "noticeConvertedFromBackup": (date: string) => `Ihre Hauptspeicherdatei konnte nicht gelesen werden, daher hat RisuTanium das am ${date} gespeicherte Backup konvertiert. Alles, was Sie danach gespeichert haben, ist nicht enthalten.`,
         "noticeServerCapability": "Dieser Server kann nicht im neuen Speicherformat speichern, daher hat RisuTanium Ihre Daten schreibgeschützt geöffnet. Es wurde nichts geändert, und es wird nichts gespeichert. Ihre Daten sind nicht verloren.",
         "noticeBackendUnavailable": "RisuTanium konnte auf dieser Seite den neuen Speicher nicht erreichen und hat Ihre Daten daher schreibgeschützt geöffnet. Es wurde nichts geändert, und es wird nichts gespeichert. Ihre Daten sind nicht verloren.",
+        "offerRestoreNewest": (date: string) => `Neuestes Backup wiederherstellen (${date})`,
+        "offerImport": "Aus einer Backup-Datei (.bin) wiederherstellen",
+        "noticeRestoredFromBackup": (date: string) => `RisuTanium hat das am ${date} gespeicherte Backup wiederhergestellt. Alles, was Sie danach gespeichert haben, ist nicht enthalten.`,
+        "noticeRestoredFromOlderBackup": (date: string, newestDate: string) => `Das neueste Backup (gespeichert am ${newestDate}) konnte nicht gelesen werden, daher hat RisuTanium das am ${date} gespeicherte Backup wiederhergestellt. Alles, was Sie danach gespeichert haben, ist nicht enthalten.`,
+        "recoveryRestoreOffer": "Neuestes Backup wiederherstellen",
+        "recoveryImportOffer": "Aus einer Backup-Datei (.bin) wiederherstellen",
+        "recoveryRestoreTitle": (date: string) => `Das am ${date} gespeicherte Backup wiederherstellen?`,
+        "recoveryRestoreBody": "RisuTanium hat Backups Ihres alten Speicherstands gefunden, aber keine Hauptspeicherdatei. Beim Wiederherstellen wird das neueste lesbare Backup verwendet. Wenn das neueste nicht gelesen werden kann, fragt RisuTanium Sie, bevor es ein älteres verwendet. Alles, was Sie danach gespeichert haben, ist darin nicht enthalten. Ihre alten Dateien bleiben erhalten; dieser Schritt löscht sie nicht.",
+        "recoveryRestoreBodyUnknown": "RisuTanium hat Backups Ihres alten Speicherstands gefunden und konnte nicht prüfen, ob eine Hauptspeicherdatei vorhanden ist. Beim Wiederherstellen wird die Hauptspeicherdatei verwendet, wenn sie gelesen werden kann, andernfalls das neueste lesbare Backup. Wenn das neueste Backup nicht gelesen werden kann, fragt RisuTanium Sie, bevor es ein älteres verwendet. Alles, was Sie danach gespeichert haben, ist darin nicht enthalten. Ihre alten Dateien bleiben erhalten; dieser Schritt löscht sie nicht.",
+        "recoveryOlderTitle": (date: string) => `Das am ${date} gespeicherte Backup verwenden?`,
+        "recoveryOlderBody": (newestDate: string, date: string) => `Das neueste Backup (gespeichert am ${newestDate}) konnte nicht gelesen werden. Das nächste lesbare wurde am ${date} gespeichert. Alles, was Sie nach ${date} gespeichert haben, ist darin nicht enthalten. Ihre alten Dateien bleiben erhalten; dieser Schritt löscht sie nicht.`,
+        "recoveryOlderGo": "Das ältere Backup verwenden",
+        "recoveryRestoreGo": "Backup wiederherstellen",
         "recoveryTitle": "Ihre Daten wiederherstellen",
         "recoveryBody": "RisuTanium konnte Ihre aktuellen gespeicherten Daten nicht öffnen. Sie können eine frühere gespeicherte Version oder eine der anderen Optionen unten verwenden. Es wird nichts geändert, bevor Sie eine Auswahl bestätigen.",
         "recoveryListHeading": "Frühere gespeicherte Versionen",
@@ -2685,6 +2714,8 @@ export const languageGerman = {
         "peerReload": "Neu laden (die ungespeicherten Änderungen dieses Tabs gehen verloren)",
         "peerSaveMine": "Meine speichern (die Version dieses Tabs ersetzt die Änderung des anderen Tabs)",
         "peerExportFirst": "Diesen Tab zuerst exportieren, dann neu laden",
+        "peerExportHandedOff": "Der Export dieses Tabs wurde an Ihren Browser übergeben. Warten Sie, bis der Download abgeschlossen ist, und klicken Sie dann auf „Jetzt neu laden“. Ein früheres Neuladen kann den Download abbrechen.",
+        "peerExportReloadNow": "Jetzt neu laden",
         "peerNoSaveNode": "Dieses Server-Setup kann einen Tab nicht über einen anderen speichern.",
         "peerNoSaveReplaced": "Nachdem Ihre gespeicherten Daten außerhalb dieses Tabs geändert wurden, kann die Version dieses Tabs nicht darüber gespeichert werden.",
         "peerNoSaveUnloaded": "Dieser Tab hält nicht alle Charaktere im Arbeitsspeicher, daher kann seine Version die Änderung des anderen Tabs nicht ersetzen.",

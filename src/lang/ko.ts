@@ -1930,6 +1930,10 @@ export const languageKorean = {
         `${asset === null ? '백업에 실패했습니다.' : `${asset}이(가) 저장되는 동안 변경되었거나 읽을 수 없어 백업이 중단되었습니다.`} 백업 파일이 불완전하며 앱이 삭제하지 못했습니다. 이 파일을 사용하지 말고 직접 삭제한 다음 백업을 다시 실행하세요.`,
     "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `${asset}이(가) 백업 항목 하나로 저장하기에는 너무 커서(한도는 약 4.29 GB) 저장할 수 없으므로 백업이 중단되었습니다. ${file === 'untouched' ? '파일에는 아무것도 기록되지 않았습니다.' : file === 'deleted' ? '백업 파일이 불완전하여 삭제했습니다.' : '백업 파일이 불완전하며 앱이 삭제하지 못했습니다. 이 파일을 사용하지 말고 직접 삭제하세요.'} 해당 에셋을 제거하거나 크기를 줄이기 전에는 백업에 포함할 수 없으며, 백업을 다시 실행해도 같은 방식으로 실패합니다.`,
+    "backupOversizeConfirm": (items: string[]) =>
+        `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 백업에 저장할 수 없습니다. 해당 항목 없이 백업을 만드시겠습니까? 아직 아무것도 기록되지 않았습니다.\n\n${items.join('\n')}`,
+    "backupOversizeLeftOut": (items: string[]) =>
+        `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "파일에 아무것도 기록되기 전에 백업에 실패했습니다. 백업을 다시 실행하세요.",
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
@@ -2210,6 +2214,18 @@ export const languageKorean = {
     store2RestoreUnconfirmed: "RisuAI가 이전 버전이 복원되었는지 확인하지 못했습니다. 어느 쪽이든 두 버전 모두 사라지지 않습니다. 페이지를 새로고침하여 어느 버전이 사용 중인지 확인하세요.",
     store2RestoreNotFlushed: "이전 버전을 복원했지만, 기기에서 디스크에 기록되었다는 확인을 받지 못했습니다. 앱을 지금 새로고침하며, 시작할 때 기록을 마무리합니다.",
     store2RestoreDone: "이전 버전을 복원했습니다. 이전에 사용하던 버전은 목록에 보관되어 있습니다. 앱을 새로 고치는 중입니다.",
+    store2RestoreOldRow: (when: string) => `이전: ${when}`,
+    store2ImportSizeWarning: (megabytes: number) =>
+        `이 백업 안의 데이터베이스는 약 ${megabytes} MB입니다. 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰 같은 소형 기기는 메모리가 부족해 멈출 수 있습니다. 가져오기가 끝나기 전까지는 저장된 데이터가 변경되지 않습니다. 계속하시겠습니까?`,
+    store2ImportIncompleteConfirm: (items: string) =>
+        `이 백업의 일부 데이터를 완전히 가져오지 못했습니다:\n\n${items}\n\n가져온 뒤 해당 부분은 비어 있거나 누락됩니다. 지금 가지고 있는 데이터는 이전 저장 버전 목록에 보관됩니다. 그래도 가져오시겠습니까?`,
+    store2ImportReadFailed: "백업의 일부 또는 저장된 데이터의 일부를 읽을 수 없어 아무것도 가져오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
+    store2ImportRefused: "지금은 저장된 데이터를 가져오기의 기준으로 사용할 수 없어 아무것도 가져오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
+    store2ImportTooNew: "저장된 데이터가 더 최신 버전의 RisuAI로 작성되어 아무것도 가져오지 않았습니다. 앱을 업데이트한 뒤 다시 시도하세요. 현재 데이터는 변경되지 않았습니다.",
+    store2ImportAbandoned: "가져오기가 기록을 끝내지 못해 아무것도 가져오지 않았고 현재 데이터도 변경되지 않았습니다. 다시 시도하세요. 계속 실패하면 기기의 여유 공간을 확인하세요.",
+    store2ImportUnconfirmed: "RisuAI가 백업을 가져왔는지 확인하지 못했습니다. 어느 쪽이든 이전 데이터는 보관됩니다. 페이지를 새로고침하여 어느 쪽이 사용 중인지 확인하세요.",
+    store2ImportNotFlushed: "백업을 가져왔지만, 기기에서 디스크에 기록되었다는 확인을 받지 못했습니다. 앱을 지금 새로고침하며, 시작할 때 기록을 마무리합니다.",
+    store2ImportDone: "백업을 가져왔습니다. 이전에 가지고 있던 데이터는 이전 저장 버전 목록에 보관되며, 다른 버전과 마찬가지로 시간이 지나면 정리됩니다. 앱을 새로 고치는 중입니다.",
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `손상된 저장 데이터를 백업으로 교체할 때, 이전에 저장된 데이터 사본이 삭제되지 않고 따로 보관되었습니다(생성: ${dates}). 이 사본만 사용하는 이미지와 보관된 데이터는 계속 보호되므로, 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.\n\n이 이전 사본을 삭제한 뒤 정리하시겠습니까? 삭제한 사본은 복구할 수 없습니다. 취소를 선택하면 사본을 유지하며, 이 경우 정리는 실행되지 않습니다.`,
@@ -2623,6 +2639,19 @@ export const languageKorean = {
         noticeConvertedFromBackup: (date: string) => `메인 저장 파일을 읽을 수 없어 RisuTanium이 ${date}에 저장된 백업을 변환했습니다. 그 시점 이후에 저장한 내용은 포함되지 않습니다.`,
         noticeServerCapability: "이 서버는 새 저장소 형식으로 저장할 수 없어서 RisuTanium이 데이터를 읽기 전용으로 열었습니다. 아무것도 변경되지 않았으며 아무것도 저장되지 않습니다. 데이터는 사라지지 않았습니다.",
         noticeBackendUnavailable: "RisuTanium이 이 페이지에서 새 저장소에 접근하지 못해 데이터를 읽기 전용으로 열었습니다. 아무것도 변경되지 않았으며 아무것도 저장되지 않습니다. 데이터는 사라지지 않았습니다.",
+        offerRestoreNewest: (date: string) => `가장 최근 백업 복원(${date})`,
+        offerImport: "백업 파일(.bin)에서 복원",
+        noticeRestoredFromBackup: (date: string) => `RisuTanium이 ${date}에 저장된 백업을 복원했습니다. 그 시점 이후에 저장한 내용은 포함되지 않습니다.`,
+        noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `가장 최근 백업(${newestDate}에 저장됨)을 읽을 수 없어 RisuTanium이 ${date}에 저장된 백업을 복원했습니다. 그 시점 이후에 저장한 내용은 포함되지 않습니다.`,
+        recoveryRestoreOffer: "가장 최근 백업 복원",
+        recoveryImportOffer: "백업 파일(.bin)에서 복원",
+        recoveryRestoreTitle: (date: string) => `${date}에 저장된 백업을 복원하시겠습니까?`,
+        recoveryRestoreBody: "RisuTanium이 이전 저장본의 백업은 찾았지만 메인 저장 파일은 찾지 못했습니다. 복원하면 읽을 수 있는 가장 최근 백업을 사용합니다. 가장 최근 백업을 읽을 수 없으면, 더 오래된 백업을 사용하기 전에 RisuTanium이 먼저 묻습니다. 그 시점 이후에 저장한 내용은 포함되어 있지 않습니다. 기존 파일은 그대로 보관되며, 이 단계에서는 삭제되지 않습니다.",
+        recoveryRestoreBodyUnknown: "RisuTanium이 이전 저장본의 백업은 찾았지만, 메인 저장 파일이 있는지는 확인하지 못했습니다. 복원하면 메인 저장 파일을 읽을 수 있을 때는 그것을, 그렇지 않으면 읽을 수 있는 가장 최근 백업을 사용합니다. 가장 최근 백업을 읽을 수 없으면, 더 오래된 백업을 사용하기 전에 RisuTanium이 먼저 묻습니다. 그 시점 이후에 저장한 내용은 포함되어 있지 않습니다. 기존 파일은 그대로 보관되며, 이 단계에서는 삭제되지 않습니다.",
+        recoveryOlderTitle: (date: string) => `${date}에 저장된 백업을 사용하시겠습니까?`,
+        recoveryOlderBody: (newestDate: string, date: string) => `가장 최근 백업(${newestDate}에 저장됨)을 읽을 수 없습니다. 그다음으로 읽을 수 있는 백업은 ${date}에 저장되었습니다. ${date} 이후에 저장한 내용은 포함되어 있지 않습니다. 기존 파일은 그대로 보관되며, 이 단계에서는 삭제되지 않습니다.`,
+        recoveryOlderGo: "더 오래된 백업 사용",
+        recoveryRestoreGo: "백업 복원",
         recoveryTitle: "데이터 복구",
         recoveryBody: "RisuTanium이 현재 저장된 데이터를 열 수 없었습니다. 이전에 저장된 버전이나 아래의 다른 옵션을 사용할 수 있습니다. 선택을 확인하기 전에는 아무것도 변경되지 않습니다.",
         recoveryListHeading: "이전에 저장된 버전",
@@ -2683,6 +2712,8 @@ export const languageKorean = {
         peerReload: "새로고침 (이 탭의 저장되지 않은 변경 사항은 사라집니다)",
         peerSaveMine: "내 것 저장 (이 탭의 버전이 다른 탭의 변경 사항을 대체합니다)",
         peerExportFirst: "먼저 이 탭을 엑스포트한 뒤 새로고침",
+        peerExportHandedOff: "이 탭의 엑스포트를 브라우저에 넘겼습니다. 다운로드가 끝날 때까지 기다린 뒤 지금 새로고침을 누르세요. 그보다 일찍 새로고침하면 다운로드가 중간에 끊길 수 있습니다.",
+        peerExportReloadNow: "지금 새로고침",
         peerNoSaveNode: "이 서버 구성에서는 한 탭의 내용을 다른 탭 위에 덮어써 저장할 수 없습니다.",
         peerNoSaveReplaced: "저장된 데이터가 이 탭 밖에서 변경된 뒤에는 이 탭의 버전을 그 위에 덮어써 저장할 수 없습니다.",
         peerNoSaveUnloaded: "이 탭은 모든 캐릭터를 메모리에 보유하고 있지 않으므로, 이 탭의 버전으로 다른 탭의 변경 사항을 대체할 수 없습니다.",

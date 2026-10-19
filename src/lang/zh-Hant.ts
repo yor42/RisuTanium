@@ -1976,6 +1976,10 @@ export const languageChineseTraditional = {
         `${asset === null ? '備份失敗。' : `備份已停止，因為 ${asset} 在儲存過程中發生了變更或無法讀取。`}備份檔案不完整，且應用程式無法將其刪除。請勿使用該檔案：請自行刪除，然後重新執行備份。`,
     "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `備份已停止，因為 ${asset} 對單一備份項目而言過大（上限約為 4.29 GB），無法儲存。${file === 'untouched' ? '未向檔案寫入任何內容。' : file === 'deleted' ? '備份檔案不完整，因此已被刪除。' : '備份檔案不完整，且應用程式無法將其刪除。請勿使用該檔案：請自行刪除。'}在移除該資源或將其縮小之前，備份無法包含它，再次執行備份仍會以同樣的方式失敗。`,
+    "backupOversizeConfirm": (items: string[]) =>
+        `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此無法儲存到備份中。要在不包含它們的情況下建立備份嗎？目前尚未寫入任何內容。\n\n${items.join('\n')}`,
+    "backupOversizeLeftOut": (items: string[]) =>
+        `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此它們的內容不在備份中（角色只保留一個預留位置）：\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "備份在向檔案寫入任何內容之前就失敗了。請重新執行備份。",
     "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
@@ -2255,6 +2259,18 @@ export const languageChineseTraditional = {
     "store2RestoreUnconfirmed": "RisuAI 無法確認較早的版本是否已還原。無論哪種情況，兩個版本都不會遺失。請重新載入頁面以查看正在使用的是哪個版本。",
     "store2RestoreNotFlushed": "較早的版本已還原，但裝置未確認已將其寫入磁碟。應用程式現在將重新載入，並在啟動時完成寫入。",
     "store2RestoreDone": "較早的版本已還原。您之前使用的版本仍保留在清單中。正在重新整理應用程式。",
+    "store2RestoreOldRow": (when: string) => `舊版：${when}`,
+    "store2ImportSizeWarning": (megabytes: number) =>
+        `此備份中的資料庫約為 ${megabytes} MB。讀取它需要數倍於此的記憶體，因此手機或其他小型裝置可能會記憶體不足而停止運作。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
+    "store2ImportIncompleteConfirm": (items: string) =>
+        `此備份中的部分資料無法完整匯入：\n\n${items}\n\n匯入後，這些部分將為空白或缺失。您目前的資料會保留在較早儲存的版本清單中。仍要匯入嗎？`,
+    "store2ImportReadFailed": "備份的一部分或您已儲存資料的一部分無法讀取，因此沒有匯入任何內容。您目前的資料沒有變更。",
+    "store2ImportRefused": "您已儲存的資料目前無法作為匯入的基礎，因此沒有匯入任何內容。您目前的資料沒有變更。",
+    "store2ImportTooNew": "您已儲存的資料由較新版本的 RisuAI 寫入，因此沒有匯入任何內容。請更新應用程式後再試。您目前的資料沒有變更。",
+    "store2ImportAbandoned": "匯入未能完成寫入，因此沒有匯入任何內容，您目前的資料也沒有變更。請再試一次；如果持續失敗，請檢查裝置是否有可用空間。",
+    "store2ImportUnconfirmed": "RisuAI 無法確認備份是否已匯入。無論哪種情況，您之前的資料都會保留。請重新載入頁面，查看正在使用的是哪一份。",
+    "store2ImportNotFlushed": "備份已匯入，但裝置未確認已將其寫入磁碟。應用程式現在會重新載入，並在啟動時完成寫入。",
+    "store2ImportDone": "備份已匯入。您之前的資料保留在較早儲存的版本清單中，並會像其他版本一樣隨時間被清理。正在重新整理應用程式。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用備份取代已損毀的已儲存資料時，資料的較舊已儲存副本被保留下來，而沒有被刪除（建立於 ${dates}）。僅被它們使用的圖片和封存資料仍受保護，因此只要這些副本存在，就無法執行清理。\n\n是否刪除這些較舊的副本，然後進行清理？刪除後無法復原。選擇「取消」則保留它們，此時不會執行清理。`,
@@ -2668,6 +2684,19 @@ export const languageChineseTraditional = {
         "noticeConvertedFromBackup": (date: string) => `無法讀取您的主儲存檔案，因此 RisuTanium 轉換了 ${date} 儲存的備份。在那之後儲存的任何內容都不包含在內。`,
         "noticeServerCapability": "此伺服器無法以新的儲存格式儲存，因此 RisuTanium 以唯讀方式開啟了您的資料。沒有更改任何內容，也不會儲存任何內容。您的資料沒有遺失。",
         "noticeBackendUnavailable": "RisuTanium 在此頁面上無法存取新的儲存空間，因此以唯讀方式開啟了您的資料。沒有更改任何內容，也不會儲存任何內容。您的資料沒有遺失。",
+        "offerRestoreNewest": (date: string) => `還原最新的備份（${date}）`,
+        "offerImport": "從備份檔案（.bin）還原",
+        "noticeRestoredFromBackup": (date: string) => `RisuTanium 已還原 ${date} 儲存的備份。在那之後儲存的任何內容都不包含在內。`,
+        "noticeRestoredFromOlderBackup": (date: string, newestDate: string) => `無法讀取最新的備份（儲存於 ${newestDate}），因此 RisuTanium 還原了 ${date} 儲存的備份。在那之後儲存的任何內容都不包含在內。`,
+        "recoveryRestoreOffer": "還原最新的備份",
+        "recoveryImportOffer": "從備份檔案（.bin）還原",
+        "recoveryRestoreTitle": (date: string) => `要還原 ${date} 儲存的備份嗎？`,
+        "recoveryRestoreBody": "RisuTanium 找到了您舊存檔的備份，但沒有找到主儲存檔案。還原時會使用可以讀取的最新備份。如果最新的備份無法讀取，RisuTanium 會在使用較早的備份之前詢問您。在那之後儲存的任何內容都不在其中。您的舊檔案會保留；此步驟不會刪除它們。",
+        "recoveryRestoreBodyUnknown": "RisuTanium 找到了您舊存檔的備份，但無法確認是否存在主儲存檔案。還原時，如果主儲存檔案可以讀取就使用它，否則使用可以讀取的最新備份。如果最新的備份無法讀取，RisuTanium 會在使用較早的備份之前詢問您。在那之後儲存的任何內容都不在其中。您的舊檔案會保留；此步驟不會刪除它們。",
+        "recoveryOlderTitle": (date: string) => `要使用 ${date} 儲存的備份嗎？`,
+        "recoveryOlderBody": (newestDate: string, date: string) => `無法讀取最新的備份（儲存於 ${newestDate}）。下一個可以讀取的備份儲存於 ${date}。在 ${date} 之後儲存的任何內容都不在其中。您的舊檔案會保留；此步驟不會刪除它們。`,
+        "recoveryOlderGo": "使用較早的備份",
+        "recoveryRestoreGo": "還原備份",
         "recoveryTitle": "復原您的資料",
         "recoveryBody": "RisuTanium 無法開啟您目前已儲存的資料。您可以使用更早儲存的版本，或使用下方的其他選項。在您確認某項選擇之前，不會更改任何內容。",
         "recoveryListHeading": "更早儲存的版本",
@@ -2728,6 +2757,8 @@ export const languageChineseTraditional = {
         "peerReload": "重新載入（此分頁未儲存的變更將遺失）",
         "peerSaveMine": "儲存我的（此分頁的版本將取代另一個分頁的變更）",
         "peerExportFirst": "先匯出此分頁，再重新載入",
+        "peerExportHandedOff": "此分頁的匯出已交給瀏覽器處理。請等待下載完成後，再按「立即重新載入」。過早重新載入可能會中斷下載。",
+        "peerExportReloadNow": "立即重新載入",
         "peerNoSaveNode": "此伺服器設定無法將一個分頁的內容覆蓋儲存到另一個分頁之上。",
         "peerNoSaveReplaced": "已儲存的資料在此分頁之外被變更後，無法再用此分頁的版本覆蓋儲存。",
         "peerNoSaveUnloaded": "此分頁沒有在記憶體中保留所有角色，因此其版本無法取代另一個分頁的變更。",

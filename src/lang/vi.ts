@@ -1931,6 +1931,10 @@ export const languageVietnamese = {
         `${asset === null ? 'Sao lưu không thành công.' : `Quá trình sao lưu đã dừng vì ${asset} đã thay đổi hoặc không thể đọc được trong lúc đang được lưu.`} Tệp sao lưu không đầy đủ và ứng dụng không thể xóa nó. Không dùng tệp này: hãy tự xóa nó, rồi chạy lại sao lưu.`,
     "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `Quá trình sao lưu đã dừng vì ${asset} quá lớn so với một mục sao lưu (giới hạn khoảng 4,29 GB) nên không thể lưu. ${file === 'untouched' ? 'Không có gì được ghi vào tệp.' : file === 'deleted' ? 'Tệp sao lưu không đầy đủ nên đã bị xóa.' : 'Tệp sao lưu không đầy đủ và ứng dụng không thể xóa nó. Không dùng tệp này: hãy tự xóa nó.'} Bản sao lưu không thể bao gồm tài nguyên (asset) đó cho đến khi nó được gỡ bỏ hoặc thu nhỏ, và chạy lại sao lưu sẽ thất bại theo cách tương tự.`,
+    "backupOversizeConfirm": (items: string[]) =>
+        `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên không thể lưu vào bản sao lưu. Tạo bản sao lưu mà không có chúng? Chưa có gì được ghi.\n\n${items.join('\n')}`,
+    "backupOversizeLeftOut": (items: string[]) =>
+        `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "Sao lưu không thành công trước khi có bất kỳ gì được ghi vào tệp. Hãy chạy lại sao lưu.",
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
@@ -2210,6 +2214,18 @@ export const languageVietnamese = {
     store2RestoreUnconfirmed: "RisuAI không thể xác nhận phiên bản trước đó đã được khôi phục hay chưa. Dù theo cách nào, không phiên bản nào bị mất. Hãy tải lại trang để xem phiên bản nào đang được dùng.",
     store2RestoreNotFlushed: "Phiên bản trước đó đã được khôi phục, nhưng thiết bị chưa xác nhận đã ghi nó vào ổ đĩa. Ứng dụng sẽ tải lại ngay bây giờ và hoàn tất việc ghi khi khởi động.",
     store2RestoreDone: "Phiên bản trước đó đã được khôi phục. Phiên bản bạn dùng trước đó vẫn được giữ trong danh sách. Đang làm mới ứng dụng.",
+    store2RestoreOldRow: (when: string) => `Cũ: ${when}`,
+    store2ImportSizeWarning: (megabytes: number) =>
+        `Cơ sở dữ liệu trong bản sao lưu này nặng khoảng ${megabytes} MB. Việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại hoặc thiết bị nhỏ khác có thể hết bộ nhớ và ngừng hoạt động. Dữ liệu đã lưu của bạn không bị thay đổi cho đến khi việc nhập hoàn tất. Tiếp tục?`,
+    store2ImportIncompleteConfirm: (items: string) =>
+        `Một phần dữ liệu trong bản sao lưu này không thể được nhập đầy đủ:\n\n${items}\n\nCác phần đó sẽ trống hoặc bị thiếu sau khi nhập. Dữ liệu bạn đang có được giữ trong danh sách các phiên bản đã lưu trước đó. Vẫn nhập?`,
+    store2ImportReadFailed: "Một phần của bản sao lưu, hoặc một phần dữ liệu đã lưu của bạn, không đọc được nên không có gì được nhập. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    store2ImportRefused: "Hiện không thể dùng dữ liệu đã lưu của bạn làm nền cho việc nhập, nên không có gì được nhập. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    store2ImportTooNew: "Dữ liệu đã lưu của bạn được ghi bởi một phiên bản RisuAI mới hơn, nên không có gì được nhập. Hãy cập nhật ứng dụng rồi thử lại. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    store2ImportAbandoned: "Việc nhập chưa ghi xong, nên không có gì được nhập và dữ liệu hiện tại của bạn không bị thay đổi. Hãy thử lại; nếu vẫn thất bại, hãy kiểm tra thiết bị còn dung lượng trống hay không.",
+    store2ImportUnconfirmed: "RisuAI không thể xác nhận bản sao lưu đã được nhập hay chưa. Dù theo cách nào, dữ liệu trước đó của bạn vẫn được giữ. Hãy tải lại trang để xem bản nào đang được dùng.",
+    store2ImportNotFlushed: "Bản sao lưu đã được nhập, nhưng thiết bị chưa xác nhận đã ghi nó vào ổ đĩa. Ứng dụng sẽ tải lại ngay bây giờ và hoàn tất việc ghi khi khởi động.",
+    store2ImportDone: "Bản sao lưu đã được nhập. Dữ liệu bạn có trước đó được giữ trong danh sách các phiên bản đã lưu trước đó, và sẽ bị dọn dần theo thời gian như mọi phiên bản khác. Đang làm mới ứng dụng.",
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Khi một bản lưu bị hỏng được thay thế từ bản sao lưu, các bản sao dữ liệu đã lưu cũ hơn được để riêng ra thay vì bị xóa (được tạo ${dates}). Hình ảnh và dữ liệu lưu trữ chỉ chúng sử dụng vẫn được bảo vệ, nên việc dọn dẹp không thể chạy khi chúng còn tồn tại.\n\nXóa các bản sao cũ này rồi dọn dẹp? Không thể khôi phục chúng. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ không chạy.`,
@@ -2623,6 +2639,19 @@ export const languageVietnamese = {
         noticeConvertedFromBackup: (date: string) => `Không đọc được tệp lưu chính của bạn, nên RisuTanium đã chuyển đổi bản sao lưu được lưu vào ${date}. Mọi thứ bạn đã lưu sau thời điểm đó đều không được đưa vào.`,
         noticeServerCapability: "Máy chủ này không thể lưu theo định dạng bộ nhớ lưu trữ mới, nên RisuTanium đã mở dữ liệu của bạn ở chế độ chỉ đọc. Không có gì bị thay đổi và sẽ không có gì được lưu. Dữ liệu của bạn không bị mất.",
         noticeBackendUnavailable: "RisuTanium không thể truy cập bộ nhớ lưu trữ mới trên trang này, nên đã mở dữ liệu của bạn ở chế độ chỉ đọc. Không có gì bị thay đổi và sẽ không có gì được lưu. Dữ liệu của bạn không bị mất.",
+        offerRestoreNewest: (date: string) => `Khôi phục bản sao lưu mới nhất (${date})`,
+        offerImport: "Khôi phục từ tệp sao lưu (.bin)",
+        noticeRestoredFromBackup: (date: string) => `RisuTanium đã khôi phục bản sao lưu được lưu vào ${date}. Mọi thứ bạn đã lưu sau thời điểm đó đều không được đưa vào.`,
+        noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `Không đọc được bản sao lưu mới nhất (được lưu vào ${newestDate}), nên RisuTanium đã khôi phục bản sao lưu được lưu vào ${date}. Mọi thứ bạn đã lưu sau thời điểm đó đều không được đưa vào.`,
+        recoveryRestoreOffer: "Khôi phục bản sao lưu mới nhất",
+        recoveryImportOffer: "Khôi phục từ tệp sao lưu (.bin)",
+        recoveryRestoreTitle: (date: string) => `Khôi phục bản sao lưu được lưu vào ${date}?`,
+        recoveryRestoreBody: "RisuTanium tìm thấy các bản sao lưu của bản lưu cũ của bạn nhưng không có tệp lưu chính. Việc khôi phục dùng bản sao lưu mới nhất mà đọc được. Nếu bản mới nhất không đọc được, RisuTanium sẽ hỏi bạn trước khi dùng một bản cũ hơn. Mọi thứ bạn đã lưu sau thời điểm đó đều không có trong đó. Các tệp cũ của bạn được giữ lại; bước này không xóa chúng.",
+        recoveryRestoreBodyUnknown: "RisuTanium tìm thấy các bản sao lưu của bản lưu cũ của bạn, và không thể kiểm tra xem có tệp lưu chính hay không. Việc khôi phục dùng tệp lưu chính nếu đọc được, nếu không thì dùng bản sao lưu mới nhất mà đọc được. Nếu bản sao lưu mới nhất không đọc được, RisuTanium sẽ hỏi bạn trước khi dùng một bản cũ hơn. Mọi thứ bạn đã lưu sau thời điểm đó đều không có trong đó. Các tệp cũ của bạn được giữ lại; bước này không xóa chúng.",
+        recoveryOlderTitle: (date: string) => `Dùng bản sao lưu được lưu vào ${date}?`,
+        recoveryOlderBody: (newestDate: string, date: string) => `Không đọc được bản sao lưu mới nhất (được lưu vào ${newestDate}). Bản tiếp theo đọc được đã được lưu vào ${date}. Mọi thứ bạn đã lưu sau ${date} đều không có trong đó. Các tệp cũ của bạn được giữ lại; bước này không xóa chúng.`,
+        recoveryOlderGo: "Dùng bản sao lưu cũ hơn",
+        recoveryRestoreGo: "Khôi phục bản sao lưu",
         recoveryTitle: "Khôi phục dữ liệu của bạn",
         recoveryBody: "RisuTanium không thể mở dữ liệu đã lưu hiện tại của bạn. Bạn có thể dùng một phiên bản đã lưu trước đó hoặc một trong các tùy chọn khác bên dưới. Không có gì bị thay đổi cho đến khi bạn xác nhận một lựa chọn.",
         recoveryListHeading: "Các phiên bản đã lưu trước đó",
@@ -2683,6 +2712,8 @@ export const languageVietnamese = {
         peerReload: "Tải lại (các thay đổi chưa lưu của tab này sẽ bị mất)",
         peerSaveMine: "Lưu bản của tôi (phiên bản của tab này sẽ thay thế thay đổi của tab kia)",
         peerExportFirst: "Xuất tab này trước, rồi tải lại",
+        peerExportHandedOff: "Việc xuất tab này đã được chuyển cho trình duyệt của bạn. Hãy đợi đến khi tải xuống xong, rồi nhấn Tải lại ngay. Tải lại sớm hơn có thể làm gián đoạn quá trình tải xuống.",
+        peerExportReloadNow: "Tải lại ngay",
         peerNoSaveNode: "Cấu hình máy chủ này không thể lưu tab này đè lên tab khác.",
         peerNoSaveReplaced: "Sau khi dữ liệu đã lưu của bạn bị thay đổi từ bên ngoài tab này, phiên bản của tab này không thể được lưu đè lên đó.",
         peerNoSaveUnloaded: "Tab này không giữ mọi nhân vật trong bộ nhớ, nên phiên bản của nó không thể thay thế thay đổi của tab kia.",

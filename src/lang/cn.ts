@@ -1931,6 +1931,10 @@ export const languageChinese = {
         `${asset === null ? '备份失败。' : `备份已停止，因为 ${asset} 在保存过程中发生了变化或无法读取。`}备份文件不完整，且应用无法将其删除。请勿使用该文件：请自行删除，然后重新运行备份。`,
     "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `备份已停止，因为 ${asset} 对于单个备份条目而言过大（上限约为 4.29 GB），无法保存。${file === 'untouched' ? '未向文件写入任何内容。' : file === 'deleted' ? '备份文件不完整，因此已被删除。' : '备份文件不完整，且应用无法将其删除。请勿使用该文件：请自行删除。'}在移除该资源或将其缩小之前，备份无法包含它，再次运行备份仍会以同样的方式失败。`,
+    "backupOversizeConfirm": (items: string[]) =>
+        `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此无法保存到备份中。要在不包含它们的情况下创建备份吗？目前尚未写入任何内容。\n\n${items.join('\n')}`,
+    "backupOversizeLeftOut": (items: string[]) =>
+        `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "备份在向文件写入任何内容之前就失败了。请重新运行备份。",
     "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
@@ -2210,6 +2214,18 @@ export const languageChinese = {
     "store2RestoreUnconfirmed": "RisuAI 无法确认更早的版本是否已恢复。无论哪种情况，两个版本都不会丢失。请重新加载页面以查看正在使用的是哪个版本。",
     "store2RestoreNotFlushed": "更早的版本已恢复，但设备未确认已将其写入磁盘。应用现在将重新加载，并在启动时完成写入。",
     "store2RestoreDone": "更早的版本已恢复。您之前使用的版本仍保留在列表中。正在刷新应用。",
+    "store2RestoreOldRow": (when: string) => `旧版：${when}`,
+    "store2ImportSizeWarning": (megabytes: number) =>
+        `此备份中的数据库约为 ${megabytes} MB。读取它需要数倍于此的内存，因此手机或其他小型设备可能会内存不足而停止运行。在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
+    "store2ImportIncompleteConfirm": (items: string) =>
+        `此备份中的部分数据无法完整导入：\n\n${items}\n\n导入后，这些部分将为空或缺失。您当前的数据会保留在更早保存的版本列表中。仍要导入吗？`,
+    "store2ImportReadFailed": "备份的一部分或您已保存数据的一部分无法读取，因此没有导入任何内容。您当前的数据没有更改。",
+    "store2ImportRefused": "您已保存的数据目前无法作为导入的基础，因此没有导入任何内容。您当前的数据没有更改。",
+    "store2ImportTooNew": "您已保存的数据由更新版本的 RisuAI 写入，因此没有导入任何内容。请更新应用后重试。您当前的数据没有更改。",
+    "store2ImportAbandoned": "导入未能完成写入，因此没有导入任何内容，您当前的数据也没有更改。请重试；如果持续失败，请检查设备是否有可用空间。",
+    "store2ImportUnconfirmed": "RisuAI 无法确认备份是否已导入。无论哪种情况，您之前的数据都会保留。请重新加载页面，查看正在使用的是哪一份。",
+    "store2ImportNotFlushed": "备份已导入，但设备未确认已将其写入磁盘。应用现在会重新加载，并在启动时完成写入。",
+    "store2ImportDone": "备份已导入。您之前的数据保留在更早保存的版本列表中，并会像其他版本一样随时间被清理。正在刷新应用。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用备份替换已损坏的已保存数据时，数据的较旧已保存副本被保留下来，而没有被删除（创建于 ${dates}）。仅被它们使用的图片和归档数据仍受保护，因此只要这些副本存在，就无法运行清理。\n\n是否删除这些较旧的副本，然后进行清理？删除后无法恢复。选择“取消”则保留它们，此时不会运行清理。`,
@@ -2623,6 +2639,19 @@ export const languageChinese = {
         "noticeConvertedFromBackup": (date: string) => `无法读取您的主保存文件，因此 RisuTanium 转换了 ${date} 保存的备份。在那之后保存的任何内容都不包含在内。`,
         "noticeServerCapability": "此服务器无法以新存储格式保存，因此 RisuTanium 以只读方式打开了您的数据。没有更改任何内容，也不会保存任何内容。您的数据没有丢失。",
         "noticeBackendUnavailable": "RisuTanium 在此页面上无法访问新存储，因此以只读方式打开了您的数据。没有更改任何内容，也不会保存任何内容。您的数据没有丢失。",
+        "offerRestoreNewest": (date: string) => `恢复最新的备份（${date}）`,
+        "offerImport": "从备份文件（.bin）恢复",
+        "noticeRestoredFromBackup": (date: string) => `RisuTanium 已恢复 ${date} 保存的备份。在那之后保存的任何内容都不包含在内。`,
+        "noticeRestoredFromOlderBackup": (date: string, newestDate: string) => `无法读取最新的备份（保存于 ${newestDate}），因此 RisuTanium 恢复了 ${date} 保存的备份。在那之后保存的任何内容都不包含在内。`,
+        "recoveryRestoreOffer": "恢复最新的备份",
+        "recoveryImportOffer": "从备份文件（.bin）恢复",
+        "recoveryRestoreTitle": (date: string) => `要恢复 ${date} 保存的备份吗？`,
+        "recoveryRestoreBody": "RisuTanium 找到了您旧存档的备份，但没有找到主保存文件。恢复时会使用可以读取的最新备份。如果最新的备份无法读取，RisuTanium 会在使用更早的备份之前询问您。在那之后保存的任何内容都不在其中。您的旧文件会保留；此步骤不会删除它们。",
+        "recoveryRestoreBodyUnknown": "RisuTanium 找到了您旧存档的备份，但无法确认是否存在主保存文件。恢复时，如果主保存文件可以读取就使用它，否则使用可以读取的最新备份。如果最新的备份无法读取，RisuTanium 会在使用更早的备份之前询问您。在那之后保存的任何内容都不在其中。您的旧文件会保留；此步骤不会删除它们。",
+        "recoveryOlderTitle": (date: string) => `要使用 ${date} 保存的备份吗？`,
+        "recoveryOlderBody": (newestDate: string, date: string) => `无法读取最新的备份（保存于 ${newestDate}）。下一个可以读取的备份保存于 ${date}。在 ${date} 之后保存的任何内容都不在其中。您的旧文件会保留；此步骤不会删除它们。`,
+        "recoveryOlderGo": "使用更早的备份",
+        "recoveryRestoreGo": "恢复备份",
         "recoveryTitle": "恢复您的数据",
         "recoveryBody": "RisuTanium 无法打开您当前已保存的数据。您可以使用更早保存的版本，或使用下方的其他选项。在您确认某项选择之前，不会更改任何内容。",
         "recoveryListHeading": "更早保存的版本",
@@ -2683,6 +2712,8 @@ export const languageChinese = {
         "peerReload": "重新加载（此标签页未保存的更改将丢失）",
         "peerSaveMine": "保存我的（此标签页的版本将取代另一个标签页的更改）",
         "peerExportFirst": "先导出此标签页，再重新加载",
+        "peerExportHandedOff": "此标签页的导出已交给浏览器处理。请等待下载完成后，再点击“立即重新加载”。过早重新加载可能会中断下载。",
+        "peerExportReloadNow": "立即重新加载",
         "peerNoSaveNode": "此服务器配置无法将一个标签页的内容覆盖保存到另一个标签页之上。",
         "peerNoSaveReplaced": "已保存的数据在此标签页之外被更改后，无法再用此标签页的版本覆盖保存。",
         "peerNoSaveUnloaded": "此标签页没有在内存中保留所有角色，因此其版本无法取代另一个标签页的更改。",

@@ -1933,6 +1933,10 @@ export const languageSpanish = {
         `${asset === null ? 'La copia de seguridad falló.' : `La copia de seguridad se detuvo porque ${asset} cambió o no se pudo leer mientras se guardaba.`} El archivo de la copia de seguridad está incompleto y la aplicación no pudo eliminarlo. No lo uses: elimínalo tú mismo y luego vuelve a ejecutar la copia de seguridad.`,
     "backupFailedAssetTooLarge": (asset: string, file: 'untouched' | 'deleted' | 'kept') =>
         `La copia de seguridad se detuvo porque ${asset} es demasiado grande para una entrada de copia de seguridad (el límite es de aproximadamente 4,29 GB), por lo que no se puede guardar. ${file === 'untouched' ? 'No se escribió nada en el archivo.' : file === 'deleted' ? 'El archivo de la copia de seguridad estaba incompleto, por lo que se eliminó.' : 'El archivo de la copia de seguridad está incompleto y la aplicación no pudo eliminarlo. No lo uses: elimínalo tú mismo.'} La copia de seguridad no puede incluir ese recurso hasta que se elimine o se reduzca su tamaño, y volver a ejecutarla falla de la misma manera.`,
+    "backupOversizeConfirm": (items: string[]) =>
+        `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que no se pueden guardar en ella. ¿Crear la copia de seguridad sin ellos? Todavía no se ha escrito nada.\n\n${items.join('\n')}`,
+    "backupOversizeLeftOut": (items: string[]) =>
+        `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "La copia de seguridad falló antes de que se escribiera nada en el archivo. Vuelve a ejecutar la copia de seguridad.",
     "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
@@ -2212,6 +2216,18 @@ export const languageSpanish = {
     store2RestoreUnconfirmed: "RisuAI no pudo confirmar si la versión anterior se restauró. En cualquier caso, no se pierde ninguna de las dos versiones. Recarga la página para ver cuál está en uso.",
     store2RestoreNotFlushed: "La versión anterior se restauró, pero el dispositivo no confirmó que se escribiera en el disco. La aplicación se recarga ahora y termina de escribirla al iniciarse.",
     store2RestoreDone: "La versión anterior se restauró. La versión que tenías antes se conserva en la lista. Actualizando la aplicación.",
+    store2RestoreOldRow: (when: string) => `Antigua: ${when}`,
+    store2ImportSizeWarning: (megabytes: number) =>
+        `La base de datos de este respaldo ocupa unos ${megabytes} MB. Leerla requiere varias veces esa cantidad de memoria, por lo que un teléfono u otro dispositivo pequeño puede quedarse sin memoria y detenerse. Tus datos guardados no cambian hasta que termine la importación. ¿Continuar?`,
+    store2ImportIncompleteConfirm: (items: string) =>
+        `Algunos de los datos de este respaldo no se pudieron traer por completo:\n\n${items}\n\nEsas partes quedarán vacías o faltarán después de la importación. Los datos que tienes ahora se conservan en la lista de versiones guardadas anteriores. ¿Importar de todos modos?`,
+    store2ImportReadFailed: "No se pudo leer una parte del respaldo, o de tus datos guardados, por lo que no se importó nada. Tus datos actuales no se cambiaron.",
+    store2ImportRefused: "Tus datos guardados no se pueden usar ahora como base para una importación, por lo que no se importó nada. Tus datos actuales no se cambiaron.",
+    store2ImportTooNew: "Tus datos guardados fueron escritos por una versión más reciente de RisuAI, por lo que no se importó nada. Actualiza la aplicación e inténtalo de nuevo. Tus datos actuales no se cambiaron.",
+    store2ImportAbandoned: "La importación no terminó de escribirse, por lo que no se importó nada y tus datos actuales no se cambiaron. Inténtalo de nuevo; si sigue fallando, comprueba que el dispositivo tenga espacio libre.",
+    store2ImportUnconfirmed: "RisuAI no pudo confirmar si el respaldo se importó. En cualquier caso, se conservan tus datos anteriores. Recarga la página para ver cuáles están en uso.",
+    store2ImportNotFlushed: "El respaldo se importó, pero el dispositivo no confirmó que se escribiera en el disco. La aplicación se recarga ahora y termina de escribirlo al iniciarse.",
+    store2ImportDone: "El respaldo se importó. Los datos que tenías antes se conservan en la lista de versiones guardadas anteriores, donde caducan como cualquier otra. Actualizando la aplicación.",
     coldStorageCleanupDateUnknown: "fecha desconocida",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Cuando se reemplazó un guardado dañado desde un respaldo, las copias guardadas más antiguas de tus datos se apartaron en lugar de eliminarse (creadas: ${dates}). Las imágenes y los datos archivados que solo ellas usan siguen protegidos, por lo que la limpieza no se puede ejecutar mientras existan.\n\n¿Eliminar estas copias antiguas y luego limpiar? No se pueden recuperar. Elige Cancelar para conservarlas; la limpieza entonces no se ejecuta.`,
@@ -2625,6 +2641,19 @@ export const languageSpanish = {
         noticeConvertedFromBackup: (date: string) => `No se pudo leer tu archivo principal de guardado, así que RisuTanium convirtió el respaldo guardado el ${date}. Lo que hayas guardado después de ese momento no está incluido.`,
         noticeServerCapability: "Este servidor no puede guardar en el nuevo formato de almacenamiento, por lo que RisuTanium abrió tus datos en modo de solo lectura. No se cambió nada y no se guardará nada. Tus datos no se han perdido.",
         noticeBackendUnavailable: "RisuTanium no pudo acceder al nuevo almacenamiento en esta página, por lo que abrió tus datos en modo de solo lectura. No se cambió nada y no se guardará nada. Tus datos no se han perdido.",
+        offerRestoreNewest: (date: string) => `Restaurar el respaldo más reciente (${date})`,
+        offerImport: "Restaurar desde un archivo de respaldo (.bin)",
+        noticeRestoredFromBackup: (date: string) => `RisuTanium restauró el respaldo guardado el ${date}. Lo que hayas guardado después de ese momento no está incluido.`,
+        noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `No se pudo leer el respaldo más reciente (guardado el ${newestDate}), así que RisuTanium restauró el respaldo guardado el ${date}. Lo que hayas guardado después de ese momento no está incluido.`,
+        recoveryRestoreOffer: "Restaurar el respaldo más reciente",
+        recoveryImportOffer: "Restaurar desde un archivo de respaldo (.bin)",
+        recoveryRestoreTitle: (date: string) => `¿Restaurar el respaldo guardado el ${date}?`,
+        recoveryRestoreBody: "RisuTanium encontró respaldos de tu guardado anterior, pero no el archivo principal de guardado. Al restaurar se usa el respaldo más reciente que se pueda leer. Si el más reciente no se puede leer, RisuTanium te pregunta antes de usar uno más antiguo. Lo que hayas guardado después de ese momento no está en él. Tus archivos antiguos se conservan; este paso no los elimina.",
+        recoveryRestoreBodyUnknown: "RisuTanium encontró respaldos de tu guardado anterior y no pudo comprobar si existe un archivo principal de guardado. Al restaurar se usa el archivo principal de guardado si se puede leer y, si no, el respaldo más reciente que se pueda leer. Si el respaldo más reciente no se puede leer, RisuTanium te pregunta antes de usar uno más antiguo. Lo que hayas guardado después de ese momento no está en él. Tus archivos antiguos se conservan; este paso no los elimina.",
+        recoveryOlderTitle: (date: string) => `¿Usar el respaldo guardado el ${date}?`,
+        recoveryOlderBody: (newestDate: string, date: string) => `No se pudo leer el respaldo más reciente (guardado el ${newestDate}). El siguiente que se puede leer se guardó el ${date}. Lo que hayas guardado después del ${date} no está en él. Tus archivos antiguos se conservan; este paso no los elimina.`,
+        recoveryOlderGo: "Usar el respaldo más antiguo",
+        recoveryRestoreGo: "Restaurar el respaldo",
         recoveryTitle: "Recuperar tus datos",
         recoveryBody: "RisuTanium no pudo abrir tus datos guardados actuales. Puedes usar una versión guardada anterior o una de las otras opciones que aparecen abajo. No se cambia nada hasta que confirmes una elección.",
         recoveryListHeading: "Versiones guardadas anteriores",
@@ -2685,6 +2714,8 @@ export const languageSpanish = {
         peerReload: "Recargar (se pierden los cambios sin guardar de esta pestaña)",
         peerSaveMine: "Guardar los míos (la versión de esta pestaña reemplaza el cambio de la otra pestaña)",
         peerExportFirst: "Exportar primero esta pestaña y luego recargar",
+        peerExportHandedOff: "La exportación de esta pestaña se ha pasado a tu navegador. Espera a que termine la descarga y luego pulsa Recargar ahora. Si recargas antes, la descarga puede cortarse.",
+        peerExportReloadNow: "Recargar ahora",
         peerNoSaveNode: "Esta configuración del servidor no puede guardar una pestaña sobre otra.",
         peerNoSaveReplaced: "Después de que tus datos guardados se cambiaran fuera de esta pestaña, la versión de esta pestaña no se puede guardar encima.",
         peerNoSaveUnloaded: "Esta pestaña no mantiene todos los personajes en memoria, por lo que su versión no puede reemplazar el cambio de la otra pestaña.",
