@@ -25,7 +25,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { collectBackupColdStorage, inlinedCharacter, lateSettledKeys, mergePluginStorage, pluginStorageForExport, type BackupColdStorage } from "./exportInline";
+import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
@@ -58,22 +58,25 @@ function getBasename(data:string){
  * between the listing and the encode, so every unit key the written database
  * holds is carried, reported, or an error-text root left out by rule (its
  * unit is absent, or its key is one a restore could not place). The caller writes the returned units before the
- * database entry.
+ * database entry. `stubPayloads` are the entries of the stubs that are in the encoded tree, in `stub` mode: an entry
+ * exists exactly when a stub with its uuid is written, so a character loaded while the export ran leaves no orphan.
  */
 async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage){
-    const { tree: exportCopy, notice: repairNotice } = await exportCopyOf(db, cold.inlined)
+    const { tree: exportCopy, notice: repairNotice } = await exportCopyOf(db, cold.inlined, cold.stubEntries)
     // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
     const lateRoots = listColdBackupRoots(dbWithoutAccount).filter((root) => !plugin.ids.has(root.key))
     const dbData = encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
+    const stubPayloads = stubEntriesInTree(dbWithoutAccount.characters, cold.stubEntries)
     // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
+    // A minted uuid names an entry this export writes, never a unit of the page's store.
     const lateCollected = await collectColdStorageBackupPayloads(dbWithoutAccount, {
         roots: lateRoots,
-        settledKeys: lateSettledKeys(cold.collected, cold.failedKeys),
+        settledKeys: lateSettledKeys(cold.collected, cold.failedKeys, cold.stubEntries),
     })
     const late = mergePluginStorage(lateCollected, plugin)
-    return { dbData, late, repairNotice }
+    return { dbData, late, repairNotice, stubPayloads }
 }
 
 /**
@@ -85,13 +88,21 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
  * and an archived character takes back the id its unit records, or, when the
  * unit cannot name one, a new id (its archived content then cannot be restored
  * from this export). A stub of a store2 entity is replaced by the whole character
- * read for it (`inlined`, `drive/exportInline.ts`). The export is never refused;
+ * read for it (`inlined`, `drive/exportInline.ts`), or, in `stub` mode, keeps its
+ * place with the uuid minted for it (`stubEntries`); if the list then needs the id
+ * repair, every minted stub is inlined instead. The export is never refused;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>): Promise<{ tree: Database, notice: string | null }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>): Promise<{ tree: Database, notice: string | null }> {
     const plain = { ...db, account: undefined }
-    if (inlined.size > 0 && Array.isArray(db.characters)) {
-        plain.characters = db.characters.map((slot) => inlinedCharacter(slot, inlined))
+    if ((inlined.size > 0 || stubEntries.size > 0) && Array.isArray(db.characters)) {
+        plain.characters = db.characters.map((slot) => stubWithMintedKey(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
+        // A stub's unit body is written only when the export tree's ids are the ones the body holds. The repair below
+        // rewrites ids in the tree only, so a list that needs it (it changed after collection decided) carries every
+        // minted stub inline instead.
+        if (stubEntries.size > 0 && characterListNeedsRepair(plain.characters)) {
+            plain.characters = db.characters.map((slot) => inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
+        }
     }
     const list: unknown = plain.characters
     if (!Array.isArray(list) || list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId))) {
@@ -274,20 +285,40 @@ interface ExportSession {
     describeAsset: (key: string) => string
 }
 
+/** What the person was asked, or what was refused, when an export ended without writing a file. */
+export type ExportDeclinedCause = 'incomplete-data-declined' | 'save-dialog-cancelled' | 'partial-explanation-declined'
+
+/**
+ * How an export ended. `saved`: the file was written and closed; `notices` holds the
+ * report the person was shown, empty on a plain success. `declined`: the person
+ * chose not to write it (a prompt answered Cancel, or the Tauri save dialog was
+ * cancelled; a web writer has no dialog to cancel). `failed`: the export threw; the
+ * person was told, and `cause` is what was thrown.
+ */
+export type ExportOutcome =
+    | { status: 'saved', notices: string[] }
+    | { status: 'declined', cause: ExportDeclinedCause }
+    | { status: 'failed', cause: unknown }
+
+/** Options for a full or partial export; `ExportCollectionOptions` decides how stubs of a store2 page are carried. */
+export type BackupExportOptions = ExportCollectionOptions
+
 /**
  * Runs a full or partial export so that no failure of it ends unreported: the
  * person is told that the backup failed, whether the output file is gone, and
  * that it must not be used if it is not. The output file is removed only when
  * this export wrote to a desktop file; a desktop file this export did not
  * touch is left as it was. A web or Node stream is aborted, not removed.
+ * Returns how the export ended; a caller that does not care may ignore it.
  */
-async function runExport(body: (session: ExportSession) => Promise<void>): Promise<void> {
+async function runExport(body: (session: ExportSession) => Promise<ExportOutcome>): Promise<ExportOutcome> {
     const session: ExportSession = { writer: null, describeAsset: (key) => `'${key}'` }
     try {
-        await body(session)
+        return await body(session)
     } catch (error) {
         console.error(error)
         await reportFailedExport(session, error)
+        return { status: 'failed', cause: error }
     }
 }
 
@@ -358,24 +389,24 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
     return message
 }
 
-export function SaveLocalBackup(){
-    return withBusy('backupSave', () => runExport(writeLocalBackup))
+export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
+    return withBusy('backupSave', () => runExport((session) => writeLocalBackup(session, options)))
 }
 
-async function writeLocalBackup(session: ExportSession){
+async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     alertWait("Saving local backup...")
     const db = getDatabase()
-    const cold = await collectBackupColdStorage(db)
+    const cold = await collectBackupColdStorage(db, options)
     const coldStoragePayloads = cold.collected
     if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', coldStoragePayloads.owners)){
-        return
+        return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
     const writer = new LocalWriter()
     const r = await writer.init(undefined, undefined, localBackupFileName(new Date()))
     if(!r){
         alertError('Failed')
-        return
+        return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
     session.writer = writer
 
@@ -495,7 +526,12 @@ async function writeLocalBackup(session: ExportSession){
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, cold)
+    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
+    for(let i=0;i<stubPayloads.length;i++){
+        const payload = stubPayloads[i]
+        alertWait(`Saving local Backup Cold data... (${i + 1} / ${stubPayloads.length})`)
+        await writer.writeBackup(payload.backupName, payload.encoded)
+    }
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
@@ -543,9 +579,10 @@ async function writeLocalBackup(session: ExportSession){
             message += (message.endsWith('\n') ? '\n' : '\n\n') + repairNotice
         }
         alertMd(message)
-    } else {
-        alertNormal('Success')
+        return { status: 'saved', notices: [message] }
     }
+    alertNormal('Success')
+    return { status: 'saved', notices: [] }
 }
 
 /**
@@ -558,38 +595,38 @@ async function writeLocalBackup(session: ExportSession){
  * - Faster and more efficient for quick backups
  * - Ideal for backing up core visual identity without bulk data
  */
-export async function SavePartialLocalBackup(){
+export async function SavePartialLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
     // First confirmation: Explain the difference from regular backup
     const firstConfirm = await alertConfirm(language.partialBackupFirstConfirm)
-    
+
     if (!firstConfirm) {
-        return
+        return { status: 'declined', cause: 'partial-explanation-declined' }
     }
-    
+
     // Second confirmation: Final warning about not saving assets
     const secondConfirm = await alertConfirm(language.partialBackupSecondConfirm)
-    
+
     if (!secondConfirm) {
-        return
+        return { status: 'declined', cause: 'partial-explanation-declined' }
     }
-    
-    return withBusy('backupSave', () => runExport(writePartialLocalBackup))
+
+    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
 }
 
-async function writePartialLocalBackup(session: ExportSession){
+async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     alertWait("Saving partial local backup...")
     const db = getDatabase()
-    const cold = await collectBackupColdStorage(db)
+    const cold = await collectBackupColdStorage(db, options)
     const coldStoragePayloads = cold.collected
     if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', coldStoragePayloads.owners)){
-        return
+        return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
     const writer = new LocalWriter()
     const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true))
     if(!r){
         alertError('Failed')
-        return
+        return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
     session.writer = writer
 
@@ -701,7 +738,12 @@ async function writePartialLocalBackup(session: ExportSession){
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice } = await encodeDatabaseWithLateColdStorage(db, cold)
+    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
+    for(let i=0;i<stubPayloads.length;i++){
+        const payload = stubPayloads[i]
+        alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${stubPayloads.length})`)
+        await writer.writeBackup(payload.backupName, payload.encoded)
+    }
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
@@ -737,9 +779,10 @@ async function writePartialLocalBackup(session: ExportSession){
         }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
         alertMd(message)
-    } else {
-        alertNormal(`Success\n\n${language.partialBackupInlaysNotIncluded}`)
+        return { status: 'saved', notices: [message] }
     }
+    alertNormal(`Success\n\n${language.partialBackupInlaysNotIncluded}`)
+    return { status: 'saved', notices: [] }
 }
 
 /** Re-exported so every existing importer keeps working; the constant and its rationale live in `restoreLock.ts`. */

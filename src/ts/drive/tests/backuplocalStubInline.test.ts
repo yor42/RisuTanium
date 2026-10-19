@@ -516,6 +516,7 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
+// These run the production default (inline) and the bounded retry of an unreadable unit (`readRetry`); the stub form has its own file.
 describe.each([
     ['SaveLocalBackup', SaveLocalBackup],
     ['SavePartialLocalBackup', SavePartialLocalBackup],
@@ -574,26 +575,56 @@ describe.each([
         expect((characters[1].chats as unknown[]).length).toBe(page.entries[1].chats.length)
     })
 
-    test('a read that fails once and would succeed later is neither inlined nor carried by the late collection', async () => {
-        let armed = false
+    test('new behaviour: a read that fails once without a kind is retried, and the character is exported whole without a prompt', async () => {
+        let remainingFailures = 0
         const page = await pageOf({
             backend: (memory) => ({
                 ...memory,
                 readUnits: async (keys) => {
-                    if (armed) {
-                        armed = false
+                    if (remainingFailures > 0) {
+                        remainingFailures--
                         throw new TypeError('one failed read')
                     }
                     return memory.readUnits(keys)
                 },
             }),
         })
-        armed = true
+        remainingFailures = 1
+        const pauses: number[] = []
 
-        await run()
+        await run({ readRetry: { pause: async (ms) => { pauses.push(ms) } } })
 
-        // The first stub read is the first character's: it fails once, later reads would succeed.
+        expect(pauses).toHaveLength(1)
+        expect(backupPrompts()).toEqual([])
+        const exported = await exportedCharacters()
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect(exported[1].name).toBe(page.entries[1].name)
+        expect(exported[2].coldstorage).toBeUndefined()
+        expect((await upstreamReadable()).entityPayloads).toEqual([])
+    })
+
+    test('new behaviour: a read that keeps failing is retried within its bound, then the character stays a stub, is named, and is not carried by the late collection', async () => {
+        let remainingFailures = 0
+        const page = await pageOf({
+            backend: (memory) => ({
+                ...memory,
+                readUnits: async (keys) => {
+                    if (remainingFailures > 0) {
+                        remainingFailures--
+                        throw new TypeError('a failed read')
+                    }
+                    return memory.readUnits(keys)
+                },
+            }),
+        })
+        // The first read of the first stub and every retry of it fail; the second stub reads at once.
+        remainingFailures = 3
+        const pauses: number[] = []
+
+        await run({ readRetry: { pausesMs: [10, 20], budgetMs: 1000, pause: async (ms) => { pauses.push(ms) } } })
+
         const failedKey = page.entries[1].u
+        expect(pauses).toEqual([10, 20])
         expect(backupPrompts()).toHaveLength(1)
         expect(backupPrompts()[0]).toContain(page.entries[1].name)
         expect((await exportedCharacters())[1].coldstorage).toBe(failedKey)
@@ -601,6 +632,57 @@ describe.each([
         expect((await upstreamReadable()).entityPayloads).toEqual([])
         expect(completionReports()).not.toContain(failedKey)
         expect((await exportedCharacters())[2].coldstorage).toBeUndefined()
+    })
+
+    test('new behaviour: the pauses of one export together never pass the budget, however many characters fail', async () => {
+        const page = await pageOf({
+            backend: (memory) => ({
+                ...memory,
+                readUnits: async () => {
+                    throw new TypeError('the store is down')
+                },
+            }),
+        })
+        const pauses: number[] = []
+
+        await run({ readRetry: { pausesMs: [100, 100], budgetMs: 250, pause: async (ms) => { pauses.push(ms) } } })
+
+        expect(pauses.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(250)
+        expect(pauses.length).toBeGreaterThan(0)
+        // Every stub failed; each is named in the one prompt.
+        expect(backupPrompts()).toHaveLength(1)
+        for (const entry of page.entries.slice(1)) {
+            expect(backupPrompts()[0]).toContain(entry.name)
+        }
+    })
+
+    test('new behaviour: the retry reads of one export never pass the cap, however many characters fail', async () => {
+        await pageOf({
+            backend: (memory) => ({
+                ...memory,
+                readUnits: async () => {
+                    throw new TypeError('the store is down')
+                },
+            }),
+        })
+        const pauses: number[] = []
+
+        await run({ readRetry: { pausesMs: [10, 10], budgetMs: 100000, maxRetries: 3, pause: async (ms) => { pauses.push(ms) } } })
+
+        // Two failing stubs would retry twice each; the cap leaves three retries.
+        expect(pauses).toHaveLength(3)
+    })
+
+    test('new behaviour: a damaged unit is read once and never retried', async () => {
+        const page = await pageOf()
+        page.memory.poke(keyOfRef(page.entries[2].chats[0].chunks[0]), null)
+        const pauses: number[] = []
+
+        await run({ readRetry: { pause: async (ms) => { pauses.push(ms) } } })
+
+        expect(pauses).toEqual([])
+        expect(backupPrompts()).toHaveLength(1)
+        expect(backupPrompts()[0]).toContain(page.entries[2].name)
     })
 
     test('a stub trashed while the export copies assets is exported trashed', async () => {

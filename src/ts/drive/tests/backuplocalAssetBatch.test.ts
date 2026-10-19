@@ -531,7 +531,7 @@ function fileWithFailingSlice(bytes: Uint8Array, fails: (size: number, nth: numb
     })
 }
 
-async function outcomeOf(run: () => Promise<void>): Promise<unknown> {
+async function outcomeOf(run: () => Promise<unknown>): Promise<unknown> {
     return run().then(() => null, (error: unknown) => error)
 }
 
