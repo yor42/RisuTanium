@@ -663,6 +663,16 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
     return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
 }
 
+/**
+ * The export a parked Node page offers before it reloads: the partial-backup shape (the database, the characters and
+ * the profile images, no other assets and no inlays) without the two explanatory confirms, because the person already
+ * chose this export. It holds the same busy entry as the other exports. It does not pin this tab's unit references: a
+ * unit that is gone surfaces through the incomplete-data prompt, and declining it returns `declined`.
+ */
+export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
+    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+}
+
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     alertWait("Saving partial local backup...")
     const db = getDatabase()

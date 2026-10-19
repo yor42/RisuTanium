@@ -2844,6 +2844,8 @@ export const languageEnglish = {
         peerReload: "Reload (this tab's unsaved changes are lost)",
         peerSaveMine: "Save mine (this tab's version replaces the other tab's change)",
         peerExportFirst: "Export this tab first, then reload",
+        peerExportHandedOff: "The export of this tab has been handed to your browser. Wait until the download has finished, then press Reload now. Reloading earlier can cut the download off.",
+        peerExportReloadNow: "Reload now",
         peerNoSaveNode: "This server setup cannot save one tab over another.",
         peerNoSaveReplaced: "After your saved data was changed outside this tab, this tab's version cannot be saved over it.",
         peerNoSaveUnloaded: "This tab does not hold every character in memory, so its version cannot replace the other tab's change.",

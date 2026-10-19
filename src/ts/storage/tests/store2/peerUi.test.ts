@@ -2,14 +2,30 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { get, writable } from 'svelte/store'
 
-// MOCKED: the alert store the prompts share, and `alertSelect` (the full alert module drags in the whole app). The
-// replacement asks through the real prompt controller in `alertPrompts` and builds the message exactly as `alertSelect` does.
+// MOCKED: the alert store the prompts share, and `alertSelect`, `alertMd` and `waitAlert` (the full alert module drags in
+// the whole app). The replacement asks through the real prompt controller in `alertPrompts` and builds the message exactly
+// as `alertSelect` does; `alertMd` posts the markdown alert and records it, and `waitAlert` resolves with the first `none`,
+// as the real ones do.
+const posted = vi.hoisted(() => ({ markdown: [] as string[] }))
 vi.mock(import('src/ts/stores.svelte'), () => ({
     alertStore: writable({ type: 'none', msg: '' }),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 vi.mock(import('src/ts/alert'), async () => {
     const { askPrompt } = await import('src/ts/alertPrompts')
+    const { alertStore: store } = await import('src/ts/stores.svelte')
     return {
+        alertMd: (msg: string) => {
+            posted.markdown.push(msg)
+            store.set({ type: 'markdown', msg })
+        },
+        waitAlert: () => new Promise<void>((resolve) => {
+            const stop = store.subscribe((value) => {
+                if (value.type === 'none') {
+                    queueMicrotask(() => stop())
+                    resolve()
+                }
+            })
+        }),
         alertSelect: async (msg: string[], display?: string) => await askPrompt({
             type: 'select',
             msg: display !== undefined ? `__DISPLAY__${display}||${msg.join('||')}` : msg.join('||'),
@@ -22,7 +38,7 @@ import type { alertData } from 'src/ts/alert'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { PeerLiveState, PeerOffer, PeerParkPrompt } from 'src/ts/storage/store2/saveLoop'
-import { acknowledged, createPeerUi } from 'src/ts/storage/store2/ui/peerUi'
+import { acknowledged, createPeerUi, type PeerExportResult } from 'src/ts/storage/store2/ui/peerUi'
 
 /**
  * The in-session peer prompts (`store2/ui/peerUi.ts`). The alert controller is real: a prompt is the `select` alert in
@@ -72,6 +88,7 @@ const prompt = (fields: Partial<PeerParkPrompt> & Pick<PeerParkPrompt, 'offers'>
 
 beforeEach(() => {
     changeLanguage('en')
+    posted.markdown.length = 0
     resetAlertPromptsForTests()
     alertStore.set({ type: 'none', msg: '' })
 })
@@ -351,5 +368,102 @@ describe('the rest of the handler', () => {
     test('the export is not available in this build', async () => {
         const { ui } = newUi()
         await expect(ui.exportThisTab('manifest')).rejects.toThrow(/not available/)
+    })
+})
+
+describe('exportThisTab: saved only after the person has pressed the hand-off prompt\'s own button', () => {
+    /** Closes the writer's report once it is up; the prompt after it is what holds the reload. */
+    const closeReport = async () => {
+        await vi.waitFor(() => expect(shown().type).toBe('markdown'))
+        alertStore.set({ type: 'none', msg: '' })
+    }
+    const saved = (notices: string[]) => vi.fn(async (_manifestKey: string): Promise<PeerExportResult> => ({ status: 'saved', notices }))
+
+    // New behaviour (Gate 1 C1, mutant M15: resolve without waiting for the answer).
+    test('a saved export keeps the prompt up with the writer report and resolves only when its button is pressed', async () => {
+        const write = saved(['Partial backup successful.'])
+        const reload = vi.fn()
+        const ui = createPeerUi({ reload, exportAvailable: true, exportThisTab: write })
+        let settled: 'saved' | 'declined' | null = null
+        const answer = ui.exportThisTab('manifest').then((value) => { settled = value })
+        await closeReport()
+        await waitForSelect()
+        expect(write).toHaveBeenCalledWith('manifest')
+        expect(posted.markdown).toEqual(['Partial backup successful.'])
+        const { title, labels } = selectParts()
+        expect(title).toBe(text().peerExportHandedOff)
+        expect(labels).toEqual([text().peerExportReloadNow])
+        await sleep(60)
+        expect(settled).toBeNull()
+        await press(0)
+        await answer
+        expect(settled).toBe('saved')
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    // New behaviour (Gate 2 R1): a toast or a direct store clear is not this prompt's answer.
+    test('a toast landing on the open prompt, and a direct alert-store clear after it, do not answer it: it is shown again until its button is pressed', async () => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: saved([]) })
+        let settled: 'saved' | 'declined' | null = null
+        const answer = ui.exportThisTab('manifest').then((value) => { settled = value })
+        await closeReport()
+        await waitForSelect()
+        await sleep(ANSWER_GUARD_MS + 40)
+
+        alertStore.set({ type: 'toast', msg: 'late toast' })
+        alertStore.set({ type: 'none', msg: '' })
+        await vi.waitFor(() => expect(shown().type).toBe('select'))
+        expect(settled).toBeNull()
+
+        await sleep(ANSWER_GUARD_MS + 40)
+        alertStore.set({ type: 'none', msg: '' })
+        await vi.waitFor(() => expect(shown().type).toBe('select'))
+        await sleep(60)
+        expect(settled).toBeNull()
+
+        await press(0)
+        await answer
+        expect(settled).toBe('saved')
+    })
+
+    test('a plain success posts the inlays-not-included sentence as the report', async () => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: saved([]) })
+        const answer = ui.exportThisTab('manifest')
+        await closeReport()
+        await waitForSelect()
+        expect(posted.markdown).toEqual([language.partialBackupInlaysNotIncluded])
+        await press(0)
+        await expect(answer).resolves.toBe('saved')
+    })
+
+    // New behaviour (Gate 2 R2): a report holding `||` must not split the prompt into extra buttons.
+    test('a report containing || still gives exactly one Reload now button, at index 0, and the prompt text is the language string alone', async () => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: saved(["'Profile Image' from A||B"]) })
+        const answer = ui.exportThisTab('manifest')
+        await closeReport()
+        await waitForSelect()
+        expect(posted.markdown).toEqual(["'Profile Image' from A||B"])
+        const { title, labels } = selectParts()
+        expect(title).toBe(text().peerExportHandedOff)
+        expect(labels).toEqual([text().peerExportReloadNow])
+        await press(0)
+        await expect(answer).resolves.toBe('saved')
+    })
+
+    test('the hand-off prompt tells the person to wait for the download before pressing the button', () => {
+        expect(text().peerExportHandedOff).toMatch(/download/i)
+        expect(text().peerExportHandedOff).toContain(text().peerExportReloadNow)
+    })
+
+    // New behaviour: reload follows only a saved outcome.
+    test.each(['declined', 'failed'] as const)('reproducer: a %s export resolves declined and posts no hand-off notice', async (status) => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => ({ status }) })
+        await expect(ui.exportThisTab('manifest')).resolves.toBe('declined')
+        expect(shown().type).toBe('none')
+    })
+
+    test('a throw of the export is the handler failing: it rejects', async () => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => { throw new Error('boom') } })
+        await expect(ui.exportThisTab('manifest')).rejects.toThrow('boom')
     })
 })

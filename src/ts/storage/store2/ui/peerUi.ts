@@ -1,5 +1,5 @@
 import { language } from 'src/lang'
-import { alertSelect, type alertData } from 'src/ts/alert'
+import { alertMd, alertSelect, waitAlert, type alertData } from 'src/ts/alert'
 import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
@@ -25,10 +25,21 @@ import { Store2CommitRefusedError, Store2NotFlushedError, type PeerLiveState, ty
  *  - Nothing here sets the language: a parked page already runs in the database's language.
  */
 
+/**
+ * How an export of this tab ended, as far as the prompt needs it: `saved` carries the report the writer showed (empty on
+ * a plain success, whose own alert only says that inlays are not included; the hand-off prompt then shows that sentence);
+ * `declined` and `failed` mean no file was kept and the writer has already told the person why.
+ */
+export type PeerExportResult =
+    | { status: 'saved', notices: string[] }
+    | { status: 'declined' | 'failed' }
+
 export interface PeerUiOptions {
     reload: () => void
     /** Whether 'export-first' may be shown. False until the page has an export of this tab. */
     exportAvailable?: boolean
+    /** Writes the export of this tab. Required for 'export-first' to do anything; without it the handler rejects. */
+    exportThisTab?: (manifestKey: string) => Promise<PeerExportResult>
 }
 
 /** The alert types that wait for an OK or a close; a prompt asked over one of them would replace it. */
@@ -117,12 +128,37 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         }
     }
 
+    async function exportThisTab(manifestKey: string): Promise<'saved' | 'declined'> {
+        if (options.exportThisTab === undefined) {
+            throw new Error('The export is not available in this build.')
+        }
+        const result = await options.exportThisTab(manifestKey)
+        if (result.status !== 'saved') {
+            return 'declined'
+        }
+        // The writer's own success alert is replaced by its report, shown again here; a plain success reported only the
+        // inlays sentence, which is kept. Nothing reloads on that alert, so any close of it is enough. The reload is held
+        // until the answer of the prompt after it: the browser's download cannot be watched to its end from the page.
+        // The prompt's text is language strings only (the report can hold names and `||`, which the select would split
+        // into buttons). A select prompt is shown again when another alert covers it, and only a press of its button
+        // answers it; any other close of the store asks again.
+        const text = language.store2Boot
+        alertMd((result.notices.length > 0 ? result.notices : [language.partialBackupInlaysNotIncluded]).join('\n\n'))
+        await waitAlert()
+        for (;;) {
+            const index = await alertSelect([text.peerExportReloadNow], text.peerExportHandedOff)
+            if (index === '0') {
+                return 'saved'
+            }
+        }
+    }
+
     return {
         parkedClean: (prompt, live) => {
             askClean(prompt, live).catch((error: unknown) => console.error(error))
         },
         decide,
-        exportThisTab: () => Promise.reject(new Error('The export is not available in this build.')),
+        exportThisTab,
         reload: options.reload,
     }
 }

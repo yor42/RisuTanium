@@ -127,6 +127,11 @@ export function createProductionBootUi(options: ProductionBootUiOptions = {}): S
                 reload,
             })
         },
-        peer: createPeerUi({ reload }),
+        peer: createPeerUi({
+            reload,
+            exportAvailable: true,
+            // A dynamic import: `store2/ui` has no static source dependency on `drive/`.
+            exportThisTab: async () => (await import('src/ts/drive/backuplocal')).exportThisTabBackup(),
+        }),
     }
 }

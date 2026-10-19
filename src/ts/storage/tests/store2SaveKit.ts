@@ -199,6 +199,10 @@ export interface PeerDouble extends Store2PeerHandler {
     hold: Promise<void> | null
     /** Makes the export reject. */
     exportFails: boolean
+    /** What the export resolves with when it does not fail. */
+    exportResult: 'saved' | 'declined'
+    /** While set, the export waits for it, as the real one waits for the person to press OK. */
+    exportHold: Promise<void> | null
 }
 
 export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
@@ -211,6 +215,8 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         answer,
         hold: null,
         exportFails: false,
+        exportResult: 'saved',
+        exportHold: null,
         parkedClean(prompt, live) {
             double.clean.push(prompt)
             double.live.push(live)
@@ -227,6 +233,10 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
             if (double.exportFails) {
                 throw new Error('The export failed.')
             }
+            if (double.exportHold !== null) {
+                await double.exportHold
+            }
+            return double.exportResult
         },
         reload() {
             double.reloads += 1

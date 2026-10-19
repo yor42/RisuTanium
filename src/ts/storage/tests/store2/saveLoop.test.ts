@@ -864,6 +864,34 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         healthy(loop)
     })
 
+    // Guard (passes before and after): the reload follows an export that resolved 'saved' (the handler resolves after the person's answer).
+    test('guard: export-first reloads only after the export has resolved saved, never while it is pending', async () => {
+        const peer = createPeerDouble('export-first')
+        let release: () => void = () => {}
+        peer.exportHold = new Promise<void>((resolve) => { release = resolve })
+        const { kit, loop } = await parkedDirty({ kind: 'node', peer })
+        await until(() => kit.peer.exports.length === 1, 'the export request', 4000)
+        await new Promise<void>((resolve) => setTimeout(resolve, 150))
+        expect(kit.peer.reloads).toBe(0)
+        release()
+        await until(() => kit.peer.reloads === 1, 'the reload after the export resolved', 4000)
+        healthy(loop)
+    })
+
+    // New behaviour: a declined export is a cancel, not a failed save.
+    test('reproducer: a declined export does not reload, asks again and raises no failure; a later saved export reloads', async () => {
+        const peer = createPeerDouble('export-first')
+        peer.exportResult = 'declined'
+        const { kit, loop } = await parkedDirty({ kind: 'node', peer })
+        await until(() => kit.peer.asked.length >= 2, 'the second question', 4000)
+        expect(kit.peer.reloads).toBe(0)
+        expect(loop.failures).toHaveLength(0)
+        expect(kit.peer.asked[kit.peer.asked.length - 1].offers).toEqual(['reload', 'export-first'])
+        peer.exportResult = 'saved'
+        await until(() => kit.peer.reloads === 1, 'the reload after a saved export', 4000)
+        healthy(loop)
+    })
+
     test('a parked page unparks when a peer announces and the base is this page\'s own again', async () => {
         const { db, kit, loop } = await (async () => {
             const world = await startPeerWorld()

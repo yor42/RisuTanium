@@ -59,12 +59,16 @@ export interface Store2PeerHandler {
     /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
     decide(prompt: PeerParkPrompt): Promise<PeerOffer>
     /**
-     * Node's 'export-first': a .bin of this tab's state, then the reload. The export reads this tab's own unit
-     * references, and nothing here pins them: an unloaded character is read from the units this tab's acknowledged
-     * manifest names, which the collector does not delete while it is not built (stage 5). The export must read
-     * `manifestKey` again, and tell the person when a unit it needs is gone.
+     * Node's 'export-first': a .bin of this tab's state, then the reload. The export writes this tab's live tree,
+     * unsaved edits included, and reads an unloaded character from the units its stub names. Nothing pins those
+     * units; the dev GC refuses while this page is parked or an export runs, and a unit that is gone surfaces
+     * through the incomplete-data prompt. `manifestKey` is not used by the export.
+     * 'saved' resolves only once the person has acknowledged that the file was handed to the browser: a browser
+     * download cannot be watched to its end, and the reload that follows would cut an unfinished one off. Anything
+     * else (a cancelled prompt or dialog, a failed write) is 'declined': the page asks again and does not reload.
+     * A throw is a failure of the handler itself and is reported like a failed save.
      */
-    exportThisTab(manifestKey: string): Promise<void>
+    exportThisTab(manifestKey: string): Promise<'saved' | 'declined'>
     reload(): void
 }
 
@@ -395,7 +399,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         if (choice === 'export-first') {
             try {
-                await context.peer.exportThisTab(encoder.manifestKey)
+                if (await context.peer.exportThisTab(encoder.manifestKey) !== 'saved') {
+                    // A cancel is not a save failure: the person is asked again, without the failure alert.
+                    parked.asked = false
+                    return
+                }
             } catch (error) {
                 // The person keeps an in-app action: the question is asked again after the wait.
                 parked.asked = false

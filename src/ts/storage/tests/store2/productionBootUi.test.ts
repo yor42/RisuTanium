@@ -21,8 +21,16 @@ vi.mock(import('src/ts/alert'), async () => {
             type: 'select',
             msg: display !== undefined ? `__DISPLAY__${display}||${msg.join('||')}` : msg.join('||'),
         }),
+        alertMd: () => undefined,
+        waitAlert: () => Promise.resolve(),
     } as unknown as typeof import('src/ts/alert')
 })
+// MOCKED: the export writer, which the page's export-first handler loads on demand; its own tests are in
+// `drive/tests/exportThisTab.svelte.test.ts`.
+const exportThisTabBackup = vi.fn(async () => ({ status: 'saved', notices: [] }) as const)
+vi.mock(import('src/ts/drive/backuplocal'), () => ({
+    exportThisTabBackup: () => exportThisTabBackup(),
+}) as unknown as typeof import('src/ts/drive/backuplocal'))
 
 import { changeLanguage, language } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
@@ -453,6 +461,25 @@ describe('the in-session peer port', () => {
         await sleep(ANSWER_GUARD_MS + 40)
         alertStore.set({ type: 'none', msg: '1' })
         await expect(answer).resolves.toBe('save-mine')
+    })
+
+    // New behaviour: the offer was hidden for lack of an export (mutant: exportAvailable left false).
+    test('new behaviour: the Node prompt shows "export this tab first" and answers export-first', async () => {
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        const answer = ui.peer.decide({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'export-first'], saveMineUnavailable: 'node' })
+        await vi.waitFor(() => expect(getAlert().type).toBe('select'))
+        expect(getAlert().msg).toContain(text().peerExportFirst)
+        await sleep(ANSWER_GUARD_MS + 40)
+        alertStore.set({ type: 'none', msg: '1' })
+        await expect(answer).resolves.toBe('export-first')
+    })
+
+    test('the export-first handler runs the tab export writer and resolves declined when it declines', async () => {
+        exportThisTabBackup.mockClear()
+        exportThisTabBackup.mockResolvedValueOnce({ status: 'declined' } as never)
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        await expect(ui.peer.exportThisTab('manifest')).resolves.toBe('declined')
+        expect(exportThisTabBackup).toHaveBeenCalledTimes(1)
     })
 
     test('the page reload is the port\'s reload', () => {
