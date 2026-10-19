@@ -2349,6 +2349,18 @@ export const languageEnglish = {
     store2RestoreUnconfirmed: "RisuAI could not confirm whether the earlier version was restored. Neither version is lost either way. Reload the page to see which one is in use.",
     store2RestoreNotFlushed: "The earlier version was restored, but the device did not confirm that it was written to disk. The app reloads now and finishes writing it when it starts.",
     store2RestoreDone: "The earlier version was restored. The version you had before is kept in the list. Refreshing your app.",
+    store2RestoreOldRow: (when: string) => `Old: ${when}`,
+    store2ImportSizeWarning: (megabytes: number) =>
+        `The database inside this backup is about ${megabytes} MB. Reading it needs several times that much memory, so a phone or another small device may run out of memory and stop. Your saved data is not changed until the import has finished. Continue?`,
+    store2ImportIncompleteConfirm: (items: string) =>
+        `Some of the data in this backup could not be brought in completely:\n\n${items}\n\nThose parts will be empty or missing after the import. The data you have now is kept in the list of earlier saved versions. Import anyway?`,
+    store2ImportReadFailed: "Part of the backup, or of your saved data, could not be read, so nothing was imported. Your current data was not changed.",
+    store2ImportRefused: "Your saved data cannot be used as the base for an import right now, so nothing was imported. Your current data was not changed.",
+    store2ImportTooNew: "Your saved data was written by a newer version of RisuAI, so nothing was imported. Update the app and try again. Your current data was not changed.",
+    store2ImportAbandoned: "The import did not finish writing, so nothing was imported and your current data was not changed. Try again; if it keeps failing, check that the device has free space.",
+    store2ImportUnconfirmed: "RisuAI could not confirm whether the backup was imported. Your earlier data is kept either way. Reload the page to see which one is in use.",
+    store2ImportNotFlushed: "The backup was imported, but the device did not confirm that it was written to disk. The app reloads now and finishes writing it when it starts.",
+    store2ImportDone: "The backup was imported. The data you had before is kept in the list of earlier saved versions, where it ages out like any other. Refreshing your app.",
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,

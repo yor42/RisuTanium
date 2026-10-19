@@ -25,6 +25,9 @@ import type { WriteResult } from 'src/ts/storage/store2/commit'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { ExclusiveHoldRelease } from 'src/ts/drive/storeRestore'
+import { assembleDatabase } from 'src/ts/storage/store2/codec'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
+import { breakDataChecksum } from 'src/ts/storage/tests/risuSaveBlockFile'
 
 vi.setConfig({ testTimeout: 40_000 })
 
@@ -82,6 +85,13 @@ beforeEach(() => {
             frozenSaveKeysStore: writable([]),
         } as unknown as typeof import('src/ts/stores.svelte')
     })
+    // The shared mock module offers only the legacy reader's old name; an old backup's units are read through `readColdStorageItem`.
+    vi.doMock('src/ts/process/coldstorage.svelte', async () => ({
+        getColdStorageItem: vi.fn(),
+        getColdStorageBackupKey: (await import('src/ts/process/coldstorageData')).getColdStorageBackupKey,
+        readColdStorageItem: async () => ({ status: 'missing' }),
+        setColdStorageItem: vi.fn(async () => false),
+    }))
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -635,8 +645,9 @@ describe('outcomes', () => {
 
 describe('loadInternalBackup on a store2 page', () => {
     // Regression: on the base, a store2 page lists the numbered backups, reads the chosen one, strictly decodes and
-    // rebuilds it before the old flow reports it cannot keep a copy. A store2 page touches no numbered backup at all.
-    test('never reads or lists a numbered backup, shows the restore points and reloads once through the shared tail', async () => {
+    // rebuilds it before the old flow reports it cannot keep a copy. A store2 page lists them (as Old rows) but never
+    // reads, writes or deletes one that is not picked.
+    test('lists a numbered backup without reading it, shows the restore points and reloads once through the shared tail', async () => {
         const page = await openPage()
         await commitEdit(page, 'second')
         page.w.store.plant('database/dbbackup-1700000000.bin', new Uint8Array([1, 2, 3, 4]))
@@ -646,10 +657,11 @@ describe('loadInternalBackup on a store2 page', () => {
 
         await page.internal.loadInternalBackup()
 
-        const touched = page.w.store.ops.filter((op) => op.key.startsWith('database/dbbackup-'))
+        const touched = page.w.store.ops.filter((op) => op.key.startsWith('database/dbbackup-') && op.kind !== 'list')
         expect(touched, 'numbered backups touched').toEqual([])
         expect(page.shown).toHaveLength(1)
-        expect(page.shown[0]).toHaveLength(2)
+        expect(page.shown[0]).toHaveLength(3)
+        expect(page.shown[0][2]).toMatch(/^Old: /)
         expect(reloadSpy).toHaveBeenCalledTimes(1)
         expect(replaceStateSpy).toHaveBeenCalledTimes(1)
         expect(await currentKey(page)).toBe(page.k.seeded.manifestKey)
@@ -663,5 +675,228 @@ describe('loadInternalBackup on a store2 page', () => {
         expect(await writeLockIsFree(page)).toBe(false)
         reloadSpy.mockRestore()
         replaceStateSpy.mockRestore()
+    })
+})
+
+describe('old numbered backups as rows of the picker', () => {
+    const OLD_TIME = 1700000000
+    const NEWER_OLD_TIME = 1700000500
+    const oldKey = (time: number) => `database/dbbackup-${time}.bin`
+
+    /** The block-format main file of `db`, as the world's encoder writes it. */
+    async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
+        const encoder = new page.w.risuSave.RisuSaveEncoder()
+        await encoder.init(db as unknown as Database, { compression: false })
+        await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
+        return new Uint8Array(encoder.encode()!)
+    }
+
+    async function databaseOf(page: Page, manifestKey: string): Promise<Database> {
+        const read = await readTreeBytes(page.k.memory, manifestKey)
+        if (read.status !== 'ok') {
+            throw new Error(`The stored tree reads ${read.status}.`)
+        }
+        return assembleDatabase(read.tree.manifest, read.tree.source)
+    }
+
+    const namesOf = (db: Database): string[] => (db.characters as unknown as { name: string }[]).map((character) => character.name).sort()
+
+    /** Picks the row with the label `wanted` (the picker is shown once). */
+    function pickLabelled(page: Page, wanted: (options: string[]) => number) {
+        vi.mocked(page.alert.alertSelect).mockImplementation(async (options: string[]) => {
+            page.shown.push(options)
+            return String(wanted(options))
+        })
+    }
+
+    const oldIndex = (options: string[]) => options.findIndex((label) => label.startsWith('Old: '))
+
+    // Regression: on the base the picker lists restore points only, so a numbered backup cannot be chosen on a store2 page.
+    test('regression: old backups follow the restore points, newest first, labelled Old with their date-time', async () => {
+        const page = await openPage()
+        await commitEdit(page, 'second')
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array([1]))
+        page.w.store.plant(oldKey(NEWER_OLD_TIME), new Uint8Array([1]))
+        pickLabelled(page, () => 0)
+
+        await runRestore(page)
+
+        expect(page.shown).toHaveLength(1)
+        const options = page.shown[0]
+        expect(options).toHaveLength(1 + 1 + 2)
+        expect(options[0]).toBe('Cancel')
+        expect(options[1]).not.toMatch(/^Old: /)
+        expect(options[2]).toBe(language.store2RestoreOldRow(new Date(NEWER_OLD_TIME * 100).toLocaleString()))
+        expect(options[3]).toBe(language.store2RestoreOldRow(new Date(OLD_TIME * 100).toLocaleString()))
+    })
+
+    // Regression: on the base a chosen old row cannot be restored on a store2 page.
+    test('regression: picking an old row imports it, keeps the previous state as the newest restore point and leaves the backup alone', async () => {
+        const page = await openPage()
+        const before = await currentKey(page) as string
+        const bytes = await blockFileBytes(page, makeDb('old prompt', ['old-one', 'old-two']))
+        page.w.store.plant(oldKey(OLD_TIME), bytes)
+        pickLabelled(page, (options) => oldIndex(options))
+        page.w.store.ops.length = 0
+
+        const { reload, registeredAtReload } = await runRestore(page)
+
+        const key = await page.k.commitKey()
+        expect(key.current?.key).not.toBe(before)
+        expect(key.retained[0].key).toBe(before)
+        const stored = await databaseOf(page, key.current?.key as string)
+        expect(namesOf(stored)).toEqual(['old-one', 'old-two'])
+        expect(stored.mainPrompt).toBe('old prompt')
+        expect(reload).toHaveBeenCalledTimes(1)
+        expect(registeredAtReload).toEqual([['backupLoad']])
+        expect(page.alert.alertWait).toHaveBeenCalledWith(language.store2ImportDone)
+        expect(page.w.store.mutating().filter((op) => op.key.startsWith('database/dbbackup-'))).toEqual([])
+        expect(page.w.store.peek(oldKey(OLD_TIME))).toEqual(bytes)
+        expect(await writeLockIsFree(page)).toBe(false)
+    })
+
+    test('the empty message is shown only when there are neither restore points nor old backups', async () => {
+        const page = await openPage()
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array([1]))
+        pickLabelled(page, () => 0)
+
+        await runRestore(page)
+
+        expect(page.alert.alertNormal).not.toHaveBeenCalledWith(language.store2RestoreNone)
+        expect(page.shown[0]).toHaveLength(2)
+    })
+
+    // New behaviour, pinned by mutants: a backup in an older format decodes strictly; only a file that does not is salvaged.
+    test('an old backup in an older msgpack format imports', async () => {
+        const page = await openPage()
+        const before = await currentKey(page) as string
+        const db = makeDb('legacy format', ['legacy-one']) as unknown as Database
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array(await page.w.risuSave.encodeRisuSaveLegacy(db, 'noCompression')))
+        pickLabelled(page, (options) => oldIndex(options))
+
+        const { reload } = await runRestore(page)
+
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(reload).toHaveBeenCalledTimes(1)
+        const key = await page.k.commitKey()
+        expect(key.retained[0].key).toBe(before)
+        expect(namesOf(await databaseOf(page, key.current?.key as string))).toEqual(['legacy-one'])
+    })
+
+    test('an old backup that holds no database is refused whole with nothing changed', async () => {
+        const page = await openPage()
+        const before = await currentKey(page)
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array([1, 2, 3, 4]))
+        pickLabelled(page, (options) => oldIndex(options))
+        page.w.store.ops.length = 0
+
+        const { reload } = await runRestore(page)
+
+        expect(alertErrorTexts(page)).toContain(language.internalBackupUnreadable)
+        expect(reload).not.toHaveBeenCalled()
+        expect(await currentKey(page)).toBe(before)
+        expect(page.w.store.mutating()).toEqual([])
+        expect(await writeLockIsFree(page)).toBe(true)
+        expect(page.busy.isBusy()).toBe(false)
+    })
+
+    // New behaviour, pinned by mutants: a salvaged backup names everything it leaves out, and a decline changes nothing.
+    test('a partly damaged old backup names what it leaves out, and a decline changes nothing', async () => {
+        const page = await openPage()
+        const before = await currentKey(page)
+        page.w.store.plant(oldKey(OLD_TIME), breakDataChecksum(await blockFileBytes(page, makeDb('old', ['alpha', 'omega'])), 'omega'))
+        pickLabelled(page, (options) => oldIndex(options))
+        vi.mocked(page.alert.alertConfirm).mockImplementation(async () => false)
+        page.w.store.ops.length = 0
+
+        const { reload } = await runRestore(page)
+
+        const questions = vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))
+        expect(questions).toHaveLength(1)
+        expect(questions[0]).toContain('omega')
+        expect(reload).not.toHaveBeenCalled()
+        expect(await currentKey(page)).toBe(before)
+        expect(page.w.store.mutating()).toEqual([])
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test('after the person accepts, the intact parts of a damaged old backup are imported', async () => {
+        const page = await openPage()
+        page.w.store.plant(oldKey(OLD_TIME), breakDataChecksum(await blockFileBytes(page, makeDb('old', ['alpha', 'omega'])), 'omega'))
+        pickLabelled(page, (options) => oldIndex(options))
+
+        const { reload } = await runRestore(page)
+
+        expect(reload).toHaveBeenCalledTimes(1)
+        expect(namesOf(await databaseOf(page, (await currentKey(page)) as string))).toEqual(['alpha'])
+    })
+
+    // New behaviour, pinned by mutants: a large database is announced, naming its size, before it is decoded.
+    test('a large old backup is announced before it is decoded, and a decline changes nothing', async () => {
+        const page = await openPage()
+        const before = await currentKey(page)
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array(17 * 1024 * 1024))
+        pickLabelled(page, (options) => oldIndex(options))
+        vi.mocked(page.alert.alertConfirm).mockImplementation(async () => false)
+        page.w.store.ops.length = 0
+
+        const { reload } = await runRestore(page)
+
+        expect(vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))).toEqual([language.store2ImportSizeWarning(17)])
+        // The decline, not a failed decode of the zero-filled bytes, is what stopped it.
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(reload).not.toHaveBeenCalled()
+        expect(await currentKey(page)).toBe(before)
+        expect(page.w.store.mutating()).toEqual([])
+    })
+
+    // New behaviour, pinned by mutants: with no tab hold the landed Old-row import keeps dbWriteLock closed (a hold would close it anyway).
+    test('without Web Locks a landed old row keeps the write lock closed', async () => {
+        const page = await openPage({ webLocks: false })
+        page.w.store.plant(oldKey(OLD_TIME), await blockFileBytes(page, makeDb('old prompt', ['old-one'])))
+        pickLabelled(page, (options) => oldIndex(options))
+
+        const { reload } = await runRestore(page)
+
+        expect(reload).toHaveBeenCalledTimes(1)
+        expect(namesOf(await databaseOf(page, (await currentKey(page)) as string))).toEqual(['old-one'])
+        expect(await writeLockIsFree(page)).toBe(false)
+    })
+    test('a backup that was removed after the list was shown says the list changed', async () => {
+        const page = await openPage()
+        const before = await currentKey(page)
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array([1]))
+        vi.mocked(page.alert.alertSelect).mockImplementation(async (options: string[]) => {
+            page.shown.push(options)
+            page.w.store.unplant(oldKey(OLD_TIME))
+            return String(oldIndex(options))
+        })
+
+        const { reload } = await runRestore(page)
+
+        expect(alertErrorTexts(page)).toContain(language.store2RestoreListChanged)
+        expect(reload).not.toHaveBeenCalled()
+        expect(await currentKey(page)).toBe(before)
+    })
+
+    test('work that starts while the picker is open refuses an old row too, which leaves no entry behind', async () => {
+        const page = await openPage()
+        const before = await currentKey(page)
+        page.w.store.plant(oldKey(OLD_TIME), await blockFileBytes(page, makeDb('old', ['old-one'])))
+        let end = () => { }
+        vi.mocked(page.alert.alertSelect).mockImplementation(async (options: string[]) => {
+            page.shown.push(options)
+            const handle = page.busy.beginBusy('import')
+            end = () => handle.end()
+            return String(oldIndex(options))
+        })
+
+        const { reload } = await runRestore(page)
+
+        expect(alertErrorTexts(page)).toContain(language.backupLoadWorkInProgress)
+        expect(reload).not.toHaveBeenCalled()
+        expect(await currentKey(page)).toBe(before)
+        end()
+        expect(page.busy.isBusy()).toBe(false)
     })
 })

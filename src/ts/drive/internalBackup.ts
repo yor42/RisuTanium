@@ -16,7 +16,7 @@ import { language } from "src/lang";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, type BusyHandle } from "../process/memory/busyActions";
-import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./backuplocal";
+import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
 import { buildRestoreSet, completeRestoredTree, currentCharacterNames, repairRestoredCharacters, replaceWithRestoredSet } from "./restoreReplace";
 import { describeBlockForPerson } from "../globalApi.svelte";
 import { getPageStorageMode } from "../storage/pageStorageMode";

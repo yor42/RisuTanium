@@ -59,6 +59,7 @@ import { startStore2Maintenance } from "./storage/store2/maintenance";
 import { clearBootScreen } from "./storage/store2/ui/bootScreen.svelte";
 import { noticeText } from "./storage/store2/ui/bootText";
 import { LEGACY_MAIN_FILE_KEY } from "./storage/blockKeys";
+import { listBackupTimes } from "./drive/backupList";
 import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
 import { hasEnabledV21Plugin } from "./plugins/v21Plugins";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
@@ -703,23 +704,6 @@ const bootUi: BootLoadUi = {
     notify: (text) => alertNormalWait(text),
     choose: async (title, options) => parseInt(await alertSelect([...options], title)),
     confirm: (text) => alertConfirm(text),
-}
-
-/**
- * The numbered backups, newest first, without pruning: the damage prompt must
- * write and delete nothing before the person chooses, and a read-only page
- * deletes nothing at all.
- */
-async function listBackupTimes(): Promise<number[]> {
-    const prefix = 'database/dbbackup-'
-    const times: number[] = []
-    for (const key of await (await getAppStore()).list(prefix)) {
-        const match = /^(\d+)\.bin$/.exec(key.slice(prefix.length))
-        if (match) {
-            times.push(Number(match[1]))
-        }
-    }
-    return times.sort((a, b) => b - a)
 }
 
 /** The backups listing the boot's fallback reads: pruning, except on a read-only page, which deletes nothing. */

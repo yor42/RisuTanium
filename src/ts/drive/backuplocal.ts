@@ -35,6 +35,12 @@ import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
 import { writeInlaysToBackup } from "./inlayBackupExport";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
+import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
+import { reloadOntoRestoredState } from "./internalBackup";
+import { saveFirst, SAVE_FIRST_BOUND_MS } from "./storeRestore";
+import { getPageStorageMode } from "../storage/pageStorageMode";
+import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
+import { announceStore2Import, binChangeText, checkStore2Import, commitStore2Import, confirmDatabaseSize, confirmLeftOut, createBinImportReader, decodeBinDatabase, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -736,23 +742,8 @@ async function writePartialLocalBackup(session: ExportSession){
     }
 }
 
-/**
- * How long the local restore and the internal-backup load
- * (`loadInternalBackup` in `internalBackup.ts`) wait for the exclusive storage
- * lock (MC-093) before refusing with "another tab is open". A tab that is simply open, with no
- * exclusive operation of its own in progress, never releases its presence
- * lock -- so this wait can never turn a genuinely open tab into a grant;
- * every value of this timeout refuses that case identically, only sooner or
- * later. What this wait actually bounds is how long this restore waits
- * behind another tab's own IN-PROGRESS exclusive operation (the copy back
- * from OPFS at startup, or another restore) before giving up on it and
- * refusing instead. Kept well under that copy back's own 5000ms default so a
- * restore doesn't make
- * its own user wait for however long an unrelated tab's operation takes to
- * finish, at the cost of occasionally refusing an in-progress operation of
- * similar length that would have finished moments later.
- */
-export const RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS = 2000;
+/** Re-exported so every existing importer keeps working; the constant and its rationale live in `restoreLock.ts`. */
+export { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS };
 
 /** How many skipped asset names, and how many characters of each, the restore notice lists. */
 const SKIPPED_ASSET_NAMES_SHOWN = 20;
@@ -834,6 +825,46 @@ function shownSkippedNames(names: readonly string[]): string[] {
     return names.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name);
 }
 
+/**
+ * What the restore of a `.bin` on a store2 page carries from its checks to its commit: the page's committer and
+ * backend, where the cold-storage entries sit in the file, the database entry (decoded again at the commit), and the
+ * guard that asks about unsaved edits once.
+ */
+interface Store2BinImport {
+    target: Store2ImportTarget;
+    index: ColdEntryIndex;
+    entry: BackupIndexEntry;
+    databaseBytes: Uint8Array | null;
+    guard: UnsavedGuard;
+}
+
+/** The notices of what a store2 import left out, in the order the block-era restore shows them; each is awaited before the reload takes the page away. */
+function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[]): string[] {
+    const notices: string[] = [];
+    const invalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
+    const tooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
+    if (invalidNames.length > 0) {
+        notices.push(language.restoreAssetsSkipped(invalidNames.length, shownSkippedNames(invalidNames)));
+    }
+    if (tooLargeNames.length > 0) {
+        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), NODE_BODY_LIMIT_BYTES));
+    }
+    const inlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
+    const invalidInlays = inlayNames('invalid');
+    const notStoredInlays = inlayNames('notStored');
+    const tooLargeInlays = inlayNames('tooLarge');
+    if (invalidInlays.length > 0) {
+        notices.push(language.restoreInlaysInvalid(invalidInlays.length, shownSkippedNames(invalidInlays)));
+    }
+    if (notStoredInlays.length > 0) {
+        notices.push(language.restoreInlaysNotStored(notStoredInlays.length, shownSkippedNames(notStoredInlays)));
+    }
+    if (tooLargeInlays.length > 0) {
+        notices.push(language.restoreInlaysTooLarge(tooLargeInlays.length, shownSkippedNames(tooLargeInlays), inlayAttachmentLimit()));
+    }
+    return notices;
+}
+
 export function LoadLocalBackup(){
     // A restore replaces the database under any work still writing into it.
     // It is refused before the picker opens, again when the picker returns,
@@ -861,6 +892,19 @@ export function LoadLocalBackup(){
 
             if (refuseBackupLoadWhileBusy(busy)) {
                 return;
+            }
+
+            // A store2 page imports through `storeImport.ts` instead of the block
+            // tail below. Every precondition that can be known now is checked
+            // before the file is read: the session, the committer, a bulk marker
+            // of another page, and this tab's unsaved edits are saved first.
+            let store2Target: Store2ImportTarget | null = null;
+            if (getPageStorageMode().kind === 'store2') {
+                store2Target = await checkStore2Import();
+                if (store2Target === null) {
+                    return;
+                }
+                await saveFirst(SAVE_FIRST_BOUND_MS);
             }
 
             // Every write below -- an asset, a cold-storage item, or the
@@ -895,6 +939,32 @@ export function LoadLocalBackup(){
                 return;
             }
 
+            // A store2 page cannot store the cold-storage entries (it keeps no
+            // legacy units), so they are indexed here and read from the file
+            // when the imported tree names them. The database entry is located
+            // now so that it is decoded, and a large one announced, before the
+            // first asset is written.
+            let store2Import: Store2BinImport | null = null;
+            if (store2Target !== null) {
+                alertWait('Checking local backup...');
+                try {
+                    const scan = await scanBinForImport(file, backupEntries);
+                    if (scan.database === null) {
+                        alertError('Failed, Is file corrupted?');
+                        return;
+                    }
+                    store2Import = { target: store2Target, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
+                    noteImportPhase('scanned');
+                } catch (e) {
+                    console.error(e);
+                    alertError(e instanceof BinFileChangedError ? binChangeText(e) : language.backupFileUnreadable);
+                    return;
+                }
+                if (!await confirmDatabaseSize(store2Import.entry.dataLength)) {
+                    return;
+                }
+            }
+
             // On a Node server a body over the server's request limit can never
             // be stored. Those assets are named before anything is written, and
             // the restore goes on without them only if the user agrees.
@@ -926,6 +996,25 @@ export function LoadLocalBackup(){
                     for (const inlay of oversizedInlays) {
                         inlayCollector.preSkip(inlay.hash, inlay.id);
                     }
+                }
+            }
+
+            // The database is read and decoded before the tab lock is taken and
+            // before the first asset is written: a file that cannot be decoded,
+            // or whose left-out blocks the person declines, changes nothing.
+            if (store2Import !== null) {
+                alertWait('Reading the database in the backup...');
+                try {
+                    store2Import.databaseBytes = await readBinDatabase(file, store2Import.entry);
+                    const decoded = await decodeBinDatabase(store2Import.databaseBytes);
+                    noteImportPhase('database decoded');
+                    if (!await confirmLeftOut(decoded.omitted)) {
+                        return;
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alertError(e instanceof BinFileChangedError ? binChangeText(e) : 'Failed, Is file corrupted?');
+                    return;
                 }
             }
 
@@ -972,6 +1061,11 @@ export function LoadLocalBackup(){
             let restoreInstalled = false;
             let writeLockStaysClosed = false;
             try {
+                // With the tab lock held, the edits this tab could not save are
+                // asked about before the copy, not after hours of it.
+                if (store2Import !== null && releaseExclusiveHold && !await store2Import.guard.check()) {
+                    return;
+                }
                 let pendingDatabase: Uint8Array | null = null;
                 const restoredColdStorageKeys = new Set<string>();
                 const skippedAssets: SkippedAsset[] = [];
@@ -1061,6 +1155,13 @@ export function LoadLocalBackup(){
                         }
                         if (isSkippedForSize) {
                             skippedAssets.push({ name, reason: 'tooLarge' });
+                            await yieldBudget.maybeYield();
+                            continue;
+                        }
+                        // A store2 page decoded the database above and reads the
+                        // cold-storage entries from the file on demand: neither is
+                        // read or stored by this pass.
+                        if (store2Import !== null && (name === 'database.risudat' || getColdStorageBackupKey(name))) {
                             await yieldBudget.maybeYield();
                             continue;
                         }
@@ -1209,6 +1310,50 @@ export function LoadLocalBackup(){
                     return;
                 }
                 skippedInlays.push(...inlayOutcome.skipped);
+
+                // A store2 page ends here: the imported tree is the page's new
+                // profile, committed under the write lock (the hold already
+                // holds it where there is one; otherwise it is taken now,
+                // before the unsaved-edits check, the commit-key read and the
+                // build). The commit keeps the state it replaces as an earlier
+                // saved version. The block-era tail below is not reached.
+                if (store2Import !== null) {
+                    noteImportPhase('assets copied');
+                    const databaseBytes = store2Import.databaseBytes;
+                    if (databaseBytes === null) {
+                        alertError('Failed, Is file corrupted?');
+                        return;
+                    }
+                    if (!releaseExclusiveHold) {
+                        releaseDbWriteLock = await dbWriteLock.acquire();
+                    }
+                    if (!await store2Import.guard.check()) {
+                        return;
+                    }
+                    alertWait('Loading backup...');
+                    const end = await commitStore2Import({
+                        target: store2Import.target,
+                        busy,
+                        decode: async () => (await decodeBinDatabase(databaseBytes)).tree,
+                        reader: createBinImportReader(file, store2Import.index),
+                    });
+                    switch (end.kind) {
+                        case 'refused':
+                            return;
+                        case 'unconfirmed':
+                            // Which state is current is unknown: nothing may save from this page until a reload shows it.
+                            writeLockStaysClosed = true;
+                            if (releaseExclusiveHold) {
+                                await releaseExclusiveHold(true);
+                            }
+                            return;
+                        case 'landed':
+                            restoreInstalled = true;
+                            writeLockStaysClosed = true;
+                            await announceStore2Import(end, skippedNoticesOf(skippedAssets, skippedInlays), () => reloadOntoRestoredState(releaseExclusiveHold));
+                            return;
+                    }
+                }
 
                 if(!pendingDatabase){
                     alertError('Failed, Is file corrupted?')
