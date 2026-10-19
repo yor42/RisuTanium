@@ -251,14 +251,15 @@ describe('long entry names are scanned past without ever being buffered whole', 
         const bytes = concatChunks([assetEntry(), coldEntry(), hugeEntry, markerEntry(), databaseEntry()])
         const { file, sliceLengths } = fileWithTrackedSlices(bytes)
 
-        await expect(findEncryptionMarkerEntry(file)).resolves.toBe(true)
+        await expect(findEncryptionMarkerEntry(file, { windowBytes: 4096 })).resolves.toBe(true)
 
-        // No single read should approach the 100 KiB name: the walk's first
-        // window over this entry holds only part of the long name (up to
-        // one window's worth of it), and the separate data-length-field read
-        // that follows a skipped long name is a fixed few bytes. Bounded by
-        // a literal, not by MAX_MARKER_NAME_BYTES itself, so raising that
-        // constant cannot silently widen what this test allows.
+        // No single read should approach the 100 KiB name: with a 4 KiB
+        // window the walk's first window over this entry holds only part of
+        // the long name (up to one window's worth of it), and the separate
+        // data-length-field read that follows a skipped long name is one
+        // window as well. Bounded by a literal, not by the name-prefix
+        // constant itself, so raising that constant cannot silently widen
+        // what this test allows.
         const maxAllowedRead = 4096 + 32
         expect(sliceLengths.length).toBeGreaterThan(0)
         expect(Math.max(...sliceLengths)).toBeLessThanOrEqual(maxAllowedRead)
@@ -305,7 +306,8 @@ test('an exception from slice().arrayBuffer() propagates as a rejection, not a r
     const bytes = concatChunks([assetEntry(), coldEntry(), databaseEntry()])
     const file = fileWithRejectingSlice(bytes, 2)
 
-    await expect(findEncryptionMarkerEntry(file)).rejects.toThrow('scratch: unreadable region')
+    // A 16-byte window cannot hold the first entry's 18-byte header, so the walk reaches a second read.
+    await expect(findEncryptionMarkerEntry(file, { windowBytes: 16 })).rejects.toThrow('scratch: unreadable region')
 })
 
 test('onProgress reports non-decreasing scanned bytes ending at the file size for a no-marker file', async () => {
@@ -347,7 +349,7 @@ describe('indexBackupEntries returns where every complete entry sits', () => {
         }
     })
 
-    test('indexes an entry whose name is longer than the marker bound without decoding it', async () => {
+    test('indexes an entry whose name is longer than the marker bound and keeps no name for it', async () => {
         const hugeName = 'y'.repeat(1000)
         const bytes = concatChunks([assetEntry(), buildChunk(hugeName, new Uint8Array(7)), databaseEntry()])
 
@@ -360,6 +362,7 @@ describe('indexBackupEntries returns where every complete entry sits', () => {
             dataLength: 7,
             headerLength: 8 + 1000,
         })
+        expect(result.names.has(assetEntry().length)).toBe(false)
     })
 
     test('stops at a truncated trailing entry, which is not listed', async () => {
@@ -376,7 +379,7 @@ describe('indexBackupEntries returns where every complete entry sits', () => {
 
         const result = await indexBackupEntries(fileOf(bytes))
 
-        expect(result).toEqual({ hasMarker: true, entries: [] })
+        expect(result).toEqual({ hasMarker: true, entries: [], names: new Map() })
     })
 })
 

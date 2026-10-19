@@ -27,7 +27,7 @@ import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import type { Committer, CommitResult } from 'src/ts/storage/store2/commit'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { BACKUP_ENCRYPTION_MARKER_NAME } from 'src/ts/drive/backupContainer'
+import { BACKUP_ENCRYPTION_MARKER_NAME, indexBackupEntries } from 'src/ts/drive/backupContainer'
 import { loadGolden } from 'src/ts/storage/tests/store2/legacyFixtures'
 import { breakDataChecksum } from 'src/ts/storage/tests/risuSaveBlockFile'
 
@@ -109,7 +109,9 @@ beforeEach(() => {
     vi.spyOn(console, 'debug').mockImplementation(() => { })
 })
 
-afterEach(() => {
+afterEach(async () => {
+    const { overrideBackupWindowBytes } = await import('src/ts/drive/backupContainer')
+    overrideBackupWindowBytes(null)
     worlds.parkAll()
     vi.doMock('src/ts/platform', () => ({ isTauri: false, get isNodeServer() { return platformBox.isNodeServer }, isIOS: () => false }))
     vi.restoreAllMocks()
@@ -205,6 +207,15 @@ function golden(name: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, name)))
 }
 
+/** The goldens run at the default windows and again at windows so small that every golden crosses window edges in both passes. */
+const GOLDEN_WINDOWS: readonly (number | undefined)[] = [undefined, 4, 64]
+
+/** Set after `openPage()`: the world re-imports the app's modules, and the seam must be the one the world's `backuplocal` reads. */
+async function useGoldenWindows(windowBytes: number | undefined): Promise<void> {
+    const { overrideBackupWindowBytes } = await import('src/ts/drive/backupContainer')
+    overrideBackupWindowBytes(windowBytes === undefined ? null : { walk: windowBytes, copy: windowBytes })
+}
+
 function binEntry(name: string, data: Uint8Array): Uint8Array {
     const nameBytes = new TextEncoder().encode(name)
     const out = new Uint8Array(4 + nameBytes.length + 4 + data.length)
@@ -278,8 +289,9 @@ const mutations = (page: Page) => page.w.store.mutating()
 describe('the .bin import of a store2 page', () => {
     // Regression: on the base a store2 page copies the assets, fails every cold-storage write, and throws at the missing
     // block store, so nothing is installed.
-    test('regression: upstream-full.bin becomes current and the pre-import manifest is the newest retained one', async () => {
+    test.each(GOLDEN_WINDOWS)('regression: upstream-full.bin becomes current and the pre-import manifest is the newest retained one (windows: %s)', async (windowBytes) => {
         const page = await openPage()
+        await useGoldenWindows(windowBytes)
         const before = await currentKey(page) as string
         const expected = await loadGolden('upstream-full.bin')
 
@@ -297,8 +309,9 @@ describe('the .bin import of a store2 page', () => {
     })
 
     // New behaviour, pinned by mutants: the cold-storage entries are indexed and read from the file; none is stored or even attempted.
-    test('cold-storage entries are never written or attempted', async () => {
+    test.each(GOLDEN_WINDOWS)('cold-storage entries are never written or attempted (windows: %s)', async (windowBytes) => {
         const page = await openPage()
+        await useGoldenWindows(windowBytes)
 
         await loadBin(page, golden('upstream-full.bin'))
 
@@ -769,5 +782,106 @@ describe('Gate 2 pins', () => {
         await running
 
         expect(confirmTexts(page)).toContain(language.store2RestoreUnsavedConfirm)
+    })
+})
+
+// ---- the order of the entries in the file ----
+
+/** The content a store2 import hydrates from the cold units: every chat message text and the cold-backed plugin value. */
+function coldOutcome(db: Database): { names: string[], texts: string[], plugin: unknown } {
+    const characters = db.characters as unknown as { chats?: { message: { data: string }[] }[] }[]
+    const texts = characters.flatMap((character) => (character.chats ?? []).flatMap((chat) => chat.message.map((message) => message.data)))
+    return { names: namesOf(db), texts: texts.sort(), plugin: db.pluginCustomStorage['00000000-0000-4000-8000-0000000000a4'] }
+}
+
+/** What importing upstream-full.bin lands, whatever the order of its entries. */
+async function fullOutcome(): Promise<{ names: string[], texts: string[], plugin: unknown }> {
+    return { names: namesOf((await loadGolden('upstream-full.bin')).tree), texts: ['archived blob chat', 'archived error-text chat', 'archived inline chat', 'blob hello', 'inline hello'], plugin: ['dark', 3] }
+}
+
+/** Splits a `.bin` into its entries, each with its name and its own bytes. */
+async function splitBin(bytes: Uint8Array): Promise<{ name: string, bytes: Uint8Array }[]> {
+    const walk = await indexBackupEntries(new Blob([bytes as unknown as Uint8Array<ArrayBuffer>]))
+    return walk.entries.map((entry) => ({
+        name: new TextDecoder().decode(bytes.subarray(entry.headerOffset + 4, entry.headerOffset + 4 + entry.nameLength)),
+        bytes: bytes.slice(entry.headerOffset, entry.headerOffset + entry.headerLength + entry.dataLength),
+    }))
+}
+
+// Guards of the new contract (the walk's kept names, not runnable on the old reader): no writer of upstream or of this fork
+// places the marker, the cold units and the database anywhere but the usual order, but a hand-made or future file may, and
+// the import must carry the same content whatever the order. The character names, every chat message text (the cold-backed
+// chats included) and the plugin value must equal the golden's. Each case is also run at windows so small that entries
+// straddle edges.
+describe.each([undefined, 16] as const)('the order of the entries does not change what a store2 import carries (windows: %s)', (windowBytes) => {
+    /** Imports `entries` and returns what landed, after the import has finished cleanly. */
+    async function landed(entries: Uint8Array[]): Promise<{ page: Page, database: Database }> {
+        const page = await openPage()
+        await useGoldenWindows(windowBytes)
+        const before = await currentKey(page) as string
+        await loadBin(page, binOf(...entries))
+        const key = await page.k.commitKey()
+        expect(key.current?.key).not.toBe(before)
+        expect(page.w.store.peek('assets/golden-avatar.png')).not.toBeNull()
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(confirmTexts(page)).toEqual([])
+        expect(page.alert.alertWait).toHaveBeenCalledWith(language.store2ImportDone)
+        return { page, database: await databaseOf(page, key.current?.key as string) }
+    }
+
+    test('the database first, then the cold units, then the asset', async () => {
+        const split = await splitBin(golden('upstream-full.bin'))
+        const database = split.filter((entry) => entry.name === 'database.risudat')
+        const rest = split.filter((entry) => entry.name !== 'database.risudat')
+
+        const { database: landedTree } = await landed([...database, ...rest.reverse()].map((entry) => entry.bytes))
+
+        expect(coldOutcome(landedTree)).toEqual(await fullOutcome())
+    })
+
+    test('cold units interleaved with the asset, the database last', async () => {
+        const split = await splitBin(golden('upstream-full.bin'))
+        const asset = split.filter((entry) => entry.name === 'golden-avatar.png')
+        const cold = split.filter((entry) => entry.name.startsWith('coldstorage_'))
+        const database = split.filter((entry) => entry.name === 'database.risudat')
+        expect(cold.length).toBeGreaterThan(1)
+
+        const { database: landedTree } = await landed([cold[0], ...asset, ...cold.slice(1), ...database].map((entry) => entry.bytes))
+
+        expect(coldOutcome(landedTree)).toEqual(await fullOutcome())
+    })
+
+    test('two database entries: the last one is the one imported', async () => {
+        const split = await splitBin(golden('upstream-full.bin'))
+        const other = (await splitBin(golden('upstream-missing-unit.bin'))).filter((entry) => entry.name === 'database.risudat')
+        const { database: landedTree } = await landed([...other, ...split].map((entry) => entry.bytes))
+
+        expect(namesOf((await loadGolden('upstream-missing-unit.bin')).tree)).not.toEqual(namesOf((await loadGolden('upstream-full.bin')).tree))
+        expect(coldOutcome(landedTree)).toEqual(await fullOutcome())
+    })
+
+    test('a marker after the database refuses the import with nothing written', async () => {
+        const page = await openPage()
+        await useGoldenWindows(windowBytes)
+        page.w.store.ops.length = 0
+
+        await loadBin(page, binOf(golden('upstream-full.bin'), binEntry(BACKUP_ENCRYPTION_MARKER_NAME, new Uint8Array([1]))))
+
+        expect(alertErrorTexts(page)).toContain(language.encryptedBackupRefused)
+        expect(mutations(page)).toEqual([])
+        expect(page.reloads.count).toBe(0)
+    })
+
+    test('a marker whose header is cut off at the end of the file refuses the import with nothing written', async () => {
+        const page = await openPage()
+        await useGoldenWindows(windowBytes)
+        page.w.store.ops.length = 0
+        const cutOff = binEntry(BACKUP_ENCRYPTION_MARKER_NAME, new Uint8Array(0)).slice(0, 4 + BACKUP_ENCRYPTION_MARKER_NAME.length + 2)
+
+        await loadBin(page, binOf(golden('upstream-full.bin'), cutOff))
+
+        expect(alertErrorTexts(page)).toContain(language.encryptedBackupRefused)
+        expect(mutations(page)).toEqual([])
+        expect(page.reloads.count).toBe(0)
     })
 })

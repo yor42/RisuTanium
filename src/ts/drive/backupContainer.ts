@@ -7,9 +7,9 @@
  * leading UTF-8 byte-order mark, so a BOM-prefixed name and its bare form
  * decode to the same string.
  *
- * `LoadLocalBackup`'s pre-read walk (over `Blob.slice()`, see
+ * `LoadLocalBackup`'s pre-read walk (over windowed `Blob.slice()` reads, see
  * `indexBackupEntries`) and its restore pass (which re-reads each indexed
- * entry through `Blob.slice()`) both resolve every header through
+ * entry through its own `BlobWindowReader`) both resolve every header through
  * `parseBackupEntryHeader`, which parses any given bytes the same way for
  * either caller: given the same bytes, the two agree on where one entry
  * ends and the next begins, and on what an entry is named. What each pass
@@ -47,14 +47,44 @@ export const BACKUP_ENCRYPTION_MARKER_NAME = 'encryption.risudat'
 export const MAX_MARKER_NAME_BYTES = 21
 
 /**
- * Default window size, in bytes, `indexBackupEntries` reads at a
- * time. A window only ever has to hold a length field or a short candidate
- * name to resolve a header -- for a small entry, the same window can also
- * include that entry's body and the start of the entries that follow -- so
- * this stays small; tests shrink it (via `BackupWalkOptions.windowBytes`)
- * to force many small reads instead of relying on real file sizes.
+ * Default window size, in bytes, of the header walk (`indexBackupEntries`,
+ * pass 1) and of the copy pass that follows it (pass 2). Each pass reads the
+ * file in large sequential windows, so a small entry costs no read of its
+ * own: the number of `Blob.slice()` calls follows the file size over the
+ * window, not the entry count. Tests shrink both (via
+ * `BackupWalkOptions.windowBytes` and `overrideBackupWindowBytes`) to force
+ * entries across window edges instead of relying on real file sizes.
  */
-export const DEFAULT_BACKUP_WALK_WINDOW_BYTES = 4096
+export const DEFAULT_BACKUP_WALK_WINDOW_BYTES = 4 * 1024 * 1024
+
+/** Default window size of the copy pass (pass 2); see `DEFAULT_BACKUP_WALK_WINDOW_BYTES`. */
+export const DEFAULT_BACKUP_COPY_WINDOW_BYTES = 4 * 1024 * 1024
+
+const windowOverride: { walk: number | null, copy: number | null } = { walk: null, copy: null }
+
+/**
+ * Test seam: replaces the window sizes of both passes until called again with
+ * `null`. A pass keeps the size it started with, so a change applies from the
+ * next import.
+ */
+export function overrideBackupWindowBytes(sizes: { walk?: number, copy?: number } | null): void {
+    windowOverride.walk = sizes?.walk ?? null
+    windowOverride.copy = sizes?.copy ?? null
+}
+
+/** The window size pass 2 (the copy) reads in. */
+export function backupCopyWindowBytes(): number {
+    return Math.max(1, windowOverride.copy ?? DEFAULT_BACKUP_COPY_WINDOW_BYTES)
+}
+
+/** The longest entry name, in bytes, the index keeps in every import (`database.risudat`, a cold-storage unit); a longer name is kept only for an oversized body. The walk itself decodes names up to `BACKUP_NAME_PREFIX_BYTES`. */
+export const BACKUP_INDEX_SHORT_NAME_BYTES = 64
+
+/** The longest name the walk decodes; a longer name is never read into a string, except for its first this-many bytes when its body is oversized. */
+export const BACKUP_NAME_PREFIX_BYTES = 1024
+
+/** Bytes of a header with the longest decoded name: both length fields and the name. */
+const HEADER_PROBE_BYTES = 4 + BACKUP_NAME_PREFIX_BYTES + 4
 
 export interface BackupEntryHeader {
     /** Entry name, or `undefined` when it was longer than the call's `maxNameBytesToDecode` and was therefore never decoded. */
@@ -138,10 +168,17 @@ export function parseBackupEntryHeader(
 }
 
 export interface BackupWalkOptions {
-    /** Window size, in bytes, for each header read; grown only when a short candidate name plus its data-length field overruns it. */
+    /** Window size, in bytes, of the walk's sequential reads; a header larger than the window is read exactly. */
     windowBytes?: number
     /** Invoked with the number of bytes scanned so far and the file's total size, once per entry boundary the walk resolves. */
     onProgress?: (scannedBytes: number, totalBytes: number) => void
+    /**
+     * When set, an entry whose body is larger than this keeps its name in
+     * `BackupWalkResult.names` whatever the name's length (the first
+     * `BACKUP_NAME_PREFIX_BYTES` bytes of a longer one), so the Node server's
+     * oversize question can name it without another read.
+     */
+    oversizeBodyBytes?: number
 }
 
 /**
@@ -161,18 +198,73 @@ export interface BackupWalkResult {
     hasMarker: boolean
     /** Every entry whose header and whole body fit in the file, in file order. A truncated trailing entry is not listed. */
     entries: BackupIndexEntry[]
+    /**
+     * Decoded names by `headerOffset`: every entry whose name is at most
+     * `BACKUP_INDEX_SHORT_NAME_BYTES` long, plus (when `oversizeBodyBytes` was
+     * given) every entry whose body is larger than that. Other entries are not
+     * listed; asset names (66 bytes and up) are never held for 383k entries.
+     */
+    names: Map<number, string>
+}
+
+/**
+ * A sequential reader over `Blob.slice()`: one window of at most
+ * `windowBytes` is held, and `view` answers from it while the requested range
+ * lies inside. A reader never pools or reuses an `ArrayBuffer` across
+ * windows, and each pass constructs its own, so bytes one pass read are never
+ * what the next pass compares against the file.
+ */
+export interface BlobWindowReader {
+    /**
+     * The bytes of `[start, start + length)`, clamped to the file's size (a
+     * request past the end is the caller's end of file, not a change). The
+     * result is shorter than the clamped request only when the file delivered
+     * fewer bytes than its size promised, which a caller must treat as a
+     * changed file. A range inside the window is a view of it; a miss reads a
+     * new window starting at `start` (`fill`, the default) or, for a range
+     * larger than a window or when `fill` is false, reads exactly the range
+     * and leaves the held window alone. An exception from the read
+     * propagates.
+     */
+    view(start: number, length: number, fill?: boolean): Promise<Uint8Array>
+}
+
+export function createBlobWindowReader(file: Blob, windowBytes: number): BlobWindowReader {
+    const size = file.size
+    const window = Math.max(1, Math.floor(windowBytes))
+    let windowStart = 0
+    let windowData = new Uint8Array(0)
+    return {
+        async view(start, length, fill = true) {
+            const end = Math.min(start + length, size)
+            if (end <= start) {
+                return new Uint8Array(0)
+            }
+            if (start >= windowStart && end <= windowStart + windowData.length) {
+                return windowData.subarray(start - windowStart, end - windowStart)
+            }
+            const wanted = end - start
+            if (!fill || wanted > window) {
+                return new Uint8Array(await file.slice(start, end).arrayBuffer())
+            }
+            const bytes = new Uint8Array(await file.slice(start, Math.min(start + window, size)).arrayBuffer())
+            windowStart = start
+            windowData = bytes
+            return bytes.subarray(0, Math.min(wanted, bytes.length))
+        },
+    }
 }
 
 /**
  * Scans `file`'s entry headers for `BACKUP_ENCRYPTION_MARKER_NAME`, reading
- * through `Blob.slice()` in bounded windows: one `DEFAULT_BACKUP_WALK_WINDOW_BYTES`
- * window at each entry header, plus a 4-byte read for a long name's
- * data-length field, seeking past the rest of each body. It never reads a
- * whole large body, nor the whole file at once -- though for a small entry
- * the header window can include that entry's body and the start of the
- * entries that follow. Whenever a complete entry name decodes to exactly
- * the marker name, this resolves `true` at once, regardless of whether that
- * entry's data length or body fits in the file.
+ * through `Blob.slice()` in large sequential windows (see
+ * `BlobWindowReader`): a header, and for a small entry its body and the
+ * entries that follow, come out of the window already held, so the slice
+ * count follows the file size over the window. A long name's data-length
+ * field is read separately, and the rest of a body that is larger than the
+ * window is seeked past, not read. Whenever a complete entry name decodes to
+ * exactly the marker name, this resolves `true` at once, regardless of
+ * whether that entry's data length or body fits in the file.
  *
  * A header cut off by the end of the file -- fewer than 4 bytes left, a
  * name cut short, a data-length field cut short, or a body that would run
@@ -193,33 +285,42 @@ export interface BackupWalkResult {
  */
 export async function indexBackupEntries(file: Blob, options: BackupWalkOptions = {}): Promise<BackupWalkResult> {
     const totalBytes = file.size
-    const initialWindowBytes = Math.max(4, options.windowBytes ?? DEFAULT_BACKUP_WALK_WINDOW_BYTES)
+    const windowBytes = Math.max(4, options.windowBytes ?? windowOverride.walk ?? DEFAULT_BACKUP_WALK_WINDOW_BYTES)
+    const reader = createBlobWindowReader(file, windowBytes)
+    const oversizeBodyBytes = options.oversizeBodyBytes
     const entries: BackupIndexEntry[] = []
+    const names = new Map<number, string>()
     let pos = 0
 
     while (pos < totalBytes) {
-        let windowBytes = initialWindowBytes
+        let want = Math.min(windowBytes, HEADER_PROBE_BYTES)
 
         for (;;) {
             const remaining = totalBytes - pos
-            const windowLength = Math.min(windowBytes, remaining)
-            const buffer = new Uint8Array(await file.slice(pos, pos + windowLength).arrayBuffer())
-            const result = parseBackupEntryHeader(buffer, MAX_MARKER_NAME_BYTES)
+            const requested = Math.min(want, remaining)
+            const buffer = await reader.view(pos, requested)
+            const result = parseBackupEntryHeader(buffer, BACKUP_NAME_PREFIX_BYTES)
 
             if (result.status === 'ok') {
-                if (result.header.name === BACKUP_ENCRYPTION_MARKER_NAME) {
-                    return { hasMarker: true, entries: [] }
+                const header = result.header
+                if (header.name === BACKUP_ENCRYPTION_MARKER_NAME) {
+                    return { hasMarker: true, entries: [], names: new Map() }
                 }
-                const bodyEnd = pos + result.header.headerLength + result.header.dataLength
+                const bodyEnd = pos + header.headerLength + header.dataLength
                 if (bodyEnd > totalBytes) {
-                    return { hasMarker: false, entries }
+                    return { hasMarker: false, entries, names }
                 }
                 entries.push({
                     headerOffset: pos,
-                    nameLength: result.header.nameLength,
-                    dataLength: result.header.dataLength,
-                    headerLength: result.header.headerLength,
+                    nameLength: header.nameLength,
+                    dataLength: header.dataLength,
+                    headerLength: header.headerLength,
                 })
+                if (header.name !== undefined
+                        && (header.nameLength <= BACKUP_INDEX_SHORT_NAME_BYTES
+                            || (oversizeBodyBytes !== undefined && header.dataLength > oversizeBodyBytes))) {
+                    names.set(pos, header.name)
+                }
                 pos = bodyEnd
                 options.onProgress?.(pos, totalBytes)
                 break
@@ -229,15 +330,21 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 const fieldStart = pos + 4 + result.nameLength
                 const fieldEnd = fieldStart + 4
                 if (fieldEnd > totalBytes) {
-                    return { hasMarker: false, entries }
+                    return { hasMarker: false, entries, names }
                 }
-                const fieldBuffer = new Uint8Array(await file.slice(fieldStart, fieldEnd).arrayBuffer())
+                const fieldBuffer = await reader.view(fieldStart, 4)
+                if (fieldBuffer.length < 4) {
+                    return { hasMarker: false, entries, names }
+                }
                 const dataLength = readUint32LE(fieldBuffer, 0)
                 const bodyEnd = fieldEnd + dataLength
                 if (bodyEnd > totalBytes) {
-                    return { hasMarker: false, entries }
+                    return { hasMarker: false, entries, names }
                 }
                 entries.push({ headerOffset: pos, nameLength: result.nameLength, dataLength, headerLength: 4 + result.nameLength + 4 })
+                if (oversizeBodyBytes !== undefined && dataLength > oversizeBodyBytes) {
+                    names.set(pos, new TextDecoder().decode(await reader.view(pos + 4, BACKUP_NAME_PREFIX_BYTES)))
+                }
                 pos = bodyEnd
                 options.onProgress?.(pos, totalBytes)
                 break
@@ -248,18 +355,20 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 // The name is complete and is the marker: it counts as a
                 // match whether or not the data-length field that follows
                 // it fits in the file.
-                return { hasMarker: true, entries: [] }
+                return { hasMarker: true, entries: [], names: new Map() }
             }
 
-            const moreAvailableBeyondWindow = windowLength < remaining
+            // Fewer bytes than the file's size promised are the old walk's
+            // truncated tail: the walk ends without a marker, as before.
+            const moreAvailableBeyondWindow = requested < remaining && buffer.length === requested
             if (!moreAvailableBeyondWindow) {
-                return { hasMarker: false, entries }
+                return { hasMarker: false, entries, names }
             }
-            windowBytes = Math.max(windowBytes * 2, result.need)
+            want = Math.max(want * 2, result.need)
         }
     }
 
-    return { hasMarker: false, entries }
+    return { hasMarker: false, entries, names }
 }
 
 /** `true` when `file` carries an entry whose complete name is `BACKUP_ENCRYPTION_MARKER_NAME`; see `indexBackupEntries` for the walk's rules. */

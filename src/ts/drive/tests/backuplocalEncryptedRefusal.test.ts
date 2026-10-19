@@ -179,6 +179,7 @@ vi.mock(import('../../stores.svelte'), () => ({
 //#endregion
 
 import { LoadLocalBackup } from '../backuplocal'
+import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { isAppInitiatedReload } from '../../reloadGuard'
 import { forageStorage } from '../../globalApi.svelte'
@@ -264,18 +265,38 @@ interface SliceReads {
     buffers: ArrayBuffer[]
     /** How many times `stream()` was called. */
     streamCalls: number
+    /** The pass that is reading: `walk` until the copy pass announces its first progress text, then `copy`. */
+    phase: 'walk' | 'copy'
+    /** How many `slice()` requests were made in the `copy` phase. */
+    copyReads: number
 }
 
 /**
- * A real File whose `slice()` reads `walkBytes` for its first `walkSliceCalls`
- * calls -- what the pre-read walk sees -- and `restoreBytes` afterwards -- what
- * the restore pass sees. Models a file that changes between the two passes.
+ * Switches `reads` to its copy phase when the restore shows the copy pass's
+ * first progress text ("Loading local Backup..."), which `LoadLocalBackup`
+ * does after the walk resolved and before the copy pass reads anything. This
+ * is the phase seam of the time-divergent doubles: what a pass reads depends on
+ * the pass, never on how many reads an earlier pass happened to make.
+ */
+function switchToCopyPhaseOnCopyProgress(reads: SliceReads): void {
+    alertMocks.alertWait.mockImplementation((text: unknown) => {
+        if (typeof text === 'string' && text.startsWith('Loading local Backup')) {
+            reads.phase = 'copy'
+        }
+    })
+}
+
+/**
+ * A real File whose `slice()` reads `walkBytes` in the `walk` phase -- what the
+ * pre-read walk sees -- and `restoreBytes` in the `copy` phase -- what the
+ * restore pass sees. Models a file that changes between the two passes.
  * `size` stays the size of `walkBytes`, as the browser reports it for the file
  * the user picked. `stream()` counts its calls and serves `walkBytes`.
  */
-function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, walkSliceCalls: number, name = 'backup.bin'): { file: File; reads: SliceReads } {
+function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, name = 'backup.bin'): { file: File; reads: SliceReads } {
     const base = new File([asBlobPart(walkBytes)], name)
-    const reads: SliceReads = { ranges: [], buffers: [], streamCalls: 0 }
+    const reads: SliceReads = { ranges: [], buffers: [], streamCalls: 0, phase: 'walk', copyReads: 0 }
+    switchToCopyPhaseOnCopyProgress(reads)
     const file = new Proxy(base, {
         get(target, prop, receiver) {
             if (prop === 'stream') {
@@ -286,7 +307,10 @@ function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Ar
             }
             if (prop === 'slice') {
                 return (start = 0, end = walkBytes.length) => {
-                    const source = reads.ranges.length < walkSliceCalls ? walkBytes : restoreBytes
+                    const source = reads.phase === 'walk' ? walkBytes : restoreBytes
+                    if (reads.phase === 'copy') {
+                        reads.copyReads += 1
+                    }
                     reads.ranges.push({ start, end: Math.min(end, walkBytes.length) })
                     const bytes = source.slice(start, end)
                     return {
@@ -306,7 +330,33 @@ function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Ar
 
 /** A file whose bytes never change, with the same read record as `fileWithTimeDivergentSlice`. */
 function fileRecordingReads(bytes: Uint8Array, name = 'backup.bin'): { file: File; reads: SliceReads } {
-    return fileWithTimeDivergentSlice(bytes, bytes, Number.POSITIVE_INFINITY, name)
+    return fileWithTimeDivergentSlice(bytes, bytes, name)
+}
+
+/**
+ * A real File whose `slice(...).arrayBuffer()` rejects, in the copy phase only,
+ * for any read that starts at or after `rejectFromOffset`: the copy pass
+ * cannot read the entries from that offset on.
+ */
+function fileWithRejectingCopyRead(bytes: Uint8Array, rejectFromOffset: number, name = 'backup.bin'): File {
+    const base = new File([asBlobPart(bytes)], name)
+    const reads: SliceReads = { ranges: [], buffers: [], streamCalls: 0, phase: 'walk', copyReads: 0 }
+    switchToCopyPhaseOnCopyProgress(reads)
+    return new Proxy(base, {
+        get(target, prop, receiver) {
+            if (prop === 'slice') {
+                return (...args: [number?, number?, string?]) => {
+                    if (reads.phase === 'copy' && (args[0] ?? 0) >= rejectFromOffset) {
+                        return {
+                            arrayBuffer: () => Promise.reject(new Error('scratch: unreadable region')),
+                        } as unknown as Blob
+                    }
+                    return (target.slice as (...a: unknown[]) => Blob).apply(target, args)
+                }
+            }
+            return Reflect.get(target, prop, receiver)
+        },
+    })
 }
 
 /** A real File whose `slice(...).arrayBuffer()` rejects from the `rejectFromCall`-th `slice()` call onward. */
@@ -423,9 +473,6 @@ function restoreViewWithSecondEntryReplaced(replacement: Uint8Array): Uint8Array
     return concatChunks([assetEntry(16, 'asset1.png'), replacement])
 }
 
-/** The number of `slice()` calls the walk makes over `walkViewBytes()`: one header window per entry. */
-const WALK_VIEW_SLICE_CALLS = 3
-
 /** The marker's name is complete, but its own 4-byte data-length field is itself cut off by the end of the file (not merely a body or a data length that runs past it). */
 function markerNameCompleteDataLengthFieldCutOffFixture(): Uint8Array {
     const nameBytes = new TextEncoder().encode(MARKER_NAME)
@@ -521,6 +568,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    overrideBackupWindowBytes(null)
+    alertMocks.alertWait.mockReset()
     createElementSpy.mockRestore()
     localStorageSetItemSpy.mockRestore()
     vi.unstubAllGlobals()
@@ -737,12 +786,11 @@ describe('the restore pass guards independently of a walk that missed the marker
         const { file, reads } = fileWithTimeDivergentSlice(
             walkViewBytes(),
             restoreViewWithSecondEntryReplaced(markerEntry(wellFormedMarkerBody())),
-            WALK_VIEW_SLICE_CALLS,
         )
 
         await loadBackupWithFile(file)
 
-        expect(reads.ranges.length).toBeGreaterThan(WALK_VIEW_SLICE_CALLS)
+        expect(reads.copyReads).toBeGreaterThan(0)
         expectWritesStoppedAfter(['assets/asset1.png'])
         expectLoopGuardShown()
         expectMessageNotShown(language.backupFileChangedWhileReading)
@@ -752,7 +800,6 @@ describe('the restore pass guards independently of a walk that missed the marker
         const { file } = fileWithTimeDivergentSlice(
             walkViewBytes(),
             restoreViewWithSecondEntryReplaced(markerHeaderWithDataLengthPastEnd()),
-            WALK_VIEW_SLICE_CALLS,
         )
 
         await loadBackupWithFile(file)
@@ -766,7 +813,6 @@ describe('the restore pass guards independently of a walk that missed the marker
         const { file } = fileWithTimeDivergentSlice(
             walkViewBytes(),
             restoreViewWithSecondEntryReplaced(markerHeaderWithDataLengthFieldCutOff()),
-            WALK_VIEW_SLICE_CALLS,
         )
 
         await loadBackupWithFile(file)
@@ -779,7 +825,7 @@ describe('the restore pass guards independently of a walk that missed the marker
     test('never installs a database that was already read once the marker shows up at a later indexed offset', async () => {
         const walkBytes = concatChunks([assetEntry(16, 'asset1.png'), databaseEntry(), assetEntry(16, 'asset2.png')])
         const restoreBytes = concatChunks([assetEntry(16, 'asset1.png'), databaseEntry(), markerEntry(wellFormedMarkerBody())])
-        const { file } = fileWithTimeDivergentSlice(walkBytes, restoreBytes, 3)
+        const { file } = fileWithTimeDivergentSlice(walkBytes, restoreBytes)
 
         await loadBackupWithFile(file)
 
@@ -804,7 +850,6 @@ describe('the restore pass stops when the file differs from what the walk indexe
         const { file } = fileWithTimeDivergentSlice(
             walkViewBytes(),
             restoreViewWithSecondEntryReplaced(assetEntry(16, 'asset2-renamed.png')),
-            WALK_VIEW_SLICE_CALLS,
         )
 
         await loadBackupWithFile(file)
@@ -817,7 +862,6 @@ describe('the restore pass stops when the file differs from what the walk indexe
         const { file } = fileWithTimeDivergentSlice(
             walkViewBytes(),
             restoreViewWithSecondEntryReplaced(assetEntry(17, 'asset2.png')),
-            WALK_VIEW_SLICE_CALLS,
         )
 
         await loadBackupWithFile(file)
@@ -831,7 +875,6 @@ describe('the restore pass stops when the file differs from what the walk indexe
         const { file } = fileWithTimeDivergentSlice(
             walkViewBytes(),
             restoreViewWithSecondEntryReplaced(shortAsset),
-            WALK_VIEW_SLICE_CALLS,
         )
 
         await loadBackupWithFile(file)
@@ -841,8 +884,9 @@ describe('the restore pass stops when the file differs from what the walk indexe
     })
 
     test('stops, with the changed-file message and not the walk-error message, when reading an indexed entry throws', async () => {
-        // Calls 1-3 are the walk; calls 4 and 5 read the header and the data of asset1, call 6 reads the header of asset2 and rejects.
-        const file = fileWithRejectingSlice(walkViewBytes(), 6)
+        // A copy window of exactly one entry: asset1 is read whole from the first window, and the header of asset2 needs a second window, which rejects.
+        overrideBackupWindowBytes({ copy: assetEntry(16, 'asset1.png').length })
+        const file = fileWithRejectingCopyRead(walkViewBytes(), assetEntry(16, 'asset1.png').length)
 
         await loadBackupWithFile(file)
 
@@ -854,6 +898,8 @@ describe('the restore pass stops when the file differs from what the walk indexe
 
 describe('an unreadable header region aborts with the walk-error message, never the refusal (I1)', () => {
     test('aborts without writing anything when a header region is unreadable and no marker is present', async () => {
+        // A 4 KiB walk window cannot reach past the 1 MiB body, so the header after it is a second read, which rejects.
+        overrideBackupWindowBytes({ walk: 4096 })
         const file = fileWithRejectingSlice(bigNoMarkerFixture(), 2)
 
         await loadBackupWithFile(file)
@@ -864,6 +910,7 @@ describe('an unreadable header region aborts with the walk-error message, never 
     })
 
     test('aborts without writing anything when a header region is unreadable and the upstream marker order is present', async () => {
+        overrideBackupWindowBytes({ walk: 4096 })
         const file = fileWithRejectingSlice(bigUpstreamOrderFixture(), 2)
 
         await loadBackupWithFile(file)
@@ -916,10 +963,11 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(isAppInitiatedReload()).toBe(true)
     })
 
-    test('reads one entry at a time through slice(), never calls stream(), and hands the database to the decoder as a view over the bytes read for it', async () => {
-        // Every entry is at least as large as the walk's 4096-byte header
-        // window, so a slice that stays inside one entry is one header plus
-        // one body at most.
+    test('reads through slice() in windows of at most W or exact bodies above W, never calls stream(), and hands the database to the decoder whole', async () => {
+        // Every entry is larger than the 4096-byte window of both passes, so
+        // a read that stays inside one entry is a window of at most W, a
+        // header, or one exact body.
+        overrideBackupWindowBytes({ walk: 4096, copy: 4096 })
         const entries = [
             assetEntry(5000, 'big1.png'),
             assetEntry(6000, 'big2.png'),
@@ -940,6 +988,8 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         }
         for (const range of reads.ranges) {
             expect(bounds.some((entryBounds) => range.start >= entryBounds.start && range.end <= entryBounds.end)).toBe(true)
+            const isExactBody = bounds.some((entryBounds) => range.end === entryBounds.end)
+            expect(range.end - range.start <= 4096 || isExactBody).toBe(true)
         }
         // The database's data is requested as one slice from the end of its header to the end of the entry, not in parts.
         const databaseHeaderLength = 4 + DATABASE_NAME.length + 4
@@ -951,6 +1001,21 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(decoded.byteOffset).toBe(0)
         expect(decoded.byteLength).toBe(entries[3].length - databaseHeaderLength)
         expect(decoded.byteLength).toBe(decoded.buffer.byteLength)
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('a database that sits inside a window reaches the decoder as a whole buffer of its own, with its own bytes', async () => {
+        // Both passes read the whole file in one window here, so the database
+        // body is a view of that window until the loop takes its own copy.
+        const database = databaseEntry()
+        await loadBackupBytes(concatChunks([assetEntry(16, 'asset1.png'), coldEntry(), database]))
+
+        expect(decodeCapture.inputs).toHaveLength(1)
+        const decoded = decodeCapture.inputs[0]
+        const databaseHeaderLength = 4 + DATABASE_NAME.length + 4
+        expect(decoded.byteOffset).toBe(0)
+        expect(decoded.byteLength).toBe(decoded.buffer.byteLength)
+        expect(Array.from(decoded)).toEqual(Array.from(database.slice(databaseHeaderLength)))
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
     })
 
@@ -970,7 +1035,8 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
             await loadBackupBytes(bytes)
         } finally {
             nowSpy.mockRestore()
-            forageSetItemMock.mockImplementation(async () => {})
+            // Back to what the mock was built with: the later restores read their generation back from this map.
+            forageSetItemMock.mockImplementation(async (key: string, data: Uint8Array) => { forageFiles.set(key, data) })
         }
 
         expect(sleep).not.toHaveBeenCalled()
@@ -1039,5 +1105,76 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(forageSetItemMock).not.toHaveBeenCalledWith('blocks/head', expect.anything())
         expect(fetchMock).not.toHaveBeenCalled()
         expect(alertMocks.alertError).toHaveBeenCalledWith('Failed, Is file corrupted?')
+    })
+})
+
+describe('regression: the restore reads the file in a number of slices that follows its size', () => {
+    // Red on the per-entry reader this replaced, which took a walk slice, a header slice and a body slice for every entry.
+    test('300 small assets are restored in a handful of slices, not in slices per entry', async () => {
+        overrideBackupWindowBytes({ walk: 4096, copy: 4096 })
+        const bytes = concatChunks([...Array.from({ length: 300 }, (_, i) => assetEntry(16, `many${i}.png`)), databaseEntry()])
+        const { file, reads } = fileRecordingReads(bytes)
+
+        await loadBackupWithFile(file)
+
+        expect(forageSetItemMock.mock.calls.filter((call) => call[0].startsWith('assets/'))).toHaveLength(300)
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        // Each pass takes one slice per window; the walk refills early by the 1032 bytes of its header probe.
+        expect(reads.ranges.length).toBeLessThanOrEqual(2 * Math.ceil(bytes.length / (4096 - 1032)) + 4)
+    })
+})
+
+describe.each([undefined, 16] as const)('compatibility guard: the order of the entries does not change what a block-era restore carries (windows: %s)', (windowBytes) => {
+    beforeEach(() => {
+        overrideBackupWindowBytes(windowBytes === undefined ? null : { walk: windowBytes, copy: windowBytes })
+    })
+
+    function writtenAssetKeys(): string[] {
+        return forageSetItemMock.mock.calls.map((call) => call[0]).filter((key) => key.startsWith('assets/'))
+    }
+
+    test('the database first, the cold unit and the assets after it', async () => {
+        await loadBackupBytes(concatChunks([databaseEntry(), assetEntry(16, 'asset1.png'), coldEntry(), assetEntry(20, 'asset2.png')]))
+
+        expect(writtenAssetKeys()).toEqual(['assets/asset1.png', 'assets/asset2.png'])
+        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
+        expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(alertMocks.alertError).not.toHaveBeenCalled()
+    })
+
+    test('the cold unit between the assets, the database last', async () => {
+        await loadBackupBytes(concatChunks([assetEntry(16, 'asset1.png'), coldEntry(), assetEntry(20, 'asset2.png'), databaseEntry()]))
+
+        expect(writtenAssetKeys()).toEqual(['assets/asset1.png', 'assets/asset2.png'])
+        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(alertMocks.alertError).not.toHaveBeenCalled()
+    })
+
+    test('two database entries: the last one is the one decoded', async () => {
+        const first = buildChunk(DATABASE_NAME, encodeRisuSaveLegacy({ characters: [], mainPrompt: 'first' } as unknown as Database, 'noCompression'))
+        const lastPayload = encodeRisuSaveLegacy({ characters: [], mainPrompt: 'last' } as unknown as Database, 'noCompression')
+
+        await loadBackupBytes(concatChunks([assetEntry(16, 'asset1.png'), first, buildChunk(DATABASE_NAME, lastPayload)]))
+
+        expect(decodeCapture.inputs).toHaveLength(1)
+        expect(Array.from(decodeCapture.inputs[0])).toEqual(Array.from(lastPayload))
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(alertMocks.alertError).not.toHaveBeenCalled()
+    })
+
+    test('a marker after the database refuses the restore with nothing written', async () => {
+        await loadBackupBytes(markerLastFixture())
+
+        expectNoWritesNoInstallNoNetwork()
+        expectRefusalShown()
+    })
+
+    test('a marker whose header is cut off at the end of the file refuses the restore with nothing written', async () => {
+        await loadBackupBytes(markerNameCompleteDataLengthFieldCutOffFixture())
+
+        expectNoWritesNoInstallNoNetwork()
+        expectRefusalShown()
     })
 })

@@ -99,7 +99,9 @@ beforeEach(() => {
     vi.spyOn(console, 'debug').mockImplementation(() => { })
 })
 
-afterEach(() => {
+afterEach(async () => {
+    const { overrideBackupWindowBytes } = await import('src/ts/drive/backupContainer')
+    overrideBackupWindowBytes(null)
     worlds.parkAll()
     vi.doMock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }))
     vi.restoreAllMocks()
@@ -137,6 +139,15 @@ const GOLDEN_DIR = path.resolve(process.env.BIN_GOLDENS_DIR ?? path.join(process
 
 function golden(name: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, name)))
+}
+
+/** The goldens run at the default windows and again at windows so small that every golden crosses window edges in both passes. */
+const GOLDEN_WINDOWS: readonly (number | undefined)[] = [undefined, 4, 64]
+
+/** Set after `openBoot()`: the world re-imports the app's modules, and the seam must be the one the world's `backuplocal` reads. */
+async function useGoldenWindows(windowBytes: number | undefined): Promise<void> {
+    const { overrideBackupWindowBytes } = await import('src/ts/drive/backupContainer')
+    overrideBackupWindowBytes(windowBytes === undefined ? null : { walk: windowBytes, copy: windowBytes })
 }
 
 /** Drives the real `loadBackupAtBoot()` with `bytes` as the chosen file; resolves with what the flow came to. */
@@ -189,8 +200,9 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
     // Choosing the lazy reader by the page's residency or mode would send a boot import down the block-era branch,
     // which stores every cold entry of the file over the old upstream profile's same-id units. The boot import did not
     // exist on the base, so this is a new-behaviour test pinned by mutants, not a base reproducer.
-    test('new behaviour: with no page mode and no residency, the cold entries of the file are read from the file and none is stored or attempted', async () => {
+    test.each(GOLDEN_WINDOWS)('new behaviour: with no page mode and no residency, the cold entries of the file are read from the file and none is stored or attempted (windows: %s)', async (windowBytes) => {
         const boot = await openBoot()
+        await useGoldenWindows(windowBytes)
         oldUnits.set(ID.inlineChatUnit, { message: [{ time: 1, data: 'the OLD profile\'s unit', role: 'char' }] })
         const seen: Seen = { reads: new Map(), sourceHadTree: false }
 
@@ -203,8 +215,9 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         expect(end).toEqual({ kind: 'finished', result: { status: 'blocked', reason: 'install-failed', detail: 'recorded' } })
     })
 
-    test('new behaviour: the unit the file holds wins over the old profile\'s unit of the same id, and an id the file lacks falls back to the boot\'s reader, never the page\'s', async () => {
+    test.each(GOLDEN_WINDOWS)('new behaviour: the unit the file holds wins over the old profile\'s unit of the same id, and an id the file lacks falls back to the boot\'s reader, never the page\'s (windows: %s)', async (windowBytes) => {
         await openBoot()
+        await useGoldenWindows(windowBytes)
         const oldMissing = { message: [{ time: 1, data: 'only in the old profile', role: 'char' }] }
         oldUnits.set(ID.inlineChatUnit, { message: [{ time: 1, data: 'the OLD profile\'s unit', role: 'char' }] })
         oldUnits.set(ID.missingChatUnit, oldMissing)

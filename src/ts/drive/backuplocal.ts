@@ -27,7 +27,7 @@ import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
-import { BACKUP_ENCRYPTION_MARKER_NAME, MAX_MARKER_NAME_BYTES, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
+import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
@@ -869,10 +869,15 @@ const SKIPPED_ASSET_NAME_CHARS_SHOWN = 100;
 const RESTORE_YIELD_INTERVAL_MS = 50;
 
 /** Entry names longer than this can be neither `database.risudat` nor a cold-storage unit, so the oversized-asset scan reads no more of them. */
-const OVERSIZED_NAME_READ_BYTES = 1024;
+const OVERSIZED_NAME_READ_BYTES = BACKUP_NAME_PREFIX_BYTES;
 
 /** The bytes of the longest entry header whose name is the encryption marker: both length fields and the marker name with a byte-order mark. */
 const MARKER_HEADER_BYTES = 4 + MAX_MARKER_NAME_BYTES + 4;
+
+/** `bytes` itself when it is a whole buffer of its own, else a copy of it: what outlives a copy-pass iteration must not be a view into the window that held it. */
+function ownedBytes(bytes: Uint8Array): Uint8Array {
+    return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes : bytes.slice();
+}
 
 /** Why a restore left an asset out: the store cannot hold its name, or the Node server cannot take a body that large. */
 type SkippedAssetReason = 'invalidName' | 'tooLarge';
@@ -918,17 +923,20 @@ function checkIndexedEntry(bytes: Uint8Array, entry: BackupIndexEntry, expectedL
  * request, with their names. Judged from the walk's index alone: a cold-storage
  * unit is stored compressed, so its length in the backup says nothing about
  * what is written, and the database is not an asset. An inlay part is not an
- * asset either: it is judged by `listOversizedInlays`.
+ * asset either: it is judged by `listOversizedInlays`. The walk kept the name
+ * (its first `OVERSIZED_NAME_READ_BYTES` bytes for a longer one) of every
+ * entry over `NODE_BODY_LIMIT_BYTES` when it was asked to.
  */
-async function listOversizedAssets(file: Blob, entries: readonly BackupIndexEntry[]): Promise<{ entry: BackupIndexEntry; name: string }[]> {
+function listOversizedAssets(entries: readonly BackupIndexEntry[], names: ReadonlyMap<number, string>): { entry: BackupIndexEntry; name: string }[] {
     const found: { entry: BackupIndexEntry; name: string }[] = [];
     for (const entry of entries) {
         if (entry.dataLength <= NODE_BODY_LIMIT_BYTES) {
             continue;
         }
-        const nameStart = entry.headerOffset + 4;
-        const nameBytes = new Uint8Array(await file.slice(nameStart, nameStart + Math.min(entry.nameLength, OVERSIZED_NAME_READ_BYTES)).arrayBuffer());
-        const name = new TextDecoder().decode(nameBytes);
+        const name = names.get(entry.headerOffset);
+        if (name === undefined) {
+            throw new Error(`The walk kept no name for the oversized entry at ${entry.headerOffset}.`);
+        }
         if (entry.nameLength <= OVERSIZED_NAME_READ_BYTES && (name === 'database.risudat' || getColdStorageBackupKey(name) || parseInlayEntryName(name) !== null)) {
             continue;
         }
@@ -1055,9 +1063,11 @@ export function LoadLocalBackup(boot?: BootBinRun){
             // takes no lock and runs before the cross-tab guard below.
             let hasEncryptionMarker: boolean;
             let backupEntries: BackupIndexEntry[];
+            let backupNames: ReadonlyMap<number, string>;
             try {
                 let lastWalkProgressText: string | null = null;
                 const walk = await indexBackupEntries(file, {
+                    oversizeBodyBytes: isNodeServer ? NODE_BODY_LIMIT_BYTES : undefined,
                     onProgress: (scanned, total) => {
                         const progress = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
                         const progressText = `Checking local backup... (${progress}%)`;
@@ -1069,6 +1079,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 });
                 hasEncryptionMarker = walk.hasMarker;
                 backupEntries = walk.entries;
+                backupNames = walk.names;
                 noteImportPhase(`walked, ${backupEntries.length} entries`);
             } catch (e) {
                 console.error(e);
@@ -1087,20 +1098,13 @@ export function LoadLocalBackup(boot?: BootBinRun){
             // first asset is written.
             let store2Import: Store2BinImport | null = null;
             if (store2Target !== null || boot !== undefined) {
-                alertWait('Checking local backup...');
-                try {
-                    const scan = await scanBinForImport(file, backupEntries);
-                    if (scan.database === null) {
-                        alertError('Failed, Is file corrupted?');
-                        return;
-                    }
-                    store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
-                    noteImportPhase('scanned');
-                } catch (e) {
-                    console.error(e);
-                    alertError(e instanceof BinFileChangedError ? binChangeText(e) : language.backupFileUnreadable);
+                const scan = scanBinForImport(backupEntries, backupNames);
+                if (scan.database === null) {
+                    alertError('Failed, Is file corrupted?');
                     return;
                 }
+                store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
+                noteImportPhase('scanned');
                 if (!await confirmDatabaseSize(store2Import.entry.dataLength)) {
                     return;
                 }
@@ -1114,7 +1118,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
             if (isNodeServer) {
                 let oversizedInlays: { hash: string, id: string }[];
                 try {
-                    for (const { entry, name } of await listOversizedAssets(file, backupEntries)) {
+                    for (const { entry, name } of listOversizedAssets(backupEntries, backupNames)) {
                         oversizedAssetNames.set(entry.headerOffset, name);
                     }
                     oversizedInlays = await listOversizedInlays(file, backupEntries, inlayAttachmentLimit());
@@ -1214,7 +1218,8 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 const yieldBudget = createYieldBudget({ budgetMs: RESTORE_YIELD_INTERVAL_MS, yieldFn: yieldToEventLoop });
                 let lastProgressText: string | null = null;
 
-                // One indexed entry per read. The walk above cleared the file, but
+                // This pass reads the file in windows, header-first for an entry
+                // the window does not hold. The walk above cleared the file, but
                 // the file can still change under this pass, so every entry's
                 // header is checked again before anything of it is written: a
                 // marker stops the restore, and so does any header that differs
@@ -1232,6 +1237,11 @@ export function LoadLocalBackup(boot?: BootBinRun){
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
                 let visitedEntries = 0;
+                // Pass 2 reads through a reader of its own, built only now: it
+                // shares no window with the walk, so every header below is
+                // compared with the file as it is after the walk finished.
+                const copyWindowBytes = backupCopyWindowBytes();
+                const copyReader = createBlobWindowReader(file, copyWindowBytes);
                 try {
                     for (const entry of backupEntries) {
                         if (assetPipeline?.failure) {
@@ -1258,9 +1268,11 @@ export function LoadLocalBackup(boot?: BootBinRun){
                         const isSkippedForSize = oversizedAssetNames.has(entry.headerOffset);
                         const dataStart = entry.headerOffset + entry.headerLength;
                         const headerReadLength = Math.min(entry.headerLength + entry.dataLength, Math.max(entry.headerLength, MARKER_HEADER_BYTES));
+                        // An entry larger than a window is not worth a window of its own: its header is read exactly.
+                        const fillsWindow = entry.headerLength + entry.dataLength <= copyWindowBytes;
                         let headerBytes: Uint8Array;
                         try {
-                            headerBytes = new Uint8Array(await file.slice(entry.headerOffset, entry.headerOffset + headerReadLength).arrayBuffer());
+                            headerBytes = await copyReader.view(entry.headerOffset, headerReadLength, fillsWindow);
                         } catch (error) {
                             console.error(error);
                             stopMessage = language.backupFileChangedWhileReading;
@@ -1352,7 +1364,7 @@ export function LoadLocalBackup(boot?: BootBinRun){
 
                         let data: Uint8Array;
                         try {
-                            data = new Uint8Array(await file.slice(dataStart, dataStart + entry.dataLength).arrayBuffer());
+                            data = await copyReader.view(dataStart, entry.dataLength, fillsWindow);
                         } catch (error) {
                             console.error(error);
                             stopMessage = language.backupFileChangedWhileReading;
@@ -1364,7 +1376,8 @@ export function LoadLocalBackup(boot?: BootBinRun){
                         }
 
                         if (name === 'database.risudat') {
-                            pendingDatabase = data;
+                            // Kept past this iteration: owned bytes, not a view that would hold a whole window alive.
+                            pendingDatabase = ownedBytes(data);
                         }
 
                         else {
@@ -1404,7 +1417,9 @@ export function LoadLocalBackup(boot?: BootBinRun){
                                 noteAssetWrittenThisPage(assetKey)
                                 if (assetPipeline) {
                                     // The header offset orders the skip report by position in the file.
-                                    await assetPipeline.add({ key: assetKey, name, index: entry.headerOffset, data })
+                                    // The pipeline holds the entry until its batch is sent, and counts the entry's own bytes
+                                    // against its budget, so it gets an owned copy, not a view of the window.
+                                    await assetPipeline.add({ key: assetKey, name, index: entry.headerOffset, data: ownedBytes(data) })
                                 } else {
                                     try {
                                         await (await getAppStore()).write(assetKey, data, 'unconditional')

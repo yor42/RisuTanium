@@ -4,7 +4,6 @@ import { language } from 'src/lang'
 import type { Database } from '../storage/database.svelte'
 import { describeOmitted } from '../storage/bootBlockLoad'
 import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from '../storage/risuSave'
-import { createYieldBudget, yieldToEventLoop } from '../storage/saveYield'
 import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
 import { getStore2BootSession } from '../storage/store2/bootActive'
@@ -22,7 +21,7 @@ import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { MEASURE } from '../process/memory/measureFlag'
 import { pushImportPhase } from './importPhaseRing'
 import type { BusyHandle } from '../process/memory/busyActions'
-import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, type BackupIndexEntry } from './backupContainer'
+import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_INDEX_SHORT_NAME_BYTES, type BackupIndexEntry } from './backupContainer'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { currentCharacterNames, leftOutQuestion } from './restoreReplace'
 
@@ -47,11 +46,8 @@ export const IMPORT_SIZE_WARNING_BYTES = 16 * 1024 * 1024
 
 const DATABASE_ENTRY_NAME = 'database.risudat'
 
-/** An entry name longer than this can be neither the database nor a cold-storage unit, so its header is not read for the scan. */
-const SCAN_NAME_MAX_BYTES = 64
-
-/** The scan yields to the event loop once this much time has passed since its last yield. */
-const SCAN_YIELD_INTERVAL_MS = 50
+/** An entry name longer than this can be neither the database nor a cold-storage unit, so the scan skips it; the walk keeps exactly the names up to this length. */
+const SCAN_NAME_MAX_BYTES = BACKUP_INDEX_SHORT_NAME_BYTES
 
 export interface Store2ImportTarget {
     committer: Committer
@@ -197,25 +193,26 @@ export interface BinScan {
 }
 
 /**
- * One pass over the headers that can name the database or a cold-storage unit. The copy loop skips both on a store2
- * page, so this pass is what lets the database be decoded before the first asset is written. A header that is not what
- * the walk saw, or the encryption marker, throws `BinFileChangedError`.
+ * The entries that can name the database or a cold-storage unit, picked from the walk's index and the names it kept.
+ * The copy loop skips both on a store2 page, so this is what lets the database be decoded before the first asset is
+ * written. It reads no file: the copy pass checks every header again before it writes anything of it.
  */
-export async function scanBinForImport(file: Blob, entries: readonly BackupIndexEntry[]): Promise<BinScan> {
+export function scanBinForImport(entries: readonly BackupIndexEntry[], names: ReadonlyMap<number, string>): BinScan {
     const index = new ColdEntryIndex()
     let database: BackupIndexEntry | null = null
-    const yieldBudget = createYieldBudget({ budgetMs: SCAN_YIELD_INTERVAL_MS, yieldFn: yieldToEventLoop })
     for (const entry of entries) {
         if (entry.nameLength > SCAN_NAME_MAX_BYTES) {
             continue
         }
-        const header = await readIndexedHeader(file, entry, `at ${entry.headerOffset}`)
-        if (header.name === DATABASE_ENTRY_NAME) {
+        const name = names.get(entry.headerOffset)
+        if (name === undefined) {
+            throw new Error(`The walk kept no name for the entry at ${entry.headerOffset}.`)
+        }
+        if (name === DATABASE_ENTRY_NAME) {
             database = entry
         } else {
-            index.note(entry, header.name)
+            index.note(entry, name)
         }
-        await yieldBudget.maybeYield()
     }
     return { index, database }
 }
