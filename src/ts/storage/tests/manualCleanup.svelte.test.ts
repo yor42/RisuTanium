@@ -622,6 +622,9 @@ async function setup(options: { platform?: Platform, locks?: 'single' | 'none' }
     }
     vi.clearAllMocks()
     ctx.listing.resetLoadTimeListingForTests()
+    // The clean-up runs only on a legacy or block page; the module graph is rebuilt above, so the mode never leaks between tests.
+    const { setPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+    setPageStorageMode({ kind: 'block' })
     ctx.mainRec.resetMainFileRecordForTests()
     ctx.stores.frozenSaveKeysStore.set([])
     ctx.stores.savingStoppedReason.set(null)

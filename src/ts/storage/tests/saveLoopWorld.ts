@@ -222,7 +222,7 @@ export function createWorldKit(env: WorldEnv) {
 
         if (kind === 'opfs-transitional') {
             store.plant('database/database.bin', await encodeMainFile(world, env.getDb()!))
-            pageMode.setPageStorageMode({ kind: 'read-only' })
+            pageMode.setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         } else if (options.boot) {
             await options.boot(world)
         } else if (options.legacy) {

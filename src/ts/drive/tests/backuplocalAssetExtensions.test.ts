@@ -463,7 +463,7 @@ function serveAssets(names: string[]) {
 }
 
 /** Runs a save and returns what it threw, or `null` when it completed. */
-async function outcomeOf(run: () => Promise<void>): Promise<unknown> {
+async function outcomeOf(run: () => Promise<unknown>): Promise<unknown> {
     return run().then(() => null, (error: unknown) => error)
 }
 

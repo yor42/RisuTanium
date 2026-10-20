@@ -137,6 +137,19 @@ describe('scenario 3, 4 and 10: the flag with nothing to copy', () => {
         expect(writes.creates).toEqual([])
     })
 
+    test('reproducer: a converted profile whose old-data deletion removed the head still holds the store2 commit key: IndexedDB is used and no OPFS file is copied over it', async () => {
+        await seedOpfsMainProfile(world, { staleIndexedDbMain: false, marker: false })
+        await profile.setItem('store2-commit', bytes('commit key of the converted profile'))
+        const writes = watchOpfsWrites()
+
+        const result = await resolveWebStore(makeEnv({ world }).env)
+
+        expectIndexedDb(result, false)
+        expect(localStorage.getItem(OPFS_FLAG_KEY)).toBeNull()
+        expect(await indexedDbKeys()).toEqual(['store2-commit'])
+        expect(writes.creates).toEqual([])
+    })
+
     test('guard: a head does not outrank the completion marker: with the marker present OPFS is current and is copied back', async () => {
         await seedOpfsMainProfile(world, { staleIndexedDbMain: false, marker: true })
         await profile.setItem('blocks/head', bytes('head'))
@@ -691,6 +704,20 @@ describe('scenarios 22 to 24: the clean-up of OPFS leftovers', () => {
             expect(world.root.files.has(hexName(key))).toBe(false)
         }
         expect(localStorage.getItem(COPYBACK_CLEANUP_KEY)).toBeNull()
+    })
+
+    test('reproducer: a copied-back main file is deleted with the other leftovers when IndexedDB holds the store2 commit key and neither the head nor the main file', async () => {
+        const files = await afterCopyBack()
+        await profile.removeItem(MAIN)
+        await profile.setItem('store2-commit', bytes('commit key of the converted profile'))
+
+        const outcome = await runLeftoverCleanup(makeEnv({ world }).env)
+
+        expect(outcome).toBe('done')
+        expect(world.root.files.has(hexName(MAIN)), 'the stale pre-conversion save').toBe(false)
+        for (const key of Object.keys(files)) {
+            expect(world.root.files.has(hexName(key))).toBe(false)
+        }
     })
 
     test('guard: with no main file and no head in IndexedDB the OPFS main file is kept: it may be the only copy', async () => {

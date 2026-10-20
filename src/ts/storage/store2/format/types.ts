@@ -18,9 +18,9 @@ export type StagingLabel = 'convert' | 'seed' | 'import' | 'restore' | 'recovery
 export const STAGING_LABELS: readonly StagingLabel[] = ['convert', 'seed', 'import', 'restore', 'recovery', 'bulk']
 
 /**
- * The conversion's snapshot of the old data: the store2 unit that lists it, that unit's digest (`unitDigest`) and the
- * number of listed keys. A writer never points it at a manifest, so it is not a reference of the commit key
- * (`REFS_TABLE`); the reader accepts any store2 key, and the GC mark keeps the unit by its own rule.
+ * The conversion's snapshot of the old data: the store2 unit (type 24) that lists it, that unit's digest (`unitDigest`)
+ * and the number of listed keys. The key is a unit key, never a manifest, so it is not a reference of the commit key
+ * (`REFS_TABLE`); the reader accepts only a unit or staged-unit key, and the GC mark keeps the unit by its own rule.
  */
 export interface SnapshotPointer {
     key: string
@@ -185,6 +185,33 @@ export interface FenceRecord {
 }
 
 /**
+ * What kind of old data a deletion snapshot was planned over, decided from what the store held at planning time and
+ * never from the code path that wrote it.
+ *   fork-only:        no upstream main file and no numbered backup existed; every fork-format key may go.
+ *   exclusion:        every upstream file that existed was read to its end, so `coldstorage/` keys outside their
+ *                     references may go.
+ *   fork-format-only: anything else; no `coldstorage/` key is listed.
+ */
+export type DeletionSnapshotKind = 'fork-only' | 'exclusion' | 'fork-format-only'
+
+export const DELETION_SNAPSHOT_KINDS: readonly DeletionSnapshotKind[] = ['fork-only', 'exclusion', 'fork-format-only']
+
+/**
+ * Type 24, the list of old fork-format keys a later pass may delete. `upstream` records the upstream files the planner
+ * observed (the main file's presence and the numbered backups' key names, sorted), so the pass can tell that the store
+ * changed since planning. `keys` are store keys outside the store2 key space, each inside the deletion allowlist
+ * (`isOldDataKey`), without duplicates. An upstream probe that answered unknown is recorded as `main: false` and
+ * `backups: []`. Such a plan is always `fork-format-only` and lists no `coldstorage/` key, so `upstream` is a real
+ * observation only on plans that list `coldstorage/` keys.
+ */
+export interface DeletionSnapshot {
+    v: 1
+    kind: DeletionSnapshotKind
+    upstream: { main: boolean, backups: string[] }
+    keys: string[]
+}
+
+/**
  * Type 19, a plugin-storage bucket. FORMAT CHOICE not stated by the plan: the
  * body lists its values by name, each as a Ref to a type 14 unit, sorted by `k`.
  */
@@ -201,4 +228,4 @@ export interface ContentBody {
 
 export type UnitBody =
     | CommitKey | Manifest | Shard | ChatCore | ChatChunk | ModuleIndex | AssetList
-    | LegacyList | InlayList | SweepRecord | FenceRecord | PluginBucket | ContentBody
+    | LegacyList | InlayList | SweepRecord | FenceRecord | DeletionSnapshot | PluginBucket | ContentBody

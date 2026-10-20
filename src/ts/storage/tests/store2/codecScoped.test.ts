@@ -369,7 +369,8 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
         return { db, first, chaId, u: first.index.entities.get(`${chaId}#0`) as string }
     }
 
-    function withStub(db: Database, chaId: string, trashTime: number | undefined, tweak: Obj = {}): Database {
+    /** `db` with the character `chaId` replaced by the stub that names its entity in `first`. */
+    function withStub(first: EncodedTree, db: Database, chaId: string, trashTime: number | undefined, tweak: Obj = {}): Database {
         const next = clone(db)
         const characters = next.characters as Obj[]
         const index = characters.findIndex(slot => slot.chaId === chaId)
@@ -377,14 +378,15 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
         if (trashTime !== undefined) {
             source.trashTime = trashTime
         }
-        characters[index] = { ...(buildColdStub(source as unknown as character, 'unit-key', ['chat-a']) as unknown as Obj), ...tweak }
+        const u = first.index.entities.get(`${chaId}#0`) as string
+        characters[index] = { ...(buildColdStub(source as unknown as character, u, ['chat-a']) as unknown as Obj), ...tweak }
         return asDatabase(next)
     }
 
     test('trashing a stub writes its trashTime into the entry and encodes no body', async () => {
         const { db, first, chaId, u } = stubbed()
         const lists = counting()
-        const tree = await encodeScoped(withStub(db, chaId, 1234), scopedOptions(2, first, lists.lists), { modules: false, characters: 'all' })
+        const tree = await encodeScoped(withStub(first, db, chaId, 1234), scopedOptions(2, first, lists.lists), { modules: false, characters: 'all' })
         expect(indexEntry(tree, chaId).trashTime).toBe(1234)
         expect(written(tree)).toEqual([`shard:${shardOfU(u)}`, 'manifest'].sort())
         expect(lists.encoded).not.toContain(chaId)
@@ -394,9 +396,9 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
 
     test('restoring a stub from trash clears the entry trashTime', async () => {
         const { db, first, chaId } = stubbed()
-        const trashed = await encodeScoped(withStub(db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const trashed = await encodeScoped(withStub(first, db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
         expect(indexEntry(trashed, chaId).trashTime).toBe(1234)
-        const restored = await encodeScoped(withStub(db, chaId, undefined), scopedOptions(3, trashed), { modules: false, characters: new Set() })
+        const restored = await encodeScoped(withStub(first, db, chaId, undefined), scopedOptions(3, trashed), { modules: false, characters: new Set() })
         expect(Object.hasOwn(indexEntry(restored, chaId), 'trashTime')).toBe(false)
         expect(indexEntry(restored, chaId)).toEqual(indexEntry(first, chaId))
         expect(entryOf(restored, chaId).trashTime).toBeUndefined()
@@ -404,7 +406,7 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
 
     test('the entry keeps the previous chat state and takes the stub\'s name and tags', async () => {
         const { db, first, chaId } = stubbed()
-        const tree = await encodeScoped(withStub(db, chaId, undefined, { name: 'Renamed', tags: ['new-tag'], lastInteraction: 777 }), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const tree = await encodeScoped(withStub(first, db, chaId, undefined, { name: 'Renamed', tags: ['new-tag'], lastInteraction: 777 }), scopedOptions(2, first), { modules: false, characters: new Set() })
         const entry = indexEntry(tree, chaId)
         const before = indexEntry(first, chaId)
         expect(entry.name).toBe('Renamed')
@@ -419,7 +421,7 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
     test('a stub is never encoded even when named', async () => {
         const { db, first, chaId } = stubbed()
         const lists = counting()
-        await encodeScoped(withStub(db, chaId, 5), scopedOptions(2, first, lists.lists), { modules: false, characters: new Set([chaId]) })
+        await encodeScoped(withStub(first, db, chaId, 5), scopedOptions(2, first, lists.lists), { modules: false, characters: new Set([chaId]) })
         expect(lists.encoded).not.toContain(chaId)
     })
 
@@ -430,9 +432,25 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
         await expect(encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })).rejects.toThrow(StubRefusedError)
     })
 
+    test('new behaviour: a stub that names another entity or a legacy file is refused, one that names its own entity is carried', async () => {
+        const { db, first, chaId, u } = stubbed()
+        const other = first.index.entities.get(`${chaIdOf(db, 2)}#0`) as string
+        const refuses = async (coldstorage: string): Promise<void> => {
+            const next = withStub(first, db, chaId, undefined, { coldstorage })
+            await expect(encodeScoped(next, scopedOptions(2, first), { modules: false, characters: new Set() })).rejects.toMatchObject({
+                name: 'StubRefusedError', kind: 'character', chaId,
+            })
+        }
+        await refuses(other)
+        await refuses('3f1c2b7e-5a49-4d6e-9b1d-0a7c8e2f4a10')
+        const own = await encodeScoped(withStub(first, db, chaId, undefined), scopedOptions(2, first), { modules: false, characters: new Set() })
+        expect(indexEntry(own, chaId)).toEqual(indexEntry(first, chaId))
+        expect(u).toBe(indexEntry(first, chaId).u)
+    })
+
     test('the carried stub assembles with the previous body, so the shard entry never outruns its units', async () => {
         const { db, first, chaId } = stubbed()
-        const tree = await encodeScoped(withStub(db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
+        const tree = await encodeScoped(withStub(first, db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
         const units = new Map([...first.units, ...tree.units].map(unit => [unit.key, unit.bytes] as const))
         const assembled = assembleDatabase(tree.manifest, { get: key => units.get(key) })
         const slot = (assembled.characters as unknown as { chaId: string, trashTime?: number, chats: unknown[] }[]).find(one => one.chaId === chaId)

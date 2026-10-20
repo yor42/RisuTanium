@@ -35,6 +35,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { language } from 'src/lang'
+import { alertWait } from '../../alert'
 import type { Database } from '../../storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from '../../storage/tests/fakeWebLocks'
 import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -282,16 +283,26 @@ function makeFakeFile(bytes: Uint8Array): File {
     return new File([asBlobPart(bytes)], 'backup.bin')
 }
 
-/** A real File whose `slice()` reads `walkBytes` for its first `walkSliceCalls` calls (the pre-read walk) and `restoreBytes` afterwards (the restore pass) -- models a file that changes between the two, matching `backuplocalEncryptedRefusal.test.ts`'s own harness for the same reason. */
-function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, walkSliceCalls: number, name = 'backup.bin'): File {
+/**
+ * A real File whose `slice()` reads `walkBytes` in the walk phase (the pre-read walk) and `restoreBytes` in the
+ * copy phase (the restore pass) -- models a file that changes between the two, matching
+ * `backuplocalEncryptedRefusal.test.ts`'s own harness for the same reason. The phase switches when the copy pass
+ * shows its first progress text, which `LoadLocalBackup` does after the walk resolved and before the copy reads.
+ */
+function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, name = 'backup.bin'): File {
     const base = new File([asBlobPart(walkBytes)], name)
-    let sliceCalls = 0
+    let copyPhase = false
+    vi.mocked(alertWait).mockImplementation((msg: string) => {
+        if (msg.startsWith('Loading local Backup')) {
+            copyPhase = true
+        }
+        return { type: 'wait', msg }
+    })
     return new Proxy(base, {
         get(target, prop, receiver) {
             if (prop === 'slice') {
                 return (start = 0, end = walkBytes.length) => {
-                    const source = sliceCalls < walkSliceCalls ? walkBytes : restoreBytes
-                    sliceCalls += 1
+                    const source = copyPhase ? restoreBytes : walkBytes
                     return new Blob([asBlobPart(source.slice(start, end))])
                 }
             }
@@ -436,6 +447,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+    vi.mocked(alertWait).mockReset()
     vi.doUnmock(import('../../platform'))
 })
 
@@ -602,7 +614,7 @@ describe('J5: every early exit leaves this page, and the origin, still usable (g
             buildChunk('asset.png', new Uint8Array(16)),
             buildChunk('encryption.risudat', new TextEncoder().encode(JSON.stringify({ type: 'account', time: Date.now() }))),
         ])
-        const file = fileWithTimeDivergentSlice(walkBytes, restoreBytes, 3)
+        const file = fileWithTimeDivergentSlice(walkBytes, restoreBytes)
 
         await loadBackupFile(tabA.loadLocalBackup, file)
 
@@ -693,6 +705,90 @@ describe('J6: exactly one message on failure, never an unhandled rejection', () 
         }
 
         expect(unhandled).toEqual([])
+        expect(alertStoreSetSpy.mock.calls.some((call) => {
+            const arg = call[0] as { msg?: unknown } | undefined
+            return typeof arg?.msg === 'string' && /saved|restart/i.test(arg.msg)
+        })).toBe(true)
+    })
+})
+
+describe('B6f: the restore tail never relaunches the Android app', () => {
+    type Transport = 'android' | 'desktop' | 'web'
+
+    interface TailProbe {
+        relaunch: ReturnType<typeof vi.fn>
+        reload: ReturnType<typeof vi.fn>
+        internalBackup: typeof import('../internalBackup')
+    }
+
+    /** Boots a fresh module graph as the given transport, with a counting relaunch() and location.reload(). */
+    async function bootAs(transport: Transport): Promise<TailProbe> {
+        vi.doMock(import('../../platform'), () => ({
+            isTauri: transport !== 'web',
+            isNodeServer: false,
+            isIOS: () => false,
+        }) as unknown as typeof import('../../platform'))
+        vi.doMock('@tauri-apps/plugin-os', () => ({
+            type: () => {
+                if (transport === 'web') {
+                    throw new Error('scratch: no operating-system plugin')
+                }
+                return transport === 'android' ? 'android' : 'windows'
+            },
+        }))
+        // The tab booted by beforeEach still holds its presence lock; a web restore would refuse over it.
+        core = new FakeLockManagerCore()
+        tabA = await bootTabA(new FakeTabLockManagerView(core, 'A') as unknown as LockManager)
+        const relaunch = vi.fn(async () => { })
+        const tauriProcess = await import('@tauri-apps/plugin-process') as { relaunch: () => Promise<void> }
+        tauriProcess.relaunch = relaunch
+        const reload = vi.fn()
+        vi.spyOn(window.location, 'reload').mockImplementation(reload)
+        const internalBackup = await import('../internalBackup')
+        return { relaunch, reload, internalBackup }
+    }
+
+    afterEach(() => {
+        vi.doUnmock('@tauri-apps/plugin-os')
+        vi.restoreAllMocks()
+    })
+
+    const expected: Record<Transport, { relaunch: number, reload: number }> = {
+        android: { relaunch: 0, reload: 1 },
+        desktop: { relaunch: 1, reload: 0 },
+        web: { relaunch: 0, reload: 1 },
+    }
+
+    for (const transport of ['android', 'desktop', 'web'] as const) {
+        test(`${transport === 'android' ? 'regression reproducer' : 'compatibility guard'}: the post-import tail of LoadLocalBackup on ${transport} calls relaunch ${expected[transport].relaunch} time(s) and location.reload ${expected[transport].reload} time(s)`, async () => {
+            const probe = await bootAs(transport)
+            const fixture = buildValidFixture(`b6f-import-${transport}`, tabA.encodeRisuSaveLegacy)
+
+            await loadBackupBytes(tabA.loadLocalBackup, fixture)
+
+            expect(setDatabaseMock).toHaveBeenCalled()
+            expect(probe.relaunch).toHaveBeenCalledTimes(expected[transport].relaunch)
+            expect(probe.reload).toHaveBeenCalledTimes(expected[transport].reload)
+        })
+
+        test(`${transport === 'android' ? 'regression reproducer' : 'compatibility guard'}: reloadOntoRestoredState on ${transport} calls relaunch ${expected[transport].relaunch} time(s) and location.reload ${expected[transport].reload} time(s)`, async () => {
+            const probe = await bootAs(transport)
+
+            await probe.internalBackup.reloadOntoRestoredState(null)
+
+            expect(probe.relaunch).toHaveBeenCalledTimes(expected[transport].relaunch)
+            expect(probe.reload).toHaveBeenCalledTimes(expected[transport].reload)
+        })
+    }
+
+    test('a reload that throws after a successful write still reports the restore as saved, not as a plain failure', async () => {
+        const probe = await bootAs('android')
+        probe.reload.mockImplementation(() => { throw new Error('scratch: reload failed') })
+        const alertStoreSetSpy = vi.spyOn(tabA.alertModule.alertStore, 'set')
+        const fixture = buildValidFixture('b6f-reload-failed', tabA.encodeRisuSaveLegacy)
+
+        await loadBackupBytes(tabA.loadLocalBackup, fixture)
+
         expect(alertStoreSetSpy.mock.calls.some((call) => {
             const arg = call[0] as { msg?: unknown } | undefined
             return typeof arg?.msg === 'string' && /saved|restart/i.test(arg.msg)

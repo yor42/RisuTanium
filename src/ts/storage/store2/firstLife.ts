@@ -25,8 +25,12 @@ import type { SessionDecision } from './session'
  * `store2/` again immediately before the marker write and refuses unless the store holds no unit (units cannot appear under
  * an absent commit key, so the answer cannot go stale before the write). The row-9 grant checks that the cleared bytes
  * decode to the cleared value and that the key read back parses as `current: null, staging: null`.
- * Every other state (a standing recovery state, a parsed key with a `current`, a foreign marker, a damaged or too-new
- * key) is refused, because the fence is what makes a marker over such a state safe; that path is `runExit`.
+ * Every other state (a standing marker, a parsed key with a `current`, a foreign marker, a damaged or too-new key) is
+ * refused, because the fence is what makes a marker over such a state safe; that path is `runExit`. A standing marker
+ * of this page's own device that its start-up clear removed is the row-9 state, and that clear only removes a convert or seed marker: a
+ * convert or seed that a fenced `runExit` marker left behind on a device that keeps its owner id is re-run through
+ * this grant, without the question, because the marker already recorded the consent. Its fence stays and still stops
+ * the sweeps.
  *
  * `installBuilt` is the one installer of an encoder-built tree. It serves the first-life marker and a fenced `runExit`
  * marker alike. Nothing is written outside the marker's staging prefix before the final write, and the final write
@@ -47,9 +51,24 @@ export interface FirstLifeGrant {
     readonly source: 'absent-row-1' | 'own-row-9-clear'
     /** `convert` when an upstream main file exists (or the cleared marker was a conversion), `seed` otherwise. */
     readonly kind: 'convert' | 'seed'
+    /**
+     * The staging label the marker carries. It is `kind` unless a row-1 caller overrode it (`FirstLifeLabel`): the label
+     * is what the caller is about to install, because it decides how a crashed install classifies at the next boot.
+     */
+    readonly label: StagingLabel
     /** The read the marker is written at: the absence read, or the read of the cleared key. */
     readonly read: Store2Read
 }
+
+/**
+ * The label a row-1 caller installs under when it is not the boot decision's own: `convert` for a restore of the newest
+ * numbered backup (a crash classifies as row 10), `import` for a `.bin` import (a crash classifies as row 11). Neither
+ * may classify as row 9, whose re-run would seed an empty profile over the backups.
+ */
+export type FirstLifeLabel = Extract<StagingLabel, 'convert' | 'import'>
+
+/** The boot decision of row 1 over an absent key: the only decision a label override may accompany. */
+export type Row1FirstLifeDecision = Extract<SessionDecision, { row: 1, mode: 'first-life' }>
 
 /** What `firstLifeGrant` reads: the boot decision, the page's read of the commit key and the result of its start-up clear. A `Store2Session` has all three. */
 export interface FirstLifeFacts {
@@ -60,7 +79,7 @@ export interface FirstLifeFacts {
 
 export type FirstLifeRefusal =
     | 'not-first-life' | 'read-missing' | 'key-present'
-    | 'foreign-marker' | 'not-cleared' | 'key-changed'
+    | 'foreign-marker' | 'not-cleared' | 'key-changed' | 'label-not-row-1'
 
 export type GrantResult =
     | { status: 'granted', grant: FirstLifeGrant }
@@ -70,16 +89,29 @@ function refused(reason: FirstLifeRefusal, detail: string): GrantResult {
     return { status: 'refused', reason, detail }
 }
 
-function granted(source: FirstLifeGrant['source'], kind: FirstLifeGrant['kind'], read: Store2Read): GrantResult {
-    return { status: 'granted', grant: { [GRANT_BRAND]: true, source, kind, read } }
+function granted(source: FirstLifeGrant['source'], kind: FirstLifeGrant['kind'], label: StagingLabel, read: Store2Read): GrantResult {
+    return { status: 'granted', grant: { [GRANT_BRAND]: true, source, kind, label, read } }
+}
+
+/** The facts of a row-1 grant: the decision is narrowed, so a label override cannot be passed with a row-9 decision. */
+export interface Row1FirstLifeFacts extends FirstLifeFacts {
+    decision: Row1FirstLifeDecision
 }
 
 /**
  * The grant for an unfenced marker, or the reason there is none. Only boot row 1 over an absence read, and boot
  * row 9 with this page's own marker cleared by this page's start-up clear, are accepted.
+ *
+ * `options.label` overrides the marker's label on a row-1 grant only; the overload makes it a type error with any other
+ * decision, and a row-9 decision that reaches it anyway is refused at run time (`label-not-row-1`).
  */
-export function firstLifeGrant(facts: FirstLifeFacts): GrantResult {
+export function firstLifeGrant(facts: FirstLifeFacts): GrantResult
+export function firstLifeGrant(facts: Row1FirstLifeFacts, options: { label: FirstLifeLabel }): GrantResult
+export function firstLifeGrant(facts: FirstLifeFacts, options?: { label: FirstLifeLabel }): GrantResult {
     const { decision, commitRead, startupClear } = facts
+    if (options !== undefined && !(decision.row === 1 && decision.mode === 'first-life')) {
+        return refused('label-not-row-1', 'A label override is accepted only on a boot row 1 grant.')
+    }
     if (decision.row === 1 && decision.mode === 'first-life') {
         if (commitRead === null) {
             return refused('read-missing', 'The commit key read is missing.')
@@ -87,7 +119,7 @@ export function firstLifeGrant(facts: FirstLifeFacts): GrantResult {
         if (classifyCommitRead(commitRead).status !== 'absent') {
             return refused('key-present', 'The commit key is not absent.')
         }
-        return granted('absent-row-1', decision.action, commitRead)
+        return granted('absent-row-1', decision.action, options?.label ?? decision.action, commitRead)
     }
     if (decision.row === 9 && decision.mode === 'rerun') {
         if (decision.clear !== 'own') {
@@ -105,7 +137,7 @@ export function firstLifeGrant(facts: FirstLifeFacts): GrantResult {
             || decoded.status !== 'parsed' || JSON.stringify(decoded.value) !== JSON.stringify(startupClear.value)) {
             return refused('not-cleared', 'The cleared bytes are not the cleared state this page\'s start-up clear reported.')
         }
-        return granted('own-row-9-clear', decision.operation, commitRead)
+        return granted('own-row-9-clear', decision.operation, decision.operation, commitRead)
     }
     return refused('not-first-life', `Boot row ${decision.row ?? 'none'} is not a first-life state.`)
 }
@@ -138,11 +170,6 @@ export type FirstLifeMarkerResult =
     /** The marker write failed definitely; the commit key was not changed. */
     | { status: 'failed', cause: Store2BackendError }
 
-const LABELS: Readonly<Record<FirstLifeGrant['kind'], StagingLabel>> = {
-    convert: 'convert',
-    seed: 'seed',
-}
-
 /**
  * Compare-and-writes the marker at the grant's read: `current: null`, empty `retained` and `pins`, a fresh staged
  * prefix, `seq` 1 over an absent key and one above the cleared key otherwise. No fence is read or written. A
@@ -159,7 +186,7 @@ export async function writeFirstLifeMarker(
             return { status: 'refused', reason: presence.status === 'some' ? 'store-not-empty' : 'presence-unknown' }
         }
     }
-    const label = LABELS[grant.kind]
+    const label = grant.label
     const stagedPrefix = stagingPrefix(newStagingId(env))
     const staging: Staging = { owner: options.owner, prefix: stagedPrefix, startedAt: env.now(), label }
     const marker = markerKey(classifyCommitRead(grant.read), staging, 0, env)
@@ -218,7 +245,9 @@ async function putBuilt(backend: Store2Backend, key: string, bytes: Uint8Array):
  * Installs an encoder-built tree on a standing marker. Every unit is written under a key of the marker's staging
  * mint (an unminted key, or one outside the prefix, is refused before anything is written), the manifest last, and
  * then one compare-and-write at the marker's read-back token installs `current`, clears the marker, empties
- * `retained` and `pins` and stamps `convertedFrom` and `convertedAt`. A build that throws propagates with the marker
+ * `retained` and `pins`, stamps `convertedFrom` and `convertedAt` and, when the build carries one, sets the pointer to
+ * its deletion snapshot. The snapshot unit is one of the units written before the manifest, and a unit whose flush
+ * is not confirmed stops the install before the final write. A build that throws propagates with the marker
  * standing. Every outcome of the writes, including a failed read-back after the final write (`unknown`), is an
  * `InstallResult`; an `InstallStop` never escapes.
  */
@@ -235,7 +264,7 @@ export async function installBuilt(basis: BuiltInstallBasis, request: BuiltInsta
             await putBuilt(backend, unit.key, unit.bytes)
         }
         await putBuilt(backend, built.manifest.key, encodeUnit(UNIT_TYPE.manifest, built.manifest.body))
-        return await finalWrite(basis, built.manifest.key, built.manifest.body, { from: request.convertedFrom, at: env.now() })
+        return await finalWrite(basis, built.manifest.key, built.manifest.body, { from: request.convertedFrom, at: env.now() }, built.snapshot)
     } catch (error) {
         if (error instanceof InstallStop) {
             return error.result

@@ -40,6 +40,7 @@ import { createIndexedDbHeadSwap } from './store/indexedDbStore'
  */
 
 let owner: Promise<BlockStoreOwner | null> | null = null
+let disabled = false
 
 function pageLocks(): LockManagerLike | undefined {
     return typeof navigator === 'undefined' ? undefined : (navigator.locks as LockManagerLike | undefined)
@@ -64,13 +65,30 @@ async function buildOwner(): Promise<BlockStoreOwner | null> {
     return dependencies === null ? null : new BlockStoreOwner({ store, ...dependencies })
 }
 
-/** The page's block-store owner, or `null` on the transitional OPFS page, which has none. */
+/**
+ * The page's block-store owner, or `null` on the transitional OPFS page, which has none, and on a page whose boot
+ * disabled it.
+ */
 export function getPageBlockOwner(): Promise<BlockStoreOwner | null> {
+    if (disabled) {
+        return Promise.resolve(null)
+    }
     owner ??= buildOwner()
     return owner
 }
 
-/** Test seam: forgets the page's owner so the next call builds one again. */
+/**
+ * Makes the page's owner answer `null` for the rest of the page load. A page that must write nothing to the legacy
+ * block store (a store2 page, or a legacy profile this page may only read) calls it before any owner is built, so no
+ * caller can start a block write; callers already handle the `null` of the OPFS page. An owner built earlier is dropped.
+ */
+export function disablePageBlockOwner(): void {
+    disabled = true
+    owner = null
+}
+
+/** Test seam: forgets the page's owner and its disabling so the next call builds one again. */
 export function resetPageBlockOwnerForTests(): void {
     owner = null
+    disabled = false
 }

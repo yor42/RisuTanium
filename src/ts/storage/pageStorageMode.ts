@@ -1,4 +1,6 @@
 import { writable } from 'svelte/store'
+import type { TooNewSource } from './store2/boot'
+import type { Store2LegacyReadOnlyReason } from './store2/bootActive'
 
 /**
  * What the page's persistence is, as boot found it and as it has moved since.
@@ -15,14 +17,27 @@ import { writable } from 'svelte/store'
  *   boot drops the bytes after the decode, and every whole-state replace this
  *   page makes while no head exists passes it, so the converted head names the
  *   file the rename finish may move aside.
- * - `read-only`: the page runs from OPFS this time. Nothing is written.
+ * - `store2`: the profile is a store2 tree this page opened. Saves are store2 commits; no write goes to the legacy
+ *   block or main-file store.
+ * - `read-only`: nothing is written this page load (the page runs from OPFS, or the boot found a store it must not
+ *   write).
  * - `unset`: boot has not decided yet.
  */
 export type PageStorageMode =
     | { kind: 'unset' }
     | { kind: 'block' }
     | { kind: 'legacy', convertedFrom: string | null }
-    | { kind: 'read-only' }
+    | { kind: 'store2' }
+    | PageReadOnlyMode
+
+/**
+ * A read-only page and why it is one, as a returned fact: nothing displayed or decided reads `reason` (the
+ * read-only wording keeps its own probe-first order and OPFS precedence). `too-new` names the store part that was
+ * written by a newer version.
+ */
+export type PageReadOnlyMode =
+    | { kind: 'read-only', reason: Store2LegacyReadOnlyReason }
+    | { kind: 'read-only', reason: 'too-new', source: TooNewSource }
 
 let mode: PageStorageMode = { kind: 'unset' }
 
@@ -47,6 +62,38 @@ export function setPageStorageMode(next: PageStorageMode): void {
  */
 export function pendingConvertedFrom(): string | undefined {
     return mode.kind === 'legacy' && mode.convertedFrom !== null ? mode.convertedFrom : undefined
+}
+
+/**
+ * Whether a page in this mode may run the deleters of the block and main-file
+ * era: the numbered-backup prune, the manual clean-up, the startup clean-up and
+ * the boot listing that feeds it. Only `legacy` and `block` pages own the keys
+ * those deleters remove. A `store2` page owns different keys and a `read-only`
+ * page writes nothing; an `unset` page has not been decided yet, so it must not
+ * delete either. Callers test this positive answer, never `kind !== 'store2'`:
+ * a mode added later stays refused until it is named here.
+ */
+export function modeRunsLegacyDeleters(candidate: PageStorageMode): boolean {
+    return candidate.kind === 'legacy' || candidate.kind === 'block'
+}
+
+/** `modeRunsLegacyDeleters` for this page's current mode. */
+export function pageRunsLegacyDeleters(): boolean {
+    return modeRunsLegacyDeleters(mode)
+}
+
+/** Whether boot starts the legacy startup clean-up (remote blocks and the asset sweep) on this page. */
+export function startsLegacyStartupCleanup(): boolean {
+    return pageRunsLegacyDeleters()
+}
+
+/**
+ * Whether boot records the load-time listing of units and assets. Its only
+ * consumer is the manual clean-up, so a page that refuses that clean-up does
+ * not pay for the listing.
+ */
+export function recordsLoadTimeListing(): boolean {
+    return pageRunsLegacyDeleters()
 }
 
 // -- the startup asset sweep --------------------------------------------------

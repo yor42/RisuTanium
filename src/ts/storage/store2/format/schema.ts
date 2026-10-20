@@ -2,12 +2,12 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import { isStore2Key, STORE2_PREFIX } from '../../store/keyRules'
 import { isHashStemRun } from './assetRefKey'
 import { decodeFrame, encodeFrame } from './frame'
-import { isStagingPrefix } from './keys'
+import { isOldDataKey, isSnapshotUnitKey, isStagingPrefix } from './keys'
 import { encodeCanonicalJson } from './canonicalJson'
 import {
-    STAGING_LABELS,
+    DELETION_SNAPSHOT_KINDS, STAGING_LABELS,
     type AssetList, type ChatChunk, type ChatCore, type ChatEntry, type ChunkRef, type CommitKey, type ContentBody,
-    type FenceRecord, type InlayList, type LegacyKeepFile, type LegacyList, type ListRef, type Manifest, type ModuleEntry,
+    type DeletionSnapshot, type DeletionSnapshotKind, type FenceRecord, type InlayList, type LegacyKeepFile, type LegacyList, type ListRef, type Manifest, type ModuleEntry,
     type ModuleIndex, type PluginBucket, type Ref, type Shard, type SnapshotPointer, type ShardEntry, type StagingLabel, type SweepRecord,
     type UnitBody,
 } from './types'
@@ -83,6 +83,8 @@ export const KNOWN_FIELDS = {
     moduleIndex: ['v', 'entries'],
     moduleEntry: ['id', 'unit', 'al', 'il', 'name', 'description', 'namespace', 'icon', 'hideIcon', 'lowLevelAccess', 'hasToggle', 'dsp'],
     fenceRecord: ['v', 'at', 'priorCommits', 'keys', 'priorFences'],
+    deletionSnapshot: ['v', 'kind', 'upstream', 'keys'],
+    deletionUpstream: ['main', 'backups'],
     fencePriorCommit: ['at', 'bytes'],
     fencePriorFence: ['at', 'bytes'],
 } as const
@@ -271,7 +273,7 @@ function readSnapshotPointer(value: JsonValue | undefined): SnapshotPointer | un
         return undefined
     }
     const { key, digest, count } = value
-    if (typeof key !== 'string' || !isStore2Key(key)
+    if (typeof key !== 'string' || !isSnapshotUnitKey(key)
         || typeof digest !== 'string' || !SNAPSHOT_DIGEST.test(digest)
         || typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
         return undefined
@@ -675,6 +677,46 @@ export function parseFenceRecord(value: JsonValue): Parsed<FenceRecord> {
     })
 }
 
+/**
+ * Type 24. Anything that would make a deletion unsafe reads as damaged, so the pass that needs the list deletes nothing:
+ * an unknown kind, a repeated key, or a key outside the deletion allowlist. A newer `v` is too-new.
+ */
+export function parseDeletionSnapshot(value: JsonValue): Parsed<DeletionSnapshot> {
+    return plain(() => {
+        const raw = obj(value, 'deletion snapshot')
+        gateV(raw, 'deletion snapshot')
+        const kind = str(raw.kind, 'kind')
+        if (!(DELETION_SNAPSHOT_KINDS as readonly string[]).includes(kind)) {
+            bad('kind is not a known deletion kind.')
+        }
+        const upstreamRaw = obj(raw.upstream, 'upstream')
+        const backups = strList(upstreamRaw.backups, 'upstream.backups')
+        const keys = strList(raw.keys, 'keys')
+        const seen = new Set<string>()
+        for (const key of keys) {
+            if (seen.has(key)) {
+                bad(`keys lists ${JSON.stringify(key)} twice.`)
+            }
+            seen.add(key)
+            if (!isOldDataKey(key)) {
+                bad(`keys holds ${JSON.stringify(key)}, which is outside the deletion allowlist.`)
+            }
+        }
+        return {
+            ...extras(raw, KNOWN_FIELDS.deletionSnapshot),
+            v: 1,
+            kind: kind as DeletionSnapshotKind,
+            upstream: { ...extras(upstreamRaw, KNOWN_FIELDS.deletionUpstream), main: bool(upstreamRaw.main, 'upstream.main'), backups },
+            keys,
+        }
+    })
+}
+
+/** Whether a commit key's pointer count is the number of keys the snapshot lists (the pass deletes nothing otherwise). */
+export function snapshotCountMatches(pointer: SnapshotPointer, snapshot: DeletionSnapshot): boolean {
+    return pointer.count === snapshot.keys.length
+}
+
 /** Type 19. The shape is a format choice of this build (see `PluginBucket`). */
 export function parsePluginBucket(value: JsonValue): Parsed<PluginBucket> {
     return plain(() => {
@@ -711,6 +753,7 @@ export function parseUnitBody(type: UnitType, value: JsonValue): Parsed<UnitBody
         case UNIT_TYPE.inlayList: return parseInlayList(value)
         case UNIT_TYPE.sweepRecord: return parseSweepRecord(value)
         case UNIT_TYPE.fenceRecord: return parseFenceRecord(value)
+        case UNIT_TYPE.deletionSnapshot: return parseDeletionSnapshot(value)
         case UNIT_TYPE.pluginStorageBucket: return parsePluginBucket(value)
         default: return parseContentBody(value)
     }

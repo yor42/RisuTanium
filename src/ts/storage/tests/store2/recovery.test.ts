@@ -127,10 +127,16 @@ describe('candidate pages', () => {
 })
 
 describe('screen offers', () => {
-    const base = { tooNew: false, candidateCount: 3, upstreamMainFile: false, candidatePassed: false }
+    const base = { tooNew: false, candidateCount: 3, upstreamMainFile: false, numberedBackups: false, candidatePassed: false }
 
     test('the initial state offers a pick, the .bin import and a fresh start, and no conversion without an upstream file', () => {
-        expect(screenOffers(base)).toEqual({ readOnly: false, pick: true, convert: false, import: true, freshStart: true })
+        expect(screenOffers(base)).toEqual({ readOnly: false, pick: true, convert: false, restoreNewest: false, import: true, freshStart: true })
+    })
+
+    test('numbered backups widen the conversion offer; with no main file it is the restore-newest offer (MC-299 3, B3-Q6)', () => {
+        expect(screenOffers({ ...base, numberedBackups: true })).toMatchObject({ convert: true, restoreNewest: true })
+        expect(screenOffers({ ...base, numberedBackups: true, upstreamMainFile: null })).toMatchObject({ convert: true, restoreNewest: true })
+        expect(screenOffers({ ...base, numberedBackups: true, upstreamMainFile: true })).toMatchObject({ convert: true, restoreNewest: false })
     })
 
     test('with an upstream main file and no candidate validated, conversion, import and a fresh start are all offered', () => {
@@ -160,7 +166,7 @@ describe('screen offers', () => {
 
     test('a too-new state is read-only and offers nothing', () => {
         expect(screenOffers({ ...base, tooNew: true, upstreamMainFile: true })).toEqual({
-            readOnly: true, pick: false, convert: false, import: false, freshStart: false,
+            readOnly: true, pick: false, convert: false, restoreNewest: false, import: false, freshStart: false,
         })
     })
 })

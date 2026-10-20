@@ -257,6 +257,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 //#endregion
 
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
@@ -387,137 +388,150 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-/** The full module and preset records every full golden carries. */
-const GOLDEN_MODULE = {
-    id: 'module-golden',
-    name: 'Golden Module',
-    description: 'golden module',
-    lorebook: [{ key: 'golden-key', comment: 'golden entry', content: 'golden lore', mode: 'normal', insertorder: 100, alwaysActive: false, secondkey: '', selective: false }],
-    regex: [{ comment: 'golden regex', in: 'gold', out: 'GOLD', type: 'editdisplay' }],
-    trigger: [],
-}
-const GOLDEN_PRESET = { name: 'Golden Preset', id: 'preset-golden', temperature: 80, maxContext: 4000, maxResponse: 300 }
+// The goldens restore at the default windows and again at windows so small that every golden crosses window edges in both
+// passes of the import.
+const GOLDEN_WINDOWS = [{ label: 'default windows', bytes: null }, { label: '4-byte windows', bytes: 4 }, { label: '64-byte windows', bytes: 64 }] as const
 
-interface FullCase {
-    file: string
-    pluginUnit: unknown
-    /** The inline character's first messages, in chat order. */
-    inlineFirstMessages: string[]
-}
-
-const FULL_CASES: FullCase[] = [
-    {
-        file: 'fork-full.bin',
-        pluginUnit: { theme: 'dark', count: 3 },
-        inlineFirstMessages: ['inline hello', coldStorageHeader + ID.inlineChatUnit],
-    },
-    {
-        // An array is the plugin value shape upstream's collector writes; the third chat holds the text upstream's `preLoadChat` writes for an unreadable unit.
-        file: 'upstream-full.bin',
-        pluginUnit: ['dark', 3],
-        inlineFirstMessages: ['inline hello', coldStorageHeader + ID.inlineChatUnit, formatColdStorageLoadError(ID.errorTextUnit)],
-    },
-]
-
-describe.each(FULL_CASES)('guard: $file restores to the logical content it was built from', ({ file, pluginUnit, inlineFirstMessages }) => {
-    test('characters, archived stub, pointer chats, plugin value, module, preset and asset', async () => {
-        const db = await restoreBytes(readGolden(file))
-
-        const inline = character(db, 'cha-inline')
-        expect(inline.name).toBe('Inline Alice')
-        expect(inline.image).toBe(ASSET_KEY)
-        expect(firstMessages(inline)).toEqual(inlineFirstMessages)
-
-        const stub = character(db, 'cha-stub')
-        expect(stub.name).toBe('Stub Bob')
-        expect(stub.coldstorage).toBe(ID.stubBlob)
-        expect(stub.coldStoragedChats).toEqual([ID.blobChatUnit])
-
-        expect(db.modules).toHaveLength(1)
-        expect(db.modules[0]).toMatchObject(GOLDEN_MODULE)
-        expect(db.botPresets.find((p) => p.name === 'Golden Preset')).toMatchObject(GOLDEN_PRESET)
-        expect(db.pluginCustomStorage?._coldplugin).toEqual({ prefs: ID.pluginUnit })
-
-        expect(assetMem.get(ASSET_KEY)).toEqual(ASSET_BYTES)
-
-        const blob = await unitJson(ID.stubBlob) as { character: RestoredCharacter }
-        expect(blob.character.chaId).toBe('cha-stub')
-        expect(firstMessages(blob.character)).toEqual(['blob hello', coldStorageHeader + ID.blobChatUnit])
-        expect(await unitJson(ID.inlineChatUnit)).toMatchObject({ message: [{ data: 'archived inline chat', role: 'user' }] })
-        expect(await unitJson(ID.blobChatUnit)).toMatchObject({ message: [{ data: 'archived blob chat', role: 'user' }] })
-        expect(await unitJson(ID.pluginUnit)).toEqual(pluginUnit)
-
-        expect(incompleteRestorePrompts()).toEqual([])
+describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
+    beforeEach(() => {
+        overrideBackupWindowBytes(bytes === null ? null : { walk: bytes, copy: bytes })
     })
-})
-
-describe.each(['fork-missing-unit.bin', 'upstream-missing-unit.bin'])('guard: %s keeps a pointer chat whose unit is in no entry', (fileName) => {
-    test('the pointer text stays in the first message, the unit stays absent and the character is named in the question', async () => {
-        const db = await restoreBytes(readGolden(fileName))
-
-        const inline = character(db, 'cha-inline')
-        expect(firstMessages(inline)).toEqual(['inline hello', coldStorageHeader + ID.missingChatUnit])
-        expect((await readColdStorageItem(ID.missingChatUnit)).status).toBe('missing')
-        expect(db.characters).toHaveLength(1)
-
-        const prompts = incompleteRestorePrompts()
-        expect(prompts).toHaveLength(1)
-        expect(prompts[0]).toContain('Inline Alice')
+    afterEach(() => {
+        overrideBackupWindowBytes(null)
     })
-})
 
-describe('guard: upstream-plugin-object-no-entry.bin keeps an object-valued plugin mapping whose unit upstream did not export', () => {
-    test('the mapping stays, the unit stays absent and one question is asked about an item that cannot be linked to a character', async () => {
-        const db = await restoreBytes(readGolden('upstream-plugin-object-no-entry.bin'))
+    /** The full module and preset records every full golden carries. */
+    const GOLDEN_MODULE = {
+        id: 'module-golden',
+        name: 'Golden Module',
+        description: 'golden module',
+        lorebook: [{ key: 'golden-key', comment: 'golden entry', content: 'golden lore', mode: 'normal', insertorder: 100, alwaysActive: false, secondkey: '', selective: false }],
+        regex: [{ comment: 'golden regex', in: 'gold', out: 'GOLD', type: 'editdisplay' }],
+        trigger: [],
+    }
+    const GOLDEN_PRESET = { name: 'Golden Preset', id: 'preset-golden', temperature: 80, maxContext: 4000, maxResponse: 300 }
 
-        expect(db.pluginCustomStorage?._coldplugin).toEqual({ prefs: ID.pluginUnit })
-        expect((await readColdStorageItem(ID.pluginUnit)).status).toBe('missing')
-        expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+    interface FullCase {
+        file: string
+        pluginUnit: unknown
+        /** The inline character's first messages, in chat order. */
+        inlineFirstMessages: string[]
+    }
 
-        const prompts = incompleteRestorePrompts()
-        expect(prompts).toHaveLength(1)
-        expect(prompts[0]).toContain('1 item(s) could not be linked to a character')
-        expect(prompts[0]).toContain('1 cold storage item(s) will remain unavailable')
+    const FULL_CASES: FullCase[] = [
+        {
+            file: 'fork-full.bin',
+            pluginUnit: { theme: 'dark', count: 3 },
+            inlineFirstMessages: ['inline hello', coldStorageHeader + ID.inlineChatUnit],
+        },
+        {
+            // An array is the plugin value shape upstream's collector writes; the third chat holds the text upstream's `preLoadChat` writes for an unreadable unit.
+            file: 'upstream-full.bin',
+            pluginUnit: ['dark', 3],
+            inlineFirstMessages: ['inline hello', coldStorageHeader + ID.inlineChatUnit, formatColdStorageLoadError(ID.errorTextUnit)],
+        },
+    ]
+
+    describe.each(FULL_CASES)('guard: $file restores to the logical content it was built from', ({ file, pluginUnit, inlineFirstMessages }) => {
+        test('characters, archived stub, pointer chats, plugin value, module, preset and asset', async () => {
+            const db = await restoreBytes(readGolden(file))
+
+            const inline = character(db, 'cha-inline')
+            expect(inline.name).toBe('Inline Alice')
+            expect(inline.image).toBe(ASSET_KEY)
+            expect(firstMessages(inline)).toEqual(inlineFirstMessages)
+
+            const stub = character(db, 'cha-stub')
+            expect(stub.name).toBe('Stub Bob')
+            expect(stub.coldstorage).toBe(ID.stubBlob)
+            expect(stub.coldStoragedChats).toEqual([ID.blobChatUnit])
+
+            expect(db.modules).toHaveLength(1)
+            expect(db.modules[0]).toMatchObject(GOLDEN_MODULE)
+            expect(db.botPresets.find((p) => p.name === 'Golden Preset')).toMatchObject(GOLDEN_PRESET)
+            expect(db.pluginCustomStorage?._coldplugin).toEqual({ prefs: ID.pluginUnit })
+
+            expect(assetMem.get(ASSET_KEY)).toEqual(ASSET_BYTES)
+
+            const blob = await unitJson(ID.stubBlob) as { character: RestoredCharacter }
+            expect(blob.character.chaId).toBe('cha-stub')
+            expect(firstMessages(blob.character)).toEqual(['blob hello', coldStorageHeader + ID.blobChatUnit])
+            expect(await unitJson(ID.inlineChatUnit)).toMatchObject({ message: [{ data: 'archived inline chat', role: 'user' }] })
+            expect(await unitJson(ID.blobChatUnit)).toMatchObject({ message: [{ data: 'archived blob chat', role: 'user' }] })
+            expect(await unitJson(ID.pluginUnit)).toEqual(pluginUnit)
+
+            expect(incompleteRestorePrompts()).toEqual([])
+        })
     })
-})
 
-/**
- * The restore today installs a stub character exactly as the database holds it
- * (its `coldstorage` key, its `coldStoragedChats` and its one empty placeholder
- * chat) whatever the blob entry is, and asks the incomplete-restore question
- * naming the character. These record that behaviour only; they are not a rule
- * for any later importer.
- *
- *  - no entry, or an entry that is not JSON: the blob unit is not stored, so the
- *    blob and the chat unit its `coldStoragedChats` names are both unavailable.
- *  - an entry that is JSON of another shape, under the name the exporter writes:
- *    stored as a unit (any JSON is a unit under that name), so only the chat
- *    unit is unavailable.
- */
-describe.each([
-    ['fork-stub-missing-entry.bin', 'missing', 2],
-    ['fork-stub-bad-json.bin', 'missing', 2],
-    ['fork-stub-wrong-shape.bin', 'ok', 1],
-    ['upstream-stub-missing-entry.bin', 'missing', 2],
-    ['upstream-stub-bad-json.bin', 'missing', 2],
-    ['upstream-stub-wrong-shape.bin', 'ok', 1],
-] as const)('guard: %s restores a stub whose blob entry cannot be used', (fileName, blobStatus, unavailable) => {
-    test('the stub is installed as stored, the blob unit is as noted and one question names the character', async () => {
-        const db = await restoreBytes(readGolden(fileName))
+    describe.each(['fork-missing-unit.bin', 'upstream-missing-unit.bin'])('guard: %s keeps a pointer chat whose unit is in no entry', (fileName) => {
+        test('the pointer text stays in the first message, the unit stays absent and the character is named in the question', async () => {
+            const db = await restoreBytes(readGolden(fileName))
 
-        expect(db.characters).toHaveLength(1)
-        const stub = character(db, 'cha-stub')
-        expect(stub.name).toBe('Stub Bob')
-        expect(stub.coldstorage).toBe(ID.stubBlob)
-        expect(stub.coldStoragedChats).toEqual([ID.blobChatUnit])
-        expect(firstMessages(stub)).toEqual([''])
+            const inline = character(db, 'cha-inline')
+            expect(firstMessages(inline)).toEqual(['inline hello', coldStorageHeader + ID.missingChatUnit])
+            expect((await readColdStorageItem(ID.missingChatUnit)).status).toBe('missing')
+            expect(db.characters).toHaveLength(1)
 
-        expect((await readColdStorageItem(ID.stubBlob)).status).toBe(blobStatus)
-        expect((await readColdStorageItem(ID.blobChatUnit)).status).toBe('missing')
+            const prompts = incompleteRestorePrompts()
+            expect(prompts).toHaveLength(1)
+            expect(prompts[0]).toContain('Inline Alice')
+        })
+    })
 
-        const prompts = incompleteRestorePrompts()
-        expect(prompts).toHaveLength(1)
-        expect(prompts[0]).toContain('Stub Bob')
-        expect(prompts[0]).toContain(`${unavailable} cold storage item(s) will remain unavailable`)
+    describe('guard: upstream-plugin-object-no-entry.bin keeps an object-valued plugin mapping whose unit upstream did not export', () => {
+        test('the mapping stays, the unit stays absent and one question is asked about an item that cannot be linked to a character', async () => {
+            const db = await restoreBytes(readGolden('upstream-plugin-object-no-entry.bin'))
+
+            expect(db.pluginCustomStorage?._coldplugin).toEqual({ prefs: ID.pluginUnit })
+            expect((await readColdStorageItem(ID.pluginUnit)).status).toBe('missing')
+            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+
+            const prompts = incompleteRestorePrompts()
+            expect(prompts).toHaveLength(1)
+            expect(prompts[0]).toContain('1 item(s) could not be linked to a character')
+            expect(prompts[0]).toContain('1 cold storage item(s) will remain unavailable')
+        })
+    })
+
+    /**
+     * The restore today installs a stub character exactly as the database holds it
+     * (its `coldstorage` key, its `coldStoragedChats` and its one empty placeholder
+     * chat) whatever the blob entry is, and asks the incomplete-restore question
+     * naming the character. These record that behaviour only; they are not a rule
+     * for any later importer.
+     *
+     *  - no entry, or an entry that is not JSON: the blob unit is not stored, so the
+     *    blob and the chat unit its `coldStoragedChats` names are both unavailable.
+     *  - an entry that is JSON of another shape, under the name the exporter writes:
+     *    stored as a unit (any JSON is a unit under that name), so only the chat
+     *    unit is unavailable.
+     */
+    describe.each([
+        ['fork-stub-missing-entry.bin', 'missing', 2],
+        ['fork-stub-bad-json.bin', 'missing', 2],
+        ['fork-stub-wrong-shape.bin', 'ok', 1],
+        ['upstream-stub-missing-entry.bin', 'missing', 2],
+        ['upstream-stub-bad-json.bin', 'missing', 2],
+        ['upstream-stub-wrong-shape.bin', 'ok', 1],
+    ] as const)('guard: %s restores a stub whose blob entry cannot be used', (fileName, blobStatus, unavailable) => {
+        test('the stub is installed as stored, the blob unit is as noted and one question names the character', async () => {
+            const db = await restoreBytes(readGolden(fileName))
+
+            expect(db.characters).toHaveLength(1)
+            const stub = character(db, 'cha-stub')
+            expect(stub.name).toBe('Stub Bob')
+            expect(stub.coldstorage).toBe(ID.stubBlob)
+            expect(stub.coldStoragedChats).toEqual([ID.blobChatUnit])
+            expect(firstMessages(stub)).toEqual([''])
+
+            expect((await readColdStorageItem(ID.stubBlob)).status).toBe(blobStatus)
+            expect((await readColdStorageItem(ID.blobChatUnit)).status).toBe('missing')
+
+            const prompts = incompleteRestorePrompts()
+            expect(prompts).toHaveLength(1)
+            expect(prompts[0]).toContain('Stub Bob')
+            expect(prompts[0]).toContain(`${unavailable} cold storage item(s) will remain unavailable`)
+        })
     })
 })

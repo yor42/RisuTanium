@@ -71,11 +71,12 @@ async function openAll(backend: Store2Backend, options: { idleReason?: string | 
         sweep: refusalOf(await openDeleterGate(backend, 'sweep', options)),
         'inlay-cleanup': refusalOf(await openDeleterGate(backend, 'inlay-cleanup', options)),
         'manual-cleanup': refusalOf(await openDeleterGate(backend, 'manual-cleanup', options)),
+        cutover: refusalOf(await openDeleterGate(backend, 'cutover', options)),
     }
 }
 
 function everyDeleter(reason: GateRefusal | 'open'): Record<DeleterKind, GateRefusal | 'open'> {
-    return { gc: reason, sweep: reason, 'inlay-cleanup': reason, 'manual-cleanup': reason }
+    return { gc: reason, sweep: reason, 'inlay-cleanup': reason, 'manual-cleanup': reason, cutover: reason }
 }
 
 describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))('deleter gate on the %s backend', (_name, fixture) => {
@@ -140,13 +141,13 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
         const fencedKey = newUnitKey(env)
         await plantFence(backend, fenceOf([fencedKey]))
 
-        expect(await openAll(backend)).toEqual({ gc: 'open', sweep: 'fenced', 'inlay-cleanup': 'fenced', 'manual-cleanup': 'fenced' })
+        expect(await openAll(backend)).toEqual({ gc: 'open', sweep: 'fenced', 'inlay-cleanup': 'fenced', 'manual-cleanup': 'fenced', cutover: 'fenced' })
         const gate = await openDeleterGate(backend, 'gc')
         expect(gate.status === 'open' && [...gate.liveKeys]).toEqual([fencedKey])
         expect(gate.status === 'open' && gate.fence).toBe('fenced')
     })
 
-    test.each(['sweep', 'inlay-cleanup', 'manual-cleanup'] as const)('a standing marker of any owner over a current suspends %s, and GC stays open carrying the marker\'s prefix', async (deleter) => {
+    test.each(['sweep', 'inlay-cleanup', 'manual-cleanup', 'cutover'] as const)('a standing marker of any owner over a current suspends %s, and GC stays open carrying the marker\'s prefix', async (deleter) => {
         const backend = await open()
         await seedStore(backend, env)
         const parsed = classifyCommitRead(await backend.readCommit())

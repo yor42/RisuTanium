@@ -13,9 +13,12 @@ import {
 import { classifyCommitRead, firstCommitKey, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import { isStagingPrefix, type CommitKey } from 'src/ts/storage/store2/format'
 import {
-    installPick, pickCandidate, unmappedRefPaths, type AssetsPresent, type InlayPrefixesPresent, type InlaysPresent, type PickReady, type PickResult,
+    installPick, pickCandidate, PresenceProbeError, unmappedRefPaths, type AssetsPresent, type InlayPrefixesPresent, type InlaysPresent, type MissingCounts,
+    type PickReady, type PickResult,
 } from 'src/ts/storage/store2/recoveryPick'
 import { inlayIdFromMetaKey, inlayMetaKey } from 'src/ts/process/files/inlayKeys'
+import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
+import { createPresenceProbes } from 'src/ts/storage/store2/ui/presenceProbes'
 import { readTree } from 'src/ts/storage/store2/tree'
 import { createClock, hooked, parsedCommit, plantKey, testEnv, type Hooks } from './commitFixtures'
 import { FENCE_BACKENDS, plantCommit, traced, type OpenedBackend } from './fenceFixtures'
@@ -118,6 +121,15 @@ function expectReady(result: PickResult): PickReady {
     return result
 }
 
+/** The counts of a pick whose presence check completed. */
+function checkedCounts(counts: MissingCounts): Extract<MissingCounts, { checked: true }> {
+    expect(counts.checked).toBe(true)
+    if (!counts.checked) {
+        throw new Error('The presence check did not complete.')
+    }
+    return counts
+}
+
 async function installed(ready: PickReady): Promise<Extract<Awaited<ReturnType<typeof installPick>>, { status: 'installed' }>> {
     const result = await installPick(ready, { confirm: true })
     expect(result.status).toBe('installed')
@@ -148,7 +160,7 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
 
             expect(ready.units).toBe(planted.written.length)
             expect(ready.manifestSeq).toBe(planted.body.seq)
-            expect(ready.counts).toEqual({ missingImages: 0, missingInlays: 0, unknownLists: 0 })
+            expect(ready.counts).toEqual({ checked: true, missingImages: 0, missingInlays: 0, unknownLists: 0 })
             const stored = await parsedCommit(backend)
             expect(stored.current).toBeNull()
             expect(stored.staging).toMatchObject({ owner: ME, label: 'recovery', prefix: ready.marked.stagedPrefix })
@@ -306,7 +318,7 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             const ready = expectReady(await pickCandidate(backend, read, planted.manifestKey, options(clock, p)))
             const named = planted.assetHexes.length + planted.assetNames.length
             expect(named).toBe(12)
-            expect(ready.counts).toEqual({ missingImages: named - 5, missingInlays: planted.inlayMetaKeys.length - 1, unknownLists: 0 })
+            expect(ready.counts).toEqual({ checked: true, missingImages: named - 5, missingInlays: planted.inlayMetaKeys.length - 1, unknownLists: 0 })
         })
 
         test('an inlay hash stem is probed by its asset-path prefix: an absent inlay counts missing', async () => {
@@ -316,7 +328,7 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             const everything = allPresent(planted)
             const missingBoth = probes({ ...everything, inlays: new Set(planted.inlayMetaKeys) })
             const none = expectReady(await pickCandidate(backend, read, planted.manifestKey, options(clock, missingBoth)))
-            expect(none.counts.missingInlays).toBe(2)
+            expect(checkedCounts(none.counts).missingInlays).toBe(2)
             expect(missingBoth.prefixCalls.flat().sort()).toEqual([...planted.inlayPrefixes].sort())
         })
 
@@ -324,7 +336,7 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             const { backend, planted, read, clock } = await scene(index, { extraInlays: { hexes: [7, 8] } })
             const oneThere = probes({ ...allPresent(planted), inlays: new Set([...planted.inlayMetaKeys, `${planted.inlayPrefixes[1]}webp`]) })
             const ready = expectReady(await pickCandidate(backend, read, planted.manifestKey, options(clock, oneThere)))
-            expect(ready.counts.missingInlays).toBe(1)
+            expect(checkedCounts(ready.counts).missingInlays).toBe(1)
         })
 
         test('an inlay stored under an upper-case id is not counted missing: ids are compared case-insensitively', async () => {
@@ -334,12 +346,12 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             const others = planted.inlayMetaKeys.filter(key => !key.includes('abcdef01') && !key.includes('other-id'))
             const withUpper = probes({ assets, inlays: new Set([...others, inlayMetaKey(upperUuid) as string, inlayMetaKey('Other-ID') as string]) })
             const found = expectReady(await pickCandidate(backend, read, planted.manifestKey, options(clock, withUpper)))
-            expect(found.counts.missingInlays).toBe(0)
+            expect(checkedCounts(found.counts).missingInlays).toBe(0)
             // The same tree with those two records absent: exactly the two count.
             const second = await scene(index, { extraInlays: { u: [upperUuid], o: ['Other-ID'] } }, 4)
             const without = probes({ assets, inlays: new Set(others) })
             const missing = expectReady(await pickCandidate(second.backend, second.read, second.planted.manifestKey, options(second.clock, without)))
-            expect(missing.counts.missingInlays).toBe(2)
+            expect(checkedCounts(missing.counts).missingInlays).toBe(2)
         })
 
         test('an overflow inlay list is unknown, and the ids it does list are still counted', async () => {
@@ -347,7 +359,7 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             const p = probes({ assets: new Set([...planted.assetHexes, ...planted.assetNames]), inlays: new Set() })
             const ready = expectReady(await pickCandidate(backend, read, planted.manifestKey, options(clock, p)))
             expect(ready.counts.unknownLists).toBe(1)
-            expect(ready.counts.missingInlays).toBe(planted.inlayMetaKeys.length)
+            expect(checkedCounts(ready.counts).missingInlays).toBe(planted.inlayMetaKeys.length)
         })
 
         test('a newer-version list is unknown: its names are never probed and never counted missing', async () => {
@@ -360,7 +372,7 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             expect(asked).toContain(hexOf(11))
             expect(ready.counts.unknownLists).toBe(1)
             // Nothing present: every probed key is missing, and exactly the listed ones are probed.
-            expect(ready.counts.missingImages).toBe(asked.length)
+            expect(checkedCounts(ready.counts).missingImages).toBe(asked.length)
             expect(asked.length).toBe(planted.assetHexes.length + planted.assetNames.length - 2)
         })
 
@@ -373,6 +385,82 @@ describe.each(FENCE_BACKENDS.map((fixture, index) => [fixture.name, index] as co
             expect(asked).not.toContain('char0.png')
             expect(ready.counts.unknownLists).toBe(1)
         })
+        test.each([
+            ['the image probe', 'assetsPresent', new PresenceProbeError('list-failed', new TypeError('down'))],
+            ['the inlay probe, after the images were counted', 'inlaysPresent', new PresenceProbeError('list-failed', new TypeError('down'))],
+            ['the prefix probe, after images and inlay ids were counted', 'inlayPrefixesPresent', new PresenceProbeError('list-failed')],
+            ['a skipped image probe', 'assetsPresent', new PresenceProbeError('skipped')],
+            ['a skipped prefix probe', 'inlayPrefixesPresent', new PresenceProbeError('skipped')],
+        ] as const)('%s failing to answer gives an installable ready with unchecked counts, never a partial count', async (_label, which, failure) => {
+            const { backend, planted, read, clock } = await scene(index, { extraInlays: { hexes: [7] } })
+            const p = probes(allPresent(planted))
+            const probeOptions = { ...options(clock, p), [which]: async () => { throw failure } }
+
+            const ready = expectReady(await pickCandidate(backend, read, planted.manifestKey, probeOptions))
+
+            expect(ready.counts).toEqual({ checked: false, unknownLists: 0 })
+            expect(ready.marked.label).toBe('recovery')
+            expect((await parsedCommit(backend)).staging).toMatchObject({ label: 'recovery', prefix: ready.marked.stagedPrefix })
+            // The check ends at the first failure: a probe later in the order is not asked.
+            if (which === 'assetsPresent') {
+                expect(p.inlayCalls).toEqual([])
+                expect(p.prefixCalls).toEqual([])
+            } else if (which === 'inlaysPresent') {
+                expect(p.assetCalls.length).toBeGreaterThan(0)
+                expect(p.prefixCalls).toEqual([])
+            }
+            const result = await installed(ready)
+            expect(result.manifestKey.startsWith(ready.marked.stagedPrefix)).toBe(true)
+        })
+
+        test('an unchecked result still carries the lists that could not be trusted', async () => {
+            const { backend, planted, read, clock } = await scene(index, { newerList: 'charAl' })
+            const p = probes(allPresent(planted))
+            const ready = expectReady(await pickCandidate(backend, read, planted.manifestKey, {
+                ...options(clock, p),
+                inlaysPresent: async () => { throw new PresenceProbeError('list-failed') },
+            }))
+
+            expect(ready.counts).toEqual({ checked: false, unknownLists: 1 })
+        })
+
+        test('an error that is not a presence probe error is a defect: it escapes the pick, and the marker it had written stands', async () => {
+            const { backend, planted, read, clock } = await scene(index)
+            const p = probes(allPresent(planted))
+
+            await expect(pickCandidate(backend, read, planted.manifestKey, {
+                ...options(clock, p),
+                assetsPresent: async () => { throw new TypeError('a defect in a probe') },
+            })).rejects.toBeInstanceOf(TypeError)
+
+            expect((await parsedCommit(backend)).staging?.label).toBe('recovery')
+        })
+
+        test('the production probes over a byte store give the counts the stubs give', async () => {
+            const { backend, planted, read, clock } = await scene(index, { extraInlays: { hexes: [7, 8] } })
+            const store = createMemoryByteStore()
+            // Listed names stand for the files the lists name, except one asset, one inlay id and one stem.
+            const missingAsset = planted.assetNames[0]
+            const missingInlay = planted.inlayMetaKeys[0]
+            for (const name of [...planted.assetHexes, ...planted.assetNames]) {
+                if (name !== missingAsset) {
+                    store.files.set(`assets/${name}`, new Uint8Array([1]))
+                }
+            }
+            for (const key of planted.inlayMetaKeys) {
+                if (key !== missingInlay) {
+                    store.files.set(key, new Uint8Array([1]))
+                }
+            }
+            store.files.set(`${planted.inlayPrefixes[0]}png`, new Uint8Array([1]))
+            const real = createPresenceProbes(store)
+
+            const ready = expectReady(await pickCandidate(backend, read, planted.manifestKey, { owner: ME, env: testEnv(clock, 77), ...real.probes }))
+
+            expect(ready.counts).toEqual({ checked: true, missingImages: 1, missingInlays: 2, unknownLists: 0 })
+            expect(store.lists).toEqual(['assets/', 'inlays/m-'])
+        })
+
         test('the count runs after the fence and the marker are written', async () => {
             const { backend, planted, read, clock } = await scene(index)
             const recorded = traced(backend)

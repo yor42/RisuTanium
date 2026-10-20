@@ -120,7 +120,7 @@ describe('modelDataStore wiring', () => {
     })
 
     test('(F) S10 a page in read-only mode still fetches and shows the data but writes nothing', async () => {
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         await expect(refreshModelDataNow()).resolves.toBe('ok')
         expect(getModelContextLimit(gpt4o, db)).toBe(128000)
         expect(getModelContextLimit(gpt41, db)).toBe(1047576)

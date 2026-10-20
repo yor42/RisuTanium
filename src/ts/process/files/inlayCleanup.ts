@@ -39,6 +39,8 @@ import { isRestorableColdStorageKey, listColdBackupRoots, listInnerColdStorageKe
 import { isBusy } from "../memory/busyActions";
 import { inlayTokenRegex } from "../../util/inlayTokens";
 import { tabLockSnapshotShowsOthers } from "../../storage/storageTabLocks";
+import { pageRunsLegacyDeleters } from "../../storage/pageStorageMode";
+import { getResidency } from "../../storage/store2/residencyActive";
 
 /** Longest stretch of walking, measured by the clock, before the walk gives the event loop a turn. */
 const SLICE_MS = 40
@@ -684,7 +686,32 @@ async function findUnreferenced(
     return { unreferenced: matcher.remaining(), reason: null }
 }
 
-async function runBatch(batch: QueuedCleanup[], stats: InlayCleanupOutcome, pacer: Pacer): Promise<Disposition> {
+let inlayRefusalWarned = false
+
+/**
+ * Whether this page may delete inlays. A page with a registered store2
+ * residency never does, and neither does a page that is not a legacy or block
+ * page (`read-only`, `unset`): the keep set here knows only the legacy data, so
+ * an inlay a store2 profile still shows could be removed. The refusal is
+ * announced once per page.
+ */
+function inlayDeletionAllowed(): boolean {
+    if (getResidency() === null && pageRunsLegacyDeleters()) {
+        return true
+    }
+    if (!inlayRefusalWarned) {
+        inlayRefusalWarned = true
+        console.warn('Inlay clean-up deletes nothing on this page.')
+    }
+    return false
+}
+
+/** Lets a test see the once-per-page announcement again. */
+export function resetInlayCleanupRefusalForTests(): void {
+    inlayRefusalWarned = false
+}
+
+async function runBatch(batch: QueuedCleanup[], stats:InlayCleanupOutcome, pacer: Pacer): Promise<Disposition> {
     const database = getDatabase()
     const startMarks = getSaveMarkCount()
     const skip = (reason: string, disposition: Disposition): Disposition => {
@@ -724,6 +751,9 @@ async function runBatch(batch: QueuedCleanup[], stats: InlayCleanupOutcome, pace
         return skip('the profile changed during the walk', 'retry')
     }
 
+    if (!inlayDeletionAllowed()) {
+        return skip('inlay deletion is off on this page', 'done')
+    }
     const { removeInlayAsset } = await pacer.io(import("./inlays"))
     for (const id of keep.unreferenced) {
         const state = await pacer.io(tabState())

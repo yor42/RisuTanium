@@ -166,3 +166,85 @@ export async function writePluginStorageValue(
         liveDb.pluginCustomStorage._coldplugin[key] = coldId
     }
 }
+
+/**
+ * On a store2 page a plugin slot's value is the entry `pluginCustomStorage[<unit id>]`, next to the
+ * `_coldplugin` map that names the unit id; no legacy cold unit is involved. The reader and writer
+ * below take the place of `readColdStorageItem` and `setColdStorageItem` in the two cores above. The
+ * value crosses in both directions as JSON, as it did through a cold unit: the plugin never holds a
+ * reference into the reactive database, and a value that is not JSON is a failed write.
+ */
+export function readPluginUnitFromDb(getLiveDb: () => PluginColdStorageDb): (coldId: string) => Promise<ColdStorageReadResult> {
+    return async (coldId) => {
+        const storage = getLiveDb().pluginCustomStorage
+        if (!storage || coldId === '_coldplugin' || !Object.hasOwn(storage, coldId)) {
+            return { status: 'missing' }
+        }
+        try {
+            const json = JSON.stringify(storage[coldId])
+            return { status: 'ok', value: json === undefined ? null : JSON.parse(json) }
+        } catch (error) {
+            return { status: 'error', error }
+        }
+    }
+}
+
+export function writePluginUnitToDb(getLiveDb: () => PluginColdStorageDb): (coldId: string, value: unknown) => Promise<boolean> {
+    return async (coldId, value) => {
+        if (coldId === '_coldplugin') {
+            return false
+        }
+        let copy: unknown
+        try {
+            copy = JSON.parse(JSON.stringify(value))
+        } catch (error) {
+            console.error('Plugin storage write refused: the value is not JSON:', error)
+            return false
+        }
+        const liveDb = getLiveDb()
+        liveDb.pluginCustomStorage ??= {}
+        liveDb.pluginCustomStorage[coldId] = copy
+        return true
+    }
+}
+
+/**
+ * Drops the stored value of a unit id that no remaining slot maps to. Only a store2 page has the value
+ * in the database; a legacy page leaves the cold unit where it is.
+ */
+function dropPluginUnitValue(db: PluginColdStorageDb, coldId: string | undefined): void {
+    const storage = db.pluginCustomStorage
+    if (!storage || !coldId || coldId === '_coldplugin') {
+        return
+    }
+    const mapping = storage._coldplugin
+    if (mapping && Object.values(mapping).includes(coldId)) {
+        return
+    }
+    delete storage[coldId]
+}
+
+/** `pluginStorage.removeItem`: the slot goes, and on a store2 page so does its value. */
+export function removePluginStorageValue(db: PluginColdStorageDb, key: string, store2: boolean): void {
+    const mapping = db.pluginCustomStorage?._coldplugin
+    if (!mapping) {
+        return
+    }
+    const coldId = mapping[key]
+    delete mapping[key]
+    if (store2) {
+        dropPluginUnitValue(db, coldId)
+    }
+}
+
+/** `pluginStorage.clear`: every slot goes, and on a store2 page so does every value. */
+export function clearPluginStorageValues(db: PluginColdStorageDb, store2: boolean): void {
+    db.pluginCustomStorage ??= {}
+    const previous = db.pluginCustomStorage._coldplugin
+    db.pluginCustomStorage._coldplugin = {}
+    if (store2 && previous) {
+        for (const coldId of Object.values(previous)) {
+            dropPluginUnitValue(db, coldId)
+        }
+    }
+}

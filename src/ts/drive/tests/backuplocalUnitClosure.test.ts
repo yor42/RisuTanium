@@ -372,8 +372,8 @@ function unitName(key: string): string {
     return `coldstorage_${key}.json`
 }
 
-/** Runs a save and returns what it threw, or `null` when it completed. */
-async function outcomeOf(run: () => Promise<void>): Promise<unknown> {
+/** Runs a save and returns what it threw, or `null` when it completed. The writers' typed outcome is not what this reports. */
+async function outcomeOf(run: () => Promise<unknown>): Promise<unknown> {
     return run().then(() => null, (error: unknown) => error)
 }
 
@@ -849,7 +849,7 @@ describe('restore acceptance of entries that are not written under the backup wr
     })
 })
 
-const SAVES: [string, () => Promise<void>][] = [
+const SAVES: [string, () => Promise<unknown>][] = [
     ['SaveLocalBackup', SaveLocalBackup],
     ['SavePartialLocalBackup', SavePartialLocalBackup],
 ]

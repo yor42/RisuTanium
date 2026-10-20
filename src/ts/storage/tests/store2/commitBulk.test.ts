@@ -213,6 +213,42 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             await expectInvariant(raw)
         })
 
+        test('a forced bulk commit keeps the previous current inside the admission window, and the same request without force does not', async () => {
+            const { raw, a, clock, m0 } = await setup()
+            const m1 = expectCommitted(await a.commit(await a.readCommit(), treeRequest(BULK_MIN, { tag: 'first' }))).manifestKey
+            expect((await parsedCommit(raw)).retained.map(entry => entry.key)).toEqual([m0])
+            clock.advance(1000)
+            const plain = expectCommitted(await a.commit(await a.readCommit(), treeRequest(BULK_MIN, { tag: 'plain' })))
+            expect(plain.mode).toBe('bulk')
+            expect((await parsedCommit(raw)).retained.map(entry => entry.key)).toEqual([m0])
+            clock.advance(1000)
+            const forced = expectCommitted(await a.commit(await a.readCommit(), { ...treeRequest(BULK_MIN, { tag: 'forced' }), force: true }))
+            expect(forced.mode).toBe('bulk')
+            const key = await parsedCommit(raw)
+            expect(key.current?.key).toBe(forced.manifestKey)
+            expect(key.retained.map(entry => entry.key)).toEqual([plain.manifestKey, m0])
+            expect(m1).not.toBe(plain.manifestKey)
+            await expectInvariant(raw)
+        })
+
+        test('compatibility guard: a forced bulk commit over a peer\'s commit made while the marker stands keeps both the peer\'s manifest and the replaced one (the changed-current rule already does this; it does not reproduce force)', async () => {
+            const hooks: Hooks = {}
+            const { raw, wrapped, clock, m0 } = await setup(hooks)
+            const peer = committerOf(raw, clock, 200)
+            let peerManifest = ''
+            hooks.before = async (call, count) => {
+                if (call === 'putUnit' && count === 2) {
+                    peerManifest = expectCommitted(await peer.commit(await peer.readCommit(), treeRequest(0, { tag: 'peer' }))).manifestKey
+                }
+            }
+            const a = committerOf(wrapped.backend, clock, 100)
+            const result = expectCommitted(await a.commit(await a.readCommit(), { ...treeRequest(BULK_MIN), force: true }))
+            const key = await parsedCommit(raw)
+            expect(key.current?.key).toBe(result.manifestKey)
+            expect(key.retained.map(entry => entry.key)).toEqual([peerManifest, m0])
+            await expectInvariant(raw)
+        })
+
         test('another party\'s pin during the upload changes the key but not the marker: the final write is made again on a fresh read and keeps the pin', async () => {
             const hooks: Hooks = {}
             const { raw, a, env, m0 } = await setup(hooks)

@@ -32,7 +32,11 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'windows' }))
 
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
-import { createTauriBackend } from 'src/ts/storage/store2/backend'
+import { createNodeBackend, createTauriBackend } from 'src/ts/storage/store2/backend'
+import type { ByteStore } from 'src/ts/storage/store/contract'
+import { NodeHttpError } from 'src/ts/storage/store/nodeHttpStore'
+import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
+import { createNodeSemanticStore } from './replay/nodeSemanticStore'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import {
     Store2BackendFailureError, Store2UnitConflictError, Store2UnknownOutcomeError, type Store2Backend,
@@ -688,5 +692,106 @@ describe('GC pass on the Tauri backend (desktop stand-ins)', () => {
         }
         expect(await exists(backend, junk)).toBe(false)
         await expectInvariant(backend)
+    })
+})
+
+describe('GC pass: a rate-limited Node server (a 429 that outlasts the client\'s own retries)', () => {
+    interface Rules {
+        /** Every retire request answers 429 from this call on (1-based); 0 for never. */
+        retireFrom: number
+        /** Every read of a unit key answers 429. */
+        unitReads: boolean
+        /** The status the retire request answers. */
+        retireStatus: number
+    }
+
+    /** A Node backend over the semantic store whose requests answer as `rules` say, and a second backend over the same store that never fails. */
+    function rig(rules: Rules) {
+        const semantic = createNodeSemanticStore()
+        const guarded = semantic.store.guarded
+        if (guarded === undefined) {
+            throw new Error('The semantic store offers no guarded operations.')
+        }
+        let retires = 0
+        const store: ByteStore = {
+            ...semantic.store,
+            guarded: {
+                ...guarded,
+                retireChecked: async (...args: Parameters<typeof guarded.retireChecked>) => {
+                    retires++
+                    if (rules.retireFrom > 0 && retires >= rules.retireFrom) {
+                        throw new NodeHttpError(rules.retireStatus, 'remove')
+                    }
+                    return await guarded.retireChecked(...args)
+                },
+            },
+            read: async key => {
+                if (rules.unitReads && key !== COMMIT_KEY && key !== FENCE_KEY) {
+                    throw new NodeHttpError(429, 'read')
+                }
+                return await semantic.store.read(key)
+            },
+        }
+        return { semantic, limited: createNodeBackend(store), plain: createNodeBackend(semantic.store), probe: () => guarded.probe() }
+    }
+
+    const depsFor = (limited: Store2Backend, probe: GcDeps['probe']): GcDeps => ({ backend: limited, kind: 'node', idleReason: () => null, probe })
+
+    test('reproducer: the first removal batch answers 429: the pass stops as a backend failure, the commit key and every other key are as they were', async () => {
+        const { semantic, limited, plain, probe } = rig({ retireFrom: 1, unitReads: false, retireStatus: 429 })
+        await seedStore(plain, env)
+        const junk = [await orphan(plain), await orphan(plain)]
+        const commitBefore = semantic.peek(COMMIT_KEY)
+        const before = semantic.snapshot()
+
+        const result = done(await gcPass(depsFor(limited, probe)))
+
+        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'backend-failure' })
+        expect(semantic.peek(COMMIT_KEY)).toEqual(commitBefore)
+        expect(semantic.snapshot()).toEqual(before)
+        for (const key of junk) {
+            expect(await exists(plain, key)).toBe(true)
+        }
+        await expectInvariant(plain)
+    })
+
+    test('reproducer: a 429 on a later batch keeps what the first batch deleted, stops there and deletes nothing more', async () => {
+        const { semantic, limited, plain, probe } = rig({ retireFrom: 2, unitReads: false, retireStatus: 429 })
+        await seedStore(plain, env)
+        const junk: string[] = []
+        for (let i = 0; i < 30; i++) {
+            junk.push(await orphan(plain))
+        }
+        const commitBefore = semantic.peek(COMMIT_KEY)
+
+        const result = done(await gcPass(depsFor(limited, probe)))
+
+        expect(result).toEqual({ status: 'done', deleted: 25, batches: 1, stopped: 'backend-failure' })
+        expect(semantic.peek(COMMIT_KEY)).toEqual(commitBefore)
+        expect((await plain.listStore2()).filter(key => junk.includes(key))).toHaveLength(5)
+        await expectInvariant(plain)
+    })
+
+    test('guard: a status that may have applied the request (500) is an unknown outcome, not a definite failure', async () => {
+        const { limited, plain, probe } = rig({ retireFrom: 1, unitReads: false, retireStatus: 500 })
+        await seedStore(plain, env)
+        await orphan(plain)
+
+        const result = done(await gcPass(depsFor(limited, probe)))
+
+        expect(result).toMatchObject({ deleted: 0, batches: 0, stopped: 'unknown-outcome', commitMoved: false })
+    })
+
+    test('reproducer: a mark read that answers 429 refuses the pass and deletes nothing', async () => {
+        const { semantic, limited, plain, probe } = rig({ retireFrom: 0, unitReads: true, retireStatus: 429 })
+        await seedStore(plain, env)
+        const junk = await orphan(plain)
+        const before = semantic.snapshot()
+
+        const result = await gcPass(depsFor(limited, probe))
+
+        expect(result.status === 'refused' && result.reason).toBe('mark-refused')
+        expect(semantic.snapshot()).toEqual(before)
+        expect(await exists(plain, junk)).toBe(true)
     })
 })

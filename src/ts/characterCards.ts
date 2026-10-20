@@ -28,6 +28,7 @@ import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
 import { canBootArchive } from "./process/memory/bootArchiveState"
+import { getResidency } from "./storage/store2/residencyActive"
 import { applyCharacterDefaults, resetChatStreamingState } from "./storage/characterDefaults"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 
@@ -78,7 +79,7 @@ async function archiveImportedCharacter(char:character, run:ImportArchiveRun):Pr
 //Without a run, or when archiving cannot run, the card is pushed live.
 async function addImportedCharacter(char:character, run:ImportArchiveRun|null):Promise<number> {
     markBootWrite()
-    if(run && run.failuresInRow < MAX_ARCHIVE_FAILURES_IN_ROW && canBootArchive() && DBState.db.archiveCharacters === true){
+    if(run && getResidency() === null && run.failuresInRow < MAX_ARCHIVE_FAILURES_IN_ROW && canBootArchive() && DBState.db.archiveCharacters === true){
         const archived = await archiveImportedCharacter(char, run)
         if(archived !== null){
             return archived

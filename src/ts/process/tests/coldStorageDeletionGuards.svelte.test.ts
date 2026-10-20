@@ -486,6 +486,7 @@ import { doingChat } from '../index.svelte'
 import { sweepTauriAssets, sweepForageAssetKey } from '../../storage/assetSweep'
 import { RisuSaveEncoder } from '../../storage/risuSave'
 import { recordLoadTimeListing } from '../../storage/loadTimeListing'
+import { resetPageStorageModeForTests, setPageStorageMode } from '../../storage/pageStorageMode'
 import { noteMainFileBytes } from '../../storage/mainFileRecord'
 import { readDir, remove, BaseDirectory, readFile as tauriReadFile, exists as tauriExists } from '@tauri-apps/plugin-fs'
 import { DBState, selectedCharID, frozenSaveKeysStore } from '../../stores.svelte'
@@ -498,6 +499,11 @@ const webByteStore = createForageBackedStore(forageStorage as unknown as ForageL
 const tauriByteStore = createTauriFilesStore({ platform: 'posix' })
 beforeEach(() => {
     injectAppStore(createSwitchedStore(() => platformState.isTauri ? tauriByteStore : webByteStore))
+    // The clean-up runs only on a legacy or block page.
+    setPageStorageMode({ kind: 'block' })
+})
+afterEach(() => {
+    resetPageStorageModeForTests()
 })
 
 //#region shared fixture helpers

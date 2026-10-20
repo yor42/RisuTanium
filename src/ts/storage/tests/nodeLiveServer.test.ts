@@ -10,7 +10,9 @@
  * current server; the unpatched-server tests are reproducers of the refusal
  * behaviour, red against the current server (shown by a mutant outside the tree
  * that swaps the extracted build for the current script). The stub-proxy tests are
- * compatibility guards: any correct client passes them.
+ * compatibility guards: any correct client passes them. The 429 tests on the write side are new-behaviour guards of the
+ * current server and client (a 429 is answered before anything is applied, so a refused write is a definite failure);
+ * their failure modes are shown by mutants of the committer and the loop, outside the tree.
  *
  * Environment: RISU_LIVE_SECONDS (default 30) sets the length of the live run (extended in short
  * slices, up to three times that length, while the collector has applied no batch),
@@ -19,11 +21,12 @@
  * OS temp directory and are skipped, under a name that says why, when git or a
  * commit is not available.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { readFile, writeFile } from 'node:fs/promises'
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest'
 import { ServerLacksCapabilityError, StoreCheckListTooLongError, StoreOutcomeUnknownError } from 'src/ts/storage/store/errors'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore, type FetchLike } from 'src/ts/storage/store/nodeHttpStore'
-import { createNodeBackend, Store2BackendFailureError, Store2UnknownOutcomeError, type Store2Backend } from 'src/ts/storage/store2/backend'
+import { BULK_UNIT_THRESHOLD, createNodeBackend, Store2BackendFailureError, Store2UnknownOutcomeError, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { createCommitter, type BuildContext } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, firstCommitKey, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import {
@@ -34,12 +37,20 @@ import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { startGuardedProxy, type GuardedProxy } from './nodeGuardedProxy'
-import { headerLimitArgs, startNodeServer, type NodeServerFixture } from './nodeServerFixture'
+import { hexOfKey, headerLimitArgs, startNodeServer, type NodeServerFixture } from './nodeServerFixture'
 import {
-    createObserver, extractServer, gitHistoryUnavailable, openLiveClient, RESTART_MARGIN_MS, RetireWindow, runLiveWorkload, saveDirectoryContents, Tally,
+    createObserver, extractServer, gitHistoryUnavailable, guardedKindOf, openLiveClient, RESTART_MARGIN_MS, RetireWindow, runLiveWorkload, saveDirectoryContents, Tally,
     type ExtractedServer, type Observer,
 } from './nodeLiveServerFixture'
 import { buildTree, treeRequest, type BuildRecord } from './store2/commitFixtures'
+import { buildSmall } from './store2/codecFixtures'
+import { previousFrom } from 'src/ts/storage/store2/codec'
+import { runStore2SaveLoop, type Store2LoopPort } from 'src/ts/storage/store2/saveLoop'
+import type { Store2SaveContext } from 'src/ts/storage/store2/saveActive'
+import type { Database } from 'src/ts/storage/database.svelte'
+import type { toSaveType } from 'src/ts/storage/risuSave'
+import { until } from './saveLoopWorld'
+import { createPeerDouble, fakeLists, seedTree } from './store2SaveKit'
 
 function numberFromEnv(name: string, fallback: number, min: number, max: number): number {
     const raw = process.env[name]
@@ -239,6 +250,371 @@ describe('a real 431 from the server\'s own header limit', () => {
         expect((await store.read(COMMIT_KEY)).bytes).toEqual(bytes(1))
         for (const unit of units) {
             expect((await store.read(unit.key)).bytes).toEqual(bytes(7))
+        }
+    }, 120_000)
+})
+
+// ---- a real 429 ----
+
+const CURRENT_BUILD_UNAVAILABLE = gitHistoryUnavailable(['HEAD'])
+const describeLimited = CURRENT_BUILD_UNAVAILABLE === null ? describe : describe.skip
+
+// The storage routes' limiter, found by its name and not by its figure: the asset limiter beside it has the same one.
+const STORAGE_LIMITER_MAX = /(const storageRouteLimiter = rateLimit\(\{[^}]*?)max: 20000,/
+
+describeLimited(CURRENT_BUILD_UNAVAILABLE === null ? 'a real 429 from the server\'s storage limiter' : `a real 429 from the server's storage limiter (skipped: ${CURRENT_BUILD_UNAVAILABLE})`, () => {
+    let extracted: ExtractedServer | undefined
+    let fixture: NodeServerFixture | undefined
+
+    afterAll(async () => {
+        await fixture?.stop()
+        await extracted?.dispose()
+    }, 30_000)
+
+    test('a removal or a mark read that is answered 429 past the client\'s retries stops the pass with nothing deleted, and I1 holds', async () => {
+        // The current server, extracted read-only from git into a temporary directory, with the storage limiter alone refusing
+        // every request that carries a test header. Nothing under `server/node/` changes.
+        extracted = await extractServer('HEAD')
+        const original = await readFile(extracted.script, 'utf8')
+        expect(original.match(/max: 20000,/g)).toHaveLength(2)
+        const patched = original.replace(STORAGE_LIMITER_MAX, '$1max: (req) => (req.headers[\'x-test-deny\'] === \'1\' ? 0 : 20000),')
+        expect(patched).not.toBe(original)
+        expect(patched.match(/max: 20000,/g)).toHaveLength(1)
+        await writeFile(extracted.script, patched)
+        const live = await startNodeServer({ serverScript: extracted.script })
+        fixture = live
+
+        const env = defaultKeyEnv
+        const seeded = await buildSeed(openLiveClient(live, 'direct', env).store, env)
+        const watcher = createNodeHttpStore({ baseUrl: live.baseUrl, authHeader: () => live.authHeader() })
+        const observer = createObserver(watcher, new RetireWindow(), new Tally())
+        await observer.check('seed')
+
+        const deny = { removals: false, unitReads: false }
+        const counts = { answered429: 0, slept: 0 }
+        const topLevel = new Set([hexOfKey(COMMIT_KEY), hexOfKey(FENCE_KEY)])
+        const denying: FetchLike = async (url, init) => {
+            const kind = guardedKindOf(url, init)
+            const headers = new Headers(init?.headers)
+            const targeted = (deny.removals && kind === 'remove-checked') || (deny.unitReads && kind === 'read' && !topLevel.has(headers.get('file-path') ?? ''))
+            if (targeted) {
+                headers.set('x-test-deny', '1')
+            }
+            const response = await fetch(url, { ...init, headers })
+            if (response.status === 429) {
+                counts.answered429++
+            }
+            return response
+        }
+        // The client retries a 429; its wait is injected, so the five tries are spent at once and the last 429 reaches the caller.
+        const store = createNodeHttpStore({
+            baseUrl: live.baseUrl,
+            authHeader: () => live.authHeader(),
+            fetch: denying,
+            sleep: async () => { counts.slept++ },
+        })
+        const guarded = store.guarded
+        if (guarded === undefined) {
+            throw new Error('The Node store offers no guarded operations.')
+        }
+        const backend = createNodeBackend(store)
+        const pass = () => gcPass({ backend, kind: 'node', idleReason: () => null, probe: () => guarded.probe() })
+        const expectI1 = async (label: string) => {
+            await observer.check(label)
+            expect(observer.violations).toEqual([])
+            const outcome = await observer.snapshot()
+            expect(outcome.status).toBe('stable')
+            expect(outcome.status === 'stable' ? outcome.snapshot.missing : null).toEqual([])
+        }
+        const before = await saveDirectoryContents(live)
+        const commitBefore = (await watcher.read(COMMIT_KEY)).bytes
+
+        // The removal batch is refused: a definite failure, and the first batch deleted nothing.
+        deny.removals = true
+        const removalAnswers = counts.answered429
+        const refusedRemoval = await pass()
+        expect(counts.answered429 - removalAnswers).toBeGreaterThanOrEqual(5)
+        expect(counts.slept).toBeGreaterThanOrEqual(4)
+        expect(refusedRemoval).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'backend-failure' })
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        expect(await saveDirectoryContents(live)).toEqual(before)
+        await expectI1('after the refused removal')
+
+        // The mark's unit reads are refused: the pass is refused before any batch.
+        deny.removals = false
+        deny.unitReads = true
+        const readAnswers = counts.answered429
+        const refusedMark = await pass()
+        expect(counts.answered429 - readAnswers).toBeGreaterThanOrEqual(5)
+        expect(refusedMark).toMatchObject({ status: 'refused', reason: 'mark-refused' })
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        expect(await saveDirectoryContents(live)).toEqual(before)
+        await expectI1('after the refused mark')
+
+        // Control: the same client and server, nothing refused, collect exactly the two orphans.
+        deny.unitReads = false
+        expect(await pass()).toEqual({ status: 'done', deleted: seeded.orphans.length, batches: 1 })
+        for (const key of seeded.orphans) {
+            expect((await watcher.read(key)).bytes).toBeNull()
+        }
+        await expectI1('after the control pass')
+    }, 120_000)
+})
+
+// ---- a real 429 on the write side ----
+
+describeLimited(CURRENT_BUILD_UNAVAILABLE === null ? 'a real 429 on the write side: unit writes and commit-key writes' : `a real 429 on the write side (skipped: ${CURRENT_BUILD_UNAVAILABLE})`, () => {
+    // Every test opens its own server; each is stopped and its extracted copy removed after that test, so none outlives it.
+    const opened: { extracted: ExtractedServer, fixture: NodeServerFixture | undefined }[] = []
+
+    afterEach(async () => {
+        for (const entry of opened.splice(0)) {
+            await entry.fixture?.stop()
+            await entry.extracted.dispose()
+        }
+    }, 30_000)
+
+    /** The current server with the storage limiter refusing requests that carry the test header, a seeded store and a committer whose client sends it for the kinds `deny` names. */
+    async function openLimited(database?: Database) {
+        const extracted = await extractServer('HEAD')
+        const entry: { extracted: ExtractedServer, fixture: NodeServerFixture | undefined } = { extracted, fixture: undefined }
+        opened.push(entry)
+        const original = await readFile(extracted.script, 'utf8')
+        expect(original.match(/max: 20000,/g)).toHaveLength(2)
+        const patched = original.replace(STORAGE_LIMITER_MAX, '$1max: (req) => (req.headers[\'x-test-deny\'] === \'1\' ? 0 : 20000),')
+        expect(patched).not.toBe(original)
+        expect(patched.match(/max: 20000,/g)).toHaveLength(1)
+        await writeFile(extracted.script, patched)
+        const live = await startNodeServer({ serverScript: extracted.script })
+        entry.fixture = live
+
+        const env = defaultKeyEnv
+        const direct = openLiveClient(live, 'direct', env)
+        // A database seeds the tree of the page's own save loop; without one, two plain trees and two orphans.
+        const seededTree = database === undefined ? undefined : await seedTree(direct.backend, database, env, fakeLists)
+        const seeded = seededTree === undefined ? await buildSeed(direct.store, env) : undefined
+        const watcher = createNodeHttpStore({ baseUrl: live.baseUrl, authHeader: () => live.authHeader() })
+        const observer = createObserver(watcher, new RetireWindow(), new Tally())
+        await observer.check('seed')
+
+        // `kinds` are refused from the start; `afterFirstCommitWrite` lets one commit-key write through and refuses every later one.
+        const deny = { kinds: new Set<string>(), afterFirstCommitWrite: false, commitWritesLanded: 0 }
+        const counts = { answered429: 0, slept: 0 }
+        const denying: FetchLike = async (url, init) => {
+            const kind = guardedKindOf(url, init)
+            const headers = new Headers(init?.headers)
+            if (deny.kinds.has(kind) || (deny.afterFirstCommitWrite && kind === 'commit-write' && deny.commitWritesLanded >= 1)) {
+                headers.set('x-test-deny', '1')
+            }
+            const response = await fetch(url, { ...init, headers })
+            if (response.status === 429) {
+                counts.answered429++
+            } else if (kind === 'commit-write' && response.ok) {
+                deny.commitWritesLanded++
+            }
+            return response
+        }
+        // The client retries a 429; its wait is injected, so the tries are spent at once and the last 429 reaches the caller.
+        const store = createNodeHttpStore({ baseUrl: live.baseUrl, authHeader: () => live.authHeader(), fetch: denying, sleep: async () => { counts.slept++ } })
+        const backend = createNodeBackend(store)
+        const owner = freshOwnerId(env)
+        const committer = createCommitter(backend, { owner, env })
+        const expectI1 = async (label: string) => {
+            await observer.check(label)
+            expect(observer.violations).toEqual([])
+            const outcome = await observer.snapshot()
+            expect(outcome.status).toBe('stable')
+            expect(outcome.status === 'stable' ? outcome.snapshot.missing : null).toEqual([])
+        }
+        return { live, seeded, seededTree, watcher, deny, counts, committer, owner, env, expectI1 }
+    }
+
+    // New behaviour against the current server: a write answered 429 past the client's tries is a definite failure (`NOTHING_APPLIED_STATUSES`),
+    // so the commit reports `failed`, the commit key is byte-identical, and the next pass after the limiter lifts commits.
+    test('a unit write or a commit-key write answered 429 past the client\'s tries leaves the commit key unchanged, I1 holds, and the next pass commits', async () => {
+        const { watcher, deny, counts, committer, expectI1 } = await openLimited()
+        const commitBefore = (await watcher.read(COMMIT_KEY)).bytes
+        const tryCommit = async (extra: number, tag: string) => await committer.commit(await committer.readCommit(), treeRequest(extra, { tag }))
+
+        // An ordinary commit whose unit uploads are refused.
+        deny.kinds = new Set(['unit-write'])
+        let answers = counts.answered429
+        const refusedUnits = await tryCommit(0, 'u')
+        expect(counts.answered429 - answers).toBeGreaterThanOrEqual(5)
+        expect(refusedUnits.status).toBe('failed')
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        await expectI1('after the refused unit write')
+
+        // An ordinary commit whose commit-key write is refused.
+        deny.kinds = new Set(['commit-write'])
+        answers = counts.answered429
+        const refusedCommit = await tryCommit(0, 'c')
+        expect(counts.answered429 - answers).toBeGreaterThanOrEqual(5)
+        expect(refusedCommit.status).toBe('failed')
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        await expectI1('after the refused commit-key write')
+
+        // A bulk commit whose marker write is refused: nothing is staged and no marker stands.
+        answers = counts.answered429
+        const refusedMarker = await tryCommit(BULK_UNIT_THRESHOLD - 8, 'b')
+        expect(counts.answered429 - answers).toBeGreaterThanOrEqual(5)
+        expect(refusedMarker.status).toBe('failed')
+        expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+        await expectI1('after the refused marker write')
+
+        // The limiter lifts: the next pass commits, ordinary and bulk.
+        deny.kinds = new Set()
+        const ordinary = await tryCommit(0, 'ok-ordinary')
+        expect(ordinary.status).toBe('committed')
+        await expectI1('after the ordinary commit')
+        const bulk = await tryCommit(BULK_UNIT_THRESHOLD - 8, 'ok-bulk')
+        expect(bulk).toMatchObject({ status: 'committed', mode: 'bulk' })
+        const landed = classifyCommitRead(await watcher.read(COMMIT_KEY))
+        expect(landed.status === 'parsed' ? [landed.value.current?.key, landed.value.staging] : landed.status).toEqual([bulk.status === 'committed' ? bulk.manifestKey : null, null])
+        await expectI1('after the bulk commit')
+        expect(counts.slept).toBeGreaterThanOrEqual(12)
+    }, 120_000)
+
+    // New behaviour: a bulk commit whose marker landed and whose later commit-key writes are refused leaves its marker standing
+    // (the clear is refused too); the marker is its own owner's, a peer's bulk commit is refused while it stands, and the owner clears it
+    // once the limiter lifts. A bulk commit whose unit uploads are refused clears its own marker in the same call.
+    test('a bulk marker left by refused commit-key writes is the owner\'s to clear; refused unit uploads clear it at once', async () => {
+        const { live, watcher, deny, counts, committer, owner, expectI1 } = await openLimited()
+        const commitBefore = (await watcher.read(COMMIT_KEY)).bytes
+        const bulkRequest = (tag: string) => treeRequest(BULK_UNIT_THRESHOLD - 8, { tag })
+
+        // The marker lands, then the final write and the clear are both refused.
+        deny.afterFirstCommitWrite = true
+        const answers = counts.answered429
+        const stranded = await committer.commit(await committer.readCommit(), bulkRequest('stranded'))
+        expect(counts.answered429 - answers).toBeGreaterThanOrEqual(10)
+        expect(stranded).toMatchObject({ status: 'abandoned', reason: 'upload-failed', cleared: { status: 'failed' } })
+        const standing = classifyCommitRead(await watcher.read(COMMIT_KEY))
+        expect(standing.status).toBe('parsed')
+        const marker = standing.status === 'parsed' ? standing.value.staging : null
+        expect(marker?.owner).toBe(owner)
+        await expectI1('with the marker standing')
+
+        // The limiter lifts. Another owner's bulk commit is refused by the standing marker; the owner clears its own.
+        deny.afterFirstCommitWrite = false
+        const peer = createCommitter(createNodeBackend(createNodeHttpStore({ baseUrl: live.baseUrl, authHeader: () => live.authHeader() })), { owner: freshOwnerId(defaultKeyEnv), env: defaultKeyEnv })
+        const refused = await peer.commit(await peer.readCommit(), bulkRequest('peer'))
+        expect(refused).toMatchObject({ status: 'refused', reason: 'marker-present' })
+        const cleared = await committer.abandonClear(await committer.readCommit(), owner, marker?.prefix ?? '')
+        expect(cleared.status).toBe('cleared')
+        const after = classifyCommitRead(await watcher.read(COMMIT_KEY))
+        const first = classifyCommitRead({ bytes: commitBefore })
+        expect(after.status === 'parsed' && first.status === 'parsed' ? [after.value.staging, after.value.current?.key] : 'unparsed').toEqual([null, first.status === 'parsed' ? first.value.current?.key : 'unparsed'])
+        await expectI1('after the owner\'s clear')
+
+        // The marker landed and every unit upload is refused: the bulk commit clears its own marker before it returns.
+        deny.kinds = new Set(['unit-write'])
+        const selfCleared = await committer.commit(await committer.readCommit(), bulkRequest('self-cleared'))
+        expect(selfCleared).toMatchObject({ status: 'abandoned', reason: 'upload-failed', cleared: { status: 'cleared' } })
+        const clean = classifyCommitRead(await watcher.read(COMMIT_KEY))
+        expect(clean.status === 'parsed' ? clean.value.staging : clean.status).toBeNull()
+        await expectI1('after the self-cleared bulk')
+
+        // And the next pass commits.
+        deny.kinds = new Set()
+        const next = await committer.commit(await committer.readCommit(), bulkRequest('next'))
+        expect(next).toMatchObject({ status: 'committed', mode: 'bulk' })
+        await expectI1('after the next bulk commit')
+    }, 120_000)
+
+    // New behaviour against the current server: the page's own save loop, over the live Node backend, reports the refused write as a
+    // failed save, keeps the edit, retries while the limiter refuses, and commits it once the limiter lifts.
+    test('the save loop reports a save whose commit-key write is answered 429, retries it, and commits the edit once the limiter lifts', async () => {
+        const database = JSON.parse(JSON.stringify(buildSmall(3))) as Database
+        const { watcher, deny, counts, committer, env, seededTree, expectI1 } = await openLimited(database)
+        if (seededTree === undefined) {
+            throw new Error('The database was not seeded.')
+        }
+        const previous = previousFrom(seededTree.tree)
+        const live = JSON.parse(JSON.stringify(database)) as Database
+        const state = { due: false, dirty: false, saved: 0, stopped: false }
+        const failures: Array<{ error: unknown, attempts: number }> = []
+        const crashed: unknown[] = []
+        const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
+        const reloadFlag = { state: false }
+        let tail: Promise<void> = Promise.resolve()
+        const idle = () => new Promise<void>((resolve) => { if (!state.stopped) { setTimeout(resolve, 2) } })
+        const port: Store2LoopPort = {
+            tracker,
+            reloadFlag,
+            getDatabase: () => live,
+            mergeBack(target, snapshot) {
+                for (const chaId of snapshot.character) {
+                    if (!target.character.includes(chaId)) {
+                        target.character.push(chaId)
+                    }
+                }
+            },
+            liveCheck: () => {},
+            sweep: () => {},
+            isDue: () => state.due,
+            isDirty: () => state.dirty,
+            hasDrafts: () => false,
+            beginIteration() { state.due = false },
+            endIteration() {},
+            snapshotTaken() { state.dirty = false },
+            requestPass() { state.dirty = true; state.due = true },
+            saved() { state.saved += 1 },
+            broadcast() {},
+            peerHeard: () => false,
+            setStopped() {},
+            reportFailure(error, attempts) {
+                failures.push({ error, attempts })
+                return 1
+            },
+            reportUncountedFailure: () => 1,
+            async withWriteLock(run) {
+                const before = tail
+                let release: () => void = () => {}
+                tail = new Promise<void>((resolve) => { release = resolve })
+                await before
+                try {
+                    return await run()
+                } finally {
+                    release()
+                }
+            },
+            wait: idle,
+            sleep: () => idle(),
+            sleepForever: () => new Promise<never>(() => {}),
+            now: () => Date.now(),
+        }
+        const context: Store2SaveContext = { session: { kind: 'node', committer }, previous, lists: fakeLists, env, peer: createPeerDouble(), idleNet: null }
+        const running = runStore2SaveLoop(context, port).catch((error: unknown) => { crashed.push(error) })
+        try {
+            const commitBefore = (await watcher.read(COMMIT_KEY)).bytes
+            const answers = counts.answered429
+
+            // One edit, saved while every commit-key write is refused.
+            deny.kinds = new Set(['commit-write'])
+            ;(live.characters[0] as unknown as { name: string }).name = 'edited under a 429'
+            tracker.character.push(String((live.characters[0] as unknown as { chaId: string }).chaId))
+            state.dirty = true
+            state.due = true
+            await until(() => failures.length >= 2, 'two reported failures', 20_000)
+            expect(state.saved).toBe(0)
+            expect(counts.answered429 - answers).toBeGreaterThanOrEqual(5)
+            expect(failures[0].error).toBeInstanceOf(Store2BackendFailureError)
+            expect(failures[1].attempts).toBeGreaterThan(failures[0].attempts)
+            expect((await watcher.read(COMMIT_KEY)).bytes).toEqual(commitBefore)
+            await expectI1('while the save loop is refused')
+
+            // The limiter lifts: the next pass commits the same edit.
+            deny.kinds = new Set()
+            await until(() => state.saved >= 1, 'a saved pass', 20_000)
+            expect((await watcher.read(COMMIT_KEY)).bytes).not.toEqual(commitBefore)
+            const stored = classifyCommitRead(await watcher.read(COMMIT_KEY))
+            expect(stored.status === 'parsed' ? stored.value.staging : stored.status).toBeNull()
+            await expectI1('after the save loop committed')
+            expect(crashed).toEqual([])
+        } finally {
+            state.stopped = true
+            void running
         }
     }, 120_000)
 })

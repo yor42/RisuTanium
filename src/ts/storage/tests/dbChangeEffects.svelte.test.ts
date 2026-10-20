@@ -2,7 +2,7 @@ import { flushSync } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../database.svelte'
-import { registerDbChangeEffects } from '../dbChangeEffects.svelte'
+import { markIdentitySeen, registerDbChangeEffects } from '../dbChangeEffects.svelte'
 import type { DbChangeEffectOptions } from '../dbChangeEffects.svelte'
 import type { RisuModule } from '../../process/modules'
 import type { toSaveType } from '../risuSave'
@@ -967,6 +967,26 @@ describe('registerDbChangeEffects — identity tracker', () => {
         flushSync()
 
         expect(tracker.character).toEqual(['char-B'])
+    })
+
+    // The install of a character a store2 residency loaded replaces its stub by the same entity's character: the install
+    // declares the object seen in the step that assigns it, and the tracker must raise no mark and no pass for it.
+    test('an element declared seen in the step that replaces it marks nothing, and one that is not declared is marked', () => {
+        installDbWithCharacters([makeChar('char-A', 'A'), makeChar('char-B', 'B')])
+        const { tracker, markChanged } = freshTrackerAndMarker()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+        const changedBefore = markChanged.mock.calls.length
+
+        DBState.db.characters[0] = makeChar('char-A', 'A-loaded') as unknown as Database['characters'][number]
+        markIdentitySeen(DBState.db.characters[0])
+        DBState.db.characters[1] = makeChar('char-B', 'B-replaced') as unknown as Database['characters'][number]
+        flushSync()
+
+        expect(tracker.character).toEqual(['char-B'])
+        expect(markChanged.mock.calls.length - changedBefore).toBe(1)
     })
 
     // Guard (passes with or without a put-back): the contract the character

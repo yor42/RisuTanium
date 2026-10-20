@@ -133,6 +133,22 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             await expectInvariant(raw)
         })
 
+        test('a forced commit keeps the previous current inside the admission window, and the same request without force does not', async () => {
+            const { raw, a, clock, m0 } = await setup()
+            const m1 = await commitNext(a)
+            clock.advance(MINUTE)
+            const m2 = committed(await a.commit(await a.readCommit(), { ...treeRequest(0, { tag: 'forced' }), force: true })).manifestKey
+            const forced = await parsedCommit(raw)
+            expect(forced.current?.key).toBe(m2)
+            expect(forced.retained.map(entry => entry.key)).toEqual([m1, m0])
+            clock.advance(MINUTE)
+            const m3 = await commitNext(a)
+            const plain = await parsedCommit(raw)
+            expect(plain.current?.key).toBe(m3)
+            expect(plain.retained.map(entry => entry.key)).toEqual([m1, m0])
+            await expectInvariant(raw)
+        })
+
         test('a pinned manifest survives rotation past the retained cap', async () => {
             const { raw, a, clock, m0 } = await setup()
             await commitNext(a)

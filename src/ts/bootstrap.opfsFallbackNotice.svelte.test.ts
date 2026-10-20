@@ -386,7 +386,7 @@ describe('loadData(): a storage fallback notice pauses boot until acknowledged (
                 // Boot must not have reached the steps that follow the
                 // notice's place in loadData() while it is still pending.
                 expect(get(loadedStore)).toBe(false)
-                expect(setUsingSwMock).not.toHaveBeenCalled()
+                expect(loadPluginsMock).not.toHaveBeenCalled()
 
                 // Acknowledges the notice the way AlertComp's OK button does:
                 // it writes `{ type: 'none', msg: '' }` to the alert store.
@@ -604,6 +604,6 @@ describe('loadData(): a page that runs from OPFS this time is read-only (new-beh
         await loadData()
 
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
-        expect(getPageStorageMode()).toEqual({ kind: 'read-only' })
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'opfs-transitional' })
     })
 })

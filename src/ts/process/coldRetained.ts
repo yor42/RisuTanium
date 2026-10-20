@@ -163,6 +163,52 @@ export function retainedRecordOf(installed: Slot | null | undefined): RetainedRe
     return record !== undefined && byChaId.get(record.chaId) === record ? record : undefined
 }
 
+/**
+ * A character a store2 residency loaded from its units this session. Only such a character may be turned back into a
+ * stub: one created or imported this session has no record and stays resident. The record names no stub and no
+ * fingerprint, since the acknowledged encoding is what a verdict compares with and what the stub is made from.
+ */
+export interface LoadedRecord {
+    readonly chaId: string
+    /** The entity the character was read from. */
+    readonly u: string
+}
+
+/** The records of loaded characters by the installed object's identity, so a copy of the character never finds one. */
+const loadedByInstalled = new WeakMap<object, LoadedRecord>()
+const loadedByChaId = new Map<string, LoadedRecord>()
+
+/** Records that `installed`, now in the character list, was loaded from entity `u`. A character without a usable `chaId` and the Playground character are not recorded. */
+export function retainOnLoad(installed: Slot, chaId: string | undefined, u: string): void {
+    if (typeof chaId !== 'string' || chaId === '' || chaId === PLAYGROUND_CHA_ID) {
+        return
+    }
+    const record: LoadedRecord = { chaId, u }
+    loadedByInstalled.set(installed, record)
+    loadedByChaId.set(chaId, record)
+}
+
+/** The record of `installed` if it is a character a residency loaded and the record is still held. */
+export function loadedRecordOf(installed: Slot | null | undefined): LoadedRecord | undefined {
+    if (!installed || typeof installed !== 'object') {
+        return undefined
+    }
+    const record = loadedByInstalled.get(installed)
+    return record !== undefined && loadedByChaId.get(record.chaId) === record ? record : undefined
+}
+
+/** True while any loaded character is recorded. */
+export function hasLoaded(): boolean {
+    return loadedByChaId.size > 0
+}
+
+/** Forgets `record`; its installed character stays where it is. */
+export function dropLoaded(record: LoadedRecord): void {
+    if (loadedByChaId.get(record.chaId) === record) {
+        loadedByChaId.delete(record.chaId)
+    }
+}
+
 /** The indexes of every character holding `chaId`. */
 export function findChaIdHolders(chaId: string): number[] {
     const characters = DBState.db?.characters
@@ -213,7 +259,7 @@ export function dropRetained(record: RetainedRecord): void {
 
 /** Forgets the records whose installed character is no longer in the character list. */
 export function pruneRetained(): void {
-    if (byChaId.size === 0) {
+    if (byChaId.size === 0 && loadedByChaId.size === 0) {
         return
     }
     const characters = DBState.db?.characters
@@ -221,15 +267,25 @@ export function pruneRetained(): void {
         return
     }
     const present = new Set<RetainedRecord>()
+    const presentLoaded = new Set<LoadedRecord>()
     for (const cha of characters) {
         const record = retainedRecordOf(cha)
         if (record) {
             present.add(record)
         }
+        const loaded = loadedRecordOf(cha)
+        if (loaded) {
+            presentLoaded.add(loaded)
+        }
     }
     for (const record of [...byChaId.values()]) {
         if (!present.has(record)) {
             byChaId.delete(record.chaId)
+        }
+    }
+    for (const record of [...loadedByChaId.values()]) {
+        if (!presentLoaded.has(record)) {
+            loadedByChaId.delete(record.chaId)
         }
     }
 }
@@ -258,4 +314,5 @@ export function retainedUnitKeys(): Set<string> {
 
 export function resetRetainedForTest(): void {
     byChaId.clear()
+    loadedByChaId.clear()
 }

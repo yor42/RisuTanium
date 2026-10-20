@@ -7,6 +7,7 @@
   import { NODE_BODY_LIMIT_BYTES } from "src/ts/storage/nodeBodyLimit";
   import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
   import { heldSaveStore } from "src/ts/storage/saveHold";
+  import { pageStoreIsOpfsTransitional } from "src/ts/storage/store/appStore";
 
   function heldMessage(held: { name: string, kind: 'unusable-id' | 'waiting', archived: boolean }[]){
     const waiting = held.filter((item) => item.kind === 'waiting')
@@ -25,6 +26,19 @@
   // state comes from the page's storage mode. The component is created before
   // boot decides the mode, so it follows the store, not a value read once.
   const readOnlyPage = $derived($pageStorageModeStore.kind === 'read-only')
+
+  // The OPFS page is read-only for a reason a restart fixes and sets the read-only mode too, so the store is asked
+  // first; any other read-only page was opened read-only by the store2 boot and gets the neutral words.
+  async function readOnlyMessage(){
+    let opfs = false
+    try{
+      opfs = await pageStoreIsOpfsTransitional()
+    }
+    catch{
+      opfs = false
+    }
+    return opfs ? language.opfsReadOnlyNotice : language.store2Boot.readOnlyRefusal
+  }
 
   function savingStoppedMessage(reason: string){
     switch(reason){
@@ -48,8 +62,8 @@
 </script>
 
 {#if readOnlyPage}
-  <button class="absolute top-3 right-3 z-10 text-white bg-red-800 hover:bg-red-600 p-2 rounded-sm" onclick={() =>{
-      alertNormal(language.opfsReadOnlyNotice)
+  <button class="absolute top-3 right-3 z-10 text-white bg-red-800 hover:bg-red-600 p-2 rounded-sm" onclick={async () =>{
+      alertNormal(await readOnlyMessage())
   }}>
       <OctagonAlert size={24} />
   </button>

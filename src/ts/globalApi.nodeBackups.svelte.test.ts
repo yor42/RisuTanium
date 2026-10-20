@@ -9,7 +9,7 @@
  * Tests titled `guard:` assert behaviour that must not change; the others assert
  * behaviour only the contract-based backups have.
  */
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
 
@@ -227,6 +227,7 @@ vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
 }) as unknown as typeof import('src/ts/storage/mainFileRecord'))
 
 import { forageStorage, getDbBackups } from 'src/ts/globalApi.svelte'
+import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 
 const BACKUP_PREFIX = 'database/dbbackup-'
 
@@ -268,6 +269,12 @@ beforeEach(() => {
     server.beforeRequest = undefined
     server.afterRequest = undefined
     vi.stubGlobal('fetch', server.fetch)
+    // The prune runs only on a legacy or block page.
+    setPageStorageMode({ kind: 'block' })
+})
+
+afterEach(() => {
+    resetPageStorageModeForTests()
 })
 
 describe('getDbBackups on the Node server', () => {

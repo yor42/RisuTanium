@@ -141,6 +141,7 @@ vi.mock(import('../../stores.svelte'), () => ({
 //#endregion
 
 import { LoadLocalBackup } from '../backuplocal'
+import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
@@ -334,6 +335,31 @@ describe('an asset over the Node server body limit is disclosed before anything 
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
         expect(alertMocks.alertNormalWait).toHaveBeenCalledTimes(1)
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], LIMIT))
+    })
+
+    // Compatibility guard (passes before and after the windowed walk): a name above the walk's 1024-byte decode bound is
+    // still asked about up front, by its first 1024 bytes, because the walk keeps that prefix for an oversized body.
+    test.each([4, 4096])('an oversized asset with a name above 1024 bytes is asked about before the copy, by its first 1024 bytes (%i-byte windows)', async (windowBytes) => {
+        overrideBackupWindowBytes({ walk: windowBytes, copy: windowBytes })
+        try {
+            const longName = 'n'.repeat(1100) + '.png'
+            const bytes = concatChunks([assetEntry('small.png', 16), assetEntry(longName, LIMIT + 10), databaseEntry()])
+            let writesAtPrompt = -1
+            alertMocks.alertConfirm.mockImplementation(async () => {
+                writesAtPrompt = forageSetItemMock.mock.calls.length
+                return true
+            })
+
+            await loadBackupBytes(bytes)
+
+            expect(alertMocks.alertConfirm).toHaveBeenCalledTimes(1)
+            expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedAssetsConfirm(1, ['n'.repeat(100) + '...'], LIMIT))
+            expect(writesAtPrompt).toBe(0)
+            expect(writtenAssetKeys()).toEqual(['assets/small.png'])
+            expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        } finally {
+            overrideBackupWindowBytes(null)
+        }
     })
 
     test('an asset exactly at the limit is not listed and is written', async () => {

@@ -56,7 +56,7 @@ vi.mock(import('src/ts/storage/blockStore'), async (importOriginal) => {
 import { BlockStoreOwner, createProcessCommitLock, createWebCommitLock } from 'src/ts/storage/blockStore'
 import { createMutexHeadSwap, createNodeHeadSwap } from 'src/ts/storage/headSwap'
 import { createIndexedDbHeadSwap } from 'src/ts/storage/store/indexedDbStore'
-import { getPageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
+import { disablePageBlockOwner, getPageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { createFakeStore, makeSet } from './blockStoreHarness'
 
 const fakeLocks = { request: async <T>(_name: string, _options: unknown, callback: (lock: unknown) => Promise<T>) => await callback({}) }
@@ -144,6 +144,37 @@ describe('the owner each store kind gets', () => {
         for (const factory of [createMutexHeadSwap, createNodeHeadSwap, createIndexedDbHeadSwap, createProcessCommitLock, createWebCommitLock]) {
             expect(factory).not.toHaveBeenCalled()
         }
+    })
+})
+
+describe('a page whose boot disabled the owner', () => {
+    test.each(['tauri', 'node', 'indexeddb'] as const)('%s: every caller gets no owner and no store or factory is touched', async (kind) => {
+        h.kind = kind
+        disablePageBlockOwner()
+
+        expect(await getPageBlockOwner()).toBeNull()
+        expect(await getPageBlockOwner()).toBeNull()
+        expect(h.storeCalls).toBe(0)
+        for (const factory of [createMutexHeadSwap, createNodeHeadSwap, createIndexedDbHeadSwap, createProcessCommitLock, createWebCommitLock]) {
+            expect(factory).not.toHaveBeenCalled()
+        }
+    })
+
+    test('an owner built before the disabling is not handed out again', async () => {
+        h.kind = 'tauri'
+        expect(await getPageBlockOwner()).toBeInstanceOf(BlockStoreOwner)
+
+        disablePageBlockOwner()
+
+        expect(await getPageBlockOwner()).toBeNull()
+    })
+
+    test('guard: the test reset lifts the disabling, so the next page builds an owner again', async () => {
+        h.kind = 'tauri'
+        disablePageBlockOwner()
+        resetPageBlockOwnerForTests()
+
+        expect(await getPageBlockOwner()).toBeInstanceOf(BlockStoreOwner)
     })
 })
 

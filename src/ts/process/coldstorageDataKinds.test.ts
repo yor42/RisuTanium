@@ -220,4 +220,23 @@ describe('legacyRetryView', () => {
         const states: Array<LegacyRetryState | undefined> = [undefined, 'pending', 'missing', 'retryFailed', 'unavailable', 'damaged']
         expect(states.map((state) => legacyRetryView(state).showRetry)).toEqual([true, true, false, true, false, false])
     })
+
+    test('reproducer: on a store2 page no state offers Retry, and every state says the earlier messages could not be read', () => {
+        const states: Array<LegacyRetryState | undefined> = [undefined, 'pending', 'missing', 'retryFailed', 'unavailable', 'damaged']
+        for (const state of states) {
+            expect(legacyRetryView(state, true), String(state)).toEqual({
+                text: language.errors.coldStorageLegacyChatDamaged,
+                detail: null,
+                showRetry: false,
+            })
+        }
+    })
+
+    test('guard: a page that is not store2 keeps the matrix (the explicit false equals the default)', () => {
+        const states: Array<LegacyRetryState | undefined> = [undefined, 'pending', 'missing', 'retryFailed', 'unavailable', 'damaged']
+        for (const state of states) {
+            expect(legacyRetryView(state, false)).toEqual(legacyRetryView(state))
+        }
+        expect(legacyRetryView(undefined, false).showRetry).toBe(true)
+    })
 })

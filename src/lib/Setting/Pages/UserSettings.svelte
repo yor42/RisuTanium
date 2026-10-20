@@ -8,6 +8,7 @@
     import { exportAsDataset } from "src/ts/storage/exportAsDataset";
     import { cleanColdStorage } from "src/ts/process/coldstorage.svelte";
     import StorageMaintenanceSettings from "./StorageMaintenanceSettings.svelte";
+    import { modeRunsLegacyDeleters, pageStorageModeStore } from "src/ts/storage/pageStorageMode";
 </script>
 
 <h2 class="mb-2 text-2xl font-bold mt-2">{language.backupAndFiles}</h2>
@@ -54,14 +55,16 @@
     {language.loadInternalBackup}
 </Button>
 
-<Button
-    onclick={async () => {
-        if(await alertConfirm(language.cleanColdStorageConfirm)){
-            cleanColdStorage()
-        }
-    }} className="mt-2">
-    {language.cleanColdStorage}
-</Button>
+{#if modeRunsLegacyDeleters($pageStorageModeStore)}
+    <Button
+        onclick={async () => {
+            if(await alertConfirm(language.cleanColdStorageConfirm)){
+                cleanColdStorage()
+            }
+        }} className="mt-2">
+        {language.cleanColdStorage}
+    </Button>
+{/if}
 
 <Button onclick={exportAsDataset} className="mt-2">
     {language.exportAsDataset}

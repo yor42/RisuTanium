@@ -14,6 +14,7 @@ import { outcomeLabel, type FirstLifeOutcome, type ReplayRig, type ReplayRigOpti
 import { createIdbReplayRig } from './idbRig'
 import { createNodeReplayRig } from './nodeRig'
 import { createTauriReplayRig } from './tauriRig'
+import { REGIONS, runRegion } from './regions'
 import type { StepInfo } from './scheduler'
 import { createClock, testEnv } from '../commitFixtures'
 
@@ -205,3 +206,81 @@ describe('first life interrupted on Tauri', () => {
         expect(rig.hooks.peek(FENCE_KEY)).toBeNull()
     })
 })
+
+describe('a boot import or a boot restore interrupted on Tauri (R5)', () => {
+    // The third unit write under the actor's recovery-begin reports `flushed: false`, so the install stops with its marker standing.
+    // The restart keeps the device's owner id, which is what lets a seed or convert marker be cleared and re-run: an import or a
+    // restore marker must not be.
+    test.each([
+        ['import', 11],
+        ['convert', 10],
+    ] as const)('new behaviour: a first-life marker labelled %s that a crash leaves standing is boot row %s, and the new page clears nothing', async (label, row) => {
+        const rig = await createTauriReplayRig({
+            scheduler: { seed: 1, faults: { mode: 'script', entries: [{ actor: 'a', op: 'write', context: 'recovery-begin', nth: 3, kind: 'flush-fault' }] } },
+            start: 'no-commit-key',
+        })
+        const seen: string[] = []
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            seen.push(outcomeText(await actor.firstLife('x', 2, 'import', label)))
+            const standing = storedKey(rig)
+            seen.push(standing.status === 'parsed' && standing.value.staging !== null && standing.value.current === null ? `marker:${standing.value.staging.label}` : 'other')
+            const rebooted = await actor.restart({ drop: true })
+            seen.push(`row:${rebooted.decision.row}`)
+            seen.push(`startupClear:${rebooted.startupClear === null ? 'none' : rebooted.startupClear.status}`)
+            // The new page may not install over the standing marker through the first-life grant.
+            seen.push(outcomeText(await actor.firstLife('y', 2)))
+        }, { device: 'phone' })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.status).toBe('finished')
+        expect(rig.checker.violations).toEqual([])
+        expect(seen).toEqual(['upload-failed', `marker:${label}`, `row:${row}`, 'startupClear:none', 'refused:not-first-life'])
+        const key = storedKey(rig)
+        expect(key.status === 'parsed' ? key.value.staging?.label : null).toBe(label)
+        expect(key.status === 'parsed' ? key.value.current : 'x').toBeNull()
+    })
+
+    test('guard: the unlabelled first-life seed marker of the same crash IS cleared and re-run as a seed (row 9), the hazard the label option removes', async () => {
+        const rig = await createTauriReplayRig({
+            scheduler: { seed: 1, faults: { mode: 'script', entries: [{ actor: 'a', op: 'write', context: 'recovery-begin', nth: 3, kind: 'flush-fault' }] } },
+            start: 'no-commit-key',
+        })
+        const seen: string[] = []
+        rig.spawn('a', 10, async (actor) => {
+            await actor.open()
+            seen.push(outcomeText(await actor.firstLife('x', 2)))
+            const rebooted = await actor.restart({ drop: true })
+            seen.push(`row:${rebooted.decision.row}`, `startupClear:${rebooted.startupClear === null ? 'none' : rebooted.startupClear.status}`)
+        }, { device: 'phone' })
+        const result = await rig.run({ maxSteps: MAX_STEPS })
+        expect(result.status).toBe('finished')
+        expect(seen).toEqual(['upload-failed', 'row:9', 'startupClear:cleared'])
+    })
+
+    test.each([['R19e', 'import'], ['R19f', 'convert']] as const)('new behaviour: region %s (%s) never reaches a cleared marker after a restart, and some runs do crash mid install', async (id, _label) => {
+        const region = REGIONS.find((each) => each.id === id)
+        if (region === undefined) {
+            throw new Error(`The region ${id} is missing.`)
+        }
+        let exercised = 0
+        let interrupted = 0
+        for (let seed = 1; seed <= region.seeds; seed++) {
+            const run = await runRegion(region, 'tauri', seed)
+            expect(run.violations, `seed ${seed}`).toEqual([])
+            if (run.kind === 'not-exercised') {
+                continue
+            }
+            exercised++
+            expect(run.reached, `seed ${seed}`).not.toContain('restart:cleared')
+            if (run.reached.includes('firstLife:upload-failed')) {
+                interrupted++
+            }
+        }
+        expect(exercised).toBeGreaterThan(region.seeds / 2)
+        expect(interrupted).toBeGreaterThan(0)
+    })
+})
+
+function outcomeText(outcome: FirstLifeOutcome): string {
+    return label(outcome)
+}

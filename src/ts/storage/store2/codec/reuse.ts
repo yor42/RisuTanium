@@ -48,6 +48,22 @@ function isSameUnit(prior: ReusableUnit, type: UnitType, bytes: Uint8Array, dige
     return prior.bytes === undefined || sameBytes(prior.bytes, bytes)
 }
 
+/** A reuse-only sink met a unit that is not the previous encoding's: the encode stops there. */
+export class UnitNotReusedError extends CodecError {
+    constructor(public readonly identity: string) {
+        super('input', `The unit "${identity}" is not the previous encoding's unit.`)
+        this.name = 'UnitNotReusedError'
+    }
+}
+
+export interface UnitSinkOptions {
+    /**
+     * The sink only checks reuse: it copies no key of the previous encoding (its cost would grow with every unit of the
+     * profile) and throws `UnitNotReusedError` at the first unit that is not reused. It never hands out a key.
+     */
+    reuseOnly?: boolean
+}
+
 /**
  * Collects the units of one encode. A unit whose bytes equal the previous
  * encoding's unit at the same identity keeps that unit's key and is flagged
@@ -58,9 +74,16 @@ export class UnitSink {
     readonly units: EncodedUnit[] = []
     private readonly identities = new Set<string>()
     private readonly keys = new Set<string>()
+    private readonly reuseOnly: boolean
 
-    constructor(private readonly env: KeyEnv, private readonly previous: PreviousEncoding | null, private readonly mint?: KeyMint) {
-        if (previous !== null) {
+    constructor(
+        private readonly env: KeyEnv,
+        private readonly previous: PreviousEncoding | null,
+        private readonly mint?: KeyMint,
+        options: UnitSinkOptions = {},
+    ) {
+        this.reuseOnly = options.reuseOnly === true
+        if (previous !== null && !this.reuseOnly) {
             for (const unit of previous.units.values()) {
                 this.keys.add(unit.key)
             }
@@ -87,11 +110,17 @@ export class UnitSink {
         if (prior !== undefined && isSameUnit(prior, type, bytes, digest)) {
             return this.record(identity, type, prior.key, bytes, digest, true)
         }
+        if (this.reuseOnly) {
+            throw new UnitNotReusedError(identity)
+        }
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
     }
 
     /** A write-once unit (the manifest): always a fresh key. */
     putFresh(identity: string, type: UnitType, body: object, kind: UnitKeyKind): EncodedUnit {
+        if (this.reuseOnly) {
+            throw new UnitNotReusedError(identity)
+        }
         const bytes = encodeUnit(type, body)
         return this.record(identity, type, this.freshKey(kind), bytes, unitDigest(bytes), false)
     }

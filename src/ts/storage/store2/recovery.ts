@@ -74,6 +74,8 @@ export interface OfferInput {
     candidateCount: number
     /** Whether the upstream main file exists; `null` when that could not be checked. */
     upstreamMainFile: boolean | null
+    /** Whether the store holds a numbered backup; false when none or when that could not be checked. */
+    numberedBackups: boolean
     /** Whether any candidate passed its validation in this session. */
     candidatePassed: boolean
 }
@@ -82,8 +84,10 @@ export interface ScreenOffers {
     readOnly: boolean
     /** Picking a listed candidate. */
     pick: boolean
-    /** (a) re-run the conversion. */
+    /** (a) re-run the conversion: offered while the old data holds a main file or numbered backups (MC-299 3). */
     convert: boolean
+    /** The conversion with no main file to speak of: the offer is worded as "restore the newest backup". Implies `convert`. */
+    restoreNewest: boolean
     /** (b) import a `.bin`. */
     import: boolean
     /** (c) start a new empty profile, behind its own confirmation. */
@@ -93,17 +97,19 @@ export interface ScreenOffers {
 /**
  * What the screen offers (G4). A `.bin` import is offered whatever the
  * candidates are, so an upstream backup stays reachable when every candidate
- * fails; the conversion only while an upstream main file exists; a fresh start
- * only until a candidate has passed validation. A too-new state offers nothing.
+ * fails; the conversion only while an upstream main file or a numbered backup
+ * exists; a fresh start only until a candidate has passed validation. A too-new
+ * state offers nothing.
  */
 export function screenOffers(input: OfferInput): ScreenOffers {
     if (input.tooNew) {
-        return { readOnly: true, pick: false, convert: false, import: false, freshStart: false }
+        return { readOnly: true, pick: false, convert: false, restoreNewest: false, import: false, freshStart: false }
     }
     return {
         readOnly: false,
         pick: input.candidateCount > 0,
-        convert: input.upstreamMainFile === true,
+        convert: input.upstreamMainFile === true || input.numberedBackups,
+        restoreNewest: input.upstreamMainFile !== true && input.numberedBackups,
         import: true,
         freshStart: !input.candidatePassed,
     }
@@ -112,9 +118,10 @@ export function screenOffers(input: OfferInput): ScreenOffers {
 // ---- Exit ----
 
 /**
- * What the exit is for. Every kind carries the highest `seq` of a manifest this
- * recovery session read (`highestSeqRead`, 0 when it read none); a pick adds the
- * seq of the manifest it picked.
+ * What the exit is for. `highestSeqRead` is optional (0 when absent): it only
+ * floors the `seq` of a marker built over a damaged key, where `seq` is advisory,
+ * and the recovery screen does not supply it. A pick adds the seq of the manifest
+ * it picked.
  */
 export type ExitRequest =
     | { kind: 'pick', manifestSeq: number, highestSeqRead?: number }
@@ -163,7 +170,7 @@ export type ExitResult =
     | { status: 'foreign-marker', marker: Staging }
     /** The fence step did not end `written`: no marker was written. The fence result is passed through unchanged. */
     | { status: 'fence', fence: Exclude<FenceExitResult, { status: 'written' }> }
-    /** The commit key changed since it was read and holds no `current`: the screen re-runs the exit from step (1). */
+    /** The commit key changed since it was read and holds no `current`, or the marker write's outcome was unknown and it did not land. The screen stops without a further call. */
     | { status: 'conflict', current: Store2Read }
     /** Another tab recovered meanwhile (the key now parses with a `current`): nothing more is written. */
     | { status: 'abandoned', current: Store2Read, value: CommitKey }
@@ -208,8 +215,8 @@ export function markerKey(commit: CommitRead, staging: Staging, seqFloor: number
  *  3. only on `written` the marker is compare-and-written at `commitRead.token`
  *     (`current: null`, empty `retained` and `pins`, a fresh staged prefix);
  *  4. a conflict re-reads: a key that now parses with a `current` abandons the
- *     exit, anything else returns `conflict` for the screen to re-run from the
- *     start (a second exit only extends the fence).
+ *     exit, anything else returns `conflict`. Neither is retried over the stale
+ *     basis, and `conflict` does not prove that another writer moved the key.
  */
 export async function runExit(backend: Store2Backend, commitRead: Store2Read, request: ExitRequest, options: ExitOptions): Promise<ExitResult> {
     const env: KeyEnv = { ...defaultKeyEnv, ...options.env }
@@ -267,7 +274,7 @@ export type MarkerOutcome<F = ExitFence> =
     | (Omit<Extract<ExitResult, { status: 'marked' }>, 'fence'> & { fence: F })
     | Extract<ExitResult, { status: 'conflict' | 'abandoned' | 'unknown' }>
 
-/** After a conflict: another tab's `current` ends this exit; anything else is for the screen to re-run. */
+/** After a conflict or an unsettled write: another tab's `current` is `abandoned`; any other state of the key is `conflict`. Both are final for the exit. */
 export async function judgeConflict(backend: Store2Backend): Promise<Extract<ExitResult, { status: 'conflict' | 'abandoned' | 'unknown' }>> {
     let current: Store2Read
     try {

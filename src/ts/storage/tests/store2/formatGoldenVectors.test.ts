@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 import type { JsonObject } from '../../blockFrame'
 import {
-    decodeFrame, encodeUnit, parseCommitKey, readUnit, UNIT_TYPE_IDS, type CommitKey, type UnitType,
+    decodeFrame, encodeUnit, parseCommitKey, parseDeletionSnapshot, readUnit, refsOf, snapshotCountMatches, UNIT_TYPE, UNIT_TYPE_IDS,
+    UNITS_WITHOUT_REFS, type CommitKey, type UnitType,
 } from '../../store2/format'
 import { bytesToHex, GOLDEN_VECTORS, hexToBytes, oracleFrame, type GoldenVector } from './goldenVectors'
 
@@ -58,7 +59,7 @@ describe.each(GOLDEN_VECTORS.map(vector => [vector.id, vector] as const))('vecto
 
     test('the frame result matches the header bytes', () => {
         const frame = decodeFrame(bytes)
-        const headerForeign = vector.fmt !== 1 || vector.codec !== 0 || vector.reserved !== 0 || vector.type > 23
+        const headerForeign = vector.fmt !== 1 || vector.codec !== 0 || vector.reserved !== 0 || vector.type > Math.max(...UNIT_TYPE_IDS)
         if (headerForeign) {
             expect(frame.status).toBe('too-new')
         } else {
@@ -150,5 +151,74 @@ describe('vector contents that carry meaning', () => {
         const bytes = hexToBytes(byId('fence-F6-unparsable-fence-bytes').hex)
         expect(decodeFrame(bytes).status).toBe('ok')
         expect(readUnit(bytes).status).toBe('damaged')
+    })
+})
+
+describe('type 24, the deletion snapshot', () => {
+    const BODY = {
+        v: 1,
+        kind: 'fork-only',
+        upstream: { main: false, backups: [] as string[] },
+        keys: ['coldstorage/00000000-0000-4000-8000-000000000000', 'blocks/head'],
+    }
+    const statusOf = (payload: object): string => readUnit(oracleFrame(24, JSON.stringify(payload))).status
+
+    test('new behaviour: the golden vector round trips its body, extra members included, and re-encodes to the committed bytes', () => {
+        const bytes = hexToBytes(byId('type-24-deletion-snapshot').hex)
+        const read = readUnit(bytes, UNIT_TYPE.deletionSnapshot)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        expect(read.value.body).toEqual({
+            v: 1,
+            kind: 'exclusion',
+            upstream: { main: true, backups: ['database/dbbackup-1.bin'] },
+            keys: ['coldstorage/00000000-0000-4000-8000-000000000000', 'blocks/head'],
+        })
+        expect(bytesToHex(encodeUnit(UNIT_TYPE.deletionSnapshot, read.value.body))).toBe(byId('type-24-deletion-snapshot').hex)
+        const withExtras = { ...BODY, later: { n: 1 }, upstream: { ...BODY.upstream, laterToo: [2] } }
+        const carried = readUnit(oracleFrame(24, JSON.stringify(withExtras)))
+        expect(carried.status === 'ok' ? JSON.parse(JSON.stringify(carried.value.body)) : null).toEqual(withExtras)
+    })
+
+    test('new behaviour: a body version above this build\'s is too-new, never damaged; below 1 is damaged', () => {
+        expect(statusOf({ ...BODY, v: 2 })).toBe('too-new')
+        expect(statusOf({ ...BODY, v: 0 })).toBe('damaged')
+        expect(statusOf(BODY)).toBe('ok')
+    })
+
+    test.each([
+        ['an unknown kind', { ...BODY, kind: 'everything' }],
+        ['a missing kind', { ...BODY, kind: undefined }],
+        ['a duplicate key', { ...BODY, keys: ['blocks/head', 'blocks/head'] }],
+        ['a key outside the allowlist: the upstream main file', { ...BODY, keys: ['database/database.bin'] }],
+        ['a key outside the allowlist: a numbered backup', { ...BODY, keys: ['database/dbbackup-1.bin'] }],
+        ['a key outside the allowlist: an asset', { ...BODY, keys: ['assets/x'] }],
+        ['a key outside the allowlist: the commit key', { ...BODY, keys: ['store2-commit'] }],
+        ['a key outside the allowlist: a traversal spelling', { ...BODY, keys: ['blocks/../assets/x'] }],
+        ['keys that is not a list', { ...BODY, keys: 'blocks/head' }],
+        ['a non-string key', { ...BODY, keys: [5] }],
+        ['a missing upstream', { ...BODY, upstream: undefined }],
+        ['an upstream main that is not a boolean', { ...BODY, upstream: { main: 'yes', backups: [] } }],
+        ['upstream backups that is not a list', { ...BODY, upstream: { main: false, backups: 'x' } }],
+    ])('new behaviour: %s reads as damaged and never throws, so the pass that needs the list deletes nothing', (_name, payload) => {
+        expect(statusOf(payload)).toBe('damaged')
+    })
+
+    test('new behaviour: the unit names no other unit (refsOf is empty) and the type is on the no-refs list', () => {
+        expect(refsOf(UNIT_TYPE.deletionSnapshot, BODY)).toEqual([])
+        expect(UNITS_WITHOUT_REFS).toContain(UNIT_TYPE.deletionSnapshot)
+    })
+
+    test('new behaviour: the pointer count is checked against the number of keys', () => {
+        const digest = '0123456789abcdef0123456789abcdef'
+        const parsed = parseDeletionSnapshot(BODY)
+        expect(parsed.status).toBe('ok')
+        if (parsed.status !== 'ok') {
+            return
+        }
+        expect(snapshotCountMatches({ key: 'store2/u-0123456789abcdefghijklmnop', digest, count: 2 }, parsed.value)).toBe(true)
+        expect(snapshotCountMatches({ key: 'store2/u-0123456789abcdefghijklmnop', digest, count: 3 }, parsed.value)).toBe(false)
     })
 })

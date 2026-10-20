@@ -1,3 +1,4 @@
+import { MEASURE } from '../../process/memory/measureFlag'
 import type { AppStoreKind } from '../store/appStore'
 import type { ByteStore } from '../store/contract'
 import { ServerLacksCapabilityError } from '../store/errors'
@@ -11,6 +12,7 @@ import {
 } from './boot'
 import { createCommitter, type AbandonResult, type Committer } from './commit'
 import { classifyCommitRead, type CommitRead } from './commitKey'
+import { meterCommitter } from './commitMeter'
 import { readFenceVerdict, type FenceVerdict } from './fence'
 import { trackFlushes } from './flushTracker'
 import { defaultKeyEnv, type KeyEnv } from './format'
@@ -285,7 +287,11 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
     }
     const liveIdleReason = (): string | null => tracker !== null && tracker.unflushed() ? IDLE_REFLUSH : null
 
-    const committer = createCommitter(backend, { owner: owner.id, env, foreignClear: options.foreignClear })
+    const committerOptions = { owner: owner.id, env, foreignClear: options.foreignClear }
+    // The commit meter is a measurement-build tool: this branch folds away in a normal build and takes the module with it.
+    const committer = MEASURE
+        ? meterCommitter(backend, metered => createCommitter(metered, committerOptions))
+        : createCommitter(backend, committerOptions)
     const fence = await readFenceVerdict(backend)
     let read = await readCommitOrNull(backend)
     const commit: BootCommit = 'reason' in read ? { status: 'unreadable', reason: read.reason } : read.commit

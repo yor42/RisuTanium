@@ -19,10 +19,14 @@ import { DBState } from 'src/ts/stores.svelte'
 import {
     contentFingerprint,
     differingKeys,
+    dropLoaded,
     dropRetained,
+    hasLoaded,
     hasRetained,
+    loadedRecordOf,
     pruneRetained,
     resetRetainedForTest,
+    retainOnLoad,
     retainOnRestore,
     retainedRecordOf,
     retainedUnitKeys,
@@ -204,5 +208,63 @@ describe('differingKeys (development diagnostics)', () => {
         unit.trashTime = 5
 
         expect(differingKeys(record, unit).sort()).toEqual(['chats', 'name'])
+    })
+})
+
+describe('records of characters a store2 residency loaded', () => {
+    test('acceptance: a loaded character is found by its identity, with the entity it was read from, and a copy of it is not', () => {
+        const a = full('a')
+        install(a)
+
+        retainOnLoad(a, 'a', '0123456789abcdefghijklmnop')
+
+        expect(loadedRecordOf(a)).toEqual({ chaId: 'a', u: '0123456789abcdefghijklmnop' })
+        expect(loadedRecordOf({ ...a } as Slot)).toBeUndefined()
+        expect(hasLoaded()).toBe(true)
+    })
+
+    test('acceptance: a load is no legacy record: nothing the legacy put-back or the unit-key scan reads sees it', () => {
+        const a = full('a')
+        install(a)
+
+        retainOnLoad(a, 'a', '0123456789abcdefghijklmnop')
+
+        expect(retainedRecordOf(a)).toBeUndefined()
+        expect(hasRetained()).toBe(false)
+        expect(retainedUnitKeys().size).toBe(0)
+    })
+
+    test('acceptance: the Playground character and a character without an id are not recorded', () => {
+        const playground = full('§playground')
+        const noId = full('')
+        install(playground, noId)
+
+        retainOnLoad(playground, '§playground', '0123456789abcdefghijklmnop')
+        retainOnLoad(noId, undefined, '0123456789abcdefghijklmnop')
+
+        expect(hasLoaded()).toBe(false)
+    })
+
+    test('acceptance: dropLoaded forgets the record, and one whose character left the list is pruned', () => {
+        const a = full('a')
+        const b = full('b')
+        install(a, b)
+        retainOnLoad(a, 'a', '0123456789abcdefghijklmnop')
+        retainOnLoad(b, 'b', 'qrstuv0123456789abcdefghijk')
+
+        dropLoaded(loadedRecordOf(a)!)
+        expect(loadedRecordOf(a)).toBeUndefined()
+        expect(hasLoaded()).toBe(true)
+
+        DBState.db.characters.splice(1, 1)
+        pruneRetained()
+        expect(hasLoaded()).toBe(false)
+    })
+
+    test('acceptance: a character created this session (no record) is not found', () => {
+        const created = full('created')
+        install(created)
+
+        expect(loadedRecordOf(created)).toBeUndefined()
     })
 })

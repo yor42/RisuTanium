@@ -28,6 +28,20 @@ export interface DbChangeEffectOptions {
     onPartitionRun?: (kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message', index?: number) => void
 }
 
+/** The identity tracker's "already seen" set of the latest registration; null before one exists. */
+let markSeen: ((object: object) => void) | null = null
+
+/**
+ * Tells the identity tracker that `object`, a character just placed in `DBState.db.characters`, is not a new character:
+ * a residency's load replaces a stub by the character read from the same entity, so the replacement must raise no mark
+ * and no pass. Call it in the step that installs the object, with the object read back from the list (the reactive proxy
+ * the tracker iterates) and no `await` between the assignment and the call; the tracker looks at the list in its next
+ * run and finds the object already seen.
+ */
+export function markIdentitySeen(object: object): void {
+    markSeen?.(object)
+}
+
 export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
 
     let selIdState = $state(0)
@@ -400,6 +414,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     let identityRanOnce = false
     const identitySeen = new WeakSet<object>(opts.seed ?? [])
     const identityHasSeed = !!opts.seed
+    markSeen = (object) => { identitySeen.add(object) }
     // The effect closures below all capture `opts` itself (they read
     // opts.tracker and call opts.markChanged), so as long as `opts.seed`
     // stayed populated on that same object, every character it references

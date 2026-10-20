@@ -20,11 +20,12 @@ const coldStorageLoadErrorSuffix = ']'
  * backup) can still hold a chat whose `message[0]` was overwritten with this
  * legacy error text instead.
  *
- * This builder has no production caller of its own. It is kept only as the
+ * The store2 leaf fallback (`storage/store2/leafFallback.ts`) writes this text
+ * into a chat whose unit is damaged or missing. The builder is the
  * counterpart of `matchColdStorageLoadErrorKey` -- the two share the same
- * prefix/suffix constants so they cannot drift apart -- and is used by
- * tests to build a chat already holding this legacy text, standing in for
- * an install that hit a failed read under the old behaviour.
+ * prefix/suffix constants so they cannot drift apart -- and tests also use it
+ * to build a chat already holding this legacy text, standing in for an
+ * install that hit a failed read under the old behaviour.
  * `listRecoverableErrorKeysFromDb` calls `matchColdStorageLoadErrorKey`
  * directly rather than this builder, and the chat-screen notice for a
  * failed read is chosen by `coldChatNoticeText` below from the
@@ -270,8 +271,15 @@ export function legacyRetryStateFor(result: RetryLegacyColdChatLoadResult): Lega
  * (`'missing'`, `'unavailable'`, `'damaged'`) the button is hidden and the text
  * names the case; only `'retryFailed'` adds the try-later line. Exhaustive over
  * the state.
+ *
+ * A store2 page has no cold-storage unit to read again: the error text there
+ * marks a chat whose stored copy was damaged, so the notice never offers Retry
+ * and says the earlier messages could not be read, whatever the state.
  */
-export function legacyRetryView(state: LegacyRetryState | undefined): { text: string, detail: string | null, showRetry: boolean } {
+export function legacyRetryView(state: LegacyRetryState | undefined, pageIsStore2: boolean = false): { text: string, detail: string | null, showRetry: boolean } {
+    if (pageIsStore2) {
+        return { text: language.errors.coldStorageLegacyChatDamaged, detail: null, showRetry: false }
+    }
     switch (state) {
         case 'missing':
             return { text: language.errors.coldStorageLegacyChatDataMissing, detail: null, showRetry: false }

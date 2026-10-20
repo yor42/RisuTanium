@@ -3,19 +3,19 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     encodeUnit, KEY_ALPHABET, keyOfTail, refOfFrame, tailOfKey, UNIT_TYPE,
-    type Manifest, type ModuleIndex, type Ref, type Shard, type ShardEntry,
+    type KeyEnv, type Manifest, type ModuleIndex, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
 import { defineOwn } from './normalize'
-import { isUnchanged, unitDigest } from './reuse'
+import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
     checkDatabase, encodeCharacter, encodeFront, encodeModuleSet, Encoder, finishTree, IDENTITY,
     type ModuleSet,
 } from './split'
 import { isColdStub } from './stub'
 import {
-    CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit, type EncodeOptions, type PreviousEncoding,
-    type ReusableUnit,
+    CodecError, CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit, type EncodeOptions,
+    type ListDerivation, type PreviousEncoding, type ReusableUnit,
 } from './types'
 
 /**
@@ -77,7 +77,7 @@ function carriedModuleSet(previous: PreviousEncoding | null): ModuleSet {
  * and its chats are a pointer, so the previous entry's values stay; no body of
  * the stub is encoded.
  */
-function overlayStub(before: ShardEntry, slot: Slot): ShardEntry {
+export function overlayStub(before: ShardEntry, slot: Slot): ShardEntry {
     const entry: ShardEntry = { ...before }
     entry.name = typeof slot.name === 'string' ? slot.name : before.name
     entry.creatorNotes = stubDescription(slot.creatorNotes)
@@ -123,6 +123,11 @@ function carriedEntry(slot: Slot, chaId: string, encoder: Encoder, previousEntri
             throw new StubRefusedError('character', chaId, null)
         }
         throw new CodecInputError(`The character ${chaId} is carried from the previous encoding, whose shards do not hold it.`)
+    }
+    // A stub names its units by `u`. One that names another entity's units, a legacy file or a `u` this encoding no
+    // longer holds under this id would be saved over an entry it does not stand for.
+    if (stub && (slot as { coldstorage?: unknown }).coldstorage !== u) {
+        throw new StubRefusedError('character', chaId, null)
     }
     return stub ? overlayStub(before, slot) : before
 }
@@ -173,10 +178,10 @@ function carriedUnits(previous: PreviousEncoding | null, carriedOwners: Readonly
  * The `chaId`s held by more than one character of `db`, or by more than one handle of the previous encoding. The
  * entity id of a repeated id is matched by occurrence, which a deletion or a reorder of the holders shifts.
  */
-function ambiguousChaIds(db: Database, previous: PreviousEncoding | null): Set<string> {
+function ambiguousChaIds(characters: readonly Slot[], previous: PreviousEncoding | null): Set<string> {
     const ambiguous = new Set<string>()
     const seen = new Set<string>()
-    for (const slot of db.characters) {
+    for (const slot of characters) {
         const chaId = String((slot as { chaId?: unknown } | null)?.chaId ?? '')
         if (seen.has(chaId)) {
             ambiguous.add(chaId)
@@ -208,9 +213,14 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     }
     const entries: ShardEntry[] = []
     const carriedOwners = new Set<string>()
-    const ambiguous = ambiguousChaIds(db, previous)
-    for (let position = 0; position < db.characters.length; position++) {
-        const slot = db.characters[position]
+    // One consistent character list per pass: `db.characters` is read here, before any await, and never again. A
+    // list edit during a yield (splice, reassign, unshift) reaches the next pass, so the committed tree holds exactly
+    // this list. Each slot is encoded synchronously on its turn; an edit inside a slot after its turn is the next
+    // pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
+    const characters: readonly Slot[] = [...db.characters]
+    const ambiguous = ambiguousChaIds(characters, previous)
+    for (let position = 0; position < characters.length; position++) {
+        const slot = characters[position]
         if (typeof slot !== 'object' || slot === null) {
             throw new CodecInputError(`characters[${position}] is not an object.`)
         }
@@ -392,6 +402,147 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
         newUnits: tree.units.filter(unit => !unit.reused).length,
         unchanged: isUnchanged(tree),
         finalize: context => rekey(tree, parents, context),
+    }
+}
+
+// ---- acknowledged-state verdict ----
+
+/**
+ * Whether a live character is what the latest acknowledged encoding holds for it: `clean` when every unit is the
+ * acknowledged one and the entry agrees outside the overlay fields (`lastInteraction`, `trashTime`), `dirty` when not,
+ * `unknown` when the acknowledged encoding cannot answer.
+ */
+export type AcknowledgedVerdict = 'clean' | 'dirty' | 'unknown'
+
+export interface VerdictOptions {
+    env: KeyEnv
+    lists: ListDerivation
+    /** The latest acknowledged encoding, never an older one. */
+    previous: PreviousEncoding
+}
+
+/**
+ * An encoder that only checks reuse. Every unit goes to a reuse-only sink over the real previous units, so no key of
+ * the profile is copied and the first unit that differs ends the encode. The base class gets the previous encoding
+ * without its units: it needs only the entity ids, and its own sink is never used.
+ */
+class ReuseOnlyEncoder extends Encoder {
+    private readonly checking: UnitSink
+
+    constructor(options: EncodeOptions, previous: PreviousEncoding) {
+        super(options, { units: new Map<string, ReusableUnit>(), entities: previous.entities, objects: previous.objects })
+        this.checking = new UnitSink(options.env, previous, undefined, { reuseOnly: true })
+    }
+
+    override put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
+        return this.checking.put(identity, type, body, kind)
+    }
+}
+
+function previousEntryOf(previous: PreviousEncoding, u: string): ShardEntry | undefined {
+    for (const shard of previous.objects?.shards ?? []) {
+        const entry = shard.entries.find(candidate => candidate.u === u)
+        if (entry !== undefined) {
+            return entry
+        }
+    }
+    return undefined
+}
+
+/** The identity of every unit the entry names. */
+function identitiesOf(entry: ShardEntry): string[] {
+    const identities = [`${IDENTITY.char}${entry.u}:core`, `${IDENTITY.alChar}${entry.u}`]
+    if (entry.lore !== null) {
+        identities.push(`${IDENTITY.char}${entry.u}:lore`)
+    }
+    if (entry.scripts !== null) {
+        identities.push(`${IDENTITY.char}${entry.u}:scripts`)
+    }
+    if (entry.il !== null) {
+        identities.push(`${IDENTITY.ilChar}${entry.u}`)
+    }
+    for (const chat of entry.chats) {
+        identities.push(`${IDENTITY.chat}${entry.u}:${chat.cid}:core`)
+        chat.chunks.forEach((_, k) => identities.push(`${IDENTITY.chat}${entry.u}:${chat.cid}:chunk:${k}`))
+    }
+    return identities
+}
+
+/** Whether two Refs agree on their first `known` fields; a field past them is one this build does not know. */
+function sameRefFields(a: readonly unknown[] | null, b: readonly unknown[] | null, known: number): boolean {
+    if (a === null || b === null) {
+        return a === b
+    }
+    for (let i = 0; i < known; i++) {
+        if (a[i] !== b[i]) {
+            return false
+        }
+    }
+    return true
+}
+
+/**
+ * Whether two entries agree on what a pass would write that the units do not carry: the entity, its kind, id, the
+ * moved `chatPage` and `firstMsgIndex`, and the Refs of every unit it names. Left out: the fields a stub overlays
+ * (`name`, `image`, `creatorNotes`, `lastInteraction`, `trashTime`, `characters`, `tags`, `creator`), which a stub
+ * carries and a pass rewrites from the live object; `dsp`, which every pass writes as `true`; and every field this
+ * build does not know, which the shard carry copies forward and so never differs in what the next pass writes.
+ */
+function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry): boolean {
+    if (fresh.u !== acknowledged.u || fresh.type !== acknowledged.type || fresh.chaId !== acknowledged.chaId
+        || fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex
+        || !sameRefFields(fresh.core, acknowledged.core, 3) || !sameRefFields(fresh.lore, acknowledged.lore, 3)
+        || !sameRefFields(fresh.scripts, acknowledged.scripts, 3) || !sameRefFields(fresh.al, acknowledged.al, 4)
+        || !sameRefFields(fresh.il, acknowledged.il, 4) || fresh.chats.length !== acknowledged.chats.length) {
+        return false
+    }
+    return fresh.chats.every((chat, index) => {
+        const other = acknowledged.chats[index]
+        return chat.cid === other.cid && sameRefFields(chat.core, other.core, 3) && chat.chunks.length === other.chunks.length
+            && chat.chunks.every((chunk, k) => sameRefFields(chunk, other.chunks[k], 4))
+    })
+}
+
+/**
+ * The verdict for a resident character against the latest acknowledged encoding. It encodes the character under the
+ * entity id that encoding holds and requires every unit to be that encoding's unit, and the entry to agree on the
+ * known fields `sameKnownFields` names. The overlay fields `lastInteraction` and `trashTime` are not compared: a
+ * clean character may still differ in them, and they survive only when it is replaced by a stub that carries them
+ * (`overlayStub`). `unknown` when the id is
+ * shared (the handle `#1` is held), the entry or one of its units' digests is missing (a unit with no digest is never
+ * reused, so an unhydrated character must not look clean), or the character cannot be encoded.
+ */
+export function characterMatchesAcknowledged(slot: Slot, options: VerdictOptions): AcknowledgedVerdict {
+    const { previous } = options
+    if (typeof slot !== 'object' || slot === null || isColdStub(slot)) {
+        return 'unknown'
+    }
+    const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+    const u = previous.entities.get(`${chaId}#0`)
+    if (previous.entities.has(`${chaId}#1`) || u === undefined) {
+        return 'unknown'
+    }
+    const acknowledged = previousEntryOf(previous, u)
+    if (acknowledged === undefined) {
+        return 'unknown'
+    }
+    for (const identity of identitiesOf(acknowledged)) {
+        if (previous.units.get(identity)?.digest === undefined) {
+            return 'unknown'
+        }
+    }
+    const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
+    try {
+        const fresh = encodeCharacter(slot, 0, new ReuseOnlyEncoder(encodeOptions, previous))
+        return sameKnownFields(fresh, acknowledged) ? 'clean' : 'dirty'
+    } catch (error) {
+        if (error instanceof UnitNotReusedError) {
+            return 'dirty'
+        }
+        if (error instanceof CodecError) {
+            return 'unknown'
+        }
+        throw error
     }
 }
 

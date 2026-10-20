@@ -17,6 +17,8 @@ import { isSafeColdStorageKey } from "./coldStorageKey"
 import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./coldUnitLocation"
 import { beginChokePoint } from "./memory/busyActions"
 import { noteReadSize, noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
+import { getResidency, isEntityUnitKey, noteResidencyRead } from "../storage/store2/residencyActive"
+import { getPageStorageMode, pageRunsLegacyDeleters } from "../storage/pageStorageMode"
 
 export {
     coldStorageHeader,
@@ -192,13 +194,25 @@ function beginUnitWrites(keys: readonly string[]): () => void {
     }
 }
 
-/** The write stamp of unit `key`, or `null` while this page is writing or deleting it. A unit this page never wrote has stamp 0. */
+/**
+ * The write stamp of unit `key`, or `null` while this page is writing or deleting it. A unit this page never wrote has stamp 0.
+ * A store2 entity is no unit of this page's writes: it has no stamp, so a reader never remembers a summary of its content.
+ */
 export function getColdUnitStamp(key: string): number | null {
+    if (isEntityUnitKey(key)) {
+        return null
+    }
     return unitWritesInFlight.has(key) ? null : (unitStamps.get(key) ?? 0)
 }
 
-/** Whether the page's store holds unit `key`, without transferring the unit. Rejects when the store cannot say. */
+/**
+ * Whether the page's store holds unit `key`, without transferring the unit. Rejects when the store cannot say.
+ * A store2 entity is never held as a unit file, so a summary kept for one is never served in place of reading it.
+ */
 export async function hasColdUnitInStore(key: string): Promise<boolean> {
+    if (isEntityUnitKey(key)) {
+        return false
+    }
     return await (await getAppStore()).has(coldUnitStoreKey(key))
 }
 
@@ -287,7 +301,31 @@ async function decodeColdStorageValue(bytes: Uint8Array): Promise<ColdStorageRea
     }
 }
 
+/**
+ * The character of a store2 entity `key`. A store2 entity is many units, so a unit that is absent or damaged is partial
+ * damage and never `missing`: `missing` means the whole blob is gone, and the consumers that delete on it (the inlay
+ * clean-up) would act on a character that still has chats. Without a residency nothing can say, so the answer is the same
+ * `damaged` rather than a plain error, which the legacy converter reads as a placeholder where a plain error aborts it.
+ */
+async function readEntityCharacter(key: string): Promise<ColdStorageReadResult> {
+    const residency = getResidency()
+    if (residency === null) {
+        return { status: 'error', kind: 'damaged', error: new Error('No store2 residency is registered to read this character.') }
+    }
+    const read = await residency.readCharacter(key)
+    if (read.status === 'error') {
+        return read.kind ? { status: 'error', error: read.error, kind: read.kind } : { status: 'error', error: read.error }
+    }
+    const result: ColdStorageReadResult = { status: 'ok', value: read.value }
+    noteReadSize(result, read.bytes)
+    noteResidencyRead(result, read)
+    return result
+}
+
 async function readLocalColdStorageValue(key: string): Promise<ColdStorageReadResult> {
+    if (isEntityUnitKey(key)) {
+        return await readEntityCharacter(key)
+    }
     const bytesResult = await readLocalColdStorageBytes(key)
     if (bytesResult.status !== 'ok') {
         return bytesResult
@@ -339,6 +377,11 @@ async function compressColdStorageValue(value:any):Promise<Uint8Array | null> {
  * them apart.
  */
 export async function writeColdStorageUnit(key:string, value:any):Promise<'written' | 'too-large' | 'failed'> {
+    // A store2 page keeps every unit inside its own snapshots; a legacy unit written here would sit outside all of them.
+    if (getResidency() !== null) {
+        console.error('Cold storage write refused: this page stores its data in store2, which has no legacy cold units.')
+        return 'failed'
+    }
     // A key that cannot be a storage name is a failed write, decided before
     // anything is compressed or any backend is asked. The key itself is not
     // logged: it may be arbitrarily long.
@@ -423,6 +466,11 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
  * deletion has outdated.
  */
 export async function deleteColdStorageUnits(keys: readonly string[]): Promise<{ key: string, error: unknown }[]> {
+    if (getResidency() !== null) {
+        console.error('Cold storage delete refused: this page stores its data in store2, which has no legacy cold units.')
+        const error = new Error('Legacy cold units cannot be deleted on a store2 page.')
+        return keys.map((key) => ({ key, error }))
+    }
     const endUnitWrites = beginUnitWrites(keys)
     try {
         return await deleteColdStorageUnitsNow(keys)
@@ -499,6 +547,11 @@ export async function listColdStorageItems():Promise<{items:string[]}> {
  * and nothing that only stores or loads cold data needs it.
  */
 export async function cleanColdStorage(){
+    // A read-only page goes on to `runManualCleanup`, which tells the person why; a store2 or undecided page stops here.
+    if (!pageRunsLegacyDeleters() && getPageStorageMode().kind !== 'read-only') {
+        console.warn('The manual clean-up is not available on this page.')
+        return
+    }
     const { runManualCleanup } = await import("../storage/manualCleanup")
     await runManualCleanup()
 }
@@ -575,6 +628,7 @@ export async function collectColdStorageBackupPayloads(
     const absentKeys: string[] = []
     const invalidUnitKeys: string[] = []
     const unreadableKeys: string[] = []
+    const entityKeys = new Set<string>()
     const rootOwners = new Map<string, Set<string>>()
     const references = new Map<string, string[]>()
 
@@ -587,6 +641,18 @@ export async function collectColdStorageBackupPayloads(
     }
 
     for (const root of roots) {
+        if (isEntityUnitKey(root.key)) {
+            // A store2 entity is no legacy unit: read as one, it would be carried under a payload name an importer
+            // places as an asset. The caller inlines it into the database entry (`drive/exportInline.ts`); a root that
+            // reaches here is reported, never read or carried. A key the caller settled is already accounted for.
+            if (!alreadySettled?.has(root.key)) {
+                entityKeys.add(root.key)
+                if (root.owner) {
+                    addToSetMap(rootOwners, root.key, root.owner)
+                }
+            }
+            continue
+        }
         if (root.kind === 'errorText') {
             if (!isRestorableColdStorageKey(root.key)) {
                 continue
@@ -667,7 +733,7 @@ export async function collectColdStorageBackupPayloads(
             missingKeys.push(key)
         }
     }
-    missingKeys.push(...unreadableKeys)
+    missingKeys.push(...unreadableKeys, ...entityKeys)
     for (const key of unplaceable) {
         if (!scheduled.has(key) && !alreadySettled?.has(key)) {
             missingKeys.push(key)

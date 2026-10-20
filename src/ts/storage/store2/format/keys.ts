@@ -1,4 +1,5 @@
-import { isStore2Key, STORE2_PREFIX } from '../../store/keyRules'
+import { BLOCKS_PREFIX, PRE_BLOCKS_PREFIX } from '../../blockKeys'
+import { isStore2Key, isWellFormedUtf16, STORE2_PREFIX } from '../../store/keyRules'
 
 /**
  * Key grammar of the store2 key space. The alphabet `0-9a-v` is in ordinal
@@ -203,6 +204,49 @@ export function parseStore2Key(key: string): Store2KeyShape | null {
         return { shape: 'staged-manifest', key, stagingId: match[1], seconds: secondsOf(match[2]) }
     }
     return null
+}
+
+/**
+ * Where the page keeps old cold-storage units. `process/coldUnitLocation.ts` names the same prefix; it is not imported
+ * here because that module reads the platform.
+ */
+const OLD_COLD_PREFIX = 'coldstorage/'
+
+function hasControlCharacter(text: string): boolean {
+    for (let i = 0; i < text.length; i++) {
+        if (text.charCodeAt(i) < 0x20) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Whether `key` may be listed in a deletion snapshot and deleted from one: a fork-format key under `blocks/` or
+ * `coldstorage/`, or a `database/database.pre-blocks*` file, spelled as a plain relative path. Everything else is out:
+ * the store2 key space and its top-level keys, `assets/`, `inlays/`, `remotes/`, the upstream main file and the numbered
+ * backups. A path with an empty, `.` or `..` segment, a backslash or a control character is out, so no spelling can
+ * reach another key. The Node and IndexedDB stores refuse no such delete themselves, so this is the one defence.
+ */
+export function isOldDataKey(key: string): boolean {
+    if (typeof key !== 'string' || key.length === 0 || key.includes('\\') || hasControlCharacter(key) || !isWellFormedUtf16(key)) {
+        return false
+    }
+    for (const segment of key.split('/')) {
+        if (segment === '' || segment === '.' || segment === '..') {
+            return false
+        }
+    }
+    return key.startsWith(BLOCKS_PREFIX) || key.startsWith(OLD_COLD_PREFIX) || key.startsWith(PRE_BLOCKS_PREFIX)
+}
+
+/**
+ * Whether `key` may be the unit a snapshot pointer names: an ordinary unit key or a staged unit key, never a manifest,
+ * a shard or a key outside the generated shapes.
+ */
+export function isSnapshotUnitKey(key: string): boolean {
+    const shape = parseStore2Key(key)
+    return shape !== null && (shape.shape === 'unit' || shape.shape === 'staged-unit')
 }
 
 /**

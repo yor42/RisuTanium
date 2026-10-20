@@ -49,7 +49,7 @@ import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import { freshOwnerId, isOwnerId, type ForeignClearHook, type OwnerIdStore } from 'src/ts/storage/store2/owner'
 import { listRecoveryCandidates, runExit, type CandidateListing, type ExitKind, type ExitResult } from 'src/ts/storage/store2/recovery'
-import { firstLifeGrant, firstLifeInstall, installBuilt, type FirstLifeRefusal, type FirstLifeResult } from 'src/ts/storage/store2/firstLife'
+import { firstLifeGrant, firstLifeInstall, installBuilt, type FirstLifeLabel, type FirstLifeRefusal, type FirstLifeResult } from 'src/ts/storage/store2/firstLife'
 import { installPick, pickCandidate, type InstallResult, type PickReady, type PickResult } from 'src/ts/storage/store2/recoveryPick'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, treeRequest, testEnv, type BuildRecord, type TestClock } from '../commitFixtures'
@@ -277,6 +277,10 @@ export interface ReplayActor {
     commit(tag: string, extra?: number): Promise<CommitOutcome>
     /** A bulk commit: its marker, the staged upload, the final write. */
     bulkCommit(tag: string): Promise<CommitOutcome>
+    /** An ordinary commit that replaces the whole profile (`force`): the previous `current` enters `retained` whatever the admission interval says. */
+    forcedCommit(tag: string, extra?: number): Promise<CommitOutcome>
+    /** A bulk commit with `force`, as the commit of a `.bin` import is. */
+    forcedBulkCommit(tag: string): Promise<CommitOutcome>
     /** The save-mine commit over a fresh read; refused on Node. */
     saveMine(tag: string, extra?: number): Promise<CommitOutcome>
     restore(manifestKey: string): Promise<WriteResult>
@@ -306,7 +310,7 @@ export interface ReplayActor {
      * First-life install on the page's boot facts: the unfenced marker and the staged install of a complete tree of `10 + extra` units
      * (the seed or convert label comes from the boot decision). A boot that is not first life answers `refused`.
      */
-    firstLife(tag: string, extra?: number, convertedFrom?: string): Promise<FirstLifeOutcome>
+    firstLife(tag: string, extra?: number, convertedFrom?: string, label?: FirstLifeLabel): Promise<FirstLifeOutcome>
     /** The shared installer on a marker a fenced `runExit` wrote: the same tree shape as `firstLife`. */
     installAfterExit(marked: Extract<ExitResult, { status: 'marked' }>, tag: string, extra?: number): Promise<InstallResult>
 
@@ -772,12 +776,12 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                     finish()
                 }
             }
-            async function commitOf(kind: 'commit' | 'save-mine' | 'bulk-begin', intent: OperationIntent, tag: string, extra: number, fresh: boolean): Promise<CommitOutcome> {
+            async function commitOf(kind: 'commit' | 'save-mine' | 'bulk-begin', intent: OperationIntent, tag: string, extra: number, fresh: boolean, force = false): Promise<CommitOutcome> {
                 return operation({ kind }, intent, async () => {
                     const committer = committerOf()
                     const record: BuildRecord[] = []
                     const read = await committer.readCommit()
-                    const request = treeRequest(extra, { tag, record })
+                    const request = { ...treeRequest(extra, { tag, record }), ...(force ? { force: true } : {}) }
                     const result = fresh ? await committer.saveMine(read, request) : await committer.commit(read, request)
                     return { result, keys: record.length === 0 ? [] : record[record.length - 1].keys }
                 })
@@ -874,6 +878,8 @@ export function assembleRig(input: AssembleInput): ReplayRig {
 
                 commit: (tag, extra = 0) => commitOf('commit', 'plain', tag, extra, false),
                 bulkCommit: (tag) => commitOf('bulk-begin', 'bulk', tag, BULK_EXTRA, false),
+                forcedCommit: (tag, extra = 0) => commitOf('commit', 'plain', tag, extra, false, true),
+                forcedBulkCommit: (tag) => commitOf('bulk-begin', 'bulk', tag, BULK_EXTRA, false, true),
                 saveMine: (tag, extra = 0) => commitOf('save-mine', 'plain', tag, extra, true),
                 restore: (manifestKey) => operation({ kind: 'restore' }, 'plain', async () => committerOf().restore(await committerOf().readCommit(), manifestKey)),
                 pin: (key, reason = 'keep') => operation({ kind: 'pin' }, 'plain', async () => committerOf().pin(await committerOf().readCommit(), key, reason)),
@@ -946,9 +952,14 @@ export function assembleRig(input: AssembleInput): ReplayRig {
                     return result
                 }),
 
-                firstLife: (tag, extra = 0, convertedFrom = 'seed') => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
+                firstLife: (tag, extra = 0, convertedFrom = 'seed', label) => operation({ kind: 'recovery-begin' }, 'recovery', async () => {
                     const session = need()
-                    const grant = firstLifeGrant({ decision: session.decision, commitRead: session.commitRead, startupClear: session.startupClear })
+                    const facts = { decision: session.decision, commitRead: session.commitRead, startupClear: session.startupClear }
+                    // A label override (a boot restore or import) is accepted by the grant on a row-1 decision only.
+                    const decision = session.decision
+                    const grant = label === undefined ? firstLifeGrant(facts)
+                        : decision.row === 1 && decision.mode === 'first-life' ? firstLifeGrant({ ...facts, decision }, { label })
+                            : { status: 'refused' as const, reason: 'label-not-row-1' as const, detail: 'A label override is accepted only on a boot row 1 grant.' }
                     if (grant.status === 'refused') {
                         return { status: 'refused', reason: grant.reason }
                     }

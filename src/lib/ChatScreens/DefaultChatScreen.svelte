@@ -23,6 +23,7 @@
     import { getInlayAsset } from 'src/ts/process/files/inlays';
     import { coldStorageHeader, preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte';
     import { coldChatNoticeText, legacyRetryStateFor, legacyRetryView, matchColdStorageLoadErrorKey, type LegacyRetryState } from 'src/ts/process/coldstorageData';
+    import { getPageStorageMode } from 'src/ts/storage/pageStorageMode';
     import Chats from './Chats.svelte';
     import Button from '../UI/GUI/Button.svelte';
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte';
@@ -846,7 +847,7 @@
                 {@const legacyErrorKey = matchColdStorageLoadErrorKey(currentChat[0]?.data)}
                 {@const legacyRetryStateKey = coldChatRetryStateKey(currentCharacter?.chaId ?? '', legacyErrorKey ?? '')}
                 {@const legacyRetryStatus = coldChatRetryState[legacyRetryStateKey]}
-                {@const legacyView = legacyRetryView(legacyRetryStatus)}
+                {@const legacyView = legacyRetryView(legacyRetryStatus, getPageStorageMode().kind === 'store2')}
                 <!-- CHORE-07 stage 7c-2: this chat hit a failed cold read
                     before stage 7b shipped, and its message[0] still holds
                     the pre-7b error text rather than a live pointer. The

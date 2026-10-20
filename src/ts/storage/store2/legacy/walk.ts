@@ -19,10 +19,16 @@ import { LegacyReadError, readLegacyUnit, type LegacyEntryReader } from './resol
  *
  * Plugin storage units are listed but not read: their content is carried
  * whole and never searched for further references.
+ *
+ * `visit`, when given, is called once with the key and parsed body of every
+ * unit the walk reads successfully, before the body is dropped, so a caller can
+ * scan it without a second read. Each call to the walk keeps its own state, so
+ * a caller that walks one file per call can attribute a failure to that file.
  */
 export async function collectLegacyColdKeys(
     trees: Iterable<Database> | AsyncIterable<Database>,
     reader: LegacyEntryReader,
+    visit?: (key: string, value: unknown) => void,
 ): Promise<Set<string>> {
     const keys = new Set<string>()
     // Keys whose unit is already queued for reading.
@@ -52,6 +58,9 @@ export async function collectLegacyColdKeys(
             const read = await readLegacyUnit(reader, key, 'unit')
             if (read.status === 'unparsable') {
                 throw new LegacyReadError(key, 'unit', new Error(`The unit ${key} is not JSON, so the references it holds are unknown.`))
+            }
+            if (read.status === 'ok') {
+                visit?.(key, read.value)
             }
             if (read.status !== 'ok' || !isColdStorageBackupData(read.value)) {
                 continue

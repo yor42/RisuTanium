@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import {
-    keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
+    FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
     type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleIndex, type PluginBucket, type Ref, type Shard,
     type ShardEntry, type UnitBody, type UnitType,
 } from '../format'
@@ -27,22 +27,77 @@ export function unitMapSource(units: readonly EncodedUnit[]): UnitSource {
     return { get: key => bytes.get(key) }
 }
 
-function readChecked(source: UnitSource, ref: Ref, type: UnitType, where: string): UnitBody {
+/**
+ * What the full check of one unit came to. `newer-list` is a derived list (asset, inlay or legacy list) whose version is
+ * above this build's, with a frame, length and checksum that match its Ref: readable tree data, never damage and never a
+ * newer tree format. `damaged` with `byRef` is a frame that is not the unit its Ref names (short, or a length or checksum
+ * that differs); without it, the frame or body failed the format parser.
+ */
+export type UnitCheck =
+    | { status: 'ok', body: UnitBody }
+    | { status: 'newer-list', reason: string }
+    | { status: 'missing' }
+    | { status: 'damaged', reason: string, byRef: boolean }
+    | { status: 'too-new', reason: string }
+
+/**
+ * The one check every read of a unit passes, assembly and detection alike, so the two cannot disagree on what damaged
+ * means. It never throws: a missing unit, a frame shorter than a frame header, a length or checksum that differs from the
+ * Ref, and a frame or body the format parser rejects each have an answer.
+ */
+export function checkUnit(source: UnitSource, ref: Ref, type: UnitType): UnitCheck {
     const key = keyOfRef(ref)
     const bytes = source.get(key)
     if (bytes === undefined) {
-        throw new CodecAssembleError(`${where}: unit ${key} is missing.`)
+        return { status: 'missing' }
+    }
+    if (bytes.length < FRAME_OVERHEAD) {
+        return { status: 'damaged', reason: 'The frame is shorter than a frame header.', byRef: true }
     }
     const actual = refOfFrame(key, bytes)
     if (actual[1] !== ref[1] || actual[2] !== ref[2]) {
-        throw new CodecAssembleError(`${where}: unit ${key} does not match its Ref.`)
+        return { status: 'damaged', reason: 'The unit does not match its Ref.', byRef: true }
     }
     const parsed = readUnit(bytes, type)
-    if (parsed.status !== 'ok' && parsed.status !== 'stale') {
-        throw new CodecAssembleError(`${where}: unit ${key} is ${parsed.status}: ${parsed.reason}`)
+    switch (parsed.status) {
+        case 'ok':
+        case 'stale':
+            return { status: 'ok', body: parsed.value.body }
+        case 'unreadable':
+            return { status: 'newer-list', reason: parsed.reason }
+        case 'damaged':
+            return { status: 'damaged', reason: parsed.reason, byRef: false }
+        case 'too-new':
+            return { status: 'too-new', reason: parsed.reason }
     }
-    return parsed.value.body
 }
+
+/** Whether a chat chunk holds a different number of messages than the Ref that names it says. */
+export function chunkCountMismatch(chunk: ChatChunk, ref: Ref): boolean {
+    return chunk.msgs.length !== ref[3]
+}
+
+function readChecked(source: UnitSource, ref: Ref, type: UnitType, where: string): UnitBody {
+    const key = keyOfRef(ref)
+    const checked = checkUnit(source, ref, type)
+    switch (checked.status) {
+        case 'ok':
+            return checked.body
+        case 'missing':
+            throw new CodecAssembleError(`${where}: unit ${key} is missing.`)
+        case 'damaged':
+            throw new CodecAssembleError(checked.byRef
+                ? `${where}: unit ${key} does not match its Ref.`
+                : `${where}: unit ${key} is damaged: ${checked.reason}`)
+        case 'too-new':
+            throw new CodecAssembleError(`${where}: unit ${key} is too-new: ${checked.reason}`)
+        case 'newer-list':
+            throw new CodecAssembleError(`${where}: unit ${key} is unreadable: ${checked.reason}`)
+    }
+}
+
+/** `readChecked` for a caller that assembles part of an entity itself: the same Ref check and the same thrown messages. */
+export { readChecked as readCheckedUnit }
 
 /** A content unit's body; `readChecked` has already proved its type, and the content types parse to this shape. */
 function readContent(source: UnitSource, ref: Ref, type: UnitType, where: string): ContentBody {
@@ -55,7 +110,8 @@ function copyInto(target: JsonObject, bag: JsonObject): void {
     }
 }
 
-function movedValueOf(entry: ShardEntry, name: typeof ENTRY_MOVED_FIELDS[number]): JsonValue | undefined {
+/** The value a shard entry holds for one of the fields it takes out of the core, or undefined when it holds none. */
+export function movedValueOf(entry: ShardEntry, name: typeof ENTRY_MOVED_FIELDS[number]): JsonValue | undefined {
     switch (name) {
         case 'lastInteraction': return entry.lastInteraction
         case 'trashTime': return entry.trashTime
@@ -91,7 +147,7 @@ export function assembleCharacter(entry: ShardEntry, source: UnitSource): JsonOb
         const core = readChecked(source, chatEntry.core, UNIT_TYPE.chatCore, `${chatWhere} core`) as ChatCore
         const chunks = chatEntry.chunks.map((ref, chunkIndex) => {
             const chunk = readChecked(source, ref, UNIT_TYPE.chatChunk, `${chatWhere} chunk ${chunkIndex}`) as ChatChunk
-            if (chunk.msgs.length !== ref[3]) {
+            if (chunkCountMismatch(chunk, ref)) {
                 throw new CodecAssembleError(`${chatWhere} chunk ${chunkIndex} holds ${chunk.msgs.length} messages, its Ref says ${ref[3]}.`)
             }
             return chunk
@@ -135,8 +191,14 @@ function assemblePluginStorage(manifest: Manifest, source: UnitSource): JsonObje
     return storage
 }
 
+export interface AssembleOptions {
+    /** Builds one entity in place of `assembleCharacter`; called once per entity, in `order` order. Absent: `assembleCharacter`. */
+    character?: (entry: ShardEntry, source: UnitSource) => JsonObject
+}
+
 /** The database the manifest and its units describe. Characters come back in `characters` order, fully loaded. */
-export function assembleDatabase(manifest: Manifest, source: UnitSource): Database {
+export function assembleDatabase(manifest: Manifest, source: UnitSource, options: AssembleOptions = {}): Database {
+    const assembleEntity = options.character ?? assembleCharacter
     const fixed = manifest.fixed
     const database: JsonObject = {}
     copyInto(database, readObjectField(readContent(source, fixed.config, UNIT_TYPE.configRoot, 'config'), 'f', 'config'))
@@ -177,7 +239,7 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource): Databa
             throw new CodecAssembleError(`The order names entity ${u}, which no shard lists.`)
         }
         entries.delete(u)
-        return assembleCharacter(entry, source)
+        return assembleEntity(entry, source)
     })
     if (entries.size > 0) {
         throw new CodecAssembleError(`${entries.size} shard entries are not in the order unit.`)

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
-import { type as osType } from '@tauri-apps/plugin-os'
 import { isTauri } from '../platform'
+import { bytesToBase64, transportKind } from './tauriByteTransport'
 
 /**
  * The page's side of the desktop asset commands: `put_assets_batch`,
@@ -72,21 +72,38 @@ export function resetAssetBatchAvailabilityForTests(): void {
     rawBodiesUnavailable = false
 }
 
+/** How a restore's asset writes reach the Rust side: raw frames (`raw`), base64 frames (`b64`), or not batched (`none`). */
+export type AssetBatchWriteMode = 'raw' | 'b64' | 'none'
+
 /**
- * Whether the batched commands may be used: only inside the desktop app on
- * Windows, Linux or macOS, and only while raw bodies reach the commands. Any
- * failure to learn the operating system means "no".
+ * The batched write command this page may use. The desktop app sends the frames
+ * as a raw body; the Android bridge sends bytes as a JSON array, so there the
+ * frames go as base64 text. Any other page, and any page after
+ * `markAssetBatchUnavailable`, writes one asset at a time.
+ */
+export function assetBatchWriteMode(): AssetBatchWriteMode {
+    if (!isTauri || rawBodiesUnavailable) {
+        return 'none'
+    }
+    switch (transportKind()) {
+        case 'desktop':
+            return 'raw'
+        case 'android':
+            return 'b64'
+        default:
+            return 'none'
+    }
+}
+
+/**
+ * Whether the raw-body commands (the batched writes and the batched reads of an
+ * export) may be used: only inside the desktop app on Windows, Linux or macOS,
+ * and only while raw bodies reach the commands. The Android app is not included:
+ * its restore writes through `writeAssetBatchB64`, and its export has no batched
+ * reader.
  */
 export function isAssetBatchAvailable(): boolean {
-    if (!isTauri || rawBodiesUnavailable) {
-        return false
-    }
-    try {
-        const os = osType()
-        return os === 'windows' || os === 'linux' || os === 'macos'
-    } catch {
-        return false
-    }
+    return assetBatchWriteMode() === 'raw'
 }
 
 function errorText(error: unknown): string {
@@ -183,6 +200,16 @@ export async function writeAssetBatch(entries: readonly AssetPutEntry[], maxEntr
     } catch (error) {
         return rethrowCommandError(error)
     }
+}
+
+/**
+ * `writeAssetBatch` for a page that cannot send a raw body: the same frames,
+ * as base64 text. `maxEntryBytes` is required, so no call can outgrow the
+ * pipeline that built it. The command takes no path and answers like the raw one.
+ */
+export async function writeAssetBatchB64(entries: readonly AssetPutEntry[], maxEntryBytes: number): Promise<AssetPutResult[]> {
+    const body = bytesToBase64(encodePutFrames(entries, maxEntryBytes))
+    return parsePutResults(await invoke<unknown>('put_assets_batch_b64', { body }), entries.length)
 }
 
 const READ_STATUSES = ['ok', 'missing', 'invalid', 'error', 'large', 'deferred'] as const

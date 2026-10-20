@@ -5,7 +5,9 @@ import type { character, groupChat } from "../storage/database.svelte"
 import { readColdStorageItem, type ColdReadErrorKind, type ColdStorageReadResult } from "./coldstorage.svelte"
 import { applyStubStateOnRestore } from "./coldCharacter"
 import { noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
-import { findChaIdHolders, retainOnRestore } from "./coldRetained"
+import { findChaIdHolders, retainOnLoad, retainOnRestore } from "./coldRetained"
+import { getResidency, residencyReadOf } from "../storage/store2/residencyActive"
+import { markIdentitySeen } from "../storage/dbChangeEffects.svelte"
 
 /**
  * Reading an archived character's unit back and installing it in place of its
@@ -237,9 +239,21 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
 
     const restored = applyStubStateOnRestore(target, unit.character)
     characters[index] = restored
-    // Over the plain object the unit decoded to, in the step that installs it:
-    // nothing has changed it yet, so the fingerprint is what a put-back compares to.
-    retainOnRestore(characters[index], target, restored)
+    const loaded = residencyReadOf(result)
+    const residency = getResidency()
+    if (loaded !== undefined && residency !== null) {
+        // The character was read from a store2 entity: its units take their digests so that its first pass reuses
+        // them all, the load is recorded for the put-back, and the identity tracker is told this is the entity's own
+        // character, not a new one. All in the step that installs it: no await sits between the assignment and the
+        // tracker's mark, so the tracker's next run finds the object seen.
+        residency.hydrate(loaded)
+        retainOnLoad(characters[index], chaId, loaded.entry.u)
+        markIdentitySeen(characters[index])
+    } else {
+        // Over the plain object the unit decoded to, in the step that installs it:
+        // nothing has changed it yet, so the fingerprint is what a put-back compares to.
+        retainOnRestore(characters[index], target, restored)
+    }
     noteRestoredBytes(chaId, readSizeOf(result))
     return { status: 'restored', character: characters[index], installedHere: true }
 }

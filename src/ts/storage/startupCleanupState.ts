@@ -1,6 +1,9 @@
 /**
- * State of the startup clean-up (`cleanChunks` in bootstrap.ts), kept in a
- * module with no imports so any loader can wait on it without a cycle.
+ * State of the startup clean-up (`cleanChunks` in bootstrap.ts on a legacy or
+ * block page, the old-data deletion step of `store2/maintenance.ts` on a store2
+ * page), kept in a module with no imports so any loader can wait on it without a
+ * cycle. The store2 step records its promise when the step starts, never while it
+ * waits for the page to be quiet, and the promise settles when the step ends.
  *
  * Invariant: a database load waits on the recorded promise so that the
  * startup clean-up cannot delete a remote block that a snapshot references

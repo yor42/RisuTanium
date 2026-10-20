@@ -304,9 +304,11 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { BlobDownloadWriter, type ExportByteWriter, type TauriWriter } from 'src/ts/exportWriters'
 import { language } from 'src/lang'
+import { RestoreAssetPipeline } from 'src/ts/drive/assetBatchPipeline'
 import { alertWait } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
@@ -437,19 +439,30 @@ function restoreBytes(bytes: Uint8Array): Promise<void> {
     return startRestore(new File([asBlobPart(bytes)], 'backup.bin'))
 }
 
+/** Whether the restore has begun its copy pass: it shows its first "Loading local Backup..." progress text after the walk and before it reads. */
+function copyPhaseTracker(): { copying: () => boolean } {
+    let copying = false
+    vi.mocked(alertWait).mockImplementation((message: string) => {
+        if (message.startsWith('Loading local Backup')) {
+            copying = true
+        }
+        return {} as ReturnType<typeof alertWait>
+    })
+    return { copying: () => copying }
+}
+
 /**
- * A file whose first `walkSliceCalls` slices (the walk of the file) read
- * `walkBytes` and whose later slices (the restore pass) read `passBytes`.
+ * A file whose slices in the walk phase (the walk of the file) read
+ * `walkBytes` and whose slices in the copy phase (the restore pass) read `passBytes`.
  */
-function fileThatChanges(walkBytes: Uint8Array, passBytes: Uint8Array, walkSliceCalls: number): File {
+function fileThatChanges(walkBytes: Uint8Array, passBytes: Uint8Array): File {
     const base = new File([asBlobPart(walkBytes)], 'backup.bin')
-    let calls = 0
+    const phase = copyPhaseTracker()
     return new Proxy(base, {
         get(target, prop, receiver) {
             if (prop === 'slice') {
                 return (start = 0, end = walkBytes.length) => {
-                    calls += 1
-                    const source = calls <= walkSliceCalls ? walkBytes : passBytes
+                    const source = phase.copying() ? passBytes : walkBytes
                     const bytes = source.slice(start, end)
                     return { arrayBuffer: async () => bytes.buffer as ArrayBuffer } as unknown as Blob
                 }
@@ -459,16 +472,15 @@ function fileThatChanges(walkBytes: Uint8Array, passBytes: Uint8Array, walkSlice
     })
 }
 
-/** A file whose slices read `bytes` until the `rejectFromCall`-th slice, which and every later one reject. */
-function fileWithRejectingSlice(bytes: Uint8Array, rejectFromCall: number): File {
+/** A file whose slices read `bytes`, except that in the copy phase a slice starting at or after `rejectFromOffset` rejects. */
+function fileWithRejectingSlice(bytes: Uint8Array, rejectFromOffset: number): File {
     const base = new File([asBlobPart(bytes)], 'backup.bin')
-    let calls = 0
+    const phase = copyPhaseTracker()
     return new Proxy(base, {
         get(target, prop, receiver) {
             if (prop === 'slice') {
                 return (...args: [number?, number?, string?]) => {
-                    calls += 1
-                    if (calls >= rejectFromCall) {
+                    if (phase.copying() && (args[0] ?? 0) >= rejectFromOffset) {
                         return { arrayBuffer: () => Promise.reject(new Error('scratch: unreadable region')) } as unknown as Blob
                     }
                     return (target.slice as (...a: unknown[]) => Blob).apply(target, args)
@@ -531,7 +543,7 @@ function fileWithFailingSlice(bytes: Uint8Array, fails: (size: number, nth: numb
     })
 }
 
-async function outcomeOf(run: () => Promise<void>): Promise<unknown> {
+async function outcomeOf(run: () => Promise<unknown>): Promise<unknown> {
     return run().then(() => null, (error: unknown) => error)
 }
 
@@ -594,6 +606,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    overrideBackupWindowBytes(null)
+    vi.mocked(alertWait).mockReset()
     process.off('unhandledRejection', recordUnhandled)
     createElementSpy.mockRestore()
     dbWriteLockSpy.mockRestore()
@@ -616,6 +630,26 @@ describe('a restore through the batch commands', () => {
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
         expect(settledWhenInstalled).toBe(true)
         expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    // The pipeline counts entry.data.length against its memory budget, so an entry that is a view into the copy window would
+    // keep the whole window alive while counting only its own bytes: every entry must own its buffer.
+    test('every entry handed to the asset pipeline owns its buffer when one copy window holds several assets', async () => {
+        const names = ['a.png', 'b.mp3', 'c.webp', 'd.jpg']
+        const handed: { byteOffset: number, byteLength: number, bufferLength: number }[] = []
+        const realAdd = RestoreAssetPipeline.prototype.add
+        vi.spyOn(RestoreAssetPipeline.prototype, 'add').mockImplementation(function (this: RestoreAssetPipeline, entry) {
+            handed.push({ byteOffset: entry.data.byteOffset, byteLength: entry.data.byteLength, bufferLength: entry.data.buffer.byteLength })
+            return realAdd.call(this, entry)
+        })
+
+        await restoreBytes(backupOf(names.map((name, index): [string, Uint8Array] => [name, filled(100 + index, index + 1)])))
+
+        expect(handed).toHaveLength(names.length)
+        for (const seen of handed) {
+            expect(seen.byteOffset).toBe(0)
+            expect(seen.byteLength).toBe(seen.bufferLength)
+        }
     })
 
     // Guard: passes before and after the model data change. A restore writes the entries of the file
@@ -772,7 +806,7 @@ describe('a restore that stops early while a batch is being written', () => {
         alertErrorMock.mockImplementation(() => { settledAtMessage = allCallsSettled() })
         const passView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('encryption.risudat', MARKER)])
 
-        const restoring = startRestore(fileThatChanges(walkView(), passView, 3))
+        const restoring = startRestore(fileThatChanges(walkView(), passView))
         await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
@@ -792,7 +826,7 @@ describe('a restore that stops early while a batch is being written', () => {
         alertErrorMock.mockImplementation(() => { settledAtMessage = allCallsSettled() })
         const passView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(17, 2))])
 
-        const restoring = startRestore(fileThatChanges(walkView(), passView, 3))
+        const restoring = startRestore(fileThatChanges(walkView(), passView))
         await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
@@ -810,8 +844,10 @@ describe('a restore that stops early while a batch is being written', () => {
         let settledAtMessage: boolean | null = null
         alertErrorMock.mockImplementation(() => { settledAtMessage = allCallsSettled() })
 
-        // Calls 1-3 are the walk, calls 4 and 5 read the header and the data of the first asset, call 6 rejects.
-        const restoring = startRestore(fileWithRejectingSlice(walkView(), 6))
+        // A copy window of one entry: the first asset comes out of the first window, and the window for the second entry's header rejects.
+        const firstLength = buildChunk('first.png', filled(16, 1)).length
+        overrideBackupWindowBytes({ copy: firstLength })
+        const restoring = startRestore(fileWithRejectingSlice(walkView(), firstLength))
         await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
@@ -930,6 +966,8 @@ describe('a restore of an asset above CHUNK_MAX', () => {
     })
 
     test('reads each entry header first and an asset in slices of at most CHUNK_MAX: no slice of the backup above CHUNK_MAX', async () => {
+        // Windows of 64 KiB, so no window is CHUNK_MAX long and the CHUNK_MAX slices are the asset's pieces.
+        overrideBackupWindowBytes({ walk: 65536, copy: 65536 })
         const recorded = recordingFile(backupOf([['small.png', filled(100, 1)], ['huge.bin', patterned(9 * MIB, 5)]]))
 
         await startRestore(recorded.file)
@@ -943,7 +981,9 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         const walkView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(16, 2)), databaseChunk()])
         const passView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(17, 2))])
         const recorded = recordingFile(walkView)
-        const changing = fileThatChanges(walkView, passView, 3)
+        // A copy window smaller than an entry, so a header is read exactly and the body only for a header that checks out.
+        overrideBackupWindowBytes({ copy: 20 })
+        const changing = fileThatChanges(walkView, passView)
         const file = new Proxy(changing, {
             get(target, prop, receiver) {
                 if (prop === 'slice') {
@@ -958,8 +998,8 @@ describe('a restore of an asset above CHUNK_MAX', () => {
 
         await startRestore(file)
 
-        // Three slices walk the file; then the first entry's header and data, and only the second entry's header.
-        expect(recorded.sizes).toHaveLength(3 + 3)
+        // One slice walks the whole file; then the first entry's header (29 bytes, the marker-visible pad) and data (16), and only the second entry's header.
+        expect(recorded.sizes).toEqual([walkView.length, 29, 16, 29])
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
     })
 
@@ -1038,7 +1078,8 @@ describe('a restore of an asset above CHUNK_MAX', () => {
 
     test('a slice of the backup that cannot be read stops the restore with the changed-file message, the write is aborted before that message, and no later entry is written', async () => {
         const bytes = backupOf([['huge.bin', patterned(13 * MIB, 3)], ['after.png', filled(8, 2)]])
-        // The third slice of CHUNK_MAX bytes: the first chunk has been sent by then.
+        // The third slice of CHUNK_MAX bytes: the first chunk has been sent by then. Windows are 64 KiB, so those slices are the asset's pieces.
+        overrideBackupWindowBytes({ walk: 65536, copy: 65536 })
         const file = fileWithFailingSlice(bytes, (size, nth) => size === CHUNK_MAX && nth === 2)
 
         await startRestore(file)
@@ -1058,6 +1099,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
     test('the message of a stopped restore waits for the abort of the write to finish', async () => {
         const abortGate = gate()
         eventLog.holdAbort = abortGate.promise
+        overrideBackupWindowBytes({ walk: 65536, copy: 65536 })
         const file = fileWithFailingSlice(backupOf([['huge.bin', patterned(13 * MIB, 3)]]), (size, nth) => size === CHUNK_MAX && nth === 2)
 
         const restoring = startRestore(file)
@@ -1393,7 +1435,6 @@ describe('an export of assets above CHUNK_MAX', () => {
         backupSink.failRemove = true
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
-console.log('DBG', desktop.commands.slice(-12), eventLog.events.slice(-12));
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(`'assets/big.bin'`))
