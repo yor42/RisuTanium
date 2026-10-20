@@ -573,6 +573,74 @@ describe('new behaviour: the old files are listed one at a time', () => {
         const second = await storedLegacyKeep(broken.memory)
         expect(statusOf(second.list.files)).toEqual({ [MAIN]: 'unreadable' })
     })
+
+    describe('upstream plugin storage index values are scanned like plugin units', () => {
+        const INDEX = '00000000-0000-4000-8000-0000000000e1'
+        const LARGE = '00000000-0000-4000-8000-0000000000e2'
+        const withPointer = (): Tree => {
+            const base = JSON.parse(JSON.stringify(buildSmall(1))) as { pluginCustomStorage: Record<string, unknown> }
+            base.pluginCustomStorage = { _coldpluginIndex: INDEX }
+            return base as unknown as Tree
+        }
+        const indexOf = (entries: unknown[]): StoredUnit => ({ status: 'ok', value: { type: 'risu-plugin-storage-index', version: 1, entries, trash: [] } })
+
+        test('reproducer: an inlay referenced only by a small value and one referenced only by a large unit both stay in the list', async () => {
+            const test = await rig({
+                trees: { 1: withPointer() },
+                mainByte: 1,
+                units: new Map<string, StoredUnit>([
+                    [INDEX, indexOf([{ k: 'small', s: JSON.stringify({ note: inlayToken(UUID_A) }) }, { k: 'big', l: LARGE }])],
+                    [LARGE, { status: 'ok', value: { note: inlayToken(UUID_B) } }],
+                ]),
+            })
+
+            installed(await convertLegacyProfile(test.request, accept))
+
+            const { list } = await storedLegacyKeep(test.memory)
+            expect(statusOf(list.files)).toEqual({ [MAIN]: 'ok' })
+            expect(list.i.u).toEqual(expect.arrayContaining([UUID_A, UUID_B]))
+        })
+
+        test('reproducer: a small value that is not JSON, or a large unit that is not JSON, lists the file unreadable', async () => {
+            const smallBad = await rig({
+                trees: { 1: withPointer() },
+                mainByte: 1,
+                units: new Map<string, StoredUnit>([[INDEX, indexOf([{ k: 'small', s: '{not json' }])]]),
+            })
+            installed(await convertLegacyProfile(smallBad.request, accept))
+            expect(statusOf((await storedLegacyKeep(smallBad.memory)).list.files)).toEqual({ [MAIN]: 'unreadable' })
+
+            const largeBad = await rig({
+                trees: { 1: withPointer() },
+                mainByte: 1,
+                units: new Map<string, StoredUnit>([[INDEX, indexOf([{ k: 'big', l: LARGE }])], [LARGE, { status: 'ok', value: {} }]]),
+                faults: { damagedKeys: new Set([LARGE]) },
+            })
+            installed(await convertLegacyProfile(largeBad.request, accept))
+            expect(statusOf((await storedLegacyKeep(largeBad.memory)).list.files)).toEqual({ [MAIN]: 'unreadable' })
+        })
+
+        test('reproducer: an absent index unit lists the file unreadable, because the units it names are unknown', async () => {
+            const test = await rig({ trees: { 1: withPointer() }, mainByte: 1, units: new Map<string, StoredUnit>() })
+
+            installed(await convertLegacyProfile(test.request, accept))
+
+            expect(statusOf((await storedLegacyKeep(test.memory)).list.files)).toEqual({ [MAIN]: 'unreadable' })
+        })
+
+        test('guard: a large unit that is absent is skipped and the file stays readable', async () => {
+            const test = await rig({
+                trees: { 1: withPointer() },
+                mainByte: 1,
+                units: new Map<string, StoredUnit>([[INDEX, indexOf([{ k: 'big', l: LARGE }])]]),
+            })
+
+            installed(await convertLegacyProfile(test.request, accept))
+
+            expect(statusOf((await storedLegacyKeep(test.memory)).list.files)).toEqual({ [MAIN]: 'ok' })
+        })
+    })
+
     test('old files are decoded and scanned in turn: a backup is not decoded until the one before it has been read to its end', async () => {
         const test = await rig({
             trees: { 1: treeWithColdChat(CHAT_UNIT), 2: treeWithColdChat(OTHER_UNIT), 3: treeWithColdChat(THIRD_UNIT) },

@@ -9,6 +9,7 @@ import type { ListDerivation } from '../codec/types'
 import type { BuildContext, BuiltCommit } from '../commit'
 import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
 import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
+import { isPluginStorageIndex, slotsOfIndex } from '../../../process/pluginStorageIndex'
 import { LegacyListBuilder } from '../lists/legacyList'
 import type { ListParams } from '../lists/params'
 import { planOldDataSnapshot, withSnapshot, type WalkedLegacy } from '../oldData/plan'
@@ -16,7 +17,7 @@ import type { ForeignClearHook } from '../owner'
 import { runExit, type ExitResult } from '../recovery'
 import { planWholeTreeInstall } from './install'
 import type { LenientLegacyDecode, SkippedLegacyEntry } from './lenient'
-import { legacyPluginRefs } from './refs'
+import { legacyPluginIndexPointer, legacyPluginRefs } from './refs'
 import {
     LegacyReadError, readLegacyUnit, resolveLegacyTree, type IncompleteItem, type LegacyEntryReader, type ResolveOptions,
 } from './resolve'
@@ -226,7 +227,13 @@ async function listFile(builder: LegacyListBuilder, key: string, tree: Database,
         return
     }
     try {
-        const reached = await collectLegacyColdKeys([tree], reader, (_unit, value) => {
+        // The walk validates the index unit and hands it to this callback, so it is not read twice.
+        const indexKey = legacyPluginIndexPointer(tree)
+        let indexValue: unknown
+        const reached = await collectLegacyColdKeys([tree], reader, (unit, value) => {
+            if (unit === indexKey) {
+                indexValue = value
+            }
             scan.coldValue(value)
             const character = isRecord(value) ? value.character : undefined
             if (isRecord(character)) {
@@ -243,6 +250,23 @@ async function listFile(builder: LegacyListBuilder, key: string, tree: Database,
             }
             if (read.status === 'ok') {
                 scan.coldValue(read.value)
+            }
+        }
+        // Upstream plugin values hold inlay ids too: each small value is parsed from its text (a value that is not JSON
+        // fails the file) and each large unit is read like a plugin unit.
+        if (isPluginStorageIndex(indexValue)) {
+            for (const slot of slotsOfIndex(indexValue)) {
+                if (slot.kind === 'small') {
+                    scan.coldValue(JSON.parse(slot.json))
+                    continue
+                }
+                const read = await readLegacyUnit(reader, slot.id, 'plugin')
+                if (read.status === 'unparsable') {
+                    throw new LegacyReadError(slot.id, 'plugin', new Error('A plugin value is not JSON, so the references it holds are unknown.'))
+                }
+                if (read.status === 'ok') {
+                    scan.coldValue(read.value)
+                }
             }
         }
     } catch {

@@ -387,6 +387,10 @@ describe('listColdBackupRoots', () => {
     test.each([['a pointer that is not a string', { _coldpluginIndex: 5 }], ['no pointer', { _coldplugin: { forkKey: ID.fork } }]])('guard: %s adds no index root', (_label, storage) => {
         expect(listColdBackupRoots(databaseWith(storage)).some((root) => root.pluginIndex)).toBe(false)
     })
+
+    test('an empty pointer adds no index root, as upstream reads it as no pointer', () => {
+        expect(listColdBackupRoots(databaseWith({ _coldpluginIndex: '' })).some((root) => root.pluginIndex)).toBe(false)
+    })
 })
 
 describe('SaveLocalBackup of a database that carries the plugin storage index pointer', () => {

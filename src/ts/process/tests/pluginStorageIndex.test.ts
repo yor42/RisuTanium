@@ -129,6 +129,8 @@ describe('pluginIndexPointer', () => {
         [{ _coldpluginIndex: uid(1) }, uid(1)],
         [{ _coldpluginIndex: 5 }, null],
         [{ _coldpluginIndex: null }, null],
+        // Reproducer: an empty pointer is no pointer, as upstream reads it.
+        [{ _coldpluginIndex: '' }, null],
         [{}, null],
         [undefined, null],
         [null, null],
@@ -350,6 +352,15 @@ describe('convertPluginStorageIndex', () => {
 
     test('a pointer that is not a string is removed and reports nothing, as upstream reads a pointer only when it is a string', async () => {
         const fixture: Record<string, unknown> = { _coldpluginIndex: 7, _coldplugin: { kept: uid(2) } }
+        const { io, reads } = makeIo()
+
+        expect(await convertPluginStorageIndex(fixture, io)).toEqual({ minted: [], missing: [] })
+        expect(reads).toEqual([])
+        expect(fixture).toEqual({ _coldplugin: { kept: uid(2) } })
+    })
+
+    test('reproducer: an empty pointer is removed and reports nothing missing, as upstream reads it as no pointer', async () => {
+        const fixture: Record<string, unknown> = { _coldpluginIndex: '', _coldplugin: { kept: uid(2) } }
         const { io, reads } = makeIo()
 
         expect(await convertPluginStorageIndex(fixture, io)).toEqual({ minted: [], missing: [] })

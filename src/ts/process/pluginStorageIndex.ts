@@ -39,10 +39,10 @@ export function isPluginStorageIndex(data: unknown): data is PluginStorageIndex 
         && Array.isArray(candidate.trash)
 }
 
-/** The index unit id the database points at; a pointer that is not a string is no pointer. */
+/** The index unit id the database points at; a pointer that is not a string, or is empty, is no pointer (upstream reads it the same way). */
 export function pluginIndexPointer(storage: unknown): string | null {
     const pointer = (storage as { _coldpluginIndex?: unknown } | null | undefined)?._coldpluginIndex
-    return typeof pointer === 'string' ? pointer : null
+    return typeof pointer === 'string' && pointer !== '' ? pointer : null
 }
 
 export type PluginIndexSlot =
@@ -156,9 +156,9 @@ export async function convertPluginStorageIndex(
     if (!storage || !Object.prototype.hasOwnProperty.call(storage, PLUGIN_STORAGE_INDEX_KEY)) {
         return result
     }
-    const pointer = storage[PLUGIN_STORAGE_INDEX_KEY]
+    const pointer = pluginIndexPointer(storage)
     delete storage[PLUGIN_STORAGE_INDEX_KEY]
-    if (typeof pointer !== 'string') {
+    if (pointer === null) {
         return result
     }
     if (!isPluginUnitId(pointer)) {

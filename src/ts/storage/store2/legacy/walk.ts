@@ -1,6 +1,7 @@
 import type { Database } from '../../database.svelte'
 import { isColdStorageBackupData, isRestorableColdStorageKey } from '../../../process/coldstorageData'
-import { legacyRefsOfDatabase, legacyRefsOfUnit } from './refs'
+import { isPluginStorageIndex, largeIdsOfIndex } from '../../../process/pluginStorageIndex'
+import { legacyPluginIndexPointer, legacyRefsOfDatabase, legacyRefsOfUnit } from './refs'
 import { LegacyReadError, readLegacyUnit, type LegacyEntryReader } from './resolve'
 
 /**
@@ -18,7 +19,11 @@ import { LegacyReadError, readLegacyUnit, type LegacyEntryReader } from './resol
  * not a failure: its key is in the result and it holds no references.
  *
  * Plugin storage units are listed but not read: their content is carried
- * whole and never searched for further references.
+ * whole and never searched for further references. The one exception is the
+ * upstream plugin storage index a tree points at: it is read, and because an
+ * absent or malformed index hides the large units it names, that is a failure
+ * like the others, never "absent is not a failure". The index key and every
+ * large unit id it names are in the result; the large units are not read.
  *
  * `visit`, when given, is called once with the key and parsed body of every
  * unit the walk reads successfully, before the body is dropped, so a caller can
@@ -53,6 +58,16 @@ export async function collectLegacyColdKeys(
                 schedule(ref.key)
             }
         }
+        // The upstream plugin storage index is read for every tree that points at it, even when an earlier tree already
+        // queued the same key as an ordinary unit, so the check below runs for this tree.
+        const indexKey = legacyPluginIndexPointer(tree)
+        if (indexKey !== null) {
+            keys.add(indexKey)
+            schedule(indexKey)
+            if (!queue.includes(indexKey)) {
+                queue.push(indexKey)
+            }
+        }
         for (let i = 0; i < queue.length; i++) {
             const key = queue[i]
             const read = await readLegacyUnit(reader, key, 'unit')
@@ -61,6 +76,16 @@ export async function collectLegacyColdKeys(
             }
             if (read.status === 'ok') {
                 visit?.(key, read.value)
+            }
+            if (key === indexKey) {
+                // An absent or malformed index hides the large units it names, so unlike any other unit it is a failure.
+                if (read.status !== 'ok' || !isPluginStorageIndex(read.value)) {
+                    throw new LegacyReadError(key, 'unit', new Error(`The plugin storage index ${key} is missing or is not an index, so the units it names are unknown.`))
+                }
+                for (const id of largeIdsOfIndex(read.value)) {
+                    keys.add(id)
+                }
+                continue
             }
             if (read.status !== 'ok' || !isColdStorageBackupData(read.value)) {
                 continue
