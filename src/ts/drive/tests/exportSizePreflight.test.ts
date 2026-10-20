@@ -23,7 +23,7 @@ const platformBox = vi.hoisted(() => {
     return { isTauri: false }
 })
 
-const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[], opened: 0 }))
+const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[], opened: 0, failWrites: false }))
 const sizedBox = vi.hoisted(() => ({ items: [] as Array<{ key: string, size: number }>, batchReads: [] as string[][] }))
 const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
 const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
@@ -79,7 +79,12 @@ vi.mock('src/ts/vendor/streamSaver', () => ({
                 ready: Promise.resolve(),
                 writable: {
                     getWriter: () => ({
-                        write: async (chunk: Uint8Array) => { backupSink.writes.push(chunk.slice()) },
+                        write: async (chunk: Uint8Array) => {
+                            if (backupSink.failWrites) {
+                                throw new Error('the download stream failed')
+                            }
+                            backupSink.writes.push(chunk.slice())
+                        },
                         close: async () => { },
                     }),
                 },
@@ -269,6 +274,8 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { UPSTREAM_HARD_LIMIT_BYTES } from 'src/ts/drive/exportInline'
+import { endOfExport } from 'src/ts/drive/operationEnd'
+import { language } from 'src/lang'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -415,6 +422,7 @@ beforeEach(() => {
     platformBox.isTauri = false
     backupSink.writes.length = 0
     backupSink.opened = 0
+    backupSink.failWrites = false
     sizedBox.items = []
     sizedBox.batchReads.length = 0
     unitMem.clear()
@@ -559,10 +567,89 @@ describe('SaveLocalBackup, assets sized by the desktop listing', () => {
 
         const outcome = await SaveLocalBackup()
 
-        expect(outcome).toEqual({ status: 'saved', notices: [] })
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
         expect(oversizePrompts()).toEqual([])
         expect(entryText('aaa-small')).toBe('bytes of assets/aaa-small')
         expect(entryText('zzz-small')).toBe('bytes of assets/zzz-small')
+    })
+
+    test('new behaviour: a plain export lists nothing as omitted, reports its inlays and maps to committed', async () => {
+        await pageOf()
+        listAssets(['assets/aaa-small', 10])
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome).toEqual({
+            status: 'saved',
+            notices: [],
+            omitted: { assets: [], oversize: [], units: [], inlays: [], oldStoreUnlisted: false, repaired: null },
+            inlays: { exported: 0, leftOut: [], oldStoreUnlisted: false },
+        })
+        expect(endOfExport('export', outcome)).toMatchObject({ operation: 'export', outcome: 'committed' })
+    })
+
+    test('new behaviour: an asset left out for its size is listed as omitted and the export maps to permitted-partial; the report is unchanged', async () => {
+        await pageOf()
+        listAssets(['assets/aaa-small', 10], ['assets/huge-avatar', FOUR_GIB])
+
+        const outcome = await SaveLocalBackup()
+
+        if (outcome.status !== 'saved') {
+            throw new Error(`the export ended ${outcome.status}`)
+        }
+        expect(outcome.omitted.oversize).toHaveLength(1)
+        expect(outcome.omitted.oversize[0]).toContain('huge-avatar')
+        expect(outcome.omitted.assets).toEqual([])
+        expect(endOfExport('export', outcome).outcome).toBe('permitted-partial')
+        expect(alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')).toContain('4.00 GiB')
+    })
+
+    test('new behaviour: an asset that could not be read is listed as omitted and the export maps to permitted-partial', async () => {
+        await pageOf()
+        // Just under the limit, so it is not left out for its size, and the fake store does not hold it.
+        listAssets(['assets/edge', FOUR_GIB - 1])
+
+        const outcome = await SaveLocalBackup()
+
+        if (outcome.status !== 'saved') {
+            throw new Error(`the export ended ${outcome.status}`)
+        }
+        expect(outcome.omitted.assets).toEqual(['assets/edge'])
+        expect(outcome.omitted.oversize).toEqual([])
+        expect(endOfExport('export', outcome).outcome).toBe('permitted-partial')
+    })
+
+    test('new behaviour: a failed export carries what became of its file, and the failure alert is unchanged', async () => {
+        await pageOf()
+        listAssets(['assets/aaa-small', 10])
+        backupSink.failWrites = true
+
+        const outcome = await SaveLocalBackup()
+
+        if (outcome.status !== 'failed') {
+            throw new Error(`the export ended ${outcome.status}`)
+        }
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        const shown = String(alertErrorMock.mock.calls[0][0])
+        const expectedByFile = { kept: language.backupFailedFileKept(null), deleted: language.backupFailedFileDeleted(null), untouched: language.backupFailedNothingWritten() }
+        expect(shown).toBe(expectedByFile[outcome.file])
+        expect(endOfExport('export', outcome)).toMatchObject({ outcome: 'failed', detail: { file: outcome.file } })
+    })
+})
+
+describe('SavePartialLocalBackup facts', () => {
+    test('new behaviour: the partial export lists no inlays, carries none, and its inlays never make it partial', async () => {
+        await pageOf()
+        listAssets()
+
+        const outcome = await SavePartialLocalBackup()
+
+        if (outcome.status !== 'saved') {
+            throw new Error(`the export ended ${outcome.status}`)
+        }
+        expect(outcome.inlays).toBeNull()
+        expect(outcome.omitted.inlays).toEqual([])
+        expect(endOfExport('export-partial', outcome)).toMatchObject({ operation: 'export-partial', outcome: 'committed' })
     })
 })
 

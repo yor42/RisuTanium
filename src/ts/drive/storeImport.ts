@@ -10,8 +10,8 @@ import { getStore2BootSession } from '../storage/store2/bootActive'
 import { Store2BulkAbortError, type Committer } from '../storage/store2/commit'
 import { classifyCommitRead } from '../storage/store2/commitKey'
 import { createListDerivation } from '../storage/store2/lists'
-import { importLegacyTree, type ImportOutcome, type ImportSource } from '../storage/store2/legacy/importTree'
-import type { LegacyEntryReader } from '../storage/store2/legacy/resolve'
+import { importLegacyTree, type ImportOutcome, type ImportSource, type RepairSummary } from '../storage/store2/legacy/importTree'
+import type { IncompleteItem, LegacyEntryReader } from '../storage/store2/legacy/resolve'
 import { BinFileChangedError, ColdEntryIndex, createBinEntryReader } from '../storage/store2/legacy/binReader'
 import { createLegacyStoreReader, type ColdUnitRead } from '../storage/store2/legacy/storeReader'
 import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/bootImport'
@@ -353,7 +353,7 @@ export async function confirmLeftOut(omitted: ReadonlyMap<string, SalvageOmitted
 /** What the import came to for the shell around it. Every message of a refusal or an unconfirmed outcome has been shown. */
 export type Store2ImportEnd =
     /** The import is the page's profile. `flushed === false` is a Tauri write the device did not confirm; the page reloads either way. */
-    | { kind: 'landed', flushed: boolean | undefined, repairNotice: string | null }
+    | { kind: 'landed', flushed: boolean | undefined, repairNotice: string | null, repair: RepairSummary, incomplete: readonly IncompleteItem[] }
     /** Nothing changed. */
     | { kind: 'refused', cause: Store2ImportRefusal }
     /** The import may or may not have landed: the write lock stays closed and the person is told to reload. */
@@ -442,6 +442,8 @@ const IMPORT_ATTEMPTS = 2
  */
 export async function commitStore2Import(request: Store2ImportRequest): Promise<Store2ImportEnd> {
     const answered = new Set<string>()
+    // The items the person accepted being left incomplete; kept for the landed end.
+    let accepted: readonly IncompleteItem[] = []
     const committer = guardedAtFlip(request.target.committer, request.busy)
     for (let attempt = 1; ; attempt++) {
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
@@ -468,6 +470,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                             return false
                         }
                         answered.add(signature)
+                        accepted = items
                         return true
                     },
                 },
@@ -487,6 +490,8 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                     kind: 'landed',
                     flushed: outcome.flushed,
                     repairNotice: dropped + changed + recovered > 0 ? language.restoreRepairedNotice(dropped, changed, recovered) : null,
+                    repair: outcome.repair,
+                    incomplete: accepted,
                 }
             }
             case 'declined':
@@ -547,6 +552,8 @@ export async function commitBootImport(request: {
     target: BootImportTarget
     decode(): Promise<Database>
     reader: LegacyEntryReader
+    /** Told the items the person accepted being left incomplete, when the question was asked and answered yes. */
+    onAccepted?(items: readonly IncompleteItem[]): void
 }): Promise<BootImportEnd> {
     let source: ImportSource
     try {
@@ -560,7 +567,11 @@ export async function commitBootImport(request: {
     const result = await request.target.install(source, request.reader, {
         onPhase: noteImportPhase,
         async confirmIncomplete(items) {
-            return await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))
+            if (!await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))) {
+                return false
+            }
+            request.onAccepted?.(items)
+            return true
         },
     })
     noteImportPhase(`boot import ${result.status}`)

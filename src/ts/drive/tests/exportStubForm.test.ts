@@ -290,6 +290,7 @@ import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { createMemoryBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { assembleCharacter, assembleDatabase, stubFromEntry, type UnitSource } from 'src/ts/storage/store2/codec'
 import { keyOfRef, type ShardEntry } from 'src/ts/storage/store2/format'
+import { endOfExport } from 'src/ts/drive/operationEnd'
 import { createLegacyStoreReader } from 'src/ts/storage/store2/legacy/storeReader'
 import { resolveLegacyTree } from 'src/ts/storage/store2/legacy/resolve'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
@@ -506,7 +507,7 @@ describe.each([
 
         const outcome = await run(STUB)
 
-        expect(outcome).toEqual({ status: 'saved', notices: [] })
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
         expect(backupPrompts()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
         const exported = await exportedCharacters()
@@ -656,7 +657,7 @@ describe.each([
 
         const outcome = await run(STUB)
 
-        expect(outcome).toEqual({ status: 'saved', notices: [] })
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
         expect(backupPrompts()).toEqual([])
         for (const uuid of await mintedUuids()) {
             if (uuid !== null) {
@@ -777,7 +778,7 @@ describe.each([
     test('reproducer: a plain success resolves saved with no notice', async () => {
         await pageOf()
 
-        expect(await run()).toEqual({ status: 'saved', notices: [] })
+        expect(await run()).toMatchObject({ status: 'saved', notices: [] })
     })
 
     test('reproducer: the incomplete-data prompt answered Cancel resolves declined and writes nothing', async () => {
@@ -790,6 +791,22 @@ describe.each([
         expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
         expect(backupSink.writes).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    // Mutant "units without the first collection": `omitted.units` built from the late collection alone reads empty here.
+    test('new behaviour: a unit the person agreed to leave out is listed as omitted, and the end is permitted-partial', async () => {
+        const page = await pageOf()
+        page.memory.poke(keyOfRef(page.entries[2].chats[0].chunks[0]), null)
+
+        const outcome = await run(STUB)
+
+        expect(backupPrompts()).toHaveLength(1)
+        if (outcome.status !== 'saved') {
+            throw new Error(`the export ended ${outcome.status}`)
+        }
+        expect(outcome.omitted.units).toHaveLength(1)
+        expect(new Set(outcome.omitted.units).size).toBe(1)
+        expect(endOfExport(_name === 'SaveLocalBackup' ? 'export' : 'export-partial', outcome).outcome).toBe('permitted-partial')
     })
 
     test('reproducer: a cancelled Tauri save dialog resolves declined, keeps the alert, and writes nothing', async () => {

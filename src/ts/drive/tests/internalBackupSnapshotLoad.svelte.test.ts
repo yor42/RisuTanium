@@ -531,7 +531,7 @@ interface World {
     platform: Platform
     api: typeof import('../../globalApi.svelte')
     internal: typeof import('../internalBackup')
-    load: () => Promise<void>
+    load: typeof import('../internalBackup').loadInternalBackup
     risuSave: typeof import('../../storage/risuSave')
     startupCleanup: typeof import('../../storage/startupCleanupState')
     pageMode: typeof import('../../storage/pageStorageMode')
@@ -1000,6 +1000,38 @@ describe('loadInternalBackup commits the chosen snapshot', () => {
         expect.soft(setDatabaseMock, 'setDatabase calls').not.toHaveBeenCalled()
         expect.soft(world.stores.DBState.db === world.liveBefore, 'DBState.db is the same object').toBe(true)
         expect.soft(errorMessages(), 'every error message shown').toEqual([])
+    })
+
+    // New behaviour: the legacy body returns an end; the alerts and the writes are those of the tests around it.
+    test('returns committed with the numbered backup\'s ISO 8601 time as its target and its source', async () => {
+        const { world } = await worldWithSnapshot()
+
+        const end = await world.load()
+
+        expect(end).toMatchObject({ operation: 'restore-numbered', target: new Date(17000000000 * 100).toISOString(), outcome: 'committed', cause: null })
+        expect(end.detail.source).toEqual({ kind: 'numbered', time: 17000000000 })
+        expect(errorMessages()).toEqual([])
+    })
+
+    test('returns canceled when the person picks Cancel, and the picker\'s message is unchanged', async () => {
+        const { world } = await worldWithSnapshot()
+        alertBox.selectAnswer = '0'
+
+        const end = await world.load()
+
+        expect(end).toMatchObject({ operation: 'restore-numbered', target: null, outcome: 'canceled' })
+        expectNothingChanged(world)
+    })
+
+    test('returns failed for a snapshot that cannot be read, with the existing message', async () => {
+        const { world, key } = await worldWithSnapshot()
+        removeSnapshot(world, key)
+        putSnapshot(world, new Uint8Array([1, 2, 3]), 17000000000)
+
+        const end = await world.load()
+
+        expect(end).toMatchObject({ operation: 'restore-numbered', outcome: 'failed' })
+        expectOneError(msg('internalBackupUnreadable'))
     })
 
     test('keeps the write lock closed after a successful load, so a later save never writes over it', async () => {

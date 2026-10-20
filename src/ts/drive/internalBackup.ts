@@ -21,6 +21,7 @@ import { buildRestoreSet, completeRestoredTree, currentCharacterNames, repairRes
 import { describeBlockForPerson } from "../globalApi.svelte";
 import { getPageStorageMode } from "../storage/pageStorageMode";
 import { loadStoreRestorePoint, type ExclusiveHoldRelease } from "./storeRestore";
+import { emptyImportFacts, numberedBackupTarget, type ImportFacts, type OperationCause, type OperationEnd, type OperationOutcome } from "./operationEnd";
 
 const SNAPSHOT_KEY_PREFIX = 'database/dbbackup-'
 
@@ -194,7 +195,26 @@ export async function reloadOntoRestoredState(releaseExclusiveHold: ExclusiveHol
     await reloadAfterRestore()
 }
 
-export async function loadInternalBackup() {
+/** What a legacy-page load came to, before `loadInternalBackup` names the operation and the snapshot. */
+interface SnapshotEnd {
+    outcome: OperationOutcome
+    cause: OperationCause | null
+    omitted?: ImportFacts['omitted']
+}
+
+const snapshotRefused = (cause: OperationCause | null = null): SnapshotEnd => ({ outcome: 'nothing-replaced', cause })
+
+/** The numbered backup a snapshot key names, as the time `n` of `database/dbbackup-<n>.bin`. */
+function snapshotTime(snapshotKey: string): number {
+    return parseInt(snapshotKey.slice(SNAPSHOT_KEY_PREFIX.length))
+}
+
+/**
+ * Loads one of the page's internal backups. Returns how the load ended as a value; the alerts are unchanged and no caller
+ * needs the value. A store2 page restores one of its own restore points (or an old numbered backup) and returns that
+ * end; a legacy page loads a numbered snapshot, and an end it cannot tell the outcome of is `unknown`.
+ */
+export async function loadInternalBackup(): Promise<OperationEnd<ImportFacts>> {
 
     // A store2 page keeps no numbered backups: it restores one of its own restore
     // points, and never reads or rebuilds a numbered backup.
@@ -202,16 +222,19 @@ export async function loadInternalBackup() {
         return await loadStoreRestorePoint({ reload: reloadOntoRestoredState })
     }
 
+    const before = (outcome: OperationOutcome, cause: OperationCause | null = null): OperationEnd<ImportFacts> =>
+        ({ operation: 'restore-numbered', target: null, outcome, cause, detail: emptyImportFacts() })
+
     // Refused before anything is asked, again when the picker returns, and
     // again immediately before the write: work can start during any wait
     // between.
     if (refuseBackupLoadWhileBusy()) {
-        return
+        return before('nothing-replaced', 'busy')
     }
 
     // A page that runs from OPFS this time writes nothing: the load is refused before anything is asked.
     if (await refuseOnReadOnlyPage()) {
-        return
+        return before('nothing-replaced')
     }
 
     let selectedBackup: string | undefined
@@ -233,25 +256,33 @@ export async function loadInternalBackup() {
     } catch (error) {
         console.error(error)
         alertError(language.internalBackupListFailed)
-        return
+        return before('nothing-replaced')
     }
 
     if (selectedBackup === undefined) {
-        return
+        return before('canceled')
     }
 
     // Registered once a snapshot is chosen, and ended however the load leaves.
     const busy = beginBusy('backupLoad')
     try {
-        await loadSelectedBackup(selectedBackup, busy)
+        const time = snapshotTime(selectedBackup)
+        const ended = await loadSelectedBackup(selectedBackup, busy)
+        return {
+            operation: 'restore-numbered',
+            target: numberedBackupTarget(time),
+            outcome: ended.outcome,
+            cause: ended.cause,
+            detail: { ...emptyImportFacts({ kind: 'numbered', time }), omitted: ended.omitted ?? new Map() },
+        }
     } finally {
         busy.end()
     }
 }
 
-async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
+async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle): Promise<SnapshotEnd> {
     if (refuseBackupLoadWhileBusy(busy)) {
-        return
+        return snapshotRefused('busy')
     }
 
     // The startup clean-up can delete a remote block that the snapshot
@@ -269,7 +300,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         const outcome = await Promise.race([startupCleanup.then(() => 'settled' as const), cancelled])
         if (outcome === 'cancelled') {
             alertClear()
-            return
+            return { outcome: 'canceled', cause: null }
         }
         alertWait('Loading backup...')
     }
@@ -283,7 +314,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
     if (!isTauri) {
         if (locksSupported === false) {
             if (!await alertConfirm(language.restoreNoLockWarningConfirm)) {
-                return
+                return { outcome: 'canceled', cause: null }
             }
         } else {
             await tabPresenceLockAcquired
@@ -295,7 +326,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
                 if (!isAppInitiatedReload()) {
                     alertError(language.restoreOtherTabRefused)
                 }
-                return
+                return snapshotRefused()
             }
         }
     }
@@ -311,6 +342,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
     // Which step a failure belongs to, for the message shown. The replace itself
     // is told apart by `replaceStarted`.
     let stage: 'read' | 'rebuild' | 'keep' = 'read'
+    let omitted: ImportFacts['omitted'] = new Map()
     try {
         if (!releaseExclusiveHold) {
             releaseDbWriteLock = await dbWriteLock.acquire()
@@ -318,6 +350,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
 
         alertWait('Loading backup...')
         const reading = await readSnapshot(selectedBackup)
+        omitted = reading.kind === 'partial' ? reading.omitted : omitted
 
         if (reading.kind === 'partial') {
             // Nothing has been written. The locks stay held across the confirm,
@@ -329,12 +362,12 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             if (leftOut.length > 0) {
                 const question = `${language.internalBackupPartialConfirm}\n\n${leftOut.map((item) => `- ${item}`).join('\n')}\n\n${language.internalBackupPartialConfirmKeep}`
                 if (!await alertConfirm(question)) {
-                    return
+                    return { outcome: 'canceled', cause: null }
                 }
                 alertWait('Loading backup...')
                 // Work can start while the confirm is up.
                 if (refuseBackupLoadWhileBusy(busy)) {
-                    return
+                    return snapshotRefused('busy')
                 }
             }
         }
@@ -342,7 +375,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         const rebuilt = await rebuildBlockSet(reading.tree)
         if ('refusal' in rebuilt) {
             alertError(rebuilt.refusal)
-            return
+            return snapshotRefused()
         }
         const restoredSet = rebuilt.set
 
@@ -351,14 +384,14 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         if (undoCopy.kind === 'nothing') {
             // The load is never silent about having no way back.
             if (!await alertConfirm(language.restoreNoUndoCopyConfirm(undoCopy.reason))) {
-                return
+                return { outcome: 'canceled', cause: null, omitted }
             }
             alertWait('Loading backup...')
         }
 
         // The same busy check is asked again at the flip, inside the replace.
         if (refuseBackupLoadWhileBusy(busy)) {
-            return
+            return snapshotRefused('busy')
         }
 
         replaceStarted = true
@@ -368,15 +401,15 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             if (!written.aborted) {
                 alertError(language.restoreNotHappenedNotice)
             }
-            return
+            return snapshotRefused(written.aborted ? 'busy' : null)
         }
         if (written.kind === 'too-large') {
             alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit))
-            return
+            return snapshotRefused()
         }
         if (written.kind === 'unsavable') {
             alertError(language.restoreRefusedUnsavable(describeBlockForPerson(written.blockName)))
-            return
+            return snapshotRefused('unsavable')
         }
         if (written.kind === 'unconfirmed') {
             // Which state is current is unknown: nothing may save from this
@@ -386,7 +419,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
             if (releaseExclusiveHold) {
                 await releaseExclusiveHold(true)
             }
-            return
+            return { outcome: 'unknown', cause: null, omitted }
         }
         restoreLanded = true
         writeLockStaysClosed = true
@@ -397,11 +430,14 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         }
         alertWait(undoCopy.kind === 'kept' ? language.internalBackupLoaded : language.internalBackupLoadedNoCopy)
         await reloadOntoRestoredState(releaseExclusiveHold)
+        return { outcome: 'committed', cause: null, omitted }
     } catch (error) {
         console.error(error)
         if (restoreLanded) {
             alertWait(language.restoreSavedReloadOrRestart)
-        } else if (replaceStarted) {
+            return { outcome: 'committed', cause: null, omitted }
+        }
+        if (replaceStarted) {
             alertError(language.internalBackupWriteFailed)
         } else if (stage === 'rebuild') {
             alertError(language.internalBackupNotRebuilt)
@@ -410,6 +446,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle) {
         } else {
             alertError(language.internalBackupUnreadable)
         }
+        return { outcome: 'failed', cause: null, omitted }
     } finally {
         if (!writeLockStaysClosed) {
             if (releaseDbWriteLock) {

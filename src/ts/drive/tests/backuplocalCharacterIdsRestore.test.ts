@@ -219,6 +219,18 @@ async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
     await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
 }
 
+/** Like `loadBackupBytes`, and returns what the block-era restore came to. */
+async function loadBackupEnd(bytes: Uint8Array) {
+    const ended = LoadLocalBackup()
+    const input = capturedInput
+    if (!input) {
+        throw new Error('LoadLocalBackup did not create a file input')
+    }
+    Object.defineProperty(input, 'files', { value: [makeFakeFile(bytes)], configurable: true })
+    await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
+    return await ended
+}
+
 function backupOf(db: Record<string, unknown>): Uint8Array {
     return buildChunk('database.risudat', encodeRisuSaveLegacy(db as unknown as Database, 'noCompression'))
 }
@@ -354,6 +366,18 @@ describe('a restore that repaired the character list says so once it has landed'
 
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
         expect(alertNormalWaitMock).not.toHaveBeenCalled()
+    })
+
+    test('(N) the block-era tail ends committed for a restore that landed, and nothing-replaced for a refused one', async () => {
+        const landed = await loadBackupEnd(backupOf({ characters: [makeCharacter('a', 'A')] }))
+        expect(landed).toMatchObject({ operation: 'import', outcome: 'committed', cause: null })
+        expect(landed.detail.assets).toEqual({ written: 0, skipped: [] })
+
+        setDatabaseMock.mockClear()
+        const refused = await loadBackupEnd(backupOf({ characters: [makeCharacter('a', 'A'), stub('preset', 'The Archived One')] }))
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(refused).toMatchObject({ operation: 'import', outcome: 'nothing-replaced', cause: null })
+        expect(alertErrorMock).toHaveBeenLastCalledWith(language.restoreRefusedArchivedId('The Archived One'))
     })
 
     test('(G) a refused restore shows only the refusal, though entries were also dropped', async () => {

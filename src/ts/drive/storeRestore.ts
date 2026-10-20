@@ -20,6 +20,7 @@ import {
     announceStore2Import, commitStore2Import, confirmDatabaseSize, confirmLeftOut, decodeNumberedBackup, UnsavedGuard,
     type Store2ImportEnd,
 } from './storeImport'
+import { emptyImportFacts, numberedBackupTarget, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from './operationEnd'
 
 /**
  * The internal-backup load of a store2 page: the person picks one of the page's restore points, or one of the old
@@ -92,6 +93,25 @@ type Picked =
     | { kind: 'point', row: RestorePointRow }
     | { kind: 'old', time: number }
 
+/** What a restore came to, before the shell names the operation and target: how it ended, why, and the facts it knows. */
+interface RunEnd {
+    outcome: OperationOutcome
+    cause: OperationCause | null
+    facts?: Partial<ImportFacts>
+}
+
+const nothingReplaced = (cause: OperationCause | null = null): RunEnd => ({ outcome: 'nothing-replaced', cause })
+
+/** A restore before anything is picked has no target and no source. */
+function endBeforePick(outcome: OperationOutcome, cause: OperationCause | null = null): OperationEnd<ImportFacts> {
+    return { operation: 'restore-point', target: null, outcome, cause, detail: emptyImportFacts() }
+}
+
+function endOfRun(operation: OperationName, target: string, picked: Picked, run: RunEnd): OperationEnd<ImportFacts> {
+    const source: ImportFacts['source'] = picked.kind === 'point' ? { kind: 'restore-point', label: target } : { kind: 'numbered', time: picked.time }
+    return { operation, target, outcome: run.outcome, cause: run.cause, detail: { ...emptyImportFacts(source), ...run.facts } }
+}
+
 /**
  * The restore-point picker and restore of a store2 page. Refused before anything
  * is asked while work is in progress, on a page that writes nothing, or without
@@ -108,19 +128,19 @@ type Picked =
  * A damaged row is listed and can be picked; the restore refuses it through its
  * tree check, so there is one authority on whether a point is whole.
  */
-export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promise<void> {
+export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promise<OperationEnd<ImportFacts>> {
     if (refuseBackupLoadWhileBusy()) {
-        return
+        return endBeforePick('nothing-replaced', 'busy')
     }
     if (await refuseOnReadOnlyPage()) {
-        return
+        return endBeforePick('nothing-replaced')
     }
     const session = getStore2BootSession()
     const committer = session === null ? null : session.committer
     const backend = session === null ? null : session.backend
     if (committer === null || backend === null) {
         alertError(language.store2Boot.readOnlyRefusal)
-        return
+        return endBeforePick('nothing-replaced', 'no-writable-session')
     }
 
     let rows: RestorePointRow[]
@@ -130,18 +150,18 @@ export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promi
         const listed = await listRestorePoints(backend, await backend.readCommit())
         if (listed.status !== 'ok') {
             alertError(language.internalBackupListFailed)
-            return
+            return endBeforePick('nothing-replaced')
         }
         rows = listed.rows
         oldTimes = await listBackupTimes()
     } catch (error) {
         console.error(error)
         alertError(language.internalBackupListFailed)
-        return
+        return endBeforePick('nothing-replaced')
     }
     if (rows.length === 0 && oldTimes.length === 0) {
         alertNormal(language.store2RestoreNone)
-        return
+        return endBeforePick('nothing-replaced')
     }
 
     const picked = parseInt(await alertSelect(['Cancel', ...rows.map(rowLabel), ...oldTimes.map(oldRowLabel)])) - 1
@@ -151,17 +171,17 @@ export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promi
     } else if (picked >= rows.length && picked - rows.length < oldTimes.length) {
         target = { kind: 'old', time: oldTimes[picked - rows.length] }
     } else {
-        return
+        return endBeforePick('canceled')
     }
 
     // Registered once a point is chosen, and ended however the restore leaves.
     const busy = beginBusy('backupLoad')
     try {
         if (target.kind === 'point') {
-            await restoreChosen(target.row, committer, backend, busy, options)
-        } else {
-            await restoreOldChosen(target.time, committer, backend, busy, options)
+            const label = rowLabel(target.row)
+            return endOfRun('restore-point', label, target, await restoreChosen(target.row, committer, backend, busy, options))
         }
+        return endOfRun('restore-numbered', numberedBackupTarget(target.time), target, await restoreOldChosen(target.time, committer, backend, busy, options))
     } finally {
         busy.end()
     }
@@ -189,10 +209,10 @@ interface ExclusiveRun {
  * from this page's pre-restore state must never overwrite the restored
  * profile.
  */
-async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => Promise<void>): Promise<void> {
+async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => Promise<RunEnd>): Promise<RunEnd> {
     // Work can start while the picker is open.
     if (refuseBackupLoadWhileBusy(busy)) {
-        return
+        return nothingReplaced('busy')
     }
 
     // Nothing else on this browser origin may write the profile while the commit
@@ -204,7 +224,7 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
     if (!isTauri) {
         if (locksSupported === false) {
             if (!await alertConfirm(language.restoreNoLockWarningConfirm)) {
-                return
+                return { outcome: 'canceled', cause: null }
             }
         } else {
             await tabPresenceLockAcquired
@@ -216,7 +236,7 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
                 if (!isAppInitiatedReload()) {
                     alertError(language.restoreOtherTabRefused)
                 }
-                return
+                return nothingReplaced()
             }
         }
     }
@@ -232,18 +252,19 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
         // last steps within a few microtasks, so after one turn what is not saved
         // is edits made since this tab's last save, which the restore would lose.
         if (!await new UnsavedGuard().check()) {
-            return
+            return { outcome: 'canceled', cause: null }
         }
         // The same busy check is asked again at the flip.
         if (refuseBackupLoadWhileBusy(busy)) {
-            return
+            return nothingReplaced('busy')
         }
 
-        await perform(run)
+        return await perform(run)
     } catch (error) {
         console.error(error)
         if (run.landed) {
             alertWait(language.restoreSavedReloadOrRestart)
+            return { outcome: 'committed', cause: null }
         } else if (run.started) {
             // An error after the restore began leaves the outcome unknown, exactly like an unconfirmed write.
             run.staysClosed = true
@@ -251,8 +272,10 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
             if (run.releaseExclusiveHold) {
                 await run.releaseExclusiveHold(true)
             }
+            return { outcome: 'unknown', cause: null }
         } else {
             alertError(language.internalBackupWriteFailed)
+            return { outcome: 'failed', cause: null }
         }
     } finally {
         if (!run.staysClosed) {
@@ -266,8 +289,8 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
     }
 }
 
-async function restoreChosen(row: RestorePointRow, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<void> {
-    await runExclusively(busy, async (run) => {
+async function restoreChosen(row: RestorePointRow, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<RunEnd> {
+    return await runExclusively(busy, async (run) => {
         alertWait('Loading backup...')
         run.started = true
         const outcome = await restorePoint(committer, backend, row.key)
@@ -283,17 +306,17 @@ async function restoreChosen(row: RestorePointRow, committer: Committer, backend
                     alertWait(language.store2RestoreDone)
                 }
                 await options.reload(run.releaseExclusiveHold)
-                return
+                return { outcome: 'committed', cause: null, facts: { flushed: outcome.flushed } }
             case 'already-current':
             case 'not-named':
                 alertError(language.store2RestoreListChanged)
-                return
+                return nothingReplaced()
             case 'bulk-marker':
                 alertError(language.store2RestoreBulkMarker)
-                return
+                return nothingReplaced('marker-standing')
             case 'tree-incomplete':
                 alertError(language.store2RestoreIncomplete(outcome.missing.length))
-                return
+                return nothingReplaced()
             case 'conflict':
             case 'unknown':
                 // The restore may or may not have landed: nothing may save from
@@ -303,16 +326,16 @@ async function restoreChosen(row: RestorePointRow, committer: Committer, backend
                 if (run.releaseExclusiveHold) {
                     await run.releaseExclusiveHold(true)
                 }
-                return
+                return { outcome: 'unknown', cause: null }
             case 'stale-page':
                 alertError(language.restoreNotHappenedNotice)
-                return
+                return nothingReplaced('stale-page')
             case 'failed':
                 alertError(language.internalBackupWriteFailed)
-                return
+                return { outcome: 'failed', cause: 'write-failed' }
             case 'refused':
                 alertError(language.internalBackupUnreadable)
-                return
+                return nothingReplaced()
         }
     })
 }
@@ -340,29 +363,32 @@ async function readOldBackup(time: number): Promise<Uint8Array | null> {
  * root damage refuses it whole), and what a salvage leaves out is named and confirmed. The archived units it points at
  * are the page's own legacy units. A failed write, a decline or a refusal leaves the page as it was.
  */
-async function restoreOldChosen(time: number, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<void> {
+async function restoreOldChosen(time: number, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<RunEnd> {
     if (refuseBackupLoadWhileBusy(busy)) {
-        return
+        return nothingReplaced('busy')
     }
     const bytes = await readOldBackup(time)
     if (bytes === null) {
-        return
+        return nothingReplaced()
     }
     if (!await confirmDatabaseSize(bytes.length)) {
-        return
+        return { outcome: 'canceled', cause: null }
     }
+    // The salvage map of the file, kept after the person confirmed what it leaves out.
+    let omitted: ImportFacts['omitted']
     try {
         const decoded = await decodeNumberedBackup(bytes)
         if (!await confirmLeftOut(decoded.omitted)) {
-            return
+            return { outcome: 'canceled', cause: null }
         }
+        omitted = decoded.omitted
     } catch (error) {
         console.error(error)
         alertError(language.internalBackupUnreadable)
-        return
+        return nothingReplaced()
     }
 
-    await runExclusively(busy, async (run) => {
+    return await runExclusively(busy, async (run) => {
         alertWait('Loading backup...')
         run.started = true
         const end: Store2ImportEnd = await commitStore2Import({
@@ -373,18 +399,18 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
         })
         switch (end.kind) {
             case 'refused':
-                return
+                return nothingReplaced(end.cause)
             case 'unconfirmed':
                 run.staysClosed = true
                 if (run.releaseExclusiveHold) {
                     await run.releaseExclusiveHold(true)
                 }
-                return
+                return { outcome: 'unknown', cause: null }
             case 'landed':
                 run.landed = true
                 run.staysClosed = true
                 await announceStore2Import(end, [], () => options.reload(run.releaseExclusiveHold))
-                return
+                return { outcome: 'committed', cause: null, facts: { flushed: end.flushed, repair: end.repair, incomplete: end.incomplete, omitted } }
         }
     })
 }
