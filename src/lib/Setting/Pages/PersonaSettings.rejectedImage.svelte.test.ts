@@ -60,7 +60,6 @@ function setupDb() {
     DBState.db = {
         username: 'me',
         userNote: '',
-        personaNote: false,
         personaPrompt: '',
         userIcon: 'user.png',
         selectedPersona: 0,

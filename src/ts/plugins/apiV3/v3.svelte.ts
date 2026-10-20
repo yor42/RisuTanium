@@ -74,17 +74,25 @@ import {
 */
 
 const pluginChannel = new Map<string, Function>();
-const documentEventListeners: Array<{type: string, listener: EventListenerOrEventListenerObject, options: any}> = [];
+type TrackedEventListener = {
+    eventTarget: EventTarget
+    type: string
+    listener: EventListenerOrEventListenerObject
+    options: AddEventListenerOptions
+};
+const pluginEventListeners: TrackedEventListener[] = [];
 
 class SafeElement {
     #element: HTMLElement;
+    #eventTarget: EventTarget;  // Differs from #element for SafeDocument
     __classType = 'REMOTE_REQUIRED' as const;
 
-    constructor(element: HTMLElement) {
+    constructor(element: HTMLElement, eventTarget?: EventTarget) {
         if(element.getAttribute('freezed')){
             throw new Error("This element cannot be accessed by SafeELement")
         }
         this.#element = element;
+        this.#eventTarget = eventTarget ?? element;
     }
 
     public appendChild(child: SafeElement) {
@@ -258,7 +266,7 @@ class SafeElement {
     public scrollIntoView(options?: boolean | ScrollIntoViewOptions) {
         this.#element.scrollIntoView(options);
     }
-    #eventIdMap = new Map<string, Function>()
+    #eventIdMap = new Map<string, TrackedEventListener>()
 
     public async addEventListener(type:string, listener: (event: any) => void, options?: boolean | AddEventListenerOptions):Promise<string> {
         const realOptions = typeof options === 'boolean' ? { capture: options } : options || {};
@@ -333,9 +341,15 @@ class SafeElement {
             const modifiedListener = (event: any) => {
                 listener(trimEvent(event))
             }
-            this.#eventIdMap.set(id, modifiedListener)
-            documentEventListeners.push({type, listener: modifiedListener as EventListenerOrEventListenerObject, options: realOptions})
-            document.addEventListener(type, modifiedListener, realOptions)
+            const tracked: TrackedEventListener = {
+                eventTarget: this.#eventTarget,
+                type,
+                listener: modifiedListener as EventListenerOrEventListenerObject,
+                options: realOptions,
+            };
+            this.#eventIdMap.set(id, tracked);
+            pluginEventListeners.push(tracked);
+            tracked.eventTarget.addEventListener(tracked.type, tracked.listener, tracked.options);
             return id;
         }
         else if(allowedDelayedEventListeners.includes(type)){
@@ -348,9 +362,15 @@ class SafeElement {
                     listener(trimEvent(event));
                 }, delay);
             }
-            this.#eventIdMap.set(id, modifiedListener)
-            documentEventListeners.push({type, listener: modifiedListener as EventListenerOrEventListenerObject, options: realOptions})
-            document.addEventListener(type, modifiedListener, realOptions);
+            const tracked: TrackedEventListener = {
+                eventTarget: this.#eventTarget,
+                type,
+                listener: modifiedListener as EventListenerOrEventListenerObject,
+                options: realOptions,
+            };
+            this.#eventIdMap.set(id, tracked);
+            pluginEventListeners.push(tracked);
+            tracked.eventTarget.addEventListener(tracked.type, tracked.listener, tracked.options);
             return id;
         }
         else{
@@ -359,12 +379,13 @@ class SafeElement {
     }
 
     public removeEventListener(type:string, id:string, options?: boolean | EventListenerOptions) {
-        const listener = this.#eventIdMap.get(id);
-        if(listener){
-            const realOptions = typeof options === 'boolean' ? { capture: options } : options || {};
-            document.removeEventListener(type, listener as EventListenerOrEventListenerObject, realOptions);
-            const idx = documentEventListeners.findIndex(e => e.listener === listener);
-            if(idx !== -1) documentEventListeners.splice(idx, 1);
+        // type/options are unused, but are kept in the signature for API compatibility
+        // DOM removal silently no-ops if type/capture don't exactly match the registration, so the stored record is replayed instead
+        const tracked = this.#eventIdMap.get(id);
+        if(tracked){
+            tracked.eventTarget.removeEventListener(tracked.type, tracked.listener, tracked.options);
+            const idx = pluginEventListeners.indexOf(tracked);
+            if(idx !== -1) pluginEventListeners.splice(idx, 1);
             this.#eventIdMap.delete(id);
         }
     }
@@ -377,7 +398,8 @@ class SafeElement {
 class SafeDocument extends SafeElement {
     __classType = 'REMOTE_REQUIRED' as const;
     constructor(document: Document) {
-        super(document.documentElement);
+        // document-level events (including viewport scroll) are bound to the Document
+        super(document.documentElement, document);
     }
     createElement(tagName: string): SafeElement {
         if(!tagWhitelist.includes(tagName.toLowerCase())) {
@@ -1457,9 +1479,11 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         _getSafeLocalStorage: oldApis.safeLocalStorage.getItem,
         _setSafeLocalStorage: oldApis.safeLocalStorage.setItem,
         _removeSafeLocalStorage: oldApis.safeLocalStorage.removeItem,
-        _clearSafeLocalStorage: oldApis.safeLocalStorage.clear,
-        _keySafeLocalStorage: oldApis.safeLocalStorage.key,
+        //bound calls: SafeLocalStorage.key/clear/keys use `this`
+        _clearSafeLocalStorage: () => oldApis.safeLocalStorage.clear(),
+        _keySafeLocalStorage: (index: number) => oldApis.safeLocalStorage.key(index),
         _keysSafeLocalStorage: oldApis.safeLocalStorage.keys,
+        _lengthSafeLocalStorage: () => oldApis.safeLocalStorage.length,
         searchTranslationCache: async (partialKey: string) => {
             return searchLLMCache(partialKey)
         },
@@ -1484,6 +1508,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     'clear': '_clearSafeLocalStorage',
                     'key': '_keySafeLocalStorage',
                     'keys': '_keysSafeLocalStorage',
+                    'length': '_lengthSafeLocalStorage',
                 }
             }
         },
@@ -1619,10 +1644,10 @@ export async function loadV3Plugins(plugins:RisuPlugin[]){
         await unloadV3Plugin(instance.name);
     }));
 
-    for(const entry of documentEventListeners){
-        document.removeEventListener(entry.type, entry.listener, entry.options);
+    for(const entry of pluginEventListeners){
+        entry.eventTarget.removeEventListener(entry.type, entry.listener, entry.options);
     }
-    documentEventListeners.length = 0;
+    pluginEventListeners.length = 0;
 
     const loadPromises = plugins.map(plugin => executePluginV3(plugin));
     await Promise.all(loadPromises);
