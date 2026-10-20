@@ -38,7 +38,7 @@ describe('the storage mode', () => {
     test.each([
         ['a legacy page that read no file', { kind: 'legacy', convertedFrom: null } as const],
         ['a block page', { kind: 'block' } as const],
-        ['a read-only page', { kind: 'read-only' } as const],
+        ['a read-only page', { kind: 'read-only', reason: 'opfs-transitional' } as const],
         ['a store2 page', { kind: 'store2' } as const],
         ['a page boot has not decided for', { kind: 'unset' } as const],
     ])('%s has no fingerprint to pass', (_label, mode) => {
@@ -73,7 +73,7 @@ describe('which pages may run the legacy deleters', () => {
         ['a legacy page', { kind: 'legacy', convertedFrom: null }, true],
         ['a block page', { kind: 'block' }, true],
         ['a store2 page', { kind: 'store2' }, false],
-        ['a read-only page', { kind: 'read-only' }, false],
+        ['a read-only page', { kind: 'read-only', reason: 'opfs-transitional' }, false],
         ['a page boot has not decided for', { kind: 'unset' }, false],
     ]
 

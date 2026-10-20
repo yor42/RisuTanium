@@ -137,7 +137,7 @@ describe('a page that is not a legacy or block page deletes no inlay', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['read-only', { kind: 'read-only' }],
+        ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
         ['unset', { kind: 'unset' }],
     ])('reproducer: a %s page with no residency deletes nothing', async (_label, mode) => {
         setPageStorageMode(mode)

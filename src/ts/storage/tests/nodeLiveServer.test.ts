@@ -567,6 +567,7 @@ describeLimited(CURRENT_BUILD_UNAVAILABLE === null ? 'a real 429 on the write si
                 failures.push({ error, attempts })
                 return 1
             },
+            reportUncountedFailure: () => 1,
             async withWriteLock(run) {
                 const before = tail
                 let release: () => void = () => {}

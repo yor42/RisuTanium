@@ -384,7 +384,7 @@ describe('exportThisTab: saved only after the person has pressed the hand-off pr
         const write = saved(['Partial backup successful.'])
         const reload = vi.fn()
         const ui = createPeerUi({ reload, exportAvailable: true, exportThisTab: write })
-        let settled: 'saved' | 'declined' | null = null
+        let settled: 'saved' | 'declined' | 'failed' | null = null
         const answer = ui.exportThisTab('manifest').then((value) => { settled = value })
         await closeReport()
         await waitForSelect()
@@ -404,7 +404,7 @@ describe('exportThisTab: saved only after the person has pressed the hand-off pr
     // New behaviour (Gate 2 R1): a toast or a direct store clear is not this prompt's answer.
     test('a toast landing on the open prompt, and a direct alert-store clear after it, do not answer it: it is shown again until its button is pressed', async () => {
         const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: saved([]) })
-        let settled: 'saved' | 'declined' | null = null
+        let settled: 'saved' | 'declined' | 'failed' | null = null
         const answer = ui.exportThisTab('manifest').then((value) => { settled = value })
         await closeReport()
         await waitForSelect()
@@ -456,9 +456,9 @@ describe('exportThisTab: saved only after the person has pressed the hand-off pr
     })
 
     // New behaviour: reload follows only a saved outcome.
-    test.each(['declined', 'failed'] as const)('reproducer: a %s export resolves declined and posts no hand-off notice', async (status) => {
+    test.each(['declined', 'failed'] as const)('new behaviour: a %s export resolves as itself and posts no hand-off notice', async (status) => {
         const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => ({ status }) })
-        await expect(ui.exportThisTab('manifest')).resolves.toBe('declined')
+        await expect(ui.exportThisTab('manifest')).resolves.toBe(status)
         expect(shown().type).toBe('none')
     })
 

@@ -4,6 +4,7 @@ import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import { Store2CommitRefusedError, Store2NotFlushedError, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
+import type { SaveFailureClass } from '../saveFailure'
 
 /**
  * The in-session prompts of a page parked on a commit it did not make, and the wording of a failing save.
@@ -128,13 +129,13 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         }
     }
 
-    async function exportThisTab(manifestKey: string): Promise<'saved' | 'declined'> {
+    async function exportThisTab(manifestKey: string): Promise<'saved' | 'declined' | 'failed'> {
         if (options.exportThisTab === undefined) {
             throw new Error('The export is not available in this build.')
         }
         const result = await options.exportThisTab(manifestKey)
         if (result.status !== 'saved') {
-            return 'declined'
+            return result.status
         }
         // The writer's own success alert is replaced by its report, shown again here; a plain success reported only the
         // inlays sentence, which is kept. Nothing reloads on that alert, so any close of it is enough. The reload is held
@@ -171,6 +172,20 @@ export interface SaveFailureReport {
     showRaw: boolean
     /** How long the loop waits before it tries again. */
     waitMs: number
+}
+
+/** Which kind of failure a save pass ended in; the same order of precedence as `describeSaveFailure`. */
+export function saveFailureClassOf(error: unknown, storageFull: boolean): SaveFailureClass {
+    if (storageFull) {
+        return 'storage-full'
+    }
+    if (error instanceof Store2NotFlushedError) {
+        return 'not-flushed'
+    }
+    if (error instanceof Store2CommitRefusedError) {
+        return 'commit-refused'
+    }
+    return 'other'
 }
 
 /** What a failing save tells the person and how long the loop waits; `attempts` counts the failures in a row. */

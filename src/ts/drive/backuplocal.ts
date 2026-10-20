@@ -1089,10 +1089,11 @@ export function LoadLocalBackup(boot?: BootBinRun){
             // old upstream profile's units of the same ids are still the store's.
             let store2Target: Store2ImportTarget | null = null;
             if (boot === undefined && getPageStorageMode().kind === 'store2') {
-                store2Target = await checkStore2Import();
-                if (store2Target === null) {
+                const checked = await checkStore2Import();
+                if (checked.kind === 'refused') {
                     return;
                 }
+                store2Target = checked.target;
                 await saveFirst(SAVE_FIRST_BOUND_MS);
             }
 

@@ -65,10 +65,11 @@ export interface Store2PeerHandler {
      * through the incomplete-data prompt. `manifestKey` is not used by the export.
      * 'saved' resolves only once the person has acknowledged that the file was handed to the browser: a browser
      * download cannot be watched to its end, and the reload that follows would cut an unfinished one off. Anything
-     * else (a cancelled prompt or dialog, a failed write) is 'declined': the page asks again and does not reload.
+     * else is 'declined' (a cancelled prompt or dialog) or 'failed' (a failed write, which its writer has already told
+     * the person about): the page asks again and does not reload, silently for both.
      * A throw is a failure of the handler itself and is reported like a failed save.
      */
-    exportThisTab(manifestKey: string): Promise<'saved' | 'declined'>
+    exportThisTab(manifestKey: string): Promise<'saved' | 'declined' | 'failed'>
     reload(): void
 }
 
@@ -141,6 +142,11 @@ export interface Store2LoopPort {
     setStopped(reason: string, detail?: string): void
     /** Tells the person a save failed; answers how long the loop waits before it tries again. */
     reportFailure(error: unknown, attempts: number): number
+    /**
+     * `reportFailure` for a failure that is not a counted save pass (the peer hand-off handler threw, or a throw after
+     * the commit landed): the same alert and wait, with `attempts` only a severity input. It records no failed pass.
+     */
+    reportUncountedFailure(error: unknown, attempts: number): number
     /** Runs `run` while holding the write lock that every whole-state writer shares. */
     withWriteLock<T>(run: () => Promise<T>): Promise<T>
     /** A sleep that a save request ends early. */
@@ -385,7 +391,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             answer = await context.peer.decide(prompt)
         } catch (error) {
             parked.asked = false
-            port.reportFailure(error, 1)
+            port.reportUncountedFailure(error, 1)
             await port.sleep(1000)
             return
         }
@@ -400,14 +406,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (choice === 'export-first') {
             try {
                 if (await context.peer.exportThisTab(encoder.manifestKey) !== 'saved') {
-                    // A cancel is not a save failure: the person is asked again, without the failure alert.
+                    // A cancel is not a save failure, and a failed write was already told by its writer: the person is asked again, without the failure alert.
                     parked.asked = false
                     return
                 }
             } catch (error) {
                 // The person keeps an in-app action: the question is asked again after the wait.
                 parked.asked = false
-                await port.sleep(port.reportFailure(error, 5))
+                await port.sleep(port.reportUncountedFailure(error, 5))
                 return
             }
         }
@@ -610,7 +616,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 foldBack(run.snapshot)
                 await port.sleep(port.reportFailure(error, savetrys))
             } else {
-                await port.sleep(port.reportFailure(error, 5))
+                await port.sleep(port.reportUncountedFailure(error, 5))
             }
         } finally {
             if (!tick) {

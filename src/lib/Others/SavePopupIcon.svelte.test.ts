@@ -114,7 +114,7 @@ describe('SavePopupIcon shows nothing when nothing is wrong', () => {
 describe('SavePopupIcon -- the read-only page and the stop reasons of the block store', () => {
     test('a page that runs from OPFS this time shows a button that says it does not save', async () => {
         storeKind.opfs = true
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         const { target, app } = mountIcon()
         flushSync()
 
@@ -134,7 +134,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
         flushSync()
         expect(target.querySelector('button')).toBeNull()
 
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         flushSync()
 
         const button = target.querySelector('button')
@@ -148,7 +148,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
 
     test('reproducer: a page the store2 boot opened read-only on a store that is not OPFS gets the neutral words, not the OPFS ones', async () => {
         storeKind.opfs = false
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
         const { target, app } = mountIcon()
         flushSync()
 
@@ -163,7 +163,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
 
     test('reproducer: a store selection that cannot be had is not OPFS, so the neutral words are used', async () => {
         storeKind.throws = true
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
         const { target, app } = mountIcon()
         flushSync()
 

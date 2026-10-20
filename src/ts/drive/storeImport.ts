@@ -56,6 +56,38 @@ export interface Store2ImportTarget {
     backend: Store2Backend
 }
 
+/**
+ * Why an import ended without replacing the profile. Each name states only a fact its site has proven; the check and
+ * the commit may reach the same name (`too-new`) only when both prove it. Several causes share a message. A refusal
+ * never says whether a write began: that is the shell's to decide.
+ * `foreign-marker` is the check's proof that the standing marker belongs to another page; `marker-standing` is the
+ * commit's report that a marker stood and could not be cleared, whoever owns it.
+ */
+export type Store2ImportRefusal =
+    | 'no-writable-session'
+    | 'commit-read-failed'
+    | 'too-new'
+    | 'commit-key-unusable'
+    | 'no-current-manifest'
+    | 'foreign-marker'
+    | 'marker-standing'
+    | 'decode-failed'
+    | 'busy'
+    | 'declined'
+    | 'read-failed'
+    | 'archived-id'
+    | 'unsavable'
+    | 'base-unreadable'
+    | 'stale-page'
+    | 'write-failed'
+    | 'abandoned'
+    | 'library-refused'
+
+/** The precondition check of a page import: the target to import into, or the refusal that has shown its message. */
+export type Store2ImportCheck =
+    | { kind: 'ready', target: Store2ImportTarget }
+    | { kind: 'refused', cause: Store2ImportRefusal }
+
 const IMPORT_MEASURE_KEY = 'risu-measure-import'
 
 /** The copy loop notes a phase once per this many entries visited. */
@@ -89,13 +121,13 @@ export function noteImportPhase(phase: string): void {
  * write, a readable commit key that names a current manifest, and no bulk marker of another page standing. A marker of
  * this page load is not a refusal: the commit clears it the way the save loop does. A refusal has shown its message.
  */
-export async function checkStore2Import(): Promise<Store2ImportTarget | null> {
+export async function checkStore2Import(): Promise<Store2ImportCheck> {
     const session = getStore2BootSession()
     const committer = session === null ? null : session.committer
     const backend = session === null ? null : session.backend
     if (committer === null || backend === null) {
         alertError(language.store2Boot.readOnlyRefusal)
-        return null
+        return { kind: 'refused', cause: 'no-writable-session' }
     }
     let read: Store2Read
     try {
@@ -103,27 +135,27 @@ export async function checkStore2Import(): Promise<Store2ImportTarget | null> {
     } catch (error) {
         console.error(error)
         alertError(language.store2ImportReadFailed)
-        return null
+        return { kind: 'refused', cause: 'commit-read-failed' }
     }
     const classified = classifyCommitRead(read)
     switch (classified.status) {
         case 'too-new':
             alertError(language.store2ImportTooNew)
-            return null
+            return { kind: 'refused', cause: 'too-new' }
         case 'absent':
         case 'damaged':
             alertError(language.store2ImportRefused)
-            return null
+            return { kind: 'refused', cause: 'commit-key-unusable' }
         case 'parsed':
             if (classified.value.current === null) {
                 alertError(language.store2ImportRefused)
-                return null
+                return { kind: 'refused', cause: 'no-current-manifest' }
             }
             if (classified.value.staging !== null && classified.value.staging.owner !== committer.owner) {
                 alertError(language.store2RestoreBulkMarker)
-                return null
+                return { kind: 'refused', cause: 'foreign-marker' }
             }
-            return { committer, backend }
+            return { kind: 'ready', target: { committer, backend } }
     }
 }
 
@@ -323,7 +355,7 @@ export type Store2ImportEnd =
     /** The import is the page's profile. `flushed === false` is a Tauri write the device did not confirm; the page reloads either way. */
     | { kind: 'landed', flushed: boolean | undefined, repairNotice: string | null }
     /** Nothing changed. */
-    | { kind: 'refused' }
+    | { kind: 'refused', cause: Store2ImportRefusal }
     /** The import may or may not have landed: the write lock stays closed and the person is told to reload. */
     | { kind: 'unconfirmed' }
 
@@ -392,11 +424,11 @@ function unconfirmed(): Store2ImportEnd {
     return { kind: 'unconfirmed' }
 }
 
-function refused(message: string | null): Store2ImportEnd {
+function refused(cause: Store2ImportRefusal, message: string | null): Store2ImportEnd {
     if (message !== null) {
         alertError(message)
     }
-    return { kind: 'refused' }
+    return { kind: 'refused', cause }
 }
 
 /** The attempts of one import: the first, and one rebuild after a conflict or after clearing this page's own stale marker. */
@@ -418,7 +450,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
             source = { tree: await request.decode() }
         } catch (error) {
             console.error(error)
-            return refused(language.internalBackupUnreadable)
+            return refused('decode-failed', language.internalBackupUnreadable)
         }
         let outcome: ImportOutcome
         noteImportPhase(`decoded, attempt ${attempt}`)
@@ -442,7 +474,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
             )
         } catch (error) {
             if (isBusyAbort(error)) {
-                return { kind: 'refused' }
+                return refused('busy', null)
             }
             console.error(error)
             return unconfirmed()
@@ -458,18 +490,18 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 }
             }
             case 'declined':
-                return { kind: 'refused' }
+                return refused('declined', null)
             case 'read-failed': {
                 console.error(outcome.error)
                 const cause = outcome.error.cause
-                return refused(cause instanceof BinFileChangedError ? binChangeText(cause) : language.store2ImportReadFailed)
+                return refused('read-failed', cause instanceof BinFileChangedError ? binChangeText(cause) : language.store2ImportReadFailed)
             }
             case 'repair-refused':
-                return refused(language.restoreRefusedArchivedId(outcome.refusals[0].name))
+                return refused('archived-id', language.restoreRefusedArchivedId(outcome.refusals[0].name))
             case 'unsavable':
-                return refused(language.restoreRefusedUnsavable(outcome.detail))
+                return refused('unsavable', language.restoreRefusedUnsavable(outcome.detail))
             case 'base-unreadable':
-                return refused(language.store2ImportRefused)
+                return refused('base-unreadable', language.store2ImportRefused)
             case 'conflict':
                 if (attempt < IMPORT_ATTEMPTS) {
                     continue
@@ -479,18 +511,22 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 return unconfirmed()
             case 'failed':
                 console.error(outcome.cause)
-                return refused(outcome.cause instanceof Store2StalePageError ? language.restoreNotHappenedNotice : language.internalBackupWriteFailed)
+                return outcome.cause instanceof Store2StalePageError
+                    ? refused('stale-page', language.restoreNotHappenedNotice)
+                    : refused('write-failed', language.internalBackupWriteFailed)
             case 'abandoned':
                 console.error(outcome.cause ?? outcome.reason)
-                return refused(language.store2ImportAbandoned)
+                return refused('abandoned', language.store2ImportAbandoned)
             case 'refused':
                 if (outcome.reason === 'marker-present') {
                     if (attempt < IMPORT_ATTEMPTS && await clearOwnMarker(request.target.committer)) {
                         continue
                     }
-                    return refused(language.store2RestoreBulkMarker)
+                    return refused('marker-standing', language.store2RestoreBulkMarker)
                 }
-                return refused(outcome.reason === 'too-new' ? language.store2ImportTooNew : language.store2ImportRefused)
+                return outcome.reason === 'too-new'
+                    ? refused('too-new', language.store2ImportTooNew)
+                    : refused('library-refused', language.store2ImportRefused)
             default: {
                 // A status added to the library later ends the import here instead of looping into another commit.
                 const unhandled: never = outcome

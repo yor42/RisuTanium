@@ -266,7 +266,7 @@ describe('on a store2 page no legacy deleter deletes', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['read-only', { kind: 'read-only' }],
+        ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
         ['unset', { kind: 'unset' }],
     ])('reproducer: getDbBackups on a %s page lists the backups and prunes none', async (_label, mode) => {
         enterPage(mode)

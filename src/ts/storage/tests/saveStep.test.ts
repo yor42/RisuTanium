@@ -92,7 +92,7 @@ describe('performSaveStep on a block page', () => {
 
     test('a read-only page does not save', async () => {
         const { owner, commitSave, replaceWholeState } = stubOwner({})
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         await expect(performSaveStep({ owner, store: createFakeStore({ versioned: false }) }, { input: INPUT })).rejects.toThrow('read-only')
         expect(commitSave).not.toHaveBeenCalled()
         expect(replaceWholeState).not.toHaveBeenCalled()

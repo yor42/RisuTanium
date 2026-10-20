@@ -54,7 +54,7 @@ import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { disabledBootArchiveSession, openBootArchiveSession, type BootArchiveNotice, type BootArchiveOutcome, type BootArchiveSession } from "./storage/bootArchivePass";
-import { getStore2Boot, type Store2BootNotice, type Store2BootResult } from "./storage/store2/bootActive";
+import { getStore2Boot, type Store2BootNotice, type Store2BootResult, type Store2LegacyReadOnlyReason } from "./storage/store2/bootActive";
 import { startStore2Maintenance } from "./storage/store2/maintenance";
 import { clearBootScreen } from "./storage/store2/ui/bootScreen.svelte";
 import { noticeText } from "./storage/store2/ui/bootText";
@@ -163,7 +163,7 @@ export async function loadData() {
                     LoadingStatusState.text = "Reading Save File..."
                     // A head means the profile lives in the block store; only a
                     // profile with no head is read as the legacy main file below.
-                    let storeBoot = await bootFromStore(archiveSession)
+                    let storeBoot = await bootFromStore(archiveSession, legacyReadOnlyReasonOf(store2Boot))
                     // Only an absent main file starts a first launch. A read that
                     // fails for any other reason leaves the file as it is and takes
                     // the backup route below.
@@ -177,7 +177,7 @@ export async function loadData() {
                             mainReadable = false
                         }
                         if (mainReadable && readed === null && storeBoot.ctx !== null) {
-                            storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession)
+                            storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession, legacyReadOnlyReasonOf(store2Boot))
                         }
                     }
                     if (storeBoot.kind === 'installed') {
@@ -299,7 +299,7 @@ export async function loadData() {
                     LoadingStatusState.text = "Loading Local Save File..."
                     // A head means the profile lives in the block store; only a
                     // profile with no head is read as the legacy main file below.
-                    let storeBoot = await bootFromStore(archiveSession)
+                    let storeBoot = await bootFromStore(archiveSession, legacyReadOnlyReasonOf(store2Boot))
                     // Only an absent main file is seeded. A zero-length file, or a
                     // stored value that is not bytes, is an undecodable main file and
                     // takes the backup route; it is never written over. A page that
@@ -316,7 +316,7 @@ export async function loadData() {
                                 if (storeBoot.ctx === null) {
                                     gotStorage = encodeRisuSaveLegacy({})
                                 } else {
-                                    storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession)
+                                    storeBoot = await seedBootProfile(storeBoot.ctx, archiveSession, legacyReadOnlyReasonOf(store2Boot))
                                 }
                             }
                         } catch (error) {
@@ -636,6 +636,11 @@ export async function loadData() {
 /** What the store2 boot seam answered; a page that registered none runs the legacy boot as it always has. */
 type Store2BootOutcome = Store2BootResult | { kind: 'unregistered' }
 
+/** Why the legacy boot may find no block owner: the dispatch's reason, else the page runs from OPFS (a page without the seam has no other cause). */
+function legacyReadOnlyReasonOf(boot: Store2BootOutcome): Store2LegacyReadOnlyReason {
+    return boot.kind === 'legacy-readonly' ? boot.reason : 'opfs-transitional'
+}
+
 /**
  * Asks the registered store2 boot what this page's profile is, before the legacy boot opens its archive session or
  * reads anything. The environment is the page's own store and the questions the dispatch cannot answer itself (whether a
@@ -768,10 +773,10 @@ async function settleBlockProfile(ctx: BootLoadContext): Promise<BootNotice[]> {
  * install; a profile restored from a backup at that prompt is not run through
  * the archive pass.
  */
-async function bootFromStore(session: BootArchiveSession): Promise<StoreBoot> {
+async function bootFromStore(session: BootArchiveSession, readOnlyReason: Store2LegacyReadOnlyReason): Promise<StoreBoot> {
     const ctx = await blockBootContext(session)
     if (ctx === null) {
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: readOnlyReason })
         return { kind: 'legacy', ctx: null }
     }
     const loaded = await loadBlockProfile(ctx)
@@ -804,10 +809,10 @@ async function bootFromStore(session: BootArchiveSession): Promise<StoreBoot> {
  * Creates the first profile in the block store when there is no head and no
  * main file. A seed that loses to another page loads that page's state.
  */
-async function seedBootProfile(ctx: BootLoadContext, session: BootArchiveSession): Promise<StoreBoot> {
+async function seedBootProfile(ctx: BootLoadContext, session: BootArchiveSession, readOnlyReason: Store2LegacyReadOnlyReason): Promise<StoreBoot> {
     const seeded = await seedEmptyBlockProfile(ctx)
     if (seeded.kind === 'load-again') {
-        const again = await bootFromStore(session)
+        const again = await bootFromStore(session, readOnlyReason)
         if (again.kind === 'legacy') {
             throw language.saveSeedFailed
         }

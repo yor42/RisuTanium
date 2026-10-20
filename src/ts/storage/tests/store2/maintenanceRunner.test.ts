@@ -146,7 +146,7 @@ describe('only a boot that did not install starts the runner', () => {
     test.each<[string, PageStorageMode]>([
         ['legacy', { kind: 'legacy', convertedFrom: null }],
         ['block', { kind: 'block' }],
-        ['read-only', { kind: 'read-only' }],
+        ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
         ['undecided', { kind: 'unset' }],
     ])('reproducer: a %s page starts nothing even with a ready session in hand', async (_name, mode) => {
         const { session } = await openSession('ready')

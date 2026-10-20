@@ -418,6 +418,54 @@ describe('new behaviour: a commit the storage could not confirm is reported in p
         expect(shown?.submsg).toContain('did not confirm')
     })
 })
+describe('new behaviour: the save-failure store records save-pass failures only', () => {
+    async function storeValue(): Promise<unknown> {
+        const { saveFailureStore } = await import('src/ts/storage/store2/saveFailure')
+        const { get } = await import('svelte/store')
+        return get(saveFailureStore)
+    }
+
+    test('a failed save pass sets the class and the counted attempt', async () => {
+        const page = await startPage(small(), {
+            hooks: { flushed: (name) => name === 'commitOrdinary' ? false : undefined },
+        })
+        expect(await storeValue()).toBeNull()
+        characters(page.db)[0].personality = 'unflushed edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        await until(async () => (await storeValue()) !== null, 'the recorded failure', 20000)
+        expect(await storeValue()).toMatchObject({ class: 'not-flushed' })
+        const { attempts } = (await storeValue()) as { attempts: number }
+        expect(attempts).toBeGreaterThanOrEqual(1)
+    })
+
+    test('the next saved pass clears it', async () => {
+        const gate = { unflushed: true }
+        const page = await startPage(small(), {
+            hooks: { flushed: (name) => name === 'commitOrdinary' && gate.unflushed ? false : undefined },
+        })
+        characters(page.db)[0].personality = 'unflushed edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        await until(async () => (await storeValue()) !== null, 'the recorded failure', 20000)
+        gate.unflushed = false
+        await until(async () => (await storeValue()) === null, 'the clearing saved pass', 20000)
+    })
+
+    test('a throw of the peer hand-off handler is shown but never recorded', async () => {
+        const peer = createPeerDouble('export-first')
+        peer.exportFails = true
+        const page = await startPage(small(), { kind: 'node', peer })
+        await settled(page.w)
+        const { alertError } = await import('src/ts/alert')
+        const key = await peerCommit(page.k, (peerDb) => { (peerDb.characters as unknown as Entry[])[3].personality = 'the peer edit' })
+        characters(page.db)[0].personality = 'my edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        h.channels.at(-1)!.onmessage?.({ data: { sessionID: 'a peer tab', epoch: key.epoch } })
+        await until(() => vi.mocked(alertError).mock.calls.length >= 1, 'the failure shown for the export throw', 8000)
+        expect(page.k.peer.exports.length).toBeGreaterThanOrEqual(1)
+        expect(await storeValue()).toBeNull()
+    })
+})
+
 describe('new behaviour: a peer\'s commit parks the page and the person decides', () => {
     function broadcastFromPeer(epoch: string | null) {
         h.channels.at(-1)!.onmessage?.({ data: epoch === null ? 'a peer tab' : { sessionID: 'a peer tab', epoch } })

@@ -28,6 +28,7 @@ import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSa
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import { saveFailureStore } from "./storage/store2/saveFailure";
 import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
@@ -1611,7 +1612,23 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
     }
 
     const { runStore2SaveLoop } = await import('./storage/store2/saveLoop')
-    const { describeSaveFailure } = await import('./storage/store2/ui/peerUi')
+    const { describeSaveFailure, saveFailureClassOf } = await import('./storage/store2/ui/peerUi')
+    /** Shows what a failing save tells the person and answers how long the loop waits; records nothing. */
+    const showSaveFailure = (error: unknown, attempts: number, storageFull: boolean): number => {
+        const report = describeSaveFailure(error, attempts, storageFull)
+        if (report.toast !== null) {
+            alertToast(report.toast)
+        }
+        if (report.alert !== null) {
+            console.error(error)
+            alertStore.set({ type: 'error', msg: report.alert.msg, submsg: report.alert.submsg })
+        } else if (report.showRaw) {
+            alertError(error instanceof Error ? error : String(error))
+        } else {
+            console.error(error)
+        }
+        return report.waitMs
+    }
     const port: Store2LoopPort = {
         tracker: changeTracker,
         reloadFlag: requiresFullEncoderReload,
@@ -1647,6 +1664,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             changed = true
         },
         saved() {
+            saveFailureStore.set(null)
             lastIterationCommitted = true
             fireNextCommitCallbacks()
         },
@@ -1670,19 +1688,12 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         },
         reportFailure(error, attempts) {
             const storageFull = isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)
-            const report = describeSaveFailure(error, attempts, storageFull)
-            if (report.toast !== null) {
-                alertToast(report.toast)
-            }
-            if (report.alert !== null) {
-                console.error(error)
-                alertStore.set({ type: 'error', msg: report.alert.msg, submsg: report.alert.submsg })
-            } else if (report.showRaw) {
-                alertError(error instanceof Error ? error : String(error))
-            } else {
-                console.error(error)
-            }
-            return report.waitMs
+            saveFailureStore.set({ class: saveFailureClassOf(error, storageFull), attempts })
+            return showSaveFailure(error, attempts, storageFull)
+        },
+        reportUncountedFailure(error, attempts) {
+            const storageFull = isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)
+            return showSaveFailure(error, attempts, storageFull)
         },
         async withWriteLock(run) {
             const release = await dbWriteLock.acquire()

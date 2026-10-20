@@ -200,7 +200,7 @@ export interface PeerDouble extends Store2PeerHandler {
     /** Makes the export reject. */
     exportFails: boolean
     /** What the export resolves with when it does not fail. */
-    exportResult: 'saved' | 'declined'
+    exportResult: 'saved' | 'declined' | 'failed'
     /** While set, the export waits for it, as the real one waits for the person to press OK. */
     exportHold: Promise<void> | null
 }

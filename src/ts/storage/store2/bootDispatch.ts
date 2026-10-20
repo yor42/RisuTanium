@@ -254,7 +254,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             case 'unreadable':
                 return stop('tree-unreadable', read.cause.message)
             case 'too-new':
-                setPageStorageMode({ kind: 'read-only' })
+                setPageStorageMode({ kind: 'read-only', reason: 'too-new', source: 'tree' })
                 raise({ name: 'too-new', source: 'tree', detail: read.reason })
                 return { kind: 'stopped' }
             case 'structure':
@@ -641,7 +641,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 }
                 return seed(session, true)
             case 3:
-                setPageStorageMode({ kind: 'read-only' })
+                setPageStorageMode({ kind: 'read-only', reason: 'too-new', source: decision.source })
                 raise({ name: 'too-new', source: decision.source, detail: decision.detail })
                 return { kind: 'stopped' }
             case 5: {

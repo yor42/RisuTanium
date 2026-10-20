@@ -206,7 +206,7 @@ describe('saveProviderLists: when it writes', () => {
         pageStore.kind = 'opfs-transitional'
         await saveProviderLists('openai', plist(T, 'gpt-9'))
         pageStore.kind = null
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         await saveProviderLists('openai', plist(T, 'gpt-9'))
         expect(store.writes).toHaveLength(0)
         expect(store.reads).toBe(0)

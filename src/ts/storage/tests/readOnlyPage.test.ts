@@ -44,16 +44,32 @@ describe('refuseOnReadOnlyPage', () => {
 
     test('reproducer: a page the boot made read-only on a store that is not OPFS refuses too, in the neutral words', async () => {
         selection.answer = false
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
 
         expect(await refuseOnReadOnlyPage()).toBe(true)
         expect(alertError).toHaveBeenCalledTimes(1)
         expect(alertError).toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)
     })
 
+    // Guard (passes before and after): the words follow the store probe, never the recorded reason.
+    test.each([
+        { kind: 'read-only', reason: 'server-capability' },
+        { kind: 'read-only', reason: 'backend-unavailable' },
+        { kind: 'read-only', reason: 'too-new', source: 'tree' },
+    ] as const)('guard: a $reason page says the neutral words when the store is not OPFS, and the OPFS words when it is', async (mode) => {
+        setPageStorageMode(mode)
+        selection.answer = false
+        expect(await refuseOnReadOnlyPage()).toBe(true)
+        expect(alertError).toHaveBeenLastCalledWith(language.store2Boot.readOnlyRefusal)
+
+        selection.answer = true
+        expect(await refuseOnReadOnlyPage()).toBe(true)
+        expect(alertError).toHaveBeenLastCalledWith(language.opfsReadOnlyNotice)
+    })
+
     test('guard (passes before and after): the OPFS page also sets the read-only mode, and it keeps its own words (the store is asked first)', async () => {
         selection.answer = true
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
 
         expect(await refuseOnReadOnlyPage()).toBe(true)
         expect(alertError).toHaveBeenCalledTimes(1)
@@ -62,7 +78,7 @@ describe('refuseOnReadOnlyPage', () => {
 
     test('reproducer: the page mode decides even when the store selection cannot be had', async () => {
         selection.answer = 'throws'
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
 
         expect(await refuseOnReadOnlyPage()).toBe(true)
         expect(alertError).toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)

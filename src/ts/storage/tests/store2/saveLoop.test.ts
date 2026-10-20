@@ -46,8 +46,12 @@ interface Loop {
     reloadFlag: { state: boolean }
     state: { due: boolean, dirty: boolean, saved: number, saving: boolean, stopped: string, peerHeard: boolean, marks: number, drafts: boolean }
     failures: Array<{ error: unknown, attempts: number }>
+    /** Failures reported through `reportUncountedFailure`: the peer handler's throws and a throw after a commit landed. */
+    uncounted: Array<{ error: unknown, attempts: number }>
     /** The waits the loop asked for through `sleep`, in order. */
     sleeps: number[]
+    /** When set, the next `saved` call throws once: the bookkeeping that follows a commit that has landed. */
+    savedThrows: Error | null
     broadcasts: string[]
     crashed: unknown[]
     mark(chaId: string): void
@@ -97,7 +101,9 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         kit, db, tracker, reloadFlag,
         state: { due: false, dirty: false, saved: 0, saving: false, stopped: '', peerHeard: false, marks: 0, drafts: false },
         failures: [],
+        uncounted: [],
         sleeps: [],
+        savedThrows: null,
         broadcasts: [],
         crashed: [],
         mark(chaId) {
@@ -146,6 +152,11 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
             loop.state.due = true
         },
         saved() {
+            if (loop.savedThrows !== null) {
+                const error = loop.savedThrows
+                loop.savedThrows = null
+                throw error
+            }
             loop.state.saved += 1
         },
         broadcast(epoch) {
@@ -161,6 +172,10 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         },
         reportFailure(error, attempts) {
             loop.failures.push({ error, attempts })
+            return 1
+        },
+        reportUncountedFailure(error, attempts) {
+            loop.uncounted.push({ error, attempts })
             return 1
         },
         async withWriteLock(run) {
@@ -213,6 +228,21 @@ describe('new behaviour: a pass commits what it carries and says so', () => {
         expect(loop.failures).toEqual([])
         expect(loop.kit.peer.asked).toEqual([])
         expect(loop.kit.peer.clean).toEqual([])
+        healthy(loop)
+    })
+
+    // New behaviour: a throw after the commit landed is not a failed save pass, so it is told without counting and records no failure.
+    test('reproducer: a throw after a commit landed is reported uncounted with the fixed escalation and records no failure', async () => {
+        const db = clone(buildSmall(4))
+        const loop = await startLoop(db)
+        const boom = new Error('bookkeeping after the commit')
+        loop.savedThrows = boom
+        chars(db)[0].personality = 'a landed edit'
+        loop.mark(chaIdOf(db, 0))
+        await until(() => loop.uncounted.length >= 1, 'the uncounted failure report', 4000)
+        expect((await loop.kit.saved()).characters[0]).toMatchObject({ personality: 'a landed edit' })
+        expect(loop.uncounted[0]).toEqual({ error: boom, attempts: 5 })
+        expect(loop.failures).toEqual([])
         healthy(loop)
     })
 
@@ -854,9 +884,10 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         const peer = createPeerDouble('export-first')
         peer.exportFails = true
         const { kit, loop } = await parkedDirty({ kind: 'node', peer })
-        await until(() => loop.failures.length >= 1, 'the failure report', 4000)
+        await until(() => loop.uncounted.length >= 1, 'the failure report', 4000)
         expect(kit.peer.reloads).toBe(0)
-        expect(loop.failures[0].attempts).toBeGreaterThan(4)
+        expect(loop.uncounted[0].attempts).toBeGreaterThan(4)
+        expect(loop.failures).toHaveLength(0)
         peer.exportFails = false
         await until(() => kit.peer.reloads === 1, 'the second question and the reload after a working export', 4000)
         expect(kit.peer.asked.length).toBeGreaterThanOrEqual(2)
@@ -887,6 +918,44 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         expect(kit.peer.reloads).toBe(0)
         expect(loop.failures).toHaveLength(0)
         expect(kit.peer.asked[kit.peer.asked.length - 1].offers).toEqual(['reload', 'export-first'])
+        peer.exportResult = 'saved'
+        await until(() => kit.peer.reloads === 1, 'the reload after a saved export', 4000)
+        healthy(loop)
+    })
+
+    // New behaviour: a peer handler that throws is not a save attempt, so it is told without counting and records no failure.
+    test('reproducer: a peer decide that throws is reported uncounted, records no failure, and the question is asked again', async () => {
+        const peer = createPeerDouble('reload')
+        const answer = peer.decide.bind(peer)
+        const boom = new Error('the prompt could not be shown')
+        let thrown = false
+        peer.decide = async (prompt) => {
+            if (!thrown) {
+                thrown = true
+                throw boom
+            }
+            return answer(prompt)
+        }
+        const world = await startPeerWorld({ peer })
+        await peerCommit(world.kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+        chars(world.db)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.db, 0))
+        await until(() => world.loop.uncounted.length >= 1, 'the uncounted failure report', 4000)
+        expect(world.loop.uncounted[0].error).toBe(boom)
+        expect(world.loop.failures).toEqual([])
+        await until(() => world.kit.peer.asked.length >= 1, 'the question asked again', 4000)
+        healthy(world.loop)
+    })
+
+    // Guard (passes before and after): a failed export was already told by its writer, so the loop adds no second alert and asks again.
+    test('guard: a failed export does not reload, asks again and reports nothing through either failure path; a later saved export reloads', async () => {
+        const peer = createPeerDouble('export-first')
+        peer.exportResult = 'failed'
+        const { kit, loop } = await parkedDirty({ kind: 'node', peer })
+        await until(() => kit.peer.asked.length >= 2, 'the second question', 4000)
+        expect(kit.peer.reloads).toBe(0)
+        expect(loop.failures).toHaveLength(0)
+        expect(loop.uncounted).toHaveLength(0)
         peer.exportResult = 'saved'
         await until(() => kit.peer.reloads === 1, 'the reload after a saved export', 4000)
         healthy(loop)

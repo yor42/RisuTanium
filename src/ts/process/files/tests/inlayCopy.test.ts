@@ -446,7 +446,7 @@ describe('storage pressure and page state', () => {
 
     test('reproducer: a page the boot made read-only on a store that is not OPFS runs no copy and writes nothing', async () => {
         injectAppStore(appStore, 'node')
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
         h.legacy.set('a', legacyImage('a'))
         await expect(runInlayCopy(env)).resolves.toBe('not-run')
         expect(appStore.writes).toEqual([])
@@ -735,7 +735,7 @@ describe('the cleanup of the old store', () => {
     test('acceptance: a read-only page removes and copies nothing', async () => {
         h.legacy.set('a', legacyImage('aa'))
         await setInlayAsset('a', legacyImage('aa'))
-        setPageStorageMode({ kind: 'read-only' })
+        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
 
         await expect(runInlayOldStoreCleanup(env)).resolves.toBe('not-run')
 

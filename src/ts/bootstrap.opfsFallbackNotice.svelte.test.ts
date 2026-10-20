@@ -604,6 +604,6 @@ describe('loadData(): a page that runs from OPFS this time is read-only (new-beh
         await loadData()
 
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
-        expect(getPageStorageMode()).toEqual({ kind: 'read-only' })
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'opfs-transitional' })
     })
 })

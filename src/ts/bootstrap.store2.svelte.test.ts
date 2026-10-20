@@ -541,7 +541,7 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         const { refuseOnReadOnlyPage } = await import('src/ts/storage/readOnlyPage')
         expect(await refuseOnReadOnlyPage()).toBe(true)
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
-        expect(getPageStorageMode()).toEqual({ kind: 'read-only' })
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'server-capability' })
         expect(saveDbMock).not.toHaveBeenCalled()
         expect(getDbBackupsMock).not.toHaveBeenCalled()
     })
@@ -561,6 +561,8 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(shown).toEqual([language.store2Boot.noticeBackendUnavailable])
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
     })
 
     test('a Tauri page whose store2 backend is unavailable: the legacy profile loads, the 21 numbered backups all stand, and nothing is written but the owner id', async () => {
@@ -581,6 +583,8 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(ui.notices).toEqual([expect.objectContaining({ name: 'backend-unavailable' })])
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
     })
 
     test('a store2 profile on a store this page cannot write is never replaced by the legacy profile', async () => {
@@ -614,6 +618,8 @@ describe('loadData(): the transitional OPFS page is read-only legacy (guard on t
         expect(ui.notices).toEqual([])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(archive.opened).toBe(0)
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'opfs-transitional' })
     })
 })
 

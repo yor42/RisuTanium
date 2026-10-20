@@ -1,4 +1,6 @@
 import { writable } from 'svelte/store'
+import type { TooNewSource } from './store2/boot'
+import type { Store2LegacyReadOnlyReason } from './store2/bootActive'
 
 /**
  * What the page's persistence is, as boot found it and as it has moved since.
@@ -26,7 +28,16 @@ export type PageStorageMode =
     | { kind: 'block' }
     | { kind: 'legacy', convertedFrom: string | null }
     | { kind: 'store2' }
-    | { kind: 'read-only' }
+    | PageReadOnlyMode
+
+/**
+ * A read-only page and why it is one, as a returned fact: nothing displayed or decided reads `reason` (the
+ * read-only wording keeps its own probe-first order and OPFS precedence). `too-new` names the store part that was
+ * written by a newer version.
+ */
+export type PageReadOnlyMode =
+    | { kind: 'read-only', reason: Store2LegacyReadOnlyReason }
+    | { kind: 'read-only', reason: 'too-new', source: TooNewSource }
 
 let mode: PageStorageMode = { kind: 'unset' }
 
