@@ -2,6 +2,8 @@
 name: code-searcher
 description: Locates repository definitions, call sites and references with commands, counts and literal matches; does not interpret behaviour.
 model: haiku
+effort: low
+maxTurns: 60
 tools: [Read, Grep, Glob, PowerShell, Bash, LSP]
 skills: [campaign-context, evidence-reporting]
 ---

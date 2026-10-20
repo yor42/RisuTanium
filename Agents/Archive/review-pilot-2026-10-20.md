@@ -1,6 +1,8 @@
+Retired 2026-10-20 by MC-321 7
+
 # Bounded Haiku independent-verification pilot
 
-MC-241 authorizes **10 eligible items**, counted once per task/item, not per resumed review round. Outside this pilot, doc-verifier (Sonnet) remains the ordinary documentation checker; nontrivial plan review stays Sonnet, and high-risk implementation review stays Opus under [gates](gates.md). Every AI-authored application-code change still receives independent post-implementation review.
+MC-241 authorizes **10 eligible items**, counted once per task/item, not per resumed review round. Outside this pilot, doc-verifier (Sonnet) remains the ordinary documentation checker; nontrivial plan review stays Sonnet, and high-risk implementation review stays Opus under [gates](../../docs/workflow/gates.md). Every AI-authored application-code change still receives independent post-implementation review.
 
 ## Eligibility and routing
 
@@ -10,7 +12,7 @@ Exclude governance/policy, user-facing consent, translated meaning, configuratio
 
 Use `haiku-reviewer` only for a documented eligible item within the open pilot. Uncertain eligibility, unclear semantics, inadequate evidence or substantive interpretation escalates to Sonnet; expensive failure modes use Opus as existing policy requires. An escalation is a useful pilot outcome. Do not require a Sonnet shadow review for every successful eligible item: that would defeat the experiment. Independent checking of disputed/high-risk claims still applies.
 
-Reviewer outcomes and incremental editorial closure follow the same [gate criteria](gates.md). No implementer self-approval, weaker evidence standard, automatic rollout or exemption from records closeout is introduced.
+Reviewer outcomes and incremental editorial closure follow the same [gate criteria](../../docs/workflow/gates.md). No implementer self-approval, weaker evidence standard, automatic rollout or exemption from records closeout is introduced.
 
 ## Pilot record
 
@@ -27,6 +29,15 @@ Record each eligible item with:
 
 Count only actual Claude Haiku item-level verification runs with observable model evidence. Config-only validation, unanswered smoke attempts, Codex review and rechecks of an already-counted item do not increment the count. Keep detailed item outcomes in their canonical records, with a compact pilot index here or a linked selected evidence record as they occur.
 
-**At adoption, 2026-10-08: 0/10.** The [pilot log](review-pilot-log.md) owns current progress. No successful actual Haiku verification item or model selection was established at adoption. Earlier no-output native attempts do not count. The profile/skill may be configured without proving runtime success; record capability separately from completed items.
+**At adoption, 2026-10-08: 0/10.** The pilot log (below) owned current progress. No successful actual Haiku verification item or model selection was established at adoption. Earlier no-output native attempts do not count. The profile/skill may be configured without proving runtime success; record capability separately from completed items.
 
 After 10 eligible items, present observed correctness, escalations, errors/reopens and available costs to the maintainer. The maintainer decides continuation or changes. No automatic expansion, numerical savings promise or unmeasured quality conclusion follows from configuration alone.
+
+# Haiku verification pilot log
+
+**Observed eligible items: 0/10.** No successful item-level Claude Haiku verification or model-selection evidence is established. Configuration validation, Codex review and unanswered native attempts do not count. Resumed review rounds for one item remain one entry.
+
+Use the eligibility rules above; canonical item records retain detailed evidence. The record owner adds a row only with observed actual Haiku execution/model evidence. Costs may be unavailable; do not estimate them as observations. After ten items the maintainer decides continuation; no automatic rollout or savings conclusion.
+
+| Item ID / type | Eligibility / exclusions checked | Base + actual working/untracked inputs | Observed execution / model evidence | Outcome / closure | Escalation | Later correction / reopen | Observed usage / time or unavailable |
+|---|---|---|---|---|---|---|---|

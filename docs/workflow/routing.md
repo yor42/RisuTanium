@@ -24,13 +24,14 @@ A tiny, targeted lookup may run inline. Delegate substantial, batched location s
 | `haiku-editor` | Haiku | Exact, reversible mechanical edit with named files, explicit input/replacement, preservation rules and verification. No ambiguous semantics. |
 | `haiku-triager` | Haiku | Read-only classification, deduplication and summaries of supplied logs/artifacts; no behavior or safety conclusions. |
 | `record-clerk` | Haiku | Routine evidence-backed Markdown drafts in exact named documents; no decisions, Maintainer-Context or governance edits. |
-| `haiku-reviewer` | Haiku | Independent verification only for eligible items in the [10-item pilot](review-pilot.md); uncertainty escalates, no governance/high-risk review. |
 
 Mechanical edits involving ambiguous meaning, configuration semantics, persistence, translations or uncertain safety escalate to the appropriate specialist. A small diff does not make a high-risk change mechanical. Log triage cannot establish a root cause. A record-clerk draft cannot settle a maintainer decision or approve a gate.
 
 ## Brief and context contract
 
-Start from [campaign authority](../../Agents/README.md), then read only relevant original decisions through [Decision-Index](../../Agents/Decision-Index.md). Every brief names applicable `MC-` IDs; absence of a needed product decision is a maintainer question.
+Start from [campaign authority](../../Agents/README.md), then read only relevant original decisions through [Decision-Index](../../Agents/Decision-Index.md). Every brief names applicable `MC-` IDs and pastes the 2–5 relevant MC excerpts, not just the IDs (MC-321 2); absence of a needed product decision is a maintainer question.
+
+Every dispatch states effort only when overriding the role default (MC-321 4). `opus-reviewer` is raised to `xhigh` per invocation only for save-format/persistence Gate 2 (MC-321 4). A raise for any other hard dispatch states its reason in the brief. A `maxTurns` stop returns partial output, which is never acceptance; re-dispatch or finish the work under a new bounded brief.
 
 Campaign briefs, reports and replies use English; localized UI strings follow their locale requirements. A brief states: one unresolved question or writing scope; exact files/search boundary; allowed tools and write ownership; invariants and acceptance scenarios; applicable evidence and provenance; compact return format; stopping/escalation conditions. Proposed mechanisms are non-normative unless the accepted requirement actually mandates them. Equality-based skips include the change-and-return-to-origin scenario. Disproof is an acceptable investigation result.
 
@@ -52,4 +53,4 @@ The advisor gets attempted approaches, observations, competing positions and con
 
 Record investigations and gate dispatches in the ledger from real evidence. Unknown costs stay unknown; no fabricated estimates. Budgets are reassessment checkpoints, not acceptance shortcuts. Each new dispatch must answer a distinct question or supply independent verification.
 
-Write boundaries and checkout concurrency follow [ownership](ownership.md). Item COMPLETE requires [applicable record closeout](records.md). Doc-verifier remains the ordinary Sonnet checker outside the explicitly bounded Haiku pilot.
+Write boundaries and checkout concurrency follow [ownership](ownership.md). Item COMPLETE requires [applicable record closeout](records.md). Doc-verifier is the ordinary Sonnet documentation checker; the Haiku review pilot was retired (MC-321 7).

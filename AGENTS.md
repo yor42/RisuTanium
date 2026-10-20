@@ -43,7 +43,8 @@ This is a targeted stabilization and improvement campaign, not a rewrite. Use a 
 - One named owner runs full `pnpm test`, `pnpm check` and the relevant build on the final application snapshot. Remediation uses targeted tests and type checks; repeat full checks when their applicability changes. Documentation-only edits do not trigger application tests.
 - Before substantial Gate 1 work, size the mechanism/subsystems/stages and settle decision-critical product/error behavior; unresolved product questions block affected implementation. Tiny low-risk tasks keep the carve-out. See [gates](docs/workflow/gates.md).
 - An item is COMPLETE only after applicable decisions, gates, status and remaining-work records are current; record closeout uses incremental verification, not an automatic Gate 2 restart. See [records](docs/workflow/records.md).
-- Narrow independent Haiku verification is limited to the approved [10-item pilot](docs/workflow/review-pilot.md); [write ownership](docs/workflow/ownership.md) keeps one app-code writer per checkout and exact named document ownership.
+- Resume a finished reviewer only within about 5 minutes of its last activity; otherwise start a fresh same-role reviewer seeded with the earlier verdict file, the remediation diff and the acceptance requirements. The round count continues (MC-321 3).
+- The Haiku verification pilot is retired (MC-321 7); [write ownership](docs/workflow/ownership.md) keeps one app-code writer per checkout and exact named document ownership.
 - Budgets prompt reassessment, never acceptance of incomplete work. Preserve useful context; reset only when size, contamination or scope warrants it. Do not invent token costs or unmeasured savings.
 
 ## Commands and navigation

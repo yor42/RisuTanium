@@ -2,6 +2,8 @@
 name: haiku-triager
 description: Classifies and deduplicates supplied logs or documents into a caller-provided schema with citations and preserved uncertainty.
 model: haiku
+effort: low
+maxTurns: 80
 tools: [Read, Grep, Glob, PowerShell, Bash]
 skills: [campaign-context, evidence-reporting]
 ---

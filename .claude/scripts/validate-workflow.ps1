@@ -16,12 +16,12 @@ function Read-Frontmatter([string]$Path, [string[]]$Allowed) {
     $fields = @{}
     # This deliberately accepts only our scalar and inline-list subset, not arbitrary YAML.
     foreach ($line in ($match.Groups[1].Value -split '\r?\n')) {
-        if ($line -notmatch '^([a-z][a-z-]*): (.+)$') {
+        if ($line -notmatch '^([a-zA-Z][a-zA-Z-]*): (.+)$') {
             Problem "Unsupported frontmatter subset in ${Path}: $line"; continue
         }
         $key = $Matches[1]; $value = $Matches[2]
         if ($fields.ContainsKey($key)) { Problem "Duplicate key $key in $Path" }
-        if ($key -notin $Allowed) { Problem "Unsupported key $key in $Path" }
+        if ($key -cnotin $Allowed) { Problem "Unsupported key $key in $Path" }
         $fields[$key] = $value
     }
     return $fields
@@ -64,7 +64,7 @@ $skillDir = Join-Path $taskRoot '.claude/skills'
 $ruleDir = Join-Path $taskRoot '.claude/rules'
 $agents = @{}; $skills = @{}; $rules = @{}
 foreach ($file in (Get-ChildItem -LiteralPath $agentDir -Filter '*.md')) {
-    $fields = Read-Frontmatter $file.FullName @('name', 'description', 'model', 'tools', 'skills', 'permissionMode')
+    $fields = Read-Frontmatter $file.FullName @('name', 'description', 'model', 'tools', 'skills', 'permissionMode', 'effort', 'maxTurns', 'autoCompactWindow', 'experimental')
     $name = $fields['name']
     if (-not $name -or $name -cne $file.BaseName) { Problem "Agent name/file mismatch: $($file.Name)" }
     if ($name -and $agents.ContainsKey($name)) { Problem "Duplicate agent name: $name" }
@@ -78,18 +78,27 @@ foreach ($file in (Get-ChildItem -LiteralPath $agentDir -Filter '*.md')) {
     if ($fields.ContainsKey('permissionMode') -and $fields['permissionMode'] -ne 'default') {
         Problem "Non-default permission mode: $($file.Name)"
     }
+    if ($fields.ContainsKey('effort') -and $fields['effort'] -cnotin @('low', 'medium', 'high', 'xhigh', 'max')) {
+        Problem "Invalid effort level: $($file.Name)"
+    }
+    if ($fields.ContainsKey('maxTurns') -and $fields['maxTurns'] -notmatch '^[1-9][0-9]*$') {
+        Problem "maxTurns must be a positive integer: $($file.Name)"
+    }
     if ($name) { $agents[$name] = @{ Fields = $fields; Path = $file.FullName } }
 }
 foreach ($folder in (Get-ChildItem -LiteralPath $skillDir -Directory)) {
     $path = Join-Path $folder.FullName 'SKILL.md'
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { Problem "Missing SKILL.md: $($folder.Name)"; continue }
-    $fields = Read-Frontmatter $path @('name', 'description', 'user-invocable', 'context', 'agent')
+    $fields = Read-Frontmatter $path @('name', 'description', 'user-invocable', 'disable-model-invocation', 'context', 'agent')
     $name = $fields['name']
     if (-not $name -or $name -cne $folder.Name) { Problem "Skill name/folder mismatch: $($folder.Name)" }
     if ($name -and $skills.ContainsKey($name)) { Problem "Duplicate skill name: $name" }
     if (-not $fields['description']) { Problem "Missing skill description: $($folder.Name)" }
     if ($fields.ContainsKey('user-invocable') -and $fields['user-invocable'] -notin @('true', 'false')) {
         Problem "Invalid user-invocable boolean: $($folder.Name)"
+    }
+    if ($fields.ContainsKey('disable-model-invocation') -and $fields['disable-model-invocation'] -notin @('true', 'false')) {
+        Problem "Invalid disable-model-invocation boolean: $($folder.Name)"
     }
     if ($fields.ContainsKey('context') -and $fields['context'] -ne 'fork') { Problem "Unsupported skill context: $($folder.Name)" }
     if ($fields.ContainsKey('agent') -and (-not $agents.ContainsKey($fields['agent']) -or $fields['context'] -ne 'fork')) {
@@ -121,8 +130,15 @@ try {
     if ($config.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH -cne '2') { Problem 'Project nesting depth must be string 2.' }
     foreach ($event in @('PreToolUse', 'SubagentStart')) {
         $groups = $config.hooks[$event]
-        if ($groups -isnot [array] -or $groups.Count -ne 1) { Problem "Expected one project hook group: $event"; continue }
-        if ($event -eq 'PreToolUse' -and $groups[0].matcher -cne 'Write|Edit') { Problem 'Write/Edit matcher is missing or broadened.' }
+        if ($groups -isnot [array]) { Problem "Expected project hook groups: $event"; continue }
+        if ($event -eq 'PreToolUse') {
+            # Logging-only groups may sit beside the guard; none may touch Write or Edit.
+            $guardGroups = @($groups | Where-Object { $_.matcher -ceq 'Write|Edit' })
+            if ($guardGroups.Count -ne 1) { Problem 'Write/Edit matcher is missing, duplicated or broadened.'; continue }
+            if (@($groups | Where-Object { $_.matcher -ne 'Write|Edit' -and $_.matcher -match 'Write|Edit' }).Count) { Problem 'Another PreToolUse group matches Write or Edit.' }
+            $groups = $guardGroups
+        }
+        if ($groups.Count -ne 1) { Problem "Expected one project hook group: $event"; continue }
         $commands = $groups[0].hooks
         if ($commands -isnot [array] -or $commands.Count -ne 1) { Problem "Expected one command hook: $event"; continue }
         $hook = $commands[0]

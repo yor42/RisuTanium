@@ -18,6 +18,12 @@ The record checker independently verifies the changed claims and pointers agains
 
 The item owner records final closure against the accepted snapshot and the changed records, distinguishing optional improvements and unresolved work. Commit/push remains subject to the maintainer's actual authorization. Existing 2026-10-08 handoff backlog stays pending until separately reconciled; adopting this rule does not declare that backlog complete.
 
+## Batching and session discipline
+
+Records are batched per stage or batch where no maintainer decision is involved. MC entries are still recorded when the maintainer answers (MC-321 4). Live-State holds only current state plus a link to the current step handoff; superseded update paragraphs move to `Agents/Archive/`.
+
+Use one fresh orchestrator session per step, or start a fresh one at about 300K context, and write a step handoff with `/handoff` first. The next session first checks the handoff against `git status` and `git log` before relying on it.
+
 ## Canonical reports and selected evidence
 
 Track canonical reports and selected self-contained evidence needed to understand or reproduce accepted claims. Future curated evidence uses `Agents/Evidence/<item-id>/`. Each item folder has a brief README with:

@@ -2,6 +2,8 @@
 name: senior-advisor
 description: Gives source-backed strategic direction when attempts fail, evidence contradicts assumptions or an expensive-to-reverse plan needs attack.
 model: fable
+effort: high
+maxTurns: 40
 tools: [Read, Grep, Glob, PowerShell, Bash]
 skills: [campaign-context, evidence-reporting]
 ---

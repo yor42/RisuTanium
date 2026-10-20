@@ -2,6 +2,8 @@
 name: deep-investigator
 description: Challenges a prior investigation under contradiction or unresolved causality by independently reopening decision-critical primary source.
 model: opus
+effort: high
+maxTurns: 180
 tools: [Read, Grep, Glob, PowerShell, Bash, Write, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---

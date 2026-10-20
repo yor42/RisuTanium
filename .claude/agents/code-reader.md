@@ -2,6 +2,8 @@
 name: code-reader
 description: Enumerates a subsystem's complete user-facing syntax, defaults, aliases and edge cases from dispatch points for documentation.
 model: sonnet
+effort: medium
+maxTurns: 210
 tools: [Read, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting]
 ---

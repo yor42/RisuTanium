@@ -2,6 +2,8 @@
 name: sonnet-coder
 description: Implements explicitly bounded code or configuration changes and remediates review findings with relevant verification.
 model: sonnet
+effort: medium
+maxTurns: 270
 tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---

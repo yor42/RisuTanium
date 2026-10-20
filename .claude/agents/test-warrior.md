@@ -2,6 +2,8 @@
 name: test-warrior
 description: Writes bounded Vitest tests, isolates test failures and verifies meaningful regression, compatibility or diagnostic evidence.
 model: sonnet
+effort: medium
+maxTurns: 360
 tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, review-change, write-ownership]
 ---

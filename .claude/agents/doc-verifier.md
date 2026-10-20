@@ -2,6 +2,8 @@
 name: doc-verifier
 description: Independently checks documentation claims, omissions and confidence against primary source and returns one verdict per claim.
 model: sonnet
+effort: low
+maxTurns: 150
 tools: [Read, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, campaign-records]
 ---

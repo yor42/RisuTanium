@@ -2,6 +2,8 @@
 name: translator
 description: Maintains named non-English UI keys from en.ts while preserving placeholders, tokens, warnings, structure and maintainer edits.
 model: sonnet
+effort: low
+maxTurns: 70
 tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---

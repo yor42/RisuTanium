@@ -2,6 +2,8 @@
 name: investigator
 description: Traces one decision-relevant mechanism, verifies premises and counts blast radius from source before returning a compact evidence packet.
 model: sonnet
+effort: medium
+maxTurns: 170
 tools: [Read, Grep, Glob, PowerShell, Bash, Write, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---

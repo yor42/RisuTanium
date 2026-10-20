@@ -2,6 +2,8 @@
 name: opus-reviewer
 description: Independently reviews persistence, save-format, reactive-database, asset-cache and silent-data-loss changes, including tests and factual artifacts.
 model: opus
+effort: high
+maxTurns: 210
 tools: [Read, Grep, Glob, PowerShell, Bash, Write, LSP]
 skills: [campaign-context, evidence-reporting, review-change, write-ownership]
 ---

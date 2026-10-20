@@ -20,7 +20,7 @@ Optional Codex integration is described in [project reference](project-reference
 
 Consolidate remediation into one brief: each finding, affected requirement, change boundary and needed verification; separate optional improvements. Review every executable remediation's affected behavior. Reopen a broader gate for a changed shared contract/invariant, materially different design, contradicted evidence or invalidated acceptance.
 
-Retain the independent reviewer for remediation while its context remains usable and separate from implementation reasoning. Use a fresh reviewer if independence/context is compromised or a new design challenge is needed. Editorial-only fixes require checking the actual diff and corrected claims; they do not trigger application tests or unrelated cleanup. A substantive misunderstanding revealed by editing reopens analysis.
+Resume a finished reviewer for remediation only within about 5 minutes of its last activity. Otherwise start a fresh reviewer of the same role, seeded with the earlier verdict file, the remediation diff and the acceptance requirements; fresh context also preserves independence. A fresh reviewer continues the same round count. A new design challenge also warrants a fresh reviewer. Editorial-only fixes require checking the actual diff and corrected claims; they do not trigger application tests or unrelated cleanup. A substantive misunderstanding revealed by editing reopens analysis.
 
 At the second substantive rejection, reconsider the mechanism. Three consecutive substantive `[REJECT]` rounds, across plan and implementation gates, require senior-advisor before a fourth revision. `[EDITORIAL]` neither counts nor breaks the streak. Do not patch indefinitely to satisfy one edge case without revisiting the shared cause or asking the maintainer about a product constraint.
 
@@ -46,7 +46,7 @@ Code/test comments state invariants and non-obvious consequences, not history, r
 
 Every AI-authored investigative report requires independent verification before final acceptance. Apply this proportionately at the report level; raw helper location maps or supplied-log triage packets are evidence inputs, not separate accepted reports.
 
-Flow: code-reader → doc-writer → independent doc-verifier → orchestrator. Within the approved [10-item pilot](review-pilot.md), an independent Haiku reviewer may check eligible ordinary documentation/exact mechanical work; all exclusions and escalation rules apply. Sonnet remains the default outside the pilot. Existing investigator packets, measurements or gate records may go directly to the writer. Reference packets enumerate intended behavior and suspected bugs separately; suspected bugs need their own investigation/plan path before a fix.
+Flow: code-reader → doc-writer → independent doc-verifier → orchestrator. Sonnet doc-verifier is the documentation checker; the Haiku review pilot was retired (MC-321 7). Existing investigator packets, measurements or gate records may go directly to the writer. Reference packets enumerate intended behavior and suspected bugs separately; suspected bugs need their own investigation/plan path before a fix.
 
 The verifier checks every claim against source: VERIFIED / WRONG / STALE CITATION / OVERSTATED / INCOMPLETE / UNVERIFIABLE. Preserve evidence confidence; missing evidence stays `TODO(evidence)`. Routine record-clerk drafts do not decide product policy, edit governance or replace independent verification. Persistence-touching commit messages remain in opus-reviewer's gate. Log dispatches and outcomes without altering old claim text or report numbering.
 
@@ -64,7 +64,7 @@ If implementation materially drifts from the accepted design, reopen the affecte
 | Correction / finding | Required closure | Reopen Gate 2? |
 |---|---|---|
 | Spelling, wording, citation or factual claim correction; executable semantics unchanged | Same independent reviewer or doc-verifier checks corrected claim against evidence and verifies an editorial-only diff; owner records closure. No application test rerun. | No new Gate 2. |
-| Executable behavior fix within the accepted design | Targeted independent remediation review, reusing the reviewer when independence remains; targeted checks for affected behavior. | No automatic full gate; review the affected behavior. |
+| Executable behavior fix within the accepted design | Targeted independent remediation review, resuming or replacing the reviewer per the 5-minute rule above; targeted checks for affected behavior. | No automatic full gate; review the affected behavior. |
 | Shared contract/invariant change, material design change, contradicted evidence or invalidated acceptance | Reopen affected analysis/plan and the broader independent implementation gate with updated evidence. | Yes, at the affected breadth. |
 | Editorial correction reveals a substantive misunderstanding | Reclassify the substantive finding as REJECT; reopen affected analysis and behavior verification. | According to the actual substantive effect. |
 | Accepted optional improvement | Record as optional; do not block closure or absorb into required remediation. | No. |
@@ -90,5 +90,3 @@ The Gate 1 owner checks that required product decisions and load-bearing premise
 ## Technical acceptance and administrative closeout
 
 A review verdict accepts the technical evidence at its stated scope. It does not make an item COMPLETE while applicable decisions, gate dispositions, Roadmap/status or current-state/remaining-work records are missing. Follow [item records](records.md) for proportionate closeout. Changed record claims receive independent verification; missing records alone do not restart Gate 2 or rerun application tests. Reopen affected technical analysis only when closeout exposes a substantive defect, contradicted evidence or invalidated acceptance.
-
-The [Haiku pilot](review-pilot.md) is a bounded tier exception for eligible independent low-risk verification, not a waiver of application-code review, nontrivial Sonnet plan review or high-risk Opus review. Governance, consent, translation meaning, configuration behavior, source behavior, persistence/reactive database/assets/security/native-platform work is excluded.

@@ -2,6 +2,8 @@
 name: haiku-editor
 description: Applies explicitly named bounded mechanical edits with syntax proof while preserving formatting and pre-existing changes.
 model: haiku
+effort: low
+maxTurns: 80
 tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---

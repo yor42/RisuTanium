@@ -2,6 +2,8 @@
 name: perf-analyzer
 description: Uses supplied profiling data or scoped measurement to establish memory, rendering and latency mechanisms before recommending minimal corrections.
 model: sonnet
+effort: medium
+maxTurns: 330
 tools: [Read, Grep, Glob, PowerShell, Bash, Write, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---

@@ -2,6 +2,8 @@
 name: doc-writer
 description: Writes named Markdown documents and commit-message drafts from supplied evidence without upgrading confidence or changing application code.
 model: sonnet
+effort: medium
+maxTurns: 150
 tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, campaign-records, write-ownership]
 ---

@@ -2,6 +2,8 @@
 name: adversarial-reviewer
 description: Independently falsifies routine plans and changes against acceptance scenarios, races, invariants and meaningful tests.
 model: sonnet
+effort: medium
+maxTurns: 120
 tools: [Read, Grep, Glob, PowerShell, Bash, Write, LSP]
 skills: [campaign-context, evidence-reporting, review-change, write-ownership]
 ---

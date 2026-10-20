@@ -2,6 +2,8 @@
 name: record-clerk
 description: Drafts routine evidence-backed summaries and Markdown tables in named ordinary records without inventing decisions or test success.
 model: haiku
+effort: low
+maxTurns: 80
 tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash]
 skills: [campaign-context, evidence-reporting, campaign-records, write-ownership]
 ---
