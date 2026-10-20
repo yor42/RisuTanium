@@ -298,8 +298,16 @@ interface RestoredDatabase {
     characters: RestoredCharacter[]
     modules: Record<string, unknown>[]
     botPresets: Record<string, unknown>[]
-    pluginCustomStorage?: { _coldplugin?: Record<string, string> }
+    pluginCustomStorage?: { _coldplugin?: Record<string, string>, _coldpluginIndex?: unknown }
 }
+
+/** The unit ids of the plugin-index goldens (`Agents/Tools/save-gen/binGoldens.harness.ts`). */
+const INDEX_ID = {
+    index: '00000000-0000-4000-8000-0000000000b1',
+    large: '00000000-0000-4000-8000-0000000000b2',
+    shadowed: '00000000-0000-4000-8000-0000000000b3',
+    kept: '00000000-0000-4000-8000-0000000000b4',
+} as const
 
 function readGolden(name: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, name)))
@@ -487,6 +495,54 @@ describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
             expect((await readColdStorageItem(ID.pluginUnit)).status).toBe('missing')
             expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
 
+            const prompts = incompleteRestorePrompts()
+            expect(prompts).toHaveLength(1)
+            expect(prompts[0]).toContain('1 item(s) could not be linked to a character')
+            expect(prompts[0]).toContain('1 cold storage item(s) will remain unavailable')
+        })
+    })
+
+    /**
+     * Upstream's plugin storage index. The fork stores plugin values as `_coldplugin` slots only, so a legacy-page restore
+     * converts the pointer: the installed tree holds slots whose units equal the index's values, and never the pointer.
+     * The database entry of these two files is upstream's block format.
+     */
+    describe('upstream-plugin-index.bin converts the plugin storage index on a legacy page', () => {
+        test('the installed tree holds slots equal to the index values, the index wins over the fork map, and there is no pointer', async () => {
+            const db = await restoreBytes(readGolden('upstream-plugin-index.bin'))
+
+            expect(Object.keys(db.pluginCustomStorage ?? {})).toEqual(['_coldplugin'])
+            const slots = db.pluginCustomStorage?._coldplugin ?? {}
+            const values: Record<string, unknown> = {}
+            for (const [key, id] of Object.entries(slots)) {
+                values[key] = await unitJson(id)
+            }
+            expect(values).toEqual({
+                objKey: { theme: 'dark', nested: { list: [1, 2, null], flag: false } },
+                nullKey: null,
+                numKey: 42,
+                textKey: 'hello',
+                falseKey: false,
+                emptyTextKey: '',
+                bigKey: { big: ['a', 'b', 'c'] },
+                shared: { from: 'index' },
+                kept: ['kept'],
+            })
+            expect(slots.bigKey).toBe(INDEX_ID.large)
+            expect(slots.kept).toBe(INDEX_ID.kept)
+            expect(slots.shared).not.toBe(INDEX_ID.shadowed)
+            for (const id of Object.values(slots)) {
+                expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+            }
+            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+            expect(incompleteRestorePrompts()).toEqual([])
+        })
+
+        test('an index unit that is in no entry asks the incomplete-restore question and leaves no pointer', async () => {
+            const db = await restoreBytes(readGolden('upstream-plugin-index-missing.bin'))
+
+            expect(db.pluginCustomStorage).toEqual({ _coldplugin: { kept: INDEX_ID.kept } })
+            expect((await readColdStorageItem(INDEX_ID.index)).status).toBe('missing')
             const prompts = incompleteRestorePrompts()
             expect(prompts).toHaveLength(1)
             expect(prompts[0]).toContain('1 item(s) could not be linked to a character')

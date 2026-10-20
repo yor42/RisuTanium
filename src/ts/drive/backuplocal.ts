@@ -28,6 +28,8 @@ import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
+import { convertPluginStorageIndex } from "../process/pluginStorageIndex";
+import { v4 } from "uuid";
 import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
@@ -1675,6 +1677,18 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 }
                 facts.omitted = omitted;
                 const missingColdStorageKeys:string[] = []
+                // An upstream plugin storage index becomes per-key `_coldplugin` units here, after every unit entry was
+                // written and before the presence check below, so the installed tree never holds the pointer; whatever
+                // the conversion could not place joins the keys the question below reports.
+                const indexConversion = await convertPluginStorageIndex(dbData.pluginCustomStorage, {
+                    read: readColdStorageItem,
+                    write: setColdStorageItem,
+                    mint: v4,
+                })
+                for(const key of indexConversion.minted){
+                    restoredColdStorageKeys.add(key)
+                }
+                missingColdStorageKeys.push(...indexConversion.missing)
                 // A plugin storage unit is present whatever value it holds;
                 // chat and character units must also be chat or character shaped.
                 const pluginColdStorageKeys = new Set(listColdPluginStorageKeys(dbData))

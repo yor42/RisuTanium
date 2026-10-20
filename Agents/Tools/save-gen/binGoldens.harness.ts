@@ -8,7 +8,9 @@
  * captures the bytes, dialogs are mocks). The upstream-shaped goldens are
  * assembled by hand from the shapes upstream's `makeColdDataForCharacter` and
  * `makeColdDataForChat` produce, around a database entry encoded by the same
- * `encodeRisuSaveLegacy`.
+ * `encodeRisuSaveLegacy`. The plugin-index goldens carry a database entry in
+ * upstream's block format (`RISUSAVE\0`, gzip per block, root last), framed by
+ * a small builder in this file that shares no code with any production writer.
  *
  * Every id, time and byte is fixed, so a second run reproduces identical
  * files. The guard `src/ts/drive/tests/binGoldens.test.ts` loads the committed
@@ -25,6 +27,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { gzipSync } from 'fflate'
 import type { Database } from 'src/ts/storage/database.svelte'
 
 //#region module mocks
@@ -500,6 +503,114 @@ function databaseChunk(db: Database): Uint8Array {
     return buildChunk('database.risudat', encodeRisuSaveLegacy(db, 'compression'))
 }
 
+//#region upstream plugin storage index goldens
+
+/** Fixed unit ids of the plugin-index goldens. */
+const PLUGIN_INDEX_ID = {
+    index: '00000000-0000-4000-8000-0000000000b1',
+    large: '00000000-0000-4000-8000-0000000000b2',
+    shadowed: '00000000-0000-4000-8000-0000000000b3',
+    kept: '00000000-0000-4000-8000-0000000000b4',
+    trash: '00000000-0000-4000-8000-0000000000b5',
+    oldIndex: '00000000-0000-4000-8000-0000000000b6',
+} as const
+
+/** Block type numbers of upstream's block format, spelled out here so no production enum is involved. */
+const V0_TYPE = { config: 0, root: 1, preset: 4, modules: 5, characterWithoutChat: 7, plugins: 9, loadouts: 10, pluginStorage: 11 } as const
+
+/**
+ * One block as upstream's `encodeRawBlock` frames it:
+ * `[type u8][compression u8][nameLength u8][name][dataLength u32 LE][data]`.
+ * Compressed data is gzip with a zero header time, so the bytes are reproducible.
+ */
+function v0Block(type: number, name: string, value: unknown, gzip: boolean): Uint8Array {
+    const nameBuf = encoder.encode(name)
+    if (nameBuf.length > 255) {
+        throw new Error(`block name "${name}" does not fit the one-byte length`)
+    }
+    const raw = encoder.encode(JSON.stringify(value))
+    const data = gzip ? gzipSync(raw, { mtime: 0 }) : raw
+    return concat([Uint8Array.of(type, gzip ? 1 : 0, nameBuf.length), nameBuf, u32le(data.length), data])
+}
+
+/** A v0 block-format database: header `RISUSAVE\0`, the blocks, then the root block listing every other block. */
+function v0Database(blocks: { type: number, name: string, value: unknown }[], root: Record<string, unknown>): Uint8Array {
+    return concat([
+        encoder.encode('RISUSAVE\0'),
+        ...blocks.map((block) => v0Block(block.type, block.name, block.value, true)),
+        v0Block(V0_TYPE.root, 'root', { ...root, __directory: blocks.map((block) => block.name) }, false),
+    ])
+}
+
+/** The database entry of a plugin-index golden: one character, a preset, empty lists, and `pluginCustomStorage` as given. */
+function pluginIndexDatabaseEntry(pluginCustomStorage: unknown): Uint8Array {
+    return buildChunk('database.risudat', v0Database([
+        { type: V0_TYPE.characterWithoutChat, name: 'cha-inline', value: { type: 'character', chaId: 'cha-inline', name: 'Inline Alice', chatPage: 0, chats: [plainChat('chat-inline-1', 'inline hello')] } },
+        { type: V0_TYPE.preset, name: 'preset', value: moduleAndPreset().botPresets },
+        { type: V0_TYPE.modules, name: 'modules', value: [] },
+        { type: V0_TYPE.loadouts, name: 'loadouts', value: [] },
+        { type: V0_TYPE.plugins, name: 'plugins', value: [] },
+        { type: V0_TYPE.pluginStorage, name: 'pluginStorage', value: pluginCustomStorage },
+        { type: V0_TYPE.config, name: 'config', value: {} },
+    ], { characterOrder: [], personas: [] }))
+}
+
+/** The values the index's small entries hold as JSON text, and the large value its `l` entry names. */
+const PLUGIN_INDEX_VALUES = {
+    objKey: { theme: 'dark', nested: { list: [1, 2, null], flag: false } },
+    nullKey: null,
+    numKey: 42,
+    textKey: 'hello',
+    falseKey: false,
+    emptyTextKey: '',
+    shared: { from: 'index' },
+    bigKey: { big: ['a', 'b', 'c'] },
+} as const
+
+/** Upstream's index unit: small values as JSON text (`s`), one large value by unit id (`l`), and a non-empty trash. */
+function upstreamPluginIndex() {
+    const small = (key: keyof typeof PLUGIN_INDEX_VALUES) => ({ k: key, s: JSON.stringify(PLUGIN_INDEX_VALUES[key]) })
+    return {
+        type: 'risu-plugin-storage-index',
+        version: 1,
+        entries: [
+            small('objKey'),
+            small('nullKey'),
+            small('numKey'),
+            small('textKey'),
+            small('falseKey'),
+            small('emptyTextKey'),
+            { k: 'bigKey', l: PLUGIN_INDEX_ID.large },
+            small('shared'),
+        ],
+        trash: [{ id: PLUGIN_INDEX_ID.trash, at: T }, { id: PLUGIN_INDEX_ID.oldIndex, at: T, index: true }],
+    }
+}
+
+/**
+ * `full`: the index unit, its large unit, and a fork-map unit for the key `shared` that the index also defines (the
+ * index wins) next to one for `kept` that it does not. `missing-index`: the pointer is in the database, the index unit is
+ * in no entry.
+ */
+function pluginIndexContainer(variant: 'full' | 'missing-index'): Uint8Array {
+    const parts: Uint8Array[] = []
+    if (variant === 'full') {
+        parts.push(
+            unitEntry(PLUGIN_INDEX_ID.index, upstreamPluginIndex()),
+            unitEntry(PLUGIN_INDEX_ID.large, PLUGIN_INDEX_VALUES.bigKey),
+            unitEntry(PLUGIN_INDEX_ID.shadowed, { from: 'legacy-map' }),
+        )
+    }
+    parts.push(unitEntry(PLUGIN_INDEX_ID.kept, ['kept']))
+    const pluginCustomStorage = variant === 'full'
+        ? { _coldpluginIndex: PLUGIN_INDEX_ID.index, _coldplugin: { shared: PLUGIN_INDEX_ID.shadowed, kept: PLUGIN_INDEX_ID.kept } }
+        : { _coldpluginIndex: PLUGIN_INDEX_ID.index, _coldplugin: { kept: PLUGIN_INDEX_ID.kept } }
+    parts.push(pluginIndexDatabaseEntry(pluginCustomStorage))
+    return concat(parts)
+}
+
+//#endregion
+
 function upstreamContainer(variant: UpstreamCase): Uint8Array {
     const parts: Uint8Array[] = []
     if (variant !== 'stub-only') {
@@ -633,6 +744,15 @@ describe('bin golden generator', () => {
     // An object-valued `_coldplugin` unit is one upstream's collector leaves out, so the mapping is exported with no entry.
     test('upstream-plugin-object-no-entry.bin', () => {
         emit('upstream-plugin-object-no-entry.bin', upstreamContainer('plugin-object-no-entry'))
+    })
+
+    // The first golden whose database entry is upstream's own block format rather than the fork's msgpack writer.
+    test('upstream-plugin-index.bin', () => {
+        emit('upstream-plugin-index.bin', pluginIndexContainer('full'))
+    })
+
+    test('upstream-plugin-index-missing.bin', () => {
+        emit('upstream-plugin-index-missing.bin', pluginIndexContainer('missing-index'))
     })
 
     test('upstream-stub-missing-entry.bin', () => {
