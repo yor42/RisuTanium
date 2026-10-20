@@ -155,7 +155,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { exportCharacterCard } from 'src/ts/characterCards'
-import { readImage } from 'src/ts/globalApi.svelte'
+import { LocalWriter, readImage } from 'src/ts/globalApi.svelte'
 import type { character } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
 
@@ -240,7 +240,7 @@ describe('Export portrait: placeholder only for an absent image', () => {
         expect(h.log).toContain('normal:' + language.successExport)
     })
 
-    test('(R) an image missing from storage exports with the placeholder', async () => {
+    test('(G) an image missing from storage exports with the placeholder', async () => {
         const fetchMock = stubPlaceholder()
         vi.mocked(readImage).mockImplementation(async () => { throw new Error('The asset "synthetic-image" does not exist.') })
         await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
@@ -249,12 +249,21 @@ describe('Export portrait: placeholder only for an absent image', () => {
         expect(h.log).toContain('normal:' + language.successExport)
     })
 
-    test('(R) an I/O error while reading the image fails the export and writes nothing', async () => {
+    test('(R) an I/O error while reading the image rejects the export and writes nothing', async () => {
         const fetchMock = stubPlaceholder()
         vi.mocked(readImage).mockImplementation(async () => { throw new Error('synthetic read failure') })
-        await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
-        expect(h.errors).toEqual(['synthetic read failure'])
+        await expect(exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).rejects.toThrow('synthetic read failure')
         expect(h.log).not.toContain('normal:' + language.successExport)
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(h.recorded).toEqual([])
+    })
+
+    test('(R) an I/O error while reading the image rejects for a caller that supplies its own writer', async () => {
+        const fetchMock = stubPlaceholder()
+        vi.mocked(readImage).mockImplementation(async () => { throw new Error('synthetic read failure') })
+        const writer = new LocalWriter()
+        await expect(exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3', writer })).rejects.toThrow('synthetic read failure')
+        expect(h.errors).toEqual([])
         expect(fetchMock).not.toHaveBeenCalled()
         expect(h.recorded).toEqual([])
     })

@@ -1700,8 +1700,8 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     spec?:'v2'|'v3'
 }) {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
+    let img = await readCardExportImage(char.image)
     try{
-        let img = await readCardExportImage(char.image)
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
         const localWriter = arg.writer ?? (new LocalWriter())
