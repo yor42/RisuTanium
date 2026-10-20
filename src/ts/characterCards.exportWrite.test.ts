@@ -7,8 +7,8 @@
  * byte it was handed, so the file written can be compared with what the exporter produced. A mocked file system is
  * not evidence of native file behaviour.
  *
- * Labels: (R) fails when a PNG export does not wait for its writer to close; (G) is a guard that passes with or
- * without the change.
+ * Labels: (R) fails when a PNG export does not wait for its writer to close, or when a card image read error does
+ * not reject the export; (G) is a guard that passes with or without the change.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
