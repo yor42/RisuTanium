@@ -1541,6 +1541,13 @@ export function LoadLocalBackup(boot?: BootBinRun){
                             decode: async () => (await decodeBinDatabase(databaseBytes)).tree,
                             reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
                         });
+                        // Only an install that landed has anything left out to report; each notice is awaited so the dispatch
+                        // does not open the profile (or reload onto it) over an unread notice.
+                        if (bootEnd.kind === 'finished' && bootEnd.result.status === 'installed') {
+                            for (const notice of skippedNoticesOf(skippedAssets, skippedInlays)) {
+                                await alertNormalWait(notice);
+                            }
+                        }
                         alertStore.set({ type: 'none', msg: '' });
                         return;
                     }

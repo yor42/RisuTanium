@@ -104,6 +104,7 @@ afterEach(async () => {
     overrideBackupWindowBytes(null)
     worlds.parkAll()
     vi.doMock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }))
+    vi.doUnmock('src/ts/drive/inlayBackupImport')
     vi.restoreAllMocks()
     if (originalLocks) {
         Object.defineProperty(window.navigator, 'locks', originalLocks)
@@ -258,6 +259,109 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
             spy.mockRestore()
         }
         expect(installed).not.toHaveBeenCalled()
+    })
+
+    // A file whose first entry is an asset the store refuses by name, followed by the upstream golden (its database is the last entry).
+    function withRefusedAsset(): Uint8Array {
+        const name = new TextEncoder().encode('.badname')
+        const body = new Uint8Array([1, 2, 3])
+        const chunk = new Uint8Array(4 + name.length + 4 + body.length)
+        const view = new DataView(chunk.buffer)
+        view.setUint32(0, name.length, true)
+        chunk.set(name, 4)
+        view.setUint32(4 + name.length, body.length, true)
+        chunk.set(body, 8 + name.length)
+        const rest = golden('upstream-full.bin')
+        const out = new Uint8Array(chunk.length + rest.length)
+        out.set(chunk, 0)
+        out.set(rest, chunk.length)
+        return out
+    }
+
+    /** The page's store refuses the one name, as a real store does for a key it cannot hold. */
+    function refuseBadName(boot: Boot): void {
+        const realWrite = boot.w.store.write.bind(boot.w.store)
+        vi.spyOn(boot.w.store, 'write').mockImplementation(async (...args: Parameters<typeof realWrite>) => {
+            if (args[0] === 'assets/.badname') {
+                throw new boot.w.errors.StoreInvalidKeyError(args[0], 'refused for the test')
+            }
+            return realWrite(...args)
+        })
+    }
+
+    const installedResult: BootImportResult = { status: 'installed', manifestKey: 'm', flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }
+
+    test('new behaviour: an installed boot import shows the skipped-inlay notice, awaited, before the flow resolves', async () => {
+        // The inlay pass is the real collector's; only its outcome is replaced, so the test pins that the boot path
+        // hands the inlay skips to the notices (the asset skips alone would not show it).
+        vi.doMock('src/ts/drive/inlayBackupImport', async (importOriginal) => ({
+            ...await importOriginal<typeof import('src/ts/drive/inlayBackupImport')>(),
+            restoreCollectedInlays: vi.fn(async () => ({ written: 0, skipped: [{ label: 'lost-inlay', reason: 'invalid' as const }], changed: false })),
+        }))
+        const boot = await openBoot()
+        const { language } = await import('src/lang')
+        let release: () => void = () => { }
+        const held = new Promise<void>((resolve) => { release = resolve })
+        vi.mocked(boot.alert.alertNormalWait).mockImplementation(() => held)
+        const seen: Seen = { reads: new Map(), sourceHadTree: false }
+
+        let resolved = false
+        const ended = pickAtBoot(recordingTarget(seen, installedResult), golden('upstream-full.bin'))
+        void ended.then(() => { resolved = true })
+        await sleepReal(300)
+
+        expect(seen.sourceHadTree).toBe(true)
+        expect(boot.alert.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysInvalid(1, ['lost-inlay']))
+        expect(resolved).toBe(false)
+        release()
+        expect(await ended).toEqual({ kind: 'finished', result: installedResult })
+    })
+
+    test('reproducer: an installed boot import shows the skipped-asset notice, awaited, before the flow resolves', async () => {
+        const boot = await openBoot()
+        const { language } = await import('src/lang')
+        let release: () => void = () => { }
+        const held = new Promise<void>((resolve) => { release = resolve })
+        vi.mocked(boot.alert.alertNormalWait).mockImplementation(() => held)
+        refuseBadName(boot)
+        const seen: Seen = { reads: new Map(), sourceHadTree: false }
+
+        let resolved = false
+        const ended = pickAtBoot(recordingTarget(seen, installedResult), withRefusedAsset())
+        void ended.then(() => { resolved = true })
+        await sleepReal(300)
+
+        // The skip really happened: the pass ran past the refused entry, wrote the file's valid asset and refused the bad key.
+        expect(seen.sourceHadTree).toBe(true)
+        expect(boot.w.store.peek('assets/golden-avatar.png')).not.toBeNull()
+        expect(boot.w.store.peek('assets/.badname')).toBeNull()
+        expect(boot.alert.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.badname']))
+        expect(resolved).toBe(false)
+        release()
+        expect(await ended).toEqual({ kind: 'finished', result: installedResult })
+    })
+
+    test('guard: a cancelled boot import shows no skip notice', async () => {
+        const boot = await openBoot()
+        refuseBadName(boot)
+        const installed = vi.fn(async () => ({ status: 'declined' as const }))
+        const target: BootImportTarget = { readColdStorageItem: async () => ({ status: 'missing' }), install: installed }
+
+        const end = await pickAtBoot(target, withRefusedAsset())
+
+        expect(end).toEqual({ kind: 'cancelled' })
+        expect(boot.alert.alertNormalWait).not.toHaveBeenCalled()
+    })
+
+    test('guard: an import that finished without installing (blocked) shows no skip notice', async () => {
+        const boot = await openBoot()
+        refuseBadName(boot)
+        const seen: Seen = { reads: new Map(), sourceHadTree: false }
+
+        const end = await pickAtBoot(recordingTarget(seen, { status: 'blocked', reason: 'install-failed', detail: 'recorded' }), withRefusedAsset())
+
+        expect(end.kind).toBe('finished')
+        expect(boot.alert.alertNormalWait).not.toHaveBeenCalled()
     })
 
     test('new behaviour: a file with no database entry is a refusal the flow shows, and it ends cancelled with nothing installed', async () => {

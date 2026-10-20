@@ -273,6 +273,24 @@ export async function loadData() {
                     }
                     throw error
                 }
+                // A page the service worker does not control yet reloads once to be controlled. That is decided after the
+                // store is selected (which may itself run the OPFS copy-back and its progress alert; a failed copy-back is
+                // attempted again by the next life) and before the profile is read or any boot prompt or notice is posted,
+                // so the life that reloads shows and consumes none of them and the next life does. A stale account profile
+                // never reaches the service worker: it ends at its own notice below.
+                if (!forageStorage.staleAccountProfile) {
+                    LoadingStatusState.text = "Checking Service Worker..."
+                    if (navigator.serviceWorker) {
+                        setUsingSw(true)
+                        if (await registerSw()) {
+                            await sleepForever()
+                            return
+                        }
+                    }
+                    else {
+                        setUsingSw(false)
+                    }
+                }
                 const store2Boot = await runStore2Boot()
                 if (store2Boot.kind === 'stopped') {
                     await sleepForever()
@@ -446,8 +464,9 @@ export async function loadData() {
                 // silently. The notice is blocking and re-posts itself against
                 // any other alertStore write; only its own OK acknowledges it.
                 // Acknowledging removes the three account-sync keys and reloads
-                // -- this page life never reaches the service worker,
-                // characterURLImport, plugins, loadedStore or saveDb below.
+                // -- this page life never reaches characterURLImport,
+                // plugins, loadedStore or saveDb below, and it never
+                // registered the service worker above.
                 if (forageStorage.staleAccountProfile) {
                     void alertStaleAccountNotice().then(() => {
                         localStorage.removeItem('accountst')
@@ -466,14 +485,6 @@ export async function loadData() {
                 localStorage.removeItem('dosync')
                 localStorage.removeItem('fallbackRisuToken')
 
-                LoadingStatusState.text = "Checking Service Worker..."
-                if (navigator.serviceWorker) {
-                    setUsingSw(true)
-                    await registerSw()
-                }
-                else {
-                    setUsingSw(false)
-                }
                 // Never awaited: the clean-up must not delay the app.
                 void cleanRouteServedCacheOnce(typeof localStorage === 'undefined' ? null : localStorage)
                 if (getDatabase().didFirstSetup) {
@@ -484,9 +495,10 @@ export async function loadData() {
                     void cleanUpCopiedBackOpfs()
                 }
             }
-            // Both boot branches reach here on the non-stale path (the
-            // stale-profile notice above returns before this point, and the
-            // next boot's ordinary path runs it instead). Drops the leftovers
+            // Both boot branches reach here on the non-stale path of a life
+            // that stays (the stale-profile notice above returns before this
+            // point, and so does a life that reloads for the service worker;
+            // the next boot's ordinary path runs it instead). Drops the leftovers
             // of two upstream services this app does not offer: the
             // account-sync LocalForage instance named "risuaiAccountCached",
             // and the Google Drive backup's last-saved timestamp
@@ -962,9 +974,9 @@ async function postArchiveNotices(notices: readonly BootArchiveNotice[]) {
 }
 
 /**
- * Registers the service worker and initializes it.
+ * Registers the service worker and initializes it. Answers whether it started a reload, which ends this page life.
  */
-async function registerSw() {
+async function registerSw(): Promise<boolean> {
     await navigator.serviceWorker.register("/sw.js", {
         scope: "/"
     });
@@ -973,7 +985,9 @@ async function registerSw() {
     if (!(da.status >= 200 && da.status < 300)) {
         markAppInitiatedReload();
         location.reload();
+        return true;
     }
+    return false;
 }
 
 /**
