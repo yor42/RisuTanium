@@ -10584,3 +10584,21 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - SaveKV had no writer, no stated plan and no PR at `e773240bf`; a build without it skips the block with a warning (read in source).
 - The orchestrator's order: merge `feat/alite-s4` first, then size and gate items 7, 5, 3, 4 (G6, G3, G2, G1, as one merge) and the routine upstream items; the triage's SKIP list (account sync, the runtime legal flag, the PR template, two fixes already present) stands. The merge is recorded in `Agents/Upstream-Merges.md` (`MC-224`).
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-325 — Step 2 session, 2026-10-20: stage 4b records commit, D10 run by the orchestrator against an upstream clone, merge of `feat/alite-s4`
+
+- **Tag:** decisions (one message, 2026-10-20)
+- **Date:** 2026-10-20
+- **Sweep ref:** none
+- **Source:** the maintainer's message answering the orchestrator's three questions (records commit, D10, merge), in the session transcript.
+
+1. **Records commit: "approved".** The stage 4b close records were committed on `main` as `e8fd21143` and pushed under the standing push permission.
+2. **D10: "tell me what to do and I will do it. or you can use the chrome to test it by yourself - clone the upstream repo on projects folder(RisuAI name is already taken, so you would need different name for directory), open the server and access the localhost ip."** The orchestrator ran it; the clone is `C:\Projects\RisuAI-upstream`, and the results are in the Roadmap stage 4b section.
+3. **Merge: "merge approved."** Merged as `ea49d579d` and pushed.
+
+**Notes that are not the maintainer's words:**
+- The orchestrator ran D10 before merging, because the A4 round trip was to precede the merge (the merge commit message says so; `MC-318` 7 gates only the stub flip on A4, and `MC-318` 10 moves the 101 MiB check to the chunked-upload item).
+- `MC-318` 11's pre-merge real-library import was replaced by `MC-324` 2 (the D11 split): D11a (the maintainer's upstream partial backup, on the PC) and D11b (synthetic scale) both passed before the merge (Roadmap stage 4b section).
+- The D10 evidence (`s4b\d10\d10-results.md`) lives in session scratch under `%TEMP%\risu-b715\`, outside the repository.
+- The orchestrator pinned the upstream clone to `979dbc9d` (the last upstream commit merged into the fork), because upstream's newer plugin storage index is the unimplemented compatibility work (`MC-324` 3 and 8).
+- Whether to flip `EXPORT_UNLOADED_CHARACTERS` to `'stub'` (`MC-318` 7) is not decided; the D10 evidence is in the Roadmap stage 4b section.

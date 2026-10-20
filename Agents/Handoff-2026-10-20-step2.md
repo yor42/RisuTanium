@@ -2,6 +2,8 @@
 
 Written from `s4b\close\facts.md`, the session's transcript usage blocks, and the verifier and coordinator messages that the records pass received. `git status` and `git log` were read at the start of the records pass only; the next session first checks this file against `git status` and `git log`.
 
+**Update 2026-10-21:** next actions 1, 2 and 6 below are done. D10 ran and was verified with fixes (ledger rows 2069 to 2071; Roadmap stage 4b section); the records were committed as `e8fd21143`; `feat/alite-s4` is merged as `ea49d579d` and pushed (`MC-325`). Still open: the stub-export decision (`MC-318` 7), the upstream compatibility work (action 3), `MC-323` (action 4) and the H0 removal (action 5). Next free ledger row 2074, `MC-326`, CHORE-187.
+
 ## 1. Goal and done-criteria
 
 Step 2 ran stage 4b (store2 import and export on the unmerged `feat/alite-s4` branch) through Gate 1, Gate 2, checks and devices, then the close records. Done: stage 4b is technically accepted; the records (ledger rows 1972 to 2000 and 2040 to 2066, the Roadmap stage 4b section and CHORE statuses, the Live-State bullet, this file) are drafted from evidence. Not done: stage 4b is not COMPLETE until the owed items below close.
