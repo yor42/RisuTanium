@@ -10,7 +10,7 @@
  * Labels: (R) fails when a PNG export does not wait for its writer to close; (G) is a guard that passes with or
  * without the change.
  */
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 //#region module mocks
 
@@ -155,6 +155,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { exportCharacterCard } from 'src/ts/characterCards'
+import { readImage } from 'src/ts/globalApi.svelte'
 import type { character } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
 
@@ -212,6 +213,50 @@ describe('PNG export onto a TauriWriter', () => {
         await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
         expect(h.errors).toEqual(['synthetic write failure'])
         expect(h.log).not.toContain('normal:' + language.successExport)
+    })
+})
+
+describe('Export portrait: placeholder only for an absent image', () => {
+    const realFetch = globalThis.fetch
+
+    function stubPlaceholder() {
+        const fetchMock = vi.fn(async () => new Response(syntheticPng().buffer as ArrayBuffer, { status: 200 }))
+        globalThis.fetch = fetchMock as unknown as typeof fetch
+        return fetchMock
+    }
+
+    afterEach(() => {
+        globalThis.fetch = realFetch
+        vi.mocked(readImage).mockImplementation(async () => h.png)
+    })
+
+    test('(G) a character with no image exports with the placeholder', async () => {
+        const fetchMock = stubPlaceholder()
+        const char = syntheticCharacter()
+        char.image = ''
+        await exportCharacterCard(char, 'png', { spec: 'v3' })
+        expect(fetchMock).toHaveBeenCalledWith('/none.webp')
+        expect(h.errors).toEqual([])
+        expect(h.log).toContain('normal:' + language.successExport)
+    })
+
+    test('(R) an image missing from storage exports with the placeholder', async () => {
+        const fetchMock = stubPlaceholder()
+        vi.mocked(readImage).mockImplementation(async () => { throw new Error('The asset "synthetic-image" does not exist.') })
+        await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
+        expect(fetchMock).toHaveBeenCalledWith('/none.webp')
+        expect(h.errors).toEqual([])
+        expect(h.log).toContain('normal:' + language.successExport)
+    })
+
+    test('(R) an I/O error while reading the image fails the export and writes nothing', async () => {
+        const fetchMock = stubPlaceholder()
+        vi.mocked(readImage).mockImplementation(async () => { throw new Error('synthetic read failure') })
+        await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
+        expect(h.errors).toEqual(['synthetic read failure'])
+        expect(h.log).not.toContain('normal:' + language.successExport)
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(h.recorded).toEqual([])
     })
 })
 

@@ -347,12 +347,15 @@ beforeEach(() => {
 //#endregion
 
 describe('The Lua onFormSubmit run resolves through its origin, not the selection', () => {
-    test('a switch during the script\'s own await does not move where addChat lands, and the submitted data reaches the script', async () => {
+    test('a switch to another character during the script\'s own await does not move where setChatVar lands, and the submitted data reaches the script', async () => {
+        // setChatVar resolves through the run's origin when the form run carries
+        // one and through the selection otherwise, so the write after the await
+        // lands on the origin chat only if the origin travelled with the run.
         const char = makeCharacter('char-form-origin')
-        const chatA = makeChat('chat-a')
-        const chatB = makeChat('chat-b')
-        char.chats = [chatA, chatB]
-        installDb([char])
+        const other = makeCharacter('char-form-other')
+        const chatA = char.chats[0]
+        const chatB = other.chats[0]
+        installDb([char, other])
         selectedCharID.set(0)
 
         char.triggerscript.push(trig('t', 'manual', [{
@@ -360,7 +363,7 @@ describe('The Lua onFormSubmit run resolves through its origin, not the selectio
             code: [
                 'onFormSubmit = async(function(id, key, meta)',
                 '  alertInput(id, "wait"):await()',
-                '  addChat(id, "user", "form:" .. key .. ":" .. json.decode(meta).data.a)',
+                '  setChatVar(id, "k", "form:" .. key .. ":" .. json.decode(meta).data.a)',
                 'end)',
             ].join('\n'),
         }]))
@@ -379,13 +382,13 @@ describe('The Lua onFormSubmit run resolves through its origin, not the selectio
         const p = runLuaInteractionTrigger('form', char, 'send', { data: { a: '1' } }, handle!.origin)
         await reached
 
-        char.chatPage = 1 // the selection moves to chat B, during the script's own await
+        selectedCharID.set(1) // the selection moves to the other character, during the script's own await
 
         releaseGate()
         await p
         handle!.end()
 
-        expect(chatA.message.some((m) => m.data === 'form:send:1')).toBe(true)
-        expect(chatB.message.some((m) => m.data === 'form:send:1')).toBe(false)
+        expect(chatA.scriptstate['$k']).toBe('form:send:1')
+        expect(chatB.scriptstate['$k']).toBeUndefined()
     })
 })

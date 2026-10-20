@@ -164,7 +164,8 @@
         } catch (error) {
             //retry
             if(tries > 2){
-                const wrapped = new Error(fillLang(language.errors.chatParseFailed, { translated: `${translated}`, message: error?.message ?? `${error}`, stack: error?.stack ?? '' }))
+                const wrapped = new Error(fillLang(language.errors.chatParseFailed, { translated: `${translated}`, message: error?.message ?? `${error}`, stack: '' }))
+                // The alert shows the Error's stack in its own block, so the message omits it.
                 if(error instanceof Error){
                     wrapped.stack = error.stack
                 }

@@ -1479,7 +1479,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         _getSafeLocalStorage: oldApis.safeLocalStorage.getItem,
         _setSafeLocalStorage: oldApis.safeLocalStorage.setItem,
         _removeSafeLocalStorage: oldApis.safeLocalStorage.removeItem,
-        //bound calls: SafeLocalStorage.key/clear/keys use `this`
+        //bound calls: SafeLocalStorage.key/clear and the length getter use `this`
         _clearSafeLocalStorage: () => oldApis.safeLocalStorage.clear(),
         _keySafeLocalStorage: (index: number) => oldApis.safeLocalStorage.key(index),
         _keysSafeLocalStorage: oldApis.safeLocalStorage.keys,

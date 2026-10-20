@@ -1135,7 +1135,14 @@ async function readCardExportImage(image?: string) {
                 return img
             }
         } catch (e) {
-            console.warn('readCardExportImage: failed to read character image, falling back to none.webp', e)
+            // Only an image absent from storage takes the placeholder (Tauri's
+            // readAssetBytes rejects with "does not exist"; the other platforms
+            // return null, handled above). Any other failure is a real read
+            // error and must fail the export rather than ship a wrong portrait.
+            if(!(isTauri && e instanceof Error && /does not exist/.test(e.message))){
+                throw e
+            }
+            console.warn('readCardExportImage: character image is missing from storage, falling back to none.webp', e)
         }
     }
 
@@ -1692,9 +1699,9 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
 }) {
-    let img = await readCardExportImage(char.image)
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     try{
+        let img = await readCardExportImage(char.image)
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
         const localWriter = arg.writer ?? (new LocalWriter())

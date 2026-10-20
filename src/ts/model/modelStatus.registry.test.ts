@@ -121,7 +121,7 @@ describe('getModelList', () => {
             }
         }
         expect(ids.has('gpt-5.1')).toBe(true)
-        // A deprecated id that is no longer a recommended model is listed only in the full list.
+        // The vertex twin of a redirected base stays listed (status ok) but is no longer recommended, so only the full list has it.
         expect(ids.has('gemini-3.5-flash-vertex')).toBe(!recommendedOnly)
     })
 
