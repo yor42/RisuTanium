@@ -2672,6 +2672,8 @@ before the fix.
 
 ### CHORE-48 — Inlay images are never included in a local backup
 
+**Status (2026-10-20, stage 4b close): SUPERSEDED.** The store2 inlay round-trip compatibility guard (`c25482c16`, stage 4b S3) covers inlays on store2 pages; see the stage 4b section. The earlier status follows.
+
 **Status (2026-09-30):** filed from CHORE-47's scoping (ledger row 461), under `MC-069`. Present
 upstream (its `backuplocal.ts` has no inlay handling either). Not fixed and not scheduled; whether
 upstream means this is unknown.
@@ -4411,6 +4413,8 @@ as `448962f4`.
 
 ### CHORE-75 — Load Internal Backup on a profile with no main file says the previous data was kept, when no copy was written (TRACED; wording only, not data loss)
 
+**Status (2026-10-20, stage 4b close): SUPERSEDED** by the store2 layout, which has no main file (the stage 4b disposition in the Step 1 handoff's next actions). The earlier status follows.
+
 **Status (2026-10-03): open, unplaced.** The maintainer asked for this ticket on 2026-10-03 ("yes, ticket the no-main-file
 notice quirk"). It is not placed in the work order; the maintainer places it (`MC-089`: nothing ships until every open
 ticket clears). Small. Not a data-loss item: when there is no main file there is nothing to keep, so nothing is lost.
@@ -5664,6 +5668,8 @@ an investigation before anything is decided.
 
 ### CHORE-74 — The `.bin` export warns when the backup holds plugin data that upstream will not restore
 
+**Status (2026-10-20, `MC-322` 1): DEFERRED.** Stage 4b adds no warning; it stays later QOL work (`MC-177`). The earlier status follows.
+
 **Status (2026-10-03):** open, **not scheduled**; **not a release item**: the maintainer said it should not be a release
 blocker, because it is upstream behaviour, and that the warning is a later quality-of-life item (`MC-177` 1). This
 replaces the Orchestrator's earlier reading of `MC-089` for this ticket. Type: a small UI change. Filed at the
@@ -6269,6 +6275,8 @@ with index -1.
 
 ### CHORE-129 — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
 
+**Status (2026-10-20, `MC-322` 2): RESIDUAL ACCEPTED UNTIL STAGE 0b.** The desktop hard limit stays as built; on web, Node and Android an oversized export has no size check before writing and fails loudly partway through (the stage 4b Gate 1 C7 carry). No 500 MB soft limit. The earlier status follows.
+
 **Status (2026-10-06): open, not scheduled.** Type: feature. Filed from the maintainer's relaxation of the compatibility invariant (`MC-223`; `AGENTS.md` carries the amendment). It replaces the whole-export failure that `bc631526` gives for an asset of 4 GiB or more (`backupFailedAssetTooLarge`).
 
 - **Behaviour the notes record:** before the export starts, name each over-limit item in a warning; on confirm export the rest and leave those items out, and repeat their names in the summary; cancel writes nothing. A hard limit (an entry over 4 GB: the container cannot hold it) and a soft limit (assets over about 500 MB: an upstream desktop restore crashes at the WebView2 per-call cap, warned as "upstream may fail to load" and still included).
@@ -6287,6 +6295,8 @@ with index -1.
 **Status (2026-10-06): open, not scheduled.** Type: performance. Measured in the live check of `1e71c45c` (a re-import adds nothing and leaves no temp, but took 45.5 s because every piece was sent). How to skip before sending is not designed (TODO(evidence)).
 
 ### CHORE-103 — The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail
+
+**Status (2026-10-20, stage 4b close, `MC-323` lead 6): OPEN, RE-SCOPED, not closed.** S4 (`19afc6829`) released the import's decoded tree and msgpackr's retained buffers; the raw entry bytes and the double decode remain. The earlier status follows.
 
 **Status (2026-10-06): open, not scheduled.** Type: memory. The live check of `bc631526` (S1) measured the whole restore peaking at +1,211 MiB in the tail that decodes the 159 MB legacy database against a flat +110 MiB asset phase (a control with 300 small entries peaked +1,131 MiB), so the under-1-GB target was not met. The records items list "legacy decode memory" as a follow-up without further detail (TODO(evidence): confirm this ticket is the one meant). Platform: Windows, i9, WebView2 154.
 
@@ -6321,6 +6331,8 @@ with index -1.
 - The 200 MB per-asset policy limit (`MC-187`) can rise once this and CHORE-126 both land; no decision to raise it is recorded.
 
 ### CHORE-110 — Whole-file export bytes differ from run to run
+
+**Status (2026-10-20): CLOSED** by `96b9d10f1` (the `.bin` database entry is written with a zero gzip time), with the device confirmation: the post-fix D5r run exported twice with identical SHA-256 and gzip MTIME 0, verified from the files (small profile; the large export was not repeated). The earlier status follows.
 
 **Status (2026-10-06): open, candidate investigation.** In the live check of `b5a41e3d` two exports of the same data differ byte for byte on both the old and the new build: the `database` entry's bytes vary, and the decoded database is equal (assets identical). Not diagnosed.
 
@@ -6781,6 +6793,22 @@ with index -1.
 - **Not decided:** what the app does when free space is below the need (warn only, or refuse; `MC-319` 5 says nothing is refused for size); which platforms get the check (the warning is Android-app only, `MC-320` 3).
 - **Related:** `MC-320`, `MC-319`, `MC-130` 4; B6g.
 
+### CHORE-183 — A `botPresets` list that is missing or not a list makes "Convert without these parts" stop on the unexpected-error screen
+
+**Status (2026-10-20, stage 4b close): open, not scheduled.** Source: device check D4 (`d2d4-results.md`), `MC-322` 6. The conversion writes nothing. Proposed: a missing or non-list `botPresets` becomes a named omitted part.
+
+### CHORE-184 — The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time
+
+**Status (2026-10-20, stage 4b close): open, not scheduled.** Upstream-inherited (the same in upstream/main). Lua breaks offline and on a LAN. Source: the D11a finding E1 (`d11a-results.md`).
+
+### CHORE-185 — The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive
+
+**Status (2026-10-20, stage 4b close): open, not scheduled.** It failed once in the full run `checks-19afc6829` under APK-build load; it passed 3 of 3 alone, and the quiet-PC run `checks-19afc6829-r2` passed. Test-only.
+
+### CHORE-186 — E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pre-release blocker)
+
+**Status (2026-10-20, stage 4b close): open; PRE-RELEASE BLOCKER, owned by the upstream compatibility work (`MC-324` 9).** On a shared-folder or same-origin upstream profile, the store2 conversion and the old-data deletion remove upstream's plugin index and large units. Minimal fix per `MC-324` 9: the converter converts the index, and cleanup deletes nothing while a profile still carries upstream's pointer.
+
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 
 **Status (2026-10-12): fixed in stage 2a (`bd02c04d4`, merged in `2e065403a`; ledger rows 2024, 2027 to 2030); the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled.**
@@ -7162,6 +7190,32 @@ Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-30
   - **Web, installed as an app:** open a card file with the app: it is imported once.
   - **Note 9 (Android, Tauri) and Windows (Tauri desktop):** start-up, the boot archive pass and re-archiving behave as before (no change expected; the desktop path was never on).
 
+### Stage 4b, store2 import and export close (2026-10-20): commits, gates, checks, devices, carries
+
+**State (2026-10-20): technically accepted on the unmerged branch `feat/alite-s4`; not COMPLETE.** Nothing is merged or pushed. Remaining: the maintainer's A4 round trip (D10, needs a `.bin` from the 4b build), the merge decision (asked at merge time), and the upstream compatibility work and `MC-323` after it.
+
+**Commits on `feat/alite-s4`, in order:** `775602a2b` S1; `ea7669b96` S2a (boot import skip notices, one boot notice across the service-worker reload; `MC-322` 5); `1b27483f6` S2b (import, restore and export shells return their end and facts); `c25482c16` S3 (inlay round-trip compatibility guard on store2 pages); `96b9d10f1` CHORE-110 (deterministic gzip header in `.bin` exports); `19afc6829` S4 (release the import's decoded tree and msgpackr's retained buffers). S4 has a latent coupling: the release relies on the Buffer polyfill loading before msgpackr, and a change of load order fails loudly.
+
+**Gates (ledger rows 1975 to 2000 and 2040 to 2062):** Gate 1 plan `[REJECT]`, then `[APPROVE WITH CONDITIONS]`. S1 Gate 2 `[APPROVE WITH CONDITIONS]`, then `[APPROVE]` after one targeted round. S2a Gate 2 `[APPROVE WITH CONDITIONS]`, then `[APPROVE]`. S2b Gate 2 `[REJECT]`, `[REJECT]`, `[APPROVE]` (three rounds). S3 `[APPROVE]`. CHORE-110 `[APPROVE]`. S4 Gate 1 `[APPROVE WITH AMENDMENTS]`; S4 Gate 2 `[REJECT]` (`packr.useBuffer(Uint8Array)` broke `composedRoundTrip` 8 of 15 under Node), then `[EDITORIAL]` after the round 2 re-review (ED1, ED2 applied).
+
+**Checks (the final snapshot `19afc6829`; the figures are from the check logs as recorded):** `checks-bef339121`: 19,596 passed. `checks-c25482c16`: 19,708 passed. `checks-96b9d10f1`: 19,711 passed, 23 skipped; check, build and release-dist PASS. `checks-19afc6829`: `pnpm test` had 1 failure, `Chat.draftCaptureScenarios` "success-then-fail", under APK-build load (passed 3 of 3 alone), now CHORE-185. `checks-19afc6829-r2` on a quiet PC: 19,724 passed, 23 skipped, 0 failed; check, build and release-dist PASS. Replay and live 429 re-run at `96b9d10f1` (orchestrator, 2026-10-20): 3 files, 40 passed, 0 skipped.
+**Devices (one Note 9, SM-N960N, Android 10, WebView 154, single runs unless stated; each verified by `doc-verifier` with the corrections listed):**
+- D1: PASS. Step 3 partial: the natural race was not timed; injected stale writes were refused.
+- D2 to D4: PASS with corrections (`d2d4-acceptance.md`). Probe gap: the dev servers were not shipped. D4 found the `botPresets` lenient-convert crash (`MC-322` 6; CHORE-183). D2's double boot notice was fixed in S2a.
+- D7: PASS. The CHORE-110 cause is the gzip MTIME.
+- D5 and D8 (device build `c25482c16`, before the CHORE-110 fix): D8 PASS, partly evidenced (screenshots; no focus log). D5 1,000-entry fixture: cold start median 6.65 s against 13.40 s baseline. A2 NOT-RUN (no API key). A1 shape only; the meter JSON was not saved. Baseline is the main frontend on the `c25482c16` Rust shell. The old fixture `m-10k-real.bin` is defective (no globalLore). The verifier withdrew the VmHWM and app-memory claims.
+- D5 re-run and post-fix export (the build with the S4 fix, `19afc6829`, on the device; single run): CHORE-110 closed on a small (5-character) profile, one device; two exports are identical (SHA-256 `875D4B5A...`, gzip MTIME 0; verified from the files). Import 637.5 s on the 1,000-entry file; plateau about 0.65 to 0.72 GB total; peak 1.07 GB in the commit; renderer fresh. Comparison figures for the import (new build about 1.4 to 1.49 GB sustained; baseline about 0.4 GB, spiking to about 1.1 GB at the finish) are the d5d8 verifier's recomputation from the raw samples `new-fix-import` and `base-fix-import`, not text in `d5d8-results.md`. The single run cannot separate the S4 fix from the fresh renderer; the baseline was not re-run. The cited lmkd line (18:34) is outside the import.
+- D11a: PASS. The real upstream partial backup (345,832,259 B; 500 characters, 771 chats, 164 modules, 14 plugins, 2 presets, 68 personas, 517 assets) round-trips identically on the PC; heap peak 252 MiB. Four broken images are keys absent from the partial `.bin` and referenced in `characters[].additionalAssets` or `emotionImages`: expected (`asset-failures.md`). Corrections: export about 23 s click-to-begin; the 5,228 key count is unsupported; "Success" shows before the download completes.
+- D11b: PASS. F1 90 MB (1,200 characters, 150 modules, 99.6k messages): import 38.6 s, heap 181 MiB. F2 3 GiB (40k assets): import 141.1 s, heap 83 MiB. Both round-trip identically on the PC. Store2 import resolves cold-storage pointers, so exports carry chats inline; export size grows, and fork to upstream loses the cold-storage savings (MC-175 holds).
+
+**D11 split and tiered data (`MC-324` 1 and 2):** real shapes come from the maintainer's upstream partial backup; scale comes from synthetic fixtures on the PC; a full 32 GiB real import is not required. Large data runs stay on the PC unless the check is Android-specific or a pre-release run.
+
+**Memory (S4):** the reachable-set checks pass for the legacy and block formats; PC 1k renderer working set (MiB, headless Chrome, i9 best-case hardware, synthetic fixture, single run each): peak 1217 to 1004; commit-window median 894 to 709. The asset-window slope target was missed and is reported only. Raw `databaseBytes` is still held (deferred option C).
+
+**Upstream `e773240bf` (separate item; triage and compatibility plan, not yet implemented):** the triage (`upstream-e773240\triage.md`, verified with corrections) names a 37-file conflict set; the plugin storage index layout is live upstream since `68b5d032c` (2026-10-13). The maintainer's answers are `MC-324` items 1 to 11 (plugin storage reads both layouts; SaveKV passes through verbatim; onboarding data only; the welcome redesign is skipped; Node write errors are taken, adapted). Compatibility inputs for Gate 1: `sizing-compat.md` (verified 8 of 8), `advisor-g1g2.md` (`senior-advisor` challenge), `exp\exp-results.md` (verified with corrections), `savekv-intent.md`. Order after the `feat/alite-s4` merge: G6, then G3, then G2 (S1 to S3), then G1, as one merge. E5 is the pre-release blocker CHORE-186.
+
+**Notes, not tickets:** fixture-shape crashes (a character without `globalLore` throws on open; `personas []` throws on chat open; a missing `didFirstSetup` shows the first-run wizard). No notice appears after a partial import that about 156k referenced additional assets are missing (for the backup-screen rework, N12). Store key totals grow slightly per boot (untraced). The CHORE-74 and `MC-176` warning text may be stale against upstream `e773240bf` (unverified). The S4 latent coupling to the Buffer polyfill load order.
+
 ### A-lite storage rewrite (2026-10-13): stage list, gates and state
 
 **Update 2026-10-20 (A-lite stage 4 B-series, X1 to X3 and B6 technically accepted on the unmerged branch; `MC-318` to `MC-320`; latest):** **Stage 4a-W steps W1 to W6, B3 to B6, X1 to X3 and B6g are built and technically accepted on `feat/alite-s4`, HEAD `bef339121`; nothing is merged or pushed** (15 commits on top of `586ce49ee`, `aaff49e77` B3a to `bef339121` B6g translations; `git log --format='%h %s' 586ce49ee..feat/alite-s4`, read-only). Built: B3 (the `.bin` import and Old-row restore on store2 pages, the first-start offers, the recovery-screen import and restore-newest, the row-1 crash label); B4 (export shape with the stub form behind a constant and inline as the default, the typed outcome, the 4 GiB or larger confirmation before a `.bin` export opens, export this tab first) with B5 folded into it (no production change); X1 to X3 (composed round trip, forced-commit replay and live 429 write tests, the MEASURE commit meter); B6 (console-free import phase ring, windowed two-pass reader, a page reload instead of `relaunch()` on Android, batched Android asset writes); B6g (the Android time warning for a `.bin` with assets over 1 GiB). Gate results: every sub-step `[APPROVE]` or `[EDITORIAL]` after its recorded rejections (ledger rows 1882 to 1955). **Final checks on `bef339121` (the orchestrator's; `full\summary.txt`, counts from the decisions file):** `pnpm test` 873 files passed and 1 skipped, 19,596 tests passed, 23 skipped; `pnpm check` 0 errors, 0 warnings; `pnpm build` OK; `checkReleaseDist` OK (242 files); `cargo test` 183 passed. **Not COMPLETE.** Remaining: device Session 1 (D1 to D4) and Session 2 (D5, D7, D8); the maintainer's A4 round trip (D10) and real-library import (D11); stage 4b; then the merge, asked at merge time. D6 to D6d on the Note 9 (the import completes and reloads after B6; 100k entries and 6.80 GiB in 38.5 min) are recorded in Live-State (2026-10-20 update). Carried to later stages: the bulk-commit upload and resolve reads (`MC-319` 6; B6d and B6e were not built), the chunked Node upload as the next item after stage 4 (`MC-318` 10), the free-space check for large Android imports (`CHORE-182`). The English strings of B3, B4 and B6g await the maintainer's English review (`MC-318`, `MC-320`). Ledger rows 1812 to 1956; next free ledger row 1957; next free MC ID `MC-321`.
@@ -7222,7 +7276,7 @@ These are scope items, not defects, so they carry no CHORE number yet. Order: An
 
 ### Candidate tickets, not yet numbered (2026-10-04)
 
-Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, CHORE-147 to CHORE-163 are used by the 2026-10-09 entries above, CHORE-164 to CHORE-168 by the keep-alive entries above (2026-10-10), CHORE-169 to CHORE-174 by the character list rework entries above (2026-10-10), CHORE-175 by the unload stage 1b-0 entry above, CHORE-176 by the Android launch splash entry above, CHORE-177 to CHORE-180 by the Grid fling jank, lorebook scan depth, phone-browser Back and Back-on-other-screens entries above (2026-10-11), and the next free number is CHORE-183 (CHORE-181 and CHORE-182 are filed; CHORE-200 and CHORE-201 belong to the Unload-2 range).
+Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, CHORE-147 to CHORE-163 are used by the 2026-10-09 entries above, CHORE-164 to CHORE-168 by the keep-alive entries above (2026-10-10), CHORE-169 to CHORE-174 by the character list rework entries above (2026-10-10), CHORE-175 by the unload stage 1b-0 entry above, CHORE-176 by the Android launch splash entry above, CHORE-177 to CHORE-180 by the Grid fling jank, lorebook scan depth, phone-browser Back and Back-on-other-screens entries above (2026-10-11), and the next free number is CHORE-187 (CHORE-181 to CHORE-186 are filed; CHORE-200 and CHORE-201 belong to the Unload-2 range).
 
 - **A V2.1 plugin that switches itself off through the plugin API's `setDatabase` keeps running with wrapped module asset lists (G2-4; Stage A Gate 2 round 1, ledger row 1057; `b1d2804b`'s message).** SUSPECTED only, not reproduced. The real `setDatabase` would wrap the lists while the plugin's code is still running, and a later in-place push by that plugin would go untracked. No such upstream plugin is known.
 - **An unparseable or non-object `__revisions.json` on the Node server (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message).** Deferred. The server still starts as if the snapshot were empty (the log is replayed, and a non-object takes the same path with the error logged), and the next compaction overwrites the file. The log does not worsen this. Possible fixes named in the commit message: rename the bad file aside and seed a high revision floor so stale devices get 409.

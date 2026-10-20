@@ -10557,3 +10557,30 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 **Notes that are not the maintainer's words:**
 - The figures in the maintainer's message come from the D6c and D6d device runs (ledger rows around 1882 to 1956) and are single runs on one device.
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-324 — Step 2 session, 2026-10-20: tiered test data, the D11 split, and the upstream `e773240bf` merge answers (plugin storage read both layouts, SaveKV pass-through, onboarding data only, welcome redesign skipped, Node write errors taken)
+
+- **Tag:** decisions (messages and three `AskUserQuestion` rounds, 2026-10-20)
+- **Date:** 2026-10-20
+- **Sweep ref:** none
+- **Source:** the maintainer's messages and answers to the orchestrator; the answer record is `%TEMP%\risu-b715\upstream-e773240\maintainer-answers.md` (rounds 1 and 2 only; the third-round answers, items 8 to 11, are from the session transcript and are not in that file; the questions are in `advisor-g1g2.md`). Inputs: the upstream triage `triage.md` (AI-authored, independently verified with corrections), `savekv-intent.md` (AI-authored; its key facts re-checked by the orchestrator against `upstream/main`), the compatibility sizing `sizing-compat.md` (AI-authored, verified 8 of 8) and the `senior-advisor` challenge condensed in `advisor-g1g2.md`.
+- **Reasoning (maintainer's):** a Note 9 device agent spent over two hours on a full-size run; most checks do not depend on size; the maintainer's library is almost all assets, so a full real import is heavily biased; the i9 is faster and has more RAM than the Note 9.
+
+1. **Tiered test data (message): "use minimum viable, smaller synthetic data for most of the test and only use full 30gb data when it is absolutely necessary".** Large data imports run on the PC only, unless the check is specifically Android-specific ("only test large data imports on PC only, unless we are specifically testing something that is android specific"). The orchestrator's stated exceptions, accepted by the maintainer ("makes sense. looks good to me."): Tauri Android storage and IPC, the renderer memory peak, WebView kills, long-run or background behaviour, the `MC-323` import work, and one final large run before a release.
+2. **D11 split (messages):** the full real-library import is not required. Real shapes come from the maintainer's upstream partial backup (database plus main images; emotion images, extra assets and VITS excluded), and scale from synthetic fixtures on the PC.
+3. **Plugin storage index (upstream `68b5d032c` and related): "Read both layouts".** The fork keeps its own `_coldplugin` layout; import, export, cleanup and the store2 converter also resolve upstream's `_coldpluginIndex` pointer to a `risu-plugin-storage-index` cold item, so a current upstream `.bin` round-trips. Persistence work under `opus-reviewer`, with golden `.bin` fixtures.
+4. **SaveKV (upstream `dae3f6509`): first "can we investigate what it is supposed to do in the future first, through commit message or PR messages?", then "Pass through verbatim".** Strict and lenient decode accept `kv:*` blocks, and import, store2 and export keep them unchanged, with a golden `.bin` test. The SaveKV API is not adopted; revisit when upstream first writes or exposes SaveKV.
+5. **Character onboarding (upstream `450a598aa`): "data fields only for now, then adopt it during UI revision."**
+6. **Welcome screen redesign: "Skip it".**
+7. **Node storage write hardening (error detail, 413 and 507): "Take it, adapted"**, into the fork's write handler, under `opus-reviewer`.
+8. **Item 3 refined after a `senior-advisor` challenge (third `AskUserQuestion` round): "Convert on import".** The fork reads both layouts and stores only its own `_coldplugin` layout.
+9. **Upstream-written profiles on a shared Node save folder or a same-origin web install: "Yes, minimal fix".** Booting an upstream main save file in general stays a separate ticket.
+10. **A plugin key present both as a plain value and in the cold layout: "Keep fork behaviour".** The fork keeps its own precedence; the divergence from upstream is recorded.
+11. **SaveKV export: "Conditional writer".** Exports stay as today unless SaveKV data exists; then the database entry is written in upstream's block format.
+
+**Notes that are not the maintainer's words:**
+- The orchestrator's elaborations of items 8, 9 and 11, from `advisor-g1g2.md` and `sizing-compat.md`: a missing or broken index goes to the existing prompt for unreadable parts, never to silently empty plugin storage (item 8); the store2 converter converts the index too, and cleanup deletes nothing while a profile still carries upstream's pointer (item 9); the block-format writer is a separate small writer checked against upstream's real decoder, and the decoder change and the writer land in one merge (item 11).
+- The verified triage found that upstream writes the plugin storage index layout today (since 2026-10-13, migrating older layouts on load), so item 3 is needed for any current upstream `.bin`, not only after a later upstream change.
+- SaveKV had no writer, no stated plan and no PR at `e773240bf`; a build without it skips the block with a warning (read in source).
+- The orchestrator's order: merge `feat/alite-s4` first, then size and gate items 7, 5, 3, 4 (G6, G3, G2, G1, as one merge) and the routine upstream items; the triage's SKIP list (account sync, the runtime legal flag, the PR template, two fixes already present) stands. The merge is recorded in `Agents/Upstream-Merges.md` (`MC-224`).
+- Nothing here authorizes application-code edits, commits or pushes.
