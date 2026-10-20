@@ -272,6 +272,17 @@ interface WriteAnswer {
     contentType: string
     text: string
     json: { error?: unknown, code?: unknown, message?: unknown, stack?: unknown } | null
+    guardedMarker: string | null
+}
+
+// The parsed message is checked, not the raw text: a JSON body escapes newlines, so a stack inside `message` never shows in the text.
+function expectNoStackOrAbsolutePath(fixture: NodeServerFixture, answer: WriteAnswer): void {
+    const message = String(answer.json?.message)
+    expect(message).not.toMatch(/\n\s+at /)
+    expect(message).not.toMatch(/:\d+:\d+/)
+    expect(message).not.toMatch(/[A-Za-z]:[\\/]|(?:^|[\s'"])\/[^\s'"]+\/[^\s'"]+/)
+    expect(message).not.toContain(dirname(fixture.saveDir))
+    expect(answer.text).not.toContain(dirname(fixture.saveDir))
 }
 
 async function writeAnswer(fixture: NodeServerFixture, route: '/api/write' | '/api/write-checked', key: string, body: Uint8Array): Promise<WriteAnswer> {
@@ -287,7 +298,7 @@ async function writeAnswer(fixture: NodeServerFixture, route: '/api/write' | '/a
     } catch {
         // A non-JSON answer is reported as such by the assertions on `json`.
     }
-    return { status: response.status, contentType: response.headers.get('content-type') ?? '', text, json }
+    return { status: response.status, contentType: response.headers.get('content-type') ?? '', text, json, guardedMarker: response.headers.get('risu-storage-guarded') }
 }
 
 describe('write errors of the server are JSON without stack or absolute paths', () => {
@@ -308,7 +319,9 @@ describe('write errors of the server are JSON without stack or absolute paths', 
         expect(answer.contentType).toContain('application/json')
         expect(answer.json).toMatchObject({ error: 'Storage payload is too large', code: 'PAYLOAD_TOO_LARGE', message: `Storage writes are limited to ${BODY_LIMIT.NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.` })
         expect(answer.text).not.toContain('node_modules')
-        expect(answer.text).not.toMatch(/\n\s+at /)
+        expectNoStackOrAbsolutePath(fixture, answer)
+        // Only the guarded route marks its answers, so the client can tell a refusal of the guarded write from the plain one.
+        expect(answer.guardedMarker).toBe(route === '/api/write-checked' ? '1' : null)
     }, 60_000)
 
     test.each(['/api/write', '/api/write-checked'] as const)('%s answers a failed file write with JSON, a path relative to the working directory and no stack', async (route) => {
@@ -323,9 +336,8 @@ describe('write errors of the server are JSON without stack or absolute paths', 
         expect(answer.json).toMatchObject({ error: 'Failed to write storage item' })
         expect(typeof answer.json?.code).toBe('string')
         expect(answer.json?.stack).toBeUndefined()
-        expect(answer.text).not.toContain(dirname(fixture.saveDir))
+        expectNoStackOrAbsolutePath(fixture, answer)
         expect(String(answer.json?.message)).toContain(`.${sep}save${sep}${hexOfKey(key)}`)
-        expect(answer.text).not.toMatch(/\n\s+at /)
     })
 
     test.each([['ENOSPC'], ['EDQUOT']] as const)('%s on the file write answers 507 JSON on both routes, and the next write succeeds once the fault is gone', async (code) => {
@@ -337,7 +349,7 @@ describe('write errors of the server are JSON without stack or absolute paths', 
                 expect(answer.status).toBe(507)
                 expect(answer.contentType).toContain('application/json')
                 expect(answer.json).toMatchObject({ error: 'Failed to write storage item', code })
-                expect(answer.text).not.toContain(dirname(fixture.saveDir))
+                expectNoStackOrAbsolutePath(fixture, answer)
             }
         } finally {
             await rm(marker, { force: true })

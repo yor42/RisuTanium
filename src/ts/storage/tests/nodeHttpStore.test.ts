@@ -5,8 +5,10 @@
  * scenarios, then what only this adapter does, then the server's answers to
  * `/api/read` and `/api/list` that the adapter relies on. A few request-level
  * cases use a stub fetch where the real server cannot be made to fail on
- * demand. These are conformance and compatibility guards for code with no
- * callers.
+ * demand. Most tests are conformance and compatibility guards that may pass
+ * before and after a change. The 507 test is a reproducer: it fails when the
+ * error carries no server detail. The HTML-page test checks the new `detail`
+ * field and is not a defect reproducer.
  */
 import { readFile, writeFile } from 'node:fs/promises'
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http'
