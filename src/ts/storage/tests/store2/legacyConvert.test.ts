@@ -584,12 +584,16 @@ describe('new behaviour: the old files are listed one at a time', () => {
         }
         const indexOf = (entries: unknown[]): StoredUnit => ({ status: 'ok', value: { type: 'risu-plugin-storage-index', version: 1, entries, trash: [] } })
 
+        // The quote is escaped in the `s` text, so this id exists only in the parsed value; the raw text holds `say \"hi\"`.
+        // Guard (passes before and after the resolve conversion): it pins the parsed scan of small values in the list.
+        const ESCAPED_ID = 'say "hi"'
+
         test('reproducer: an inlay referenced only by a small value and one referenced only by a large unit both stay in the list', async () => {
             const test = await rig({
                 trees: { 1: withPointer() },
                 mainByte: 1,
                 units: new Map<string, StoredUnit>([
-                    [INDEX, indexOf([{ k: 'small', s: JSON.stringify({ note: inlayToken(UUID_A) }) }, { k: 'big', l: LARGE }])],
+                    [INDEX, indexOf([{ k: 'small', s: JSON.stringify({ note: inlayToken(UUID_A), other: inlayToken(ESCAPED_ID) }) }, { k: 'big', l: LARGE }])],
                     [LARGE, { status: 'ok', value: { note: inlayToken(UUID_B) } }],
                 ]),
             })
@@ -599,9 +603,10 @@ describe('new behaviour: the old files are listed one at a time', () => {
             const { list } = await storedLegacyKeep(test.memory)
             expect(statusOf(list.files)).toEqual({ [MAIN]: 'ok' })
             expect(list.i.u).toEqual(expect.arrayContaining([UUID_A, UUID_B]))
+            expect(list.i.o).toContain(ESCAPED_ID)
         })
 
-        test('reproducer: a small value that is not JSON, or a large unit that is not JSON, lists the file unreadable', async () => {
+        test('reproducer: a small value that is not JSON or a large unit that is not JSON lists the file unreadable', async () => {
             const smallBad = await rig({
                 trees: { 1: withPointer() },
                 mainByte: 1,
@@ -626,6 +631,49 @@ describe('new behaviour: the old files are listed one at a time', () => {
             installed(await convertLegacyProfile(test.request, accept))
 
             expect(statusOf((await storedLegacyKeep(test.memory)).list.files)).toEqual({ [MAIN]: 'unreadable' })
+        })
+
+        async function installedPluginStorage(memory: MemoryBackend): Promise<Record<string, unknown>> {
+            const stored = await storedTree(memory)
+            const assembled = assembleDatabase(stored.manifest, stored.source) as unknown as { pluginCustomStorage?: Record<string, unknown> }
+            return assembled.pluginCustomStorage ?? {}
+        }
+
+        test('reproducer: the installed tree holds the converted plugin values under their slots and no pointer', async () => {
+            const test = await rig({
+                trees: { 1: withPointer() },
+                mainByte: 1,
+                units: new Map<string, StoredUnit>([
+                    [INDEX, indexOf([{ k: 'small', s: '{"a":[1,2]}' }, { k: 'big', l: LARGE }])],
+                    [LARGE, { status: 'ok', value: { big: true } }],
+                ]),
+            })
+
+            installed(await convertLegacyProfile(test.request, accept))
+
+            const storage = await installedPluginStorage(test.memory)
+            expect(Object.hasOwn(storage, '_coldpluginIndex')).toBe(false)
+            const slots = storage._coldplugin as Record<string, string>
+            expect(Object.keys(slots).sort()).toEqual(['big', 'small'])
+            expect(slots.big).toBe(LARGE)
+            expect(storage[slots.big]).toEqual({ big: true })
+            expect(storage[slots.small]).toEqual({ a: [1, 2] })
+        })
+
+        test('reproducer: an absent index unit is named in the incomplete-data question and the installed tree holds no pointer', async () => {
+            const test = await rig({ trees: { 1: withPointer() }, mainByte: 1, units: new Map<string, StoredUnit>() })
+            const asked: IncompleteItem[][] = []
+
+            installed(await convertLegacyProfile(test.request, {
+                ...accept,
+                async confirmIncomplete(items) {
+                    asked.push([...items])
+                    return true
+                },
+            }))
+
+            expect(asked).toEqual([[{ kind: 'plugin', slotKey: '_coldpluginIndex', key: INDEX, reason: 'missing' }]])
+            expect(Object.hasOwn(await installedPluginStorage(test.memory), '_coldpluginIndex')).toBe(false)
         })
 
         test('guard: a large unit that is absent is skipped and the file stays readable', async () => {
