@@ -155,7 +155,8 @@ async function checkCompressionStreams(){
 export function encodeRisuSaveLegacy(data:any, compression:'noCompression'|'compression' = 'noCompression'){
     let encoded:Uint8Array = packr.encode(data)
     if(compression === 'compression'){
-        encoded = fflate.compressSync(encoded)
+        // mtime 0 keeps the gzip header free of the wall clock, so the same save always encodes to the same bytes.
+        encoded = fflate.compressSync(encoded, { mtime: 0 })
         const result = new Uint8Array(encoded.length + magicCompressedHeader.length);
         result.set(magicCompressedHeader, 0)
         result.set(encoded, magicCompressedHeader.length)
