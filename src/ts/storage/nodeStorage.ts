@@ -7,7 +7,7 @@ import { createAssetTokenSource } from "./nodeAssetToken"
  * Thrown by NodeStorage.setItem() when the self-hosted Node server rejects a
  * write because the revision it was based on has moved (HTTP 409) — i.e.
  * another writer has saved this key since this client last read it. Distinct
- * from the generic "setItem Error" thrown for any other failure so callers
+ * from the NodeStorageWriteError thrown for any other failure so callers
  * (saveDb()) can react differently: a conflict is an expected, recoverable
  * state, not a transient I/O failure worth blindly retrying the same write.
  */
@@ -15,6 +15,38 @@ export class NodeStorageConflictError extends Error {
     constructor(public readonly currentRevision: number | undefined) {
         super('NodeStorage write rejected: local revision is out of date with the server.')
         this.name = 'NodeStorageConflictError'
+    }
+}
+
+/**
+ * Thrown by NodeStorage.setItem() for any non-conflict failure status. The
+ * message names the key, size and status, and the server's `code` and `message`
+ * when its answer is a JSON object that has them (a proxy's page is not echoed).
+ * For error details and logs; the UI keeps its own localized messages.
+ */
+export class NodeStorageWriteError extends Error {
+    constructor(
+        public readonly key: string,
+        public readonly size: number,
+        public readonly status: number,
+        responseText: string,
+    ) {
+        super(`setItem failed for "${key}" (${size} bytes): HTTP ${status}${serverDetailOf(responseText)}`)
+        this.name = 'NodeStorageWriteError'
+    }
+}
+
+function serverDetailOf(responseText: string): string {
+    try {
+        const body: unknown = JSON.parse(responseText)
+        if (typeof body !== 'object' || body === null) {
+            return ''
+        }
+        const { code, message } = body as { code?: unknown, message?: unknown }
+        const parts = [code, message].filter((part): part is string => typeof part === 'string').map((part) => part.slice(0, 500))
+        return parts.length === 0 ? '' : `. Server: ${parts.join(' | ')}`
+    } catch {
+        return ''
     }
 }
 
@@ -163,11 +195,11 @@ export class NodeStorage{
             throw new NodeStorageConflictError(data?.currentRevision)
         }
         if(da.status < 200 || da.status >= 300){
-            throw "setItem Error"
+            throw new NodeStorageWriteError(key, value.byteLength, da.status, await da.text().catch(() => ''))
         }
         const data = await da.json()
         if(data.error){
-            throw data.error
+            throw new Error(`setItem failed for "${key}": ${String(data.error)}`)
         }
         if(typeof data.revision === 'number'){
             this.knownRevisions.set(key, data.revision)
