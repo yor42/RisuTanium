@@ -152,36 +152,58 @@ async function checkCompressionStreams(){
     }
 }
 
+/**
+ * The packr keeps the buffer its last encode grew to until another encode replaces it. Called once the encoded
+ * bytes have been copied or compressed away, this hands it a small one, so a finished export's whole encoding
+ * does not stay reachable from the encoder. It changes no byte of any encoding.
+ */
+function releasePackrBuffer(){
+    // Installs the same kind of buffer msgpackr allocates for itself, because its encoder picks the long-string path by
+    // the target's type (`utf8Write` on Node's Buffer, `encodeInto` otherwise). This relies on the Buffer polyfill, where
+    // there is one, being installed before msgpackr loads, so that both see the same `Buffer`.
+    packr.useBuffer(typeof Buffer !== 'undefined' ? Buffer.allocUnsafeSlow(8192) : new Uint8Array(8192))
+}
+
 export function encodeRisuSaveLegacy(data:any, compression:'noCompression'|'compression' = 'noCompression'){
-    let encoded:Uint8Array = packr.encode(data)
-    if(compression === 'compression'){
-        // mtime 0 keeps the gzip header free of the wall clock, so the same save always encodes to the same bytes.
-        encoded = fflate.compressSync(encoded, { mtime: 0 })
-        const result = new Uint8Array(encoded.length + magicCompressedHeader.length);
-        result.set(magicCompressedHeader, 0)
-        result.set(encoded, magicCompressedHeader.length)
-        return result
+    try{
+        let encoded:Uint8Array = packr.encode(data)
+        if(compression === 'compression'){
+            // mtime 0 keeps the gzip header free of the wall clock, so the same save always encodes to the same bytes.
+            encoded = fflate.compressSync(encoded, { mtime: 0 })
+            const result = new Uint8Array(encoded.length + magicCompressedHeader.length);
+            result.set(magicCompressedHeader, 0)
+            result.set(encoded, magicCompressedHeader.length)
+            return result
+        }
+        else{
+            const result = new Uint8Array(encoded.length + magicHeader.length);
+            result.set(magicHeader, 0)
+            result.set(encoded, magicHeader.length)
+            return result
+        }
     }
-    else{
-        const result = new Uint8Array(encoded.length + magicHeader.length);
-        result.set(magicHeader, 0)
-        result.set(encoded, magicHeader.length)
-        return result
+    finally{
+        releasePackrBuffer()
     }
 }
 
 export async function encodeRisuSaveCompressionStream(data:any) {
     await checkCompressionStreams()
-    let encoded:Uint8Array = packr.encode(data)
-    const cs = new CompressionStream('gzip');
-    const writer = cs.writable.getWriter();
-    writer.write(encoded as any);
-    writer.close();
-    const buf = await new Response(cs.readable).arrayBuffer()
-    const result = new Uint8Array(new Uint8Array(buf).length + magicStreamCompressedHeader.length);
-    result.set(magicStreamCompressedHeader, 0)
-    result.set(new Uint8Array(buf), magicStreamCompressedHeader.length)
-    return result
+    try{
+        let encoded:Uint8Array = packr.encode(data)
+        const cs = new CompressionStream('gzip');
+        const writer = cs.writable.getWriter();
+        writer.write(encoded as any);
+        writer.close();
+        const buf = await new Response(cs.readable).arrayBuffer()
+        const result = new Uint8Array(new Uint8Array(buf).length + magicStreamCompressedHeader.length);
+        result.set(magicStreamCompressedHeader, 0)
+        result.set(new Uint8Array(buf), magicStreamCompressedHeader.length)
+        return result
+    }
+    finally{
+        releasePackrBuffer()
+    }
 }
 
 export type toSaveType = {
@@ -1403,7 +1425,24 @@ export async function salvageRisuSave(data: Uint8Array): Promise<{ db: Database,
     return { db, omitted: decoder.omitted };
 }
 
+/**
+ * msgpackr keeps a view over the source of its last read until the next read, so a decoded save's whole
+ * decompressed buffer stays reachable from the decoder after the tree is dropped. A one-byte nil read
+ * through the default `decode` replaces that view; it holds no state a later read depends on.
+ */
+const msgpackNil = Uint8Array.of(0xc0)
+
+/** Every legacy msgpack read of a save, whichever branch or fallback produced it, ends by releasing msgpackr's source. */
 export async function decodeRisuSave(data:Uint8Array, options?: { strict?: boolean }){
+    try {
+        return await decodeRisuSaveBranches(data, options)
+    }
+    finally {
+        decode(msgpackNil)
+    }
+}
+
+async function decodeRisuSaveBranches(data:Uint8Array, options?: { strict?: boolean }){
     try {
         const header = checkHeader(data)
         switch(header){

@@ -297,6 +297,14 @@ export async function decodeBinDatabase(bytes: Uint8Array): Promise<DecodedBacku
 }
 
 /**
+ * What `decodeBinDatabase` left out, and nothing else: the decoded tree is never handed to the caller, so a long
+ * async function that only needs the salvage map does not keep the tree reachable across its later awaits.
+ */
+export function decodeBinDatabaseOmitted(bytes: Uint8Array): Promise<ReadonlyMap<string, SalvageOmittedBlock>> {
+    return decodeBinDatabase(bytes).then((decoded) => decoded.omitted)
+}
+
+/**
  * An old numbered backup: decoded strictly first, and only when that fails by `salvageRisuSave`, which still refuses a
  * file whose framing or root is damaged. Throws when the bytes hold no database.
  */

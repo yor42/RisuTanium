@@ -43,7 +43,7 @@ import { getPageStorageMode } from "../storage/pageStorageMode";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
 import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
 import { emptyImportFacts, outcomeOfBootFinish, type ExportFile, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
-import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, decodeBinDatabase, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
+import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, decodeBinDatabase, decodeBinDatabaseOmitted, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -1232,13 +1232,13 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 alertWait('Reading the database in the backup...');
                 try {
                     store2Import.databaseBytes = await readBinDatabase(file, store2Import.entry);
-                    const decoded = await decodeBinDatabase(store2Import.databaseBytes);
+                    const omitted = await decodeBinDatabaseOmitted(store2Import.databaseBytes);
                     noteImportPhase('database decoded');
-                    if (!await confirmLeftOut(decoded.omitted)) {
+                    if (!await confirmLeftOut(omitted)) {
                         return declined();
                     }
-                    // The salvage map, kept after the person confirmed it; the decoded tree is dropped.
-                    facts.omitted = decoded.omitted;
+                    // The salvage map, kept after the person confirmed it; the decoded tree is never held here.
+                    facts.omitted = omitted;
                 } catch (e) {
                     console.error(e);
                     alertError(e instanceof BinFileChangedError ? binChangeText(e) : 'Failed, Is file corrupted?');
