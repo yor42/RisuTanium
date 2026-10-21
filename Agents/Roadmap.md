@@ -6807,7 +6807,58 @@ with index -1.
 
 ### CHORE-186 — E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pre-release blocker)
 
-**Status (2026-10-20, stage 4b close): open; PRE-RELEASE BLOCKER, owned by the upstream compatibility work (`MC-324` 9).** On a shared-folder or same-origin upstream profile, the store2 conversion and the old-data deletion remove upstream's plugin index and large units. Minimal fix per `MC-324` 9: the converter converts the index, and cleanup deletes nothing while a profile still carries upstream's pointer.
+**Status (2026-10-21, upstream `61d0eb79a` merge close): fixed on `main` by the merge `2862940fe`, technically accepted (records pending independent verification at this writing).** U3 S1 `f6894f96d`, S2a `40145cda0` (E5 inverted: the old-data deletion now keeps the index and its large units), S2b `cee2effb5` and S3 `75a68bba0` (manual cleanup keeps them) each passed an independent Gate 2 (`Upstream-Merges.md`). The U5 round trip P1 against upstream `61d0eb79a` passed on decoded data (synthetic small fixtures, one PC). Still open, the maintainer's call and not part of this fix: older upstream snapshots that point at an index upstream already deleted stop every manual cleanup (S2a I1, S3 R1), and a legacy boot path can install an unconverted pointer tree (finding 12b); both are listed in `Upstream-Merges.md`. **Earlier status (2026-10-20, stage 4b close): open; PRE-RELEASE BLOCKER, owned by the upstream compatibility work (`MC-324` 9).** On a shared-folder or same-origin upstream profile, the store2 conversion and the old-data deletion remove upstream's plugin index and large units. Minimal fix per `MC-324` 9: the converter converts the index, and cleanup deletes nothing while a profile still carries upstream's pointer.
+
+### CHORE-187 — `writeModuleCard` and `shareRealmCardData` hide errors raised inside `writeCharacterCard`'s try (pre-existing)
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: N1 in the U0 Gate 2 round 2 and 3 verdicts (`upstream-e773240\u0\g2r2-verdict.md`, `g2r3-verdict.md`). Not caused by the merge; the same masking existed on `main`.
+
+- **Problem:** callers that pass a writer hide every failure raised inside `writeCharacterCard`'s try (v3 asset `readImage`, `compressImage`, the writer's `write` and `end`, and others). The verdict says a module export of a module with a failing asset reports success over a truncated file and a Realm share posts a partial buffer; the closeout notes say an empty file and an empty buffer. Only the image read before the try rejects (to the global handler); these in-try errors were hidden on `main` too.
+- **Not decided:** the verdict's alternative is to rethrow after `alertError` when `arg.writer` is supplied; it goes beyond the merge and needs an orchestrator or maintainer decision (`MC-091`).
+- **Related:** the card export image fallback in the merge (`76a36fac5` reads the card image before the try, so that one error rejects).
+
+### CHORE-188 — The import warning says "Your saved data is not changed until the import has finished", which is false when a same-name asset has different bytes
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: the `doc-verifier` omission (a) on the retention packet (`mc323\retention-verify.md`, session scratch), written for the `MC-323` work, not for the merge. Texts: `store2ImportSizeWarning` and `store2ImportTimeWarning` in `src/lang/en.ts` (both contain that sentence; opened 2026-10-21).
+
+- **Problem (as the verifier states it):** the import copies assets before the commit that switches the profile, and writes `assets/<name>` unconditionally, so a same-name asset with different bytes overwrites the previous profile's file before the switch. In that case the sentence is false. `backuplocal.ts` still writes each asset key with `'unconditional'` (opened 2026-10-21); the order relative to the commit is the verifier's reading and was not reopened for this record.
+- **Open, `TODO(evidence)`:** how often a name repeats with different bytes. `saveAsset` names assets by SHA-256 or a custom id (verifier claim 6), and CHORE-182 records "content-named additions". CHORE-182's "Why the number matters" bullet says "'not changed until the import has finished' holds by construction but is untested". For a same-name asset with different bytes, that sentence and this entry directly contradict each other, because `backuplocal.ts` writes import assets `'unconditional'`.
+- **Fix needs:** a wording change in all 7 locales (the translator) or a skip-if-present-and-verify copy (`MC-326` 3 is the verifier's cross-reference; not reopened).
+- **Related:** CHORE-182.
+
+### CHORE-189 — Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so the conflict retry asks the same question twice
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 S2b Gate 2 and the coder's residual (`upstream-e773240\closeout-notes.md`).
+
+- **Problem:** when upstream's plugin index is absent or a small entry is bad, the incomplete item names `_coldpluginIndex` and an id minted per attempt, not the plugin key (`convertPluginStorageIndex` returns ids only). The prompt cannot name the plugin key, and the page import's conflict retry asks the question twice because the id changes per attempt.
+- **Proposed:** return the slot key from `convertPluginStorageIndex` (S1 and S2b together).
+- **Related:** CHORE-186.
+
+### CHORE-190 — U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a pre-existing store2 race
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 A2 Gate 2 rounds 1 and 2 (`upstream-e773240\u3a2\g2-verdict.md`, `g2r2-verdict.md`). N4, the `clear()` listing and m4 lose nothing. E8 is a pre-existing narrow race (same on the base). A stale V2 write that lands between the store2 V3 value write and its mapping, across an await, can drop the not-yet-mapped value and leave the mapping dangling.
+
+- **N4:** `setDatabase(getDatabase())` and a proxy self-assignment now mark `pluginCustomStorage` dirty (measured `true`; on the base `false`), so store2 re-encodes it per key: extra save work. An optional `incoming === current` shortcut avoids it.
+- **After `clear()`:** V2 `keys()` and `length()` list `_coldplugin`, `_coldpluginIndex` and, on a store2 page, unit ids, where the base returned an empty list and 0. Consistent with the accepted residual that these keys were already listed whenever V3 data existed; upstream lists the internals too.
+- **E8 (pre-existing):** on a store2 page the V3 value is written before the mapping across an await; a stale V2 write in that gap drops it. The same on the base.
+- **Also:** mutant `m4` survives (a current unit id with no value is not forced absent; only the reviewer's E4 diagnostic covers it).
+
+### CHORE-191 — English `chatParseFailed` now ends with a trailing ", "
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
+
+### CHORE-192 — The `addTTSPreprocessor` JSDoc example in `risuai.d.ts` closes the comment early
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Pre-existing on `main` and in upstream. The example regex `/\*(.*?)\*/g` contains `*/`, which ends the JSDoc block early (`src/ts/plugins/apiV3/risuai.d.ts`, the `addTTSPreprocessor` example, opened 2026-10-21). Source: U0 closeout notes.
+
+### CHORE-193 — Load-sensitive tests: `assetPieceSave` "without crypto.subtle" times out at 5 s under full-suite and `pnpm check` load; `firstLife` and `storeImportBoot` flakes
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Test-only. Sibling of CHORE-185.
+
+- **`assetPieceSave.test.ts`, "saveAsset without crypto.subtle > reproducer":** "Test timed out in 5000ms" in the final full run at `cd49e8271` (`b64\full\pnpm-test.txt`: 20108 passed, 1 failed; the file took about 51 s). The file passed 23/23 three times alone (orchestrator). The same timeout was seen in the U3 notes on a branch without the base64 change (under `pnpm check` load) and by the base64 coder in a full storage-folder run, so it is a load flake and not caused by the base64 encoder. The cause of the slowness is not traced; the test calls `loadWorld()` per case (test source).
+- **`firstLife.test.ts`:** `EADDRINUSE` once under a directory run during the U3 stages; passed alone.
+- **`storeImportBoot`:** judged a flake in U4a Gate 2 round 3 (3 of 3 passes alone).
+- **Not decided:** raise the timeout, split the world load, or serialise the file.
 
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 
@@ -7214,7 +7265,7 @@ Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-30
 
 **Memory (S4):** the reachable-set checks pass for the legacy and block formats; PC 1k renderer working set (MiB, headless Chrome, i9 best-case hardware, synthetic fixture, single run each): peak 1217 to 1004; commit-window median 894 to 709. The asset-window slope target was missed and is reported only. Raw `databaseBytes` is still held (deferred option C).
 
-**Upstream `e773240bf` (separate item; triage and compatibility plan, not yet implemented):** the triage (`upstream-e773240\triage.md`, verified with corrections) names a 37-file conflict set; the plugin storage index layout is live upstream since `68b5d032c` (2026-10-13). The maintainer's answers are `MC-324` items 1 to 11 (plugin storage reads both layouts; SaveKV passes through verbatim; onboarding data only; the welcome redesign is skipped; Node write errors are taken, adapted). Compatibility inputs for Gate 1: `sizing-compat.md` (verified 8 of 8), `advisor-g1g2.md` (`senior-advisor` challenge), `exp\exp-results.md` (verified with corrections), `savekv-intent.md`. Order after the `feat/alite-s4` merge: G6, then G3, then G2 (S1 to S3), then G1, as one merge. E5 is the pre-release blocker CHORE-186.
+**Upstream `e773240bf` (separate item; LANDED on `main` as `2862940fe` on 2026-10-21, merged up to upstream `61d0eb79a`, pushed; `MC-331`; details and per-stage gates in `Upstream-Merges.md`, ledger rows 2074 to 2094; CHORE-186 fixed, residuals CHORE-187 to CHORE-193; the paragraph below is the pre-implementation plan):** the triage (`upstream-e773240\triage.md`, verified with corrections) names a 37-file conflict set; the plugin storage index layout is live upstream since `68b5d032c` (2026-10-13). The maintainer's answers are `MC-324` items 1 to 11 (plugin storage reads both layouts; SaveKV passes through verbatim; onboarding data only; the welcome redesign is skipped; Node write errors are taken, adapted). Compatibility inputs for Gate 1: `sizing-compat.md` (verified 8 of 8), `advisor-g1g2.md` (`senior-advisor` challenge), `exp\exp-results.md` (verified with corrections), `savekv-intent.md`. Order after the `feat/alite-s4` merge: G6, then G3, then G2 (S1 to S3), then G1, as one merge. E5 is the pre-release blocker CHORE-186.
 
 **Notes, not tickets:** fixture-shape crashes (a character without `globalLore` throws on open; `personas []` throws on chat open; a missing `didFirstSetup` shows the first-run wizard). No notice appears after a partial import that about 156k referenced additional assets are missing (for the backup-screen rework, N12). Store key totals grow slightly per boot (untraced). The CHORE-74 and `MC-176` warning text may be stale against upstream `e773240bf` (unverified). The S4 latent coupling to the Buffer polyfill load order.
 
@@ -7278,7 +7329,7 @@ These are scope items, not defects, so they carry no CHORE number yet. Order: An
 
 ### Candidate tickets, not yet numbered (2026-10-04)
 
-Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, CHORE-147 to CHORE-163 are used by the 2026-10-09 entries above, CHORE-164 to CHORE-168 by the keep-alive entries above (2026-10-10), CHORE-169 to CHORE-174 by the character list rework entries above (2026-10-10), CHORE-175 by the unload stage 1b-0 entry above, CHORE-176 by the Android launch splash entry above, CHORE-177 to CHORE-180 by the Grid fling jank, lorebook scan depth, phone-browser Back and Back-on-other-screens entries above (2026-10-11), and the next free number is CHORE-187 (CHORE-181 to CHORE-186 are filed; CHORE-200 and CHORE-201 belong to the Unload-2 range).
+Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, CHORE-147 to CHORE-163 are used by the 2026-10-09 entries above, CHORE-164 to CHORE-168 by the keep-alive entries above (2026-10-10), CHORE-169 to CHORE-174 by the character list rework entries above (2026-10-10), CHORE-175 by the unload stage 1b-0 entry above, CHORE-176 by the Android launch splash entry above, CHORE-177 to CHORE-180 by the Grid fling jank, lorebook scan depth, phone-browser Back and Back-on-other-screens entries above (2026-10-11), and the next free number is CHORE-194 (CHORE-181 to CHORE-193 are filed; CHORE-200 and CHORE-201 belong to the Unload-2 range).
 
 - **A V2.1 plugin that switches itself off through the plugin API's `setDatabase` keeps running with wrapped module asset lists (G2-4; Stage A Gate 2 round 1, ledger row 1057; `b1d2804b`'s message).** SUSPECTED only, not reproduced. The real `setDatabase` would wrap the lists while the plugin's code is still running, and a later in-place push by that plugin would go untracked. No such upstream plugin is known.
 - **An unparseable or non-object `__revisions.json` on the Node server (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message).** Deferred. The server still starts as if the snapshot were empty (the log is replayed, and a non-object takes the same path with the error logged), and the next compaction overwrites the file. The log does not worsen this. Possible fixes named in the commit message: rename the bad file aside and seed a high revision floor so stale devices get 409.

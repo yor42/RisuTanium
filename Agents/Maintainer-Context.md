@@ -10724,3 +10724,25 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Not adopted in this entry: one build with run-time knobs (proposal rule 2), the second Note 9 (rule 8, pending setup) and warm build caches (rule 9).
 - The existing device practices (own debug ports and port ranges with a free-port and identity check, kill only processes you started, a test-only app profile, never hand-edit app state, performance numbers naming their hardware) were held in the orchestrator's memory notes. `docs/workflow/gates.md` restates them as existing practice; this entry does not change them.
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-331 — Upstream merge session, 2026-10-21: SaveKV values round-trip JSON-equal (accepted limitation) and the merge of `feat/upstream-61d0` into `main`
+
+- **Tag:** decisions (two `AskUserQuestion` answers, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The orchestrator asked two questions at the close of the upstream `61d0eb79a` merge work; the maintainer selected the recommended option each time.
+- **Related:** `MC-324`, `MC-325`, `MC-175`.
+
+1. **SaveKV round trip: "Accept JSON-equal (Recommended)".** kv values round-trip JSON-equal, not byte-equal: object keys are sorted by store2's `canonicalJson` like every other persisted object, while entry order and array order are kept. This is accepted as a limitation, not a new change.
+2. **The merge: "Merge and push (Recommended)".** No-fast-forward merge of `feat/upstream-61d0` into `main` and push. The records go in a separate commit on `main`, and the base64 branch `feat/b64-transport` is integrated after the merge.
+
+**Notes that are not the maintainer's words:**
+- Option descriptions as offered (added by the orchestrator from the session transcript):
+  - Item 1. Chosen: "Record it as an accepted limitation: values are JSON-equal and nothing is lost, only key order changes. Merge as is."
+  - Item 1. Declined: "Keep bytes verbatim". Its description: "Store each kv block's content as an opaque string so it round-trips byte for byte. A new U4 change with its own review; it delays the merge."
+  - Item 2. Chosen: "No-ff merge of feat/upstream-61d0 into main, then push origin main. Records follow; base64 branch integrated after."
+  - Item 2. Declined: "Records first" and "Hold".
+- Item 1 concerns the pass-through (`MC-324` 4) and the conditional writer (`MC-324` 11) (orchestrator's cross-reference).
+- The evidence for item 1 is the U5 round trip (`u5\rt\results.md`, corrections appended there after `doc-verifier`): the kv keys are reordered because `upstreamKvBlocks` is not a partitioned config field, so it sits in the config root unit, and every unit body goes through `canonicalJson`. No upstream `61d0eb79a` code reads or writes kv. The K1 original in that run was hand-built. Roadmap and `Upstream-Merges.md` hold the details.
+- The merge landed as `2862940fe` (parents `eb4c5580b` and `2c42d9423`) and was pushed. The merge commit message already states the JSON-equal acceptance.
+- Nothing here authorizes application-code edits beyond what the answers describe, or any later commit or push.
