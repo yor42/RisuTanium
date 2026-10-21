@@ -1263,6 +1263,10 @@ export interface Database{
     dynamicOutput?:DynamicOutput
     hubServerType?:string
     pluginCustomStorage:{[key:string]:any}
+    // Fork-marked: upstream's SaveKV namespaces (its `kv:<namespace>` blocks), carried verbatim and never
+    // interpreted. Not plugin-visible; present only when a save held at least one such block. The values are
+    // opaque JSON; a recursive JSON type here makes `$state.snapshot(DBState.db)` too deep for the type checker.
+    upstreamKvBlocks?:{[namespace:string]:unknown}
     ImagenModel:string
     ImagenImageSize:string
     ImagenAspectRatio:string
