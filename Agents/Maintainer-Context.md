@@ -10764,3 +10764,30 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Base64 (`ac5b4e105`) was assessed and left out of the README: an internal encoder whose speed was measured only in Node on an i9 PC (commit message), with no user-visible effect in the evidence.
 - Item 3 follows the maintainer's remark as relayed by the coordinator; it does not decide what the later measured evidence will be.
 - Nothing here authorizes application-code edits, or any commit or push.
+
+### MC-333 — Session resume, 2026-10-21: plugin-index case, worktree removal, device-check script answers and a correction on the stub-export question
+
+- **Tag:** decisions (`AskUserQuestion` answers relayed by the orchestrator, 2026-10-21), plus orchestrator defaults and a correction (items 3 and 4)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session's pending-decisions file (`decisions-2026-10-21-pending.md`, scratch), which holds the answers and option texts relayed by the orchestrator. Scratch evidence is outside the repository.
+- **Related:** `MC-330` 7, `MC-326` 7, `MC-318` 7, `MC-331`, `MC-324`, `MC-322`.
+
+1. **Plugin-index case (`Upstream-Merges.md` S2a I1 / S3 R1): "Missing = nothing to keep (Recommended)".** Amend A4: if only a backup points at the missing plugin index, treat it as nothing to keep and let cleanup run. A missing index in the live data still stops cleanup. The amendment needs an `opus-reviewer` gate. Implementation is not started.
+2. **Worktrees: "All six (Recommended)".** The six worktrees `upstream-61d0`, `b64-transport`, `alite-s4`, `alite-s4-b4`, `alite-s4-dev1` and `qol` were removed with `git worktree remove --force`. Branches are kept.
+3. **Correction: the stub-export question was already answered.** `Handoff-2026-10-21-upstream-close.md` section 4 lists the stub-export question (`MC-318` 7) as open. It was answered in `MC-326` 7 ("Switch to stub form"). `EXPORT_UNLOADED_CHARACTERS` is still `'inline'` in `src/ts/drive/exportInline.ts` (read by this pass), so the flip is owed work, not an open question. The handoff is a dated record and is not edited.
+4. **Device-check scripts (`MC-330` 7), four maintainer answers.**
+   - **Snapshots: "Debug-only (Recommended)".**
+   - **Location: "Agents/Tools/device/ (Recommended)".** A pointer goes in `Agents/Tools/README.md`.
+   - **Perf builds: "Debug + release confirm (Recommended)".**
+   - **Warm cache: "Yes, by default (Recommended)".** This amends the non-adoption of warm build caches in the `MC-330` notes (proposal rule 9).
+
+**Notes that are not the maintainer's words:**
+- The option descriptions as offered, from the pending-decisions file (orchestrator's text):
+  - Item 1. Chosen: "Amend A4: if only a backup points at the missing index, treat it as nothing to keep and let cleanup run. A missing index in the live data still stops cleanup. Needs an opus-reviewer gate." Not chosen: "Fail closed, clearer message" and "Accept as is".
+- Item 2 detail from the same file: all six were ancestors of `main` at `898fc539d`; the dirty files were end-of-line-only diffs plus an untracked 0-byte `lib.mjs` and an untracked `results.md`. The `results.md` backup is at `%TEMP%\risu-b715\upstream-61d0-worktree-results.md` (scratch).
+- Orchestrator defaults for item 4, not asked of the maintainer: the plan's Q4 limits (warn at 2 GiB, refuse at 4 GiB, keep the last 3, default location `%TEMP%`); Q5, no change to the Gradle daemon unless Stage 1 shows a stall, and then only an observed-own daemon PID is stopped; Q6, the pointer only in `Agents/Tools/README.md` with `docs/workflow/gates.md` unchanged. The maintainer may overrule any of them.
+- The plan is `%TEMP%\risu-b715\devscripts\plan.md` (scratch). Its Gate 1 round 1 verdict is `[APPROVE WITH AMENDMENTS]` (`devscripts\gate1-r1.md`), which notes that the plan's Q7 still treats the warm cache as opt-in and that the snapshots answer was not yet in this file; this entry now records both answers.
+- Observation, not a decision: no Risu package was installed on the Note 9 at survey time (`pm list packages`, an investigator).
+- Item 3: the evidence is `MC-326` 7 and the constant's value in the source; the stage 4b flip evidence is in the Roadmap.
+- Nothing here authorizes application-code edits, or any commit or push.
