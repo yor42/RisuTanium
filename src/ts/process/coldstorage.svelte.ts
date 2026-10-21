@@ -646,8 +646,9 @@ export async function collectColdStorageBackupPayloads(
     for (const root of roots) {
         if (isEntityUnitKey(root.key)) {
             // A store2 entity is no legacy unit: read as one, it would be carried under a payload name an importer
-            // places as an asset. The caller inlines it into the database entry (`drive/exportInline.ts`); a root that
-            // reaches here is reported, never read or carried. A key the caller settled is already accounted for.
+            // places as an asset. The caller puts the character in the database entry or mints a unit entry for it
+            // (`drive/exportInline.ts`); a root that reaches here is reported, never read or carried. A key the caller
+            // settled is already accounted for.
             if (!alreadySettled?.has(root.key)) {
                 entityKeys.add(root.key)
                 if (root.owner) {

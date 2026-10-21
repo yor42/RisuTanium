@@ -711,7 +711,7 @@ describe.each([
         const bigLength = new TextEncoder().encode(JSON.stringify(bigValue)).length
         page.db.pluginCustomStorage = { _coldplugin: { bigPrefs: big, smallPrefs: small }, [big]: bigValue, [small]: { text: 'y' } } as never
 
-        const outcome = await run({ limitBytes: bigLength })
+        const outcome = await run({ mode: 'inline', limitBytes: bigLength })
 
         expect(oversizePrompts()).toHaveLength(1)
         expect(oversizePrompts()[0]).toContain(`Cold storage unit ${big}`)
@@ -722,7 +722,7 @@ describe.each([
 
         backupSink.writes.length = 0
         alertConfirmMock.mockClear()
-        await run({ limitBytes: bigLength + 1 })
+        await run({ mode: 'inline', limitBytes: bigLength + 1 })
 
         expect(oversizePrompts()).toEqual([])
         expect(unitEntryNames()).toContain(`coldstorage_${big}.json`)

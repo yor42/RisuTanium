@@ -181,6 +181,8 @@ interface Trip {
     /** The exported file's raw database entry, as decoded. */
     exportedRaw: Obj
     exportedNames: string[]
+    /** The exported file's unit entries, by bare unit id. */
+    exportedUnitBodies: Map<string, unknown>
     /** The file entries that are neither the database nor a unit: the assets, by name. */
     assets: Map<string, Uint8Array>
     errors: unknown[]
@@ -190,9 +192,9 @@ interface Trip {
 
 /**
  * One composed round trip on a store2 page: the real `LoadLocalBackup` of `file`, a fresh boot over what it committed
- * (the page reloads after an import), the real `SaveLocalBackup`, then the legacy decoder over the file it wrote.
+ * (the page reloads after an import), the real `SaveLocalBackup` in `mode`, then the legacy decoder over the file it wrote.
  */
-async function roundTrip(file: string): Promise<Trip> {
+async function roundTrip(file: string, mode: 'inline' | 'stub' = 'inline'): Promise<Trip> {
     const locks = new FakeLockManagerCore()
     Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
     h.db = makeDb('base', ['alpha'])
@@ -247,7 +249,7 @@ async function roundTrip(file: string): Promise<Trip> {
         ready: Promise.resolve(),
         writable: { getWriter: () => ({ write: async (chunk: Uint8Array) => { written.push(chunk.slice()) }, close: async () => { } }) },
     })) as never)
-    const outcome = await SaveLocalBackup() as { status: string, notices?: string[] }
+    const outcome = await SaveLocalBackup({ mode }) as { status: string, notices?: string[] }
     const entries = parseEntries(concat(written))
 
     const { loadGolden, readerOver } = await import('src/ts/storage/tests/store2/legacyFixtures')
@@ -276,6 +278,7 @@ async function roundTrip(file: string): Promise<Trip> {
         exported: project(exported.database as unknown as Obj),
         exportedRaw,
         exportedNames: entries.map((entry) => entry.name),
+        exportedUnitBodies: new Map([...exportedUnits].map(([key, unit]) => [key, unit.value])),
         assets: new Map(entries.filter((entry) => entry.name !== 'database.risudat' && getColdStorageBackupKey(entry.name) === null).map((entry) => [entry.name, entry.data])),
         errors: [...importErrors, ...vi.mocked(alert.alertError).mock.calls.map((call) => call[0])],
         confirms: vi.mocked(alert.alertConfirm).mock.calls.map((call) => String(call[0])),
@@ -287,6 +290,29 @@ const ASSET_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0
 
 /** The goldens whose import asks the incomplete-restore question: a unit, a blob or a plugin unit is absent from the file. */
 const INCOMPLETE = new Set<string>(ALL_GOLDENS.filter((name) => !(FULL_GOLDENS as readonly string[]).includes(name)))
+
+const DASHED_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/**
+ * The number of stubs the stub form writes for each golden. The import installs a character with a unit as an entity and
+ * the boot opens each as a stub: `fork-full.bin` and `upstream-full.bin` hold two such characters and
+ * `upstream-plugin-object-no-entry.bin` one. In every other golden a unit is absent or unusable, and the character that
+ * names it keeps a cold-storage root, so the root guard writes it whole; without the guard the stub form mints a stub
+ * for them (the base sources fail these counts).
+ */
+const STUB_FORM_STUBS: Record<string, number> = {
+    'fork-full.bin': 2,
+    'upstream-full.bin': 2,
+    'upstream-plugin-object-no-entry.bin': 1,
+    'fork-missing-unit.bin': 0,
+    'upstream-missing-unit.bin': 0,
+    'fork-stub-missing-entry.bin': 0,
+    'fork-stub-bad-json.bin': 0,
+    'fork-stub-wrong-shape.bin': 0,
+    'upstream-stub-missing-entry.bin': 0,
+    'upstream-stub-bad-json.bin': 0,
+    'upstream-stub-wrong-shape.bin': 0,
+}
 
 /** The chat id and message time the test's `resolveLegacyTree` options give a chat or message the file left without one. */
 const PLACEHOLDER_CHAT_ID = 'placeholder-chat'
@@ -332,16 +358,40 @@ function afterTrip(original: Obj, exported: Obj): Obj {
 describe('composed round trip on a store2 page: LoadLocalBackup, a fresh boot, SaveLocalBackup, then decodeRisuSave', () => {
     // Compatibility guard on both halves. The import half's base reproducer is the "regression:" test in
     // `storeImport.svelte.test.ts`; here it is red only on the approximation that takes the store2 import branch away.
-    test.each([...ALL_GOLDENS])('%s exports the logical content it imported', async (file) => {
-        const trip = await roundTrip(file)
+    describe.each(['inline', 'stub'] as const)('%s form', (mode) => {
+        test.each([...ALL_GOLDENS])('%s exports the logical content it imported', async (file) => {
+            const trip = await roundTrip(file, mode)
 
-        expect(trip.errors).toEqual([])
-        expect(trip.exported).toEqual(afterTrip(trip.original, trip.exported))
-        // Inline form: no stub is left, and no entity-named unit entry leaks into the container.
-        expect((trip.exportedRaw.characters as Obj[]).filter((character) => character.coldstorage !== undefined && character.coldstorage !== '')).toEqual([])
-        expect(trip.exportedNames.filter((name) => /^coldstorage_[0-9a-v]{26}\.json$/.test(name))).toEqual([])
-        expect(trip.confirms).toHaveLength(INCOMPLETE.has(file) ? 1 : 0)
-        expect(trip.notices).toEqual([language.backupInlaysOldStoreUnlisted].map((text) => expect.stringContaining(text)))
+            expect(trip.errors).toEqual([])
+            expect(trip.exported).toEqual(afterTrip(trip.original, trip.exported))
+            const stubs = (trip.exportedRaw.characters as Obj[]).filter((character) => character.coldstorage !== undefined && character.coldstorage !== '')
+            if (mode === 'inline') {
+                // No stub is left, and no entity-named unit entry leaks into the container.
+                expect(stubs).toEqual([])
+            } else {
+                // Every stub names a minted uuid whose unit entry is in the file and holds the stub's own character.
+                expect(stubs, file).toHaveLength(STUB_FORM_STUBS[file])
+                for (const stub of stubs) {
+                    expect(String(stub.coldstorage)).toMatch(DASHED_UUID)
+                    expect(trip.exportedNames).toContain(`coldstorage_${stub.coldstorage}.json`)
+                    expect((trip.exportedUnitBodies.get(String(stub.coldstorage)) as { character: Obj }).character.chaId).toBe(stub.chaId)
+                }
+            }
+            expect(trip.exportedNames.filter((name) => /^coldstorage_[0-9a-v]{26}\.json$/.test(name))).toEqual([])
+            expect(trip.confirms).toHaveLength(INCOMPLETE.has(file) ? 1 : 0)
+            expect(trip.notices).toEqual([language.backupInlaysOldStoreUnlisted].map((text) => expect.stringContaining(text)))
+        })
+    })
+
+    // The import resolves the error-text chat of upstream-full.bin from its unit, so the page holds no cold-storage root for
+    // the root guard to act on: the character that carried it is a stub whose unit body names no key.
+    test('upstream-full.bin: the error-text chat arrives resolved, so no stub body names a cold-storage key', async () => {
+        const trip = await roundTrip('upstream-full.bin', 'stub')
+
+        expect(trip.exportedUnitBodies.size).toBeGreaterThan(0)
+        for (const body of trip.exportedUnitBodies.values()) {
+            expect(JSON.stringify(body)).not.toContain('Cold storage data could not be loaded')
+        }
     })
 
     test.each([...FULL_GOLDENS])('%s: the asset the characters reference is in the exported file byte for byte', async (file) => {

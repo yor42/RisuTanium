@@ -13,8 +13,11 @@ import { v4 as uuidv4 } from 'uuid'
  * character as a stub whose `coldstorage` names a store2 entity: that is no unit file an importer places, so the export
  * reads the entity and, by mode, either puts the whole character in the database entry in the stub's place (`inline`) or
  * keeps a stub whose `coldstorage` is a uuid minted for this export and writes the character as the unit
- * `coldstorage_<uuid>.json` (`stub`). A stub whose entity cannot be read stays a stub in the export, is named in the
- * incomplete-data prompt like any unit the backup cannot carry, and is imported as a placeholder.
+ * `coldstorage_<uuid>.json` (`stub`). In `stub` mode a trashed character, and a character whose chats name a
+ * cold-storage root (`hasColdRoots`), are still put whole in the database entry: the trash time is the stub's, and a
+ * root inside a unit body would be seen by neither cold-storage collection. A stub whose entity cannot be read stays a
+ * stub in the export, is named in the incomplete-data prompt like any unit the backup cannot carry, and is imported as
+ * a placeholder.
  */
 
 type Slot = character | groupChat
@@ -23,10 +26,11 @@ type Slot = character | groupChat
 export type UnloadedCharacterMode = 'stub' | 'inline'
 
 /**
- * The production mode. It stays `inline` until an upstream build is shown to restore a fork stub; flipping it is this
- * one line, and tests pass the other mode as a parameter instead of changing it.
+ * The production mode: a character the page holds as a stub stays a stub in the file, with a unit entry. A trashed
+ * character and a character that names a cold-storage root are always exported whole, whatever the mode. Tests pass the
+ * other mode as a parameter instead of changing this constant.
  */
-export const EXPORT_UNLOADED_CHARACTERS: UnloadedCharacterMode = 'inline'
+export const EXPORT_UNLOADED_CHARACTERS: UnloadedCharacterMode = 'stub'
 
 /**
  * How a read of an entity that failed without saying why (a store failure, not a missing or damaged unit) is retried.
@@ -99,9 +103,20 @@ function stubUnitEntry(character: Slot): MintedStubEntry | null {
 }
 
 /**
+ * Whether `character` names a cold-storage root (a pointer, an error-text key or archived chats). Such a character is
+ * exported whole, so the late collection lists its roots from the encoded tree and carries or reports its units, as it
+ * does for an inline export.
+ */
+function hasColdRoots(character: Slot): boolean {
+    return listColdBackupRoots({ characters: [character], pluginCustomStorage: {} }).length > 0
+}
+
+/**
  * Reads, one at a time, the character of every stub of `db` that names a store2 entity. Installs nothing and marks nothing.
  * In `stub` mode a stub is kept as a stub and only its unit entry is held, unless the list needs the id repair
  * (`characterListNeedsRepair`): then every stub is inlined, so no unit body is minted with ids the repair will change.
+ * A trashed stub (a truthy `trashTime` on the page's stub) and a character with a cold-storage root are inlined in every
+ * mode.
  */
 export async function readStubsForExport(db: Pick<Database, 'characters'>, options: ExportCollectionOptions = {}): Promise<StubsForExport> {
     const mode = (options.mode ?? EXPORT_UNLOADED_CHARACTERS) === 'stub' && !characterListNeedsRepair(db.characters) ? 'stub' : 'inline'
@@ -142,7 +157,8 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
             }
             continue
         }
-        const entry = mode === 'stub' ? stubUnitEntry(copy.character) : null
+        const asStub = mode === 'stub' && !slot.trashTime && !hasColdRoots(copy.character)
+        const entry = asStub ? stubUnitEntry(copy.character) : null
         if (entry === null) {
             inlined.set(key, copy.character)
         } else {
@@ -154,11 +170,13 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
 
 /**
  * `slot` with its `coldstorage` replaced by the uuid minted for its entity in `stub` mode, or `null` when no entry was
- * minted for it. The stub keeps its trash time, last interaction and every other field.
+ * minted for it. The stub keeps its last interaction and every other field. A slot that is trashed when the export is
+ * encoded gets `null` too, so a character trashed after its entry was minted is exported whole and trashed, never as a
+ * stub.
  */
 export function stubWithMintedKey(slot: Slot, stubEntries: ReadonlyMap<string, MintedStubEntry>): Slot | null {
     const u = typeof slot === 'object' && slot !== null ? slot.coldstorage : undefined
-    if (typeof u !== 'string' || !isEntityUnitKey(u)) {
+    if (typeof u !== 'string' || !isEntityUnitKey(u) || slot.trashTime) {
         return null
     }
     const entry = stubEntries.get(inlineKeyOf(u, slot.chaId))

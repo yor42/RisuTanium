@@ -4,8 +4,9 @@
  *
  * In `stub` mode a character the page holds as a stub of a store2 entity stays a stub in the file: its `coldstorage` is
  * a uuid minted for this export and the character is the unit entry `coldstorage_<uuid>.json`, as an upstream build
- * writes an archived character. The page's own stub is never changed. The production default is `inline`
- * (`EXPORT_UNLOADED_CHARACTERS`), which these tests do not change: they pass the mode as an option.
+ * writes an archived character. The page's own stub is never changed. The production default is `stub`
+ * (`EXPORT_UNLOADED_CHARACTERS`), which these tests do not change; the other mode is passed as an option. A trashed
+ * character, and one whose chats name a cold-storage root, are written whole in either mode.
  *
  * Labels in the titles, by purpose:
  * - `new behaviour`: exercises code that exists only behind the new `stub` mode or the retry; its failure modes are shown
@@ -280,7 +281,9 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
-import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
+import { SaveLocalBackup, SavePartialLocalBackup, exportThisTabBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
+import { setColdStorageItem } from 'src/ts/process/coldstorage.svelte'
+import { formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { coldUnitCharacter } from 'src/ts/process/coldCharacter'
 import { getColdStorageBackupKey, isAcceptedColdStorageBackupEntry, isColdStorageBackupData } from 'src/ts/process/coldstorageData'
@@ -394,13 +397,17 @@ interface Page {
 }
 
 /** A store2 page: the first character resident, the others stubs of their entities, the residency registered. */
-async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Backend, group?: boolean, chaIds?: Record<number, string>, speaker?: boolean } = {}): Promise<Page> {
+async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Backend, group?: boolean, chaIds?: Record<number, string>, speaker?: boolean, firstMessages?: Record<number, string> } = {}): Promise<Page> {
     const memory = createMemoryBackend()
     const clock = createClock()
     const env = testEnv(clock, 4242)
     const fixture = { ...(shortened(buildSmall(3)) as Obj), archiveCharacters: true } as unknown as Database
     for (const [index, chaId] of Object.entries(options.chaIds ?? {})) {
         ;(fixture.characters[Number(index)] as unknown as Obj).chaId = chaId
+    }
+    for (const [index, data] of Object.entries(options.firstMessages ?? {})) {
+        const firstChat = ((fixture.characters[Number(index)] as unknown as Obj).chats as Obj[])[0]
+        ;(firstChat.message as Obj[])[0].data = data
     }
     if (options.group === true) {
         const characters = fixture.characters as unknown as Obj[]
@@ -501,6 +508,7 @@ afterEach(() => {
 describe.each([
     ['SaveLocalBackup', SaveLocalBackup as Runner],
     ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+    ['exportThisTabBackup', ((options) => exportThisTabBackup(options)) as Runner],
 ])('%s of a store2 page, stub form', (_name, run) => {
     test('new behaviour: every stub stays a stub with its own minted uuid and has exactly one unit entry; the page keeps its own entity ids', async () => {
         const page = await pageOf()
@@ -605,18 +613,67 @@ describe.each([
         expect(resolved.database.characters[groupIndex]).toMatchObject({ type: 'group', chaId: 'group-one', characters: whole.characters })
     })
 
-    test('new behaviour: a trashed stub keeps its trash time on the stub, and its unit has none', async () => {
+    test('reproducer: a trashed stub is exported whole with its trash time and mints no unit entry; the others keep theirs and the page is unchanged', async () => {
         const page = await pageOf()
         pageStub(page, 1).trashTime = 1_700_000_123_456
 
-        await run(STUB)
+        const outcome = await run()
+
+        expect(outcome.status).toBe('saved')
+        const exported = await exportedCharacters()
+        expect(exported[1].trashTime).toBe(1_700_000_123_456)
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect((exported[1].chats as unknown[]).length).toBe(page.entries[1].chats.length)
+        expect(exported[2].trashTime).toBeUndefined()
+        const uuids = await mintedUuids()
+        expect(uuids[1]).toBeNull()
+        expect(uuids[2]).not.toBeNull()
+        expect(unitEntryNames()).toEqual([`coldstorage_${uuids[2]}.json`])
+        expect(pageStub(page, 1).coldstorage).toBe(page.entries[1].u)
+        expect(pageStub(page, 1).trashTime).toBe(1_700_000_123_456)
+    })
+
+    // The trash check is made at collection, so a lowered limit does not name a trashed character as an oversize stub entry.
+    test('reproducer: a trashed stub is not sized as a stub entry: a limit of one byte names the other stub only', async () => {
+        const page = await pageOf()
+        pageStub(page, 1).trashTime = 1_700_000_123_456
+
+        await run({ limitBytes: 1 })
+
+        const prompts = alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((text) => text.includes(String(page.entries[2].name)))
+        expect(prompts).toHaveLength(1)
+        expect(prompts[0]).not.toContain(String(page.entries[1].name))
+    })
+
+    test('reproducer: a trashed group stub is exported whole with its members and trash time', async () => {
+        const page = await pageOf({ group: true })
+        const groupIndex = page.entries.length - 1
+        pageStub(page, groupIndex).trashTime = 1_700_000_123_456
+
+        await run()
+
+        const exported = await exportedCharacters()
+        expect(exported[groupIndex].coldstorage).toBeUndefined()
+        expect(exported[groupIndex].trashTime).toBe(1_700_000_123_456)
+        expect(exported[groupIndex].type).toBe('group')
+        expect(exported[groupIndex].characters).toEqual(wholeOf(page, page.entries[groupIndex]).characters)
+        const uuids = await mintedUuids()
+        expect(uuids[groupIndex]).toBeNull()
+        expect(unitEntryNames()).toHaveLength(2)
+    })
+
+    test('guard: a trashed stub in the explicit inline mode is the same whole character', async () => {
+        const page = await pageOf()
+        pageStub(page, 1).trashTime = 1_700_000_123_456
+
+        await run({ mode: 'inline' })
 
         const exported = await exportedCharacters()
         expect(exported[1].trashTime).toBe(1_700_000_123_456)
-        const uuid = (await mintedUuids())[1] as string
-        expect(Object.keys(unitBody(uuid).character)).not.toContain('trashTime')
-        expect(exported[2].trashTime).toBeUndefined()
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect(unitEntryNames()).toEqual([])
     })
+
 
     test('new behaviour: a stub loaded while the export copies assets is written whole, has no unit entry, and the others keep theirs', async () => {
         const page = await pageOf()
@@ -699,6 +756,21 @@ describe.each([
         expect(unitEntryNames()).toEqual([])
     })
 
+    // The collection-site check decides this: a list that needs the repair is not sized as stub entries, so the
+    // oversize preflight does not name stubs that the export carries whole.
+    test('guard: a list that needs the id repair, in the default mode with a limit of one byte, names no stub in any prompt', async () => {
+        const page = await pageOf({ chaIds: { 1: 'root' } })
+
+        await run({ limitBytes: 1 })
+
+        const stubNames = [page.entries[1].name, page.entries[2].name].map(String)
+        const prompts = alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((text) => stubNames.some((name) => text.includes(name)))
+        expect(prompts).toEqual([])
+        const exported = await exportedCharacters()
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect(exported[2].coldstorage).toBeUndefined()
+    })
+
     test('reproducer: a group stub next to a character whose id the repair replaces names the replaced id, in its members and in a chat speaker', async () => {
         const page = await pageOf({ group: true, chaIds: { 1: 'root' }, speaker: true })
         const groupIndex = page.entries.length - 1
@@ -746,21 +818,26 @@ describe.each([
         expect((exported[groupIndex].chats as unknown[]).length).toBe(page.entries[groupIndex].chats.length)
     })
 
-    test('guard: the production default writes the unloaded characters whole and mints no unit entry', async () => {
+    test('reproducer: with no options every stub stays a stub with a minted uuid and one unit entry; the page is unchanged and the uuid is not derived from the entity id', async () => {
         const page = await pageOf()
 
         const outcome = await run()
 
-        expect(outcome.status).toBe('saved')
-        expect(unitEntryNames()).toEqual([])
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
         const exported = await exportedCharacters()
-        for (const [index, entry] of page.entries.entries()) {
-            expect(exported[index].coldstorage, entry.name).toBeUndefined()
-            expect((exported[index].chats as unknown[]).length).toBe(entry.chats.length)
+        expect(exported[0].coldstorage).toBeUndefined()
+        const uuids = await mintedUuids()
+        expect(uuids[0]).toBeNull()
+        expect(uuids[1]).not.toBeNull()
+        expect(uuids[2]).not.toBeNull()
+        expect(unitEntryNames()).toEqual([`coldstorage_${uuids[1]}.json`, `coldstorage_${uuids[2]}.json`])
+        for (const index of [1, 2]) {
+            expect(pageStub(page, index).coldstorage).toBe(page.entries[index].u)
+            expect(String(uuids[index])).not.toContain(page.entries[index].u)
         }
     })
 
-    test('guard: the inline mode named as a parameter is the same as the default', async () => {
+    test('guard: the inline mode named as a parameter writes the unloaded characters whole and mints no unit entry', async () => {
         const page = await pageOf()
 
         await run({ mode: 'inline' })
@@ -886,6 +963,64 @@ describe('SavePartialLocalBackup explanations', () => {
 
         expect(outcome).toEqual({ status: 'declined', cause: 'partial-explanation-declined' })
         expect(backupSink.writes).toEqual([])
+    })
+})
+
+// A character whose chats name a cold-storage root is written whole in either mode, so the late collection lists the
+// root from the encoded tree and carries the unit when it exists. A store2 entity cannot hold a pointer chat (the save
+// refuses it), so the error-text key is the root a stub's entity can name.
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup as Runner],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+])('%s of a store2 page, characters that name a cold-storage root', (_name, run) => {
+    const ERROR_TEXT_KEY = '11111111-2222-4333-8444-555555555555'
+    // msgpackr under Node passes a string of 64 or more characters past the buffer end; the fixture's load-error text is that long.
+    const proto = (globalThis as unknown as { Buffer: { prototype: { utf8Write: (this: Uint8Array, s: string, p: number, l: number) => number } } }).Buffer.prototype
+    const native = proto.utf8Write
+    beforeEach(() => { proto.utf8Write = function (s, p, l) { return native.call(this, s, p, Math.min(l, this.length - p)) } })
+    afterEach(() => { proto.utf8Write = native })
+
+    async function storeUnit(key: string): Promise<void> {
+        const stored = await setColdStorageItem(key, { message: [{ time: 1, data: 'archived', role: 'user' }], hypaV2Data: { chunks: [], mainChunks: [], lastMainChunkID: 0 }, hypaV3Data: { summaries: [] }, scriptstate: {}, localLore: [] })
+        expect(stored).toBe(true)
+    }
+
+    test('reproducer: an entity whose chat names an error-text unit is exported whole, and the unit is carried when it exists', async () => {
+        await storeUnit(ERROR_TEXT_KEY)
+        const page = await pageOf({ firstMessages: { 1: formatColdStorageLoadError(ERROR_TEXT_KEY) } })
+        expect(pageStub(page, 1).coldstorage).toBe(page.entries[1].u)
+
+        await run()
+
+        const exported = await exportedCharacters()
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect(entryNames()).toContain(`coldstorage_${ERROR_TEXT_KEY}.json`)
+        const uuids = await mintedUuids()
+        expect(uuids[1]).toBeNull()
+        expect(uuids[2]).not.toBeNull()
+    })
+
+    // The collector skips an absent error-text root without reporting it, as it does for an inline export.
+    test('guard: an absent error-text unit is left out, and nothing is asked or reported', async () => {
+        await pageOf({ firstMessages: { 1: formatColdStorageLoadError(ERROR_TEXT_KEY) } })
+
+        await run()
+
+        const exported = await exportedCharacters()
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect(entryNames()).not.toContain(`coldstorage_${ERROR_TEXT_KEY}.json`)
+        expect(backupPrompts()).toEqual([])
+        expect(completionReports()).not.toContain(ERROR_TEXT_KEY)
+    })
+
+    test('guard: the error-text character is the same in the explicit inline mode', async () => {
+        await storeUnit(ERROR_TEXT_KEY)
+        await pageOf({ firstMessages: { 1: formatColdStorageLoadError(ERROR_TEXT_KEY) } })
+
+        await run({ mode: 'inline' })
+
+        expect((await exportedCharacters())[1].coldstorage).toBeUndefined()
+        expect(entryNames()).toContain(`coldstorage_${ERROR_TEXT_KEY}.json`)
     })
 })
 

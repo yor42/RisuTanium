@@ -1,8 +1,10 @@
 /**
  * A `.bin` export of a store2 page that holds characters as stubs of store2 entities (`drive/exportInline.ts`,
  * `SaveLocalBackup` and `SavePartialLocalBackup` in `backuplocal.ts`). A stub of an entity is no unit file an importer
- * places: the export reads the entity and carries the whole character in the database entry. One that cannot be read is
- * named in the incomplete-data prompt, stays a stub in the export, and is not read again by the late collection.
+ * places: in `inline` mode the export reads the entity and carries the whole character in the database entry; in `stub`
+ * mode (the production default) it mints a unit entry for a stub, except a trashed one, one whose chats name a
+ * cold-storage root, and every stub of a list that needs the id repair, which are whole in both. One that cannot be read is named in the incomplete-data
+ * prompt, stays a stub in the export, and is not read again by the late collection.
  *
  * The harness is the one `backuplocalCharacterIdsExport.test.ts` documents: the real writer, collector and unit store with
  * every dialog mocked, over a residency on an in-memory store2 backend. A passing test here is not evidence about the Tauri
@@ -12,6 +14,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
+import { gunzipSync } from 'node:zlib'
 import type { Database } from 'src/ts/storage/database.svelte'
 
 //#region module mocks
@@ -275,7 +278,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
-import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { setDatabase } from 'src/ts/storage/database.svelte'
@@ -516,11 +519,14 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-// These run the production default (inline) and the bounded retry of an unreadable unit (`readRetry`); the stub form has its own file.
+type Runner = (options?: BackupExportOptions) => Promise<ExportOutcome>
+
+// These pin the `inline` mode and test the bounded retry of an unreadable unit (`readRetry`); the stub form has its own
+// file, and the mid-export guards that hold in both modes are in the second describe of this file.
 describe.each([
-    ['SaveLocalBackup', SaveLocalBackup],
-    ['SavePartialLocalBackup', SavePartialLocalBackup],
-])('%s of a store2 page that holds stubs', (_name, run) => {
+    ['SaveLocalBackup', ((options) => SaveLocalBackup({ ...options, mode: 'inline' })) as Runner],
+    ['SavePartialLocalBackup', ((options) => SavePartialLocalBackup({ ...options, mode: 'inline' })) as Runner],
+])('%s of a store2 page that holds stubs, inline form', (_name, run) => {
     test('every character is exported whole, no entity is named as a unit, and the file imports whole into another profile', async () => {
         const page = await pageOf()
 
@@ -575,65 +581,6 @@ describe.each([
         expect((characters[1].chats as unknown[]).length).toBe(page.entries[1].chats.length)
     })
 
-    test('new behaviour: a read that fails once without a kind is retried, and the character is exported whole without a prompt', async () => {
-        let remainingFailures = 0
-        const page = await pageOf({
-            backend: (memory) => ({
-                ...memory,
-                readUnits: async (keys) => {
-                    if (remainingFailures > 0) {
-                        remainingFailures--
-                        throw new TypeError('one failed read')
-                    }
-                    return memory.readUnits(keys)
-                },
-            }),
-        })
-        remainingFailures = 1
-        const pauses: number[] = []
-
-        await run({ readRetry: { pause: async (ms) => { pauses.push(ms) } } })
-
-        expect(pauses).toHaveLength(1)
-        expect(backupPrompts()).toEqual([])
-        const exported = await exportedCharacters()
-        expect(exported[1].coldstorage).toBeUndefined()
-        expect(exported[1].name).toBe(page.entries[1].name)
-        expect(exported[2].coldstorage).toBeUndefined()
-        expect((await upstreamReadable()).entityPayloads).toEqual([])
-    })
-
-    test('new behaviour: a read that keeps failing is retried within its bound, then the character stays a stub, is named, and is not carried by the late collection', async () => {
-        let remainingFailures = 0
-        const page = await pageOf({
-            backend: (memory) => ({
-                ...memory,
-                readUnits: async (keys) => {
-                    if (remainingFailures > 0) {
-                        remainingFailures--
-                        throw new TypeError('a failed read')
-                    }
-                    return memory.readUnits(keys)
-                },
-            }),
-        })
-        // The first read of the first stub and every retry of it fail; the second stub reads at once.
-        remainingFailures = 3
-        const pauses: number[] = []
-
-        await run({ readRetry: { pausesMs: [10, 20], budgetMs: 1000, pause: async (ms) => { pauses.push(ms) } } })
-
-        const failedKey = page.entries[1].u
-        expect(pauses).toEqual([10, 20])
-        expect(backupPrompts()).toHaveLength(1)
-        expect(backupPrompts()[0]).toContain(page.entries[1].name)
-        expect((await exportedCharacters())[1].coldstorage).toBe(failedKey)
-        expect(entryNames()).not.toContain(`coldstorage_${failedKey}.json`)
-        expect((await upstreamReadable()).entityPayloads).toEqual([])
-        expect(completionReports()).not.toContain(failedKey)
-        expect((await exportedCharacters())[2].coldstorage).toBeUndefined()
-    })
-
     test('new behaviour: the pauses of one export together never pass the budget, however many characters fail', async () => {
         const page = await pageOf({
             backend: (memory) => ({
@@ -685,62 +632,6 @@ describe.each([
         expect(backupPrompts()[0]).toContain(page.entries[2].name)
     })
 
-    test('a stub trashed while the export copies assets is exported trashed', async () => {
-        const page = await pageOf()
-        const stub = page.db.characters[1] as unknown as Obj
-        expect(stub.coldstorage).toBeDefined()
-        // The full export lists the assets and the partial one reads the profile images: either is time the page may use to trash the stub.
-        page.db.userIcon = 'assets/icon'
-        const trash = () => { stub.trashTime = 1_700_000_123_456 }
-        forageKeysMock.mockImplementation(async () => {
-            trash()
-            return []
-        })
-        forageGetItemMock.mockImplementation(async () => {
-            trash()
-            return null
-        })
-
-        await run()
-
-        expect((await exportedCharacters())[1].trashTime).toBe(1_700_000_123_456)
-        expect((await exportedCharacters())[1].coldstorage).toBeUndefined()
-    })
-
-    // F4: a stub is identified by its entity and its `chaId`, not by the object, which the page may replace while the export runs.
-    test('a stub replaced by an equal copy while the export copies assets is still exported whole', async () => {
-        const page = await pageOf()
-        const index = 1
-        const replace = () => { page.db.characters[index] = { ...(page.db.characters[index] as unknown as Obj) } as never }
-        forageKeysMock.mockImplementation(async () => { replace(); return [] })
-        forageGetItemMock.mockImplementation(async () => { replace(); return null })
-        page.db.userIcon = 'assets/icon'
-
-        await run()
-
-        const exported = await exportedCharacters()
-        expect(exported[index].coldstorage).toBeUndefined()
-        expect(exported[index].name).toBe(page.entries[index].name)
-        expect((exported[index].chats as unknown[]).length).toBe(page.entries[index].chats.length)
-    })
-
-    test('a slot that now holds another character under the same entity is not given the first stub\'s character', async () => {
-        const page = await pageOf()
-        const stub = page.db.characters[1] as unknown as Obj
-        const u = stub.coldstorage as string
-        const swap = () => { page.db.characters[1] = { ...stub, chaId: 'someone-else' } as never }
-        forageKeysMock.mockImplementation(async () => { swap(); return [] })
-        forageGetItemMock.mockImplementation(async () => { swap(); return null })
-        page.db.userIcon = 'assets/icon'
-
-        await run()
-
-        const exported = await exportedCharacters()
-        expect(exported[1].chaId).toBe('someone-else')
-        expect(exported[1].coldstorage).toBe(u)
-        expect((await upstreamReadable()).entityPayloads).toEqual([])
-    })
-
     test('a group that is a stub is exported whole, with its members, chats and talk lists, and imports whole into another profile', async () => {
         const page = await pageOf({ group: true })
         const groupIndex = page.entries.length - 1
@@ -777,5 +668,229 @@ describe.each([
 
         expect(await upstreamReadable()).toEqual({ entityPayloads: [], danglingStubs: [] })
         expect((await exportedCharacters()).map((character) => character.name)).toEqual(page.entries.map((entry) => entry.name))
+    })
+})
+
+const DASHED_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const unitEntryNames = (): string[] => entryNames().filter((name) => name.startsWith('coldstorage_'))
+
+/** The minted uuid each exported character names as a stub, in order; `null` for a character that is not such a stub. */
+async function mintedUuids(): Promise<Array<string | null>> {
+    return (await exportedCharacters()).map((character) => typeof character.coldstorage === 'string' && DASHED_UUID.test(character.coldstorage) ? character.coldstorage : null)
+}
+
+// What happens to a stub while the export runs, and what a failing read leaves: each holds in both modes, with the
+// mode-specific assertions spelled out.
+describe.each([
+    ['inline', 'SaveLocalBackup', SaveLocalBackup as Runner],
+    ['inline', 'SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+    ['stub', 'SaveLocalBackup', SaveLocalBackup as Runner],
+    ['stub', 'SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+] as const)('%s form, %s of a store2 page: mid-export changes and failing reads', (mode, _name, runWith) => {
+    const run = (options: BackupExportOptions = {}) => runWith({ ...options, mode })
+
+    test('a stub trashed while the export copies assets is exported whole and trashed, with no unit entry of its own', async () => {
+        const page = await pageOf()
+        const stub = page.db.characters[1] as unknown as Obj
+        expect(stub.coldstorage).toBeDefined()
+        // The full export lists the assets and the partial one reads the profile images: either is time the page may use to trash the stub.
+        page.db.userIcon = 'assets/icon'
+        const trash = () => { stub.trashTime = 1_700_000_123_456 }
+        forageKeysMock.mockImplementation(async () => {
+            trash()
+            return []
+        })
+        forageGetItemMock.mockImplementation(async () => {
+            trash()
+            return null
+        })
+
+        await run()
+
+        const exported = await exportedCharacters()
+        expect(exported[1].trashTime).toBe(1_700_000_123_456)
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect((exported[1].chats as unknown[]).length).toBe(page.entries[1].chats.length)
+        if (mode === 'stub') {
+            // No orphan: the entry minted for the character before it was trashed is not written; the other stub keeps its own.
+            const uuids = await mintedUuids()
+            expect(uuids[1]).toBeNull()
+            expect(uuids[2]).not.toBeNull()
+            expect(unitEntryNames()).toEqual([`coldstorage_${uuids[2]}.json`])
+        } else {
+            expect(unitEntryNames()).toEqual([])
+        }
+    })
+
+    test('a stub trashed at collection and restored while the export copies assets is exported whole and not trashed', async () => {
+        const page = await pageOf()
+        const stub = page.db.characters[1] as unknown as Obj
+        stub.trashTime = 1_700_000_123_456
+        page.db.userIcon = 'assets/icon'
+        const restore = () => { delete stub.trashTime }
+        forageKeysMock.mockImplementation(async () => { restore(); return [] })
+        forageGetItemMock.mockImplementation(async () => { restore(); return null })
+
+        await run()
+
+        const exported = await exportedCharacters()
+        expect(exported[1].trashTime).toBeUndefined()
+        expect(exported[1].coldstorage).toBeUndefined()
+        expect((exported[1].chats as unknown[]).length).toBe(page.entries[1].chats.length)
+        const uuids = await mintedUuids()
+        expect(unitEntryNames()).toEqual(mode === 'stub' ? [`coldstorage_${uuids[2]}.json`] : [])
+    })
+
+    // F4: a stub is identified by its entity and its `chaId`, not by the object, which the page may replace while the export runs.
+    test('a stub replaced by an equal copy while the export copies assets is exported as the mode says: whole, or a stub with its entry once', async () => {
+        const page = await pageOf()
+        const index = 1
+        const replace = () => { page.db.characters[index] = { ...(page.db.characters[index] as unknown as Obj) } as never }
+        forageKeysMock.mockImplementation(async () => { replace(); return [] })
+        forageGetItemMock.mockImplementation(async () => { replace(); return null })
+        page.db.userIcon = 'assets/icon'
+
+        await run()
+
+        const exported = await exportedCharacters()
+        const uuids = await mintedUuids()
+        if (mode === 'stub') {
+            expect(uuids[index]).not.toBeNull()
+            expect(unitEntryNames().filter((name) => name === `coldstorage_${uuids[index]}.json`)).toHaveLength(1)
+        } else {
+            expect(exported[index].coldstorage).toBeUndefined()
+            expect(exported[index].name).toBe(page.entries[index].name)
+            expect((exported[index].chats as unknown[]).length).toBe(page.entries[index].chats.length)
+            expect(unitEntryNames()).toEqual([])
+        }
+    })
+
+    test('a slot that now holds another character under the same entity is not given the first stub\'s character', async () => {
+        const page = await pageOf()
+        const stub = page.db.characters[1] as unknown as Obj
+        const u = stub.coldstorage as string
+        const swap = () => { page.db.characters[1] = { ...stub, chaId: 'someone-else' } as never }
+        forageKeysMock.mockImplementation(async () => { swap(); return [] })
+        forageGetItemMock.mockImplementation(async () => { swap(); return null })
+        page.db.userIcon = 'assets/icon'
+
+        await run()
+
+        const exported = await exportedCharacters()
+        expect(exported[1].chaId).toBe('someone-else')
+        expect(exported[1].coldstorage).toBe(u)
+        expect((await upstreamReadable()).entityPayloads).toEqual([])
+        if (mode === 'stub') {
+            // The entry minted for the first character is not in the tree, so it is not written.
+            const uuids = await mintedUuids()
+            expect(uuids[1]).toBeNull()
+            expect(unitEntryNames()).toEqual([`coldstorage_${uuids[2]}.json`])
+        }
+    })
+
+    test('new behaviour: a read that fails once without a kind is retried, and the character is carried without a prompt', async () => {
+        let remainingFailures = 0
+        const page = await pageOf({
+            backend: (memory) => ({
+                ...memory,
+                readUnits: async (keys) => {
+                    if (remainingFailures > 0) {
+                        remainingFailures--
+                        throw new TypeError('one failed read')
+                    }
+                    return memory.readUnits(keys)
+                },
+            }),
+        })
+        remainingFailures = 1
+        const pauses: number[] = []
+
+        await run({ readRetry: { pause: async (ms) => { pauses.push(ms) } } })
+
+        expect(pauses).toHaveLength(1)
+        expect(backupPrompts()).toEqual([])
+        const exported = await exportedCharacters()
+        expect(exported[1].name).toBe(page.entries[1].name)
+        if (mode === 'stub') {
+            const uuids = await mintedUuids()
+            expect(uuids[1]).not.toBeNull()
+            expect(uuids[2]).not.toBeNull()
+            expect(unitEntryNames()).toEqual([`coldstorage_${uuids[1]}.json`, `coldstorage_${uuids[2]}.json`])
+        } else {
+            expect(exported[1].coldstorage).toBeUndefined()
+            expect(exported[2].coldstorage).toBeUndefined()
+        }
+        expect((await upstreamReadable()).entityPayloads).toEqual([])
+    })
+
+    test('new behaviour: a read that keeps failing is retried within its bound, then the character stays the page\'s stub, is named, and is not carried by the late collection', async () => {
+        let remainingFailures = 0
+        const page = await pageOf({
+            backend: (memory) => ({
+                ...memory,
+                readUnits: async (keys) => {
+                    if (remainingFailures > 0) {
+                        remainingFailures--
+                        throw new TypeError('a failed read')
+                    }
+                    return memory.readUnits(keys)
+                },
+            }),
+        })
+        // The first read of the first stub and every retry of it fail; the second stub reads at once.
+        remainingFailures = 3
+        const pauses: number[] = []
+
+        await run({ readRetry: { pausesMs: [10, 20], budgetMs: 1000, pause: async (ms) => { pauses.push(ms) } } })
+
+        const failedKey = page.entries[1].u
+        expect(pauses).toEqual([10, 20])
+        expect(backupPrompts()).toHaveLength(1)
+        expect(backupPrompts()[0]).toContain(page.entries[1].name)
+        expect((await exportedCharacters())[1].coldstorage).toBe(failedKey)
+        expect(entryNames()).not.toContain(`coldstorage_${failedKey}.json`)
+        expect((await upstreamReadable()).entityPayloads).toEqual([])
+        expect(completionReports()).not.toContain(failedKey)
+        if (mode === 'stub') {
+            const uuids = await mintedUuids()
+            expect(uuids[1]).toBeNull()
+            expect(uuids[2]).not.toBeNull()
+            expect(unitEntryNames()).toEqual([`coldstorage_${uuids[2]}.json`])
+        } else {
+            expect((await exportedCharacters())[2].coldstorage).toBeUndefined()
+        }
+    })
+})
+
+// The legacy/block-page branch of `LoadLocalBackup` (the page is not a store2 page) installs a default export's stubs
+// as they are and stores each unit entry under its own uuid.
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup as Runner],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+])('%s default (stub-form) export imported by a legacy page', (_name, run) => {
+    test('guard: the stubs keep their minted uuids, each stored unit holds the whole character with all its chats, and no alert appears', async () => {
+        const page = await pageOf()
+        await run()
+        const uuids = await mintedUuids()
+        expect(uuids[1]).not.toBeNull()
+        expect(uuids[2]).not.toBeNull()
+
+        resetResidencyForTest()
+        const stored = new Map<string, Uint8Array>()
+        injectRestoreStore(createForageBackedStore(forageOverMap(stored)))
+        await loadBackupBytes(concat(backupSink.writes))
+
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        const installed = vi.mocked(setDatabase).mock.calls.at(-1)?.[0] as unknown as { characters: Array<Record<string, unknown>> }
+        expect(installed.characters.map((character) => character.coldstorage ?? null)).toEqual(uuids)
+        for (const index of [1, 2]) {
+            const unit = stored.get(`coldstorage/${uuids[index]}`)
+            expect(unit, page.entries[index].name).toBeInstanceOf(Uint8Array)
+            const payload = JSON.parse(decoder.decode(gunzipSync(unit!))) as { character: { name: string, chats: Array<{ message: unknown }> } }
+            const whole = wholeOf(page, page.entries[index])
+            expect(payload.character.name).toBe(whole.name)
+            expect(payload.character.chats).toHaveLength(page.entries[index].chats.length)
+            expect(payload.character.chats.map((chat) => chat.message)).toEqual((whole.chats as Obj[]).map((chat) => chat.message))
+        }
     })
 })

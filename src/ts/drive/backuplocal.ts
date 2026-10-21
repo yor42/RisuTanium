@@ -102,14 +102,15 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
  * unit cannot name one, a new id (its archived content then cannot be restored
  * from this export). A stub of a store2 entity is replaced by the whole character
  * read for it (`inlined`, `drive/exportInline.ts`), or, in `stub` mode, keeps its
- * place with the uuid minted for it (`stubEntries`); if the list then needs the id
- * repair, every minted stub is inlined instead. The export is never refused;
+ * place with the uuid minted for it (`stubEntries`); a minted stub that is trashed
+ * when the tree is built, and every minted stub when the list then needs the id
+ * repair, is inlined instead. The export is never refused;
  * `notice` says what was done.
  */
 async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>): Promise<{ tree: Database, notice: string | null }> {
     const plain = { ...db, account: undefined }
     if ((inlined.size > 0 || stubEntries.size > 0) && Array.isArray(db.characters)) {
-        plain.characters = db.characters.map((slot) => stubWithMintedKey(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
+        plain.characters = db.characters.map((slot) => stubWithMintedKey(slot, stubEntries) ?? inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
         // A stub's unit body is written only when the export tree's ids are the ones the body holds. The repair below
         // rewrites ids in the tree only, so a list that needs it (it changed after collection decided) carries every
         // minted stub inline instead.
