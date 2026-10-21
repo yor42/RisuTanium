@@ -220,6 +220,9 @@ async function readIndexedHeader(file: Blob, entry: BackupIndexEntry, where: str
     if (header.nameLength !== entry.nameLength || header.dataLength !== entry.dataLength || header.headerLength !== entry.headerLength) {
         throw new BinFileChangedError('header', header.name)
     }
+    if (header.name !== where) {
+        throw new BinFileChangedError('header', header.name)
+    }
     return { name: header.name }
 }
 
@@ -309,6 +312,23 @@ export function decodeBinDatabaseOmitted(bytes: Uint8Array): Promise<ReadonlyMap
 }
 
 /**
+ * The database entry read from the file again and decoded; only the tree outlives the call (in the raw msgpack format its
+ * binary values are views of the read bytes). Throws `BinFileChangedError`.
+ */
+export async function readBinDatabaseTree(file: Blob, entry: BackupIndexEntry): Promise<Database> {
+    return (await decodeBinDatabase(await readBinDatabase(file, entry))).tree
+}
+
+/**
+ * What the database entry read from the file leaves out, and nothing else: the bytes are a local of this call and not of
+ * the long async function that asks, so neither they nor the tree stay reachable across its later awaits. Throws
+ * `BinFileChangedError`.
+ */
+export async function readBinDatabaseOmitted(file: Blob, entry: BackupIndexEntry): Promise<ReadonlyMap<string, SalvageOmittedBlock>> {
+    return await decodeBinDatabaseOmitted(await readBinDatabase(file, entry))
+}
+
+/**
  * An old numbered backup: decoded strictly first, and only when that fails by `salvageRisuSave`, which still refuses a
  * file whose framing or root is damaged. Throws when the bytes hold no database.
  */
@@ -382,7 +402,10 @@ export type Store2ImportEnd =
 export interface Store2ImportRequest {
     target: Store2ImportTarget
     busy: BusyHandle
-    /** A fresh decoded tree on each call: the import consumes its tree, and a retry needs another. */
+    /**
+     * A fresh decoded tree on each call: the import consumes its tree, and a retry needs another. Each call reads the
+     * database entry from the file again and may throw `BinFileChangedError`.
+     */
     decode(): Promise<Database>
     reader: LegacyEntryReader
 }
@@ -472,6 +495,9 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
             source = { tree: await request.decode() }
         } catch (error) {
             console.error(error)
+            if (error instanceof BinFileChangedError) {
+                return refused('read-failed', binChangeText(error))
+            }
             return refused('decode-failed', language.internalBackupUnreadable)
         }
         let outcome: ImportOutcome
@@ -564,7 +590,8 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
 
 /**
  * The boot-time commit of a decoded `.bin`: the boot's installer (`target.install`) over a decode of the database
- * entry, with the same incomplete-items question as the page import. A decline or a refusal shows its message and ends
+ * entry (each call of `request.decode` reads the entry from the file again and may throw `BinFileChangedError`), with the
+ * same incomplete-items question as the page import. A decline or a refusal shows its message and ends
  * `cancelled` (nothing was written); everything the installer decided past the questions is passed to the dispatch.
  * No page, write lock or reload is involved: the dispatch opens the installed profile itself.
  */
@@ -580,7 +607,7 @@ export async function commitBootImport(request: {
         source = { tree: await request.decode() }
     } catch (error) {
         console.error(error)
-        alertError(language.internalBackupUnreadable)
+        alertError(error instanceof BinFileChangedError ? binChangeText(error) : language.internalBackupUnreadable)
         return { kind: 'cancelled' }
     }
     noteImportPhase('decoded, boot')

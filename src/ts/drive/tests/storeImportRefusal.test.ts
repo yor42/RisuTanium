@@ -63,7 +63,7 @@ vi.mock('src/ts/storage/store2/legacy/importTree', () => ({
 import { BinFileChangedError } from 'src/ts/storage/store2/legacy/binReader'
 import { Store2StalePageError } from 'src/ts/storage/store2/backend/errors'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { checkStore2Import, commitStore2Import, type Store2ImportEnd, type Store2ImportRefusal, type Store2ImportRequest } from '../storeImport'
+import { checkStore2Import, commitBootImport, commitStore2Import, type Store2ImportEnd, type Store2ImportRefusal, type Store2ImportRequest } from '../storeImport'
 
 beforeEach(() => {
     world.errors = []
@@ -97,6 +97,21 @@ describe('commitStore2Import names the cause of each refusal (new behaviour)', (
     test('a decode that throws is decode-failed and shows the unreadable-backup message', async () => {
         const result = await refusal(requestWith(async () => { throw new Error('bad bytes') }))
         expect(result).toEqual({ cause: 'decode-failed', shown: ['language.internalBackupUnreadable'] })
+    })
+
+    test('a decode that throws BinFileChangedError is read-failed with the file-changed text (regression: the file is not what the walk saw)', async () => {
+        const result = await refusal(requestWith(async () => { throw new BinFileChangedError('length', 'database.risudat') }))
+        expect(result).toEqual({ cause: 'read-failed', shown: ['language.backupFileChangedWhileReading'] })
+    })
+
+    test.each(['unreadable', 'header'] as const)('a decode that throws BinFileChangedError(%s) shows the file-changed text', async (reason) => {
+        const result = await refusal(requestWith(async () => { throw new BinFileChangedError(reason, 'database.risudat') }))
+        expect(result).toEqual({ cause: 'read-failed', shown: ['language.backupFileChangedWhileReading'] })
+    })
+
+    test('a decode that throws BinFileChangedError(marker) is read-failed with the encrypted-backup text', async () => {
+        const result = await refusal(requestWith(async () => { throw new BinFileChangedError('marker', 'database.risudat') }))
+        expect(result).toEqual({ cause: 'read-failed', shown: ['language.encryptedBackupImportStopped'] })
     })
 
     test('the busy guard at the flip is busy and shows nothing', async () => {
@@ -157,6 +172,26 @@ describe('commitStore2Import names the cause of each refusal (new behaviour)', (
         world.errors = []
         world.outcome = { status: 'refused', reason: 'format' }
         expect(await refusal(requestWith(decodes))).toEqual({ cause: 'library-refused', shown: ['language.store2ImportRefused'] })
+    })
+})
+
+describe('commitBootImport shows the message of a decode that fails (new behaviour)', () => {
+    async function bootEnd(decode: () => Promise<Database>) {
+        const install = vi.fn(async () => ({ status: 'declined' as const }))
+        const end = await commitBootImport({ target: { install, readColdStorageItem: async () => ({ status: 'missing' }) }, decode, reader: {} as never })
+        return { end, installed: install.mock.calls.length, shown: world.errors }
+    }
+
+    test('a decode that throws is cancelled with the unreadable-backup message (guard: unchanged)', async () => {
+        expect(await bootEnd(async () => { throw new Error('bad bytes') })).toEqual({ end: { kind: 'cancelled' }, installed: 0, shown: ['language.internalBackupUnreadable'] })
+    })
+
+    test.each(['length', 'unreadable', 'header'] as const)('a decode that throws BinFileChangedError(%s) is cancelled with the file-changed text (regression)', async (reason) => {
+        expect(await bootEnd(async () => { throw new BinFileChangedError(reason, 'database.risudat') })).toEqual({ end: { kind: 'cancelled' }, installed: 0, shown: ['language.backupFileChangedWhileReading'] })
+    })
+
+    test('a decode that throws BinFileChangedError(marker) is cancelled with the encrypted-backup text (regression)', async () => {
+        expect(await bootEnd(async () => { throw new BinFileChangedError('marker', 'database.risudat') })).toEqual({ end: { kind: 'cancelled' }, installed: 0, shown: ['language.encryptedBackupImportStopped'] })
     })
 })
 

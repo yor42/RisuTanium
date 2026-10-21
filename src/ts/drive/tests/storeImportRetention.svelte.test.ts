@@ -20,6 +20,7 @@ import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/st
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
+import type { BootImportTarget } from 'src/ts/storage/store2/legacy/bootImport'
 import { breakDataChecksum } from 'src/ts/storage/tests/risuSaveBlockFile'
 
 vi.setConfig({ testTimeout: 60_000 })
@@ -246,6 +247,194 @@ function watchFirstTree(page: Page): { probes: () => { text: string, collected: 
     })
     return { probes: () => probes, watched: () => ref !== null }
 }
+
+/** A page as a boot sees it: no page mode and no residency. */
+async function openBoot(): Promise<Page> {
+    const locks = new FakeLockManagerCore()
+    Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
+    h.db = makeDb('base', ['alpha'])
+    const k = await startStore2({ db: h.db as unknown as Database })
+    const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
+    const alert = await import('src/ts/alert')
+    vi.mocked(alert.alertConfirm).mockImplementation(async () => true)
+    vi.spyOn(alert.alertStore, 'set').mockImplementation(() => { })
+    w.pageMode.setPageStorageMode({ kind: 'unset' })
+    ;(await import('src/ts/storage/store2/residencyActive')).resetResidencyForTest()
+    w.start()
+    await sleepReal(100)
+    await settled(w)
+    return { w, k, db: h.db as Entry, alert }
+}
+
+async function pickAtBoot(target: BootImportTarget, bytes: Uint8Array) {
+    const { loadBackupAtBoot } = await import('src/ts/drive/backuplocal')
+    const realCreateElement = document.createElement.bind(document)
+    let input: HTMLInputElement | null = null
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        const element = realCreateElement(tag)
+        if (tag === 'input') {
+            input = element as HTMLInputElement
+        }
+        return element
+    })
+    try {
+        const ended = loadBackupAtBoot(target)
+        const chosen = input as HTMLInputElement | null
+        if (chosen === null) {
+            throw new Error('loadBackupAtBoot did not create a file input')
+        }
+        Object.defineProperty(chosen, 'files', { value: [new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
+        await (chosen.onchange as unknown as (event: Event) => Promise<void>).call(chosen, new Event('change'))
+        return await ended
+    } finally {
+        spy.mockRestore()
+    }
+}
+
+const yieldTask = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+interface BytesProbe {
+    at: string
+    /** The byte arguments of decode calls seen so far. */
+    watched: number
+    /** How many of them a forced collection did not reclaim. */
+    alive: number
+}
+
+/**
+ * Watches, weakly, the byte argument of EVERY `decodeRisuSave` and `salvageRisuSave` call of the import (the validity
+ * probe's and the commit's). `probe` answers how many are still reachable after a forced collection; the spies' own
+ * records are cleared first, because they would keep the arguments alive.
+ */
+function watchDatabaseBytes(page: Page): { probe: (at: string) => void, probes: BytesProbe[] } {
+    const refs: WeakRef<object>[] = []
+    let pending: object[] = []
+    const watch = (bytes: unknown): void => {
+        if (!ArrayBuffer.isView(bytes)) {
+            return
+        }
+        pending.push(bytes)
+        // A weak reference created in a job keeps its target to the end of that job: it is created in a later one.
+        setTimeout(() => {
+            for (const held of pending) {
+                refs.push(new WeakRef(held))
+            }
+            pending = []
+        }, 0)
+    }
+    const risuSave = page.w.risuSave
+    const decodeOriginal = risuSave.decodeRisuSave
+    const salvageOriginal = risuSave.salvageRisuSave
+    const decodeSpy = vi.spyOn(risuSave, 'decodeRisuSave').mockImplementation(async (...args: Parameters<typeof decodeOriginal>) => {
+        watch(args[0])
+        return decodeOriginal(...args)
+    })
+    const salvageSpy = vi.spyOn(risuSave, 'salvageRisuSave').mockImplementation(async (...args: Parameters<typeof salvageOriginal>) => {
+        watch(args[0])
+        return salvageOriginal(...args)
+    })
+    const probes: BytesProbe[] = []
+    // `count` limits the probe to the first arrays seen: a probe made later than the moment it stands for must not count a decode that began since.
+    const probe = (at: string, count: number = refs.length): void => {
+        decodeSpy.mockClear()
+        salvageSpy.mockClear()
+        vi.mocked(console.log).mockClear()
+        gc()
+        gc()
+        probes.push({ at, watched: count, alive: refs.slice(0, count).filter((ref) => ref.deref() !== undefined).length })
+    }
+    vi.mocked(page.alert.alertWait).mockImplementation((text: string) => {
+        const seen = refs.length + pending.length
+        if (pending.length === 0 && seen > 0) {
+            probe(text)
+        } else if (seen > 0) {
+            // The references of a decode this job made are created by a timer already queued; this one runs after it.
+            setTimeout(() => probe(text, seen), 0)
+        }
+        return { type: 'wait', msg: text }
+    })
+    return { probe, probes }
+}
+
+describe('the database bytes of a .bin import are not held across the asset copy or the commit', () => {
+    // Regression reproducer: red when the restore function keeps the entry's bytes from the validity probe to the end of the import.
+    // Not a measure of device memory.
+    function expectNotHeld(probes: BytesProbe[]): void {
+        const loading = probes.filter((entry) => entry.at === 'Loading backup...')
+        expect(loading.length, 'the import must have reached its load phase with bytes to watch').toBeGreaterThan(0)
+        expect(loading.every((entry) => entry.watched >= 1), 'the validity probe decoded the entry').toBe(true)
+        const commit = probes.filter((entry) => entry.at.startsWith('commit window'))
+        expect(commit.length, 'the commit window must have been probed').toBeGreaterThan(0)
+        expect(commit.every((entry) => entry.watched >= 2), 'the validity probe and the commit both decoded the entry').toBe(true)
+        expect(probes.filter((entry) => entry.alive > 0).map((entry) => `${entry.at} (${entry.alive} of ${entry.watched} alive)`)).toEqual([])
+    }
+
+    async function page(backup: (page: Page) => Promise<Uint8Array>): Promise<BytesProbe[]> {
+        const opened = await openPage()
+        const bytes = await backup(opened)
+        const watcher = watchDatabaseBytes(opened)
+        const backend = opened.k.counted.backend
+        const putUnit = backend.putUnit.bind(backend)
+        backend.putUnit = async (...args: Parameters<typeof putUnit>) => {
+            await yieldTask()
+            watcher.probe('commit window: putUnit')
+            return putUnit(...args)
+        }
+        const commitOrdinary = backend.commitOrdinary.bind(backend)
+        backend.commitOrdinary = async (...args: Parameters<typeof commitOrdinary>) => {
+            await yieldTask()
+            watcher.probe('commit window: commitOrdinary')
+            return commitOrdinary(...args)
+        }
+        const casCommit = backend.casCommit.bind(backend)
+        backend.casCommit = async (...args: Parameters<typeof casCommit>) => {
+            await yieldTask()
+            watcher.probe('commit window: casCommit')
+            return casCommit(...args)
+        }
+
+        await loadBin(bytes)
+
+        return watcher.probes
+    }
+
+    async function boot(backup: (page: Page) => Promise<Uint8Array>): Promise<BytesProbe[]> {
+        const opened = await openBoot()
+        const bytes = await backup(opened)
+        const watcher = watchDatabaseBytes(opened)
+        const target: BootImportTarget = {
+            readColdStorageItem: async () => ({ status: 'missing' }),
+            async install(source) {
+                // The library releases the tree once it is resolved; a tree of the raw format holds views of the bytes it came from.
+                source.tree = null
+                await yieldTask()
+                await yieldTask()
+                watcher.probe('commit window: install')
+                return { status: 'blocked', reason: 'install-failed', detail: 'recorded' }
+            },
+        }
+
+        await pickAtBoot(target, bytes)
+
+        return watcher.probes
+    }
+
+    test('regression: a legacy-format file on a page', async () => {
+        expectNotHeld(await page(async () => golden('upstream-full.bin')))
+    })
+
+    test('regression: a block-format salvage on a page', async () => {
+        expectNotHeld(await page(damagedBackup))
+    })
+
+    test('regression: a legacy-format file at boot', async () => {
+        expectNotHeld(await boot(async () => golden('upstream-full.bin')))
+    })
+
+    test('regression: a block-format salvage at boot', async () => {
+        expectNotHeld(await boot(damagedBackup))
+    })
+})
 
 describe('the validity-probe decode of a store2 .bin import', () => {
     // Regression reproducer (red when the restore function awaits the decoded tree itself). Not a measure of device memory.

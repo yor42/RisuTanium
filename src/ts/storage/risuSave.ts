@@ -1193,7 +1193,6 @@ export class RisuSaveDecoder {
                 continue
             }
         }
-        console.log('blocks',this.blocks)
         let directory: string[] = []
         // Tracked instead of trusting "some block claimed type ROOT and
         // reached this switch case" alone — a bit-flip in a block's type
@@ -1221,7 +1220,6 @@ export class RisuSaveDecoder {
                             }
                             if(rootKey === '__directory'){
                                 directory = rootData[rootKey];
-                                console.log('RisuSave directory:', directory);
                                 for(const dirKey of directory){
                                     if(dirKey.startsWith(KV_BLOCK_PREFIX)){
                                         kvBlockSeen = true;
@@ -1437,7 +1435,6 @@ export class RisuSaveDecoder {
             db.botPresets = [presetTemplate]
             db.botPresetsId = 0
         }
-        console.log('Decoded RisuSave data', db);
         return db;
     }
 }
@@ -1496,16 +1493,20 @@ export async function decodeRisuSave(data:Uint8Array, options?: { strict?: boole
 async function decodeRisuSaveBranches(data:Uint8Array, options?: { strict?: boolean }){
     try {
         const header = checkHeader(data)
+        // The body is a view of `data`: no branch writes it, but in the raw
+        // branch msgpackr returns binary values as views of it, so a caller
+        // must not modify bytes it handed to `decodeRisuSave` while the
+        // returned tree is alive.
         switch(header){
             case "compressed":
-                data = data.slice(magicCompressedHeader.length)
+                data = data.subarray(magicCompressedHeader.length)
                 return decode(fflate.decompressSync(data))
             case "raw":
-                data = data.slice(magicHeader.length)
+                data = data.subarray(magicHeader.length)
                 return unpackr.decode(data)
             case "stream":{
                 await checkCompressionStreams()
-                data = data.slice(magicStreamCompressedHeader.length)
+                data = data.subarray(magicStreamCompressedHeader.length)
                 const cs = new DecompressionStream('gzip');
                 const writer = cs.writable.getWriter();
                 writer.write(data as any);

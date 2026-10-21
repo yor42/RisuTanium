@@ -46,7 +46,7 @@ import { getPageStorageMode } from "../storage/pageStorageMode";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
 import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
 import { emptyImportFacts, outcomeOfBootFinish, type ExportFile, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
-import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, decodeBinDatabase, decodeBinDatabaseOmitted, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabase, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
+import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -1010,8 +1010,9 @@ function shownSkippedNames(names: readonly string[]): string[] {
 
 /**
  * What the restore of a `.bin` on a store2 page carries from its checks to its commit: the page's committer and
- * backend, where the cold-storage entries sit in the file, the database entry (decoded again at the commit), and the
- * guard that asks about unsaved edits once.
+ * backend, where the cold-storage entries sit in the file, the database entry (read from the file and decoded again at
+ * the commit, which may throw `BinFileChangedError`; no bytes or tree of it are kept here), and the guard that asks
+ * about unsaved edits once.
  */
 interface Store2BinImport {
     /** The page's committer and backend; null on a boot import, whose installer is `boot`. */
@@ -1019,7 +1020,6 @@ interface Store2BinImport {
     boot: BootImportTarget | null;
     index: ColdEntryIndex;
     entry: BackupIndexEntry;
-    databaseBytes: Uint8Array | null;
     guard: UnsavedGuard;
 }
 
@@ -1195,7 +1195,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     alertError('Failed, Is file corrupted?');
                     return refused();
                 }
-                store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
+                store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, guard: new UnsavedGuard() };
                 noteImportPhase('scanned');
                 if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength, scan.index.estimatedUnitBytes)) {
                     return declined();
@@ -1239,11 +1239,12 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             // The database is read and decoded before the tab lock is taken and
             // before the first asset is written: a file that cannot be decoded,
             // or whose left-out blocks the person declines, changes nothing.
+            // No database bytes or tree are held across the copy that follows:
+            // the commit reads the entry from the file again.
             if (store2Import !== null) {
                 alertWait('Reading the database in the backup...');
                 try {
-                    store2Import.databaseBytes = await readBinDatabase(file, store2Import.entry);
-                    const omitted = await decodeBinDatabaseOmitted(store2Import.databaseBytes);
+                    const omitted = await readBinDatabaseOmitted(file, store2Import.entry);
                     noteImportPhase('database decoded');
                     if (!await confirmLeftOut(omitted)) {
                         return declined();
@@ -1588,11 +1589,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 // saved version. The block-era tail below is not reached.
                 if (store2Import !== null) {
                     noteImportPhase('assets copied');
-                    const databaseBytes = store2Import.databaseBytes;
-                    if (databaseBytes === null) {
-                        alertError('Failed, Is file corrupted?');
-                        return refused();
-                    }
+                    const databaseEntry = store2Import.entry;
                     if (!releaseExclusiveHold) {
                         releaseDbWriteLock = await dbWriteLock.acquire();
                     }
@@ -1602,7 +1599,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                         noteImportPhase('loading backup, boot');
                         bootEnd = await commitBootImport({
                             target: store2Import.boot,
-                            decode: async () => (await decodeBinDatabase(databaseBytes)).tree,
+                            decode: () => readBinDatabaseTree(file, databaseEntry),
                             reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
                             onAccepted: (items) => { facts.incomplete = items; },
                         });
@@ -1636,7 +1633,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     const end = await commitStore2Import({
                         target: store2Import.target,
                         busy,
-                        decode: async () => (await decodeBinDatabase(databaseBytes)).tree,
+                        decode: () => readBinDatabaseTree(file, databaseEntry),
                         reader: createBinImportReader(file, store2Import.index),
                     });
                     switch (end.kind) {

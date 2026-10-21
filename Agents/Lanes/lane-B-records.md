@@ -9,7 +9,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 | Stage | Item | State |
 |---|---|---|
 | 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
-| 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103) | slim stage adopted (`MC-357`, `s2\advisor.md`); PC measurements m1 and m3 done (`s2\measure\report.md`, diagnostic, not yet verified); m2 once stage 1 is committed |
+| 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); awaiting the maintainer's commit approval (rows 2307 to 2318) |
 | 3 | Parallel large entries (`MC-328` 2) | not started |
 | 4 | Android batched asset reader for export (fit-map E1) | not started |
 
@@ -84,6 +84,26 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - **Alternative named to the maintainer, not chosen now:** keep the 16 MiB trigger and show the database and unit sizes separately in the sentence (a further string change).
 - **Related:** CHORE-194, `MC-355`, `MC-318` 6.
 
+### CHORE-103 (changed) — The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail
+
+**Status (2026-10-22, lane B stage 2, `MC-357`): OPEN, residual format-bound; uncommitted on `worktree-Lane-B` until the maintainer approves the commit.** Ledger rows 2307 to 2318. The earlier statuses in the Roadmap entry stand.
+
+- **What changed:**
+  - **No bytes held across the copy.** The `.bin` import no longer holds the database entry's bytes across the asset copy: `store2Import.databaseBytes` is gone. The validity probe reads and decodes through `readBinDatabaseOmitted`, and the boot and page commit closures through `readBinDatabaseTree` (`src/ts/drive/storeImport.ts`). Each of those reads the entry from the file again.
+  - **No copy in the decoder.** `decodeRisuSaveBranches` (`src/ts/storage/risuSave.ts`) reads the body as a view (`subarray`) instead of a copy in its compressed, raw and stream branches. That avoids a transient copy of the compressed body at every legacy decode, numbered backups included.
+  - **Three decoder logs removed.** These were `console.log` calls of `this.blocks`, the directory and the decoded `db` on the block-format path; desktop Chrome keeps a logged object's graph alive (m3, synthetic).
+- **Sizes on the Note 9 fixture** (synthetic, `m2-mix18k.bin`; m1 on the PC): the held bytes were 48.8 MiB, and the decode transient is 48.8 MiB lower. The decompressed buffer (170.8 MiB) and the decoded tree (about 176 to 181 MiB) remain at each decode. So the peak is format-bound and moves only with per-unit decoding (`MC-327` 12). No device measurement has been made after the change.
+- **Not changed:** the decode count (the validity probe plus the commit, and a rebuild on conflict) and the `.bin` layout, encoders and write paths.
+- **Related:** `MC-357`, `MC-328` 2, `MC-323` 2 lead 6; CHORE-221.
+
+### CHORE-221 — A `.bin` commit's salvage can leave out blocks the person did not confirm
+
+**Status (2026-10-22): open, candidate; not scheduled.** Source: the lane B stage 2 Gate 1 review (`%TEMP%\risu-lane-b\s2\gate1-r1.md`, non-binding note). It is a reviewer's reading, not independently verified by the orchestrator.
+
+- **Problem (reviewer's claim):** the left-out question (`MC-183`) is asked once, over the validity probe's decode. The commit decodes again, and for a block-format file `RisuSaveDecoder` reads `remotes/` from the app store at that time. So the commit's salvage can leave out blocks that the person never confirmed. Since stage 2 the commit also re-reads the entry from the file, so a same-length body change with an intact header (which the header re-check does not detect) falls in the same class.
+- **Possible fix named by the reviewer:** refuse as a changed file when the commit's left-out names are not a subset of the confirmed `facts.omitted`.
+- **Related:** `MC-183`, `MC-357`; CHORE-103.
+
 ## Ledger rows
 
 All scratch paths are under `%TEMP%\risu-lane-b\`, outside the repository.
@@ -98,8 +118,31 @@ All scratch paths are under `%TEMP%\risu-lane-b\`, outside the repository.
 | 2305 | 2026-10-21 | Stage 1 process deviations | orchestrator | this row | (1) The coder created `storeImportUnitBytes.svelte.test.ts` through a shell write before its exact grant existed; later edits went through Edit; Gate 2 found it all CRLF and in line with its sibling harnesses. Cause: the grant had not been registered before dispatch. (2) The coder ran its mutants by editing repository files and restoring them, against `MC-329` 3; Gate 2 found the SHA-256 values restored and replaced the evidence with hook-based mutants. (3) The full run rewrote the line endings of `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` (no content change); the orchestrator restored it. |
 | 2306 | 2026-10-22 | Stage 1 Gate 2 r1 | opus-reviewer | `s1\gate2-r1.md`, `s1\gate2\` logs | `[EDITORIAL]`. Executed: base red through an `enforce:'pre'` hook serving the base sources (8 failed: 6 of 7 new tests and both accessor tests); 10 hook mutants (a, a2, b, c, d, d2, e, f, g, h), each red; targeted 8 files, 192 passed; `pnpm check` 0/0; locale values equal `strings.md`. E1: the `confirmDatabaseSize` doc comment; applied by the orchestrator, then `pnpm check` 0/0 and line endings unchanged (CRLF). The full suite was not re-run (`MC-329` 4). |
 
+Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own count as reported at its completion; "not recorded" where the count is not available.
+
+| # | Date | Question | Tier(s) | Tokens | Escalated? | Outcome |
+|---|---|---|---|---|---|---|
+| 2307 | 2026-10-21 | Stage 2 sizing: what do the "read once / decode once" fixes buy? | investigator | not recorded | no | `s2\sizing.md`. Packet. Its header revision and the U4 sequencing warnings are stale (`MC-357` source). |
+| 2308 | 2026-10-21 | Verify the stage 2 sizing | doc-verifier | not recorded | no | `s2\sizing-verify.md`. 7 of 8 verified; claim 4 corrected. |
+| 2309 | 2026-10-21 | Challenge the stage 2 plan before Gate 1 | senior-advisor | not recorded | yes (expensive-to-reverse plan) | `s2\advisor.md`. Recommended the slim stage; adopted by the maintainer as `MC-357`. |
+| 2310 | 2026-10-21 | m1 and m3: decoded tree size, slice vs subarray, console retention (PC) | perf-analyzer | not recorded | no | `s2\measure\report.md`. Diagnostic. Tree about 176 to 181 MiB; `subarray` avoids a 48.8 MiB transient copy (peak only); `console.log` retains the logged graph in headless Chrome until `console.clear()`. |
+| 2311 | 2026-10-22 | Verify m1 and m3 | doc-verifier | 49,049 | no | Numbers verified against the raw files; 6 corrections (decompress range, RSS rounding and spread, console.clear source files, offset source, the transient saving, log-retention wording), applied by the orchestrator to `s2\measure\report.md`. |
+| 2312 | 2026-10-22 | m2: is the decoded tree collectable during the commit? (PC vitest) | perf-analyzer | 84,678 | no | `s2\m2\report.md`. Diagnostic. COLLECTED from 'import planned' on, 4 of 4 runs; positive control RETAINED. No ticket. Not separately verified; Gate 1 found its logs consistent. |
+| 2313 | 2026-10-22 | Stage 2 plan | orchestrator | not recorded | no | `s2\plan.md`. C1 to C3, T1 to T5, mutants 1 to 5; Gate 1 amendments folded in, with A4 resolved by adding the name comparison. |
+| 2314 | 2026-10-22 | Stage 2 Gate 1 r1 | opus-reviewer | 178,587 | no | `s2\gate1-r1.md`. `[APPROVE WITH AMENDMENTS]`, 5 binding: comment wording (raw-branch views alias the caller's bytes, executed in `gate1\alias.mjs`), T1 scope, T2/T3 inputs, claim accuracy, mutants 6 and 7. Candidate CHORE-221. |
+| 2315 | 2026-10-22 | Stage 2 implementation | sonnet-coder | 189,608 | no | `s2\impl\` logs. Red on base: T1 (4), T2/T3 (12) and the refusal unit cases (8 of the 10 new) failed for the intended reasons; T4 (6, a guard) passed. Green after. `pnpm check` 0/0; `pnpm test` 901 files passed, 1 skipped; 20,231 tests passed, 23 skipped; `pnpm build` exit 0. The snapshot line-ending rewrite was restored. Mutants 1, 2, 3, 6a to 6c and 8 were run through a scratch hook, each red. |
+| 2316 | 2026-10-22 | Stage 2 Gate 2 r1 | opus-reviewer | 155,278 | no | `s2\gate2-r1.md`, `s2\gate2\` logs. `[EDITORIAL]`. Mutants 4a to 4c, 5a to 5c, 7, 1' and the spot checks 2 and 8 were each red; the import-only control survived. A base-like run showed T2's page cases land and boot cases fail without the fix. Targeted 57/57 and adjacent 412/412 passed; `pnpm check` 0/0. E1, the T2/T3 header comment, was applied by the orchestrator, who also wrapped the A1 comment in `risuSave.ts` (same words). The full suite was not re-run (`MC-329` 4). |
+| 2317 | 2026-10-22 | Stage 1 checks on the bumped toolchain (vite 8.1.6, markdown-it 14.3.3) | orchestrator | not recorded | no | `s1\recheck\`. `pnpm test` 899 files passed, 1 skipped; 20,196 tests passed, 23 skipped; `pnpm check` 0/0; `pnpm build` exit 0; the same counts as before the bump. |
+| 2318 | 2026-10-22 | Verify the stage 2 records and commit message | doc-verifier | 63,166 | no | 14 claim groups: 11 verified, 1 wrong (row 2315's refusal red count: 8, not 10; corrected), 1 overstated (the commit message's round-trip sentence; reworded to what the logs show), token counts unverifiable. Its proposed trailer change was rejected: the session's required attribution is "Claude Opus 5.5". |
+
 ## Handoff
 
 2026-10-21: lane started; worktree clean at `74b28ddd1`; `pnpm install --frozen-lockfile` run in the worktree; this file created.
 
-2026-10-22: stage 1 is implemented and through both gates; it awaits records verification and the maintainer's commit approval. Stage 2 is the slim stage (`MC-357`). PC measurements m1 and m3 are done (`s2\measure\report.md`, a diagnostic run, not yet verified): the tree is about 176 to 181 MiB, `subarray` saves 48.8 MiB, and `console.log` retains the logged graph in headless Chrome. Next: m2 (a WeakRef probe of the tree during the commit, in a scratch test run) once stage 1 is committed, then the stage 2 plan and its Gate 1.
+2026-10-22: stage 1 is implemented and through both gates; it awaits records verification and the maintainer's commit approval. Stage 2 is the slim stage (`MC-357`). PC measurements m1 and m3 are done (`s2\measure\report.md`, a diagnostic run, not yet verified): the tree is about 176 to 181 MiB, `subarray` saves 48.8 MiB, and `console.log` retains the logged graph in headless Chrome. Next: m2 (a WeakRef probe of the tree during the commit, in a scratch test run) once stage 1 is committed, then the stage 2 plan and its Gate 1. (Superseded below; the `subarray` saving is a transient peak saving, per row 2311.)
+
+2026-10-22, later:
+- **Stage 1** is COMPLETE (lane A fold-in `ec4799fe4`).
+- **Stage 2** is implemented and through both gates, and its records are verified (rows 2307 to 2318). It awaits the maintainer's commit approval.
+- **The Note 9 calibration request** for `MC-355` 2 and CHORE-220 is in `device-requests\2026-10-22-stage1-stub-import-calibration.md`. Lane A queued it with CHORE-203 for one release MEASURE session on the second Note 9.
+- **Next:** stage 3, parallel large entries (`MC-328` 2).
