@@ -30,7 +30,8 @@ export function resolvePicked(entry: GridEntry, characters: readonly (character 
     return char ? { kind: 'char', char } : null
 }
 
-function samePick(a: Picked, b: Picked): boolean {
+/** Whether two picks stand for the same object (identity, never equal content). */
+export function samePick(a: Picked, b: Picked): boolean {
     if (a.kind === 'char' && b.kind === 'char') {
         return a.char === b.char
     }
@@ -167,6 +168,62 @@ export function groupPlan(
         return { ok: false, reason: 'loneFolder' }
     }
     return { ok: true, sources: kept }
+}
+
+export type DragPlan =
+    | { ok: true, sources: ItemRef[], keys: ReadonlySet<string>, count: number }
+    | { ok: false, reason: 'stale' | 'unlisted' }
+
+/**
+ * What a drag that began on `pressed` would move, from the live picks. The pressed tile must still
+ * stand for the object it stood for at the lift (`samePick` against the live entry): a tile key names
+ * a slot or an occurrence, and the stale-pick rule protects only selected tiles. A pressed tile that is
+ * selected drags the whole live selection; an unselected one drags only itself and is not added to the
+ * selection. A stale pick is skipped, and a member pick whose own folder tile is also moving adds
+ * nothing (matched by folder id and occurrence, that is by resolved position, never by id alone), so a
+ * folder moves once with its members. Any moved tile without an order entry refuses the whole drag,
+ * never a partial move. Sources and keys are in document order; `count` is the number of tiles moving,
+ * a folder counting once. Unlike `groupPlan`, a lone folder is a valid drag. Nothing is written.
+ */
+export function dragPlan(
+    selection: ReadonlyMap<string, Picked>,
+    entries: readonly GridEntry[],
+    entryByKey: ReadonlyMap<string, GridEntry>,
+    characters: readonly (character | groupChat)[],
+    order: readonly OrderEntry[] | undefined,
+    pressed: { key: string, picked: Picked },
+): DragPlan {
+    const pressedEntry = entryByKey.get(pressed.key)
+    const pressedNow = pressedEntry ? resolvePicked(pressedEntry, characters, order) : null
+    if (!pressedNow || !samePick(pressedNow, pressed.picked)) {
+        return { ok: false, reason: 'stale' }
+    }
+    const stale = new Set(stalePickedKeys(selection, entryByKey, characters, order))
+    const moving = new Set<string>()
+    if (selection.has(pressed.key) && !stale.has(pressed.key)) {
+        for (const key of selection.keys()) {
+            if (!stale.has(key)) {
+                moving.add(key)
+            }
+        }
+    } else {
+        moving.add(pressed.key)
+    }
+    const chosen = entries.filter((entry) => moving.has(entry.key))
+    if (chosen.some((entry) => !entry.ref)) {
+        return { ok: false, reason: 'unlisted' }
+    }
+    const folders = chosen.flatMap((entry) => entry.ref?.kind === 'folder' ? [entry.ref] : [])
+    const kept = chosen.filter((entry) => {
+        const owner = entry.ref?.kind === 'member' ? entry.ref.folder : null
+        return !owner || !folders.some((folderRef) => folderRef.id === owner.id && folderRef.occurrence === owner.occurrence)
+    })
+    return {
+        ok: true,
+        sources: kept.flatMap((entry) => entry.ref ? [entry.ref] : []),
+        keys: new Set(kept.map((entry) => entry.key)),
+        count: kept.length,
+    }
 }
 
 /**

@@ -12,7 +12,7 @@ import { describe, expect, test } from 'vitest'
 import type { character, folder } from '../../ts/storage/database.svelte'
 import type { CharacterMatch } from '../../ts/gui/characterSearch'
 import { buildGridEntries, type GridEntry } from './charListOrder'
-import { actingPicks, canEdit, chooseRowForms, gestureRef, groupPlan, resolvePicked, stalePickedKeys, type Picked } from './charListEdit'
+import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, resolvePicked, samePick, stalePickedKeys, type Picked } from './charListEdit'
 
 const makeChar = (chaId: string, name: string): character => ({ chaId, name, type: 'character' }) as unknown as character
 const match = (index: number, chaId: string, n = 0): CharacterMatch => ({ index, chaId, key: JSON.stringify(['s', chaId, n]) })
@@ -256,5 +256,170 @@ describe('gestureRef', () => {
         const flat = buildGridEntries({ live: [match(0, 'a')], order: ['a'], openFolderIds: new Set(), sort: 'recent', searching: false })[0]
         expect((flat as { ref: unknown }).ref).toBeNull()
         expect(gestureRef(flat)).toEqual({ kind: 'char', id: flat.key, occurrence: 0 })
+    })
+})
+
+describe('samePick', () => {
+    test('two picks are the same only when they stand for the identical object', () => {
+        const a = makeChar('a', 'A')
+        const f1 = makeFolder('f1', ['a'])
+        expect(samePick({ kind: 'char', char: a }, { kind: 'char', char: a })).toBe(true)
+        expect(samePick({ kind: 'char', char: a }, { kind: 'char', char: { ...a } })).toBe(false)
+        expect(samePick({ kind: 'folder', folder: f1 }, { kind: 'folder', folder: f1 })).toBe(true)
+        expect(samePick({ kind: 'folder', folder: f1 }, { kind: 'folder', folder: { ...f1 } })).toBe(false)
+        expect(samePick({ kind: 'char', char: a }, { kind: 'folder', folder: f1 })).toBe(false)
+    })
+})
+
+describe('dragPlan', () => {
+    const chars = [makeChar('a', 'A'), makeChar('b', 'B'), makeChar('c', 'C'), makeChar('d', 'D')]
+    const live = [match(0, 'a'), match(1, 'b'), match(2, 'c'), match(3, 'd')]
+    const slotKey = (chaId: string) => JSON.stringify(['s', chaId, 0])
+    const charRef = (id: string) => ({ kind: 'char', id, occurrence: 0 })
+
+    const select = (entries: Map<string, GridEntry>, order: (string | folder)[], keys: string[]): Map<string, Picked> => {
+        const selection = new Map<string, Picked>()
+        for (const key of keys) {
+            selection.set(key, resolvePicked(entries.get(key)!, chars, order)!)
+        }
+        return selection
+    }
+    const folderKeyOf = (entries: Map<string, GridEntry>, id: string, occurrence = 0): string =>
+        [...entries.values()].find((e) => e.kind === 'folder' && e.id === id && e.ref.occurrence === occurrence)!.key
+    /** The plan for a press on `pressedKey`, whose identity is read from the same entries (a press that stood). */
+    const plan = (selection: Map<string, Picked>, entries: Map<string, GridEntry>, order: (string | folder)[], pressedKey: string) =>
+        dragPlan(selection, [...entries.values()], entries, chars, order, { key: pressedKey, picked: resolvePicked(entries.get(pressedKey)!, chars, order)! })
+
+    test('R-plan-1 an unselected pressed tile drags only itself and the selection stays as it is', () => {
+        const order = ['a', 'b', 'c', 'd']
+        const entries = tiles(live, order)
+        const selection = select(entries, order, [slotKey('a'), slotKey('b')])
+        const result = plan(selection, entries, order, slotKey('c'))
+        expect(result).toEqual({ ok: true, sources: [charRef('c')], keys: new Set([slotKey('c')]), count: 1 })
+        expect([...selection.keys()]).toEqual([slotKey('a'), slotKey('b')])
+    })
+
+    test('R-plan-1 a selected pressed tile drags the whole live selection, in document order whatever the pick order', () => {
+        const order = ['a', 'b', 'c', 'd']
+        const entries = tiles(live, order)
+        const selection = select(entries, order, [slotKey('d'), slotKey('a'), slotKey('c')])
+        const result = plan(selection, entries, order, slotKey('c'))
+        expect(result).toEqual({ ok: true, sources: [charRef('a'), charRef('c'), charRef('d')], keys: new Set([slotKey('a'), slotKey('c'), slotKey('d')]), count: 3 })
+        expect(result.ok && [...result.keys]).toEqual([slotKey('a'), slotKey('c'), slotKey('d')])
+    })
+
+    test('R-plan-1 a pick that went stale is skipped', () => {
+        const order = ['a', 'b', 'c', 'd']
+        const selection = select(tiles(live, order), order, [slotKey('a'), slotKey('b')])
+        const after = ['a', 'c', 'd']
+        const entries = tiles([match(0, 'a'), match(2, 'c'), match(3, 'd')], after)
+        const result = dragPlan(selection, [...entries.values()], entries, chars, after, { key: slotKey('a'), picked: { kind: 'char', char: chars[0] } })
+        expect(result).toEqual({ ok: true, sources: [charRef('a')], keys: new Set([slotKey('a')]), count: 1 })
+    })
+
+    test('R-plan-1 a member picked with its own folder rides with the folder: one source, counted once', () => {
+        const order = [makeFolder('f1', ['a', 'b']), 'c', 'd']
+        const entries = tiles(live, order, ['f1'])
+        const f1 = folderKeyOf(entries, 'f1')
+        const selection = select(entries, order, [slotKey('a'), f1, slotKey('c'), slotKey('b')])
+        const result = plan(selection, entries, order, f1)
+        expect(result).toEqual({
+            ok: true,
+            sources: [{ kind: 'folder', id: 'f1', occurrence: 0 }, charRef('c')],
+            keys: new Set([f1, slotKey('c')]),
+            count: 2,
+        })
+    })
+
+    test('R-plan-1 a member is dropped by the resolved position of its folder, never by the folder id alone', () => {
+        const order = [makeFolder('f1', ['a']), makeFolder('f1', ['b', 'c']), 'd']
+        const entries = tiles(live, order, ['f1'])
+        const first = folderKeyOf(entries, 'f1', 0)
+        const selection = select(entries, order, [first, slotKey('b')])
+        const result = plan(selection, entries, order, first)
+        expect(result.ok && result.sources).toEqual([
+            { kind: 'folder', id: 'f1', occurrence: 0 },
+            { kind: 'member', folder: { kind: 'folder', id: 'f1', occurrence: 1 }, id: 'b', occurrence: 0 },
+        ])
+        expect(result.ok && result.count).toBe(2)
+    })
+
+    test('R-plan-1 a member of one folder is kept when only a different folder with another id moves', () => {
+        const order = [makeFolder('f1', ['a']), makeFolder('g1', ['b']), 'c', 'd']
+        const entries = tiles(live, order, ['f1', 'g1'])
+        const f1 = folderKeyOf(entries, 'f1')
+        const selection = select(entries, order, [f1, slotKey('b')])
+        const result = plan(selection, entries, order, f1)
+        expect(result.ok && result.sources).toEqual([
+            { kind: 'folder', id: 'f1', occurrence: 0 },
+            { kind: 'member', folder: { kind: 'folder', id: 'g1', occurrence: 0 }, id: 'b', occurrence: 0 },
+        ])
+        expect(result.ok && result.count).toBe(2)
+    })
+
+    test('R-plan-1 a lone folder is a valid drag, unlike Group', () => {
+        const order = [makeFolder('f1', ['a']), 'b']
+        const entries = tiles(live, order)
+        const f1 = folderKeyOf(entries, 'f1')
+        expect(plan(select(entries, order, [f1]), entries, order, f1)).toEqual({ ok: true, sources: [{ kind: 'folder', id: 'f1', occurrence: 0 }], keys: new Set([f1]), count: 1 })
+        expect(plan(new Map(), entries, order, f1)).toMatchObject({ ok: true, count: 1 })
+    })
+
+    test('R-plan-1 a tile with no order entry refuses the whole drag, whether it is pressed or only selected', () => {
+        const order = ['a', 'b']
+        const entries = tiles(live, order)
+        expect(plan(new Map(), entries, order, slotKey('c'))).toEqual({ ok: false, reason: 'unlisted' })
+        const selection = select(entries, order, [slotKey('a'), slotKey('d')])
+        expect(plan(selection, entries, order, slotKey('a'))).toEqual({ ok: false, reason: 'unlisted' })
+        const flat = new Map(buildGridEntries({ live, order, openFolderIds: new Set(), sort: 'recent', searching: false }).map((entry) => [entry.key, entry]))
+        expect(plan(new Map(), flat, order, slotKey('a'))).toEqual({ ok: false, reason: 'unlisted' })
+    })
+
+    test('R-plan-1 N counts a folder once whether it moves whole or dissolves, and members riding with it not at all', () => {
+        const order = [makeFolder('f1', ['a', 'b']), makeFolder('f2', ['c']), 'd']
+        const entries = tiles(live, order, ['f1', 'f2'])
+        const f1 = folderKeyOf(entries, 'f1')
+        const f2 = folderKeyOf(entries, 'f2')
+        const selection = select(entries, order, [f1, f2, slotKey('a'), slotKey('b'), slotKey('c'), slotKey('d')])
+        const result = plan(selection, entries, order, f2)
+        expect(result.ok && result.count).toBe(3)
+        expect(result.ok && result.sources).toHaveLength(3)
+    })
+
+    test('R-plan-2 a pressed key that now names another object is not ok', () => {
+        const order = ['a', 'b', 'c']
+        const entries = tiles(live, order)
+        const stood = resolvePicked(entries.get(slotKey('b'))!, chars, order)!
+        const replaced = [chars[0], makeChar('b', 'B again'), chars[2], chars[3]]
+        const result = dragPlan(new Map(), [...entries.values()], entries, replaced, order, { key: slotKey('b'), picked: stood })
+        expect(result).toEqual({ ok: false, reason: 'stale' })
+        expect(dragPlan(new Map(), [...entries.values()], entries, chars, order, { key: slotKey('b'), picked: stood }).ok).toBe(true)
+    })
+
+    test('R-plan-2 a pressed folder replaced by a same-id twin, or a pressed tile that left the entries, is not ok', () => {
+        const original = makeFolder('f1', ['a'])
+        const order = [original, 'b']
+        const entries = tiles(live, order)
+        const f1 = folderKeyOf(entries, 'f1')
+        const stood = resolvePicked(entries.get(f1)!, chars, order)!
+        const twinOrder = [makeFolder('f1', ['a']), 'b']
+        const twinEntries = tiles(live, twinOrder)
+        expect(dragPlan(new Map(), [...twinEntries.values()], twinEntries, chars, twinOrder, { key: f1, picked: stood })).toEqual({ ok: false, reason: 'stale' })
+        const gone = tiles([match(1, 'b')], ['b'])
+        expect(dragPlan(new Map(), [...gone.values()], gone, chars, ['b'], { key: f1, picked: stood })).toEqual({ ok: false, reason: 'stale' })
+    })
+
+    test('R-plan-2 a pressed tile whose own pick went stale drags alone', () => {
+        const order = ['a', 'b', 'c']
+        const entries = tiles(live, order)
+        const selection = select(entries, order, [slotKey('a'), slotKey('b')])
+        const replaced = [makeChar('a', 'A again'), chars[1], chars[2], chars[3]]
+        const pressedNow = resolvePicked(entries.get(slotKey('a'))!, replaced, order)!
+        expect(dragPlan(selection, [...entries.values()], entries, replaced, order, { key: slotKey('a'), picked: pressedNow })).toEqual({
+            ok: true,
+            sources: [charRef('a')],
+            keys: new Set([slotKey('a')]),
+            count: 1,
+        })
     })
 })
