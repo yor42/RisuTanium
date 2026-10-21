@@ -10791,3 +10791,32 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Observation, not a decision: no Risu package was installed on the Note 9 at survey time (`pm list packages`, an investigator).
 - Item 3: the evidence is `MC-326` 7 and the constant's value in the source; the stage 4b flip evidence is in the Roadmap.
 - Nothing here authorizes application-code edits, or any commit or push.
+
+### MC-334 — Session resume, 2026-10-21 (second pass): stub-export measurement, trashed characters inline and landing, the scratch cleanup, and a correction to MC-333 1
+
+- **Tag:** decisions (`AskUserQuestion` answers relayed by the orchestrator, 2026-10-21: items 1, 2, 4 and 5), plus a correction (item 3)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session's pending-decisions file (`decisions-2026-10-21-pending.md`, scratch), section "Pending MC-334", items 1 to 6, which holds the answers and option texts relayed by the orchestrator. Scratch evidence is outside the repository. The item numbers here follow that section, so the stub-export reports that cite "MC-334 pending item 1" and "item 4" match items 1 and 4 below.
+- **Related:** `MC-333` 1 and 3, `MC-326` 6 and 7, `MC-318` 6 and 7, `MC-324` 1, `MC-330` 7, `MC-175`.
+
+1. **Stub-export flip measurement: "PC now, Note 9 batched (Recommended)".** Before the flip lands, run a PC export with 500 characters in both forms. The Note 9 figure goes into the next planned device session, using the new device scripts (`MC-333` 4).
+2. **Scratch cleanup, approved 2026-10-21 as three groups.** A multi-select question (header "Cleanup"). Chosen: "Old cargo targets (Recommended)", "D6c + tail .bin (Recommended)" and "Old APKs". Not chosen: "mc323 fixtures". The question stated that every `.md` report and result file is kept regardless. Done: 14 old cargo target directories, `s4\d6c\gen\*.bin`, `ioarch\tail\*.bin` and the `s4b` APKs deleted; 70.6 GiB freed. Kept: the `mc323` fixtures, `cargo-target-android-debug` and all `.md` and `.json` files.
+3. **Correction to `MC-333` 1: the plugin-index answer amends both A4 and A5.** `MC-333` 1 names A4 only. The answer ("Missing = nothing to keep") amends A4 (the store2 old-data walk) and A5 (manual cleanup's `addTree`). This was found by the plugin-index Gate 1 round 1 (finding 10, `[APPROVE WITH AMENDMENTS]`, `pluginidx\gate1-r1.md`, scratch). `MC-333` 1 is not rewritten; this item states the scope.
+4. **Stub-export flip, trashed characters: "Export trashed inline (Recommended)".** Answer to stub-flip Gate 1 round 1 finding 1. Trashed characters always go inline and everything else uses stub form. Upstream then behaves as it does today for trash, at a little more export memory for those characters (trash is usually small).
+5. **Stub-export flip landing, after the PC measurement: "Land as is (Recommended)".** The question reported: stub file 2.18 times larger (43 -> 94 MB), peak JS heap 202 -> 145 MiB, on the i9-13900KF best-case hardware, n=3. Commit and push the 7 files. Upstream's own stub exports have the same size profile, and memory is the phone constraint. File size goes on the list for the faster or native export work (`MC-326` 6).
+
+**Notes that are not the maintainer's words:**
+- The option descriptions as offered, from the pending file (orchestrator's text):
+  - Item 1. Chosen: "a PC run with 500 characters in both forms before landing; the Note 9 figure goes into the next planned device session, using the new scripts."
+  - Item 4. Chosen: "trashed characters always go inline; everything else uses stub form; upstream behaves the same as today for trash, at a little more export memory for those characters (trash is usually small)." Not chosen: "Accept the divergence" (all unloaded characters stub; the upstream-mobile open-while-trashed un-trash recorded as a known limitation).
+  - Item 5. Chosen: "commit and push the 7 files; upstream's own stub exports have the same size profile and memory is the phone constraint; file size goes on the list for the faster/native export work (MC-326 6)." Not chosen: "Land, ticket compression" and "Hold the flip".
+- The figures in item 5 come from the PC report (`stubflip\pc\results.md`, `doc-verifier` PASS WITH FIXES, corrections appended): synthetic fixture of 500 characters, 1,173 chats and 3,000 assets of 4 KiB, headless Chrome on one i9-13900KF, n=3 per form, medians; the pre-click heap differs between the forms, the 500 ms sampling can miss short spikes (peaks are lower bounds), and no phone or frame-budget claim is made. The Note 9 figure is not measured.
+- Orchestrator rulings, not asked of the maintainer:
+  - The guard that exports a character whole when its chats name a cold-storage root is a technical fail-safe, not a product decision.
+  - `keepFromOlderCopies` and `database/database.bin` stay fail-closed under item 3: older confirmed-kept copies stay fail-closed, `database/database.bin` counts as live, and no new string is added.
+  - The S2 upstream-compatibility leg gates landing the flip, together with Gate 2 and the PC measurement.
+- The two commits, both on `main` and pushed (the orchestrator's report; the messages hold the gates and checks):
+  - `4a4ddf050`, "a snapshot-only missing plugin index keeps nothing, so cleanup can run" (`MC-333` 1): Gate 1 `opus-reviewer` `[APPROVE WITH AMENDMENTS]`, Gate 2 `opus-reviewer` `[EDITORIAL]`; `pnpm test` 20127 passed, 23 skipped, `pnpm check` 0/0, build and `checkReleaseDist` pass.
+  - `b781b1f35`, "export unloaded characters in stub form by default; trashed and cold-root characters stay inline" (`MC-326` 7, items 1, 4 and 5 above): Gate 1 `opus-reviewer` `[REJECT]` then `[APPROVE]` with seven amendments, Gate 2 `opus-reviewer` `[REJECT]` (one owed legacy-page import guard) then `[EDITORIAL]`; `pnpm test` 20187 passed, 23 skipped, `pnpm check` 0/0, build and `checkReleaseDist` pass.
+- Nothing here authorizes application-code edits, or any commit or push, beyond the two commits listed.
