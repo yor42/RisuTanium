@@ -43,7 +43,11 @@ import { currentCharacterNames, leftOutQuestion } from './restoreReplace'
  *    `dbWriteLock` closed for the life of the page: a save from the pre-import state must never follow it.
  */
 
-/** A database entry above this many bytes is announced before it is decoded: the decode needs several times its size. */
+/**
+ * Saved data above this many bytes is announced before it is decoded: the decode needs several times its size. For a
+ * `.bin` import the bytes are the database entry plus the estimated unit entries; for a numbered backup restore they
+ * are the database bytes.
+ */
 export const IMPORT_SIZE_WARNING_BYTES = 16 * 1024 * 1024
 
 const DATABASE_ENTRY_NAME = 'database.risudat'
@@ -324,7 +328,10 @@ export async function decodeNumberedBackup(bytes: Uint8Array): Promise<DecodedBa
     return { tree: db, omitted }
 }
 
-/** Announces a large database entry before it is decoded; false when the person declines. */
+/**
+ * Announces a large amount of saved data before it is decoded: for a `.bin` import the database entry plus the
+ * estimated unit entries, for a numbered backup restore the database bytes. False when the person declines.
+ */
 export async function confirmDatabaseSize(byteLength: number, threshold: number = IMPORT_SIZE_WARNING_BYTES): Promise<boolean> {
     if (byteLength <= threshold) {
         return true
@@ -335,18 +342,23 @@ export async function confirmDatabaseSize(byteLength: number, threshold: number 
 /**
  * The one question before an import writes anything, asked once the file is walked and its database entry located. A
  * store2 page on an Android phone with more than `IMPORT_TIME_WARNING_BYTES` of assets gets the time and space notice,
- * which carries the database-size sentence when the database is over the size threshold too (one prompt, not two).
+ * which carries the saved-data size sentence when the saved data is over the size threshold too (one prompt, not two).
+ * The saved data is the database entry plus `unitBytes`, the estimated bytes of the unit entries the resolve reads:
+ * a stub-form file keeps most of its characters and chats there. The size sentence and the long commit tail key on
+ * that sum; the asset bytes (copy time, free space, the notice threshold) are the file less the database entry, so
+ * they still include the units, which are re-encoded into the page's store.
  * Everything else keeps `confirmDatabaseSize` and its text. The notice belongs to store2 pages only: the block and
  * legacy page modes are fork-local transitional storage modes with no commit tail to estimate, and keep their prompts
  * (block-mode helpers are removed in stage 8). False when the person declines; nothing has been written.
  */
-export async function confirmImportScale(fileSize: number, entries: number, databaseBytes: number): Promise<boolean> {
+export async function confirmImportScale(fileSize: number, entries: number, databaseBytes: number, unitBytes: number): Promise<boolean> {
     const assetBytes = importAssetBytes(fileSize, databaseBytes)
+    const savedDataBytes = databaseBytes + unitBytes
     if (transportKind() !== 'android' || assetBytes <= IMPORT_TIME_WARNING_BYTES) {
-        return await confirmDatabaseSize(databaseBytes)
+        return await confirmDatabaseSize(savedDataBytes)
     }
-    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, databaseBytes))
-    const databaseMegabytes = databaseBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(databaseBytes / (1024 * 1024)) : null
+    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, savedDataBytes))
+    const databaseMegabytes = savedDataBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(savedDataBytes / (1024 * 1024)) : null
     return await alertConfirm(language.store2ImportTimeWarning(entries, minutes, importGigabytesText(importFreeSpaceBytes(assetBytes)), databaseMegabytes))
 }
 

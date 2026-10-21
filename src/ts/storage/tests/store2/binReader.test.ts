@@ -463,6 +463,28 @@ describe('indexing', () => {
         expect(index.get(U2)).toEqual([])
     })
 
+    test('estimatedUnitBytes is a name-only estimate: the entry tried first per id (the last noted) counts once, other names count nothing', () => {
+        const index = new ColdEntryIndex()
+        const at = (headerOffset: number, dataLength: number) => ({ headerOffset, headerLength: 8, nameLength: 0, dataLength })
+        expect(index.estimatedUnitBytes).toBe(0)
+        index.note(at(0, 100), `coldstorage_${U1}.json`)
+        index.note(at(200, 7), `coldstorage_${U1}.json`)
+        index.note(at(400, 1000), `coldstorage_${U2}.json`)
+        index.note(at(600, 5000), 'assets/x.png')
+        index.note(at(800, 5000), 'database.risudat')
+        expect(index.estimatedUnitBytes).toBe(7 + 1000)
+    })
+
+    test('guard: an entry name over the 64-byte limit is never noted, so it adds no estimated unit bytes', async () => {
+        const bytes = binOf([
+            { name: 'assets/' + 'n'.repeat(200), data: 'a'.repeat(50) },
+            { name: `coldstorage_${U1}.json`, data: JSON.stringify(CHAT) },
+        ])
+        const walk = await indexBackupEntries(blobOf(bytes))
+        const index = await indexColdEntries(blobOf(bytes), walk.entries)
+        expect(index.estimatedUnitBytes).toBe(chatLength())
+    })
+
     test('a header that is not what the walk saw, or the marker, stops the index', async () => {
         const bytes = binOf([{ name: `coldstorage_${U1}.json`, data: JSON.stringify(CHAT) }])
         const walk = await indexBackupEntries(blobOf(bytes))

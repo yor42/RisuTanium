@@ -2261,9 +2261,9 @@ export const languageChineseTraditional = {
     "store2RestoreDone": "較早的版本已還原。您之前使用的版本仍保留在清單中。正在重新整理應用程式。",
     "store2RestoreOldRow": (when: string) => `舊版：${when}`,
     "store2ImportSizeWarning": (megabytes: number) =>
-        `此備份中的資料庫約為 ${megabytes} MB。讀取它需要數倍於此的記憶體，因此手機或其他小型裝置可能會記憶體不足而停止運作。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
+        `此備份中的資料（不含圖片和其他檔案）約為 ${megabytes} MB。讀取它需要數倍於此的記憶體，因此手機或其他小型裝置可能會記憶體不足而停止運作。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
     "store2ImportTimeWarning": (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null) =>
-        `此備份包含 ${entries} 個檔案。從現在開始，在這支手機上匯入它可能需要約 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小時` : `${minutes} 分鐘`}，甚至更久。這是根據中階手機得出的估計，您的手機可能更快或更慢，低階手機可能慢得多。請在匯入完成前保持應用程式開啟。\n\n匯入需要這支手機上約 ${neededGigabytes} GB 的可用空間。應用程式無法檢查目前有多少可用空間。${databaseMegabytes === null ? '' : `此備份中的資料庫約為 ${databaseMegabytes} MB，讀取它需要數倍於此的記憶體，因此手機可能會記憶體不足而停止運作。`}檔案複製完成後，最後可能仍會出現一個詢問。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
+        `此備份包含 ${entries} 個檔案。從現在開始，在這支手機上匯入它可能需要約 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小時` : `${minutes} 分鐘`}，甚至更久。這是根據中階手機得出的估計，您的手機可能更快或更慢，低階手機可能慢得多。請在匯入完成前保持應用程式開啟。\n\n匯入需要這支手機上約 ${neededGigabytes} GB 的可用空間。應用程式無法檢查目前有多少可用空間。${databaseMegabytes === null ? '' : `此備份中的資料（不含圖片和其他檔案）約為 ${databaseMegabytes} MB，讀取它需要數倍於此的記憶體，因此手機可能會記憶體不足而停止運作。`}檔案複製完成後，最後可能仍會出現一個詢問。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
     "store2ImportIncompleteConfirm": (items: string) =>
         `此備份中的部分資料無法完整匯入：\n\n${items}\n\n匯入後，這些部分將為空白或缺失。您目前的資料會保留在較早儲存的版本清單中。仍要匯入嗎？`,
     "store2ImportReadFailed": "備份的一部分或您已儲存資料的一部分無法讀取，因此沒有匯入任何內容。您目前的資料沒有變更。",

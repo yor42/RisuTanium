@@ -76,6 +76,19 @@ export class ColdEntryIndex {
     get size(): number {
         return this.places.size
     }
+
+    /**
+     * A name-only estimate of the bytes the unit entries hold: the data length of the entry the reader tries first for
+     * each id (the last one noted), summed. It reads no body, so it over-counts orphan units and bodies the reader would
+     * reject, and under-counts units a fallback serves (they are not in the file) and ids served by an earlier entry.
+     */
+    get estimatedUnitBytes(): number {
+        let total = 0
+        for (const list of this.places.values()) {
+            total += list[list.length - 1].dataLength
+        }
+        return total
+    }
 }
 
 async function sliceBytes(file: Blob, start: number, length: number, name: string): Promise<Uint8Array> {

@@ -1197,7 +1197,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 }
                 store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, databaseBytes: null, guard: new UnsavedGuard() };
                 noteImportPhase('scanned');
-                if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength)) {
+                if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength, scan.index.estimatedUnitBytes)) {
                     return declined();
                 }
             }
