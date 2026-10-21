@@ -76,7 +76,7 @@ import { resetAddedModelsForTests, seedProviderLists, setProviderList } from 'sr
 import { resetModelDataForTests, seedLiteLLMForTests } from 'src/ts/model/modelData/modelDataService.svelte'
 import ModelList from './ModelList.svelte'
 
-const BUILTIN_ID = 'gemini-3.6-flash'
+const BUILTIN_ID = 'gemini-flash-latest'
 const DATASET_ID = 'gpt-zz-dataset'
 const PROVIDER_ID = 'gpt-zz-provider'
 const BOTH_ID = 'gpt-zz-both'

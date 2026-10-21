@@ -66,7 +66,7 @@ import ModelList from './ModelList.svelte'
 const RETIRED_ID = 'claude-3-opus-20240229'
 const REDIRECTED_ID = 'gemini-3.7-flash'
 const DEPRECATED_ID = 'claude-sonnet-4-5-20250929'
-const OK_ID = 'gemini-3.6-flash'
+const OK_ID = 'gemini-flash-latest'
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
 const bound = $state({ value: '' })

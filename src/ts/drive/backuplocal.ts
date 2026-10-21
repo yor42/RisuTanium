@@ -6,6 +6,7 @@ import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPr
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
+import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
@@ -28,6 +29,8 @@ import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
+import { convertPluginStorageIndex } from "../process/pluginStorageIndex";
+import { v4 } from "uuid";
 import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
@@ -70,7 +73,14 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
     const lateRoots = listColdBackupRoots(dbWithoutAccount).filter((root) => !plugin.ids.has(root.key))
-    const dbData = encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
+    // Upstream's SaveKV namespaces can only travel in upstream's block format. The field is deleted from the
+    // export copy (a present key with no value would still be written), so a tree without namespaces encodes
+    // to the same bytes as a tree without the field.
+    const kvBlocks = db.upstreamKvBlocks
+    delete dbWithoutAccount.upstreamKvBlocks
+    const dbData = typeof kvBlocks === 'object' && kvBlocks !== null && Object.keys(kvBlocks).length > 0
+        ? writeRisuSaveV0(dbWithoutAccount, kvBlocks)
+        : encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
     const stubPayloads = stubEntriesInTree(dbWithoutAccount.characters, cold.stubEntries)
     // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
     // A minted uuid names an entry this export writes, never a unit of the page's store.
@@ -1675,6 +1685,18 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 }
                 facts.omitted = omitted;
                 const missingColdStorageKeys:string[] = []
+                // An upstream plugin storage index becomes per-key `_coldplugin` units here, after every unit entry was
+                // written and before the presence check below, so the installed tree never holds the pointer; whatever
+                // the conversion could not place joins the keys the question below reports.
+                const indexConversion = await convertPluginStorageIndex(dbData.pluginCustomStorage, {
+                    read: readColdStorageItem,
+                    write: setColdStorageItem,
+                    mint: v4,
+                })
+                for(const key of indexConversion.minted){
+                    restoredColdStorageKeys.add(key)
+                }
+                missingColdStorageKeys.push(...indexConversion.missing)
                 // A plugin storage unit is present whatever value it holds;
                 // chat and character units must also be chat or character shaped.
                 const pluginColdStorageKeys = new Set(listColdPluginStorageKeys(dbData))

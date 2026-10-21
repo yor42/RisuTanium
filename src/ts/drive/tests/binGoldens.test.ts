@@ -34,6 +34,8 @@ const platformBox = vi.hoisted(() => {
 })
 
 const setDatabaseMock = vi.hoisted(() => vi.fn())
+const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
+const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string) => true))
 const alertErrorMock = vi.hoisted(() => vi.fn())
 
@@ -81,7 +83,7 @@ vi.mock('src/ts/vendor/streamSaver', () => ({
             ready: Promise.resolve(),
             writable: {
                 getWriter: () => ({
-                    write: async () => { },
+                    write: async (chunk: Uint8Array) => { backupSink.writes.push(chunk.slice()) },
                     close: async () => { },
                 }),
             },
@@ -90,7 +92,7 @@ vi.mock('src/ts/vendor/streamSaver', () => ({
 }))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
-    getDatabase: vi.fn(() => ({}) as unknown as Database),
+    getDatabase: getDatabaseMock,
     setDatabase: setDatabaseMock,
     presetTemplate: { name: 'test-preset' },
     defaultSdDataFunc: vi.fn(() => ({})),
@@ -256,7 +258,8 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
-import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { LoadLocalBackup, SaveLocalBackup } from 'src/ts/drive/backuplocal'
+import { decodeRisuSave, isBlockFormatSave } from 'src/ts/storage/risuSave'
 import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
@@ -298,8 +301,17 @@ interface RestoredDatabase {
     characters: RestoredCharacter[]
     modules: Record<string, unknown>[]
     botPresets: Record<string, unknown>[]
-    pluginCustomStorage?: { _coldplugin?: Record<string, string> }
+    pluginCustomStorage?: { _coldplugin?: Record<string, string>, _coldpluginIndex?: unknown }
+    upstreamKvBlocks?: Record<string, unknown>
 }
+
+/** The unit ids of the plugin-index goldens (`Agents/Tools/save-gen/binGoldens.harness.ts`). */
+const INDEX_ID = {
+    index: '00000000-0000-4000-8000-0000000000b1',
+    large: '00000000-0000-4000-8000-0000000000b2',
+    shadowed: '00000000-0000-4000-8000-0000000000b3',
+    kept: '00000000-0000-4000-8000-0000000000b4',
+} as const
 
 function readGolden(name: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, name)))
@@ -327,6 +339,33 @@ async function restoreBytes(bytes: Uint8Array): Promise<RestoredDatabase> {
     return setDatabaseMock.mock.calls[0][0] as RestoredDatabase
 }
 
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+    let offset = 0
+    for (const part of parts) {
+        out.set(part, offset)
+        offset += part.length
+    }
+    return out
+}
+
+/** The `database.risudat` entry of a written backup: entries are `[u32 nameLength][name][u32 dataLength][data]`. */
+function databaseEntryOf(container: Uint8Array): Uint8Array {
+    const view = new DataView(container.buffer, container.byteOffset, container.byteLength)
+    let offset = 0
+    while (offset < container.length) {
+        const nameLength = view.getUint32(offset, true)
+        const name = new TextDecoder().decode(container.subarray(offset + 4, offset + 4 + nameLength))
+        const dataLength = view.getUint32(offset + 4 + nameLength, true)
+        const start = offset + 8 + nameLength
+        if (name === 'database.risudat') {
+            return container.slice(start, start + dataLength)
+        }
+        offset = start + dataLength
+    }
+    throw new Error('the backup has no database entry')
+}
+
 function character(db: RestoredDatabase, chaId: string): RestoredCharacter {
     const found = db.characters.find((c) => c.chaId === chaId)
     if (!found) {
@@ -348,6 +387,11 @@ function incompleteRestorePrompts(): string[] {
     return alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((t) => t.startsWith('Cold storage data') && t.includes('incomplete restore'))
 }
 
+/** The questions that name left-out (unreadable) blocks of the file being restored. */
+function leftOutPrompts(): string[] {
+    return alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((t) => t.includes('part(s) of the backup this version cannot read'))
+}
+
 //#endregion
 
 beforeEach(() => {
@@ -355,6 +399,8 @@ beforeEach(() => {
     assetMem.clear()
     unitMem.clear()
     setDatabaseMock.mockReset()
+    getDatabaseMock.mockImplementation(() => ({}) as unknown as Database)
+    backupSink.writes.length = 0
     alertConfirmMock.mockClear()
     alertErrorMock.mockClear()
     injectRestoreStore(createForageBackedStore({
@@ -479,6 +525,102 @@ describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
         })
     })
 
+    /**
+     * Upstream's SaveKV: `kv:<namespace>` blocks (type 12) of a block-format database entry. The restore carries each
+     * block's content verbatim in `upstreamKvBlocks`, and an export writes the namespaces back as `kv:` blocks in
+     * upstream's block format, so upstream reads them again.
+     */
+    describe('upstream-kv.bin carries upstream SaveKV namespaces', () => {
+        const KV_A_CONTENT = {
+            version: 1,
+            entries: [
+                { k: 'zeta', v: 1 },
+                { k: '0', v: 'zero' },
+                { k: 'alpha', v: { list: [1, { deep: true }, null], text: 'x' } },
+                { k: '한글🙂', v: 'unicode value' },
+                { k: 'nothing', v: null },
+            ],
+        }
+        const KV_B_CONTENT = { version: 1, entries: [{ k: 'second', v: [false, 'b'] }, { k: 'first', v: 0 }] }
+
+        test('guard: the restore keeps both namespaces with their entry order and asks nothing', async () => {
+            const db = await restoreBytes(readGolden('upstream-kv.bin'))
+
+            expect(db.upstreamKvBlocks).toEqual({ 'ns-a': KV_A_CONTENT, 'ns-b': KV_B_CONTENT })
+            expect(Object.keys(db.upstreamKvBlocks ?? {})).toEqual(['ns-a', 'ns-b'])
+            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+            expect(incompleteRestorePrompts()).toEqual([])
+            expect(leftOutPrompts()).toEqual([])
+        })
+
+        test('guard: a kv block that is not JSON is the one thing left out, after one question, and the valid namespace is kept', async () => {
+            const db = await restoreBytes(readGolden('upstream-kv-unreadable.bin'))
+
+            expect(db.upstreamKvBlocks).toEqual({ 'ns-b': KV_B_CONTENT })
+            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+            const questions = leftOutPrompts()
+            expect(questions).toHaveLength(1)
+            expect(questions[0]).toContain('- 1 part(s) of the backup this version cannot read')
+        })
+
+        test('reproducer: an export of the restored tree is upstream block format that decodes to the same namespaces', async () => {
+            const db = await restoreBytes(readGolden('upstream-kv.bin'))
+            const restoredKv = structuredClone(db.upstreamKvBlocks)
+            getDatabaseMock.mockImplementation(() => db as unknown as Database)
+            backupSink.writes.length = 0
+            await SaveLocalBackup()
+
+            const entry = databaseEntryOf(concatBytes(backupSink.writes))
+            expect(isBlockFormatSave(entry)).toBe(true)
+            const decoded = await decodeRisuSave(entry, { strict: true })
+            expect(decoded.upstreamKvBlocks).toEqual(restoredKv)
+            expect(Object.keys(decoded.upstreamKvBlocks ?? {})).toEqual(['ns-a', 'ns-b'])
+            expect(decoded.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+            // The root block is the only uncompressed one: it names the directory and does not hold the field.
+            const text = new TextDecoder().decode(entry)
+            expect(text).toContain('"__directory"')
+            expect(text).not.toContain('upstreamKvBlocks')
+            // The live tree the page holds is not changed by the export.
+            expect(db.upstreamKvBlocks).toEqual(restoredKv)
+        })
+
+        test('reproducer: a character with a numeric id and kv namespaces exports, and the number survives', async () => {
+            const db = await restoreBytes(readGolden('upstream-kv.bin'))
+            const restoredKv = structuredClone(db.upstreamKvBlocks)
+            ;(db.characters[0] as unknown as { chaId: number }).chaId = 5
+            getDatabaseMock.mockImplementation(() => db as unknown as Database)
+            backupSink.writes.length = 0
+            await SaveLocalBackup()
+
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            const entry = databaseEntryOf(concatBytes(backupSink.writes))
+            expect(isBlockFormatSave(entry)).toBe(true)
+            const decoded = await decodeRisuSave(entry, { strict: true })
+            expect(decoded.characters.map((c) => c.chaId)).toEqual([5])
+            expect(decoded.upstreamKvBlocks).toEqual(restoredKv)
+        })
+
+        test('reproducer: a tree whose field is empty or undefined exports the same msgpack entry as a tree without the field', async () => {
+            const restored = await restoreBytes(readGolden('upstream-kv.bin'))
+            const { upstreamKvBlocks: _field, ...withoutField } = restored
+
+            async function exportedEntry(db: RestoredDatabase): Promise<Uint8Array> {
+                getDatabaseMock.mockImplementation(() => db as unknown as Database)
+                backupSink.writes.length = 0
+                await SaveLocalBackup()
+                return databaseEntryOf(concatBytes(backupSink.writes))
+            }
+            const plain = await exportedEntry(withoutField)
+            const emptyField = await exportedEntry({ ...withoutField, upstreamKvBlocks: {} })
+            const undefinedField = await exportedEntry({ ...withoutField, upstreamKvBlocks: undefined })
+
+            expect(isBlockFormatSave(plain)).toBe(false)
+            expect(Array.from(emptyField)).toEqual(Array.from(plain))
+            expect(Array.from(undefinedField)).toEqual(Array.from(plain))
+            expect('upstreamKvBlocks' in await decodeRisuSave(plain)).toBe(false)
+        })
+    })
+
     describe('guard: upstream-plugin-object-no-entry.bin keeps an object-valued plugin mapping whose unit upstream did not export', () => {
         test('the mapping stays, the unit stays absent and one question is asked about an item that cannot be linked to a character', async () => {
             const db = await restoreBytes(readGolden('upstream-plugin-object-no-entry.bin'))
@@ -487,6 +629,54 @@ describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
             expect((await readColdStorageItem(ID.pluginUnit)).status).toBe('missing')
             expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
 
+            const prompts = incompleteRestorePrompts()
+            expect(prompts).toHaveLength(1)
+            expect(prompts[0]).toContain('1 item(s) could not be linked to a character')
+            expect(prompts[0]).toContain('1 cold storage item(s) will remain unavailable')
+        })
+    })
+
+    /**
+     * Upstream's plugin storage index. The fork stores plugin values as `_coldplugin` slots only, so a legacy-page restore
+     * converts the pointer: the installed tree holds slots whose units equal the index's values, and never the pointer.
+     * The database entry of these two files is upstream's block format.
+     */
+    describe('upstream-plugin-index.bin converts the plugin storage index on a legacy page', () => {
+        test('the installed tree holds slots equal to the index values, the index wins over the fork map, and there is no pointer', async () => {
+            const db = await restoreBytes(readGolden('upstream-plugin-index.bin'))
+
+            expect(Object.keys(db.pluginCustomStorage ?? {})).toEqual(['_coldplugin'])
+            const slots = db.pluginCustomStorage?._coldplugin ?? {}
+            const values: Record<string, unknown> = {}
+            for (const [key, id] of Object.entries(slots)) {
+                values[key] = await unitJson(id)
+            }
+            expect(values).toEqual({
+                objKey: { theme: 'dark', nested: { list: [1, 2, null], flag: false } },
+                nullKey: null,
+                numKey: 42,
+                textKey: 'hello',
+                falseKey: false,
+                emptyTextKey: '',
+                bigKey: { big: ['a', 'b', 'c'] },
+                shared: { from: 'index' },
+                kept: ['kept'],
+            })
+            expect(slots.bigKey).toBe(INDEX_ID.large)
+            expect(slots.kept).toBe(INDEX_ID.kept)
+            expect(slots.shared).not.toBe(INDEX_ID.shadowed)
+            for (const id of Object.values(slots)) {
+                expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+            }
+            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+            expect(incompleteRestorePrompts()).toEqual([])
+        })
+
+        test('an index unit that is in no entry asks the incomplete-restore question and leaves no pointer', async () => {
+            const db = await restoreBytes(readGolden('upstream-plugin-index-missing.bin'))
+
+            expect(db.pluginCustomStorage).toEqual({ _coldplugin: { kept: INDEX_ID.kept } })
+            expect((await readColdStorageItem(INDEX_ID.index)).status).toBe('missing')
             const prompts = incompleteRestorePrompts()
             expect(prompts).toHaveLength(1)
             expect(prompts[0]).toContain('1 item(s) could not be linked to a character')

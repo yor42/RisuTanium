@@ -11,6 +11,7 @@ import { compress as fflateCompress, decompress as fflateDecompress } from "ffla
 import { alertConfirm } from "../alert"
 import { language } from "src/lang"
 import type { Database } from "../storage/database.svelte"
+import { isPluginStorageIndex, largeIdsOfIndex } from "./pluginStorageIndex"
 import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHeader, getColdStorageAffectedCharacters, getColdStorageBackupName, isColdStorageBackupData, isRestorableColdStorageKey, listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, mergeRetriedColdChatSideFields, type ColdBackupRoot, type ColdReadErrorKind, type PreLoadChatResult, type RetryLegacyColdChatLoadResult } from "./coldstorageData"
 import { doingChat } from "./index.svelte"
 import { isSafeColdStorageKey } from "./coldStorageKey"
@@ -624,6 +625,8 @@ export async function collectColdStorageBackupPayloads(
     const normalKeys = new Set<string>()
     // Keys whose unit is searched for further references; plugin storage content is not.
     const searchable = new Set<string>()
+    // Upstream plugin index pointers: their unit is carried and the large-value units it names are carried with it.
+    const pluginIndexKeys = new Set<string>()
     const unplaceable = new Set<string>()
     const absentKeys: string[] = []
     const invalidUnitKeys: string[] = []
@@ -663,6 +666,9 @@ export async function collectColdStorageBackupPayloads(
         if (root.kind !== 'plugin') {
             searchable.add(root.key)
         }
+        if (root.pluginIndex) {
+            pluginIndexKeys.add(root.key)
+        }
         if (root.owner) {
             addToSetMap(rootOwners, root.key, root.owner)
         }
@@ -695,12 +701,30 @@ export async function collectColdStorageBackupPayloads(
             continue
         }
 
+        const pluginIndex = pluginIndexKeys.has(key) && isPluginStorageIndex(value) ? value : null
+        if (pluginIndexKeys.has(key) && pluginIndex === null) {
+            // Not an index: upstream refuses it on every plugin storage access, so it is reported, not carried.
+            invalidUnitKeys.push(key)
+            continue
+        }
+
         payloads.push({
             key,
             backupName: getColdStorageBackupName(key),
             encoded: new TextEncoder().encode(JSON.stringify(value)),
         })
 
+        if (pluginIndex !== null) {
+            for (const id of largeIdsOfIndex(pluginIndex)) {
+                if (isRestorableColdStorageKey(id)) {
+                    normalKeys.add(id)
+                    schedule(id)
+                } else {
+                    unplaceable.add(id)
+                }
+            }
+            continue
+        }
         if (!isSearchable) {
             continue
         }

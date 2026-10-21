@@ -164,8 +164,12 @@
         } catch (error) {
             //retry
             if(tries > 2){
-
-                alertError(fillLang(language.errors.chatParseFailed, { translated: `${translated}`, message: error.message, stack: error.stack }))
+                const wrapped = new Error(fillLang(language.errors.chatParseFailed, { translated: `${translated}`, message: error?.message ?? `${error}`, stack: '' }))
+                // The alert shows the Error's stack in its own block, so the message omits it.
+                if(error instanceof Error){
+                    wrapped.stack = error.stack
+                }
+                alertError(wrapped)
                 return data
             }
             const retried = await markParsing(data, charArg, chatID, requestedRevision, (tries ?? 0) + 1)

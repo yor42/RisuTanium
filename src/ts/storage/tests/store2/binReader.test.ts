@@ -267,6 +267,111 @@ describe('keys that are not unit ids', () => {
     })
 })
 
+/**
+ * The goldens' plugin storage index through the `.bin` entry reader and the resolve, as the store2 import runs them.
+ * `reproducer` ones fail on a resolve that leaves the pointer in the tree.
+ */
+describe('upstream plugin storage index goldens', () => {
+    const INDEX_ID = {
+        index: '00000000-0000-4000-8000-0000000000b1',
+        large: '00000000-0000-4000-8000-0000000000b2',
+        kept: '00000000-0000-4000-8000-0000000000b4',
+    } as const
+
+    function goldenBytes(name: string): Uint8Array {
+        return new Uint8Array(fs.readFileSync(path.join(process.cwd(), 'src/ts/drive/tests/binGoldens', name)))
+    }
+
+    /** The file with every entry whose name carries `id` left out; the rest are copied byte for byte. */
+    async function withoutEntry(bytes: Uint8Array, id: string): Promise<Uint8Array> {
+        const walk = await indexBackupEntries(blobOf(bytes))
+        const kept: Uint8Array[] = []
+        for (const entry of walk.entries) {
+            const header = bytes.subarray(entry.headerOffset, entry.headerOffset + entry.headerLength)
+            if (new TextDecoder().decode(header).includes(id)) {
+                continue
+            }
+            kept.push(bytes.subarray(entry.headerOffset, entry.headerOffset + entry.headerLength + entry.dataLength))
+        }
+        expect(kept.length).toBe(walk.entries.length - 1)
+        const out = new Uint8Array(kept.reduce((sum, part) => sum + part.length, 0))
+        let at = 0
+        for (const part of kept) {
+            out.set(part, at)
+            at += part.length
+        }
+        return out
+    }
+
+    function slotsOf(database: Database): Record<string, string> {
+        return (database.pluginCustomStorage as unknown as { _coldplugin: Record<string, string> })._coldplugin
+    }
+
+    test('reproducer: upstream-plugin-index.bin resolves to slots whose units equal the index values and holds no pointer', async () => {
+        const golden = await loadGolden('upstream-plugin-index.bin')
+        const reader = await readerFor(goldenBytes('upstream-plugin-index.bin'))
+
+        const { database, incomplete } = await resolveLegacyTree(golden.tree, reader)
+
+        expect(incomplete).toEqual([])
+        const storage = database.pluginCustomStorage as unknown as Record<string, unknown>
+        expect(Object.hasOwn(storage, '_coldpluginIndex')).toBe(false)
+        const values: Record<string, unknown> = {}
+        for (const [key, id] of Object.entries(slotsOf(database))) {
+            values[key] = storage[id]
+        }
+        expect(values).toEqual({
+            objKey: { theme: 'dark', nested: { list: [1, 2, null], flag: false } },
+            nullKey: null,
+            numKey: 42,
+            textKey: 'hello',
+            falseKey: false,
+            emptyTextKey: '',
+            bigKey: { big: ['a', 'b', 'c'] },
+            shared: { from: 'index' },
+            kept: ['kept'],
+        })
+        expect(slotsOf(database).bigKey).toBe(INDEX_ID.large)
+        expect(slotsOf(database).kept).toBe(INDEX_ID.kept)
+    })
+
+    test('reproducer: upstream-plugin-index-missing.bin lists the absent index unit once and drops the pointer', async () => {
+        const golden = await loadGolden('upstream-plugin-index-missing.bin')
+        const reader = await readerFor(goldenBytes('upstream-plugin-index-missing.bin'))
+
+        const { database, incomplete } = await resolveLegacyTree(golden.tree, reader)
+
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: INDEX_ID.index, reason: 'missing' }])
+        const storage = database.pluginCustomStorage as unknown as Record<string, unknown>
+        expect(Object.hasOwn(storage, '_coldpluginIndex')).toBe(false)
+        expect(slotsOf(database).kept).toBe(INDEX_ID.kept)
+    })
+
+    test('reproducer: a file whose large unit entry is absent lists that unit under its plugin key and keeps the slot', async () => {
+        const bytes = await withoutEntry(goldenBytes('upstream-plugin-index.bin'), INDEX_ID.large)
+        const golden = await loadGolden('upstream-plugin-index.bin')
+        const reader = await readerFor(bytes)
+
+        const { database, incomplete } = await resolveLegacyTree(golden.tree, reader)
+
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: 'bigKey', key: INDEX_ID.large, reason: 'missing' }])
+        const storage = database.pluginCustomStorage as unknown as Record<string, unknown>
+        expect(slotsOf(database).bigKey).toBe(INDEX_ID.large)
+        expect(Object.hasOwn(storage, INDEX_ID.large)).toBe(false)
+        expect(storage[slotsOf(database).textKey]).toBe('hello')
+    })
+
+    test('reproducer: an unreadable file range of the index unit is a failed read, not a missing index', async () => {
+        const bytes = goldenBytes('upstream-plugin-index.bin')
+        const golden = await loadGolden('upstream-plugin-index.bin')
+        const walk = await indexBackupEntries(blobOf(bytes))
+        const index = await indexColdEntries(blobOf(bytes), walk.entries)
+        const reader = createBinEntryReader({ file: new FailingSliceBlob([]), index })
+
+        await expect(resolveLegacyTree(golden.tree, reader)).rejects.toMatchObject({ name: 'LegacyReadError', key: INDEX_ID.index })
+    })
+})
+
 describe('re-check at read time', () => {
     const entryBytes = (): Uint8Array => binOf([
         { name: `coldstorage_${U1}.json`, data: JSON.stringify(CHAT) },

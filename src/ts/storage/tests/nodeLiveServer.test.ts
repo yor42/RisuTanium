@@ -13,6 +13,9 @@
  * compatibility guards: any correct client passes them. The 429 tests on the write side are new-behaviour guards of the
  * current server and client (a 429 is answered before anything is applied, so a refused write is a definite failure);
  * their failure modes are shown by mutants of the committer and the loop, outside the tree.
+ * The write-error tests are reproducers of the HTML error page that oversized and failed writes
+ * used to get (red against the earlier server), except the revision-conflict test, which is a
+ * compatibility guard (G) that passes before and after.
  *
  * Environment: RISU_LIVE_SECONDS (default 30) sets the length of the live run (extended in short
  * slices, up to three times that length, while the collector has applied no batch),
@@ -21,7 +24,10 @@
  * OS temp directory and are skipped, under a name that says why, when git or a
  * commit is not available.
  */
-import { readFile, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest'
 import { ServerLacksCapabilityError, StoreCheckListTooLongError, StoreOutcomeUnknownError } from 'src/ts/storage/store/errors'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -252,6 +258,117 @@ describe('a real 431 from the server\'s own header limit', () => {
             expect((await store.read(unit.key)).bytes).toEqual(bytes(7))
         }
     }, 120_000)
+})
+
+// ---- write errors ----
+
+const BODY_LIMIT = createRequire(import.meta.url)('../../../../server/node/bodyLimit.cjs') as { NODE_BODY_LIMIT_BYTES: number }
+
+const WRITE_FAULT_PRELOAD = fileURLToPath(new URL('./nodeWriteFaults.cjs', import.meta.url))
+const OVERSIZED_BODY_BYTES = BODY_LIMIT.NODE_BODY_LIMIT_BYTES + 1024 * 1024
+
+interface WriteAnswer {
+    status: number
+    contentType: string
+    text: string
+    json: { error?: unknown, code?: unknown, message?: unknown, stack?: unknown } | null
+    guardedMarker: string | null
+}
+
+// The parsed message is checked, not the raw text: a JSON body escapes newlines, so a stack inside `message` never shows in the text.
+function expectNoStackOrAbsolutePath(fixture: NodeServerFixture, answer: WriteAnswer): void {
+    const message = String(answer.json?.message)
+    expect(message).not.toMatch(/\n\s+at /)
+    expect(message).not.toMatch(/:\d+:\d+/)
+    expect(message).not.toMatch(/[A-Za-z]:[\\/]|(?:^|[\s'"])\/[^\s'"]+\/[^\s'"]+/)
+    expect(message).not.toContain(dirname(fixture.saveDir))
+    expect(answer.text).not.toContain(dirname(fixture.saveDir))
+}
+
+async function writeAnswer(fixture: NodeServerFixture, route: '/api/write' | '/api/write-checked', key: string, body: Uint8Array): Promise<WriteAnswer> {
+    const response = await fetch(`${fixture.baseUrl}${route}`, {
+        method: 'POST',
+        headers: { 'file-path': hexOfKey(key), 'risu-auth': await fixture.authHeader(), 'content-type': 'application/octet-stream', ...(route === '/api/write-checked' ? { 'check-only-count': '0', 'own-condition-count': '0' } : {}) },
+        body: body as Uint8Array<ArrayBuffer>,
+    })
+    const text = await response.text()
+    let json: WriteAnswer['json'] = null
+    try {
+        json = JSON.parse(text)
+    } catch {
+        // A non-JSON answer is reported as such by the assertions on `json`.
+    }
+    return { status: response.status, contentType: response.headers.get('content-type') ?? '', text, json, guardedMarker: response.headers.get('risu-storage-guarded') }
+}
+
+describe('write errors of the server are JSON without stack or absolute paths', () => {
+    let fixture: NodeServerFixture
+
+    beforeAll(async () => {
+        fixture = await startNodeServer({ nodeArgs: ['--require', WRITE_FAULT_PRELOAD] })
+    }, 60_000)
+
+    afterAll(async () => {
+        await fixture?.stop()
+    }, 30_000)
+
+    test.each(['/api/write', '/api/write-checked'] as const)('%s answers a body over the limit with 413 JSON, code PAYLOAD_TOO_LARGE and the limit from the shared constant', async (route) => {
+        const answer = await writeAnswer(fixture, route, `oversized/${route}`, new Uint8Array(OVERSIZED_BODY_BYTES))
+
+        expect(answer.status).toBe(413)
+        expect(answer.contentType).toContain('application/json')
+        expect(answer.json).toMatchObject({ error: 'Storage payload is too large', code: 'PAYLOAD_TOO_LARGE', message: `Storage writes are limited to ${BODY_LIMIT.NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.` })
+        expect(answer.text).not.toContain('node_modules')
+        expectNoStackOrAbsolutePath(fixture, answer)
+        // Only the guarded route marks its answers, so the client can tell a refusal of the guarded write from the plain one.
+        expect(answer.guardedMarker).toBe(route === '/api/write-checked' ? '1' : null)
+    }, 60_000)
+
+    test.each(['/api/write', '/api/write-checked'] as const)('%s answers a failed file write with JSON, a path relative to the working directory and no stack', async (route) => {
+        const key = `directory-target/${route}`
+        // A directory in the key's place makes the final rename fail.
+        await mkdir(join(fixture.saveDir, hexOfKey(key)))
+
+        const answer = await writeAnswer(fixture, route, key, new Uint8Array([1, 2, 3]))
+
+        expect(answer.status).toBe(500)
+        expect(answer.contentType).toContain('application/json')
+        expect(answer.json).toMatchObject({ error: 'Failed to write storage item' })
+        expect(typeof answer.json?.code).toBe('string')
+        expect(answer.json?.stack).toBeUndefined()
+        expectNoStackOrAbsolutePath(fixture, answer)
+        expect(String(answer.json?.message)).toContain(`.${sep}save${sep}${hexOfKey(key)}`)
+    })
+
+    test.each([['ENOSPC'], ['EDQUOT']] as const)('%s on the file write answers 507 JSON on both routes, and the next write succeeds once the fault is gone', async (code) => {
+        const marker = join(dirname(fixture.saveDir), 'inject-write-fail')
+        await writeFile(marker, code)
+        try {
+            for (const route of ['/api/write', '/api/write-checked'] as const) {
+                const answer = await writeAnswer(fixture, route, `full-disk/${code}/${route}`, new Uint8Array([1]))
+                expect(answer.status).toBe(507)
+                expect(answer.contentType).toContain('application/json')
+                expect(answer.json).toMatchObject({ error: 'Failed to write storage item', code })
+                expectNoStackOrAbsolutePath(fixture, answer)
+            }
+        } finally {
+            await rm(marker, { force: true })
+        }
+        expect((await writeAnswer(fixture, '/api/write', `full-disk/${code}/after`, new Uint8Array([1]))).status).toBe(200)
+    })
+
+    test('guard: a revision conflict is still a 409 with the current revision', async () => {
+        const key = 'conflict/key'
+        const first = await writeAnswer(fixture, '/api/write', key, new Uint8Array([1]))
+        expect(first.status).toBe(200)
+        const response = await fetch(`${fixture.baseUrl}/api/write`, {
+            method: 'POST',
+            headers: { 'file-path': hexOfKey(key), 'risu-auth': await fixture.authHeader(), 'content-type': 'application/octet-stream', 'if-match-revision': '0' },
+            body: new Uint8Array([2]),
+        })
+        expect(response.status).toBe(409)
+        expect(await response.json()).toMatchObject({ error: 'Revision conflict', currentRevision: 1 })
+    })
 })
 
 // ---- a real 429 ----

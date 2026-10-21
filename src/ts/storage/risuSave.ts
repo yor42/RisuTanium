@@ -229,7 +229,12 @@ export enum RisuSaveType {
     PLUGINS = 9,
     LOADOUTS = 10,
     PLUGIN_STORAGE = 11,
+    KV = 12,
 }
+
+/** Upstream names each SaveKV namespace block `kv:<namespace>`. */
+const KV_BLOCK_PREFIX = 'kv:'
+const KV_FIELD = 'upstreamKvBlocks'
 
 type EncodeBlockArg = {
     compression:boolean
@@ -1053,7 +1058,8 @@ function salvageKindOfName(name: string): SalvageOmittedKind {
         case 'config':
             return 'ignored'
         default:
-            return 'character'
+            // An upstream SaveKV namespace is not a character.
+            return name.startsWith(KV_BLOCK_PREFIX) ? 'other' : 'character'
     }
 }
 
@@ -1099,12 +1105,30 @@ export class RisuSaveDecoder {
         }
     }
 
+    // A block of a type this reader cannot use: strict rejects the decode, salvage records it as `other`, the default
+    // mode drops it.
+    private refuseUnknownBlock(block: { name: string, type: RisuSaveType }) {
+        if(this.strict){
+            throw new Error(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`);
+        }
+        if(this.salvage){
+            this.recordOmitted(block.name, 'other', new Error(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`));
+        }
+        console.warn(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`);
+    }
+
     async decode(data: Uint8Array): Promise<Database> {
         console.log('Decoding RisuSave data');
         let offset = magicRisuSaveHeaderV2.length;
         //@ts-expect-error Database has required fields, but we initialize empty and populate incrementally during decode
         let db:Database = {}
         const loadedBlocks = new Set<string>();
+        // The `upstreamKvBlocks` rule, independent of block order: when the file has any `kv:` block (decoded,
+        // damaged or unreadable, or merely named by the directory), the namespaces decoded from those blocks are the
+        // whole field, and the value root holds is discarded, so a block that failed never leaves a stale copy
+        // behind. Only a file with no `kv:` block keeps root's value. A namespace in two blocks takes the last.
+        let kvBlockSeen = false;
+        let rootKv: unknown = undefined;
         while (offset < data.length) {
             const blockStart = offset;
             let framed: { name: string, type: RisuSaveType } | null = null;
@@ -1112,6 +1136,9 @@ export class RisuSaveDecoder {
                 const header = parseBlockHeader(data, blockStart, this.hasChecksums);
                 const { type, compression, name, length } = header;
                 framed = { name, type };
+                if(type === RisuSaveType.KV && name.startsWith(KV_BLOCK_PREFIX)){
+                    kvBlockSeen = true;
+                }
                 offset = header.dataStart;
 
                 if (offset + length > data.length) {
@@ -1186,13 +1213,19 @@ export class RisuSaveDecoder {
                         const rootData = JSON.parse(this.blocks[key].content);
                         rootProcessed = true;
                         for(const rootKey in rootData){
-                            if(!db[rootKey] && !rootKey.startsWith('__')){
+                            if(rootKey === KV_FIELD){
+                                rootKv = rootData[rootKey];
+                            }
+                            else if(!db[rootKey] && !rootKey.startsWith('__')){
                                 db[rootKey] = rootData[rootKey];
                             }
                             if(rootKey === '__directory'){
                                 directory = rootData[rootKey];
                                 console.log('RisuSave directory:', directory);
                                 for(const dirKey of directory){
+                                    if(dirKey.startsWith(KV_BLOCK_PREFIX)){
+                                        kvBlockSeen = true;
+                                    }
                                     if(!loadedBlocks.has(dirKey)){
                                         if(this.strict){
                                             throw new Error(`Directory block "${dirKey}" is not present in the file.`);
@@ -1343,14 +1376,29 @@ export class RisuSaveDecoder {
                         db[componentData.key] = componentData.data;
                         break;
                     }
+                    case RisuSaveType.KV:{
+                        const kvName = this.blocks[key].name;
+                        if(!kvName.startsWith(KV_BLOCK_PREFIX)){
+                            this.refuseUnknownBlock(this.blocks[key]);
+                            break;
+                        }
+                        // A remote pointer whose inner type is KV reaches here without a framed header of its own.
+                        kvBlockSeen = true;
+                        // Upstream's SaveKV data is carried verbatim; the fork neither reads nor interprets it.
+                        // The container exists only when a namespace decoded, and a namespace such as `__proto__`
+                        // must become an own key rather than reach the prototype.
+                        const kvValue: unknown = JSON.parse(this.blocks[key].content);
+                        db.upstreamKvBlocks ??= {};
+                        Object.defineProperty(db.upstreamKvBlocks, kvName.slice(KV_BLOCK_PREFIX.length), {
+                            value: kvValue,
+                            enumerable: true,
+                            writable: true,
+                            configurable: true,
+                        });
+                        break;
+                    }
                     default:{
-                        if(this.strict){
-                            throw new Error(`Not Implemented RisuSaveType: ${this.blocks[key].type} for ${this.blocks[key].name}`);
-                        }
-                        if(this.salvage){
-                            this.recordOmitted(this.blocks[key].name, 'other', new Error(`Not Implemented RisuSaveType: ${this.blocks[key].type} for ${this.blocks[key].name}`));
-                        }
-                        console.warn(`Not Implemented RisuSaveType: ${this.blocks[key].type} for ${this.blocks[key].name}`);
+                        this.refuseUnknownBlock(this.blocks[key]);
                     }
                 }
             } catch (error) {
@@ -1380,6 +1428,9 @@ export class RisuSaveDecoder {
             // lets bootstrap.ts's backup-fallback recovery path actually
             // trigger instead of silently booting into a near-empty database.
             throw new Error('RisuSave data has no valid root block, cannot proceed with decoding RisuSave data');
+        }
+        if(!kvBlockSeen && rootKv !== undefined){
+            db.upstreamKvBlocks = rootKv as Database['upstreamKvBlocks'];
         }
         //to fix botpreset bugs
         if(!Array.isArray(db.botPresets) || db.botPresets.length === 0){

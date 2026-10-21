@@ -16,6 +16,7 @@ import { deleteColdStorageUnits, readColdStorageItem, type ColdStorageReadResult
 import { isSafeColdStorageKey } from "../process/coldStorageKey"
 import { listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, listRecoverableErrorKeysFromDb } from "../process/coldstorageData"
 import { retainedUnitKeys } from "../process/coldRetained"
+import { isPluginStorageIndex, largeIdsOfIndex, pluginIndexPointer } from "../process/pluginStorageIndex"
 import { isAppInitiatedReload } from "../reloadGuard"
 import { bytesEqual, crc32 } from "./blockFrame"
 import { HEAD_KEY, LEGACY_MAIN_FILE_KEY, PRE_BLOCKS_PREFIX, generationPrefix, keptKey, ownBlockKey, rootKey, stubsKey } from "./blockKeys"
@@ -50,8 +51,10 @@ import { StoreDeleteManyError, StoreNotBinaryError, StoreVersionConflictError } 
  *   text as, its first message. Every archived chat so reached is read once,
  *   one at a time, before the start listing is taken and before the first
  *   deletion, and only the keys it names are retained. A plugin storage unit
- *   is a leaf whose content is never searched for references; a unit that a
- *   chat also names is read like any other archived chat.
+ *   is a leaf whose content is never searched for references, except upstream's
+ *   plugin storage index: a tree's `_coldpluginIndex` names it, its large-value
+ *   ids are kept with it, and an index that cannot be read stops the run. A
+ *   unit that a chat also names is read like any other archived chat.
  * - An asset is kept when live memory references it (read again before every
  *   batch), when the committed save's tree references it, when an older copy of
  *   the main file that a block profile still holds references it, or when a
@@ -123,6 +126,8 @@ class KeepSet {
      */
     private chatQueue: { key: string, origin: ChatOrigin }[] = []
     private chatQueued = new Set<string>()
+    /** The unit ids each plugin storage index names (the index unit itself excluded), read once per pointer. */
+    private pluginIndexes = new Map<string, string[]>()
 
     private queueChat(key: string, origin: ChatOrigin): void {
         if (!this.chatQueued.has(key)) {
@@ -155,6 +160,31 @@ class KeepSet {
     }
 
     /**
+     * The large-value units of the plugin storage index `pointer` names. An
+     * index that is missing, cannot be read or is not an index hides which
+     * units it names, so it stops the run.
+     */
+    private async pluginIndexUnits(pointer: string, source: string): Promise<string[]> {
+        const cached = this.pluginIndexes.get(pointer)
+        if (cached) {
+            return cached
+        }
+        let read: ColdStorageReadResult
+        try {
+            read = await readColdStorageItem(pointer)
+        } catch (error) {
+            read = { status: 'error', error }
+        }
+        if (read.status !== 'ok' || !isPluginStorageIndex(read.value)) {
+            console.error(`Cold storage cleanup stopped: the plugin storage index ${pointer} (${source}) is missing, unreadable or not an index`, read.status === 'error' ? read.error : undefined)
+            throw new CleanupStop(language.errors.coldStorageCleanupSaveUnreadable(source))
+        }
+        const ids = largeIdsOfIndex(read.value)
+        this.pluginIndexes.set(pointer, ids)
+        return ids
+    }
+
+    /**
      * Keeps the units `tree` reaches, directly and through the blob of each of
      * its stubs, and the assets of the characters in those blobs, and queues the
      * archived chats it reaches for `followArchivedChats`. The assets
@@ -173,6 +203,15 @@ class KeepSet {
         }
         for (const key of listRecoverableErrorKeysFromDb(tree)) {
             this.units.add(key)
+        }
+        // A tree that still carries upstream's pointer (a legacy page can boot or
+        // restore one) keeps the index unit and every large unit it names.
+        const indexPointer = pluginIndexPointer(tree.pluginCustomStorage)
+        if (indexPointer !== null) {
+            for (const id of await this.pluginIndexUnits(indexPointer, source)) {
+                this.units.add(id)
+            }
+            this.units.add(indexPointer)
         }
         for (const cha of tree.characters ?? []) {
             if (!cha) {

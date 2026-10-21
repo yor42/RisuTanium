@@ -657,6 +657,256 @@ describe('new behaviour: plugin storage values', () => {
     })
 })
 
+/**
+ * Upstream's plugin storage index in a legacy tree. Tests labelled `reproducer` fail on a resolve that does not convert
+ * the index (the pointer then travels as a plain plugin storage key with no value behind it); `guard` ones pin a rule
+ * that holds with or without the conversion.
+ */
+describe('upstream plugin storage index', () => {
+    const IDX = {
+        index: '00000000-0000-4000-8000-0000000000c1',
+        large: '00000000-0000-4000-8000-0000000000c2',
+        shadowed: '00000000-0000-4000-8000-0000000000c3',
+        kept: '00000000-0000-4000-8000-0000000000c4',
+    } as const
+    const INDEX_VALUE = {
+        type: 'risu-plugin-storage-index',
+        version: 1,
+        entries: [
+            { k: 'textKey', s: '"he said \\"hi\\""' },
+            { k: 'objKey', s: '{"theme":"dark","list":[1,2,null]}' },
+            { k: 'bigKey', l: IDX.large },
+            { k: 'shared', s: '{"from":"index"}' },
+        ],
+        trash: [{ k: 'trashed', s: '"gone"' }],
+    }
+    const LARGE_VALUE = { big: ['a', 'b', 'c'] }
+
+    function unitsOf(extra: Record<string, StoredUnit> = {}): Map<string, StoredUnit> {
+        return new Map<string, StoredUnit>([
+            [IDX.index, { status: 'ok', value: INDEX_VALUE }],
+            [IDX.large, { status: 'ok', value: LARGE_VALUE }],
+            [IDX.shadowed, { status: 'ok', value: { from: 'fork' } }],
+            [IDX.kept, { status: 'ok', value: ['kept'] }],
+            ...Object.entries(extra),
+        ])
+    }
+
+    function treeOf(storage: Obj): Database {
+        return { characters: [], pluginCustomStorage: storage } as unknown as Database
+    }
+
+    function indexedTree(): Database {
+        return treeOf({ _coldpluginIndex: IDX.index, _coldplugin: { shared: IDX.shadowed, kept: IDX.kept } })
+    }
+
+    function counterMint(): () => string {
+        let next = 0
+        return () => `00000000-0000-4000-8000-0000000001${String(next++).padStart(2, '0')}`
+    }
+
+    function valuesOf(database: Database): Record<string, unknown> {
+        const storage = database.pluginCustomStorage as Obj
+        const values: Record<string, unknown> = {}
+        for (const [slot, id] of Object.entries(storage._coldplugin as Record<string, string>)) {
+            values[slot] = storage[id]
+        }
+        return values
+    }
+
+    async function outcomeOf(promise: Promise<unknown>): Promise<unknown> {
+        return promise.then(() => 'resolved', (error: unknown) => error)
+    }
+
+    test('reproducer: small entries become units of equal value, a large entry keeps its id, the index wins over the fork map and the pointer is gone', async () => {
+        const tree = indexedTree()
+
+        const { database, incomplete } = await resolveLegacyTree(tree, readerOver(unitsOf()), { ...OPTIONS, newUnitId: counterMint() })
+
+        expect(incomplete).toEqual([])
+        const storage = database.pluginCustomStorage as Obj
+        expect(Object.hasOwn(storage, '_coldpluginIndex')).toBe(false)
+        expect(valuesOf(database)).toEqual({
+            textKey: 'he said "hi"',
+            objKey: { theme: 'dark', list: [1, 2, null] },
+            bigKey: LARGE_VALUE,
+            shared: { from: 'index' },
+            kept: ['kept'],
+        })
+        const slots = storage._coldplugin as Record<string, string>
+        expect(slots.bigKey).toBe(IDX.large)
+        expect(slots.kept).toBe(IDX.kept)
+        expect(slots.shared).not.toBe(IDX.shadowed)
+        expect(Object.hasOwn(storage, 'trashed')).toBe(false)
+        expect(Object.values(storage).includes('gone')).toBe(false)
+    })
+
+    test('reproducer: the minted units are placed under the injected minter\'s ids, not under the placeholder chat id', async () => {
+        const { database } = await resolveLegacyTree(indexedTree(), readerOver(unitsOf()), { ...OPTIONS, newUnitId: counterMint() })
+
+        const slots = (database.pluginCustomStorage as Obj)._coldplugin as Record<string, string>
+        expect([slots.textKey, slots.objKey, slots.shared]).toEqual([
+            '00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000102',
+        ])
+    })
+
+    test('reproducer: without an injected minter the ids are fresh unit ids even when newId is pinned to a constant', async () => {
+        const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(unitsOf()), OPTIONS)
+
+        expect(incomplete).toEqual([])
+        const slots = (database.pluginCustomStorage as Obj)._coldplugin as Record<string, string>
+        const minted = [slots.textKey, slots.objKey, slots.shared]
+        expect(new Set(minted).size).toBe(3)
+        for (const id of minted) {
+            expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+        }
+        expect(valuesOf(database).objKey).toEqual({ theme: 'dark', list: [1, 2, null] })
+    })
+
+    test('guard: the database is not modified and the original tree keeps the pointer', async () => {
+        const tree = indexedTree()
+        const before = structuredClone(tree)
+
+        const { database } = await resolveLegacyTree(tree, readerOver(unitsOf()), { ...OPTIONS, newUnitId: counterMint() })
+
+        expect(tree).toEqual(before)
+        expect(database.pluginCustomStorage).not.toBe(tree.pluginCustomStorage)
+    })
+
+    test('reproducer: the converted tree encodes and assembles back with every value', async () => {
+        const { database } = await resolveLegacyTree(indexedTree(), readerOver(unitsOf()), { ...OPTIONS, newUnitId: counterMint() })
+
+        const { assembled } = encodeAndAssemble(encodable(database))
+
+        expect(assembled.pluginCustomStorage ?? {}).toEqual(database.pluginCustomStorage ?? {})
+        expect(Object.hasOwn(assembled.pluginCustomStorage ?? {}, '_coldpluginIndex')).toBe(false)
+    })
+
+    test.each([['an empty string', ''], ['a number', 7], ['an object', { id: 'x' }]])('guard: a pointer that is %s is no pointer; the resolve neither reads nor lists anything', async (_label, pointer) => {
+        const reader = readerOver(unitsOf())
+        const tree = treeOf({ _coldpluginIndex: pointer, _coldplugin: { kept: IDX.kept } })
+
+        const { database, incomplete } = await resolveLegacyTree(tree, reader, OPTIONS)
+
+        expect(incomplete).toEqual([])
+        expect(reader.reads).toEqual([IDX.kept])
+        expect((database.pluginCustomStorage as Obj)._coldpluginIndex).toEqual(pointer)
+    })
+
+    test('reproducer: an index unit that is absent is listed once and the pointer is dropped; the fork map stays', async () => {
+        const units = unitsOf()
+        units.delete(IDX.index)
+
+        const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), OPTIONS)
+
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: IDX.index, reason: 'missing' }])
+        const storage = database.pluginCustomStorage as Obj
+        expect(Object.hasOwn(storage, '_coldpluginIndex')).toBe(false)
+        expect(storage._coldplugin).toEqual({ shared: IDX.shadowed, kept: IDX.kept })
+        expect(storage[IDX.kept]).toEqual(['kept'])
+    })
+
+    test('reproducer: an index unit of another shape is listed like an absent one', async () => {
+        const units = unitsOf({ [IDX.index]: { status: 'ok', value: { type: 'something-else' } } })
+
+        const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), OPTIONS)
+
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: IDX.index, reason: 'missing' }])
+        expect(Object.hasOwn(database.pluginCustomStorage as Obj, '_coldpluginIndex')).toBe(false)
+    })
+
+    test('reproducer: a pointer that cannot be a unit id is listed without being offered to the reader', async () => {
+        const reader = readerOver(unitsOf())
+        const tree = treeOf({ _coldpluginIndex: '../not-a-uuid' })
+
+        const { database, incomplete } = await resolveLegacyTree(tree, reader, OPTIONS)
+
+        expect(reader.reads).toEqual([])
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: '../not-a-uuid', reason: 'missing' }])
+        expect(Object.hasOwn(database.pluginCustomStorage as Obj, '_coldpluginIndex')).toBe(false)
+    })
+
+    test('reproducer: a large entry whose unit is absent keeps its slot and is listed under the plugin key', async () => {
+        const units = unitsOf()
+        units.delete(IDX.large)
+
+        const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), { ...OPTIONS, newUnitId: counterMint() })
+
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: 'bigKey', key: IDX.large, reason: 'missing' }])
+        const storage = database.pluginCustomStorage as Obj
+        expect((storage._coldplugin as Obj).bigKey).toBe(IDX.large)
+        expect(Object.hasOwn(storage, IDX.large)).toBe(false)
+        expect(valuesOf(database).objKey).toEqual({ theme: 'dark', list: [1, 2, null] })
+    })
+
+    test('reproducer: a small entry whose text is not JSON is listed and its key is not mapped to an empty value', async () => {
+        const broken = { ...INDEX_VALUE, entries: [{ k: 'badKey', s: '{not json' }, { k: 'bigKey', l: IDX.large }] }
+        const units = unitsOf({ [IDX.index]: { status: 'ok', value: broken } })
+
+        const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), { ...OPTIONS, newUnitId: counterMint() })
+
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: '00000000-0000-4000-8000-000000000100', reason: 'missing' }])
+        const slots = (database.pluginCustomStorage as Obj)._coldplugin as Record<string, string>
+        expect(Object.hasOwn(slots, 'badKey')).toBe(false)
+    })
+
+    test('reproducer: a minted id that is already a plain plugin storage key keeps the plain value and is listed as a collision', async () => {
+        const taken = '00000000-0000-4000-8000-000000000100'
+        const tree = treeOf({ _coldpluginIndex: IDX.index, [taken]: 'plain value' })
+
+        const { database, incomplete } = await resolveLegacyTree(tree, readerOver(unitsOf()), { ...OPTIONS, newUnitId: counterMint() })
+
+        expect((database.pluginCustomStorage as Obj)[taken]).toBe('plain value')
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: 'textKey', key: taken, reason: 'collision' }])
+    })
+
+    describe('a failed read (a rejection or an error status) aborts the resolve instead of becoming an incomplete item', () => {
+        test.each([['an error status', 'errorKeys'], ['a rejection', 'throwKeys']] as const)('reproducer: the index unit read ends in %s', async (_label, fault) => {
+            const reader = readerOver(unitsOf(), { [fault]: new Set([IDX.index]) })
+
+            const outcome = await outcomeOf(resolveLegacyTree(indexedTree(), reader, OPTIONS))
+
+            expect(outcome).toBeInstanceOf(LegacyReadError)
+            expect((outcome as LegacyReadError).key).toBe(IDX.index)
+        })
+
+        test.each([['an error status', 'errorKeys'], ['a rejection', 'throwKeys']] as const)('reproducer: a large unit read ends in %s', async (_label, fault) => {
+            const reader = readerOver(unitsOf(), { [fault]: new Set([IDX.large]) })
+
+            const outcome = await outcomeOf(resolveLegacyTree(indexedTree(), reader, { ...OPTIONS, newUnitId: counterMint() }))
+
+            expect(outcome).toBeInstanceOf(LegacyReadError)
+            expect((outcome as LegacyReadError).key).toBe(IDX.large)
+        })
+
+        test('reproducer: an index unit that is not JSON is damaged content: listed like an absent one, pointer dropped, nothing thrown', async () => {
+            const units = unitsOf({ [IDX.index]: { status: 'unparsable' } })
+
+            const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), OPTIONS)
+
+            expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: IDX.index, reason: 'missing' }])
+            expect(Object.hasOwn(database.pluginCustomStorage as Obj, '_coldpluginIndex')).toBe(false)
+        })
+
+        test('reproducer: a large unit that is not JSON is listed under its plugin key like a fork plugin unit, nothing thrown', async () => {
+            const units = unitsOf({ [IDX.large]: { status: 'unparsable' } })
+
+            const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), { ...OPTIONS, newUnitId: counterMint() })
+
+            expect(incomplete).toEqual([{ kind: 'plugin', slotKey: 'bigKey', key: IDX.large, reason: 'missing' }])
+            expect(Object.hasOwn(database.pluginCustomStorage as Obj, IDX.large)).toBe(false)
+        })
+
+        test('pin: a unit of the fork\'s own map that is not JSON stays an incomplete item, as before the index existed', async () => {
+            const units = unitsOf({ [IDX.kept]: { status: 'unparsable' } })
+
+            const { incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), { ...OPTIONS, newUnitId: counterMint() })
+
+            expect(incomplete).toEqual([{ kind: 'plugin', slotKey: 'kept', key: IDX.kept, reason: 'missing' }])
+        })
+    })
+})
+
 describe('new behaviour: a read error aborts the whole resolve', () => {
     // The four places a unit is read: a stub's unit, a pointer chat of an inline character, a pointer chat inside a stub's unit and a plugin value.
     const SITES = [

@@ -24,7 +24,7 @@ Resume a finished reviewer for remediation only within about 5 minutes of its la
 
 At the second substantive rejection, reconsider the mechanism. Three consecutive substantive `[REJECT]` rounds, across plan and implementation gates, require senior-advisor before a fourth revision. `[EDITORIAL]` neither counts nor breaks the streak. Do not patch indefinitely to satisfy one edge case without revisiting the shared cause or asking the maintainer about a product constraint.
 
-One named owner runs the full checks once on the final applicable snapshot. Remediation workers run targeted tests and type checks. Repeat full checks when changes invalidate their evidence; reviewers may rerun any critical check. Documentation-only changes require documentation/configuration verification, not application tests. Budgets never turn unfinished work into approval.
+One named owner runs the full checks once on the final applicable snapshot. Remediation workers run targeted tests and type checks. Repeat full checks when changes invalidate their evidence; Gate 2 reviewers rerun targeted checks, not the full suite (see Implementation briefs and hand-back). Documentation-only changes require documentation/configuration verification, not application tests. Budgets never turn unfinished work into approval.
 
 ## Evidence discipline
 
@@ -35,6 +35,33 @@ Source claims name accessible source. Execution claims name command, result, cod
 Regression reproducers fail against the relevant pre-fix base on the intended defect and pass after; import/setup/missing-export failures do not qualify. Write against the unfixed behavior and record the demonstrated pre-fix failure in the gate and commit claim. Compatibility guards may pass before and after and must be labeled as guards. Diagnostic experiments establish mechanisms and usually remain in scratch. A test that only fails against an earlier draft of the new change is not a pre-fix reproducer.
 
 Sanitizer-output assertions use jsdom, not happy-dom (MC-239), and relevant assertions must fail with an identity sanitizer. Use synthetic fixtures, isolated tests and no real-service probes. Do not claim measurement ratios are universally hardware-independent. Name runtime, hardware, inputs and limits of generalization; use [measurement procedures](../../Agents/Tools/README.md).
+
+## Implementation briefs and hand-back
+
+Standing rule from 2026-10-21 (MC-329).
+
+- **Amendment checklist.** Every implementation brief pastes each binding Gate 1 amendment and applicable orchestrator ruling as a numbered checklist. The hand-back answers every item as met / not met / amendment requested, and the Gate 2 reviewer checks that table against the diff.
+- **Fixtures built like the producer.** Fixtures for a compatibility or format rule are built the way the real producer builds them (for example upstream's actual export layout), not only through a convenience helper. Where a helper's defaults differ from the real producer, cover both.
+- **Break the rule before hand-back.** The implementer breaks the new rule on purpose with mutants in scratch (a load hook or in-memory substitution, never swapping repository files) and shows that a repository test fails for each. This complements, and does not replace, the pre-fix reproducer rule in Evidence discipline.
+- **Gate 2 reviewers do not rerun the full suite.** They rely on the implementer's full-run log and still rerun the reproducers, their own mutants and the targeted tests, and run `pnpm check`. The single full-check owner for `pnpm test`, `pnpm check` and the relevant build on the final snapshot is unchanged.
+
+## Device checks
+
+Standing rule from 2026-10-21 (MC-330). It applies to checks on a physical Android device (currently the Note 9); browser-preview checks follow [live checks](live-checks.md).
+
+- **Ceiling, time limit, exit.** Every device-check brief states a data-size ceiling, a time limit and a pass/fail exit for each check. No open-ended sessions.
+- **PC first.** Check the logic on the PC first (headless Chrome or vitest). The device is for WebView, bridge, file-system or service behaviour only.
+- **Data sized to the question.** A rate needs a synthetic set of about 200-500 MB, measured a few times and extrapolated. Large or real-shape runs are reserved for Android-only risk or pre-release (see tiered data below).
+- **Keep the phone awake.** Before each run, keep the device awake while charging and exempt the app from battery optimisation. The screen stays on unless the check is about screen-off behaviour.
+- **Batch.** Gather the device checks of several stages into one planned device session rather than one session per stage.
+
+Existing practice, restated for context (not new in MC-330):
+
+- A device agent uses only its own debug ports and port ranges, with a free-port and identity check before it drives a forward.
+- Kill only processes you started; never by image name.
+- Use a test-only app profile and never hand-edit app state.
+- Tiered test data: small synthetic by default, large data on the PC, Note 9 large runs only for Android-specific risk or pre-release.
+- A performance number names its hardware (see Evidence discipline).
 
 ## Repository and comment discipline
 

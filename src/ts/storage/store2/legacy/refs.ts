@@ -2,6 +2,7 @@ import type { Database } from '../../database.svelte'
 import {
     coldStorageHeader, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, type ColdStorageInnerKey,
 } from '../../../process/coldstorageData'
+import { pluginIndexPointer } from '../../../process/pluginStorageIndex'
 
 /**
  * The enumeration of the cold-storage references a legacy tree holds. The
@@ -93,6 +94,11 @@ export function legacyPluginRefs(db: Pick<Database, 'pluginCustomStorage'>): Leg
         }
     }
     return refs
+}
+
+/** The upstream plugin storage index unit a tree points at, or null when it holds no pointer. Not part of `legacyRefsOfDatabase`: the walk reads this unit itself. */
+export function legacyPluginIndexPointer(db: Pick<Database, 'pluginCustomStorage'>): string | null {
+    return pluginIndexPointer(db.pluginCustomStorage)
 }
 
 /** Every reference of a decoded legacy tree: characters in order, then plugin storage. */
