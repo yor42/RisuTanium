@@ -10701,3 +10701,26 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Not adopted in this entry: second worktrees (separately authorized per item, `docs/workflow/ownership.md`), grouping sub-stages, records-verification timing.
 - The red-before-green and reproducer-versus-guard rules in `docs/workflow/gates.md` stay; item 3 does not replace the pre-fix reproducer.
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-330 — Step 2 session, 2026-10-21: standing device-check rules (size ceiling, time limit and pass/fail exit; PC first; stay-awake and battery exemption; batching) and three device work items
+
+- **Tag:** decisions (`AskUserQuestion` answers, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The maintainer pasted a side-review proposal ("Device-check efficiency proposals ... none adopted yet") and selected "Rules 1,5,6,7 standing". The adopted option text was: "Device briefs carry a data-size ceiling, a time limit and a pass/fail exit; PC first; stay-awake and battery exemption before each run (except screen-off checks). Recorded in docs/workflow + an MC entry, doc-verified." In the same round the maintainer chose "Time breakdown now", "Fix jniLibs link" and "Scripts + snapshots" (items 5 to 7).
+- **Related:** `MC-323`, `MC-324`, `MC-329`, `MC-198`.
+
+1. **Data sized to the question (proposal rule 1).** Shrink the data to fit the question. A rate needs about 200-500 MB of synthetic data, measured a few times and extrapolated. Large or real-shape runs are reserved for Android-only risk or pre-release, which is the tiered-data rule in `MC-324` restated.
+2. **Keep the phone awake (proposal rule 5).** Before each run the device stays awake while charging and the app is exempt from battery optimisation. The screen stays on unless the check is about screen-off behaviour.
+3. **PC first (proposal rule 6).** Check logic on the PC first (headless Chrome or vitest). The Note 9 is for WebView, bridge, file-system or service behaviour only.
+4. **Batch and timebox (proposal rule 7), with the brief contents.** Gather Android checks from several stages into one planned device session. Each check has a time limit and a clear pass/fail exit; there are no open-ended sessions. Every device brief carries a data-size ceiling, a time limit and a pass/fail exit.
+5. **Work item, not a rule: "Time breakdown now".** The maintainer chose to produce the time breakdown now. The option text: a read-only investigator produces a per-session table (build, install, setup, data load, run, agent overhead) from past device-session evidence, with unknowns marked and no device use. The proposal suggested it as the starting point.
+6. **Work item, not a rule: "Fix jniLibs link".** Done by the orchestrator: the ignored, untracked symlink `src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libalib.so` in the main checkout, which pointed into scratch, was removed so the next Tauri Android build regenerates it.
+7. **Work item, not a rule: "Scripts + snapshots".** Keep per-check scripts that write JSON results, and a whole-app-data snapshot/restore for the test profile. To be planned after the time breakdown (item 5); nothing is built yet.
+8. **Where it is recorded.** `docs/workflow/gates.md`, section "Device checks" (items 1 to 4), plus this entry. Items 5 to 7 are recorded here only.
+
+**Notes that are not the maintainer's words:**
+- The option texts and the proposal's rule numbering come from the orchestrator and the pasted proposal; the summaries above repeat them. Item 5 repeats its option text; the wording of item 7 beyond the option name is the orchestrator's description.
+- Not adopted in this entry: one build with run-time knobs (proposal rule 2), the second Note 9 (rule 8, pending setup) and warm build caches (rule 9).
+- The existing device practices (own debug ports and port ranges with a free-port and identity check, kill only processes you started, a test-only app profile, never hand-edit app state, performance numbers naming their hardware) were held in the orchestrator's memory notes. `docs/workflow/gates.md` restates them as existing practice; this entry does not change them.
+- Nothing here authorizes application-code edits, commits or pushes.

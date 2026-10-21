@@ -45,6 +45,24 @@ Standing rule from 2026-10-21 (MC-329).
 - **Break the rule before hand-back.** The implementer breaks the new rule on purpose with mutants in scratch (a load hook or in-memory substitution, never swapping repository files) and shows that a repository test fails for each. This complements, and does not replace, the pre-fix reproducer rule in Evidence discipline.
 - **Gate 2 reviewers do not rerun the full suite.** They rely on the implementer's full-run log and still rerun the reproducers, their own mutants and the targeted tests, and run `pnpm check`. The single full-check owner for `pnpm test`, `pnpm check` and the relevant build on the final snapshot is unchanged.
 
+## Device checks
+
+Standing rule from 2026-10-21 (MC-330). It applies to checks on a physical Android device (currently the Note 9); browser-preview checks follow [live checks](live-checks.md).
+
+- **Ceiling, time limit, exit.** Every device-check brief states a data-size ceiling, a time limit and a pass/fail exit for each check. No open-ended sessions.
+- **PC first.** Check the logic on the PC first (headless Chrome or vitest). The device is for WebView, bridge, file-system or service behaviour only.
+- **Data sized to the question.** A rate needs a synthetic set of about 200-500 MB, measured a few times and extrapolated. Large or real-shape runs are reserved for Android-only risk or pre-release (see tiered data below).
+- **Keep the phone awake.** Before each run, keep the device awake while charging and exempt the app from battery optimisation. The screen stays on unless the check is about screen-off behaviour.
+- **Batch.** Gather the device checks of several stages into one planned device session rather than one session per stage.
+
+Existing practice, restated for context (not new in MC-330):
+
+- A device agent uses only its own debug ports and port ranges, with a free-port and identity check before it drives a forward.
+- Kill only processes you started; never by image name.
+- Use a test-only app profile and never hand-edit app state.
+- Tiered test data: small synthetic by default, large data on the PC, Note 9 large runs only for Android-specific risk or pre-release.
+- A performance number names its hardware (see Evidence discipline).
+
 ## Repository and comment discipline
 
 Reviewers are read-only in the repository by doctrine. Differential tests, mutants and scratch configs stay outside the tree, with scratch/in-memory module substitution where needed. Never back up, mutate production source in place and restore it for a review. Focus fault injection on meaningful semantic failures and reuse applicable harnesses/evidence.
