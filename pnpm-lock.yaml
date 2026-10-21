@@ -138,8 +138,8 @@ importers:
         specifier: ^4.17.21
         version: 4.18.1
       markdown-it:
-        specifier: ^14.3.1
-        version: 14.3.1
+        specifier: ^14.3.3
+        version: 14.3.3
       mnemonist:
         specifier: ^0.40.3
         version: 0.40.3
@@ -2180,8 +2180,8 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
-  markdown-it@14.3.1:
-    resolution: {integrity: sha512-4Ej49aYTDFIQ+uBkfX8GBvJGccoARxxPep+7aWTs55ozbjQJpW9M26Fe53vnGgvLeVzva/amzjQQaQu9w0vMhA==}
+  markdown-it@14.3.3:
+    resolution: {integrity: sha512-L//tDAkjTjJCU6pBUSBTgs3Kg4InVaZuUZog/b6V12UKhcDQ7S78877ibbCanRExwPuYP1CZD7Gd2dxSy1GXRg==}
     hasBin: true
 
   marked@14.0.0:
@@ -4505,7 +4505,7 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  markdown-it@14.3.1:
+  markdown-it@14.3.3:
     dependencies:
       argparse: 2.0.1
       entities: 4.5.0
