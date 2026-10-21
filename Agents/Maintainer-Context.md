@@ -10602,3 +10602,102 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - The D10 evidence (`s4b\d10\d10-results.md`) lives in session scratch under `%TEMP%\risu-b715\`, outside the repository.
 - The orchestrator pinned the upstream clone to `979dbc9d` (the last upstream commit merged into the fork), because upstream's newer plugin storage index is the unimplemented compatibility work (`MC-324` 3 and 8).
 - Whether to flip `EXPORT_UNLOADED_CHARACTERS` to `'stub'` (`MC-318` 7) is not decided; the D10 evidence is in the Roadmap stage 4b section.
+
+### MC-326 — Step 2 session, 2026-10-21: `MC-323` product answers (resume, background, RP data first, export, stub export flip, free space, platforms) and the parallel measurement
+
+- **Tag:** decisions (one message and two `AskUserQuestion` rounds, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the maintainer's message and answers in the session transcript. Input: the `MC-323` fit map `%TEMP%\risu-b715\mc323\fit-map.md` (AI-authored; independently checked by `doc-verifier`, 19 of 26 claims verified, corrections appended there).
+
+1. **Parallel measurement (message):** "since S2b and other workflows are on a different branch, can we run measurement in parallel? I am also interested in import speed maxing out at around 6mb/s. while Note 9 should be capable of more." Read-only measurement of the import copy ceiling runs on the Note 9 alongside the upstream merge work; no implementation.
+2. **Interrupted import: "Ask resume or discard".** The next launch asks whether to resume the asset copy from the same `.bin` or discard the partial files; the previous profile stays intact either way.
+3. **Same file: "Name+size+date, verify assets".** A re-picked `.bin` is matched by name, size and modified time, and each skipped asset is checked so a wrong match cannot install a wrong asset.
+4. **Android background: "Continue, screen may sleep".** A long import keeps running under the foreground service with a progress notification, with the screen off and after leaving the app; the 2 h busy-token and Android 15 service-timeout gaps are to be fixed.
+5. **RP data first: "Yes, assets in background".** The profile switches after the RP data (characters, chats, modules, presets); assets keep copying in the background and a not-yet-copied asset shows a placeholder.
+6. **Export (multi-select): "Faster export", "Background export", "Resumable export".** Not chosen: a warning before a very large export. The "Resumable export" option text said it is Tauri only and the file stays one upstream-readable `.bin`.
+7. **Stub export (`MC-318` 7): "Switch to stub form".** Export writes a character whose chats live in cold storage in stub form with its cold units, instead of loading it inline.
+8. **Free space (CHORE-182): "Yes, prerequisite".** A free-space check before copying is a prerequisite for the resume and RP-first work.
+9. **Platforms: "Android app first".** Built and measured on the Android app (Tauri, store2) first; other platforms later where cheap.
+10. **Previous profile during the background asset copy (follow-up to item 5, after the orchestrator's comparison of three options): "yeah, B seems like a best option here."** Option B as the orchestrator described it: switch to the new profile after the RP data, but keep the previous profile until every asset is copied; until then the recovery screen and the resume prompt can offer a return to the previous profile; after the copy completes the previous profile is released. Not chosen: A (switch early, previous profile not kept) and C (no early switch, today's behaviour). The orchestrator additionally recommended offering the return only before the first change on the new profile (so new chats cannot be lost by going back); B was chosen without that limit, and on 2026-10-21 the maintainer answered "Leave to Gate 1" (`MC-328` 7): the limit is an open point for the design review.
+11. **Size warning before import (same message): "in this case I'd include the size warning before import, too."** Before an import starts, the user is warned about its size. The orchestrator's reading, to be confirmed in Gate 1: the warning states the space the import needs, including the extra space while both profiles are kept (item 10), and works with the free-space check of item 8.
+
+**Notes that are not the maintainer's words:**
+- The option texts the maintainer chose were written by the orchestrator; the summaries above repeat those texts.
+- Item 10 depends on facts not yet traced (since checked: `%TEMP%\risu-b715\mc323\retention.md`, verified with corrections in `retention-verify.md`): whether store2 already keeps anything of the previous profile after an import's commit, and whether assets are stored by content name, so that two profiles with mostly the same library share their asset files. Option B is persistence work with silent-loss risk: a `senior-advisor` challenge before its Gate 1, then `opus-reviewer`. If the disk-space or complexity cost proves too high, the orchestrator's stated fallback is A with a clear warning before the switch; that fallback would need the maintainer's decision.
+- Item 5 changes when the profile switches during an import. Whether it also needs an `MC` amending `MC-175` (compared with the ".bin = RP data only" draft) is to be settled in its Gate 1; it does not change the `.bin` format.
+- Item 7 is decided but not implemented. It changes the exporter, which the upstream merge (U4) also changes, so the flip is sequenced after that merge, with an upstream round trip against the merged upstream commit covering the stub form.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-327 — Step 2 session, 2026-10-21: CHORE-128 fork-only backup format answers (scope, assets, snapshot, history, newer-data check, relation to `.bin`, encryption, platforms, pack first, version refusal, sequence)
+
+- **Tag:** decisions (the maintainer's message and three `AskUserQuestion` rounds, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The maintainer asked "wasn't fork-only format also blocked by 4b? if so, can we design investigation pass of that too?"; the orchestrator answered that CHORE-128 was not recorded as blocked by stage 4b but was waiting in practice on store2, and ran a read-only investigation. Input: `%TEMP%\risu-b715\chore128\fit-map.md` (AI-authored; independently checked by `doc-verifier`, 30 of 37 claims verified, corrections in `fit-map-verify.md`).
+- **Related:** `MC-298`, `MC-199`, `MC-175`, `MC-223`, `MC-326`, `MC-289`; CHORE-128.
+
+1. **Data outside the main save (multi-select): "UI/device settings", "Memory embeddings", "Plugin storage + perms", "MCP tool-call data".** All four offered classes are included: localStorage UI memory, Iris dialogue history and Google search credentials; HypaMemory embeddings; V2 plugin safe storage and V3 plugin permission grants; MCP tool-call data. The question stated that chat media and API keys are already in, and that API keys stay plaintext unless the optional password is set (`MC-199` 3).
+2. **Plugin permission grants: "Restore, re-prompt".** Plugins come back, and each asks for its permissions again on first use.
+3. **Assets: "Only referenced ones".** The backup holds only the assets the saved data references, not orphans. The option stated that this relies on the reference lists being complete, which needs checking.
+4. **Snapshot: "Save first, then copy".** Pending edits are saved, then that committed state is copied unit by unit.
+5. **History: "One snapshot per backup".** A folder backup overwrites the previous state.
+6. **Newer data on the target: "Warn, allow restore".** The warning shows which side is newer and the backup's device label; the replaced profile stays kept under `MC-326` 10's rules.
+7. **Relation to the `.bin` export work (`MC-326` 6): "Native for fork-to-fork".** Backups between RisuTanium installs use the new format; the `.bin` export stays for going back to upstream, so the `.bin` export speed, background and resume work can be lighter.
+8. **Encryption: "Later version".** The first version is plain; the optional password comes after the format is stable.
+9. **Platforms: "All platforms from day one".** Not chosen: desktop and Android first. Web and Node get the format at the same time; the option text said a folder is used where the platform allows (plain-HTTP LAN pages cannot use a folder).
+10. **Folder or pack: "Pack first, folder later".** The single-file pack comes first; then folder mode on desktop; the Android folder plugin last.
+11. **Versions: "Older build refuses newer".** A backup a build cannot read shows a "made by a newer version" message instead of a partial restore. The option also stated that the format may hold data above upstream's limits (`MC-223`).
+12. **Sequence: "After stage 5 cleanup".** The design starts after the upstream merge, the `MC-323` measurements and shared prerequisites, and stage 5 (the store2 cleanup that frees disk); before stages 6 to 8. This changes the Roadmap order, which placed the format after stage 8.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator; the summaries above repeat them.
+- Item 9 differs from `MC-326` 9 ("Android app first" for the import and export work); it applies to this format only.
+- Item 7 narrows the scope of `MC-326` 6's export items for fork-to-fork use; it does not withdraw them for the fork-to-upstream `.bin`.
+- Unsettled technical points for the design's `senior-advisor` challenge: restoring under re-minted unit keys or the backup's own keys (a store2 commit accepts only keys minted by that attempt); whether the asset reference lists are complete (item 3); the newer-data marker's lineage record; whether `MC-199` 2 and 3 carry over (`MC-298` leaves that open, and `MC-199` 2's "no merge" is conditionally amended by `MC-281`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-328 — Step 2 session, 2026-10-21: import/export architecture direction (thin native task, base64 bypass, `.bin` location, unused assets, Node endpoints, resume check)
+
+- **Tag:** decisions (the maintainer's messages and an `AskUserQuestion` round, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The maintainer asked for a neutral look at whether the import/export architecture itself is efficient, whether an A-lite-style overhaul would give a large speedup, and what it would take; later asked whether the base64 bridge can be bypassed (e.g. a small local server). Inputs: `%TEMP%\risu-b715\ioarch\report.md` (AI-authored, first-principles review), `report-verify.md` (`doc-verifier`: 8 of 13 sub-verdicts verified, corrections listed), `advisor.md` (`senior-advisor` challenge, "agree with changes").
+- **Related:** `MC-323`, `MC-326`, `MC-327`, `MC-197` 9, `MC-175`, `MC-223`, `MC-289`.
+
+1. **Base64 bridge bypass: native code reads the `.bin` itself.** The maintainer chose it over a loopback server in the app, an app URL scheme (cannot receive request bodies on Android) and WebView binary message ports, and confirmed it is the `senior-advisor`'s recommendation. Asset bytes then never pass through the page.
+2. **Direction: the `senior-advisor`'s plan, recorded by the orchestrator after item 1 and then approved by the maintainer: "Approve the order" (a later `AskUserQuestion`, 2026-10-21; not chosen: "Approve as a guide", "Only item 1").** Order: a Note 9 measurement day (native read rate of the picked `.bin` through a content-URI descriptor, random access, whether a descriptor held by native code survives the page reload, an import with the screen off); platform-neutral page fixes (faster base64, parallel large entries, decode the database once, locate the database from the file's tail and read the source once); the role-play-first and keep-previous-profile design (`MC-326` 5, 10); a thin native task (holds the descriptor, lists headers, copies byte ranges into `assets/` through the existing Rust write path and key rules; container rules and the progress record stay in page code); native export; Node endpoints and web batching; the fork-native format on the same primitives (`MC-327` 12). Not chosen: a full Rust container engine with its own parser, journal and pause state; page fixes only.
+3. **Where a large `.bin` sits on the phone: "Internal storage".**
+4. **Unused assets: "Measure first".** Count the share of `.bin` assets the database does not reference before deciding (the question named the maintainer's partial backup on the PC as the sample); the option stated that unused assets skipped on import would not travel back to upstream in a later fork-to-upstream export (`MC-175`). Follow-up the same day: the partial backup turned out not to be a sample (517 main images, all referenced by construction), and the 2026-10-13 census of the maintainer's full library (`Agents/Tools/output/real-size-report.json`, run by the maintainer with the `real-size-report` harness) counts 0 unreferenced of 383,742 assets under its basename-match reference rule (485-character snapshot; 989 referenced keys have no container entry, mostly non-asset references); asked again, the maintainer chose **"Always copy all"**: import keeps copying every asset in the `.bin`. Not chosen: "Referenced only", "Decide later".
+5. **Node server: "Yes, fork-only".** The fork's local server may gain fork-only endpoints for bulk `.bin` import and for building the export on the server; upstream need not read them.
+6. **Resume check (`MC-326` 3, confirmed): "Size + sample".** Already-copied assets are checked by name and size plus a few sampled bytes compared with the `.bin`, not a full hash.
+7. **The return limit in `MC-326` 10: "Leave to Gate 1".** Whether the return to the previous profile is offered only before the first change on the new profile is decided by the role-play-first design review with the persistence reviewers. Not chosen: "Keep the limit", "No limit".
+8. **Role profiles: "Yes, add pointers".** The coder and reviewer profiles in `.claude/agents/` (sonnet-coder, opus-reviewer, adversarial-reviewer, test-warrior) get a one-line pointer to the `MC-329` rules in `docs/workflow/gates.md`. Not chosen: "No, gates.md is enough".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator; the summaries above repeat them.
+- Items 2, 7 and 8 were answered in one later `AskUserQuestion` round on 2026-10-21, after `doc-verifier` found that item 2 and the `MC-326` 10 limit had been recorded as decisions without the maintainer's selection.
+- `MC-197` 9 (per-file sync for restored assets) stays in force for the first native step; under it the measured disk-shape ceiling is about 43 MiB/s (measured in `/data/local/tmp`, raw output not retained). Relaxing it is a later, measured maintainer trade-off, not decided here.
+- The advisor's tail-locate and reload-survival points are inferences to be proven in the measurement day and Gate 1; they are not verified facts.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-329 — Step 2 session, 2026-10-21: standing rules for implementation briefs and Gate 2 re-runs (amendment checklist, producer-built fixtures, break-the-rule mutants, no full-suite re-run by reviewers)
+
+- **Tag:** decisions (an `AskUserQuestion` answer, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The maintainer pasted a side-review proposal and selected "1+2 as standing rules". The adopted option text was: "Amendment checklist in every brief and answered in the hand-back; test files built like the real producer; coder breaks the new rule on purpose before hand-back; reviewers skip the full suite but re-run targeted tests and pnpm check. Recorded in docs/workflow/gates.md plus an MC entry."
+- **Related:** `MC-321`, `MC-322`, `MC-328`.
+
+1. **Amendment checklist.** Every implementation brief pastes each binding Gate 1 amendment and applicable orchestrator ruling as a numbered checklist. The hand-back answers each item (met / not met / amendment requested) and the Gate 2 reviewer checks that table.
+2. **Fixtures built like the real producer.** Test fixtures for a compatibility or format rule are built the way the real producer builds them (for example upstream's actual export layout), not only through a convenience helper; where a helper's defaults differ from the real producer, both are covered.
+3. **Break the rule on purpose.** Before hand-back the implementer breaks the new rule with mutants in scratch (via a load hook, never by swapping repository files) and shows that a repository test fails for each.
+4. **Gate 2 reviewers skip the full suite.** They rely on the implementer's full-run log and still re-run the reproducers, their own mutants and the targeted tests, and `pnpm check`. The single named owner of full `pnpm test`, `pnpm check` and the build on the final snapshot is unchanged.
+5. **Where it is recorded.** `docs/workflow/gates.md`, section "Implementation briefs and hand-back", plus this entry.
+
+**Notes that are not the maintainer's words:**
+- The option text was written by the orchestrator; the summaries above repeat it.
+- Background from the orchestrator, not the maintainer: about 10 Gate 2 rounds across the upstream merge stages U0 to U4; several rejections came from the brief rather than the design. In U4a round 1 a binding Gate 1 amendment (A7(d)) never reached the coder's brief; in U4a round 2 the test fixtures did not match upstream's real file layout (no `__directory`); U0 and U1 had weak (vacuous or no-stack) assertions.
+- Not adopted in this entry: second worktrees (separately authorized per item, `docs/workflow/ownership.md`), grouping sub-stages, records-verification timing.
+- The red-before-green and reproducer-versus-guard rules in `docs/workflow/gates.md` stay; item 3 does not replace the pre-fix reproducer.
+- Nothing here authorizes application-code edits, commits or pushes.

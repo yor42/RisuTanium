@@ -24,7 +24,7 @@ Resume a finished reviewer for remediation only within about 5 minutes of its la
 
 At the second substantive rejection, reconsider the mechanism. Three consecutive substantive `[REJECT]` rounds, across plan and implementation gates, require senior-advisor before a fourth revision. `[EDITORIAL]` neither counts nor breaks the streak. Do not patch indefinitely to satisfy one edge case without revisiting the shared cause or asking the maintainer about a product constraint.
 
-One named owner runs the full checks once on the final applicable snapshot. Remediation workers run targeted tests and type checks. Repeat full checks when changes invalidate their evidence; reviewers may rerun any critical check. Documentation-only changes require documentation/configuration verification, not application tests. Budgets never turn unfinished work into approval.
+One named owner runs the full checks once on the final applicable snapshot. Remediation workers run targeted tests and type checks. Repeat full checks when changes invalidate their evidence; Gate 2 reviewers rerun targeted checks, not the full suite (see Implementation briefs and hand-back). Documentation-only changes require documentation/configuration verification, not application tests. Budgets never turn unfinished work into approval.
 
 ## Evidence discipline
 
@@ -35,6 +35,15 @@ Source claims name accessible source. Execution claims name command, result, cod
 Regression reproducers fail against the relevant pre-fix base on the intended defect and pass after; import/setup/missing-export failures do not qualify. Write against the unfixed behavior and record the demonstrated pre-fix failure in the gate and commit claim. Compatibility guards may pass before and after and must be labeled as guards. Diagnostic experiments establish mechanisms and usually remain in scratch. A test that only fails against an earlier draft of the new change is not a pre-fix reproducer.
 
 Sanitizer-output assertions use jsdom, not happy-dom (MC-239), and relevant assertions must fail with an identity sanitizer. Use synthetic fixtures, isolated tests and no real-service probes. Do not claim measurement ratios are universally hardware-independent. Name runtime, hardware, inputs and limits of generalization; use [measurement procedures](../../Agents/Tools/README.md).
+
+## Implementation briefs and hand-back
+
+Standing rule from 2026-10-21 (MC-329).
+
+- **Amendment checklist.** Every implementation brief pastes each binding Gate 1 amendment and applicable orchestrator ruling as a numbered checklist. The hand-back answers every item as met / not met / amendment requested, and the Gate 2 reviewer checks that table against the diff.
+- **Fixtures built like the producer.** Fixtures for a compatibility or format rule are built the way the real producer builds them (for example upstream's actual export layout), not only through a convenience helper. Where a helper's defaults differ from the real producer, cover both.
+- **Break the rule before hand-back.** The implementer breaks the new rule on purpose with mutants in scratch (a load hook or in-memory substitution, never swapping repository files) and shows that a repository test fails for each. This complements, and does not replace, the pre-fix reproducer rule in Evidence discipline.
+- **Gate 2 reviewers do not rerun the full suite.** They rely on the implementer's full-run log and still rerun the reproducers, their own mutants and the targeted tests, and run `pnpm check`. The single full-check owner for `pnpm test`, `pnpm check` and the relevant build on the final snapshot is unchanged.
 
 ## Repository and comment discipline
 
