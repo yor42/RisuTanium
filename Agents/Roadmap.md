@@ -6298,6 +6298,16 @@ with index -1.
 
 ### CHORE-103 — The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail
 
+**Status (2026-10-22, lane B stage 2, `MC-357`): fixed and merged as `165dcf10f` (lane B stage 2, `MC-357`); the residual is format-bound and the item stays OPEN.** Ledger rows 2307 to 2318. The earlier statuses in the Roadmap entry stand.
+
+- **What changed:**
+  - **No bytes held across the copy.** The `.bin` import no longer holds the database entry's bytes across the asset copy: `store2Import.databaseBytes` is gone. The validity probe reads and decodes through `readBinDatabaseOmitted`, and the boot and page commit closures through `readBinDatabaseTree` (`src/ts/drive/storeImport.ts`). Each of those reads the entry from the file again.
+  - **No copy in the decoder.** `decodeRisuSaveBranches` (`src/ts/storage/risuSave.ts`) reads the body as a view (`subarray`) instead of a copy in its compressed, raw and stream branches. That avoids a transient copy of the compressed body at every legacy decode, numbered backups included.
+  - **Three decoder logs removed.** These were `console.log` calls of `this.blocks`, the directory and the decoded `db` on the block-format path; desktop Chrome keeps a logged object's graph alive (m3, synthetic).
+- **Sizes on the Note 9 fixture** (synthetic, `m2-mix18k.bin`; m1 on the PC): the held bytes were 48.8 MiB, and the decode transient is 48.8 MiB lower. The decompressed buffer (170.8 MiB) and the decoded tree (about 176 to 181 MiB) remain at each decode. So the peak is format-bound and moves only with per-unit decoding (`MC-327` 12). No device measurement has been made after the change.
+- **Not changed:** the decode count (the validity probe plus the commit, and a rebuild on conflict) and the `.bin` layout, encoders and write paths.
+- **Related:** `MC-357`, `MC-328` 2, `MC-323` 2 lead 6; CHORE-221.
+
 **Status (2026-10-20, stage 4b close, `MC-323` lead 6): OPEN, RE-SCOPED, not closed.** S4 (`19afc6829`) released the import's decoded tree and msgpackr's retained buffers; the raw entry bytes and the double decode remain. The earlier status follows.
 
 **Status (2026-10-06): open, not scheduled.** Type: memory. The live check of `bc631526` (S1) measured the whole restore peaking at +1,211 MiB in the tail that decodes the 159 MB legacy database against a flat +110 MiB asset phase (a control with 300 small entries peaked +1,131 MiB), so the under-1-GB target was not met. The records items list "legacy decode memory" as a follow-up without further detail (TODO(evidence): confirm this ticket is the one meant). Platform: Windows, i9, WebView2 154.
@@ -6908,6 +6918,14 @@ with index -1.
 - **What settles it:** the Note 9 import of a stub-form file (`MC-355` 2), measuring the memory peak during the resolve against the shown number, and the import time against the estimate. Then recalibrate the threshold or the shown number, or both. If the wording changes again, it needs a translator pass (`MC-058`).
 - **Alternative named to the maintainer, not chosen now:** keep the 16 MiB trigger and show the database and unit sizes separately in the sentence (a further string change).
 - **Related:** CHORE-194, `MC-355`, `MC-318` 6.
+
+### CHORE-221 — A `.bin` commit's salvage can leave out blocks the person did not confirm
+
+**Status (2026-10-22): open, candidate; not scheduled.** Source: the lane B stage 2 Gate 1 review (`%TEMP%\risu-lane-b\s2\gate1-r1.md`, non-binding note). It is a reviewer's reading, not independently verified by the orchestrator.
+
+- **Problem (reviewer's claim):** the left-out question (`MC-183`) is asked once, over the validity probe's decode. The commit decodes again, and for a block-format file `RisuSaveDecoder` reads `remotes/` from the app store at that time. So the commit's salvage can leave out blocks that the person never confirmed. Since stage 2 the commit also re-reads the entry from the file, so a same-length body change with an intact header (which the header re-check does not detect) falls in the same class.
+- **Possible fix named by the reviewer:** refuse as a changed file when the commit's left-out names are not a subset of the confirmed `facts.omitted`.
+- **Related:** `MC-183`, `MC-357`; CHORE-103.
 
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 

@@ -9,7 +9,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 | Stage | Item | State |
 |---|---|---|
 | 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
-| 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); awaiting the maintainer's commit approval (rows 2307 to 2318) |
+| 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); rows 2307 to 2318; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `165dcf10f` |
 | 3 | Parallel large entries (`MC-328` 2) | not started |
 | 4 | Android batched asset reader for export (fit-map E1) | not started |
 
