@@ -10746,3 +10746,21 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - The evidence for item 1 is the U5 round trip (`u5\rt\results.md`, corrections appended there after `doc-verifier`): the kv keys are reordered because `upstreamKvBlocks` is not a partitioned config field, so it sits in the config root unit, and every unit body goes through `canonicalJson`. No upstream `61d0eb79a` code reads or writes kv. The K1 original in that run was hand-built. Roadmap and `Upstream-Merges.md` hold the details.
 - The merge landed as `2862940fe` (parents `eb4c5580b` and `2c42d9423`) and was pushed. The merge commit message already states the JSON-equal acceptance.
 - Nothing here authorizes application-code edits beyond what the answers describe, or any later commit or push.
+
+### MC-332 — README "What's different from upstream" is kept current with user-visible merges
+
+- **Tag:** decisions (one request, one `AskUserQuestion` answer and one follow-up remark, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript.
+- **Related:** `MC-331`, `MC-323`, `MC-328`, `MC-321` 4.
+
+1. **Request.** The maintainer wrote: "I think we should update the "What's different from upstream" on readme to reflect later changes time to time. faster base64 could be one of them."
+2. **Standing rule: "Each user-visible merge (Recommended)".** Answer to "When should the README's "What's different from upstream" list be checked as a standing rule?". Part of the records closeout whenever an item that changes user-visible behaviour lands on `main`: the list (and the README's known problems) is updated in the same records pass, doc-verified. Recorded here and in `docs/workflow/records.md`.
+3. **Base64 stays out for now.** After the orchestrator left base64 out of the README, the maintainer said: "nah that is fine. consider folding it in later when faster import/export actually lands." Once the faster import/export work lands (the `MC-323`/`MC-328` sequence), the README pass for that merge mentions the speed-up together with the base64 encoder, only as far as measured evidence supports.
+
+**Notes that are not the maintainer's words:**
+- Option description as offered for item 2 (added by the orchestrator from the session transcript): "Part of the records closeout whenever an item that changes user-visible behaviour lands on main: update the list in the same records pass, doc-verified. Recorded as MC-332 and in docs/workflow/records.md."
+- Base64 (`ac5b4e105`) was assessed and left out of the README: an internal encoder whose speed was measured only in Node on an i9 PC (commit message), with no user-visible effect in the evidence.
+- Item 3 follows the maintainer's remark as relayed by the coordinator; it does not decide what the later measured evidence will be.
+- Nothing here authorizes application-code edits, or any commit or push.

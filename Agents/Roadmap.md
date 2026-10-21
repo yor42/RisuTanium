@@ -2723,7 +2723,9 @@ upstream means this is unknown.
 
 ### CHORE-50 — The first run of a new self-hosted Node server fails until a reload
 
-**Status (2026-10-01):** filed from ledger row 501. Present upstream since its `61996dd2`
+**Status (2026-10-21 record update):** fixed in code by `a29335f76` (2026-10-03), per its commit message and `nodeStorage.ts`, where the `unset` branch of `checkAuth` now calls `login(digest)` after `/api/set_password`. Not re-run against a live server for this record.
+
+**Status (2026-10-01; superseded by the line above):** filed from ledger row 501. Present upstream since its `61996dd2`
 (inferred from source; upstream not run). Not fixed and not scheduled.
 
 - **Observed (Orchestrator, built-in pane, fresh scratch `save/`, production build of `d199b07b`):**

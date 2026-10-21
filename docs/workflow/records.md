@@ -16,6 +16,8 @@ The orchestrator names a record owner and identifies applicable records in the i
 
 The record checker independently verifies the changed claims and pointers against the accepted evidence. Ordinary drafting uses record-clerk or doc-writer and independent verification under [routing](routing.md)/[gates](gates.md); governance and actual maintainer decisions stay outside routine clerk authority. A missing record is an administrative blocker, not a new behavior defect. Closing records is incremental claim/diff verification; it does not restart Gate 2 or rerun application tests unless it exposes a substantive defect or invalidates accepted evidence.
 
+When an item that changes user-visible behaviour lands on `main`, the same records pass updates the README's "What's different from upstream" list and its known problems, and `doc-verifier` checks that change (MC-332).
+
 The item owner records final closure against the accepted snapshot and the changed records, distinguishing optional improvements and unresolved work. Commit/push remains subject to the maintainer's actual authorization. Existing 2026-10-08 handoff backlog stays pending until separately reconciled; adopting this rule does not declare that backlog complete.
 
 ## Batching and session discipline
