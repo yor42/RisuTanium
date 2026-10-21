@@ -8,7 +8,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 
 | Stage | Item | State |
 |---|---|---|
-| 1 | CHORE-194: import warning and estimate keyed on the database entry | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; awaiting records verification and the maintainer's commit approval (rows 2300 to 2306) |
+| 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
 | 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103) | slim stage adopted (`MC-357`, `s2\advisor.md`); PC measurements m1 and m3 done (`s2\measure\report.md`, diagnostic, not yet verified); m2 once stage 1 is committed |
 | 3 | Parallel large entries (`MC-328` 2) | not started |
 | 4 | Android batched asset reader for export (fit-map E1) | not started |

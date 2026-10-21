@@ -6864,12 +6864,12 @@ with index -1.
 
 ### CHORE-194 — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
 
-**Status (2026-10-21, stub-export flip close, `b781b1f35`): open, not scheduled.** Source: stub-flip Gate 1 round 1 finding 5; wording corrected per Gate 1 round 2 amendment 7 (`stubflip\gate1-r2.md`, `stubflip\impl\handback.md`, scratch). Not fixed by the flip.
+**Status (2026-10-22, lane B stage 1): fixed and merged as `953f63241` (lane B stage 1); COMPLETE with this records pass; the Note 9 calibration is open under CHORE-220 (`MC-355` 2).** Ledger rows 2300 to 2306.
 
-- **Problem:** `confirmImportScale` (`src/ts/drive/storeImport.ts`) and `estimateImportSeconds` / `importAssetBytes` (`src/ts/drive/importEstimate.ts`) key the 16 MiB database warning and the long-tail time rule on the database entry's bytes, and treat every other entry as an asset. A stub-form `.bin` (a fork export after the `MC-326` 7 flip, or an upstream file with archived characters) has a small database entry and many `coldstorage_<uuid>.json` unit entries, yet `resolveLegacyTree` builds the whole tree from the units.
-- **What is keyed low:** the 16 MiB database warning and the long-tail rule (the review's figures: 60 s against 480 s). The space estimate is not low: it counts the units as assets. The copy time counts them at 4.2 MiB/s. The net direction of the time error is unmeasured.
-- **Smallest coherent correction (draft):** count the unit entries the resolve reads as database-class bytes in the estimate and the warning. Acceptance: a stub-form file of 500 characters warns and estimates within a stated factor of the measured import on the PC; no change for files without units.
-- **Related:** `MC-318` 6, `MC-326` 7, `MC-334` 5; CHORE-182.
+- **What changed:** `ColdEntryIndex.estimatedUnitBytes` (`src/ts/storage/store2/legacy/binReader.ts`) sums the `dataLength` of the entry the reader tries first per id (the last noted place): a name-only estimate that over-counts orphan units and rejected bodies, and under-counts units served from the page or the old profile and units served by an earlier entry. `confirmImportScale` (`src/ts/drive/storeImport.ts`) takes it as a fourth argument from its one call in `backuplocal.ts`; the 16 MiB size sentence and the long-tail key use the database entry plus that estimate. The 1 GiB Android trigger, the copy time and the free-space figure still use the file size less the database entry, so the units stay in them. The numbered-backup restore (`storeRestore.ts`, `confirmDatabaseSize`) is unchanged and keeps the database bytes. The sentence reads "The saved data in this backup, not counting images and other files, is about N MB" in English and six locales (`MC-356`).
+- **Unchanged case:** a file without unit entries gets the same prompts and figures as before. A fork inline export with plugin-storage units or an upstream file with cold-chat units now counts them.
+- **Not done:** the upstream `.bin` round trip was not run, because no read or write path changed (reasoning by the plan and both gates, not execution). The Note 9 figure (`MC-355` 2) and the mixed byte basis (CHORE-220) remain.
+- **Related:** `MC-355`, `MC-356`, `MC-318` 6; CHORE-220.
 
 ### CHORE-195 — Hono server follow-ups after the hono 4.13.11 bump: the deprecated `hono/bun` import and the Node static server's double-decode fix
 
@@ -6879,6 +6879,35 @@ with index -1.
 - **Follow-up 1:** `server/hono/src/bun.ts` imports `serveStatic` from `hono/bun`, which hono 4.13.10 deprecates in favour of `@hono/bun` and removes in v5. It still works in v4.
 - **Follow-up 2:** `server/hono/src/node.ts` uses `serveStatic` from `@hono/node-server/serve-static`, locked at 1.19.15. The release notes say the same fix ships in `@hono/node-server` 2.1.3, a major bump that has not been assessed. Whether 1.19.15 is affected is not checked.
 - **Not decided:** when to take either follow-up; whether a 2.x `@hono/node-server` needs other server changes.
+
+### CHORE-202 — The Note 9 screen-off import stall has an unknown cause
+
+**Status (2026-10-22): open, not scheduled.** Source: the corrected measurement-day report (`measure2\report.md`, only its "Corrections from doc-verifier" section and the statements it leaves standing) and `measure2\verify.md` (scratch). Debug MEASURE build, second Note 9, runs b1 and b2; each is one run.
+
+- **MEASURED:** with the screen off, the copy stalls. In b1, `ths.log` shows 0.03 to 0.04 MiB/s with the renderer main thread at 0.9%, after about 90 s of disk writes at roughly the screen-on rate (disk-write figures, not copy rates). The "copy 5000" marks came 617 s (b1) and 554 s (b2) after "database decoded", against 80 s with the screen on. Neither run finished with the screen off in 9 to 10 minutes.
+- **WITHDRAWN:** background timer throttling as the mechanism. The copy loop in `backuplocal.ts` yields through `yieldToEventLoop` in `src/ts/storage/saveYield.ts`, which prefers `scheduler.yield()`, then `MessageChannel`, and uses `setTimeout(0)` only as a last resort.
+- **MISSING:** power evidence. b1's `power.txt` has one populated sample, taken with the screen on, and all 21 screen-off polls are empty. b2 has no power or diskstats file. The Doze and wake-lock claims in the unverified report text have no raw source.
+- **Next:** rerun with working power polling and a trace or a no-yield build. `MC-326` 4 (the import keeps running with the screen off) is affected; until the cause is traced, how much is an open question.
+- **Related:** `MC-326` 4, `MC-336`; CHORE-203.
+
+### CHORE-203 — The Note 9 debug-build copy rate is 3.6 to 3.9 MiB/s; separate the debug cost
+
+**Status (2026-10-22): open, not scheduled.** Source: `measure2\report.md` and `measure2\verify.md` (scratch).
+
+- **Verified:** the asset copy took 316.0 s (3.85 MiB/s, run a1) and 334.6 s (3.64 MiB/s, a2) for 1,216.7 MiB, on a debug MEASURE build with debug Rust, on one Note 9 with a sampler adding load.
+- **MEASURED during the copy window:** the flash was 10 to 12% utilised and the busiest thread about 25% (renderer main thread 25.3 to 25.5%).
+- **Next:** the same imports on a release MEASURE build, batched with lane B's Note 9 request (`%TEMP%\risu-lane-b\device-requests\2026-10-22-stage1-stub-import-calibration.md`, scratch; CHORE-220).
+- **Related:** `MC-336`, `MC-330`; CHORE-202, CHORE-220.
+
+### CHORE-220 — The import size warning sums compressed database bytes with uncompressed unit bytes, so a stub-form file warns earlier and shows a larger number
+
+**Status (2026-10-21): open, scheduled with the stage 1 Note 9 check (`MC-355` 2).** Source: the lane B stage 1 plan (`%TEMP%\risu-lane-b\s1\plan.md`, change 3, an orchestrator ruling); raised again by a side agent's note, and the maintainer asked on 2026-10-21 that it be recorded so it is not lost.
+
+- **Problem:** the CHORE-194 fix counts the `coldstorage_<uuid>.json` unit entries as database-class bytes for the 16 MiB size warning and the long-tail rule. It sums raw on-disk bytes: the database entry is compressed and the units are uncompressed JSON. For the same content a stub-form file's sum is larger than the inline file's database entry. Example (stubflip PC fixture, 500 characters, synthetic, one fixture): inline 30.6 MB against stub 10.4 MB database plus about 71 MB of units, about 81 MB, about 2.7 times. So stub-form files cross 16 MiB with smaller libraries, and the sentence "reading it needs several times that much memory" probably overstates the memory for the unit part (inferred, unmeasured).
+- **Direction:** errs toward warning, never toward a missing warning. No correction factor was set, because the only ratio comes from one synthetic fixture.
+- **What settles it:** the Note 9 import of a stub-form file (`MC-355` 2), measuring the memory peak during the resolve against the shown number, and the import time against the estimate. Then recalibrate the threshold or the shown number, or both. If the wording changes again, it needs a translator pass (`MC-058`).
+- **Alternative named to the maintainer, not chosen now:** keep the 16 MiB trigger and show the database and unit sizes separately in the sentence (a further string change).
+- **Related:** CHORE-194, `MC-355`, `MC-318` 6.
 
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 

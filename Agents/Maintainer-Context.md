@@ -10820,3 +10820,89 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
   - `4a4ddf050`, "a snapshot-only missing plugin index keeps nothing, so cleanup can run" (`MC-333` 1): Gate 1 `opus-reviewer` `[APPROVE WITH AMENDMENTS]`, Gate 2 `opus-reviewer` `[EDITORIAL]`; `pnpm test` 20127 passed, 23 skipped, `pnpm check` 0/0, build and `checkReleaseDist` pass.
   - `b781b1f35`, "export unloaded characters in stub form by default; trashed and cold-root characters stay inline" (`MC-326` 7, items 1, 4 and 5 above): Gate 1 `opus-reviewer` `[REJECT]` then `[APPROVE]` with seven amendments, Gate 2 `opus-reviewer` `[REJECT]` (one owed legacy-page import guard) then `[EDITORIAL]`; `pnpm test` 20187 passed, 23 skipped, `pnpm check` 0/0, build and `checkReleaseDist` pass.
 - Nothing here authorizes application-code edits, or any commit or push, beyond the two commits listed.
+
+### MC-335 — Dependabot alerts on main, 2026-10-21: markdown-it to 14.3.3; vite to ~8.1.6 (amends `MC-238` 4)
+
+- **Tag:** decisions (`AskUserQuestion` answers, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The pending-decisions file (`decisions-2026-10-21-pending.md`, scratch), section "Pending MC-335", holds the answers and option texts. Gate 2 `[APPROVE]` (`deps\g2\gate2-r1.md`, scratch) and the coder's handback (`deps\handback.md`, scratch). Landed as `6dab95d2b`.
+- **Related:** `MC-238` 4.
+
+1. **markdown-it: "Bump to 14.3.3 now (Recommended)".** Covers Dependabot alerts 154, 158 and 159 (GHSA-r7fv-28h4-cvq7, GHSA-vfgh-jcmw-g37q, GHSA-gfr2-rv44-r23c). The question stated that `parser.svelte.ts` runs markdown-it with html and typographer on card and message text.
+2. **vite: "Move to ~8.1.6 (Recommended)".** This amends `MC-238` 4, the 8.0.x hold. Covers alerts 151 to 153 and 155 to 157 (the launch-editor GHSAs). The question stated that the dev server binds 0.0.0.0 in `vite.config.ts`, and that no 8.0.x release has the fix.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The Gate 2 file shows launch-editor 2.14.2 bundled in vite 8.1.6 and the launch-editor GHSAs fixed in vite 8.1.6 (advisory range `>= 8.0.0, <= 8.1.5`, so every 8.0.x is affected).
+- Gate 2 corrected the handback: 15 `@rolldown/binding-*` packages changed, not 18.
+- Gate 2 re-ran the markdown-it render comparison: 13 of 3300 cases differ, all on malformed input (an unterminated `<!--`, `<?`, `<![CDATA[` or `<!DOCTYPE` followed by a later construct). Valid comments sanitize identically with DOMPurify before and after.
+- The Gate 2 verdict did not run the full suite (`MC-329`); `pnpm check` was 0 errors and 0 warnings, and the build and release-dist marker check passed. Runtime behaviour of the 8.1 dev server and of the Tauri and Android bundles was not verified.
+- Nothing here authorizes anything beyond the landed commit.
+
+### MC-336 — Other answers, 2026-10-21 to 22: fork PR #9 merged with its follow-ups ticketed; second Note 9 and its measurement scope; parallel lanes; lane B stage 1 merged; CHORE-115 status
+
+- **Tag:** decisions (`AskUserQuestion` answers and maintainer messages, 2026-10-21 to 22)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the session transcript. The pending-decisions file above, section "Pending MC-335", for items 1 and 2 and part of item 3. Items 3 to 5 also rest on the transcript, the commit messages of `e8fd39618` and `953f63241`, and the orchestrator's drafts (`%TEMP%\risu-b715\records-335\drafts.md`). Git `74b28ddd1`, `e8fd39618` and `953f63241`.
+- **Related:** `MC-326` 4, `MC-328` 2, `MC-330`, `MC-334`, `MC-335`, `MC-355`, `MC-356`; CHORE-115, CHORE-195, CHORE-202, CHORE-203.
+
+1. **Fork PR #9 (hono 4.13.11): "Merge + ticket the follow-ups".** Merged as `74b28ddd1`; CHORE-195 filed.
+2. **Second Note 9 (serial 2ac80128013f7ece).** The maintainer connected it and updated its firmware to FVG4 and its WebView to 155. Its measurement-day scope: "No-code items now (Recommended)".
+3. **Parallel lanes.** The maintainer asked for parallel orchestrator sessions on separate worktrees, with a contingency for running out of an ID range. The rules and briefs are in `Agents/Lanes/`. The lane docs were committed with "Commit + push now (Recommended)" as `e8fd39618`. The maintainer started lanes B and D.
+4. **Lane B stage 1: "Merge stage 1 now (Recommended)".** `953f63241` (CHORE-194, `MC-355`, `MC-356`) was fast-forwarded into `main` and pushed. The merge check, per the coordinator's message: `pnpm test` 899 files passed, 1 skipped, 20196 tests passed, 23 skipped; `pnpm check` 0 errors and 0 warnings; the build succeeded (raw output `merge-b1\`, scratch; exit codes 0 in `exit.txt`). Lane A folds lane B's records in this pass.
+5. **CHORE-115 status: "fold into the next records commit".** It was folded into `e8fd39618`.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- CHORE-202 and CHORE-203 come from the corrected measurement-day report (`measure2\report.md`, scratch). They are tickets, not maintainer decisions.
+- Nothing here authorizes anything beyond the commits named.
+
+### MC-355 — Lane B, 2026-10-21: CHORE-194 answers (reword the size sentence; accept on the PC trigger with a batched Note 9 check)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\s1\discovery.md` (AI-authored investigator packet; its decision-critical claims were re-read in source by the lane B orchestrator: `confirmImportScale` in `src/ts/drive/storeImport.ts` shows the time notice only when `transportKind()` is `'android'` and the non-database bytes exceed `IMPORT_TIME_WARNING_BYTES`; `estimateImportSeconds` in `src/ts/drive/importEstimate.ts` keys the long tail on the database entry's bytes; `store2ImportSizeWarning` and `store2ImportTimeWarning` in `src/lang/en.ts` both say "The database inside this backup is about N MB"). Not yet independently verified as a report.
+- **Related:** `MC-318` 6, `MC-326` 11, `MC-330` 3 and 4, `MC-058`; CHORE-194.
+
+1. **Wording: "Reword it (Recommended)".** Once the stub units are counted, the sentence no longer says "the database"; the option text proposed "The character and chat data in this backup is about N MB" in both warnings, with the translator updating the six locales. Not chosen: "Keep the sentence" (only the number grows; no string change).
+2. **Acceptance: "PC trigger + batched Note 9 (Recommended)".** Stage 1 is accepted on PC tests: a stub file warns, an inline file is unchanged, and the long tail is keyed on database plus unit bytes. A Note 9 import of a stub file goes into lane A's next planned device session as a request, and the estimate is re-calibrated later if it is off. Not chosen: "PC only" and "Note 9 before accept".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator; the summaries above repeat them.
+- Item 2's "an inline file is unchanged" is the option text. Stage 1 Gate 1 amendment 6 (`s1\gate1-r1.md`) found that it holds only for a file without unit entries: fork inline exports can carry plugin-storage units and upstream inline files can carry cold-chat units, and both now count. Records and the commit say "a file without unit entries".
+- Premise behind item 2 (read in source): on a PC only the 16 MiB size warning can appear; the time and space notice is Android-only and its rates were fitted on the Note 9, so CHORE-194's "estimates within a stated factor of the measured import on the PC" has no PC estimate to compare.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-356 — Lane B, 2026-10-21: the CHORE-194 size sentence reads "saved data, not counting images and other files" (amends `MC-355` 1)
+
+- **Tag:** decision (one `AskUserQuestion` answer, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Raised by stage 1 Gate 1 round 1 (`opus-reviewer`, `%TEMP%\risu-lane-b\s1\gate1-r1.md`, `[APPROVE WITH AMENDMENTS]`, amendment 1): the `MC-355` 1 text misstates N for an inline file (the database entry also holds settings, presets, modules, lorebooks and plugin storage), for the counted units (they include plugin-storage units), and for the numbered-backup restore, which shows the same key with a whole database file's size (`confirmDatabaseSize` called from `storeRestore.ts`; the orchestrator confirmed the call by search).
+- **Related:** `MC-355`, `MC-058`; CHORE-194, CHORE-220.
+
+1. **Wording: "\"Saved data, not files\" (Recommended)".** The sentence becomes "The saved data in this backup, not counting images and other files, is about N MB." in `store2ImportSizeWarning` and in the database sentence of `store2ImportTimeWarning`; same keys; the translator updates the six locales. Not chosen: "Keep \"character and chat\"" (the `MC-355` 1 text) and "Keep original text" ("The database inside this backup is about N MB", no translator pass).
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator. The question also stated that for the same 500 characters the number reads about 31 MB for an inline backup and about 81 MB for a stub one (CHORE-220).
+- `MC-355` 1 is not rewritten; this entry replaces its wording.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-357 — Lane B, 2026-10-21: stage 2 becomes the slim stage (nothing of the database held across the copy; one fewer buffer copy per decode; tail-locate dropped; read-once deferred) (amends the page-fix wording of `MC-328` 2)
+
+- **Tag:** decision (one `AskUserQuestion` answer, 2026-10-21)
+- **Date:** 2026-10-21
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s2\sizing.md` (investigator) with `sizing-verify.md` (`doc-verifier`, 7 of 8 verified, claim 4 corrected; `sizing.md`'s header revision and its U4 sequencing warnings are stale); `%TEMP%\risu-lane-b\s2\advisor.md` (`senior-advisor` challenge). The orchestrator re-read two of the advisor's premises: the Note 9 fixture's manifest (`%TEMP%\risu-b715\measure2\fixtures\m2-mix18k.bin.manifest.json`) gives a 48.8 MiB compressed and 170.8 MiB uncompressed database, and `decodeRisuSaveBranches` (`src/ts/storage/risuSave.ts`) copies the input with `slice` in its three legacy branches. The advisor's ring timings and PSS series (lane A's `measure2\runs\a2\`) were not re-checked by the orchestrator.
+- **Related:** `MC-328` 2, `MC-323` 2 lead 6, `MC-327` 12, `MC-330` 3; CHORE-103.
+
+1. **Stage 2: "Adopt the slim stage (Recommended)".** The option text: hold nothing of the database across the copy, view instead of copy in the decoder, remove three debug logs, refuse a file changed before the save; PC measurements first; tail-locate dropped; the lighter file pass deferred behind a PC timing test; CHORE-103 stays open as limited by the format itself. The question stated: decoding takes about 4 s on the Note 9 and does not set the memory peak (each decode needs the decompressed database and the decoded tree together, so decoding once would not lower the peak); locating the database from the tail saves no read; the expected saving is about 49 MiB off the peak and every plateau in that test; read-once waits for the native file reading in `MC-328` 2; a `.bin` changed on disk between the copy and the save is refused with the "file changed" message, where today the stale data would be saved. Not chosen: "Slim stage + keep tail-locate" and "Hold stage 2".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator from the advisor's recommendation.
+- `MC-328` 2 is not rewritten: its order stands; this entry replaces only the content of the "platform-neutral page fixes" step for decode-once, tail-locate and read-once. Faster base64 is already done (`ac5b4e105`); parallel large entries stay as lane B stage 3.
+- The figures are from one debug build on one Note 9 with a synthetic fixture; PSS sampled every 5 s, so peaks are lower bounds.
+- Nothing here authorizes application-code edits, commits or pushes.
