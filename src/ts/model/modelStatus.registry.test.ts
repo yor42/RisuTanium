@@ -121,7 +121,8 @@ describe('getModelList', () => {
             }
         }
         expect(ids.has('gpt-5.1')).toBe(true)
-        expect(ids.has('gemini-3.5-flash-vertex')).toBe(true)
+        // The vertex twin of a redirected base stays listed (status ok) but is no longer recommended, so only the full list has it.
+        expect(ids.has('gemini-3.5-flash-vertex')).toBe(!recommendedOnly)
     })
 
     test('a deprecated id leaves the list on its shutdown day, with its response-api twin', () => {

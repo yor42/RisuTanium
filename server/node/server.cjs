@@ -25,6 +25,28 @@ app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_BODY_LIMIT_BYT
 app.use(express.json({ limit: NODE_BODY_LIMIT_BYTES }));
 app.use(express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }));
 app.use(express.text({ limit: NODE_BODY_LIMIT_BYTES }));
+// A body over the parsers' limit is refused before any route handler runs, so
+// the storage write routes answer it here, as JSON and without the framework's
+// error page (which carries a stack and absolute paths). /api/write-checked is
+// a guarded route and keeps its marker on the answer.
+app.use((error, req, res, next) => {
+    if (error?.type === 'entity.too.large' && (req.path === '/api/write' || req.path === '/api/write-checked')) {
+        console.error('[Storage] Rejected oversized request:', {
+            size: error.length,
+            limit: error.limit,
+        });
+        if (req.path === '/api/write-checked') {
+            markGuarded(res);
+        }
+        res.status(413).send({
+            error: 'Storage payload is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Storage writes are limited to ${NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.`,
+        });
+        return;
+    }
+    next(error);
+});
 const {pipeline} = require('stream/promises')
 const https = require('https');
 const sslPath = path.join(process.cwd(), 'server/node/ssl/certificate');
@@ -2150,7 +2172,26 @@ async function handleWrite(req, res, next, guarded){
             });
             return;
         }
-        next(error);
+        // Any other failure is answered as JSON: the framework's error page
+        // would carry a stack and absolute paths. Absolute paths in the message
+        // are rewritten relative to the working directory.
+        const errorCode = typeof error?.code === 'string' ? error.code : 'WRITE_FAILED';
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const workingDirectory = process.cwd();
+        const clientErrorMessage = workingDirectory === path.parse(workingDirectory).root
+            ? errorMessage
+            : errorMessage.split(workingDirectory).join('.');
+        console.error('[Storage] Failed to write item:', {
+            key: Buffer.from(filePath, 'hex').toString('utf-8'),
+            size: fileContent.byteLength,
+            code: errorCode,
+            message: errorMessage,
+        });
+        res.status(errorCode === 'ENOSPC' || errorCode === 'EDQUOT' ? 507 : 500).send({
+            error: 'Failed to write storage item',
+            code: errorCode,
+            message: clientErrorMessage,
+        });
     }
 }
 

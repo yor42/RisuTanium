@@ -50,12 +50,12 @@ function expectNoMedia(strip: (html: string) => string): void {
 // What the markdown parser lets through its sanitizer that a list must still drop.
 const PARSER_PURIFY_CONFIG = {
     ADD_TAGS: ['iframe', 'style', 'risu-style', 'x-em'],
-    ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'risu-ctrl', 'risu-btn', 'risu-trigger', 'risu-mark', 'risu-id', 'x-hl-lang', 'x-hl-text'],
+    ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'risu-ctrl', 'risu-btn', 'risu-form', 'risu-trigger', 'risu-mark', 'risu-id', 'x-hl-lang', 'x-hl-text'],
 }
 
 const CONTROL_HTML = [
     '<span risu-ctrl="bgm___auto___https://example.com/x.mp3">c</span>',
-    '<button risu-btn="x">b</button><span risu-trigger="t" risu-mark="m" risu-id="i" x-hl-lang="js" x-hl-text="t">m</span>',
+    '<button risu-btn="x">b</button><span risu-form="x">f</span><span risu-trigger="t" risu-mark="m" risu-id="i" x-hl-lang="js" x-hl-text="t">m</span>',
 ].join('')
 
 const ESCAPED_STYLE_HTML = [
@@ -96,7 +96,7 @@ function stripPurified(strip: (html: string) => string, vector: string): HTMLEle
 }
 
 function expectNoAppControls(out: HTMLElement): void {
-    expect(out.querySelector('[risu-ctrl], [risu-btn], [risu-trigger], [risu-mark], [risu-id], [x-hl-lang], [x-hl-text]')).toBeNull()
+    expect(out.querySelector('[risu-ctrl], [risu-btn], [risu-form], [risu-trigger], [risu-mark], [risu-id], [x-hl-lang], [x-hl-text]')).toBeNull()
     expect(out.textContent).toContain('c')
 }
 

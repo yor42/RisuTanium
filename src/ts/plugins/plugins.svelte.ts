@@ -16,6 +16,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { databaseWriteProblem, singleCharacterProblem } from "./characterWriteCheck";
 import { hasEnabledV21Plugin } from "./v21Plugins";
+import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
 import { AssetList, toPlainAssetArray } from "../storage/assetList";
 import {
     apiVersionRefusal,
@@ -647,7 +648,10 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
         if (key === 'plugins') {
             continue
         }
-        if (allowedDbKeys.includes(key)) {
+        if (key === 'pluginCustomStorage') {
+            db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, newDb[key]);
+        }
+        else if (allowedDbKeys.includes(key)) {
             (db as any)[key] = newDb[key];
         }
         else{
@@ -655,6 +659,51 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
         }
     }
     return newDb
+}
+
+/**
+ * Unit ids named by a `_coldplugin` map: only string values count.
+ */
+function pluginStorageUnitIds(storage: {[key:string]:any} | undefined): string[] {
+    const map = storage?.[PLUGIN_STORAGE_LEGACY_MAP_KEY]
+    if (!map || typeof map !== 'object' || Array.isArray(map)) {
+        return []
+    }
+    return Object.values(map).filter((id): id is string => typeof id === 'string')
+}
+
+/**
+ * The plugin storage index pointer, the `_coldplugin` slot map and the units it
+ * names belong to the storage layer, not to plugins. A plugin writing back a
+ * stale, edited or non-object pluginCustomStorage (or clearing it) must never
+ * replace, roll back or introduce them. On a legacy page the units are separate
+ * files that a later cleanup deletes once the map stops naming them; on a
+ * store2 page each unit's value is the entry `pluginCustomStorage[<unit id>]`
+ * next to the map, so losing an entry leaves a slot with no value and rolling
+ * one back returns an older value. Protected keys are the two internals plus every unit id the CURRENT map
+ * names: each keeps its current value, or stays absent. Entries at ids only the
+ * INCOMING map names are dropped so a removed slot's value is not resurrected.
+ * Every other key comes from the incoming object. Returns the object to assign.
+ */
+function keepPluginStorageInternals(current: {[key:string]:any} | undefined, incoming: unknown): {[key:string]:any} {
+    const next: {[key:string]:any} = (incoming && typeof incoming === 'object' && !Array.isArray(incoming))
+        ? { ...incoming }
+        : {}
+    const currentIds = pluginStorageUnitIds(current)
+    for (const id of pluginStorageUnitIds(next)) {
+        if (!currentIds.includes(id)) {
+            delete next[id]
+        }
+    }
+    for (const key of [PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY, ...currentIds]) {
+        if (current && Object.prototype.hasOwnProperty.call(current, key)) {
+            next[key] = current[key]
+        }
+        else {
+            delete next[key]
+        }
+    }
+    return next
 }
 
 /**
@@ -891,6 +940,10 @@ export const getV2PluginAPIs = () => {
                                 throw new Error(problem)
                             }
                         }
+                        if (prop === 'pluginCustomStorage') {
+                            target.pluginCustomStorage = keepPluginStorageInternals(target.pluginCustomStorage, value);
+                            return true;
+                        }
                         (target as any)[prop] = value;
                         return true;
                     }
@@ -919,9 +972,8 @@ export const getV2PluginAPIs = () => {
         },
         pluginStorage: {
             getItem: (key: string) => {
-                const db = getDatabase({ snapshot: true });
-                db.pluginCustomStorage ??= {}
-                return db.pluginCustomStorage[key] || null;
+                const value = getDatabase().pluginCustomStorage?.[key];
+                return value ? $state.snapshot(value) : null;
             },
             setItem: (key: string, value: string) => {
                 const db = getDatabase();
@@ -935,7 +987,7 @@ export const getV2PluginAPIs = () => {
             },
             clear: () => {
                 const db = getDatabase();
-                db.pluginCustomStorage = {};
+                db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, {});
             },
             key: (index: number) => {
                 const db = getDatabase();

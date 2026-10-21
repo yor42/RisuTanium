@@ -31,6 +31,7 @@ import { canBootArchive } from "./process/memory/bootArchiveState"
 import { getResidency } from "./storage/store2/residencyActive"
 import { applyCharacterDefaults, resetChatStreamingState } from "./storage/characterDefaults"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
+import { normalizeOnboarding } from "./onboardingData"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -1127,6 +1128,36 @@ export async function openRealmUpload(target: string): Promise<void> {
     ShowRealmFrameStore.set(target)
 }
 
+async function readCardExportImage(image?: string) {
+    if(image){
+        try{
+            const img = await readImage(image)
+            if(img?.length){
+                return img
+            }
+        } catch (e) {
+            // Only an image absent from storage takes the placeholder (Tauri's
+            // readAssetBytes rejects with "does not exist"; the other platforms
+            // return null, handled above). Any other failure is a real read
+            // error and must fail the export rather than ship a wrong portrait.
+            if(!(isTauri && e instanceof Error && /does not exist/.test(e.message))){
+                throw e
+            }
+            console.warn('readCardExportImage: character image is missing from storage, falling back to none.webp', e)
+        }
+    }
+
+    const res = await fetch('/none.webp')
+    if(!res.ok){
+        throw new Error(`Failed to load fallback character image: ${res.status} ${res.statusText}`)
+    }
+    const fallbackImage = new Uint8Array(await res.arrayBuffer())
+    if(!fallbackImage.length){
+        throw new Error('Failed to load fallback character image: empty response')
+    }
+    return fallbackImage
+}
+
 
 //Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
 //A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
@@ -1429,6 +1460,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         customModuleToggle: data?.extensions?.risuai?.toggles ?? {},
         moduleNamespace: data?.extensions?.risuai?.moduleNamespace,
         hideChatIcon: data?.extensions?.risuai?.hideChatIcon ?? false,
+        onboarding: normalizeOnboarding(data?.extensions?.risuai?.onboarding),
     }
 
     if(card.spec === 'chara_card_v3'){
@@ -1669,8 +1701,8 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
 }) {
-    let img = await readImage(char.image)
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
+    let img = await readCardExportImage(char.image)
     try{
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
@@ -2075,7 +2107,8 @@ export function createBaseV3(char:character){
                     prebuiltAssetStyle: char.prebuiltAssetStyle ?? '',
                     toggles: char.customModuleToggle ?? '',
                     moduleNamespace: char.moduleNamespace,
-                    hideChatIcon: char.hideChatIcon ?? false
+                    hideChatIcon: char.hideChatIcon ?? false,
+                    onboarding: char.onboarding
                 },
                 depth_prompt: char.depth_prompt
             },

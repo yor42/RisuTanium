@@ -220,6 +220,68 @@ describe('new behaviour: the visit callback and per-file calls', () => {
     })
 })
 
+const INDEX_ID = '00000000-0000-4000-8000-0000000000d1'
+const LARGE_A = '00000000-0000-4000-8000-0000000000d2'
+const LARGE_B = '00000000-0000-4000-8000-0000000000d3'
+
+function indexUnit(entries: unknown[]): StoredUnit {
+    return { status: 'ok', value: { type: 'risu-plugin-storage-index', version: 1, entries, trash: [] } }
+}
+
+function treeWithStorage(storage: Record<string, unknown>): Database {
+    return { characters: [], pluginCustomStorage: storage } as unknown as Database
+}
+
+describe('the upstream plugin storage index is part of the walk', () => {
+    test('reproducer: the pointer and every large unit id the index names are in the result, and the large units are not read', async () => {
+        const units = new Map<string, StoredUnit>([[INDEX_ID, indexUnit([{ k: 'a', s: '1' }, { k: 'b', l: LARGE_A }, { k: 'c', l: LARGE_B }])]])
+        const reader = readerOver(units)
+
+        const keys = await collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: INDEX_ID })], reader)
+
+        expect(sorted(keys)).toEqual(sorted([INDEX_ID, LARGE_A, LARGE_B]))
+        expect(reader.reads).toEqual([INDEX_ID])
+    })
+
+    test('reproducer: visit receives the index unit once, so a caller scans it without a second read', async () => {
+        const units = new Map<string, StoredUnit>([[INDEX_ID, indexUnit([])]])
+        const visited: string[] = []
+
+        await collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: INDEX_ID })], readerOver(units), key => { visited.push(key) })
+
+        expect(visited).toEqual([INDEX_ID])
+    })
+
+    test.each([
+        ['absent', new Map<string, StoredUnit>()],
+        ['not JSON', new Map<string, StoredUnit>([[INDEX_ID, { status: 'unparsable' }]])],
+        ['not an index (wrong type)', new Map<string, StoredUnit>([[INDEX_ID, { status: 'ok', value: { type: 'something-else', entries: [], trash: [] } }]])],
+        ['not an index (no trash list)', new Map<string, StoredUnit>([[INDEX_ID, { status: 'ok', value: { type: 'risu-plugin-storage-index', entries: [] } }]])],
+    ])('reproducer: an index unit that is %s rejects, because it hides the large units it names', async (_label, units) => {
+        await expect(collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: INDEX_ID })], readerOver(units))).rejects.toBeInstanceOf(LegacyReadError)
+    })
+
+    test('reproducer: an index key that cannot name a unit rejects', async () => {
+        await expect(collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: '../x' })], readerOver(new Map()))).rejects.toBeInstanceOf(LegacyReadError)
+    })
+
+    test.each([['a number', 5], ['null', null], ['an empty string', '']])('guard: a pointer that is %s is ignored, as upstream reads a pointer only when it is a non-empty string', async (_label, pointer) => {
+        const reader = readerOver(new Map())
+
+        const keys = await collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: pointer })], reader)
+
+        expect(keys.size).toBe(0)
+        expect(reader.reads).toEqual([])
+    })
+
+    test('reproducer: a later tree that points at a key an earlier tree read as an ordinary unit still validates it as an index', async () => {
+        const units = new Map<string, StoredUnit>([[INDEX_ID, { status: 'ok', value: { a: 1 } }]])
+        const first = { characters: [{ chaId: 'x', coldstorage: INDEX_ID, chats: [] }] } as unknown as Database
+
+        await expect(collectLegacyColdKeys([first, treeWithStorage({ _coldpluginIndex: INDEX_ID })], readerOver(units))).rejects.toBeInstanceOf(LegacyReadError)
+    })
+})
+
 describe('guard: the walk and the resolver enumerate the same references', () => {
     test.each([...ALL_GOLDENS, 'deep chain'])('%s: every unit the resolver reads is in the walk\'s key set', async (file) => {
         const golden = file === 'deep chain' ? deepChain() : await loadGolden(file)

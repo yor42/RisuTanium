@@ -135,9 +135,41 @@ function rateLimitWaitMs(response: Response, triesSoFar: number, nowMs: number):
 
 /** The server answered with a status this store does not map to a typed error. */
 export class NodeHttpError extends StoreError {
-    constructor(public readonly status: number, public readonly operation: string) {
-        super(`The Node server answered ${status} to ${operation}.`)
+    constructor(public readonly status: number, public readonly operation: string, public readonly detail: NodeErrorDetail | null = null) {
+        super(`The Node server answered ${status} to ${operation}.${detail === null ? '' : ` ${[detail.code, detail.message].filter((part) => part !== undefined).join(': ')}`}`)
         this.name = 'NodeHttpError'
+    }
+}
+
+/** What a server error answer says about itself: the `code` and `message` of its JSON body, when it has them. For error details and logs only. */
+export interface NodeErrorDetail {
+    code?: string
+    message?: string
+}
+
+const ERROR_DETAIL_FIELD_CAP = 500
+
+function errorDetailOfBody(body: unknown): NodeErrorDetail | null {
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        return null
+    }
+    const { code, message } = body as { code?: unknown, message?: unknown }
+    const detail: NodeErrorDetail = {}
+    if (typeof code === 'string') {
+        detail.code = code.slice(0, ERROR_DETAIL_FIELD_CAP)
+    }
+    if (typeof message === 'string') {
+        detail.message = message.slice(0, ERROR_DETAIL_FIELD_CAP)
+    }
+    return detail.code === undefined && detail.message === undefined ? null : detail
+}
+
+/** The detail of an unparsed error answer; an answer that is not a JSON object (a proxy's page, an empty body) has none. */
+async function errorDetailOf(response: Response): Promise<NodeErrorDetail | null> {
+    try {
+        return errorDetailOfBody(JSON.parse(await response.text()))
+    } catch {
+        return null
     }
 }
 
@@ -385,7 +417,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             if (response.status === 404 || response.status === 405 || response.status === 501 || response.status === 409) {
                 throw lacks(String(response.status), false)
             }
-            throw new NodeHttpError(response.status, call.operation)
+            throw new NodeHttpError(response.status, call.operation, await errorDetailOf(response))
         }
         let parsed: unknown = null
         try {
@@ -403,7 +435,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             return { kind: 'conflict', hex, currentVersion }
         }
         if (!response.ok) {
-            throw new NodeHttpError(response.status, call.operation)
+            throw new NodeHttpError(response.status, call.operation, errorDetailOfBody(body))
         }
         // Only a read-only answer is exempt from the mayHaveApplied flag below: a probe applies nothing.
         const refusedAnswer = (observed: string) => lacks(observed, call.operation !== 'caps')
@@ -669,7 +701,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                 throw new StoreVersionConflictError(key, await conflictVersion(response))
             }
             if (!response.ok) {
-                throw new NodeHttpError(response.status, 'write')
+                throw new NodeHttpError(response.status, 'write', await errorDetailOf(response))
             }
             const body: { revision?: unknown } = await response.json()
             if (typeof body.revision !== 'number' || !Number.isSafeInteger(body.revision) || body.revision < 0) {

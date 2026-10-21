@@ -107,7 +107,6 @@ function installDb(personaNames: string[], selected: number): void {
         userIcon: '',
         personaPrompt: personas[selected].personaPrompt,
         userNote: '',
-        personaNote: false,
     } as unknown as Database
 }
 

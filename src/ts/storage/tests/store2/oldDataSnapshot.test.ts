@@ -26,6 +26,8 @@ import { dispatchStore2Boot, type Store2BootUi, type Store2RecoveryRequest } fro
 import { seedStore2Profile, type SeedEntry } from 'src/ts/storage/store2/bootSeed'
 import { unitDigest } from 'src/ts/storage/store2/codec'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
+import { openDeleterGate } from 'src/ts/storage/store2/boot'
+import { createCommitter } from 'src/ts/storage/store2/commit'
 import { firstLifeGrant, installBuilt } from 'src/ts/storage/store2/firstLife'
 import {
     COMMIT_KEY, parseStore2Key, readUnit, UNIT_TYPE, type CommitKey, type DeletionSnapshot, type SnapshotPointer,
@@ -33,6 +35,7 @@ import {
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import { convertLegacyProfile, convertLegacyWithout, type ConvertRequest, type LegacyDecoders } from 'src/ts/storage/store2/legacy/convert'
 import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
+import { runOldDataDeletion } from 'src/ts/storage/store2/oldData/delete'
 import { planOldDataDeletion, withSnapshot } from 'src/ts/storage/store2/oldData/plan'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { listRecoveryCandidates, runExit } from 'src/ts/storage/store2/recovery'
@@ -94,6 +97,8 @@ interface RigOptions {
     backups?: Record<number, number>
     /** A unit whose flush the backend reports as not done: a type 24 unit when set. */
     unflushedSnapshot?: boolean
+    /** The cold units the reader finds, by bare id; an id not listed is missing. Without it only CHAT_UNIT is found. */
+    units?: Record<string, ColdUnitRead>
 }
 
 async function rig(options: RigOptions): Promise<Rig> {
@@ -134,9 +139,14 @@ async function rig(options: RigOptions): Promise<Rig> {
     if (granted.status !== 'granted') {
         throw new Error('No first-life grant.')
     }
-    const readColdStorageItem = async (key: string): Promise<ColdUnitRead> => key === CHAT_UNIT
-        ? { status: 'ok', value: { message: [{ time: 1, data: 'restored', role: 'char' }] } }
-        : { status: 'missing' }
+    const readColdStorageItem = async (key: string): Promise<ColdUnitRead> => {
+        if (options.units !== undefined) {
+            return options.units[key] ?? { status: 'missing' }
+        }
+        return key === CHAT_UNIT
+            ? { status: 'ok', value: { message: [{ time: 1, data: 'restored', role: 'char' }] } }
+            : { status: 'missing' }
+    }
     return {
         store, memory, order, backend,
         request: {
@@ -270,6 +280,78 @@ describe('a conversion writes the snapshot', () => {
         const pass = await gcPass({ backend: w.memory, kind: 'indexeddb', idleReason: () => null })
         expect(pass.status).toBe('done')
         expect((await w.memory.readUnits([found?.pointer.key as string])).get(found?.pointer.key as string)).not.toBeNull()
+    })
+})
+
+describe('the upstream plugin storage index is kept by the old data deletion (CHORE-186)', () => {
+    const INDEX_UNIT = '00000000-0000-4000-8000-0000000000e1'
+    const LARGE_UNIT = '00000000-0000-4000-8000-0000000000e2'
+    const ORPHAN_UNIT = '00000000-0000-4000-8000-0000000000e3'
+
+    function treeWithIndexPointer(): Tree {
+        const tree = JSON.parse(JSON.stringify(buildSmall(1))) as { pluginCustomStorage: Record<string, unknown> }
+        tree.pluginCustomStorage = { _coldpluginIndex: INDEX_UNIT }
+        return tree as unknown as Tree
+    }
+
+    const indexRead: ColdUnitRead = {
+        status: 'ok',
+        value: { type: 'risu-plugin-storage-index', version: 1, entries: [{ k: 'small', s: '{"a":1}' }, { k: 'big', l: LARGE_UNIT }], trash: [] },
+    }
+
+    async function deleteOldData(w: Rig): Promise<Awaited<ReturnType<typeof runOldDataDeletion>>> {
+        const committer = createCommitter(w.memory, { owner, env: testEnv(createClock(), 777) })
+        const session = {
+            kind: 'node' as const,
+            backend: w.memory,
+            committer,
+            openGate: (deleter: Parameters<typeof openDeleterGate>[1]) => openDeleterGate(w.memory, deleter, { idleReason: null }),
+        }
+        return runOldDataDeletion(session, { store: w.store, listBackupTimes: async () => [], yieldTurn: async () => { }, warn: () => { } })
+    }
+
+    const coldKeysLeft = (store: MemoryByteStore) => [...store.files.keys()].filter(key => key.startsWith('coldstorage/')).sort()
+
+    test('reproducer: the snapshot lists neither the index unit nor the large unit it names, but lists the unreferenced unit; the deletion removes only that one', async () => {
+        const w = await rig({
+            trees: { 1: treeWithIndexPointer() },
+            mainByte: 1,
+            units: { [INDEX_UNIT]: indexRead, [LARGE_UNIT]: { status: 'ok', value: { huge: 'payload' } } },
+        })
+        plantOldFiles(w.store, [`coldstorage/${INDEX_UNIT}`, `coldstorage/${LARGE_UNIT}`, `coldstorage/${ORPHAN_UNIT}`])
+        expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
+
+        const found = await snapshotOf(w.memory)
+        expect(found?.body.kind).toBe('exclusion')
+        expect(found?.body.keys).not.toContain(`coldstorage/${INDEX_UNIT}`)
+        expect(found?.body.keys).not.toContain(`coldstorage/${LARGE_UNIT}`)
+        expect(found?.body.keys).toContain(`coldstorage/${ORPHAN_UNIT}`)
+
+        await deleteOldData(w)
+
+        const left = coldKeysLeft(w.store)
+        expect(left).toContain(`coldstorage/${INDEX_UNIT}`)
+        expect(left).toContain(`coldstorage/${LARGE_UNIT}`)
+        expect(left).not.toContain(`coldstorage/${ORPHAN_UNIT}`)
+    })
+
+    test.each([
+        ['absent', {}],
+        ['not JSON', { [INDEX_UNIT]: { status: 'error', error: new Error('not JSON'), kind: 'damaged' } }],
+        ['not an index', { [INDEX_UNIT]: { status: 'ok', value: { message: [] } } }],
+    ] as [string, Record<string, ColdUnitRead>][])('reproducer: an index unit that is %s plans fork-format-only, lists no cold unit and deletes none', async (_label, units) => {
+        const w = await rig({ trees: { 1: treeWithIndexPointer() }, mainByte: 1, units })
+        plantOldFiles(w.store, [`coldstorage/${INDEX_UNIT}`, `coldstorage/${LARGE_UNIT}`, `coldstorage/${ORPHAN_UNIT}`])
+        const before = coldKeysLeft(w.store)
+        expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
+
+        const found = await snapshotOf(w.memory)
+        expect(found?.body.kind).toBe('fork-format-only')
+        expect(found?.body.keys.some(key => key.startsWith('coldstorage/'))).toBe(false)
+
+        await deleteOldData(w)
+
+        expect(coldKeysLeft(w.store)).toEqual(before)
     })
 })
 

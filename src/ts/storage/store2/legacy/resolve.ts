@@ -4,15 +4,17 @@ import { applyStubStateOnRestore } from '../../../process/coldCharacter'
 import {
     formatColdStorageLoadError, isRestorableColdStorageKey, mergeRetriedColdChatSideFields, type RetryLegacyColdChatSideFields,
 } from '../../../process/coldstorageData'
+import { convertPluginStorageIndex, pluginIndexPointer, PLUGIN_STORAGE_INDEX_KEY } from '../../../process/pluginStorageIndex'
 import { DERIVED_COLD_FIELDS } from '../codec/bodies'
 import { StubRefusedError } from '../codec/types'
 import { legacyFirstMessageRef, legacyPluginRefs, legacyRefsOfCharacter, type LegacyRefKind } from './refs'
 
 /**
  * Legacy tree to store2 tree. The legacy forms keep part of a profile outside
- * the main tree, behind four kinds of pointer: a character stub and its unit,
- * `coldStoragedChats`, a chat whose first message is a cold-storage pointer, and
- * the `_coldplugin` mapping of plugin storage. `resolveLegacyTree` reads those
+ * the main tree, behind five kinds of pointer: a character stub and its unit,
+ * `coldStoragedChats`, a chat whose first message is a cold-storage pointer,
+ * the `_coldplugin` mapping of plugin storage, and upstream's plugin storage
+ * index pointer `_coldpluginIndex`. `resolveLegacyTree` reads those
  * units through an injected reader (the `.bin` entries on import, the store on
  * conversion) and returns a database the codec encodes: no stub, no pointer.
  *
@@ -76,6 +78,8 @@ export interface ResolveOptions {
     newId?: () => string
     /** Time of a placeholder character's message; the clock by default. */
     now?: () => number
+    /** Id of a plugin value unit minted from an upstream plugin storage index entry; a v4 uuid by default. Not `newId`: that one names a chat. */
+    newUnitId?: () => string
 }
 
 export interface ResolvedLegacyTree {
@@ -268,6 +272,52 @@ async function resolveChats(
     return { ...character, chats }
 }
 
+interface ConvertedPluginStorage {
+    /** A copy of the plugin storage with `_coldpluginIndex` replaced by `_coldplugin` slots. */
+    storage: Fields
+    /** The values of the units the conversion minted, by unit id; they exist nowhere in the reader. */
+    minted: Map<string, unknown>
+}
+
+/**
+ * Converts the upstream plugin storage index of `source` into `_coldplugin` slots on a copy; `source` is not modified.
+ * A small entry becomes a minted unit held in `minted`, a large entry keeps its unit id. An index unit whose read fails
+ * (a rejection or an error status) aborts (`LegacyReadError`): `convertPluginStorageIndex` reports any failed read as
+ * missing, so the failure is kept here and thrown once it returns. An index unit that is absent, not JSON or of another
+ * shape is listed in `incomplete`, with the pointer dropped from the copy as the legacy-page import does.
+ */
+async function convertPluginIndex(
+    source: unknown, reader: LegacyEntryReader, mint: () => string, incomplete: IncompleteItem[],
+): Promise<ConvertedPluginStorage> {
+    const storage: Fields = { ...(source as Fields) }
+    const minted = new Map<string, unknown>()
+    const failure: { error: LegacyReadError | null } = { error: null }
+    const conversion = await convertPluginStorageIndex(storage, {
+        async read(id) {
+            try {
+                const read = await readLegacyUnit(reader, id, 'plugin')
+                // A unit that is not JSON is damaged content, listed like an absent one.
+                return read.status === 'unparsable' ? { status: 'missing' } : read
+            } catch (error) {
+                failure.error ??= error instanceof LegacyReadError ? error : new LegacyReadError(id, 'plugin', error)
+                return { status: 'error', error }
+            }
+        },
+        async write(id, value) {
+            minted.set(id, value)
+            return true
+        },
+        mint,
+    })
+    if (failure.error !== null) {
+        throw failure.error
+    }
+    for (const key of conversion.missing) {
+        incomplete.push({ kind: 'plugin', slotKey: PLUGIN_STORAGE_INDEX_KEY, key, reason: 'missing' })
+    }
+    return { storage, minted }
+}
+
 function withoutColdFields(character: Fields): Fields {
     const copy: Fields = { ...character }
     for (const field of DERIVED_COLD_FIELDS) {
@@ -299,9 +349,17 @@ function withoutColdFields(character: Fields): Fields {
  *   caller decides how resident those values are; the resolve holds them all.
  *   A value whose unit id is already a plain plugin storage key leaves the
  *   plain value and is listed as a collision.
+ * - An upstream plugin storage index (`_coldpluginIndex`) is converted first,
+ *   on a copy, into `_coldplugin` slots (`convertPluginIndex`): the index wins
+ *   over a `_coldplugin` value of the same key, a small entry becomes a unit
+ *   under a new id and a large entry keeps its id. The result holds no pointer
+ *   and is placed by the rule above. An index unit that is absent, not JSON
+ *   or not an index, a pointer that cannot name a unit, a small value that is
+ *   not JSON and a large id that is not a unit id are listed; a failed read
+ *   aborts.
  */
 export async function resolveLegacyTree(db: Database, reader: LegacyEntryReader, options: ResolveOptions = {}): Promise<ResolvedLegacyTree> {
-    const resolved: Required<ResolveOptions> = { newId: options.newId ?? uuidv4, now: options.now ?? Date.now }
+    const resolved: Required<ResolveOptions> = { newId: options.newId ?? uuidv4, now: options.now ?? Date.now, newUnitId: options.newUnitId ?? uuidv4 }
     const incomplete: IncompleteItem[] = []
     const characters: unknown[] = []
     const source: unknown[] = Array.isArray(db.characters) ? db.characters : []
@@ -328,12 +386,21 @@ export async function resolveLegacyTree(db: Database, reader: LegacyEntryReader,
     }
 
     let pluginCustomStorage = db.pluginCustomStorage
-    const refs = legacyPluginRefs(db)
-    if (refs.length > 0) {
-        const storage: Fields = { ...(db.pluginCustomStorage as Fields) }
+    const converted = pluginIndexPointer(db.pluginCustomStorage) === null
+        ? null
+        : await convertPluginIndex(db.pluginCustomStorage, reader, resolved.newUnitId, incomplete)
+    const refs = legacyPluginRefs(converted === null ? db : { pluginCustomStorage: converted.storage as unknown as Database['pluginCustomStorage'] })
+    if (converted !== null || refs.length > 0) {
+        const storage: Fields = converted?.storage ?? { ...(db.pluginCustomStorage as Fields) }
+        // A minted unit exists only in the conversion, so it is answered before the reader is asked.
+        const pluginReader: LegacyEntryReader = {
+            async read(key) {
+                return converted?.minted.has(key) ? { status: 'ok', value: converted.minted.get(key) } : reader.read(key)
+            },
+        }
         const placed = new Set<string>()
         for (const ref of refs) {
-            const read = await readLegacyUnit(reader, ref.key, 'plugin')
+            const read = await readLegacyUnit(pluginReader, ref.key, 'plugin')
             if (read.status !== 'ok') {
                 incomplete.push({ kind: 'plugin', slotKey: ref.slotKey as string, key: ref.key, reason: 'missing' })
             } else if (Object.hasOwn(storage, ref.key) && !placed.has(ref.key)) {

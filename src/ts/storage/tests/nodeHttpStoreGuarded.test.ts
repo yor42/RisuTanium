@@ -488,6 +488,46 @@ describe('failures of the transport and of the list size', () => {
     })
 })
 
+describe('a failed guarded write', () => {
+    const SERVER_ERROR = { error: 'Failed to write storage item', code: 'ENOSPC', message: 'ENOSPC: no space left on device, write ./save/ab' }
+    const answerOf = (status: number, marked: boolean, body: string, contentType: string): FetchLike => async () => new Response(body, {
+        status,
+        headers: { 'content-type': contentType, ...(marked ? { 'risu-storage-guarded': '1' } : {}) },
+    })
+    const cases = [413, 500, 507].flatMap((status) => [true, false].map((marked) => ({ status, marked })))
+
+    test.each(cases)('G: a $status answer (marker: $marked) is NodeHttpError(status, write-checked), never a missing capability', async ({ status, marked }) => {
+        const guarded = guardedOf({ fetch: answerOf(status, marked, JSON.stringify(SERVER_ERROR), 'application/json') })
+        const error = await caught(guarded.writeChecked(fresh('target'), bytes(1), 'unconditional', []))
+        expect(error).toBeInstanceOf(NodeHttpError)
+        expect(error).not.toBeInstanceOf(ServerLacksCapabilityError)
+        expect(error).toMatchObject({ status, operation: 'write-checked' })
+    })
+
+    test.each(cases)('a $status answer (marker: $marked) carries the server\'s code and message', async ({ status, marked }) => {
+        const guarded = guardedOf({ fetch: answerOf(status, marked, JSON.stringify(SERVER_ERROR), 'application/json') })
+        const error = await caught(guarded.writeChecked(fresh('target'), bytes(1), 'unconditional', []))
+        expect(error).toBeInstanceOf(NodeHttpError)
+        expect((error as NodeHttpError).detail).toEqual({ code: 'ENOSPC', message: SERVER_ERROR.message })
+        expect((error as NodeHttpError).message).toContain('ENOSPC')
+    })
+
+    test('an unmarked page keeps the plain error and has no detail', async () => {
+        const guarded = guardedOf({ fetch: answerOf(500, false, '<html>Internal Server Error</html>', 'text/html') })
+        const error = await caught(guarded.writeChecked(fresh('target'), bytes(1), 'unconditional', []))
+        expect(error).toBeInstanceOf(NodeHttpError)
+        expect((error as NodeHttpError).detail).toBeNull()
+        expect((error as NodeHttpError).message).toBe('The Node server answered 500 to write-checked.')
+    })
+
+    test('a body over the real server\'s limit is NodeHttpError(413, write-checked) with code PAYLOAD_TOO_LARGE', async () => {
+        const guarded = guardedOf({ baseUrl: fixture.baseUrl })
+        const error = await caught(guarded.writeChecked(fresh('target'), new Uint8Array(105 * 1024 * 1024), 'unconditional', []))
+        expect(error).toBeInstanceOf(NodeHttpError)
+        expect(error).toMatchObject({ status: 413, operation: 'write-checked', detail: { code: 'PAYLOAD_TOO_LARGE' } })
+    }, 60_000)
+})
+
 describe('key rules of the guarded calls', () => {
     test('retire refuses keys outside the A-lite prefix, an empty list and a missing check-only entry before any request', async () => {
         const guarded = guardedOf()

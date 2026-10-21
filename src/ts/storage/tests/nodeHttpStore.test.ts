@@ -5,8 +5,10 @@
  * scenarios, then what only this adapter does, then the server's answers to
  * `/api/read` and `/api/list` that the adapter relies on. A few request-level
  * cases use a stub fetch where the real server cannot be made to fail on
- * demand. These are conformance and compatibility guards for code with no
- * callers.
+ * demand. Most tests are conformance and compatibility guards that may pass
+ * before and after a change. The 507 test is a reproducer: it fails when the
+ * error carries no server detail. The HTML-page test checks the new `detail`
+ * field and is not a defect reproducer.
  */
 import { readFile, writeFile } from 'node:fs/promises'
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http'
@@ -481,6 +483,26 @@ describe('Node HTTP store against the real server', () => {
             const { store } = stubStore(async () => new Response(JSON.stringify({ success: true, ...answer })))
 
             await expect(store.write('d/1', bytes(1), 'unconditional')).rejects.toBeInstanceOf(StoreError)
+        })
+
+        test('a write answered 507 with a JSON error carries the server\'s code and message in the NodeHttpError', async () => {
+            const body = { error: 'Failed to write storage item', code: 'ENOSPC', message: 'ENOSPC: no space left on device' }
+            const { store } = stubStore(async () => new Response(JSON.stringify(body), { status: 507, headers: { 'content-type': 'application/json' } }))
+
+            const error = await store.write('d/1', bytes(1), 'unconditional').catch((caught: unknown) => caught)
+
+            expect(error).toBeInstanceOf(NodeHttpError)
+            expect(error).toMatchObject({ status: 507, operation: 'write', detail: { code: 'ENOSPC', message: 'ENOSPC: no space left on device' } })
+            expect((error as NodeHttpError).message).toContain('ENOSPC: no space left on device')
+        })
+
+        test('a write answered with an HTML page is NodeHttpError(status, write) with no detail', async () => {
+            const { store } = stubStore(async () => new Response('<html>Payload Too Large</html>', { status: 413, headers: { 'content-type': 'text/html' } }))
+
+            const error = await store.write('d/1', bytes(1), 'unconditional').catch((caught: unknown) => caught)
+
+            expect(error).toBeInstanceOf(NodeHttpError)
+            expect(error).toMatchObject({ status: 413, operation: 'write', detail: null })
         })
 
         test.each([

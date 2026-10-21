@@ -2,6 +2,7 @@ import { language } from "../../lang"
 import type { Database, character, groupChat, Chat } from "../storage/database.svelte"
 import type { SerializableHypaV2Data } from "./memory/hypav2"
 import type { SerializableHypaV3Data } from "./memory/hypav3"
+import { pluginIndexPointer } from "./pluginStorageIndex"
 
 export const coldStorageHeader = '\uEF01COLDSTORAGE\uEF01'
 
@@ -643,12 +644,15 @@ export function listColdDataKeysFromDb(db: Pick<Database, 'characters'|'pluginCu
  * `errorText` roots are the keys a live chat's legacy load-error text names;
  * `plugin` roots are plugin storage units, whose content is carried but never
  * searched for further references. `owner` is the display name of the
- * character the root was found on.
+ * character the root was found on. `pluginIndex` marks the pointer of an
+ * upstream plugin storage index: its unit names the large-value units that are
+ * carried with it.
  */
 export type ColdBackupRoot = {
     key: string
     kind: 'normal' | 'errorText' | 'plugin'
     owner?: string
+    pluginIndex?: true
 }
 
 function getColdStorageCharacterLabel(character: character | groupChat): string {
@@ -673,6 +677,11 @@ export function listColdBackupRoots(db: Pick<Database, 'characters'|'pluginCusto
     }
     for (const key of listColdPluginStorageKeys(db)) {
         roots.push({ key, kind: 'plugin' })
+    }
+    // An upstream index pointer is carried with its index unit and large-value units, or reported; never exported alone.
+    const indexPointer = pluginIndexPointer(db?.pluginCustomStorage)
+    if (indexPointer !== null) {
+        roots.push({ key: indexPointer, kind: 'plugin', pluginIndex: true })
     }
     return roots
 }
