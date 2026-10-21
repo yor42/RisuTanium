@@ -85,19 +85,88 @@ describe('isAndroidTransport', () => {
     })
 })
 
+// Compatibility guards: every test below also passes on the previous encoder,
+// since the contract is unchanged output. There is no behavioural reproducer for
+// the speed change.
+function randomBytes(length: number): Uint8Array {
+    const out = new Uint8Array(length)
+    // getRandomValues refuses more than 65536 bytes per call.
+    for (let start = 0; start < length; start += 0x10000) {
+        crypto.getRandomValues(out.subarray(start, Math.min(start + 0x10000, length)))
+    }
+    return out
+}
+
+function reference(bytes: Uint8Array): string {
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).toString('base64')
+}
+
+/** Empty when the texts are equal, else the first differing index: a failed `toBe` on multi-MiB strings would spend minutes building its diff. */
+function mismatch(actual: string, expected: string): string {
+    if (actual === expected) {
+        return ''
+    }
+    let index = 0
+    while (index < actual.length && index < expected.length && actual[index] === expected[index]) {
+        index++
+    }
+    return `first difference at ${index} (lengths ${actual.length} and ${expected.length})`
+}
+
+/** Empty when the stored bytes equal `expected`, else the first differing index: a failed `toEqual` on multi-MiB arrays would spend minutes building its diff. */
+function byteMismatch(actual: readonly number[] | undefined, expected: Uint8Array): string {
+    if (actual === undefined) {
+        return 'nothing stored'
+    }
+    const common = Math.min(actual.length, expected.length)
+    for (let index = 0; index < common; index++) {
+        if (actual[index] !== expected[index]) {
+            return `first difference at ${index}`
+        }
+    }
+    return actual.length === expected.length ? '' : `lengths ${actual.length} and ${expected.length}`
+}
+
+function expectReference(bytes: Uint8Array): void {
+    expect(mismatch(bytesToBase64(bytes), reference(bytes))).toBe('')
+}
+
 describe('bytesToBase64', () => {
-    test.each([0, 1, 2, 3, 4, 0x1fff, 0x2000, 0x2001, 0x4000, 0x4005, 3 * 0x2000 + 2])('encodes %i bytes as the reference encoding does', (length) => {
-        const bytes = patterned(length)
-
-        expect(bytesToBase64(bytes)).toBe(Buffer.from(bytes).toString('base64'))
+    test('encodes every length from 0 to 300 as the reference encoding does', () => {
+        for (let length = 0; length <= 300; length++) {
+            expectReference(patterned(length))
+        }
     })
 
-    test('encodes only the bytes of a view, not the buffer behind it', () => {
-        const whole = patterned(100)
-        const view = whole.subarray(10, 37)
+    test.each([0x1fff, 0x2000, 0x2001, 0x4000, 0x4005, 3 * 0x2000 + 2, 3 * 0x4000 - 1, 3 * 0x4000, 3 * 0x4000 + 1, 3 * 0x4000 + 2, 6 * 0x4000 + 1])(
+        'encodes %i bytes as the reference encoding does',
+        (length) => {
+            expectReference(randomBytes(length))
+        },
+    )
 
-        expect(bytesToBase64(view)).toBe(Buffer.from(whole.slice(10, 37)).toString('base64'))
+    test('encodes a few MiB of random bytes as the reference encoding does', () => {
+        expectReference(randomBytes(4 * 1024 * 1024 + 2))
     })
+
+    test('encodes every byte value in every position of a group', () => {
+        expectReference(Uint8Array.from({ length: 256 * 3 + 2 }, (_, i) => (i * 5 + (i >> 8)) & 255))
+    })
+
+    test('reports the first differing index of unequal texts without a diff', () => {
+        expect(mismatch('abcd', 'abcd')).toBe('')
+        expect(mismatch('abXd', 'abcd')).toBe('first difference at 2 (lengths 4 and 4)')
+        expect(mismatch('ab', 'abcd')).toBe('first difference at 2 (lengths 2 and 4)')
+    })
+
+    test.each([[0, 0], [1, 0], [1, 1], [2, 5], [3, 7], [5, 100], [7, 40000]])(
+        'encodes only the bytes of a view at offset %i of length %i, not the buffer behind it',
+        (offset, length) => {
+            const whole = randomBytes(offset + length + 11)
+            const view = whole.subarray(offset, offset + length)
+            expect(mismatch(bytesToBase64(view), Buffer.from(whole.slice(offset, offset + length)).toString('base64'))).toBe('')
+        },
+    )
 })
 
 describe('writeChunked', () => {
@@ -130,7 +199,7 @@ describe('writeChunked', () => {
         expect(chunks.map((call) => call.args.offset)).toEqual([0, WRITE_CHUNK_BYTES, WRITE_CHUNK_BYTES * 2])
         expect(chunks.map((call) => call.args.last)).toEqual([false, false, true])
         expect(h.chunk.chunkSizes).toEqual([WRITE_CHUNK_BYTES, WRITE_CHUNK_BYTES, 12345])
-        expect(stored(KEY)).toEqual(Array.from(input))
+        expect(byteMismatch(stored(KEY), input)).toBe('')
     })
 
     test('an input of exactly one chunk is a single call, and one byte more is two', async () => {

@@ -127,13 +127,54 @@ export function resetByteTransportForTests(): void {
     rawChunksUnavailable = false
 }
 
-/** Base64 of exactly `bytes`, with one `btoa` call: the binary string is built from small pieces and joined first, since a `btoa` of each piece would put padding mid-string. */
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** The alphabet as character codes, so a group of three bytes becomes four codes with no string work. */
+const BASE64_CODES = Uint8Array.from(BASE64_ALPHABET, (char) => char.charCodeAt(0))
+
+/** Input bytes per table-encoder step; a multiple of three, so padding can only fall in the final tail. */
+const TABLE_STEP_BYTES = 3 * 0x4000
+
+/**
+ * Standard base64 (RFC 4648 alphabet, `=` padding) of exactly the elements of
+ * `bytes`, identical to `btoa` of the same bytes as a binary string; a view
+ * encodes only its own range. One table path serves every runtime: the page
+ * installs a `Uint8Array.prototype.toBase64` polyfill where the native method is
+ * missing, and that polyfill concatenates per character, so dispatching on the
+ * method's presence would run the slow path on exactly the WebViews that need
+ * the speed. Output is built from ASCII code steps decoded and joined once.
+ */
 export function bytesToBase64(bytes: Uint8Array): string {
+    const length = bytes.length
+    const whole = length - (length % 3)
     const parts: string[] = []
-    for (let start = 0; start < bytes.length; start += 0x2000) {
-        parts.push(String.fromCharCode(...bytes.subarray(start, Math.min(start + 0x2000, bytes.length))))
+    if (whole > 0) {
+        const codes = BASE64_CODES
+        const out = new Uint8Array((TABLE_STEP_BYTES / 3) * 4)
+        const decoder = new TextDecoder()
+        for (let start = 0; start < whole; start += TABLE_STEP_BYTES) {
+            const end = Math.min(start + TABLE_STEP_BYTES, whole)
+            let o = 0
+            for (let i = start; i < end; i += 3) {
+                const group = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2]
+                out[o++] = codes[group >> 18]
+                out[o++] = codes[(group >> 12) & 63]
+                out[o++] = codes[(group >> 6) & 63]
+                out[o++] = codes[group & 63]
+            }
+            parts.push(decoder.decode(out.subarray(0, o)))
+        }
     }
-    return btoa(parts.join(''))
+    const rest = length - whole
+    if (rest === 1) {
+        const a = bytes[whole]
+        parts.push(BASE64_ALPHABET[a >> 2] + BASE64_ALPHABET[(a & 3) << 4] + '==')
+    } else if (rest === 2) {
+        const a = bytes[whole]
+        const b = bytes[whole + 1]
+        parts.push(BASE64_ALPHABET[a >> 2] + BASE64_ALPHABET[((a & 3) << 4) | (b >> 4)] + BASE64_ALPHABET[(b & 15) << 2] + '=')
+    }
+    return parts.join('')
 }
 
 function randomWriteId(): string {
