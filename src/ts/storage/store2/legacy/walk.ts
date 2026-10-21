@@ -4,6 +4,11 @@ import { isPluginStorageIndex, largeIdsOfIndex } from '../../../process/pluginSt
 import { legacyPluginIndexPointer, legacyRefsOfDatabase, legacyRefsOfUnit } from './refs'
 import { LegacyReadError, readLegacyUnit, type LegacyEntryReader } from './resolve'
 
+export interface LegacyWalkOptions {
+    /** An index unit that is absent holds nothing to keep. Any other index failure still rejects. */
+    absentIndexKeepsNothing?: boolean
+}
+
 /**
  * The key-only walk behind the `coldstorage/` exclusion of the old files'
  * deletion: every unit id the legacy trees refer to, directly or through the
@@ -24,6 +29,11 @@ import { LegacyReadError, readLegacyUnit, type LegacyEntryReader } from './resol
  * absent or malformed index hides the large units it names, that is a failure
  * like the others, never "absent is not a failure". The index key and every
  * large unit id it names are in the result; the large units are not read.
+ * The one tolerated case is an index that is absent (never unreadable, damaged
+ * or not an index) when `absentIndexKeepsNothing` is set: nothing can resolve
+ * the units it named, so it contributes only its own key. The option applies to
+ * every tree of the call, so a caller that must keep one file strict walks it
+ * in a call of its own.
  *
  * `visit`, when given, is called once with the key and parsed body of every
  * unit the walk reads successfully, before the body is dropped, so a caller can
@@ -34,6 +44,7 @@ export async function collectLegacyColdKeys(
     trees: Iterable<Database> | AsyncIterable<Database>,
     reader: LegacyEntryReader,
     visit?: (key: string, value: unknown) => void,
+    options: LegacyWalkOptions = {},
 ): Promise<Set<string>> {
     const keys = new Set<string>()
     // Keys whose unit is already queued for reading.
@@ -78,6 +89,9 @@ export async function collectLegacyColdKeys(
                 visit?.(key, read.value)
             }
             if (key === indexKey) {
+                if (options.absentIndexKeepsNothing === true && read.status === 'missing') {
+                    continue
+                }
                 // An absent or malformed index hides the large units it names, so unlike any other unit it is a failure.
                 if (read.status !== 'ok' || !isPluginStorageIndex(read.value)) {
                     throw new LegacyReadError(key, 'unit', new Error(`The plugin storage index ${key} is missing or is not an index, so the units it names are unknown.`))

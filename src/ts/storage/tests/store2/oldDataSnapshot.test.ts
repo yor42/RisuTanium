@@ -30,8 +30,9 @@ import { openDeleterGate } from 'src/ts/storage/store2/boot'
 import { createCommitter } from 'src/ts/storage/store2/commit'
 import { firstLifeGrant, installBuilt } from 'src/ts/storage/store2/firstLife'
 import {
-    COMMIT_KEY, parseStore2Key, readUnit, UNIT_TYPE, type CommitKey, type DeletionSnapshot, type SnapshotPointer,
+    COMMIT_KEY, keyOfRef, parseStore2Key, readUnit, UNIT_TYPE, type CommitKey, type DeletionSnapshot, type LegacyList, type SnapshotPointer,
 } from 'src/ts/storage/store2/format'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import { convertLegacyProfile, convertLegacyWithout, type ConvertRequest, type LegacyDecoders } from 'src/ts/storage/store2/legacy/convert'
 import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
@@ -307,7 +308,7 @@ describe('the upstream plugin storage index is kept by the old data deletion (CH
             committer,
             openGate: (deleter: Parameters<typeof openDeleterGate>[1]) => openDeleterGate(w.memory, deleter, { idleReason: null }),
         }
-        return runOldDataDeletion(session, { store: w.store, listBackupTimes: async () => [], yieldTurn: async () => { }, warn: () => { } })
+        return runOldDataDeletion(session, { store: w.store, listBackupTimes: w.request.listBackupTimes, yieldTurn: async () => { }, warn: () => { } })
     }
 
     const coldKeysLeft = (store: MemoryByteStore) => [...store.files.keys()].filter(key => key.startsWith('coldstorage/')).sort()
@@ -352,6 +353,104 @@ describe('the upstream plugin storage index is kept by the old data deletion (CH
         await deleteOldData(w)
 
         expect(coldKeysLeft(w.store)).toEqual(before)
+    })
+
+    function plainTree(): Tree {
+        return JSON.parse(JSON.stringify(buildSmall(1))) as Tree
+    }
+
+    /** The upstream main file carries no pointer; one numbered backup (time 100) carries it. */
+    async function backupPointerRig(units: Record<string, ColdUnitRead>): Promise<Rig> {
+        const w = await rig({ trees: { 1: plainTree(), 2: treeWithIndexPointer() }, mainByte: 1, backups: { 100: 2 }, units })
+        plantOldFiles(w.store, [`coldstorage/${INDEX_UNIT}`, `coldstorage/${LARGE_UNIT}`, `coldstorage/${ORPHAN_UNIT}`])
+        return w
+    }
+
+    test('reproducer: a numbered backup whose index is absent keeps nothing, so the snapshot is an exclusion that lists the orphan and the deletion removes it without abandoning a cold key', async () => {
+        const w = await backupPointerRig({})
+        expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
+
+        const found = await snapshotOf(w.memory)
+        expect(found?.body.kind).toBe('exclusion')
+        expect(found?.body.keys).toContain(`coldstorage/${ORPHAN_UNIT}`)
+        expect(found?.body.keys).toContain(`coldstorage/${LARGE_UNIT}`)
+
+        const result = await deleteOldData(w)
+
+        expect(result).toMatchObject({ status: 'completed', abandoned: 0 })
+        const left = coldKeysLeft(w.store)
+        expect(left).not.toContain(`coldstorage/${ORPHAN_UNIT}`)
+        expect(left).not.toContain(`coldstorage/${LARGE_UNIT}`)
+    })
+
+    test('reproducer: the backup whose index is absent is listed ok, and the main file stays ok, in the legacy list', async () => {
+        const w = await backupPointerRig({})
+        expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
+
+        const current = (await parsedCommit(w.memory)).current
+        if (current === null) {
+            throw new Error('No manifest is current.')
+        }
+        const tree = await readTreeBytes(w.memory, current.key)
+        if (tree.status !== 'ok') {
+            throw new Error(`The stored tree reads ${tree.status}.`)
+        }
+        const keep = tree.tree.manifest.fixed.legacyKeep
+        if (keep === null) {
+            throw new Error('The manifest names no legacy list.')
+        }
+        const parsed = readUnit(w.memory.snapshot().get(keyOfRef(keep.unit)) as Uint8Array, UNIT_TYPE.legacyList)
+        if (parsed.status !== 'ok') {
+            throw new Error('The legacy list does not parse.')
+        }
+        const statuses = Object.fromEntries((parsed.value.body as LegacyList).files.map(file => [file.key, file.status]))
+        expect(statuses).toEqual({ [MAIN]: 'ok', [backupKey(100)]: 'ok' })
+    })
+
+    test('guard: a numbered backup whose index is present still keeps the index and its large unit while the orphan is removed', async () => {
+        const w = await backupPointerRig({ [INDEX_UNIT]: indexRead, [LARGE_UNIT]: { status: 'ok', value: { huge: 'payload' } } })
+        expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
+
+        const found = await snapshotOf(w.memory)
+        expect(found?.body.kind).toBe('exclusion')
+        expect(found?.body.keys).not.toContain(`coldstorage/${INDEX_UNIT}`)
+        expect(found?.body.keys).not.toContain(`coldstorage/${LARGE_UNIT}`)
+        expect(found?.body.keys).toContain(`coldstorage/${ORPHAN_UNIT}`)
+
+        const result = await deleteOldData(w)
+
+        expect(result).toMatchObject({ status: 'completed', abandoned: 0 })
+        const left = coldKeysLeft(w.store)
+        expect(left).toContain(`coldstorage/${INDEX_UNIT}`)
+        expect(left).toContain(`coldstorage/${LARGE_UNIT}`)
+        expect(left).not.toContain(`coldstorage/${ORPHAN_UNIT}`)
+    })
+
+    test.each([
+        ['not JSON', { [INDEX_UNIT]: { status: 'error', error: new Error('not JSON'), kind: 'damaged' } }],
+        ['not an index', { [INDEX_UNIT]: { status: 'ok', value: { message: [] } } }],
+    ] as [string, Record<string, ColdUnitRead>][])('guard: a numbered backup whose index is %s still plans fork-format-only and deletes no cold unit', async (_label, units) => {
+        const w = await backupPointerRig(units)
+        const before = coldKeysLeft(w.store)
+        expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
+
+        const found = await snapshotOf(w.memory)
+        expect(found?.body.kind).toBe('fork-format-only')
+        expect(found?.body.keys.some(key => key.startsWith('coldstorage/'))).toBe(false)
+
+        await deleteOldData(w)
+
+        expect(coldKeysLeft(w.store)).toEqual(before)
+    })
+
+    test('guard: a failing read of a backup index (not an absent one) plans fork-format-only', async () => {
+        const w = await backupPointerRig({})
+        const failing = { ...w.request, readColdStorageItem: async (key: string): Promise<ColdUnitRead> => key === INDEX_UNIT ? { status: 'error', error: new Error('I/O') } : { status: 'missing' } }
+        expect((await convertLegacyProfile(failing, accept)).status).toBe('installed')
+
+        const found = await snapshotOf(w.memory)
+        expect(found?.body.kind).toBe('fork-format-only')
+        expect(found?.body.keys.some(key => key.startsWith('coldstorage/'))).toBe(false)
     })
 })
 

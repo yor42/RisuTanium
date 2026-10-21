@@ -1222,7 +1222,9 @@ describe('units: upstream plugin storage index carried by a tree', () => {
     ] as const
 
     for (const carrier of CARRIERS) {
-        test.each(INDEX_FAILURES)(`REPRODUCER: stops with the unreadable-save notice and deletes nothing when ${carrier} carries the pointer and the index %s`, async (_label, breakIndex) => {
+        // An absent index named only by a retained snapshot keeps nothing instead of stopping; its own tests follow.
+        const failures = carrier === 'a retained snapshot' ? INDEX_FAILURES.filter(([label]) => label !== 'is absent') : INDEX_FAILURES
+        test.each(failures)(`REPRODUCER: stops with the unreadable-save notice and deletes nothing when ${carrier} carries the pointer and the index %s`, async (_label, breakIndex) => {
             await setup()
             seedUnit('unreferenced-unit')
             await breakIndex()
@@ -1235,6 +1237,63 @@ describe('units: upstream plugin storage index carried by a tree', () => {
             await expectUntouched(['unreferenced-unit'])
         })
     }
+
+    test('REPRODUCER: a retained snapshot whose index is absent keeps nothing, and the run completes and deletes the orphans', async () => {
+        await setup()
+        await putUnit('big-unit', { some: 'large plugin value' })
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime(makeDb([]))
+        storeSnapshot(17000000001, await encodeTree(pointerTree('plugin-index')))
+
+        await run()
+
+        const after = await units()
+        expect(errorMessages()).toEqual([])
+        expect(after).not.toContain('unreferenced-unit')
+        expect(after).not.toContain('big-unit')
+        expect(h.forage.has(snapshotKey(17000000001))).toBe(true)
+    })
+
+    test('REPRODUCER: an absent index in one snapshot does not lower the protection of a present index in another', async () => {
+        await setup()
+        await putUnit('idx-y', { ...INDEX_VALUE, entries: [{ k: 'large-key', l: 'big-y' }] })
+        await putUnit('big-y', { v: 'y' })
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime(makeDb([]))
+        storeSnapshot(17000000001, await encodeTree(pointerTree('idx-x')))
+        storeSnapshot(17000000002, await encodeTree(pointerTree('idx-y')))
+
+        await run()
+
+        const after = await units()
+        expect(errorMessages()).toEqual([])
+        expect(after).toEqual(expect.arrayContaining(['idx-y', 'big-y']))
+        expect(after).not.toContain('unreferenced-unit')
+    })
+
+    test('guard: a retained snapshot whose pointer cannot name a unit still stops', async () => {
+        await setup()
+        seedUnit('unreferenced-unit')
+        setLive(makeDb([]))
+        await prime(makeDb([]))
+        storeSnapshot(17000000001, await encodeTree(pointerTree('../x')))
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSaveUnreadable('dbbackup-17000000001.bin')])
+        expect(h.unitLog.removed).toEqual([])
+    })
+
+    test('guard: a tolerated absent snapshot index is not remembered, so a live tree with the same pointer read afterwards still stops', async () => {
+        await setup()
+        const { KeepSet } = await import('src/ts/storage/manualCleanup')
+        const keep = new KeepSet()
+
+        await keep.addTree(pointerTree('plugin-index'), 'dbbackup-17000000001.bin', false, 'snapshot')
+        await expect(keep.addTree(pointerTree('plugin-index'), 'live', true)).rejects.toThrow(language.errors.coldStorageCleanupSaveUnreadable('live'))
+    })
 
     test.each([['an empty string', ''], ['a number', 12345], ['an object', { id: 'plugin-index' }], ['null', null]])('guard: %s as the pointer is no pointer, so nothing is read or kept for it', async (_label, pointer) => {
         await setup()
@@ -4252,7 +4311,7 @@ describe('units: upstream plugin storage index carried by a block profile, an ol
         expect(after).not.toContain('unreferenced-unit')
     })
 
-    test('stops naming the second tree when its pointer differs and its index is absent', async () => {
+    test('REPRODUCER: keeps the first tree\'s index and large unit and deletes the rest when a snapshot\'s different pointer is absent', async () => {
         await setup()
         await putIndex('idx-a', 'big-a')
         await putUnit('big-b', { v: 1 })
@@ -4263,7 +4322,25 @@ describe('units: upstream plugin storage index carried by a block profile, an ol
 
         await run()
 
-        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSaveUnreadable('dbbackup-17000000001.bin')])
+        const after = await units()
+        expect(errorMessages()).toEqual([])
+        expect(after).toEqual(expect.arrayContaining(['idx-a', 'big-a']))
+        expect(after).not.toContain('big-b')
+        expect(after).not.toContain('unreferenced-unit')
+    })
+
+    test('guard: stops naming the live tree when its pointer differs and its index is absent, though a snapshot index is present', async () => {
+        await setup()
+        await putIndex('idx-a', 'big-a')
+        await putUnit('big-b', { v: 1 })
+        seedUnit('unreferenced-unit')
+        setLive(pointerDb('idx-b'))
+        await prime(makeDb([]))
+        storeSnapshot(17000000001, await encodeTree(pointerDb('idx-a')))
+
+        await run()
+
+        expect(errorMessages()).toEqual([language.errors.coldStorageCleanupSaveUnreadable(language.errors.coldStorageCleanupSourceLive)])
         expect(h.unitLog.removed).toEqual([])
     })
 })

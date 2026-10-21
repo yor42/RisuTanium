@@ -53,7 +53,8 @@ import { StoreDeleteManyError, StoreNotBinaryError, StoreVersionConflictError } 
  *   deletion, and only the keys it names are retained. A plugin storage unit
  *   is a leaf whose content is never searched for references, except upstream's
  *   plugin storage index: a tree's `_coldpluginIndex` names it, its large-value
- *   ids are kept with it, and an index that cannot be read stops the run. A
+ *   ids are kept with it, and an index that cannot be read stops the run, except
+ *   that a retained snapshot's index that is absent keeps nothing. A
  *   unit that a chat also names is read like any other archived chat.
  * - An asset is kept when live memory references it (read again before every
  *   batch), when the committed save's tree references it, when an older copy of
@@ -92,6 +93,9 @@ class CleanupStop extends Error {}
 
 type KeepTree = Pick<Database, 'characters' | 'pluginCustomStorage'>
 
+/** Where a tree comes from: a retained snapshot may name an absent plugin storage index; every other tree is data the profile still uses. */
+type TreeRole = 'live' | 'snapshot'
+
 type BlobSummary =
     | { status: 'ok', chaId: string | undefined, units: string[], assets: string[] }
     | { status: 'unreadable' }
@@ -114,7 +118,7 @@ interface ChatOrigin {
  * blob itself. Each distinct archived chat is read at most once, and only the
  * keys it names are retained from it. The set only grows.
  */
-class KeepSet {
+export class KeepSet {
     units = new Set<string>()
     /** Asset basenames, as `getUncleanablesSync` reports them. */
     assets = new Set<string>()
@@ -162,9 +166,11 @@ class KeepSet {
     /**
      * The large-value units of the plugin storage index `pointer` names. An
      * index that is missing, cannot be read or is not an index hides which
-     * units it names, so it stops the run.
+     * units it names, so it stops the run. The one exception is an index that
+     * is absent (not unreadable, not an index) and named by a retained snapshot:
+     * nothing can resolve it, so it keeps no units.
      */
-    private async pluginIndexUnits(pointer: string, source: string): Promise<string[]> {
+    private async pluginIndexUnits(pointer: string, source: string, role: TreeRole): Promise<string[]> {
         const cached = this.pluginIndexes.get(pointer)
         if (cached) {
             return cached
@@ -174,6 +180,12 @@ class KeepSet {
             read = await readColdStorageItem(pointer)
         } catch (error) {
             read = { status: 'error', error }
+        }
+        // Only an absent index named by a retained snapshot is tolerated, and it is never cached: a later tree of any
+        // role with the same pointer must read it again and stop.
+        if (read.status === 'missing' && role === 'snapshot') {
+            console.warn(`Cold storage cleanup: the plugin storage index ${pointer} (${source}) is missing, so it keeps no units`)
+            return []
         }
         if (read.status !== 'ok' || !isPluginStorageIndex(read.value)) {
             console.error(`Cold storage cleanup stopped: the plugin storage index ${pointer} (${source}) is missing, unreadable or not an index`, read.status === 'error' ? read.error : undefined)
@@ -192,7 +204,7 @@ class KeepSet {
      * whose blob is missing, unreadable or belongs to another character stops
      * the run: what it holds cannot be known, so nothing can be deleted safely.
      */
-    async addTree(tree: KeepTree, source: string, keepOwnAssets: boolean): Promise<void> {
+    async addTree(tree: KeepTree, source: string, keepOwnAssets: boolean, role: TreeRole = 'live'): Promise<void> {
         if (keepOwnAssets) {
             for (const asset of getUncleanablesSync(tree as Database, { chars: tree.characters ?? [] })) {
                 this.assets.add(asset)
@@ -208,7 +220,7 @@ class KeepSet {
         // restore one) keeps the index unit and every large unit it names.
         const indexPointer = pluginIndexPointer(tree.pluginCustomStorage)
         if (indexPointer !== null) {
-            for (const id of await this.pluginIndexUnits(indexPointer, source)) {
+            for (const id of await this.pluginIndexUnits(indexPointer, source, role)) {
                 this.units.add(id)
             }
             this.units.add(indexPointer)
@@ -336,7 +348,7 @@ async function keepFromSnapshot(keep: KeepSet, name: string): Promise<void> {
     if (!bytes) {
         return
     }
-    await keep.addTree(await decodeStrictly(bytes, name), name, false)
+    await keep.addTree(await decodeStrictly(bytes, name), name, false, 'snapshot')
 }
 
 //#endregion

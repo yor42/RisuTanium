@@ -265,6 +265,41 @@ describe('the upstream plugin storage index is part of the walk', () => {
         await expect(collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: '../x' })], readerOver(new Map()))).rejects.toBeInstanceOf(LegacyReadError)
     })
 
+    test('reproducer: with absentIndexKeepsNothing an absent index contributes only its own key and is not visited', async () => {
+        const reader = readerOver(new Map())
+        const visited: string[] = []
+
+        const keys = await collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: INDEX_ID })], reader, key => { visited.push(key) }, { absentIndexKeepsNothing: true })
+
+        expect(sorted(keys)).toEqual([INDEX_ID])
+        expect(visited).toEqual([])
+    })
+
+    test('guard: with absentIndexKeepsNothing a present index still contributes the large units it names', async () => {
+        const units = new Map<string, StoredUnit>([[INDEX_ID, indexUnit([{ k: 'b', l: LARGE_A }])]])
+
+        const keys = await collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: INDEX_ID })], readerOver(units), undefined, { absentIndexKeepsNothing: true })
+
+        expect(sorted(keys)).toEqual(sorted([INDEX_ID, LARGE_A]))
+    })
+
+    test.each([
+        ['not JSON', new Map<string, StoredUnit>([[INDEX_ID, { status: 'unparsable' }]]), {}],
+        ['not an index (wrong type)', new Map<string, StoredUnit>([[INDEX_ID, { status: 'ok', value: { type: 'something-else', entries: [], trash: [] } }]]), {}],
+        ['not an index (no trash list)', new Map<string, StoredUnit>([[INDEX_ID, { status: 'ok', value: { type: 'risu-plugin-storage-index', entries: [] } }]]), {}],
+        ['an error status', new Map<string, StoredUnit>(), { errorKeys: new Set([INDEX_ID]) }],
+        ['a rejection', new Map<string, StoredUnit>(), { throwKeys: new Set([INDEX_ID]) }],
+    ])('guard: with absentIndexKeepsNothing an index that is %s still rejects', async (_label, units, faults) => {
+        await expect(collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: INDEX_ID })], readerOver(units, faults), undefined, { absentIndexKeepsNothing: true })).rejects.toBeInstanceOf(LegacyReadError)
+    })
+
+    test('guard: with absentIndexKeepsNothing an index key that cannot name a unit still rejects before any read', async () => {
+        const reader = readerOver(new Map())
+
+        await expect(collectLegacyColdKeys([treeWithStorage({ _coldpluginIndex: '../x' })], reader, undefined, { absentIndexKeepsNothing: true })).rejects.toBeInstanceOf(LegacyReadError)
+        expect(reader.reads).toEqual([])
+    })
+
     test.each([['a number', 5], ['null', null], ['an empty string', '']])('guard: a pointer that is %s is ignored, as upstream reads a pointer only when it is a non-empty string', async (_label, pointer) => {
         const reader = readerOver(new Map())
 

@@ -218,6 +218,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Adds one old file to the list: its own tree, then every cold unit its chain reaches and every plugin value, each
  * scanned as it is read. A failure at any point lists the file `unreadable` and never escapes. The unit ids the file's
  * walk reached are added to `coldKeys`, the union over every walked file that the deletion plan excludes.
+ *
+ * A numbered backup whose plugin storage index is absent stays `ok`: nothing can resolve that index, so it names
+ * nothing to keep. `ok` therefore means every reference is known except those behind a backup's absent index, which
+ * also lets the asset and inlay sweep proceed for them. The main file (the file an upstream build would load) stays
+ * strict, and an index that is unreadable or not an index fails any file.
  */
 async function listFile(builder: LegacyListBuilder, key: string, tree: Database, reader: LegacyEntryReader, coldKeys: Set<string>): Promise<void> {
     let scan
@@ -239,7 +244,7 @@ async function listFile(builder: LegacyListBuilder, key: string, tree: Database,
             if (isRecord(character)) {
                 scan.coldCharacter(character)
             }
-        })
+        }, { absentIndexKeepsNothing: key !== LEGACY_MAIN_FILE_KEY })
         for (const unit of reached) {
             coldKeys.add(unit)
         }
