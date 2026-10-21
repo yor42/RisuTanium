@@ -6,6 +6,7 @@ import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPr
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
+import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
@@ -72,7 +73,14 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
     const lateRoots = listColdBackupRoots(dbWithoutAccount).filter((root) => !plugin.ids.has(root.key))
-    const dbData = encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
+    // Upstream's SaveKV namespaces can only travel in upstream's block format. The field is deleted from the
+    // export copy (a present key with no value would still be written), so a tree without namespaces encodes
+    // to the same bytes as a tree without the field.
+    const kvBlocks = db.upstreamKvBlocks
+    delete dbWithoutAccount.upstreamKvBlocks
+    const dbData = typeof kvBlocks === 'object' && kvBlocks !== null && Object.keys(kvBlocks).length > 0
+        ? writeRisuSaveV0(dbWithoutAccount, kvBlocks)
+        : encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
     const stubPayloads = stubEntriesInTree(dbWithoutAccount.characters, cold.stubEntries)
     // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
     // A minted uuid names an entry this export writes, never a unit of the page's store.

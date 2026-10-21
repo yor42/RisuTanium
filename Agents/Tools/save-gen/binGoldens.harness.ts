@@ -8,7 +8,7 @@
  * captures the bytes, dialogs are mocks). The upstream-shaped goldens are
  * assembled by hand from the shapes upstream's `makeColdDataForCharacter` and
  * `makeColdDataForChat` produce, around a database entry encoded by the same
- * `encodeRisuSaveLegacy`. The plugin-index goldens carry a database entry in
+ * `encodeRisuSaveLegacy`. The plugin-index and SaveKV goldens carry a database entry in
  * upstream's block format (`RISUSAVE\0`, gzip per block, root last), framed by
  * a small builder in this file that shares no code with any production writer.
  *
@@ -516,7 +516,12 @@ const PLUGIN_INDEX_ID = {
 } as const
 
 /** Block type numbers of upstream's block format, spelled out here so no production enum is involved. */
-const V0_TYPE = { config: 0, root: 1, preset: 4, modules: 5, characterWithoutChat: 7, plugins: 9, loadouts: 10, pluginStorage: 11 } as const
+const V0_TYPE = { config: 0, root: 1, preset: 4, modules: 5, characterWithoutChat: 7, plugins: 9, loadouts: 10, pluginStorage: 11, kv: 12 } as const
+
+/** A block payload written as given instead of as JSON text, for blocks that must hold something unparsable. */
+class RawPayload {
+    constructor(readonly bytes: Uint8Array) { }
+}
 
 /**
  * One block as upstream's `encodeRawBlock` frames it:
@@ -528,7 +533,7 @@ function v0Block(type: number, name: string, value: unknown, gzip: boolean): Uin
     if (nameBuf.length > 255) {
         throw new Error(`block name "${name}" does not fit the one-byte length`)
     }
-    const raw = encoder.encode(JSON.stringify(value))
+    const raw = value instanceof RawPayload ? value.bytes : encoder.encode(JSON.stringify(value))
     const data = gzip ? gzipSync(raw, { mtime: 0 }) : raw
     return concat([Uint8Array.of(type, gzip ? 1 : 0, nameBuf.length), nameBuf, u32le(data.length), data])
 }
@@ -607,6 +612,64 @@ function pluginIndexContainer(variant: 'full' | 'missing-index'): Uint8Array {
         : { _coldpluginIndex: PLUGIN_INDEX_ID.index, _coldplugin: { kept: PLUGIN_INDEX_ID.kept } }
     parts.push(pluginIndexDatabaseEntry(pluginCustomStorage))
     return concat(parts)
+}
+
+//#endregion
+
+//#region upstream SaveKV goldens
+
+/** A SaveKV entry as upstream's `encodeNamespaceContent` writes it: the entries are an array, so their order is data. */
+type KvEntry = { k: string, v: unknown }
+
+/** Content of one `kv:<namespace>` block. */
+function kvContent(entries: KvEntry[]): { version: 1, entries: KvEntry[] } {
+    return { version: 1, entries }
+}
+
+/** The namespaces of `upstream-kv.bin`: entry order differs from sorted order, with a numeric-looking key, a non-ASCII key, null and nested values. */
+const KV_NAMESPACES = [
+    {
+        name: 'ns-a',
+        entries: [
+            { k: 'zeta', v: 1 },
+            { k: '0', v: 'zero' },
+            { k: 'alpha', v: { list: [1, { deep: true }, null], text: 'x' } },
+            { k: '한글🙂', v: 'unicode value' },
+            { k: 'nothing', v: null },
+        ],
+    },
+    {
+        name: 'ns-b',
+        entries: [
+            { k: 'second', v: [false, 'b'] },
+            { k: 'first', v: 0 },
+        ],
+    },
+] as const
+
+/** The database entry of a SaveKV golden: one character, a preset, empty lists, then the given `kv:` payloads before `config`. */
+function kvDatabaseEntry(kvBlocks: { name: string, payload: unknown }[]): Uint8Array {
+    return buildChunk('database.risudat', v0Database([
+        { type: V0_TYPE.characterWithoutChat, name: 'cha-inline', value: { type: 'character', chaId: 'cha-inline', name: 'Inline Alice', chatPage: 0, chats: [plainChat('chat-inline-1', 'inline hello')] } },
+        { type: V0_TYPE.preset, name: 'preset', value: moduleAndPreset().botPresets },
+        { type: V0_TYPE.modules, name: 'modules', value: [] },
+        { type: V0_TYPE.loadouts, name: 'loadouts', value: [] },
+        { type: V0_TYPE.plugins, name: 'plugins', value: [] },
+        { type: V0_TYPE.pluginStorage, name: 'pluginStorage', value: {} },
+        ...kvBlocks.map((block) => ({ type: V0_TYPE.kv, name: `kv:${block.name}`, value: block.payload })),
+        { type: V0_TYPE.config, name: 'config', value: {} },
+    ], { characterOrder: [], personas: [] }))
+}
+
+/** `readable`: both namespaces. `unreadable`: one valid namespace and a `kv:` block whose payload is not JSON. */
+function kvContainer(variant: 'readable' | 'unreadable'): Uint8Array {
+    if (variant === 'readable') {
+        return kvDatabaseEntry(KV_NAMESPACES.map((ns) => ({ name: ns.name, payload: kvContent([...ns.entries]) })))
+    }
+    return kvDatabaseEntry([
+        { name: 'ns-b', payload: kvContent([...KV_NAMESPACES[1].entries]) },
+        { name: 'ns-broken', payload: new RawPayload(encoder.encode('not json {')) },
+    ])
 }
 
 //#endregion
@@ -753,6 +816,15 @@ describe('bin golden generator', () => {
 
     test('upstream-plugin-index-missing.bin', () => {
         emit('upstream-plugin-index-missing.bin', pluginIndexContainer('missing-index'))
+    })
+
+    // Upstream's SaveKV blocks (`kv:<namespace>`, type 12) in a block-format database entry.
+    test('upstream-kv.bin', () => {
+        emit('upstream-kv.bin', kvContainer('readable'))
+    })
+
+    test('upstream-kv-unreadable.bin', () => {
+        emit('upstream-kv-unreadable.bin', kvContainer('unreadable'))
     })
 
     test('upstream-stub-missing-entry.bin', () => {

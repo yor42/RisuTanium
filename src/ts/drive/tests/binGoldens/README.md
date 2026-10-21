@@ -1,6 +1,6 @@
 # `.bin` golden fixtures
 
-Small backup files produced by the build before the storage rewrite changed `.bin` import and export, so a later change can show that the same files still import to the same logical content, and that an export decodes back to equal content. The two plugin-index files were added with the upstream plugin storage index conversion; every other file was generated at commit `2de9cdbfa`.
+Small backup files produced by the build before the storage rewrite changed `.bin` import and export, so a later change can show that the same files still import to the same logical content, and that an export decodes back to equal content. The two plugin-index files were added with the upstream plugin storage index conversion and the two SaveKV files with the SaveKV pass-through; every other file was generated at commit `2de9cdbfa`.
 
 These fixtures record **today's** restore behaviour only. They are not a rule for any later importer: where a file below is described as "kept as stored", a later importer may legitimately do something else with it, and the guard then changes with it.
 
@@ -15,17 +15,23 @@ All ids, times and bytes are fixed. Unit keys are fixed UUIDs (`...-0000000000a1
 | `upstream-plugin-object-no-entry.bin` | hand-built | an object-valued `_coldplugin` mapping whose unit has no entry (upstream's collector leaves out a unit that is not an array and has no `character` or `message`) |
 | `upstream-plugin-index.bin` | hand-built, database entry in upstream's block format (`RISUSAVE\0`, gzip per block, root last; framed by a builder in the harness that shares no code with a production writer) | upstream's plugin storage index: `pluginCustomStorage._coldpluginIndex` pointing at an index unit with small `s` entries (an object, `null`, a number, a string, `false`, an empty string), one large `l` entry with its unit, a non-empty `trash`, and a key (`shared`) that the fork-style `_coldplugin` map also names, so the index must win; a second `_coldplugin` key (`kept`) the index does not define |
 | `upstream-plugin-index-missing.bin` | hand-built, same block format | the pointer in the database while the index unit is in no entry |
+| `upstream-kv.bin` | hand-built, same block format | upstream's SaveKV: two `kv:<namespace>` blocks (type 12) whose content is `{"version":1,"entries":[{"k":..,"v":..}]}`; entries in an order that differs from sorted order, the key `"0"`, a non-ASCII key, a `null` value and nested values |
+| `upstream-kv-unreadable.bin` | hand-built, same block format | one valid `kv:` namespace and a second `kv:` block whose payload is `not json {` |
 | `fork-stub-missing-entry.bin` | the real `SaveLocalBackup` | a stub whose blob unit is absent from the store, so no blob entry is written |
 | `fork-stub-bad-json.bin`, `fork-stub-wrong-shape.bin` | hand-built | a fork-shaped stub with a blob entry whose body is `not json {`, or JSON `{"a":1}`; the real exporter never writes either, so the entry is placed by hand |
 | `upstream-stub-missing-entry.bin`, `upstream-stub-bad-json.bin`, `upstream-stub-wrong-shape.bin` | hand-built | the same three cases for an upstream-shaped stub |
 
-The container is the same in both families (`[nameLength][name][dataLength][data]` entries, units as `coldstorage_<uuid>.json` plain JSON, the database as the last entry, `database.risudat`). The database entry is encoded by `encodeRisuSaveLegacy` with compression in every file except the two plugin-index files, which carry upstream's block format instead. The two families differ in the character, chat and stub objects inside the database entry. The upstream-shaped chats carry no chat `id`: upstream's `makeColdDataForChat` changes a chat in place, so a real upstream chat keeps its `id`, `note` and `name`, and the fixture models a chat that has no `id` (an older chat), to which the restore gives one.
+The container is the same in both families (`[nameLength][name][dataLength][data]` entries, units as `coldstorage_<uuid>.json` plain JSON, the database as the last entry, `database.risudat`). The database entry is encoded by `encodeRisuSaveLegacy` with compression in every file except the two plugin-index files and the two SaveKV files, which carry upstream's block format instead (the SaveKV files hold no msgpack). The two families differ in the character, chat and stub objects inside the database entry. The upstream-shaped chats carry no chat `id`: upstream's `makeColdDataForChat` changes a chat in place, so a real upstream chat keeps its `id`, `note` and `name`, and the fixture models a chat that has no `id` (an older chat), to which the restore gives one.
 
 The plugin-index goldens use ids `...-0000000000b1` to `...-0000000000b6` (index, large value, shadowed fork-map unit, kept unit, trashed unit, old index) and do not depend on the clock: their gzip blocks carry a zero header time.
 
 ## What the restore does with the plugin-index goldens
 
 A legacy page installs no `_coldpluginIndex`. `upstream-plugin-index.bin` restores to `_coldplugin` slots whose units equal the original values (the large entry keeps the unit id the index named, each small entry becomes a new unit, `shared` takes the index value, `kept` stays). `upstream-plugin-index-missing.bin` asks the incomplete-restore question for the index unit and, once confirmed, installs the tree with the pointer removed.
+
+## What the restore does with the SaveKV goldens
+
+`upstream-kv.bin` restores with `upstreamKvBlocks` holding both namespaces' block content as stored, entry order kept, and asks nothing. `upstream-kv-unreadable.bin` keeps the valid namespace and asks one left-out question ("1 part(s) of the backup this version cannot read") for the damaged block. A backup exported from a restored `upstream-kv.bin` carries the namespaces again as `kv:` blocks in upstream's block format.
 
 ## What the restore does today with the unusable-unit cases
 
@@ -55,6 +61,8 @@ The guard is `src/ts/drive/tests/binGoldens.test.ts` (runs under `pnpm test`). I
 7A82BA3D01321A4F990CDE993AC78C75FF1959C7DC42BA1C166A8E79E3CAC47D  fork-stub-missing-entry.bin (330 bytes)
 C224075147F79BE37AE01A4BD051DD2D10843703FAC221DD2EC5CA0C3015F516  fork-stub-wrong-shape.bin (353 bytes)
 1AFBE225A3B45C2A6CA9EB2145B7DF2A437947E7B60AFFB2F20B8B516E4EA773  upstream-full.bin (2170 bytes)
+F7F11E19EDA2D3634501315EA2C8570B7CC92ADF42CBEEE2AF2DDB82C71FFE52  upstream-kv-unreadable.bin (824 bytes)
+936FA88890C9724323794EDD82ACC4118BC9ED0D896D47E96D28228229761283  upstream-kv.bin (942 bytes)
 BCD4F2163D441B09A3AC9BD882F5F3A90E801651B96D1C0CC0BFC04D7A5C5AEF  upstream-missing-unit.bin (601 bytes)
 28F7CB32B11C9905746F4CD3B91DA8DFC92F1DC6612B5D31C6F173835E8A419A  upstream-plugin-index-missing.bin (770 bytes)
 0353EF337CEF01FFA8AA6DF012FDF2DFD91A85AA4A60550DA02B7353A9898CC9  upstream-plugin-index.bin (1554 bytes)
