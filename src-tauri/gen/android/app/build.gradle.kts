@@ -13,14 +13,27 @@ val tauriProperties = Properties().apply {
     }
 }
 
-// Release signing comes from gen/android/keystore.properties (gitignored), which CI writes from
-// secrets. Without that file nothing below applies and builds behave as before.
+// Release signing sources, in precedence order: the four RISU_ANDROID_* environment variables (set by
+// Agents/Tools/device/sign-release.ps1 for one build), then gen/android/keystore.properties (gitignored), which CI
+// writes from secrets. With neither, nothing below applies and the release build stays unsigned.
+// A partial environment fails the build and names the missing variables, so a half-set key never falls back silently.
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
         keystorePropertiesFile.inputStream().use { load(it) }
     }
 }
+val signingEnvNames = listOf(
+    "RISU_ANDROID_KEYSTORE",
+    "RISU_ANDROID_KEYSTORE_PASSWORD",
+    "RISU_ANDROID_KEY_ALIAS",
+    "RISU_ANDROID_KEY_PASSWORD"
+)
+val signingEnvMissing = signingEnvNames.filter { System.getenv(it).isNullOrEmpty() }
+if (signingEnvMissing.isNotEmpty() && signingEnvMissing.size < signingEnvNames.size) {
+    throw GradleException("Incomplete release signing environment; missing: " + signingEnvMissing.joinToString(", "))
+}
+val useSigningEnv = signingEnvMissing.isEmpty()
 
 android {
     compileSdk = 36
@@ -34,7 +47,14 @@ android {
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
     signingConfigs {
-        if (keystorePropertiesFile.exists()) {
+        if (useSigningEnv) {
+            create("release") {
+                storeFile = file(System.getenv("RISU_ANDROID_KEYSTORE"))
+                storePassword = System.getenv("RISU_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RISU_ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("RISU_ANDROID_KEY_PASSWORD")
+            }
+        } else if (keystorePropertiesFile.exists()) {
             create("release") {
                 storeFile = file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
@@ -56,7 +76,7 @@ android {
             }
         }
         getByName("release") {
-            if (keystorePropertiesFile.exists()) {
+            if (useSigningEnv || keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
             isMinifyEnabled = true
