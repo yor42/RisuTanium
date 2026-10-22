@@ -36,7 +36,7 @@ param(
     [switch]$NoRestore,
     [string[]]$MenuTaps = @('62 157', '105 125', '105 283', '233 900', '538 610'),
     [string]$ConfirmTap = '264 1210',
-    [string]$WarnPattern = 'This backup holds|\uC774 \uBC31\uC5C5 \uC548\uC758 \uB370\uC774\uD130\uBCA0\uC774\uC2A4\uB294',
+    [string]$WarnPattern = 'This backup holds|The saved data in this backup|\uC774 \uBC31\uC5C5\uC5D0\uB294 \uD30C\uC77C\uC774|\uC774 \uBC31\uC5C5\uC5D0 \uB4E4\uC5B4 \uC788\uB294 \uB370\uC774\uD130\uB294|\uC774 \uBC31\uC5C5 \uC548\uC758 \uB370\uC774\uD130\uBCA0\uC774\uC2A4\uB294',
     [string]$WizardPattern = 'Airisu',
     [int]$ReadySec = 90,
     [int]$LaunchSettleSec = 12,
@@ -53,8 +53,8 @@ param(
     [string]$Serial,
     [string[]]$AllowedSerials,
     [string]$Package,
-    [int]$PortMin = 9500,
-    [int]$PortMax = 9599,
+    [int]$PortMin = 6330,
+    [int]$PortMax = 6399,
     [int]$PollSeconds = 2,
     [string]$CdpScript,
     [string]$RepoRoot,
@@ -94,7 +94,7 @@ $r.atDone = $null
 $r.end = $null
 $r.startState = [ordered]@{ basis = 'none (-NoRestore)'; snapshotId = $null; snapshotSha256 = $null }
 $r.runId = $runId
-$r.import = [ordered]@{ pickedAt = $null; doneAt = $null; seconds = $null; outcome = $null; restartBased = $null; warnConfirmed = $false; bootFinished = $null; bootWaitedSec = $null; bootState = $null; wizardShown = $null; wizardPattern = $WizardPattern }
+$r.import = [ordered]@{ pickedAt = $null; doneAt = $null; seconds = $null; outcome = $null; restartBased = $null; warnConfirmed = $false; bootFinished = $null; bootWaitedSec = $null; bootState = $null; wizardShown = $null; wizardPattern = $WizardPattern; noticesDismissed = @() }
 Save-Result $r $resultPath
 $watch = $null
 $fwd = $null
@@ -107,6 +107,7 @@ $pushStarted = $false
 $remotePath = $null
 $warnClicks = 0
 $lastWarnClick = Get-Date '2000-01-01'
+$noticeClick = Get-NoticeDismissExpression $WarnPattern
 
 function Write-Log([string]$Text) { Add-Content -LiteralPath $script:logPath -Value ((Get-IsoNow) + ' ' + $Text) }
 function Start-Step([string]$Name) { $script:step = @{ name = $Name; t = Get-Date } }
@@ -166,6 +167,21 @@ function Get-CdpFresh([string]$Expression) {
     $cdpArgs = @{ TimeoutMs = $script:CdpTimeoutMs }
     if ($script:CdpScript) { $cdpArgs.CdpScript = $script:CdpScript }
     return (Invoke-Cdp -Port $script:fwd.Port -Expression $Expression @cdpArgs)
+}
+# Dismisses informational notices (an alert box with a single OK button, see Get-NoticeDismissExpression), at most $Max in a row,
+# waiting $WaitSec between them so the next notice of a sequence can show. A confirm dialog is never touched. Each dismissed notice is
+# logged and kept in import.noticesDismissed (first 60 characters of its text, at most 20 kept).
+function Close-Notices([int]$Max, [double]$WaitSec) {
+    for ($n = 0; $n -lt $Max; $n++) {
+        $c = Get-CdpFresh $script:noticeClick
+        if ($c.Kind -ne 'ok' -or [string]$c.Value -notmatch 'dismissed:') { return }
+        $txt = [string]$c.Value
+        try { $txt = [string]($c.Value | ConvertFrom-Json) } catch { }
+        $txt = ($txt -replace '^\s*dismissed:', '').Trim()
+        if ($script:r.import.noticesDismissed.Count -lt 20) { $script:r.import.noticesDismissed += $txt }
+        Write-Log ('dismissed a notice: ' + $txt)
+        if ($WaitSec -gt 0) { Wait-Watched $WaitSec }
+    }
 }
 function Update-Ring {
     $recv = Get-Date
@@ -303,11 +319,7 @@ try {
     }
     if (-not $ready) { Finish 'timeout' ('ready signal not seen within ' + $ReadySec + ' s (last cdp: ' + $lastKind + ')') }
     Wait-Watched $LaunchSettleSec
-    $okClick = 'new Promise(r=>{const b=[...document.querySelectorAll("button")].find(b=>b.innerText.trim()==="OK");if(b){b.click();r("ok")}else r("none")})'
-    for ($k = 0; $k -lt 3; $k++) {
-        $c = Get-CdpFresh $okClick
-        if ($c.Kind -eq 'ok' -and $c.Value -match 'ok') { Write-Log 'dismissed a notice'; Wait-Watched 4 } else { break }
-    }
+    Close-Notices 3 4
     $fl = Get-CdpFresh 'localStorage.setItem("risu-measure-import","on"); typeof globalThis.__risuImportPhases'
     if ($fl.Kind -ne 'ok') { Finish 'fail' ('could not set the measurement flag (cdp ' + $fl.Kind + ')') }
     $r.measure.set = $true
@@ -361,6 +373,8 @@ try {
                 Write-Log ('size warning shown; confirm ' + $y.Kind + ' ' + $y.Value)
                 if ($y.Kind -eq 'ok' -and $y.Value -match 'clicked') { $r.import.warnConfirmed = $true; $r.import.warnClicks = $warnClicks }
             }
+            # A notice that shows before the reload (what the import left out) holds the reload back until it is acknowledged.
+            if (-not $ring.Warn) { Close-Notices 1 1 }
             $o = Get-ImportDone $ring $RetryGraceSec
             if ($o.Done) { $outcome = $o; break }
         }
@@ -389,6 +403,9 @@ try {
     $bootDone = $false
     $bootEnd = (Get-Date).AddSeconds($BootWaitSec)
     while ($true) {
+        # The boot of the imported data waits for the person to acknowledge its start-up notices (for example the archive-characters
+        # notice), so the loading screen does not go until they are dismissed.
+        Close-Notices 3 1
         $lc = Get-CdpFresh $loadExpr
         if ($lc.Kind -eq 'ok' -and $lc.Value -eq 'true') { $bootDone = $true; break }
         if ((Get-Date) -ge $bootEnd) { break }

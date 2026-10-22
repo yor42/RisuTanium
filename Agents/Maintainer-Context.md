@@ -11284,3 +11284,11 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 1. **Lane B CHORE-223: "Merge + fold in (Recommended)".** Merged as `cbd256917`, with this fold-in.
 2. **Lane B's Note 9 export measurement: "Phone 1 after merge (Recommended)".** A measurement, not a ship gate; run on phone 1.
 - Notes, not the maintainer's words: the option texts were written by the orchestrator.
+
+### MC-344 — Lane A, 2026-10-22: CHORE-204 commit
+
+- Tag: decisions (`AskUserQuestion` answer, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); ledger rows 2132 to 2135.
+- Related: `MC-330`, `MC-337`; CHORE-204, CHORE-202.
+1. **CHORE-204 device-script batch: "Commit + push with records (Recommended)".** Committed with this records pass and pushed. Phone 2's CHORE-202 setup (restore `base1`, launch once, snapshot) and R1 to R4 follow (`MC-337` 7).
+- Notes, not the maintainer's words: the option text was written by the orchestrator.
