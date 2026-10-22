@@ -291,6 +291,19 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
 
     const installedResult: BootImportResult = { status: 'installed', manifestKey: 'm', flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }
 
+    /** The notice is shown once the restore has run, however long it takes; the bound stays far inside the file's test timeout. */
+    const NOTICE_WAIT = { timeout: 10_000 }
+
+    /**
+     * Releases the held notice and waits for the flow to end, so a test that failed before its own release cannot leave a flow
+     * running into the next test through the shared alert mock. Errors of the flow are dropped here: the test's own failure,
+     * or its own assertion on `ended`, is what reports.
+     */
+    async function endFlow(release: () => void, ended: Promise<unknown>): Promise<void> {
+        release()
+        await ended.catch(() => { })
+    }
+
     test('new behaviour: an installed boot import shows the skipped-inlay notice, awaited, before the flow resolves', async () => {
         // The inlay pass is the real collector's; only its outcome is replaced, so the test pins that the boot path
         // hands the inlay skips to the notices (the asset skips alone would not show it).
@@ -308,13 +321,16 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         let resolved = false
         const ended = pickAtBoot(recordingTarget(seen, installedResult), golden('upstream-full.bin'))
         void ended.then(() => { resolved = true })
-        await sleepReal(300)
+        try {
+            await vi.waitFor(() => expect(boot.alert.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysInvalid(1, ['lost-inlay'])), NOTICE_WAIT)
 
-        expect(seen.sourceHadTree).toBe(true)
-        expect(boot.alert.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysInvalid(1, ['lost-inlay']))
-        expect(resolved).toBe(false)
-        release()
-        expect(await ended).toEqual({ kind: 'finished', result: installedResult })
+            expect(seen.sourceHadTree).toBe(true)
+            expect(resolved).toBe(false)
+            release()
+            expect(await ended).toEqual({ kind: 'finished', result: installedResult })
+        } finally {
+            await endFlow(release, ended)
+        }
     })
 
     test('reproducer: an installed boot import shows the skipped-asset notice, awaited, before the flow resolves', async () => {
@@ -329,16 +345,19 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         let resolved = false
         const ended = pickAtBoot(recordingTarget(seen, installedResult), withRefusedAsset())
         void ended.then(() => { resolved = true })
-        await sleepReal(300)
+        try {
+            await vi.waitFor(() => expect(boot.alert.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.badname'])), NOTICE_WAIT)
 
-        // The skip really happened: the pass ran past the refused entry, wrote the file's valid asset and refused the bad key.
-        expect(seen.sourceHadTree).toBe(true)
-        expect(boot.w.store.peek('assets/golden-avatar.png')).not.toBeNull()
-        expect(boot.w.store.peek('assets/.badname')).toBeNull()
-        expect(boot.alert.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.badname']))
-        expect(resolved).toBe(false)
-        release()
-        expect(await ended).toEqual({ kind: 'finished', result: installedResult })
+            // The skip really happened: the pass ran past the refused entry, wrote the file's valid asset and refused the bad key.
+            expect(seen.sourceHadTree).toBe(true)
+            expect(boot.w.store.peek('assets/golden-avatar.png')).not.toBeNull()
+            expect(boot.w.store.peek('assets/.badname')).toBeNull()
+            expect(resolved).toBe(false)
+            release()
+            expect(await ended).toEqual({ kind: 'finished', result: installedResult })
+        } finally {
+            await endFlow(release, ended)
+        }
     })
 
     test('guard: a cancelled boot import shows no skip notice', async () => {

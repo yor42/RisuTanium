@@ -26,6 +26,12 @@ const READY_LINE = 'HTTP server is running'
 // Launches of a fresh fixture that may each take a new port when another process
 // takes the probed one before the server binds it.
 const MAX_FIRST_LAUNCH_ATTEMPTS = 5
+// A restart keeps its port, so a port another process holds is waited out: the
+// relaunch is repeated on the same port, but only after an address-in-use failure.
+const MAX_RESTART_RETRIES = 5
+const RESTART_RETRY_DELAY_MS = 150
+// Bound on the identity request after the ready line (connect, reply and body).
+const IDENTITY_TIMEOUT_MS = 5_000
 
 /** The server process ended before printing its ready line; `addressInUse` is read from its drained output. */
 class ServerExitedEarly extends Error {
@@ -110,6 +116,12 @@ export interface NodeServerOptions extends NodeServerLaunchOptions {
      * unless `env` sets its own.
      */
     serverScript?: string
+    /**
+     * Supplies the port of every first launch (the default probes a free one). For
+     * tests of the fixture's own launch handling, which need to say which ports
+     * it is offered.
+     */
+    portSource?: () => Promise<number>
 }
 
 /** The Node arguments that cap a request's header block at `bytes`; a larger one gets the server's own 431. */
@@ -168,7 +180,8 @@ export function createReplyDropper(plan: ReplyDropPlan): ReplyDropper {
 export async function startNodeServer(options: NodeServerOptions = {}): Promise<NodeServerFixture> {
     const workDir = await mkdtemp(join(tmpdir(), 'risu-node-store-'))
     // Fixed once the first launch has bound; a restart reuses it so the base URL stays.
-    let port = await freePort()
+    const nextPort = options.portSource ?? freePort
+    let port = await nextPort()
     let baseUrl = `http://127.0.0.1:${port}`
     let child: ChildProcess | undefined
     let exited: Promise<void> | undefined
@@ -202,6 +215,25 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
         await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
 
+    // The server listens on all interfaces, but another socket can hold the same
+    // port on `127.0.0.1` alone (on Windows both binds succeed and requests to
+    // `127.0.0.1` reach the other socket). Only the server answers `/api/test_auth`
+    // with a JSON body carrying a string `status`; one `AbortSignal` bounds the
+    // request and the body read.
+    const answersAsServer = async (): Promise<boolean> => {
+        try {
+            const signal = AbortSignal.timeout(IDENTITY_TIMEOUT_MS)
+            const response = await fetch(`${baseUrl}/api/test_auth`, { signal })
+            if (response.status !== 200) {
+                return false
+            }
+            const body: unknown = await response.json()
+            return typeof body === 'object' && body !== null && 'status' in body && typeof body.status === 'string'
+        } catch {
+            return false
+        }
+    }
+
     const launch = async () => {
         output = ''
         child = spawn(process.execPath, [...(launchOptions.nodeArgs ?? []), options.serverScript ?? SERVER_SCRIPT], {
@@ -233,6 +265,11 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                 reject(new ServerExitedEarly(`The Node server exited with code ${code} before it was ready.\n${output}`, output.includes('EADDRINUSE')))
             })
         })
+        if (!(await answersAsServer())) {
+            killChild()
+            await exited
+            throw new ServerExitedEarly(`The address 127.0.0.1:${port} is in use by another socket: the ready server did not answer /api/test_auth.\n${output}`, true)
+        }
     }
 
     try {
@@ -247,7 +284,7 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                 if (!(error instanceof ServerExitedEarly) || !error.addressInUse || portChosenByCaller || attempt >= MAX_FIRST_LAUNCH_ATTEMPTS) {
                     throw error
                 }
-                port = await freePort()
+                port = await nextPort()
                 baseUrl = `http://127.0.0.1:${port}`
             }
         }
@@ -307,7 +344,17 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                     env: restartOptions?.env ?? launchOptions.env,
                     nodeArgs: restartOptions?.nodeArgs ?? launchOptions.nodeArgs,
                 }
-                await launch()
+                for (let retry = 0; ; retry++) {
+                    try {
+                        await launch()
+                        return
+                    } catch (error) {
+                        if (!(error instanceof ServerExitedEarly) || !error.addressInUse || retry >= MAX_RESTART_RETRIES) {
+                            throw error
+                        }
+                        await new Promise<void>((resolve) => setTimeout(resolve, RESTART_RETRY_DELAY_MS))
+                    }
+                }
             },
             stop,
         }
