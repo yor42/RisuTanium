@@ -147,7 +147,7 @@ describe('the flip on the real server (invariants H and U)', () => {
             const loaded = await makeOwner(nodeStore()).owner.load()
             expect(loaded.kind === 'loaded' && loaded.loaded.directory.includes(winner), `trial ${trial}`).toBe(true)
         }
-    })
+    }, 30_000)
 
     test('the head write lands and its response is dropped: the owner finds its generation, keeps it and deletes the old one', async () => {
         const drops: Drop[] = []

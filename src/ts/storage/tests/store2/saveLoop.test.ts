@@ -50,6 +50,12 @@ interface Loop {
     uncounted: Array<{ error: unknown, attempts: number }>
     /** The waits the loop asked for through `sleep`, in order. */
     sleeps: number[]
+    /**
+     * Holds every later `sleep` until the returned release runs. The loop's catch sleeps right after it reports a
+     * failure and reads the base only after that sleep, so a held sleep keeps the retry from adopting a landed commit
+     * while the test edits the page. Open by default.
+     */
+    holdSleeps(): () => void
     /** When set, the next `saved` call throws once: the bookkeeping that follows a commit that has landed. */
     savedThrows: Error | null
     broadcasts: string[]
@@ -95,6 +101,7 @@ async function startLoop(db: Database, options: Partial<Store2StartOptions> = {}
 function runLoop(kit: Store2Kit, db: Database): Loop {
     let stopped = false
     let tail: Promise<void> = Promise.resolve()
+    let held: Promise<void> | null = null
     const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
     const reloadFlag = { state: false }
     const loop: Loop = {
@@ -103,6 +110,14 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         failures: [],
         uncounted: [],
         sleeps: [],
+        holdSleeps() {
+            let release: () => void = () => {}
+            held = new Promise<void>((resolve) => { release = resolve })
+            return () => {
+                held = null
+                release()
+            }
+        },
         savedThrows: null,
         broadcasts: [],
         crashed: [],
@@ -192,7 +207,7 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         wait: idle,
         sleep: (ms) => {
             loop.sleeps.push(ms)
-            return idle()
+            return held === null ? idle() : held.then(idle)
         },
         sleepForever: () => new Promise<never>(() => {}),
         now: () => Date.now(),
@@ -740,11 +755,15 @@ describe('new behaviour: result mapping', () => {
         }])
         const loop = runLoop(kit, db)
         const original = chars(db)[0].personality
+        // The retry sleeps right after the report and reads the base only afterwards, so holding the sleep keeps it from
+        // adopting the landed commit before the revert below.
+        const release = loop.holdSleeps()
         chars(db)[0].personality = 'landed edit'
         loop.mark(chaIdOf(db, 0))
         await until(() => loop.failures.length === 1, 'the report of the unknown outcome', 4000)
         // The page reverts the edit before the retry: the retry must write the revert over the adopted commit.
         chars(db)[0].personality = original
+        release()
         await savedBy(loop)
         expect((await kit.saved()).characters[0]).toMatchObject({ personality: original })
         expect(kit.peer.asked).toEqual([])
@@ -1127,11 +1146,16 @@ describe('new behaviour: a pending attempt is resolved against the base before t
         }])
         const loop = runLoop(kit, db)
         const original = chars(db)[0].personality
+        // Held so the retry cannot adopt the landed commit before the revert (see the unknown-outcome test above).
+        const release = loop.holdSleeps()
         chars(db)[0].personality = 'landed edit'
         loop.mark(chaIdOf(db, 0))
         await until(() => loop.failures.length === 1, 'the report', 4000)
         chars(db)[0].personality = original
+        release()
         await savedBy(loop)
+        // The revert was committed over the adopted commit, so a plan made over the adopted base was acknowledged.
+        expect((await kit.saved()).characters[0]).toMatchObject({ personality: original })
         // A plan made before the adoption would be acknowledged against a moved encoding and fail loudly.
         expect(loop.failures).toHaveLength(1)
         expect(kit.peer.asked).toEqual([])

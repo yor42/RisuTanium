@@ -190,7 +190,9 @@ beforeEach(async () => {
     beginWork = (await import('../chatOrigin')).beginWork
     createSendSubject = (await import('../chatOrigin')).createSendSubject
     createHypaV3Preset = (await import('../memory/hypav3')).createHypaV3Preset
-})
+    // The first run imports the whole stores and memory module graph, which takes seconds on a loaded machine; the
+    // bound only delays reporting a hang.
+}, 60_000)
 
 afterEach(() => {
     selectedCharID.set(-1)

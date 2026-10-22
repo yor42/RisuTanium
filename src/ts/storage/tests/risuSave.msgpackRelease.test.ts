@@ -100,6 +100,9 @@ async function retainedAfter(prepare: () => Uint8Array, run: (bytes: Uint8Array)
     return { retained: after - before, outcome: summary, inputLength: bytes.length }
 }
 
+/** The tests that encode or decode the big tree take seconds on a loaded machine; the bound only delays reporting a hang. */
+const SLOW_TEST_MS = 30_000
+
 describe('decodeRisuSave releases msgpackr\'s source', () => {
     const decodedCount = (outcome: PromiseSettledResult<unknown>): number => {
         expect(outcome.status).toBe('fulfilled')
@@ -113,7 +116,7 @@ describe('decodeRisuSave releases msgpackr\'s source', () => {
         )
         expect(decodedCount(outcome)).toBe(COUNT)
         expect(retained).toBeLessThan(8 * MIB)
-    })
+    }, SLOW_TEST_MS)
 
     test('a raw legacy save whose first read fails and whose fallback read succeeds leaves no buffer behind', async () => {
         // The first read meets an unassigned token; the fallback read skips the six bytes the older writer prefixed.
@@ -134,7 +137,7 @@ describe('decodeRisuSave releases msgpackr\'s source', () => {
         )
         expect(outcome.status).toBe('rejected')
         expect(retained).toBeLessThan(8 * MIB)
-    })
+    }, SLOW_TEST_MS)
 
     // Compatibility guard: passes before and after; the release must neither swallow nor change an error.
     test('guard: a strict read of unrecognized bytes still rejects with the original error', async () => {
@@ -169,7 +172,7 @@ describe('the encoders release the packr\'s output buffer', () => {
         )
         expect(outcome.status).toBe('fulfilled')
         expect(retained).toBeLessThan(8 * MIB)
-    })
+    }, SLOW_TEST_MS)
 
     test('a stream-compressed encode leaves no encoding behind once its result is dropped', async () => {
         const { retained, outcome } = await retainedAfter(
@@ -178,7 +181,7 @@ describe('the encoders release the packr\'s output buffer', () => {
         )
         expect(outcome.status).toBe('fulfilled')
         expect(retained).toBeLessThan(8 * MIB)
-    })
+    }, SLOW_TEST_MS)
 
     // Regression: the buffer a release installs must be of the kind msgpackr allocates, because its long-string
     // path calls `utf8Write` on the target where a Buffer exists. This is the one fixture string of 64+ characters.
@@ -217,5 +220,5 @@ describe('the encoders release the packr\'s output buffer', () => {
         const streamSecond = await encodeRisuSaveCompressionStream(tree)
         expect(Array.from(streamSecond)).toEqual(Array.from(streamFirst))
         expect(await decodeRisuSave(streamSecond)).toEqual(tree)
-    })
+    }, SLOW_TEST_MS)
 })
