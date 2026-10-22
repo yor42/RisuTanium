@@ -2,6 +2,7 @@ import { DBState } from "../stores.svelte"
 import { alertError } from "../alert"
 import { language } from "../../lang"
 import type { character, groupChat } from "../storage/database.svelte"
+import { applyCharacterDefaults } from "../storage/characterDefaults"
 import { findChaIdHolders, readColdCharacterCopy, restoreColdCharacter, restoreFailureReason, type ColdRestoreFailure } from "./coldCharacterRestore"
 
 /**
@@ -74,6 +75,9 @@ export function alertNamedRestoreFailure(stub: Slot, reason: ColdRestoreFailure)
 export async function readArchivedCharacter(stub: Slot): Promise<{ status: 'ok', character: Slot } | ColdAccessFailure> {
     const copy = await readColdCharacterCopy(stub)
     if (copy.status === 'ok') {
+        // The copy is the caller's own: giving it the defaults shows a plugin
+        // or tool the shape of an in-memory character and writes nothing.
+        applyCharacterDefaults(copy.character)
         return copy
     }
     return alertNamedRestoreFailure(stub, restoreFailureReason(copy))
@@ -104,7 +108,7 @@ function soleHolder(chaId: string): { status: 'found', index: number, holder: Sl
  * first when it is a stub, and returns it found again by `chaId` (an index or
  * object taken before the read may be stale). A full holder is returned as it
  * is. On a failed restore the stub is left unchanged and the user gets one
- * alert naming the character.
+ * alert naming the character. The returned character has the defaults applied.
  */
 export async function restoreArchivedForWrite(chaId: string): Promise<ColdWriteTarget> {
     const before = soleHolder(chaId)
@@ -134,5 +138,9 @@ export async function restoreArchivedForWrite(chaId: string): Promise<ColdWriteT
         // A placeholder has no full data to write into.
         return { status: 'gone' }
     }
+    // The installed character may lack fields the caller reads. Filling them
+    // here is a memory change: it is saved when the caller's write marks the
+    // character, and the next open fills them again.
+    applyCharacterDefaults(after.holder)
     return { status: 'ready', character: after.holder, index: after.index }
 }

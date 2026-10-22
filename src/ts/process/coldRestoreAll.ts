@@ -3,6 +3,7 @@ import { alertClear, alertError, alertWait, waitAlert } from "../alert"
 import { language } from "../../lang"
 import { findChaIdHolders, restoreColdCharacter } from "./coldCharacterRestore"
 import { recordRestoreAllStart, resetRestoreAllStrikes } from "../storage/bootArchiveMemo"
+import { applyCharacterDefaults } from "../storage/characterDefaults"
 
 /**
  * Restores every archived character in `DBState.db.characters`, for code that
@@ -66,6 +67,13 @@ export async function restoreAllColdCharacters(): Promise<void> {
             const outcome = await restoreColdCharacter(holder, { byChaId: true, quiet: true })
             if (outcome.status === 'refused') {
                 failed.push(pending[i].name)
+            } else if (outcome.status === 'restored') {
+                // The plugin reads the live list directly and nothing formats
+                // these characters, so a stored one missing a field it reads
+                // gets the defaults here. This is a memory change: it is saved
+                // when something later marks the character, and every open
+                // fills the fields again.
+                applyCharacterDefaults(outcome.character)
             }
         }
     } finally {

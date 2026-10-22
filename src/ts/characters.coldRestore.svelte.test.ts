@@ -789,3 +789,68 @@ describe('a by-chaId restore that joins a click restore of the same placeholder'
         expect(slot(1).desc).toBe('restored description')
     })
 })
+
+describe('changeChar on a stored character that lacks default fields', () => {
+    test('reproducer: a character stored without a lorebook list opens with an empty list and is selected', async () => {
+        installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
+        readColdStorageItemMock.mockResolvedValue(ok(fullCharacter('member', 'restored description', { globalLore: undefined })))
+
+        await changeChar(1)
+
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(1).globalLore).toEqual([])
+        expect(get(selectedCharID)).toBe(1)
+    })
+
+    test('reproducer: a character stored without chats opens with one empty chat and is selected', async () => {
+        installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
+        readColdStorageItemMock.mockResolvedValue(ok(fullCharacter('member', 'restored description', { chats: undefined })))
+
+        await changeChar(1)
+
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(1).chats).toHaveLength(1)
+        expect(slot(1).chats[0].message).toEqual([])
+        expect(get(selectedCharID)).toBe(1)
+    })
+
+    test('reproducer: a character already in memory without a lorebook list opens with an empty list', async () => {
+        installDb([warmCharacter('before'), fullCharacter('live', 'live description', { globalLore: undefined }) as unknown as CharacterFixture])
+
+        await changeChar(1)
+
+        expect(slot(1).globalLore).toEqual([])
+        expect(get(selectedCharID)).toBe(1)
+    })
+
+    test('guard: a complete character keeps every default-covered field and a v1 lorebook entry is still migrated', async () => {
+        const complete = fullCharacter('member', 'complete description', {
+            chaId: 'member',
+            chatPage: 0,
+            firstMessage: 'first message',
+            customscript: [{ comment: 'script', in: 'a', out: 'b', type: 'editinput' }],
+            viewScreen: 'emotion',
+            emotionImages: [['happy', 'happy.png']],
+            bias: [['word', 1]],
+            characterVersion: '1.2',
+            creator: 'creator',
+            utilityBot: true,
+            tags: ['tag'],
+            systemPrompt: 'system prompt',
+            scenario: 'scenario',
+            globalLore: [{ key: 'k', comment: 'c', content: 'say <user>', mode: 'normal', insertorder: 1, alwaysActive: false, secondkey: '', selective: false }],
+        })
+        const fields = ['chaId', 'chatPage', 'firstMessage', 'customscript', 'viewScreen', 'emotionImages', 'bias', 'characterVersion', 'creator', 'desc', 'utilityBot', 'tags', 'systemPrompt', 'scenario', 'name', 'type'] as const
+        const expected = Object.fromEntries(fields.map((key) => [key, structuredClone((complete as unknown as Record<string, unknown>)[key])]))
+        installDb([upstreamStub('member', 'unit-member')])
+        readColdStorageItemMock.mockResolvedValue(ok(complete))
+
+        await changeChar(0)
+
+        const opened = slot(0) as unknown as Record<string, unknown>
+        for (const key of fields) {
+            expect(opened[key]).toEqual(expected[key])
+        }
+        expect((opened.globalLore as Array<{ content: string, bookVersion: number }>)[0]).toMatchObject({ content: 'say {{user}}', bookVersion: 2 })
+    })
+})

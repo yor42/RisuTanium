@@ -109,6 +109,7 @@ import { getCharacterForRead, recheckCharacterForWrite } from '../mcp/risuaccess
 import { alertError } from 'src/ts/alert'
 import { characterFormatUpdate } from 'src/ts/characters'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
+import { applyCharacterDefaults } from 'src/ts/storage/characterDefaults'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
 import type { Database, character } from 'src/ts/storage/database.svelte'
@@ -805,5 +806,101 @@ describe('restoring every archived character for a plugin keeps its neutral noti
         expect(alerts()).toEqual([language.errors.coldStoragePluginRestoreIncomplete('First, Second')])
         expect(first.coldstorage).toBe('cold-key-first')
         expect(second.coldstorage).toBe('cold-key-second')
+    })
+})
+
+describe('a stored character that lacks default fields, reached by a plugin or an MCP tool', () => {
+    /** A unit as a backup import stores it: no `globalLore`, no `tags`. */
+    function bareUnit(chaId = 'member') {
+        return { character: { chaId, name: NAME, type: 'character', chats: [] } }
+    }
+
+    test('reproducer: restoring for a write installs a character that has the default fields', async () => {
+        installDb([placeholder()])
+        putBytes('opfs', UNIT, encodeUnit(bareUnit()))
+
+        const result = await restoreArchivedForWrite('member')
+
+        expect(result.status).toBe('ready')
+        const installed = slot(0) as unknown as { globalLore: unknown, tags: unknown }
+        expect(installed.globalLore).toEqual([])
+        expect(installed.tags).toEqual([])
+        expect(result).toMatchObject({ character: installed })
+    })
+
+    test('guard: restoring for a write keeps a field the unit already holds', async () => {
+        installDb([placeholder()])
+        putBytes('opfs', UNIT, encodeUnit({ character: { ...bareUnit().character, globalLore: [{ key: 'k', comment: 'c', content: 'x', mode: 'normal', insertorder: 1, alwaysActive: false, secondkey: '', selective: false }] } }))
+
+        await restoreArchivedForWrite('member')
+
+        expect((slot(0) as unknown as { globalLore: unknown[] }).globalLore).toHaveLength(1)
+    })
+
+    test('reproducer: reading an archived character returns a copy that has the default fields, and changes nothing stored', async () => {
+        const stub = placeholder()
+        installDb([stub])
+        putBytes('opfs', UNIT, encodeUnit(bareUnit()))
+        const stubBefore = JSON.stringify(stub)
+
+        const result = await readArchivedCharacter(stub)
+
+        expect(result.status).toBe('ok')
+        const copy = (result as { character: unknown }).character as { globalLore: unknown, tags: unknown }
+        expect(copy.globalLore).toEqual([])
+        expect(copy.tags).toEqual([])
+        expect(slot(0)).toBe(stub)
+        expect(JSON.stringify(stub)).toBe(stubBefore)
+        expect(vi.mocked(markCharacterForSave)).not.toHaveBeenCalled()
+        expect(hasBytes('opfs', UNIT)).toBe(true)
+    })
+
+    test('guard: the copy for an export stays verbatim, without the default fields', async () => {
+        const stub = placeholder()
+        installDb([stub])
+        putBytes('opfs', UNIT, encodeUnit(bareUnit()))
+
+        const result = await readColdCharacterCopy(stub)
+
+        expect(result.status).toBe('ok')
+        const copy = (result as { character: object }).character
+        expect('globalLore' in copy).toBe(false)
+        expect('tags' in copy).toBe(false)
+    })
+
+    test('reproducer: the defaults give a group without a member list an empty one', () => {
+        const group = { type: 'group', name: 'G', chaId: 'g', chats: [] } as unknown as character
+
+        applyCharacterDefaults(group)
+
+        expect((group as unknown as { characters: unknown }).characters).toEqual([])
+    })
+
+    test('guard: applying the defaults twice changes nothing, and a group with members keeps them', () => {
+        const group = { type: 'group', name: 'G', chaId: 'g', chats: [], characters: ['a', 'b'] } as unknown as character
+        const bare = { type: 'character', chaId: 'c', chats: [] } as unknown as character
+
+        applyCharacterDefaults(group)
+        applyCharacterDefaults(bare)
+        const once = JSON.stringify([group, bare])
+        applyCharacterDefaults(group)
+        applyCharacterDefaults(bare)
+
+        expect(JSON.stringify([group, bare])).toBe(once)
+        expect((group as unknown as { characters: string[] }).characters).toEqual(['a', 'b'])
+    })
+
+    test('reproducer: restoring every archived character for a plugin installs characters that have the default fields', async () => {
+        installDb([placeholder('first', 'cold-key-first', 'First'), placeholder('second', 'cold-key-second', 'Second')])
+        putBytes('opfs', 'cold-key-first', encodeUnit(bareUnit('first')))
+        putBytes('opfs', 'cold-key-second', encodeUnit(bareUnit('second')))
+
+        await restoreAllColdCharacters()
+
+        for (const index of [0, 1]) {
+            const installed = slot(index) as unknown as { coldstorage?: string, globalLore: unknown }
+            expect(installed.coldstorage).toBeUndefined()
+            expect(installed.globalLore).toEqual([])
+        }
     })
 })

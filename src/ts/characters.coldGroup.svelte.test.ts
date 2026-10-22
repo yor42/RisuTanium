@@ -551,3 +551,48 @@ describe('createNewChat on a group with an archived member', () => {
         expect(created.message.map((m) => m.data)).toEqual(['a greeting', ''])
     })
 })
+
+describe('changeChar on a stored group or member that lacks default fields', () => {
+    test('reproducer: an archived group stored without its member list opens with an empty list and is selected', async () => {
+        const group = fullGroup('g', ['a'], { characters: undefined })
+        installDb([stubOf(fullGroup('g', ['a']), 'unit-g')])
+        serveUnits(new Map([['unit-g', ok(group)]]))
+
+        await changeChar(0)
+
+        const opened = DBState.db.characters[0] as unknown as groupChat
+        expect(opened.coldstorage).toBeUndefined()
+        expect(opened.characters).toEqual([])
+        expect(opened.characterTalks).toEqual([])
+        expect(opened.characterActive).toEqual([])
+        expect(get(selectedCharID)).toBe(0)
+        expect(shownAlerts()).toEqual([])
+    })
+
+    test('guard: an archived group stored with members keeps them and their talk and active lists', async () => {
+        const group = fullGroup('g', ['a', 'b'])
+        installDb([stubOf(group, 'unit-g'), asSlot(fullCharacter('a')), asSlot(fullCharacter('b'))])
+        serveUnits(new Map([['unit-g', ok(group)]]))
+
+        await changeChar(0)
+
+        const opened = DBState.db.characters[0] as unknown as groupChat
+        expect(opened.characters).toEqual(['a', 'b'])
+        expect(opened.characterTalks).toEqual([0.5, 0.5])
+        expect(opened.characterActive).toEqual([true, true])
+        expect(get(selectedCharID)).toBe(0)
+    })
+
+    test('reproducer: an archived member stored without a lorebook list is formatted with defaults when its group opens', async () => {
+        const member = fullCharacter('a', { globalLore: undefined })
+        installDb([asSlot(fullGroup('g', ['a'])), stubOf(fullCharacter('a'), 'unit-a')])
+        serveUnits(new Map([['unit-a', ok(member)]]))
+
+        await changeChar(0)
+
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(1).globalLore).toEqual([])
+        expect(get(selectedCharID)).toBe(0)
+        expect(shownAlerts()).toEqual([])
+    })
+})
