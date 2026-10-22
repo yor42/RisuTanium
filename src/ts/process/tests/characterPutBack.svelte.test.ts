@@ -79,6 +79,7 @@ import { getPutBackCounters, resetPutBackForTest, startCharacterPutBack } from '
 import { beginBusy, beginChokePoint, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { resetRestoredBytesForTest, restoredBytesOf, restoredBytesOutside } from 'src/ts/process/memory/restoredBytes'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
+import { applyCharacterDefaults } from 'src/ts/storage/characterDefaults'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 
 type Slot = Database['characters'][number]
@@ -379,6 +380,24 @@ describe('what blocks a put-back', () => {
         commit()
         expect(isStub('A')).toBe(false)
         expect(tracker.character).not.toContain('A')
+    })
+
+    test('guard: defaults applied to a stored character that lacked fields make it changed, so it is kept with them and never swapped back to the old stub', async () => {
+        archiveAll([fullCharacter('A', { globalLore: undefined }), fullCharacter('B'), fullCharacter('C')])
+        const stubA = slot('A')
+        begin()
+        await open('A')
+        // This harness opens without formatting: the defaults are applied here as `characterFormatUpdate` does.
+        applyCharacterDefaults(slot('A'))
+        await open('B')
+        await open('C')
+
+        commit()
+
+        expect(slot('A')).not.toBe(stubA)
+        expect(isStub('A')).toBe(false)
+        expect(slot('A').globalLore).toEqual([])
+        expect(getPutBackCounters().dirty).toBe(1)
     })
 
     test('acceptance: a lastInteraction or trashTime change alone is not an edit', async () => {

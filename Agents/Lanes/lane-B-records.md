@@ -194,6 +194,133 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - The phone figures are n=2 on one Note 9 (row 2337); run 1 had lmkd reclaiming system processes, and run 2 was warm.
 - Nothing here authorizes application-code edits, commits or pushes.
 
+### MC-363 — Lane B, 2026-10-22: CHORE-223 next steps after the Note 9 measurement (size both fixes; probe on the phone before a design; apply character defaults when a stored character opens)
+
+- **Tag:** decisions (two `AskUserQuestion` rounds, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs:
+  - lane A's Note 9 measurement of `cbd256917` (`%TEMP%\risu-lane-b\device-requests\2026-10-22-chore223-export-measure.result.md`; lane A reported it doc-verified);
+  - for round 2, `%TEMP%\risu-lane-b\c223\sizing2.md` (investigator), superseded where they differ by `sizing2-verify.md` (`doc-verifier`).
+- **Related:** `MC-362`, `MC-359`, `MC-326` 4; CHORE-223, CHORE-224.
+
+Round 1:
+1. **"Size both fixes (Recommended)".** One investigation, no code: whether the export's writes can reuse the import's fast write path (or a similar command) for the file picked in the save dialog, and whether the character reads can be batched like the asset reads. It returns a plan with expected savings and the Rust involved, for approval before any implementation. Not chosen: "Size the write fix only" and "Record only".
+2. **"Check the alert in the sizing (Recommended)".** The same investigation checks whether opening a stored character can throw with real character data or only with the synthetic data. The memory release stays as it is, and the record notes that the peak lies elsewhere. No phone re-run for the 3,501 count. Not chosen: "Also re-run the phone" and "Leave both".
+
+Round 2:
+3. **"Phone measurement first (Recommended)".** A short measurement with no Rust: on the Note 9, time the app's existing fast write command against the current write call, one at a time and several at once, and how many character reads can usefully run at once. One phone run through lane A; then a plan with a design the numbers support. Not chosen: "Build the small command now" and "Stop here".
+4. **"Fill in defaults on open (Recommended)".** When a stored character is opened, apply the same default fields the app applies at startup and card import. A small separate item (CHORE-224) with its own review; no change to the backup format. Not chosen: "Scan a real backup first" and "Fix the test data only".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- Round 2's question stated the save-to-complete range "from ~119 s to somewhere between ~75 s and ~30 s"; the ~30 s end holds only if the per-call wait also goes (`sizing2-verify.md`).
+- The stage 0 probes run from CDP against the installed build, so item 3 needs no app-code change (`device-requests\2026-10-22-chore223-stage0-probes.md`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-364 — Lane B, 2026-10-22: CHORE-224 scope (plugins and MCP get the defaults too; a group without members gets an empty list)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\c224\sizing.md` (investigator), superseded where they differ by `c224\sizing-verify.md` (`doc-verifier`).
+- **Related:** `MC-363` 4, `MC-175`; CHORE-224.
+
+1. **Plugins and MCP: "Cover them too (Recommended)".** One more call in the plugin and MCP access path, so a plugin reading or editing a stored character never hits the missing field. Same review, a few more tests. Not chosen: "Screen only".
+2. **Groups: "Fill in an empty list (Recommended)".** Opening a group stored without its member list gives it an empty member list instead of crashing; no change for groups that have members. Not chosen: "Leave groups".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The plan (`c224\plan.md`) applies item 1 to the write path (`restoreArchivedForWrite`) and, only if no export reads through it, to the copy `readArchivedCharacter` returns; exports stay verbatim (`MC-175`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-365 — Lane B, 2026-10-22: CHORE-223 fix design (a text-encoded write command, read-ahead, and a Rust batch read of stored character data)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: lane A's stage 0 probes (`%TEMP%\risu-lane-b\device-requests\2026-10-22-chore223-stage0-probes.result.md` with `probes.json`; lane A reported its doc-verifier corrections appended), and `c223\sizing2.md` with `sizing2-verify.md`.
+- **Related:** `MC-363`, `MC-362`, `MC-345`; CHORE-223.
+
+1. **"Also batch reads in Rust".** Plan three parts:
+   - a small Rust command that appends text-encoded bytes to the picked file (no number lists), with one line in the shared command list;
+   - reading 2 to 4 characters ahead, in TypeScript;
+   - a Rust batch read for stored character data, which touches the shared read path used by startup and saving: a larger review, and a more certain read gain.
+   
+   Not chosen: "Text write + read-ahead (Recommended)" (without the Rust batch read) and "Probe more first".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated: the write's per-byte cost (about 0.45 ms per KB on the page) is real; the flat ~3 s wait did not reproduce on its own and probably comes from load during the export; more reads at once help (about 5x from 1 to 16 at once, on small warm files); the export has about 7 reads in flight per character today.
+- Corrections to the question's figures (records verification): the probes timed whole `write_file` calls, about 0.45 to 0.65 ms per KB per call (1.5 to 2.2 MiB/s); the page-side share is inferred, not timed. The export issues about 7 reads per character through 8 workers, with about 4 in flight on average as measured.
+- Lane A's verification limits these readings: the probe writes were not durable and not to the save target, and the read scaling holds only for warm 8 to 64 KiB files.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-366 — Lane B, 2026-10-22: store2 stage 5a scope (automatic clean-up of store2 leftovers only; the asset file-count limit waits for 5b; no off switch)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s5a\sizing.md` (investigator), superseded where they differ by `s5a\sizing-verify.md` (`doc-verifier`: 24 claims, 17 verified, corrections C1 to C4, omissions O1 to O5).
+- **Related:** `MC-345` (A2; amends nothing), `MC-288`, `MC-289`, `MC-290` U9, `MC-315` W5-Q6, `MC-316` W5-Q7/Q8, `MC-314` W4-Q7.
+
+1. **Scope: "Leftovers only (Recommended)".** Stage 5a turns on automatic clean-up of the new storage's internal leftovers only (old saved versions nothing refers to): about 150 to 200 lines, no Rust, no screen. Assets and inline images stay untouched until 5b. The question stated that the space it frees on the maintainer's data is unmeasured and may be little, and that the 5a/5b split never said where asset clean-up belongs. Not chosen: "Also build asset clean-up".
+2. **The asset file-count limit: "Decide with 5b (Recommended)".** The placeholder limit (50,000) stays until the asset clean-up is planned in 5b. The question stated that the maintainer's save lists about 383,000 asset entries (roughly 32 GiB), so the asset clean-up would not run automatically for them until this is decided. Not chosen: "Raise it for large libraries" and "Button only above it".
+3. **Off switch: "No switch; .bin is the fallback (Recommended)".** No off switch. Safety rests on the tests, the reviews and the phone check, and the PC `.bin` stays the restore. Not chosen: "Toggle in an existing settings page" and "Computer-only switch".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator. The `MC-345` "5a now, 5b later" option text was also the orchestrator's.
+- "383,000 asset entries" is the `.bin` census of the maintainer's save (383,742 entries, 32.2 GiB), not a measured on-disk file count.
+- Footnote to item 1: once clean-up runs automatically, `exportThisTabBackup` does not pin its base, so a peer tab's clean-up can delete a parked tab's units. This matters for Node and web, not the single-WebView Android MVP; the plan names it.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-367 — Lane B, 2026-10-22: CHORE-223 fix staging and the failed-export file on Android (keep today's message; stage A, a phone run, then stage B)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\c223\design.md` (investigator), superseded where they differ by `c223\design-verify.md` (`doc-verifier`; saved by the orchestrator).
+- **Related:** `MC-365`, `MC-091`; CHORE-223.
+
+1. **Failed file: "Keep today's message (Recommended)".** When an Android backup export fails partway, the half-written file in the picked folder stays, and today's message stands: "The backup file is incomplete and could not be deleted by the app. Do not use it: delete it yourself, then run the backup again." No new outcome and nothing to translate. Not chosen: "Empty the file too".
+2. **Staging: "Stage A, phone, then B (Recommended)".** Stage A is the write command plus reading 3 characters ahead; then a phone run; then stage B, the batched Rust reads, designed with stage A's figures, with the advisor challenge and the strict review because it touches the shared read path at startup and saving. Two commits and two phone runs. Not chosen: "All three at once".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated that the cleanup failure is checked by source, not on the phone, and that about 26 to 33 s of the roughly 100 s writing time is the supported write saving; the rest is unexplained, and no probe targeted the save-dialog file.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-368 — Lane B, 2026-10-22: stage 5a rollout (the daily APK gets 5a only after a copy-profile run; the server/web peer exposure is accepted until 5b)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the senior-advisor challenge of `s5a\plan.md` r1 (`%TEMP%\risu-lane-b\s5a\advisor.md`, saved by the orchestrator; `[APPROVE WITH AMENDMENTS]`, maintainer flags A and B).
+- **Related:** `MC-366`, `MC-345` 5, `MC-313`, `MC-314`.
+
+1. **Daily APK: "Only after the copy run (Recommended)".** The measurement build runs the clean-up on a snapshot copy of the real profile (from lane A's A1 import) first; the daily install gets 5a only once the counts and timings look right. Not chosen: "Ship with the next MVP build".
+2. **Server and web peers: "Accept for now, fix in 5b (Recommended)".** On the self-hosted server or web version with two devices or tabs open, automatic clean-up can delete stored pieces another open page still uses when that page fell more than 20 saves behind; that page then asks to reload, and a backup started from it could miss pieces. Android, the MVP platform, has one page and is unaffected. Record the exposure; 5b adds protection for backups taken from an older page. Not chosen: "Android only for 5a" and "Protect it in 5a". **Superseded by `MC-369`:** the question's premise ("more than 20 saves behind") was wrong.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question's "no data is lost from the latest save" means the latest committed save; the stale page's unsaved view is lost on reload (Reload-only, `MC-313`/`MC-314`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-369 — Lane B, 2026-10-22: stage 5a runs automatic clean-up only in the app (Tauri); the server and web versions keep today's behaviour until 5b (supersedes `MC-368` 2)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the opus-reviewer Gate 1 r1 verdict on `s5a\plan.md` (`%TEMP%\risu-lane-b\s5a\gate1-r1.md`, `[REJECT]`, B2 and N2).
+- **Related:** `MC-368`, `MC-366`, `MC-345` A2, `MC-313`, `MC-314`.
+
+1. **Server and web: "Android app only for 5a (Recommended)".** Automatic clean-up runs only in the Android/desktop app for now; the self-hosted server and web version keep today's behaviour (no clean-up) until 5b adds the protection. The question stated the corrected premise: the storage keeps an older save version only if it is at least 5 minutes older than the previous kept one, so on the server or web version one save from another open tab or device within about 5 minutes can let automatic clean-up delete pieces a still-open page uses; that page then asks to reload (the latest committed save is safe; its unsaved view is lost), a backup started from it could miss pieces, and another device can see a one-off save failure that then retries. Android (one page) is unaffected. Not chosen: "Accept for now, fix in 5b" and "Protect it in 5a".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- "The app" means the `tauri` session kind (Android and desktop); the `node` and `indexeddb` kinds run no automatic pass in 5a.
+- Nothing here authorizes application-code edits, commits or pushes.
+
 ## CHORE entries
 
 ### CHORE-194 (changed) — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
@@ -301,6 +428,21 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status (2026-10-22, latest, `MC-365`, `MC-367`): in progress; stage A planned and through Gate 1.** The stage 0 probes ran on lane A's phone 2 (lane A's rows; the result with its verifier corrections is `device-requests\2026-10-22-chore223-stage0-probes.result.md`): the per-call `write_file` cost of about 1.5 to 2.2 MiB/s reproduced (the page-side number-array attribution is inferred, not timed), the ~2.9 s per-call wait did not, and reads scaled with concurrency on warm small files. Stage A is a base64 append command for Android save-dialog files plus reading 3 stub characters ahead (`c223\planA.md`, rows 2366 to 2370); a failed Android export keeps today's "kept" message (`MC-367` 1). Stage B, the Rust batch read, follows stage A's phone run.
+
+**Status (2026-10-22, later, `MC-363`): in progress; the Note 9 measurement is in, both fixes are sized, and stage 0 phone probes are requested.** Ledger rows 2357 and 2358; lane A records the measurement run.
+- **Measured** (lane A, Note 9 phone 1, release MEASURE build of `cbd256917`, n=2, `m2-stub500.bin`; `device-requests\2026-10-22-chore223-export-measure.result.md`):
+  - step A, 83 to 87 s: `stubReadMs` 99.4% of it, the stub encode 0.5%; about 3,715 `read_range` calls at about 90 ms each, with about 4 in flight (inferred from the summed time);
+  - steps B (82 to 83 s) and C (16 to 19 s): almost all `writeFile` time; each call costs a page-side part of about 0.5 ms per KB and a nearly flat wait of about 2.9 s (three calls waited about 40 ms);
+  - memory peak 1,349 and 1,357 MiB, in step B: no lower than row 2337's 1,336.9 MiB (+12 and +20 MiB; different commit and profile, no same-commit comparison), so the release is not shown to lower it;
+  - each export decoded to 3,500 entries, not 3,501: a stray tap hydrated one character, which then exported whole (inferred).
+- **Sizing** (`c223\sizing2.md` with `sizing2-verify.md`):
+  - **Writes:** on Android, plugin-fs `write_file` carries the bytes as a JSON number array (the page-side cost), parsed in Rust into `serde_json` values, and opens the `content://` target per call (per source; the scheme on the phone is not observed). A base64 path needs a new app command. A side test of `write_file` to app data also showed about 3 s per append, so the wait is neither byte-proportional nor specific to the save target (one run, no raw file); its cause is unknown. Savings: about 43 s less the base64 encode cost; up to about 90 s only if the wait also goes.
+  - **Reads:** no code limit of 4 in flight; a width-4 bridge and a serial server fit the figures equally. A store2 batch read plus read-ahead would save about 60 to 70 s; either alone is not robust. `readUnits` has 10 production call sites, so a backend-level change reaches boot, commit and recovery.
+  - **The alert:** `updateLorebooks` maps `globalLore` unguarded after a stub is hydrated; hydration applies no defaults, and a `.bin` import stores characters verbatim. The synthetic data lacks the field; whether real upstream backups can is undetermined. Tracked as CHORE-224.
+  - **The peak:** in step B the app (native) process swings 160 to 685 MiB against about 184 MiB in step A, so the growth is mostly native-side (fits the Rust value arrays; unproven).
+- **Next:** the stage 0 probes (`device-requests\2026-10-22-chore223-stage0-probes.md`, requested through the maintainer for lane A to run; lane A dispatched it on phone 2): `write_file` vs the app's base64 `write_chunk`, serial and 4 in flight, and `read_range` at 1 to 16 in flight. Then a Gate 1 plan with the maintainer's design choices.
+
 **Status (2026-10-22, `MC-362`): in progress. The measurement and the memory release are implemented on `worktree-Lane-B` and technically accepted on the PC (Gate 2 `[APPROVE]`); merged (folded into the shared files by lane A on 2026-10-22, merged in `cbd256917`); the Note 9 measurement is pending.** Ledger rows 2337 and 2349 to 2356.
 - **Mechanism, verified** (`c223\packet.md` with `packet-verify.md`):
   - step A, 'export start' to 'export cold collected': `readStubsForExport` reads the 500 characters one at a time; `readUnits` reads each character's pieces with 8 workers, one `read_range` call per piece; each character is re-encoded as JSON;
@@ -328,6 +470,31 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 - **Not examined:** the mechanism of either long step. The ring has no finer marks inside them.
 - **Next, if scheduled:** a sizing of both steps (cold collection of 500 units, then re-reading and writing the stub and late payloads). It needs the maintainer's go-ahead.
 - **Related:** `MC-359`, `MC-334`, `MC-328` 2.
+
+### CHORE-224 — Opening a stored character does not apply the character defaults, so a character without `globalLore` throws on open
+
+**Status (2026-10-22, later, `MC-363` 4, `MC-364`): fixed on `worktree-Lane-B`; technically accepted, Gate 1 `[REJECT]` then `[APPROVE]`, Gate 2 `[APPROVE]`; uncommitted until the maintainer approves.** Ledger rows 2359 to 2365.
+- **What changed:**
+  - `applyCharacterDefaults` (`src/ts/storage/characterDefaults.ts`) gives a group without members an empty `characters` list (`??=`; a group with members is unchanged).
+  - `characterFormatUpdate` (`src/ts/characters.ts`) applies the defaults first, before any field use, so every screen opener (`changeChar`, group member restores, restores by `chaId`) gets them.
+  - Plugins and MCP (`src/ts/process/coldCharacterAccess.ts`): `restoreArchivedForWrite` applies them to the installed character; `readArchivedCharacter` to the copy it returns (no export or persistence path reads through it). `restoreAllColdCharacters` (`src/ts/process/coldRestoreAll.ts`) applies them to each restored character.
+  - Not changed: `restoreOnce`, `loadStubsOf`, `readColdCharacterCopy` and every export (verbatim, `MC-175`). No forced save.
+- **Saving:** a selected character's defaults are saved by the selection's own save; an opened character that is not selected (a group member, a restore by `chaId`) is saved when a later edit or a store2 put-back dirty verdict marks it. A character the defaults changed fails the put-back fingerprint and takes the dirty path; it is never swapped back to the old stub.
+- **Side effect** (Gate 2, by source): a card without `chats` or `globalLore` used to make the formatter throw, so it was added live without formatting and crashed when opened; it now archives like any other card under the archive setting. Whether any importer produces such a card is unchecked.
+- **Known gap:** a restore that joins one already running is never formatted; after this change the only source is the store2 save loop's `loadStubsOf`.
+- **Not done (Gate 2 notes):** no test pins the C3 write's order after the placeholder check (N1); two comment clarifications (N2, N3).
+
+**Status (2026-10-22, `MC-363` 4): open; sized and verified (rows 2359 and 2360).** Source: the CHORE-223 Note 9 run, where a stray tap opened a stored character of the synthetic `m2-stub500.bin` and raised "Cannot read properties of undefined (reading 'map')"; traced in `c223\sizing2.md` Q3 with `sizing2-verify.md`.
+- **Problem:** `updateLorebooks` (`src/ts/characters.ts`) maps `globalLore` without a guard, and is reached from `characterFormatUpdate` after `changeChar` hydrates a stored character. Hydration applies no defaults. The defaults are applied at boot, at card import and in the boot archive pass, but a `.bin` import stores characters verbatim, so a backup character without the field throws when opened.
+- **Decision:** apply the same defaults when a stored character is opened (`MC-363` 4); no backup format change. Plugins and MCP are covered too, and a group without members gets an empty list (`MC-364`). The plan is `c224\plan.md`, at Gate 1 (opus-reviewer).
+- **Sizing** (`c224\sizing.md` with `c224\sizing-verify.md`):
+  - `characterFormatUpdate` also throws on a stored character without `chats`, and on a group without `characters`; `applyCharacterDefaults` does not set a group's `characters`.
+  - `applyCharacterDefaults` uses `??=` throughout (the `emotionImages` self-assign is a no-op), so it changes nothing on a complete character.
+  - Recommended: one call at the top of `characterFormatUpdate`, which covers the UI openers (`changeChar`, `restoreGroupMembers`, the by-`chaId` restore). Not recommended: inside `restoreOnce`, which also runs mid-save in `loadStubsOf`.
+  - Not covered by that call: `restoreArchivedForWrite` (plugin and MCP access, whose lorebook code also uses `globalLore` unguarded), `coldRestoreAll.ts` and `loadStubsOf`, which restore without formatting.
+  - Exports read through `readColdCharacterCopy` stay verbatim.
+- **Open:** whether real upstream backups can lack the fields; whether the defaulted character is saved, which depends on the path (on the store2 path probably memory-only until a later edit; harmless, since every open re-applies them) and goes to opus-reviewer with the store2 digest interplay.
+- **Related:** `MC-363`; CHORE-223.
 
 ### CHORE-129 (changed) — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
 
@@ -406,6 +573,28 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 2354 | 2026-10-22 | CHORE-223 implementation | sonnet-coder | 241,059 | no | `c223\impl\report.md` (saved by the orchestrator), `report-addendum.md` and the logs.<br>**Code:** `takeExportWriteStats`, `takeStubReadStats`, `takeRangeReadStats` and their test seams; `writeStubPayloadsAndRelease`; the note fields; four dist markers.<br>**Tests:** new `exportStubRelease.test.ts` (6) and `exportMeasure.test.ts` (6); +5 in `exportWriters.test.ts`, +6 in `tauriByteTransport.test.ts`.<br>**Red on base** (scratch load hook): `exportStubRelease` 4 of 6, both reproducers for the full and partial export; 2 guards pass. `exportMeasure` cannot run on base (new seams), so it is not a reproducer.<br>**Mutants:** m1 to m6 and 15 measurement mutants killed.<br>**Amendment:** the first full run failed 1 test, `backuplocalExportAndroid.test.ts`, which compared the whole phase list; the grant was amended to that file, and the appended fields are stripped before the comparison, with their presence asserted.<br>**Checks:** `pnpm check` 0/0; full `pnpm test` 912 files passed, 1 skipped; 20,570 tests passed, 23 skipped; `pnpm build` and `check:dist` OK (before the test-only amendment); no new field name in `dist`. The snapshot line-ending rewrite was restored. |
 | 2355 | 2026-10-22 | CHORE-223 Gate 2 r1 | opus-reviewer | 160,291 | no | `c223\gate2-r1.md`, `c223\gate2\`. `[APPROVE]`, no binding items. The helper runs only after the encode, at both callers; nothing reads `stubEntries` afterwards. `put` keeps create, append and rethrow. The existing `dist` folds the stats to no-ops; `check:dist` re-run OK. Red on base 4 of 6 for the intended reasons. Its own 9 mutants were killed. Targeted 264 + 142 passed; `pnpm check` 0/0. All 10 files CRLF. Non-binding, not done: N1 the pre-encode write-stats reset is untested (g5 survives); N2 the retry-read timing is untested (g9); N3 a reproducer title also holds on base; N4 a taken in-flight window can count twice when the clock throws; N5 two export names stay in the dist chunk with no-op bodies. The full suite was not re-run (`MC-329` 4). |
 | 2356 | 2026-10-22 | Verify the CHORE-223 records and commit message, and the CHORE-222 status | doc-verifier | 70,446 | no | About 60 claim groups: 54 verified, 2 overstated, 4 unverifiable (tokens, the trailer, lane A's `MC-342`), 0 wrong. Corrected in CHORE-222's status: the temp-file check covers `assets/` only; the 3.7 s is the longest unobserved window, not the poll spacing; `MC-342` is relayed and not in this checkout. Also applied: N3 to N5 named in CHORE-223's open list. Its trailer note was settled by the session's own attribution reminder (Opus 5.5). |
+| 2357 | 2026-10-22 | CHORE-223 sizing: the export write and read fixes, the open alert, the memory peak | investigator | 193,428 | no | `c223\sizing2.md`. Packet. Writes: plugin-fs `write_file` sends a JSON number array on Android and opens the `content://` target per call; a base64 path needs an app command (W1 stateless, W2 open-once). Reads: no code limit of 4; R1 store2 batch read plus R2 read-ahead, about 60 to 70 s. The alert needs a character without `globalLore`. The peak is in step B. |
+| 2358 | 2026-10-22 | Verify the CHORE-223 sizing | doc-verifier | 141,497 | no | `c223\sizing2-verify.md`. About 34 claims: 28 verified or reasonable, 3 overstated, 1 wrong, 2 stale citations. Corrected: the asset-loop bytes are at most about 8.4 MB, not 12.3 MB; the ~90 s saving and the ~28 s projection need the per-call wait to go; units written by the `.bin` import lack the defaults; the peak growth is mostly the native app process. Omission: the device result's `write_file` test to app data also waited about 3 s per append, which weakens the open-once premise. It fed `MC-363` round 2. |
+| 2359 | 2026-10-22 | CHORE-224 sizing: where to apply the character defaults on open | investigator | 76,284 | no | `c224\sizing.md`. Packet. `chats` and a group's `characters` also throw; Option A (one call at the top of `characterFormatUpdate`) recommended over Option B (inside `restoreOnce`); the plugin, MCP and restore-all openers do not format; the reproducer is a unit without `globalLore` opened by `changeChar`. |
+| 2360 | 2026-10-22 | Verify the CHORE-224 sizing and the records of `MC-363`, CHORE-223, CHORE-224 and rows 2357 and 2358 | doc-verifier | 119,777 | no | `c224\sizing-verify.md`. Sizing: core verified, the self-assign upgraded to verified; corrected: 8 call sites, not 13; whether open saves the defaults is unresolved and path-dependent (store2 `markIdentitySeen`); 7 MCP lines; the reproducer is inferred by source trace. Records corrected: the peak wording, the ~43 s floor less base64 encoding, the unobserved URI scheme, the routing, and lane A's verification attribution; the CHORE-224 entry gained the sizing. |
+| 2361 | 2026-10-22 | CHORE-224 plan | orchestrator | not recorded | no | `c224\plan.md`. C1 group `characters ??= []`; C2 defaults at the top of `characterFormatUpdate`; C3 plugin and MCP write and read paths; tests T1 to T5; mutants. r2 added C3b (restore-all), T6 and a put-back guard. Revised as r2 after Gate 1 r1; its top section is binding. |
+| 2362 | 2026-10-22 | CHORE-224 Gate 1 r1 | opus-reviewer | 198,767 | no | `c224\gate1-r1.md`, `c224\gate1\`. `[REJECT]`, 3 binding items. B1: `restoreAllColdCharacters` (V2.1 plugins) is in scope. B2: T5's "bytes unchanged" kills nothing; assert the placeholder unchanged and nothing marked. B3: the saving wording (a selected character is saved by the selection's own save). Executed on base through a scratch config: T1 to T3 and an in-memory group case fail with the intended TypeErrors. |
+| 2363 | 2026-10-22 | CHORE-224 Gate 1 r2, a targeted re-check | opus-reviewer (the same instance, resumed) | 205,195 cumulative with r1 | no | `c224\gate1-r2.md`. `[APPROVE]`. B1 to B3 met. Notes: name `coldRestoreAll.ts` and the put-back test in the grant; the put-back guard applies the defaults itself in the legacy harness. |
+| 2364 | 2026-10-22 | CHORE-224 implementation | sonnet-coder | 145,218 cumulative over both rounds | no | `c224\impl\report.md` (saved by the orchestrator) and the logs.<br>**Incident:** a PowerShell helper named `Rd` (the built-in alias of `Remove-Item`) deleted the four source files, uncommitted, losing only the coder's own edits; its own restore was denied by the auto-mode classifier. With the maintainer's approval the orchestrator ran `git checkout --` on exactly those four paths, and the coder re-applied the edits.<br>**Red on base** (scratch load hook): 9 of 153 failed, exactly the 9 reproducers, for the intended errors.<br>**Mutants:** M1 to M9 killed.<br>**Checks:** `pnpm check` 0/0; full `pnpm test` 910 files passed, 3 failed; 20,587 tests passed, 4 failed (5 s timeouts in `inlays.test.ts`, `inlayCleanup.test.ts`, `nodeLiveServer.test.ts`; 59 of 59 passed alone); 23 skipped. The snapshot line-ending rewrite was restored. All 8 files CRLF. |
+| 2365 | 2026-10-22 | CHORE-224 Gate 2 r1 | opus-reviewer | 130,939 | no | `c224\gate2-r1.md`, `c224\gate2\`. `[APPROVE]`, no binding items. The four sources hold only the intended hunks after the restore, with no line-ending churn. Red on base 9 of 153 for the intended reasons. Its mutants G1, G3, G4, G6 killed; G2 (C3 write before the placeholder check, a narrow race) and G5 (equivalent) survive. The put-back guard depends on the defaults (G1). The import side effect is benign. The 4 timeouts are unrelated (no shared imports). `pnpm check` 0/0. Notes N1 to N4 not done. The full suite was not re-run (`MC-329` 4). |
+| 2366 | 2026-10-22 | CHORE-223 fix design (W, R2, R1) | investigator | 210,108 | no | `c223\design.md`. W: `export_append_b64` for Android `content://` targets via `Fs::open`; R2: read-ahead K=3; R1: `get_units_batch` at backend level. Corrected premises: Android failed-export removal cannot remove a content URI; exports cannot be hash-compared (fresh uuids); the wire fake cannot show the number-array cost. Staging A (W+R2), then B (R1). |
+| 2367 | 2026-10-22 | Verify the CHORE-223 design | doc-verifier | 94,191 | no | `c223\design-verify.md` (saved by the orchestrator). About 20 claims: 12 verified, 4 inexact, 1 wrong. Corrected: the supported write saving is about 26 to 33 s, and no probe targeted a content URI; the `readUnits` site list; the `OpenOptions` builder form. Omissions: R2's shared retry budget and staleness window. It fed `MC-367`. |
+| 2368 | 2026-10-22 | CHORE-223 stage A plan | orchestrator | not recorded | no | `c223\planA.md`. W (Rust command, `TauriWriter` gate on Android `content://`) and R2 (`STUB_READ_AHEAD` 3, in-order consumer, staleness rule); tests, mutants, the phone check. Revised as r2 after Gate 1 r1. |
+| 2369 | 2026-10-22 | CHORE-223 stage A Gate 1 r1 | opus-reviewer | 196,082 | no | `c223\gateA1-r1.md`, `c223\gateA1\`. `[REJECT]`, 5 binding items: B1 the R2 reproducer must assert peak concurrency K+1; B2 `write_all` short-write rows and the `write` mutant; B3 no substring `..` refusal (a SAF document id can contain `..`), refuse parser rewrites and host-less URIs; B4 re-check the decoded size (the text cap lets 4 MiB + 1 and + 2 through); B5 close and failure handling. Executed: an offline Rust URL and base64 probe and a node length check. No silent-loss path in the design. |
+| 2370 | 2026-10-22 | CHORE-223 stage A Gate 1 r2, a targeted re-check | opus-reviewer (the same instance, resumed) | 201,465 cumulative with r1 | no | `c223\gateA1-r2.md`. `[APPROVE]`. Notes: the exact-match URI rule rests on an untested inference (add a real-shaped SAF URI row; the phone run records the picked URI); keep the pre-decode text-cap rows. |
+| 2371 | 2026-10-22 | Store2 stage 5a sizing (`MC-345` A2) | investigator | 175,358 | no | `s5a\sizing.md`. `gcPass` is production-reachable only through the MEASURE dev action; it deletes only `store2/` units; no asset or inlay deleter exists on store2; "idle reasons" is `Store2Session.idleReason`; "mark under 1 s" has no timing today. Proposed: run `gcPass` after the cutover step in `maintenance.ts`, about 150 to 200 lines. |
+| 2372 | 2026-10-22 | Verify the stage 5a sizing | doc-verifier | 68,413 | no | `s5a\sizing-verify.md`. 24 claims: 17 verified, 3 overstated, 1 wrong citation, 3 unverifiable. Corrected: 383,742 is the `.bin` census, not an on-disk count; the deletion enumeration covered only startup paths. Omissions: Q-A is two questions (scope and the file limit); the benefit is unmeasured; a hidden switch needs a mechanism on Android. It fed `MC-366`. |
+| 2373 | 2026-10-22 | Stage 5a plan | orchestrator | not recorded | no | `s5a\plan.md`. C1 `autoGc.ts` runner, C2 wiring in `maintenance.ts`, C3 an abort hook, C4 MEASURE timing; tests R1 to R4; the device check. Revised as r2 after the senior-advisor challenge. |
+| 2374 | 2026-10-22 | Challenge the stage 5a plan | senior-advisor | 158,969 | yes (`MC-345` A2: irreversible deletion) | `s5a\advisor.md` (saved by the orchestrator). `[APPROVE WITH AMENDMENTS]`, A1 to A9: the abort hook is required; stop when busy, parked or not save-clean; the decisive real-encoder stub guard; test labels; the Node probe; a separate try/catch; the wiring claim corrected; an `observe` hook for MEASURE; the device check before the daily install. Flags A and B went to the maintainer (`MC-368`). |
+| 2375 | 2026-10-22 | Verify the records additions and the CHORE-224 commit message | doc-verifier | 112,010 | no | Read-only. About 70 claim groups: 63 verified, 4 overstated, 2 wrong (the commit message's row range; MC-366's omission range O1 to O5), 3 unverifiable. Corrections applied: the `write_file` per-call figures and the read-concurrency figures (MC-365 notes, CHORE-223 status), row 2361's tests, the store2 put-back path marked as traced from source in the commit message. |
+| 2376 | 2026-10-22 | Stage 5a Gate 1 r1 | opus-reviewer | 239,797 | yes (`MC-345` A2) | `s5a\gate1-r1.md`. `[REJECT]`, B1 to B7: retention admits a predecessor only at 5-minute intervals, so garbage starts at the second save in a window (scratch diagnostic) and A3 needs a clock; `MC-368` 2 was asked on a wrong premise; a page-state seam for the stop conditions; the backup-load wait claim is wrong on store2 pages (replace the A7 guard); MEASURE markers belong to a MEASURE-only consumer; a save-clean mutant; R62's wired replay/live-server and Chrome checks. The mechanism holds (Q1 I1 confirmed by reading). |
+| 2377 | 2026-10-22 | Re-ask the server/web exposure with the corrected premise | orchestrator | not recorded | no | `MC-369`: "Android app only for 5a"; supersedes `MC-368` 2. Plan r3 limits the automatic pass to the `tauri` kind. |
+| 2378 | 2026-10-22 | Re-verify the records corrections | doc-verifier | 47,622 | no | Read-only, changed text only. All 7 corrections fixed; no new error. MC-369 and rows 2375 to 2377 match their sources. The "`tauri` kind" note is plan-level, not traced. The file is still all CRLF. |
 
 ## Handoff
 
@@ -447,3 +636,12 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 - **CHORE-223:** decisions `MC-362`. Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[APPROVE]` (rows 2349 to 2356). It is merged (folded into the shared files by lane A on 2026-10-22, merged in `cbd256917`); the Note 9 measurement is pending.
 - **Next:** the Note 9 release MEASURE export run, dispatched on phone 1 by lane A (`MC-343` 2); the result is pending. A targeted fix of steps A to C follows its figures.
 - **CHORE-221** remains an unscheduled candidate.
+
+2026-10-22, CHORE-223 sizing:
+- **CHORE-223:** the Note 9 measurement is in; both fixes are sized and verified (rows 2357 and 2358); decisions `MC-363`. Next: the stage 0 phone probes through lane A, then a Gate 1 plan.
+- **CHORE-224** (new): apply the character defaults when a stored character opens; sized and verified (rows 2359 and 2360). Next: the maintainer's choices, then a Gate 1 plan. (Superseded below.)
+
+2026-10-22, CHORE-224, CHORE-223 stage A and store2 stage 5a:
+- **CHORE-224:** decisions `MC-363` 4 and `MC-364`. Gate 1 `[REJECT]` then `[APPROVE]`; implemented; Gate 2 `[APPROVE]` (rows 2361 to 2365). It awaits the maintainer's commit approval.
+- **CHORE-223 stage A** (W, the base64 export command; R2, read-ahead): decisions `MC-365` and `MC-367`; the stage 0 probes ran on lane A's phone 2. Design verified (rows 2366 and 2367); the plan passed Gate 1 in round 2 (rows 2368 to 2370). The coder starts after the CHORE-224 commit (one writer per checkout). Stage B (R1, the Rust batch read) follows stage A's phone run.
+- **Store2 stage 5a** (`MC-345` A2): automatic clean-up of store2 leftovers, no UI. Decisions `MC-366`, `MC-368` and `MC-369` (the automatic pass runs only in the app, the `tauri` kind). Sized and verified, challenged by the senior-advisor (rows 2371 to 2374); Gate 1 r1 `[REJECT]` with B1 to B7 (row 2376); plan r3 next. The daily APK gets it only after a measurement run on a copy of A1's profile.

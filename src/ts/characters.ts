@@ -16,6 +16,7 @@ import { PngChunk } from "./pngChunk";
 import { findChaIdHolders, restoreColdCharacter } from "./process/coldCharacterRestore";
 import { getAvatarThumbSrc, isThumbEligible } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
+import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
@@ -643,6 +644,12 @@ export function characterFormatUpdate(indexOrCharacter:number|character, arg:{
     updateInteraction?:boolean,
 } = {}){
     let cha = typeof(indexOrCharacter) === 'number' ? getCharacterByIndex(indexOrCharacter) : indexOrCharacter
+    // A stored character can lack fields the rest of this function reads
+    // unguarded (a backup import keeps characters as they were stored), so the
+    // defaults come before any field use. A selected character is saved by the
+    // selection's own save; an opened one that is not selected (a group
+    // member, a restore by chaId) is saved when something later marks it.
+    applyCharacterDefaults(cha)
     if(cha.chats.length === 0){
         cha.chats = [{
             id: uuidv4(),

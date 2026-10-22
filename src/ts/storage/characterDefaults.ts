@@ -15,7 +15,8 @@ type Slot = Database['characters'][number]
 /**
  * Fills the fields every character must have, in place, and returns it. A
  * field that is already set is left as it is; only `emotionImages` is
- * assigned unconditionally, as the boot check has always done.
+ * assigned unconditionally, as the boot check has always done. A group gets an
+ * empty member list when it has none; a group that has members is unchanged.
  */
 export function applyCharacterDefaults(v: Slot): Slot {
     v.chaId ??= uuidv4();
@@ -38,6 +39,9 @@ export function applyCharacterDefaults(v: Slot): Slot {
         v.tags ??= [];
         v.systemPrompt ??= '';
         v.scenario ??= '';
+    }
+    if (v.type === 'group') {
+        v.characters ??= [];
     }
     return v;
 }
