@@ -13,7 +13,7 @@ Known (run b1, one run; b2 repeated the stall but has no power or disk data):
 - The stall is not "screen off, so immediately slow". The copy started at 20:57:37 (first disk writes; "database decoded" 11:57:36Z). `KEYCODE_SLEEP` came at 20:57:42. The copy ran at full disk rate for about 61 s after it. At 5 s resolution the writes fell at 20:58:41 to 47, about 66 s after the copy started (tooling.md Q3, VERIFIED by its execution of `ths.log`).
 - Then everything went idle. Almost all threads were in state S and none in D. App CPU was 3% and renderer CPU 2%. Disk wrote 0.03 to 0.04 MiB/s. Nothing was runnable or blocked on I/O.
 - The Tauri `getDataDir` bridge calls in logcat (one per command) stopped at 20:58:43.1 and returned only after the wake at 21:07:44 (tooling.md Q3).
-- The page answered every CDP poll while hidden (latency 2 to 309 ms, `verify.md`). So the renderer main thread was alive and not frozen as a whole. Full speed returned within 3 s of the wake.
+- The page answered every CDP poll while hidden (latency 2 to 309 ms, `verify.md`). This does not show the page was unfrozen: in lane A's R0 on desktop Chrome 155, a frozen page still answered `Runtime.evaluate` (3 ms) while `freeze` fired (`%TEMP%\risu-b715\chore202\notes.md`; desktop only, WebView unknown). Full speed returned within 3 s of the wake.
 - Timer throttling as the mechanism is withdrawn: the loop yields through `yieldToEventLoop` (`scheduler.yield()`, then `MessageChannel`, `setTimeout(0)` last; `saveYield.ts`). Source: `report.md` "Corrections from doc-verifier", item 1.
 - Android path of one asset batch (mechanism.md Q2, VERIFIED by reading tauri 2.12.1, wry 0.57.0, tao 0.37.1 from the registry):
   - The page calls `invoke('put_assets_batch_b64')`, or `write_chunk` (and `write_chunk_raw`) for each 1 MiB of a large asset. The app's commands never use the custom-protocol request path on Android (`ipc-protocol.js` still allows it for `fetch_channel_data`), so each call goes through `window.ipc.postMessage` (a `JavascriptInterface`).
@@ -35,7 +35,7 @@ mechanism.md names C1 to C9. Groups, with the observable that separates them:
 | (b) | Rust received and wrote, the reply was not delivered | Eval hop through the tao thread and UI thread stuck (C1, C5, C7 reply side) | Invoke has no settle, but the file count grew or logcat shows the command. |
 | (c) | JS waits inside `scheduler.yield()` | Yield continuation not run in a hidden page (C4) | An open yield in the ring and no open invoke. |
 | (d) | JS waits in a Blob or content-URI read | `file.slice().arrayBuffer()` stalled for a background app (C3) | An open Blob read in the ring. Open: see section 3a. |
-| (e) | Renderer task queues paused or frozen | Hidden-page scheduling, Page Lifecycle freeze (C2, C9) | Heartbeat or timer behaviour that changes at the edge, or a `freeze` event. Weakened by b1, where CDP still answered. |
+| (e) | Renderer task queues paused or frozen | Hidden-page scheduling, Page Lifecycle freeze (C2, C9) | Heartbeat or timer behaviour that changes at the edge, or a `freeze` event. Not weakened by b1's CDP answers: a frozen page can still answer CDP (lane A R0, desktop Chrome). |
 | (f) | Android power policy starves the app | Doze, app standby, procstate or cgroup change, CPU policy (C6) | A change in deviceidle, procstate, oom_adj or cgroup at the edge. |
 | (g) | Rust blocked on the UI-thread path | Path resolve `rx.recv()` with no timeout, or `MainPipe` backpressure (C7) | The invoke is open, Rust threads sit in `wchan` waits, the UI thread does not run its looper. |
 | (h) | A vendor process freezer on Samsung | Untested hypothesis: the app process or renderer is frozen by a vendor policy after a delay. Logcat lines mentioning Freecess or freeze would show it. A fixed delay of about 60 s fits the observed edge, but no source here says so. | Freeze lines in logcat at the edge, a frozen cgroup, or all threads stopped. |
@@ -71,11 +71,11 @@ All untested on this ROM unless marked. Lane A writes the scripts and keeps them
   - raw (not grepped) `dumpsys power`, `dumpsys deviceidle`, and `dumpsys activity processes` for the app and renderer pids (procstate, oom_adj, capability);
   - `/proc/<pid>/cgroup` for the app and renderer, cpufreq (`scaling_cur_freq`), and `dumpsys battery`.
   - A canary missing for a sample, or a nonzero status, is the signal that the poller itself failed.
-- **Full dumps** at fixed points: before sleep, +30 s, +70 s (after the edge) and +5 min after sleep. Include `dumpsys activity services io.github.yor42.risutanium`, `dumpsys deviceidle whitelist`, `dumpsys usagestats` and `dumpsys alarm`. Read-only commands only. `dumpsys deviceidle step` and `dumpsys batterystats --reset` mutate state and are not used.
+- **Full dumps** at fixed points: before the file pick (the `pre` dump; it cannot be taken just before sleep, which comes only about 5 s into the copy, so the 10 s poller samples stand in for the state right before sleep; its duration is unmeasured), +30 s, +70 s (after the edge) and +5 min after sleep. Include `dumpsys activity services io.github.yor42.risutanium`, `dumpsys deviceidle whitelist`, `dumpsys usagestats` and `dumpsys alarm`. Read-only commands only. `dumpsys deviceidle step` and `dumpsys batterystats --reset` mutate state and are not used.
 - **Thread sampler:** keep the `ths.log`-style per-thread sampler and `/proc/<pid>/io` (run-as) from `sampler.sh`. Its true interval was about 1.5 s, not 1 s (tooling.md). Keep `mem.sh` off (each `dumpsys meminfo` forces a GC, a measured observer effect).
 - **Logcat:** save the `main` and `events` buffers whole (b1 left `events` out), with threadtime. The `getDataDir` lines give the Rust-side arrival time of every command. Afterwards grep for `deviceidle`, `freecess`, `freeze`, `DOZE` and `am_proc`. Never `logcat -c`.
-- **File count:** every 5 s, count the files in the destination asset directory by `run-as`. File count growing while the page's invokes have not settled means the reply path stalled (group b). Both flat means group (a), (c), (d), (e), (f) or (h). TODO(evidence): the directory path is not in the packets. Lane A fills it from its own scripts before the first run.
-- **wchan:** at fixed points (before sleep, +30 s, +70 s, +5 min) read `/proc/<tid>/wchan` through `run-as` for the app's main thread, JavaBridge, tokio workers, and the renderer `CrRendererMain`. Shows what idle threads sleep on.
+- **File count:** every 5 s, count the files in the destination asset directory by `run-as`. File count growing while the page's invokes have not settled means the reply path stalled (group b). Both flat means group (a), (c), (d), (e), (f) or (h). Path (lane A, R0): `/data/user/0/io.github.yor42.risutanium/assets` (tauri 2.12.1 `app_data_dir` from `getDataDir`, no override), excluding `risu-write-*.tmp`.
+- **wchan:** at fixed points (the `pre` point before the file pick, +30 s, +70 s, +5 min) read `/proc/<tid>/wchan` through `run-as` for the app's main thread, JavaBridge and tokio workers. Shows what idle threads sleep on. The renderer runs under an isolated uid, so `run-as` likely cannot read its `CrRendererMain` wchan (lane A R0, inferred); lane A tries a shell-uid read, as b1's sampler did for `task/*/stat`, and records the renderer wchan as missing if that fails.
 
 ### 3c. Screen control
 
@@ -94,7 +94,7 @@ Why the guidance does not fit: this is not a rate check. The stall began about 6
 
 So the rule used is: **the copy must still be running 120 s after screen-off**. At the screen-on rate the fixture meets it. A smaller fixture is acceptable only if lane A shows it keeps the copy running 120 s after screen-off.
 
-**Fixture push.** `fixture-push.ps1` has a 600 MiB default ceiling. It also has `-AllowLarge` (needs a non-blank `-AllowLargeReason`) and `-MaxSeconds` up to 1800 (`Agents/Tools/device/README.md`). Lane A uses these. TODO(evidence): restore and push time for this fixture is not measured; lane A records it and budgets it into the 75 min. If four runs do not fit, R4 is dropped first.
+**Fixture push.** `fixture-push.ps1` has a 600 MiB default ceiling. It also has `-AllowLarge` (needs a non-blank `-AllowLargeReason`) and `-MaxSeconds` up to 1800 (`Agents/Tools/device/README.md`). Lane A uses these. Budget (lane A, R0 estimate): about 9 min per reproducing run, about 43 min for R1 to R4 with setup, about 65 min in the worst case with the 15 min cap; inside the 75 min. If four runs do not fit, R4 is dropped first.
 
 **PC first (MC-330 3).** R0 on PC headless Chrome (lane C ports 6440 to 6459 if lane C hosts it; otherwise lane A's own):
 
@@ -174,9 +174,9 @@ Lane A uses its own ports and scratch (phone 2: 6310 to 6329, `%TEMP%\risu-b715\
 - tooling.md R3 and verify.md disagree on the size of `power.txt`; the plan does not cite it. The plan counts 23 empty blocks (2 to 24), two of them after the wake.
 - The brief calls the poller fault a "poller fault, not device behaviour". The plan states only what is shown: empty from the 2nd poll, before sleep, cause unexplained.
 - The brief proposed `Page.addScriptToEvaluateOnNewDocument`; the verifier's correction replaced it with a pre-pick `Runtime.evaluate`.
-- `fixture-push.ps1` has a 600 MiB default ceiling; the fixture is 1.24 GiB. Covered by `-AllowLarge`; the push time is TODO(evidence).
+- `fixture-push.ps1` has a 600 MiB default ceiling; the fixture is 1.24 GiB. Covered by `-AllowLarge`; lane A's R0 budget covers restore and push.
 - The 180 s at 8 MiB/s fixture rule gives about 1.4 GiB, above the cap; the plan uses the "still running 120 s after screen-off" rule. The 1.25 GiB ceiling is above MC-330 1's guidance and needs the maintainer's approval.
-- The destination asset directory path is not in the packets: TODO(evidence) for lane A.
+- The destination asset directory and the time budget were filled from lane A's R0 (`%TEMP%\risu-b715\chore202\notes.md`, doc-verified by lane A). R0 also showed a frozen desktop page answering CDP, so the earlier "not frozen as a whole" inference and "(e) weakened by b1" are withdrawn; the renderer wchan and the `pre` dump timing were adjusted.
 - Group (h) (vendor freezer) comes from the brief and has no source in the packets.
 - Whether the Android asset loop reads through `file.slice().arrayBuffer()` is open (group d).
 - Tauri version: the lock that sets the version is in the main checkout (tauri 2.12.1); whether the device APK linked that is UNCERTAIN (mechanism.md R4). Conclusions were checked equal for 2.12.1 and 2.12.5.
