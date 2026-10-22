@@ -4,7 +4,7 @@
  * `GridCatalog.svelte`, Grid tab: edit mode. A floating button (or a touch long press on a tile)
  * enters it, a tap selects instead of opening, a folder tile has a corner chevron for opening and
  * closing, a count bar offers the bulk move to the trash, and every way out clears the selection.
- * Edit mode only works under My order. The only write the screen makes is the bulk trash, which is
+ * Edit mode only works under My order. The screen writes only through the bulk trash, the group and the drag drop (the drag drop is tested in `GridCatalog.drag.svelte.test.ts`); the bulk trash is
  * `trashCharacters` (tested against the real save machinery in `characters.trashCharacters.test.ts`);
  * here it is a spy that records what it was handed.
  *
@@ -1294,7 +1294,7 @@ describe('Grid edit mode: where a long press leaves the scroll', () => {
     })
 })
 
-describe('Grid edit mode: the screen only writes through the bulk trash and the group', () => {
+describe('Grid edit mode: the screen only writes through the bulk trash, the group and the drag drop', () => {
     test('(G) entering, selecting, toggling a folder, leaving, a sort switch and a declined trash change nothing in the database and call no checkCharOrder', async () => {
         fixture()
         const characters = DBState.db.characters

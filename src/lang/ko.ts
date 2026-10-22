@@ -2497,6 +2497,14 @@ export const languageKorean = {
         editSelectedCount: (count: number) => `${count}개 선택됨`,
         editFolderToggle: "폴더 열기 또는 닫기",
         editTrashConfirm: (count: number) => `캐릭터 ${count}개를 휴지통으로 이동하시겠습니까?`,
+        editMoved: (n: number) => `${n}개 항목을 이동했습니다`,
+        editFolderRemoveConfirm: (names: string[]) => {
+            const q = names.map((n) => `"${n}"`)
+            const list = q.length === 1 ? q[0]
+                : q.length <= 3 ? q.slice(0, -1).join(', ') + ' 및 ' + q[q.length - 1]
+                : q.slice(0, 3).join(', ') + ` 외 ${q.length - 3}개`
+            return `폴더 ${list}을(를) 제거하고 그 안의 캐릭터를 여기로 이동하시겠습니까? 폴더의 이름, 색상, 그림은 유지되지 않습니다.`
+        },
         noCustomSidebarItems: "설정된 커스텀 사이드바 항목이 없습니다",
         addItem: "항목 추가",
         backToList: "목록으로 돌아가기",

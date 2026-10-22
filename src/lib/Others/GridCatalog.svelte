@@ -3,7 +3,7 @@
     import { v4 } from "uuid";
     import { changeChar, getCharImage, removeChar, trashCharacters } from "../../ts/characters";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
-    import { alertSelect } from "src/ts/alert";
+    import { alertConfirm, alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
     import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
@@ -25,13 +25,17 @@
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import { createCharacterSearch } from "src/ts/gui/characterSearch.svelte";
     import { keyEventBlocked, keysBlockedNow } from "src/ts/keyEventBlocked";
-    import { groupIntoFolder, refKey } from "../SideBars/sidebarOrder";
+    import { folderEntryAt, foldersDissolvedBy, groupIntoFolder, moveManyToGap, refKey, type DissolvedFolder, type FolderRef, type Gap, type ItemRef, type OrderEntry } from "../SideBars/sidebarOrder";
     import { RailDrag, type RailHost } from "../SideBars/railDrag";
     import { bindRail, type RailBinding } from "../SideBars/railBinding";
+    import { GRID_TOUCH_MERGE_DWELL_MS, TOUCH_SLOP_PX } from "../SideBars/railConstants";
     import { computeLayout, type LayoutItem } from "../SideBars/railLayout";
     import type { RailGeometry } from "../SideBars/railResolver";
-    import { NO_TARGET } from "../SideBars/railTarget";
-    import { actingPicks, canEdit, chooseRowForms, gestureRef, groupPlan, resolvePicked, stalePickedKeys, type Picked, type RowMeasure } from "./charListEdit";
+    import { NO_TARGET, type Target } from "../SideBars/railTarget";
+    import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, resolvePicked, samePick, stalePickedKeys, type DragPlan, type Picked, type RowMeasure } from "./charListEdit";
+    import { appendGap, buildDropModel, gapOf, resolveGridTarget, zoneCandidateAt as gridZoneCandidateAt, type GridDropModel, type GridResolved, type GridSlot } from "./gridDrop";
+    import { directionOfKey, gridKeyMove, tileKeyOfRef } from "./gridKeyboard";
+    import type { MoveDirection, PositionInfo } from "../SideBars/railKeyboard";
     import { tileKeyAt, type GridGeometry } from "./gridTarget";
     import { registerBackHandler } from "../../ts/backHandlers";
     import { pageCovered } from "../../ts/alertPrompts";
@@ -96,10 +100,11 @@
 
     // The Grid tab's tiles, built once per change: the live characters in the saved order with their
     // folders. The Grid writes the database only through the bulk move to the trash (`trashPicked`, whose
-    // `trashCharacters` also edits the order) and the group into a new folder (`groupPicked`, which
-    // assigns characterOrder and repairs it as the rail does): mounting, searching, opening folders,
-    // choosing a sort, entering and leaving edit mode, selecting and every cancelled or refused action
-    // write nothing, never assign characterOrder and never repair the order; the order is the rail's.
+    // `trashCharacters` also edits the order), the group into a new folder (`groupPicked`) and the drop of
+    // dragged tiles (`commitDrop`) and the keyboard move of one tile (`moveFocusedTile`), which assign characterOrder and repair it as the rail does: mounting,
+    // searching, opening folders, choosing a sort, entering and leaving edit mode, selecting and every
+    // cancelled or refused action write nothing, never assign characterOrder and never repair the order;
+    // the order is the rail's.
     // A timestamp is read only under Recent.
     const entries = $derived(buildGridEntries({
         live: found.live,
@@ -215,10 +220,30 @@
         return () => observer.disconnect()
     })
 
+    // Counts the ways a waiting drop confirmation is overtaken: leaving edit mode (Done, Escape, a tab or
+    // sort switch) and closing the screen. A drop captures it before it asks and writes only if it is
+    // unchanged after the answer.
+    let dropGeneration = 0
+    // The polite live region after a drop: cleared and committed before the new text is set, so the
+    // same message twice is read twice.
+    let liveText = $state('')
+    let announceToken = 0
+    async function announce(text: string) {
+        const token = ++announceToken
+        liveText = ''
+        await tick()
+        if (token === announceToken) {
+            liveText = text
+        }
+    }
+
     function exitEdit() {
         editing = false
         enterGeneration++
         groupGeneration++
+        dropGeneration++
+        announceToken++
+        liveText = ''
         picks.clear()
     }
 
@@ -481,10 +506,13 @@
         }
     }
 
-    // A touch long press on a tile in normal mode enters edit mode with that tile selected. The rail's
-    // gesture machine does the timing, the slop, the click suppression after the hold and the Android
-    // context-menu guard; the Grid supplies only where a press lands (its two-dimensional tile
-    // geometry) and never a target, so nothing can be dropped or moved by a gesture here.
+    // A touch long press on a tile in normal mode enters edit mode with that tile selected; in edit mode
+    // a 500 ms hold lifts a tile and a mouse drag starts after 5 px. The rail's gesture machine does the
+    // timing, the slop, the click suppression after the hold and the Android context-menu guard; the Grid
+    // supplies where a press lands and what a pointer position would drop (its two-dimensional geometry,
+    // `gridDrop`). A drag has a target only in a session that began in edit mode (`drag.enabled`), so the
+    // press that enters edit mode never drops, and only after a touch has travelled (a hold released in
+    // place keeps opening the tile menu). The one write is `commitDrop`.
     let gridWindow: ReturnType<typeof CharacterWindow> | undefined = $state()
     let gridScroller: HTMLDivElement | null = null
     let binding: RailBinding | null = null
@@ -493,7 +521,9 @@
     // Once the hold has entered edit mode the gesture runs to its release so the click after it is
     // swallowed: the switch to My order can drop the held tile from the entries, and a source that is
     // gone would otherwise end the gesture (and its click suppression) while the finger is still down.
-    // Plain on purpose: the entries effect reads it untracked, and the end of the session resets it.
+    // It belongs to the entering press only: a press that begins in edit mode ends when its tile leaves
+    // the entries. Plain on purpose: the entries effect reads it untracked, and the end of the session
+    // resets it.
     let holdEnteredEdit = false
     // The tile a hold lifted while already in edit mode, for the release hook. Only a hold that began in
     // edit mode sets it, so the press that entered edit mode opens no menu. Reset when a session starts
@@ -504,10 +534,93 @@
 
     const geometryNow = (): GridGeometry | null => gridWindow?.getGeometry() ?? null
 
+    // The state of one gesture, for the gate, the drop and the confirmation. Decision state, not display:
+    // plain, a new object when a session starts (`onSession(true)`), and NEVER reset when it ends,
+    // because the machine tears the session down (both end callbacks) before it calls `onDrop`.
+    // `enabled` is fixed at the start: edit mode under My order, no search, no drop waiting for its
+    // answer; a session that began outside edit mode (the press that enters it, a mouse drag) is never
+    // enabled, even after edit mode starts mid-gesture. `pressedKey` and `pressedPicked` are the tile
+    // the drag began on and the object it stood for; `travelled` latches once a touch has moved
+    // `TOUCH_SLOP_PX` from `pressX`/`pressY` (a mouse drag, which began after 5 px, is past it).
+    interface DragSession {
+        enabled: boolean
+        mouse: boolean
+        travelled: boolean
+        pressX: number
+        pressY: number
+        pressedKey: string | null
+        pressedPicked: Picked | null
+    }
+    let drag: DragSession = { enabled: false, mouse: false, travelled: false, pressX: 0, pressY: 0, pressedKey: null, pressedPicked: null }
+    // Where the latest pointerdown landed, written by a capture listener that runs before the machine's own
+    // handler, because `onSession(true)` runs inside it and the record is rebuilt there.
+    let pendingPress = { x: 0, y: 0 }
+    // What the machine's last `resolveTarget` answered, with the slot behind it. `onDrop` matches its
+    // target by identity and takes the slot from it; reset only when a session starts.
+    let lastResolved: GridResolved | null = null
+    // True while a drop waits for its confirmation: a second drop is ignored and no session is enabled.
+    let dropInFlight = false
+    let railRect = { left: 0, top: 0, width: 0, height: 0 }
+
+    type MovePlan = Extract<DragPlan, { ok: true }>
+
+    // The tiles the session would move now, from the live selection, entries and order. Null while the
+    // gate fails: not enabled, not editing under My order, a search active, the pressed tile no longer the
+    // object it was, or a tile without an order entry. `needTravel` false skips only the travel check (the
+    // lift haptic), never any other.
+    function livePlan(session: DragSession, needTravel: boolean): MovePlan | null {
+        if (!session.enabled || !editing || sort !== 'order' || found.searching) {
+            return null
+        }
+        if (needTravel && !session.mouse && !session.travelled) {
+            return null
+        }
+        if (session.pressedKey === null || session.pressedPicked === null) {
+            return null
+        }
+        const plan = dragPlan(picks, entries, entryByKey, DBState.db.characters, DBState.db.characterOrder, { key: session.pressedKey, picked: session.pressedPicked })
+        return plan.ok ? plan : null
+    }
+    const movePlan = (session: DragSession): MovePlan | null => livePlan(session, true)
+
+    // The content box starts after the scroller's border and left padding, the same two quantities the
+    // window subtracts from the width it lays rows out in.
+    function contentOriginX(): number {
+        if (!gridScroller) {
+            return 0
+        }
+        return (gridScroller.clientLeft || 0) + (parseFloat(getComputedStyle(gridScroller).paddingLeft) || 0)
+    }
+
+    // The drop model and the no-op answers are keyed by the identity of `entries`, which every change the
+    // tiles read replaces; the order array itself is edited in place by `checkCharOrder` and the trash,
+    // so its reference must never be a key.
+    let modelFor: { entries: readonly GridEntry[], model: GridDropModel } | null = null
+    function dropModel(): GridDropModel {
+        if (modelFor === null || modelFor.entries !== entries) {
+            modelFor = { entries, model: buildDropModel(entries) }
+        }
+        return modelFor.model
+    }
+    let noopMemo: { entries: readonly GridEntry[], moved: string, answers: Map<string, boolean> } | null = null
+    function isNoopGap(plan: MovePlan, gap: Gap, key: string): boolean {
+        const moved = JSON.stringify([...plan.keys])
+        if (noopMemo === null || noopMemo.entries !== entries || noopMemo.moved !== moved) {
+            noopMemo = { entries, moved, answers: new Map() }
+        }
+        let answer = noopMemo.answers.get(key)
+        if (answer === undefined) {
+            const order = DBState.db.characterOrder
+            answer = order === undefined || moveManyToGap(order, plan.sources, gap) === order
+            noopMemo.answers.set(key, answer)
+        }
+        return answer
+    }
+
     const gridGeometry: RailGeometry = {
         sourceAt(_layout, x, y) {
             const geometry = geometryNow()
-            const key = geometry ? tileKeyAt(geometry, x, y) : null
+            const key = geometry ? tileKeyAt(geometry, x - contentOriginX(), y) : null
             const entry = key === null ? undefined : entryByKey.get(key)
             pressedKey = entry ? entry.key : null
             if (!entry) {
@@ -517,15 +630,409 @@
             return { key: entry.key, kind, ref: gestureRef(entry) }
         },
         hasKey: (_layout, key) => entryByKey.has(key),
-        zoneCandidateAt: () => null,
-        resolveTarget: () => NO_TARGET,
+        // Nothing here reads the `source` the machine hands over (it can be a placeholder for a tile with
+        // no order entry); the moved set comes from the session and the live state.
+        zoneCandidateAt(_layout, x, y) {
+            const geometry = geometryNow()
+            const plan = movePlan(drag)
+            if (!geometry || !plan) {
+                return null
+            }
+            return gridZoneCandidateAt(geometry, dropModel(), x - contentOriginX(), y, { keys: plan.keys, sources: plan.sources })
+        },
+        resolveTarget(input) {
+            const geometry = geometryNow()
+            const plan = movePlan(drag)
+            if (!geometry || !plan) {
+                lastResolved = { target: NO_TARGET, slot: null }
+                return NO_TARGET
+            }
+            const resolved = resolveGridTarget({
+                geometry,
+                model: dropModel(),
+                x: input.x - contentOriginX(),
+                y: input.y,
+                viewportY: input.y - host.getScrollTop(),
+                viewportHeight: railRect.height,
+                outside: input.outside,
+                moved: { keys: plan.keys, sources: plan.sources },
+                zoneKey: input.zoneKey,
+                mergeArmed: input.mergeArmed,
+                isNoop: (gap, key) => isNoopGap(plan, gap, key),
+            })
+            lastResolved = resolved
+            return resolved.target
+        },
+    }
+
+    //#region what the drag looks like
+
+    // Display state, separate from the decision state above: cleared when the drag ends, whatever ended it.
+    // The ghost is a body-level fixed element (the dragged tile's row may be unmounted by the window while
+    // the finger scrolls); the bar and the ring are painted inside the tiles' own boxes, so the measured
+    // row heights never change.
+    const NO_KEYS: ReadonlySet<string> = new Set()
+    const GHOST_SIZE = 56
+    let ghost: HTMLElement | null = null
+    let dimmedKeys: ReadonlySet<string> = $state.raw(NO_KEYS)
+    let dropBar: { key: string, side: 'before' | 'after' } | null = $state.raw(null)
+    let dropRing: string | null = $state.raw(null)
+
+    function createGhost(plan: MovePlan) {
+        removeGhost()
+        const tile = drag.pressedKey === null || !gridScroller ? undefined
+            : Array.from(gridScroller.querySelectorAll('[data-charlist-key]')).find((el) => el.getAttribute('data-charlist-key') === drag.pressedKey)
+        const el = document.createElement('div')
+        el.setAttribute('aria-hidden', 'true')
+        el.setAttribute('data-grid-ghost', '')
+        el.style.cssText = `position:fixed;left:0;top:0;width:${GHOST_SIZE}px;height:${GHOST_SIZE}px;pointer-events:none;z-index:1000;opacity:0.85;will-change:transform;transition:none`
+        const copy = tile?.firstElementChild?.cloneNode(true)
+        if (copy instanceof HTMLElement) {
+            // The copy must never answer the tile lookups or take focus.
+            copy.removeAttribute('data-charlist-key')
+            copy.querySelectorAll('button').forEach((button) => button.setAttribute('tabindex', '-1'))
+            el.appendChild(copy)
+        } else {
+            el.className = 'rounded-md bg-selected'
+        }
+        if (plan.count > 1) {
+            const badge = document.createElement('span')
+            badge.className = 'absolute -top-1 -right-1 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-darkbutton border border-darkborderc text-textcolor text-xs'
+            badge.textContent = String(plan.count)
+            el.appendChild(badge)
+        }
+        document.body.appendChild(el)
+        ghost = el
+        dimmedKeys = plan.keys
+    }
+
+    function removeGhost() {
+        ghost?.remove()
+        ghost = null
+        dimmedKeys = NO_KEYS
+        dropBar = null
+        dropRing = null
+    }
+
+    // The ghost and the dimming appear with the first evaluation that can target, and go if the gate fails.
+    function followPointer(x: number, y: number) {
+        const plan = movePlan(drag)
+        if (!plan) {
+            if (ghost) {
+                removeGhost()
+            }
+            return
+        }
+        if (!ghost) {
+            createGhost(plan)
+        }
+        ghost!.style.transform = `translate3d(${x - GHOST_SIZE / 2}px, ${y - GHOST_SIZE / 2}px, 0)`
+    }
+
+    // The bar sits on the edge of the tile the slot is beside; the end of the list is the last tile's right edge.
+    function barFor(slot: GridSlot): { key: string, side: 'before' | 'after' } | null {
+        if (slot.kind === 'gap') {
+            return { key: slot.anchorKey, side: slot.side }
+        }
+        if (slot.kind === 'end' && entries.length > 0) {
+            return { key: entries[entries.length - 1].key, side: 'after' }
+        }
+        return null
+    }
+
+    //#endregion
+
+    //#region the drop
+
+    type Order = typeof DBState.db.characterOrder
+
+    // What a release would do, built from the live state: every input is read again here, so the same
+    // function builds the plan before a confirmation and again after it.
+    interface DropPlan {
+        plan: MovePlan
+        merge: boolean
+        dissolved: DissolvedFolder[]
+        // The tile the slot is on or beside and the object it stands for; the folder object a folder gap is in.
+        anchorKey: string | null
+        anchorPicked: Picked | null
+        destFolder: DissolvedFolder['entry'] | null
+        apply: (order: Order) => Order
+    }
+
+    function planDrop(session: DragSession, slot: GridSlot): DropPlan | null {
+        const plan = movePlan(session)
+        const order = DBState.db.characterOrder
+        if (!plan || order === undefined) {
+            return null
+        }
+        if (slot.kind === 'merge') {
+            const tile = entryByKey.get(slot.tileKey)
+            const target = tile?.ref
+            if (!tile || tile.kind !== 'char' || target?.kind !== 'char' || plan.keys.has(tile.key)) {
+                return null
+            }
+            const spec = { id: v4(), name: language.sidebarUi.defaultFolderName }
+            return {
+                plan,
+                merge: true,
+                dissolved: foldersDissolvedBy(order, plan.sources, { in: 'merge', target }),
+                anchorKey: tile.key,
+                anchorPicked: resolvePicked(tile, DBState.db.characters, order),
+                destFolder: null,
+                apply: (live) => groupIntoFolder(live, plan.sources, spec, target),
+            }
+        }
+        let gap: Gap | null
+        let anchorKey: string | null = null
+        if (slot.kind === 'append') {
+            const tile = entryByKey.get(slot.tileKey)
+            const ref = tile?.ref
+            if (!tile || tile.kind !== 'folder' || ref?.kind !== 'folder' || plan.keys.has(tile.key)) {
+                return null
+            }
+            gap = appendGap(order, ref)
+            anchorKey = tile.key
+        } else {
+            gap = gapOf(slot, dropModel())
+            anchorKey = slot.kind === 'gap' ? slot.anchorKey : null
+        }
+        if (!gap) {
+            return null
+        }
+        const destFolder = gap.in === 'folder' ? folderEntryAt(order, gap.folder) : null
+        if (gap.in === 'folder' && !destFolder) {
+            return null
+        }
+        const anchor = anchorKey === null ? undefined : entryByKey.get(anchorKey)
+        const toGap = gap
+        return {
+            plan,
+            merge: false,
+            dissolved: foldersDissolvedBy(order, plan.sources, toGap),
+            anchorKey,
+            anchorPicked: anchor ? resolvePicked(anchor, DBState.db.characters, order) : null,
+            destFolder,
+            apply: (live) => moveManyToGap(live, plan.sources, toGap),
+        }
+    }
+
+    // The same destination as the plan the user was asked about: the same anchor and folder objects and the
+    // same set of dissolved folders, by identity.
+    function sameDrop(asked: DropPlan, now: DropPlan): boolean {
+        const sameAnchor = asked.anchorPicked === null ? now.anchorPicked === null : now.anchorPicked !== null && samePick(asked.anchorPicked, now.anchorPicked)
+        return asked.merge === now.merge
+            && asked.anchorKey === now.anchorKey
+            && sameAnchor
+            && asked.destFolder === now.destFolder
+            && asked.dissolved.length === now.dissolved.length
+            && asked.dissolved.every((folder) => now.dissolved.some((other) => other.entry === folder.entry))
+    }
+
+    function folderIdCount(order: readonly OrderEntry[] | undefined, id: string): number {
+        return (order ?? []).filter((entry) => typeof entry === 'object' && entry !== null && Array.isArray(entry.data) && entry.id === id).length
+    }
+
+    // A kept folder tile is picked again only for an id that is unique before and after a write: a folder
+    // an operation edits is a new object and would otherwise leave the selection, but with a repeated id a
+    // move can shift occurrences, so the folder now at that key may be a look-alike the user never picked.
+    interface KeptFolder { key: string, ref: FolderRef, unique: boolean }
+
+    // The picked folder tiles a write keeps (not the dissolved ones), noted before the write with whether
+    // their id is unique in the order.
+    function keptPickedFolders(dissolved: readonly DissolvedFolder[]): KeptFolder[] {
+        const kept: KeptFolder[] = []
+        for (const [key, pick] of picks) {
+            const ref = entryByKey.get(key)?.ref
+            if (pick.kind === 'folder' && ref?.kind === 'folder' && !dissolved.some((folder) => folder.entry === pick.folder)) {
+                kept.push({ key, ref, unique: folderIdCount(DBState.db.characterOrder, ref.id) === 1 })
+            }
+        }
+        return kept
+    }
+
+    // After the write, synchronously: a kept folder is picked again only when its id is unique before and
+    // after, because a folder the operation edited is a new object and the stale-pick effect would drop it.
+    function repickKeptFolders(kept: readonly KeptFolder[]) {
+        for (const folder of kept) {
+            if (folder.unique && folderIdCount(DBState.db.characterOrder, folder.ref.id) === 1) {
+                const now = folderEntryAt(DBState.db.characterOrder ?? [], folder.ref)
+                if (now) {
+                    picks.set(folder.key, { kind: 'folder', folder: now })
+                }
+            }
+        }
+    }
+
+    // The one write of a drag: the rail's assignment and repair of the saved order, then the follow-ups.
+    // A merge clears the selection; a move or an append keeps it (kept folder tiles are picked again).
+    function commitDrop(drop: DropPlan): boolean {
+        const keptFolders = drop.merge ? [] : keptPickedFolders(drop.dissolved)
+        const idsBefore = folderIdsInOrder()
+        if (!applyGridOrderChange(drop.apply)) {
+            return false
+        }
+        const idsAfter = folderIdsInOrder()
+        for (const id of idsBefore) {
+            const at = openFolders.indexOf(id)
+            if (!idsAfter.has(id) && at !== -1) {
+                openFolders.splice(at, 1)
+            }
+        }
+        if (drop.merge) {
+            picks.clear()
+        }
+        repickKeptFolders(keptFolders)
+        void announce(language.othersUi.editMoved(drop.plan.count))
+        return true
+    }
+
+    // Asks first when the drop would remove a dragged folder, then builds the plan again from the live
+    // state, because the order, the selection or the screen may have changed while the question was open.
+    // It handles its own errors: the machine's guard around `onDrop` does not see a rejected promise.
+    async function confirmAndDrop(asked: DropPlan, session: DragSession, slot: GridSlot, generation: number) {
+        try {
+            const names = asked.dissolved.map((dissolved) => dissolved.entry.name || language.sidebarUi.defaultFolderName)
+            if (!await alertConfirm(language.othersUi.editFolderRemoveConfirm(names))) {
+                return
+            }
+            if (generation !== dropGeneration) {
+                return
+            }
+            const now = planDrop(session, slot)
+            if (now && sameDrop(asked, now)) {
+                commitDrop(now)
+            }
+        } catch (error) {
+            console.error('Grid drop failed:', error)
+        } finally {
+            dropInFlight = false
+        }
+    }
+
+    // Runs synchronously inside the machine's `pointerUp`, after the session ended. The `source` the
+    // machine passes is never used: it can be a placeholder; the tiles come from the session record and
+    // the destination from the slot of the target the resolver recorded.
+    function handleDrop(target: Target) {
+        const resolved = lastResolved
+        if (dropInFlight || resolved === null || resolved.target !== target || resolved.slot === null) {
+            return
+        }
+        const session = drag
+        const asked = planDrop(session, resolved.slot)
+        if (!asked) {
+            return
+        }
+        if (asked.dissolved.length === 0) {
+            commitDrop(asked)
+            return
+        }
+        dropInFlight = true
+        void confirmAndDrop(asked, session, resolved.slot, dropGeneration)
+    }
+
+    //#endregion
+
+    //#region the keyboard
+
+    // Alt+Left and Alt+Right on a focused tile in edit mode move that one tile one place: the rail's
+    // `keyboardMove` over the Grid's tiles (`gridKeyboard`), written by the same `applyGridOrderChange` as a
+    // drop. The selection is neither moved nor cleared (kept folder tiles are picked again), and a result
+    // that changes nothing writes nothing.
+    function announcePosition(info: PositionInfo | null) {
+        if (info) {
+            void announce(info.folderName === undefined
+                ? language.sidebarUi.movePosition(info.position, info.total)
+                : language.sidebarUi.movePositionInFolder(info.position, info.total, info.folderName || language.sidebarUi.defaultFolderName))
+        }
+    }
+
+    // Focus goes back to the moved tile once the rows are rebuilt (its element is new when it changed rows),
+    // after scrolling its row into view if the move took it out of sight.
+    async function focusTile(ref: ItemRef) {
+        await tick()
+        const geometry = geometryNow()
+        const key = tileKeyOfRef(entries, ref)
+        const scroller = gridScroller
+        if (!editing || key === null || !scroller || !geometry) {
+            return
+        }
+        const index = rowIndexOf(key)
+        if (index >= 0) {
+            centreRowIfHidden(geometry, index, scroller)
+            await tick()
+        }
+        const tile = Array.from(scroller.querySelectorAll('[data-charlist-key]')).find((el) => el.getAttribute('data-charlist-key') === key)
+        tile?.querySelector('button')?.focus({ preventScroll: true })
+    }
+
+    async function moveFocusedTile(tileKey: string, dir: MoveDirection) {
+        const order = DBState.db.characterOrder
+        if (order === undefined) {
+            return
+        }
+        const live = new Set(found.live.map((match) => match.chaId))
+        const result = gridKeyMove(entries, order, tileKey, dir, (id) => live.has(id))
+        if (result.kind === 'edge') {
+            void announce(result.dir === 'up' ? language.sidebarUi.moveAtStart : language.sidebarUi.moveAtEnd)
+        }
+        else if (result.kind === 'refuse-sole') {
+            void announce(language.sidebarUi.moveWouldRemoveFolder(result.folderName || language.sidebarUi.defaultFolderName))
+        }
+        else if (result.kind === 'focus') {
+            announcePosition(result.info)
+            await focusTile(result.ref)
+        }
+        else if (result.kind === 'move') {
+            const kept = keptPickedFolders([])
+            if (applyGridOrderChange(() => result.order)) {
+                repickKeptFolders(kept)
+                announcePosition(result.info)
+                await focusTile(result.ref)
+            }
+        }
+    }
+
+    // The browser would take Alt+Left for history Back, so every handled press is kept from it first,
+    // including a refused or blocked one; then a gesture in progress, a drop waiting for its answer and a
+    // repeating key only keep the press from acting.
+    function onTileKeyDown(event: KeyboardEvent) {
+        if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') || !event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) {
+            return
+        }
+        if (event.isComposing || !editing || sort !== 'order' || found.searching) {
+            return
+        }
+        const target = event.target
+        const tileKey = target instanceof Element ? target.closest('[data-charlist-key]')?.getAttribute('data-charlist-key') ?? null : null
+        const dir = directionOfKey(event.key)
+        if (tileKey === null || dir === null) {
+            return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        if (keyEventBlocked(event) || machine.isPressed || dropInFlight || event.repeat) {
+            return
+        }
+        void moveFocusedTile(tileKey, dir)
+    }
+
+    //#endregion
+
+    // The long press that enters edit mode and the lift of a tile in edit mode give the same short tick.
+    function vibrateTick() {
+        try {
+            navigator.vibrate?.(15)
+        } catch {
+            // Vibration is a courtesy; a refusal changes nothing.
+        }
     }
 
     const host: RailHost = {
         getLayout: () => geometryNow()?.layout ?? emptyLayout,
         readRect: () => {
             const rect = gridScroller?.getBoundingClientRect()
-            return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : { left: 0, top: 0, width: 0, height: 0 }
+            railRect = rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : { left: 0, top: 0, width: 0, height: 0 }
+            return railRect
         },
         getScrollTop: () => gridScroller?.scrollTop ?? 0,
         getScrollMax: () => gridScroller ? Math.max(0, gridScroller.scrollHeight - gridScroller.clientHeight) : 0,
@@ -548,11 +1055,22 @@
                 // Already released.
             }
         },
-        // A held finger never scrolls the Grid: its long press has no drop target to reach.
-        edgeScroll: () => false,
+        // A held finger scrolls the Grid only while the drag can reach a target: not for the press that
+        // enters edit mode, not for a hold that has not travelled, not under a search.
+        edgeScroll: () => movePlan(drag) !== null,
         onSession: (active) => {
             if (active) {
                 holdMenuKey = null
+                drag = {
+                    enabled: editing && sort === 'order' && !found.searching && !dropInFlight,
+                    mouse: false,
+                    travelled: false,
+                    pressX: pendingPress.x,
+                    pressY: pendingPress.y,
+                    pressedKey: null,
+                    pressedPicked: null,
+                }
+                lastResolved = null
             }
             else {
                 lifted = false
@@ -565,29 +1083,62 @@
             lifted = true
         },
         onDragStart: () => {
-            if (!lifted) {
-                return
-            }
             const entry = pressedKey === null ? undefined : entryByKey.get(pressedKey)
             if (!entry) {
                 return
             }
-            if (editing) {
-                holdMenuKey = entry.key
+            if (drag.enabled) {
+                const picked = resolvePicked(entry, DBState.db.characters, DBState.db.characterOrder)
+                if (picked) {
+                    drag.pressedKey = entry.key
+                    drag.pressedPicked = picked
+                }
+                else {
+                    drag.enabled = false
+                }
+            }
+            if (!lifted) {
+                // A mouse drag in edit mode has no hold menu and no haptic; it is past the travel gate.
+                if (drag.enabled) {
+                    drag.mouse = true
+                }
                 return
             }
-            try {
-                navigator.vibrate?.(15)
-            } catch {
-                // Vibration is a courtesy; a refusal changes nothing.
+            if (editing) {
+                holdMenuKey = entry.key
+                // The tick says the tile is lifted; a hold that cannot drag stays silent.
+                if (livePlan(drag, false)) {
+                    vibrateTick()
+                }
+                return
             }
+            vibrateTick()
             holdEnteredEdit = true
             enterEdit(entry)
         },
-        onGhost: () => {},
-        onTarget: () => {},
-        onDragEnd: () => {},
-        onDrop: () => {},
+        onGhost: (x, y) => {
+            if (!drag.travelled && Math.hypot(x - drag.pressX, y - drag.pressY) >= TOUCH_SLOP_PX) {
+                drag.travelled = true
+            }
+            followPointer(x, y)
+        },
+        onTarget: (target) => {
+            const slot = lastResolved?.target === target ? lastResolved.slot : null
+            if (!slot || target.kind === 'none' || (target.kind === 'gap' && target.noop)) {
+                dropBar = null
+                dropRing = null
+            }
+            else if (target.kind === 'gap') {
+                dropRing = null
+                dropBar = barFor(slot)
+            }
+            else {
+                dropBar = null
+                dropRing = target.key
+            }
+        },
+        onDragEnd: () => removeGhost(),
+        onDrop: (_source, target) => handleDrop(target),
         onSpringOpen: () => {},
         onTouchMenu: () => {},
         // A hold released in place on a character tile, begun in edit mode: the tile's menu.
@@ -600,7 +1151,7 @@
         },
     }
 
-    const machine = new RailDrag(host, undefined, gridGeometry)
+    const machine = new RailDrag(host, undefined, gridGeometry, { touchMergeDwellMs: GRID_TOUCH_MERGE_DWELL_MS })
 
     // A press whose tile left the entries ends without effect, except a hold that already entered edit
     // mode (see holdEnteredEdit).
@@ -615,6 +1166,14 @@
 
     function attachGrid(node: HTMLDivElement) {
         gridScroller = node
+        // Capture phase and registered first, so it runs before the machine's own pointerdown handler,
+        // which starts the session and needs the press point (a second finger is ignored).
+        const onPressCapture = (event: PointerEvent) => {
+            if (!machine.isPressed) {
+                pendingPress = { x: event.clientX, y: event.clientY }
+            }
+        }
+        node.addEventListener('pointerdown', onPressCapture, true)
         binding = bindRail(node, machine)
         // Bubble phase, after bindRail's capture-phase guard: a touch-originated contextmenu is stopped
         // there and never reaches this. Right-click and the context-menu key open the same menu as a hold,
@@ -635,8 +1194,11 @@
             }
         }
         node.addEventListener('contextmenu', onContextMenu)
+        node.addEventListener('keydown', onTileKeyDown)
         return () => {
+            node.removeEventListener('keydown', onTileKeyDown)
             node.removeEventListener('contextmenu', onContextMenu)
+            node.removeEventListener('pointerdown', onPressCapture, true)
             machine.cancel()
             binding?.destroy()
             binding = null
@@ -644,7 +1206,13 @@
         }
     }
 
-    onDestroy(() => machine.destroy())
+    onDestroy(() => {
+        // A confirmation still open must not write after the screen is gone.
+        dropGeneration++
+        machine.destroy()
+        ghost?.remove()
+        ghost = null
+    })
 
     //#endregion
 
@@ -757,11 +1325,20 @@
     {/if}
 {/snippet}
 
+<!-- The target of a drag, painted over the tile's own box like pickMark: a bar on the edge a dropped tile would land beside, or a ring on the tile a drop would merge into or append to. -->
+{#snippet dropMark(key: string)}
+    {#if dropRing === key}
+        <span class="absolute inset-0 rounded-md ring-2 ring-textcolor2 bg-textcolor/10 pointer-events-none" aria-hidden="true" data-grid-drop-ring></span>
+    {:else if dropBar?.key === key}
+        <span class="absolute inset-y-0 w-[3px] rounded-full bg-textcolor pointer-events-none {dropBar.side === 'before' ? 'left-0' : 'right-0'}" aria-hidden="true" data-grid-drop-bar></span>
+    {/if}
+{/snippet}
+
 {#snippet gridCard(cardKey: string)}
     {@const entry = entryByKey.get(cardKey)}
     {#if entry?.kind === 'folder'}
         <!-- The tile is a native button; its picture is decorative and the folder's name is the button's. In edit mode a tap selects it and the corner chevron opens or closes the folder. -->
-        <div class="relative flex items-center text-textcolor">
+        <div class="relative flex items-center text-textcolor" class:opacity-40={dimmedKeys.has(entry.key)}>
             <button
                 class="relative overflow-hidden shrink-0 flex justify-center items-center rounded-md h-14 w-14 min-h-14 shadow-lg border border-selected cursor-pointer hover:border-textcolor2 transition-colors duration-150 {folderTileClass(entry.color)}"
                 aria-expanded={entry.open}
@@ -804,6 +1381,7 @@
                     {/if}
                 </button>
             {/if}
+            {@render dropMark(entry.key)}
         </div>
     {:else if entry}
         {@const index = entry.index}
@@ -816,6 +1394,7 @@
             <div
                 class="flex items-center text-textcolor"
                 class:relative={badge !== undefined || editing}
+                class:opacity-40={dimmedKeys.has(entry.key)}
                 {@attach (node: HTMLElement) => {
                     const button = node.querySelector('button')
                     if (!button) {
@@ -851,6 +1430,7 @@
                 {#if editing}
                     {@render pickMark(picks.has(entry.key))}
                 {/if}
+                {@render dropMark(entry.key)}
                 {#if badge !== undefined}
                     <span class="absolute bottom-0 inset-x-0 flex items-center gap-0.5 px-0.5 rounded-b-md bg-darkbg/80 text-textcolor2 text-[10px] leading-tight pointer-events-none">
                         <FolderIcon size={10} class="shrink-0" />
@@ -962,6 +1542,7 @@
                         {language.othersUi.editMode}
                     {/if}
                 </button>
+                <div class="sr-only" role="status" aria-atomic="true" data-grid-live>{liveText}</div>
             </div>
         {:else if selected === 1}
             <CharacterWindow class="flex-1 min-h-0" rows={listRowsNow} fallbackHeight={LIST_ROW_FALLBACK_PX} resetToken={found.query} rowClass="pb-2" card={listCard} />

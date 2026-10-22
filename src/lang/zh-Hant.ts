@@ -2542,6 +2542,14 @@ export const languageChineseTraditional = {
         "editSelectedCount": (count: number) => `已選取 ${count} 個`,
         "editFolderToggle": "開啟或關閉資料夾",
         "editTrashConfirm": (count: number) => `要將 ${count} 個角色移至垃圾桶嗎？`,
+        "editMoved": (n: number) => `已移動 ${n} 項`,
+        "editFolderRemoveConfirm": (names: string[]) => {
+            const q = names.map((n) => `「${n}」`)
+            const list = q.length === 1 ? q[0]
+                : q.length <= 3 ? q.slice(0, -1).join('、') + '和' + q[q.length - 1]
+                : q.slice(0, 3).join('、') + `等 ${q.length} 個`
+            return `要移除資料夾 ${list}，並將其中的角色移到此處嗎？資料夾的名稱、顏色和圖片不會保留。`
+        },
         "noCustomSidebarItems": "尚未設定自訂側邊欄項目",
         "addItem": "新增項目",
         "backToList": "返回清單",

@@ -109,6 +109,11 @@ export interface RailHost {
     onTouchHold?(source: ItemRef): void
 }
 
+export interface RailDragOptions {
+    /** Merge dwell of a touch or pen drag. Absent: MERGE_DWELL_MS. A mouse drag always uses MERGE_DWELL_MS. */
+    touchMergeDwellMs?: number
+}
+
 type Phase = 'idle' | 'pressed' | 'dragging'
 type Cause = 'move' | 'scroll' | 'frame' | 'layout' | 'timer'
 
@@ -167,6 +172,7 @@ export class RailDrag {
         private readonly host: RailHost,
         private readonly env: RailEnv = browserEnv,
         private readonly geometry: RailGeometry = defaultGeometry,
+        private readonly options: RailDragOptions = {},
     ) {}
 
     get isDragging(): boolean {
@@ -482,7 +488,7 @@ export class RailDrag {
                     zone.armed = true
                     this.evaluate('timer')
                 }
-            }, MERGE_DWELL_MS)
+            }, this.touchLike ? (this.options.touchMergeDwellMs ?? MERGE_DWELL_MS) : MERGE_DWELL_MS)
         }
         else if (candidate.closedFolder) {
             const folder = candidate.ref

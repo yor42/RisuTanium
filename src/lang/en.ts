@@ -2642,6 +2642,17 @@ export const languageEnglish = {
             ? `Move 1 character to the trash?`
             : `Move ${count} characters to the trash?`)
             + ` A restored character returns outside any folder. The trash is emptied automatically after 3 days.`,
+        editMoved: (count: number) => count === 1 ? `Moved 1 item` : `Moved ${count} items`,
+        editFolderRemoveConfirm: (names: string[]) => {
+            if (names.length <= 1) {
+                return `Remove the folder "${names[0] ?? ''}" and move its characters here? Its name, colour and picture are not kept.`
+            }
+            const quoted = names.map((name) => `"${name}"`)
+            const list = quoted.length <= 3
+                ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`
+                : `${quoted.slice(0, 3).join(', ')} and ${quoted.length - 3} more,`
+            return `Remove the folders ${list} and move their characters here? Their names, colours and pictures are not kept.`
+        },
         noCustomSidebarItems: "No custom sidebar items configured",
         addItem: "Add Item",
         backToList: "Back to List",

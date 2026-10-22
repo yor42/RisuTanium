@@ -8,9 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@hono/bun':
+        specifier: 1.0.1
+        version: 1.0.1(hono@4.13.11)
       '@hono/node-server':
-        specifier: ^1.19.15
-        version: 1.19.15(hono@4.13.11)
+        specifier: ^2.1.5
+        version: 2.1.5(hono@4.13.11)
       hono:
         specifier: ^4.13.11
         version: 4.13.11
@@ -183,11 +186,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@1.19.15':
-    resolution: {integrity: sha512-Za2ai6TLdKjUvnur+eenO6nuYYipVAEhyCAdaV8IRvmU9kK8crOZUSYvIXn72E4f8fJqyAbpcJuTsYYmZp9Deg==}
-    engines: {node: '>=18.14.1'}
+  '@hono/bun@1.0.1':
+    resolution: {integrity: sha512-74m9j/JY6sPhjOnZZSSPFDRWWRVqO8jI7cDTrcjXP+qnlCMOu0BCLnjq31LrKsWGWW7SsRWDzqrf9vDfnwtStA==}
+    engines: {node: '>=16.9.0'}
     peerDependencies:
-      hono: ^4
+      hono: '>=4.13.9 || ^5.0.0-0'
+
+  '@hono/node-server@2.1.5':
+    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4 || ^5.0.0-0
 
   '@types/node@20.19.27':
     resolution: {integrity: sha512-N2clP5pJhB2YnZJ3PIHFk5RkygRX5WO/5f0WC08tp0wd+sv0rsJk3MqWn3CbNmT2J505a5336jaQj4ph1AdMug==}
@@ -305,7 +314,11 @@ snapshots:
   '@esbuild/win32-x64@0.27.2':
     optional: true
 
-  '@hono/node-server@1.19.15(hono@4.13.11)':
+  '@hono/bun@1.0.1(hono@4.13.11)':
+    dependencies:
+      hono: 4.13.11
+
+  '@hono/node-server@2.1.5(hono@4.13.11)':
     dependencies:
       hono: 4.13.11
 

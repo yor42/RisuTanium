@@ -2499,6 +2499,16 @@ export const languageGerman = {
         "editSelectedCount": (count: number) => `${count} ausgewählt`,
         "editFolderToggle": "Ordner öffnen oder schließen",
         "editTrashConfirm": (count: number) => count === 1 ? `1 Charakter in den Papierkorb verschieben?` : `${count} Charaktere in den Papierkorb verschieben?`,
+        "editMoved": (n: number) => n === 1 ? `1 Element verschoben` : `${n} Elemente verschoben`,
+        "editFolderRemoveConfirm": (names: string[]) => {
+            const q = names.map((n) => `„${n}“`)
+            const list = q.length === 1 ? q[0]
+                : q.length <= 3 ? q.slice(0, -1).join(', ') + ' und ' + q[q.length - 1]
+                : q.slice(0, 3).join(', ') + ` und ${q.length - 3} weitere`
+            return q.length === 1
+                ? `Den Ordner ${list} entfernen und seine Charaktere hierher verschieben? Name, Farbe und Bild gehen verloren.`
+                : `Die Ordner ${list} entfernen und ihre Charaktere hierher verschieben? Namen, Farben und Bilder gehen verloren.`
+        },
         "noCustomSidebarItems": "Keine benutzerdefinierten Seitenleisten-Einträge konfiguriert",
         "addItem": "Eintrag hinzufügen",
         "backToList": "Zurück zur Liste",
