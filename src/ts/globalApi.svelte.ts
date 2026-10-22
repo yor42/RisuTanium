@@ -837,6 +837,8 @@ let lastIterationCommitted = false
 let saveLoopPending: (() => boolean) | null = null
 let saveLoopUnsaved: (() => boolean) | null = null
 let requestSaveNowImpl: (() => void) | null = null
+/** How many characters the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
+let unsavableCharacterCount = 0
 
 /**
  * Asks the save loop to save what is marked without waiting out the debounce.
@@ -894,13 +896,16 @@ export function getSaveMarkCount(): number {
 /**
  * True only when everything marked so far is in the store: the last
  * iteration committed, no mark has arrived since its snapshot, and no save is
- * running, debounced, queued, stopped or held back by a frozen chaId.
+ * running, debounced, queued, stopped or held back by a frozen chaId, and no
+ * character is unsavable (its latest data is in memory only). `hasUnsavedSaveMarks`
+ * does not count unsavable characters: a new save request cannot help them.
  */
 export function isSaveClean(): boolean {
     if (!saveLoopPending || !lastIterationCommitted) {
         return false
     }
     return saveMarkCount === snapshotMarkCount
+        && unsavableCharacterCount === 0
         && !saving.state
         && !requiresFullEncoderReload.state
         && !saveLoopPending()
@@ -1538,6 +1543,19 @@ export function describeBlockForPerson(blockName: string): string {
     return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
 }
 
+/**
+ * What an unsavable character is called in its notice: its quoted name, else its quoted id. Total: a hostile name or id
+ * getter must not reach the save loop.
+ */
+function unsavableCharacterLabel(chaId: string): string {
+    try {
+        const name = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId ?? '') === chaId)?.name
+        return typeof name === 'string' && name !== '' ? `"${name}"` : `"${chaId}"`
+    } catch {
+        return `"${chaId}"`
+    }
+}
+
 /** What a park for unwritable data names to the person: the character, or the kind of data. */
 function describeParkedData(error: SaveParkError | BlockSetGateError): string {
     if (error instanceof BlockSetGateError) {
@@ -1678,6 +1696,14 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             dirtySinceLastSave = true
             saveMarkCount += 1
             changed = true
+        },
+        unsavable(current, newly) {
+            unsavableCharacterCount = current.length
+            for (const entry of newly) {
+                console.error(entry.cause)
+                const label = unsavableCharacterLabel(entry.chaId)
+                alertToast(entry.saved ? language.saveCharacterUnsavedNotice(label) : language.saveCharacterNeverSavedNotice(label))
+            }
         },
         saved() {
             saveFailureStore.set(null)

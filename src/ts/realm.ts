@@ -14,12 +14,16 @@ window.addEventListener("message", (event) => {
     }
 });
 
-export async function shareRealmCardData():Promise<{ name: ArrayBuffer; data: ArrayBuffer; }> {
+export async function shareRealmCardData():Promise<{ name: ArrayBuffer; data: ArrayBuffer; } | null> {
     const char = safeStructuredClone(getCurrentCharacter({snapshot:true})) as character
     const trimedName = char.name.replace(/[^a-zA-Z0-9]/g, '') || 'character';
     const writer = new VirtualWriter()
     const namebuf = new TextEncoder().encode(trimedName + '.png')
-    await exportCharacterCard(char, 'png', {writer: writer, spec: 'v3'})
+    const exported = await exportCharacterCard(char, 'png', {writer: writer, spec: 'v3'})
+    if(!exported){
+        //the export already showed its error; the buffer is partial
+        return null
+    }
     alertStore.set({
         type: 'none',
         msg: ''

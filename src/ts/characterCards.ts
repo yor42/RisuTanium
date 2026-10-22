@@ -1692,7 +1692,7 @@ export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'c
     password?:string
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
-} = {}) {
+} = {}):Promise<boolean> {
     return withBusy('export', () => writeCharacterCard(char, type, arg))
 }
 
@@ -1700,7 +1700,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     password?:string
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
-}) {
+}):Promise<boolean> {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     let img = await readCardExportImage(char.image)
     try{
@@ -1777,7 +1777,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             if(type === 'json'){
                 await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
                 alertNormal(language.successExport)
-                return
+                return true
             }
     
             await sleep(10)
@@ -1933,7 +1933,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             if(type === 'json'){
                 await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
                 alertNormal(language.successExport)
-                return
+                return true
             }
 
             await sleep(10)
@@ -1971,9 +1971,11 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             alertNormal(language.successExport)
         }
 
+        return true
     }
     catch(e){
         alertError(e)
+        return false
     }
 }
 

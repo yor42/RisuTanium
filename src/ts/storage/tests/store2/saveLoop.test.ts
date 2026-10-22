@@ -10,7 +10,7 @@ import type { Store2Read } from '../../store2/backend'
 import type { ListDerivation } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
 import { createSaveEncoder } from '../../store2/saveEncoder'
-import { backedOffWait, runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
+import { backedOffWait, runStore2SaveLoop, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
 import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
@@ -58,6 +58,13 @@ interface Loop {
     holdSleeps(): () => void
     /** When set, the next `saved` call throws once: the bookkeeping that follows a commit that has landed. */
     savedThrows: Error | null
+    /** What the loop told the port about unsavable characters, in order, with `saved` calls interleaved as 'saved'. */
+    unsavableCalls: Array<{ current: UnsavableCharacter[], newly: UnsavableCharacter[] }>
+    order: string[]
+    /** How many times the loop folded a snapshot back into the live tracker. */
+    merges: number
+    /** When set, `unsavable` throws it: the loop must stay quiet about a notice that fails. */
+    unsavableThrows: Error | null
     broadcasts: string[]
     crashed: unknown[]
     mark(chaId: string): void
@@ -119,6 +126,10 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
             }
         },
         savedThrows: null,
+        unsavableCalls: [],
+        order: [],
+        merges: 0,
+        unsavableThrows: null,
         broadcasts: [],
         crashed: [],
         mark(chaId) {
@@ -145,7 +156,10 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         tracker,
         reloadFlag,
         getDatabase: () => loop.db,
-        mergeBack,
+        mergeBack(live, snapshot) {
+            loop.merges += 1
+            mergeBack(live, snapshot)
+        },
         liveCheck: () => {},
         sweep: () => {},
         isDue: () => loop.state.due,
@@ -166,7 +180,15 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
             loop.state.marks += 1
             loop.state.due = true
         },
+        unsavable(current, newly) {
+            loop.order.push('unsavable')
+            loop.unsavableCalls.push({ current: [...current], newly: [...newly] })
+            if (loop.unsavableThrows !== null) {
+                throw loop.unsavableThrows
+            }
+        },
         saved() {
+            loop.order.push('saved')
             if (loop.savedThrows !== null) {
                 const error = loop.savedThrows
                 loop.savedThrows = null
@@ -1324,6 +1346,238 @@ describe('new behaviour: the loop saves through the encoder the context carries'
         expect(encoder.manifestKey).not.toBe(before)
         expect((await kit.saved()).characters[1]).toMatchObject({ personality: 'saved through the carried encoder' })
         healthy(loop)
+    })
+})
+
+describe('new behaviour: a character that cannot be saved is skipped, noticed once, and retried quietly', () => {
+    function cyclic(): Entry {
+        const value: Entry = {}
+        value.self = value
+        return value
+    }
+
+    interface Counted {
+        loop: Loop
+        /** The base reads so far: one per pass, a tick included. */
+        passes(): number
+    }
+
+    async function startCounted(db: Database): Promise<Counted> {
+        const kit = await startStore2({ db, idleNet: { intervalMs: 1 } })
+        const real = kit.committer
+        let passes = 0
+        kit.context.session = { ...kit.context.session, committer: { ...real, readCommit: () => { passes++; return real.readCommit() } } }
+        return { loop: runLoop(kit, db), passes: () => passes }
+    }
+
+    async function quietPasses(counted: Counted, count: number): Promise<void> {
+        const before = counted.passes()
+        await until(() => counted.passes() >= before + count, `${count} more passes`, 4000)
+    }
+
+    function noticesOf(loop: Loop): UnsavableCharacter[][] {
+        return loop.unsavableCalls.filter(call => call.newly.length > 0).map(call => call.newly)
+    }
+
+    test('new behaviour: the rest is saved, the saved character keeps its last copy, one notice, and nothing is reported as a failure', async () => {
+        const db = clone(buildSmall(4))
+        const counted = await startCounted(db)
+        const { loop } = counted
+        const original = chars(db)[1].personality
+        chars(db)[1].personality = cyclic()
+        chars(db)[2].personality = 'edited next to the unsavable one'
+        loop.mark(chaIdOf(db, 1))
+        loop.mark(chaIdOf(db, 2))
+        await until(() => loop.unsavableCalls.length >= 1, 'the unsavable report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the unsavable one' })
+        expect(saved.characters[1]).toMatchObject({ personality: original })
+
+        const marks = loop.state.marks
+        await quietPasses(counted, 10)
+        expect(loop.failures).toEqual([])
+        expect(loop.uncounted).toEqual([])
+        expect(loop.sleeps).toEqual([])
+        // No extra pass is requested and no mark is put back for the character.
+        expect(loop.state.marks).toBe(marks)
+        expect(loop.merges).toBe(0)
+        expect(loop.unsavableCalls).toHaveLength(1)
+        expect(loop.unsavableCalls[0].newly.map(({ chaId, saved }) => ({ chaId, saved }))).toEqual([{ chaId: chaIdOf(db, 1), saved: true }])
+        expect(loop.unsavableCalls[0].current.map(({ chaId }) => chaId)).toEqual([chaIdOf(db, 1)])
+        // The port hears about it before the commit callbacks run.
+        expect(loop.order.slice(0, 2)).toEqual(['unsavable', 'saved'])
+        healthy(loop)
+    })
+
+    test('new behaviour: a fix clears the set, and a new break is a new notice', async () => {
+        const db = clone(buildSmall(4))
+        const loop = await startLoop(db, { idleNet: { intervalMs: 1 } })
+        const id1 = chaIdOf(db, 1)
+        chars(db)[1].personality = cyclic()
+        loop.mark(id1)
+        await until(() => loop.unsavableCalls.length >= 1, 'the first report', 4000)
+
+        chars(db)[1].personality = 'fixed'
+        loop.mark(id1)
+        await until(() => loop.unsavableCalls.length >= 2, 'the report that clears it', 4000)
+        expect(loop.unsavableCalls[1].current).toEqual([])
+        expect(loop.unsavableCalls[1].newly).toEqual([])
+        expect((await loop.kit.saved()).characters[1]).toMatchObject({ personality: 'fixed' })
+
+        chars(db)[1].personality = cyclic()
+        loop.mark(id1)
+        await until(() => loop.unsavableCalls.length >= 3, 'the second notice', 4000)
+        expect(noticesOf(loop).map(newly => newly.map(({ chaId }) => chaId))).toEqual([[id1], [id1]])
+        expect(loop.failures).toEqual([])
+        healthy(loop)
+    })
+
+    test('new behaviour: a character that was never saved is left out, noticed as never saved, and stays out of the store', async () => {
+        const db = clone(buildSmall(4))
+        const counted = await startCounted(db)
+        const { loop } = counted
+        chars(db).push({ ...JSON.parse(JSON.stringify(chars(db)[0])) as Entry, chaId: 'never-saved-character', name: 'Never saved', personality: cyclic() })
+        chars(db)[2].personality = 'edited next to the new one'
+        loop.mark(chaIdOf(db, 2))
+        const marksAfterMark = loop.state.marks
+        await until(() => loop.unsavableCalls.length >= 1, 'the unsavable report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters).toHaveLength(4)
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the new one' })
+        await quietPasses(counted, 10)
+        expect(loop.failures).toEqual([])
+        // The skipped character asks for no further pass and no mark is put back for it.
+        expect(loop.state.marks).toBe(marksAfterMark)
+        expect(loop.merges).toBe(0)
+        expect(loop.unsavableCalls).toHaveLength(1)
+        expect(loop.unsavableCalls[0].newly.map(({ chaId, saved: held }) => ({ chaId, saved: held }))).toEqual([{ chaId: 'never-saved-character', saved: false }])
+        healthy(loop)
+    })
+
+    test('new behaviour: a character deleted with no replacement leaves the set', async () => {
+        const db = clone(buildSmall(4))
+        const loop = await startLoop(db, { idleNet: null })
+        chars(db)[1].personality = cyclic()
+        loop.mark(chaIdOf(db, 1))
+        await until(() => loop.unsavableCalls.length >= 1, 'the unsavable report', 4000)
+        chars(db).splice(1, 1)
+        loop.due()
+        await until(() => loop.unsavableCalls.length >= 2, 'the report after the deletion', 4000)
+        expect(loop.unsavableCalls[1].current).toEqual([])
+        expect(loop.unsavableCalls[1].newly).toEqual([])
+        healthy(loop)
+    })
+
+    test('new behaviour: a not-flushed commit that skipped a saved character still reports it once', async () => {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db, idleNet: null })
+        script(kit, [async (read, request) => {
+            const result = await kit.committer.commit(read, request)
+            return result.status === 'committed' ? { ...result, flushed: false } : result
+        }])
+        const loop = runLoop(kit, db)
+        const original = chars(db)[1].personality
+        chars(db)[1].personality = cyclic()
+        chars(db)[2].personality = 'edited next to it'
+        loop.mark(chaIdOf(db, 2))
+        loop.mark(chaIdOf(db, 1))
+        await until(() => loop.failures.length >= 1 && loop.state.saved >= 1, 'the not-flushed report and the forced commit', 4000)
+        // Passes that do not name the offender must not be what reports it.
+        for (let i = 0; i < 3; i++) {
+            loop.due()
+            await new Promise(resolve => setTimeout(resolve, 60))
+        }
+        const stored = await loop.kit.saved()
+        expect(stored.characters[1]).toMatchObject({ personality: original })
+        expect(stored.characters[2]).toMatchObject({ personality: 'edited next to it' })
+        expect(loop.failures.map(failure => (failure.error as Error).name)).toEqual(['Store2NotFlushedError'])
+        expect(noticesOf(loop)).toHaveLength(1)
+        expect(loop.unsavableCalls[0].newly.map(({ chaId, saved }) => ({ chaId, saved }))).toEqual([{ chaId: chaIdOf(db, 1), saved: true }])
+        healthy(loop)
+    })
+
+    test('new behaviour: the idle net alone reports a break nothing marked and clears a fix nothing marked', async () => {
+        const db = clone(buildSmall(4))
+        const loop = await startLoop(db, { idleNet: { intervalMs: 1 } })
+        const original = chars(db)[1].personality
+        await new Promise(resolve => setTimeout(resolve, 50))
+        chars(db)[1].personality = cyclic()
+        await until(() => loop.unsavableCalls.length >= 1, 'a tick report of the break', 4000)
+        expect(loop.unsavableCalls[0].newly.map(({ chaId }) => chaId)).toEqual([chaIdOf(db, 1)])
+        chars(db)[1].personality = original
+        await until(() => loop.unsavableCalls.length >= 2, 'a tick report of the fix', 4000)
+        expect(loop.unsavableCalls[1].current).toEqual([])
+        expect(loop.failures).toEqual([])
+        healthy(loop)
+    })
+
+    test('a character deleted while its pass commits gets no notice', async () => {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db })
+        script(kit, [async (read, request) => {
+            chars(db).splice(1, 1)
+            return kit.committer.commit(read, request)
+        }])
+        const loop = runLoop(kit, db)
+        chars(db)[1].personality = cyclic()
+        chars(db)[2].personality = 'edited during the same pass'
+        loop.mark(chaIdOf(db, 1))
+        loop.mark(chaIdOf(db, 2))
+        await savedBy(loop)
+        expect(loop.unsavableCalls).toEqual([])
+        healthy(loop)
+    })
+
+    test('an attempt that does not save tells the port nothing, and the notice comes with the attempt that saves', async () => {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db })
+        script(kit, [async () => ({ status: 'refused', reason: 'marker-present', detail: 'x' }) as CommitResult])
+        const loop = runLoop(kit, db)
+        const release = loop.holdSleeps()
+        chars(db)[1].personality = cyclic()
+        chars(db)[2].personality = 'edited during the retry'
+        loop.mark(chaIdOf(db, 1))
+        loop.mark(chaIdOf(db, 2))
+        await until(() => loop.sleeps.length >= 1, 'the quiet retry', 4000)
+        expect(loop.unsavableCalls).toEqual([])
+        release()
+        await until(() => loop.unsavableCalls.length >= 1, 'the report after the retry saved', 4000)
+        await savedBy(loop)
+        expect(noticesOf(loop)).toHaveLength(1)
+        expect(loop.failures).toEqual([])
+        healthy(loop)
+    })
+
+    test('a port whose notice throws does not turn the pass that saved into a failed one', async () => {
+        const db = clone(buildSmall(4))
+        const loop = await startLoop(db, { idleNet: null })
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        try {
+            loop.unsavableThrows = new Error('the notice failed')
+            chars(db)[1].personality = cyclic()
+            chars(db)[2].personality = 'edited next to it'
+            loop.mark(chaIdOf(db, 1))
+            loop.mark(chaIdOf(db, 2))
+            await savedBy(loop)
+            expect(loop.failures).toEqual([])
+            expect(loop.uncounted).toEqual([])
+            expect(logged).toHaveBeenCalledWith(loop.unsavableThrows)
+            expect((await loop.kit.saved()).characters[2]).toMatchObject({ personality: 'edited next to it' })
+        } finally {
+            logged.mockRestore()
+        }
+        healthy(loop)
+    })
+
+    test('guard (passes before and after): a bad value outside a character still fails the pass and is reported', async () => {
+        const db = clone(buildSmall(4))
+        const loop = await startLoop(db, { idleNet: null })
+        ;(db.botPresets as unknown as Entry[])[1].temperature = cyclic()
+        loop.reloadFlag.state = true
+        loop.due()
+        await until(() => loop.failures.length >= 1, 'the failure report', 4000)
+        expect(loop.unsavableCalls).toEqual([])
+        expect(loop.state.saved).toBe(0)
     })
 })
 

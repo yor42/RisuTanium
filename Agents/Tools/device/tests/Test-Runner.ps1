@@ -216,7 +216,7 @@ function Invoke-Runner {
 
 try {
     # static rules over the shipped scripts
-    $files = @('lib.ps1', 'Run-Check.ps1', 'build-apk.ps1', 'sign-install.ps1', 'device-prep.ps1', 'cold-start.ps1', 'snapshot.ps1', 'restore-snapshot.ps1', 'import-bin.ps1', 'fixture-push.ps1') | ForEach-Object { Join-Path $RunnerDir $_ }
+    $files = @('lib.ps1', 'Run-Check.ps1', 'build-apk.ps1', 'sign-install.ps1', 'device-prep.ps1', 'cold-start.ps1', 'snapshot.ps1', 'restore-snapshot.ps1', 'import-bin.ps1', 'fixture-push.ps1', 'sign-release.ps1') | ForEach-Object { Join-Path $RunnerDir $_ }
     $code = ($files | ForEach-Object { (Get-Content -LiteralPath $_) | Where-Object { $_ -notmatch '^\s*#' } }) -join [Environment]::NewLine
     Assert ($code -notmatch '\s-Wait\b') 'no Start-Process -Wait'
     Assert ($code -notmatch 'WaitForExit\(\s*\)') 'no unbounded WaitForExit'
@@ -403,6 +403,185 @@ try {
     foreach ($lk in $leaks) { $script:spawned += [int]$lk.ProcessId }
     Assert ($threw -eq 'tick boom') 'poll loop: OnTick exception propagates'
     Assert ($leaks.Count -eq 0) 'poll loop: OnTick exception leaves no live child'
+
+    # sign-release: every outside effect (vault, build, apksigner, adb) is a scriptblock or mocked function, so no vault, Gradle or phone is touched.
+    # The script is dot-sourced inside a child scope: its functions load, its main body does not run and its parameters stay out of this scope.
+    & {
+        . (Join-Path $RunnerDir 'sign-release.ps1')
+        $fakeVals = @{ RisuKeystorePath = $null; RisuKeystorePassword = 'FAKEPW-ks-91d3'; RisuKeyAlias = 'fakealias-77'; RisuKeyPassword = 'FAKEPW-key-4c0e' }
+        $srDir = Join-Path $work 'sign-release'
+        New-Item -ItemType Directory -Force -Path $srDir | Out-Null
+        $srKs = Join-Path $srDir 'fake-ks-file.jks'
+        [IO.File]::WriteAllText($srKs, 'not a keystore')
+        $fakeVals.RisuKeystorePath = $srKs
+        $srApk = Join-Path $srDir 'app-universal-release.apk'
+        [IO.File]::WriteAllText($srApk, 'fake apk bytes')
+        $srNames = @('RisuKeystorePath', 'RisuKeystorePassword', 'RisuKeyAlias', 'RisuKeyPassword')
+        $srDigest = ('ab12' * 16)
+        $srEnvNames = @('RISU_ANDROID_KEYSTORE', 'RISU_ANDROID_KEYSTORE_PASSWORD', 'RISU_ANDROID_KEY_ALIAS', 'RISU_ANDROID_KEY_PASSWORD')
+        $okReader = { param($v, $n) $fakeVals[$n] }
+        $noPre = { $null }
+        $okVerify = { param($apk) $srDigest }
+        $seen = @{}
+        $okBuild = { foreach ($e in $srEnvNames) { $seen[$e] = [Environment]::GetEnvironmentVariable($e) }; [pscustomobject]@{ ExitCode = 0; ApkPath = $srApk; Reason = $null } }
+        foreach ($e in $srEnvNames) { Remove-Item -LiteralPath ('Env:\' + $e) -ErrorAction SilentlyContinue }
+
+        # refusals: an agent shell, then a host without interactive input; the agent reason is never masked
+        $rf1 = Get-SigningRefusal $true $true
+        $rf2 = Get-SigningRefusal $false $false
+        $rf3 = Get-SigningRefusal $true $false
+        Assert ($rf1 -match 'agent shell' -and $rf2 -match 'no interactive host' -and $rf3 -match 'agent shell' -and $null -eq (Get-SigningRefusal $false $true)) 'sign-release: an agent shell and a non-interactive host are refused, an interactive normal shell is not'
+        $savedCc = $env:CLAUDECODE; $savedCe = $env:CLAUDE_CODE_ENTRYPOINT
+        foreach ($agentVar in @('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT')) {
+            Remove-Item Env:\CLAUDECODE, Env:\CLAUDE_CODE_ENTRYPOINT -ErrorAction SilentlyContinue
+            [Environment]::SetEnvironmentVariable($agentVar, '1')
+            $agentText = (& pwsh -NoProfile -File (Join-Path $RunnerDir 'sign-release.ps1') -OutDir (Join-Path $srDir 'agent-out') | Out-String)
+            $agentCode = $LASTEXITCODE
+            Assert ($agentCode -eq 1 -and $agentText -match 'verdict=FAIL' -and $agentText -match 'agent shell' -and $agentText -notmatch 'secrets|vault RisuSigning') ('sign-release: the script exits 1 in an agent shell (' + $agentVar + ') before it touches the vault')
+        }
+        Remove-Item Env:\CLAUDECODE, Env:\CLAUDE_CODE_ENTRYPOINT -ErrorAction SilentlyContinue
+        if ($savedCc) { $env:CLAUDECODE = $savedCc }
+        if ($savedCe) { $env:CLAUDE_CODE_ENTRYPOINT = $savedCe }
+
+        # missing secrets: only the names are reported, the other values never appear, and no build starts
+        $built = @{ v = $false }
+        $partial = { param($v, $n) if ($n -eq 'RisuKeyPassword') { throw 'secret not found FAKEPW-key-4c0e' }; if ($n -eq 'RisuKeyAlias') { return '' }; $fakeVals[$n] }
+        $mr = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $partial -Preflight $noPre -Builder { $built.v = $true } -Verifier $okVerify
+        Assert (-not $mr.Pass -and $mr.Reason -match 'RisuKeyAlias' -and $mr.Reason -match 'RisuKeyPassword' -and $mr.Reason -notmatch 'RisuKeystorePassword|RisuKeystorePath' -and $mr.Reason -notmatch 'FAKEPW|fakealias' -and -not $built.v) 'sign-release: missing or empty secrets are named by secret name only and stop before the build'
+        $mr2 = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader { param($v, $n) if ($n -eq 'RisuKeystorePath') { Join-Path $srDir 'no-such.jks' } else { 'x' } } -Preflight $noPre -Builder { $built.v = $true } -Verifier $okVerify
+        Assert (-not $mr2.Pass -and $mr2.Reason -match 'RisuKeystorePath' -and $mr2.Reason -notmatch 'no-such' -and -not $built.v) 'sign-release: a keystore path that does not exist fails before the build without echoing the path'
+        $readerCalled = @{ v = $false }
+        $pr = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader { $readerCalled.v = $true; 'x' } -Preflight { 'generated Android files missing' } -Builder { $built.v = $true } -Verifier $okVerify
+        Assert (-not $pr.Pass -and $pr.Reason -match 'generated Android files' -and -not $built.v -and -not $readerCalled.v) 'sign-release: a failed build preflight stops before any secret is read'
+
+        # happy path: the child build sees the four values, nothing else does, and they are gone afterwards
+        $outText = (& {
+            $script:ok = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify
+        } *>&1 | Out-String)
+        $allText = $outText + ($script:ok | ConvertTo-Json -Depth 4)
+        Assert ($script:ok.Pass -and $script:ok.CertSha256 -eq $srDigest -and $script:ok.ApkSha256 -match '^[0-9a-f]{64}$' -and $script:ok.ApkPath -eq $srApk) 'sign-release: a verified build passes with the APK path, APK sha256 and certificate digest'
+        Assert ($seen['RISU_ANDROID_KEYSTORE'] -eq $srKs -and $seen['RISU_ANDROID_KEYSTORE_PASSWORD'] -eq 'FAKEPW-ks-91d3' -and $seen['RISU_ANDROID_KEY_ALIAS'] -eq 'fakealias-77' -and $seen['RISU_ANDROID_KEY_PASSWORD'] -eq 'FAKEPW-key-4c0e') 'sign-release: the build child sees all four values as environment variables'
+        Assert (@($srEnvNames | Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) }).Count -eq 0) 'sign-release: the signing environment is cleared after a successful run'
+        Assert ($allText -notmatch 'FAKEPW|fakealias' -and $allText -notmatch [regex]::Escape($srKs)) 'sign-release: no secret value appears in any output stream or in the result'
+        $seen.Clear()
+        $thrown = $null
+        try { $null = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder { throw 'boom' } -Verifier $okVerify } catch { $thrown = $_.Exception.Message }
+        Assert ($thrown -eq 'boom' -and @($srEnvNames | Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) }).Count -eq 0) 'sign-release: the signing environment is cleared when the build throws'
+        $bf = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder { [pscustomobject]@{ ExitCode = 3; ApkPath = $srApk; Reason = 'build failed' } } -Verifier $okVerify
+        Assert (-not $bf.Pass -and $bf.Reason -eq 'build failed' -and $null -eq $bf.CertSha256 -and @($srEnvNames | Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) }).Count -eq 0) 'sign-release: a failed build fails the run and also clears the environment'
+
+        # expected certificate fingerprint
+        $expFile = Join-Path $srDir 'expected-cert-sha256.txt'
+        $colon = ((($srDigest.ToUpperInvariant() -split '(..)') | Where-Object { $_ }) -join ':')
+        [IO.File]::WriteAllText($expFile, $colon + "`n")
+        $e1 = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -ExpectedFile $expFile
+        Assert ($e1.Pass) 'sign-release: a matching expected fingerprint (colon form, upper case) passes'
+        [IO.File]::WriteAllText($expFile, (('cd34' * 16) + "`n"))
+        $e2 = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -ExpectedFile $expFile
+        Assert (-not $e2.Pass -and $e2.Reason -match 'certificate mismatch' -and $e2.CertSha256 -eq $srDigest) 'sign-release: a different certificate than the expected fingerprint fails the run'
+        [IO.File]::WriteAllText($expFile, "not a fingerprint`n")
+        $e3 = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -ExpectedFile $expFile
+        Assert (-not $e3.Pass -and $e3.Reason -match 'does not hold a SHA-256 fingerprint') 'sign-release: an unreadable expected-fingerprint file fails instead of skipping the check'
+        $e4 = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -ExpectedFile (Join-Path $srDir 'absent.txt')
+        Assert ($e4.Pass -and $e4.FingerprintCheck -eq 'none' -and $e1.FingerprintCheck -eq 'match' -and $e2.FingerprintCheck -eq 'failed') 'sign-release: no expected-fingerprint file is reported as fingerprintCheck none, a match as match and a mismatch as failed'
+        $fpOut = (& { Write-FingerprintStatus $e4 'C:\x\expected-cert-sha256.txt' } 3>&1 | Out-String)
+        $fpOk = (& { Write-FingerprintStatus $e1 'C:\x\expected-cert-sha256.txt' } 3>&1 | Out-String)
+        Assert ($fpOut -match 'fingerprintCheck=none' -and $fpOut -match 'NOT compared' -and $fpOk -match 'fingerprintCheck=match' -and $fpOk -notmatch 'NOT compared') 'sign-release: a missing expected-fingerprint file prints fingerprintCheck=none with a visible warning, a match prints no warning'
+        $vf = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier { throw 'apksigner verify failed with exit 1' }
+        Assert (-not $vf.Pass -and $vf.Reason -match 'signature verification failed') 'sign-release: an APK that apksigner rejects fails the run'
+
+        # build: the call requests a no-daemon Gradle and lingering-process cleanup; leftovers are stopped on success and on a throw
+        $fakeRunCheck = Join-Path $srDir 'fake-run-check.ps1'
+        New-Cmd $fakeRunCheck @(
+            'param([string]$CheckId, [string]$OutDir, [int]$MaxSeconds, [string]$FilePath, [string[]]$ArgumentList, [string]$WorkingDirectory, [string]$BuildKind, [hashtable]$Environment, [string]$ArtifactPath, [string]$RepoRoot, [switch]$KillLingering)',
+            '[IO.File]::WriteAllText((Join-Path $OutDir "rc.json"), (@{ KillLingering = $KillLingering.IsPresent; GradleOpts = [string]$Environment["GRADLE_OPTS"] } | ConvertTo-Json))',
+            'exit 0')
+        $savedGradleOpts = $env:GRADLE_OPTS
+        $env:GRADLE_OPTS = '-Xmx1g -Dorg.gradle.daemon=true'
+        $rbOut = Join-Path $srDir 'rb-out'
+        $rb = Invoke-ReleaseBuild $srDir $rbOut (Join-Path $srDir 'rb-scratch') (Join-Path $srDir 'rb-cargo') 60 'aarch64' $fakeRunCheck 'C:\fake\pnpm.cmd'
+        if ($null -ne $savedGradleOpts) { $env:GRADLE_OPTS = $savedGradleOpts } else { Remove-Item Env:\GRADLE_OPTS -ErrorAction SilentlyContinue }
+        $rc = Get-Content -LiteralPath (Join-Path $rbOut 'rc.json') -Raw | ConvertFrom-Json
+        Assert ($rb.ExitCode -eq 0 -and $rc.KillLingering -eq $true) 'sign-release: the build call asks Run-Check to stop lingering processes'
+        Assert ($rc.GradleOpts -match '-Dorg\.gradle\.daemon=false' -and $rc.GradleOpts -match '-Xmx1g' -and $rc.GradleOpts.LastIndexOf('daemon=false') -gt $rc.GradleOpts.LastIndexOf('daemon=true')) 'sign-release: the build runs Gradle without a daemon, keeps a user GRADLE_OPTS and the no-daemon setting wins'
+        $cl = @{ n = 0 }
+        $cleanup = { $cl.n++ }
+        $null = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -Cleanup $cleanup
+        Assert ($cl.n -eq 1) 'sign-release: leftover build processes are stopped after a normal build'
+        try { $null = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder { throw 'boom' } -Verifier $okVerify -Cleanup $cleanup } catch { }
+        Assert ($cl.n -eq 2 -and @($srEnvNames | Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) }).Count -eq 0) 'sign-release: leftover build processes are stopped when the build throws'
+        $glRepo = Join-Path $srDir 'gl-repo'
+        $glDir = Join-Path $glRepo 'src-tauri\gen\android'
+        New-Item -ItemType Directory -Force -Path $glDir | Out-Null
+        New-Cmd (Join-Path $glDir 'gradlew.bat') @('@echo off', 'echo %* > "%~dp0stop-args.txt"', 'exit /b 0')
+        Stop-ReleaseBuildLeftovers $glRepo (Join-Path $srDir 'gl-work')
+        Assert ((Test-Path -LiteralPath (Join-Path $glDir 'stop-args.txt')) -and ((Get-Content -LiteralPath (Join-Path $glDir 'stop-args.txt') -Raw) -match '--stop')) 'sign-release: the leftover cleanup runs gradlew --stop from the Android project'
+        $glSentinelJava = 'C:\sentinel-java-home-before'
+        $glSavedJava = $env:JAVA_HOME
+        New-Cmd (Join-Path $glDir 'gradlew.bat') @('@echo off', 'echo %JAVA_HOME%> "%~dp0stop-java-home.txt"', 'exit /b 0')
+        $env:JAVA_HOME = $glSentinelJava
+        Stop-ReleaseBuildLeftovers $glRepo (Join-Path $srDir 'gl-work')
+        $glAfterJava = $env:JAVA_HOME
+        if ($null -ne $glSavedJava) { $env:JAVA_HOME = $glSavedJava } else { Remove-Item Env:\JAVA_HOME -ErrorAction SilentlyContinue }
+        $glSeenJava = (Get-Content -LiteralPath (Join-Path $glDir 'stop-java-home.txt') -Raw).Trim()
+        Assert ($glSeenJava -eq $script:SigningJdk -and $glAfterJava -eq $glSentinelJava) 'sign-release: the leftover cleanup stops Gradle with the JDK 21 and restores the caller JAVA_HOME afterwards'
+        Assert ($rc.GradleOpts -match '-Dkotlin\.compiler\.execution\.strategy=in-process') 'sign-release: the build runs the Kotlin compiler in-process so no Kotlin daemon keeps the signing values'
+
+        # cleanup ordering, failure and lock refusal
+        $cleanupSeen = @{ vars = $null }
+        $envCleanup = { $cleanupSeen.vars = @($srEnvNames | Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) }).Count }
+        $null = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -Cleanup $envCleanup
+        Assert ($cleanupSeen.vars -eq 0) 'sign-release: the leftover cleanup runs only after the signing environment is cleared'
+        $script:cf = $null
+        $warnOut = (& { try { $script:cf = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild -Verifier $okVerify -Cleanup { throw 'cleanup-boom' } } catch { } } 3>&1 | Out-String)
+        Assert ($script:cf.Pass -and $warnOut -match 'build cleanup failed' -and $warnOut -match 'cleanup-boom') 'sign-release: a failing cleanup only warns and the build verdict is still returned'
+        $lockCleanups = @{ n = 0 }
+        $lockCleanup = { $lockCleanups.n++ }
+        $lockCargo = Join-Path $srDir 'lock-cargo'
+        $lockHeld = Enter-Lock ($lockCargo + '.lock')
+        $lockBuild = Invoke-ReleaseBuild $srDir (Join-Path $srDir 'lock-out') (Join-Path $srDir 'lock-scratch') $lockCargo 60 'aarch64' $fakeRunCheck 'C:\fake\pnpm.cmd'
+        $lockRun = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder { Invoke-ReleaseBuild $srDir (Join-Path $srDir 'lock-out') (Join-Path $srDir 'lock-scratch') $lockCargo 60 'aarch64' $fakeRunCheck 'C:\fake\pnpm.cmd' } -Verifier $okVerify -Cleanup $lockCleanup
+        Exit-Lock ($lockCargo + '.lock')
+        Assert ($lockHeld -and $lockBuild.Started -eq $false -and $lockBuild.ExitCode -eq 1 -and -not $lockRun.Pass -and $lockRun.Reason -match 'another release build holds' -and $lockCleanups.n -eq 0) 'sign-release: a build refused because another holds the lock runs no cleanup, so another build daemon is not stopped'
+
+        # apksigner output as the real tool prints it
+        # (build-tools 37.0.0 output for a v2-signed APK; a v1+v2+v3 APK lists the same certificate once per scheme; older tools print "Signer #1")
+        $apksignerOut = "V2 Signer: certificate DN: CN=RisuTanium`r`nV2 Signer: certificate SHA-256 digest: " + $srDigest + "`r`nV2 Signer: certificate SHA-1 digest: 0da2f78ca412b1e537c3b03afd96e89f3c5d2323`r`nV2 Signer: certificate MD5 digest: 0dd6ed6945e6de81909b4b59ad950938`r`n"
+        Assert ((Get-CertDigestFromText $apksignerOut) -eq $srDigest) 'sign-release: the signer certificate SHA-256 digest is read from apksigner --print-certs output'
+        $multiOut = ('V1 Signer: certificate SHA-256 digest: ' + $srDigest.ToUpperInvariant() + "`nV2 Signer: certificate SHA-256 digest: " + $srDigest + "`nV3 Signer: certificate SHA-256 digest: " + $srDigest + "`n")
+        Assert ((Get-CertDigestFromText $multiOut) -eq $srDigest -and (Get-CertDigestFromText ('Signer #1 certificate SHA-256 digest: ' + $srDigest + "`n")) -eq $srDigest) 'sign-release: the same certificate under several schemes, or the older "Signer #1" form, yields one digest'
+        Assert ($null -eq (Get-CertDigestFromText ($multiOut + "V3.1 Signer: certificate SHA-256 digest: " + ('ee' * 32) + "`n")) -and $null -eq (Get-CertDigestFromText 'Verifies') -and $null -eq (Get-CertDigestFromText ("V2 Signer: certificate SHA-256 digest: nothex`n"))) 'sign-release: signers with different certificates, no signer or a malformed digest yield no digest'
+
+        # install: a signature mismatch is refused without -AllowClear and nothing is uninstalled
+        $adbCalls = [Collections.ArrayList]::new()
+        function Initialize-Adb { param($Dir, $AdbExe) $true }
+        function Get-DeviceState { param($Serial) 'device' }
+        function Invoke-Adb {
+            param($AdbArgs, $TimeoutSec, $Serial)
+            $null = $adbCalls.Add(($Serial + ' ' + ($AdbArgs -join ' ')))
+            if ($AdbArgs[0] -eq 'install' -and -not $script:uninstalled) { return [pscustomobject]@{ ExitCode = 1; TimedOut = $false; Out = ''; Err = 'Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]' } }
+            if ($AdbArgs[0] -eq 'uninstall') { $script:uninstalled = $true }
+            return [pscustomobject]@{ ExitCode = 0; TimedOut = $false; Out = 'Success'; Err = '' }
+        }
+        $script:uninstalled = $false
+        $i1 = Install-SignedApk $srApk 'FAKESERIAL' $false $srDir $null
+        Assert ($i1 -match 'signature-mismatch' -and $i1 -match 'AllowClear' -and -not ($adbCalls -match 'uninstall') -and $adbCalls[0] -match '^FAKESERIAL install -r ') 'sign-release: -Install refuses a signature mismatch without -AllowClear, uses -s <serial> and uninstalls nothing'
+        $adbCalls.Clear()
+        $warnOut = (& { $script:i2 = Install-SignedApk $srApk 'FAKESERIAL' $true $srDir $null } 3>&1 | Out-String)
+        Assert ($null -eq $script:i2 -and $warnOut -match 'WIPES' -and ($adbCalls -match 'uninstall io\.github\.yor42\.risutanium')) 'sign-release: -AllowClear warns that the data is wiped, then uninstalls and installs'
+        Assert ((Install-SignedApk $srApk '' $false $srDir $null) -match 'explicit -Serial') 'sign-release: -Install without a serial is refused'
+
+        # a vault that is not a SecretStore cannot be checked for a password, so it is refused before any secret is read
+        function Get-Module { param($Name, [switch]$ListAvailable) 'fake' }
+        function Import-Module { param($Name, $ErrorAction) }
+        function Get-SecretVault { param($Name, $ErrorAction) [pscustomobject]@{ ModuleName = 'Some.Other.Vault' } }
+        function Get-Secret { param($Vault, $Name, [switch]$AsPlainText, $ErrorAction) $script:secretRead = $true; 'x' }
+        $script:VaultChecked = $false
+        $script:secretRead = $false
+        $nsErr = $null
+        try { $null = Read-VaultSecret 'RisuSigning' 'RisuKeyAlias' } catch { $nsErr = $_.Exception.Message }
+        Assert ($nsErr -match 'not a SecretStore vault' -and -not $script:secretRead) 'sign-release: a vault that is not a SecretStore is refused before any secret is read'
+    }
 
     # build-apk records a failure when a prerequisite is missing
     $savedNdk = $env:NDK_HOME

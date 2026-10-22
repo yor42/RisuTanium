@@ -660,6 +660,7 @@ describe('the export phases', () => {
         // The measurement figures a note appends are checked in exportMeasure.test.ts; here only the order and the delivery counts.
         expect(recorded.find((phase) => phase.startsWith('export cold collected'))).toContain('stubChars=')
         expect(recorded.find((phase) => phase.startsWith('export closed'))).toContain('writeCalls=')
+        expect(recorded.find((phase) => phase.startsWith('export closed'))).toContain('appendSynced=')
         const phases = recorded.map((phase) => phase.replace(/ (?:stubChars|writeCalls)=.*$/, ''))
         expect(phases).toEqual([
             ...FIRST_FIXED,

@@ -11487,3 +11487,167 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
   - The question texts are lane A's paraphrase; the option text is the orchestrator's.
   - These answers fix behaviour only; nothing here authorizes application-code edits by lane A beyond the merge.
   - TODO(evidence): the exact question texts as asked, and the option text of Q-H, are not in the brief for this pass.
+
+### MC-363 — Lane B, 2026-10-22: CHORE-223 next steps after the Note 9 measurement (size both fixes; probe on the phone before a design; apply character defaults when a stored character opens)
+
+- **Tag:** decisions (two `AskUserQuestion` rounds, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs:
+  - lane A's Note 9 measurement of `cbd256917` (`%TEMP%\risu-lane-b\device-requests\2026-10-22-chore223-export-measure.result.md`; lane A reported it doc-verified);
+  - for round 2, `%TEMP%\risu-lane-b\c223\sizing2.md` (investigator), superseded where they differ by `sizing2-verify.md` (`doc-verifier`).
+- **Related:** `MC-362`, `MC-359`, `MC-326` 4; CHORE-223, CHORE-224.
+
+Round 1:
+1. **"Size both fixes (Recommended)".** One investigation, no code: whether the export's writes can reuse the import's fast write path (or a similar command) for the file picked in the save dialog, and whether the character reads can be batched like the asset reads. It returns a plan with expected savings and the Rust involved, for approval before any implementation. Not chosen: "Size the write fix only" and "Record only".
+2. **"Check the alert in the sizing (Recommended)".** The same investigation checks whether opening a stored character can throw with real character data or only with the synthetic data. The memory release stays as it is, and the record notes that the peak lies elsewhere. No phone re-run for the 3,501 count. Not chosen: "Also re-run the phone" and "Leave both".
+
+Round 2:
+3. **"Phone measurement first (Recommended)".** A short measurement with no Rust: on the Note 9, time the app's existing fast write command against the current write call, one at a time and several at once, and how many character reads can usefully run at once. One phone run through lane A; then a plan with a design the numbers support. Not chosen: "Build the small command now" and "Stop here".
+4. **"Fill in defaults on open (Recommended)".** When a stored character is opened, apply the same default fields the app applies at startup and card import. A small separate item (CHORE-224) with its own review; no change to the backup format. Not chosen: "Scan a real backup first" and "Fix the test data only".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- Round 2's question stated the save-to-complete range "from ~119 s to somewhere between ~75 s and ~30 s"; the ~30 s end holds only if the per-call wait also goes (`sizing2-verify.md`).
+- The stage 0 probes run from CDP against the installed build, so item 3 needs no app-code change (`device-requests\2026-10-22-chore223-stage0-probes.md`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-364 — Lane B, 2026-10-22: CHORE-224 scope (plugins and MCP get the defaults too; a group without members gets an empty list)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\c224\sizing.md` (investigator), superseded where they differ by `c224\sizing-verify.md` (`doc-verifier`).
+- **Related:** `MC-363` 4, `MC-175`; CHORE-224.
+
+1. **Plugins and MCP: "Cover them too (Recommended)".** One more call in the plugin and MCP access path, so a plugin reading or editing a stored character never hits the missing field. Same review, a few more tests. Not chosen: "Screen only".
+2. **Groups: "Fill in an empty list (Recommended)".** Opening a group stored without its member list gives it an empty member list instead of crashing; no change for groups that have members. Not chosen: "Leave groups".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The plan (`c224\plan.md`) applies item 1 to the write path (`restoreArchivedForWrite`) and, only if no export reads through it, to the copy `readArchivedCharacter` returns; exports stay verbatim (`MC-175`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-365 — Lane B, 2026-10-22: CHORE-223 fix design (a text-encoded write command, read-ahead, and a Rust batch read of stored character data)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: lane A's stage 0 probes (`%TEMP%\risu-lane-b\device-requests\2026-10-22-chore223-stage0-probes.result.md` with `probes.json`; lane A reported its doc-verifier corrections appended), and `c223\sizing2.md` with `sizing2-verify.md`.
+- **Related:** `MC-363`, `MC-362`, `MC-345`; CHORE-223.
+
+1. **"Also batch reads in Rust".** Plan three parts:
+   - a small Rust command that appends text-encoded bytes to the picked file (no number lists), with one line in the shared command list;
+   - reading 2 to 4 characters ahead, in TypeScript;
+   - a Rust batch read for stored character data, which touches the shared read path used by startup and saving: a larger review, and a more certain read gain.
+   
+   Not chosen: "Text write + read-ahead (Recommended)" (without the Rust batch read) and "Probe more first".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated: the write's per-byte cost (about 0.45 ms per KB on the page) is real; the flat ~3 s wait did not reproduce on its own and probably comes from load during the export; more reads at once help (about 5x from 1 to 16 at once, on small warm files); the export has about 7 reads in flight per character today.
+- Corrections to the question's figures (records verification): the probes timed whole `write_file` calls, about 0.45 to 0.65 ms per KB per call (1.5 to 2.2 MiB/s); the page-side share is inferred, not timed. The export issues about 7 reads per character through 8 workers, with about 4 in flight on average as measured.
+- Lane A's verification limits these readings: the probe writes were not durable and not to the save target, and the read scaling holds only for warm 8 to 64 KiB files.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-366 — Lane B, 2026-10-22: store2 stage 5a scope (automatic clean-up of store2 leftovers only; the asset file-count limit waits for 5b; no off switch)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s5a\sizing.md` (investigator), superseded where they differ by `s5a\sizing-verify.md` (`doc-verifier`: 24 claims, 17 verified, corrections C1 to C4, omissions O1 to O5).
+- **Related:** `MC-345` (A2; amends nothing), `MC-288`, `MC-289`, `MC-290` U9, `MC-315` W5-Q6, `MC-316` W5-Q7/Q8, `MC-314` W4-Q7.
+
+1. **Scope: "Leftovers only (Recommended)".** Stage 5a turns on automatic clean-up of the new storage's internal leftovers only (old saved versions nothing refers to): about 150 to 200 lines, no Rust, no screen. Assets and inline images stay untouched until 5b. The question stated that the space it frees on the maintainer's data is unmeasured and may be little, and that the 5a/5b split never said where asset clean-up belongs. Not chosen: "Also build asset clean-up".
+2. **The asset file-count limit: "Decide with 5b (Recommended)".** The placeholder limit (50,000) stays until the asset clean-up is planned in 5b. The question stated that the maintainer's save lists about 383,000 asset entries (roughly 32 GiB), so the asset clean-up would not run automatically for them until this is decided. Not chosen: "Raise it for large libraries" and "Button only above it".
+3. **Off switch: "No switch; .bin is the fallback (Recommended)".** No off switch. Safety rests on the tests, the reviews and the phone check, and the PC `.bin` stays the restore. Not chosen: "Toggle in an existing settings page" and "Computer-only switch".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator. The `MC-345` "5a now, 5b later" option text was also the orchestrator's.
+- "383,000 asset entries" is the `.bin` census of the maintainer's save (383,742 entries, 32.2 GiB), not a measured on-disk file count.
+- Footnote to item 1: once clean-up runs automatically, `exportThisTabBackup` does not pin its base, so a peer tab's clean-up can delete a parked tab's units. This matters for Node and web, not the single-WebView Android MVP; the plan names it.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-367 — Lane B, 2026-10-22: CHORE-223 fix staging and the failed-export file on Android (keep today's message; stage A, a phone run, then stage B)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\c223\design.md` (investigator), superseded where they differ by `c223\design-verify.md` (`doc-verifier`; saved by the orchestrator).
+- **Related:** `MC-365`, `MC-091`; CHORE-223.
+
+1. **Failed file: "Keep today's message (Recommended)".** When an Android backup export fails partway, the half-written file in the picked folder stays, and today's message stands: "The backup file is incomplete and could not be deleted by the app. Do not use it: delete it yourself, then run the backup again." No new outcome and nothing to translate. Not chosen: "Empty the file too".
+2. **Staging: "Stage A, phone, then B (Recommended)".** Stage A is the write command plus reading 3 characters ahead; then a phone run; then stage B, the batched Rust reads, designed with stage A's figures, with the advisor challenge and the strict review because it touches the shared read path at startup and saving. Two commits and two phone runs. Not chosen: "All three at once".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated that the cleanup failure is checked by source, not on the phone, and that about 26 to 33 s of the roughly 100 s writing time is the supported write saving; the rest is unexplained, and no probe targeted the save-dialog file.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-368 — Lane B, 2026-10-22: stage 5a rollout (the daily APK gets 5a only after a copy-profile run; the server/web peer exposure is accepted until 5b)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the senior-advisor challenge of `s5a\plan.md` r1 (`%TEMP%\risu-lane-b\s5a\advisor.md`, saved by the orchestrator; `[APPROVE WITH AMENDMENTS]`, maintainer flags A and B).
+- **Related:** `MC-366`, `MC-345` 5, `MC-313`, `MC-314`.
+
+1. **Daily APK: "Only after the copy run (Recommended)".** The measurement build runs the clean-up on a snapshot copy of the real profile (from lane A's A1 import) first; the daily install gets 5a only once the counts and timings look right. Not chosen: "Ship with the next MVP build".
+2. **Server and web peers: "Accept for now, fix in 5b (Recommended)".** On the self-hosted server or web version with two devices or tabs open, automatic clean-up can delete stored pieces another open page still uses when that page fell more than 20 saves behind; that page then asks to reload, and a backup started from it could miss pieces. Android, the MVP platform, has one page and is unaffected. Record the exposure; 5b adds protection for backups taken from an older page. Not chosen: "Android only for 5a" and "Protect it in 5a". **Superseded by `MC-369`:** the question's premise ("more than 20 saves behind") was wrong.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question's "no data is lost from the latest save" means the latest committed save; the stale page's unsaved view is lost on reload (Reload-only, `MC-313`/`MC-314`).
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-369 — Lane B, 2026-10-22: stage 5a runs automatic clean-up only in the app (Tauri); the server and web versions keep today's behaviour until 5b (supersedes `MC-368` 2)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the opus-reviewer Gate 1 r1 verdict on `s5a\plan.md` (`%TEMP%\risu-lane-b\s5a\gate1-r1.md`, `[REJECT]`, B2 and N2).
+- **Related:** `MC-368`, `MC-366`, `MC-345` A2, `MC-313`, `MC-314`.
+
+1. **Server and web: "Android app only for 5a (Recommended)".** Automatic clean-up runs only in the Android/desktop app for now; the self-hosted server and web version keep today's behaviour (no clean-up) until 5b adds the protection. The question stated the corrected premise: the storage keeps an older save version only if it is at least 5 minutes older than the previous kept one, so on the server or web version one save from another open tab or device within about 5 minutes can let automatic clean-up delete pieces a still-open page uses; that page then asks to reload (the latest committed save is safe; its unsaved view is lost), a backup started from it could miss pieces, and another device can see a one-off save failure that then retries. Android (one page) is unaffected. Not chosen: "Accept for now, fix in 5b" and "Protect it in 5a".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- "The app" means the `tauri` session kind (Android and desktop); the `node` and `indexeddb` kinds run no automatic pass in 5a.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-452 — Lane A, 2026-10-22: MVP scope after A1 part 1 (chat-open and edit stalls, slow export, grid avatars) and the CHORE-224 merge
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22. The option labels are the maintainer's answers. The question texts below are lane A's paraphrase, and the option text is the orchestrator's, recorded as shown.
+- Related:
+  - `MC-345`: the personal Android MVP work order.
+  - `MC-346`: CHORE-153.
+  - `MC-363` and `MC-364`: CHORE-224.
+  - The A1 part 1 report, with the doc-verifier's corrections appended: `%TEMP%\risu-b715\a1-partial\report.md` (scratch).
+  - CHORE-154 to CHORE-157, CHORE-223, CHORE-224.
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- **MVP scope after A1 part 1, multi-select.**
+  - Question (paraphrased): A1 part 1 on the phone showed several slow spots: opening a long chat froze the page for about 20 s, editing one message took about 10 s to save, avatars load about one every 2 s, and the export took about 19.5 minutes. Which should be fixed before the MVP?
+  - Answer: "Chat open and edit stalls", "Slow export", "Grid avatar loading". The fourth option, "None, measure part 2 first", was not chosen.
+  - Option text:
+    - stalls: "Find and fix the long freezes when opening a chat and saving an edit (CHORE-154 to 157). Lane D has an unverified analysis to start from";
+    - export: "Speed up the export's asset writes. Lane B's export write fix (CHORE-223) already covers part of this";
+    - avatars: "Make character grid avatars load faster".
+- **CHORE-224 merge.**
+  - Question (paraphrased): merge lane B's CHORE-224 (`85a218885`)? The question named the 4 unrelated test timeouts under load and the side effect that a card with no chats and no globalLore now archives under the archive setting instead of being added live.
+  - Answer: "Merge + fold in (Recommended)".
+
+**What was decided (maintainer):**
+1. **MVP scope.** The chat-open and edit stalls, the slow export and grid avatar loading are fixed before the MVP, in addition to the `MC-345` work order.
+2. **CHORE-224 merge.** Merge lane B's CHORE-224 (`85a218885`, `MC-363`, `MC-364`) into `main` and fold in the records.
+
+- Notes, not the maintainer's words:
+  - The A1 part 1 timings come from one run on one Note 9, on a release build with the maintainer's real partial backup.
+    - The stall figures rest on CDP poll timeouts under poller load. No in-page long-task data was kept.
+    - The doc-verifier withdrew the report's "20 min with no file growth" claim. It was a polling gap: the export closed at 16:25:55.3.
+  - Routing:
+    - Lane D is briefed on the chat-open and edit stalls (CHORE-154 to 157) and on grid avatars.
+    - Lane B is told the export is in MVP scope. Lane B notes that CHORE-223 stage A covers the Android write path and the stub read-ahead, not the 686 s asset loop, which may need its own item.
+  - These answers set scope only. Each fix still goes through its own Gate 1 and Gate 2.
+  - No historical decision text is rewritten.

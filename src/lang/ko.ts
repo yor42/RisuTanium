@@ -2159,6 +2159,10 @@ export const languageKorean = {
         `저장이 ${names}을(를) 기다리는 중입니다. 저장하는 도중 해당 ID가 바뀌어 그 시도는 폐기되었고 다시 시도됩니다. ID가 더 이상 바뀌지 않을 때까지 아무것도 기록되지 않습니다. 그동안 한 변경 사항은 이 탭에 유지되지만 탭을 닫으면 사라집니다.`,
     saveRepairedEntriesNotice: (dropped: number, filled: number) =>
         `RisuAI가 캐릭터 목록을 복구했습니다: ${dropped > 0 ? `캐릭터가 아닌 항목 ${dropped}개를 제외했습니다` : ''}${dropped > 0 && filled > 0 ? ', 그리고 ' : ''}${filled > 0 ? `ID가 없거나 저장할 수 없던 캐릭터 ${filled}개에 새 ID를 부여했습니다` : ''}.${dropped > 0 ? ' 제외된 항목은 플러그인이 기록했을 수 있습니다.' : ''}`,
+    saveCharacterUnsavedNotice: (name: string) =>
+        `RisuAI가 지금 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 이 캐릭터에 한 최신 변경 사항은 저장되지 않고 있으며, 문제가 해결되기 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 사본은 유지되고, 그 외의 모든 것은 계속 저장되며, RisuAI는 조용히 계속 시도합니다.`,
+    saveCharacterNeverSavedNotice: (name: string) =>
+        `RisuAI가 ${name}을(를) 전혀 저장할 수 없습니다. 한 번도 저장된 적이 없고 데이터가 유효하지 않습니다(플러그인이 변경했을 수 있습니다). 저장되지 않고 있으므로 문제가 해결되기 전에 탭을 닫거나 새로고침하면 사라집니다. 그 외의 모든 것은 계속 저장되며, RisuAI는 조용히 계속 시도합니다.`,
     personasRepairedNotice: (count: number) =>
         `RisuAI가 유효하지 않은 데이터인 페르소나 ${count}개를 제외했습니다. 플러그인이 기록했을 수 있습니다.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>

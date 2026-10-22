@@ -15,6 +15,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `Run-Check.ps1` | Runs one child command under a hard cap and writes `result.json`. |
 | `build-apk.ps1` | Android APK build through Run-Check (debug or release). |
 | `sign-install.ps1` | Verifies (and for release re-signs with a throwaway key) and installs an APK on the test phone. |
+| `sign-release.ps1` | Maintainer only: builds the release APK signed with the real key from a SecretManagement vault and verifies the certificate. Refuses agent shells; setup in [SIGNING.md](SIGNING.md). |
 | `device-prep.ps1` | Keeps the phone awake and exempts the app from battery optimisation; `-Revert` restores the originals. |
 | `cold-start.ps1` | N cold starts: `am start -W` time, ready signal over CDP, settled PSS. |
 | `cdp.mjs` | `node` helper: evaluates one expression in the first page target of a forwarded WebView devtools port. |
