@@ -5,7 +5,7 @@
  * the fit, not a defect reproducer; the step at 16 MiB is a recorded shape, not a fitted one.
  */
 import { describe, expect, test } from 'vitest'
-import { estimateImportSeconds, importAssetBytes, importFreeSpaceBytes, importGigabytesText, IMPORT_TIME_WARNING_BYTES, roundImportMinutes } from '../importEstimate'
+import { estimateImportSeconds, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, IMPORT_TIME_WARNING_BYTES, roundImportMinutes } from '../importEstimate'
 
 const MIB = 1024 * 1024
 
@@ -65,6 +65,51 @@ describe('free space', () => {
         expect(importGigabytesText(1_000_000_001)).toBe(1.1)
         expect(importGigabytesText(1_000_000_000)).toBe(1)
         expect(importGigabytesText(0)).toBe(0)
+    })
+})
+
+describe('importSpaceVerdict', () => {
+    // With no assets the need is exactly 512 MiB, so the boundary involves no floating-point rounding.
+    const NEED = importFreeSpaceBytes(0)
+
+    test('free equal to the need is enough; one byte less is short', () => {
+        expect(NEED).toBe(512 * MIB)
+        expect(importSpaceVerdict(NEED, NEED)).toBe('enough')
+        expect(importSpaceVerdict(NEED - 1, NEED)).toBe('short')
+        expect(importSpaceVerdict(NEED + 1, NEED)).toBe('enough')
+    })
+
+    test('no free figure is unknown, whatever the need', () => {
+        expect(importSpaceVerdict(null, NEED)).toBe('unknown')
+        expect(importSpaceVerdict(null, 0)).toBe('unknown')
+    })
+
+    test('zero free bytes is short, not unknown', () => {
+        expect(importSpaceVerdict(0, NEED)).toBe('short')
+    })
+})
+
+describe('importFreeGigabytesText', () => {
+    test('is decimal, one decimal, rounded down so the shown free space never overstates', () => {
+        expect(importFreeGigabytesText(1_999_999_999)).toBe(1.9)
+        expect(importFreeGigabytesText(2_000_000_000)).toBe(2)
+        expect(importFreeGigabytesText(599_999_999)).toBe(0.5)
+        expect(importFreeGigabytesText(99_999_999)).toBe(0)
+        expect(importFreeGigabytesText(0)).toBe(0)
+    })
+
+    test('whenever the verdict is short the shown free figure is below the shown need', () => {
+        const needs = [0, 1, 400 * MIB, 2887 * MIB, 6841 * MIB]
+        for (const assets of needs) {
+            const need = importFreeSpaceBytes(assets)
+            const shownNeed = importGigabytesText(need)
+            for (const delta of [1, 1000, 50_000_000, 99_999_999, 100_000_000, 100_000_001, 1_000_000_000]) {
+                const free = Math.max(0, Math.floor(need) - delta)
+                if (importSpaceVerdict(free, need) === 'short') {
+                    expect(importFreeGigabytesText(free)).toBeLessThan(shownNeed)
+                }
+            }
+        }
     })
 })
 

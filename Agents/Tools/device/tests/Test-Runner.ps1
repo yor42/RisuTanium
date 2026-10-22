@@ -111,7 +111,7 @@ New-Cmd $fakeJs @(
     '    m[1].split(" ").forEach((n) => walk(n)); return',
     '  }',
     '  if ((m = /^run-as \S+ rm -rf (.+)$/.exec(c))) { m[1].split(" ").forEach((n) => fs.rmSync(path.join(dd, n), { recursive: true, force: true })); return }',
-    '  if ((m = /^run-as \S+ tar -xf (\S+)$/.exec(c))) { const r = cp.spawnSync("tar", ["-xf", path.join(rr, path.basename(m[1])), "-C", dd], { stdio: "inherit" }); const drop = rd("dropfile").trim(); if (drop) fs.rmSync(path.join(dd, drop), { force: true }); const shr = rd("shrinkfile").trim(); if (shr) fs.writeFileSync(path.join(dd, shr), "x"); process.exit(rd("xfail") !== "" ? 3 : r.status) }',
+    '  if ((m = /^run-as \S+ tar( --no-same-owner)? -xf (\S+)$/.exec(c))) { if (rd("chownfail") !== "" && !m[1]) { process.stderr.write("tar: chown 10320:10320 \x27store2\x27: Operation not permitted\n"); process.exit(1) } const r = cp.spawnSync("tar", ["-xf", path.join(rr, path.basename(m[2])), "-C", dd], { stdio: "inherit" }); const drop = rd("dropfile").trim(); if (drop) fs.rmSync(path.join(dd, drop), { force: true }); const shr = rd("shrinkfile").trim(); if (shr) fs.writeFileSync(path.join(dd, shr), "x"); process.exit(rd("xfail") !== "" ? 3 : r.status) }',
     '  if ((m = /^stat -c %s (\S+)$/.exec(c))) { const f = path.join(rr, path.basename(m[1])); if (!fs.existsSync(f)) process.exit(1); out(String(fs.statSync(f).size)); return }',
     '  if ((m = /^uiautomator dump (\S+)$/.exec(c))) {',
     '    fs.mkdirSync(rr, { recursive: true })',
@@ -148,7 +148,9 @@ New-Cmd $fake2 @('@echo off', ('node "' + $fakeJs + '" %*'), 'exit /b %errorleve
 # Fake CDP page for the import tests, driven by files in FAKE_ADB_DIR: ringplan (JSON array of marks; one more mark shows per ring poll,
 # a mark may carry fx = forcestop to drop the app pid like a harness-issued am force-stop, fx = chars to raise the chaId token
 # count, or fx = restart to restart the page and, unless nogrow is set, to grow the store2 entry count like a landed import),
-# noring, warnat (poll number from which the size warning shows until it is confirmed), wizard.
+# noring, warnat (poll number from which the size warning shows until it is confirmed), wizard, notices (one notice text per line; each
+# dismiss call removes the first one, and with noticegate = restarted they show only after the page restart), bootblock (the loading
+# screen stays up while a notice is pending).
 $fakeCdp = Join-Path $work 'fakecdp.cjs'
 New-Cmd $fakeCdp @(
     'const fs = require("fs"), path = require("path")',
@@ -172,7 +174,15 @@ New-Cmd $fakeCdp @(
     '}',
     'if (/r\("clicked"\)/.test(expr)) { if (rd("yesswallow") !== "" && rd("swallowed") === "") { wr("swallowed", "1"); val("clicked") } wr("yes", "1"); val("clicked") }',
     'if (/r\("ok"\)/.test(expr)) val("none")',
-    'if (/!\(new RegExp\(/.test(expr)) val(rd("bootdone", "true").trim() === "true")',
+    'const pendingNotices = () => rd("notices").split("\n").filter(Boolean)',
+    'if (/dismissed:/.test(expr)) {',
+    '  const ns = pendingNotices()',
+    '  const gate = rd("noticegate").trim()',
+    '  if (ns.length === 0 || (gate === "restarted" && rd("restarted") === "") || (gate === "booting" && rd("bootprobed") === "")) val("none")',
+    '  wr("notices", ns.slice(1).join("\n")); val("dismissed:" + ns[0])',
+    '}',
+    'if (/!\(new RegExp\(/.test(expr)) wr("bootprobed", "1")',
+    'if (/!\(new RegExp\(/.test(expr)) val(rd("bootdone", "true").trim() === "true" && !(rd("bootblock") !== "" && pendingNotices().length > 0))',
     'if (/RegExp\(/.test(expr) && /innerText/.test(expr)) val(rd("wizard", "false").trim() === "true")',
     'val(true)')
 function Set-Fake([string]$Name, [string]$Value) { [IO.File]::WriteAllText((Join-Path $fdir $Name), $Value) }
@@ -230,6 +240,18 @@ try {
     Assert ($code -notmatch $rxPmClear) 'no pm clear'
     Assert ($code -notmatch '(?i)(Get-Content|ReadAllText|Select-String)[^\r\n]*(key\.txt|keystore\.properties)') 'no reads of signing material'
 
+    # the default adb forward range of the scripts lies inside lane A's reservation (6000 to 6399) and outside both phone ranges
+    # (phone 1 6270 to 6309, phone 2 6310 to 6329), and every script that has -PortMin/-PortMax agrees
+    foreach ($ps in @('cold-start.ps1', 'import-bin.ps1')) {
+        $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $RunnerDir $ps), [ref]$null, [ref]$null)
+        $dflt = @{}
+        foreach ($pa in $ast.ParamBlock.Parameters) { $dflt[$pa.Name.VariablePath.UserPath] = $pa.DefaultValue.Value }
+        $pmin = [int]$dflt['PortMin']
+        $pmax = [int]$dflt['PortMax']
+        Assert ($pmin -ge 6000 -and $pmax -le 6399 -and $pmin -le $pmax -and ($pmax -lt 6270 -or $pmin -gt 6329)) ('ports: ' + $ps + ' defaults ' + $pmin + '-' + $pmax + ' are inside lane A and clear of both phone ranges')
+    }
+    Assert (@(Get-ChildItem -LiteralPath $RunnerDir -Filter '*.ps1' -File | Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\b95\d\d\b' }).Count -eq 0) 'ports: no script mentions the former 95xx default range'
+
     # -Fast skips the sections the stage 4 and lock tests do not depend on; it is for scratch mutant runs only.
     if (-not $Fast) {
     # quoting
@@ -246,6 +268,93 @@ try {
     [IO.File]::WriteAllText($lock, '99999999,1')
     Assert (Enter-Lock $lock) 'lock: stale lock of a dead process is replaced'
     Exit-Lock $lock
+
+    # lock: two waiters that both judge the same lock stale must not both take it. Waiter B judges the stale holder, waiter A
+    # (a nested Enter-Lock from inside B's judgment) replaces the lock and holds it, then B acts on its earlier judgment.
+    $origJudge = ${function:Test-LockTextHeld}
+    $raceLock = Join-Path $work 'race.lock'
+    $script:raceFirst = $true
+    $script:raceLockPath = $raceLock
+    $script:raceA = $null
+    [IO.File]::WriteAllText($raceLock, '99999991,5')
+    function Test-LockTextHeld([string]$Txt) {
+        if ($script:raceFirst) {
+            $script:raceFirst = $false
+            $script:raceA = Enter-Lock $script:raceLockPath
+        }
+        return (& $script:origJudgeBlock $Txt)
+    }
+    $script:origJudgeBlock = $origJudge
+    $raceB = Enter-Lock $raceLock
+    $raceText = ''
+    if (Test-Path -LiteralPath $raceLock) { $raceText = [IO.File]::ReadAllText($raceLock) }
+    if ($origJudge) { Set-Item -Path function:Test-LockTextHeld -Value $origJudge } else { Remove-Item -Path function:Test-LockTextHeld -ErrorAction SilentlyContinue }
+    Assert ($script:raceA -eq $true -and $raceB -eq $false -and $raceText -match ('^' + $PID + ',')) 'lock race: a second waiter that judged the same stale lock does not remove the fresh lock the first waiter created'
+    Exit-Lock $raceLock
+    Assert (-not (Test-Path -LiteralPath $raceLock)) 'lock race: the winner releases its lock normally'
+
+    # lock: the stale lock is moved to a tombstone named after its holder; an old tombstone is removed at the next replacement
+    $tombLock = Join-Path $work 'tomb.lock'
+    [IO.File]::WriteAllText($tombLock, '99999992,7')
+    $oldTomb = $tombLock + '.stale-99999990-1'
+    [IO.File]::WriteAllText($oldTomb, '99999990,1')
+    (Get-Item -LiteralPath $oldTomb).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-30)
+    Assert (Enter-Lock $tombLock) 'lock tombstone: a stale lock is replaced'
+    Assert ((Test-Path -LiteralPath ($tombLock + '.stale-99999992-7')) -and -not (Test-Path -LiteralPath $oldTomb)) 'lock tombstone: the replaced lock is kept under its holder name and a tombstone older than 10 minutes is removed'
+    Exit-Lock $tombLock
+    [IO.File]::WriteAllText($tombLock, '99999992,7')
+    $reRemoved = $null
+    try { $reRemoved = Remove-StaleLock $tombLock '99999992,7' } catch { }
+    Assert ($reRemoved -eq $false -and (Test-Path -LiteralPath $tombLock)) 'lock tombstone: a second claim on the same stale holder is refused and leaves the file as it was'
+    Remove-Item -LiteralPath $tombLock -Force
+
+    # lock: a waiter that cleans up tombstones right after another waiter's move must not remove the new tombstone. A stale lock
+    # older than 10 minutes is moved by A; B (same stale judgment) runs its cleanup before A does anything more; A then takes the
+    # lock; C (same stale judgment) must not move A's live lock away.
+    $origMove = ${function:Move-LockFile}
+    $winLock = Join-Path $work 'win.lock'
+    $winText = '99999991,5'
+    [IO.File]::WriteAllText($winLock, $winText)
+    (Get-Item -LiteralPath $winLock).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-2)
+    $script:winOrig = $origMove
+    $script:winFirst = $true
+    $script:winLockPath = $winLock
+    $script:winText = $winText
+    $script:winB = $null
+    function Move-LockFile([string]$From, [string]$To) {
+        & $script:winOrig $From $To
+        if ($script:winFirst) {
+            $script:winFirst = $false
+            $script:winB = Remove-StaleLock $script:winLockPath $script:winText
+        }
+    }
+    $winA = Remove-StaleLock $winLock $winText
+    $winAHeld = Enter-Lock $winLock
+    $winC = Remove-StaleLock $winLock $winText
+    $winLive = $false
+    if (Test-Path -LiteralPath $winLock) { $winLive = ([IO.File]::ReadAllText($winLock) -match ('^' + $PID + ',')) }
+    Set-Item -Path function:Move-LockFile -Value $origMove
+    Assert ($winA -eq $true -and $script:winB -eq $false -and $winAHeld -eq $true -and $winC -eq $false -and $winLive) 'lock window: a cleanup between a waiter''s move and its next step neither removes the tombstone nor lets a third waiter move the new lock away'
+    Exit-Lock $winLock
+
+    # import-bin default -WarnPattern: it must match the start of both store2 warnings (time and size) in the English and Korean
+    # UI; a pattern that misses the time warning leaves the run waiting for a manual tap.
+    $ibAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $RunnerDir 'import-bin.ps1'), [ref]$null, [ref]$null)
+    $ibParam = $ibAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'WarnPattern' }
+    $ibDefault = [string]$ibParam.DefaultValue.Value
+    # The Korean samples are the openings of store2ImportTimeWarning and store2ImportSizeWarning in ko.ts; ~uXXXX is a code point.
+    $koTime = '~uC774 ~uBC31~uC5C5~uC5D0~uB294 ~uD30C~uC77C~uC774 18101~uAC1C ~uB4E4~uC5B4 ~uC788~uC2B5~uB2C8~uB2E4.'
+    $koSize = '~uC774 ~uBC31~uC5C5~uC5D0 ~uB4E4~uC5B4 ~uC788~uB294 ~uB370~uC774~uD130~uB294 ~uC774~uBBF8~uC9C0~uC640 ~uAE30~uD0C0 ~uD30C~uC77C~uC744 ~uC81C~uC678~uD558~uACE0 ~uC57D 900 MB~uC785~uB2C8~uB2E4.'
+    $warnTexts = @(
+        'This backup holds 18101 files. From now, importing it on this phone may take about 15 minutes, or longer.',
+        'The saved data in this backup, not counting images and other files, is about 900 MB. Continue?',
+        [regex]::Replace($koTime, '~u([0-9A-F]{4})', { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) }),
+        [regex]::Replace($koSize, '~u([0-9A-F]{4})', { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) })
+    )
+    $warnAll = $true
+    foreach ($wt in $warnTexts) { if ($wt -notmatch $ibDefault) { $warnAll = $false } }
+    Assert ($warnAll -and $warnTexts.Count -eq 4) 'import-bin warn pattern: the default matches the time warning and the size warning in English and Korean'
+    Assert ('Keep the app open until it finishes.' -notmatch $ibDefault) 'import-bin warn pattern: the default does not match an ordinary notice'
 
     # schema
     $s = New-Result -CheckId 't' -BuildKind 'debug' -CapSec 5 -Repo $work -Serial $null
@@ -305,6 +414,38 @@ try {
     $bres = $null
     if (Test-Path -LiteralPath (Join-Path $bo 'result.json')) { $bres = Get-Content -LiteralPath (Join-Path $bo 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
     Assert ($bcode -eq 1 -and $bres -and $bres.verdict -eq 'fail' -and $bres.reason -match 'NDK_HOME|JDK') 'build-apk: missing prerequisite writes a fail result'
+
+    # build-apk: the gitignored generated Android files are checked before the build starts (a git archive tree lacks them)
+    $genRepo = Join-Path $work 'gen-repo'
+    $genApp = Join-Path $genRepo 'src-tauri\gen\android\app'
+    New-Item -ItemType Directory -Force -Path (Join-Path $genApp 'src\main\java\pkg\generated') | Out-Null
+    $genMiss0 = @(Get-AndroidGeneratedMissing $genRepo)
+    Assert ($genMiss0.Count -eq 2 -and ($genMiss0 -join ' ') -match 'generated/TauriActivity\.kt' -and ($genMiss0 -join ' ') -match 'proguard-tauri\.pro') 'generated files: both are reported when the tree has neither'
+    [IO.File]::WriteAllText((Join-Path $genApp 'src\main\java\pkg\TauriActivity.kt'), 'x')
+    $genMiss1 = @(Get-AndroidGeneratedMissing $genRepo)
+    Assert ($genMiss1.Count -eq 2) 'generated files: a TauriActivity.kt outside a generated directory does not count'
+    [IO.File]::WriteAllText((Join-Path $genApp 'src\main\java\pkg\generated\TauriActivity.kt'), 'x')
+    $genMiss2 = @(Get-AndroidGeneratedMissing $genRepo)
+    Assert ($genMiss2.Count -eq 1 -and $genMiss2[0] -match 'proguard-tauri\.pro') 'generated files: the missing proguard-tauri.pro is reported alone'
+    [IO.File]::WriteAllText((Join-Path $genApp 'proguard-tauri.pro'), 'x')
+    Assert (@(Get-AndroidGeneratedMissing $genRepo).Count -eq 0) 'generated files: nothing is reported when both exist'
+    # through build-apk (needs the pinned JDK, which the missing-prerequisite check looks at first)
+    $genJdk = 'C:\Users\yor42\.gradle\jdks\azul_systems__inc_-21-amd64-windows.2\bin\java.exe'
+    if (Test-Path -LiteralPath $genJdk) {
+        $genBare = Join-Path $work 'gen-bare'
+        New-Item -ItemType Directory -Force -Path $genBare | Out-Null
+        $savedNdk2 = $env:NDK_HOME
+        $env:NDK_HOME = $work
+        $go = Join-Path $work 'build-nogen'
+        $gtext = (& pwsh -NoProfile -File (Join-Path $RunnerDir 'build-apk.ps1') -OutDir $go -RepoRoot $genBare -ScratchRoot (Join-Path $work 'gen-scratch') -MaxSeconds 20 | Out-String)
+        $gcode = $LASTEXITCODE
+        if ($savedNdk2) { $env:NDK_HOME = $savedNdk2 } else { Remove-Item Env:\NDK_HOME -ErrorAction SilentlyContinue }
+        $gres = $null
+        if (Test-Path -LiteralPath (Join-Path $go 'result.json')) { $gres = Get-Content -LiteralPath (Join-Path $go 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
+        Assert ($gcode -eq 1 -and $gres -and $gres.verdict -eq 'fail' -and $gres.reason -match 'TauriActivity\.kt' -and $gres.reason -match 'proguard-tauri\.pro' -and $gres.reason -match 'copies nothing' -and -not (Test-Path -LiteralPath (Join-Path $genBare 'src-tauri'))) 'build-apk: a tree without the generated Android files fails early, names the files and how to provide them, and copies nothing'
+    } else {
+        Write-Output 'SKIP build-apk generated-files preflight: the pinned JDK 21 is not installed here'
+    }
 
     # done, path with spaces, argument with a space
     $d = Invoke-Runner 'done' (Join-Path $childDir 'done.cmd') @('hello world')
@@ -943,6 +1084,15 @@ try {
     Assert ($g.Exit -ne 0 -and $g.Result.verdict -eq 'fail' -and $g.Result.reason -match 'tar extraction failed' -and $g.Result.deviceTouched -eq $true) 'restore: a nonzero tar -xf exit fails the restore'
     Remove-Item -LiteralPath (Join-Path $fdir 'xfail') -Force
 
+    # restore after an uninstall and reinstall: the app uid differs from the one in the archive, so a tar that keeps the archived
+    # owner fails on chown; the extraction must not take the owner from the archive
+    Set-Fake 'chownfail' '1'
+    Clear-Calls
+    $g = Invoke-Restore 'g-rest-chown' @('-Id', 'base1')
+    $cc = Get-FakeCalls
+    Assert ($g.Exit -eq 0 -and $g.Result.verdict -eq 'pass' -and (Get-TreeHashes $ddata) -eq $baseHash -and $cc -match 'run-as \S+ tar --no-same-owner -xf ') 'restore: the extraction keeps the current app uid (tar --no-same-owner), so a restore after a reinstall with a new uid passes'
+    Remove-Item -LiteralPath (Join-Path $fdir 'chownfail') -Force
+
     # snapshot: a damaged, incomplete or unstable archive fails and leaves no directory behind
     foreach ($case in @(
             @{ Name = 'blocks'; File = 'tarextra'; Value = '1'; Match = 'whole number of tar blocks' },
@@ -1248,6 +1398,75 @@ try {
     Set-RingPlan @(@{ phase = 'walked, 3 entries'; t = 1000; heapMiB = 90 }, @{ phase = 'import planned'; t = 2000; heapMiB = 90; fx = 'restart' })
     $r3b = Invoke-Import 'imp-restart-planned' @('-FixturePath', $fxFile, '-SnapshotId', 'base1') 35
     Assert ($r3b.Exit -ne 0 -and $r3b.Result.verdict -eq 'timeout' -and $r3b.Result.verdict -ne 'pass') 'import: a page restart after only pre-commit marks with store2 growth is not a finished import and does not pass'
+
+    # the notice dismissal: only an alert box that offers a single OK button is clicked, never a confirm dialog
+    $noticeStub = Join-Path $work 'noticestub.cjs'
+    New-Cmd $noticeStub @(
+        'const fs = require("fs")',
+        'const expr = fs.readFileSync(process.argv[2], "utf8")',
+        'const log = []',
+        'const koOk = String.fromCharCode(0xD655, 0xC778), koYes = String.fromCharCode(0xC608), koNo = String.fromCharCode(0xC544, 0xB2C8, 0xC694)',
+        'const btn = (t, name) => ({ innerText: t, click: () => log.push(name) })',
+        'const mk = (text, buttons, inputs) => ({ innerText: text, querySelectorAll: (sel) => sel === "button" ? buttons : /input/.test(sel) ? (inputs || []) : [] })',
+        'const warnText = "This backup holds 3 GB of data. Continue?"',
+        'const scenes = {',
+        '  okEn: [mk("To keep memory use low, this app now stores each character separately.", [btn("OK", "notice-ok")])],',
+        '  okKo: [mk("notice", [btn(koOk, "notice-ko")])],',
+        '  okLower: [mk("notice", [btn("ok", "notice-lower")])],',
+        '  confirm: [mk("Some items are incomplete. Leave them out?", [btn("Yes", "leave-yes"), btn("No", "leave-no")])],',
+        '  confirmKo: [mk("notice", [btn(koYes, "ko-yes"), btn(koNo, "ko-no")])],',
+        '  warn: [mk(warnText, [btn("No", "warn-no"), btn("Yes", "warn-yes")])],',
+        '  warnOkOnly: [mk(warnText, [btn("OK", "warn-ok")])],',
+        '  yesOnly: [mk("notice", [btn("Yes", "lone-yes")])],',
+        '  okTwice: [mk("notice", [btn("OK", "ok-a"), btn("OK", "ok-b")])],',
+        '  okAndInput: [mk("name?", [btn("OK", "input-ok")], [{}])],',
+        '  cancelOnly: [mk("working", [btn("Cancel", "cancel")])],',
+        '  confirmThenNotice: [mk("Some items are incomplete. Leave them out?", [btn("Yes", "leave-yes"), btn("No", "leave-no")]), mk("notice text", [btn("OK", "notice-ok")])],',
+        '  noticeThenConfirm: [mk("notice text", [btn("OK", "notice-ok")]), mk(warnText, [btn("No", "warn-no"), btn("Yes", "warn-yes")])],',
+        '  none: []',
+        '}',
+        'const boxes = scenes[process.argv[3]]',
+        'globalThis.document = { querySelectorAll: (sel) => sel === "[data-alert-box]" ? boxes : [] }',
+        'Promise.resolve(eval(expr)).then((v) => console.log(JSON.stringify({ v, log })))')
+    $noticeExprFile = Join-Path $work 'notice-expr.txt'
+    $noticeWarn = 'This backup holds'
+    [IO.File]::WriteAllText($noticeExprFile, (Get-NoticeDismissExpression $noticeWarn))
+    function Invoke-NoticeStub([string]$Scene) { return ((& node $noticeStub $noticeExprFile $Scene | Out-String).Trim() | ConvertFrom-Json) }
+    $ns = @{}
+    foreach ($scene in @('okEn', 'okKo', 'okLower', 'confirm', 'confirmKo', 'warn', 'warnOkOnly', 'yesOnly', 'okTwice', 'okAndInput', 'cancelOnly', 'confirmThenNotice', 'noticeThenConfirm', 'none')) { $ns[$scene] = Invoke-NoticeStub $scene }
+    Assert ($ns.okEn.v -match '^dismissed:To keep memory use low' -and (@($ns.okEn.log) -join ',') -eq 'notice-ok') 'notice: a box with one OK button is dismissed and its text is returned'
+    Assert ((@($ns.okKo.log) -join ',') -eq 'notice-ko' -and $ns.okKo.v -match '^dismissed:') 'notice: the Korean OK label dismisses the notice'
+    Assert ((@($ns.okLower.log) -join ',') -eq 'notice-lower') 'notice: the OK label matches in any case'
+    foreach ($never in @('confirm', 'confirmKo', 'warn', 'warnOkOnly', 'yesOnly', 'okTwice', 'okAndInput', 'cancelOnly', 'none')) {
+        Assert ($ns[$never].v -eq 'none' -and @($ns[$never].log).Count -eq 0) ('notice: nothing is clicked in the scene ' + $never)
+    }
+    Assert ((@($ns.confirmThenNotice.log) -join ',') -eq 'notice-ok' -and (@($ns.noticeThenConfirm.log) -join ',') -eq 'notice-ok') 'notice: with a confirm dialog and a notice both open only the notice is dismissed, whichever comes first'
+
+    # the post-import notices: the archive-characters notice after the reload holds the boot, and the old launch-only OK click missed it
+    $noticeText = 'To keep memory use low, this app now stores each character separately.'
+    Initialize-ImportFake
+    Set-RingPlan $restartRing
+    Set-Fake 'notices' $noticeText
+    Set-Fake 'noticegate' 'restarted'
+    Set-Fake 'bootblock' '1'
+    $nb1 = Invoke-Import 'imp-notice-boot' @('-FixturePath', $fxFile, '-SnapshotId', 'base1', '-BootWaitSec', '15')
+    Assert ($nb1.Exit -eq 0 -and $nb1.Result.verdict -eq 'pass' -and $nb1.Result.import.bootFinished -eq $true -and $nb1.Result.import.bootState -eq 'booted' -and @($nb1.Result.import.noticesDismissed).Count -eq 1 -and $nb1.Result.import.noticesDismissed[0] -match '^To keep memory use low') 'import: a notice that holds the boot after the reload is dismissed, the boot finishes and the notice text is recorded'
+    Initialize-ImportFake
+    Set-RingPlan $restartRing
+    Set-Fake 'notices' $noticeText
+    Set-Fake 'noticegate' 'booting'
+    Set-Fake 'bootblock' '1'
+    $nb4 = Invoke-Import 'imp-notice-booting' @('-FixturePath', $fxFile, '-SnapshotId', 'base1', '-BootWaitSec', '15')
+    Assert ($nb4.Exit -eq 0 -and $nb4.Result.import.bootFinished -eq $true -and $nb4.Result.import.bootState -eq 'booted' -and @($nb4.Result.import.noticesDismissed).Count -eq 1) 'import: a notice that first shows during the boot wait is dismissed by the boot wait itself'
+    Initialize-ImportFake
+    Set-RingPlan $restartRing
+    Set-Fake 'notices' ($noticeText + "`n" + 'The second notice.')
+    $nb2 = Invoke-Import 'imp-notice-launch' @('-FixturePath', $fxFile, '-SnapshotId', 'base1')
+    Assert ($nb2.Exit -eq 0 -and $nb2.Result.verdict -eq 'pass' -and @($nb2.Result.import.noticesDismissed).Count -eq 2 -and $nb2.Result.import.noticesDismissed[1] -eq 'The second notice.') 'import: notices shown at launch are dismissed one after the other and recorded'
+    Initialize-ImportFake
+    Set-RingPlan $restartRing
+    $nb3 = Invoke-Import 'imp-notice-none' @('-FixturePath', $fxFile, '-SnapshotId', 'base1')
+    Assert ($nb3.Exit -eq 0 -and @($nb3.Result.import.noticesDismissed).Count -eq 0) 'import: no notice is recorded when none showed'
 
     # crash injected by the harness (the fake drops the app pid like am force-stop), cap, terminal failure
     Initialize-ImportFake

@@ -11284,3 +11284,206 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 1. **Lane B CHORE-223: "Merge + fold in (Recommended)".** Merged as `cbd256917`, with this fold-in.
 2. **Lane B's Note 9 export measurement: "Phone 1 after merge (Recommended)".** A measurement, not a ship gate; run on phone 1.
 - Notes, not the maintainer's words: the option texts were written by the orchestrator.
+
+### MC-344 — Lane A, 2026-10-22: CHORE-204 commit
+
+- Tag: decisions (`AskUserQuestion` answer, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); ledger rows 2132 to 2135.
+- Related: `MC-330`, `MC-337`; CHORE-204, CHORE-202.
+1. **CHORE-204 device-script batch: "Commit + push with records (Recommended)".** Committed with this records pass and pushed. Phone 2's CHORE-202 setup (restore `base1`, launch once, snapshot) and R1 to R4 follow (`MC-337` 7).
+- Notes, not the maintainer's words: the option text was written by the orchestrator.
+
+### MC-345 — Lane A, 2026-10-22: personal Android MVP work order (amends MC-321 1)
+
+- Tag: decisions (maintainer messages and `AskUserQuestion` answers, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22 (the maintainer's words quoted verbatim; the option texts are the orchestrator's, recorded as shown); the work order draft `%TEMP%\risu-b715\workorder\workorder-v2.md` (with the `senior-advisor` verdict `[APPROVE WITH AMENDMENTS]` and its addendum, amendments applied); the lane E survey `%TEMP%\risu-lane-e\workorder-survey\survey.md` and `chores.md` (with the `doc-verifier` corrections appended); ledger rows 2136 to 2143.
+- Related: `MC-321` 1 (amended by items 2 and 3), `MC-279` 8, `MC-326`, `MC-327` 12, `MC-336`, `MC-337`, `MC-343`, `MC-344`, `MC-362`, `MC-011`, `MC-047`, `MC-091`; CHORE-60, CHORE-115, CHORE-128, CHORE-148, CHORE-181, CHORE-182, CHORE-202, CHORE-223.
+- Amends: `MC-321` 1 (the work order: its Steps 3 to 5 become the parked list in item 3). No historical decision text is rewritten.
+
+**The maintainer's words:**
+- "roadmap seems stale, and I think we were deviated from original work order quite a bit. I think we should clear those up and re-organize the new work order to maximize both speed and cost efficiency soon."
+- "I'd like to have MVP that I can use(not release, for me alone) before major UI overhaul that is likely to take long time."
+- "for MVP, android apk will probably be the only platform that I need it functional as it is my main platform."
+- "chore-115 can be optional, as animated asset is rare in my save data."
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- Survey: "Survey now via Lane E (Recommended)".
+- A1 data: "Real partial, then full (Recommended)".
+- Library: "Full library, one long import".
+- Backup, free text: "Without assets is okay if I can carry on the current data into the later version that can export assets via apk update."
+- Stage 5: "Split: 5a now, 5b later (Recommended)".
+- Signing: "Yes, constraint (Recommended)". The question stated that the MVP install must take later APK updates without data loss, so it needs the final package id and the maintainer's real signing key, and throwaway-signed builds cannot be the daily install; the package-id and signing part of CHORE-60 moves into the MVP.
+- Order: "Confirm + commit A0 (Recommended)".
+- A1 start, free text: "both are in C:/Risubackup. partial is ready, but full backup is currently being exported."
+
+**What was decided (maintainer):**
+1. **The MVP goal and its platform.** A personal MVP, not a release, usable by the maintainer alone, before the major UI overhaul. The maintainer expects the Android APK to be the only platform that has to work for it ("android apk will probably be the only platform that I need it functional"); the work order sets no MVP gate for desktop or the hosted web build, which the maintainer did not address.
+2. **The order A0 to A5** (the work order as confirmed by "Confirm + commit A0 (Recommended)"):
+   - **A0 (lane A, docs):** this entry (it amends `MC-321` 1); a "Current work order" block at the top of the Roadmap; the `MC-256` queue and the Sequencing Summary marked superseded; Live-State rewritten to current state only; the pending ledger rows folded in. No corpus-wide status sweep (`docs/workflow/records.md`).
+   - **A1 (lane A, phone 1):** a real-library feasibility run on a release-profile APK, with the Android generated files regenerated first (CHORE-148). The partial backup first, then the full `.bin` (both in `C:/Risubackup`; the full export was still running when this was recorded). Screen on, app in the foreground, charging, "Stay awake" on. Phone 1 has 98 GB free and about 75 GB is needed. Measure wall time, PSS peak and free space before and after; boot time, Grid scrolling with 500+ avatars, and the largest character and longest chat; one send, and a stub export. Keep the resulting profile as the real-shape soak profile.
+   - **In parallel with A1:**
+     - **Lane E:** a trimmed store2 supersession audit. Verdicts: superseded; still present (with a repro plan); not applicable on Android. A `code-searcher` checks presence first; an `investigator` handles only the "still present" items. The audit list:
+       - still-present candidates: CHORE-174, 221, 29, 32, 30 (plugins only), 187;
+       - likely superseded, to verify: CHORE-70, 07, 31, 55, 117 1b and 2, 61 (for CHORE-61, check whether `encodeRisuSaveLegacy` shares the keyed-block object);
+       - Android-specific: CHORE-153 and 181 (is an edit lost when Back is pressed within the 0.5 s debounce?), CHORE-159 (does a store2 restore still write `dbbackup-*.bin` copies?), and the owed unload-2 device and Tauri checks;
+       - dropped (Node only): CHORE-49, 62, 46, 175 and the CHORE-200 residual.
+     - **Lane C:** the CHORE-182 free-space check. Then **E1** with lane A on phone 2, after the CHORE-202 verifier: in `MainActivity.kt`, call `onResume()` on the WebView while a transfer is in flight, then repeat R2. If there is no freeze, the cause is `WebView.onPause()` and a bounded Kotlin fix goes into the MVP. If it still freezes, the native task is post-MVP.
+     - **Lane D:** merge S4-5 (needs the maintainer's approval), then clear.
+   - **A2 (lane B):** stage 5a, automatic GC with no UI. The plan needs a `senior-advisor` challenge, and Gates 1 and 2 go to `opus-reviewer`. The Note 9 "mark under 1 s" check runs on A1's real-shape profile.
+   - **A3:** the fixes the audit confirms. Lane B takes the storage fixes, after 5a. Lane E takes the others: CHORE-174, CHORE-181 plus the debounce test (after S4-5 merges, because `GridCatalog.svelte` overlaps) and CHORE-187.
+   - **A4 (only if A1 says so):** lane C's role-play-first design and CHORE-103, if the full import fails; stages 6 and 7, if memory is a problem; CHORE-154 to CHORE-157, if long chats are slow.
+   - **A5:** the MVP checkpoint. Full `pnpm test` and `pnpm check`, plus an Android build of the merged `main`. The maintainer installs the release-signed APK and imports.
+3. **The parked list.** Until after A5: stage 5b (the clean-up UI, the quota path, C3/Q3, Q9), CHORE-128, CHORE-115, the Node items (CHORE-49, 62, 46, 0b and the CHORE-129 web/Node residual), list windowing, S4-6, CHORE-147, the old Step 3 re-measure, WF-6 and WF-10, the old Step 4 UI-overhaul checkpoint, and the release (R). This list replaces `MC-321` 1 Steps 3 to 5; the old Step 3 re-measure, WF-6 and WF-10 and the Step 4 UI checkpoint all move to after the A5 checkpoint. The old Step 3 store2 supersession audit is not in the parked list: its trimmed form runs in item 2 (the work order's reading, not a separate maintainer answer).
+4. **The backup and signing constraint.** The backup taken from the phone may leave out assets, on the condition that the current data can be carried into a later version that exports assets, delivered as an APK update. So the MVP install must be upgradable in place: every later APK installs over it without wiping data, with the same `applicationId` and the same signing key. The maintainer signs the MVP APK with their real key. The package-id and signing part of CHORE-60 is pulled into the MVP; the rest of CHORE-60 (release identity) stays a release item. Store2 `fmt = 1` is frozen, so later builds read the profile. The device scripts' throwaway re-signed builds cannot be the daily install.
+5. **The restore discipline.** Until stage 5a and the A3 fixes land, the maintainer keeps the pre-cutover upstream-readable `.bin` on the PC as the only restore. The debug MEASURE build is never the daily APK. The library is imported in one long import (foreground, screen on, charging).
+6. **The records cost rule.** Records are folded once per merge, or once per day. MC entries for maintainer answers and the next-free-ID lines are written at once and never batched. One `doc-writer` and one `doc-verifier` per pass.
+7. **CHORE-115 is post-MVP.** Animated assets are rare in the maintainer's save data, so the Android asset-video fix (waiting on a wry release) is optional and parked.
+- Notes, not the maintainer's words:
+  - The option texts, and the signing question's text, were written by the orchestrator. The work order draft's own "(to confirm)" on the signing constraint is closed by the "Yes, constraint (Recommended)" answer.
+  - The `senior-advisor` challenge (verdict `[APPROVE WITH AMENDMENTS]`, with an addendum) and the lane E survey are AI-authored. The survey's `doc-verifier` check found its UNCLEAR column unreliable (3 of 13 sampled rows wrong) and its OPEN column reliable (0 of 14 wrong); CHORE-221 rests on a reviewer reading only and should be verified before it is ranked.
+  - Still unknown: the maintainer's daily phone (model, RAM, Android and WebView version, free storage), and whether to change the Back-quits rule kept in `MC-279` 8 (CHORE-181) if the debounce test shows an edit is lost.
+  - The CHORE-202 phone 2 runs R1 to R3 reproduce a Page Lifecycle freeze at hidden plus 60 s; the cause is not shown to be `WebView.onPause()`, which is what E1 tests. Nothing here says a fix was found.
+  - Nothing here authorizes application-code edits, a merge of S4-5, or a push of a lane branch; lane A commits and pushes this records pass.
+
+### MC-384 — Lane D, 2026-10-22: the Grid folder menu's lock ends at the file chooser (accepted)
+
+- **Tag:** decision (stated in chat)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session. The maintainer asked "can you tell me the exact tradeoff here? if it isn't serious(such as creating race), I think it is safe to accept this." After the explanation: "yep. accepted. go ahead and commmit."
+- **Reasoning:** the maintainer's condition: acceptable if it is not serious, such as creating a race. The explanation given: holding the lock across the chooser would freeze both Grid menus if a platform closes the chooser without reporting `change` or `cancel` (`selectFileByDom` has no fallback); every write re-resolves the folder by id at the moment it writes, so overlapping actions leave no inconsistent state.
+- **Alternatives rejected:** keep the lock across the chooser with a timeout fallback in the shared `selectFileByDom` (used by every file picker, outside S4-5, and a timeout could fire while the user is still browsing).
+- **Related:** `MC-383`; S4-5 plan revision 3 section 3.4 and risks 4 and 10 (`%TEMP%\risu-lane-d\s4-5\plan-s4-5.md`); ledger rows 2559 to 2565.
+
+**What was decided:**
+1. The Grid releases its one-menu-at-a-time lock just before the folder-picture file chooser opens, as implemented in S4-5b. Accepted costs: from the chooser's answer to the folder write (a file read plus the picture save) a second menu can open, and the picture can land after Done, Back, a deselecting tap, a drag or closing the Grid; if the folder is ungrouped or deleted in that window, the saved picture is left unused (the sidebar has the same case). A chooser that never reports leaves one hidden file input in the page (existing behaviour of every caller).
+2. The Note 9 pass still checks whether Android's chooser lets input through while it is open; if it does, that is reported to the maintainer.
+
+### MC-385 — Lane D, 2026-10-22: park lane D and merge S4-5
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion`, asked after lane A relayed the maintainer's S4-5 merge approval and said `MC-345` parks the rest of lane D's queue, including CHORE-154 to CHORE-157 (which the maintainer had asked lane D to start earlier the same day).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Stop now and merge" (stop the read-only re-trace immediately); "Keep CHORE-154+ going" (continue CHORE-154 to CHORE-157 after the merge records commit, recorded as an amendment of `MC-345`).
+- **Related:** `MC-345` (on `main`), `MC-257`; CHORE-154 to CHORE-157.
+- **Correction to the question's premise (record verification after the answer):** `MC-345` item 3 and the Roadmap work order park S4-6 and list windowing until after A5, but place CHORE-154 to CHORE-157 in the conditional phase A4 ("only if A1 says so"), not in the parked list. The answer still holds: A4 has not been triggered.
+
+**What was decided:**
+1. **"Park and merge (Recommended)".** Option text: "Let the read-only re-trace finish and save its packet for later, no plan or code. Commit the merge records pass on the lane branch once doc-verifier passes, and give lane A the tip hash."
+
+### MC-346 — Lane A, 2026-10-22: A3 product answers (CHORE-153, CHORE-117 stage 2, CHORE-181)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22. The option labels are the maintainer's answers; the question texts below are paraphrased by lane A and the option descriptions are the orchestrator's, recorded as shown.
+- Related: `MC-345` (the A3 phase: the fixes the audit confirms; lane E owns the fixes), `MC-279` 8 (amended for the dialog case by item 2), lane E's store2 supersession audit (`C:\Users\yor42\AppData\Local\Temp\risu-lane-e\audit\audit.md`, `doc-verifier`-checked, corrections appended); CHORE-117, CHORE-153, CHORE-181; ledger rows 2144 and 2145.
+- Amends: `MC-279` 8, for the case of an open dialog only (item 2). No historical decision text is rewritten.
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- CHORE-117 stage 2. Question (paraphrased): if one saved value cannot be encoded, every save for every character stops and an alert repeats each second; what should happen instead? Answer: "Skip that character, warn once (Recommended)". Option description: save everything else normally, show one notice naming the character that can't be saved, keep retrying that one quietly.
+- CHORE-181. Question (paraphrased): with a dialog open, Back quits at once, skipping the 2 s guard (`MC-279` 8). Answer: "Close the dialog (Recommended)". Option description: Back closes or cancels the open dialog; a second Back then follows the normal 2 s quit guard.
+- CHORE-153. Answer: "Fix now, phone check after (Recommended)". Option description: the code trace is clear; unit tests fail before and pass after the fix, then one short phone run confirms.
+- Lane D merge. Answer: "Merge + fold in (Recommended)".
+
+**What was decided (maintainer):**
+1. **CHORE-117 stage 2.** A saved value that cannot be encoded no longer stops every save: that character is skipped, the rest save normally, one notice names the character, and that one is retried quietly.
+2. **CHORE-181.** With a dialog open, Back closes or cancels that dialog instead of quitting at once; a second Back then follows the normal 2 s quit guard. This amends `MC-279` 8 ("Keep, open a ticket") for the dialog case.
+3. **CHORE-153.** Fix now: the unit tests fail before and pass after the fix, then one short phone run confirms.
+4. **Lane D merge.** Merge S4-5 (S4-5a and S4-5b, `MC-383`, `MC-384`) into `main` and fold in the records ("Merge + fold in (Recommended)").
+5. **CHORE-117 stage 2 plan questions (lane E's plan; `AskUserQuestion` answers by option label, orchestrator-recorded option text, 2026-10-22).** They refine item 1.
+   - **Q-A.** Question (paraphrased): "If the value that can't be saved is in a module, preset, settings or plugin data instead, what should happen?" Answer: "Leave as today, ticket it (Recommended)". Option text: it keeps retrying with an alert as now, and a separate ticket covers it later.
+   - **Q-B.** Question (paraphrased): "How should the app tell you that a character can't be saved?" Answer: "One toast per character (Recommended)". Option text: it is shown once for each newly affected character and reappears only if that character is fixed and later breaks again.
+   - **Q-E.** Question (paraphrased): "A character that has never been saved and can't be saved has nothing on disk, so it is lost if the app closes before the problem is fixed. A character that was saved before keeps its last good copy. Is that acceptable?" Answer: "Accept, toast says 'not being saved' (Recommended)". Option text: the toast wording makes clear the character is not being saved at all.
+   - TODO(evidence): the separate ticket for the non-character case in Q-A has no ID in the brief.
+- Notes, not the maintainer's words:
+  - Correction (lane A, 2026-10-22; `MC-346` carries it because this file is append-only): an earlier entry says the unloaded-character export is "still 'inline' ... so the flip is owed work" (near line 10778 of this file). The export default is `'stub'` (`EXPORT_UNLOADED_CHARACTERS = 'stub'` in `src/ts/drive/exportInline.ts`), flipped in `b781b1f35` under `MC-326` 7. The source line was reported by lane E's audit verifier (ledger row 2145) and not re-read by this pass; the old text is unchanged.
+  - The question texts and option descriptions were written by the orchestrator; the question texts here are lane A's paraphrase.
+  - Lane E's audit is AI-authored; it was `doc-verifier`-checked and its corrections are appended to the file. Lane E owns the fixes. The audit's findings are not restated here.
+  - These answers fix behaviour only. The mechanism, the notice wording and the tests are for each fix's own plan and gates; nothing here authorizes application-code edits by lane A.
+  - TODO(evidence): the exact question texts as asked are not in the brief for this pass.
+
+### MC-431 — Lane C, 2026-10-22: lane C's scope under work order v2 (CHORE-182 free-space check; E1 diagnostic patch; design parked)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane C session transcript. Input: lane A's message relaying work order v2 (`%TEMP%\risu-b715\workorder\workorder-v2.md`, lane A scratch, written 2026-10-22 15:16), whose "Open" list still asked for confirmation of the order.
+- **Related:** `MC-326` 4 and 8, `MC-430`; CHORE-182, CHORE-202.
+
+1. **Scope: "Confirm as relayed (Recommended)".** Lane C (1) plans CHORE-182, a free-space check before an Android `.bin` import, through the usual gates, and lane A merges it; (2) writes the E1 diagnostic patch and its run steps in lane C's scratch: `MainActivity.kt` keeps the WebView resumed while a transfer is in flight, then R2 is repeated, and lane A builds and runs it on phone 2; (3) leaves the RP-first and native-task design parked until E1 and lane A's A1 report. The option text said E1 stays in scratch, with no repository code change. Not chosen: "E1 first, CHORE-182 later", "Hold lane C".
+
+**Notes that are not the maintainer's words:**
+- The option text was written by the orchestrator from lane A's relay; the work order's own decisions are lane A's to record (A0).
+- E1 is a diagnostic experiment, not a fix. Its outcome rule comes from the work order: no freeze means a bounded Kotlin fix enters the MVP; still a freeze means the native task is post-MVP.
+- Nothing here authorizes a repository code change for E1, a commit, a push, or a merge.
+
+### MC-432 — Lane C, 2026-10-22: CHORE-182 answers (warn and ask when short; fall back when the read fails; every Android import; Android only)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane C session transcript. Input: `%TEMP%\risu-lane-c\c182\discovery.md` (AI-authored investigator packet, not yet independently verified). Its premises for this round: today's need is 1.1 × assets + 512 MiB (`importFreeSpaceBytes`, `importEstimate.ts`); nothing reads free storage today; the Android warning appears only above 1 GiB of assets (`confirmImportScale`, `storeImport.ts`).
+- **Related:** `MC-319` 5, `MC-320` 3 and 4, `MC-326` 8, 9 and 11, `MC-431`; CHORE-182.
+
+1. **Free space below the need: "Warn, ask to continue (Recommended)".** The import shows the need and the free space and lets the person continue or cancel. `MC-319` 5 stands: nothing is refused for size. Not chosen: "Refuse if below assets alone", "Refuse when below need".
+2. **Read fails: "Fall back, continue (Recommended)".** When free space cannot be read, the import shows today's text ("the app cannot check how much is free") with the needed size, and goes on as now. Not chosen: "Ask explicitly", "Block the import".
+3. **When to check: "Every Android import (Recommended)".** The check runs on every Android `.bin` import. Nothing extra is shown when there is enough space. A warning appears when space is short, even for a small import. The time warning above 1 GiB stays and now shows the free figure. Not chosen: "Only above 1 GiB".
+4. **Platforms: "Android only (Recommended)".** Desktop comes later. Not chosen: "Android + desktop Tauri".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator; the summaries above repeat them.
+- The orchestrator's reading of item 2 for an import of 1 GiB or less: today such an import shows no space text, so a failed read changes nothing there (silent). The Gate 1 reviewer flagged this as an interpretation, not the option text.
+- The need formula stays as it is. `MC-326` 10 option B (keeping the previous profile) is not implemented; if it lands, it adds a term (`MC-326` 11, still to be confirmed).
+- Nothing here authorizes a commit, a push or a merge.
+
+### MC-433 — Lane C, 2026-10-22: run the amended E1 (variant A only, outcome keyed on page visibility); approve the patched debug build and the c202base fixture
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane C session transcript. Input: the E1 review `%TEMP%\risu-lane-c\e1\review\verdict.md` (`adversarial-reviewer`, [APPROVE WITH AMENDMENTS]: a release step that pauses the WebView in the foreground; after HOME the window is invisible, so `WebView.onResume()` probably cannot unhide the page; a tick not removed on destroy; the build and fixture not covered by `MC-430`).
+- **Related:** `MC-430`, `MC-431` 2, `MC-330` 1; CHORE-202.
+
+1. **E1: "Run amended E1 (Recommended)".** The patch is fixed per the review. Variant A only; B (`resumeTimers`) is dropped; A0 runs only if the logs show the in-flight gate never fired. Run steps carry a three-way outcome rule keyed on the page's visibility. The maintainer approves the patched debug build on phone 2 and the c202base fixture (1,331,537,701 B, about 1.24 GiB, within `MC-430`'s 1.25 GiB cap; an exception to `MC-330` 1 as in `MC-430`), about 20 min of phone time. Not chosen: "Run with a smaller fixture", "Skip E1".
+
+**Notes that are not the maintainer's words:**
+- The option text was written by the orchestrator; the review's expectation, given in the question, is that E1 likely still freezes, which would show only that the `onResume` route does not work, not that a native task is needed.
+- The patched build is diagnostic only: never merged, never copied into a lane worktree.
+
+### MC-434 — Lane C, 2026-10-22: commit CHORE-182 on the lane branch, no push
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane C session transcript. Input: Gate 2 `[APPROVE]` (row 3311) and the records verification (row 3318).
+- **Related:** `MC-432`; CHORE-182.
+
+1. **Commit: "Commit, no push (Recommended)".** CHORE-182 is committed on `worktree-Lane-C` with only the named files staged; lane A merges, runs the full `pnpm test` and the build on the merged snapshot, and batches the phone check. Not chosen: "Not yet".
+
+**Notes that are not the maintainer's words:**
+- The option text was written by the orchestrator.
+- Nothing here authorizes a push or a merge.
+
+### MC-347 — Lane A, 2026-10-22: CHORE-117 stage 2 follow-up answers and the CHORE-182 merge
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22. The option labels are the maintainer's answers; the question texts below are paraphrased by lane A and the option text is the orchestrator's, recorded as shown.
+- Related: `MC-346` (items 1 and 5: CHORE-117 stage 2 and its plan answers Q-A, Q-B and Q-E), lane E's A3 plan (`%TEMP%\risu-lane-e\a3\`, scratch; lane E owns it and it was not re-read by this pass), `MC-432` and `MC-434` (CHORE-182); CHORE-117, CHORE-182; ledger rows 2149 to 2153.
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- CHORE-117 stage 2, Q-F. Question (paraphrased): while one character can't be saved, should the page count as fully saved? Answer: "Not fully saved (Recommended)". Option text: the safe side; while a broken character exists, other characters stay loaded in memory instead of being released, a numbered-backup restore waits its full timeout, and inlay cleanup does not run.
+- CHORE-117 stage 2, Q-G. Question (paraphrased): how often to quietly retry the character that can't be saved. Answer: "Normal schedule (Recommended)". Option text: retry when the character is edited, on whole saves, and when the idle check reaches it (about 2 s per character); it costs nothing extra.
+- CHORE-117 stage 2, Q-H. Question (paraphrased): the same broken value can also crash the memory put-back check; fix that in this stage? Answer: "Fold into this stage (Recommended)". Option text: not in the brief.
+- CHORE-182 merge. Answer: "Merge + fold in (Recommended)".
+
+**What was decided (maintainer):**
+1. **Q-F.** While a character cannot be saved, the page does not count as fully saved. Other characters stay loaded in memory instead of being released, a numbered-backup restore waits its full timeout, and inlay cleanup does not run.
+2. **Q-G.** The quiet retry of the unsavable character follows the normal schedule: when it is edited, on whole saves, and when the idle check reaches it (about 2 s per character).
+3. **Q-H.** The crash of the memory put-back check on the same broken value is fixed in this stage (CHORE-117 stage 2), not ticketed separately.
+4. **CHORE-182 merge.** Merge lane C's CHORE-182 (`4e2f44154`, `MC-432`, `MC-434`) into `main` and fold in the records ("Merge + fold in (Recommended)").
+- Notes, not the maintainer's words:
+  - Items 1 to 3 refine `MC-346` 1 and 5; lane E's A3 plan carries the mechanism. No historical decision text is rewritten.
+  - The question texts are lane A's paraphrase; the option text is the orchestrator's.
+  - These answers fix behaviour only; nothing here authorizes application-code edits by lane A beyond the merge.
+  - TODO(evidence): the exact question texts as asked, and the option text of Q-H, are not in the brief for this pass.

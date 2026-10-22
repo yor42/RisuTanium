@@ -1,6 +1,7 @@
 # Builds the Android APK through Run-Check.ps1 and records kind, sha256 and duration in <OutDir>\result.json.
 # The Cargo target dir is warm by default: one dir per build kind under the scratch root; -CleanBuild empties it first.
 # One build per kind at a time: a held lock refuses the run instead of waiting on Cargo's own file lock.
+# A preflight fails early, naming the files, when the gitignored generated Android project files are missing from -RepoRoot.
 # Reads no signing material. A release build signs with src-tauri/gen/android/keystore.properties when that file exists
 # (existence is reported, the content is never read); sign-install.ps1 re-signs release output with a throwaway key.
 param(
@@ -23,6 +24,16 @@ $jdk = 'C:\Users\yor42\.gradle\jdks\azul_systems__inc_-21-amd64-windows.2'
 $missing = $null
 if (-not (Test-Path -LiteralPath (Join-Path $jdk 'bin\java.exe'))) { $missing = 'JDK 21 not found at ' + $jdk }
 elseif (-not $env:NDK_HOME) { $missing = 'NDK_HOME is not set' }
+else {
+    # The generated Android project files are gitignored, so a git archive tree lacks them and Gradle would fail late. Nothing is
+    # copied from another checkout: the files must come from a build or init done in this tree, or be copied by the person.
+    $gen = @(Get-AndroidGeneratedMissing $RepoRoot)
+    if ($gen.Count -gt 0) {
+        $missing = 'generated Android files missing under ' + $RepoRoot + ': ' + ($gen -join '; ') + '. They are gitignored (src-tauri/gen/android/app/.gitignore: /src/main/**/generated, /proguard-tauri.pro), ' +
+            'so a git archive tree does not contain them and the build would fail with "Unresolved reference: TauriActivity". ' +
+            'Provide them in this tree before building: copy the whole generated directory and proguard-tauri.pro from a checkout where an Android build has run, or generate them there with the Tauri CLI (pnpm tauri android init). This script copies nothing.'
+    }
+}
 if ($missing) {
     # A missing prerequisite is a recorded failure, never an exception without a result.json.
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

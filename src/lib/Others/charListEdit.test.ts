@@ -12,7 +12,7 @@ import { describe, expect, test } from 'vitest'
 import type { character, folder } from '../../ts/storage/database.svelte'
 import type { CharacterMatch } from '../../ts/gui/characterSearch'
 import { buildGridEntries, type GridEntry } from './charListOrder'
-import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, resolvePicked, samePick, stalePickedKeys, type Picked } from './charListEdit'
+import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, menuPlan, resolvePicked, samePick, stalePickedKeys, type Picked } from './charListEdit'
 
 const makeChar = (chaId: string, name: string): character => ({ chaId, name, type: 'character' }) as unknown as character
 const match = (index: number, chaId: string, n = 0): CharacterMatch => ({ index, chaId, key: JSON.stringify(['s', chaId, n]) })
@@ -216,6 +216,82 @@ describe('groupPlan', () => {
         const selection = select(entries, order, [slotKey('a'), slotKey('b')])
         const keys = [...selection.keys()]
         groupPlan(selection, tiles([match(0, 'a')], ['a']), chars, ['a'])
+        expect([...selection.keys()]).toEqual(keys)
+    })
+})
+
+describe('menuPlan', () => {
+    const chars = [makeChar('a', 'A'), makeChar('b', 'B'), makeChar('c', 'C')]
+    const live = [match(0, 'a'), match(1, 'b'), match(2, 'c')]
+    const slotKey = (chaId: string) => JSON.stringify(['s', chaId, 0])
+    const select = (entries: Map<string, GridEntry>, order: (string | folder)[], keys: string[]): Map<string, Picked> => {
+        const selection = new Map<string, Picked>()
+        for (const key of keys) {
+            const picked = resolvePicked(entries.get(key)!, chars, order)
+            if (picked) {
+                selection.set(key, picked)
+            }
+        }
+        return selection
+    }
+    const folderKeyOf = (entries: Map<string, GridEntry>, id: string): string => [...entries.values()].find((e) => e.kind === 'folder' && e.id === id)!.key
+
+    test('one folder alone opens the folder menu, named by its tile and referenced by its order position', () => {
+        const order = [makeFolder('f1', ['a']), makeFolder('f2', ['b']), 'c']
+        const entries = tiles(live, order)
+        expect(menuPlan(select(entries, order, [folderKeyOf(entries, 'f2')]), entries, chars, order)).toEqual({
+            kind: 'folder',
+            ref: { kind: 'folder', id: 'f2', occurrence: 0 },
+            id: 'f2',
+            name: 'f2',
+        })
+    })
+
+    test('with twin folders the second one is referenced by its occurrence', () => {
+        const order = [makeFolder('f1', ['a']), makeFolder('f1', ['b'])]
+        const entries = tiles(live, order)
+        const second = [...entries.values()].find((e) => e.kind === 'folder' && e.ref.occurrence === 1)!.key
+        expect(menuPlan(select(entries, order, [second]), entries, chars, order)).toMatchObject({
+            kind: 'folder',
+            ref: { kind: 'folder', id: 'f1', occurrence: 1 },
+        })
+    })
+
+    test('nothing picked, one character, a folder with a character and two folders all open the bulk menu', () => {
+        const order = [makeFolder('f1', ['a']), makeFolder('f2', ['b']), 'c']
+        const entries = tiles(live, order)
+        const f1 = folderKeyOf(entries, 'f1')
+        const f2 = folderKeyOf(entries, 'f2')
+        expect(menuPlan(new Map(), entries, chars, order)).toEqual({ kind: 'bulk' })
+        expect(menuPlan(select(entries, order, [slotKey('c')]), entries, chars, order)).toEqual({ kind: 'bulk' })
+        expect(menuPlan(select(entries, order, [f1, slotKey('c')]), entries, chars, order)).toEqual({ kind: 'bulk' })
+        expect(menuPlan(select(entries, order, [f1, f2]), entries, chars, order)).toEqual({ kind: 'bulk' })
+    })
+
+    test('a folder with one of its own members stays the bulk menu', () => {
+        const order = [makeFolder('f1', ['a', 'b']), 'c']
+        const entries = tiles(live, order, ['f1'])
+        const f1 = folderKeyOf(entries, 'f1')
+        expect(menuPlan(select(entries, order, [f1, slotKey('a')]), entries, chars, order)).toEqual({ kind: 'bulk' })
+    })
+
+    test('a stale pick is skipped: a folder left alone by it opens the folder menu, a stale folder opens the bulk menu', () => {
+        const order = [makeFolder('f1', ['a']), 'c']
+        const entries = tiles(live, order)
+        const f1 = folderKeyOf(entries, 'f1')
+        const selection = select(entries, order, [f1, slotKey('c')])
+        const withoutC = tiles([match(0, 'a')], [order[0]])
+        expect(menuPlan(selection, withoutC, chars, [order[0]])).toMatchObject({ kind: 'folder', id: 'f1' })
+        const replaced = [makeFolder('f1', ['a']), 'c']
+        expect(menuPlan(select(entries, order, [f1]), tiles(live, replaced), chars, replaced)).toEqual({ kind: 'bulk' })
+    })
+
+    test('planning leaves the selection untouched', () => {
+        const order = [makeFolder('f1', ['a']), 'c']
+        const entries = tiles(live, order)
+        const selection = select(entries, order, [folderKeyOf(entries, 'f1')])
+        const keys = [...selection.keys()]
+        menuPlan(selection, entries, chars, order)
         expect([...selection.keys()]).toEqual(keys)
     })
 })

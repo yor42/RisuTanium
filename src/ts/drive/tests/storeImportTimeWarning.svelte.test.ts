@@ -29,7 +29,16 @@ vi.setConfig({ testTimeout: 60_000 })
 const osBox = vi.hoisted(() => ({ os: 'android' as string }))
 const thresholdBox = vi.hoisted(() => ({ bytes: 2000 }))
 
+const freeBox = vi.hoisted(() => ({ bytes: null as number | null, calls: 0 }))
+
 vi.mock('@tauri-apps/plugin-os', () => ({ type: () => osBox.os }))
+
+vi.mock('src/ts/storage/appFreeSpace', () => ({
+    readAppDataFreeBytes: async () => {
+        freeBox.calls++
+        return freeBox.bytes
+    },
+}))
 
 vi.mock('src/ts/drive/importEstimate', async (importOriginal) => {
     const actual = await importOriginal<typeof import('src/ts/drive/importEstimate')>()
@@ -71,6 +80,8 @@ beforeEach(() => {
     vi.clearAllMocks()
     osBox.os = 'android'
     thresholdBox.bytes = 2000
+    freeBox.bytes = null
+    freeBox.calls = 0
     h.broadcasts.length = 0
     h.channels.length = 0
     vi.doUnmock('src/ts/storage/dbChangeEffects.svelte')
@@ -367,6 +378,168 @@ describe('the Android time warning on a store2 page', () => {
 
         expect(confirmTexts(page)).not.toContain(SMALL_DATABASE_TEXT)
         expect(confirmTexts(page).some((text) => text.includes('free space'))).toBe(false)
+    })
+})
+
+/**
+ * The free-space check on Android (reader mocked through `freeBox`). Fixtures: the file's non-database bytes come to
+ * 2041, so the need is 0.6 GB. 1.5e9 free bytes is enough, 5e8 is short (0.5 GB shown, rounded down).
+ */
+const ENOUGH_BYTES = 1_500_000_000
+const SHORT_BYTES = 500_000_000
+const SMALL_IMPORT_THRESHOLD = 1_000_000
+
+describe('the Android free-space check', () => {
+    test('new behaviour: a large import with enough space says how much is free, in the one time prompt', async () => {
+        freeBox.bytes = ENOUGH_BYTES
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(100))
+
+        const expected = language.store2ImportTimeWarning(2, 5, 0.6, null, 1.5, false)
+        expect(confirmTexts(page)).toEqual([expected])
+        expect(expected).toContain('About 1.5 GB is free.')
+        expect(expected).not.toContain('cannot check')
+        expect(expected).not.toContain('runs out of space')
+    })
+
+    test('new behaviour: a large import that is short says so and that the import stops, and keeps the unchanged-data sentence', async () => {
+        freeBox.bytes = SHORT_BYTES
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(100))
+
+        const expected = language.store2ImportTimeWarning(2, 5, 0.6, null, 0.5, true)
+        expect(confirmTexts(page)).toEqual([expected])
+        expect(expected).toContain('Only about 0.5 GB is free')
+        expect(expected).toContain('the import stops')
+        expect(expected).toContain('Your saved data is not changed until the import has finished.')
+    })
+
+    test('guard: a large import whose free space cannot be read keeps the cannot-check text', async () => {
+        freeBox.bytes = null
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(100))
+
+        expect(confirmTexts(page)).toEqual([SMALL_DATABASE_TEXT])
+        expect(SMALL_DATABASE_TEXT).toContain('The app cannot check how much is free.')
+        expect(freeBox.calls).toBe(1)
+    })
+
+    test('new behaviour: a small import that is short shows one space prompt with the need and the free figure; a decline writes nothing', async () => {
+        thresholdBox.bytes = SMALL_IMPORT_THRESHOLD
+        freeBox.bytes = SHORT_BYTES
+        const page = await openPage()
+        answer(page, false)
+        page.w.store.ops.length = 0
+
+        await loadBin(binWith(100))
+
+        const expected = language.store2ImportSpaceWarning(0.6, 0.5, null)
+        expect(confirmTexts(page)).toEqual([expected])
+        expect(expected).toContain('0.6 GB')
+        expect(expected).toContain('0.5 GB')
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(page.w.store.mutating()).toEqual([])
+        expect(page.reloads.count).toBe(0)
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test('new behaviour: accepting the space prompt goes on to the import (the zero-filled database then fails to decode)', async () => {
+        thresholdBox.bytes = SMALL_IMPORT_THRESHOLD
+        freeBox.bytes = SHORT_BYTES
+        const page = await openPage()
+        answer(page, true)
+
+        await loadBin(binWith(100))
+
+        expect(confirmTexts(page)).toEqual([language.store2ImportSpaceWarning(0.6, 0.5, null)])
+        expect(alertErrorTexts(page).length).toBeGreaterThan(0)
+    })
+
+    test('new behaviour: a small import that is short with a database over 16 MiB gets one prompt that holds the size sentence too', async () => {
+        thresholdBox.bytes = 1024 * 1024
+        freeBox.bytes = SHORT_BYTES
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(17 * 1024 * 1024))
+
+        const texts = confirmTexts(page)
+        expect(texts).toHaveLength(1)
+        expect(texts[0]).toContain('only about 0.5 GB is free')
+        expect(texts[0]).toContain('18 MB')
+        expect(texts).not.toContain(language.store2ImportSizeWarning(18))
+        expect(texts).toEqual([language.store2ImportSpaceWarning(0.6, 0.5, 18)])
+    })
+
+    test('guard: a small import with enough space shows no new prompt', async () => {
+        thresholdBox.bytes = SMALL_IMPORT_THRESHOLD
+        freeBox.bytes = ENOUGH_BYTES
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(100))
+
+        expect(confirmTexts(page)).toEqual([])
+        expect(freeBox.calls).toBe(1)
+    })
+
+    test('guard: a small import whose free space cannot be read behaves as before (database size text only)', async () => {
+        thresholdBox.bytes = 1024 * 1024
+        freeBox.bytes = null
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(17 * 1024 * 1024))
+
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
+        expect(freeBox.calls).toBe(1)
+    })
+
+    test('guard: a small import with enough space and a database over 16 MiB keeps the size text', async () => {
+        thresholdBox.bytes = 1024 * 1024
+        freeBox.bytes = ENOUGH_BYTES
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(17 * 1024 * 1024))
+
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
+    })
+
+    test('the reader is called once per Android import', async () => {
+        freeBox.bytes = ENOUGH_BYTES
+        const page = await openPage()
+        answer(page, false)
+
+        await loadBin(binWith(100))
+
+        expect(freeBox.calls).toBe(1)
+    })
+
+    test.each(['windows', 'linux', 'macos', 'ios'])('guard: a %s page never reads the free space and shows no space text, even when it would be short', async (os) => {
+        osBox.os = os
+        freeBox.bytes = SHORT_BYTES
+        const page = await openPage()
+        answer(page, false)
+        osBox.os = os
+
+        await loadBin(binWith(100))
+
+        expect(confirmTexts(page)).toEqual([])
+        expect(freeBox.calls).toBe(0)
+    })
+
+    test('guard: the existing four-argument time text is unchanged and carries the cannot-check sentence', () => {
+        const text = language.store2ImportTimeWarning(2, 5, 0.6, null)
+
+        expect(text).toBe(language.store2ImportTimeWarning(2, 5, 0.6, null, null, false))
+        expect(text).toContain('The import needs about 0.6 GB of free space on this phone. The app cannot check how much is free. ')
     })
 })
 

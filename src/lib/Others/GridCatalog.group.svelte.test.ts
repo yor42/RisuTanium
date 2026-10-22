@@ -549,7 +549,7 @@ describe('Grid group: the hold menu', () => {
         })
     })
 
-    test('(G) a hold on a folder tile in edit mode opens no menu yet', async () => {
+    test('(R) a hold on a folder tile in edit mode, released in place, opens the folder menu and selects the folder', async () => {
         fixture()
         await withMounted(async (target) => {
             await enter(target)
@@ -564,8 +564,15 @@ describe('Grid group: the hold menu', () => {
             }
             firePointer('pointerup', window, x, y)
             await settle()
-            expect(alertSelectSpy).not.toHaveBeenCalled()
-            expect(picked(target)).toBe(0)
+            expect(menus).toEqual([[
+                language.renameFolder,
+                language.changeFolderColor,
+                language.changeFolderImage,
+                language.ungroupFolder,
+                language.deleteFolder,
+                language.cancel,
+            ]])
+            expect(picked(target)).toBe(1)
         })
     })
 })
@@ -609,17 +616,28 @@ describe('Grid group: right-click and the context-menu key', () => {
         })
     })
 
-    test('(G) on a folder tile, on the empty scroller or while keys are blocked no menu opens', async () => {
+    test('(G) on the empty scroller or while keys are blocked no menu opens', async () => {
         fixture()
         await withMounted(async (target) => {
             await enter(target)
-            contextMenu(folderTile(target, 'F1')!)
             contextMenu(scrollerOf(target))
             await settle()
             expect(alertSelectSpy).not.toHaveBeenCalled()
 
             setLiveKeysBlockedReader(() => true)
             contextMenu(charTile(target, 'Char U')!)
+            await settle()
+            expect(alertSelectSpy).not.toHaveBeenCalled()
+            expect(picked(target)).toBe(0)
+        })
+    })
+
+    test('(G) on a folder tile while keys are blocked no menu opens and nothing is selected', async () => {
+        fixture()
+        await withMounted(async (target) => {
+            await enter(target)
+            setLiveKeysBlockedReader(() => true)
+            contextMenu(folderTile(target, 'F1')!)
             await settle()
             expect(alertSelectSpy).not.toHaveBeenCalled()
             expect(picked(target)).toBe(0)

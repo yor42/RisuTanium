@@ -83,7 +83,13 @@ pwsh -NoProfile -File Agents\Tools\device\Run-Check.ps1 -CheckId demo -OutDir $e
 `-BuildEnv` (hashtable merged over `JAVA_HOME`, `ANDROID_NDK_HOME`, `CARGO_TARGET_DIR`), `-RepoRoot`, `-ScratchRoot`.
 Runs `pnpm tauri android build [--debug] --apk true --target <Target> [--config <Config>]`. Needs the pinned JDK 21 and the
 `NDK_HOME` environment variable; a missing prerequisite is a recorded `fail`. A held build lock for that kind refuses the run
-instead of waiting. A release build reports whether `keystore.properties` exists (existence only; the content is never read).
+instead of waiting. A release build reports whether `keystore.properties` exists (existence only; the content is never read). A preflight (after the
+JDK and `NDK_HOME` checks, before any lock or build) fails with a recorded `fail` when `-RepoRoot` lacks the gitignored generated
+Android files that Gradle needs: a `TauriActivity.kt` inside a `generated` directory under `src-tauri/gen/android/app/src/main` and
+`src-tauri/gen/android/app/proguard-tauri.pro` (patterns `/src/main/**/generated` and `/proguard-tauri.pro` in
+`src-tauri/gen/android/app/.gitignore`). A `git archive` tree lacks them, and the build would otherwise fail late with
+`Unresolved reference: TauriActivity`. The reason names the missing files and how to provide them; the script copies nothing from
+another checkout.
 
 ```
 pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b715\build-debug -Kind debug
@@ -122,7 +128,7 @@ pwsh -NoProfile -File Agents\Tools\device\device-prep.ps1 -OutDir $env:TEMP\risu
 `-OutDir` (required), `-CheckId cold-start`, `-MaxSeconds 900`, `-Runs 3` (1-20), `-SettleSec 25`, `-PauseSec 4`, `-ReadySec 90`,
 `-CdpTimeoutMs 5000`, `-CdpStallCalls 3`, `-RelaunchGapSec 30`, `-ReadyText`, `-ReadyExpression`, `-Activity .MainActivity`,
 `-Serial`, `-AllowedSerials`, `-Package`, `-BuildKind auto|debug|release` (default `auto`, read from the install),
-`-PortMin 9500`, `-PortMax 9599`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`, `-AdbExe`.
+`-PortMin 6330`, `-PortMax 6399`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`, `-AdbExe`.
 Per run: force-stop, pause, `am start -W` (TotalTime, WaitTime), ready signal over CDP (page text contains `-ReadyText`, or
 `-ReadyExpression` evaluates `true`, or the body has rendered text), a page probe, settle, then settled PSS. The intended
 force-stop is declared as a relaunch window, so only an unexpected loss, pid change, fatal log line or renderer loss is a
@@ -157,7 +163,8 @@ snapshots of a profile are kept, pinned ones never pruned. Above `-WarnBytes` a 
 Restore checks everything that cannot touch the device first (manifest, tar size and SHA-256, installed build is debuggable
 with the same versionCode, signing digest and package, free space), then force-stops the app, pushes the tar with `adb push`
 (adb stdin is not binary-safe on Windows), checks the hash on the device, force-stops again, removes the covered top-level
-entries as a whole and extracts inside the app uid. It then requires the entry list, file count and exact per-entry byte sums
+entries as a whole and extracts inside the app uid with `tar --no-same-owner -xf`, so the files take the current app uid (a restore
+after an uninstall and reinstall has a new uid, and a tar that keeps the archived owner fails on chown). It then requires the entry list, file count and exact per-entry byte sums
 to equal the manifest (`du` block counts are recorded but not compared). `result.deviceTouched` says whether the device data
 was changed. A failure after the removal leaves the data in an undefined state; the reason says "restore again".
 
@@ -193,7 +200,7 @@ pwsh -NoProfile -File Agents\Tools\device\fixture-push.ps1 -OutDir $env:TEMP\ris
 `-MenuTaps`, `-ConfirmTap`, `-WarnPattern`, `-WizardPattern Airisu`, `-ReadySec 90`, `-LaunchSettleSec 12`, `-SettleSec 8`,
 `-BootWaitSec 0`, `-LoadingPattern '^\s*Loading\.\.\.'`, `-PickWaitSec 9`, `-TapPauseSec 2`, `-ConfirmPauseSec 3`,
 `-CdpTimeoutMs 4000`, `-RelaunchGapSec 30`, `-RetryGraceSec 120`, `-Activity .MainActivity`, `-Serial`, `-AllowedSerials`,
-`-Package`, `-PortMin 9500`, `-PortMax 9599`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`, `-AdbExe`.
+`-Package`, `-PortMin 6330`, `-PortMax 6399`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`, `-AdbExe`.
 
 Needs a debuggable MEASURE build (the import phase ring `__risuImportPhases` is on when the page's localStorage key
 `risu-measure-import` is on; the script sets that key after the app booted). Give exactly one of `-SnapshotId` (the import
@@ -202,7 +209,7 @@ lock, fixture push (SHA-256 skip), restore of the snapshot, cold launch, read-on
 census again. Without `-RemoteName` and with `-FixturePath`, the device name is `<stem>-<8 hex run id><ext>` and is removed at
 the end; an explicit `-RemoteName` or a device-side fixture is never removed. Without `-FixturePath` the fixture must already
 be on the device. `result.json` adds `steps`, `fixture`, `start`, `atDone`, `end`, `startState`, `runId` and `import`
-(`pickedAt`, `doneAt`, `seconds`, `outcome`, `restartBased`, `warnConfirmed`, `bootState`, ...); each ring mark is one
+(`pickedAt`, `doneAt`, `seconds`, `outcome`, `restartBased`, `warnConfirmed`, `bootState`, `noticesDismissed`, ...); each ring mark is one
 `phases[]` row and the raw longest snapshot is `<OutDir>\phases.json`. The picker dump is `<OutDir>\picker-ui.xml`.
 
 ```
@@ -212,11 +219,13 @@ pwsh -NoProfile -File Agents\Tools\device\import-bin.ps1 -OutDir $env:TEMP\risu-
 
 ## Shared defaults and hazards
 
-- **RISK - port defaults.** `cold-start.ps1` and `import-bin.ps1` default to `-PortMin 9500 -PortMax 9599`
-  (the shared range used when a brief gives none). `Agents/Lanes/README.md` reserves 6000 to 6399 for lane A ("device ports as
-  in its scripts") and the orchestrator's rules give phone 1 as 6270-6309 and phone 2 as 6310-6329. The 9500-9599 default is
-  outside both. Always pass `-PortMin` and `-PortMax` from the agent's own range; a run that relies on the default uses ports
-  outside the lane reservation. (Documented as the code is; not changed here.)
+- **RISK - port defaults.** `cold-start.ps1` and `import-bin.ps1` default to `-PortMin 6330 -PortMax 6399`. `Agents/Lanes/README.md`
+  reserves 6000 to 6399 for lane A ("device ports as in its scripts") and the orchestrator's rules give phone 1 as 6270-6309 and
+  phone 2 as 6310-6329, so the default sits inside lane A's reservation and collides with neither phone range. It is still a
+  shared default: two runs that both rely on it can pick the same port (the scan skips a port that already has a forward and
+  uses `--no-rebind`, but two agents starting together are not coordinated). Pass `-PortMin` and `-PortMax` from the agent's own
+  range when more than one device agent works at once. (Before CHORE-204 the default was 9500-9599, outside every
+  reservation.)
 - **Devices (orchestrator-restated memory rules, not in the scripts).** Phone 1 is serial `29f3cde9193f7ece`, ports 6270-6309;
   phone 2 is `2ac80128013f7ece`, ports 6310-6329. Scripts default to phone 1 (`DefaultSerial` in `lib.ps1`). For phone 2 pass
   both `-Serial` and `-AllowedSerials`; a serial outside the allowed list is refused before any adb call. Only package
@@ -261,10 +270,20 @@ Taps are Note 9 coordinates and are parameters (`-MenuTaps`, `-ConfirmTap`); oth
 - `-ConfirmTap` default `'264 1210'`, tapped twice, after `-ConfirmPauseSec` (3 s) before each tap. Then `-PickWaitSec` (9 s), a
   `uiautomator dump` to `/sdcard/risu-import-ui.xml` (removed afterwards, copied to `picker-ui.xml`), and a tap at the centre
   of the bounds of the picker row whose text equals the remote file name. No such row fails with `file-not-in-picker`.
-- Startup notice: after launch the script clicks a button whose text is exactly `OK` (case-sensitive), up to 3 times, before it
-  sets the measurement flag.
-- Size warning: `-WarnPattern` default matches the English "This backup holds" or the start of the Korean store2 size warning
-  (written as `\uXXXX` escapes). While the warning text shows, the script clicks the confirm button inside the
+- Notices: the script dismisses informational notices of the app and never a confirm dialog. It clicks the button of an
+  `[data-alert-box]` only when that box has exactly one button, the label is `OK` (any case) or the Korean OK label
+  (`\uD655\uC778`), the box holds no input control and its text does not match `-WarnPattern`. A Yes/No dialog always has two
+  buttons, so the incomplete-items question (whose Yes leaves data out) and the size warning are never clicked by this path.
+  It runs (1) after launch, up to 3 notices, before the measurement flag is set; (2) on every ring poll of the import watch while
+  the size warning is not showing (the notices of what an import left out show before the reload); (3) at the top of every
+  iteration of the boot wait (the archive-characters notice, "To keep memory use low ...", shows after the reload and the boot
+  waits for its acknowledgement). `import.noticesDismissed` lists the first 60 characters of each dismissed notice (at most 20).
+  The earlier dismissal ran once, at launch only, and matched `OK` case-sensitively, so it missed any notice after the import
+  and every notice in the Korean UI (label `\uD655\uC778`).
+- Size warning: `-WarnPattern` default matches the start of the store2 time warning ("This backup holds ...", Korean "\uC774 \uBC31\uC5C5\uC5D0\uB294 \uD30C\uC77C\uC774 ...")
+  and of the store2 size warning ("The saved data in this backup ...", Korean "\uC774 \uBC31\uC5C5\uC5D0 \uB4E4\uC5B4 \uC788\uB294 \uB370\uC774\uD130\uB294 ..."), plus the older Korean
+  database-size opening; Korean text is written as `\uXXXX` escapes. A locale change to those strings needs this default
+  updated, or the run waits for a manual tap. While the warning text shows, the script clicks the confirm button inside the
   `[data-alert-box]` element whose text matches it: the button text must be `Yes`, `OK` or the Korean "yes" or "ok" labels
   (`\uC608`, `\uD655\uC778`), matched case-insensitively, so the English UI's `YES` and `OK` and the Korean UI both work. A
   different dialog that replaced the warning is never confirmed. The first click can be swallowed, so the click repeats up to
@@ -337,8 +356,15 @@ maintainer; TODO(evidence): whether the orchestrator recorded them anywhere else
   `[APPROVE]`, 296 PASS): N1 by the `warnfirst` scene (a confirm button outside the warning box), N2 by a test that a restart after only
   pre-commit marks does not pass, N3 by the `lsdrop` test (a final-census app loss returns crash, not pass), N4 by the
   case-insensitive confirm-button match.
-- **Stale-lock replace race** (final Gate 2, found by reading, no repro). Two waiters that both judge the same lock stale can
-  each delete it; the second can then delete the lock the first has just created, so both proceed.
+- **Stale-lock replace race** (final Gate 2, found by reading, no repro; fixed in CHORE-204). A waiter now takes a stale lock by
+  moving it to a tombstone named after the stale holder (`<lock>.stale-<pid>-<start ticks>`); a move onto an existing name
+  fails, so a second waiter that judged the same holder stale cannot remove the fresh lock the first created. The lock's
+  timestamp is set to now before the move, so the tombstone is fresh from the moment it exists and another waiter's tombstone
+  cleanup cannot remove it in between. Limits that remain: a tombstone stays in the lock's folder until the next replacement
+  removes tombstones untouched for 10 minutes; a stale holder identity cannot be claimed twice within those 10 minutes (a dead
+  process does not come back, so this only matters to a test); a waiter stalled for more than 10 minutes between judging and
+  moving is not covered; and a failed timestamp update (read-only or locked file) makes the waiter give up that attempt and
+  look again rather than move the lock.
 - **Parallel runs.** The older `forward --no-rebind tcp:9770` assert can flake with 3 or more simultaneous test runs.
 
 ## Running the tests
@@ -359,8 +385,9 @@ pwsh -NoProfile -File Agents\Tools\device\tests\Test-Runner.ps1 -Fast -ScratchBa
 - `-Fast`: skips the sections the stage 4 and lock tests do not depend on; for scratch mutant runs only, not as a pass.
 - Host ports: the forward and port-scan tests probe host ports 9770 to 9799 (outside every lane reservation). A listener on
   one of them makes those tests fail spuriously; a live device run on lane A's ports no longer does.
-- Current count: 296 PASS, 0 FAIL, ALL PASSED (s4a: serial2, and two parallel runs par3 and par4). The full serial suite took
-  about 20 minutes in one reviewer's environment.
+- Current count: 330 PASS, 0 FAIL, ALL PASSED (CHORE-204 remediation: one full run and the round 2 reviewer's run; 327 before the remediation, 296 in s4a). The full
+  serial suite took about 20 to 25 minutes. The build-apk generated-files test through `build-apk.ps1` needs the pinned JDK 21
+  and prints `SKIP` without it (the unit checks of `Get-AndroidGeneratedMissing` still run).
 
 ## Development discipline
 

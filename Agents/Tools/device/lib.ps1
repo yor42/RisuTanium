@@ -360,16 +360,65 @@ function Complete-Result($R, [string]$Verdict, [string]$Reason, [string]$Path) {
     return $R.verdict
 }
 
+# ---------- android generated files ----------
+
+# The Gradle project files that git does not track (src-tauri/gen/android/app/.gitignore: /src/main/**/generated and
+# /proguard-tauri.pro) and that the build needs: TauriActivity.kt inside a generated directory, and proguard-tauri.pro. A tree made
+# by git archive lacks them and the build then fails late with "Unresolved reference: TauriActivity". Returns the missing ones as
+# repo-relative paths (an empty array when both exist). Nothing is copied or created.
+function Get-AndroidGeneratedMissing([string]$RepoRoot) {
+    $app = Join-Path $RepoRoot 'src-tauri\gen\android\app'
+    $missing = @()
+    $found = @()
+    $main = Join-Path $app 'src\main'
+    if (Test-Path -LiteralPath $main -PathType Container) {
+        $found = @(Get-ChildItem -LiteralPath $main -Recurse -File -Filter 'TauriActivity.kt' -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq 'generated' })
+    }
+    if ($found.Count -eq 0) { $missing += 'src-tauri/gen/android/app/src/main/java/<package>/generated/TauriActivity.kt' }
+    if (-not (Test-Path -LiteralPath (Join-Path $app 'proguard-tauri.pro') -PathType Leaf)) { $missing += 'src-tauri/gen/android/app/proguard-tauri.pro' }
+    return $missing
+}
+
 # ---------- lock ----------
 
-function Test-LockHeld([string]$Path) {
-    try { $txt = [IO.File]::ReadAllText($Path) } catch { return $true }
-    if ($txt -notmatch '^(\d+),(\d+)$') { return $true }
+function Test-LockTextHeld([string]$Txt) {
+    if ($Txt -notmatch '^(\d+),(\d+)$') { return $true }
     $pr = Get-Process -Id ([int]$Matches[1]) -ErrorAction SilentlyContinue
     return [bool]($pr -and $pr.StartTime.Ticks -eq [int64]$Matches[2])
 }
 
-# Creates the lock file atomically. Returns false while another live process holds it; a lock left by a dead process is replaced.
+function Test-LockHeld([string]$Path) {
+    try { $txt = [IO.File]::ReadAllText($Path) } catch { return $true }
+    return (Test-LockTextHeld $txt)
+}
+
+# Takes a lock that the caller judged stale from its holder text ("pid,start ticks"). The stale file is moved to a tombstone named
+# after that holder, and a move to an existing name fails, so only one waiter wins per stale holder. A second waiter that judged
+# the same holder stale therefore cannot move away the fresh lock the first waiter created in its place: its move fails and it
+# looks again. Tombstones not touched for 10 minutes are removed at the next replacement; the lock is stamped before it is moved,
+# so a tombstone is never older than its move. Returns true when this call moved it away.
+function Remove-StaleLock([string]$Path, [string]$StaleText) {
+    if ($StaleText -notmatch '^(\d+),(\d+)$') { return $false }
+    $tomb = $Path + '.stale-' + $Matches[1] + '-' + $Matches[2]
+    $dir = Split-Path -Parent $Path
+    $cutoff = (Get-Date).ToUniversalTime().AddMinutes(-10)
+    foreach ($old in @(Get-ChildItem -LiteralPath $dir -File -Filter ((Split-Path -Leaf $Path) + '.stale-*') -ErrorAction SilentlyContinue)) {
+        if ($old.LastWriteTimeUtc -lt $cutoff) { Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue }
+    }
+    # A move keeps the file's timestamp, so the stamp goes on the lock before the move: the tombstone is then fresh from the
+    # moment it exists, and no other waiter's cleanup can remove it between the move and a later stamp.
+    try { (Get-Item -LiteralPath $Path).LastWriteTimeUtc = (Get-Date).ToUniversalTime() } catch { return $false }
+    try { Move-LockFile $Path $tomb } catch { return $false }
+    return $true
+}
+
+# The one place a lock file is moved to its tombstone; the lock tests interpose here to interleave waiters.
+function Move-LockFile([string]$From, [string]$To) {
+    [IO.File]::Move($From, $To)
+}
+
+# Creates the lock file atomically. Returns false while another live process holds it; a lock left by a dead process is replaced
+# (through Remove-StaleLock, so two waiters that both judge it stale do not both replace it).
 function Enter-Lock([string]$Path) {
     for ($i = 0; $i -lt 2; $i++) {
         try {
@@ -381,8 +430,9 @@ function Enter-Lock([string]$Path) {
             return $true
         } catch [System.IO.IOException] {
             if (-not (Test-Path -LiteralPath $Path)) { continue }
-            if (Test-LockHeld $Path) { return $false }
-            Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+            try { $txt = [IO.File]::ReadAllText($Path) } catch { return $false }
+            if (Test-LockTextHeld $txt) { return $false }
+            $null = Remove-StaleLock $Path $txt
         }
     }
     return $false
@@ -1026,6 +1076,15 @@ function Get-RingPhaseRows($C) {
 # (for example the incomplete-items question, whose Yes leaves data out) is never confirmed. Result: clicked or none.
 function Get-ConfirmClickExpression([string]$WarnPattern) {
     return 'new Promise(r=>{const re=new RegExp(' + (ConvertTo-Json $WarnPattern -Compress) + ');const box=[...document.querySelectorAll("[data-alert-box]")].find(x=>re.test(x.innerText));if(!box){r("none");return}const b=[...box.querySelectorAll("button")].filter(b=>/^(\uC608|Yes|OK|\uD655\uC778)$/i.test(b.innerText.trim())).pop();if(b){b.click();r("clicked")}else r("none")})'
+}
+
+# The click that dismisses an informational notice of the app (the archive-characters notice after the page reloaded onto the
+# imported data, the notices of what an import left out, the start-up notice). Only an alert box that offers nothing but one
+# OK button is touched: the box has exactly one button, its label is OK (any case) or the Korean OK label, it holds no input
+# control, and its text does not match the size warning. A confirm dialog (Yes/No, whose Yes can leave data out) always has two
+# buttons and is never clicked. Result: dismissed:<first 60 characters of the notice text> or none.
+function Get-NoticeDismissExpression([string]$WarnPattern) {
+    return 'new Promise(r=>{const re=new RegExp(' + (ConvertTo-Json $WarnPattern -Compress) + ');const ok=/^(OK|\uD655\uC778)$/i;const box=[...document.querySelectorAll("[data-alert-box]")].find(x=>{const bs=[...x.querySelectorAll("button")];return bs.length===1&&ok.test(bs[0].innerText.trim())&&x.querySelectorAll("input,textarea,select").length===0&&!re.test(x.innerText)});if(!box){r("none");return}const t=box.innerText.trim().replace(/\s+/g," ").slice(0,60);box.querySelectorAll("button")[0].click();r("dismissed:"+t)})'
 }
 
 # Read-only look at the app data of a debuggable build, readable while the app runs. chaIdTokens counts the distinct text runs

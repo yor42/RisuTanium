@@ -20,6 +20,7 @@ mod asset_batch;
 mod chunked_io;
 mod durable_write;
 mod env_secret;
+mod free_space;
 mod launch_inputs;
 mod store2_gate;
 use launch_inputs::LaunchInputs;
@@ -1072,6 +1073,7 @@ pub fn run() {
             app_fs_mkdir_all,
             app_fs_remove,
             app_data_dir_path,
+            free_space::app_data_free_bytes,
             write_chunk,
             abort_chunked,
             read_range,

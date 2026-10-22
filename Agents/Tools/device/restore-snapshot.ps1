@@ -144,7 +144,9 @@ try {
     }
     $left = Get-Remaining
     if ($left -le 0) { Finish 'timeout' 'cap reached before extraction; the data is in an undefined state, restore again' }
-    $ex = Invoke-AdbShell $Serial ('run-as ' + $Package + ' tar -xf ' + $remote) ([math]::Min(1200, $left))
+    # tar runs as the app uid; --no-same-owner keeps that uid for every extracted file, so a restore after an uninstall and
+    # reinstall (a new app uid) does not fail on chown to the uid recorded in the archive.
+    $ex = Invoke-AdbShell $Serial ('run-as ' + $Package + ' tar --no-same-owner -xf ' + $remote) ([math]::Min(1200, $left))
     if ($ex.TimedOut) { Finish 'timeout' 'tar extraction exceeded the cap; the data is in an undefined state, restore again' }
     if ($ex.ExitCode -ne 0) { Finish 'fail' ('tar extraction failed: ' + $ex.Out + ' ' + $ex.Err + '; the data is in an undefined state, restore again') }
     End-Phase $null
