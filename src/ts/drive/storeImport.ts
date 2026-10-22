@@ -50,6 +50,18 @@ import { currentCharacterNames, leftOutQuestion } from './restoreReplace'
  */
 export const IMPORT_SIZE_WARNING_BYTES = 16 * 1024 * 1024
 
+/**
+ * The share of the estimated unit-entry bytes that counts toward the size shown for a `.bin` import. Unit entries are
+ * uncompressed JSON while the database entry is compressed, so a quarter brings a stub-form file's figure close to the
+ * same content stored inline. Only the memory-size figure uses it; the commit-tail time estimate keeps full weight.
+ */
+export const UNIT_SIZE_WEIGHT = 0.25
+
+/** The saved-data size of a `.bin` import: the database entry plus the weighted unit-entry bytes. */
+export function importSavedDataSizeBytes(databaseBytes: number, unitBytes: number): number {
+    return databaseBytes + unitBytes * UNIT_SIZE_WEIGHT
+}
+
 const DATABASE_ENTRY_NAME = 'database.risudat'
 
 /** An entry name longer than this can be neither the database nor a cold-storage unit, so the scan skips it; the walk keeps exactly the names up to this length. */
@@ -356,7 +368,7 @@ export async function confirmDatabaseSize(byteLength: number, threshold: number 
     if (byteLength <= threshold) {
         return true
     }
-    return await alertConfirm(language.store2ImportSizeWarning(Math.ceil(byteLength / (1024 * 1024))))
+    return await alertConfirm(language.store2ImportSizeWarning(Math.ceil(byteLength / 1_000_000)))
 }
 
 /**
@@ -364,21 +376,23 @@ export async function confirmDatabaseSize(byteLength: number, threshold: number 
  * store2 page on an Android phone with more than `IMPORT_TIME_WARNING_BYTES` of assets gets the time and space notice,
  * which carries the saved-data size sentence when the saved data is over the size threshold too (one prompt, not two).
  * The saved data is the database entry plus `unitBytes`, the estimated bytes of the unit entries the resolve reads:
- * a stub-form file keeps most of its characters and chats there. The size sentence and the long commit tail key on
- * that sum; the asset bytes (copy time, free space, the notice threshold) are the file less the database entry, so
- * they still include the units, which are re-encoded into the page's store.
+ * a stub-form file keeps most of its characters and chats there. The size sentence, its trigger and the notice's
+ * database sentence key on `importSavedDataSizeBytes` (units weighted by `UNIT_SIZE_WEIGHT`, the memory-size figure);
+ * the long commit tail keys on the full-weight sum, because resolving the units takes time for their whole length. The
+ * asset bytes (copy time, free space, the notice threshold) are the file less the database entry, so they still
+ * include the units, which are re-encoded into the page's store.
  * Everything else keeps `confirmDatabaseSize` and its text. The notice belongs to store2 pages only: the block and
  * legacy page modes are fork-local transitional storage modes with no commit tail to estimate, and keep their prompts
  * (block-mode helpers are removed in stage 8). False when the person declines; nothing has been written.
  */
 export async function confirmImportScale(fileSize: number, entries: number, databaseBytes: number, unitBytes: number): Promise<boolean> {
     const assetBytes = importAssetBytes(fileSize, databaseBytes)
-    const savedDataBytes = databaseBytes + unitBytes
+    const savedDataBytes = importSavedDataSizeBytes(databaseBytes, unitBytes)
     if (transportKind() !== 'android' || assetBytes <= IMPORT_TIME_WARNING_BYTES) {
         return await confirmDatabaseSize(savedDataBytes)
     }
-    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, savedDataBytes))
-    const databaseMegabytes = savedDataBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(savedDataBytes / (1024 * 1024)) : null
+    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, databaseBytes + unitBytes))
+    const databaseMegabytes = savedDataBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(savedDataBytes / 1_000_000) : null
     return await alertConfirm(language.store2ImportTimeWarning(entries, minutes, importGigabytesText(importFreeSpaceBytes(assetBytes)), databaseMegabytes))
 }
 

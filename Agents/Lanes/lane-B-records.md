@@ -11,7 +11,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 | 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
 | 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); rows 2307 to 2318; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `165dcf10f` |
 | 3 | Parallel large entries (`MC-328` 2), desktop and Android only (`MC-358`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, items applied; defaults stay at 1 stream until the Note 9 run (CHORE-222); rows 2319 to 2325; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `42993e408` |
-| 4 | Android batched asset reader for export (fit-map E1), and an export phase timer (`MC-359`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; rows 2326 to 2335; technically accepted; the Note 9 export run is running on phone 1; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged in `dd9c04679` |
+| 4 | Android batched asset reader for export (fit-map E1), and an export phase timer (`MC-359`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; rows 2326 to 2335; technically accepted; Note 9 export run done (row 2337: every batch reply an `ArrayBuffer`, none fell back, so no Rust reply command); COMPLETE; folded into the shared files by lane A on 2026-10-22, merged in `dd9c04679` |
 
 ## MC entries
 
@@ -105,6 +105,70 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - The `MC-223` soft limit (about 500 MB) stays out on every platform, as the maintainer decided earlier (CHORE-129, "No 500 MB soft limit").
 - Nothing here authorizes application-code edits, commits or pushes.
 
+### MC-360 — Lane B, 2026-10-22: CHORE-220 answers (unit entries count at a quarter in the import size figure; the figure is decimal MB)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: lane A's Note 9 release run (`%TEMP%\risu-b715\phone2-rel\report.md`, part A, with its "Corrections from doc-verifier" section, which verified the A-table and the MiB claim).
+- **Related:** `MC-355` 2, `MC-356`, `MC-318` 6; CHORE-194, CHORE-220.
+
+1. **Units: "Count units at ¼ (Recommended)".** The unit entries count at a quarter of their size, because they are uncompressed text and the database entry is compressed.
+   - The option text gave the effect: the stub file that showed about 78 MB would show about 28 MB, close to the 30 MB of the same content inline, and in line with the measured memory.
+   - It is one constant with no text change, so no translator pass. It is a rough factor calibrated from one pair of files.
+   - The question stated the measurements:
+     - a stub file showed "about 78 MB", and the same 500 characters inline showed "about 30 MB";
+     - the import memory peaks were 723 and 642 MiB, and the post-reload peak was no worse;
+     - the import took 207 s against 140 s;
+     - the stub file's database alone (10 MB) would show no warning, yet its import used more memory than the 30 MB one's.
+
+   Not chosen: "Reword the sentence" (keep the number and drop "several times that much memory", with a translator pass) and "Keep as is".
+2. **Label: "Compute decimal MB (Recommended)".** The number shown with "MB" is bytes ÷ 1,000,000, matching file managers. The numbered-backup restore uses the same formatter, and the 16 MiB threshold stays. It is one line with no text change. Not chosen: "Leave it".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- **The orchestrator's ruling, not asked:** the quarter weight applies to the size figure only:
+  - the 16 MiB trigger;
+  - the shown number;
+  - the time notice's database sentence.
+  
+  The import-time estimate keeps the full unit bytes, because the units took real resolve time on the phone (66 s). CHORE-220 Gate 2 accepted the ruling.
+- Under the new rule the Note 9 stub file is about 28 MB weighted, so it still warns. It shows 28 or 29: Gate 2 computed 29 from the approximate 10.4 and 71 MB, and the device's 78 MiB bounds the result to 28 or 29.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-361 — Lane B, 2026-10-22: CHORE-222 answers (the Android restore copies 2 large entries at once with 4 batches in flight; a finishing message during the drain; the one-at-a-time path stays)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs:
+  - lane A's Note 9 release run (`%TEMP%\risu-b715\phone2-rel\report.md`, part B and its corrections);
+  - `%TEMP%\risu-lane-b\c222\packet.md` (investigator), superseded where they differ by `packet-verify.md` (`doc-verifier`: 36 of 41 verified, 0 wrong).
+- **Related:** `MC-358`, `MC-328` 2, `MC-326` 4; CHORE-222.
+
+1. **Defaults: "Android 2 at once, 4 batches (Recommended)".** The Android restore defaults to 2 large-entry streams with 4 batch calls in flight. The desktop stays at 1, with no desktop measurement; that test backup has no asset large enough to stream there.
+   - Before it ships:
+     - a PC test that restores a phone-like mix at 2,4 and 4,4 and checks every asset byte for byte;
+     - the missing refused-name test;
+     - one Note 9 debug-build run at 2,4 that checks the restored assets on the phone.
+   - The question stated:
+     - the copy of a 1.2 GiB backup took 212 s today, 78 s at 2 at once with 4 batches, and 71 s at 4 at once with 4 batches;
+     - memory during the copy rose only slightly;
+     - most of the gain probably comes from no longer pausing all other work before each large file, and 2 to 4 added only 5 to 10%;
+     - no phone run proved the import completed correctly.
+   
+   Not chosen: "Android 4 at once, 4 batches", "Measure first" (a phone run of one stream through the new path) and "Keep at 1".
+2. **Progress: "Show a finishing message (Recommended)".** Once every entry has been read, the text switches to a separate message, such as "Finishing copying files...", until the copies end. It is plain English like the neighbouring progress texts, so there is no translator pass. Not chosen: "Stop below 100%", "Count finished bytes" and "Leave it".
+3. **Old path: "Keep it (Recommended)".** The literal one-at-a-time path stays as the desktop default and the instant fallback. Not chosen: "Delete it".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- **Corrections to the question's figures:**
+  - "212 s" is R1a; R1b was 219 s.
+  - The "4 s" hold at 100% was observed as `100.00%` only in R5 and R6 (`packet-verify.md`).
+- The phone runs are n=1 per combination on one Note 9, screen on. Completion was not established in them; the prerequisites above exist for that reason.
+- Nothing here authorizes application-code edits, commits or pushes.
+
 ## CHORE entries
 
 ### CHORE-194 (changed) — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
@@ -117,6 +181,19 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - **Related:** `MC-355`, `MC-356`, `MC-318` 6; CHORE-220.
 
 ### CHORE-220 — The import size warning sums compressed database bytes with uncompressed unit bytes, so a stub-form file warns earlier and shows a larger number
+
+**Status (2026-10-22, `MC-360`): fixed on `worktree-Lane-B`; technically accepted, Gate 2 `[APPROVE]`; uncommitted until the maintainer approves.** Ledger rows 2336, 2341 and 2342.
+- **The Note 9 check** (lane A's release run, verified):
+  - a stub file showed "about 78 MB" and the same content inline "about 30 MB";
+  - the import memory peaks were 723 and 642 MiB;
+  - the import took 207 s against 140 s;
+  - "78" was MiB labelled MB.
+- **What changed:**
+  - `importSavedDataSizeBytes` (`src/ts/drive/storeImport.ts`) counts the unit entries at `UNIT_SIZE_WEIGHT` (0.25) for the 16 MiB trigger, the shown number and the time notice's database sentence.
+  - `estimateImportSeconds` keeps the full unit bytes.
+  - The shown figure is decimal MB (`Math.ceil(bytes / 1_000_000)`), in both warnings and the numbered-backup restore.
+  - No string changed.
+- **Effect:** the Note 9 stub file now shows 28 or 29, and still warns.
 
 **Status (2026-10-21): open, scheduled with the stage 1 Note 9 check (`MC-355` 2).** Source: the lane B stage 1 plan (`%TEMP%\risu-lane-b\s1\plan.md`, change 3, an orchestrator ruling); raised again by a side agent's note, and the maintainer asked on 2026-10-21 that it be recorded so it is not lost.
 
@@ -148,6 +225,14 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 
 ### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
 
+**Status (2026-10-22, later, `MC-361`): in progress.** The Note 9 run is done (row 2336), and the maintainer chose:
+- 2 streams with 4 flights on Android;
+- the desktop stays at 1;
+- a finishing message during the drain;
+- the literal path is kept.
+
+The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The default does not ship before the PC completion test, the refused-name test above 1 stream, and a Note 9 debug-build check of the restored assets.
+
 **Status (2026-10-22): open.** The lane B stage 3 code is on `worktree-Lane-B`, uncommitted until the maintainer approves. Both defaults are 1 (today's behaviour). Source: `MC-358` 1, the stage 3 gates (`%TEMP%\risu-lane-b\s3\gate1-r1.md`, `gate2-r1.md`).
 
 - **What exists:**
@@ -167,6 +252,19 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
   3. A one-line change sets `ANDROID_ASSET_MAX_STREAMS`, the desktop `ASSET_MAX_STREAMS` and, if measured, the Android flight count.
 - **Known, accepted:** when the loop throws, the caller skips `stopStreams` (Gate 2 mutant r3 survived). The only effect is a delay before the error shows.
 - **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
+
+### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
+
+**Status (2026-10-22): open, candidate; not scheduled.** Source: lane A's Note 9 run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections). That run was a release build of `18156c972`, with `m2-stub500.bin`. It was imported inline and exported as 500 stub characters with 3,000 assets. n=2: lmkd reclaimed system processes during run 1's asset loop, and run 2 was warm on the same page.
+
+- **Measured** (from the export phase ring):
+  - confirm to the save dialog: about 83.5 s, nearly all of it 'export start' to 'export cold collected' (81.8 and 82.2 s);
+  - the asset loop: 9.6 and 11.5 s;
+  - 'export database encoded' to 'export stub and late payloads done': 90.8 and 78.9 s;
+  - Save to complete: 119.0 and 112.1 s.
+- **Not examined:** the mechanism of either long step. The ring has no finer marks inside them.
+- **Next, if scheduled:** a sizing of both steps (cold collection of 500 units, then re-reading and writing the stub and late payloads). It needs the maintainer's go-ahead.
+- **Related:** `MC-359`, `MC-334`, `MC-328` 2.
 
 ### CHORE-129 (changed) — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
 
@@ -224,6 +322,14 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 2333 | 2026-10-22 | Stage 4 implementation | sonnet-coder | 208,084 | no | `s4\impl\report.md` (saved by the orchestrator; the harness refused the coder's write) and the logs. New: `bridgeReplyBytes` (shared with read_range), `isAssetBatchReadAvailable`, `assetBatchReadUsable`, the Android reader limits (8 MiB, 2 flights) and the MEASURE-only export phases; stubs in four test doubles; new `backuplocalExportAndroid.test.ts`. Red on base (an archive of `92f7d900a` with two behavioural shims): 19 of 90 failed. Mutants M1 to M13 killed; M14 survived (that suite refuses before listing). Per-suite read counts unchanged (21/29, 13/13, 8/8, 0/0, 0/0). `pnpm check` 0/0; `pnpm test` 903 files passed, 1 skipped; 20,317 tests passed, 23 skipped; `pnpm build` and `pnpm check:dist` OK. The snapshot line-ending rewrite was restored. After the hand-back the orchestrator changed one comment, the `assetBatchPipeline.ts` module doc, at the coder's request: the file was outside its grant. |
 | 2334 | 2026-10-22 | Stage 4 Gate 2 r1 | opus-reviewer | 168,195 | no | `s4\gate2-r1.md`, `s4\gate2\`. `[EDITORIAL]`. No asset leaves the `.bin` unreported; every Gate 1 amendment is met. Targeted 441/441; `pnpm check` 0/0; the read counts match. The coder's reds are behavioural. 15 of its own mutants were run: 14 killed, and the Android 16 MiB budget mutant survived. The existing `dist/` holds no export phase strings. All files are CRLF. E1: the test's bridge stand-in checked missing and large before the spent budget, unlike Rust's `get_batch_with`. The orchestrator applied the reviewer's reorder; afterwards the file passed 14/14 and is CRLF, and `pnpm check` gave 0/0. Non-binding, not done: no test pins the 8 MiB budget, the every-5,000 progress phase is untested, one doc line break in `tauriAssetBatch.ts`, and there is no direct junk-reply read_range test. The full suite was not re-run (`MC-329` 4). |
 | 2335 | 2026-10-22 | Verify the stage 4 records and commit message | doc-verifier | 62,205 | no | About 30 claim groups: 25 verified, 2 wrong from one cause, 1 overstated, 5 unverifiable (the orchestrator's E1 rerun, tokens, transcript items). Corrected: the row range named 2335 before this row existed (this row added); the commit message now says Gate 2 ran 15 mutants and killed 14, and the read_range sentence was made exact. Its trailer note was settled by the session's own attribution reminder (Opus 5.5). |
+| 2336 | 2026-10-22 | Note 9 phone 2, release `VITE_RISU_MEASURE=1` of `42993e408`: the stage 1 calibration (CHORE-220) and the stage 3 stream counts (CHORE-222) | lane A device agent, with a doc-verifier | not recorded (lane A's) | no | `%TEMP%\risu-b715\phone2-rel\report.md`. CDP works on a plain release build.<br>**CHORE-220:** shown 78 (stub) and 30 (inline), and the figure is MiB; resolve 66 s against about 0 s; peaks 723 and 642 MiB.<br>**CHORE-222:** copy R1 212/219 s, R2 89, R3 84, R4 78, R5 71, R6 83; the copy-window PSS rose slightly.<br>**Verifier corrections:** completion was not established for R1 to R6; lmkd reclaimed other apps in R1a; the CHORE-203 1.5x is confounded by the commit change. |
+| 2337 | 2026-10-22 | Note 9 phone 1, release `VITE_RISU_MEASURE=1` of `18156c972`: the stage 4 export of `m2-stub500.bin` | lane A device agent, with a doc-verifier | not recorded (lane A's) | no | `%TEMP%\risu-b715\phone1-s4\report.md`.<br>**Both runs:** `export assets done, batched=3000 fallback=0 missing=0 numberArrayReplies=0`.<br>**Times:** asset loop 9.6 and 11.5 s; Save to complete 119.0 and 112.1 s, against m2 (c)'s 616.4 s, which was a debug build of another commit on another phone and profile (the verifier lists the confounds).<br>**PSS:** 1,336.9 MiB at one sample.<br>**Completion:** file decoded with 3,501 entries, 3,000 assets and 500 units.<br>No reason for a Rust base64 reply (`MC-359` 1). The long steps outside the loop became candidate CHORE-223. |
+| 2338 | 2026-10-22 | CHORE-222: why did 1 to 2 streams cut the copy 2.4x; how to prove completion; the prerequisites | investigator | 191,240 | no | `c222\packet.md`. The `streamAlone` barrier (flush and wait for all flights before each large entry) against none in `streamBeside`. 2 to 4 streams gave 5 to 10%. The slowdown follows the fixture's large entries, not loop growth. A desktop run would not stream m2-mix18k. PC proof: the Android harness at 2,2 and 4,4 with a phone-shaped mix (the plan uses 2,4 and 4,4). Sized (a), (b) and (c). |
+| 2339 | 2026-10-22 | Verify the CHORE-222 packet | doc-verifier | 80,245 | no | `c222\packet-verify.md` (saved by the orchestrator). 41 sub-claims: 36 verified, 3 imprecise, 0 wrong. Corrected: 100.00% was seen only in R5 and R6; the share of time in large entries is 40 to 66%; a citation path; the comment ranges. It fed `MC-361`. |
+| 2340 | 2026-10-22 | CHORE-222 plan | orchestrator | not recorded | no | `c222\plan.md`. C1: the Android limits 2 and 4. C2: an `outstanding` getter and "Finishing copying files..." on the normal end only. Tests T1 to T5; mutants 1 to 7; a device run-as hash check after the commit. At Gate 1. |
+| 2341 | 2026-10-22 | CHORE-220 implementation | sonnet-coder | 79,350 | no | `c220\impl\report.md` (saved by the orchestrator) and the logs. `UNIT_SIZE_WEIGHT` and `importSavedDataSizeBytes`; decimal MB; the time estimate on the full sum. Red on base: a load hook serving HEAD's `storeImport.ts`; 13 of 103 failed, on assertion diffs. Mutants weight=1, time-weighted, 2^20 and db-weighted were each red. `pnpm check` 0/0; `pnpm test` 903 files passed, 1 skipped; 20,318 tests passed, 23 skipped; `pnpm build` exit 0. The snapshot line-ending rewrite was restored. |
+| 2342 | 2026-10-22 | CHORE-220 Gate 2 r1 | adversarial-reviewer | 52,846 | no | `c220\gate2-r1.md` (saved by the orchestrator). `[APPROVE]`, no binding items. Callers: `confirmImportScale` (one call) and `confirmDatabaseSize` (it and `storeRestore.ts`). The base hash matches HEAD. Base: 13 red. Mutants time-weighted (2 red) and db-weighted (12 red) were re-run. The Note 9 stub file still warns (29). Non-binding: no test drives a real-exporter stub file to a warning. All five files are CRLF; `pnpm check` 0/0. |
+| 2343 | 2026-10-22 | Verify the CHORE-220 records and commit message, and the records of rows 2336 to 2342 | doc-verifier | 82,892 | no | About 60 claim groups: 49 verified, 3 corrected, 8 unverifiable (the transcript, tokens, lane A's agents). Corrected: row 2338's knob values (the packet says 2,2 and 4,4); the CHORE-223 title, which claimed the mechanisms; the commit message's row range. Also applied: the fixture wording and the confounds in CHORE-223, and "28 or 29" for the stub file's figure. Its trailer note was settled by the session's own attribution reminder (Opus 5.5). |
 
 ## Handoff
 
@@ -250,3 +356,8 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 - **Stage 4:** decisions `MC-359`. It is implemented and through both gates (rows 2326 to 2335), and CHORE-129 is updated. It awaits the maintainer's commit approval.
   - After the commit, a Note 9 device request re-runs m2 (c), the stub export. It records the asset-loop time, the reply form (the `numberArrayReplies` count) and the tail split.
   - A Rust base64 reply command goes back to the maintainer only if the number-array form proves too slow (`MC-359` 1).
+
+2026-10-22, after stage 4:
+- **Stage 4** is COMPLETE (lane A fold-in `b7f2be85d`). Its Note 9 run (row 2337) saw only `ArrayBuffer` replies and no fallbacks, so no Rust reply command is needed. The long steps outside the asset loop are candidate CHORE-223.
+- **CHORE-220:** decisions `MC-360`. It is implemented and through Gate 2 (rows 2336, 2341 and 2342) and awaits the maintainer's commit approval.
+- **CHORE-222:** decisions `MC-361` (rows 2336 and 2338 to 2340). Its plan is at Gate 1, and the implementation starts after the CHORE-220 commit (one writer per checkout). After that commit, a Note 9 debug-build device request checks the restored assets with run-as.

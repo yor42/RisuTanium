@@ -429,8 +429,9 @@ describe('preconditions are checked before the first asset is written', () => {
     // New behaviour, pinned by mutants: a large database is announced, naming its size, before it is decoded.
     test('a database entry over the size limit is announced before it is decoded, and a decline writes nothing', async () => {
         const page = await openPage()
-        const megabytes = 17
-        const bytes = binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', new Uint8Array(megabytes * 1024 * 1024)))
+        // 17 MiB is 17,825,792 bytes: the warning names decimal megabytes, so 18.
+        const megabytes = 18
+        const bytes = binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', new Uint8Array(17 * 1024 * 1024)))
         vi.mocked(page.alert.alertConfirm).mockImplementation(async () => false)
         page.w.store.ops.length = 0
 

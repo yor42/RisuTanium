@@ -1,23 +1,24 @@
 /**
  * The import size and time questions of a `.bin` whose character and chat data sits in unit entries
- * (`coldstorage_<uuid>.json`): `confirmImportScale` keys the 16 MiB size sentence and the long commit tail on the
- * database entry plus those unit entries, not on the database entry alone. A stub-form file (the fork's export since
- * stub mode, and an upstream file with archived characters) has a small database entry and most of its bytes in units,
- * yet resolves to the same tree as the inline file.
+ * (`coldstorage_<uuid>.json`): `confirmImportScale` keys the 16 MiB size sentence on the database entry plus a quarter
+ * of those unit entries (they are uncompressed JSON, the database entry is compressed), and the long commit tail on the
+ * database entry plus the whole unit entries. A stub-form file (the fork's export since stub mode, and an upstream file
+ * with archived characters) has a small database entry and most of its bytes in units, yet resolves to the same tree as
+ * the inline file. The size is shown in decimal megabytes.
  *
  * The unit total is a name-only estimate over the entry the reader tries first per id; it is not the bytes the resolve
  * reads (it over-counts orphan units and rejected bodies, and under-counts units a fallback serves). The tests therefore
  * assert the prompt text of files whose unit entries are all named and read.
  *
  * Files: the stub-form file is written by the real `SaveLocalBackup({ mode: 'stub' })` in the save-loop world of
- * `composedRoundTrip.svelte.test.ts`, from the `fork-full.bin` golden with its stub character's chat padded past
- * 16 MiB before it is imported. The upstream-layout file is hand-built from `upstream-full.bin` with `binEntry`: the
- * stub character's unit and the inline character's pointer-chat unit padded, the database entry last. No threshold is
- * lowered: the size sentence needs more than 16 MiB of real unit entries, and the database entry is asserted to be
- * within 16 MiB so a failing base fails on the missing prompt.
+ * `composedRoundTrip.svelte.test.ts`, from the `fork-full.bin` golden with its stub character's chat padded to 18 MiB
+ * before it is imported: its whole sum is over 16 MiB and its quarter-weighted sum is under it. The upstream-layout
+ * file is hand-built from `upstream-full.bin` with `binEntry`: the stub character's unit and the inline character's
+ * pointer-chat unit padded to 36 MiB each, the database entry last, so even the quarter-weighted sum is over 16 MiB.
+ * No threshold is lowered, and the database entry is asserted to be within 16 MiB.
  *
- * Labels: new behaviour (red on the base, which keys on the database entry alone), guard (passes with or without the
- * change). A mocked success is not evidence about a phone.
+ * Labels: new behaviour (red on the base, which weighs the units in full and shows binary megabytes), guard (passes
+ * with or without the change). A mocked success is not evidence about a phone.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as fs from 'node:fs'
@@ -299,7 +300,9 @@ function measure(bytes: Uint8Array) {
     }
     const unitBytes = entries.filter((entry) => getColdStorageBackupKey(entry.name) !== null).reduce((total, entry) => total + entry.data.length, 0)
     const assetOnlyBytes = bytes.length - database.data.length - unitBytes
-    return { entryCount: entries.length, databaseBytes: database.data.length, unitBytes, assetOnlyBytes, databaseClassMegabytes: Math.ceil((database.data.length + unitBytes) / MIB) }
+    // Units count at a quarter in the figure shown, which is in decimal megabytes.
+    const weightedBytes = database.data.length + unitBytes / 4
+    return { entryCount: entries.length, databaseBytes: database.data.length, unitBytes, assetOnlyBytes, weightedBytes, databaseClassMegabytes: Math.ceil(weightedBytes / 1_000_000) }
 }
 
 async function loadBin(bytes: Uint8Array): Promise<void> {
@@ -390,26 +393,27 @@ async function stubFileOnce(): Promise<Uint8Array> {
 
 function expectStubShape(bytes: Uint8Array) {
     const sizes = measure(bytes)
-    // The base keys on the database entry alone: it must be within the threshold so the base fails on the missing prompt.
+    // The base weighs the units in full: the whole sum is over the threshold and the weighted sum is not, so the base fails on the extra prompt.
     expect(sizes.databaseBytes).toBeLessThanOrEqual(16 * MIB)
     expect(sizes.databaseBytes + sizes.unitBytes).toBeGreaterThan(16 * MIB)
+    expect(sizes.weightedBytes).toBeLessThanOrEqual(16 * MIB)
     expect(parseEntries(bytes).some((entry) => entry.name.startsWith('coldstorage_'))).toBe(true)
     return sizes
 }
 
 describe('the import questions of a stub-form file written by the real exporter', () => {
-    test('new behaviour: the size sentence names the database plus the unit entries, though the database entry is within 16 MiB', async () => {
+    test('new behaviour: a quarter of the unit entries keeps the weighted sum within 16 MiB, so no size question is asked', async () => {
         const bytes = await stubFileOnce()
-        const sizes = expectStubShape(bytes)
+        expectStubShape(bytes)
         const page = await openPage()
         answer(page, false)
 
         await loadBin(bytes)
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes)])
+        expect(confirmTexts(page)).toEqual([])
     })
 
-    test('new behaviour: on Android the time notice carries the database-class sentence and the long-tail estimate', async () => {
+    test('new behaviour: on Android the time notice has no database sentence, and the minutes still follow the whole unit entries', async () => {
         const bytes = await stubFileOnce()
         const sizes = expectStubShape(bytes)
         const page = await openPage()
@@ -418,8 +422,10 @@ describe('the import questions of a stub-form file written by the real exporter'
 
         await loadBin(bytes)
 
-        // About 19 MB of units at 4.4 MB/s plus the long tail is 8 minutes, rounded to 10; the short tail would give 5.
-        expect(confirmTexts(page)).toEqual([language.store2ImportTimeWarning(sizes.entryCount, 10, 0.6, sizes.databaseClassMegabytes)])
+        // About 19 MB of units at 4.4 MB/s plus the long tail is 8 minutes, rounded to 10; the short tail would give 5. The estimate
+        // is the same as with the units weighed in full, so this pins that the weight does not reach the time estimate (the minutes
+        // part passes before and after the change; the null database sentence is red on the base).
+        expect(confirmTexts(page)).toEqual([language.store2ImportTimeWarning(sizes.entryCount, 10, 0.6, null)])
     })
 
     test('new behaviour: unit bytes stay in the asset bytes, so a threshold between the asset-only and the asset-plus-unit bytes gives the time notice', async () => {
@@ -433,12 +439,12 @@ describe('the import questions of a stub-form file written by the real exporter'
 
         await loadBin(bytes)
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportTimeWarning(sizes.entryCount, 10, 0.6, sizes.databaseClassMegabytes)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportTimeWarning(sizes.entryCount, 10, 0.6, null)])
     })
 
-    test('new behaviour: a threshold above the asset-plus-unit bytes gives the database-class size sentence alone on Android', async () => {
+    test('new behaviour: a threshold above the asset-plus-unit bytes asks nothing on Android', async () => {
         const bytes = await stubFileOnce()
-        const sizes = expectStubShape(bytes)
+        expectStubShape(bytes)
         thresholdBox.bytes = bytes.length
         const page = await openPage()
         answer(page, false)
@@ -446,18 +452,18 @@ describe('the import questions of a stub-form file written by the real exporter'
 
         await loadBin(bytes)
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes)])
+        expect(confirmTexts(page)).toEqual([])
     })
 })
 
 describe('the import questions of an upstream-layout file built by hand', () => {
-    const upstreamFile = () => paddedGolden('upstream-full.bin', { [ID.stubBlob]: padStubCharacter, [ID.inlineChatUnit]: padChatUnit }, 9 * MIB)
+    const upstreamFile = () => paddedGolden('upstream-full.bin', { [ID.stubBlob]: padStubCharacter, [ID.inlineChatUnit]: padChatUnit }, 36 * MIB)
 
-    test('new behaviour: units named by a stub and a pointer chat push the sum past 16 MiB, and accepting imports the file', async () => {
+    test('new behaviour: the size sentence shows the database plus a quarter of the units in decimal megabytes, and accepting imports the file', async () => {
         const bytes = upstreamFile()
         const sizes = measure(bytes)
         expect(sizes.databaseBytes).toBeLessThanOrEqual(16 * MIB)
-        expect(sizes.databaseBytes + sizes.unitBytes).toBeGreaterThan(16 * MIB)
+        expect(sizes.weightedBytes).toBeGreaterThan(16 * MIB)
         const page = await openPage()
         answer(page, true)
 
@@ -486,6 +492,20 @@ describe('the import questions of an upstream-layout file built by hand', () => 
         expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes)])
         expect(end).toEqual({ kind: 'cancelled' })
         expect(installs).toEqual([])
+    })
+
+    test('new behaviour: on Android the time notice shows the weighted decimal figure, and the minutes follow the whole sum', async () => {
+        const bytes = upstreamFile()
+        const sizes = measure(bytes)
+        thresholdBox.bytes = sizes.assetOnlyBytes + 1024
+        const page = await openPage()
+        answer(page, false)
+        osBox.os = 'android'
+
+        await loadBin(bytes)
+
+        // 72 MiB of units at 4.2 MiB/s plus the long tail is about 8.4 minutes, rounded to 10; the free space is sized from the asset bytes, which include the units.
+        expect(confirmTexts(page)).toEqual([language.store2ImportTimeWarning(sizes.entryCount, 10, 0.7, sizes.databaseClassMegabytes)])
     })
 
     test('guard: a file without unit entries and a small database entry asks nothing', async () => {
