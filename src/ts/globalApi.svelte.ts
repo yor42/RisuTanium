@@ -69,6 +69,8 @@ import { assertNoSecretRef, redactResolved } from "./secretRef";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint } from "./process/memory/busyActions";
+import { MEASURE } from "./process/memory/measureFlag";
+import { noteChatSelect } from "./process/chatPhaseRing";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
 
 export const forageStorage = new AutoStorage()
@@ -4517,6 +4519,9 @@ export function changeChatTo(IdOrIndex: string | number) {
         return
     }
 
+    if(MEASURE){
+        noteChatSelect('start')
+    }
     DBState.db.characters[selIdState.selId].chatPage = index
     // Flush before bumping so the bump fans its reparse out over the new
     // (usually much smaller) window instead of the outgoing one. This flush
@@ -4535,7 +4540,13 @@ export function changeChatTo(IdOrIndex: string | number) {
     // caller must not break that property without rechecking that the flush
     // is still safe there.
     flushSync()
+    if(MEASURE){
+        noteChatSelect('flushed')
+    }
     ReloadGUIPointer.set(Math.random())
+    if(MEASURE){
+        noteChatSelect('bumped')
+    }
 }
 
 /**

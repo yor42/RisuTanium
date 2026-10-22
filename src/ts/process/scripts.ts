@@ -13,6 +13,9 @@ import { runLuaEditTrigger } from "./scriptings";
 import { pluginV2 } from "../plugins/plugins.svelte";
 import { runTrigger } from "./triggers";
 import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
+import { leadingLazyDotCannotMatch } from "./regexEarlyReject";
+import { MEASURE } from "./memory/measureFlag";
+import { noteScriptPass, type ScriptCacheOutcome } from "./chatPhaseRing";
 
 const dreg = /{{data}}/g
 const randomness = /\|\|\|/g
@@ -71,19 +74,21 @@ export async function importRegex(o?:customscript[]):Promise<customscript[]>{
 let bestMatchCache = new Map<string, string>()
 let processScriptCache = new Map<string, string>()
 
-const scriptPassCounters = { cacheHits: 0, scans: 0 }
+const scriptPassCounters = { cacheHits: 0, scans: 0, earlyRejects: 0 }
 
 /**
- * Test-only counts of script-cache hits and of the linear scans that find a
- * referenced message when its reference carries no locator.
+ * Test-only counts of script-cache hits, of the linear scans that find a
+ * referenced message when its reference carries no locator, and of the regex
+ * runs `leadingLazyDotCannotMatch` skipped.
  */
-export function scriptPassCountersForTests(): { cacheHits: number, scans: number } {
+export function scriptPassCountersForTests(): { cacheHits: number, scans: number, earlyRejects: number } {
     return { ...scriptPassCounters }
 }
 
 export function resetScriptPassCountersForTests(): void {
     scriptPassCounters.cacheHits = 0
     scriptPassCounters.scans = 0
+    scriptPassCounters.earlyRejects = 0
 }
 
 /**
@@ -224,7 +229,31 @@ export function resetScriptCache(){
  * script cache serves and stores it only when `isKeyDeterminedPass` holds.
  * Without one the call reads and caches as any other.
  */
-export async function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView){
+export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView): ReturnType<typeof runScriptPass>{
+    // Not `async`: in a normal build the caller gets the body's own promise,
+    // so an `await` of it resumes after the same microtask ticks as before.
+    if(!MEASURE){
+        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView)
+    }
+    const startT = performance.now()
+    const probe: ScriptPassProbe = { cache: 'aborted', scans: 0, earlyRejects: 0 }
+    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, probe)
+        .finally(() => noteScriptPass(mode, startT, probe.cache, probe.scans, probe.earlyRejects))
+}
+
+/**
+ * What a measured `processScriptFull` call reports to the chat phase ring. The
+ * scan and early-reject counts are the changes of `scriptPassCounters` across
+ * the synchronous script loop, so a call running at the same time cannot add to
+ * them.
+ */
+interface ScriptPassProbe {
+    cache: ScriptCacheOutcome
+    scans: number
+    earlyRejects: number
+}
+
+async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, probe?:ScriptPassProbe){
     let db = getDatabase()
     let emoChanged = false
     const subject = sendSubject ?? (origin ? createRunSubject(origin) : undefined)
@@ -265,6 +294,9 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
     const useCache = !promptView || isKeyDeterminedPass(scripts, mode, data)
     const hash = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView) : ''
     const cached = useCache ? getScriptCache(hash) : undefined
+    if(MEASURE && probe){
+        probe.cache = cached ? 'hit' : scripts.length === 0 ? 'empty' : useCache ? 'miss' : 'uncached'
+    }
     if(cached){
         scriptPassCounters.cacheHits++
         return {data: cached, emoChanged: false}
@@ -310,8 +342,12 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
             }
 
             const reg = new RegExp(input, flag)
+            const rejected = leadingLazyDotCannotMatch(input, flag, data)
+            if(rejected){
+                scriptPassCounters.earlyRejects++
+            }
             if(outScript.startsWith('@@') || pscript.actions.length > 0){
-                if(reg.test(data)){
+                if(!rejected && reg.test(data)){
                     if(outScript.startsWith('@@emo ')){
                         const emoName = script.out.substring(6).trim()
                         let charemotions = get(CharEmotion)
@@ -468,6 +504,10 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
                     }
                 }
             }
+            else if(rejected){
+                // No match: the replace would return `data` unchanged.
+                data = risuChatParser(data, { chatID: chatID, cbsConditions, subject, promptView })
+            }
             else{
                 data = risuChatParser(data.replace(reg, outScript), { chatID: chatID, cbsConditions, subject, promptView })
             }
@@ -513,12 +553,18 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
     if(orderChanged){
         parsedScripts.sort((a, b) => b.order - a.order) //sort by order
     }
+    const scansBefore = MEASURE ? scriptPassCounters.scans : 0
+    const rejectsBefore = MEASURE ? scriptPassCounters.earlyRejects : 0
     for (const script of parsedScripts){
         try {
-            executeScript(script)            
+            executeScript(script)
         } catch (error) {
             console.error(error)
         }
+    }
+    if(MEASURE && probe){
+        probe.scans = scriptPassCounters.scans - scansBefore
+        probe.earlyRejects = scriptPassCounters.earlyRejects - rejectsBefore
     }
 
     
