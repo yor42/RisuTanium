@@ -36,6 +36,16 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 2. **Toast wording: "Keep as is for now (Recommended)".** The maintainer's draft wording of `saveCharacterUnsavedNotice` and `saveCharacterNeverSavedNotice`, which says "tab", stays unchanged, although "tab" reads oddly in the Android app.
 3. Lane A also said that CHORE-62 stays unaudited against store2 for now (it was outside the A1' audit's scope); lane A decides when it becomes relevant.
 
+### MC-454 — Lane E, 2026-10-22: commit and merge CHORE-187
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after CHORE-187 Gate 2 (row 3547).
+- **Related:** `MC-345` (item A3); CHORE-187.
+
+1. **"Commit + merge (Recommended)".** Commit the 8 named CHORE-187 paths and the lane E records pass on `worktree-Lane-E` after merging main, then send the tip to lane A for merge.
+
 ## CHORE entries
 
 ### CHORE-193 (changed) — status line to add at fold-in
@@ -73,6 +83,15 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 
 - Follow-ups from MC-346: Q-A ("Leave as today, ticket it", filed as CHORE-350), Q-B ("One toast per character") and Q-E ("Accept, toast says 'not being saved'").
 - Follow-ups from MC-347: Q-F ("Not fully saved"), Q-G ("Normal schedule") and Q-H ("Fold into this stage").
+
+### CHORE-187 (changed) — hidden export failures (MC-345 A3)
+
+**Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` (base `cc2128d60`); technically accepted (rows 3543 to 3548; records checked in row 3549); the maintainer approved the commit and merge (`MC-454`); committed over main `1f4771ca7` and sent to lane A for merge. The Roadmap entry's "Not decided" note and status are updated at lane A's fold-in.** This settles the ticket's "Not decided" mechanism: the orchestrator chose a boolean result over a rethrow (Gate 1 agreed), because the unawaited `exportModule` call would otherwise reach the global rejection handler and alert twice.
+
+- `exportCharacterCard` resolves `true` on every completed path (both json branches included) and `false` after its catch has shown the error; an image read failure before the `try` still rejects.
+- Module export: no success alert after a failed export; a cancelled Tauri save dialog (`init` false) is silent (before: an error, then the success alert).
+- Realm share: `shareRealmCardData` returns `null` on a failed export and leaves the error alert visible (before: a partial or empty buffer was posted and the alert store was cleared). `RealmFrame.svelte` closes without posting on `null`; a rejected share shows the error and closes instead of leaving the spinner (same-cause fold-in, row 3544).
+- Not changed: a failed module export leaves the truncated file the person chose (`LocalWriter` has no abort); the writer handle after a mid-export failure is not closed. The Tauri cancel is tested only with a mocked `init` returning false, not a native dialog.
 
 ### CHORE-350 (new) — a value that cannot be stored retries every save pass (MC-346 Q-A)
 
@@ -131,6 +150,14 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 | 3540 | 2026-10-22 | Review of the orchestrator's editorial hunk (`a3\g2r3-117s2\verdict.md`) | opus-reviewer | 46,246 (subagent usage) | no | `[APPROVE]`. Only the two edits (the map comment; the settle after `port.requestPass()` in `'not-flushed'`); a throwing settle now keeps the forced retry; the order change is traced in source, not pinned by a test. 2 files, 127 passed; CRLF. |
 | 3541 | 2026-10-22 | Orchestrator editorial edits, verification and commit | orchestrator | n/a | no | Applied round 2 editorials 1 and 2 to `saveLoop.ts` (CR 740 = LF 740); 2 files 127 passed. Lane A relayed `MC-453`. Fast-forwarded to main `eb5e10bec` (no overlap); `pnpm check` 0/0; 11 targeted files 435 passed, 1 skipped. The 20 named paths are committed together with this records file in one commit on `worktree-Lane-E` (its hash is in the hand-off message to lane A). Full `pnpm test` and build are lane A's, on merged main. |
 | 3542 | 2026-10-22 | Independent check of this records pass (MC-453, CHORE-117 stage 2 status, rows 3533 to 3541) | doc-verifier | 53,939 (subagent usage) | no | Code and reviewer-sourced claims CONFIRMED. CORRECTED and applied by the orchestrator: the T9 attribution, the never-saved cost marked as inference, the accepted limitation (the settle can throw too; the idle net bounds the delay), and row 3541 and the handoff stated the commit before it existed. The orchestrator-only counts, token figures and the relayed MC-453 answers are not checkable from files. |
+| 3543 | 2026-10-22 | CHORE-187 plan (`a3\187\plan.md`) | orchestrator | n/a | no | Read in source: everything after the card image read in `writeCharacterCard` is caught and only alerted, so callers that pass a writer cannot see a failure; `writeModuleCard` ignores `init`'s false (Tauri cancel) and always shows success; `shareRealmCardData` clears the alert store and returns the buffer. Proposed a boolean result, a silent cancel, a `null` share and a closing Realm frame. |
+| 3544 | 2026-10-22 | CHORE-187 Gate 1 (`a3\187\g1\verdict.md`) | adversarial-reviewer | 48,583 (subagent usage) | no | `[ACCEPT WITH CHANGES]`, source reading only. Mechanism confirmed; the boolean is right (a rethrow would double-alert through the global rejection handler); the cancel exists only on Tauri. Required: both json branches return `true`; the catch returns `false` after `alertError`; RealmFrame closes and returns before the post on `null`; exact `toBe` assertions and a real-export realm test. Optional, folded in by the orchestrator: a share that rejects before the `try` leaves the spinner. |
+| 3545 | 2026-10-22 | CHORE-187 implementation (`a3\187\impl\handback.md`) | sonnet-coder | 112,119 (subagent usage: 24,887 READY stop + 87,232) | no | Exact grant for 8 files, revoked after the hand-back. Red on a `git archive` base copy: 9 failed, all behavioural. Mutants M1 to M7 killed; M8 (no `close()` on the reject path) survived as an equivalent. 6 targeted files 54 passed; 7 `modules.*` files 101 passed; `pnpm check` 0/0; CRLF. |
+| 3546 | 2026-10-22 | Orchestrator verification after row 3545 | orchestrator | n/a | no | Grant revoked. `pnpm check` 0/0. The four changed test files, RealmFrame i18n, characterCards localized texts and every `modules.*` test file: 155 passed. The mcp snapshot file was untouched. |
+| 3547 | 2026-10-22 | CHORE-187 Gate 2 (`a3\187\g2\verdict.md`) | adversarial-reviewer | 47,612 (subagent usage) | no | `[ACCEPT WITH NITS]`, no required findings. Base red rerun: 9 failed, all behavioural. Its own 3 mutants killed; M8 confirmed equivalent. 54 passed, and 105 passed over 8 `modules.*` files (the implementer ran 7); `pnpm check` 0/0; CR = LF in all 8 files; no `any`. Nits: an unrelated whitespace-only line in `characterCards.ts`; no mocked-export realm success case (acceptable). |
+| 3548 | 2026-10-22 | Orchestrator nit fix | orchestrator | n/a | no | Restored the four trailing spaces of the one blank line the coder had emptied in `characterCards.ts` (first json branch only; no BOM, as at HEAD; CR 2490 = LF 2490). 4 card test files 48 passed. |
+| 3549 | 2026-10-22 | Independent check of the CHORE-187 records and commit message | doc-verifier | 41,382 (subagent usage) | no | All claims CONFIRMED against the diff and the Gate 1, implementation and Gate 2 files; row 3548's diff has exactly the intended hunks. Applied: row 3547 now says Gate 2 ran 8 `modules.*` files. Noted: the Roadmap entry is updated at fold-in. Its trailer remark was not taken (the trailer names the committing model). |
+| 3550 | 2026-10-22 | CHORE-187 commit | orchestrator | n/a | no | Lane A relayed `MC-454`. Fast-forwarded to main `1f4771ca7` (no overlap); 155 passed over the same files as row 3546; `pnpm check` 0/0. The 8 named paths and this records file committed together on `worktree-Lane-E` (hash in the hand-off message to lane A). |
 
 ## Handoff
 
@@ -147,3 +174,5 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 **2026-10-22, fold-in after the CHORE-153 merge.** Lane A merged lane E's CHORE-153 as `c5c6897f5` (no-ff, on `389f461de`). Full checks and the phone 2 check passed; the phone check is doc-verified. CHORE-117 stage 2: implementation starts after the CHORE-153 merge (plan Gate 1 passed). CHORE-350 is filed (open, not scheduled). CHORE-181 gains the Back-guard flush. Next free IDs: MC-453 (lane E), CHORE-351, row 3533.
 
 **2026-10-22, CHORE-117 stage 2.** Technically accepted (rows 3533 to 3541; records checked in row 3542); the maintainer approved the commit (`MC-453`); the 20 named paths and these records are committed together on `worktree-Lane-E` over main `eb5e10bec` and sent to lane A for merge. Both writer grants (rows 3533, 3537) were revoked after their hand-backs. Not done in this lane: a full `pnpm test` and build (lane A's, on merged main). Next: CHORE-187 with normal gates, then CHORE-181. Next free IDs: MC-454, CHORE-351, row 3543.
+
+**2026-10-22, CHORE-187.** Technically accepted (rows 3543 to 3548; records checked in row 3549); the maintainer approved the commit and merge (`MC-454`); committed with these records on `worktree-Lane-E` over main `1f4771ca7` (row 3550) and sent to lane A. Its writer grant (row 3545) was revoked after the hand-back. Next: CHORE-181; its read-only investigation packet is `%TEMP%\risu-lane-e\a3\181\packet.md` (not yet verified; six product questions for the maintainer). Next free IDs: MC-455, CHORE-351, row 3551.

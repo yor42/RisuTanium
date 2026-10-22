@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { alertMd } from "src/ts/alert";
+    import { alertError, alertMd } from "src/ts/alert";
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
     import { shareRealmCardData } from "src/ts/realm";
@@ -71,7 +71,7 @@
         let data:{
             data: ArrayBuffer,
             name: ArrayBuffer
-        }
+        } | null
 
         const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
             return new Uint8Array(bytes).buffer
@@ -98,7 +98,20 @@
             }
         }
         else{
-            data = await shareRealmCardData()
+            try{
+                data = await shareRealmCardData()
+            }
+            catch(e){
+                alertError(e)
+                close()
+                return
+            }
+            if(!data){
+                // The export already showed its error; closing resets the
+                // store without clearing that alert or posting a partial file.
+                close()
+                return
+            }
         }
 
         if(iframe){
