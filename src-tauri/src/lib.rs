@@ -20,6 +20,7 @@ mod asset_batch;
 mod chunked_io;
 mod durable_write;
 mod env_secret;
+mod export_append;
 mod free_space;
 mod launch_inputs;
 mod store2_gate;
@@ -1077,6 +1078,7 @@ pub fn run() {
             write_chunk,
             abort_chunked,
             read_range,
+            export_append::export_append_b64,
             native_request,
             check_auth,
             check_requirements_local,

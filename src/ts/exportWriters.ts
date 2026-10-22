@@ -1,8 +1,10 @@
+import { invoke } from "@tauri-apps/api/core"
 import { writeFile } from "@tauri-apps/plugin-fs"
 import { language } from "src/lang"
 import { alertNormalWait } from "./alert"
 import streamSaver from "./vendor/streamSaver"
 import { MEASURE } from "./process/memory/measureFlag"
+import { bytesToBase64, isAndroidTransport } from "./storage/tauriByteTransport"
 
 /** Smallest unit the exporters hand to a writer that can take a byte array. */
 export interface ByteWriter {
@@ -64,24 +66,38 @@ export function encodeBackupEntryHeader(encodedName: Uint8Array, dataLength: num
 /** Bytes a `TauriWriter` collects before it hands them to the file system in one call; no call carries more. */
 export const TAURI_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 
-/** One `writeFile` call of a `TauriWriter`, as a measurement build records it. */
+/** One file-system call of a `TauriWriter` (`writeFile`, or `export_append_b64`), as a measurement build records it. */
 export interface ExportWriteCall {
     bytes: number
-    /** Milliseconds until `writeFile` returned its promise; the page-side work that runs before the call is handed on. */
+    /** Milliseconds until the call returned its promise; the page-side work (the base64 encode included) that runs before the call is handed on. */
     syncMs: number
     /** Milliseconds from then until the promise settled. */
     waitMs: number
     /** False for the call that created the file. */
     append: boolean
+    /** Set only on a call of `export_append_b64`: the milliseconds its base64 encode took, which `syncMs` includes. */
+    encodeMs?: number
+    /** Set only on a call that `close` made, which is the one that completes the file. */
+    closing?: true
+    /** Set only on the closing call of `export_append_b64`, from its reply: whether the file's data reached storage (`sync_all`). */
+    synced?: boolean
 }
 
-/** The `writeFile` calls since the last `takeExportWriteStats`. */
+/** The file-system calls since the last `takeExportWriteStats`. */
 export interface ExportWriteStats {
     calls: number
     bytes: number
     syncMs: number
     waitMs: number
     creates: number
+    /** Calls made through `export_append_b64`; the others went through `writeFile`. */
+    appendCalls: number
+    /** Milliseconds spent encoding base64 text, over the calls of `export_append_b64`. */
+    encodeMs: number
+    /** Milliseconds the calls made by `close` took: encode, hand-off and wait. */
+    closeMs: number
+    /** The `synced` of the closing `export_append_b64` reply; `undefined` when no such call replied with one. */
+    appendSynced: boolean | undefined
     /** Every call, in order. */
     records: ExportWriteCall[]
 }
@@ -109,7 +125,7 @@ export function takeExportWriteStats(): ExportWriteStats | null {
     }
     const records = writeRecords
     writeRecords = []
-    const stats: ExportWriteStats = { calls: records.length, bytes: 0, syncMs: 0, waitMs: 0, creates: 0, records }
+    const stats: ExportWriteStats = { calls: records.length, bytes: 0, syncMs: 0, waitMs: 0, creates: 0, appendCalls: 0, encodeMs: 0, closeMs: 0, appendSynced: undefined, records }
     for (const record of records) {
         stats.bytes += record.bytes
         stats.syncMs += record.syncMs
@@ -117,21 +133,56 @@ export function takeExportWriteStats(): ExportWriteStats | null {
         if (!record.append) {
             stats.creates += 1
         }
+        if (record.encodeMs !== undefined) {
+            stats.appendCalls += 1
+            stats.encodeMs += record.encodeMs
+        }
+        if (record.closing) {
+            stats.closeMs += record.syncMs + record.waitMs
+        }
+        if (record.synced !== undefined) {
+            stats.appendSynced = record.synced
+        }
     }
     return stats
 }
 
-/** The timing of one call: `returned` when `writeFile` handed back its promise, `settled` when that promise resolved. */
+/** The timing of one call: `encoded` when the base64 text is ready, `returned` when the call handed back its promise, `settled` when that promise resolved. */
 interface WriteTiming {
+    /** Only for a call that encodes; its absence marks a call through `writeFile`. */
+    encoding(): void
+    encoded(): void
     returned(): void
+    /** Only for a closing call that replied with a `synced`. */
+    synced(value: boolean): void
     settled(): void
 }
 
-function startWriteTiming(bytes: number, append: boolean): WriteTiming | null {
+function startWriteTiming(bytes: number, append: boolean, closing: boolean): WriteTiming | null {
     try {
         const startedAt = measureClock()
         let returnedAt = startedAt
+        let encodeStartedAt: number | undefined
+        let encodeMs: number | undefined
+        let synced: boolean | undefined
         return {
+            encoding() {
+                encodeMs = 0
+                try {
+                    encodeStartedAt = measureClock()
+                } catch {
+                    // A failing clock loses this call's encode time and nothing else.
+                }
+            },
+            encoded() {
+                try {
+                    if (encodeStartedAt !== undefined) {
+                        encodeMs = measureClock() - encodeStartedAt
+                    }
+                } catch {
+                    // A failing clock loses this call's encode time and nothing else.
+                }
+            },
             returned() {
                 try {
                     returnedAt = measureClock()
@@ -139,10 +190,23 @@ function startWriteTiming(bytes: number, append: boolean): WriteTiming | null {
                     // A failing clock loses this call's timing and nothing else.
                 }
             },
+            synced(value) {
+                synced = value
+            },
             settled() {
                 try {
                     const settledAt = measureClock()
-                    writeRecords.push({ bytes, syncMs: returnedAt - startedAt, waitMs: settledAt - returnedAt, append })
+                    const record: ExportWriteCall = { bytes, syncMs: returnedAt - startedAt, waitMs: settledAt - returnedAt, append }
+                    if (encodeMs !== undefined) {
+                        record.encodeMs = encodeMs
+                    }
+                    if (closing) {
+                        record.closing = true
+                    }
+                    if (synced !== undefined) {
+                        record.synced = synced
+                    }
+                    writeRecords.push(record)
                 } catch {
                     // A failing clock loses this call's record and nothing else.
                 }
@@ -170,6 +234,8 @@ export class TauriWriter {
     private failed = false
     private failure: unknown = undefined
     private attempted = false
+    /** Fixed at construction: whether chunks go to `export_append_b64` (the Android save dialog's `content://` document) instead of `writeFile`. */
+    private readonly viaAppendCommand: boolean
 
     /**
      * Creates an instance of TauriWriter.
@@ -178,6 +244,7 @@ export class TauriWriter {
      */
     constructor(path: string) {
         this.path = path
+        this.viaAppendCommand = path.startsWith('content://') && isAndroidTransport()
     }
 
     /** Whether a call that may have created or changed the file has been made; a file at `path` is untouched until then. */
@@ -185,16 +252,39 @@ export class TauriWriter {
         return this.attempted
     }
 
-    private async put(data: Uint8Array) {
+    /**
+     * One chunk of base64 text to `export_append_b64`. The encode, the call and the length check are all inside the
+     * caller's failure handling, so the bytes taken off the buffer are never dropped without the writer failing.
+     */
+    private async putViaAppendCommand(data: Uint8Array, append: boolean, closing: boolean, timing: WriteTiming | null) {
+        timing?.encoding()
+        const text = bytesToBase64(data)
+        timing?.encoded()
+        const reply = invoke<{ written?: number, synced?: boolean }>('export_append_b64', { uri: this.path, data: text, create: !append, last: closing })
+        timing?.returned()
+        const result = await reply
+        if (result?.written !== data.byteLength) {
+            throw new Error(`export_append_b64 reported ${String(result?.written)} bytes written for a chunk of ${data.byteLength}`)
+        }
+        if (closing && typeof result.synced === 'boolean') {
+            timing?.synced(result.synced)
+        }
+    }
+
+    private async put(data: Uint8Array, closing = false) {
         this.attempted = true
         const append = !this.firstWrite
-        const timing = MEASURE ? startWriteTiming(data.byteLength, append) : null
+        const timing = MEASURE ? startWriteTiming(data.byteLength, append, closing) : null
         try {
-            const written = writeFile(this.path, data, {
-                append
-            })
-            timing?.returned()
-            await written
+            if (this.viaAppendCommand) {
+                await this.putViaAppendCommand(data, append, closing, timing)
+            } else {
+                const written = writeFile(this.path, data, {
+                    append
+                })
+                timing?.returned()
+                await written
+            }
             timing?.settled()
         } catch (error) {
             this.failed = true
@@ -204,11 +294,14 @@ export class TauriWriter {
         this.firstWrite = false
     }
 
-    private async flush() {
+    private async flush(closing = false) {
         if (this.pending && this.pendingLength > 0) {
             const length = this.pendingLength
             this.pendingLength = 0
-            await this.put(this.pending.subarray(0, length))
+            await this.put(this.pending.subarray(0, length), closing)
+        } else if (closing && this.viaAppendCommand && !this.firstWrite) {
+            // The command syncs the file on its last call, so a file whose bytes all went out earlier still needs one.
+            await this.put(new Uint8Array(0), true)
         }
     }
 
@@ -246,7 +339,7 @@ export class TauriWriter {
         if (this.failed) {
             throw this.failure
         }
-        await this.flush()
+        await this.flush(true)
     }
 }
 

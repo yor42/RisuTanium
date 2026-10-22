@@ -122,7 +122,7 @@ function describeReadMeasure(): string {
         const ranges = takeRangeReadStats()
         const parts: string[] = []
         if (stubs) {
-            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)}`)
+            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed}`)
         }
         if (ranges) {
             parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)}`)
@@ -154,7 +154,8 @@ function describeWriteMeasure(): string {
             const dearest = stats.records.reduce((high, call) => total(call) > total(high) ? call : high)
             calls = `writeLow=${label(cheapest)} writeHigh=${label(dearest)}`
         }
-        return `writeCalls=${stats.calls} writeBytes=${stats.bytes} writeSyncMs=${round(stats.syncMs)} writeWaitMs=${round(stats.waitMs)} writeCreates=${stats.creates} ${calls}`
+        const via = stats.calls === 0 ? 'none' : stats.appendCalls === 0 ? 'fs' : stats.appendCalls === stats.calls ? 'b64' : 'mixed'
+        return `writeCalls=${stats.calls} writeVia=${via} writeBytes=${stats.bytes} writeSyncMs=${round(stats.syncMs)} writeWaitMs=${round(stats.waitMs)} writeCreates=${stats.creates} encodeMs=${round(stats.encodeMs)} closeMs=${round(stats.closeMs)} appendSynced=${stats.appendSynced === undefined ? 'none' : String(stats.appendSynced)} ${calls}`
     } catch {
         return ''
     }

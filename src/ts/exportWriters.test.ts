@@ -49,12 +49,89 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormalWait: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/alert'))
 
+/**
+ * The Android save-dialog path: a fake operating-system plugin and a fake `export_append_b64` command that decodes the
+ * text as Rust's strict standard engine would (padding required), truncates on `create` and appends otherwise.
+ */
+const android = vi.hoisted(() => ({
+    os: null as string | null,
+    calls: [] as Array<{ command: string, uri: string, text: unknown, create: boolean, last: boolean }>,
+    files: new Map<string, Uint8Array>(),
+    inFlight: 0,
+    maxInFlight: 0,
+    failCall: null as null | ((index: number) => boolean),
+    replyFor: null as null | ((written: number, last: boolean) => unknown),
+    encodeFails: false,
+}))
+
+vi.mock('@tauri-apps/plugin-os', () => ({
+    type: () => {
+        if (android.os === null) {
+            throw new Error('no operating-system plugin')
+        }
+        return android.os
+    },
+}))
+
+vi.mock('@tauri-apps/api/core', () => ({
+    invoke: vi.fn(async (command: string, args: { uri: string, data: unknown, create: boolean, last: boolean }) => {
+        const index = android.calls.length
+        android.calls.push({ command, uri: args.uri, text: args.data, create: args.create, last: args.last })
+        android.inFlight += 1
+        android.maxInFlight = Math.max(android.maxInFlight, android.inFlight)
+        try {
+            await Promise.resolve()
+            if (command !== 'export_append_b64') {
+                throw new Error(`unexpected command ${command}`)
+            }
+            if (android.failCall?.(index)) {
+                throw new Error('synthetic append failure')
+            }
+            const text = args.data as string
+            const decoded = Buffer.from(text, 'base64')
+            if (text.length % 4 !== 0 || decoded.toString('base64') !== text) {
+                throw new Error('malformed: not strict base64')
+            }
+            const previous = args.create ? new Uint8Array() : android.files.get(args.uri) ?? new Uint8Array()
+            const next = new Uint8Array(previous.byteLength + decoded.byteLength)
+            next.set(previous, 0)
+            next.set(decoded, previous.byteLength)
+            android.files.set(args.uri, next)
+            return android.replyFor ? android.replyFor(decoded.byteLength, args.last) : { written: decoded.byteLength, ...(args.last ? { synced: true } : {}) }
+        } finally {
+            android.inFlight -= 1
+        }
+    }),
+}))
+
+vi.mock('src/ts/storage/tauriByteTransport', async (importOriginal) => {
+    const original = await importOriginal<typeof import('src/ts/storage/tauriByteTransport')>()
+    return {
+        ...original,
+        bytesToBase64: (bytes: Uint8Array) => {
+            if (android.encodeFails) {
+                throw new Error('synthetic encode failure')
+            }
+            return original.bytesToBase64(bytes)
+        },
+    }
+})
+
 const PATH = 'synthetic/out.bin'
+const URI = 'content://com.android.externalstorage.documents/document/primary%3ADownload%2Frisu-backup.bin'
 
 beforeEach(() => {
     fs.files.clear()
     fs.calls.length = 0
     fs.failCall = null
+    android.os = null
+    android.calls.length = 0
+    android.files.clear()
+    android.inFlight = 0
+    android.maxInFlight = 0
+    android.failCall = null
+    android.replyFor = null
+    android.encodeFails = false
 })
 
 function body(n: number, seed: number): Uint8Array {
@@ -390,13 +467,17 @@ describe('TauriWriter write timing', () => {
             syncMs: 2 + 1 + 6,
             waitMs: 7 + 4 + 1,
             creates: 1,
+            appendCalls: 0,
+            encodeMs: 0,
+            closeMs: 0,
+            appendSynced: undefined,
             records: [
                 { bytes: TAURI_WRITE_CHUNK_BYTES, syncMs: 2, waitMs: 7, append: false },
                 { bytes: TAURI_WRITE_CHUNK_BYTES, syncMs: 1, waitMs: 4, append: true },
                 { bytes: TAURI_WRITE_CHUNK_BYTES / 2, syncMs: 6, waitMs: 1, append: true },
             ],
         })
-        expect(takeExportWriteStats()).toEqual({ calls: 0, bytes: 0, syncMs: 0, waitMs: 0, creates: 0, records: [] })
+        expect(takeExportWriteStats()).toEqual({ calls: 0, bytes: 0, syncMs: 0, waitMs: 0, creates: 0, appendCalls: 0, encodeMs: 0, closeMs: 0, appendSynced: undefined, records: [] })
     })
 
     test('a rejected call is not recorded, its error reaches the caller, and the writer still refuses every later write', async () => {
@@ -431,5 +512,242 @@ describe('TauriWriter write timing', () => {
         expect(fs.calls.map((call) => call.append)).toEqual([false, true])
         expectBytes(fs.files.get(PATH)!, data)
         expect(() => takeExportWriteStats()).not.toThrow()
+    })
+})
+
+// The Android save dialog hands the app a `content://` document; its chunks go to `export_append_b64` as base64 text.
+// The fake command above is not evidence about the native command or the document provider.
+describe('TauriWriter on an Android content:// document', () => {
+    function decodedLength(text: unknown): number {
+        return Buffer.from(text as string, 'base64').byteLength
+    }
+
+    test('(R) sends every chunk to export_append_b64, none to writeFile: at most 4 MiB each, create first, last only at the end, one call in flight', async () => {
+        android.os = 'android'
+        const writer = new TauriWriter(URI)
+        const big = body(TAURI_WRITE_CHUNK_BYTES * 2 + 123, 10)
+        await writer.write(big)
+        await writer.close()
+
+        expect(fs.calls).toEqual([])
+        expect(android.calls.map((call) => call.command)).toEqual(Array(4).fill('export_append_b64'))
+        expect(android.calls.every((call) => typeof call.text === 'string' && call.uri === URI)).toBe(true)
+        expect(android.calls.map((call) => decodedLength(call.text))).toEqual([TAURI_WRITE_CHUNK_BYTES, TAURI_WRITE_CHUNK_BYTES, 123, 0])
+        expect(android.calls.map((call) => call.create)).toEqual([true, false, false, false])
+        expect(android.calls.map((call) => call.last)).toEqual([false, false, false, true])
+        expect(android.maxInFlight).toBe(1)
+        expectBytes(android.files.get(URI)!, big)
+    })
+
+    test('(R) a file of exactly several chunks ends with one empty call that carries last', async () => {
+        android.os = 'android'
+        const writer = new TauriWriter(URI)
+        await writer.write(body(TAURI_WRITE_CHUNK_BYTES / 2, 1))
+        await writer.write(body(TAURI_WRITE_CHUNK_BYTES / 2, 2))
+        await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 3))
+        await writer.close()
+
+        expect(android.calls.map((call) => [decodedLength(call.text), call.create, call.last])).toEqual([
+            [TAURI_WRITE_CHUNK_BYTES, true, false],
+            [TAURI_WRITE_CHUNK_BYTES, false, false],
+            [0, false, true],
+        ])
+    })
+
+    test('(R) a small export is one call that creates the file and is the last', async () => {
+        android.os = 'android'
+        const writer = new TauriWriter(URI)
+        await writer.write(body(10, 1))
+        await writer.write(body(20, 2))
+        expect(android.calls).toEqual([])
+        await writer.close()
+
+        expect(android.calls.map((call) => [decodedLength(call.text), call.create, call.last])).toEqual([[30, true, true]])
+        expectBytes(android.files.get(URI)!, concat([body(10, 1), body(20, 2)]))
+    })
+
+    test('(G) a writer that never wrote makes no call and has not touched the file', async () => {
+        android.os = 'android'
+        const writer = new TauriWriter(URI)
+        await writer.close()
+
+        expect(android.calls).toEqual([])
+        expect(fs.calls).toEqual([])
+        expect(writer.touchedFile).toBe(false)
+    })
+
+    test('(R) the same writeBackupEntry sequence gives the same file as the writeFile path, for bodies small, at the limit and over a chunk', async () => {
+        const entries: Array<[string, Uint8Array]> = [
+            ['assets/a', body(100, 1)],
+            ['assets/b', body(BACKUP_ENTRY_COALESCE_BYTES, 3)],
+            ['cold/d', body(TAURI_WRITE_CHUNK_BYTES - 5, 4)],
+            ['assets/e', body(TAURI_WRITE_CHUNK_BYTES + 1, 5)],
+            ['assets/f', body(9 * 1024 * 1024, 6)],
+            ['database.risudat', body(3000, 7)],
+        ]
+        const expected = concat(entries.flatMap(([name, data]) => legacyEntryWrites(name, data)))
+        const oldWriter = new TauriWriter(PATH)
+        android.os = 'android'
+        const newWriter = new TauriWriter(URI)
+        for (const [name, data] of entries) {
+            await writeBackupEntry(oldWriter, new TextEncoder().encode(name), data)
+            await writeBackupEntry(newWriter, new TextEncoder().encode(name), data)
+        }
+        await oldWriter.close()
+        await newWriter.close()
+
+        expectBytes(fs.files.get(PATH)!, expected)
+        expectBytes(android.files.get(URI)!, expected)
+        expect(android.calls.every((call) => decodedLength(call.text) <= TAURI_WRITE_CHUNK_BYTES)).toBe(true)
+        expect(android.calls.filter((call) => call.create)).toHaveLength(1)
+        expect(android.calls.filter((call) => call.last)).toHaveLength(1)
+    })
+
+    test('(G) the Android command is used only for an Android content:// path: a plain path, a file: URI, another platform and an unknown platform keep writeFile', async () => {
+        const cases: Array<[string | null, string]> = [
+            ['android', PATH],
+            ['android', 'file:///data/out.bin'],
+            ['windows', URI],
+            ['linux', URI],
+            [null, URI],
+        ]
+        for (const [os, path] of cases) {
+            fs.calls.length = 0
+            android.calls.length = 0
+            android.os = os
+            const writer = new TauriWriter(path)
+            await writer.write(body(100, 1))
+            await writer.close()
+            expect(android.calls, `${os} ${path}`).toEqual([])
+            expect(fs.calls, `${os} ${path}`).toHaveLength(1)
+        }
+    })
+
+    test('(R) the platform is read once, at construction', async () => {
+        android.os = 'android'
+        const writer = new TauriWriter(URI)
+        android.os = 'windows'
+        await writer.write(body(100, 1))
+        await writer.close()
+
+        expect(fs.calls).toEqual([])
+        expect(android.calls).toHaveLength(1)
+    })
+
+    test('(R) a rejected call fails the writer: later write and close reject with the same error, and the file counts as touched', async () => {
+        android.os = 'android'
+        android.failCall = (index) => index === 1
+        const writer = new TauriWriter(URI)
+        await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
+        await expect(writer.write(body(TAURI_WRITE_CHUNK_BYTES, 2))).rejects.toThrow('synthetic append failure')
+        expect(writer.touchedFile).toBe(true)
+        await expect(writer.write(body(1, 3))).rejects.toThrow('synthetic append failure')
+        await expect(writer.close()).rejects.toThrow('synthetic append failure')
+        expect(android.calls).toHaveLength(2)
+    })
+
+    test('(R) a rejected closing call rejects close, and a second close rejects with the same error', async () => {
+        android.os = 'android'
+        android.failCall = () => true
+        const writer = new TauriWriter(URI)
+        await writer.write(body(100, 1))
+        await expect(writer.close()).rejects.toThrow('synthetic append failure')
+        await expect(writer.close()).rejects.toThrow('synthetic append failure')
+        expect(writer.touchedFile).toBe(true)
+    })
+
+    test('(R) a reply that does not state the chunk length fails the writer', async () => {
+        android.os = 'android'
+        android.replyFor = (written) => ({ written: written - 1 })
+        const writer = new TauriWriter(URI)
+        await expect(writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))).rejects.toThrow('reported')
+        expect(writer.touchedFile).toBe(true)
+        await expect(writer.close()).rejects.toThrow('reported')
+    })
+
+    test.each([null, undefined, 'ok', {}])('(R) a reply of %j fails the writer', async (reply) => {
+        android.os = 'android'
+        android.replyFor = () => reply
+        const writer = new TauriWriter(URI)
+        await writer.write(body(10, 1))
+        await expect(writer.close()).rejects.toThrow('reported')
+    })
+
+    test('(R) an encode that throws fails the writer and drops no silent bytes: later write and close reject with that error', async () => {
+        android.os = 'android'
+        android.encodeFails = true
+        const writer = new TauriWriter(URI)
+        await expect(writer.write(body(TAURI_WRITE_CHUNK_BYTES + 1, 1))).rejects.toThrow('synthetic encode failure')
+        expect(writer.touchedFile).toBe(true)
+        await expect(writer.write(body(1, 2))).rejects.toThrow('synthetic encode failure')
+        await expect(writer.close()).rejects.toThrow('synthetic encode failure')
+
+        const closing = new TauriWriter(URI)
+        await closing.write(body(100, 1))
+        await expect(closing.close()).rejects.toThrow('synthetic encode failure')
+        await expect(closing.close()).rejects.toThrow('synthetic encode failure')
+        expect(android.calls).toEqual([])
+    })
+
+    test('(R) a measurement build records the encode time of each command call, and the time of the call close made', async () => {
+        android.os = 'android'
+        resetExportWriteStatsForTest()
+        let reading = 0
+        const readings = [0, 1, 4, 5, 9]
+        setExportWriteClockForTest(() => readings[Math.min(reading++, readings.length - 1)])
+        try {
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await writer.close()
+
+            expect(takeExportWriteStats()).toEqual({
+                calls: 1,
+                bytes: 10,
+                syncMs: 5,
+                waitMs: 4,
+                creates: 1,
+                appendCalls: 1,
+                encodeMs: 3,
+                closeMs: 9,
+                appendSynced: true,
+                records: [{ bytes: 10, syncMs: 5, waitMs: 4, append: false, encodeMs: 3, closing: true, synced: true }],
+            })
+        } finally {
+            setExportWriteClockForTest(null)
+            resetExportWriteStatsForTest()
+        }
+    })
+
+    test('(new behaviour) a measurement build records the synced of the closing reply, false included, and none for a call that is not the closing one', async () => {
+        android.os = 'android'
+        android.replyFor = (written, last) => ({ written, synced: last ? false : true })
+        resetExportWriteStatsForTest()
+        try {
+            const writer = new TauriWriter(URI)
+            await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
+            await writer.write(body(10, 2))
+            await writer.close()
+
+            const stats = takeExportWriteStats()
+            expect(stats?.appendSynced).toBe(false)
+            expect(stats?.records.map((record) => record.synced)).toEqual([undefined, false])
+        } finally {
+            resetExportWriteStatsForTest()
+        }
+    })
+
+    test('(new behaviour) the synced of a measurement build is unknown when the closing reply does not state it', async () => {
+        android.os = 'android'
+        android.replyFor = (written) => ({ written })
+        resetExportWriteStatsForTest()
+        try {
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await writer.close()
+
+            expect(takeExportWriteStats()?.appendSynced).toBeUndefined()
+        } finally {
+            resetExportWriteStatsForTest()
+        }
     })
 })
