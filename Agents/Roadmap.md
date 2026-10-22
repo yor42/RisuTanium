@@ -6874,6 +6874,8 @@ with index -1.
 
 **Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Test-only. Sibling of CHORE-185.
 
+**Status (2026-10-22): open; triage planned.** New load failures were seen in the full runs on merged lane B stage 3 beyond `assetPieceSave`, `firstLife` and `storeImportBoot`: `risuSave.msgpackRelease` (5000 ms test timeouts), `tauriFilesStore.desktop` (a 5000 ms test timeout), `memorySummarizerSubject` (a 10000 ms hook timeout), `blockStore.node` (a 5000 ms test timeout) and one `saveLoop` test (an assertion failure, not a timeout; cause not traced). The logs are `%TEMP%\risu-b715\merge-b3\test*.txt` (scratch); see ledger row 2121. The stage 3 cascade in `backuplocalAssetBatch.test.ts` was a separate isolation defect, fixed in `92f7d900a`. **Next** (the maintainer's plan of 2026-10-22, as relayed by the orchestrator): a bounded investigation classifies each file as load-only or as an isolation or cascade defect and proposes fixes per file. It goes to a new lane E, or to lane B between stages (`Agents/Lanes/lane-E-brief.md`).
+
 - **`assetPieceSave.test.ts`, "saveAsset without crypto.subtle > reproducer":** "Test timed out in 5000ms" in the final full run at `cd49e8271` (`b64\full\pnpm-test.txt`: 20108 passed, 1 failed; the file took about 51 s). The file passed 23/23 three times alone (orchestrator). The same timeout was seen in the U3 notes on a branch without the base64 change (under `pnpm check` load) and by the base64 coder in a full storage-folder run, so it is a load flake and not caused by the base64 encoder. The cause of the slowness is not traced; the test calls `loadWorld()` per case (test source).
 - **`firstLife.test.ts`:** `EADDRINUSE` once under a directory run during the U3 stages; passed alone.
 - **`storeImportBoot`:** judged a flake in U4a Gate 2 round 3 (3 of 3 passes alone).
@@ -6905,6 +6907,7 @@ with index -1.
 - **WITHDRAWN:** background timer throttling as the mechanism. The copy loop in `backuplocal.ts` yields through `yieldToEventLoop` in `src/ts/storage/saveYield.ts`, which prefers `scheduler.yield()`, then `MessageChannel`, and uses `setTimeout(0)` only as a last resort.
 - **MISSING:** power evidence. b1's `power.txt` has one populated sample, taken with the screen on, and all 21 screen-off polls are empty. b2 has no power or diskstats file. The Doze and wake-lock claims in the unverified report text have no raw source.
 - **Next:** rerun with working power polling and a trace or a no-yield build. `MC-326` 4 (the import keeps running with the screen off) is affected; until the cause is traced, how much is an open question.
+- **Status (2026-10-22, later):** rerun planning goes to lane C as its first step (`Agents/Lanes/lane-C-brief.md`). It produces a plan only; lane A runs it on a phone.
 - **Related:** `MC-326` 4, `MC-336`; CHORE-203.
 
 ### CHORE-203 — The Note 9 debug-build copy rate is 3.6 to 3.9 MiB/s; separate the debug cost
@@ -6915,6 +6918,15 @@ with index -1.
 - **MEASURED during the copy window:** the flash was 10 to 12% utilised and the busiest thread about 25% (renderer main thread 25.3 to 25.5%).
 - **Next:** the same imports on a release MEASURE build, batched with lane B's Note 9 request (`%TEMP%\risu-lane-b\device-requests\2026-10-22-stage1-stub-import-calibration.md`, scratch; CHORE-220).
 - **Related:** `MC-336`, `MC-330`; CHORE-202, CHORE-220.
+
+### CHORE-204 — Device-script follow-ups (lane A)
+
+**Status (2026-10-22): open, queued until both phone agents finish, because the scripts are live while they run.** The work goes through one gated batch: a `sonnet-coder` in a scratch copy, a fresh `adversarial-reviewer`, one Copy-Item pass, then a byte-compare. Source: the maintainer's instruction of 2026-10-22, as relayed by the orchestrator.
+
+- **(a)** The defaults `-PortMin 9500 -PortMax 9599` in `cold-start.ps1` and `import-bin.ps1` are outside every reservation in `Agents/Lanes/README.md` (lane A 6000 to 6399, B 6400 to 6419, D 6420 to 6439, C 6440 to 6459, E 6460 to 6479); the final Gate 2 found no collision (ledger row 2114).
+- **(b)** `import-bin.ps1` does not dismiss the first-run startup notice that appears after the import commit. The gap sweep hit the 900 s cap on it, and the agent tapped OK by hand (ledger row 2117).
+- **(c)** The stale-lock replace race from the final Gate 2 (two waiters that both judge a lock stale can each remove it and create their own, so the second deletes the first's fresh lock; narrow, low, no executed repro): fix it, or keep it as a documented limit (ledger row 2114).
+- **Related:** `MC-330` 7, rows 2114 and 2117.
 
 ### CHORE-220 — The import size warning sums compressed database bytes with uncompressed unit bytes, so a stub-form file warns earlier and shows a larger number
 
