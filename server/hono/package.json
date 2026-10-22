@@ -9,7 +9,8 @@
     "start:vercel": "vercel dev src/cf.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.15",
+    "@hono/bun": "1.0.1",
+    "@hono/node-server": "^2.1.5",
     "hono": "^4.13.11"
   },
   "devDependencies": {
