@@ -349,6 +349,7 @@ import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { CHUNK_MAX, resetByteTransportForTests, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
 import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
+import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 
 //#region helpers
 
@@ -436,10 +437,27 @@ interface Gate {
     release(): void
 }
 
+/** Every gate made since the test began, so the cleanup can open the ones a failed test left closed. */
+const madeGates: Gate[] = []
+
 function gate(): Gate {
     let release: () => void = () => { }
     const promise = new Promise<void>((resolve) => { release = resolve })
-    return { promise, release }
+    const made = { promise, release }
+    madeGates.push(made)
+    return made
+}
+
+/** Longest a step waits for the restore to reach a held state; below `RESTORE_TEST_TIMEOUT_MS`, and long enough for a loaded machine. */
+const PROGRESS_WAIT_MS = 8000
+const RESTORE_TEST_TIMEOUT_MS = 20000
+/** Longest the cleanup waits for a released restore to end before it reports the leak. */
+const RESTORE_END_WAIT_MS = 2000
+vi.setConfig({ testTimeout: RESTORE_TEST_TIMEOUT_MS })
+
+/** `vi.waitFor` for a step that waits on large-entry progress. */
+function waitForProgress(check: () => void): Promise<void> {
+    return vi.waitFor(check, { timeout: PROGRESS_WAIT_MS })
 }
 
 async function settleTimers(): Promise<void> {
@@ -493,17 +511,33 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-    if (streamTrack.release !== null) {
-        // A test that failed before releasing leaves its restore held, and the next test's restore would be refused as busy.
-        streamTrack.release()
-        await lastRestore?.catch(() => { })
+    // A test that failed while its restore was held leaves that restore running, and the next test's restore would be refused as busy.
+    for (const held of madeGates.splice(0)) {
+        held.release()
     }
+    streamTrack.release?.()
+    let leaked = false
+    if (lastRestore !== null) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const ended = await Promise.race([
+            lastRestore.then(() => true, () => true),
+            new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), RESTORE_END_WAIT_MS) }),
+        ])
+        clearTimeout(timer)
+        leaked = !ended
+    }
+    lastRestore = null
+    capturedInput = null
+    resetBusyActionsForTest()
     overrideBackupWindowBytes(null)
     localStorage.removeItem('risu-measure-copy')
     vi.mocked(alertWait).mockReset()
     createElementSpy.mockRestore()
     dbWriteLockSpy.mockRestore()
     vi.restoreAllMocks()
+    if (leaked) {
+        throw new Error('the restore of this test did not end after every hold was released; its state was reset so the next test starts clean')
+    }
 })
 
 describe('a restore on an Android page', () => {
@@ -694,7 +728,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         streamTrack.release = release.release
 
         const restoring = restoreBytes(backupFor(LARGE_NAMES))
-        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(3) })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(3) })
         await settleTimers()
 
         expect(streamTrack.held.size).toBe(3)
@@ -724,7 +758,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         })
 
         const restoring = restoreBytes(backupFor(largeNames))
-        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(3) })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(3) })
         await settleTimers()
 
         expect(setDatabaseMock).not.toHaveBeenCalled()
@@ -759,7 +793,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         const file = fileWithLateFailingSlice(backupFor(largeNames), 2, () => streamTrack.held.size >= 2)
 
         const restoring = restoreFile(file)
-        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(2) })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(2) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
         release.release()

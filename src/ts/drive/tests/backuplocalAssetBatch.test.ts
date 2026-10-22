@@ -338,6 +338,7 @@ import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { getAppStore } from 'src/ts/storage/store/appStore'
+import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { CHUNK_MAX, resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { collectColdStorageBackupPayloads } from 'src/ts/process/coldstorage.svelte'
 import { getInlayAsset, setInlayAsset } from 'src/ts/process/files/inlays'
@@ -417,10 +418,27 @@ interface Gate {
     release(): void
 }
 
+/** Every gate made since the test began, so the cleanup can open the ones a failed test left closed. */
+const madeGates: Gate[] = []
+
 function gate(): Gate {
     let release: () => void = () => { }
     const promise = new Promise<void>((resolve) => { release = resolve })
-    return { promise, release }
+    const made = { promise, release }
+    madeGates.push(made)
+    return made
+}
+
+/** Longest a step waits for the restore to reach a held state; below `RESTORE_TEST_TIMEOUT_MS`, and long enough for a loaded machine. */
+const PROGRESS_WAIT_MS = 8000
+const RESTORE_TEST_TIMEOUT_MS = 20000
+/** Longest the cleanup waits for a released restore to end before it reports the leak. */
+const RESTORE_END_WAIT_MS = 2000
+vi.setConfig({ testTimeout: RESTORE_TEST_TIMEOUT_MS })
+
+/** `vi.waitFor` for a step that waits on large-entry or batch progress. */
+function waitForProgress(check: () => void): Promise<void> {
+    return vi.waitFor(check, { timeout: PROGRESS_WAIT_MS })
 }
 
 /** Holds the write calls with these indexes (in the order the fake receives them) until their gate is released. */
@@ -638,11 +656,24 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-    if (streamTrack.release !== null) {
-        // A test that failed before releasing leaves its restore held, and the next test's restore would be refused as busy.
-        streamTrack.release()
-        await lastRestore?.catch(() => { })
+    // A test that failed while its restore was held leaves that restore running, and the next test's restore would be refused as busy.
+    for (const held of madeGates.splice(0)) {
+        held.release()
     }
+    streamTrack.release?.()
+    let leaked = false
+    if (lastRestore !== null) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const ended = await Promise.race([
+            lastRestore.then(() => true, () => true),
+            new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), RESTORE_END_WAIT_MS) }),
+        ])
+        clearTimeout(timer)
+        leaked = !ended
+    }
+    lastRestore = null
+    capturedInput = null
+    resetBusyActionsForTest()
     overrideBackupWindowBytes(null)
     localStorage.removeItem('risu-measure-copy')
     vi.mocked(alertWait).mockReset()
@@ -650,6 +681,9 @@ afterEach(async () => {
     createElementSpy.mockRestore()
     dbWriteLockSpy.mockRestore()
     vi.restoreAllMocks()
+    if (leaked) {
+        throw new Error('the restore of this test did not end after every hold was released; its state was reset so the next test starts clean')
+    }
 })
 
 describe('a restore through the batch commands', () => {
@@ -723,7 +757,7 @@ describe('a restore through the batch commands', () => {
         ]
 
         const restoring = restoreBytes(backupOf(entries))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
         await settleTimers()
         gates.get(0)?.release()
         await restoring
@@ -747,7 +781,7 @@ describe('a restore through the batch commands', () => {
         alertErrorMock.mockImplementation(() => { settledAtMessage = allCallsSettled() })
 
         const restoring = restoreBytes(backupOf(entries))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(4) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(4) })
         await settleTimers()
         gates.get(1)?.release()
         await settleTimers()
@@ -786,7 +820,7 @@ describe('a restore through the batch commands', () => {
 
         try {
             const restoring = restoreBytes(backupOf(entries))
-            await vi.waitFor(() => { expect(thrown).toBe(true) })
+            await waitForProgress(() => { expect(thrown).toBe(true) })
             await settleTimers()
             expect(alertErrorMock).not.toHaveBeenCalled()
             gates.get(0)?.release()
@@ -806,7 +840,7 @@ describe('a restore through the batch commands', () => {
         batchFake.ctl.beforeWrite = async (_call, index) => {
             if (index === 0) {
                 // Rejects only once the second batch is in flight beside it.
-                await vi.waitFor(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
+                await waitForProgress(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
                 throw new Error('scratch: transport went away')
             }
             await gates.get(index)?.promise
@@ -816,7 +850,7 @@ describe('a restore through the batch commands', () => {
         const entries: [string, Uint8Array][] = [0, 1, 2].map((index) => [`t${index}.png`, filled(3 * MIB, index + 1)])
 
         const restoring = restoreBytes(backupOf(entries))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
         gates.get(1)?.release()
@@ -845,7 +879,7 @@ describe('a restore that stops early while a batch is being written', () => {
         const passView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('encryption.risudat', MARKER)])
 
         const restoring = startRestore(fileThatChanges(walkView(), passView))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
         gates.get(0)?.release()
@@ -865,7 +899,7 @@ describe('a restore that stops early while a batch is being written', () => {
         const passView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(17, 2))])
 
         const restoring = startRestore(fileThatChanges(walkView(), passView))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
         gates.get(0)?.release()
@@ -886,7 +920,7 @@ describe('a restore that stops early while a batch is being written', () => {
         const firstLength = buildChunk('first.png', filled(16, 1)).length
         overrideBackupWindowBytes({ copy: firstLength })
         const restoring = startRestore(fileWithRejectingSlice(walkView(), firstLength))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
         gates.get(0)?.release()
@@ -904,7 +938,7 @@ describe('two entries with the same key in one backup', () => {
         const gates = holdWrites([0])
 
         const restoring = restoreBytes(backupOf([['dup.png', filled(8, 1)], ['dup.png', filled(8, 2)]]))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(batchFake.ctl.calls).toHaveLength(1)
         gates.get(0)?.release()
@@ -925,7 +959,7 @@ describe('two entries with the same key in one backup', () => {
         ]
 
         const restoring = restoreBytes(backupOf(entries))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls.length).toBeGreaterThanOrEqual(2) })
         await settleTimers()
         // Nothing carrying the second dup.png has been sent while the first is in flight.
         expect(batchFake.ctl.calls.filter((call) => call.keys.includes('assets/dup.png'))).toHaveLength(1)
@@ -947,11 +981,11 @@ describe('two entries with the same key in one backup', () => {
             [cafeComposed, filled(8, 3)],
             [cafeDecomposed, filled(8, 4)],
         ]))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         expect(batchFake.ctl.calls).toHaveLength(1)
         gates.get(0)?.release()
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(2) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(2) })
         await settleTimers()
         expect(batchFake.ctl.calls).toHaveLength(2)
         gates.get(1)?.release()
@@ -1050,7 +1084,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
             ['dup.png', filled(8, 2)],
             ['dup.png', lastBig],
         ]))
-        await vi.waitFor(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(1) })
         await settleTimers()
         // The first streamed write is complete (two chunks); the second must not start while the batch is in flight.
         expect(desktop.rawCalls).toHaveLength(2)
@@ -1141,7 +1175,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         const file = fileWithFailingSlice(backupOf([['huge.bin', patterned(13 * MIB, 3)]]), (size, nth) => size === CHUNK_MAX && nth === 2)
 
         const restoring = startRestore(file)
-        await vi.waitFor(() => { expect(eventLog.events).toContain('abort_chunked') })
+        await waitForProgress(() => { expect(eventLog.events).toContain('abort_chunked') })
         await settleTimers()
         expect(alertErrorMock).not.toHaveBeenCalled()
         abortGate.release()
@@ -1270,7 +1304,7 @@ describe('a restore with several large-entry streams at once', () => {
         streamTrack.release = release.release
 
         const restoring = restoreBytes(bin)
-        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(3) })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(3) })
         await settleTimers()
 
         // The fourth entry waits for a free slot; the three that run have each sent their first chunk and wait there.
@@ -1302,7 +1336,7 @@ describe('a restore with several large-entry streams at once', () => {
         })
 
         const restoring = restoreBytes(bin)
-        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(3) })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(3) })
         await settleTimers()
 
         // Every entry has been read; the restore waits for the streams before it looks at the database.
@@ -1342,7 +1376,7 @@ describe('a restore with several large-entry streams at once', () => {
         const file = fileWithLateFailingSlice(bin, 2, () => streamTrack.held.size >= 2)
 
         const restoring = startRestore(file)
-        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(2) })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(2) })
         await settleTimers()
         // The held streams have not settled, so the message waits.
         expect(alertErrorMock).not.toHaveBeenCalled()
@@ -1433,7 +1467,7 @@ describe('a restore with several large-entry streams at once', () => {
         })
 
         const restoring = startRestore(file)
-        await vi.waitFor(() => { expect(streamRead).toBe(true) })
+        await waitForProgress(() => { expect(streamRead).toBe(true) })
         await settleTimers()
         // The marker was met long ago; the message waits for the stream that is still reading.
         expect(alertErrorMock).not.toHaveBeenCalled()
@@ -1570,11 +1604,11 @@ describe('an export through the batch commands', () => {
         backupSink.failWrites = true
 
         const exporting = outcomeOf(SaveLocalBackup)
-        await vi.waitFor(() => { expect(batchFake.ctl.calls.filter((call) => call.kind === 'read')).toHaveLength(4) })
+        await waitForProgress(() => { expect(batchFake.ctl.calls.filter((call) => call.kind === 'read')).toHaveLength(4) })
         // Only the second read is released; the writer fails on what it brings,
         // while the third and fourth reads are still outstanding.
         gates.get(1)?.release()
-        await vi.waitFor(() => { expect(backupSink.failedWrites).toBeGreaterThan(0) })
+        await waitForProgress(() => { expect(backupSink.failedWrites).toBeGreaterThan(0) })
         expect(await isPending(exporting)).toBe(true)
         expect(allCallsSettled()).toBe(false)
         gates.get(2)?.release()
