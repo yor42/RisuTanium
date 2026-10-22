@@ -11231,3 +11231,22 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 1. **Lane B CHORE-222: "Merge + fold in now (Recommended)".** Merged as `af735c916`, with this fold-in. CHORE-222 stays pending the Note 9 check; `MC-361`'s condition that the default does not ship before that check still holds (main is not a release).
 2. **Lane B's Note 9 integrity check: "Phone 1 now (Recommended)".** Run on phone 1 (the option text allowed it alongside phone 2's CHORE-202 runs).
 - Notes, not the maintainer's words: the option texts were written by the orchestrator.
+
+### MC-451 — Lane E, 2026-10-22: lane E finishes the CHORE-193 leftovers and wraps up
+
+- **Tag:** decision (chat reply, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane E session transcript, after lane A reported the lane E merge `bdba81fd6` and records `c1473005c` pushed and listed the CHORE-193 leftovers as open, to be picked up only if the maintainer assigns them.
+- **Related:** `MC-450`, `MC-329`, `MC-091`; CHORE-193.
+
+1. **Assignment: "let's finish those chore-193 leftover and wrap up."** The leftovers as lane A and these records list them: `storeImportBoot` (no change, no failure evidence); a Windows `127.0.0.1`-only port squatter in `nodeServerFixture.ts` (the server binds all interfaces and stays up, and the test hangs to its timeout); the fixture's restart rebind gap (a restart keeps its port and is not retried); the port-retry proof exists only in scratch, with no repository regression guard. The orchestrator reads the assignment as covering test and test-support files needed for these four items, including a new test file for the fixture guard; application code (`server/node/server.cjs`) stays out of scope (the brief), and a fix that needs it goes back to the maintainer. Each change remains a gated step with a red-before-green reproducer where one is possible (`MC-329`).
+
+### MC-342 — Lane A, 2026-10-22: CHORE-222 Note 9 check accepted; lane E leftovers merge
+
+- Tag: decisions (`AskUserQuestion` answer and maintainer message, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); git `675f01191`, `344b715bd`; ledger rows 2130 and 2131.
+- Related: `MC-361`, `MC-341`, `MC-451`, `MC-339`; CHORE-222, CHORE-193.
+1. **CHORE-222's Note 9 integrity check: "Accept, mark fixed (Recommended)".** The check meets `MC-361`'s condition for the Android default (2 streams, 4 flights); CHORE-222 is fixed. Limits noted with it: the "import committed" mark was not observed (the commit is inferred from store2 growth of exactly the planned units), and the "Finishing copying files..." message was not seen (inconclusive: 0 of 275 polls, with at most about 3.7 s unobserved). The 2-stream, 4-flight default rests on the copy knob reading null over CDP before the import; no artifact of that read was saved.
+2. **Lane E's CHORE-193 leftovers**: "lane E finished the leftovers and is ready to merge." (the maintainer's own message). Merged as `344b715bd`, with this fold-in.
+- Notes, not the maintainer's words: item 1's option text was written by the orchestrator. Nothing here authorizes pushing a lane branch.
