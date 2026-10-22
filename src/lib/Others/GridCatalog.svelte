@@ -32,7 +32,8 @@
     import { computeLayout, type LayoutItem } from "../SideBars/railLayout";
     import type { RailGeometry } from "../SideBars/railResolver";
     import { NO_TARGET, type Target } from "../SideBars/railTarget";
-    import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, resolvePicked, samePick, stalePickedKeys, type DragPlan, type Picked, type RowMeasure } from "./charListEdit";
+    import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, menuPlan, resolvePicked, samePick, stalePickedKeys, type DragPlan, type Picked, type RowMeasure } from "./charListEdit";
+    import { runFolderMenu, type FolderMenuTarget } from "../SideBars/folderMenu";
     import { appendGap, buildDropModel, gapOf, resolveGridTarget, zoneCandidateAt as gridZoneCandidateAt, type GridDropModel, type GridResolved, type GridSlot } from "./gridDrop";
     import { directionOfKey, gridKeyMove, tileKeyOfRef } from "./gridKeyboard";
     import type { MoveDirection, PositionInfo } from "../SideBars/railKeyboard";
@@ -101,10 +102,15 @@
     // The Grid tab's tiles, built once per change: the live characters in the saved order with their
     // folders. The Grid writes the database only through the bulk move to the trash (`trashPicked`, whose
     // `trashCharacters` also edits the order), the group into a new folder (`groupPicked`) and the drop of
-    // dragged tiles (`commitDrop`) and the keyboard move of one tile (`moveFocusedTile`), which assign characterOrder and repair it as the rail does: mounting,
+    // dragged tiles (`commitDrop`) and the keyboard move of one tile (`moveFocusedTile`), which assign characterOrder and repair it as the rail does,
+    // and through the folder menu (`runFolderMenu`, the rail's own code): its rename, colour and picture
+    // edits each assign characterOrder once and never repair it, the picture's asset is saved before that
+    // assignment, Ungroup and Delete -> Keep assign and repair it as the rail does, and Delete -> Trash
+    // (`trashFolderMembers`) splices the order in place, repairs it twice, stops the members' work, sets
+    // their trash time and marks each of them for saving. Mounting,
     // searching, opening folders, choosing a sort, entering and leaving edit mode, selecting and every
-    // cancelled or refused action write nothing, never assign characterOrder and never repair the order;
-    // the order is the rail's.
+    // cancelled or refused action (Cancel in the folder menu included) write nothing, never assign
+    // characterOrder and never repair the order; the order is the rail's.
     // A timestamp is read only under Recent.
     const entries = $derived(buildGridEntries({
         live: found.live,
@@ -490,18 +496,68 @@
         }
     }
 
+    // The folder menu is the rail's own (`runFolderMenu`); the Grid supplies where its writes go. It shares
+    // `menuOpen` with the bulk menu, so one menu is up at a time. The guard is released just before the
+    // native file chooser opens, which settles only on a file or a cancel and might not on every platform,
+    // so a chooser that never answers cannot disable the menus. `released` belongs to this chain: when the
+    // chain ends it clears the guard only if it still holds it, never one a newer menu has taken since.
+    // The field-edit wrapper runs synchronously around the one assignment: the folder is picked again in
+    // the same stretch as the write (an edited folder is a new object and the stale-pick effect would
+    // drop its pick), and only if it is still picked at that instant, so a selection the user cleared
+    // meanwhile (Done, a tap, a merge) is not brought back. It always calls `write()`.
+    async function openFolderMenu(target: FolderMenuTarget) {
+        if (menuOpen) {
+            return
+        }
+        menuOpen = true
+        let released = false
+        try {
+            await runFolderMenu(target, {
+                applyOrderChange: (change) => {
+                    applyGridOrderChange(change)
+                },
+                closeFolder: (id) => {
+                    const at = openFolders.indexOf(id)
+                    if (at !== -1) {
+                        openFolders.splice(at, 1)
+                    }
+                },
+                beforeFilePicker: () => {
+                    menuOpen = false
+                    released = true
+                },
+                wrapFieldWrite: (write) => {
+                    const kept = keptPickedFolders([])
+                    write()
+                    repickKeptFolders(kept)
+                },
+            })
+        } finally {
+            if (!released) {
+                menuOpen = false
+            }
+        }
+    }
+
     // A hold released in place, a right-click and the context-menu key all arrive here. An unselected
-    // character tile joins the selection first; a selected one stays as it is. The menu then acts on the
-    // whole selection. Folder tiles have no menu here yet.
+    // tile joins the selection first; a selected one stays as it is. A folder alone in the selection then
+    // opens the folder menu; any other selection opens the bulk menu for the whole selection.
     function openTileMenu(key: string) {
         const entry = entryByKey.get(key)
-        if (!entry || entry.kind !== 'char' || !editing || sort !== 'order') {
+        if (!entry || !editing || sort !== 'order') {
             return
         }
         if (!picks.has(key)) {
             togglePick(entry)
         }
-        if (picks.has(key)) {
+        if (!picks.has(key)) {
+            return
+        }
+        const plan = menuPlan(picks, entryByKey, DBState.db.characters, DBState.db.characterOrder)
+        if (plan.kind === 'folder') {
+            void openFolderMenu({ ref: plan.ref, id: plan.id, name: plan.name })
+        }
+        else {
             void openBulkMenu()
         }
     }
@@ -1027,6 +1083,16 @@
         }
     }
 
+    // The menu of the tile a hold lifted, released in place: one body for a folder tile (`onTouchMenu`) and a
+    // character tile (`onTouchHold`). The key is read once and cleared, so a release opens it only once.
+    function openHeldTileMenu() {
+        const key = holdMenuKey
+        holdMenuKey = null
+        if (key !== null) {
+            openTileMenu(key)
+        }
+    }
+
     const host: RailHost = {
         getLayout: () => geometryNow()?.layout ?? emptyLayout,
         readRect: () => {
@@ -1140,15 +1206,9 @@
         onDragEnd: () => removeGhost(),
         onDrop: (_source, target) => handleDrop(target),
         onSpringOpen: () => {},
-        onTouchMenu: () => {},
-        // A hold released in place on a character tile, begun in edit mode: the tile's menu.
-        onTouchHold: () => {
-            const key = holdMenuKey
-            holdMenuKey = null
-            if (key !== null) {
-                openTileMenu(key)
-            }
-        },
+        // A hold released in place on a folder tile or on a character tile, begun in edit mode: the tile's menu.
+        onTouchMenu: openHeldTileMenu,
+        onTouchHold: openHeldTileMenu,
     }
 
     const machine = new RailDrag(host, undefined, gridGeometry, { touchMergeDwellMs: GRID_TOUCH_MERGE_DWELL_MS })
@@ -1185,7 +1245,7 @@
             }
             const key = target.closest('[data-charlist-key]')?.getAttribute('data-charlist-key') ?? null
             const entry = key === null ? undefined : entryByKey.get(key)
-            if (key === null || entry?.kind !== 'char') {
+            if (key === null || (entry?.kind !== 'char' && entry?.kind !== 'folder')) {
                 return
             }
             event.preventDefault()
