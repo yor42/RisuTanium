@@ -25,7 +25,7 @@
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import { createCharacterSearch } from "src/ts/gui/characterSearch.svelte";
     import { keyEventBlocked, keysBlockedNow } from "src/ts/keyEventBlocked";
-    import { folderEntryAt, foldersDissolvedBy, groupIntoFolder, moveManyToGap, refKey, type DissolvedFolder, type FolderRef, type Gap, type OrderEntry } from "../SideBars/sidebarOrder";
+    import { folderEntryAt, foldersDissolvedBy, groupIntoFolder, moveManyToGap, refKey, type DissolvedFolder, type FolderRef, type Gap, type ItemRef, type OrderEntry } from "../SideBars/sidebarOrder";
     import { RailDrag, type RailHost } from "../SideBars/railDrag";
     import { bindRail, type RailBinding } from "../SideBars/railBinding";
     import { TOUCH_SLOP_PX } from "../SideBars/railConstants";
@@ -34,6 +34,8 @@
     import { NO_TARGET, type Target } from "../SideBars/railTarget";
     import { actingPicks, canEdit, chooseRowForms, dragPlan, gestureRef, groupPlan, resolvePicked, samePick, stalePickedKeys, type DragPlan, type Picked, type RowMeasure } from "./charListEdit";
     import { appendGap, buildDropModel, gapOf, resolveGridTarget, zoneCandidateAt as gridZoneCandidateAt, type GridDropModel, type GridResolved, type GridSlot } from "./gridDrop";
+    import { directionOfKey, gridKeyMove, tileKeyOfRef } from "./gridKeyboard";
+    import type { MoveDirection, PositionInfo } from "../SideBars/railKeyboard";
     import { tileKeyAt, type GridGeometry } from "./gridTarget";
     import { registerBackHandler } from "../../ts/backHandlers";
     import { pageCovered } from "../../ts/alertPrompts";
@@ -99,7 +101,7 @@
     // The Grid tab's tiles, built once per change: the live characters in the saved order with their
     // folders. The Grid writes the database only through the bulk move to the trash (`trashPicked`, whose
     // `trashCharacters` also edits the order), the group into a new folder (`groupPicked`) and the drop of
-    // dragged tiles (`commitDrop`), which assign characterOrder and repair it as the rail does: mounting,
+    // dragged tiles (`commitDrop`) and the keyboard move of one tile (`moveFocusedTile`), which assign characterOrder and repair it as the rail does: mounting,
     // searching, opening folders, choosing a sort, entering and leaving edit mode, selecting and every
     // cancelled or refused action write nothing, never assign characterOrder and never repair the order;
     // the order is the rail's.
@@ -830,21 +832,41 @@
         return (order ?? []).filter((entry) => typeof entry === 'object' && entry !== null && Array.isArray(entry.data) && entry.id === id).length
     }
 
-    // The one write of a drag: the rail's assignment and repair of the saved order, then the follow-ups.
-    // A merge clears the selection; a move or an append keeps it. A kept folder tile is picked again only
-    // for an id that is unique before and after the write: a folder an operation edits is a new object and
-    // would otherwise leave the selection, but with a repeated id a move can shift occurrences, so the
-    // folder now at that key may be a look-alike the user never picked.
-    function commitDrop(drop: DropPlan): boolean {
-        const keptFolders: { key: string, ref: FolderRef, unique: boolean }[] = []
-        if (!drop.merge) {
-            for (const [key, pick] of picks) {
-                const ref = entryByKey.get(key)?.ref
-                if (pick.kind === 'folder' && ref?.kind === 'folder' && !drop.dissolved.some((dissolved) => dissolved.entry === pick.folder)) {
-                    keptFolders.push({ key, ref, unique: folderIdCount(DBState.db.characterOrder, ref.id) === 1 })
+    // A kept folder tile is picked again only for an id that is unique before and after a write: a folder
+    // an operation edits is a new object and would otherwise leave the selection, but with a repeated id a
+    // move can shift occurrences, so the folder now at that key may be a look-alike the user never picked.
+    interface KeptFolder { key: string, ref: FolderRef, unique: boolean }
+
+    // The picked folder tiles a write keeps (not the dissolved ones), noted before the write with whether
+    // their id is unique in the order.
+    function keptPickedFolders(dissolved: readonly DissolvedFolder[]): KeptFolder[] {
+        const kept: KeptFolder[] = []
+        for (const [key, pick] of picks) {
+            const ref = entryByKey.get(key)?.ref
+            if (pick.kind === 'folder' && ref?.kind === 'folder' && !dissolved.some((folder) => folder.entry === pick.folder)) {
+                kept.push({ key, ref, unique: folderIdCount(DBState.db.characterOrder, ref.id) === 1 })
+            }
+        }
+        return kept
+    }
+
+    // After the write, synchronously: a kept folder is picked again only when its id is unique before and
+    // after, because a folder the operation edited is a new object and the stale-pick effect would drop it.
+    function repickKeptFolders(kept: readonly KeptFolder[]) {
+        for (const folder of kept) {
+            if (folder.unique && folderIdCount(DBState.db.characterOrder, folder.ref.id) === 1) {
+                const now = folderEntryAt(DBState.db.characterOrder ?? [], folder.ref)
+                if (now) {
+                    picks.set(folder.key, { kind: 'folder', folder: now })
                 }
             }
         }
+    }
+
+    // The one write of a drag: the rail's assignment and repair of the saved order, then the follow-ups.
+    // A merge clears the selection; a move or an append keeps it (kept folder tiles are picked again).
+    function commitDrop(drop: DropPlan): boolean {
+        const keptFolders = drop.merge ? [] : keptPickedFolders(drop.dissolved)
         const idsBefore = folderIdsInOrder()
         if (!applyGridOrderChange(drop.apply)) {
             return false
@@ -859,14 +881,7 @@
         if (drop.merge) {
             picks.clear()
         }
-        for (const kept of keptFolders) {
-            if (kept.unique && folderIdCount(DBState.db.characterOrder, kept.ref.id) === 1) {
-                const now = folderEntryAt(DBState.db.characterOrder ?? [], kept.ref)
-                if (now) {
-                    picks.set(kept.key, { kind: 'folder', folder: now })
-                }
-            }
-        }
+        repickKeptFolders(keptFolders)
         void announce(language.othersUi.editMoved(drop.plan.count))
         return true
     }
@@ -913,6 +928,92 @@
         }
         dropInFlight = true
         void confirmAndDrop(asked, session, resolved.slot, dropGeneration)
+    }
+
+    //#endregion
+
+    //#region the keyboard
+
+    // Alt+Left and Alt+Right on a focused tile in edit mode move that one tile one place: the rail's
+    // `keyboardMove` over the Grid's tiles (`gridKeyboard`), written by the same `applyGridOrderChange` as a
+    // drop. The selection is neither moved nor cleared (kept folder tiles are picked again), and a result
+    // that changes nothing writes nothing.
+    function announcePosition(info: PositionInfo | null) {
+        if (info) {
+            void announce(info.folderName === undefined
+                ? language.sidebarUi.movePosition(info.position, info.total)
+                : language.sidebarUi.movePositionInFolder(info.position, info.total, info.folderName || language.sidebarUi.defaultFolderName))
+        }
+    }
+
+    // Focus goes back to the moved tile once the rows are rebuilt (its element is new when it changed rows),
+    // after scrolling its row into view if the move took it out of sight.
+    async function focusTile(ref: ItemRef) {
+        await tick()
+        const geometry = geometryNow()
+        const key = tileKeyOfRef(entries, ref)
+        const scroller = gridScroller
+        if (!editing || key === null || !scroller || !geometry) {
+            return
+        }
+        const index = rowIndexOf(key)
+        if (index >= 0) {
+            centreRowIfHidden(geometry, index, scroller)
+            await tick()
+        }
+        const tile = Array.from(scroller.querySelectorAll('[data-charlist-key]')).find((el) => el.getAttribute('data-charlist-key') === key)
+        tile?.querySelector('button')?.focus({ preventScroll: true })
+    }
+
+    async function moveFocusedTile(tileKey: string, dir: MoveDirection) {
+        const order = DBState.db.characterOrder
+        if (order === undefined) {
+            return
+        }
+        const live = new Set(found.live.map((match) => match.chaId))
+        const result = gridKeyMove(entries, order, tileKey, dir, (id) => live.has(id))
+        if (result.kind === 'edge') {
+            void announce(result.dir === 'up' ? language.sidebarUi.moveAtStart : language.sidebarUi.moveAtEnd)
+        }
+        else if (result.kind === 'refuse-sole') {
+            void announce(language.sidebarUi.moveWouldRemoveFolder(result.folderName || language.sidebarUi.defaultFolderName))
+        }
+        else if (result.kind === 'focus') {
+            announcePosition(result.info)
+            await focusTile(result.ref)
+        }
+        else if (result.kind === 'move') {
+            const kept = keptPickedFolders([])
+            if (applyGridOrderChange(() => result.order)) {
+                repickKeptFolders(kept)
+                announcePosition(result.info)
+                await focusTile(result.ref)
+            }
+        }
+    }
+
+    // The browser would take Alt+Left for history Back, so every handled press is kept from it first,
+    // including a refused or blocked one; then a gesture in progress, a drop waiting for its answer and a
+    // repeating key only keep the press from acting.
+    function onTileKeyDown(event: KeyboardEvent) {
+        if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') || !event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) {
+            return
+        }
+        if (event.isComposing || !editing || sort !== 'order' || found.searching) {
+            return
+        }
+        const target = event.target
+        const tileKey = target instanceof Element ? target.closest('[data-charlist-key]')?.getAttribute('data-charlist-key') ?? null : null
+        const dir = directionOfKey(event.key)
+        if (tileKey === null || dir === null) {
+            return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        if (keyEventBlocked(event) || machine.isPressed || dropInFlight || event.repeat) {
+            return
+        }
+        void moveFocusedTile(tileKey, dir)
     }
 
     //#endregion
@@ -1093,7 +1194,9 @@
             }
         }
         node.addEventListener('contextmenu', onContextMenu)
+        node.addEventListener('keydown', onTileKeyDown)
         return () => {
+            node.removeEventListener('keydown', onTileKeyDown)
             node.removeEventListener('contextmenu', onContextMenu)
             node.removeEventListener('pointerdown', onPressCapture, true)
             machine.cancel()

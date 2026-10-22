@@ -1698,3 +1698,25 @@ describe('Grid drag: what the drag looks like', () => {
         })
     })
 })
+
+describe('Grid drag: the selection after a merge', () => {
+    test('(R) B-29c a merge clears the selection, a picked folder that was not dragged included', async () => {
+        world(['A', 'B', 'C', 'D'], [makeFolder('f1', 'F1', ['B']), 'A', 'C', 'D'])
+        await withGrid({}, async (rig) => {
+            // Rows: [F1 A C D]. F1 is picked; the dragged character A is not.
+            await tap(rig.target, 'F1')
+            expect(pressedOf(rig.target, 'F1')).toBe('true')
+            await gesture(rig, { from: centre(0, 1), to: centre(0, 2), dwell: 400 })
+            expect(shape()).toEqual(['F1[B]', `${NEW_FOLDER}[A,C]`, 'D'])
+            expect(alertConfirmSpy).not.toHaveBeenCalled()
+            expect(picked(rig.target)).toBe(0)
+            expect(isEditing(rig.target)).toBe(true)
+            // Control: a plain move of an unselected character keeps the picked folder.
+            await tap(rig.target, 'F1')
+            expect(pressedOf(rig.target, 'F1')).toBe('true')
+            await gesture(rig, { from: centre(0, 2, 3), to: edge(0, 0, 'before', 3) })
+            expect(shape()).toEqual(['D', 'F1[B]', `${NEW_FOLDER}[A,C]`])
+            expect(pressedOf(rig.target, 'F1')).toBe('true')
+        })
+    })
+})
