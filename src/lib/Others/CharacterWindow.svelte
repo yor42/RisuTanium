@@ -30,7 +30,10 @@
         // Called with the scroll container when it is created; the returned function runs when it goes away.
         // The owner binds its own listeners to the real scroller through it.
         attach?: (node: HTMLDivElement) => (() => void) | void;
-        card: Snippet<[cardKey: string, position: number]>;
+        // `visible` answers, when it is called, whether the card's row meets the viewport (the overscan is not
+        // part of it). It reads the live scroll state without subscribing to it, so a caller may call it
+        // anywhere, from an effect too, and a card is never re-rendered because it changed.
+        card: Snippet<[cardKey: string, position: number, visible: () => boolean]>;
     }
 
     let { rows: rowsProp, layout: variant = "list", fallbackHeight, heights = new Map<string, number>(), resetToken, initialAnchor = null, rowClass = "", class: className = "", attach, card }: Props = $props();
@@ -107,6 +110,20 @@
     });
     const mountedWindow = $derived(computeWindow(layout, viewScrollTop, windowViewport, overscanPx, pinnedKeys));
     const slices = $derived(buildSlices(layout, mountedWindow));
+
+    // Whether the row of `cardKey` meets [scroll top, scroll top + viewport) right now, from the cached scroll
+    // position the window itself is computed from. A card that is not listed (any more) is not visible.
+    function isCardVisible(cardKey: string): boolean {
+        return untrack(() => {
+            const row = rowByCard.get(cardKey);
+            const index = row ? layout.indexByKey.get(row.key) : undefined;
+            if (index === undefined) {
+                return false;
+            }
+            const top = layout.offsets[index];
+            return top + layout.heights[index] > viewScrollTop && top < viewScrollTop + windowViewport;
+        });
+    }
 
     // `remeasure` reads the size of 1 rem again (on a size report of the container, not on every scroll
     // frame); `deferColumns` leaves a change of the column count to the next frame (inside an observer
@@ -447,7 +464,7 @@
                                 aria-posinset={(cardOrdinal.get(cardKey) ?? 0) + 1}
                                 data-charlist-key={cardKey}
                             >
-                                {@render card(cardKey, position)}
+                                {@render card(cardKey, position, () => isCardVisible(cardKey))}
                             </div>
                         {/each}
                     </div>
@@ -461,7 +478,7 @@
                         use:measure={row.key}
                     >
                         {#each row.cards as cardKey (cardKey)}
-                            {@render card(cardKey, position)}
+                            {@render card(cardKey, position, () => isCardVisible(cardKey))}
                         {/each}
                     </div>
                 {/if}

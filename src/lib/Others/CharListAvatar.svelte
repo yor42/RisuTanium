@@ -1,4 +1,6 @@
 <script module lang="ts">
+    import type { ThumbAborted } from "src/ts/media/avatarThumb";
+
     // Resolved avatar styles by lookup key, so a tile that is created again (its row regrouped by a search or a
     // column change) paints at once and asks for nothing. Bounded two ways, the least recently used entry going
     // first until both hold: the summed style length stays within STYLE_CACHE_MAX_TOTAL UTF-16 units (the budget
@@ -42,6 +44,11 @@
         }
     }
 
+    // The abort outcome of a lookup is neither a style nor null; only these two are ever painted or remembered.
+    function isResolvedStyle(result: string | null | ThumbAborted): result is string | null {
+        return result === null || typeof result === "string";
+    }
+
     export function resetCharListAvatarCacheForTest() {
         styleCache.clear();
         styleCacheTotal = 0;
@@ -72,9 +79,16 @@
         label?: string;
         class?: string;
         children?: Snippet;
+        // Whether the avatar is on screen, read live when the thumbnail queue picks its next task. Without it
+        // the avatar counts as visible. It is called outside this component's effects, never tracked by them.
+        visible?: () => boolean;
     }
 
-    let { src, fallbackStyle = "", onclick, label, class: className = "", children }: Props = $props();
+    let { src, fallbackStyle = "", onclick, label, class: className = "", children, visible }: Props = $props();
+
+    // The lookup effect reads no visibility itself: the queue calls this later, and a change of `visible`
+    // must not look the image up again.
+    const isVisible = () => visible?.() ?? true;
 
     // The style is tied to the location it was resolved for, so a location change never shows
     // the previous character's picture, and the element itself is never re-created: a button
@@ -100,16 +114,24 @@
             return;
         }
         let current = true;
-        getCharImage(location, "thumbcss").then((result) => {
+        const controller = new AbortController();
+        getCharImage(location, "thumbcss", { signal: controller.signal, visible: isVisible }).then((result) => {
+            // An abandoned lookup leaves no trace: nothing is painted or remembered, whatever value arrived.
+            if (controller.signal.aborted || !isResolvedStyle(result)) {
+                return;
+            }
             rememberStyle(lookupKey, result ?? "");
             if (current) {
                 resolved = { key: lookupKey, style: result ?? "" };
             }
         }).catch((error: unknown) => {
-            console.warn("CharListAvatar: avatar style rejected", error);
+            if (!controller.signal.aborted) {
+                console.warn("CharListAvatar: avatar style rejected", error);
+            }
         });
         return () => {
             current = false;
+            controller.abort();
         };
     });
 

@@ -19,7 +19,7 @@
  * are asserted as reproducers through the screens in `GridCatalog.window.svelte.test.ts`,
  * `CharacterTrashList.window.svelte.test.ts` and the two files in `src/lib/Mobile`.
  */
-import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
+import { createRawSnippet, flushSync, mount, unmount, type Snippet } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { gridRows, listRowKey, listRows, type CharRow, type ScrollAnchor } from './charListRows'
 import CharacterWindow from './CharacterWindow.svelte'
@@ -157,6 +157,7 @@ interface MountOptions {
     resetToken?: string | number
     initialAnchor?: ScrollAnchor | null
     rowClass?: string
+    card?: Snippet<[cardKey: string, position: number, visible: () => boolean]>
 }
 
 /** Mounts a window with the geometry installed and the first frame read. */
@@ -168,7 +169,7 @@ async function mountWindow(options: MountOptions = {}): Promise<{ target: HTMLEl
         resetToken: options.resetToken,
         initialAnchor: options.initialAnchor ?? null,
         rowClass: options.rowClass ?? '',
-        card,
+        card: options.card ?? card,
     })
     const target = document.createElement('div')
     document.body.appendChild(target)
@@ -950,6 +951,101 @@ describe('CharacterWindow: grid column changes', () => {
         await resizeContainer(target)
         await settleMicrotasks()
         expect(document.activeElement).toBe(other)
+    })
+})
+
+//#endregion
+
+//#region visibility handed to each card
+
+describe('the visibility function each card receives', () => {
+    // A card that records the function it was handed, per card key, every time its snippet renders.
+    const handed = new Map<string, () => boolean>()
+    const recordingCard = createRawSnippet((cardKey: () => string, position: () => number, visible: () => () => boolean) => ({
+        render: () => {
+            handed.set(cardKey(), visible())
+            return `<div class="card" data-pos="${position()}"><button>open ${cardKey()}</button></div>`
+        },
+    }))
+
+    beforeEach(() => {
+        handed.clear()
+    })
+
+    const visibleNow = (key: string): boolean => handed.get(key)!()
+
+    // Feature tests: the function does not exist on the base.
+    test('(F) a card inside the viewport is visible and an overscan card is not', async () => {
+        const { target } = await mountWindow({ card: recordingCard })
+        expect(rowOf(target, '11')).not.toBeNull()
+        for (let i = 0; i < VIEWPORT / ROW; i++) {
+            expect(visibleNow(String(i))).toBe(true)
+        }
+        expect(visibleNow(String(VIEWPORT / ROW))).toBe(false)
+        expect(visibleNow('11')).toBe(false)
+    })
+
+    test('(F) a card that is not listed is not visible', async () => {
+        const { props } = await mountWindow({ card: recordingCard })
+        const first = handed.get('0')!
+        expect(first()).toBe(true)
+
+        props.rows = listRows(cardKeys(COUNT, 1))
+        flushSync()
+        await settleFrame()
+        expect(first()).toBe(false)
+    })
+
+    test('(F) the answer follows the scroll position for the same function and the same element, with no remount', async () => {
+        const { target } = await mountWindow({ card: recordingCard })
+        const element = rowOf(target, '6')
+        const fn = handed.get('6')!
+        expect(element).not.toBeNull()
+        expect(fn()).toBe(false)
+
+        await geometry.scrollAndSettle(300)
+        expect(rowOf(target, '6')).toBe(element)
+        expect(fn()).toBe(true)
+        expect(visibleNow('0')).toBe(false)
+    })
+
+    test('(F) the answer is right at first paint, before the container has reported a height', async () => {
+        geometry.hide()
+        await mountWindow({ card: recordingCard })
+        expect(visibleNow('0')).toBe(true)
+    })
+
+    test('(F) the answer follows the card, not the position it had: a rebuilt list moves it', async () => {
+        const { props } = await mountWindow({ card: recordingCard })
+        const first = handed.get('0')!
+        expect(first()).toBe(true)
+
+        props.rows = listRows(cardKeys(COUNT).reverse())
+        flushSync()
+        await settleFrame()
+        expect(first()).toBe(false)
+        expect(visibleNow('299')).toBe(true)
+    })
+
+    // GUARD: calling the function inside an effect must not subscribe that effect to the scroll state, or a
+    // card lookup that asks it would re-run on every scroll frame.
+    test('calling it inside an effect does not make the effect run again on a scroll', async () => {
+        await mountWindow({ card: recordingCard })
+        const fn = handed.get('0')!
+        let runs = 0
+        const stop = $effect.root(() => {
+            $effect(() => {
+                runs++
+                fn()
+            })
+        })
+        flushSync()
+        expect(runs).toBe(1)
+
+        await geometry.scrollAndSettle(1000)
+        await geometry.scrollAndSettle(2000)
+        expect(runs).toBe(1)
+        stop()
     })
 })
 
