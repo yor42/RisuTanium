@@ -20,8 +20,9 @@ import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { MEASURE } from '../process/memory/measureFlag'
 import { pushImportPhase } from './importPhaseRing'
-import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeSpaceBytes, importGigabytesText, roundImportMinutes } from './importEstimate'
+import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, roundImportMinutes } from './importEstimate'
 import { transportKind } from '../storage/tauriByteTransport'
+import { readAppDataFreeBytes } from '../storage/appFreeSpace'
 import type { BusyHandle } from '../process/memory/busyActions'
 import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_INDEX_SHORT_NAME_BYTES, type BackupIndexEntry } from './backupContainer'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
@@ -375,6 +376,11 @@ export async function confirmDatabaseSize(byteLength: number, threshold: number 
  * The one question before an import writes anything, asked once the file is walked and its database entry located. A
  * store2 page on an Android phone with more than `IMPORT_TIME_WARNING_BYTES` of assets gets the time and space notice,
  * which carries the saved-data size sentence when the saved data is over the size threshold too (one prompt, not two).
+ * On Android the free bytes under the app data directory are read once (`readAppDataFreeBytes`) and compared with the
+ * import's need: the notice says how much is free, or that it is short and the import stops if the phone runs out. At or
+ * below the threshold a short phone gets one space prompt (carrying the size sentence when due, not a second prompt); a
+ * failed read, or enough space, changes nothing there, and the notice then keeps its "cannot check" sentence. Nothing
+ * is refused for size: the person decides.
  * The saved data is the database entry plus `unitBytes`, the estimated bytes of the unit entries the resolve reads:
  * a stub-form file keeps most of its characters and chats there. The size sentence, its trigger and the notice's
  * database sentence key on `importSavedDataSizeBytes` (units weighted by `UNIT_SIZE_WEIGHT`, the memory-size figure);
@@ -388,12 +394,22 @@ export async function confirmDatabaseSize(byteLength: number, threshold: number 
 export async function confirmImportScale(fileSize: number, entries: number, databaseBytes: number, unitBytes: number): Promise<boolean> {
     const assetBytes = importAssetBytes(fileSize, databaseBytes)
     const savedDataBytes = importSavedDataSizeBytes(databaseBytes, unitBytes)
-    if (transportKind() !== 'android' || assetBytes <= IMPORT_TIME_WARNING_BYTES) {
+    if (transportKind() !== 'android') {
         return await confirmDatabaseSize(savedDataBytes)
     }
-    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, databaseBytes + unitBytes))
+    const neededBytes = importFreeSpaceBytes(assetBytes)
+    const freeBytes = await readAppDataFreeBytes()
+    const verdict = importSpaceVerdict(freeBytes, neededBytes)
+    const freeGigabytes = freeBytes === null ? null : importFreeGigabytesText(freeBytes)
     const databaseMegabytes = savedDataBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(savedDataBytes / 1_000_000) : null
-    return await alertConfirm(language.store2ImportTimeWarning(entries, minutes, importGigabytesText(importFreeSpaceBytes(assetBytes)), databaseMegabytes))
+    if (assetBytes <= IMPORT_TIME_WARNING_BYTES) {
+        if (verdict !== 'short' || freeGigabytes === null) {
+            return await confirmDatabaseSize(savedDataBytes)
+        }
+        return await alertConfirm(language.store2ImportSpaceWarning(importGigabytesText(neededBytes), freeGigabytes, databaseMegabytes))
+    }
+    const minutes = roundImportMinutes(estimateImportSeconds(entries, assetBytes, databaseBytes + unitBytes))
+    return await alertConfirm(language.store2ImportTimeWarning(entries, minutes, importGigabytesText(neededBytes), databaseMegabytes, freeGigabytes, verdict === 'short'))
 }
 
 /** The MC-183 question: names every block the file lacks. Nothing to ask when none was left out; false when the person declines. */
