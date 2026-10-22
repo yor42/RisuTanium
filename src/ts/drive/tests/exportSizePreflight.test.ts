@@ -97,6 +97,7 @@ vi.mock('src/ts/vendor/streamSaver', () => ({
 vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => ({
     ...(await importOriginal<typeof import('src/ts/storage/tauriAssetBatch')>()),
     isAssetBatchAvailable: () => true,
+    isAssetBatchReadAvailable: () => true,
     listAssetsSized: async () => sizedBox.items.map((item) => ({ ...item })),
     readAssetBatch: async (keys: readonly string[]) => {
         sizedBox.batchReads.push([...keys])

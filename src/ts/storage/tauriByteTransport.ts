@@ -474,14 +474,39 @@ export interface RangedPiece {
 
 type RangeResponse = ArrayBuffer | ArrayBufferView | readonly number[]
 
-function responseBytes(response: RangeResponse): Uint8Array {
+/**
+ * The bytes of a command reply that carries raw bytes, or `null` when the reply
+ * is not bytes. The bridge delivers an `ArrayBuffer`, a view, or (after its
+ * fast channel fails) a plain number array; a view is read through its own
+ * `byteOffset` and `byteLength`, and every element of an array must be a byte.
+ */
+export function bridgeReplyBytes(response: unknown): Uint8Array | null {
     if (response instanceof ArrayBuffer) {
         return new Uint8Array(response)
     }
     if (ArrayBuffer.isView(response)) {
         return new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
     }
-    return Uint8Array.from(response)
+    if (Array.isArray(response)) {
+        const bytes = new Uint8Array(response.length)
+        for (let i = 0; i < response.length; i++) {
+            const value: unknown = response[i]
+            if (typeof value !== 'number' || (value & 255) !== value) {
+                return null
+            }
+            bytes[i] = value
+        }
+        return bytes
+    }
+    return null
+}
+
+function responseBytes(response: RangeResponse): Uint8Array {
+    const bytes = bridgeReplyBytes(response)
+    if (bytes === null) {
+        throw new Error('the range read answered something other than bytes')
+    }
+    return bytes
 }
 
 async function requestPiece(key: string, offset: number, len: number): Promise<RangePiece> {

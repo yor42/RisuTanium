@@ -1,10 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '../platform'
-import { bytesToBase64, transportKind } from './tauriByteTransport'
+import { bridgeReplyBytes, bytesToBase64, transportKind } from './tauriByteTransport'
 
 /**
- * The page's side of the desktop asset commands: `put_assets_batch`,
- * `get_assets_batch` and `list_assets_sized`. Every key is
+ * The page's side of the asset commands of the desktop and Android apps:
+ * `put_assets_batch` (and `put_assets_batch_b64`), `get_assets_batch` and
+ * `list_assets_sized`. Every key is
  * a store key (`assets/<name>`), and the commands resolve it under the app data
  * directory themselves; no path is ever sent.
  *
@@ -96,14 +97,25 @@ export function assetBatchWriteMode(): AssetBatchWriteMode {
 }
 
 /**
- * Whether the raw-body commands (the batched writes and the batched reads of an
- * export) may be used: only inside the desktop app on Windows, Linux or macOS,
- * and only while raw bodies reach the commands. The Android app is not included:
- * its restore writes through `writeAssetBatchB64`, and its export has no batched
- * reader.
+ * Whether the raw-body write command may be used: only inside the desktop app on
+ * Windows, Linux or macOS, and only while raw bodies reach the commands. The
+ * Android app is not included: its restore writes through `writeAssetBatchB64`.
+ * It selects a restore's write mode; the export's reads use
+ * `isAssetBatchReadAvailable`.
  */
 export function isAssetBatchAvailable(): boolean {
     return assetBatchWriteMode() === 'raw'
+}
+
+/**
+ * Whether the batched read and the sized listing (`get_assets_batch`,
+ * `list_assets_sized`) may be used: inside the desktop and Android apps, and off
+ * outside Tauri and, for the rest of the page, after `markAssetBatchUnavailable`
+ * (a desktop page whose raw bodies did not arrive keeps reading one asset at a
+ * time). It is the write-mode test, so the reads follow the writes' availability.
+ */
+export function isAssetBatchReadAvailable(): boolean {
+    return assetBatchWriteMode() !== 'none'
 }
 
 function errorText(error: unknown): string {
@@ -216,12 +228,8 @@ const READ_STATUSES = ['ok', 'missing', 'invalid', 'error', 'large', 'deferred']
 
 /** Reads a `get_assets_batch` response for `count` keys; throws unless every frame is whole and nothing is left over. */
 export function parseReadFrames(response: unknown, count: number): AssetReadResult[] {
-    let bytes: Uint8Array
-    if (response instanceof ArrayBuffer) {
-        bytes = new Uint8Array(response)
-    } else if (response instanceof Uint8Array) {
-        bytes = response
-    } else {
+    const bytes = bridgeReplyBytes(response)
+    if (bytes === null) {
         throw new Error('get_assets_batch returned something other than bytes')
     }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -278,9 +286,15 @@ export function parseReadFrames(response: unknown, count: number): AssetReadResu
     return results
 }
 
-/** Reads the keys in one call; the result list is in key order. */
-export async function readAssetBatch(keys: readonly string[]): Promise<AssetReadResult[]> {
-    return parseReadFrames(await invoke<unknown>('get_assets_batch', { keys }), keys.length)
+/**
+ * Reads the keys in one call; the result list is in key order. `onReply`, when
+ * given, hears whether the reply arrived as a number array (the bridge's slow
+ * form) before it is parsed; it exists for measurement and decides nothing.
+ */
+export async function readAssetBatch(keys: readonly string[], onReply?: (asNumberArray: boolean) => void): Promise<AssetReadResult[]> {
+    const reply = await invoke<unknown>('get_assets_batch', { keys })
+    onReply?.(Array.isArray(reply))
+    return parseReadFrames(reply, keys.length)
 }
 
 /** The keys under `assets/` with their sizes, in the order the store lists them. */

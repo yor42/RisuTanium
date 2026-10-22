@@ -52,6 +52,7 @@ const refusedAssetKeys = new Set<string>()
 vi.mock('src/ts/storage/tauriAssetBatch', (importOriginal: () => Promise<typeof import('src/ts/storage/tauriAssetBatch')>) => importOriginal().then((original) => ({
     ...original,
     isAssetBatchAvailable: () => batchFake.module.isAssetBatchAvailable(),
+    isAssetBatchReadAvailable: () => batchFake.module.isAssetBatchReadAvailable(),
     markAssetBatchUnavailable: () => batchFake.module.markAssetBatchUnavailable(),
     readAssetBatch: (keys: readonly string[]) => batchFake.module.readAssetBatch(keys),
     listAssetsSized: () => batchFake.module.listAssetsSized(),

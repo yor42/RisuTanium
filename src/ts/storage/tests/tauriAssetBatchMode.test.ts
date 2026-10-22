@@ -34,6 +34,7 @@ import {
     assetBatchWriteMode,
     encodePutFrames,
     isAssetBatchAvailable,
+    isAssetBatchReadAvailable,
     markAssetBatchUnavailable,
     resetAssetBatchAvailabilityForTests,
     writeAssetBatchB64,
@@ -78,12 +79,50 @@ describe('the write mode of a page', () => {
         expect(assetBatchWriteMode()).toBe('none')
     })
 
-    // The batched readers of an export answer a raw response, which the Android bridge cannot carry.
-    test('only the raw mode makes the raw-body commands available', () => {
+    // The raw-body write is the desktop's; the Android restore writes base64 frames.
+    test('only the raw mode makes the raw-body write available', () => {
         h.os = 'android'
         expect(isAssetBatchAvailable()).toBe(false)
         h.os = 'windows'
         expect(isAssetBatchAvailable()).toBe(true)
+    })
+})
+
+describe('the read availability of a page', () => {
+    test.each(['android', 'windows', 'linux', 'macos'])('%s may use the batched read and the sized listing', (os) => {
+        h.os = os
+
+        expect(isAssetBatchReadAvailable()).toBe(true)
+    })
+
+    test.each(['ios', 'throw'])('%s, and a page without the operating-system plugin, may not', (os) => {
+        h.os = os
+
+        expect(isAssetBatchReadAvailable()).toBe(false)
+    })
+
+    test('a page outside the Tauri shell may not', () => {
+        h.isTauri = false
+
+        expect(isAssetBatchReadAvailable()).toBe(false)
+    })
+
+    // A desktop page whose raw bodies did not reach the commands keeps reading one asset at a time.
+    test.each(['android', 'windows'])('markAssetBatchUnavailable turns %s off for the rest of the page', (os) => {
+        h.os = os
+        expect(isAssetBatchReadAvailable()).toBe(true)
+
+        markAssetBatchUnavailable()
+
+        expect(isAssetBatchReadAvailable()).toBe(false)
+    })
+
+    test('the restore keeps its own write test: android reads in batches but does not write raw frames', () => {
+        h.os = 'android'
+
+        expect(isAssetBatchReadAvailable()).toBe(true)
+        expect(isAssetBatchAvailable()).toBe(false)
+        expect(assetBatchWriteMode()).toBe('b64')
     })
 })
 

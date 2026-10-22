@@ -11,7 +11,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 | 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
 | 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); rows 2307 to 2318; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `165dcf10f` |
 | 3 | Parallel large entries (`MC-328` 2), desktop and Android only (`MC-358`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, items applied; defaults stay at 1 stream until the Note 9 run (CHORE-222); rows 2319 to 2325; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `42993e408` |
-| 4 | Android batched asset reader for export (fit-map E1) | not started |
+| 4 | Android batched asset reader for export (fit-map E1), and an export phase timer (`MC-359`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; rows 2326 to 2335; technically accepted, awaiting the maintainer's commit approval; the Note 9 export run follows the commit |
 
 ## MC entries
 
@@ -82,6 +82,29 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - `MC-197` 9 (per-file sync) stays in force. More streams mean more concurrent syncs.
 - Nothing here authorizes application-code edits, commits or pushes.
 
+### MC-359 — Lane B, 2026-10-22: stage 4 turns on the existing batched asset reader and sized listing for Android exports in the page only, accepting both bridge reply forms, and adds a measurement-only export phase timer
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s4\sizing.md` (investigator) with `sizing-verify.md` (`doc-verifier`, 9 claims verified, one with a caveat; it supersedes the packet where they differ).
+- **Related:** `MC-328` 2 (fit-map E1), `MC-223`, `MC-322` 2, `MC-175`, `MC-197`; CHORE-129.
+
+1. **Approach: "Page-only, both forms (Recommended)".** The option text:
+   - On Android, export uses the batched read and sized-listing commands the app already registers.
+   - The reply parser accepts both forms the bridge can deliver (raw bytes or a number array), as the single-file reader already does.
+   - No Rust change.
+   - A phone run shows the speed. A Rust command that replies in base64 comes back to the maintainer only if the number-array form proves too slow.
+
+   Not chosen: a Rust base64 reply command now, and measuring before any code.
+2. **Phase timer: "Yes, measurement-only (Recommended)".** An export phase timer following the import ring's pattern. Release builds that are not MEASURE builds compile out its ring and key and record nothing. Not chosen: no timer.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator from the sizing packet and its verification.
+- A side effect of item 1, which the plan names: the sized listing also feeds the `MC-223` oversize question. Android exports then get the desktop's hard-limit question for assets. That closes the Android part of the `MC-322` 2 residual (CHORE-129) when the sized listing succeeds. If `list_assets_sized` fails, the pre-flight is still blind, as on the desktop (stage 4 Gate 1). Web and Node keep that residual.
+- The `MC-223` soft limit (about 500 MB) stays out on every platform, as the maintainer decided earlier (CHORE-129, "No 500 MB soft limit").
+- Nothing here authorizes application-code edits, commits or pushes.
+
 ## CHORE entries
 
 ### CHORE-194 (changed) — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
@@ -145,6 +168,15 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - **Known, accepted:** when the loop throws, the caller skips `stopStreams` (Gate 2 mutant r3 survived). The only effect is a delay before the error shows.
 - **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
 
+### CHORE-129 (changed) — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
+
+**Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node; Android assets are now checked.** The change is on `worktree-Lane-B` and stays uncommitted until the maintainer approves. Ledger rows 2326 to 2335. The earlier statuses in the Roadmap entry stand.
+
+- **What changed:** an Android export now gets the sized asset listing (`list_assets_sized`). So the `MC-223` hard-limit question names each asset at or above the upstream limit before the export starts, as it does on the desktop. On confirm, those assets are left out and listed in `omitted.oversize`; on cancel, nothing is written. The text, flow and filtering are the desktop's.
+- **Still blind:** if the sized listing fails, the export falls back to the unsized listing and writes every asset without the question, as on the desktop (test T4d). Web and Node exports keep the residual.
+- **Unchanged:** no 500 MB soft limit on any platform.
+- **Related:** `MC-359`, `MC-322` 2, `MC-223`.
+
 ## Ledger rows
 
 All scratch paths are under `%TEMP%\risu-lane-b\`, outside the repository.
@@ -182,6 +214,16 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 2323 | 2026-10-22 | Stage 3 implementation | sonnet-coder | 260,416 | no | `s3\impl\` logs. Red on base through a swap config serving HEAD sources: 28 of 33 unit tests, of which 22 are only missing exports (`parseCopyMeasureKnob` x19, `stopStreams` x2, `ASSET_MAX_STREAMS` x1; not reproducers under gates.md), so 6 behavioural unit reds; and 7 harness reds. Guards that pass on base and are evidenced only by mutants: T3a to T3d, the T1 pin, and three harness tests. Mutants m01 to m15 killed. `pnpm check` 0/0; `pnpm test` 902 files passed, 1 skipped; 20,276 tests passed, 23 skipped; `pnpm build` and `pnpm check:dist` exit 0. The snapshot line-ending rewrite was restored. |
 | 2324 | 2026-10-22 | Stage 3 Gate 2 r1 | opus-reviewer | 173,117 | no | `s3\gate2-r1.md`, `s3\gate2\`. `[EDITORIAL]`. `streamAlone` is HEAD's `addStreamed` body line for line. Targeted 160/160; `pnpm check` 0/0. `check:dist` catches a planted marker, and the built `dist/` holds no knob. Mutants m02, m04, m06, m09 and m11 re-run, plus r1, r2 and r4, all killed. r3 and r7 survived (CHORE-222). Items 1 to 3 (two test titles and one doc comment) were applied by the orchestrator, with line endings unchanged (CRLF). Item 4 is the red-count wording in row 2323. The full suite was not re-run (`MC-329` 4). |
 | 2325 | 2026-10-22 | Verify the stage 3 records and commit message | doc-verifier | 65,779 | no | About 30 claim groups: 24 verified, tokens unverifiable. Corrected: row 2325 was missing (added); `MC-358`'s question overstated the base64 gain (a note added; the recorded question text is kept); the commit message's count of restore guards (five, named). The trailer question was settled by the orchestrator's own attribution reminder (Opus 5.5). |
+| 2326 | 2026-10-22 | Stage 4 sizing: what does fit-map E1 (Android batched export reads) need? | investigator | 96,326 | no | `s4\sizing.md`. Packet. Commands exist on Android; the JS predicate blocks them; the `MC-223` pre-flight is blind to Android assets; batch failures fall back. Reply form (U1) unresolved. |
+| 2327 | 2026-10-22 | Verify the stage 4 sizing | doc-verifier | 63,042 | no | `s4\sizing-verify.md` (saved by the orchestrator). 9 claims: 8 verified, 1 with a caveat (a batch `missing` is trusted without a re-read). It added the listing/reader coupling and found the JS base64 decoder (U2). It fed `MC-359`. |
+| 2328 | 2026-10-22 | Stage 4 plan | orchestrator | not recorded | no | `s4\plan.md`. C1 (the read predicate and the reply forms), C2 (export gating and phases), T1 to T6, mutants 1 to 7. Gate 1 amendments folded in as the binding section. |
+| 2329 | 2026-10-22 | Stage 4 Gate 1 r1 | opus-reviewer | 177,801 | no | `s4\gate1-r1.md`. `[APPROVE WITH AMENDMENTS]`, 8 binding. (1) The read predicate is `assetBatchWriteMode() !== 'none'`. (2) `assetBatchUsable` is replaced. (3) The parser accepts every view and a validated array. (4) The Android reader uses 8 MiB and 2 flights. (5) Five suites stub the new predicate. (6) Export-level tests use the real readers. (7) T4a to T4d. (8) More export phases and counts. From Tauri 2.12.1 source, both reply forms occur on Android; not yet seen on a device. Validation costs about 7 ms per 4 Mi elements (`gate1\probe-numbers.mjs`, i9). |
+| 2330 | 2026-10-22 | Fix the asset batch harnesses' failure cascade under load, which lane A found in the stage 3 full run | test-warrior | 72,625 | no | `iso\`. Cause: a timed-out wait left the restore's busy entry registered, so later restores were refused ("did not create a file input"). Fix (tests only): afterEach releases every gate and the stream hold, waits up to 2 s for the restore to end, resets the busy registry and fails a leaking test; progress waits are 8 s, under a 20 s per-test timeout. Red: a forced fault on the old desktop file fails 12 of 69, matching lane A; green: the same fault fails 1 of 69. Unforced 69/69 and 14/14, three times and under two processes. `pnpm check` 0/0. Committed as `92f7d900a`. |
+| 2331 | 2026-10-22 | Gate 2 r1 of the harness fix | adversarial-reviewer | 51,487 | no | `iso\gate2-r1.md`, `iso\gate2\`. `[APPROVE]`, no binding items. Four more forced faults across both files each failed only their own tests. Both files are CRLF. Non-binding, from the reviewer's hand-back: the old Android afterEach already released its only hold, so the change there is hardening only. Lane A reported, by message, that its full run on `11f3699fd` had no failures in `backuplocalAssetBatch`. |
+| 2332 | 2026-10-22 | Verify the `MC-359` and rows 2326 to 2331 draft | doc-verifier | 73,108 | no | 24 claims: 18 verified, 1 overstated, 5 unverifiable (the transcript options, lane A's run, tokens), none wrong. Corrected: the CHORE-129 closure holds only when the sized listing succeeds. The timer wording and two source labels were also fixed. |
+| 2333 | 2026-10-22 | Stage 4 implementation | sonnet-coder | 208,084 | no | `s4\impl\report.md` (saved by the orchestrator; the harness refused the coder's write) and the logs. New: `bridgeReplyBytes` (shared with read_range), `isAssetBatchReadAvailable`, `assetBatchReadUsable`, the Android reader limits (8 MiB, 2 flights) and the MEASURE-only export phases; stubs in four test doubles; new `backuplocalExportAndroid.test.ts`. Red on base (an archive of `92f7d900a` with two behavioural shims): 19 of 90 failed. Mutants M1 to M13 killed; M14 survived (that suite refuses before listing). Per-suite read counts unchanged (21/29, 13/13, 8/8, 0/0, 0/0). `pnpm check` 0/0; `pnpm test` 903 files passed, 1 skipped; 20,317 tests passed, 23 skipped; `pnpm build` and `pnpm check:dist` OK. The snapshot line-ending rewrite was restored. After the hand-back the orchestrator changed one comment, the `assetBatchPipeline.ts` module doc, at the coder's request: the file was outside its grant. |
+| 2334 | 2026-10-22 | Stage 4 Gate 2 r1 | opus-reviewer | 168,195 | no | `s4\gate2-r1.md`, `s4\gate2\`. `[EDITORIAL]`. No asset leaves the `.bin` unreported; every Gate 1 amendment is met. Targeted 441/441; `pnpm check` 0/0; the read counts match. The coder's reds are behavioural. 15 of its own mutants were run: 14 killed, and the Android 16 MiB budget mutant survived. The existing `dist/` holds no export phase strings. All files are CRLF. E1: the test's bridge stand-in checked missing and large before the spent budget, unlike Rust's `get_batch_with`. The orchestrator applied the reviewer's reorder; afterwards the file passed 14/14 and is CRLF, and `pnpm check` gave 0/0. Non-binding, not done: no test pins the 8 MiB budget, the every-5,000 progress phase is untested, one doc line break in `tauriAssetBatch.ts`, and there is no direct junk-reply read_range test. The full suite was not re-run (`MC-329` 4). |
+| 2335 | 2026-10-22 | Verify the stage 4 records and commit message | doc-verifier | 62,205 | no | About 30 claim groups: 25 verified, 2 wrong from one cause, 1 overstated, 5 unverifiable (the orchestrator's E1 rerun, tokens, transcript items). Corrected: the row range named 2335 before this row existed (this row added); the commit message now says Gate 2 ran 15 mutants and killed 14, and the read_range sentence was made exact. Its trailer note was settled by the session's own attribution reminder (Opus 5.5). |
 
 ## Handoff
 
@@ -201,3 +243,10 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
   - It awaits the maintainer's commit approval.
   - After the commit: the Note 9 device request for the stream and flight counts (CHORE-222).
 - **Then** stage 4: the Android batched asset reader for export.
+
+2026-10-22, stage 4:
+- **Stage 3** is COMPLETE. Lane A folded it in as `11f3699fd`, on top of `42993e408` and the harness fix `92f7d900a` (rows 2330 and 2331), and pushed it. This branch was fast-forwarded to `11f3699fd`.
+- **The Note 9 requests** for CHORE-220 (`MC-355` 2) and CHORE-222 are running in lane A's phone 2 session.
+- **Stage 4:** decisions `MC-359`. It is implemented and through both gates (rows 2326 to 2335), and CHORE-129 is updated. It awaits the maintainer's commit approval.
+  - After the commit, a Note 9 device request re-runs m2 (c), the stub export. It records the asset-loop time, the reply form (the `numberArrayReplies` count) and the tail split.
+  - A Rust base64 reply command goes back to the maintainer only if the number-array form proves too slow (`MC-359` 1).

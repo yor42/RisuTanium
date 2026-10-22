@@ -43,6 +43,7 @@ import {
     resetAssetBatchAvailabilityForTests,
     writeAssetBatch,
 } from '../tauriAssetBatch'
+import { bridgeReplyBytes } from '../tauriByteTransport'
 
 const encoder = new TextEncoder()
 
@@ -214,6 +215,87 @@ describe('the response of a batch read', () => {
 
     test('a response that is not bytes is refused', () => {
         expect(() => parseReadFrames('text', 1)).toThrow()
+    })
+
+    // The Android bridge answers an ArrayBuffer, and a number array after its fast channel has failed once.
+    describe('in every form the bridge delivers', () => {
+        const frames = [
+            ...frame(0, new Uint8Array([1, 2, 3])),
+            ...frame(1, new Uint8Array([])),
+            ...frame(2, encoder.encode('no dots')),
+        ]
+        const expected = [
+            { status: 'ok', bytes: new Uint8Array([1, 2, 3]) },
+            { status: 'missing' },
+            { status: 'invalid', reason: 'no dots' },
+        ]
+
+        test('an ArrayBuffer', () => {
+            expect(parseReadFrames(buffer(frames), 3)).toEqual(expected)
+        })
+
+        test('a Uint8Array', () => {
+            expect(parseReadFrames(new Uint8Array(frames), 3)).toEqual(expected)
+        })
+
+        test('a Uint8Array that starts inside a larger buffer reads from its own offset and length', () => {
+            const padded = new Uint8Array([200, 201, 202, ...frames, 203, 204])
+            const view = new Uint8Array(padded.buffer, 3, frames.length)
+
+            expect(parseReadFrames(view, 3)).toEqual(expected)
+        })
+
+        test('a DataView, through its own offset and length', () => {
+            const padded = new Uint8Array([200, 201, ...frames, 203])
+            const view = new DataView(padded.buffer, 2, frames.length)
+
+            expect(parseReadFrames(view, 3)).toEqual(expected)
+        })
+
+        test('a number array', () => {
+            expect(parseReadFrames(frames, 3)).toEqual(expected)
+        })
+
+        test.each([
+            { title: 'a value above 255', value: 256 },
+            { title: 'a negative value', value: -1 },
+            { title: 'a fraction', value: 1.5 },
+            { title: 'NaN', value: Number.NaN },
+            { title: 'a numeric string', value: '1' },
+            { title: 'null', value: null },
+        ])('a number array holding $title is refused', ({ value }) => {
+            const damaged: unknown[] = [...frame(0, new Uint8Array([1]))]
+            damaged[5] = value
+
+            expect(() => parseReadFrames(damaged, 1)).toThrow('something other than bytes')
+        })
+
+        test.each([
+            { title: 'text', value: 'abc' },
+            { title: 'a plain object', value: { length: 3 } },
+            { title: 'null', value: null },
+            { title: 'undefined', value: undefined },
+        ])('$title is refused', ({ value }) => {
+            expect(() => parseReadFrames(value, 0)).toThrow('something other than bytes')
+        })
+    })
+
+    test('bridgeReplyBytes gives a read_range reply the same guard: a non-array value is not turned into zeros', () => {
+        expect(bridgeReplyBytes('abc')).toBeNull()
+        expect(bridgeReplyBytes([1, 2, 256])).toBeNull()
+        expect(Array.from(bridgeReplyBytes([1, 2, 255]) ?? [])).toEqual([1, 2, 255])
+    })
+
+    test('readAssetBatch tells a listener whether the reply came as a number array', async () => {
+        const heard: boolean[] = []
+        h.invoke.mockResolvedValueOnce(buffer(frame(0, new Uint8Array([4]))))
+        h.invoke.mockResolvedValueOnce(frame(0, new Uint8Array([4])))
+
+        await readAssetBatch(['assets/a.png'], (asArray) => heard.push(asArray))
+        const second = await readAssetBatch(['assets/a.png'], (asArray) => heard.push(asArray))
+
+        expect(heard).toEqual([false, true])
+        expect(second).toEqual([{ status: 'ok', bytes: new Uint8Array([4]) }])
     })
 
     test('readAssetBatch sends the keys and reads the answer', async () => {
