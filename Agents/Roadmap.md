@@ -6939,6 +6939,19 @@ with index -1.
 
 ### CHORE-220 — The import size warning sums compressed database bytes with uncompressed unit bytes, so a stub-form file warns earlier and shows a larger number
 
+**Status (2026-10-22, `MC-360`): fixed; merged in `888c20283` (lane B); technically accepted, Gate 2 `[APPROVE]`.** Ledger rows 2336, 2341 and 2342.
+- **The Note 9 check** (lane A's release run, verified):
+  - a stub file showed "about 78 MB" and the same content inline "about 30 MB";
+  - the import memory peaks were 723 and 642 MiB;
+  - the import took 207 s against 140 s;
+  - "78" was MiB labelled MB.
+- **What changed:**
+  - `importSavedDataSizeBytes` (`src/ts/drive/storeImport.ts`) counts the unit entries at `UNIT_SIZE_WEIGHT` (0.25) for the 16 MiB trigger, the shown number and the time notice's database sentence.
+  - `estimateImportSeconds` keeps the full unit bytes.
+  - The shown figure is decimal MB (`Math.ceil(bytes / 1_000_000)`), in both warnings and the numbered-backup restore.
+  - No string changed.
+- **Effect:** the Note 9 stub file now shows 28 or 29, and still warns.
+
 **Status (2026-10-21): open, scheduled with the stage 1 Note 9 check (`MC-355` 2).** Source: the lane B stage 1 plan (`%TEMP%\risu-lane-b\s1\plan.md`, change 3, an orchestrator ruling); raised again by a side agent's note, and the maintainer asked on 2026-10-21 that it be recorded so it is not lost.
 
 - **Problem:** the CHORE-194 fix counts the `coldstorage_<uuid>.json` unit entries as database-class bytes for the 16 MiB size warning and the long-tail rule. It sums raw on-disk bytes: the database entry is compressed and the units are uncompressed JSON. For the same content a stub-form file's sum is larger than the inline file's database entry. Example (stubflip PC fixture, 500 characters, synthetic, one fixture): inline 30.6 MB against stub 10.4 MB database plus about 71 MB of units, about 81 MB, about 2.7 times. So stub-form files cross 16 MiB with smaller libraries, and the sentence "reading it needs several times that much memory" probably overstates the memory for the unit part (inferred, unmeasured).
@@ -6956,6 +6969,14 @@ with index -1.
 - **Related:** `MC-183`, `MC-357`; CHORE-103.
 
 ### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
+
+**Status (2026-10-22, later, `MC-361`): in progress.** The Note 9 run is done (row 2336), and the maintainer chose:
+- 2 streams with 4 flights on Android;
+- the desktop stays at 1;
+- a finishing message during the drain;
+- the literal path is kept.
+
+The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the implementation is in progress, uncommitted, in lane B's worktree. The default does not ship before the PC completion test, the refused-name test above 1 stream, and a Note 9 debug-build check of the restored assets.
 
 **Status (2026-10-22): open.** The lane B stage 3 code is merged as `42993e408`. Both defaults are 1 (today's behaviour). Source: `MC-358` 1, the stage 3 gates (`%TEMP%\risu-lane-b\s3\gate1-r1.md`, `gate2-r1.md`).
 
@@ -6976,6 +6997,19 @@ with index -1.
   3. A one-line change sets `ANDROID_ASSET_MAX_STREAMS`, the desktop `ASSET_MAX_STREAMS` and, if measured, the Android flight count.
 - **Known, accepted:** when the loop throws, the caller skips `stopStreams` (Gate 2 mutant r3 survived). The only effect is a delay before the error shows.
 - **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
+
+### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
+
+**Status (2026-10-22): open, candidate; not scheduled.** Source: lane A's Note 9 run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections). That run was a release build of `18156c972`, with `m2-stub500.bin`. It was imported inline and exported as 500 stub characters with 3,000 assets. n=2: lmkd reclaimed system processes during run 1's asset loop, and run 2 was warm on the same page.
+
+- **Measured** (from the export phase ring):
+  - confirm to the save dialog: about 83.5 s, nearly all of it 'export start' to 'export cold collected' (81.8 and 82.2 s);
+  - the asset loop: 9.6 and 11.5 s;
+  - 'export database encoded' to 'export stub and late payloads done': 90.8 and 78.9 s;
+  - Save to complete: 119.0 and 112.1 s.
+- **Not examined:** the mechanism of either long step. The ring has no finer marks inside them.
+- **Next, if scheduled:** a sizing of both steps (cold collection of 500 units, then re-reading and writing the stub and late payloads). It needs the maintainer's go-ahead.
+- **Related:** `MC-359`, `MC-334`, `MC-328` 2.
 
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 

@@ -182,7 +182,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 
 ### CHORE-220 — The import size warning sums compressed database bytes with uncompressed unit bytes, so a stub-form file warns earlier and shows a larger number
 
-**Status (2026-10-22, `MC-360`): fixed on `worktree-Lane-B`; technically accepted, Gate 2 `[APPROVE]`; uncommitted until the maintainer approves.** Ledger rows 2336, 2341 and 2342.
+**Status (2026-10-22, `MC-360`): fixed on `worktree-Lane-B`; technically accepted, Gate 2 `[APPROVE]`; COMPLETE (folded into the shared files by lane A on 2026-10-22, merged in `888c20283`).** Ledger rows 2336, 2341 and 2342.
 - **The Note 9 check** (lane A's release run, verified):
   - a stub file showed "about 78 MB" and the same content inline "about 30 MB";
   - the import memory peaks were 723 and 642 MiB;
@@ -359,5 +359,5 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 
 2026-10-22, after stage 4:
 - **Stage 4** is COMPLETE (lane A fold-in `b7f2be85d`). Its Note 9 run (row 2337) saw only `ArrayBuffer` replies and no fallbacks, so no Rust reply command is needed. The long steps outside the asset loop are candidate CHORE-223.
-- **CHORE-220:** decisions `MC-360`. It is implemented and through Gate 2 (rows 2336, 2341 and 2342) and awaits the maintainer's commit approval.
+- **CHORE-220:** decisions `MC-360`. It is implemented and through Gate 2 (rows 2336, 2341 and 2342); COMPLETE (folded into the shared files by lane A on 2026-10-22, merged in `888c20283`).
 - **CHORE-222:** decisions `MC-361` (rows 2336 and 2338 to 2340). Its plan is at Gate 1, and the implementation starts after the CHORE-220 commit (one writer per checkout). After that commit, a Note 9 debug-build device request checks the restored assets with run-as.

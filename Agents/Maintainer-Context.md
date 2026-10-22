@@ -10998,3 +10998,75 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - The option texts were written by the orchestrator; the summaries above repeat them.
 - Item 1 covers this rerun only; it does not change `MC-330` 1 for other device checks.
 - Nothing here authorizes a push, a merge, or a special build.
+
+### MC-360 — Lane B, 2026-10-22: CHORE-220 answers (unit entries count at a quarter in the import size figure; the figure is decimal MB)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: lane A's Note 9 release run (`%TEMP%\risu-b715\phone2-rel\report.md`, part A, with its "Corrections from doc-verifier" section, which verified the A-table and the MiB claim).
+- **Related:** `MC-355` 2, `MC-356`, `MC-318` 6; CHORE-194, CHORE-220.
+
+1. **Units: "Count units at ¼ (Recommended)".** The unit entries count at a quarter of their size, because they are uncompressed text and the database entry is compressed.
+   - The option text gave the effect: the stub file that showed about 78 MB would show about 28 MB, close to the 30 MB of the same content inline, and in line with the measured memory.
+   - It is one constant with no text change, so no translator pass. It is a rough factor calibrated from one pair of files.
+   - The question stated the measurements:
+     - a stub file showed "about 78 MB", and the same 500 characters inline showed "about 30 MB";
+     - the import memory peaks were 723 and 642 MiB, and the post-reload peak was no worse;
+     - the import took 207 s against 140 s;
+     - the stub file's database alone (10 MB) would show no warning, yet its import used more memory than the 30 MB one's.
+  
+   Not chosen: "Reword the sentence" (keep the number and drop "several times that much memory", with a translator pass) and "Keep as is".
+2. **Label: "Compute decimal MB (Recommended)".** The number shown with "MB" is bytes ÷ 1,000,000, matching file managers. The numbered-backup restore uses the same formatter, and the 16 MiB threshold stays. It is one line with no text change. Not chosen: "Leave it".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- **The orchestrator's ruling, not asked:** the quarter weight applies to the size figure only:
+  - the 16 MiB trigger;
+  - the shown number;
+  - the time notice's database sentence.
+  
+  The import-time estimate keeps the full unit bytes, because the units took real resolve time on the phone (66 s). CHORE-220 Gate 2 accepted the ruling.
+- Under the new rule the Note 9 stub file is about 28 MB weighted, so it still warns. It shows 28 or 29: Gate 2 computed 29 from the approximate 10.4 and 71 MB, and the device's 78 MiB bounds the result to 28 or 29.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-361 — Lane B, 2026-10-22: CHORE-222 answers (the Android restore copies 2 large entries at once with 4 batches in flight; a finishing message during the drain; the one-at-a-time path stays)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs:
+  - lane A's Note 9 release run (`%TEMP%\risu-b715\phone2-rel\report.md`, part B and its corrections);
+  - `%TEMP%\risu-lane-b\c222\packet.md` (investigator), superseded where they differ by `packet-verify.md` (`doc-verifier`: 36 of 41 verified, 0 wrong).
+- **Related:** `MC-358`, `MC-328` 2, `MC-326` 4; CHORE-222.
+
+1. **Defaults: "Android 2 at once, 4 batches (Recommended)".** The Android restore defaults to 2 large-entry streams with 4 batch calls in flight. The desktop stays at 1, with no desktop measurement; that test backup has no asset large enough to stream there.
+   - Before it ships:
+     - a PC test that restores a phone-like mix at 2,4 and 4,4 and checks every asset byte for byte;
+     - the missing refused-name test;
+     - one Note 9 debug-build run at 2,4 that checks the restored assets on the phone.
+   - The question stated:
+     - the copy of a 1.2 GiB backup took 212 s today, 78 s at 2 at once with 4 batches, and 71 s at 4 at once with 4 batches;
+     - memory during the copy rose only slightly;
+     - most of the gain probably comes from no longer pausing all other work before each large file, and 2 to 4 added only 5 to 10%;
+     - no phone run proved the import completed correctly.
+   
+   Not chosen: "Android 4 at once, 4 batches", "Measure first" (a phone run of one stream through the new path) and "Keep at 1".
+2. **Progress: "Show a finishing message (Recommended)".** Once every entry has been read, the text switches to a separate message, such as "Finishing copying files...", until the copies end. It is plain English like the neighbouring progress texts, so there is no translator pass. Not chosen: "Stop below 100%", "Count finished bytes" and "Leave it".
+3. **Old path: "Keep it (Recommended)".** The literal one-at-a-time path stays as the desktop default and the instant fallback. Not chosen: "Delete it".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- **Corrections to the question's figures:**
+  - "212 s" is R1a; R1b was 219 s.
+  - The "4 s" hold at 100% was observed as `100.00%` only in R5 and R6 (`packet-verify.md`).
+- The phone runs are n=1 per combination on one Note 9, screen on. Completion was not established in them; the prerequisites above exist for that reason.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-338 — Lane A, 2026-10-22: lane B CHORE-220 merge
+
+- Tag: decisions (`AskUserQuestion` answer, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); git `74cbf2114`, `888c20283`.
+- Related: `MC-360`, `MC-361`, `MC-337`; CHORE-220, CHORE-222, CHORE-223.
+1. **Lane B CHORE-220: "Merge + fold in (Recommended)".** Merged as `888c20283`, with this fold-in. Lane B's records file is unfrozen once this fold-in is committed.
+- Notes, not the maintainer's words: the option text was written by the orchestrator; nothing here authorizes CHORE-222's merge or a device run.
