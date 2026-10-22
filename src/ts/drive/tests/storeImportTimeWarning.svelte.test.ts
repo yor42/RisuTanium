@@ -260,8 +260,8 @@ async function pickAtBoot(target: BootImportTarget, bytes: Uint8Array) {
 
 /** The text of a two-entry file with a 100-byte database: 2 files, a 5 minute estimate, 0.6 GB free space needed. */
 const SMALL_DATABASE_TEXT = language.store2ImportTimeWarning(2, 5, 0.6, null)
-/** The same file with a 17 MiB database: the tail makes it 10 minutes and the database sentence is folded in. */
-const LARGE_DATABASE_TEXT = language.store2ImportTimeWarning(2, 10, 0.6, 17)
+/** The same file with a 17 MiB database (17,825,792 bytes, 18 decimal megabytes): the tail makes it 10 minutes and the database sentence is folded in. */
+const LARGE_DATABASE_TEXT = language.store2ImportTimeWarning(2, 10, 0.6, 18)
 
 describe('the Android time warning on a store2 page', () => {
     test('new behaviour: assets over the threshold show the time and space text, once, before anything is written', async () => {
@@ -323,17 +323,17 @@ describe('the Android time warning on a store2 page', () => {
 
         await loadBin(binWith(17 * 1024 * 1024))
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(17)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
     })
 
-    test('new behaviour: assets over the threshold and a database over 16 MiB give one prompt that holds both', async () => {
+    test('new behaviour: assets over the threshold and a database over 16 MiB give one prompt that holds both, in decimal megabytes', async () => {
         const page = await openPage()
         answer(page, false)
 
         await loadBin(binWith(17 * 1024 * 1024))
 
         expect(confirmTexts(page)).toEqual([LARGE_DATABASE_TEXT])
-        expect(LARGE_DATABASE_TEXT).toContain('17 MB')
+        expect(LARGE_DATABASE_TEXT).toContain('18 MB')
     })
 
     test.each(['windows', 'linux', 'macos', 'ios'])('guard: a %s page gets no time text for the same file', async (os) => {
@@ -355,7 +355,7 @@ describe('the Android time warning on a store2 page', () => {
 
         await loadBin(binWith(17 * 1024 * 1024))
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(17)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
     })
 
     test('guard: the warning belongs to store2 pages, so an Android block-mode import over the threshold shows no time text', async () => {

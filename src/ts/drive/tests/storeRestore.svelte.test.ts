@@ -835,14 +835,15 @@ describe('old numbered backups as rows of the picker', () => {
     test('a large old backup is announced before it is decoded, and a decline changes nothing', async () => {
         const page = await openPage()
         const before = await currentKey(page)
-        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array(17 * 1024 * 1024))
+        // 81,000,000 bytes is 77.2 MiB but 81 decimal megabytes, the figure the warning must name.
+        page.w.store.plant(oldKey(OLD_TIME), new Uint8Array(81_000_000))
         pickLabelled(page, (options) => oldIndex(options))
         vi.mocked(page.alert.alertConfirm).mockImplementation(async () => false)
         page.w.store.ops.length = 0
 
         const { reload } = await runRestore(page)
 
-        expect(vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))).toEqual([language.store2ImportSizeWarning(17)])
+        expect(vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))).toEqual([language.store2ImportSizeWarning(81)])
         // The decline, not a failed decode of the zero-filled bytes, is what stopped it.
         expect(alertErrorTexts(page)).toEqual([])
         expect(reload).not.toHaveBeenCalled()
