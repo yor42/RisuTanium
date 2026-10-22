@@ -47,6 +47,9 @@ function same(actual: Uint8Array | null | undefined, expected: Uint8Array): bool
     return actual !== null && actual !== undefined && Buffer.compare(Buffer.from(actual), Buffer.from(expected)) === 0
 }
 
+/** The slowest multi-chunk writes take up to about a second alone; the bound only delays reporting a hang. */
+const SLOW_WRITE_TEST_MS = 30_000
+
 describe.each(['windows', 'linux', 'macos'])('with the operating system reported as %s', (os) => {
     beforeEach(() => {
         h.state.os = os
@@ -178,7 +181,7 @@ describe('Tauri files store on desktop', () => {
             expect(h.desktop.rawCalls.map((call) => call.size)).toEqual([CAP, CAP, 5])
             expect(h.fs.writeLog).toEqual([])
             expect(same(h.fs.files.get('blocks/gen/c/6162'), bytes)).toBe(true)
-        })
+        }, SLOW_WRITE_TEST_MS)
 
         test('a durable key above CHUNK_MAX carries the chunk flush status into WriteResult.flushed, and a plain key carries none', async () => {
             const bytes = patterned(CAP + 1)
@@ -191,7 +194,7 @@ describe('Tauri files store on desktop', () => {
 
             const plain = await store().write('assets/big.bin', patterned(CAP + 1), 'unconditional')
             expect('flushed' in plain).toBe(false)
-        })
+        }, SLOW_WRITE_TEST_MS)
 
         test('a plain key of at most CHUNK_MAX bytes is written through the plugin with the ./ path, and the only command invoked creates its folder', async () => {
             await store().write('database/database.bin', patterned(CAP), 'unconditional')
@@ -222,7 +225,7 @@ describe('Tauri files store on desktop', () => {
 
             expect(h.fs.listing('assets')).toEqual(['big.bin'])
             expect(h.fs.files.get('assets/big.bin')?.length).toBe(CAP + 30)
-        })
+        }, SLOW_WRITE_TEST_MS)
 
         test('a failed chunk rejects the write, keeps the old value readable, and leaves no temp', async () => {
             await store().write('assets/big.bin', patterned(CAP + 10), 'unconditional')
@@ -232,7 +235,7 @@ describe('Tauri files store on desktop', () => {
 
             expect(same((await store().read('assets/big.bin')).bytes, patterned(CAP + 10))).toBe(true)
             expect(h.fs.listing('assets')).toEqual(['big.bin'])
-        })
+        }, SLOW_WRITE_TEST_MS)
 
         test('a key the store refuses is refused before any call, large or small', async () => {
             for (const length of [10, CAP + 1]) {

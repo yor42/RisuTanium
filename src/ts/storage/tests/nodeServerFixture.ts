@@ -23,6 +23,16 @@ const REPO_NODE_MODULES = fileURLToPath(new URL('../../../../node_modules', impo
 const READY_TIMEOUT_MS = 20_000
 const EXIT_TIMEOUT_MS = 5_000
 const READY_LINE = 'HTTP server is running'
+// Launches of a fresh fixture that may each take a new port when another process
+// takes the probed one before the server binds it.
+const MAX_FIRST_LAUNCH_ATTEMPTS = 5
+
+/** The server process ended before printing its ready line; `addressInUse` is read from its drained output. */
+class ServerExitedEarly extends Error {
+    constructor(message: string, readonly addressInUse: boolean) {
+        super(message)
+    }
+}
 
 export interface NodeServerFixture {
     baseUrl: string
@@ -63,7 +73,9 @@ function freePort(): Promise<number> {
     return new Promise((resolve, reject) => {
         const probe = createServer()
         probe.once('error', reject)
-        probe.listen(0, '127.0.0.1', () => {
+        // No host: bind the way server.cjs does (all interfaces), so a port held on
+        // any interface is not handed out.
+        probe.listen(0, () => {
             const address = probe.address()
             const port = typeof address === 'object' && address !== null ? address.port : 0
             probe.close(() => resolve(port))
@@ -155,8 +167,9 @@ export function createReplyDropper(plan: ReplyDropPlan): ReplyDropper {
 
 export async function startNodeServer(options: NodeServerOptions = {}): Promise<NodeServerFixture> {
     const workDir = await mkdtemp(join(tmpdir(), 'risu-node-store-'))
-    const port = await freePort()
-    const baseUrl = `http://127.0.0.1:${port}`
+    // Fixed once the first launch has bound; a restart reuses it so the base URL stays.
+    let port = await freePort()
+    let baseUrl = `http://127.0.0.1:${port}`
     let child: ChildProcess | undefined
     let exited: Promise<void> | undefined
     let stopped = false
@@ -213,15 +226,31 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                 clearTimeout(timer)
                 reject(error)
             })
-            running.once('exit', (code) => {
+            // 'close' follows the end of both streams, so `output` is complete here;
+            // 'exit' can come before the pipes are drained.
+            running.once('close', (code) => {
                 clearTimeout(timer)
-                reject(new Error(`The Node server exited with code ${code} before it was ready.\n${output}`))
+                reject(new ServerExitedEarly(`The Node server exited with code ${code} before it was ready.\n${output}`, output.includes('EADDRINUSE')))
             })
         })
     }
 
     try {
-        await launch()
+        // Another process can take the probed port before the server binds it. Only
+        // the first launch of a fixture whose port the fixture chose takes a new one.
+        const portChosenByCaller = options.env?.PORT !== undefined
+        for (let attempt = 1; ; attempt++) {
+            try {
+                await launch()
+                break
+            } catch (error) {
+                if (!(error instanceof ServerExitedEarly) || !error.addressInUse || portChosenByCaller || attempt >= MAX_FIRST_LAUNCH_ATTEMPTS) {
+                    throw error
+                }
+                port = await freePort()
+                baseUrl = `http://127.0.0.1:${port}`
+            }
+        }
 
         const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
         const publicJwk = await crypto.subtle.exportKey('jwk', publicKey)

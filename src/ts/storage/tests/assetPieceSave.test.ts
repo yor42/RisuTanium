@@ -22,6 +22,9 @@ import { writable } from 'svelte/store'
 import { CHUNK_MAX, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
 import type { ByteStore, ReadResult } from 'src/ts/storage/store/contract'
 
+// Many tests here hash megabytes and take one to two seconds alone; a loaded machine must not turn that into a timeout.
+vi.setConfig({ testTimeout: 30_000 })
+
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
     os: 'linux' as 'linux' | 'windows' | 'android',
