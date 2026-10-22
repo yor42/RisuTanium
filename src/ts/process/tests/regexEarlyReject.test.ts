@@ -343,7 +343,9 @@ function mutantCannotMatch(mutation: 'none' | 'noPipeBail' | 'noBackrefBail'): C
     }
 }
 
-describe('leadingLazyDotCannotMatch differential', () => {
+// Each corpus run takes seconds and runs several times slower under a loaded
+// full suite, so the default 5 s timeout is too tight.
+describe('leadingLazyDotCannotMatch differential', { timeout: 60_000 }, () => {
     test('whenever the helper rejects, the real regex has no match, and the helper rejects often', () => {
         const result = runDifferential(leadingLazyDotCannotMatch, 20261022, 700)
         expect(result.violations.slice(0, 5)).toEqual([])
