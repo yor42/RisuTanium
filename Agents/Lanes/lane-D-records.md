@@ -2,6 +2,8 @@
 
 Lane D (UI lists and small items), branch `worktree-Lane-D`. Rules: [README.md](README.md); brief: [lane-D-brief.md](lane-D-brief.md). IDs: MC-375 to MC-394, CHORE-240 to CHORE-259, ledger rows 2500 to 2699 (overflow MC-410 to 419, CHORE-310 to 319, rows 3100 to 3199). Lane A folds these sections into the shared records files at merge.
 
+**Status (2026-10-22, lane D): S4-5a and S4-5b merged (folded into the shared files by lane A on 2026-10-22, merged in `3a0f2cf0c`); not COMPLETE: the S4-5b Note 9 pass is owed.**
+
 ## MC entries
 
 ### MC-375 — Lane D, 2026-10-21: S4-4 Grid drag plan answers (Q1 to Q12) and the folder-removal confirmation

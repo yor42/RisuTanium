@@ -372,3 +372,6 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-343](Maintainer-Context.md#mc-343--lane-a-2026-10-22-lane-b-chore-223-merge-and-its-note-9-measurement) | Lane A, 2026-10-22: lane B CHORE-223 merge and its Note 9 measurement |
 | [MC-344](Maintainer-Context.md#mc-344--lane-a-2026-10-22-chore-204-commit) | Lane A, 2026-10-22: CHORE-204 commit |
 | [MC-345](Maintainer-Context.md#mc-345--lane-a-2026-10-22-personal-android-mvp-work-order-amends-mc-321-1) | Lane A, 2026-10-22: personal Android MVP work order (amends MC-321 1) |
+| [MC-384](Maintainer-Context.md#mc-384--lane-d-2026-10-22-the-grid-folder-menus-lock-ends-at-the-file-chooser-accepted) | Lane D, 2026-10-22: the Grid folder menu's lock ends at the file chooser (accepted) |
+| [MC-385](Maintainer-Context.md#mc-385--lane-d-2026-10-22-park-lane-d-and-merge-s4-5) | Lane D, 2026-10-22: park lane D and merge S4-5 |
+| [MC-346](Maintainer-Context.md#mc-346--lane-a-2026-10-22-a3-product-answers-chore-153-chore-117-stage-2-chore-181) | Lane A, 2026-10-22: A3 product answers (CHORE-153, CHORE-117 stage 2, CHORE-181) |

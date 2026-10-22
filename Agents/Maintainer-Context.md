@@ -11344,3 +11344,61 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
   - Still unknown: the maintainer's daily phone (model, RAM, Android and WebView version, free storage), and whether to change the Back-quits rule kept in `MC-279` 8 (CHORE-181) if the debounce test shows an edit is lost.
   - The CHORE-202 phone 2 runs R1 to R3 reproduce a Page Lifecycle freeze at hidden plus 60 s; the cause is not shown to be `WebView.onPause()`, which is what E1 tests. Nothing here says a fix was found.
   - Nothing here authorizes application-code edits, a merge of S4-5, or a push of a lane branch; lane A commits and pushes this records pass.
+
+### MC-384 — Lane D, 2026-10-22: the Grid folder menu's lock ends at the file chooser (accepted)
+
+- **Tag:** decision (stated in chat)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session. The maintainer asked "can you tell me the exact tradeoff here? if it isn't serious(such as creating race), I think it is safe to accept this." After the explanation: "yep. accepted. go ahead and commmit."
+- **Reasoning:** the maintainer's condition: acceptable if it is not serious, such as creating a race. The explanation given: holding the lock across the chooser would freeze both Grid menus if a platform closes the chooser without reporting `change` or `cancel` (`selectFileByDom` has no fallback); every write re-resolves the folder by id at the moment it writes, so overlapping actions leave no inconsistent state.
+- **Alternatives rejected:** keep the lock across the chooser with a timeout fallback in the shared `selectFileByDom` (used by every file picker, outside S4-5, and a timeout could fire while the user is still browsing).
+- **Related:** `MC-383`; S4-5 plan revision 3 section 3.4 and risks 4 and 10 (`%TEMP%\risu-lane-d\s4-5\plan-s4-5.md`); ledger rows 2559 to 2565.
+
+**What was decided:**
+1. The Grid releases its one-menu-at-a-time lock just before the folder-picture file chooser opens, as implemented in S4-5b. Accepted costs: from the chooser's answer to the folder write (a file read plus the picture save) a second menu can open, and the picture can land after Done, Back, a deselecting tap, a drag or closing the Grid; if the folder is ungrouped or deleted in that window, the saved picture is left unused (the sidebar has the same case). A chooser that never reports leaves one hidden file input in the page (existing behaviour of every caller).
+2. The Note 9 pass still checks whether Android's chooser lets input through while it is open; if it does, that is reported to the maintainer.
+
+### MC-385 — Lane D, 2026-10-22: park lane D and merge S4-5
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion`, asked after lane A relayed the maintainer's S4-5 merge approval and said `MC-345` parks the rest of lane D's queue, including CHORE-154 to CHORE-157 (which the maintainer had asked lane D to start earlier the same day).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Stop now and merge" (stop the read-only re-trace immediately); "Keep CHORE-154+ going" (continue CHORE-154 to CHORE-157 after the merge records commit, recorded as an amendment of `MC-345`).
+- **Related:** `MC-345` (on `main`), `MC-257`; CHORE-154 to CHORE-157.
+- **Correction to the question's premise (record verification after the answer):** `MC-345` item 3 and the Roadmap work order park S4-6 and list windowing until after A5, but place CHORE-154 to CHORE-157 in the conditional phase A4 ("only if A1 says so"), not in the parked list. The answer still holds: A4 has not been triggered.
+
+**What was decided:**
+1. **"Park and merge (Recommended)".** Option text: "Let the read-only re-trace finish and save its packet for later, no plan or code. Commit the merge records pass on the lane branch once doc-verifier passes, and give lane A the tip hash."
+
+### MC-346 — Lane A, 2026-10-22: A3 product answers (CHORE-153, CHORE-117 stage 2, CHORE-181)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22. The option labels are the maintainer's answers; the question texts below are paraphrased by lane A and the option descriptions are the orchestrator's, recorded as shown.
+- Related: `MC-345` (the A3 phase: the fixes the audit confirms; lane E owns the fixes), `MC-279` 8 (amended for the dialog case by item 2), lane E's store2 supersession audit (`C:\Users\yor42\AppData\Local\Temp\risu-lane-e\audit\audit.md`, `doc-verifier`-checked, corrections appended); CHORE-117, CHORE-153, CHORE-181; ledger rows 2144 and 2145.
+- Amends: `MC-279` 8, for the case of an open dialog only (item 2). No historical decision text is rewritten.
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- CHORE-117 stage 2. Question (paraphrased): if one saved value cannot be encoded, every save for every character stops and an alert repeats each second; what should happen instead? Answer: "Skip that character, warn once (Recommended)". Option description: save everything else normally, show one notice naming the character that can't be saved, keep retrying that one quietly.
+- CHORE-181. Question (paraphrased): with a dialog open, Back quits at once, skipping the 2 s guard (`MC-279` 8). Answer: "Close the dialog (Recommended)". Option description: Back closes or cancels the open dialog; a second Back then follows the normal 2 s quit guard.
+- CHORE-153. Answer: "Fix now, phone check after (Recommended)". Option description: the code trace is clear; unit tests fail before and pass after the fix, then one short phone run confirms.
+- Lane D merge. Answer: "Merge + fold in (Recommended)".
+
+**What was decided (maintainer):**
+1. **CHORE-117 stage 2.** A saved value that cannot be encoded no longer stops every save: that character is skipped, the rest save normally, one notice names the character, and that one is retried quietly.
+2. **CHORE-181.** With a dialog open, Back closes or cancels that dialog instead of quitting at once; a second Back then follows the normal 2 s quit guard. This amends `MC-279` 8 ("Keep, open a ticket") for the dialog case.
+3. **CHORE-153.** Fix now: the unit tests fail before and pass after the fix, then one short phone run confirms.
+4. **Lane D merge.** Merge S4-5 (S4-5a and S4-5b, `MC-383`, `MC-384`) into `main` and fold in the records ("Merge + fold in (Recommended)").
+5. **CHORE-117 stage 2 plan questions (lane E's plan; `AskUserQuestion` answers by option label, orchestrator-recorded option text, 2026-10-22).** They refine item 1.
+   - **Q-A.** Question (paraphrased): "If the value that can't be saved is in a module, preset, settings or plugin data instead, what should happen?" Answer: "Leave as today, ticket it (Recommended)". Option text: it keeps retrying with an alert as now, and a separate ticket covers it later.
+   - **Q-B.** Question (paraphrased): "How should the app tell you that a character can't be saved?" Answer: "One toast per character (Recommended)". Option text: it is shown once for each newly affected character and reappears only if that character is fixed and later breaks again.
+   - **Q-E.** Question (paraphrased): "A character that has never been saved and can't be saved has nothing on disk, so it is lost if the app closes before the problem is fixed. A character that was saved before keeps its last good copy. Is that acceptable?" Answer: "Accept, toast says 'not being saved' (Recommended)". Option text: the toast wording makes clear the character is not being saved at all.
+   - TODO(evidence): the separate ticket for the non-character case in Q-A has no ID in the brief.
+- Notes, not the maintainer's words:
+  - Correction (lane A, 2026-10-22; `MC-346` carries it because this file is append-only): an earlier entry says the unloaded-character export is "still 'inline' ... so the flip is owed work" (near line 10778 of this file). The export default is `'stub'` (`EXPORT_UNLOADED_CHARACTERS = 'stub'` in `src/ts/drive/exportInline.ts`), flipped in `b781b1f35` under `MC-326` 7. The source line was reported by lane E's audit verifier (ledger row 2145) and not re-read by this pass; the old text is unchanged.
+  - The question texts and option descriptions were written by the orchestrator; the question texts here are lane A's paraphrase.
+  - Lane E's audit is AI-authored; it was `doc-verifier`-checked and its corrections are appended to the file. Lane E owns the fixes. The audit's findings are not restated here.
+  - These answers fix behaviour only. The mechanism, the notice wording and the tests are for each fix's own plan and gates; nothing here authorizes application-code edits by lane A.
+  - TODO(evidence): the exact question texts as asked are not in the brief for this pass.
