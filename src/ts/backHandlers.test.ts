@@ -1,15 +1,16 @@
 // @vitest-environment happy-dom
 
 /**
- * The Back registry and quit guard. `pageCovered` is the only collaborator and is mocked: the
+ * The Back registry and quit guard. `pageCovered` and `closeDialogForBack` are the collaborators and are mocked: the
  * contract under test is dispatch order, the failure containment and the guard's timing.
  * Every test is a feature test of the new module (F); none can pass on a base without it.
  * Time is `Date.now` under fake timers.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { covered } = vi.hoisted(() => ({ covered: vi.fn(() => false) }))
+const { covered, closeDialog } = vi.hoisted(() => ({ covered: vi.fn(() => false), closeDialog: vi.fn() }))
 vi.mock('./alertPrompts', () => ({ pageCovered: covered }))
+vi.mock('./alertBack', () => ({ closeDialogForBack: closeDialog }))
 
 import {
     QUIT_WINDOW_MS,
@@ -31,6 +32,7 @@ beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000_000)
     covered.mockReturnValue(false)
+    closeDialog.mockReset()
     showToast.mockReset()
     resetBackHandlersForTests()
 })
@@ -206,27 +208,94 @@ describe('quit guard', () => {
         expect(showToast).toHaveBeenCalledTimes(1)
     })
 
-    test('(F) a covered press returns false, runs no handler, neither warns nor arms', () => {
-        installBackGuard({ showToast })
+    test('(F) a covered press is consumed, closes the dialog once, runs no handler, neither warns nor flushes', () => {
+        const flush = vi.fn()
+        installBackGuard({ showToast, flush })
         const handler = vi.fn(() => true)
         registerBackHandler(handler)
         covered.mockReturnValue(true)
-        expect(dispatchBack()).toBe(false)
+        expect(dispatchBack()).toBe(true)
+        expect(closeDialog).toHaveBeenCalledTimes(1)
         expect(handler).not.toHaveBeenCalled()
         expect(showToast).not.toHaveBeenCalled()
+        vi.runAllTimers()
+        expect(flush).not.toHaveBeenCalled()
         covered.mockReturnValue(false)
         expect(dispatchBack()).toBe(true)
         expect(handler).toHaveBeenCalledTimes(1)
+        expect(closeDialog).toHaveBeenCalledTimes(1)
     })
 
-    test('(F) a covered press does not touch an existing arm', () => {
+    test('(F) a covered press with no guard installed is still consumed', () => {
+        covered.mockReturnValue(true)
+        expect(dispatchBack()).toBe(true)
+        expect(closeDialog).toHaveBeenCalledTimes(1)
+    })
+
+    test('(F) a covered press resets the arm: after the dialog the next press warns, the one after quits', () => {
         installBackGuard({ showToast })
         dispatchBack()
         covered.mockReturnValue(true)
-        dispatchBack()
+        expect(dispatchBack()).toBe(true)
         covered.mockReturnValue(false)
+        expect(dispatchBack()).toBe(true)
+        expect(showToast).toHaveBeenCalledTimes(2)
         expect(dispatchBack()).toBe(false)
+    })
+
+    test('(F) a throwing dialog close is logged and the press is still consumed', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        closeDialog.mockImplementation(() => {
+            throw new Error('onCancel failed')
+        })
+        covered.mockReturnValue(true)
+        expect(dispatchBack()).toBe(true)
+        expect(error).toHaveBeenCalled()
+        error.mockRestore()
+    })
+
+    test('(F) the flush runs once, after the answer, on the warning press and not on the quitting press', () => {
+        const flush = vi.fn()
+        installBackGuard({ showToast, flush })
+        expect(dispatchBack()).toBe(true)
+        expect(flush).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(0)
+        expect(flush).toHaveBeenCalledTimes(1)
+        expect(dispatchBack()).toBe(false)
+        vi.runAllTimers()
+        expect(flush).toHaveBeenCalledTimes(1)
+    })
+
+    test('(F) a press handled by a handler does not flush', () => {
+        const flush = vi.fn()
+        installBackGuard({ showToast, flush })
+        registerBackHandler(() => true)
+        dispatchBack()
+        vi.runAllTimers()
+        expect(flush).not.toHaveBeenCalled()
+    })
+
+    test('(F) a throwing flush is logged after the answer and the warning still shows and arms', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        installBackGuard({ showToast, flush: () => { throw new Error('save failed') } })
+        expect(dispatchBack()).toBe(true)
         expect(showToast).toHaveBeenCalledTimes(1)
+        expect(error).not.toHaveBeenCalled()
+        expect(() => vi.runAllTimers()).not.toThrow()
+        expect(error).toHaveBeenCalled()
+        expect(dispatchBack()).toBe(false)
+        error.mockRestore()
+    })
+
+    test('(F) a throwing showToast still flushes after that press, which quits', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const flush = vi.fn()
+        installBackGuard({ showToast: () => { throw new Error('no toast') }, flush })
+        expect(dispatchBack()).toBe(false)
+        expect(flush).not.toHaveBeenCalled()
+        vi.runAllTimers()
+        expect(flush).toHaveBeenCalledTimes(1)
+        error.mockRestore()
     })
 
     test('(F) a throwing showToast returns false and leaves nothing armed', () => {

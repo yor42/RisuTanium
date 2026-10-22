@@ -29,21 +29,32 @@ export interface SaveOnHideDeps {
     saveNow: () => void
 }
 
+export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow'>
+
+/**
+ * The one rule for leaving the page, by hide or by Back: with a chat in flight, mark its streams
+ * and save; otherwise save only when there are unsaved edits. Without a chat in flight, a page
+ * without unsaved edits is never made dirty, because the save request itself marks the page dirty.
+ */
+export function flushBeforeLeaving(deps: FlushDeps): void {
+    if (deps.kinds().includes('chat')) {
+        for (const stream of deps.streams()) {
+            deps.mark(stream.chaId)
+            deps.mark(stream.memberChaId)
+        }
+        // Marks first: each one restarts the debounce, which the request clears.
+        deps.saveNow()
+        return
+    }
+    if (deps.unsaved()) {
+        deps.saveNow()
+    }
+}
+
 /** Installs the listeners; the returned function removes them. */
 export function installSaveOnHide(deps: SaveOnHideDeps): () => void {
     const onHide = (): void => {
-        if (deps.kinds().includes('chat')) {
-            for (const stream of deps.streams()) {
-                deps.mark(stream.chaId)
-                deps.mark(stream.memberChaId)
-            }
-            // Marks first: each one restarts the debounce, which the request clears.
-            deps.saveNow()
-            return
-        }
-        if (deps.unsaved()) {
-            deps.saveNow()
-        }
+        flushBeforeLeaving(deps)
     }
     const onVisibility = (): void => {
         if (deps.doc.visibilityState === 'hidden') {
@@ -58,15 +69,24 @@ export function installSaveOnHide(deps: SaveOnHideDeps): () => void {
     }
 }
 
+const pageFlushDeps: FlushDeps = {
+    kinds: inFlightKinds,
+    streams: activeStreams,
+    unsaved: hasUnsavedSaveMarks,
+    mark: markCharacterForSave,
+    saveNow: requestSaveNow,
+}
+
+/** The page's flush: the same rule the hide listeners apply. */
+export function flushPageBeforeLeaving(): void {
+    flushBeforeLeaving(pageFlushDeps)
+}
+
 /** Installs the page's one hide listener pair. */
 export function startSaveOnHide(): () => void {
     return installSaveOnHide({
         doc: document,
         win: window,
-        kinds: inFlightKinds,
-        streams: activeStreams,
-        unsaved: hasUnsavedSaveMarks,
-        mark: markCharacterForSave,
-        saveNow: requestSaveNow,
+        ...pageFlushDeps,
     })
 }

@@ -1,3 +1,4 @@
+import { closeDialogForBack } from './alertBack'
 import { pageCovered } from './alertPrompts'
 
 declare global {
@@ -23,6 +24,13 @@ interface Entry {
 export interface BackGuardOptions {
     /** Tells the user that another Back quits. A throw means the warning could not be shown. */
     showToast: () => void
+    /**
+     * Requests a best-effort save of unsaved edits and of a streaming reply. Called on the press
+     * that warns and on the press whose warning throws, never on the quitting press, in its own
+     * task and try/catch, so a throw blocks neither the warning nor the quit and the save work
+     * never delays the answer to the host.
+     */
+    flush?: () => void
 }
 
 const entries: Entry[] = []
@@ -33,12 +41,20 @@ let stopVisibilityReset: (() => void) | null = null
 /**
  * Handles one Back press. Handlers run newest first and the first that returns true ends the
  * press. When none does, the quit guard warns on the first press and lets the second one
- * through (false), which the host turns into the default Back. A dialog on screen is left alone:
- * neither a warning nor an arm, so the press behaves as it did before the guard existed.
+ * through (false), which the host turns into the default Back. While a dialog covers the page the
+ * press is consumed by the page: the dialog is cancelled when it has a cancel, otherwise it stays,
+ * no handler runs, and the arm is dropped so the next press after the dialog starts the guard
+ * fresh. The host still runs the default Back if the page does not answer within its timeout.
  */
 export function dispatchBack(): boolean {
     if (pageCovered()) {
-        return false
+        armedAt = null
+        try {
+            closeDialogForBack()
+        } catch (error) {
+            console.error('Back dialog close failed', error)
+        }
+        return true
     }
     // A copy, so a handler that unregisters itself or another one cannot make the loop skip any.
     for (const entry of entries.slice().reverse()) {
@@ -53,6 +69,19 @@ export function dispatchBack(): boolean {
     return unhandledPress()
 }
 
+function scheduleFlush(flush: (() => void) | undefined): void {
+    if (flush === undefined) {
+        return
+    }
+    setTimeout(() => {
+        try {
+            flush()
+        } catch (error) {
+            console.error('Back flush failed', error)
+        }
+    }, 0)
+}
+
 function unhandledPress(): boolean {
     if (guard === null) {
         return false
@@ -62,6 +91,10 @@ function unhandledPress(): boolean {
         armedAt = null
         return false
     }
+    // Scheduled before the warning: a press whose warning fails quits at once and must still have
+    // requested the save. The host waits for this answer with a 1 s limit, so the save work runs
+    // in a later task, after the answer.
+    scheduleFlush(guard.flush)
     try {
         guard.showToast()
     } catch (error) {
